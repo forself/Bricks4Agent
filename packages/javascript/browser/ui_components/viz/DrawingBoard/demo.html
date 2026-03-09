@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrawingBoard Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .demo-section p { color: #888; font-size: 13px; margin: 4px 0 12px; }
+        .toolbar { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .toolbar button { padding: 6px 16px; cursor: pointer; border: 1px solid var(--cl-border); border-radius: 4px; background: var(--cl-bg); }
+        .toolbar button:hover { border-color: #2196F3; color: #2196F3; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>DrawingBoard Demo</h1>
+
+    <div class="demo-section">
+        <h2>繪圖板</h2>
+        <p>支援畫筆、橡皮擦、直線、螢光筆。可復原/重做、清除、匯出 PNG。</p>
+        <div id="board1"></div>
+        <div class="toolbar">
+            <button id="btnUndo">復原</button>
+            <button id="btnRedo">重做</button>
+            <button id="btnClear">清除</button>
+            <button id="btnExport">匯出 PNG</button>
+            <button id="btnData">取得 DataURL</button>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>小型簽名板</h2>
+        <p>適用於簽名場景，較小的尺寸。</p>
+        <div id="board2"></div>
+    </div>
+
+    <script type="module">
+        import { DrawingBoard } from './DrawingBoard.js';
+
+        const board1 = new DrawingBoard({
+            container: '#board1',
+            width: 800,
+            height: 450,
+            strokeColor: '#333',
+            lineWidth: 3,
+            onDraw: () => console.log('drawing...'),
+            onClear: () => console.log('cleared')
+        });
+
+        document.getElementById('btnUndo').addEventListener('click', () => board1.undo());
+        document.getElementById('btnRedo').addEventListener('click', () => board1.redo());
+        document.getElementById('btnClear').addEventListener('click', () => board1.clear());
+        document.getElementById('btnExport').addEventListener('click', () => board1.exportPNG('drawing.png'));
+        document.getElementById('btnData').addEventListener('click', () => {
+            const url = board1.getDataURL();
+            console.log('DataURL length:', url.length);
+            alert('DataURL 長度: ' + url.length + ' (已輸出至 console)');
+        });
+
+        // 小型簽名板
+        new DrawingBoard({
+            container: '#board2',
+            width: 400,
+            height: 200,
+            strokeColor: '#1a1a1a',
+            lineWidth: 2
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

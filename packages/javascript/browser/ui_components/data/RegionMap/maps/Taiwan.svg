@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 400 520" xmlns="http://www.w3.org/2000/svg">
+  <title>臺灣行政區域圖</title>
+  <style>
+    .region { fill: #E8E8E8; stroke: #666; stroke-width: 0.5; transition: all 0.2s; }
+    .region:hover { fill: #FFD54F; cursor: pointer; }
+    .city { fill: #FFCDD2; }
+    .county { fill: #C8E6C9; }
+    .island { fill: #B3E5FC; }
+  </style>
+  
+  <!-- 離島 - 連江縣 (馬祖) -->
+  <g id="region-LJC" data-code="LJC" data-name="連江縣">
+    <path class="region island" d="M30,40 L45,35 L50,45 L40,55 L28,50 Z"/>
+    <path class="region island" d="M55,50 L65,48 L68,58 L58,60 Z"/>
+  </g>
+  
+  <!-- 離島 - 金門縣 -->
+  <g id="region-KMC" data-code="KMC" data-name="金門縣">
+    <path class="region island" d="M25,130 L55,120 L70,130 L65,145 L35,150 L20,140 Z"/>
+    <path class="region island" d="M75,140 L85,138 L88,148 L78,150 Z"/>
+  </g>
+  
+  <!-- 離島 - 澎湖縣 -->
+  <g id="region-PHC" data-code="PHC" data-name="澎湖縣">
+    <path class="region island" d="M100,290 L115,280 L130,285 L135,300 L125,320 L110,325 L95,315 L90,300 Z"/>
+    <path class="region island" d="M140,295 L150,290 L155,305 L145,310 Z"/>
+  </g>
+  
+  <!-- 本島 -->
+  <!-- 基隆市 -->
+  <g id="region-KLU" data-code="KLU" data-name="基隆市">
+    <path class="region city" d="M305,65 L325,60 L340,70 L335,85 L315,90 L300,80 Z"/>
+  </g>
+  
+  <!-- 台北市 -->
+  <g id="region-TPE" data-code="TPE" data-name="臺北市">
+    <path class="region city" d="M270,80 L295,75 L310,90 L305,110 L280,115 L265,100 Z"/>
+  </g>
+  
+  <!-- 新北市 -->
+  <g id="region-NWT" data-code="NWT" data-name="新北市">
+    <path class="region city" d="M245,60 L270,55 L305,60 L340,70 L345,95 L340,130 L310,150 L280,160 L250,145 L240,115 L230,90 L235,70 Z
+                                  M265,100 L280,115 L305,110 L310,90 L295,75 L270,80 Z"/>
+  </g>
+  
+  <!-- 桃園市 -->
+  <g id="region-TYN" data-code="TYN" data-name="桃園市">
+    <path class="region city" d="M195,105 L230,95 L250,110 L255,145 L230,165 L200,160 L180,140 L185,115 Z"/>
+  </g>
+  
+  <!-- 新竹市 -->
+  <g id="region-HSZ" data-code="HSZ" data-name="新竹市">
+    <path class="region city" d="M185,165 L210,160 L220,175 L210,190 L185,185 Z"/>
+  </g>
+  
+  <!-- 新竹縣 -->
+  <g id="region-HSC" data-code="HSC" data-name="新竹縣">
+    <path class="region county" d="M200,160 L230,150 L265,155 L280,175 L270,200 L240,210 L210,205 L210,190 L220,175 L210,160 Z"/>
+  </g>
+  
+  <!-- 苗栗縣 -->
+  <g id="region-MLC" data-code="MLC" data-name="苗栗縣">
+    <path class="region county" d="M175,190 L210,185 L240,195 L270,210 L280,240 L260,270 L220,275 L180,260 L165,225 Z"/>
+  </g>
+  
+  <!-- 宜蘭縣 -->
+  <g id="region-YLC" data-code="YLC" data-name="宜蘭縣">
+    <path class="region county" d="M310,130 L345,110 L365,130 L370,175 L350,215 L315,220 L290,200 L285,165 L295,145 Z"/>
+  </g>
+  
+  <!-- 台中市 -->
+  <g id="region-TXG" data-code="TXG" data-name="臺中市">
+    <path class="region city" d="M160,240 L205,230 L260,250 L290,280 L285,320 L250,350 L200,345 L165,310 L145,270 Z"/>
+  </g>
+  
+  <!-- 花蓮縣 -->
+  <g id="region-HUA" data-code="HUA" data-name="花蓮縣">
+    <path class="region county" d="M295,200 L330,190 L360,220 L375,280 L370,360 L340,400 L305,380 L290,320 L280,260 Z"/>
+  </g>
+  
+  <!-- 彰化縣 -->
+  <g id="region-CHW" data-code="CHW" data-name="彰化縣">
+    <path class="region county" d="M145,285 L175,270 L200,285 L210,320 L195,355 L160,360 L135,340 L130,305 Z"/>
+  </g>
+  
+  <!-- 南投縣 -->
+  <g id="region-NTC" data-code="NTC" data-name="南投縣">
+    <path class="region county" d="M195,300 L250,290 L290,310 L300,370 L280,420 L240,430 L200,410 L180,370 L180,330 Z"/>
+  </g>
+  
+  <!-- 雲林縣 -->
+  <g id="region-YUN" data-code="YUN" data-name="雲林縣">
+    <path class="region county" d="M130,345 L165,335 L200,350 L210,385 L190,415 L150,420 L120,400 L115,365 Z"/>
+  </g>
+  
+  <!-- 嘉義市 -->
+  <g id="region-CYI" data-code="CYI" data-name="嘉義市">
+    <path class="region city" d="M165,420 L185,415 L195,430 L185,445 L165,440 Z"/>
+  </g>
+  
+  <!-- 嘉義縣 -->
+  <g id="region-CYC" data-code="CYC" data-name="嘉義縣">
+    <path class="region county" d="M125,400 L160,385 L200,400 L240,420 L250,455 L230,485 L180,490 L140,470 L120,435 Z
+                                   M165,420 L185,415 L195,430 L185,445 L165,440 Z"/>
+  </g>
+  
+  <!-- 台東縣 -->
+  <g id="region-TTT" data-code="TTT" data-name="臺東縣">
+    <path class="region county" d="M295,385 L340,370 L370,400 L375,480 L350,530 L300,520 L270,480 L275,420 Z"/>
+  </g>
+  
+  <!-- 台南市 -->
+  <g id="region-TNN" data-code="TNN" data-name="臺南市">
+    <path class="region city" d="M125,450 L165,440 L210,455 L240,485 L235,530 L195,555 L150,545 L120,510 L115,470 Z"/>
+  </g>
+  
+  <!-- 高雄市 -->
+  <g id="region-KHH" data-code="KHH" data-name="高雄市">
+    <path class="region city" d="M155,520 L200,510 L250,480 L285,465 L300,500 L295,560 L260,590 L210,600 L170,580 L145,545 Z"/>
+  </g>
+  
+  <!-- 屏東縣 -->
+  <g id="region-PIF" data-code="PIF" data-name="屏東縣">
+    <path class="region county" d="M200,565 L250,545 L290,530 L320,555 L335,610 L315,660 L270,680 L230,670 L200,640 L190,595 Z"/>
+  </g>
+</svg>

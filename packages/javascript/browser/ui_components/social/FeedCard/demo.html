@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FeedCard 動態貼文卡片 Demo</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            padding: 40px;
+            background: #f0f2f5;
+        }
+        h1 { color: #1a1a2e; margin-bottom: 8px; }
+        p.desc { color: #6c757d; margin-bottom: 32px; }
+        .demo-section {
+            max-width: 680px;
+            margin: 0 auto 24px;
+        }
+        .demo-section h2 {
+            color: var(--cl-text);
+            font-size: 18px;
+            margin-bottom: 12px;
+        }
+        .center { max-width: 680px; margin: 0 auto; }
+        #click-log {
+            background: var(--cl-bg);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            color: #6c757d;
+            font-size: 13px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <div class="center">
+        <h1>FeedCard 動態貼文卡片</h1>
+        <p class="desc">Facebook 風格動態貼文，支援內容截斷、圖片 Grid、類型標籤。</p>
+    </div>
+
+    <!-- 基本貼文 -->
+    <div class="demo-section">
+        <h2>1. 基本貼文</h2>
+        <div id="basic"></div>
+    </div>
+
+    <!-- 長文截斷 -->
+    <div class="demo-section">
+        <h2>2. 長文截斷（點擊展開）</h2>
+        <div id="long-text"></div>
+    </div>
+
+    <!-- 含回調 -->
+    <div class="demo-section">
+        <h2>3. 含互動回調</h2>
+        <div id="interactive"></div>
+        <div id="click-log">點擊作者名稱或「查看詳情」...</div>
+    </div>
+
+    <!-- 批次列表 -->
+    <div class="demo-section">
+        <h2>4. 批次列表 (listHTML)</h2>
+        <div id="list"></div>
+    </div>
+
+    <script type="module">
+        import { FeedCard } from './FeedCard.js';
+
+        // 1. 基本貼文
+        new FeedCard({
+            author: '王大明',
+            authorSub: '工程團隊',
+            timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+            type: '緊急事件',
+            title: '販毒案件',
+            content: '於台北市中山區查獲販毒案件，涉案人員共 3 人。',
+            tags: ['販毒', '台北市', '中山區'],
+            relatedCount: 3
+        }).mount('#basic');
+
+        // 2. 長文截斷
+        new FeedCard({
+            author: '李小華',
+            authorSub: '竹聯幫',
+            timestamp: new Date(Date.now() - 86400000).toISOString(),
+            type: '一般活動',
+            title: '組織聚會資訊',
+            content: '根據線報，該組織於上週六晚間在某知名餐廳舉辦大型聚會，出席人數約 50 人，其中包含多名核心幹部。聚會期間疑似討論組織內部人事異動及勢力範圍劃分事宜。與會者中有數名具有前科紀錄的成員，目前已通報相關單位進行後續追蹤。本案涉及跨區域合作，需持續關注後續動態發展。',
+            tags: ['聚會', '資訊', '跨區域']
+        }).mount('#long-text');
+
+        // 3. 含互動回調
+        const logEl = document.getElementById('click-log');
+        new FeedCard({
+            author: '陳美玲',
+            authorSub: '四海幫',
+            timestamp: new Date(Date.now() - 300000).toISOString(),
+            type: '群眾事件',
+            title: '陳情抗議活動',
+            content: '預計下週三於市政府前集結，估計人數約 200 人。',
+            tags: ['陳抗', '市政府'],
+            relatedCount: 12,
+            onClickAuthor: () => {
+                logEl.textContent = `點擊作者：陳美玲（${new Date().toLocaleTimeString()}）`;
+            },
+            onClickDetail: () => {
+                logEl.textContent = `點擊查看詳情（${new Date().toLocaleTimeString()}）`;
+            }
+        }).mount('#interactive');
+
+        // 4. 批次列表
+        document.getElementById('list').innerHTML = FeedCard.listHTML([
+            {
+                author: '張三', authorSub: '松聯幫',
+                timestamp: new Date(Date.now() - 7200000).toISOString(),
+                type: '選舉動態', title: '選舉動員',
+                content: '偵測到組織動員跡象...', tags: ['選舉']
+            },
+            {
+                author: '趙六', authorSub: '北聯幫',
+                timestamp: new Date(Date.now() - 86400000 * 3).toISOString(),
+                type: '國際動態', title: '境外聯繫',
+                content: '疑似與境外組織有聯繫...', tags: ['境外', '聯繫'], relatedCount: 5
+            }
+        ]);
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

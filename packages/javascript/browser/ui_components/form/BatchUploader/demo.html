@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>BatchUploader Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .row { margin-bottom: 20px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+        .note { font-size: 13px; color: #888; margin-top: 8px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>BatchUploader Demo</h1>
+    <p>批次上傳元件 — 拖放上傳、進度追蹤、檔案驗證</p>
+
+    <h2>1. 基本上傳（最多 5 個檔案，10MB 上限）</h2>
+    <div id="demo1" class="row"></div>
+    <p class="note">注意：此 Demo 的上傳端點不存在，上傳會失敗，僅示範 UI 操作。</p>
+
+    <h2>2. 僅圖片上傳</h2>
+    <div id="demo2" class="row"></div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { BatchUploader } from './BatchUploader.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // Demo 1: 基本上傳
+        new BatchUploader({
+            container: '#demo1',
+            apiEndpoint: '/api/files/upload',
+            maxFiles: 5,
+            maxFileSize: 10 * 1024 * 1024,
+            labels: {
+                dropzone: '拖曳檔案到此處，或點擊選取',
+                browse: '選擇檔案',
+                upload: '上傳全部',
+                clear: '清除全部',
+                remove: '移除',
+                retry: '重試',
+                uploading: '上傳中...',
+                pending: '等待中',
+                success: '已上傳',
+                error: '失敗',
+                maxFilesError: '已達檔案數量上限',
+                fileSizeError: '檔案大小超過限制',
+                fileTypeError: '不允許的檔案類型'
+            },
+            onFileAdded: (f) => log(`已加入: ${f.name} (${(f.size/1024).toFixed(1)}KB)`),
+            onFileRemoved: (f) => log(`已移除: ${f.name}`),
+            onProgress: (f, pct) => log(`進度: ${f.name} ${pct}%`),
+            onComplete: (r) => log(`完成: 成功 ${r.success}/${r.total}`),
+            onError: (f, err) => log(`錯誤: ${f?.name || ''} ${err.message}`)
+        });
+
+        // Demo 2: 僅圖片
+        new BatchUploader({
+            container: '#demo2',
+            apiEndpoint: '/api/images/upload',
+            maxFiles: 3,
+            maxFileSize: 5 * 1024 * 1024,
+            allowedExtensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+            labels: {
+                dropzone: '拖曳圖片到此處',
+                browse: '選擇圖片',
+                upload: '上傳圖片',
+                clear: '清除',
+                remove: '移除',
+                retry: '重試',
+                uploading: '上傳中...',
+                pending: '等待中',
+                success: '已上傳',
+                error: '失敗',
+                maxFilesError: '最多 3 張圖片',
+                fileSizeError: '圖片不可超過 5MB',
+                fileTypeError: '僅接受圖片格式'
+            },
+            onFileAdded: (f) => log(`圖片: ${f.name}`)
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

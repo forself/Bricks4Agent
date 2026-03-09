@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSMMapEditor Demo</title>
+    <link rel="stylesheet" href="../../themes/default.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--cl-bg, #f5f5f5);
+            color: var(--cl-text, #333);
+            padding: 20px;
+        }
+        h1 { margin-bottom: 8px; }
+        .demo-info {
+            margin-bottom: 16px;
+            color: var(--cl-text-secondary, #666);
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .controls button {
+            padding: 6px 14px;
+            border: 1px solid var(--cl-border, #ccc);
+            border-radius: 4px;
+            background: var(--cl-bg-card, #fff);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background: var(--cl-primary, #4a90d9);
+            color: #fff;
+            border-color: var(--cl-primary, #4a90d9);
+        }
+        .controls select {
+            padding: 6px 10px;
+            border: 1px solid var(--cl-border, #ccc);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        #editor-container {
+            border: 1px solid var(--cl-border, #ccc);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--cl-bg-card, #fff);
+        }
+    </style>
+</head>
+<body>
+    <h1>OSMMapEditor Demo</h1>
+    <p class="demo-info">
+        繼承 WebPainter 的 OSM 地圖編輯器 — 整合繪圖工具與地理功能（測量、座標、GeoJSON）。
+    </p>
+
+    <div class="controls">
+        <button id="btn-taipei">台北</button>
+        <button id="btn-tokyo">東京</button>
+        <button id="btn-paris">巴黎</button>
+        <button id="btn-nyc">紐約</button>
+        <select id="lang-select">
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+        </select>
+        <button id="btn-export-geojson">匯出 GeoJSON</button>
+        <label style="cursor:pointer;">
+            匯入 GeoJSON
+            <input type="file" id="file-import" accept=".json,.geojson" style="display:none;">
+        </label>
+    </div>
+
+    <div id="editor-container"></div>
+
+    <script type="module">
+        import { OSMMapEditor } from './OSMMapEditor.js';
+        import Locale from '../../i18n/index.js';
+
+        // 初始化編輯器
+        const editor = new OSMMapEditor({
+            container: '#editor-container',
+            width: window.innerWidth - 40,
+            height: window.innerHeight - 180,
+            center: { lat: 25.033, lng: 121.565 },
+            zoom: 13,
+            tileLayer: 'osm',
+            showCompass: true,
+            showScale: true,
+            showCoords: true,
+            features: {
+                header: true,
+                tools: true,
+                layers: true,
+                export: true,
+                zoom: true
+            }
+        });
+
+        // 城市快捷
+        const cities = {
+            'btn-taipei': { lat: 25.033, lng: 121.565, zoom: 13 },
+            'btn-tokyo':  { lat: 35.6762, lng: 139.6503, zoom: 12 },
+            'btn-paris':  { lat: 48.8566, lng: 2.3522, zoom: 13 },
+            'btn-nyc':    { lat: 40.7128, lng: -74.0060, zoom: 12 }
+        };
+
+        Object.entries(cities).forEach(([id, { lat, lng, zoom }]) => {
+            document.getElementById(id).addEventListener('click', () => {
+                editor.setCenter(lat, lng);
+                editor.setZoom(zoom);
+            });
+        });
+
+        // 語言切換
+        document.getElementById('lang-select').addEventListener('change', (e) => {
+            Locale.setLang(e.target.value);
+            // 重新建立編輯器以套用新語言
+            const container = document.getElementById('editor-container');
+            container.innerHTML = '';
+            const newEditor = new OSMMapEditor({
+                container: '#editor-container',
+                width: window.innerWidth - 40,
+                height: window.innerHeight - 180,
+                center: { lat: 25.033, lng: 121.565 },
+                zoom: 13,
+                tileLayer: 'osm',
+                showCompass: true,
+                showScale: true,
+                showCoords: true
+            });
+        });
+
+        // GeoJSON 匯出
+        document.getElementById('btn-export-geojson').addEventListener('click', () => {
+            const geojson = editor.exportGeoJSON();
+            if (!geojson) return;
+            const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'map-export.geojson';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // GeoJSON 匯入
+        document.getElementById('file-import').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                await editor.importGeoJSON(file);
+            }
+        });
+
+        // 視窗大小調整
+        window.addEventListener('resize', () => {
+            // WebPainter 不支援動態 resize，這裡僅供參考
+        });
+    </script>
+</body>
+</html>

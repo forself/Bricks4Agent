@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 250 280" xmlns="http://www.w3.org/2000/svg">
+  <title>新竹市行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+  </style>
+  
+  <!-- 北區 -->
+  <g id="region-bei" data-code="bei" data-name="北區">
+    <path class="district" d="M60,25 L130,20 L160,55 L150,100 L95,115 L50,85 Z"/>
+  </g>
+  
+  <!-- 東區 -->
+  <g id="region-dong" data-code="dong" data-name="東區">
+    <path class="district" d="M130,45 L200,40 L225,90 L220,155 L165,180 L130,140 L140,95 Z"/>
+  </g>
+  
+  <!-- 香山區 -->
+  <g id="region-xiangshan" data-code="xiangshan" data-name="香山區">
+    <path class="district" d="M30,90 L95,80 L130,130 L140,190 L120,250 L55,260 L20,200 L25,135 Z"/>
+  </g>
+</svg>

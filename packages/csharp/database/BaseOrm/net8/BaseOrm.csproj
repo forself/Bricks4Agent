@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BaseOrm</RootNamespace>
+
+    <!-- 套件資訊 -->
+    <PackageId>BaseOrm</PackageId>
+    <Version>1.0.0</Version>
+    <Description>極簡 ORM 元件，類似 Dapper 的輕量級實作</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 僅依賴 SQLite ADO.NET Provider -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

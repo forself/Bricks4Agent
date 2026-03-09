@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropdown 元件展示</title>
+    <link rel="stylesheet" href="Dropdown.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #00BCD4, #2196F3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .demo-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .demo-label {
+            font-size: 12px;
+            color: #8892b0;
+        }
+
+        .output {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            font-size: 13px;
+            color: #64ffda;
+        }
+
+        /* 表單範例 */
+        .form-demo {
+            background: var(--cl-bg);
+            border-radius: 12px;
+            padding: 24px;
+            color: var(--cl-text);
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-row label {
+            min-width: 80px;
+            font-size: 14px;
+            color: var(--cl-text-secondary);
+        }
+
+        .compare-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .compare-item h3 {
+            font-size: 14px;
+            color: #8892b0;
+            margin-bottom: 12px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>📋 Dropdown</h1>
+        <p class="subtitle">下拉選單元件 - 基本與可搜尋模式</p>
+
+        <!-- 兩種類型對比 -->
+        <div class="demo-section">
+            <h2>兩種類型對比</h2>
+            <div class="compare-box">
+                <div class="compare-item">
+                    <h3>基本下拉選單 (Basic)</h3>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 12px;">點擊後直接顯示選項列表</p>
+                    <div id="basic-demo"></div>
+                </div>
+                <div class="compare-item">
+                    <h3>可搜尋下拉選單 (Searchable)</h3>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 12px;">可輸入文字篩選選項</p>
+                    <div id="searchable-demo"></div>
+                </div>
+            </div>
+            <div class="output" id="output-compare"></div>
+        </div>
+
+        <!-- 尺寸變體 -->
+        <div class="demo-section">
+            <h2>尺寸變體</h2>
+            <div class="demo-row">
+                <div class="demo-item">
+                    <span class="demo-label">Small</span>
+                    <div id="size-small"></div>
+                </div>
+                <div class="demo-item">
+                    <span class="demo-label">Medium</span>
+                    <div id="size-medium"></div>
+                </div>
+                <div class="demo-item">
+                    <span class="demo-label">Large</span>
+                    <div id="size-large"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 實際應用 -->
+        <div class="demo-section">
+            <h2>實際應用：表單</h2>
+            <div class="form-demo">
+                <div class="form-row">
+                    <label>部門</label>
+                    <div id="form-dept"></div>
+                </div>
+                <div class="form-row">
+                    <label>城市</label>
+                    <div id="form-city"></div>
+                </div>
+                <div class="form-row">
+                    <label>狀態</label>
+                    <div id="form-status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Dropdown } from './Dropdown.js';
+
+        const fruits = [
+            { value: 'apple', label: '🍎 蘋果' },
+            { value: 'banana', label: '🍌 香蕉' },
+            { value: 'orange', label: '🍊 橘子' },
+            { value: 'grape', label: '🍇 葡萄' },
+            { value: 'strawberry', label: '🍓 草莓' },
+            { value: 'watermelon', label: '🍉 西瓜' },
+            { value: 'peach', label: '🍑 水蜜桃' },
+            { value: 'pineapple', label: '🍍 鳳梨' },
+        ];
+
+        const outputCompare = document.getElementById('output-compare');
+
+        // 基本下拉
+        new Dropdown({
+            variant: 'basic',
+            items: fruits,
+            placeholder: '請選擇水果',
+            width: '200px',
+            onChange: (value, item) => {
+                outputCompare.textContent = `基本模式選擇: ${item.label} (${value})`;
+            }
+        }).mount('#basic-demo');
+
+        // 可搜尋下拉
+        new Dropdown({
+            variant: 'searchable',
+            items: fruits,
+            placeholder: '輸入搜尋水果...',
+            width: '200px',
+            onChange: (value, item) => {
+                outputCompare.textContent = `搜尋模式選擇: ${item.label} (${value})`;
+            }
+        }).mount('#searchable-demo');
+
+        // 尺寸
+        ['small', 'medium', 'large'].forEach(size => {
+            new Dropdown({
+                variant: 'basic',
+                items: fruits.slice(0, 4),
+                placeholder: '請選擇',
+                size,
+                width: '180px'
+            }).mount(`#size-${size}`);
+        });
+
+        // 表單應用
+        new Dropdown({
+            variant: 'searchable',
+            items: [
+                { value: 'hr', label: '人力資源部' },
+                { value: 'it', label: '資訊部' },
+                { value: 'sales', label: '業務部' },
+                { value: 'rd', label: '研發部' },
+                { value: 'finance', label: '財務部' },
+                { value: 'marketing', label: '行銷部' },
+            ],
+            placeholder: '搜尋部門...',
+            width: '250px'
+        }).mount('#form-dept');
+
+        new Dropdown({
+            variant: 'searchable',
+            items: [
+                { value: 'taipei', label: '台北市' },
+                { value: 'newtaipei', label: '新北市' },
+                { value: 'taoyuan', label: '桃園市' },
+                { value: 'taichung', label: '台中市' },
+                { value: 'tainan', label: '台南市' },
+                { value: 'kaohsiung', label: '高雄市' },
+            ],
+            placeholder: '搜尋城市...',
+            width: '250px'
+        }).mount('#form-city');
+
+        new Dropdown({
+            variant: 'basic',
+            items: [
+                { value: 'active', label: '✅ 啟用' },
+                { value: 'inactive', label: '⏸️ 停用' },
+                { value: 'pending', label: '⏳ 待審核' },
+            ],
+            placeholder: '選擇狀態',
+            width: '250px'
+        }).mount('#form-status');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

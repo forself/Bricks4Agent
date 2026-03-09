@@ -1,0 +1,36 @@
+{
+  "$schema": "./project-config.schema.json",
+  "_comment": "SPA 專案配置範例 - 複製此檔案並修改後使用: node create-project.js --config my-project.json",
+
+  "project": {
+    "name": "my-ecommerce",
+    "displayName": "我的電商系統",
+    "description": "基於 SPA 範本建立的電商應用程式",
+    "outputDir": "D:/projects"
+  },
+
+  "backend": {
+    "dbName": "ecommerce.db",
+    "apiPort": "5001"
+  },
+
+  "frontend": {
+    "devPort": "3000",
+    "apiBaseUrl": "https://localhost:5001/api"
+  },
+
+  "security": {
+    "jwtKey": "YourSecureJwtKeyAtLeast32CharactersLong!",
+    "jwtIssuer": "my-ecommerce",
+    "corsOrigins": [
+      "http://localhost:3000",
+      "https://my-ecommerce.example.com"
+    ]
+  },
+
+  "admin": {
+    "email": "admin@example.com",
+    "password": "SecurePassword123!",
+    "name": "系統管理員"
+  }
+}

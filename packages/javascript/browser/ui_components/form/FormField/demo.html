@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>FormField Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .form-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-bottom: 24px; }
+        .actions { display: flex; gap: 8px; margin-top: 16px; }
+        .actions button { padding: 6px 16px; border: 1px solid var(--cl-border); border-radius: 4px; cursor: pointer; font-size: 13px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>FormField Demo</h1>
+    <p>表單欄位包裝器 — 為任何元件提供 label、必填標記、錯誤/提示外殼</p>
+
+    <h2>1. 基本用法（搭配 TextInput）</h2>
+    <div id="demo1" class="form-grid"></div>
+
+    <h2>2. 動態操作</h2>
+    <div id="demo2" class="form-grid"></div>
+    <div class="actions">
+        <button id="btn-error">設定錯誤</button>
+        <button id="btn-clear">清除錯誤</button>
+        <button id="btn-toggle">顯示/隱藏</button>
+        <button id="btn-readonly">切換唯讀</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { FormField } from './FormField.js';
+        import { TextInput } from '../TextInput/TextInput.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // --- Demo 1: 基本用法 ---
+        const nameInput = new TextInput({ placeholder: '請輸入姓名', onChange: v => log(`姓名: ${v}`) });
+        const nameField = new FormField({
+            fieldName: 'name',
+            label: '姓名',
+            required: true,
+            hint: '必填，2-20 字元',
+            component: nameInput,
+            col: 6
+        });
+        nameField.mount('#demo1');
+
+        const emailInput = new TextInput({ type: 'email', placeholder: 'user@example.com' });
+        const emailField = new FormField({
+            fieldName: 'email',
+            label: '電子郵件',
+            required: false,
+            hint: '選填',
+            component: emailInput,
+            col: 6
+        });
+        emailField.mount('#demo1');
+
+        // --- Demo 2: 動態操作 ---
+        const dynInput = new TextInput({ placeholder: '測試動態操作' });
+        const dynField = new FormField({
+            fieldName: 'dynamic',
+            label: '動態欄位',
+            required: false,
+            hint: '點按鈕操作此欄位',
+            component: dynInput,
+            col: 12
+        });
+        dynField.mount('#demo2');
+
+        let isReadonly = false;
+        document.getElementById('btn-error').addEventListener('click', () => {
+            dynField.setError('此欄位有錯誤！');
+            log('已設定錯誤');
+        });
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            dynField.clearError();
+            log('已清除錯誤');
+        });
+        document.getElementById('btn-toggle').addEventListener('click', () => {
+            dynField.isVisible() ? dynField.hide() : dynField.show();
+            log(`可見: ${dynField.isVisible()}`);
+        });
+        document.getElementById('btn-readonly').addEventListener('click', () => {
+            isReadonly = !isReadonly;
+            dynField.setReadonly(isReadonly);
+            log(`唯讀: ${isReadonly}`);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

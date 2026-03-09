@@ -1,0 +1,202 @@
+/**
+ * Dropdown Component Styles
+ */
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+    font-family: inherit;
+}
+
+.dropdown__selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.dropdown__selector:hover:not(.dropdown--disabled .dropdown__selector) {
+    border-color: #2196F3;
+}
+
+.dropdown--open .dropdown__selector {
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.dropdown__display {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #999;
+}
+
+.dropdown__display--selected {
+    color: #333;
+}
+
+.dropdown__input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: inherit;
+}
+
+.dropdown__input::placeholder {
+    color: #999;
+}
+
+.dropdown__icons {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.dropdown__arrow {
+    display: flex;
+    transition: transform 0.2s;
+}
+
+.dropdown--open .dropdown__arrow {
+    transform: rotate(180deg);
+}
+
+.dropdown__clear {
+    display: flex;
+    padding: 2px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.15s;
+}
+
+.dropdown__clear:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* 下拉選單 */
+.dropdown__menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.dropdown--open .dropdown__menu {
+    display: block;
+}
+
+/* 選項 */
+.dropdown__option {
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+}
+
+.dropdown__option:hover:not(.dropdown__option--disabled) {
+    background: #f5f5f5;
+}
+
+.dropdown__option--selected {
+    background: #e3f2fd !important;
+    color: #1976D2;
+}
+
+.dropdown__option--highlighted {
+    background: #f5f5f5;
+}
+
+.dropdown__option--disabled {
+    color: #bbb;
+    cursor: not-allowed;
+}
+
+/* 無結果 */
+.dropdown__empty {
+    padding: 12px;
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+}
+
+/* 尺寸 */
+.dropdown--small .dropdown__selector {
+    height: 30px;
+    padding: 6px 10px;
+    padding-right: 28px;
+    font-size: 12px;
+}
+
+.dropdown--medium .dropdown__selector {
+    height: 36px;
+    padding: 8px 12px;
+    padding-right: 32px;
+    font-size: 14px;
+}
+
+.dropdown--large .dropdown__selector {
+    height: 44px;
+    padding: 10px 14px;
+    padding-right: 36px;
+    font-size: 16px;
+}
+
+/* 停用 */
+.dropdown--disabled .dropdown__selector {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f5f5f5;
+}
+
+/* 捲軸樣式 */
+.dropdown__menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.dropdown__menu::-webkit-scrollbar-track {
+    background: #f5f5f5;
+    border-radius: 3px;
+}
+
+.dropdown__menu::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+
+.dropdown__menu::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+/* 分組標題 */
+.dropdown__group-label {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #fafafa;
+    border-bottom: 1px solid #eee;
+}

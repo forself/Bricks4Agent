@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpleDialog Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        button { padding: 10px 24px; cursor: pointer; border: 1px solid var(--cl-border); border-radius: 4px; background: var(--cl-bg); font-size: 14px; }
+        button:hover { border-color: #2196F3; color: #2196F3; }
+        #result { margin-top: 16px; font-family: monospace; font-size: 14px; color: var(--cl-text); padding: 12px; background: #f9f9f9; border-radius: 4px; min-height: 20px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>SimpleDialog Demo</h1>
+
+    <div class="demo-section">
+        <h2>三種對話框類型</h2>
+        <div class="btn-row">
+            <button id="btnAlert">Alert</button>
+            <button id="btnConfirm">Confirm</button>
+            <button id="btnPrompt">Prompt</button>
+        </div>
+        <div id="result">點擊按鈕查看結果...</div>
+    </div>
+
+    <div class="demo-section">
+        <h2>實際場景：刪除確認</h2>
+        <div class="btn-row">
+            <button id="btnDelete" style="color: #F44336; border-color: #F44336;">刪除項目</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { SimpleDialog } from './SimpleDialog.js';
+
+        const resultEl = document.getElementById('result');
+
+        document.getElementById('btnAlert').addEventListener('click', async () => {
+            const r = await SimpleDialog.alert('這是一則提示訊息。');
+            resultEl.textContent = `alert() 回傳: ${JSON.stringify(r)}`;
+        });
+
+        document.getElementById('btnConfirm').addEventListener('click', async () => {
+            const r = await SimpleDialog.confirm('確定要繼續執行嗎？');
+            resultEl.textContent = `confirm() 回傳: ${JSON.stringify(r)}`;
+        });
+
+        document.getElementById('btnPrompt').addEventListener('click', async () => {
+            const r = await SimpleDialog.prompt('請輸入您的名稱', '預設名稱');
+            resultEl.textContent = `prompt() 回傳: ${JSON.stringify(r)}`;
+        });
+
+        document.getElementById('btnDelete').addEventListener('click', async () => {
+            const ok = await SimpleDialog.confirm('此操作無法復原，確定要刪除嗎？');
+            if (ok) {
+                await SimpleDialog.alert('項目已刪除。');
+                resultEl.textContent = '刪除完成';
+            } else {
+                resultEl.textContent = '已取消刪除';
+            }
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

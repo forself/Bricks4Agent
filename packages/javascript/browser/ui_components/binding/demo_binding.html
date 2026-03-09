@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23334155'/%3E%3Cpath d='M18 22h12v20H18zm16-6h12v32H34z' fill='%23f8fafc'/%3E%3Ccircle cx='24' cy='18' r='4' fill='%2338bdf8'/%3E%3Ccircle cx='40' cy='42' r='4' fill='%2338bdf8'/%3E%3C/svg%3E">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Component Binding Demo</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+        .container { max-width: 800px; margin: 0 auto; background: var(--cl-bg); padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { border-bottom: 2px solid var(--cl-border-light); padding-bottom: 10px; }
+        
+        /* Binding Styles */
+        .binding-wrapper { margin-bottom: 20px; }
+        .binding-fieldset { border: 1px solid #ccc; padding: 15px; border-radius: 4px; }
+        .binding-fieldset legend { font-weight: bold; color: #555; padding: 0 5px; }
+        
+        .custom-highlight input { background-color: #e3f2fd; }
+    </style>
+    <link rel="stylesheet" href="../theme.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>Component Binding System Demo</h1>
+    <div id="form-container"></div>
+    <div id="output-log" style="margin-top: 20px; padding: 10px; background: #333; color: #0f0; font-family: monospace; border-radius: 4px; min-height: 100px;">
+        Log initialized...
+    </div>
+</div>
+
+<script type="module">
+    import { ComponentBinder } from './ComponentBinder.js';
+
+    // 模擬 Controller 上下文
+    class PageController {
+        constructor() {
+            this.phoneData = [
+                { label: 'Home', value: '02-12345678' },
+                { label: 'Mobile', value: '0912-345678' }
+            ];
+        }
+
+        log(msg) {
+            const el = document.getElementById('output-log');
+            el.innerHTML += `<div>> ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // 生命周期回調
+        handleInit(component) {
+            this.log(`[OnInit] Component "${component.options.label || 'Unknown'}" initialized.`);
+        }
+
+        handleNameChange(component, value) {
+            this.log(`[OnChange] Name changed to: ${value}. Comp value: ${component.getValue()}`);
+        }
+
+        handleGenderChange(component, value) {
+            this.log(`[OnChange] Gender selected: ${value}`);
+        }
+
+        handleUpload(component, files) {
+            this.log(`[Upload] Files selected: ${files.length}`);
+        }
+
+        handleDateChange(component, value) {
+            this.log(`[OnChange] Date selected: ${value}`);
+        }
+
+        handleTimeChange(component, value) {
+            this.log(`[OnChange] Time selected: ${value}`);
+        }
+
+        handleInterestChange(component, value) {
+            // Checkbox often returns array of values or single toggle depending on implementation
+            this.log(`[OnChange] Interests updated: ${JSON.stringify(value)}`);
+        }
+
+        handleCountryChange(component, value) {
+            this.log(`[OnChange] Country selected: ${value}`);
+        }
+
+        handleAgeChange(component, value) {
+            this.log(`[OnChange] Age changed to: ${value}`);
+        }
+    }
+
+    // JSON 設定
+    const config = [
+        // 1. 單值 - TextInput
+        {
+            "type": "text",
+            "component": "TextInput",
+            "fieldName": "fullName",
+            "displayName": "Full Name",
+            "className": "custom-highlight",
+            "fieldset": "basic_info",
+            "legend": "Basic Information",
+            "lifecycle": {
+                "onInit": "handleInit",
+                "onChange": "handleNameChange"
+            },
+            "attrs": {
+                "placeholder": "Enter your full name",
+                "required": true
+            },
+            "validation": "text"
+        },
+        // 2. 單值 - Radio (Selection)
+        {
+            "type": "bool",
+            "component": "Radio",
+            "fieldName": "gender",
+            "displayName": "Gender",
+            "fieldset": "basic_info",
+            "lifecycle": {
+                "onChange": "handleGenderChange"
+            },
+            "attrs": {
+                "items": [
+                    { label: "Male", value: "male" },
+                    { label: "Female", value: "female" }
+                ],
+                "direction": "horizontal"
+            }
+        },
+        // 3. 物件/媒體 - UploadButton
+        {
+            "type": "file",
+            "component": "UploadButton",
+            "fieldName": "avatar",
+            "displayName": "Profile Picture",
+            "fieldset": "media_info",
+            "legend": "Media",
+            "attrs": {
+                "type": "portrait",
+                "showLabel": true,
+                "onSelect": (files) => { controller.handleUpload(null, files) }
+            },
+            "style": {
+                "width": "200px",
+                "marginTop": "10px",
+                "position": "relative",
+                "zIndex": "10"
+            }
+        },
+        // 4. Layout Control Test
+        {
+            "type": "text",
+            "component": "TextInput",
+            "fieldName": "z_index_test",
+            "displayName": "Floating Input (Z-Index Test)",
+            "style": {
+                "position": "fixed",
+                "bottom": "20px",
+                "right": "20px",
+                "width": "300px",
+                "zIndex": "9999",
+                "backgroundColor": "white",
+                "boxShadow": "0 0 10px rgba(0,0,0,0.2)",
+                "padding": "10px",
+                "borderRadius": "8px"
+            },
+            "attrs": {
+                "placeholder": "I am floating!"
+            }
+        },
+        // 5. Date & Time
+        {
+            "type": "date",
+            "component": "DatePicker",
+            "fieldName": "birthdate",
+            "displayName": "Birth Date",
+            "fieldset": "advanced_info",
+            "legend": "Advanced Details",
+            "lifecycle": { "onChange": "handleDateChange" },
+            "attrs": { "placeholder": "Select date" }
+        },
+        {
+            "type": "date",
+            "component": "DatePicker",
+            "fieldName": "roc_cal",
+            "displayName": "ROC Date (民國年)",
+            "fieldset": "advanced_info",
+            "lifecycle": { "onChange": "handleDateChange" },
+            "attrs": { 
+                "placeholder": "Select ROC date",
+                "useROC": true
+            }
+        },
+        {
+            "type": "time",
+            "component": "TimePicker",
+            "fieldName": "alarm_time",
+            "displayName": "Alarm Time",
+            "fieldset": "advanced_info",
+            "lifecycle": { "onChange": "handleTimeChange" },
+            "attrs": { "step": 15 }
+        },
+        // 6. Selection Components
+        {
+            "type": "bool",
+            "component": "Checkbox",
+            "fieldName": "interests",
+            "displayName": "Interests",
+            "fieldset": "advanced_info",
+            "lifecycle": { "onChange": "handleInterestChange" },
+            "attrs": {
+                "items": [
+                    { "label": "Coding", "value": "code" },
+                    { "label": "Design", "value": "design" },
+                    { "label": "Music", "value": "music" }
+                ]
+            }
+        },
+        {
+            "type": "list",
+            "component": "Dropdown",
+            "fieldName": "country",
+            "displayName": "Country",
+            "fieldset": "advanced_info",
+            "lifecycle": { "onChange": "handleCountryChange" },
+            "attrs": {
+                "items": [
+                    { "label": "Taiwan", "value": "TW" },
+                    { "label": "Japan", "value": "JP" },
+                    { "label": "USA", "value": "US" }
+                ],
+                "placeholder": "Select a country"
+            }
+        },
+        // 7. Numeric
+        {
+            "type": "number",
+            "component": "NumberInput",
+            "fieldName": "age",
+            "displayName": "Age",
+            "fieldset": "basic_info", // Add to existing fieldset
+            "lifecycle": { "onChange": "handleAgeChange" },
+            "attrs": { "min": 0, "max": 120 }
+        }
+    ];
+
+    // 初始化
+    const controller = new PageController();
+    const binder = new ComponentBinder(controller);
+
+    // 渲染
+    binder.render(config, '#form-container');
+
+</script>
+
+    <script type="module">
+        import { createThemeToggle } from '../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+.color-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.color-picker label {
+    font-size: 14px;
+    color: #666;
+    user-select: none;
+}
+
+.color-picker input[type="color"] {
+    width: 40px;
+    height: 32px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px;
+    transition: border-color 0.2s;
+}
+
+.color-picker input[type="color"]:hover {
+    border-color: #4CAF50;
+}
+
+.color-picker input[type="color"]:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.color-picker input[type="text"] {
+    width: 80px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    transition: border-color 0.2s;
+}
+
+.color-picker input[type="text"]:hover {
+    border-color: #999;
+}
+
+.color-picker input[type="text"]:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.color-picker input[type="text"]:disabled,
+.color-picker input[type="color"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

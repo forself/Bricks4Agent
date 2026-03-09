@@ -1,0 +1,605 @@
+/**
+ * WebTextEditor - CSS 樣式表
+ * 支援所有編輯器功能的樣式定義
+ */
+
+/* =====================================================
+   基礎容器樣式
+   ===================================================== */
+
+.web-text-editor {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.web-text-editor.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 10000;
+    border-radius: 0;
+}
+
+/* =====================================================
+   工具列樣式
+   ===================================================== */
+
+.wte-toolbar-container {
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+}
+
+.wte-tab-list {
+    display: flex;
+    background: #f3f3f3;
+    padding: 0 10px;
+    border-bottom: 1px solid #ddd;
+    gap: 2px;
+}
+
+.wte-tab-list button {
+    border: none;
+    background: transparent;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #555;
+    position: relative;
+    top: 1px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    transition: background 0.2s, color 0.2s;
+}
+
+.wte-tab-list button:hover {
+    background: #e8e8e8;
+}
+
+.wte-tab-list button.active {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-bottom: 1px solid #fff;
+    color: #000;
+}
+
+.wte-tab-content {
+    padding: 10px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    min-height: 45px;
+}
+
+/* =====================================================
+   編輯區樣式
+   ===================================================== */
+
+.wte-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    outline: none;
+    line-height: 1.6;
+    font-size: 16px;
+    position: relative;
+}
+
+.wte-content:empty:before {
+    content: attr(data-placeholder);
+    color: #999;
+    pointer-events: none;
+}
+
+/* 標題樣式 */
+.wte-content h1 {
+    font-size: 2em;
+    margin: 0.5em 0;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 5px;
+}
+
+.wte-content h2 {
+    font-size: 1.5em;
+    margin: 0.5em 0;
+    color: #444;
+}
+
+.wte-content h3 {
+    font-size: 1.25em;
+    margin: 0.5em 0;
+    color: #555;
+}
+
+.wte-content h4,
+.wte-content h5,
+.wte-content h6 {
+    margin: 0.5em 0;
+    color: #666;
+}
+
+/* 引用樣式 */
+.wte-content blockquote {
+    border-left: 4px solid #ddd;
+    padding-left: 15px;
+    color: #666;
+    margin: 10px 0;
+    font-style: italic;
+}
+
+/* 圖片樣式 */
+.wte-content img {
+    max-width: 100%;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.wte-content img.web-painter-embed {
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+}
+
+.wte-content img.web-painter-embed:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* 列表樣式 */
+.wte-content ul,
+.wte-content ol {
+    padding-left: 20px;
+}
+
+/* 連結樣式 */
+.wte-content a {
+    color: #2196F3;
+    text-decoration: underline;
+}
+
+.wte-content a:hover {
+    color: #1976D2;
+}
+
+/* =====================================================
+   表格樣式
+   ===================================================== */
+
+.wte-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 15px 0;
+}
+
+.wte-content table td,
+.wte-content table th {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.wte-content table th {
+    background: #f5f5f5;
+    font-weight: bold;
+}
+
+.wte-content table tr:hover {
+    background: #f9f9f9;
+}
+
+/* =====================================================
+   分頁符樣式
+   ===================================================== */
+
+.wte-page-break {
+    margin: 20px 0;
+    padding: 10px;
+    border-top: 2px dashed #999;
+    position: relative;
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    page-break-after: always;
+}
+
+.wte-page-break::before {
+    content: '--- 分頁符 (列印時此處分頁) ---';
+}
+
+/* =====================================================
+   頁首/頁尾樣式
+   ===================================================== */
+
+.wte-header,
+.wte-footer {
+    padding: 10px 20px;
+    font-size: 13px;
+    color: #888;
+    border: 1px dashed #eee;
+    margin: 5px 0;
+    background: #fafafa;
+    position: relative;
+}
+
+.wte-header::after {
+    content: '頁首區';
+    position: absolute;
+    right: 10px;
+    top: 5px;
+    font-size: 10px;
+    opacity: 0.5;
+}
+
+.wte-footer::after {
+    content: '頁尾區';
+    position: absolute;
+    right: 10px;
+    bottom: 5px;
+    font-size: 10px;
+    opacity: 0.5;
+}
+
+.wte-page-number {
+    font-weight: bold;
+    color: #333;
+}
+
+/* =====================================================
+   狀態列樣式
+   ===================================================== */
+
+.wte-status-bar {
+    padding: 8px 15px;
+    background: #f9f9f9;
+    border-top: 1px solid #eee;
+    font-size: 12px;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.wte-stats {
+    display: flex;
+    gap: 15px;
+}
+
+.wte-status-info {
+    color: #4CAF50;
+}
+
+/* =====================================================
+   搜尋對話框樣式
+   ===================================================== */
+
+.wte-search-dialog {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    z-index: 10002;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 350px;
+}
+
+.wte-search-dialog input[type="text"] {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.wte-search-dialog input[type="text"]:focus {
+    border-color: #2196F3;
+}
+
+.wte-search-dialog button {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.wte-search-dialog button:hover {
+    background: #f5f5f5;
+}
+
+.wte-search-highlight {
+    background: #ffeb3b;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.wte-search-highlight.current {
+    background: #ff9800;
+}
+
+/* =====================================================
+   目錄樣式
+   ===================================================== */
+
+.wte-toc {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.wte-toc-title {
+    font-weight: bold;
+    font-size: 18px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+.wte-toc-item {
+    padding: 5px 0;
+}
+
+.wte-toc-item a {
+    color: #1976D2;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.wte-toc-item a:hover {
+    color: #1565C0;
+    text-decoration: underline;
+}
+
+/* =====================================================
+   浮動工具列樣式
+   ===================================================== */
+
+.web-text-editor-floating-toolbar {
+    position: absolute;
+    z-index: 10000;
+    background: #2b2b2b;
+    padding: 6px 10px;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    display: none;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.15s, transform 0.15s;
+    white-space: nowrap;
+}
+
+.web-text-editor-floating-toolbar button {
+    background: transparent;
+    border: none;
+    color: #ddd;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 4px;
+    min-width: 26px;
+    height: 26px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+}
+
+.web-text-editor-floating-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.web-text-editor-floating-toolbar button.active {
+    color: #4CAF50;
+}
+
+/* =====================================================
+   物件選取覆蓋層樣式
+   ===================================================== */
+
+.wte-object-overlay {
+    position: absolute;
+    display: none;
+    border: 2px solid #2196F3;
+    pointer-events: none;
+    z-index: 10001;
+    box-sizing: border-box;
+}
+
+.wte-object-overlay .resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #2196F3;
+    border: 1px solid white;
+    border-radius: 50%;
+    pointer-events: auto;
+}
+
+.wte-object-overlay .resize-handle.nw {
+    top: -6px;
+    left: -6px;
+    cursor: nw-resize;
+}
+
+.wte-object-overlay .resize-handle.ne {
+    top: -6px;
+    right: -6px;
+    cursor: ne-resize;
+}
+
+.wte-object-overlay .resize-handle.sw {
+    bottom: -6px;
+    left: -6px;
+    cursor: sw-resize;
+}
+
+.wte-object-overlay .resize-handle.se {
+    bottom: -6px;
+    right: -6px;
+    cursor: se-resize;
+}
+
+.wte-obj-toolbar {
+    position: absolute;
+    top: -45px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2b2b2b;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.wte-obj-toolbar button {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+
+.wte-obj-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* =====================================================
+   列印樣式
+   ===================================================== */
+
+@media print {
+    .web-text-editor {
+        border: none;
+        box-shadow: none;
+    }
+
+    .wte-toolbar-container,
+    .wte-status-bar,
+    .wte-search-dialog,
+    .wte-object-overlay,
+    .web-text-editor-floating-toolbar {
+        display: none !important;
+    }
+
+    .wte-content {
+        padding: 0;
+        overflow: visible;
+    }
+
+    .wte-page-break {
+        border: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .wte-page-break::before {
+        content: '';
+    }
+
+    .wte-toc {
+        page-break-after: always;
+    }
+
+    .wte-search-highlight {
+        background: none !important;
+    }
+
+    h1 {
+        page-break-after: avoid;
+    }
+
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        page-break-after: avoid;
+    }
+
+    table,
+    figure,
+    img {
+        page-break-inside: avoid;
+    }
+}
+
+/* =====================================================
+   響應式樣式
+   ===================================================== */
+
+@media (max-width: 768px) {
+    .wte-tab-list {
+        flex-wrap: wrap;
+    }
+
+    .wte-tab-list button {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .wte-tab-content {
+        flex-wrap: wrap;
+    }
+
+    .wte-search-dialog {
+        min-width: auto;
+        width: calc(100% - 40px);
+        right: 20px;
+        left: 20px;
+    }
+
+    .wte-status-bar {
+        flex-direction: column;
+        gap: 5px;
+        text-align: center;
+    }
+
+    .wte-stats {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
+/* =====================================================
+   動畫效果
+   ===================================================== */
+
+@keyframes highlight-fade {
+    0% {
+        background-color: #fff9c4;
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.wte-highlight-animation {
+    animation: highlight-fade 2s ease-out;
+}

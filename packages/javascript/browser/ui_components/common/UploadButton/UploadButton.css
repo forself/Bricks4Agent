@@ -1,0 +1,262 @@
+/**
+ * UploadButton Component Styles
+ * 上傳按鈕樣式
+ */
+
+/* ===== 按鈕容器 ===== */
+.upload-btn-container {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+/* ===== 基礎按鈕樣式 ===== */
+.upload-btn {
+    padding: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: transparent;
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-btn:focus {
+    outline: none;
+}
+
+.upload-btn:focus-visible {
+    outline: 2px solid #2196F3;
+    outline-offset: 2px;
+}
+
+.upload-btn svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ===== Hover & Active 效果 ===== */
+.upload-btn:hover {
+    transform: translateY(-2px);
+}
+
+.upload-btn:active {
+    transform: translateY(0) scale(0.95);
+}
+
+/* 各類型的邊框與陰影效果 */
+.upload-btn--xls {
+    border-color: rgba(33, 115, 70, 0.4);
+}
+
+.upload-btn--xls:hover {
+    border-color: #217346;
+    box-shadow: 0 4px 12px rgba(33, 115, 70, 0.4);
+}
+
+.upload-btn--word {
+    border-color: rgba(43, 87, 154, 0.4);
+}
+
+.upload-btn--word:hover {
+    border-color: #2B579A;
+    box-shadow: 0 4px 12px rgba(43, 87, 154, 0.4);
+}
+
+.upload-btn--pdf {
+    border-color: rgba(229, 57, 53, 0.4);
+}
+
+.upload-btn--pdf:hover {
+    border-color: #E53935;
+    box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
+}
+
+.upload-btn--image {
+    border-color: rgba(123, 31, 162, 0.4);
+}
+
+.upload-btn--image:hover {
+    border-color: #7B1FA2;
+    box-shadow: 0 4px 12px rgba(123, 31, 162, 0.4);
+}
+
+.upload-btn--portrait {
+    border-color: rgba(0, 131, 143, 0.4);
+}
+
+.upload-btn--portrait:hover {
+    border-color: #00838F;
+    box-shadow: 0 4px 12px rgba(0, 131, 143, 0.4);
+}
+
+.upload-btn--file {
+    border-color: rgba(96, 125, 139, 0.4);
+}
+
+.upload-btn--file:hover {
+    border-color: #607D8B;
+    box-shadow: 0 4px 12px rgba(96, 125, 139, 0.4);
+}
+
+.upload-btn--txt {
+    border-color: rgba(69, 90, 100, 0.4);
+}
+
+.upload-btn--txt:hover {
+    border-color: #455A64;
+    box-shadow: 0 4px 12px rgba(69, 90, 100, 0.4);
+}
+
+.upload-btn--csv {
+    border-color: rgba(67, 160, 71, 0.4);
+}
+
+.upload-btn--csv:hover {
+    border-color: #43A047;
+    box-shadow: 0 4px 12px rgba(67, 160, 71, 0.4);
+}
+
+/* ===== 尺寸變體 ===== */
+.upload-btn--small {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+}
+
+.upload-btn--medium {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+}
+
+.upload-btn--large {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+}
+
+/* ===== 標籤樣式 ===== */
+.upload-btn-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.upload-btn--xls~.upload-btn-label {
+    color: #217346;
+}
+
+.upload-btn--word~.upload-btn-label {
+    color: #2B579A;
+}
+
+.upload-btn--pdf~.upload-btn-label {
+    color: #E53935;
+}
+
+.upload-btn--image~.upload-btn-label {
+    color: #7B1FA2;
+}
+
+.upload-btn--portrait~.upload-btn-label {
+    color: #00838F;
+}
+
+.upload-btn--file~.upload-btn-label {
+    color: #607D8B;
+}
+
+.upload-btn--txt~.upload-btn-label {
+    color: #455A64;
+}
+
+.upload-btn--csv~.upload-btn-label {
+    color: #43A047;
+}
+
+/* ===== 按鈕群組 ===== */
+.upload-btn-group {
+    display: inline-flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.upload-btn-group--vertical {
+    flex-direction: column;
+}
+
+/* ===== 拖放狀態 ===== */
+.upload-btn--dragover {
+    border-style: solid !important;
+    transform: scale(1.05);
+}
+
+/* ===== 停用狀態 ===== */
+.upload-btn:disabled,
+.upload-btn--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ===== 載入狀態 ===== */
+.upload-btn--loading {
+    pointer-events: none;
+}
+
+.upload-btn--loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: upload-btn-spin 0.8s linear infinite;
+    z-index: 10;
+}
+
+.upload-btn--loading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: inherit;
+    z-index: 5;
+}
+
+@keyframes upload-btn-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ===== 暗色主題 ===== */
+@media (prefers-color-scheme: dark) {
+    .upload-btn-label {
+        filter: brightness(1.2);
+    }
+}
+
+/* ===== 響應式調整 ===== */
+@media (max-width: 480px) {
+    .upload-btn-group {
+        gap: 6px;
+    }
+
+    .upload-btn--large {
+        width: 48px;
+        height: 48px;
+    }
+}

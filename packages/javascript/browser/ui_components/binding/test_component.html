@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>元件測試 - RegionMap</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; font-size: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h3 { margin: 20px 0 10px; color: #1976d2; font-size: 14px; }
+        .test-area { margin-top: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; min-height: 400px; }
+        .log { margin-top: 20px; padding: 10px; background: #222; color: #0f0; font-family: monospace; font-size: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+        .status { padding: 8px 12px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; }
+        .status.ok { background: #c8e6c9; color: #2e7d32; }
+        .status.error { background: #ffcdd2; color: #c62828; }
+        .section { margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>元件測試 - RegionMap (地圖元件)</h1>
+    <div id="status" class="status">載入中...</div>
+    
+    <div class="section">
+        <h3>RegionMap：區域地圖</h3>
+        <div id="region-map" class="test-area"></div>
+    </div>
+    
+    <div id="log" class="log">Log:</div>
+</div>
+
+<script type="module">
+    const log = (msg) => {
+        const el = document.getElementById('log');
+        el.innerHTML += `\n${new Date().toLocaleTimeString()} - ${msg}`;
+        el.scrollTop = el.scrollHeight;
+    };
+
+    const setStatus = (ok, msg) => {
+        const el = document.getElementById('status');
+        el.className = ok ? 'status ok' : 'status error';
+        el.textContent = msg;
+    };
+
+    let errors = [];
+
+    // RegionMap
+    try {
+        log('載入 RegionMap...');
+        const { RegionMap } = await import('../data/RegionMap/RegionMap.js');
+        
+        const map = new RegionMap({
+            onChange: (region) => log(`選擇區域: ${JSON.stringify(region)}`)
+        });
+        map.mount(document.getElementById('region-map'));
+        log('RegionMap 載入成功');
+    } catch (e) {
+        log(`RegionMap 錯誤: ${e.message}`);
+        console.error(e);
+        errors.push(`RegionMap: ${e.message}`);
+    }
+
+    // Summary
+    if (errors.length === 0) {
+        setStatus(true, '✓ RegionMap 載入成功');
+    } else {
+        setStatus(false, `✗ 錯誤: ${errors.join(', ')}`);
+    }
+</script>
+</body>
+</html>

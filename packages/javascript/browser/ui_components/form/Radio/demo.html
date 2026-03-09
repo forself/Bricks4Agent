@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Radio Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .row { margin-bottom: 20px; }
+        .actions { display: flex; gap: 8px; margin-top: 12px; }
+        .actions button { padding: 6px 16px; border: 1px solid var(--cl-border); border-radius: 4px; cursor: pointer; font-size: 13px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>Radio Demo</h1>
+    <p>單選按鈕元件 — 群組建立、方向排列、自訂尺寸</p>
+
+    <h2>1. 水平群組</h2>
+    <div id="demo1" class="row"></div>
+
+    <h2>2. 垂直群組</h2>
+    <div id="demo2" class="row"></div>
+
+    <h2>3. 三種尺寸</h2>
+    <div id="demo3" class="row"></div>
+
+    <div class="actions">
+        <button id="btn-get">取得選中值</button>
+        <button id="btn-set">設定為「中」</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { Radio } from './Radio.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // Demo 1: 水平
+        const group1 = Radio.createGroup({
+            name: 'priority',
+            items: [
+                { label: '高', value: 'high' },
+                { label: '中', value: 'medium' },
+                { label: '低', value: 'low' }
+            ],
+            value: 'medium',
+            direction: 'horizontal',
+            onChange: (val) => log(`優先級: ${val}`)
+        });
+        group1.mount('#demo1');
+
+        // Demo 2: 垂直
+        const group2 = Radio.createGroup({
+            name: 'color',
+            items: [
+                { label: '紅色', value: 'red' },
+                { label: '藍色', value: 'blue' },
+                { label: '綠色', value: 'green' },
+                { label: '灰色（停用）', value: 'gray', disabled: true }
+            ],
+            value: 'blue',
+            direction: 'vertical',
+            onChange: (val) => log(`顏色: ${val}`)
+        });
+        group2.mount('#demo2');
+
+        // Demo 3: 尺寸
+        ['small', 'medium', 'large'].forEach(size => {
+            const g = Radio.createGroup({
+                name: `size-${size}`,
+                items: [
+                    { label: 'A', value: 'a' },
+                    { label: 'B', value: 'b' }
+                ],
+                value: 'a',
+                direction: 'horizontal',
+                size,
+                onChange: (val) => log(`${size}: ${val}`)
+            });
+            const label = document.createElement('div');
+            label.textContent = `${size}:`;
+            label.style.cssText = 'font-size:13px;color:#888;margin-bottom:4px;margin-top:12px;';
+            document.getElementById('demo3').appendChild(label);
+            g.mount('#demo3');
+        });
+
+        // 按鈕操作
+        document.getElementById('btn-get').addEventListener('click', () => {
+            log(`group1: ${group1.getValue()}, group2: ${group2.getValue()}`);
+        });
+        document.getElementById('btn-set').addEventListener('click', () => {
+            group1.setValue('medium');
+            log('已設定 group1 為 medium');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

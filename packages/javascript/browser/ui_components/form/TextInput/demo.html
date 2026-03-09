@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>TextInput Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .row { margin-bottom: 20px; }
+        .actions { display: flex; gap: 8px; margin-top: 12px; }
+        .actions button { padding: 6px 16px; border: 1px solid var(--cl-border); border-radius: 4px; cursor: pointer; font-size: 13px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>TextInput Demo</h1>
+    <p>文字輸入框 — 多類型、資安檢查、錯誤狀態</p>
+
+    <h2>1. 基本文字輸入</h2>
+    <div id="demo1" class="row"></div>
+
+    <h2>2. 密碼輸入</h2>
+    <div id="demo2" class="row"></div>
+
+    <h2>3. 帶錯誤/提示</h2>
+    <div id="demo3" class="row"></div>
+
+    <h2>4. 三種尺寸</h2>
+    <div id="demo4" style="display:flex; gap:16px; flex-wrap:wrap;"></div>
+
+    <div class="actions">
+        <button id="btn-get">取得值</button>
+        <button id="btn-error">設定錯誤</button>
+        <button id="btn-clear">清除錯誤</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { TextInput } from './TextInput.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // Demo 1: 基本
+        const input1 = new TextInput({
+            label: '姓名',
+            placeholder: '請輸入姓名',
+            required: true,
+            maxLength: 20,
+            width: '300px',
+            onChange: v => log(`姓名: ${v}`)
+        });
+        input1.mount('#demo1');
+
+        // Demo 2: 密碼
+        new TextInput({
+            type: 'password',
+            label: '密碼',
+            placeholder: '請輸入密碼',
+            required: true,
+            width: '300px',
+            hint: '至少 8 個字元'
+        }).mount('#demo2');
+
+        // Demo 3: 錯誤/提示
+        const input3 = new TextInput({
+            label: '電子郵件',
+            type: 'email',
+            placeholder: 'user@example.com',
+            hint: '選填欄位',
+            width: '300px'
+        });
+        input3.mount('#demo3');
+
+        // Demo 4: 尺寸
+        ['small', 'medium', 'large'].forEach(size => {
+            new TextInput({
+                label: size,
+                placeholder: `${size} size`,
+                size,
+                width: '180px'
+            }).mount('#demo4');
+        });
+
+        // 按鈕
+        document.getElementById('btn-get').addEventListener('click', () => {
+            log(`姓名值: "${input1.getValue()}"`);
+        });
+        document.getElementById('btn-error').addEventListener('click', () => {
+            input3.setError('格式不正確');
+            log('已設定錯誤');
+        });
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            input3.clearError();
+            log('已清除錯誤');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

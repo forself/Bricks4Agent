@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DownloadButton Demo</title>
+    <link rel="stylesheet" href="DownloadButton.css">
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+            margin: 0;
+            padding: 32px 20px 48px;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        .demo-section {
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        .demo-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        th,
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--cl-border-light);
+            text-align: left;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        #status {
+            color: var(--cl-text-secondary);
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DownloadButton Demo</h1>
+        <p id="status">Click any button to update the log.</p>
+
+        <section class="demo-section">
+            <h2>Types</h2>
+            <div class="demo-row" id="basic-demo"></div>
+        </section>
+
+        <section class="demo-section">
+            <h2>Sizes</h2>
+            <div class="demo-row" id="size-small"></div>
+            <div class="demo-row" id="size-medium" style="margin-top: 12px;"></div>
+            <div class="demo-row" id="size-large" style="margin-top: 12px;"></div>
+        </section>
+
+        <section class="demo-section">
+            <h2>Show Labels</h2>
+            <div class="demo-row" id="with-labels"></div>
+        </section>
+
+        <section class="demo-section">
+            <h2>Table Actions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Document</th>
+                        <th>Created</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Quarterly Report</td>
+                        <td>2026-03-01</td>
+                        <td>Ready</td>
+                        <td class="actions" id="row-1"></td>
+                    </tr>
+                    <tr>
+                        <td>Case Archive</td>
+                        <td>2026-02-21</td>
+                        <td>Ready</td>
+                        <td class="actions" id="row-2"></td>
+                    </tr>
+                    <tr>
+                        <td>Scene Photos</td>
+                        <td>2026-02-15</td>
+                        <td>Pending Review</td>
+                        <td class="actions" id="row-3"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script type="module">
+        import { DownloadButton } from './DownloadButton.js';
+        import { createThemeToggle } from '../../demo-utils.js';
+
+        const status = document.getElementById('status');
+        const types = ['xls', 'word', 'pdf', 'image', 'portrait'];
+
+        function updateStatus(message) {
+            status.textContent = message;
+        }
+
+        types.forEach(type => {
+            new DownloadButton({
+                type,
+                size: 'large',
+                onClick: (event, data) => updateStatus(`Triggered ${data.type.toUpperCase()} download.`)
+            }).mount('#basic-demo');
+        });
+
+        ['small', 'medium', 'large'].forEach(size => {
+            const group = DownloadButton.createGroup(
+                types.map(type => ({
+                    type,
+                    onClick: (event, data) => updateStatus(`Clicked ${size} ${data.type.toUpperCase()} button.`)
+                })),
+                { size }
+            );
+            document.getElementById(`size-${size}`).appendChild(group);
+        });
+
+        types.forEach(type => {
+            new DownloadButton({
+                type,
+                size: 'large',
+                showLabel: true,
+                onClick: (event, data) => updateStatus(`Opened labeled ${data.type.toUpperCase()} action.`)
+            }).mount('#with-labels');
+        });
+
+        [
+            ['row-1', ['xls', 'word', 'pdf']],
+            ['row-2', ['xls', 'pdf', 'portrait']],
+            ['row-3', ['xls', 'image']]
+        ].forEach(([rowId, rowTypes]) => {
+            rowTypes.forEach(type => {
+                new DownloadButton({
+                    type,
+                    size: 'small',
+                    onClick: (event, data) => updateStatus(`Row action: ${data.type.toUpperCase()} export.`)
+                }).mount(`#${rowId}`);
+            });
+        });
+
+        createThemeToggle();
+    </script>
+</body>
+</html>

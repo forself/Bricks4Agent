@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StatCard 統計卡片 Demo</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+        }
+        h1 { color: #1a1a2e; margin-bottom: 8px; }
+        p.desc { color: #6c757d; margin-bottom: 32px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .demo-section h2 { margin-top: 0; color: var(--cl-text); font-size: 18px; margin-bottom: 16px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+        #click-log { margin-top: 12px; color: #6c757d; font-size: 13px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>StatCard 統計卡片</h1>
+    <p class="desc">統計數字卡片，含圖示、數值、標籤和趨勢指示器。</p>
+
+    <!-- 基本展示 -->
+    <div class="demo-section">
+        <h2>1. 各種統計卡片</h2>
+        <div class="grid" id="stats"></div>
+    </div>
+
+    <!-- 可點擊 -->
+    <div class="demo-section">
+        <h2>2. 可點擊卡片</h2>
+        <div class="grid" id="clickable"></div>
+        <p id="click-log">點擊卡片查看事件...</p>
+    </div>
+
+    <script type="module">
+        import { StatCard } from './StatCard.js';
+
+        // 1. 各種統計卡片
+        const statsData = [
+            { icon: '👥', label: '成員總數', value: 1284, trend: 'up', trendValue: '+12', color: '#4A90D9' },
+            { icon: '🏢', label: '組織數', value: 47, trend: 'down', trendValue: '-2', color: '#28a745' },
+            { icon: '📋', label: '案件數', value: 328, trend: 'up', trendValue: '+8%', color: '#E74C3C' },
+            { icon: '📊', label: '紀錄筆數', value: '5,432', color: '#FF9800' },
+            { icon: '🔗', label: '關係連結', value: 892, trend: 'up', trendValue: '+23', color: '#9B59B6' },
+            { icon: '📍', label: '監控據點', value: 15, color: '#17a2b8' }
+        ];
+        const statsContainer = document.getElementById('stats');
+        statsData.forEach(data => {
+            const mount = document.createElement('div');
+            new StatCard(data).mount(mount);
+            statsContainer.appendChild(mount);
+        });
+
+        // 2. 可點擊
+        const logEl = document.getElementById('click-log');
+        const clickableContainer = document.getElementById('clickable');
+        [
+            { icon: '⚠️', label: '待處理案件', value: 12, color: '#E74C3C' },
+            { icon: '✅', label: '已結案', value: 156, color: '#28a745' }
+        ].forEach(data => {
+            const mount = document.createElement('div');
+            new StatCard({
+                ...data,
+                onClick: () => {
+                    logEl.textContent = `點擊：${data.label}（${new Date().toLocaleTimeString()}）`;
+                }
+            }).mount(mount);
+            clickableContainer.appendChild(mount);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

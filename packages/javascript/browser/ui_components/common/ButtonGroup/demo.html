@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ButtonGroup Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        /* 通用按鈕樣式（模擬 EditorButton） */
+        .mock-btn {
+            padding: 6px 12px; border: 1px solid var(--cl-border); border-radius: 4px;
+            background: var(--cl-bg); cursor: pointer; font-size: 14px; transition: all 0.2s;
+        }
+        .mock-btn:hover { border-color: #2196F3; color: #2196F3; }
+        .mock-btn.dark { background: #444; color: #fff; border-color: #555; }
+        .mock-btn.dark:hover { background: #555; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>ButtonGroup / EditorToolbar Demo</h1>
+
+    <div class="demo-section">
+        <h2>水平按鈕群組</h2>
+        <div id="group1"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>垂直按鈕群組 + 分隔線</h2>
+        <div id="group2"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>EditorToolbar（多群組組合）</h2>
+        <div id="toolbar1"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>Dark 主題工具列</h2>
+        <div id="toolbar2"></div>
+    </div>
+
+    <script type="module">
+        import { ButtonGroup, EditorToolbar } from './ButtonGroup.js';
+
+        // --- 輔助：建立模擬按鈕 ---
+        function createBtn(text, darkMode = false) {
+            const btn = document.createElement('button');
+            btn.className = `mock-btn${darkMode ? ' dark' : ''}`;
+            btn.textContent = text;
+            btn.addEventListener('click', () => console.log(`clicked: ${text}`));
+            // ButtonGroup 接受 HTMLElement 或具 element 屬性的物件
+            return btn;
+        }
+
+        // Demo 1：水平群組
+        const g1 = new ButtonGroup({
+            buttons: [createBtn('B'), createBtn('I'), createBtn('U'), createBtn('S')],
+            gap: '4px'
+        });
+        g1.mount('#group1');
+
+        // Demo 2：垂直群組 + 分隔線
+        const g2 = new ButtonGroup({
+            buttons: [createBtn('剪下'), createBtn('複製'), createBtn('貼上')],
+            direction: 'vertical',
+            gap: '4px',
+            showSeparator: true
+        });
+        g2.mount('#group2');
+
+        // Demo 3：EditorToolbar（light）
+        const fontGroup = new ButtonGroup({
+            buttons: [createBtn('B'), createBtn('I'), createBtn('U')]
+        });
+        const alignGroup = new ButtonGroup({
+            buttons: [createBtn('左'), createBtn('中'), createBtn('右')]
+        });
+        const actionGroup = new ButtonGroup({
+            buttons: [createBtn('復原'), createBtn('重做')]
+        });
+
+        const tb1 = new EditorToolbar({
+            groups: [fontGroup, alignGroup, actionGroup],
+            theme: 'light'
+        });
+        tb1.mount('#toolbar1');
+
+        // Demo 4：Dark 主題
+        const darkFont = new ButtonGroup({
+            buttons: [createBtn('B', true), createBtn('I', true), createBtn('U', true)],
+            theme: 'dark'
+        });
+        const darkAction = new ButtonGroup({
+            buttons: [createBtn('儲存', true), createBtn('預覽', true)],
+            theme: 'dark'
+        });
+
+        const tb2 = new EditorToolbar({
+            groups: [darkFont, darkAction],
+            theme: 'dark'
+        });
+        tb2.mount('#toolbar2');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

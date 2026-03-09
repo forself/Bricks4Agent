@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BaseLogger</RootNamespace>
+
+    <!-- 套件資訊 -->
+    <PackageId>BaseLogger</PackageId>
+    <Version>1.0.0</Version>
+    <Description>輕量級日誌元件，支援多種輸出目標與 BaseCache/BaseOrm 整合</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <!-- 零外部依賴 (BaseCache/BaseOrm 為可選整合) -->
+
+</Project>

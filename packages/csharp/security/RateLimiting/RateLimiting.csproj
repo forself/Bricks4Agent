@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Bricks4Agent.Security.RateLimiting</RootNamespace>
+
+    <!-- 套件資訊 -->
+    <PackageId>IpRateLimiting</PackageId>
+    <Version>1.0.0</Version>
+    <Description>IP 限流與連線資訊模組，支援滑動視窗演算法</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET Core -->
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
+  </ItemGroup>
+
+</Project>

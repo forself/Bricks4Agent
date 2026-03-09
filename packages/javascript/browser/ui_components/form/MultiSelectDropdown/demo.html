@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>MultiSelectDropdown Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .actions { display: flex; gap: 8px; margin-top: 12px; }
+        .actions button { padding: 6px 16px; border: 1px solid var(--cl-border); border-radius: 4px; cursor: pointer; font-size: 13px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>MultiSelectDropdown Demo</h1>
+    <p>多選下拉選單 — 搜尋篩選、選中置頂、Modal 全選</p>
+
+    <h2>1. 基本多選</h2>
+    <div id="demo1"></div>
+
+    <h2>2. 限制選取數量（最多 3 個）</h2>
+    <div id="demo2"></div>
+
+    <div class="actions">
+        <button id="btn-get">取得已選值</button>
+        <button id="btn-clear">清除全部</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { MultiSelectDropdown } from './MultiSelectDropdown.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // --- Demo 1: 基本多選 ---
+        const fruits = [
+            { value: 'apple', label: '蘋果' },
+            { value: 'banana', label: '香蕉' },
+            { value: 'cherry', label: '櫻桃' },
+            { value: 'grape', label: '葡萄' },
+            { value: 'mango', label: '芒果' },
+            { value: 'orange', label: '柳橙' },
+            { value: 'peach', label: '水蜜桃' },
+            { value: 'strawberry', label: '草莓' }
+        ];
+
+        const msd1 = new MultiSelectDropdown({
+            items: fruits,
+            values: ['apple', 'cherry'],
+            placeholder: '選擇水果...',
+            width: '100%',
+            modalTitle: '選擇水果',
+            onChange: (vals, items) => log(`已選: ${items.map(i => i.label).join(', ')}`)
+        });
+        msd1.mount('#demo1');
+
+        // --- Demo 2: 限制數量 ---
+        const cities = [
+            { value: 'taipei', label: '台北' },
+            { value: 'taichung', label: '台中' },
+            { value: 'kaohsiung', label: '高雄' },
+            { value: 'tainan', label: '台南' },
+            { value: 'hsinchu', label: '新竹' }
+        ];
+
+        const msd2 = new MultiSelectDropdown({
+            items: cities,
+            placeholder: '最多選 3 個城市',
+            width: '100%',
+            maxCount: 3,
+            onChange: (vals) => log(`城市: ${vals.join(', ')}`)
+        });
+        msd2.mount('#demo2');
+
+        // --- 按鈕操作 ---
+        document.getElementById('btn-get').addEventListener('click', () => {
+            log(`Demo1 值: ${JSON.stringify(msd1.getValues())}`);
+            log(`Demo2 值: ${JSON.stringify(msd2.getValues())}`);
+        });
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            msd1.clear();
+            msd2.clear();
+            log('已清除全部');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

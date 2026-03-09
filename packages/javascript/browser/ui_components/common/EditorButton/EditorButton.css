@@ -1,0 +1,279 @@
+/**
+ * EditorButton CSS
+ * 編輯器按鈕統一樣式
+ */
+
+/* 基礎樣式 */
+.editor-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-family: inherit;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    user-select: none;
+    outline: none;
+}
+
+.editor-btn:focus-visible {
+    box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.5);
+}
+
+.editor-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 尺寸變體 */
+.editor-btn--small {
+    padding: 4px 8px;
+    font-size: 12px;
+    gap: 4px;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+.editor-btn--medium {
+    padding: 6px 12px;
+    font-size: 13px;
+    gap: 6px;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.editor-btn--large {
+    padding: 8px 16px;
+    font-size: 14px;
+    gap: 8px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+/* 圖示容器 */
+.editor-btn__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.editor-btn--small .editor-btn__icon {
+    width: 14px;
+    height: 14px;
+}
+
+.editor-btn--medium .editor-btn__icon {
+    width: 16px;
+    height: 16px;
+}
+
+.editor-btn--large .editor-btn__icon {
+    width: 18px;
+    height: 18px;
+}
+
+.editor-btn__icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* 淺色主題 */
+.editor-btn--theme-light {
+    --btn-bg: #f8f9fa;
+    --btn-bg-hover: #e9ecef;
+    --btn-bg-active: #dee2e6;
+    --btn-color: #495057;
+    --btn-color-active: #212529;
+    --btn-border: 1px solid #dee2e6;
+}
+
+/* 深色主題 */
+.editor-btn--theme-dark {
+    --btn-bg: rgba(255, 255, 255, 0.1);
+    --btn-bg-hover: rgba(255, 255, 255, 0.2);
+    --btn-bg-active: rgba(255, 255, 255, 0.3);
+    --btn-color: rgba(255, 255, 255, 0.9);
+    --btn-color-active: #ffffff;
+    --btn-border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* 漸層主題 */
+.editor-btn--theme-gradient {
+    --btn-bg: rgba(255, 255, 255, 0.2);
+    --btn-bg-hover: rgba(255, 255, 255, 0.3);
+    --btn-bg-active: rgba(255, 255, 255, 0.9);
+    --btn-color: white;
+    --btn-color-active: #333;
+    --btn-border: none;
+}
+
+/* 套用 CSS 變數 */
+.editor-btn[data-theme] {
+    background: var(--btn-bg);
+    color: var(--btn-color);
+    border: var(--btn-border);
+}
+
+.editor-btn[data-theme]:hover:not(:disabled) {
+    background: var(--btn-bg-hover);
+}
+
+.editor-btn[data-theme].is-active {
+    background: var(--btn-bg-active);
+    color: var(--btn-color-active);
+}
+
+/* 樣式變體 */
+.editor-btn--variant-primary {
+    background: #4a90d9 !important;
+    color: white !important;
+    border: none !important;
+}
+
+.editor-btn--variant-primary:hover:not(:disabled) {
+    background: #3a7bc8 !important;
+}
+
+.editor-btn--variant-ghost {
+    background: transparent !important;
+    border: none !important;
+}
+
+.editor-btn--variant-ghost:hover:not(:disabled) {
+    background: var(--btn-bg-hover) !important;
+}
+
+.editor-btn--variant-outline {
+    background: transparent !important;
+}
+
+.editor-btn--variant-outline:hover:not(:disabled) {
+    background: var(--btn-bg) !important;
+}
+
+/* 純圖示模式 */
+.editor-btn--icon-only {
+    padding: 6px;
+}
+
+.editor-btn--icon-only.editor-btn--small {
+    padding: 4px;
+}
+
+.editor-btn--icon-only.editor-btn--large {
+    padding: 8px;
+}
+
+/* ButtonGroup 容器 */
+.editor-btn-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.editor-btn-group--vertical {
+    flex-direction: column;
+}
+
+.editor-btn-group__separator {
+    width: 1px;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.1);
+    margin: 0 4px;
+}
+
+.editor-btn-group--theme-dark .editor-btn-group__separator,
+.editor-btn-group--theme-gradient .editor-btn-group__separator {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* EditorToolbar 容器 */
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f5f5f5;
+    border-radius: 8px;
+}
+
+.editor-toolbar--theme-dark {
+    background: #2b2b2b;
+}
+
+.editor-toolbar--theme-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.editor-toolbar--sticky {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.editor-toolbar--position-bottom {
+    border-radius: 0 0 8px 8px;
+}
+
+.editor-toolbar--position-left {
+    flex-direction: column;
+    border-radius: 8px 0 0 8px;
+}
+
+.editor-toolbar--position-right {
+    flex-direction: column;
+    border-radius: 0 8px 8px 0;
+}
+
+/* 動畫效果 */
+@keyframes editor-btn-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(0.95);
+    }
+}
+
+.editor-btn:active:not(:disabled) {
+    animation: editor-btn-pulse 0.1s ease;
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+    .editor-toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .editor-btn--medium {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+}
+
+/* 無障礙：高對比模式 */
+@media (prefers-contrast: high) {
+    .editor-btn {
+        border: 2px solid currentColor !important;
+    }
+
+    .editor-btn:focus-visible {
+        outline: 3px solid currentColor;
+        outline-offset: 2px;
+    }
+}
+
+/* 無障礙：減少動態效果 */
+@media (prefers-reduced-motion: reduce) {
+    .editor-btn {
+        transition: none;
+    }
+
+    .editor-btn:active:not(:disabled) {
+        animation: none;
+    }
+}

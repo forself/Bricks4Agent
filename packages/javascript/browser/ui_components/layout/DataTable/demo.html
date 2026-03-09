@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataTable Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .toolbar { margin-bottom: 12px; display: flex; gap: 8px; }
+        .toolbar button { padding: 6px 16px; cursor: pointer; border: 1px solid var(--cl-border); border-radius: 4px; background: var(--cl-bg); }
+        .toolbar button:hover { border-color: #2196F3; color: #2196F3; }
+        #selected-info { margin-top: 8px; color: var(--cl-text-secondary); font-size: 13px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>DataTable Demo</h1>
+
+    <div class="demo-section">
+        <h2>完整功能展示：排序 / 分頁 / 多選</h2>
+        <div class="toolbar">
+            <button id="btnLoading">切換 Loading</button>
+            <button id="btnClear">清除選取</button>
+            <button id="btnGetSelected">取得已選取</button>
+        </div>
+        <div id="table1"></div>
+        <div id="selected-info"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>自訂渲染 + 無分頁</h2>
+        <div id="table2"></div>
+    </div>
+
+    <script type="module">
+        import { DataTable } from './DataTable.js';
+
+        // --- 產生測試資料 ---
+        const data = [];
+        const names = ['王小明', '李大華', '張美玲', '陳志豪', '林淑芬', '黃建國', '吳秀英', '蔡明宏', '鄭雅文', '劉家豪'];
+        const depts = ['研發部', '行銷部', '人資部', '財務部', '業務部'];
+        for (let i = 1; i <= 55; i++) {
+            data.push({
+                id: i,
+                name: names[i % names.length],
+                department: depts[i % depts.length],
+                age: 22 + (i % 30),
+                salary: 30000 + (i * 1000),
+                joinDate: `2023-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`
+            });
+        }
+
+        // --- Demo 1：完整功能 ---
+        let isLoading = false;
+        const table1 = new DataTable({
+            columns: [
+                { key: 'id', title: 'ID', width: '60px', sortable: true, align: 'center' },
+                { key: 'name', title: '姓名', sortable: true },
+                { key: 'department', title: '部門', sortable: true },
+                { key: 'age', title: '年齡', sortable: true, align: 'right' },
+                { key: 'salary', title: '薪資', sortable: true, align: 'right',
+                    render: (val) => `NT$ ${val.toLocaleString()}` },
+                { key: 'joinDate', title: '入職日期', sortable: true }
+            ],
+            data: data,
+            pageSize: 10,
+            selectable: true,
+            multiSelect: true,
+            onSelect: (rows) => {
+                document.getElementById('selected-info').textContent =
+                    `已選取 ${rows.length} 筆：${rows.map(r => r.name).join(', ')}`;
+            },
+            onRowClick: (row) => {
+                console.log('點擊行：', row);
+            }
+        });
+        table1.mount('#table1');
+
+        document.getElementById('btnLoading').addEventListener('click', () => {
+            isLoading = !isLoading;
+            table1.setLoading(isLoading);
+        });
+        document.getElementById('btnClear').addEventListener('click', () => {
+            table1.clearSelection();
+            document.getElementById('selected-info').textContent = '';
+        });
+        document.getElementById('btnGetSelected').addEventListener('click', () => {
+            const rows = table1.getSelectedRows();
+            alert(`已選取 ${rows.length} 筆\n${JSON.stringify(rows.map(r => r.name))}`);
+        });
+
+        // --- Demo 2：自訂渲染、無分頁 ---
+        const table2 = new DataTable({
+            columns: [
+                { key: 'name', title: '名稱' },
+                { key: 'status', title: '狀態', align: 'center',
+                    render: (val) => {
+                        const colors = { active: '#4CAF50', inactive: '#999' };
+                        return `<span style="color:${colors[val] || '#333'}">${val === 'active' ? '啟用' : '停用'}</span>`;
+                    }
+                },
+                { key: 'action', title: '操作', align: 'center',
+                    render: (_, row) => {
+                        const div = document.createElement('div');
+                        div.className = 'data-table-cell-actions';
+                        const btn = document.createElement('button');
+                        btn.textContent = '編輯';
+                        btn.addEventListener('click', () => alert(`編輯: ${row.name}`));
+                        div.appendChild(btn);
+                        return div;
+                    }
+                }
+            ],
+            data: [
+                { id: 1, name: '服務 A', status: 'active' },
+                { id: 2, name: '服務 B', status: 'inactive' },
+                { id: 3, name: '服務 C', status: 'active' }
+            ],
+            pagination: false,
+            bordered: true,
+            striped: false
+        });
+        table2.mount('#table2');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

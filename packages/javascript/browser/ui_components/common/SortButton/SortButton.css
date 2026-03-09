@@ -1,0 +1,101 @@
+/**
+ * SortButton Component Styles
+ * 排序按鈕樣式
+ */
+
+.sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    margin-left: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    vertical-align: middle;
+}
+
+.sort-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.sort-btn:focus {
+    outline: none;
+}
+
+.sort-btn:focus-visible {
+    outline: 2px solid #2196F3;
+    outline-offset: 1px;
+}
+
+/* 未生效狀態 */
+.sort-btn--none {
+    color: #9E9E9E;
+}
+
+.sort-btn--none:hover {
+    color: #757575;
+}
+
+/* 逆序（降冪）狀態 */
+.sort-btn--desc {
+    color: #2196F3;
+}
+
+.sort-btn--desc:hover {
+    color: #1976D2;
+}
+
+/* 正序（升冪）狀態 */
+.sort-btn--asc {
+    color: #4CAF50;
+}
+
+.sort-btn--asc:hover {
+    color: #388E3C;
+}
+
+/* 尺寸 */
+.sort-btn--small {
+    width: 18px;
+    height: 18px;
+}
+
+.sort-btn--small svg {
+    width: 14px;
+    height: 14px;
+}
+
+.sort-btn--medium {
+    width: 22px;
+    height: 22px;
+}
+
+.sort-btn--medium svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* 用於表頭 */
+.th-sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.th-sortable:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.th-sortable .sort-btn {
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+.th-sortable:hover .sort-btn,
+.th-sortable .sort-btn--desc,
+.th-sortable .sort-btn--asc {
+    opacity: 1;
+}

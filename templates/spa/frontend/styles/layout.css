@@ -1,0 +1,406 @@
+/**
+ * SPA Template - 佈局樣式
+ * 包含側邊欄、Header、內容區域樣式
+ */
+
+/* ============================
+   應用程式佈局
+   ============================ */
+.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ============================
+   側邊欄
+   ============================ */
+.layout-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: var(--color-bg-card);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    transition: width var(--transition-normal);
+    z-index: 1000;
+}
+
+.layout-sidebar[data-collapsed="true"] {
+    width: var(--sidebar-collapsed-width);
+}
+
+.layout-sidebar[data-collapsed="true"] .logo-text,
+.layout-sidebar[data-collapsed="true"] .nav-text {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+}
+
+.layout-sidebar[data-collapsed="true"] .sidebar-toggle svg {
+    transform: rotate(180deg);
+}
+
+/* 側邊欄 Header */
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+    min-height: var(--header-height);
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.logo-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary);
+    color: white;
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    border-radius: var(--radius-md);
+}
+
+.logo-text {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    transition: opacity var(--transition-fast), width var(--transition-normal);
+    white-space: nowrap;
+}
+
+.sidebar-toggle {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.sidebar-toggle:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+}
+
+.sidebar-toggle svg {
+    transition: transform var(--transition-normal);
+}
+
+/* 側邊欄導航 */
+.sidebar-nav {
+    flex: 1;
+    padding: var(--spacing-md);
+    overflow-y: auto;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 12px var(--spacing-md);
+    margin-bottom: var(--spacing-xs);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.nav-item:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+}
+
+.nav-item.active {
+    background: rgba(74, 144, 217, 0.1);
+    color: var(--color-primary);
+}
+
+.nav-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.nav-text {
+    transition: opacity var(--transition-fast), width var(--transition-normal);
+    white-space: nowrap;
+}
+
+/* 側邊欄 Footer */
+.sidebar-footer {
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+.theme-toggle {
+    width: 100%;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-hover);
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.theme-toggle:hover {
+    background: var(--color-border);
+    color: var(--color-text);
+}
+
+.theme-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+.theme-icon-dark {
+    display: none;
+}
+
+[data-theme="dark"] .theme-icon-light {
+    display: none;
+}
+
+[data-theme="dark"] .theme-icon-dark {
+    display: block;
+}
+
+/* ============================
+   主內容區
+   ============================ */
+.layout-main {
+    flex: 1;
+    margin-left: var(--sidebar-width);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    transition: margin-left var(--transition-normal);
+}
+
+.layout-sidebar[data-collapsed="true"] ~ .layout-main {
+    margin-left: var(--sidebar-collapsed-width);
+}
+
+/* Header */
+.layout-header {
+    position: sticky;
+    top: 0;
+    height: var(--header-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-lg);
+    background: var(--color-bg-card);
+    border-bottom: 1px solid var(--color-border);
+    z-index: 100;
+}
+
+.mobile-menu-toggle {
+    display: none;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+}
+
+.header-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.breadcrumb-item {
+    color: var(--color-text-secondary);
+}
+
+.breadcrumb-item.current {
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+.breadcrumb-separator {
+    color: var(--color-text-muted);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.header-action {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.header-action:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+}
+
+.header-user {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.user-avatar {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary);
+    color: white;
+    font-weight: 600;
+    border-radius: 50%;
+}
+
+/* 內容區 */
+.layout-content {
+    flex: 1;
+    padding: var(--spacing-lg);
+    overflow-y: auto;
+}
+
+/* 載入覆蓋層 */
+.layout-loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 9999;
+}
+
+/* 行動版側邊欄遮罩 */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.sidebar-overlay.active {
+    display: block;
+}
+
+/* ============================
+   子導航 (巢狀路由)
+   ============================ */
+.subnav {
+    display: flex;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    background: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+}
+
+.subnav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 10px var(--spacing-md);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.subnav-item:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+}
+
+.subnav-item.active {
+    background: var(--color-primary);
+    color: white;
+}
+
+.subnav-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.nested-content {
+    min-height: 200px;
+}
+
+/* ============================
+   響應式設計
+   ============================ */
+@media (max-width: 1024px) {
+    .layout-sidebar {
+        transform: translateX(-100%);
+    }
+
+    .layout-sidebar.mobile-open {
+        transform: translateX(0);
+    }
+
+    .layout-main {
+        margin-left: 0;
+    }
+
+    .layout-sidebar[data-collapsed="true"] ~ .layout-main {
+        margin-left: 0;
+    }
+
+    .mobile-menu-toggle {
+        display: flex;
+    }
+
+    .sidebar-toggle {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .layout-content {
+        padding: var(--spacing-md);
+    }
+
+    .subnav {
+        flex-wrap: wrap;
+    }
+}

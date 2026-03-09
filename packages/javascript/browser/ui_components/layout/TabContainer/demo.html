@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TabContainer 頁籤容器示例</title>
+    <link rel="stylesheet" href="TabContainer.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 30px;
+            background: var(--cl-bg-secondary);
+        }
+
+        h1 {
+            color: var(--cl-text);
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--cl-text-secondary);
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .demo-section h2 {
+            color: var(--cl-text);
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #1976d2;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1565c0;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .sample-content {
+            padding: 20px;
+        }
+
+        .sample-content h3 {
+            color: var(--cl-text);
+            margin-bottom: 15px;
+        }
+
+        .sample-content p {
+            color: var(--cl-text-secondary);
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .sample-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-width: 500px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-group label {
+            font-weight: 500;
+            color: var(--cl-text);
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            padding: 8px 12px;
+            border: 1px solid var(--cl-border);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .table th {
+            background: var(--cl-bg-tertiary);
+            font-weight: 600;
+            color: var(--cl-text);
+        }
+
+        .table tr:hover {
+            background: var(--cl-bg-tertiary);
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .chart-placeholder {
+            width: 100%;
+            height: 300px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1><i class="fas fa-folder-open"></i> TabContainer 頁籤容器組件</h1>
+    <p class="subtitle">支援多頁籤介面、動態添加/移除、徽章顯示、可關閉頁籤等功能</p>
+
+    <!-- 示例 1: 基本使用 -->
+    <div class="demo-section">
+        <h2>示例 1: 基本頁籤容器 (頂部)</h2>
+        <div class="controls">
+            <button class="btn" onclick="addRandomTab()">
+                <i class="fas fa-plus"></i> 添加頁籤
+            </button>
+            <button class="btn btn-success" onclick="updateBadge()">
+                <i class="fas fa-bell"></i> 更新徽章
+            </button>
+            <button class="btn btn-danger" onclick="removeAllTabs()">
+                <i class="fas fa-trash"></i> 移除所有
+            </button>
+        </div>
+        <div id="tab-container-1"></div>
+    </div>
+
+    <!-- 示例 2: 底部頁籤 -->
+    <div class="demo-section">
+        <h2>示例 2: 底部頁籤容器</h2>
+        <div id="tab-container-2"></div>
+    </div>
+
+    <!-- 示例 3: 左側頁籤 -->
+    <div class="demo-section">
+        <h2>示例 3: 左側頁籤容器</h2>
+        <div id="tab-container-3"></div>
+    </div>
+
+    <!-- 示例 4: 不可關閉 -->
+    <div class="demo-section">
+        <h2>示例 4: 不可關閉的頁籤</h2>
+        <div id="tab-container-4"></div>
+    </div>
+
+    <script type="module">
+        import { TabContainer } from './TabContainer.js';
+        import { ModalPanel } from '../Panel/index.js';
+        // 示例 1: 基本頁籤容器
+        const tabContainer1 = new TabContainer({
+            containerId: 'tab-container-1',
+            position: 'top',
+            closable: true,
+            animated: true,
+            tabs: [
+                {
+                    id: 'home',
+                    title: '首頁',
+                    icon: 'fas fa-home',
+                    content: `
+                        <div class="sample-content">
+                            <h3>歡迎使用 TabContainer</h3>
+                            <p>這是一個功能完整的頁籤容器組件，支援：</p>
+                            <ul>
+                                <li>多種頁籤位置（上、下、左、右）</li>
+                                <li>動態添加和移除頁籤</li>
+                                <li>徽章顯示（通知數量）</li>
+                                <li>圖示支援</li>
+                                <li>可關閉/不可關閉</li>
+                                <li>切換動畫效果</li>
+                            </ul>
+                        </div>
+                    `
+                },
+                {
+                    id: 'profile',
+                    title: '個人資料',
+                    icon: 'fas fa-user',
+                    badge: 3,
+                    content: `
+                        <div class="sample-content">
+                            <h3>個人資料表單</h3>
+                            <form class="sample-form">
+                                <div class="form-group">
+                                    <label>姓名</label>
+                                    <input type="text" placeholder="請輸入姓名" value="張三">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email</label>
+                                    <input type="email" placeholder="請輸入 Email" value="zhang@example.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>個人簡介</label>
+                                    <textarea rows="4" placeholder="請輸入個人簡介">這是我的個人簡介...</textarea>
+                                </div>
+                                <button type="button" class="btn">儲存</button>
+                            </form>
+                        </div>
+                    `
+                },
+                {
+                    id: 'notifications',
+                    title: '通知',
+                    icon: 'fas fa-bell',
+                    badge: 12,
+                    content: `
+                        <div class="sample-content">
+                            <h3>通知中心</h3>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>時間</th>
+                                        <th>訊息</th>
+                                        <th>狀態</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>10:30</td>
+                                        <td>系統更新完成</td>
+                                        <td><span class="status-badge status-active">已讀</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>09:15</td>
+                                        <td>您有新的訊息</td>
+                                        <td><span class="status-badge status-pending">未讀</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>昨天</td>
+                                        <td>報表生成完成</td>
+                                        <td><span class="status-badge status-active">已讀</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    `
+                },
+                {
+                    id: 'settings',
+                    title: '設定',
+                    icon: 'fas fa-cog',
+                    content: `
+                        <div class="sample-content">
+                            <h3>系統設定</h3>
+                            <form class="sample-form">
+                                <div class="form-group">
+                                    <label>語言</label>
+                                    <select>
+                                        <option>繁體中文</option>
+                                        <option>簡體中文</option>
+                                        <option>English</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>主題</label>
+                                    <select>
+                                        <option>亮色主題</option>
+                                        <option>暗色主題</option>
+                                        <option>自動</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn">套用設定</button>
+                            </form>
+                        </div>
+                    `
+                }
+            ],
+            onTabChange: (event) => {
+                console.log('Tab changed:', event);
+            },
+            onTabClose: (event) => {
+                console.log('Tab closing:', event);
+                return confirm(`確定要關閉「${event.tab.title}」頁籤嗎？`);
+            }
+        });
+
+        // 示例 2: 底部頁籤
+        const tabContainer2 = new TabContainer({
+            containerId: 'tab-container-2',
+            position: 'bottom',
+            tabs: [
+                {
+                    id: 'dashboard',
+                    title: '儀表板',
+                    icon: 'fas fa-chart-line',
+                    content: `
+                        <div class="sample-content">
+                            <h3>數據儀表板</h3>
+                            <div class="chart-placeholder">
+                                <i class="fas fa-chart-bar" style="font-size: 48px; margin-right: 20px;"></i>
+                                圖表區域
+                            </div>
+                        </div>
+                    `
+                },
+                {
+                    id: 'reports',
+                    title: '報表',
+                    icon: 'fas fa-file-alt',
+                    content: `
+                        <div class="sample-content">
+                            <h3>報表列表</h3>
+                            <p>這裡顯示各種報表...</p>
+                        </div>
+                    `
+                }
+            ]
+        });
+
+        // 示例 3: 左側頁籤
+        const tabContainer3 = new TabContainer({
+            containerId: 'tab-container-3',
+            position: 'left',
+            tabs: [
+                {
+                    id: 'inbox',
+                    title: '收件匣',
+                    icon: 'fas fa-inbox',
+                    badge: 5,
+                    content: '<div class="sample-content"><h3>收件匣</h3><p>您有 5 封未讀郵件</p></div>'
+                },
+                {
+                    id: 'sent',
+                    title: '寄件備份',
+                    icon: 'fas fa-paper-plane',
+                    content: '<div class="sample-content"><h3>寄件備份</h3><p>已寄出的郵件...</p></div>'
+                },
+                {
+                    id: 'drafts',
+                    title: '草稿',
+                    icon: 'fas fa-edit',
+                    badge: 2,
+                    content: '<div class="sample-content"><h3>草稿</h3><p>您有 2 封草稿</p></div>'
+                }
+            ]
+        });
+
+        // 示例 4: 不可關閉的頁籤
+        const tabContainer4 = new TabContainer({
+            containerId: 'tab-container-4',
+            position: 'top',
+            closable: false,
+            tabs: [
+                {
+                    id: 'overview',
+                    title: '總覽',
+                    icon: 'fas fa-eye',
+                    content: '<div class="sample-content"><h3>總覽</h3><p>這些頁籤無法關閉</p></div>'
+                },
+                {
+                    id: 'details',
+                    title: '詳細資訊',
+                    icon: 'fas fa-info-circle',
+                    content: '<div class="sample-content"><h3>詳細資訊</h3><p>固定顯示的頁籤</p></div>'
+                }
+            ]
+        });
+
+        // 工具函數
+        let tabCounter = 5;
+        function addRandomTab() {
+            const icons = ['fa-star', 'fa-heart', 'fa-bookmark', 'fa-tag', 'fa-flag'];
+            const randomIcon = icons[Math.floor(Math.random() * icons.length)];
+
+            tabContainer1.addTab({
+                id: `tab-${tabCounter}`,
+                title: `新頁籤 ${tabCounter}`,
+                icon: `fas ${randomIcon}`,
+                badge: Math.floor(Math.random() * 10),
+                content: `
+                    <div class="sample-content">
+                        <h3>動態添加的頁籤 ${tabCounter}</h3>
+                        <p>這是動態添加的頁籤內容</p>
+                        <p>時間: ${new Date().toLocaleString()}</p>
+                    </div>
+                `
+            });
+            tabCounter++;
+        }
+
+        function updateBadge() {
+            const randomBadge = Math.floor(Math.random() * 20);
+            tabContainer1.updateBadge('notifications', randomBadge);
+            ModalPanel.alert({ message: `已更新通知徽章為: ${randomBadge}` });
+        }
+
+        function removeAllTabs() {
+            if (confirm('確定要移除所有頁籤嗎？')) {
+                tabContainer1.removeAllTabs();
+            }
+        }
+        globalThis.addRandomTab = addRandomTab;
+        globalThis.updateBadge = updateBadge;
+        globalThis.removeAllTabs = removeAllTabs;
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

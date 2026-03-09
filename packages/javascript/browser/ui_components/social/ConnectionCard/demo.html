@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConnectionCard 關聯卡片 Demo</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+        }
+        h1 { color: #1a1a2e; margin-bottom: 8px; }
+        p.desc { color: #6c757d; margin-bottom: 32px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .demo-section h2 { margin-top: 0; color: var(--cl-text); font-size: 18px; margin-bottom: 16px; }
+        #click-log { margin-top: 12px; color: #6c757d; font-size: 13px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>ConnectionCard 關聯卡片</h1>
+    <p class="desc">關聯人員/組織小卡片，支援 hover 浮起、標籤和 Grid 排列。</p>
+
+    <!-- 單張卡片 -->
+    <div class="demo-section">
+        <h2>1. 單張卡片</h2>
+        <div id="single"></div>
+    </div>
+
+    <!-- Grid 佈局 -->
+    <div class="demo-section">
+        <h2>2. Grid 批次排列</h2>
+        <div id="grid"></div>
+    </div>
+
+    <!-- 可點擊 -->
+    <div class="demo-section">
+        <h2>3. 可點擊卡片</h2>
+        <div id="clickable"></div>
+        <p id="click-log">點擊卡片查看事件...</p>
+    </div>
+
+    <script type="module">
+        import { ConnectionCard } from './ConnectionCard.js';
+
+        // 1. 單張卡片
+        new ConnectionCard({
+            name: '王大明',
+            subtitle: '技術部 · 主管',
+            tags: ['販毒', '勒索', '恐嚇']
+        }).mount('#single');
+
+        // 2. Grid 批次排列
+        const gridData = [
+            { name: '張三', subtitle: '技術部 · 主管', tags: ['重大案件'] },
+            { name: '李四', subtitle: '竹聯幫 · 成員', tags: ['販毒', '洗錢'] },
+            { name: '王五', subtitle: '四海幫 · 幹部', tags: ['勒索'] },
+            { name: '趙六', subtitle: '松聯幫 · 成員', tags: ['賭博', '暴力'] },
+            { name: '陳七', subtitle: '北聯幫 · 顧問', tags: ['詐欺'] },
+            { name: 'Alice', subtitle: '外籍人士', tags: ['走私'] }
+        ];
+        document.getElementById('grid').innerHTML = ConnectionCard.gridHTML(gridData);
+
+        // 3. 可點擊卡片
+        const logEl = document.getElementById('click-log');
+        const clickableGrid = document.createElement('div');
+        clickableGrid.className = 'social-connection-grid';
+        document.getElementById('clickable').appendChild(clickableGrid);
+
+        ['王大明', '李小華', '陳美玲'].forEach(name => {
+            const wrap = document.createElement('div');
+            new ConnectionCard({
+                name,
+                subtitle: '測試單位',
+                tags: ['標籤A'],
+                onClick: () => {
+                    logEl.textContent = `已點擊：${name}（${new Date().toLocaleTimeString()}）`;
+                }
+            }).mount(wrap);
+            clickableGrid.appendChild(wrap.firstElementChild);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

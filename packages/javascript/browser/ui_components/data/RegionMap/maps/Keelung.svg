@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 300 280" xmlns="http://www.w3.org/2000/svg">
+  <title>基隆市行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+  </style>
+  
+  <!-- 七堵區 -->
+  <g id="region-qidu" data-code="qidu" data-name="七堵區">
+    <path class="district" d="M20,80 L60,50 L100,60 L120,100 L110,150 L70,170 L30,150 L15,120 Z"/>
+  </g>
+  
+  <!-- 安樂區 -->
+  <g id="region-anle" data-code="anle" data-name="安樂區">
+    <path class="district" d="M70,170 L110,150 L140,160 L145,200 L120,230 L80,220 L60,195 Z"/>
+  </g>
+  
+  <!-- 中山區 -->
+  <g id="region-zhongshan" data-code="zhongshan" data-name="中山區">
+    <path class="district" d="M100,195 L145,180 L165,200 L160,235 L130,250 L105,235 Z"/>
+  </g>
+  
+  <!-- 仁愛區 -->
+  <g id="region-renai" data-code="renai" data-name="仁愛區">
+    <path class="district" d="M130,240 L165,225 L190,240 L195,270 L160,280 L135,265 Z"/>
+  </g>
+  
+  <!-- 中正區 -->
+  <g id="region-zhongzheng" data-code="zhongzheng" data-name="中正區">
+    <path class="district" d="M150,80 L185,60 L220,75 L225,110 L200,130 L160,120 Z"/>
+  </g>
+  
+  <!-- 信義區 -->
+  <g id="region-xinyi" data-code="xinyi" data-name="信義區">
+    <path class="district" d="M160,120 L200,110 L230,125 L235,160 L205,180 L170,170 Z"/>
+  </g>
+  
+  <!-- 暖暖區 -->
+  <g id="region-nuannuan" data-code="nuannuan" data-name="暖暖區">
+    <path class="district" d="M170,170 L210,155 L250,165 L260,200 L230,230 L190,220 L175,195 Z"/>
+  </g>
+</svg>

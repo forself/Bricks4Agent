@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FeatureCard - 功能展示卡片</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #c7d2fe;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+
+        .section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            color: #e0e7ff;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 12px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        }
+
+        .demo-code {
+            background: #1e1e3c;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+            overflow-x: auto;
+        }
+
+        .demo-code pre {
+            margin: 0;
+            color: #a5b4fc;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .light-background {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 40px;
+            border-radius: 12px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>FeatureCard 功能展示卡片</h1>
+        <p class="subtitle">用於展示產品功能、Demo 或特性的精美卡片元件</p>
+
+        <!-- 基本用法 -->
+        <div class="section">
+            <h2>📦 基本用法</h2>
+            <div class="grid" id="demo-basic"></div>
+            <div class="demo-code">
+                <pre>new FeatureCard({
+    title: 'Action Button',
+    description: '流程操作按鈕 - 支援 8 種操作類型，包含 CRUD 與審核流程',
+    tags: ['按鈕', '流程', 'CRUD'],
+    url: '#'
+}).mount('#container');</pre>
+            </div>
+        </div>
+
+        <!-- 帶徽章 -->
+        <div class="section">
+            <h2>🏷️ 徽章樣式</h2>
+            <div class="grid" id="demo-badges"></div>
+            <div class="demo-code">
+                <pre>new FeatureCard({
+    title: 'Advanced Charts',
+    badge: 'PRO',
+    badgeColor: '#ff6b6b',
+    description: '進階圖表元件 - 包含 7 種專業關係圖表',
+    tags: ['圖表', '視覺化']
+}).mount('#container');</pre>
+            </div>
+        </div>
+
+        <!-- 點擊事件 -->
+        <div class="section">
+            <h2>🖱️ 點擊事件與自訂資料</h2>
+            <div class="grid" id="demo-events"></div>
+            <div class="demo-code">
+                <pre>new FeatureCard({
+    title: 'Interactive Demo',
+    description: '點擊我查看詳細資訊',
+    tags: ['互動', '事件'],
+    customData: { id: 123, type: 'demo' },
+    onClick: (data) => {
+        ModalPanel.alert({ message: `點擊了卡片！ID: ${data.id}, Type: ${data.type}` });
+    }
+}).mount('#container');</pre>
+            </div>
+        </div>
+
+        <!-- 無上升效果 -->
+        <div class="section">
+            <h2>📐 無 Hover 上升效果</h2>
+            <div class="grid" id="demo-no-elevation"></div>
+            <div class="demo-code">
+                <pre>new FeatureCard({
+    title: 'Static Card',
+    description: '這張卡片沒有 hover 上升效果',
+    tags: ['靜態'],
+    elevated: false
+}).mount('#container');</pre>
+            </div>
+        </div>
+
+        <!-- 淺色模式 -->
+        <div class="section">
+            <h2>☀️ 淺色模式</h2>
+            <div class="light-background">
+                <div class="grid" id="demo-light"></div>
+            </div>
+            <div class="demo-code">
+                <pre>const card = new FeatureCard({
+    title: 'Light Mode Card',
+    description: '適用於淺色背景的卡片樣式',
+    tags: ['淺色', '主題']
+});
+card.setLightMode(true);
+card.mount('#container');</pre>
+            </div>
+        </div>
+
+        <!-- 完整範例：Demo 導覽系統 -->
+        <div class="section">
+            <h2>🎯 實際應用：Demo 導覽系統</h2>
+            <div class="grid grid-2" id="demo-navigation"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../../layout/Panel/index.js';
+
+        import { FeatureCard } from './FeatureCard.js';
+
+        // 1. 基本用法
+        new FeatureCard({
+            title: 'Action Button',
+            description: '流程操作按鈕 - 支援 8 種操作類型，包含 CRUD 與審核流程',
+            tags: ['按鈕', '流程', 'CRUD'],
+            url: '#basic-demo'
+        }).mount('#demo-basic');
+
+        new FeatureCard({
+            title: 'Tree List',
+            description: '樹狀列表 - 階層顯示，支援展開/收合與主題切換',
+            tags: ['樹狀', '列表', '階層'],
+            url: '#tree-demo'
+        }).mount('#demo-basic');
+
+        new FeatureCard({
+            title: 'Upload Button',
+            description: '上傳按鈕 - 檔案類型驗證、拖放上傳、Magic Number 檢查',
+            tags: ['上傳', '檔案', '安全'],
+            url: '#upload-demo'
+        }).mount('#demo-basic');
+
+        // 2. 徽章樣式
+        new FeatureCard({
+            title: 'Advanced Charts',
+            badge: 'PRO',
+            badgeColor: '#ff6b6b',
+            description: '進階圖表元件 - 包含 7 種專業關係圖表',
+            tags: ['圖表', '視覺化', '進階']
+        }).mount('#demo-badges');
+
+        new FeatureCard({
+            title: 'Workflow Panel',
+            badge: 'HOT',
+            badgeColor: '#ff9800',
+            description: '稽核流程面板 - 水平時間軸，多行 S 型流向顯示',
+            tags: ['流程', '時間軸']
+        }).mount('#demo-badges');
+
+        new FeatureCard({
+            title: 'Tree List',
+            badge: 'NEW',
+            badgeColor: '#4caf50',
+            description: '最新推出的樹狀列表元件',
+            tags: ['新功能', '列表']
+        }).mount('#demo-badges');
+
+        // 3. 點擊事件
+        new FeatureCard({
+            title: 'Interactive Demo',
+            description: '點擊我查看詳細資訊',
+            tags: ['互動', '事件'],
+            customData: { id: 123, type: 'demo', name: 'Interactive' },
+            onClick: (data) => {
+                ModalPanel.alert({ message: `點擊了卡片！\n\nID: ${data.id}\nType: ${data.type}\nName: ${data.name}` });
+            }
+        }).mount('#demo-events');
+
+        new FeatureCard({
+            title: 'Custom Handler',
+            description: '自訂點擊處理函數',
+            tags: ['回調'],
+            onClick: () => {
+                console.log('卡片被點擊了！');
+                const response = confirm('要繼續嗎？');
+                console.log('使用者選擇：', response);
+            }
+        }).mount('#demo-events');
+
+        // 4. 無上升效果
+        new FeatureCard({
+            title: 'Static Card',
+            description: '這張卡片沒有 hover 上升效果，適合不需要強調互動性的場景',
+            tags: ['靜態', '無動畫'],
+            elevated: false
+        }).mount('#demo-no-elevation');
+
+        // 5. 淺色模式
+        const lightCard1 = new FeatureCard({
+            title: 'Light Mode Card',
+            description: '適用於淺色背景的卡片樣式，文字對比度經過最佳化',
+            tags: ['淺色', '主題', '對比度']
+        });
+        lightCard1.setLightMode(true);
+        lightCard1.mount('#demo-light');
+
+        const lightCard2 = new FeatureCard({
+            title: 'Premium Feature',
+            badge: 'PREMIUM',
+            badgeColor: '#9c27b0',
+            description: '高級功能展示卡片',
+            tags: ['高級', '專業版']
+        });
+        lightCard2.setLightMode(true);
+        lightCard2.mount('#demo-light');
+
+        // 6. 實際應用：Demo 導覽系統
+        const demoData = [
+            {
+                title: 'Common Components',
+                description: '通用元件系統 - 包含 8 個常用 UI 元件，如按鈕、卡片、上傳等功能',
+                badge: 'Essential',
+                badgeColor: '#3f51b5',
+                tags: ['按鈕', '上傳', '樹狀列表'],
+                category: 'common'
+            },
+            {
+                title: 'Form Components',
+                description: '表單元件系統 - 複合輸入、日期選擇、下拉選單等 10+ 種表單元件',
+                badge: 'PRO',
+                badgeColor: '#ff6b6b',
+                tags: ['表單', '輸入', '驗證'],
+                category: 'form'
+            },
+            {
+                title: 'Visualization',
+                description: '視覺化元件 - 包含基礎與進階圖表，支援多種資料視覺化需求',
+                badge: 'HOT',
+                badgeColor: '#ff9800',
+                tags: ['圖表', '地圖', '視覺化'],
+                category: 'viz'
+            },
+            {
+                title: 'Layout System',
+                description: '佈局元件 - Modal、Drawer、Toast、Workflow 等多種佈局容器',
+                tags: ['容器', 'Modal', '面板'],
+                category: 'layout'
+            }
+        ];
+
+        demoData.forEach(demo => {
+            new FeatureCard({
+                title: demo.title,
+                description: demo.description,
+                tags: demo.tags,
+                badge: demo.badge,
+                badgeColor: demo.badgeColor,
+                customData: { category: demo.category },
+                onClick: (data) => {
+                    console.log(`導航到 ${data.category} 分類`);
+                    ModalPanel.alert({ message: `即將開啟 ${demo.title} 展示頁面\n分類: ${data.category}` });
+                }
+            }).mount('#demo-navigation');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

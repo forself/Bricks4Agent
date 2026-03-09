@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TreeList Navigation Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f7f7f7;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+        }
+
+        /* 側邊欄容器 */
+        aside {
+            width: 260px;
+            background: var(--cl-bg);
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        select,
+        button {
+            font-size: 12px;
+            padding: 4px 8px;
+            border: 1px solid var(--cl-border);
+            border-radius: 4px;
+            cursor: pointer;
+            background: var(--cl-bg);
+        }
+
+        .role-switch {
+            background: var(--cl-bg-secondary);
+        }
+
+        .tree-container {
+            flex: 1;
+            /* padding removed to handled by component */
+            overflow-y: auto;
+        }
+
+        /* 主內容區 */
+        main {
+            flex: 1;
+            padding: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .content-card {
+            background: var(--cl-bg);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: var(--cl-text);
+        }
+
+        p {
+            color: var(--cl-text-secondary);
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+
+    <aside>
+        <div class="sidebar-header">
+            <div class="header-top">
+                <span>應用程式導航</span>
+            </div>
+            <div class="controls">
+                <select id="theme-select">
+                    <option value="minimal">Minimal (極簡)</option>
+                    <option value="classic">Classic (經典)</option>
+                    <option value="modern" selected>Modern (現代)</option>
+                    <option value="dark">Dark (深色)</option>
+                </select>
+                <button id="role-toggle" class="role-switch">切換為管理員</button>
+            </div>
+        </div>
+        <div id="tree-root" class="tree-container"></div>
+    </aside>
+
+    <main>
+        <div class="content-card">
+            <h1 id="page-title">歡迎使用</h1>
+            <p id="page-desc">請從左側選單選擇功能</p>
+        </div>
+    </main>
+
+    <script type="module">
+        import { TreeList } from './TreeList.js';
+
+        // 模擬資料：功能頁面 (User View)
+        const USER_DATA = [
+            {
+                id: 'dashboard',
+                label: '儀表板',
+                icon: '📊'
+            },
+            {
+                id: 'documents',
+                label: '我的文件',
+                icon: '📁',
+                children: [
+                    { id: 'doc-recent', label: '最近開啟' },
+                    { id: 'doc-shared', label: '與我共用' },
+                    {
+                        id: 'doc-dept',
+                        label: '部門文件',
+                        children: [
+                            { id: 'dept-hr', label: '人事規章' },
+                            { id: 'dept-fin', label: '財務報表' }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'workflow',
+                label: '簽核作業',
+                icon: '📝',
+                children: [
+                    { id: 'wf-pending', label: '待簽核 (3)' },
+                    { id: 'wf-history', label: '簽核紀錄' }
+                ]
+            }
+        ];
+
+        // 模擬資料：系統設定 (Admin Extra)
+        const ADMIN_DATA = [
+            ...USER_DATA,
+            {
+                id: 'system',
+                label: '系統管理',
+                icon: '⚙️',
+                children: [
+                    { id: 'sys-users', label: '使用者管理' },
+                    { id: 'sys-roles', label: '角色權限' },
+                    { id: 'sys-logs', label: '系統紀錄' },
+                    {
+                        id: 'sys-adv',
+                        label: '進階設定',
+                        children: [
+                            { id: 'adv-db', label: '資料庫設定' },
+                            { id: 'adv-api', label: 'API 金鑰' }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const container = document.getElementById('tree-root');
+        const titleEl = document.getElementById('page-title');
+        const descEl = document.getElementById('page-desc');
+        const roleBtn = document.getElementById('role-toggle');
+        const themeSelect = document.getElementById('theme-select');
+
+        let isAdmin = false;
+
+        // 初始化 TreeList
+        const tree = new TreeList({
+            width: '100%',
+            data: USER_DATA,
+            activeId: 'dashboard',
+            theme: 'modern',
+            onSelect: (node) => {
+                console.log('Selected:', node);
+                titleEl.textContent = node.label;
+                descEl.textContent = `目前功能 ID: ${node.id}`;
+            }
+        });
+
+        tree.mount(container);
+
+        // 切換主題
+        themeSelect.addEventListener('change', (e) => {
+            tree.setTheme(e.target.value);
+            // 更新背景色以配合 Dark mode
+            if (e.target.value === 'dark') {
+                document.querySelector('aside').style.background = '#1e1e1e';
+                document.querySelector('aside').style.borderColor = '#333';
+                document.querySelector('.sidebar-header').style.borderBottomColor = '#333';
+                document.querySelector('.header-top').style.color = '#fff';
+            } else {
+                document.querySelector('aside').style.background = '#fff';
+                document.querySelector('aside').style.borderColor = '#e0e0e0';
+                document.querySelector('.sidebar-header').style.borderBottomColor = '#f0f0f0';
+                document.querySelector('.header-top').style.color = '#000';
+            }
+        });
+
+        // 切換角色功能
+        roleBtn.addEventListener('click', () => {
+            isAdmin = !isAdmin;
+            roleBtn.textContent = isAdmin ? '切換為使用者' : '切換為管理員';
+            roleBtn.style.background = isAdmin ? '#e3f2fd' : '#f5f5f5';
+            roleBtn.style.color = isAdmin ? '#2196F3' : '#333';
+
+            // 更新樹狀資料
+            tree.setData(isAdmin ? ADMIN_DATA : USER_DATA);
+
+            // 嘗試保留選取狀態 (如果新資料有該 ID)
+            // tree.setActive(...) 
+        });
+
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

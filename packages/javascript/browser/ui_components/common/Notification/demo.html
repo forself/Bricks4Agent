@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        button { padding: 8px 20px; cursor: pointer; border: none; border-radius: 4px; color: #fff; font-size: 14px; }
+        .btn-success { background: #4CAF50; }
+        .btn-error { background: #F44336; }
+        .btn-warning { background: #FF9800; }
+        .btn-info { background: #2196F3; }
+        .btn-default { background: #666; }
+        button:hover { opacity: 0.9; }
+        select { padding: 8px; border: 1px solid var(--cl-border); border-radius: 4px; font-size: 14px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>Notification Demo</h1>
+
+    <div class="demo-section">
+        <h2>四種類型</h2>
+        <div class="btn-row">
+            <button class="btn-success" id="btnSuccess">Success</button>
+            <button class="btn-error" id="btnError">Error</button>
+            <button class="btn-warning" id="btnWarning">Warning</button>
+            <button class="btn-info" id="btnInfo">Info</button>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>位置選擇</h2>
+        <div class="btn-row">
+            <select id="positionSelect">
+                <option value="top-right">top-right</option>
+                <option value="top-left">top-left</option>
+                <option value="top-center">top-center</option>
+                <option value="bottom-right">bottom-right</option>
+                <option value="bottom-left">bottom-left</option>
+                <option value="bottom-center">bottom-center</option>
+            </select>
+            <button class="btn-info" id="btnPosition">發送到選定位置</button>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>操作</h2>
+        <div class="btn-row">
+            <button class="btn-default" id="btnCloseAll">關閉所有</button>
+            <button class="btn-default" id="btnNoAuto">不自動關閉 (duration: 0)</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Notification } from './Notification.js';
+
+        document.getElementById('btnSuccess').addEventListener('click', () => {
+            Notification.success('資料已成功儲存！');
+        });
+        document.getElementById('btnError').addEventListener('click', () => {
+            Notification.error('伺服器錯誤，請稍後再試。');
+        });
+        document.getElementById('btnWarning').addEventListener('click', () => {
+            Notification.warning('您的密碼即將到期，請盡快更新。');
+        });
+        document.getElementById('btnInfo').addEventListener('click', () => {
+            Notification.info('系統將於今晚 22:00 進行維護。');
+        });
+
+        document.getElementById('btnPosition').addEventListener('click', () => {
+            const pos = document.getElementById('positionSelect').value;
+            Notification.info(`通知位置：${pos}`, { position: pos });
+        });
+
+        document.getElementById('btnCloseAll').addEventListener('click', () => {
+            Notification.closeAll();
+        });
+
+        document.getElementById('btnNoAuto').addEventListener('click', () => {
+            new Notification({
+                type: 'warning',
+                title: '手動關閉',
+                message: '這則通知不會自動消失，請手動點擊關閉按鈕。',
+                duration: 0
+            }).show();
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

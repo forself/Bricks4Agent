@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avatar 頭像元件 Demo</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+        }
+        h1 { color: #1a1a2e; margin-bottom: 8px; }
+        p.desc { color: #6c757d; margin-bottom: 32px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .demo-section h2 { margin-top: 0; color: var(--cl-text); font-size: 18px; margin-bottom: 16px; }
+        .row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .label { font-size: 13px; color: #8c8c8c; min-width: 40px; text-align: center; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>Avatar 頭像元件</h1>
+    <p class="desc">圓形頭像，支援多尺寸、圖片載入回退、角標數字。</p>
+
+    <!-- 尺寸展示 -->
+    <div class="demo-section">
+        <h2>1. 各種尺寸</h2>
+        <div class="row" id="sizes"></div>
+    </div>
+
+    <!-- 圖片與回退 -->
+    <div class="demo-section">
+        <h2>2. 圖片載入與回退</h2>
+        <div class="row" id="fallback"></div>
+    </div>
+
+    <!-- 角標 -->
+    <div class="demo-section">
+        <h2>3. 角標 Badge</h2>
+        <div class="row" id="badges"></div>
+    </div>
+
+    <!-- 點擊事件 -->
+    <div class="demo-section">
+        <h2>4. 可點擊（Hover 有效果）</h2>
+        <div class="row" id="clickable"></div>
+        <p id="click-log" style="margin-top: 12px; color: #6c757d; font-size: 13px;">點擊頭像查看事件...</p>
+    </div>
+
+    <script type="module">
+        import { Avatar } from './Avatar.js';
+
+        // 1. 各種尺寸
+        const sizesContainer = document.getElementById('sizes');
+        ['xs', 'sm', 'md', 'lg', 'xl'].forEach(size => {
+            const wrap = document.createElement('div');
+            wrap.style.textAlign = 'center';
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.textContent = `${size} (${Avatar.SIZES[size]}px)`;
+            wrap.appendChild(label);
+            const mount = document.createElement('div');
+            mount.style.marginTop = '8px';
+            wrap.appendChild(mount);
+            new Avatar({ alt: '張三', size }).mount(mount);
+            sizesContainer.appendChild(wrap);
+        });
+
+        // 2. 圖片與回退
+        const fallbackContainer = document.getElementById('fallback');
+        const fallbackData = [
+            { alt: '王大明', src: '', size: 'lg' },
+            { alt: '李小華', src: '', size: 'lg' },
+            { alt: '陳美玲', src: '', size: 'lg' },
+            { alt: 'Alice', src: '', size: 'lg' },
+            { alt: 'Bob', src: '', size: 'lg' }
+        ];
+        fallbackData.forEach(data => {
+            const mount = document.createElement('div');
+            new Avatar(data).mount(mount);
+            fallbackContainer.appendChild(mount);
+        });
+
+        // 3. 角標
+        const badgesContainer = document.getElementById('badges');
+        [0, 1, 5, 42, 100].forEach(badge => {
+            const mount = document.createElement('div');
+            mount.style.textAlign = 'center';
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.textContent = `badge=${badge}`;
+            mount.appendChild(label);
+            const inner = document.createElement('div');
+            inner.style.marginTop = '8px';
+            mount.appendChild(inner);
+            new Avatar({ alt: '使用者', size: 'lg', badge: badge || null }).mount(inner);
+            badgesContainer.appendChild(mount);
+        });
+
+        // 4. 可點擊
+        const clickContainer = document.getElementById('clickable');
+        const logEl = document.getElementById('click-log');
+        ['張三', '李四', '王五'].forEach(name => {
+            const mount = document.createElement('div');
+            new Avatar({
+                alt: name,
+                size: 'lg',
+                onClick: () => {
+                    logEl.textContent = `已點擊：${name}（${new Date().toLocaleTimeString()}）`;
+                }
+            }).mount(mount);
+            clickContainer.appendChild(mount);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

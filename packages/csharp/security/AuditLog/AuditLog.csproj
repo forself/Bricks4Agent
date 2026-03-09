@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Bricks4Agent.Security.AuditLog</RootNamespace>
+
+    <!-- 套件資訊 -->
+    <PackageId>SecurityAuditLog</PackageId>
+    <Version>1.0.0</Version>
+    <Description>安全稽核日誌模組，提供登入紀錄管理、安全事件追蹤與統計分析</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- JSON Serialization -->
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BaseCache</RootNamespace>
+
+    <!-- 套件資訊 -->
+    <PackageId>BaseCache</PackageId>
+    <Version>1.0.0</Version>
+    <Description>輕量級記憶體快取，類似 Redis 的精簡版實作</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <!-- 零外部依賴 -->
+
+</Project>

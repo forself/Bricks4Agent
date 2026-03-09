@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImageViewer Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .gallery { display: flex; gap: 12px; flex-wrap: wrap; }
+        .gallery img {
+            width: 200px; height: 140px; object-fit: cover; border-radius: 8px;
+            cursor: pointer; transition: transform 0.2s; border: 2px solid transparent;
+        }
+        .gallery img:hover { transform: scale(1.05); border-color: #2196F3; }
+        .single-img { cursor: pointer; max-width: 300px; border-radius: 8px; }
+        p.hint { color: #888; font-size: 13px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>ImageViewer Demo</h1>
+
+    <div class="demo-section">
+        <h2>單張圖片 - 點擊放大</h2>
+        <p class="hint">點擊圖片開啟展示器，可用滾輪縮放、拖曳平移、Escape 關閉。</p>
+        <img id="singleImg" class="single-img"
+             src="https://picsum.photos/seed/demo1/600/400"
+             alt="範例圖片">
+    </div>
+
+    <div class="demo-section">
+        <h2>相簿瀏覽 - 左右切換</h2>
+        <p class="hint">點擊任一圖片開啟，可用左右箭頭或鍵盤方向鍵切換。</p>
+        <div class="gallery" id="gallery"></div>
+    </div>
+
+    <script type="module">
+        import { ImageViewer } from './ImageViewer.js';
+
+        // --- Demo 1：單張圖片 ---
+        document.getElementById('singleImg').addEventListener('click', (e) => {
+            ImageViewer.open(e.target.src);
+        });
+
+        // --- Demo 2：相簿瀏覽 ---
+        const images = [
+            'https://picsum.photos/seed/a1/800/600',
+            'https://picsum.photos/seed/b2/800/600',
+            'https://picsum.photos/seed/c3/800/600',
+            'https://picsum.photos/seed/d4/800/600',
+            'https://picsum.photos/seed/e5/800/600'
+        ];
+
+        const galleryEl = document.getElementById('gallery');
+        images.forEach((src, i) => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = `圖片 ${i + 1}`;
+            img.addEventListener('click', () => openGallery(i));
+            galleryEl.appendChild(img);
+        });
+
+        let currentIndex = 0;
+
+        function openGallery(index) {
+            currentIndex = index;
+            ImageViewer.open(images[currentIndex], {
+                onPrev: () => {
+                    currentIndex = (currentIndex - 1 + images.length) % images.length;
+                    ImageViewer.open(images[currentIndex], {
+                        onPrev: () => openGallery((currentIndex - 1 + images.length) % images.length),
+                        onNext: () => openGallery((currentIndex + 1) % images.length)
+                    });
+                },
+                onNext: () => {
+                    currentIndex = (currentIndex + 1) % images.length;
+                    ImageViewer.open(images[currentIndex], {
+                        onPrev: () => openGallery((currentIndex - 1 + images.length) % images.length),
+                        onNext: () => openGallery((currentIndex + 1) % images.length)
+                    });
+                }
+            });
+        }
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

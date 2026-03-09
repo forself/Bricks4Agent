@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# .NET build artifacts
+bin/
+obj/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+
+# Test artifacts
+test-results/
+screenshots/
+
+# Temp
+*.tmp
+*.log

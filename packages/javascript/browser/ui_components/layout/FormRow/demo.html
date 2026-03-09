@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FormRow Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        /* 簡易 FormField 替代樣式 */
+        .mock-field { display: flex; flex-direction: column; gap: 4px; }
+        .mock-field label { font-size: 13px; color: #555; font-weight: 500; }
+        .mock-field input, .mock-field select {
+            padding: 8px 12px; border: 1px solid var(--cl-border); border-radius: 4px; font-size: 14px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>FormRow Demo</h1>
+    <div id="demo1" class="demo-section">
+        <h2>基本用法 - 三欄均分</h2>
+    </div>
+    <div id="demo2" class="demo-section">
+        <h2>自訂欄寬 - col 設定</h2>
+    </div>
+    <div id="demo3" class="demo-section">
+        <h2>動態新增欄位</h2>
+        <button id="addBtn" style="margin-bottom:12px; padding:6px 16px; cursor:pointer;">新增欄位</button>
+    </div>
+
+    <script type="module">
+        import { FormRow } from './FormRow.js';
+
+        // --- 建立模擬 FormField（因 FormRow 依賴 FormField 介面） ---
+        function createMockField(fieldName, label, col) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mock-field';
+            if (col) wrapper.style.gridColumn = `span ${col}`;
+
+            const lbl = document.createElement('label');
+            lbl.textContent = label;
+            wrapper.appendChild(lbl);
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = fieldName;
+            wrapper.appendChild(input);
+
+            return {
+                options: { fieldName, col },
+                element: wrapper,
+                destroy() { wrapper.remove(); }
+            };
+        }
+
+        // Demo 1：三欄均分
+        const row1 = new FormRow({
+            fields: [
+                createMockField('name', '姓名'),
+                createMockField('email', '信箱'),
+                createMockField('phone', '電話')
+            ]
+        });
+        row1.mount('#demo1');
+
+        // Demo 2：自訂欄寬
+        const row2 = new FormRow({
+            fields: [
+                createMockField('address', '地址', 8),
+                createMockField('zip', '郵遞區號', 4)
+            ],
+            gap: '12px'
+        });
+        row2.mount('#demo2');
+
+        // Demo 3：動態新增
+        const row3 = new FormRow({ gap: '8px' });
+        row3.addField(createMockField('field1', '欄位 1'));
+        row3.mount('#demo3');
+
+        let count = 1;
+        document.getElementById('addBtn').addEventListener('click', () => {
+            count++;
+            row3.addField(createMockField(`field${count}`, `欄位 ${count}`));
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel 容器元件展示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: var(--cl-bg-secondary);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            color: var(--cl-text);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--cl-text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: var(--cl-bg);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .demo-section h2 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            color: var(--cl-text);
+            border-left: 3px solid #2196F3;
+            padding-left: 12px;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .demo-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .demo-btn--primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .demo-btn--secondary {
+            background: #f0f0f0;
+            color: var(--cl-text);
+        }
+
+        .demo-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .panel-demo-area {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .panel-demo-area>div {
+            flex: 1;
+            min-width: 250px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🧱 Panel 容器元件</h1>
+        <p class="subtitle">複合容器元件系統 - 支援嵌套、禁用狀態傳遞</p>
+
+        <!-- BasicPanel & CardPanel -->
+        <div class="demo-section">
+            <h2>BasicPanel & CardPanel</h2>
+            <div class="panel-demo-area">
+                <div id="basic-panel-demo"></div>
+                <div id="card-panel-demo"></div>
+            </div>
+        </div>
+
+        <!-- CollapsiblePanel -->
+        <div class="demo-section">
+            <h2>CollapsiblePanel 可收折容器</h2>
+            <div id="collapsible-demo"></div>
+        </div>
+
+        <!-- Modal & Drawer & Toast -->
+        <div class="demo-section">
+            <h2>ModalPanel / DrawerPanel / ToastPanel</h2>
+            <div class="demo-row">
+                <button class="demo-btn demo-btn--primary" id="btn-modal">開啟 Modal</button>
+                <button class="demo-btn demo-btn--primary" id="btn-confirm">確認對話框</button>
+                <button class="demo-btn demo-btn--primary" id="btn-prompt">輸入驗證碼</button>
+                <button class="demo-btn demo-btn--secondary" id="btn-drawer-left">Drawer 左</button>
+                <button class="demo-btn demo-btn--secondary" id="btn-drawer-right">Drawer 右</button>
+                <button class="demo-btn demo-btn--secondary" id="btn-toast-success">Toast 成功</button>
+                <button class="demo-btn demo-btn--secondary" id="btn-toast-error">Toast 錯誤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // PanelManager - 容器管理器
+        // ========================================
+        const PanelManager = (function () {
+            const panels = new Map();
+            const children = new Map();
+            const parents = new Map();
+            const previousStates = new Map();
+            let zIndexBase = 1000;
+
+            return {
+                register(panel, parent = null) {
+                    panels.set(panel.id, panel);
+                    if (parent) {
+                        parents.set(panel.id, parent.id);
+                        if (!children.has(parent.id)) children.set(parent.id, new Set());
+                        children.get(parent.id).add(panel.id);
+                    }
+                    return this;
+                },
+                unregister(panel) {
+                    panels.delete(panel.id);
+                    parents.delete(panel.id);
+                },
+                getChildren(panel) {
+                    const ids = children.get(panel.id);
+                    return ids ? Array.from(ids).map(id => panels.get(id)).filter(Boolean) : [];
+                },
+                calculateZIndex(panel) {
+                    return zIndexBase + 100;
+                }
+            };
+        })();
+
+        // ========================================
+        // BasePanel - 基礎容器類別
+        // ========================================
+        let panelIdCounter = 0;
+
+        class BasePanel {
+            static VISIBILITY = { VISIBLE: 'visible', HIDDEN: 'hidden', NONE: 'none' };
+
+            constructor(options = {}) {
+                this.id = `panel-${++panelIdCounter}`;
+                this.options = {
+                    title: '',
+                    showHeader: true,
+                    collapsible: false,
+                    defaultExpanded: true,
+                    visibility: 'visible',
+                    disabled: false,
+                    closable: false,
+                    parent: null,
+                    onClose: null,
+                    ...options
+                };
+                this.expanded = this.options.defaultExpanded;
+                this.element = this._createElement();
+                PanelManager.register(this, this.options.parent);
+            }
+
+            _createElement() {
+                const { title, showHeader, closable, collapsible } = this.options;
+
+                const container = document.createElement('div');
+                container.id = this.id;
+                container.className = 'panel';
+                container.style.cssText = `
+                position: relative;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                background: white;
+                overflow: hidden;
+                margin-bottom: 12px;
+            `;
+
+                if (showHeader) {
+                    const header = document.createElement('div');
+                    header.className = 'panel__header';
+                    header.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 12px 16px;
+                    background: #f8f9fa;
+                    border-bottom: 1px solid #e0e0e0;
+                    user-select: none;
+                `;
+
+                    const headerLeft = document.createElement('div');
+                    headerLeft.style.cssText = `display: flex; align-items: center; gap: 8px;`;
+
+                    if (collapsible) {
+                        const toggleBtn = document.createElement('button');
+                        toggleBtn.type = 'button';
+                        toggleBtn.innerHTML = this._getToggleIcon();
+                        toggleBtn.style.cssText = `
+                        display: flex; align-items: center; justify-content: center;
+                        width: 24px; height: 24px; border: none; background: none;
+                        cursor: pointer; border-radius: 4px;
+                    `;
+                        toggleBtn.addEventListener('click', () => this.toggle());
+                        headerLeft.appendChild(toggleBtn);
+                        this.toggleBtn = toggleBtn;
+                    }
+
+                    if (title) {
+                        const titleEl = document.createElement('span');
+                        titleEl.textContent = title;
+                        titleEl.style.cssText = `font-weight: 600; font-size: 14px; color: #333;`;
+                        headerLeft.appendChild(titleEl);
+                    }
+
+                    header.appendChild(headerLeft);
+
+                    if (closable) {
+                        const closeBtn = document.createElement('button');
+                        closeBtn.type = 'button';
+                        closeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 4L12 12M4 12L12 4" stroke="#666" stroke-width="2" stroke-linecap="round"/>
+                    </svg>`;
+                        closeBtn.style.cssText = `
+                        display: flex; align-items: center; justify-content: center;
+                        width: 28px; height: 28px; border: none; background: none;
+                        cursor: pointer; border-radius: 4px;
+                    `;
+                        closeBtn.addEventListener('click', () => this.close());
+                        header.appendChild(closeBtn);
+                    }
+
+                    container.appendChild(header);
+                    this.header = header;
+
+                    if (collapsible) {
+                        header.style.cursor = 'pointer';
+                        header.addEventListener('click', (e) => {
+                            if (!e.target.closest('button')) this.toggle();
+                        });
+                    }
+                }
+
+                const content = document.createElement('div');
+                content.className = 'panel__content';
+                content.style.cssText = `padding: 16px;`;
+                container.appendChild(content);
+                this.content = content;
+
+                if (!this.expanded) this.content.style.display = 'none';
+
+                return container;
+            }
+
+            _getToggleIcon() {
+                const r = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
+                return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="transform:${r};transition:transform 0.2s;">
+                <path d="M6 4L10 8L6 12" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+            }
+
+            toggle() {
+                this.expanded = !this.expanded;
+                this.content.style.display = this.expanded ? '' : 'none';
+                if (this.toggleBtn) this.toggleBtn.innerHTML = this._getToggleIcon();
+            }
+
+            close() {
+                this.element.style.display = 'none';
+                if (this.options.onClose) this.options.onClose(this);
+            }
+
+            setContent(content) {
+                if (typeof content === 'string') this.content.innerHTML = content;
+                else if (content instanceof HTMLElement) {
+                    this.content.innerHTML = '';
+                    this.content.appendChild(content);
+                }
+                return this;
+            }
+
+            appendPanel(panel) {
+                this.content.appendChild(panel.element);
+                return this;
+            }
+
+            mount(container) {
+                const target = typeof container === 'string' ? document.querySelector(container) : container;
+                if (target) target.appendChild(this.element);
+                return this;
+            }
+        }
+
+        // ========================================
+        // CardPanel - 卡片容器
+        // ========================================
+        class CardPanel extends BasePanel {
+            constructor(options = {}) {
+                super({ showHeader: true, ...options });
+                this.element.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                this.element.style.border = 'none';
+                if (this.header) {
+                    this.header.style.background = 'white';
+                    this.header.style.borderBottom = '1px solid #eee';
+                }
+            }
+        }
+
+        // ========================================
+        // CollapsiblePanel - 可收折容器
+        // ========================================
+        class CollapsiblePanel extends BasePanel {
+            constructor(options = {}) {
+                super({ collapsible: true, showHeader: true, ...options });
+            }
+        }
+
+        // ========================================
+        // ModalPanel - 彈出對話框
+        // ========================================
+        class ModalPanel extends BasePanel {
+            constructor(options = {}) {
+                super({ closable: true, showHeader: true, ...options });
+                this._createBackdrop();
+            }
+
+            _createBackdrop() {
+                this.backdrop = document.createElement('div');
+                this.backdrop.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex; align-items: center; justify-content: center;
+                z-index: ${PanelManager.calculateZIndex(this)};
+                opacity: 0; visibility: hidden;
+                transition: all 0.3s ease;
+            `;
+
+                this.element.style.cssText += `
+                position: relative; min-width: 320px; max-width: 90vw; max-height: 90vh;
+                overflow: auto; transform: scale(0.9); transition: transform 0.3s ease;
+            `;
+
+                this.backdrop.appendChild(this.element);
+
+                this.backdrop.addEventListener('click', (e) => {
+                    if (e.target === this.backdrop) this.close();
+                });
+
+                this._handleKeydown = (e) => {
+                    if (e.key === 'Escape' && this.isOpen) this.close();
+                };
+                document.addEventListener('keydown', this._handleKeydown);
+            }
+
+            open() {
+                this.isOpen = true;
+                this.backdrop.style.visibility = 'visible';
+                this.backdrop.style.opacity = '1';
+                this.element.style.transform = 'scale(1)';
+                document.body.style.overflow = 'hidden';
+                return this;
+            }
+
+            close() {
+                this.isOpen = false;
+                this.backdrop.style.visibility = 'hidden';
+                this.backdrop.style.opacity = '0';
+                this.element.style.transform = 'scale(0.9)';
+                document.body.style.overflow = '';
+                if (this.options.onClose) this.options.onClose(this);
+                return this;
+            }
+
+            mount(container = document.body) {
+                const target = typeof container === 'string' ? document.querySelector(container) : container;
+                if (target) target.appendChild(this.backdrop);
+                return this;
+            }
+
+            static confirm(options = {}) {
+                const { title = '確認', message = '', confirmText = '確認', cancelText = '取消',
+                    onConfirm = () => { }, onCancel = () => { } } = options;
+
+                const modal = new ModalPanel({ title, closable: true });
+                const content = document.createElement('div');
+                content.innerHTML = `
+                <p style="margin: 0 0 20px; color: #333; font-size: 14px;">${message}</p>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="modal-cancel" style="
+                        padding: 8px 16px; border: 1px solid #ddd; background: white;
+                        border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">${cancelText}</button>
+                    <button type="button" class="modal-confirm" style="
+                        padding: 8px 16px; border: none; background: #2196F3;
+                        color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">${confirmText}</button>
+                </div>
+            `;
+                content.querySelector('.modal-cancel').onclick = () => { modal.close(); onCancel(); };
+                content.querySelector('.modal-confirm').onclick = () => { modal.close(); onConfirm(); };
+                modal.setContent(content).mount().open();
+                return modal;
+            }
+
+            static prompt(options = {}) {
+                const {
+                    title = '輸入',
+                    message = '',
+                    placeholder = '請輸入...',
+                    confirmText = '確認',
+                    cancelText = '取消',
+                    inputType = 'text',
+                    maxLength = null,
+                    onConfirm = () => { },
+                    onCancel = () => { }
+                } = options;
+
+                const modal = new ModalPanel({ title, closable: true });
+                const content = document.createElement('div');
+                const maxLengthAttr = maxLength ? `maxlength="${maxLength}"` : '';
+                content.innerHTML = `
+                <p style="margin: 0 0 12px; color: #333; font-size: 14px;">${message}</p>
+                <input type="${inputType}" class="modal-input" placeholder="${placeholder}" ${maxLengthAttr} style="
+                    width: 100%; padding: 10px 12px; border: 1px solid #ddd;
+                    border-radius: 6px; font-size: 14px; margin-bottom: 16px;
+                    outline: none; transition: border-color 0.2s;
+                " />
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="modal-cancel" style="
+                        padding: 8px 16px; border: 1px solid #ddd; background: white;
+                        border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">${cancelText}</button>
+                    <button type="button" class="modal-confirm" style="
+                        padding: 8px 16px; border: none; background: #2196F3;
+                        color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">${confirmText}</button>
+                </div>
+            `;
+                const input = content.querySelector('.modal-input');
+                input.addEventListener('focus', () => input.style.borderColor = '#2196F3');
+                input.addEventListener('blur', () => input.style.borderColor = '#ddd');
+
+                content.querySelector('.modal-cancel').onclick = () => { modal.close(); onCancel(); };
+                content.querySelector('.modal-confirm').onclick = () => {
+                    const value = input.value;
+                    modal.close();
+                    onConfirm(value);
+                };
+
+                // Enter 鍵確認
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const value = input.value;
+                        modal.close();
+                        onConfirm(value);
+                    }
+                });
+
+                modal.setContent(content).mount().open();
+
+                // 自動聚焦輸入框
+                setTimeout(() => input.focus(), 100);
+
+                return modal;
+            }
+        }
+
+        // ========================================
+        // DrawerPanel - 抽屜面板
+        // ========================================
+        class DrawerPanel extends BasePanel {
+            constructor(options = {}) {
+                super({ closable: true, showHeader: true, position: 'right', width: '320px', ...options });
+                this._createBackdrop();
+            }
+
+            _createBackdrop() {
+                const { position, width } = this.options;
+
+                this.backdrop = document.createElement('div');
+                this.backdrop.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0, 0, 0, 0.3);
+                z-index: ${PanelManager.calculateZIndex(this)};
+                opacity: 0; visibility: hidden;
+                transition: all 0.3s ease;
+            `;
+
+                const posStyle = position === 'left'
+                    ? 'top: 0; left: 0; bottom: 0;'
+                    : 'top: 0; right: 0; bottom: 0;';
+                const transform = position === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+
+                this.element.style.cssText += `
+                position: fixed; ${posStyle}
+                width: ${width}; height: 100%; max-height: 100vh;
+                overflow: auto; border-radius: 0;
+                transform: ${transform};
+                transition: transform 0.3s ease;
+                z-index: ${PanelManager.calculateZIndex(this) + 1};
+            `;
+
+                this.backdrop.appendChild(this.element);
+                this.backdrop.addEventListener('click', (e) => {
+                    if (e.target === this.backdrop) this.close();
+                });
+            }
+
+            open() {
+                this.isOpen = true;
+                this.backdrop.style.visibility = 'visible';
+                this.backdrop.style.opacity = '1';
+                this.element.style.transform = 'translateX(0)';
+                document.body.style.overflow = 'hidden';
+                return this;
+            }
+
+            close() {
+                this.isOpen = false;
+                const transform = this.options.position === 'left' ? 'translateX(-100%)' : 'translateX(100%)';
+                this.backdrop.style.visibility = 'hidden';
+                this.backdrop.style.opacity = '0';
+                this.element.style.transform = transform;
+                document.body.style.overflow = '';
+                return this;
+            }
+
+            mount(container = document.body) {
+                const target = typeof container === 'string' ? document.querySelector(container) : container;
+                if (target) target.appendChild(this.backdrop);
+                return this;
+            }
+        }
+
+        // ========================================
+        // ToastPanel - 通知訊息
+        // ========================================
+        class ToastPanel {
+            static show(message, options = {}) {
+                const { type = 'info', timeout = 3000, position = 'top-right' } = options;
+
+                const colors = { info: '#2196F3', success: '#4CAF50', warning: '#FF9800', error: '#F44336' };
+                const bgColors = {
+                    info: 'rgba(33,150,243,0.1)', success: 'rgba(76,175,80,0.1)',
+                    warning: 'rgba(255,152,0,0.1)', error: 'rgba(244,67,54,0.1)'
+                };
+
+                const icons = {
+                    info: `<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="${colors[type]}" stroke-width="2" fill="none"/><path d="M10 9V14M10 6V7" stroke="${colors[type]}" stroke-width="2" stroke-linecap="round"/></svg>`,
+                    success: `<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="${colors[type]}" stroke-width="2" fill="none"/><path d="M6 10L9 13L14 7" stroke="${colors[type]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+                    warning: `<svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 2L18 17H2L10 2Z" stroke="${colors[type]}" stroke-width="2" fill="none" stroke-linejoin="round"/><path d="M10 8V11M10 14V15" stroke="${colors[type]}" stroke-width="2" stroke-linecap="round"/></svg>`,
+                    error: `<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="${colors[type]}" stroke-width="2" fill="none"/><path d="M7 7L13 13M7 13L13 7" stroke="${colors[type]}" stroke-width="2" stroke-linecap="round"/></svg>`
+                };
+
+                // 取得或建立容器
+                let container = document.getElementById('toast-container');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'toast-container';
+                    container.style.cssText = `
+                    position: fixed; top: 20px; right: 20px;
+                    z-index: 10000; display: flex; flex-direction: column; gap: 10px;
+                `;
+                    document.body.appendChild(container);
+                }
+
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                display: flex; align-items: center; gap: 10px;
+                padding: 12px 16px; border-radius: 8px;
+                background: ${bgColors[type]}; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                min-width: 250px; max-width: 400px;
+                opacity: 0; transform: translateX(100%);
+                transition: all 0.3s ease;
+            `;
+                toast.innerHTML = `
+                <span style="display: flex; flex-shrink: 0;">${icons[type]}</span>
+                <span style="flex: 1; font-size: 14px; color: #333;">${message}</span>
+            `;
+
+                container.appendChild(toast);
+
+                requestAnimationFrame(() => {
+                    toast.style.opacity = '1';
+                    toast.style.transform = 'translateX(0)';
+                });
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(100%)';
+                    setTimeout(() => toast.remove(), 300);
+                }, timeout);
+
+                return toast;
+            }
+
+            static info(msg, opts) { return ToastPanel.show(msg, { type: 'info', ...opts }); }
+            static success(msg, opts) { return ToastPanel.show(msg, { type: 'success', ...opts }); }
+            static warning(msg, opts) { return ToastPanel.show(msg, { type: 'warning', ...opts }); }
+            static error(msg, opts) { return ToastPanel.show(msg, { type: 'error', ...opts }); }
+        }
+
+        // ========================================
+        // Demo 初始化
+        // ========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // BasicPanel
+            new BasePanel({ showHeader: false })
+                .setContent('<p>這是一個 BasicPanel，無標題列的基本容器</p>')
+                .mount('#basic-panel-demo');
+
+            // CardPanel
+            new CardPanel({ title: '卡片面板' })
+                .setContent('<p>這是一個 CardPanel，帶陰影的卡片容器</p>')
+                .mount('#card-panel-demo');
+
+            // CollapsiblePanel
+            new CollapsiblePanel({ title: '詳細資訊（點擊展開/收折）', defaultExpanded: false })
+                .setContent('<p>這裡是可收折的內容區域...</p>')
+                .mount('#collapsible-demo');
+
+            new CollapsiblePanel({ title: '更多選項（預設展開）', defaultExpanded: true })
+                .setContent('<p>這裡是另一個可收折區塊的內容...</p>')
+                .mount('#collapsible-demo');
+
+            // Modal - 加入明確關閉按鈕
+            const modal = new ModalPanel({ title: '自訂 Modal' });
+            const modalContent = document.createElement('div');
+            modalContent.innerHTML = `
+                <p style="margin-bottom: 20px;">這是一個 ModalPanel 對話框</p>
+                <div style="display: flex; justify-content: flex-end;">
+                    <button type="button" class="modal-close-btn" style="
+                        padding: 8px 20px; border: none; background: #2196F3;
+                        color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">關閉</button>
+                </div>
+            `;
+            modalContent.querySelector('.modal-close-btn').onclick = () => modal.close();
+            modal.setContent(modalContent).mount();
+
+            document.getElementById('btn-modal').addEventListener('click', () => modal.open());
+
+            document.getElementById('btn-confirm').addEventListener('click', () => {
+                ModalPanel.confirm({
+                    title: '確認刪除',
+                    message: '確定要刪除這個項目嗎？此操作無法復原。',
+                    confirmText: '刪除',
+                    cancelText: '取消',
+                    onConfirm: () => ToastPanel.success('已刪除'),
+                    onCancel: () => ToastPanel.info('已取消')
+                });
+            });
+
+            // Prompt - 輸入驗證碼
+            document.getElementById('btn-prompt').addEventListener('click', () => {
+                ModalPanel.prompt({
+                    title: '驗證碼',
+                    message: '請輸入您收到的 6 位數驗證碼：',
+                    placeholder: '000000',
+                    maxLength: 6,
+                    confirmText: '驗證',
+                    cancelText: '取消',
+                    onConfirm: (value) => {
+                        if (value === '123456') {
+                            ToastPanel.success('驗證成功！');
+                        } else {
+                            ToastPanel.error('驗證碼錯誤，請重新輸入');
+                        }
+                    },
+                    onCancel: () => ToastPanel.info('已取消驗證')
+                });
+            });
+
+            // Drawer - 加入關閉按鈕
+            const drawerLeft = new DrawerPanel({ title: '左側抽屜', position: 'left', width: '280px' });
+            const drawerLeftContent = document.createElement('div');
+            drawerLeftContent.innerHTML = `
+                <p style="margin-bottom: 20px;">從左側滑入的抽屜面板</p>
+                <button type="button" class="drawer-close-btn" style="
+                    padding: 8px 20px; border: none; background: #666;
+                    color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+                ">關閉抽屜</button>
+            `;
+            drawerLeftContent.querySelector('.drawer-close-btn').onclick = () => drawerLeft.close();
+            drawerLeft.setContent(drawerLeftContent).mount();
+
+            const drawerRight = new DrawerPanel({ title: '右側抽屜', position: 'right' });
+            const drawerRightContent = document.createElement('div');
+            drawerRightContent.innerHTML = `
+                <p style="margin-bottom: 20px;">從右側滑入的抽屜面板</p>
+                <button type="button" class="drawer-close-btn" style="
+                    padding: 8px 20px; border: none; background: #666;
+                    color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+                ">關閉抽屜</button>
+            `;
+            drawerRightContent.querySelector('.drawer-close-btn').onclick = () => drawerRight.close();
+            drawerRight.setContent(drawerRightContent).mount();
+
+            document.getElementById('btn-drawer-left').addEventListener('click', () => drawerLeft.open());
+            document.getElementById('btn-drawer-right').addEventListener('click', () => drawerRight.open());
+
+            // Toast
+            document.getElementById('btn-toast-success').addEventListener('click', () => {
+                ToastPanel.success('操作成功！');
+            });
+
+            document.getElementById('btn-toast-error').addEventListener('click', () => {
+                ToastPanel.error('發生錯誤，請稍後再試');
+            });
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

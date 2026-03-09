@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>複合輸入元件展示</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: #f5f7fa;
+            padding: 40px;
+            color: var(--cl-text);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .section {
+            background: var(--cl-bg);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f0f0;
+            color: #2c3e50;
+        }
+
+        .demo-item {
+            margin-bottom: 24px;
+        }
+
+        .demo-item h3 {
+            font-size: 16px;
+            color: var(--cl-text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .output {
+            margin-top: 8px;
+            padding: 12px;
+            background: #282c34;
+            color: #abb2bf;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+    </style>
+    <link rel="stylesheet" href="../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>複合輸入元件展示</h1>
+
+        <div class="section">
+            <h2>第一類：相依輸入（順序生效）</h2>
+
+            <div class="demo-item">
+                <h3>1. 地址輸入 (使用模擬 API)</h3>
+                <div id="demo-address"></div>
+                <div id="output-address" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>2. 日期時間輸入</h3>
+                <div id="demo-datetime"></div>
+                <div id="output-datetime" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>3. 學籍輸入 (條件啟用)</h3>
+                <div id="demo-student"></div>
+                <div id="output-student" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>4. 單位層級 (四級聯動 + API)</h3>
+                <div id="demo-org"></div>
+                <div id="output-org" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>5. 自定義相依綁定</h3>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <label><input type="checkbox" id="custom-source"> 啟用右側輸入框</label>
+                    <input type="text" id="custom-target" placeholder="被控制的輸入框"
+                        style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>第二類：分組輸入 (列表)</h2>
+
+            <div class="demo-item">
+                <h3>1. 個人基本資料列表</h3>
+                <div id="demo-person"></div>
+                <div id="output-person" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>2. 地址列表 (重複使用地址元件)</h3>
+                <div id="demo-address-list"></div>
+                <div id="output-address-list" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>3. 電話組</h3>
+                <div id="demo-phone"></div>
+                <div id="output-phone" class="output">等待輸入...</div>
+            </div>
+
+            <div class="demo-item">
+                <h3>4. 社群軟體組</h3>
+                <div id="demo-social"></div>
+                <div id="output-social" class="output">等待輸入...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>第三類：照片牆 (PhotoWall)</h2>
+            <div class="demo-item">
+                <h3>照片牆 (PhotoWall)</h3>
+                <p style="margin-bottom: 12px; color: #666; font-size: 14px;">功能：網格排列、新增/刪除、雙重確認、拖視窗上傳、預覽燈箱。</p>
+                <div id="demo-photowall"></div>
+                <div id="output-photowall" class="output">目前照片數量: 0</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>第四類：文件牆 (DocumentWall)</h2>
+            <div class="demo-item">
+                <h3>文件牆 (DocumentWall)</h3>
+                <p style="margin-bottom: 12px; color: #666; font-size: 14px;">功能：文件列表、類型圖示、說明與下載、批次打包。</p>
+                <div id="demo-docwall"></div>
+                <div id="output-docwall" class="output">已選取文件: 0</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            ModalPanel.alert({ message: 'Error: ' + msg + '\nLine: ' + line });
+            console.error('Global Error:', error);
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            ModalPanel.alert({ message: 'Unhandled Rejection: ' + event.reason });
+            console.error('Unhandled Rejection:', event.reason);
+        });
+    </script>
+
+    <script type="module">
+        import { AddressInput } from './AddressInput/AddressInput.js';
+        import { DateTimeInput } from './DateTimeInput/DateTimeInput.js';
+        import { StudentInput } from './StudentInput/StudentInput.js';
+        import { OrganizationInput } from './OrganizationInput/OrganizationInput.js';
+        import { ChainedInput } from './ChainedInput/ChainedInput.js';
+
+        import { PersonInfoList } from './PersonInfoList/PersonInfoList.js';
+        import { AddressListInput } from './AddressListInput/AddressListInput.js';
+        import { PhoneListInput } from './PhoneListInput/PhoneListInput.js';
+        import { SocialMediaList } from './SocialMediaList/SocialMediaList.js';
+        import { PhotoWall } from '../layout/PhotoWall/PhotoWall.js';
+        import { DocumentWall } from '../layout/DocumentWall/DocumentWall.js';
+        import { ModalPanel } from '../layout/Panel/ModalPanel.js';
+        import { UploadButton } from '../common/UploadButton/UploadButton.js';
+
+        try {
+            // --- 圖片資料模擬 ---
+            const MOCK_PHOTOS = [
+                { id: 1, src: 'https://picsum.photos/id/10/800/600', alt: '風景相片 1' },
+                { id: 2, src: 'https://picsum.photos/id/11/800/600', alt: '風景相片 2' },
+                { id: 3, src: 'https://picsum.photos/id/12/800/600', alt: '風景相片 3' },
+                { id: 4, src: 'https://picsum.photos/id/13/800/600', alt: '風景相片 4' }
+            ];
+
+            // --- 文件資料模擬 ---
+            const MOCK_DOCS = [
+                { id: 'd1', title: '專案需求規格書_v2.0.pdf', type: 'pdf', description: '包含所有功能需求與非功能需求', src: '#' },
+                { id: 'd2', title: '會議記錄_20240115.doc', type: 'doc', templateType: 'meeting', description: '週會記錄重點', src: '#' },
+                { id: 'd3', title: '預算編列表.xls', type: 'xls', templateType: 'financial', description: '年度預算詳細列表', src: '#' },
+                { id: 'd4', title: '系統架構簡報.ppt', type: 'ppt', description: '系統架構設計總覽', src: '#' },
+                { id: 'd5', title: 'Logo設計原檔.png', type: 'image', templateType: 'image', description: '高解析度去背檔', src: 'https://picsum.photos/id/20/200/200' },
+                { id: 'd6', title: '未分類檔案.unknown', type: 'other', description: '暫存檔案', src: '#' }
+            ];
+
+            // 讀取模板設定
+            let DOC_TEMPLATES = {};
+            fetch('../data/templates/document_templates.json')
+                .then(r => r.json())
+                .then(data => {
+                    DOC_TEMPLATES = data;
+                    console.log('Templates loaded:', DOC_TEMPLATES);
+                })
+                .catch(e => console.error('Failed to load templates:', e));
+
+            const updateOutput = (id, data) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = JSON.stringify(data, null, 2);
+            };
+
+            // ... existing code ...
+
+            // 11. DocumentWall
+            const docWall = new DocumentWall({
+                documents: MOCK_DOCS,
+                onEdit: (doc) => {
+                    // 根據 templateType 決定欄位
+                    // 若無指定或找不到，使用 default
+                    const templateName = doc.templateType && DOC_TEMPLATES[doc.templateType] ? doc.templateType : 'default';
+                    const fields = DOC_TEMPLATES[templateName] || DOC_TEMPLATES['default'];
+
+                    if (!fields) {
+                        ModalPanel.alert({ message: "尚未載入模板或模板定義錯誤" });
+                        return;
+                    }
+
+                    // 動態建立編輯表單
+                    const editModal = new ModalPanel({
+                        title: `編輯文件 (${templateName})`,
+                        width: '500px',
+                        closable: true
+                    });
+
+                    const formContainer = document.createElement('div');
+                    formContainer.style.cssText = 'padding: 20px; display: flex; flex-direction: column; gap: 16px;';
+
+                    // 儲存輸入元件參照
+                    const inputs = {};
+
+                    fields.forEach(field => {
+                        const fieldWrapper = document.createElement('div');
+                        fieldWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+                        const label = document.createElement('label');
+                        label.textContent = field.label;
+                        label.style.fontWeight = 'bold';
+                        label.style.fontSize = '14px';
+                        fieldWrapper.appendChild(label);
+
+                        let inputEl;
+                        const currentValue = doc[field.id] || '';
+
+                        if (field.type === 'textarea') {
+                            inputEl = document.createElement('textarea');
+                            inputEl.rows = 4;
+                            inputEl.style.resize = 'vertical';
+                        } else if (field.type === 'roc-date') {
+                            inputEl = document.createElement('input');
+                            inputEl.type = 'text';
+                            inputEl.placeholder = 'YYY/MM/DD';
+                            inputEl.maxLength = 9;
+                            inputEl.addEventListener('input', (e) => {
+                                e.target.value = e.target.value.replace(/[^\d\/]/g, '');
+                            });
+                        } else {
+                            inputEl = document.createElement('input');
+                            inputEl.type = field.type || 'text';
+                        }
+
+                        inputEl.value = currentValue;
+                        if (!inputEl.placeholder) inputEl.placeholder = field.placeholder || '';
+                        inputEl.style.cssText = `
+                            padding: 8px;
+                            border: 1px solid #ddd;
+                            border-radius: 4px;
+                            font-size: 14px;
+                        `;
+
+                        inputs[field.id] = inputEl;
+                        fieldWrapper.appendChild(inputEl);
+                        formContainer.appendChild(fieldWrapper);
+                    });
+
+                    // 按鈕區
+                    const btnGroup = document.createElement('div');
+                    btnGroup.style.cssText = 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 12px;';
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.textContent = '取消';
+                    cancelBtn.onclick = () => editModal.close();
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.textContent = '儲存';
+                    saveBtn.onclick = () => {
+                        // 驗證必填
+                        for (const field of fields) {
+                            if (field.required && !inputs[field.id].value.trim()) {
+                                ModalPanel.alert({ message: `${field.label} 為必填欄位` });
+                                return;
+                            }
+                        }
+
+                        // 更新資料
+                        fields.forEach(field => {
+                            doc[field.id] = inputs[field.id].value;
+                        });
+
+                        // 更新介面
+                        // 簡單做法：移除 DocumentWall 重新 render
+                        // 這裡其實應該要有 updateDocument 方法，但我們直接重載整個列表
+                        docWall.documents = [...MOCK_DOCS]; // 重新指派確保參照更新 (如果 docWall 內部沒監聽) 
+                        // 實際上 DocumentWall 構造函數複製了一份，所以要直接操作 instance
+                        // 為了簡單演示，我們直接重繪 docWall
+                        docWall.render();
+
+                        editModal.close();
+                        updateOutput('output-docwall', { lastAction: 'edit', docId: doc.id, newData: doc });
+                    };
+
+                    btnGroup.appendChild(cancelBtn);
+                    btnGroup.appendChild(saveBtn);
+                    formContainer.appendChild(btnGroup);
+
+                    editModal.setContent(formContainer);
+                    editModal.mount();
+                    editModal.open();
+                },
+                onDescription: (doc) => {
+                    ModalPanel.alert({
+                        title: '文件說明',
+                        message: `
+                            <div style="text-align: left;">
+                                <p><strong>檔名：</strong> ${doc.title}</p>
+                                <p><strong>類型：</strong> ${doc.type.toUpperCase()}</p>
+                                <p><strong>說明：</strong></p>
+                                <div style="background:#f5f5f5; padding:10px; border-radius:4px;">${doc.description || '(無)'}</div>
+                                ${Object.keys(doc).filter(k => !['id', 'title', 'type', 'description', 'src', 'templateType'].includes(k)).map(k =>
+                            `<p><strong>${k}:</strong> ${doc[k]}</p>`
+                        ).join('')}
+                            </div>
+                        `
+                    });
+                },
+                onDownload: (doc) => {
+                    // 模擬下載行為
+                    console.log(`Downloading ${doc.title}...`);
+                    // 這裡可以呼叫 window.open 或建立 a tag
+                    const a = document.createElement('a');
+                    a.href = doc.src; // 實際連結
+                    a.download = doc.title;
+                    // document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    ModalPanel.alert({ message: `開始下載：${doc.title}` });
+                },
+                onDelete: (id) => {
+                    console.log(`Document deleted: ${id}`);
+                }
+            });
+            docWall.mount('#demo-docwall');
+
+            // 10. PhotoWall
+            // 處理上傳 Modal
+            const openUploadModal = (onSuccess) => {
+                console.log('Opening Upload Modal...');
+                const modal = new ModalPanel({
+                    title: '上傳相片',
+                    width: '400px',
+                    height: 'auto',
+                    closable: true
+                });
+
+                const content = document.createElement('div');
+                content.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 20px;
+                    padding: 20px;
+                `;
+
+                // 提示文字
+                const hint = document.createElement('p');
+                hint.textContent = '請選擇要上傳的照片 (支援 JPG, PNG)';
+                hint.style.color = '#666';
+                content.appendChild(hint);
+
+                // 上傳按鈕
+                const uploadBtn = new UploadButton({
+                    type: 'image',
+                    label: '選擇照片',
+                    maxSize: 5 * 1024 * 1024, // 5MB
+                    onSelect: async (files) => {
+                        console.log('File Selected:', files);
+                        if (files.length > 0) {
+                            const file = files[0];
+                            // 轉換為 DataURL 以供預覽
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                onSuccess({
+                                    src: e.target.result,
+                                    name: file.name
+                                });
+                                modal.close();
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    }
+                });
+
+                // 為了讓 UploadButton 正常顯示，我們需要一個容器掛載它
+                const btnContainer = document.createElement('div');
+                uploadBtn.mount(btnContainer);
+                content.appendChild(btnContainer);
+
+                modal.setContent(content);
+                modal.mount();
+                modal.open();
+            };
+
+            // 10. PhotoWall
+            const photoWall = new PhotoWall({
+                photos: MOCK_PHOTOS,
+                onAdd: () => {
+                    console.log('Add Button Clicked');
+                    try {
+                        openUploadModal((result) => {
+                            console.log('Upload Success', result);
+                            const id = Date.now();
+                            photoWall.addPhoto({
+                                id,
+                                src: result.src,
+                                alt: result.name
+                            });
+                        });
+                    } catch (e) {
+                        ModalPanel.alert({ message: 'Add Check failed: ' + e.message });
+                    }
+                },
+                onDelete: (id) => {
+                    console.log('已刪除照片 ID:', id);
+                },
+                onChange: (photos) => {
+                    // 簡化輸出，不印 base64
+                    const simplePhotos = photos.map(p => ({
+                        id: p.id,
+                        alt: p.alt,
+                        src: p.src.startsWith('data:') ? '(Data URL...)' : p.src
+                    }));
+                    document.getElementById('output-photowall').textContent = `照片數量: ${photos.length}\n` + JSON.stringify(simplePhotos, null, 2);
+                }
+            });
+            photoWall.mount('#demo-photowall');
+
+
+            // 1. Address
+            new AddressInput({
+                onChange: (val) => updateOutput('output-address', val)
+            }).mount('#demo-address');
+
+            // 2. DateTime
+            new DateTimeInput({
+                onChange: (val) => updateOutput('output-datetime', val)
+            }).mount('#demo-datetime');
+
+            // 3. Student
+            new StudentInput({
+                onChange: (val) => updateOutput('output-student', val)
+            }).mount('#demo-student');
+
+            // 4. Organization
+            new OrganizationInput({
+                onChange: (val) => updateOutput('output-org', val)
+            }).mount('#demo-org');
+
+            // 5. Custom Binding
+            ChainedInput.bindDependency({
+                source: '#custom-source',
+                target: '#custom-target',
+                condition: (checked) => checked
+            });
+
+            // 6. Person List
+            new PersonInfoList({
+                onChange: (items) => updateOutput('output-person', items)
+            }).mount('#demo-person');
+
+            // 7. Address List
+            new AddressListInput({
+                onChange: (items) => updateOutput('output-address-list', items)
+            }).mount('#demo-address-list');
+
+            // 8. Phone List
+            new PhoneListInput({
+                onChange: (items) => updateOutput('output-phone', items)
+            }).mount('#demo-phone');
+
+            // 9. Social List
+            new SocialMediaList({
+                onChange: (items) => updateOutput('output-social', items)
+            }).mount('#demo-social');
+
+        } catch (error) {
+            console.error('Demo Init Error:', error);
+            ModalPanel.alert({ message: '初始化失敗: ' + error.message });
+        }
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

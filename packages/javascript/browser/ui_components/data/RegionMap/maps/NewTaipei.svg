@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 450 400" xmlns="http://www.w3.org/2000/svg">
+  <title>新北市行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+    .taipei-hole { fill: #fff; stroke: #999; stroke-width: 0.5; stroke-dasharray: 3,2; }
+  </style>
+  
+  <!-- 石門區 -->
+  <g id="region-shimen" data-code="shimen" data-name="石門區">
+    <path class="district" d="M280,25 L310,20 L335,35 L330,60 L300,65 L275,50 Z"/>
+  </g>
+  
+  <!-- 三芝區 -->
+  <g id="region-sanzhi" data-code="sanzhi" data-name="三芝區">
+    <path class="district" d="M235,40 L280,25 L310,45 L305,80 L265,95 L235,75 Z"/>
+  </g>
+  
+  <!-- 淡水區 -->
+  <g id="region-tamsui" data-code="tamsui" data-name="淡水區">
+    <path class="district" d="M180,50 L235,40 L265,70 L270,115 L230,140 L185,125 L170,85 Z"/>
+  </g>
+  
+  <!-- 金山區 -->
+  <g id="region-jinshan" data-code="jinshan" data-name="金山區">
+    <path class="district" d="M305,50 L350,40 L380,65 L375,105 L335,115 L300,95 Z"/>
+  </g>
+  
+  <!-- 萬里區 -->
+  <g id="region-wanli" data-code="wanli" data-name="萬里區">
+    <path class="district" d="M335,90 L380,70 L415,95 L410,140 L365,155 L330,130 Z"/>
+  </g>
+  
+  <!-- 八里區 -->
+  <g id="region-bali" data-code="bali" data-name="八里區">
+    <path class="district" d="M130,90 L175,80 L190,115 L180,150 L140,155 L115,130 Z"/>
+  </g>
+  
+  <!-- 汐止區 -->
+  <g id="region-xizhi" data-code="xizhi" data-name="汐止區">
+    <path class="district" d="M335,120 L385,110 L415,140 L405,190 L355,200 L325,170 Z"/>
+  </g>
+  
+  <!-- 五股區 -->
+  <g id="region-wugu" data-code="wugu" data-name="五股區">
+    <path class="district" d="M140,140 L185,125 L210,150 L200,190 L155,195 L130,170 Z"/>
+  </g>
+  
+  <!-- 林口區 -->
+  <g id="region-linkou" data-code="linkou" data-name="林口區">
+    <path class="district" d="M100,160 L145,145 L165,180 L155,220 L110,230 L85,200 Z"/>
+  </g>
+  
+  <!-- 泰山區 -->
+  <g id="region-taishan" data-code="taishan" data-name="泰山區">
+    <path class="district" d="M155,180 L195,170 L215,200 L205,235 L165,240 L150,210 Z"/>
+  </g>
+  
+  <!-- 新莊區 -->
+  <g id="region-xinzhuang" data-code="xinzhuang" data-name="新莊區">
+    <path class="district" d="M150,225 L200,215 L230,245 L220,285 L170,290 L145,260 Z"/>
+  </g>
+  
+  <!-- 蘆洲區 -->
+  <g id="region-luzhou" data-code="luzhou" data-name="蘆洲區">
+    <path class="district" d="M200,210 L235,200 L255,225 L245,255 L210,260 L195,235 Z"/>
+  </g>
+  
+  <!-- 三重區 -->
+  <g id="region-sanchong" data-code="sanchong" data-name="三重區">
+    <path class="district" d="M215,250 L255,235 L285,260 L280,300 L240,310 L210,285 Z"/>
+  </g>
+  
+  <!-- 板橋區 -->
+  <g id="region-banqiao" data-code="banqiao" data-name="板橋區">
+    <path class="district" d="M165,285 L220,275 L255,305 L245,350 L195,360 L160,330 Z"/>
+  </g>
+  
+  <!-- 中和區 -->
+  <g id="region-zhonghe" data-code="zhonghe" data-name="中和區">
+    <path class="district" d="M200,340 L255,325 L290,350 L285,395 L235,405 L195,380 Z"/>
+  </g>
+  
+  <!-- 永和區 -->
+  <g id="region-yonghe" data-code="yonghe" data-name="永和區">
+    <path class="district" d="M255,310 L290,295 L315,320 L305,355 L270,360 L250,340 Z"/>
+  </g>
+  
+  <!-- 土城區 -->
+  <g id="region-tucheng" data-code="tucheng" data-name="土城區">
+    <path class="district" d="M125,320 L170,305 L200,340 L190,385 L140,395 L110,360 Z"/>
+  </g>
+  
+  <!-- 樹林區 -->
+  <g id="region-shulin" data-code="shulin" data-name="樹林區">
+    <path class="district" d="M85,280 L135,265 L165,300 L155,345 L105,355 L70,320 Z"/>
+  </g>
+  
+  <!-- 鶯歌區 -->
+  <g id="region-yingge" data-code="yingge" data-name="鶯歌區">
+    <path class="district" d="M50,320 L95,305 L125,340 L115,385 L65,395 L35,360 Z"/>
+  </g>
+  
+  <!-- 三峽區 -->
+  <g id="region-sanxia" data-code="sanxia" data-name="三峽區">
+    <path class="district" d="M60,365 L120,350 L160,385 L145,435 L85,450 L40,415 Z"/>
+  </g>
+  
+  <!-- 新店區 -->
+  <g id="region-xindian" data-code="xindian" data-name="新店區">
+    <path class="district" d="M180,375 L235,360 L280,395 L265,450 L200,465 L165,430 Z"/>
+  </g>
+  
+  <!-- 烏來區 -->
+  <g id="region-wulai" data-code="wulai" data-name="烏來區">
+    <path class="district" d="M200,445 L260,430 L305,470 L290,530 L225,545 L180,500 Z"/>
+  </g>
+  
+  <!-- 深坑區 -->
+  <g id="region-shenkeng" data-code="shenkeng" data-name="深坑區">
+    <path class="district" d="M285,355 L325,340 L355,370 L345,410 L305,420 L280,390 Z"/>
+  </g>
+  
+  <!-- 石碇區 -->
+  <g id="region-shiding" data-code="shiding" data-name="石碇區">
+    <path class="district" d="M270,400 L315,385 L355,415 L345,465 L295,480 L260,445 Z"/>
+  </g>
+  
+  <!-- 坪林區 -->
+  <g id="region-pinglin" data-code="pinglin" data-name="坪林區">
+    <path class="district" d="M300,455 L355,440 L405,475 L395,540 L335,555 L290,515 Z"/>
+  </g>
+  
+  <!-- 平溪區 -->
+  <g id="region-pingxi" data-code="pingxi" data-name="平溪區">
+    <path class="district" d="M320,180 L370,165 L410,195 L400,250 L350,265 L315,235 Z"/>
+  </g>
+  
+  <!-- 瑞芳區 -->
+  <g id="region-ruifang" data-code="ruifang" data-name="瑞芳區">
+    <path class="district" d="M355,155 L410,135 L450,165 L445,225 L395,245 L355,210 Z"/>
+  </g>
+  
+  <!-- 貢寮區 -->
+  <g id="region-gongliao" data-code="gongliao" data-name="貢寮區">
+    <path class="district" d="M395,175 L445,155 L480,190 L475,260 L425,280 L390,245 Z"/>
+  </g>
+  
+  <!-- 雙溪區 -->
+  <g id="region-shuangxi" data-code="shuangxi" data-name="雙溪區">
+    <path class="district" d="M380,240 L430,220 L470,255 L460,315 L410,330 L375,295 Z"/>
+  </g>
+  
+  <!-- 台北市（空洞標示） -->
+  <g id="taipei-hole">
+    <path class="taipei-hole" d="M240,155 L290,145 L330,170 L340,215 L320,260 L275,280 L230,265 L210,220 L215,180 Z"/>
+    <text x="275" y="215" text-anchor="middle" font-size="11" fill="#999">臺北市</text>
+  </g>
+</svg>

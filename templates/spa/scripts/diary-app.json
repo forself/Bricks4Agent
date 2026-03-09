@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "diary-app",
+    "displayName": "My Daily Diary",
+    "description": "個人日記網站 - 記錄生活、繪圖、分享",
+    "outputDir": "./output"
+  },
+  "backend": {
+    "dbName": "diary.db",
+    "apiPort": "5100"
+  },
+  "frontend": {
+    "devPort": "3100",
+    "apiBaseUrl": "https://localhost:5100/api"
+  },
+  "security": {
+    "jwtKey": "DiaryAppSecretKey32CharactersLong!@#$",
+    "jwtIssuer": "diary-app",
+    "corsOrigins": ["http://localhost:3100", "https://localhost:3100"]
+  },
+  "admin": {
+    "email": "admin@diary.local",
+    "password": "Diary@Admin123",
+    "name": "管理員"
+  }
+}

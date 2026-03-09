@@ -1,0 +1,681 @@
+/**
+ * social.css - 社群媒體風格頁面全域樣式
+ *
+ * 使用 .social- 前綴避免與現有樣式衝突。
+ * 色彩方案延續 Bootstrap 4 變數，增加社群風格配色。
+ *
+ * @author MAGI System
+ * @version 1.0.0
+ */
+
+/* ============================================
+   變數定義
+   ============================================ */
+:root {
+    --social-primary: #0a66c2;
+    --social-primary-light: #e8f0fe;
+    --social-danger: #e74c3c;
+    --social-success: #28a745;
+    --social-warning: #ff9800;
+    --social-info: #17a2b8;
+    --social-bg: #f0f2f5;
+    --social-card-bg: #ffffff;
+    --social-text: #1a1a2e;
+    --social-text-secondary: #6c757d;
+    --social-border: #e4e6eb;
+    --social-radius: 12px;
+    --social-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --social-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --social-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================
+   頁面容器
+   ============================================ */
+.social-page {
+    background: var(--social-bg);
+    min-height: 100vh;
+    padding-bottom: 40px;
+}
+
+.social-page__content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* ============================================
+   雙欄佈局
+   ============================================ */
+.social-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 24px;
+    margin-top: 24px;
+}
+
+@media (max-width: 992px) {
+    .social-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.social-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.social-main {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+}
+
+/* ============================================
+   通用卡片區塊
+   ============================================ */
+.social-section {
+    background: var(--social-card-bg);
+    border-radius: var(--social-radius);
+    box-shadow: var(--social-shadow-sm);
+    overflow: hidden;
+}
+
+.social-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--social-border);
+}
+
+.social-section__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin: 0;
+}
+
+.social-section__badge {
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: var(--social-primary-light);
+    color: var(--social-primary);
+    font-weight: 500;
+}
+
+.social-section__body {
+    padding: 16px 20px;
+}
+
+.social-section__footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--social-border);
+    text-align: center;
+}
+
+/* ============================================
+   資訊列表（左側欄用）
+   ============================================ */
+.social-info-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.social-info-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: var(--social-text);
+}
+
+.social-info-list__item + .social-info-list__item {
+    border-top: 1px solid #f5f5f5;
+}
+
+.social-info-list__icon {
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+    color: var(--social-text-secondary);
+}
+
+.social-info-list__label {
+    font-weight: 500;
+    min-width: 60px;
+    color: var(--social-text-secondary);
+}
+
+.social-info-list__value {
+    flex: 1;
+    word-break: break-all;
+}
+
+/* ============================================
+   標籤
+   ============================================ */
+.social-tag {
+    display: inline-block;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #f0f2f5;
+    color: #495057;
+    margin: 2px;
+    white-space: nowrap;
+}
+
+.social-tag--primary { background: var(--social-primary-light); color: var(--social-primary); }
+.social-tag--danger { background: #fdecea; color: var(--social-danger); }
+.social-tag--success { background: #e8f5e9; color: var(--social-success); }
+.social-tag--warning { background: #fff3e0; color: #e65100; }
+.social-tag--info { background: #e0f7fa; color: var(--social-info); }
+
+.social-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* ============================================
+   按鈕
+   ============================================ */
+.social-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--social-border);
+    background: var(--social-card-bg);
+    color: var(--social-text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.social-btn:hover {
+    background: #f0f2f5;
+    border-color: #c4c6ca;
+}
+
+.social-btn--primary {
+    background: var(--social-primary);
+    color: #fff;
+    border-color: var(--social-primary);
+}
+
+.social-btn--primary:hover {
+    background: #004182;
+    border-color: #004182;
+}
+
+.social-btn--sm {
+    padding: 5px 12px;
+    font-size: 12px;
+}
+
+/* ============================================
+   Tab 切換列
+   ============================================ */
+.social-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--social-border);
+    background: var(--social-card-bg);
+    padding: 0 20px;
+    overflow-x: auto;
+}
+
+.social-tabs__item {
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--social-text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.social-tabs__item:hover {
+    color: var(--social-primary);
+    background: var(--social-primary-light);
+}
+
+.social-tabs__item--active {
+    color: var(--social-primary);
+    border-bottom-color: var(--social-primary);
+}
+
+/* ============================================
+   搜尋列
+   ============================================ */
+.social-search {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px;
+    background: var(--social-card-bg);
+    border-bottom: 1px solid var(--social-border);
+}
+
+.social-search__input {
+    flex: 1;
+    padding: 8px 14px;
+    border: 1px solid var(--social-border);
+    border-radius: 20px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.social-search__input:focus {
+    border-color: var(--social-primary);
+    box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
+
+.social-search__btn {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: none;
+    background: var(--social-primary);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* ============================================
+   「查看更多」連結
+   ============================================ */
+.social-show-more {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--social-primary);
+    cursor: pointer;
+    font-weight: 500;
+    padding: 4px 0;
+}
+
+.social-show-more:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   篩選面板（動態牆左側用）
+   ============================================ */
+.social-filter-group {
+    padding: 12px 0;
+}
+
+.social-filter-group + .social-filter-group {
+    border-top: 1px solid #f0f2f5;
+}
+
+.social-filter-group__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin-bottom: 8px;
+}
+
+.social-filter-group__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--social-text);
+    cursor: pointer;
+}
+
+.social-filter-group__option input {
+    margin: 0;
+}
+
+/* ============================================
+   空狀態
+   ============================================ */
+.social-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--social-text-secondary);
+}
+
+.social-empty__icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.social-empty__text {
+    font-size: 15px;
+}
+
+/* ============================================
+   動畫
+   ============================================ */
+@keyframes social-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.social-animate-in {
+    animation: social-fade-in 0.3s ease-out;
+}
+
+/* ============================================
+   員警個人資訊 - 瀏覽/編輯模式
+   ============================================ */
+.social-profile-edit .form-group {
+    margin-bottom: 16px;
+}
+
+.social-profile-edit .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin-bottom: 6px;
+}
+
+.social-profile-edit .form-input,
+.social-profile-edit .form-select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--social-border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--social-text);
+    background: #fff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.social-profile-edit .form-input:focus,
+.social-profile-edit .form-select:focus {
+    border-color: var(--social-primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
+
+.social-profile-edit .form-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px 14px;
+    border: 1px solid var(--social-border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--social-text);
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.social-profile-edit .form-textarea:focus {
+    border-color: var(--social-primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.1);
+}
+
+.social-profile-edit .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.social-profile-edit .form-error {
+    font-size: 12px;
+    color: #dc3545;
+    margin-top: 4px;
+}
+
+.social-profile-edit .form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--social-border);
+}
+
+/* ============================================
+   好友卡片
+   ============================================ */
+.social-friend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.social-friend-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--social-border);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.social-friend-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.social-friend-card__avatar {
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.social-friend-card__name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin-bottom: 4px;
+}
+
+.social-friend-card__subtitle {
+    font-size: 12px;
+    color: var(--social-text-secondary);
+    margin-bottom: 8px;
+}
+
+.social-friend-card__mutual {
+    font-size: 11px;
+    color: var(--social-text-secondary);
+    margin-bottom: 12px;
+}
+
+.social-friend-card__actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+/* ============================================
+   群組卡片
+   ============================================ */
+.social-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.social-group-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--social-border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.social-group-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.social-group-card__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.social-group-card__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.social-group-card__icon--project { background: rgba(74, 144, 217, 0.1); }
+.social-group-card__icon--unit    { background: rgba(40, 167, 69, 0.1); }
+.social-group-card__icon--hobby   { background: rgba(255, 152, 0, 0.1); }
+
+.social-group-card__info {
+    flex: 1;
+    min-width: 0;
+}
+
+.social-group-card__name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin-bottom: 4px;
+}
+
+.social-group-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--social-text-secondary);
+}
+
+.social-group-card__desc {
+    font-size: 13px;
+    color: var(--social-text-secondary);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.social-group-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.social-group-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--social-border);
+}
+
+/* 頁面標題區 */
+.social-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.social-page-header__title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--social-text);
+}
+
+.social-page-header__subtitle {
+    font-size: 14px;
+    color: var(--social-text-secondary);
+    margin-top: 4px;
+}
+
+/* 建立群組 Modal 表單 */
+.social-modal-form .form-group {
+    margin-bottom: 16px;
+}
+
+.social-modal-form .form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--social-text);
+    margin-bottom: 6px;
+}
+
+.social-modal-form .form-input,
+.social-modal-form .form-select,
+.social-modal-form .form-textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--social-border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.social-modal-form .form-textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.social-modal-form .form-radio-group {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.social-modal-form .form-radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* ============================================
+   響應式輔助
+   ============================================ */
+@media (max-width: 768px) {
+    .social-page__content {
+        padding: 0 12px;
+    }
+    .social-section__body {
+        padding: 12px 14px;
+    }
+    .social-tabs__item {
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+    .social-friend-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+    .social-group-grid {
+        grid-template-columns: 1fr;
+    }
+    .social-profile-edit .form-row {
+        grid-template-columns: 1fr;
+    }
+}

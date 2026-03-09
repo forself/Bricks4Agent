@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Region Map Icons Reference</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f3f4f6;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        h2 {
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: #4b5563;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        .icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .map-icon-card {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+
+        .map-icon-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .icon-wrapper {
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            /* Optional: Add background circle */
+            background: #f9fafb;
+            border-radius: 50%;
+            padding: 10px;
+        }
+
+        .icon-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .label {
+            font-size: 14px;
+            color: #374151;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        .sub-label {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🗺️ Map Icons Gallery</h1>
+        <p>Reference map assets converted into icon components.</p>
+
+        <!-- Dynamic Generation Script -->
+        <div id="gallery-root"></div>
+    </div>
+
+    <script>
+        const cityMaps = [
+            "Changhua.png", "Chiayi.png", "ChiayiCountry.png", "Daito.png",
+            "GoldenGate.png", "Hsinchu.png", "HsinchuCounty.png", "Hualien.png",
+            "Kaohsiung1.png", "Kaohsiung2.png", "Keelung.png", "Lianjiang.png",
+            "Miaoli.png", "Nantou.png", "NewTaipei1.png", "NewTaipei2.png",
+            "Penghu.png", "Pingtung1.png", "Pingtung2.png", "Taichung1.png",
+            "Taichung2.png", "Tainan1.png", "Tainan2.png", "Taipei.png",
+            "Taiwan.png", "Taoyuan.png", "Yilan.png", "Yunlin.png"
+        ];
+
+        const jurisdictionMaps = [
+            "Changhua.png", "Chiayi.png", "ChiayiCountry.png", "Daito.png",
+            "GoldenGate.png", "Hsinchu.png", "HsinchuCounty.png", "Hualien.png",
+            "Kaohsiung.png", "Keelung.png", "Lianjiang.png", "Miaoli.png",
+            "Nantou.png", "NewTaipei.png", "Penghu.png", "Pingtung.png",
+            "Taichung.png", "Tainan.png", "Taipei.png", "Taiwan.png",
+            "Taoyuan.png", "Yilan.png", "Yunlin.png", "全臺灣.png"
+        ];
+
+        function renderSection(title, folder, files) {
+            const root = document.getElementById('gallery-root');
+
+            const h2 = document.createElement('h2');
+            h2.textContent = title;
+            root.appendChild(h2);
+
+            const grid = document.createElement('div');
+            grid.className = 'icon-grid';
+
+            files.forEach(file => {
+                const name = file.split('.')[0];
+                const card = document.createElement('div');
+                card.className = 'map-icon-card';
+                card.innerHTML = `
+                    <div class="icon-wrapper">
+                        <img src="../refresource/${folder}/${file}" alt="${name}" loading="lazy">
+                    </div>
+                    <div class="label">${name}</div>
+                    <div class="sub-label">${folder}</div>
+                `;
+                grid.appendChild(card);
+            });
+
+            root.appendChild(grid);
+        }
+
+        renderSection('🏙️ City Level', 'City', cityMaps);
+        renderSection('🏛️ Jurisdiction / District', 'Jurisdiction', jurisdictionMaps);
+
+    </script>
+</body>
+
+</html>

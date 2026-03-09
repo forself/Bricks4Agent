@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Visualization Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f3f4f6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #1f2937;
+            margin-bottom: 40px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--cl-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 18px;
+            color: #4b5563;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            position: relative;
+        }
+
+        @media (max-width: 1024px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Advanced Visualization Components (v2)</h1>
+        <p style="text-align:center; color:#666; margin-bottom:30px">
+            互動增強版：拖放功能、點擊細節卡片、巢狀組織圖
+        </p>
+
+        <div class="grid">
+            <!-- 1. Relation Chart -->
+            <div class="card">
+                <h2>1. 關聯圖 (Relationship Network)</h2>
+                <div id="chart-relation" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：嘗試<b>拖曳節點</b>改變佈局。<b>滑鼠懸停</b>查看詳細卡片。
+                </p>
+            </div>
+
+            <!-- 2. Org Chart -->
+            <div class="card">
+                <h2>2. 組織圖 (Organization Structure)</h2>
+                <div id="chart-org" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：點擊<b>"+"圓點</b>展開/收合。點擊<b>卡片</b>查看人員詳情。
+                </p>
+            </div>
+
+            <!-- 3. Hierarchy Chart -->
+            <div class="card">
+                <h2>3. 單位階層圖 (Unit Hierarchy)</h2>
+                <div id="chart-hierarchy" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：點擊單位查看詳情 (巢狀組織圖)。可<b>多層堆疊</b>詳細卡片。
+                </p>
+            </div>
+
+            <!-- 4. Timeline Chart -->
+            <div class="card">
+                <h2>4. 時序泳道圖 (Event Timeline)</h2>
+                <div id="chart-timeline" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：滑鼠懸停事件查看詳細資訊。
+                </p>
+            </div>
+
+            <!-- 5. Sankey Chart -->
+            <div class="card">
+                <h2>5. 流程桑基圖 (Process Flow)</h2>
+                <div id="chart-sankey" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：滑鼠懸停路徑/節點查看流量細節。
+                </p>
+            </div>
+
+            <!-- 6. Flame Chart -->
+            <div class="card">
+                <h2>6. 階層火焰圖 (Event Hierarchy)</h2>
+                <div id="chart-flame" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：查看事件執行堆疊與耗時佔比。
+                </p>
+            </div>
+
+            <!-- 7. Sunburst Chart -->
+            <div class="card">
+                <h2>7. 組織旭日圖 (Sunburst View)</h2>
+                <div id="chart-sunburst" class="chart-container"></div>
+                <p style="color:#666; font-size:12px; margin-top:10px">
+                    [互動]：放射狀查看組織規模分佈。
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../layout/Panel/index.js';
+
+        import { RelationChart } from './RelationChart.js';
+        import { OrgChart } from './OrgChart.js';
+        import { HierarchyChart } from './HierarchyChart.js';
+        import { TimelineChart } from './TimelineChart.js';
+        import { SankeyChart } from './SankeyChart.js';
+        import { FlameChart } from './FlameChart.js';
+        import { SunburstChart } from './SunburstChart.js';
+
+        // 1. Relation Chart Data
+        const relationData = {
+            nodes: [
+                { id: 'A', label: '核心專案', group: 'Project' },
+                { id: 'B', label: '前端團隊', group: 'Team' },
+                { id: 'C', label: '後端團隊', group: 'Team' },
+                { id: 'D', label: '外部顧問', group: 'External' },
+                { id: 'E', label: '利害關係人', group: 'Stakeholder' },
+                { id: 'F', label: 'UI/UX', group: 'Design' },
+                { id: 'G', label: '資料庫', group: 'Resource' }
+            ],
+            links: [
+                { source: 'A', target: 'B' },
+                { source: 'A', target: 'C' },
+                { source: 'A', target: 'E' },
+                { source: 'B', target: 'F' },
+                { source: 'C', target: 'G' },
+                { source: 'D', target: 'A' },
+                { source: 'B', target: 'C' }
+            ]
+        };
+
+        new RelationChart({
+            container: '#chart-relation',
+            nodes: relationData.nodes,
+            links: relationData.links,
+            showLegend: true
+        });
+
+        // 2. Org Chart Data (Tree)
+        const orgData = {
+            id: 'CEO', label: '執行長', title: 'John Doe',
+            children: [
+                {
+                    id: 'CTO', label: '技術長', title: 'Jane Smith',
+                    children: [
+                        { id: 'EM1', label: '工程經理', title: 'Eng Mgr 1' },
+                        { id: 'EM2', label: '工程經理', title: 'Eng Mgr 2' }
+                    ]
+                },
+                {
+                    id: 'CPO', label: '產品長', title: 'Bob Brown',
+                    children: [
+                        { id: 'PM1', label: '產品經理', title: 'Product 1' },
+                        {
+                            id: 'PM2', label: '產品經理', title: 'Product 2',
+                            children: [
+                                { id: 'D1', label: '設計師', title: 'Designer' }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        new OrgChart({
+            container: '#chart-org',
+            root: orgData,
+            actionButton: {
+                label: '查看完整個人檔案',
+                onClick: (node) => {
+                    ModalPanel.alert({ message: `正在跳轉至 ${node.title} 的詳細個人頁面...` });
+                }
+            }
+        });
+
+        // 3. Hierarchy Chart Data (Unit Tree)
+        const hierarchyData = {
+            id: 'HQ', label: '總公司', title: 'Headquarters',
+            children: [
+                {
+                    id: 'North', label: '北區分公司', title: 'North Branch',
+                    children: [
+                        { id: 'N1', label: '業務一部', title: 'Sales 1' },
+                        { id: 'N2', label: '業務二部', title: 'Sales 2' }
+                    ]
+                },
+                {
+                    id: 'South', label: '南區分公司', title: 'South Branch',
+                    children: [
+                        { id: 'S1', label: '研發中心', title: 'R&D Center' }
+                    ]
+                }
+            ]
+        };
+
+        new HierarchyChart({
+            container: '#chart-hierarchy',
+            root: hierarchyData
+        });
+
+        // 4. 事件時間軸 (Event Timeline) - Process/Log
+        const timelineData = [
+            { id: 1, group: 'Server A', start: Date.now(), end: Date.now() + 5000, label: 'HTTP Request', details: 'GET /api/users\nDuration: 5s' },
+            { id: 2, group: 'Server A', start: Date.now() + 6000, end: Date.now() + 8000, label: 'DB Query', details: 'SELECT * FROM users\nDuration: 2s' },
+            { id: 3, group: 'Server B', start: Date.now() + 1000, end: Date.now() + 9000, label: 'Job Processing', details: 'Image Resizing\nDuration: 8s' },
+            { id: 4, group: 'Client', start: Date.now() + 500, end: Date.now() + 2000, label: 'Render UI', details: 'Dashboard Load\nDuration: 1.5s' },
+            { id: 5, group: 'Server A', start: Date.now() + 9000, end: Date.now() + 12000, label: 'API Response', details: 'Status: 200 OK\nPayload Size: 15KB' }
+        ];
+
+        new TimelineChart({
+            container: '#chart-timeline',
+            data: timelineData,
+            title: 'System Event Timeline'
+        });
+
+        // 5. 流程桑基圖 (Process Sankey)
+        const sankeyData = {
+            nodes: [
+                { name: 'Lead' }, { name: 'Contacted' }, { name: 'Meeting' },
+                { name: 'Proposal' }, { name: 'Negotiation' }, { name: 'Closed' },
+                { name: 'Lost' }
+            ],
+            links: [
+                { source: 0, target: 1, value: 100 },
+                { source: 0, target: 6, value: 20 },
+                { source: 1, target: 2, value: 60 },
+                { source: 1, target: 6, value: 40 },
+                { source: 2, target: 3, value: 40 },
+                { source: 3, target: 4, value: 30 },
+                { source: 4, target: 5, value: 20 },
+                { source: 4, target: 6, value: 10 }
+            ]
+        };
+
+        new SankeyChart({
+            container: '#chart-sankey',
+            data: sankeyData,
+            title: 'Sales Process Flow'
+        });
+
+        // 6. 事件階層火焰圖 (Event Hierarchy Flame)
+        const flameData = {
+            name: 'Main Process', value: 100,
+            children: [
+                {
+                    name: 'Initialization', value: 20, children: [
+                        { name: 'Config Load', value: 10 },
+                        { name: 'DB Connect', value: 10 }
+                    ]
+                },
+                {
+                    name: 'Processing', value: 60, children: [
+                        { name: 'Data Fetch', value: 30 },
+                        { name: 'Transformation', value: 20 },
+                        { name: 'Validation', value: 10 }
+                    ]
+                },
+                { name: 'Cleanup', value: 20 }
+            ]
+        };
+
+        new FlameChart({
+            container: '#chart-flame',
+            data: flameData,
+            title: 'Performance Trace'
+        });
+
+        // 7. 組織旭日圖 (Organization Sunburst)
+        const sunburstData = {
+            name: 'Corp',
+            children: [
+                {
+                    name: 'R&D', children: [
+                        { name: 'Frontend', value: 10 },
+                        { name: 'Backend', value: 15 },
+                        { name: 'AI', value: 8 }
+                    ]
+                },
+                {
+                    name: 'Sales', children: [
+                        { name: 'Domestic', value: 20 },
+                        { name: 'International', value: 12 }
+                    ]
+                },
+                { name: 'HR', value: 5 }
+            ]
+        };
+
+        new SunburstChart({
+            container: '#chart-sunburst',
+            data: sunburstData,
+            title: 'Department Size'
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

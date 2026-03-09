@@ -1,0 +1,156 @@
+import { BaseChart } from './BaseChart.js';
+
+export class LineChart extends BaseChart {
+    constructor(options) {
+        super(options);
+        this.data = options.data || { labels: [], series: [] };
+    }
+
+    render() {
+        if (!this.width || !this.height) return;
+
+        const { top, right, bottom, left } = this.options.padding;
+        const chartWidth = this.width - left - right;
+        const chartHeight = this.height - top - bottom;
+
+        const g = this.createSVGElement('g');
+        g.setAttribute('transform', `translate(${left}, ${top})`);
+        this.svg.appendChild(g);
+
+        const maxVal = Math.max(...this.data.series.flatMap(s => s.data)) * 1.1; // 10% buffering
+        const yScale = val => chartHeight - (val / (maxVal || 1)) * chartHeight;
+        const xScale = index => (index / (this.data.labels.length - 1)) * chartWidth;
+
+        // Draw Axes
+        this._drawAxes(g, chartWidth, chartHeight, maxVal);
+
+        // Draw Lines
+        this.data.series.forEach((s, sIndex) => {
+            const points = s.data.map((val, i) => [xScale(i), yScale(val)]);
+            const color = this.getColor(sIndex);
+
+            // Create Path Data (Bezier)
+            let pathD = `M ${points[0][0]},${points[0][1]}`;
+            // Simple straight lines for now, can upgrade to Bezier later if needed
+            // points.forEach((p, i) => { if (i>0) pathD += ` L ${p[0]},${p[1]}`; });
+
+            // Catmull-Rom or simple smooth curve approximation
+            for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i];
+                const p1 = points[i + 1];
+                const cp1x = p0[0] + (p1[0] - p0[0]) / 2;
+                const cp1y = p0[1];
+                const cp2x = p0[0] + (p1[0] - p0[0]) / 2;
+                const cp2y = p1[1];
+                pathD += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p1[0]},${p1[1]}`;
+            }
+
+            // Path Element
+            const path = this.createSVGElement('path');
+            path.setAttribute('d', pathD);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', color);
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('stroke-linecap', 'round');
+
+            // Animation
+            const diff = path.getTotalLength();
+            path.style.strokeDasharray = diff;
+            path.style.strokeDashoffset = diff;
+            path.style.transition = 'stroke-dashoffset 1s ease-out';
+            requestAnimationFrame(() => path.style.strokeDashoffset = 0);
+
+            g.appendChild(path);
+
+            // Draw Area (Optional, minimal style)
+            const areaPath = this.createSVGElement('path');
+            const areaD = pathD + ` L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
+            areaPath.setAttribute('d', areaD);
+            areaPath.setAttribute('fill', color);
+            areaPath.setAttribute('opacity', '0.1');
+            g.appendChild(areaPath);
+
+            // Draw Dots
+            points.forEach((p, i) => {
+                const circle = this.createSVGElement('circle');
+                circle.setAttribute('cx', p[0]);
+                circle.setAttribute('cy', p[1]);
+                circle.setAttribute('r', 4);
+                circle.setAttribute('fill', '#fff');
+                circle.setAttribute('stroke', color);
+                circle.setAttribute('stroke-width', 2);
+
+                // Interaction
+                circle.onmouseenter = (e) => {
+                    circle.setAttribute('r', 6);
+                    const safeLabel = this.escapeHtml(this.data.labels[i]);
+                    const safeName = this.escapeHtml(s.name);
+                    this.showTooltip(`
+                        <strong>${safeLabel}</strong><br/>
+                        ${safeName}: ${s.data[i]}
+                    `, e);
+                };
+                circle.onmouseleave = () => {
+                    circle.setAttribute('r', 4);
+                    this.hideTooltip();
+                };
+
+                g.appendChild(circle);
+            });
+        });
+    }
+
+    _drawAxes(g, w, h, maxVal) {
+        // X Axis
+        const xAxis = this.createSVGElement('line');
+        xAxis.setAttribute('x1', 0);
+        xAxis.setAttribute('y1', h);
+        xAxis.setAttribute('x2', w);
+        xAxis.setAttribute('y2', h);
+        xAxis.setAttribute('stroke', '#e5e7eb');
+        g.appendChild(xAxis);
+
+        // Labels (Skip some if too many)
+        const step = Math.ceil(this.data.labels.length / 6);
+        this.data.labels.forEach((label, i) => {
+            if (i % step !== 0) return;
+            const text = this.createSVGElement('text');
+            const x = (i / (this.data.labels.length - 1)) * w;
+            text.setAttribute('x', x);
+            text.setAttribute('y', h + 20);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '12');
+            text.setAttribute('fill', '#9ca3af');
+            text.textContent = label;
+            g.appendChild(text);
+        });
+
+        // Grid
+        const gridCount = 5;
+        for (let i = 0; i <= gridCount; i++) {
+            const y = h - (i / gridCount) * h;
+            const line = this.createSVGElement('line');
+            line.setAttribute('x1', 0);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', w);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', '#e5e7eb');
+            line.setAttribute('stroke-dasharray', '4');
+            g.appendChild(line);
+            // Value text
+            const text = this.createSVGElement('text');
+            text.setAttribute('x', -10);
+            text.setAttribute('y', y + 4);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '10');
+            text.textContent = Math.round((maxVal * i) / gridCount);
+            g.appendChild(text);
+        }
+
+        // Draw Legend
+        this._drawLegend(this.data.series.map((s, i) => ({
+            label: s.name,
+            color: this.getColor(i)
+        })));
+    }
+}

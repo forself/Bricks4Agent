@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoPanel Demo</title>
+    <link rel="stylesheet" href="InfoPanel.css">
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 32px 20px 48px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            border: 1px solid var(--cl-border);
+            border-radius: 8px;
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        .shell {
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        #panel-host {
+            display: grid;
+            gap: 16px;
+        }
+
+        #event-log {
+            color: var(--cl-text-secondary);
+            font-size: 14px;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>InfoPanel Demo</h1>
+        <div class="toolbar">
+            <button id="add-panel">Add Panel</button>
+            <button id="update-panel">Update Revenue</button>
+            <button id="toggle-layout">Toggle Layout</button>
+            <button id="clear-panels">Clear All</button>
+        </div>
+
+        <div class="shell">
+            <div id="panel-host"></div>
+            <div id="event-log">Click a panel header to inspect its payload.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { InfoPanel } from './InfoPanel.js';
+        import { createThemeToggle } from '../../demo-utils.js';
+
+        const eventLog = document.getElementById('event-log');
+        let extraIndex = 1;
+        let gridMode = true;
+
+        const infoPanel = new InfoPanel({
+            containerId: 'panel-host',
+            layout: 'grid',
+            columns: 3,
+            collapsible: true,
+            onPanelClick: ({ panelId, panel }) => {
+                eventLog.textContent = `Clicked panel ${panelId}: ${panel.title}`;
+            },
+            panels: [
+                {
+                    id: 'users',
+                    type: 'stat',
+                    title: 'Active Users',
+                    icon: 'fas fa-users',
+                    color: 'primary',
+                    data: { value: '12,480', label: 'Last 24 hours' }
+                },
+                {
+                    id: 'revenue',
+                    type: 'stat',
+                    title: 'Revenue',
+                    icon: 'fas fa-coins',
+                    color: 'success',
+                    data: { value: '$98,200', label: 'This month' }
+                },
+                {
+                    id: 'alerts',
+                    type: 'notification',
+                    title: 'Alerts',
+                    icon: 'fas fa-bell',
+                    color: 'warning',
+                    data: {
+                        items: [
+                            { time: '14:30', message: 'Quarterly review starts at 15:00.' },
+                            { time: '09:10', message: 'One workflow is waiting for approval.' }
+                        ]
+                    }
+                }
+            ]
+        });
+
+        document.getElementById('add-panel').addEventListener('click', () => {
+            const id = `extra-${extraIndex}`;
+            infoPanel.addPanel({
+                id,
+                type: 'stat',
+                title: `Extra Panel ${extraIndex}`,
+                icon: 'fas fa-chart-line',
+                color: 'info',
+                data: {
+                    value: String(100 + extraIndex * 7),
+                    label: 'Generated at runtime'
+                }
+            });
+            extraIndex += 1;
+            eventLog.textContent = `Added panel ${id}.`;
+        });
+
+        document.getElementById('update-panel').addEventListener('click', () => {
+            const nextValue = `$${(90000 + Math.floor(Math.random() * 20000)).toLocaleString()}`;
+            infoPanel.updatePanel('revenue', {
+                data: { value: nextValue, label: 'Updated just now' }
+            });
+            eventLog.textContent = `Updated revenue panel to ${nextValue}.`;
+        });
+
+        document.getElementById('toggle-layout').addEventListener('click', () => {
+            gridMode = !gridMode;
+            infoPanel.setLayout(gridMode ? 'grid' : 'list', gridMode ? 3 : 1);
+            eventLog.textContent = `Switched layout to ${gridMode ? 'grid' : 'list'}.`;
+        });
+
+        document.getElementById('clear-panels').addEventListener('click', () => {
+            infoPanel.clearAllPanels();
+            eventLog.textContent = 'Cleared all panels.';
+        });
+
+        createThemeToggle();
+    </script>
+</body>
+</html>

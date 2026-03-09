@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebTextEditor Demo</title>
+    <link rel="stylesheet" href="../theme.css">
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 32px 20px 48px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        button {
+            border: 1px solid var(--cl-border);
+            border-radius: 8px;
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin-top: 16px;
+            display: none;
+        }
+
+        #status {
+            color: var(--cl-text-secondary);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebTextEditor Demo</h1>
+
+        <div class="card">
+            <div id="editor-host"></div>
+            <div class="actions">
+                <button id="show-html">Show HTML</button>
+                <button id="show-text">Show Text</button>
+                <button id="reset-content">Reset Content</button>
+                <button id="save-file">Save File</button>
+            </div>
+            <div id="status">Editor ready.</div>
+            <pre id="output"></pre>
+        </div>
+    </div>
+
+    <script type="module">
+        import { WebTextEditor } from './WebTextEditor/WebTextEditor.js';
+        import { createThemeToggle } from '../demo-utils.js';
+
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        const initialContent = `
+            <h2>WebTextEditor</h2>
+            <p>This demo verifies that the editor can render, update content and export text safely.</p>
+            <ul>
+                <li>Rich text editing</li>
+                <li>Structured content blocks</li>
+                <li>HTML and plain-text export</li>
+            </ul>
+            <blockquote>Use the toolbar or the buttons below to inspect the content.</blockquote>
+        `;
+
+        const editor = new WebTextEditor({
+            container: '#editor-host',
+            height: '420px',
+            content: initialContent
+        });
+
+        function showOutput(value) {
+            output.style.display = 'block';
+            output.textContent = value;
+        }
+
+        document.getElementById('show-html').addEventListener('click', () => {
+            showOutput(editor.getHTML());
+            status.textContent = 'Displayed current HTML output.';
+        });
+
+        document.getElementById('show-text').addEventListener('click', () => {
+            showOutput(editor.getText());
+            status.textContent = 'Displayed current plain-text output.';
+        });
+
+        document.getElementById('reset-content').addEventListener('click', () => {
+            editor.setContent(initialContent);
+            output.style.display = 'none';
+            status.textContent = 'Restored the initial content.';
+        });
+
+        document.getElementById('save-file').addEventListener('click', () => {
+            editor.saveToFile('web-text-editor-demo.json');
+            status.textContent = 'Triggered saveToFile().';
+        });
+
+        createThemeToggle();
+    </script>
+</body>
+</html>

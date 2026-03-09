@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline 時間軸 Demo</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Segoe UI', sans-serif;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+        }
+        h1 { color: #1a1a2e; margin-bottom: 8px; }
+        p.desc { color: #6c757d; margin-bottom: 32px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            max-width: 700px;
+        }
+        .demo-section h2 { margin-top: 0; color: var(--cl-text); font-size: 18px; margin-bottom: 16px; }
+        #click-log {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: var(--cl-bg-tertiary);
+            border-radius: 6px;
+            font-size: 13px;
+            color: #6c757d;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>Timeline 時間軸</h1>
+    <p class="desc">垂直時間軸，按時間降序排列，支援月份分組和類型色標。</p>
+
+    <!-- 分組時間軸 -->
+    <div class="demo-section">
+        <h2>1. 按月份分組</h2>
+        <div id="grouped"></div>
+        <div id="click-log">點擊卡片查看事件...</div>
+    </div>
+
+    <!-- 不分組 -->
+    <div class="demo-section">
+        <h2>2. 不分組</h2>
+        <div id="flat"></div>
+    </div>
+
+    <!-- 空狀態 -->
+    <div class="demo-section">
+        <h2>3. 空狀態</h2>
+        <div id="empty"></div>
+    </div>
+
+    <script type="module">
+        import { Timeline } from './Timeline.js';
+
+        const logEl = document.getElementById('click-log');
+
+        const items = [
+            {
+                timestamp: '2026-03-05', type: '緊急事件', icon: '🚨',
+                title: '販毒案件查獲', description: '於台北市中山區查獲販毒案件，涉案人員共 3 人，查獲毒品數量可觀。',
+                onClick: (item) => { logEl.textContent = `點擊：${item.title}（${new Date().toLocaleTimeString()}）`; }
+            },
+            {
+                timestamp: '2026-03-01', type: '一般活動', icon: '👥',
+                title: '組織聚會', description: '約 30 名成員於某餐廳聚會，疑似討論人事異動。',
+                onClick: (item) => { logEl.textContent = `點擊：${item.title}（${new Date().toLocaleTimeString()}）`; }
+            },
+            {
+                timestamp: '2026-02-20', type: '群眾事件', icon: '📢',
+                title: '陳情活動預告', description: '預計於市政府前集結，估計人數約 100 人。'
+            },
+            {
+                timestamp: '2026-02-15', type: '選舉動態', icon: '🗳️',
+                title: '選舉動員跡象', description: '偵測到組織動員跡象，疑似介入地方選舉。'
+            },
+            {
+                timestamp: '2026-02-01', type: '國際動態', icon: '🌏',
+                title: '境外聯繫', description: '疑似與東南亞某組織建立新的聯繫管道。'
+            },
+            {
+                timestamp: '2026-01-15', type: '公開資訊', icon: '🎊',
+                title: '公開慶典', description: '組織公開舉辦新年慶典，約 200 人參與。'
+            },
+            {
+                timestamp: '2026-01-05', type: '緊急事件', icon: '🚨',
+                title: '勒索案件', description: '接獲報案，疑似組織成員涉及商業勒索行為。'
+            }
+        ];
+
+        // 1. 按月份分組
+        new Timeline({ items, grouped: true }).mount('#grouped');
+
+        // 2. 不分組
+        new Timeline({ items: items.slice(0, 4), grouped: false }).mount('#flat');
+
+        // 3. 空狀態
+        new Timeline({ items: [], emptyText: '此人員暫無相關活動紀錄' }).mount('#empty');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

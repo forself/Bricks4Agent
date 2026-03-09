@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 350 380" xmlns="http://www.w3.org/2000/svg">
+  <title>桃園市行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+  </style>
+  
+  <!-- 大園區 -->
+  <g id="region-dayuan" data-code="dayuan" data-name="大園區">
+    <path class="district" d="M60,30 L120,20 L155,45 L145,90 L100,100 L55,80 Z"/>
+  </g>
+  
+  <!-- 蘆竹區 -->
+  <g id="region-luzhu" data-code="luzhu" data-name="蘆竹區">
+    <path class="district" d="M145,30 L210,25 L245,55 L235,105 L180,115 L145,90 Z"/>
+  </g>
+  
+  <!-- 龜山區 -->
+  <g id="region-guishan" data-code="guishan" data-name="龜山區">
+    <path class="district" d="M225,50 L290,45 L320,80 L310,135 L255,145 L220,115 Z"/>
+  </g>
+  
+  <!-- 觀音區 -->
+  <g id="region-guanyin" data-code="guanyin" data-name="觀音區">
+    <path class="district" d="M25,85 L80,75 L110,110 L100,165 L45,175 L15,135 Z"/>
+  </g>
+  
+  <!-- 桃園區 -->
+  <g id="region-taoyuan" data-code="taoyuan" data-name="桃園區">
+    <path class="district" d="M175,100 L245,90 L275,130 L265,185 L205,195 L170,160 Z"/>
+  </g>
+  
+  <!-- 新屋區 -->
+  <g id="region-xinwu" data-code="xinwu" data-name="新屋區">
+    <path class="district" d="M30,150 L90,140 L120,180 L110,240 L50,250 L20,205 Z"/>
+  </g>
+  
+  <!-- 八德區 -->
+  <g id="region-bade" data-code="bade" data-name="八德區">
+    <path class="district" d="M250,145 L310,135 L340,175 L330,235 L275,245 L245,205 Z"/>
+  </g>
+  
+  <!-- 中壢區 -->
+  <g id="region-zhongli" data-code="zhongli" data-name="中壢區">
+    <path class="district" d="M100,160 L170,150 L205,195 L195,260 L130,270 L95,225 Z"/>
+  </g>
+  
+  <!-- 大溪區 -->
+  <g id="region-daxi" data-code="daxi" data-name="大溪區">
+    <path class="district" d="M270,215 L335,200 L365,250 L355,320 L290,335 L260,285 Z"/>
+  </g>
+  
+  <!-- 楊梅區 -->
+  <g id="region-yangmei" data-code="yangmei" data-name="楊梅區">
+    <path class="district" d="M55,225 L120,215 L155,260 L145,325 L85,340 L45,290 Z"/>
+  </g>
+  
+  <!-- 平鎮區 -->
+  <g id="region-pingzhen" data-code="pingzhen" data-name="平鎮區">
+    <path class="district" d="M120,260 L185,250 L220,295 L210,360 L150,375 L115,325 Z"/>
+  </g>
+  
+  <!-- 龍潭區 -->
+  <g id="region-longtan" data-code="longtan" data-name="龍潭區">
+    <path class="district" d="M195,295 L265,280 L305,330 L295,400 L230,415 L190,365 Z"/>
+  </g>
+  
+  <!-- 復興區 -->
+  <g id="region-fuxing" data-code="fuxing" data-name="復興區">
+    <path class="district" d="M290,300 L355,285 L390,345 L380,430 L310,450 L275,390 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wall Components Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: var(--cl-bg-secondary);
+        }
+
+        .section {
+            background: var(--cl-bg);
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: var(--cl-text);
+            border-bottom: 2px solid var(--cl-border-light);
+            padding-bottom: 10px;
+        }
+
+        #doc-wall-demo,
+        #photo-wall-demo {
+            height: 400px;
+            border: 1px solid var(--cl-border-light);
+        }
+    </style>
+    <link rel="stylesheet" href="../theme.css">
+</head>
+
+<body>
+    <h1>Wall Components Demo</h1>
+
+    <div class="section">
+        <h2>DocumentWall</h2>
+        <div id="doc-wall-demo"></div>
+    </div>
+
+    <div class="section">
+        <h2>PhotoWall</h2>
+        <div id="photo-wall-demo"></div>
+    </div>
+
+    <script type="module">
+        import { DocumentWall } from './DocumentWall/DocumentWall.js';
+        import { PhotoWall } from './PhotoWall/PhotoWall.js';
+
+        // DocumentWall
+        const docWall = new DocumentWall({
+            data: [
+                { id: 1, title: 'Project Plan', type: 'pdf', date: '2023-10-01' },
+                { id: 2, title: 'Budget Report', type: 'xls', date: '2023-10-05' },
+                { id: 3, title: 'Meeting Notes', type: 'doc', date: '2023-10-10' }
+            ]
+        });
+        docWall.mount('#doc-wall-demo');
+
+        // PhotoWall
+        const photoWall = new PhotoWall({
+            data: [
+                { id: 1, src: 'https://via.placeholder.com/150', title: 'Photo 1' },
+                { id: 2, src: 'https://via.placeholder.com/150', title: 'Photo 2' },
+                { id: 3, src: 'https://via.placeholder.com/150', title: 'Photo 3' },
+                { id: 4, src: 'https://via.placeholder.com/150', title: 'Photo 4' },
+                { id: 5, src: 'https://via.placeholder.com/150', title: 'Photo 5' }
+            ]
+        });
+        photoWall.mount('#photo-wall-demo');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

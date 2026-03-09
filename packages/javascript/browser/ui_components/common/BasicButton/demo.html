@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Button 元件展示</title>
+    <link rel="stylesheet" href="BasicButton.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #4CAF50, #2196F3, #9C27B0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-section h2::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(180deg, #4CAF50, #2196F3);
+            border-radius: 2px;
+        }
+
+        .category-box {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .category-box:last-child {
+            margin-bottom: 0;
+        }
+
+        .category-title {
+            font-size: 13px;
+            color: #8892b0;
+            margin-bottom: 12px;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row-label {
+            font-size: 12px;
+            color: #8892b0;
+            min-width: 100px;
+        }
+
+        /* 對話框展示 */
+        .dialog-demo {
+            background: var(--cl-bg);
+            border-radius: 12px;
+            padding: 24px;
+            color: var(--cl-text);
+            max-width: 400px;
+        }
+
+        .dialog-demo h3 {
+            font-size: 18px;
+            margin-bottom: 12px;
+        }
+
+        .dialog-demo p {
+            color: var(--cl-text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .dialog-demo .dialog-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* 搜尋表單展示 */
+        .search-form-demo {
+            background: var(--cl-bg);
+            border-radius: 12px;
+            padding: 20px;
+            color: var(--cl-text);
+        }
+
+        .search-form-demo .form-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        .search-form-demo label {
+            font-size: 14px;
+            color: var(--cl-text-secondary);
+            min-width: 60px;
+        }
+
+        .search-form-demo input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--cl-border);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .search-form-demo .form-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding-top: 16px;
+            border-top: 1px solid var(--cl-border-light);
+        }
+
+        /* 精靈步驟展示 */
+        .wizard-demo {
+            background: var(--cl-bg);
+            border-radius: 12px;
+            padding: 24px;
+            color: var(--cl-text);
+        }
+
+        .wizard-steps {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .wizard-step {
+            display: flex;
+            align-items: center;
+        }
+
+        .wizard-step-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .wizard-step--active .wizard-step-number {
+            background: #2196F3;
+            color: white;
+        }
+
+        .wizard-step--done .wizard-step-number {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .wizard-step-line {
+            width: 60px;
+            height: 2px;
+            background: #e0e0e0;
+            margin: 0 8px;
+        }
+
+        .wizard-content {
+            text-align: center;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .wizard-buttons {
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔘 Basic Button</h1>
+        <p class="subtitle">一般操作按鈕元件 - 23 種常用操作</p>
+
+        <!-- 分類展示 -->
+        <div class="demo-section">
+            <h2>按鈕類型</h2>
+
+            <div class="category-box">
+                <div class="category-title">✓ 確認/取消類</div>
+                <div class="demo-row" id="confirm-cancel"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">🔍 資料操作類</div>
+                <div class="demo-row" id="data-ops"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">📋 列表操作類</div>
+                <div class="demo-row" id="list-ops"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">🧭 導航類</div>
+                <div class="demo-row" id="nav-ops"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">📂 展開收合類</div>
+                <div class="demo-row" id="expand-ops"></div>
+            </div>
+        </div>
+
+        <!-- 樣式變體 -->
+        <div class="demo-section">
+            <h2>樣式變體</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Primary</span>
+                <div id="variant-primary"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Secondary</span>
+                <div id="variant-secondary"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Text</span>
+                <div id="variant-text"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Icon</span>
+                <div id="variant-icon"></div>
+            </div>
+        </div>
+
+        <!-- 實際應用：對話框 -->
+        <div class="demo-section">
+            <h2>實際應用：對話框</h2>
+            <div class="dialog-demo">
+                <h3>確認刪除</h3>
+                <p>您確定要刪除這筆資料嗎？此操作無法復原。</p>
+                <div class="dialog-buttons" id="dialog-buttons"></div>
+            </div>
+        </div>
+
+        <!-- 實際應用：搜尋表單 -->
+        <div class="demo-section">
+            <h2>實際應用：搜尋表單</h2>
+            <div class="search-form-demo">
+                <div class="form-row">
+                    <label>關鍵字</label>
+                    <input type="text" placeholder="請輸入搜尋關鍵字">
+                </div>
+                <div class="form-row">
+                    <label>日期</label>
+                    <input type="date">
+                </div>
+                <div class="form-buttons" id="form-buttons"></div>
+            </div>
+        </div>
+
+        <!-- 實際應用：精靈步驟 -->
+        <div class="demo-section">
+            <h2>實際應用：精靈步驟</h2>
+            <div class="wizard-demo">
+                <div class="wizard-steps">
+                    <div class="wizard-step wizard-step--done">
+                        <div class="wizard-step-number">✓</div>
+                    </div>
+                    <div class="wizard-step-line"></div>
+                    <div class="wizard-step wizard-step--active">
+                        <div class="wizard-step-number">2</div>
+                    </div>
+                    <div class="wizard-step-line"></div>
+                    <div class="wizard-step">
+                        <div class="wizard-step-number">3</div>
+                    </div>
+                </div>
+                <div class="wizard-content">
+                    <p>步驟 2：填寫詳細資料</p>
+                </div>
+                <div class="wizard-buttons" id="wizard-buttons"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../../layout/Panel/index.js';
+
+        import { BasicButton } from './BasicButton.js';
+
+        // 確認/取消類
+        const confirmCancelTypes = ['confirm', 'yes', 'cancel', 'no', 'done', 'close'];
+        const confirmCancelContainer = document.getElementById('confirm-cancel');
+        confirmCancelTypes.forEach(type => {
+            new BasicButton({ type, size: 'medium' }).mount(confirmCancelContainer);
+        });
+
+        // 資料操作類
+        const dataOpsTypes = ['search', 'clear', 'reset', 'save', 'apply', 'copy', 'refresh'];
+        const dataOpsContainer = document.getElementById('data-ops');
+        dataOpsTypes.forEach(type => {
+            new BasicButton({ type, size: 'medium' }).mount(dataOpsContainer);
+        });
+
+        // 列表操作類
+        const listOpsTypes = ['addRow', 'selectAll', 'deselectAll'];
+        const listOpsContainer = document.getElementById('list-ops');
+        listOpsTypes.forEach(type => {
+            new BasicButton({ type, size: 'medium' }).mount(listOpsContainer);
+        });
+
+        // 導航類
+        const navOpsTypes = ['back', 'prev', 'next'];
+        const navOpsContainer = document.getElementById('nav-ops');
+        navOpsTypes.forEach(type => {
+            new BasicButton({ type, size: 'medium' }).mount(navOpsContainer);
+        });
+
+        // 展開收合類
+        const expandOpsTypes = ['expandAll', 'collapseAll'];
+        const expandOpsContainer = document.getElementById('expand-ops');
+        expandOpsTypes.forEach(type => {
+            new BasicButton({ type, size: 'medium' }).mount(expandOpsContainer);
+        });
+
+        // 樣式變體
+        const sampleTypes = ['confirm', 'cancel', 'search', 'reset'];
+        ['primary', 'secondary', 'text', 'icon'].forEach(variant => {
+            const container = document.getElementById(`variant-${variant}`);
+            const group = BasicButton.createGroup(
+                sampleTypes.map(type => ({ type })),
+                { variant, size: 'medium' }
+            );
+            container.appendChild(group);
+        });
+
+        // 對話框按鈕
+        document.getElementById('dialog-buttons').appendChild(
+            BasicButton.createDialogButtons({
+                cancelLabel: '取消',
+                confirmLabel: '確認刪除',
+                onConfirm: () => ModalPanel.alert({ message: "已確認" }),
+                onCancel: () => ModalPanel.alert({ message: "已取消" })
+            })
+        );
+
+        // 表單按鈕
+        document.getElementById('form-buttons').appendChild(
+            BasicButton.createFormButtons({
+                showReset: true,
+                onSearch: () => ModalPanel.alert({ message: "搜尋" }),
+                onClear: () => ModalPanel.alert({ message: "清除" }),
+                onReset: () => ModalPanel.alert({ message: "重設" })
+            })
+        );
+
+        // 精靈步驟按鈕
+        const wizardButtons = document.getElementById('wizard-buttons');
+        wizardButtons.appendChild(
+            BasicButton.createGroup([
+                { type: 'prev', variant: 'secondary', onClick: () => ModalPanel.alert({ message: "上一步" }) },
+                { type: 'next', variant: 'primary', onClick: () => ModalPanel.alert({ message: "下一步" }) }
+            ])
+        );
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

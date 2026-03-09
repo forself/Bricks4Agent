@@ -1,0 +1,176 @@
+/**
+ * AuthButton Component Styles
+ * 登入/登出按鈕樣式
+ */
+
+.auth-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    font-family: inherit;
+}
+
+.auth-btn:focus {
+    outline: none;
+}
+
+.auth-btn:focus-visible {
+    outline: 2px solid #2196F3;
+    outline-offset: 2px;
+}
+
+.auth-btn__icon {
+    display: inline-flex;
+}
+
+.auth-btn__icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* ===== Filled 變體 ===== */
+.auth-btn--login.auth-btn--filled {
+    background: #4CAF50;
+    color: white;
+}
+
+.auth-btn--login.auth-btn--filled:hover {
+    background: #388E3C;
+}
+
+.auth-btn--logout.auth-btn--filled {
+    background: #F44336;
+    color: white;
+}
+
+.auth-btn--logout.auth-btn--filled:hover {
+    background: #D32F2F;
+}
+
+/* ===== Outlined 變體 ===== */
+.auth-btn--login.auth-btn--outlined {
+    background: transparent;
+    color: #4CAF50;
+    border: 2px solid #4CAF50;
+}
+
+.auth-btn--login.auth-btn--outlined:hover {
+    background: rgba(76, 175, 80, 0.1);
+}
+
+.auth-btn--logout.auth-btn--outlined {
+    background: transparent;
+    color: #F44336;
+    border: 2px solid #F44336;
+}
+
+.auth-btn--logout.auth-btn--outlined:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+/* ===== Text 變體 ===== */
+.auth-btn--login.auth-btn--text {
+    background: transparent;
+    color: #4CAF50;
+    border: none;
+}
+
+.auth-btn--login.auth-btn--text:hover {
+    background: rgba(76, 175, 80, 0.1);
+}
+
+.auth-btn--logout.auth-btn--text {
+    background: transparent;
+    color: #F44336;
+    border: none;
+}
+
+.auth-btn--logout.auth-btn--text:hover {
+    background: rgba(244, 67, 54, 0.1);
+}
+
+/* ===== Icon 變體 ===== */
+.auth-btn--icon {
+    border-radius: 50%;
+}
+
+.auth-btn--login.auth-btn--icon {
+    color: #4CAF50;
+}
+
+.auth-btn--login.auth-btn--icon:hover {
+    background: rgba(76, 175, 80, 0.15);
+}
+
+.auth-btn--logout.auth-btn--icon {
+    color: #F44336;
+}
+
+.auth-btn--logout.auth-btn--icon:hover {
+    background: rgba(244, 67, 54, 0.15);
+}
+
+/* ===== 尺寸 ===== */
+.auth-btn--small {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 4px;
+}
+
+.auth-btn--small .auth-btn__icon {
+    width: 14px;
+    height: 14px;
+}
+
+.auth-btn--small.auth-btn--icon {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+}
+
+.auth-btn--medium {
+    padding: 8px 16px;
+    font-size: 14px;
+    gap: 6px;
+}
+
+.auth-btn--medium .auth-btn__icon {
+    width: 18px;
+    height: 18px;
+}
+
+.auth-btn--medium.auth-btn--icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+}
+
+.auth-btn--large {
+    padding: 12px 24px;
+    font-size: 16px;
+    gap: 8px;
+}
+
+.auth-btn--large .auth-btn__icon {
+    width: 22px;
+    height: 22px;
+}
+
+.auth-btn--large.auth-btn--icon {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+}
+
+/* Hover 效果 */
+.auth-btn:hover {
+    transform: translateY(-1px);
+}
+
+.auth-btn:active {
+    transform: scale(0.97);
+}

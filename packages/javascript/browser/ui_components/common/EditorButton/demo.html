@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EditorButton Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f4f6fb;
+            margin: 0;
+            padding: 24px;
+            color: #111827;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 16px;
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            background: var(--cl-bg);
+        }
+
+        #log {
+            margin-top: 16px;
+            color: #475569;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>EditorButton Demo</h1>
+        <div id="toolbar" class="toolbar"></div>
+        <div id="log">No action yet.</div>
+    </div>
+
+    <script type="module">
+        import { EditorButton } from './EditorButton.js';
+
+        const log = document.getElementById('log');
+        const toolbar = document.getElementById('toolbar');
+
+        const buttons = [
+            new EditorButton({
+                type: EditorButton.TYPES.BOLD,
+                onClick: () => { log.textContent = 'Bold clicked.'; }
+            }),
+            new EditorButton({
+                type: EditorButton.TYPES.ITALIC,
+                onClick: () => { log.textContent = 'Italic clicked.'; }
+            }),
+            new EditorButton({
+                type: EditorButton.TYPES.UNDO,
+                onClick: () => { log.textContent = 'Undo clicked.'; }
+            }),
+            new EditorButton({
+                type: EditorButton.TYPES.CUSTOM,
+                label: 'Flag',
+                icon: '<svg viewBox="0 0 24 24" fill="none"><path d="M6 3v18M6 4h10l-2 4 2 4H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+                active: true,
+                onClick: (_event, button) => {
+                    button.active = !button.active;
+                    log.textContent = `Custom button active: ${button.active}`;
+                }
+            })
+        ];
+
+        buttons.forEach(button => button.mount(toolbar));
+    </script>
+</body>
+
+</html>

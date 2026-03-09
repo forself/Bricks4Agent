@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <title>地圖圖層堆疊測試</title>
+    <style>
+        .map-container {
+            position: relative;
+            width: 800px;
+            /* Adjust as needed */
+            height: 1000px;
+            border: 1px solid #ddd;
+            background: #f0f0f0;
+        }
+
+        .map-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            /* Let clicks pass through for testing overlap */
+        }
+
+        .base {
+            opacity: 0.2;
+        }
+
+        .layer {
+            opacity: 0.8;
+            filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Stacking Alignment Test</h1>
+    <div class="map-container">
+        <!-- Base: Full Taiwan Map from City folder -->
+        <img src="../refresource/City/Taiwan.png" class="map-layer base" alt="台灣地圖底圖">
+
+        <!-- Layer 1: Taipei -->
+        <img src="../refresource/City/Taipei.png" class="map-layer layer" style="z-index: 10;" alt="台北市地圖">
+
+        <!-- Layer 2: Kaohsiung1 -->
+        <img src="../refresource/City/Kaohsiung1.png" class="map-layer layer" style="z-index: 10;" alt="高雄市地圖">
+
+        <!-- Layer 3: Hualien -->
+        <img src="../refresource/City/Hualien.png" class="map-layer layer" style="z-index: 10;" alt="花蓮縣地圖">
+    </div>
+</body>
+
+</html>

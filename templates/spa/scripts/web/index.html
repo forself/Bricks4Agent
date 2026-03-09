@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPA Generator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 側邊欄 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                        <polyline points="2 17 12 22 22 17"/>
+                        <polyline points="2 12 12 17 22 12"/>
+                    </svg>
+                    <span>SPA Generator</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-tab="project">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>建立專案</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="page">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    <span>生成頁面</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="api">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    <span>生成 API</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="feature">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                    <span>完整功能</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="version">v1.0.0</div>
+            </div>
+        </aside>
+
+        <!-- 主內容 -->
+        <main class="main-content">
+            <!-- 建立專案 -->
+            <section id="tab-project" class="tab-content active">
+                <header class="content-header">
+                    <h1>建立新專案</h1>
+                    <p>建立一個新的 SPA 專案，包含前後端完整結構</p>
+                </header>
+
+                <form id="project-form" class="form-container">
+                    <!-- 專案資訊 -->
+                    <div class="form-section">
+                        <h2>專案資訊</h2>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="project-name">專案名稱 *</label>
+                                <input type="text" id="project-name" name="project.name"
+                                       placeholder="my-spa-app" required
+                                       pattern="^[a-z][a-z0-9-]*$"
+                                       title="小寫字母開頭，只能包含小寫字母、數字和連字號">
+                            </div>
+                            <div class="form-group">
+                                <label for="project-displayName">顯示名稱</label>
+                                <input type="text" id="project-displayName" name="project.displayName"
+                                       placeholder="我的 SPA 應用程式">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="project-description">專案描述</label>
+                                <input type="text" id="project-description" name="project.description"
+                                       placeholder="基於 SPA 範本建立的應用程式">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="project-outputDir">輸出目錄</label>
+                                <input type="text" id="project-outputDir" name="project.outputDir"
+                                       placeholder="D:/projects">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 後端配置 -->
+                    <div class="form-section">
+                        <h2>後端配置</h2>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="backend-dbName">資料庫檔名</label>
+                                <input type="text" id="backend-dbName" name="backend.dbName"
+                                       placeholder="app.db">
+                            </div>
+                            <div class="form-group">
+                                <label for="backend-apiPort">API 埠號</label>
+                                <input type="number" id="backend-apiPort" name="backend.apiPort"
+                                       placeholder="5001" min="1024" max="65535">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 安全性配置 -->
+                    <div class="form-section">
+                        <h2>安全性配置</h2>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="security-jwtKey">
+                                    JWT 金鑰
+                                    <button type="button" class="btn-icon" id="btn-generate-jwt" title="自動產生">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 4v6h-6"/>
+                                            <path d="M1 20v-6h6"/>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+                                            <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+                                        </svg>
+                                    </button>
+                                </label>
+                                <input type="text" id="security-jwtKey" name="security.jwtKey"
+                                       placeholder="自動產生 (至少 32 字元)">
+                            </div>
+                            <div class="form-group">
+                                <label for="security-jwtIssuer">JWT Issuer</label>
+                                <input type="text" id="security-jwtIssuer" name="security.jwtIssuer"
+                                       placeholder="與專案名稱相同">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="security-corsOrigins">CORS 允許來源 (逗號分隔)</label>
+                                <input type="text" id="security-corsOrigins" name="security.corsOrigins"
+                                       placeholder="http://localhost:3000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 管理員帳號 -->
+                    <div class="form-section">
+                        <h2>初始管理員</h2>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="admin-email">Email</label>
+                                <input type="email" id="admin-email" name="admin.email"
+                                       placeholder="admin@example.com">
+                            </div>
+                            <div class="form-group">
+                                <label for="admin-password">密碼</label>
+                                <input type="text" id="admin-password" name="admin.password"
+                                       placeholder="Admin@123">
+                            </div>
+                            <div class="form-group">
+                                <label for="admin-name">姓名</label>
+                                <input type="text" id="admin-name" name="admin.name"
+                                       placeholder="Admin">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                <line x1="12" y1="11" x2="12" y2="17"/>
+                                <line x1="9" y1="14" x2="15" y2="14"/>
+                            </svg>
+                            建立專案
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 生成頁面 -->
+            <section id="tab-page" class="tab-content">
+                <header class="content-header">
+                    <h1>生成頁面</h1>
+                    <p>快速生成前端頁面元件</p>
+                </header>
+
+                <form id="page-form" class="form-container">
+                    <div class="form-section">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="page-name">頁面名稱 *</label>
+                                <input type="text" id="page-name" name="pageName"
+                                       placeholder="例: ProductList 或 products/ProductDetail" required>
+                                <small>使用 / 分隔可建立巢狀目錄</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="page-detail" name="isDetail">
+                                    <span>使用詳情頁模板</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 預覽 -->
+                    <div class="form-section" id="page-preview" style="display: none;">
+                        <h2>預覽</h2>
+                        <div class="preview-grid">
+                            <div class="preview-item">
+                                <label>類別名稱</label>
+                                <code id="preview-className"></code>
+                            </div>
+                            <div class="preview-item">
+                                <label>檔案路徑</label>
+                                <code id="preview-filePath"></code>
+                            </div>
+                            <div class="preview-item">
+                                <label>路由路徑</label>
+                                <code id="preview-routePath"></code>
+                            </div>
+                            <div class="preview-item">
+                                <label>Import 路徑</label>
+                                <code id="preview-importPath"></code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-page-preview">
+                            預覽
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            生成頁面
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 生成 API -->
+            <section id="tab-api" class="tab-content">
+                <header class="content-header">
+                    <h1>生成 API</h1>
+                    <p>快速生成後端 API 端點、Model 和 Service</p>
+                </header>
+
+                <form id="api-form" class="form-container">
+                    <div class="form-section">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="api-entityName">實體名稱 *</label>
+                                <input type="text" id="api-entityName" name="entityName"
+                                       placeholder="例: Product, Order" required
+                                       pattern="^[A-Z][a-zA-Z0-9]*$"
+                                       title="大寫字母開頭的 PascalCase">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="api-fields">
+                                    欄位定義 (選填)
+                                    <button type="button" class="btn-icon" id="btn-add-field" title="新增欄位">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="12" y1="5" x2="12" y2="19"/>
+                                            <line x1="5" y1="12" x2="19" y2="12"/>
+                                        </svg>
+                                    </button>
+                                </label>
+                                <input type="text" id="api-fields" name="fields"
+                                       placeholder="例: Name:string,Price:decimal,Stock:int">
+                                <small>格式: 欄位名:類型, 支援類型: string, int, decimal, bool, datetime</small>
+                            </div>
+                        </div>
+
+                        <!-- 欄位編輯器 -->
+                        <div id="fields-editor" class="fields-editor" style="display: none;">
+                            <div class="fields-list"></div>
+                            <button type="button" class="btn btn-sm" id="btn-add-field-row">
+                                + 新增欄位
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 預覽 -->
+                    <div class="form-section" id="api-preview" style="display: none;">
+                        <h2>預覽</h2>
+                        <div class="preview-grid">
+                            <div class="preview-item">
+                                <label>Model 類別</label>
+                                <code id="preview-modelClass"></code>
+                            </div>
+                            <div class="preview-item">
+                                <label>Service 檔案</label>
+                                <code id="preview-serviceFile"></code>
+                            </div>
+                        </div>
+                        <div class="preview-endpoints">
+                            <h3>API 端點</h3>
+                            <table class="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Path</th>
+                                        <th>描述</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preview-endpoints-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-api-preview">
+                            預覽
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            生成 API
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 完整功能 -->
+            <section id="tab-feature" class="tab-content">
+                <header class="content-header">
+                    <h1>生成完整功能</h1>
+                    <p>一次生成前端頁面 + 後端 API 的完整功能模組</p>
+                </header>
+
+                <form id="feature-form" class="form-container">
+                    <div class="form-section">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="feature-name">功能名稱 *</label>
+                                <input type="text" id="feature-name" name="featureName"
+                                       placeholder="例: Product, Order" required
+                                       pattern="^[A-Z][a-zA-Z0-9]*$"
+                                       title="大寫字母開頭的 PascalCase">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="feature-fields">欄位定義 (選填)</label>
+                                <input type="text" id="feature-fields" name="fields"
+                                       placeholder="例: Name:string,Price:decimal,Stock:int">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h2>將會生成</h2>
+                        <div class="feature-list">
+                            <div class="feature-item">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                </svg>
+                                <div>
+                                    <strong>後端 API</strong>
+                                    <span>Model, Service, CRUD 端點</span>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                                <div>
+                                    <strong>列表頁面</strong>
+                                    <span>{Feature}ListPage.js</span>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                </svg>
+                                <div>
+                                    <strong>詳情頁面</strong>
+                                    <span>{Feature}DetailPage.js</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            生成完整功能
+                        </button>
+                    </div>
+                </form>
+            </section>
+        </main>
+
+        <!-- 輸出面板 -->
+        <aside class="output-panel" id="output-panel">
+            <div class="output-header">
+                <h3>輸出結果</h3>
+                <button type="button" class="btn-icon" id="btn-close-output">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="output-content">
+                <pre id="output-text"></pre>
+            </div>
+        </aside>
+
+        <!-- Toast -->
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

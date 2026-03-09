@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>TimePicker Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        .row { margin-bottom: 20px; }
+        .actions { display: flex; gap: 8px; margin-top: 12px; }
+        .actions button { padding: 6px 16px; border: 1px solid var(--cl-border); border-radius: 4px; cursor: pointer; font-size: 13px; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>TimePicker Demo</h1>
+    <p>時間選擇器 — 小時/分鐘面板、分鐘間隔設定</p>
+
+    <h2>1. 基本用法</h2>
+    <div id="demo1" class="row"></div>
+
+    <h2>2. 15 分鐘間隔</h2>
+    <div id="demo2" class="row"></div>
+
+    <h2>3. 帶初始值</h2>
+    <div id="demo3" class="row"></div>
+
+    <div class="actions">
+        <button id="btn-get">取得值</button>
+        <button id="btn-set">設定 18:00</button>
+        <button id="btn-clear">清除</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { TimePicker } from './TimePicker.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // Demo 1: 基本
+        const picker1 = new TimePicker({
+            label: '開始時間',
+            placeholder: '選擇時間',
+            onChange: (time) => log(`開始時間: ${time}`)
+        });
+        picker1.mount('#demo1');
+
+        // Demo 2: 15 分鐘間隔
+        const picker2 = new TimePicker({
+            label: '會議時間',
+            minuteStep: 15,
+            onChange: (time) => log(`會議時間: ${time}`)
+        });
+        picker2.mount('#demo2');
+
+        // Demo 3: 帶初始值
+        const picker3 = new TimePicker({
+            label: '預設時間',
+            value: '09:30',
+            required: true,
+            onChange: (time) => log(`預設: ${time}`)
+        });
+        picker3.mount('#demo3');
+
+        // 按鈕操作
+        document.getElementById('btn-get').addEventListener('click', () => {
+            log(`picker1: "${picker1.getValue()}", picker2: "${picker2.getValue()}", picker3: "${picker3.getValue()}"`);
+        });
+        document.getElementById('btn-set').addEventListener('click', () => {
+            picker1.setValue('18:00');
+            log('已設定 picker1 為 18:00');
+        });
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            picker1.clear();
+            log('已清除 picker1');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

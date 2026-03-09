@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FunctionMenu 功能選單容器示例</title>
+    <link rel="stylesheet" href="FunctionMenu.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 30px;
+            background: var(--cl-bg-secondary);
+        }
+
+        h1 {
+            color: var(--cl-text);
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--cl-text-secondary);
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .demo-section h2 {
+            color: var(--cl-text);
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #1976d2;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1565c0;
+        }
+
+        .output {
+            margin-top: 20px;
+            padding: 15px;
+            background: var(--cl-bg-tertiary);
+            border-radius: 4px;
+            border-left: 4px solid #1976d2;
+        }
+
+        .output-title {
+            font-weight: 600;
+            color: var(--cl-text);
+            margin-bottom: 10px;
+        }
+
+        .output-content {
+            font-size: 14px;
+            color: var(--cl-text-secondary);
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1><i class="fas fa-grip-horizontal"></i> FunctionMenu 功能選單容器組件</h1>
+    <p class="subtitle">支援多種布局、尺寸、顏色主題，適用於工具欄、快捷功能、操作選單</p>
+
+    <!-- 示例 1: Horizontal 布局 -->
+    <div class="demo-section">
+        <h2>示例 1: 水平工具欄 (Horizontal)</h2>
+        <div id="menu-horizontal"></div>
+    </div>
+
+    <!-- 示例 2: Grid 布局 -->
+    <div class="demo-section">
+        <h2>示例 2: 網格功能選單 (Grid)</h2>
+        <div class="controls">
+            <button class="btn" onclick="updateBadges()">
+                <i class="fas fa-bell"></i> 更新徽章
+            </button>
+            <button class="btn" onclick="toggleItems()">
+                <i class="fas fa-toggle-on"></i> 切換禁用
+            </button>
+        </div>
+        <div id="menu-grid"></div>
+    </div>
+
+    <!-- 示例 3: Vertical 布局 -->
+    <div class="demo-section">
+        <h2>示例 3: 垂直側邊欄選單 (Vertical)</h2>
+        <div style="max-width: 300px;">
+            <div id="menu-vertical"></div>
+        </div>
+    </div>
+
+    <!-- 示例 4: 彩色主題 -->
+    <div class="demo-section">
+        <h2>示例 4: 彩色主題按鈕</h2>
+        <div id="menu-colored"></div>
+    </div>
+
+    <!-- 示例 5: 不同尺寸 -->
+    <div class="demo-section">
+        <h2>示例 5: 不同尺寸</h2>
+        <h3 style="margin: 20px 0 10px; color: #666; font-size: 16px;">Small</h3>
+        <div id="menu-small"></div>
+
+        <h3 style="margin: 20px 0 10px; color: #666; font-size: 16px;">Medium (預設)</h3>
+        <div id="menu-medium"></div>
+
+        <h3 style="margin: 20px 0 10px; color: #666; font-size: 16px;">Large</h3>
+        <div id="menu-large"></div>
+    </div>
+
+    <!-- 輸出區域 -->
+    <div class="demo-section">
+        <div class="output">
+            <div class="output-title">點擊事件輸出：</div>
+            <div class="output-content" id="output">等待點擊...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { FunctionMenu } from './FunctionMenu.js';
+        // 輸出函數
+        function logOutput(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.innerHTML = `[${timestamp}] ${message}`;
+        }
+
+        // 示例 1: Horizontal 布局
+        const menuHorizontal = new FunctionMenu({
+            containerId: 'menu-horizontal',
+            layout: 'horizontal',
+            size: 'medium',
+            items: [
+                {
+                    id: 'new',
+                    label: '新增',
+                    icon: 'fas fa-plus',
+                    onClick: () => logOutput('點擊了「新增」')
+                },
+                {
+                    id: 'edit',
+                    label: '編輯',
+                    icon: 'fas fa-edit',
+                    onClick: () => logOutput('點擊了「編輯」')
+                },
+                {
+                    id: 'delete',
+                    label: '刪除',
+                    icon: 'fas fa-trash',
+                    onClick: () => logOutput('點擊了「刪除」')
+                },
+                {
+                    id: 'save',
+                    label: '儲存',
+                    icon: 'fas fa-save',
+                    onClick: () => logOutput('點擊了「儲存」')
+                },
+                {
+                    id: 'search',
+                    label: '搜尋',
+                    icon: 'fas fa-search',
+                    onClick: () => logOutput('點擊了「搜尋」')
+                },
+                {
+                    id: 'export',
+                    label: '匯出',
+                    icon: 'fas fa-download',
+                    onClick: () => logOutput('點擊了「匯出」')
+                }
+            ]
+        });
+
+        // 示例 2: Grid 布局
+        const menuGrid = new FunctionMenu({
+            containerId: 'menu-grid',
+            layout: 'grid',
+            columns: 4,
+            size: 'medium',
+            items: [
+                {
+                    id: 'dashboard',
+                    label: '儀表板',
+                    icon: 'fas fa-tachometer-alt',
+                    badge: 5,
+                    onClick: () => logOutput('進入儀表板')
+                },
+                {
+                    id: 'users',
+                    label: '用戶管理',
+                    icon: 'fas fa-users',
+                    badge: 12,
+                    onClick: () => logOutput('進入用戶管理')
+                },
+                {
+                    id: 'settings',
+                    label: '系統設定',
+                    icon: 'fas fa-cog',
+                    onClick: () => logOutput('進入系統設定')
+                },
+                {
+                    id: 'reports',
+                    label: '報表',
+                    icon: 'fas fa-chart-bar',
+                    badge: 3,
+                    onClick: () => logOutput('查看報表')
+                },
+                {
+                    id: 'messages',
+                    label: '訊息',
+                    icon: 'fas fa-envelope',
+                    badge: 8,
+                    onClick: () => logOutput('查看訊息')
+                },
+                {
+                    id: 'notifications',
+                    label: '通知',
+                    icon: 'fas fa-bell',
+                    badge: 15,
+                    onClick: () => logOutput('查看通知')
+                },
+                {
+                    id: 'calendar',
+                    label: '行事曆',
+                    icon: 'fas fa-calendar',
+                    onClick: () => logOutput('開啟行事曆')
+                },
+                {
+                    id: 'tasks',
+                    label: '任務',
+                    icon: 'fas fa-tasks',
+                    badge: 7,
+                    onClick: () => logOutput('查看任務')
+                }
+            ]
+        });
+
+        // 示例 3: Vertical 布局
+        const menuVertical = new FunctionMenu({
+            containerId: 'menu-vertical',
+            layout: 'vertical',
+            size: 'medium',
+            items: [
+                {
+                    id: 'home',
+                    label: '首頁',
+                    icon: 'fas fa-home',
+                    onClick: () => logOutput('返回首頁')
+                },
+                {
+                    id: 'profile',
+                    label: '個人資料',
+                    icon: 'fas fa-user',
+                    onClick: () => logOutput('查看個人資料')
+                },
+                {
+                    id: 'inbox',
+                    label: '收件匣',
+                    icon: 'fas fa-inbox',
+                    badge: 5,
+                    onClick: () => logOutput('開啟收件匣')
+                },
+                {
+                    id: 'files',
+                    label: '我的檔案',
+                    icon: 'fas fa-folder',
+                    onClick: () => logOutput('瀏覽檔案')
+                },
+                {
+                    id: 'logout',
+                    label: '登出',
+                    icon: 'fas fa-sign-out-alt',
+                    onClick: () => logOutput('登出系統')
+                }
+            ]
+        });
+
+        // 示例 4: 彩色主題
+        const menuColored = new FunctionMenu({
+            containerId: 'menu-colored',
+            layout: 'horizontal',
+            size: 'large',
+            items: [
+                {
+                    id: 'primary',
+                    label: '主要操作',
+                    icon: 'fas fa-rocket',
+                    color: 'primary',
+                    onClick: () => logOutput('主要操作')
+                },
+                {
+                    id: 'success',
+                    label: '確認',
+                    icon: 'fas fa-check',
+                    color: 'success',
+                    onClick: () => logOutput('確認操作')
+                },
+                {
+                    id: 'warning',
+                    label: '警告',
+                    icon: 'fas fa-exclamation-triangle',
+                    color: 'warning',
+                    onClick: () => logOutput('警告操作')
+                },
+                {
+                    id: 'danger',
+                    label: '危險',
+                    icon: 'fas fa-trash-alt',
+                    color: 'danger',
+                    onClick: () => logOutput('危險操作')
+                },
+                {
+                    id: 'info',
+                    label: '資訊',
+                    icon: 'fas fa-info-circle',
+                    color: 'info',
+                    onClick: () => logOutput('資訊操作')
+                }
+            ]
+        });
+
+        // 示例 5: 不同尺寸
+        const menuSmall = new FunctionMenu({
+            containerId: 'menu-small',
+            layout: 'horizontal',
+            size: 'small',
+            items: [
+                {
+                    id: 'prev',
+                    label: '上一頁',
+                    icon: 'fas fa-chevron-left',
+                    onClick: () => logOutput('上一頁')
+                },
+                {
+                    id: 'next',
+                    label: '下一頁',
+                    icon: 'fas fa-chevron-right',
+                    onClick: () => logOutput('下一頁')
+                },
+                {
+                    id: 'refresh',
+                    label: '重新整理',
+                    icon: 'fas fa-sync',
+                    onClick: () => logOutput('重新整理')
+                }
+            ]
+        });
+
+        const menuMedium = new FunctionMenu({
+            containerId: 'menu-medium',
+            layout: 'horizontal',
+            size: 'medium',
+            items: [
+                {
+                    id: 'copy',
+                    label: '複製',
+                    icon: 'fas fa-copy',
+                    onClick: () => logOutput('複製')
+                },
+                {
+                    id: 'paste',
+                    label: '貼上',
+                    icon: 'fas fa-paste',
+                    onClick: () => logOutput('貼上')
+                },
+                {
+                    id: 'cut',
+                    label: '剪下',
+                    icon: 'fas fa-cut',
+                    onClick: () => logOutput('剪下')
+                }
+            ]
+        });
+
+        const menuLarge = new FunctionMenu({
+            containerId: 'menu-large',
+            layout: 'horizontal',
+            size: 'large',
+            items: [
+                {
+                    id: 'upload',
+                    label: '上傳',
+                    icon: 'fas fa-cloud-upload-alt',
+                    onClick: () => logOutput('上傳檔案')
+                },
+                {
+                    id: 'download',
+                    label: '下載',
+                    icon: 'fas fa-cloud-download-alt',
+                    onClick: () => logOutput('下載檔案')
+                },
+                {
+                    id: 'share',
+                    label: '分享',
+                    icon: 'fas fa-share-alt',
+                    onClick: () => logOutput('分享')
+                }
+            ]
+        });
+
+        // 工具函數
+        function updateBadges() {
+            menuGrid.updateBadge('dashboard', Math.floor(Math.random() * 20));
+            menuGrid.updateBadge('users', Math.floor(Math.random() * 30));
+            menuGrid.updateBadge('messages', Math.floor(Math.random() * 15));
+            menuGrid.updateBadge('notifications', Math.floor(Math.random() * 25));
+            menuGrid.updateBadge('tasks', Math.floor(Math.random() * 10));
+
+            logOutput('徽章已更新！');
+        }
+
+        let itemsDisabled = false;
+        function toggleItems() {
+            if (itemsDisabled) {
+                menuGrid.enableItem('settings');
+                menuGrid.enableItem('calendar');
+                logOutput('已啟用「系統設定」和「行事曆」');
+            } else {
+                menuGrid.disableItem('settings');
+                menuGrid.disableItem('calendar');
+                logOutput('已禁用「系統設定」和「行事曆」');
+            }
+            itemsDisabled = !itemsDisabled;
+        }
+
+        globalThis.updateBadges = updateBadges;
+        globalThis.toggleItems = toggleItems;
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

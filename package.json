@@ -1,0 +1,15 @@
+{
+  "name": "bricks4agent",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node packages/javascript/browser/page-generator/examples/test-all.js",
+    "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
+    "serve": "dotnet run --project tools/static-server/StaticServer.csproj -- ./tools/spa-generator/frontend 3080"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "puppeteer": "^24.36.0"
+  }
+}

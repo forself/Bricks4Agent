@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhotoCard & ImageViewer 展示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #00BCD4, #4CAF50);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+        }
+
+        .compare-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .compare-item h3 {
+            font-size: 14px;
+            color: #8892b0;
+            margin-bottom: 8px;
+        }
+
+        .compare-item p {
+            font-size: 12px;
+            color: var(--cl-text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .photo-grid {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .demo-note {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(33, 150, 243, 0.1);
+            border-left: 3px solid #2196F3;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #8892b0;
+        }
+
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #ccd6f6;
+        }
+
+        .feature-item::before {
+            content: '✓';
+            color: #4CAF50;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>📷 PhotoCard & ImageViewer</h1>
+        <p class="subtitle">照片卡片與圖片展示器</p>
+
+        <!-- 兩種類型對比 -->
+        <div class="demo-section">
+            <h2>照片卡片類型</h2>
+            <div class="compare-box">
+                <div class="compare-item">
+                    <h3>人像照片 (Portrait)</h3>
+                    <p>長寬比 4:3（較寬）- 適合大頭照、人物照</p>
+                    <div class="photo-grid">
+                        <div id="portrait-with-image"></div>
+                        <div id="portrait-no-image"></div>
+                    </div>
+                </div>
+                <div class="compare-item">
+                    <h3>地點照片 (Location)</h3>
+                    <p>長寬比 3:4（較高）- 適合建築、風景照</p>
+                    <div class="photo-grid">
+                        <div id="location-with-image"></div>
+                        <div id="location-no-image"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 多尺寸 -->
+        <div class="demo-section">
+            <h2>不同尺寸</h2>
+            <div class="photo-grid" id="sizes-demo"></div>
+        </div>
+
+        <!-- 展示器功能說明 -->
+        <div class="demo-section">
+            <h2>ImageViewer 圖片展示器功能</h2>
+            <div class="feature-list">
+                <div class="feature-item">點擊照片開啟全螢幕展示</div>
+                <div class="feature-item">滑鼠滾輪縮放</div>
+                <div class="feature-item">放大後可拖曳平移</div>
+                <div class="feature-item">放大/縮小按鈕控制</div>
+                <div class="feature-item">重設按鈕恢復原始大小</div>
+                <div class="feature-item">最小縮放到 10%</div>
+                <div class="feature-item">點擊遮罩或按 ESC 關閉</div>
+                <div class="feature-item">展示期間阻擋背景互動</div>
+            </div>
+            <div class="demo-note">
+                💡 <strong>試試看：</strong>點擊上方任一有照片的卡片，開啟展示器後試試放大縮小和拖曳功能！
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { PhotoCard } from './PhotoCard.js';
+
+        // 使用 placeholder 圖片服務
+        const samplePortrait = 'https://picsum.photos/400/300?random=1';
+        const sampleLocation = 'https://picsum.photos/300/400?random=2';
+
+        // 人像照片 - 有圖
+        new PhotoCard({
+            type: 'portrait',
+            src: samplePortrait,
+            alt: '人像照片',
+            width: '160px'
+        }).mount('#portrait-with-image');
+
+        // 人像照片 - 無圖（顯示預設圖示）
+        new PhotoCard({
+            type: 'portrait',
+            src: null,
+            width: '160px'
+        }).mount('#portrait-no-image');
+
+        // 地點照片 - 有圖
+        new PhotoCard({
+            type: 'location',
+            src: sampleLocation,
+            alt: '地點照片',
+            width: '120px'
+        }).mount('#location-with-image');
+
+        // 地點照片 - 無圖（顯示預設圖示）
+        new PhotoCard({
+            type: 'location',
+            src: null,
+            width: '120px'
+        }).mount('#location-no-image');
+
+        // 不同尺寸展示
+        const sizes = ['80px', '120px', '160px', '200px'];
+        const sizesContainer = document.getElementById('sizes-demo');
+
+        sizes.forEach((size, i) => {
+            new PhotoCard({
+                type: 'portrait',
+                src: `https://picsum.photos/400/300?random=${i + 10}`,
+                width: size
+            }).mount(sizesContainer);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

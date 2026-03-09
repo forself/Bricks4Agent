@@ -1,0 +1,115 @@
+/**
+ * ButtonGroup CSS
+ * 按鈕群組容器樣式
+ */
+
+/* ButtonGroup 基礎樣式 */
+.editor-btn-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.editor-btn-group--vertical {
+    flex-direction: column;
+}
+
+/* 分隔線 */
+.editor-btn-group__separator {
+    flex-shrink: 0;
+}
+
+.editor-btn-group--horizontal .editor-btn-group__separator {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+}
+
+.editor-btn-group--vertical .editor-btn-group__separator {
+    width: 20px;
+    height: 1px;
+    margin: 4px 0;
+}
+
+/* 主題分隔線顏色 */
+.editor-btn-group--theme-light .editor-btn-group__separator {
+    background: #ddd;
+}
+
+.editor-btn-group--theme-dark .editor-btn-group__separator {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.editor-btn-group--theme-gradient .editor-btn-group__separator {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* EditorToolbar 基礎樣式 */
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* 主題樣式 */
+.editor-toolbar--theme-light {
+    padding: 10px 12px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.editor-toolbar--theme-dark {
+    padding: 10px 12px;
+    background: #2b2b2b;
+    border: 1px solid #444;
+    border-radius: 8px;
+}
+
+.editor-toolbar--theme-gradient {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+/* 位置樣式 */
+.editor-toolbar--position-top {
+    border-radius: 8px 8px 0 0;
+}
+
+.editor-toolbar--position-bottom {
+    border-radius: 0 0 8px 8px;
+}
+
+.editor-toolbar--position-left {
+    flex-direction: column;
+    border-radius: 8px 0 0 8px;
+    align-items: flex-start;
+}
+
+.editor-toolbar--position-right {
+    flex-direction: column;
+    border-radius: 0 8px 8px 0;
+    align-items: flex-end;
+}
+
+/* 固定位置 */
+.editor-toolbar--sticky {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+/* 響應式 */
+@media (max-width: 768px) {
+    .editor-toolbar {
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .editor-btn-group {
+        gap: 2px;
+    }
+}

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Image Map Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        .map-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .info-section {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #4caf50;
+        }
+
+        .stat-card {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2196f3;
+        }
+
+        .instruction {
+            color: #8892b0;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+    </style>
+    <link rel="stylesheet" href="../theme.css">
+</head>
+
+<body>
+    <h1 style="text-align: center; margin-bottom: 40px;">Interactive Image Map (Canvas)</h1>
+
+    <div class="container">
+        <div class="map-section">
+            <div id="canvas-map-container" style="max-width: 600px; margin: 0 auto;"></div>
+        </div>
+
+        <div class="info-section">
+            <h2>Region Info</h2>
+            <div class="instruction">Hover over the map to see individual regions highlighted using pixel-perfect
+                detection.</div>
+
+            <div class="stat-card">
+                <div>Region Name</div>
+                <div id="region-name" class="stat-value">--</div>
+            </div>
+
+            <div class="stat-card">
+                <div>Status</div>
+                <div id="region-status" class="stat-value">--</div>
+            </div>
+
+            <div style="margin-top: 40px; font-size: 12px; color: #666;">
+                * Technique: Offscreen Canvas Pixel Hit Test
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../layout/Panel/index.js';
+
+        import { CanvasMap } from './CanvasMap.js';
+
+        // List of all city images (excluding Taiwan.png which is the full composite)
+        // Order matters for z-index if they overlap, but pixel-hit handles transparency.
+        const cityFiles = [
+            "Changhua.png", "Chiayi.png", "ChiayiCountry.png", "Daito.png",
+            "GoldenGate.png", "Hsinchu.png", "HsinchuCounty.png", "Hualien.png",
+            "Kaohsiung1.png", "Kaohsiung2.png", "Keelung.png", "Lianjiang.png",
+            "Miaoli.png", "Nantou.png",
+            // "NewTaipei1.png", "NewTaipei2.png", // Often split
+            // Note: NewTaipei might be split. Let's include all pieces.
+            "NewTaipei1.png", "NewTaipei2.png",
+            "Penghu.png", "Pingtung1.png", "Pingtung2.png",
+            "Taichung1.png", "Taichung2.png",
+            "Tainan1.png", "Tainan2.png",
+            "Taipei.png",
+            "Taoyuan.png", "Yilan.png", "Yunlin.png"
+        ];
+
+        const images = cityFiles.map(file => ({
+            id: file.split('.')[0], // e.g. "Taipei"
+            src: `../refresource/City/${file}`,
+            label: file.split('.')[0]
+        }));
+
+        const map = new CanvasMap({
+            container: '#canvas-map-container',
+            width: 800,  // Standard canvas size - assuming images are generated at same resolution
+            height: 1000,
+            images: images,
+            onHover: (id) => {
+                document.getElementById('region-name').textContent = id || '--';
+                if (id) {
+                    document.getElementById('region-status').textContent = 'Active';
+                    document.getElementById('region-status').style.color = '#4caf50';
+                } else {
+                    document.getElementById('region-status').textContent = '--';
+                    document.getElementById('region-status').style.color = '#666';
+                }
+            },
+            onClick: (id) => {
+                if (id) ModalPanel.alert({ message: `Clicked: ${id}` });
+            }
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

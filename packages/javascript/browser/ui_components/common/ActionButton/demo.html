@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Action Button 元件展示</title>
+    <link rel="stylesheet" href="ActionButton.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-section h2::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(180deg, #ff6b6b, #feca57);
+            border-radius: 2px;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row-label {
+            font-size: 12px;
+            color: #8892b0;
+            min-width: 100px;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .color-item {
+            text-align: center;
+        }
+
+        .color-swatch {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            margin: 0 auto 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .color-swatch svg {
+            width: 24px;
+            height: 24px;
+            color: white;
+        }
+
+        .color-label {
+            font-size: 13px;
+            color: #ccd6f6;
+            margin-bottom: 2px;
+        }
+
+        .color-hex {
+            font-size: 11px;
+            color: #64ffda;
+            font-family: monospace;
+        }
+
+        /* 表格展示 */
+        .table-demo {
+            background: var(--cl-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            color: var(--cl-text);
+        }
+
+        .table-demo table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table-demo th,
+        .table-demo td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--cl-border-light);
+        }
+
+        .table-demo th {
+            background: var(--cl-bg-tertiary);
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--cl-text-secondary);
+        }
+
+        .table-demo .actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .table-demo .status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status--pending {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .status--approved {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status--rejected {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        /* 分類區塊 */
+        .category-box {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .category-title {
+            font-size: 13px;
+            color: #8892b0;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .category-title::before {
+            content: '▸';
+            color: #64ffda;
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 20px 0;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>⚡ Action Button</h1>
+        <p class="subtitle">流程操作按鈕元件 - 八種操作類型</p>
+
+        <!-- 分類展示 -->
+        <div class="demo-section">
+            <h2>按鈕類型</h2>
+
+            <div class="category-box">
+                <div class="category-title">CRUD 操作</div>
+                <div class="demo-row" id="crud-buttons"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">審核流程操作</div>
+                <div class="demo-row" id="workflow-buttons"></div>
+            </div>
+        </div>
+
+        <!-- 樣式變體 -->
+        <div class="demo-section">
+            <h2>樣式變體</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Filled（填滿）</span>
+                <div id="variant-filled"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Outlined（外框）</span>
+                <div id="variant-outlined"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Text（文字）</span>
+                <div id="variant-text"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Icon（純圖示）</span>
+                <div id="variant-icon"></div>
+            </div>
+        </div>
+
+        <!-- 尺寸 -->
+        <div class="demo-section">
+            <h2>尺寸變體</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Small</span>
+                <div id="size-small"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Medium</span>
+                <div id="size-medium"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Large</span>
+                <div id="size-large"></div>
+            </div>
+        </div>
+
+        <!-- 色彩配置 -->
+        <div class="demo-section">
+            <h2>色彩配置</h2>
+            <div class="color-grid" id="color-palette"></div>
+        </div>
+
+        <!-- 工具列範例 -->
+        <div class="demo-section">
+            <h2>預設工具列</h2>
+
+            <div class="category-box">
+                <div class="category-title">CRUD 工具列</div>
+                <div id="toolbar-crud"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">審核流程工具列</div>
+                <div id="toolbar-workflow"></div>
+            </div>
+
+            <div class="category-box">
+                <div class="category-title">完整工具列（CRUD + 審核）</div>
+                <div id="toolbar-full"></div>
+            </div>
+        </div>
+
+        <!-- 實際應用 -->
+        <div class="demo-section">
+            <h2>實際應用：審核清單</h2>
+            <div class="table-demo">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>申請單號</th>
+                            <th>申請人</th>
+                            <th>申請日期</th>
+                            <th>狀態</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>REQ-2024-0158</td>
+                            <td>王小明</td>
+                            <td>2024-01-13</td>
+                            <td><span class="status status--pending">待審核</span></td>
+                            <td class="actions" id="row-1"></td>
+                        </tr>
+                        <tr>
+                            <td>REQ-2024-0157</td>
+                            <td>李小華</td>
+                            <td>2024-01-12</td>
+                            <td><span class="status status--approved">已核准</span></td>
+                            <td class="actions" id="row-2"></td>
+                        </tr>
+                        <tr>
+                            <td>REQ-2024-0156</td>
+                            <td>張小英</td>
+                            <td>2024-01-11</td>
+                            <td><span class="status status--rejected">已退回</span></td>
+                            <td class="actions" id="row-3"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../../layout/Panel/index.js';
+
+        import { ActionButton } from './ActionButton.js';
+
+        const crudTypes = ['add', 'edit', 'delete', 'detail'];
+        const workflowTypes = ['submit', 'reject', 'archive', 'merge'];
+        const allTypes = [...crudTypes, ...workflowTypes];
+
+        // CRUD 按鈕
+        const crudContainer = document.getElementById('crud-buttons');
+        crudTypes.forEach(type => {
+            new ActionButton({ type, size: 'large' }).mount(crudContainer);
+        });
+
+        // 審核流程按鈕  
+        const workflowContainer = document.getElementById('workflow-buttons');
+        workflowTypes.forEach(type => {
+            new ActionButton({ type, size: 'large' }).mount(workflowContainer);
+        });
+
+        // 樣式變體
+        ['filled', 'outlined', 'text', 'icon'].forEach(variant => {
+            const container = document.getElementById(`variant-${variant}`);
+            const group = ActionButton.createGroup(
+                allTypes.map(type => ({ type, showLabel: variant !== 'icon' })),
+                { variant, size: 'medium' }
+            );
+            container.appendChild(group);
+        });
+
+        // 尺寸變體
+        ['small', 'medium', 'large'].forEach(size => {
+            const container = document.getElementById(`size-${size}`);
+            const group = ActionButton.createGroup(
+                crudTypes.map(type => ({ type })),
+                { size }
+            );
+            container.appendChild(group);
+        });
+
+        // 色彩配置
+        const colors = {
+            add: { color: '#4CAF50', label: '新增', hex: '#4CAF50' },
+            delete: { color: '#F44336', label: '刪除', hex: '#F44336' },
+            edit: { color: '#FF9800', label: '編輯', hex: '#FF9800' },
+            detail: { color: '#2196F3', label: '詳細', hex: '#2196F3' },
+            submit: { color: '#009688', label: '送出', hex: '#009688' },
+            reject: { color: '#E91E63', label: '退回', hex: '#E91E63' },
+            archive: { color: '#795548', label: '歸檔', hex: '#795548' },
+            merge: { color: '#673AB7', label: '整合', hex: '#673AB7' }
+        };
+
+        const colorPalette = document.getElementById('color-palette');
+        Object.entries(colors).forEach(([type, info]) => {
+            const item = document.createElement('div');
+            item.className = 'color-item';
+            item.innerHTML = `
+                <div class="color-swatch" style="background: ${info.color};">
+                    ${ActionButton.ICONS[type].icon}
+                </div>
+                <div class="color-label">${info.label}</div>
+                <div class="color-hex">${info.hex}</div>
+            `;
+            colorPalette.appendChild(item);
+        });
+
+        // 預設工具列
+        const handleAction = (action, data) => {
+            ModalPanel.alert({ message: `執行操作: ${action}` });
+        };
+
+        document.getElementById('toolbar-crud').appendChild(
+            ActionButton.createToolbar({
+                showCrud: true,
+                showWorkflow: false,
+                onAction: handleAction
+            })
+        );
+
+        document.getElementById('toolbar-workflow').appendChild(
+            ActionButton.createToolbar({
+                showCrud: false,
+                showWorkflow: true,
+                onAction: handleAction
+            })
+        );
+
+        document.getElementById('toolbar-full').appendChild(
+            ActionButton.createToolbar({
+                showCrud: true,
+                showWorkflow: true,
+                onAction: handleAction
+            })
+        );
+
+        // 表格操作
+        // 待審核行：詳細、送出、退回
+        ['detail', 'submit', 'reject'].forEach(type => {
+            new ActionButton({
+                type,
+                size: 'small',
+                variant: 'icon',
+                onClick: () => ModalPanel.alert({ message: `執行: ${type}` })
+            }).mount('#row-1');
+        });
+
+        // 已核准行：詳細、歸檔
+        ['detail', 'archive'].forEach(type => {
+            new ActionButton({
+                type,
+                size: 'small',
+                variant: 'icon',
+                onClick: () => ModalPanel.alert({ message: `執行: ${type}` })
+            }).mount('#row-2');
+        });
+
+        // 已退回行：詳細、編輯、重新送出
+        ['detail', 'edit', 'submit'].forEach(type => {
+            new ActionButton({
+                type,
+                size: 'small',
+                variant: 'icon',
+                onClick: () => ModalPanel.alert({ message: `執行: ${type}` })
+            }).mount('#row-3');
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

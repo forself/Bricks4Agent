@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 300 380" xmlns="http://www.w3.org/2000/svg">
+  <title>新竹縣行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+  </style>
+  
+  <!-- 新豐鄉 -->
+  <g id="region-xinfeng" data-code="xinfeng" data-name="新豐鄉">
+    <path class="district" d="M35,25 L85,20 L100,50 L90,85 L50,90 L30,60 Z"/>
+  </g>
+  
+  <!-- 湖口鄉 -->
+  <g id="region-hukou" data-code="hukou" data-name="湖口鄉">
+    <path class="district" d="M70,70 L130,60 L155,95 L145,140 L95,150 L65,115 Z"/>
+  </g>
+  
+  <!-- 竹北市 -->
+  <g id="region-zhubei" data-code="zhubei" data-name="竹北市">
+    <path class="district" d="M25,95 L85,85 L115,130 L105,185 L50,195 L20,150 Z"/>
+  </g>
+  
+  <!-- 新埔鎮 -->
+  <g id="region-xinpu" data-code="xinpu" data-name="新埔鎮">
+    <path class="district" d="M140,100 L210,90 L245,135 L235,195 L175,205 L140,165 Z"/>
+  </g>
+  
+  <!-- 關西鎮 -->
+  <g id="region-guanxi" data-code="guanxi" data-name="關西鎮">
+    <path class="district" d="M210,130 L275,120 L305,170 L295,240 L235,250 L205,200 Z"/>
+  </g>
+  
+  <!-- 竹東鎮 -->
+  <g id="region-zhudong" data-code="zhudong" data-name="竹東鎮">
+    <path class="district" d="M80,165 L145,155 L175,200 L165,260 L110,270 L75,225 Z"/>
+  </g>
+  
+  <!-- 芎林鄉 -->
+  <g id="region-qionglin" data-code="qionglin" data-name="芎林鄉">
+    <path class="district" d="M165,195 L230,185 L260,230 L250,285 L195,295 L160,250 Z"/>
+  </g>
+  
+  <!-- 寶山鄉 -->
+  <g id="region-baoshan" data-code="baoshan" data-name="寶山鄉">
+    <path class="district" d="M40,205 L100,195 L130,245 L120,305 L60,315 L30,265 Z"/>
+  </g>
+  
+  <!-- 橫山鄉 -->
+  <g id="region-hengshan" data-code="hengshan" data-name="橫山鄉">
+    <path class="district" d="M185,265 L250,250 L280,300 L270,360 L215,375 L180,325 Z"/>
+  </g>
+  
+  <!-- 峨眉鄉 -->
+  <g id="region-emei" data-code="emei" data-name="峨眉鄉">
+    <path class="district" d="M55,290 L115,280 L145,330 L135,390 L75,400 L45,350 Z"/>
+  </g>
+  
+  <!-- 北埔鄉 -->
+  <g id="region-beipu" data-code="beipu" data-name="北埔鄉">
+    <path class="district" d="M115,315 L175,305 L205,360 L195,420 L135,430 L105,375 Z"/>
+  </g>
+  
+  <!-- 五峰鄉 -->
+  <g id="region-wufeng" data-code="wufeng" data-name="五峰鄉">
+    <path class="district" d="M155,395 L220,380 L260,440 L245,520 L175,535 L140,470 Z"/>
+  </g>
+  
+  <!-- 尖石鄉 -->
+  <g id="region-jianshi" data-code="jianshi" data-name="尖石鄉">
+    <path class="district" d="M225,350 L290,335 L330,400 L320,500 L255,520 L215,450 Z"/>
+  </g>
+</svg>

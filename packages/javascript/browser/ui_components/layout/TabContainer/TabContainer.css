@@ -1,0 +1,321 @@
+/**
+ * TabContainer 樣式
+ */
+
+/* 容器 */
+.tab-container {
+    display: flex;
+    width: 100%;
+    min-height: 300px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* 上下排列 */
+.tab-container-top,
+.tab-container-bottom {
+    flex-direction: column;
+}
+
+/* 左右排列 */
+.tab-container-left,
+.tab-container-right {
+    flex-direction: row;
+}
+
+/* 頁籤導航欄 */
+.tab-nav {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.tab-container-bottom .tab-nav {
+    border-bottom: none;
+    border-top: 1px solid #e0e0e0;
+}
+
+.tab-container-left .tab-nav {
+    border-bottom: none;
+    border-right: 1px solid #e0e0e0;
+}
+
+.tab-container-right .tab-nav {
+    border-bottom: none;
+    border-left: 1px solid #e0e0e0;
+}
+
+/* 頁籤列表 */
+.tab-list {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    gap: 4px;
+}
+
+.tab-container-top .tab-list,
+.tab-container-bottom .tab-list {
+    flex-direction: row;
+    padding: 8px 12px 0;
+}
+
+.tab-container-left .tab-list,
+.tab-container-right .tab-list {
+    flex-direction: column;
+    padding: 12px 0 12px 8px;
+}
+
+/* 頁籤項目 */
+.tab-item {
+    margin: 0;
+    padding: 0;
+}
+
+/* 頁籤按鈕 */
+.tab-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    position: relative;
+}
+
+.tab-container-left .tab-button,
+.tab-container-right .tab-button {
+    border-radius: 6px 0 0 6px;
+    width: 100%;
+}
+
+.tab-container-right .tab-button {
+    border-radius: 0 6px 6px 0;
+}
+
+.tab-container-bottom .tab-button {
+    border-radius: 0 0 6px 6px;
+}
+
+.tab-button:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: #333;
+}
+
+/* 激活狀態 */
+.tab-item.active .tab-button {
+    background: #fff;
+    border-color: #e0e0e0;
+    border-bottom-color: #fff;
+    color: #1976d2;
+    font-weight: 500;
+}
+
+.tab-container-bottom .tab-item.active .tab-button {
+    border-bottom-color: #e0e0e0;
+    border-top-color: #fff;
+}
+
+.tab-container-left .tab-item.active .tab-button {
+    border-bottom-color: #e0e0e0;
+    border-right-color: #fff;
+}
+
+.tab-container-right .tab-item.active .tab-button {
+    border-bottom-color: #e0e0e0;
+    border-left-color: #fff;
+}
+
+/* 圖示 */
+.tab-button i {
+    font-size: 16px;
+}
+
+/* 標題 */
+.tab-title {
+    flex: 1;
+}
+
+/* 徽章 */
+.tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: #ff4757;
+    color: #fff;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* 關閉按鈕 */
+.tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: #999;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+
+.tab-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #ff4757;
+}
+
+/* 內容區域 */
+.tab-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #fff;
+}
+
+/* 內容面板 */
+.tab-panel {
+    width: 100%;
+    height: 100%;
+}
+
+/* 動畫 */
+@keyframes tabFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .tab-list {
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .tab-button {
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+
+    .tab-content {
+        padding: 16px;
+    }
+}
+
+/* 深色模式支援 */
+@media (prefers-color-scheme: dark) {
+    .tab-container {
+        background: #1e1e1e;
+        border-color: #3a3a3a;
+    }
+
+    .tab-nav {
+        background: #2a2a2a;
+        border-bottom-color: #3a3a3a;
+    }
+
+    .tab-button {
+        color: #b0b0b0;
+    }
+
+    .tab-button:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e0e0e0;
+    }
+
+    .tab-item.active .tab-button {
+        background: #1e1e1e;
+        border-color: #3a3a3a;
+        color: #64b5f6;
+    }
+
+    .tab-content {
+        background: #1e1e1e;
+    }
+
+    .tab-close:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* 滾動條樣式 */
+.tab-list::-webkit-scrollbar {
+    height: 6px;
+}
+
+.tab-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tab-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+
+.tab-list::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* 左右布局時的內容區域調整 */
+.tab-container-left .tab-content,
+.tab-container-right .tab-content {
+    min-height: 400px;
+}
+
+/* 禁用狀態 */
+.tab-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tab-button:disabled:hover {
+    background: transparent;
+    color: #666;
+}
+
+/* 載入狀態 */
+.tab-panel.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.tab-panel.loading::after {
+    content: '';
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top-color: #1976d2;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 300 350" xmlns="http://www.w3.org/2000/svg">
+  <title>臺北市行政區</title>
+  <style>
+    .district { fill: #E8E8E8; stroke: #666; stroke-width: 0.8; transition: all 0.2s; }
+    .district:hover { fill: #FFD54F; cursor: pointer; }
+  </style>
+  
+  <!-- 北投區 -->
+  <g id="region-beitou" data-code="beitou" data-name="北投區">
+    <path class="district" d="M80,20 L140,15 L160,40 L155,80 L120,100 L80,95 L60,60 L65,35 Z"/>
+  </g>
+  
+  <!-- 士林區 -->
+  <g id="region-shilin" data-code="shilin" data-name="士林區">
+    <path class="district" d="M140,15 L200,25 L220,60 L210,100 L175,115 L155,105 L155,80 L160,40 Z"/>
+  </g>
+  
+  <!-- 內湖區 -->
+  <g id="region-neihu" data-code="neihu" data-name="內湖區">
+    <path class="district" d="M200,60 L260,55 L280,90 L270,140 L220,155 L185,140 L175,115 L210,100 L220,60 Z"/>
+  </g>
+  
+  <!-- 中山區 -->
+  <g id="region-zhongshan" data-code="zhongshan" data-name="中山區">
+    <path class="district" d="M120,100 L155,105 L175,115 L185,140 L175,165 L145,175 L115,160 L105,130 Z"/>
+  </g>
+  
+  <!-- 松山區 -->
+  <g id="region-songshan" data-code="songshan" data-name="松山區">
+    <path class="district" d="M175,115 L220,125 L235,155 L220,180 L185,185 L175,165 L185,140 Z"/>
+  </g>
+  
+  <!-- 南港區 -->
+  <g id="region-nangang" data-code="nangang" data-name="南港區">
+    <path class="district" d="M220,140 L270,135 L285,175 L270,215 L230,220 L210,195 L220,180 L235,155 Z"/>
+  </g>
+  
+  <!-- 大同區 -->
+  <g id="region-datong" data-code="datong" data-name="大同區">
+    <path class="district" d="M80,130 L115,125 L125,155 L115,180 L85,185 L70,160 Z"/>
+  </g>
+  
+  <!-- 中正區 -->
+  <g id="region-zhongzheng" data-code="zhongzheng" data-name="中正區">
+    <path class="district" d="M85,180 L130,175 L145,200 L140,230 L105,240 L80,220 L75,195 Z"/>
+  </g>
+  
+  <!-- 萬華區 -->
+  <g id="region-wanhua" data-code="wanhua" data-name="萬華區">
+    <path class="district" d="M55,190 L85,180 L95,220 L100,255 L75,270 L50,250 L45,215 Z"/>
+  </g>
+  
+  <!-- 大安區 -->
+  <g id="region-daan" data-code="daan" data-name="大安區">
+    <path class="district" d="M130,175 L175,165 L195,185 L200,220 L175,250 L140,255 L120,235 L125,200 Z"/>
+  </g>
+  
+  <!-- 信義區 -->
+  <g id="region-xinyi" data-code="xinyi" data-name="信義區">
+    <path class="district" d="M175,165 L210,175 L230,200 L235,240 L210,270 L175,265 L160,240 L175,215 L185,190 Z"/>
+  </g>
+  
+  <!-- 文山區 -->
+  <g id="region-wenshan" data-code="wenshan" data-name="文山區">
+    <path class="district" d="M120,250 L175,245 L210,260 L230,295 L210,340 L150,345 L100,320 L90,280 L100,255 Z"/>
+  </g>
+</svg>

@@ -1,0 +1,173 @@
+import { BaseChart } from './BaseChart.js';
+
+export class BarChart extends BaseChart {
+    constructor(options) {
+        super({
+            ...options,
+            barWidth: 0.6, // ratio 0~1
+            stacked: false, // default to grouped
+            ...options
+        });
+
+        // Data format: { labels: ['A', 'B'], series: [{ name: 'Sales', data: [10, 20] }] }
+        this.data = options.data || { labels: [], series: [] };
+    }
+
+    render() {
+        if (!this.width || !this.height) return;
+
+        const { top, right, bottom, left } = this.options.padding;
+        const chartWidth = this.width - left - right;
+        const chartHeight = this.height - top - bottom;
+        const { stacked } = this.options;
+
+        if (chartWidth <= 0 || chartHeight <= 0 || this.data.labels.length === 0) {
+            return;
+        }
+
+        // Group element
+        const g = this.createSVGElement('g');
+        g.setAttribute('transform', `translate(${left}, ${top})`);
+        this.svg.appendChild(g);
+
+        // Calculate Scale
+        let maxVal = 0;
+        if (stacked) {
+            // For stacked, max value is the max sum of each index
+            for (let i = 0; i < this.data.labels.length; i++) {
+                const sum = this.data.series.reduce((acc, s) => acc + (s.data[i] || 0), 0);
+                if (sum > maxVal) maxVal = sum;
+            }
+        } else {
+            // For grouped, max value is absolute max
+            maxVal = Math.max(...this.data.series.flatMap(s => s.data));
+        }
+        maxVal = maxVal || 1; // prevent zero division
+
+        const yScale = val => chartHeight - (val / maxVal) * chartHeight;
+        const stepWidth = chartWidth / this.data.labels.length;
+
+        // Draw Axes
+        this._drawAxes(g, chartWidth, chartHeight, maxVal);
+
+        // Draw Bars
+        const seriesCount = this.data.series.length;
+
+        // Accumulators for stacked bars
+        const stackedBotY = new Array(this.data.labels.length).fill(chartHeight);
+
+        this.data.series.forEach((s, sIndex) => {
+            s.data.forEach((val, i) => {
+                const rect = this.createSVGElement('rect');
+
+                let x, y, w, h;
+
+                if (stacked) {
+                    // Stacked: same X, width = bandWidth, Y piles up
+                    const bandWidth = stepWidth * this.options.barWidth;
+                    x = (i * stepWidth) + (stepWidth - bandWidth) / 2;
+                    h = (val / maxVal) * chartHeight;
+                    y = stackedBotY[i] - h;
+                    w = bandWidth;
+
+                    // Update bottom for next stack
+                    stackedBotY[i] = y;
+                } else {
+                    // Grouped: split bandWidth into seriesCount parts
+                    // total band covers e.g. 80% of step
+                    const groupWidth = stepWidth * this.options.barWidth;
+                    const barW = groupWidth / seriesCount;
+                    x = (i * stepWidth) + (stepWidth - groupWidth) / 2 + (sIndex * barW);
+                    y = yScale(val);
+                    h = chartHeight - y;
+                    w = barW;
+                }
+
+                rect.setAttribute('x', x);
+                rect.setAttribute('y', chartHeight); // Start from bottom
+                rect.setAttribute('width', w);
+                rect.setAttribute('height', 0); // Start size 0
+                rect.setAttribute('fill', this.getColor(sIndex));
+                rect.setAttribute('rx', 2);
+
+                // Animation
+                requestAnimationFrame(() => {
+                    rect.style.transition = 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
+                    rect.setAttribute('y', y);
+                    rect.setAttribute('height', h);
+                });
+
+                // Interaction
+                rect.onmouseenter = (e) => {
+                    rect.setAttribute('opacity', 0.8);
+                    const safeLabel = this.escapeHtml(this.data.labels[i]);
+                    const safeName = this.escapeHtml(s.name);
+                    this.showTooltip(`
+                        <strong>${safeLabel}</strong><br/>
+                        ${safeName}: ${val}
+                    `, e);
+                };
+                rect.onmouseleave = () => {
+                    rect.setAttribute('opacity', 1);
+                    this.hideTooltip();
+                };
+
+                g.appendChild(rect);
+            });
+        });
+    }
+
+    _drawAxes(g, w, h, maxVal) {
+        // X Axis line
+        const xAxis = this.createSVGElement('line');
+        xAxis.setAttribute('x1', 0);
+        xAxis.setAttribute('y1', h);
+        xAxis.setAttribute('x2', w);
+        xAxis.setAttribute('y2', h);
+        xAxis.setAttribute('stroke', 'var(--cl-border-medium)');
+        g.appendChild(xAxis);
+
+        // Labels
+        this.data.labels.forEach((label, i) => {
+            const text = this.createSVGElement('text');
+            const stepWidth = w / this.data.labels.length;
+            text.setAttribute('x', i * stepWidth + stepWidth / 2);
+            text.setAttribute('y', h + 20);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '12');
+            text.setAttribute('fill', 'var(--cl-text-muted)');
+            text.textContent = label;
+            g.appendChild(text);
+        });
+
+        // Simple Y Axis Grid
+        const gridCount = 5;
+        for (let i = 0; i <= gridCount; i++) {
+            const y = h - (i / gridCount) * h;
+            const line = this.createSVGElement('line');
+            line.setAttribute('x1', 0);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', w);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', 'var(--cl-border-medium)');
+            line.setAttribute('stroke-dasharray', '4');
+            g.appendChild(line);
+
+            // Value text
+            const text = this.createSVGElement('text');
+            text.setAttribute('x', -10);
+            text.setAttribute('y', y + 4);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '10');
+            text.setAttribute('fill', 'var(--cl-text-muted)');
+            text.textContent = Math.round((maxVal * i) / gridCount);
+            g.appendChild(text);
+        }
+
+        // Draw Legend
+        this._drawLegend(this.data.series.map((s, i) => ({
+            label: s.name,
+            color: this.getColor(i)
+        })));
+    }
+}

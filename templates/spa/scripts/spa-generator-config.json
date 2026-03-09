@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "spa-generator",
+    "displayName": "SPA Generator",
+    "description": "SPA 專案生成器 Web 介面",
+    "outputDir": "./tools"
+  },
+  "backend": {
+    "dbName": "generator.db",
+    "apiPort": "5002"
+  },
+  "frontend": {
+    "devPort": "3080",
+    "apiBaseUrl": "https://localhost:5002/api"
+  },
+  "security": {
+    "jwtKey": "SpaGeneratorSecretKey32CharactersLong!",
+    "jwtIssuer": "spa-generator",
+    "corsOrigins": ["http://localhost:3080"]
+  },
+  "admin": {
+    "email": "admin@generator.local",
+    "password": "Generator@123",
+    "name": "Generator Admin"
+  }
+}

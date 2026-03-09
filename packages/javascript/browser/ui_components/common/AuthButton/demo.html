@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sort Button & Auth Button 展示</title>
+    <link rel="stylesheet" href="../SortButton/SortButton.css">
+    <link rel="stylesheet" href="AuthButton.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #2196F3, #4CAF50);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row-label {
+            font-size: 12px;
+            color: #8892b0;
+            min-width: 100px;
+        }
+
+        /* 表格展示 */
+        .table-demo {
+            background: var(--cl-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            color: var(--cl-text);
+        }
+
+        .table-demo table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table-demo th {
+            background: var(--cl-bg-secondary);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--cl-text-secondary);
+            border-bottom: 2px solid #e0e0e0;
+            white-space: nowrap;
+        }
+
+        .table-demo th.th-sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .table-demo th.th-sortable:hover {
+            background: #eeeeee;
+        }
+
+        .table-demo td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--cl-border-light);
+        }
+
+        /* 排序狀態說明 */
+        .sort-states {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .sort-state-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px 16px;
+            border-radius: 8px;
+        }
+
+        .sort-state-item .state-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sort-state-item .state-label {
+            font-size: 13px;
+        }
+
+        .sort-state-item .state-desc {
+            font-size: 11px;
+            color: #8892b0;
+        }
+
+        /* 導覽列展示 */
+        .navbar-demo {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-logo {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .navbar-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .user-info {
+            font-size: 14px;
+            color: #ccc;
+            margin-right: 8px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔀 Sort & Auth Buttons</h1>
+        <p class="subtitle">排序切換與登入登出按鈕元件</p>
+
+        <!-- 排序按鈕狀態說明 -->
+        <div class="demo-section">
+            <h2>排序按鈕狀態說明</h2>
+            <div class="sort-states">
+                <div class="sort-state-item">
+                    <div class="state-icon" style="color: #9E9E9E;">
+                        <svg viewBox="0 0 16 16" fill="none" width="20" height="20">
+                            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                opacity="0.4" />
+                            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                opacity="0.4" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="state-label">未生效</div>
+                        <div class="state-desc">灰色淡化</div>
+                    </div>
+                </div>
+                <div class="sort-state-item">
+                    <div class="state-icon" style="color: #2196F3;">
+                        <svg viewBox="0 0 16 16" fill="none" width="20" height="20">
+                            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                opacity="0.3" />
+                            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="state-label">逆序 (DESC)</div>
+                        <div class="state-desc">藍色向下箭頭高亮</div>
+                    </div>
+                </div>
+                <div class="sort-state-item">
+                    <div class="state-icon" style="color: #4CAF50;">
+                        <svg viewBox="0 0 16 16" fill="none" width="20" height="20">
+                            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                opacity="0.3" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="state-label">正序 (ASC)</div>
+                        <div class="state-desc">綠色向上箭頭高亮</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表格排序應用 -->
+        <div class="demo-section">
+            <h2>實際應用：表格欄位排序</h2>
+            <p style="color: #8892b0; font-size: 13px; margin-bottom: 16px;">點擊表頭切換排序狀態</p>
+            <div class="table-demo">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="th-sortable" id="th-id">編號<span id="sort-id"></span></th>
+                            <th class="th-sortable" id="th-name">姓名<span id="sort-name"></span></th>
+                            <th class="th-sortable" id="th-date">日期<span id="sort-date"></span></th>
+                            <th class="th-sortable" id="th-amount">金額<span id="sort-amount"></span></th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                    </tbody>
+                </table>
+            </div>
+            <div id="sort-status" style="margin-top: 12px; font-size: 13px; color: #64ffda;"></div>
+        </div>
+
+        <!-- 登入登出按鈕 -->
+        <div class="demo-section">
+            <h2>登入/登出按鈕</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Filled</span>
+                <div id="auth-filled"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Outlined</span>
+                <div id="auth-outlined"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Text</span>
+                <div id="auth-text"></div>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Icon</span>
+                <div id="auth-icon"></div>
+            </div>
+        </div>
+
+        <!-- 導覽列應用 -->
+        <div class="demo-section">
+            <h2>實際應用：導覽列</h2>
+
+            <div class="navbar-demo">
+                <div class="navbar-logo">📊 管理系統</div>
+                <div class="navbar-actions">
+                    <span class="user-info">王小明</span>
+                    <div id="navbar-auth"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 導入 ModalPanel 用於對話框
+        import { ModalPanel } from '../../layout/Panel/index.js';
+
+        import { SortButton } from '../SortButton/SortButton.js';
+        import { AuthButton } from './AuthButton.js';
+
+        // 表格資料
+        const data = [
+            { id: 'A001', name: '王小明', date: '2024-01-15', amount: 15000 },
+            { id: 'A002', name: '李小華', date: '2024-01-10', amount: 28000 },
+            { id: 'A003', name: '張小英', date: '2024-01-12', amount: 9500 },
+            { id: 'A004', name: '陳小美', date: '2024-01-08', amount: 42000 },
+        ];
+
+        let currentData = [...data];
+        let sortButtons = {};
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = currentData.map(row => `
+                <tr>
+                    <td>${row.id}</td>
+                    <td>${row.name}</td>
+                    <td>${row.date}</td>
+                    <td>$${row.amount.toLocaleString()}</td>
+                    <td>-</td>
+                </tr>
+            `).join('');
+        }
+
+        function sortData(field, direction) {
+            if (direction === 'none') {
+                currentData = [...data];
+            } else {
+                currentData.sort((a, b) => {
+                    let valA = a[field];
+                    let valB = b[field];
+
+                    if (typeof valA === 'string') {
+                        valA = valA.toLowerCase();
+                        valB = valB.toLowerCase();
+                    }
+
+                    if (direction === 'asc') {
+                        return valA > valB ? 1 : -1;
+                    } else {
+                        return valA < valB ? 1 : -1;
+                    }
+                });
+            }
+            renderTable();
+        }
+
+        // 初始化排序按鈕
+        ['id', 'name', 'date', 'amount'].forEach(field => {
+            sortButtons[field] = new SortButton({
+                field,
+                onSort: (f, state) => {
+                    // 重設其他按鈕
+                    Object.keys(sortButtons).forEach(key => {
+                        if (key !== f) {
+                            sortButtons[key].reset();
+                        }
+                    });
+
+                    sortData(f, state);
+
+                    const statusText = state === 'none'
+                        ? '排序已清除'
+                        : `依 ${f} ${state === 'asc' ? '正序' : '逆序'} 排列`;
+                    document.getElementById('sort-status').textContent = statusText;
+                }
+            });
+            sortButtons[field].mount(`#sort-${field}`);
+        });
+
+        renderTable();
+
+        // 登入登出按鈕展示
+        ['filled', 'outlined', 'text', 'icon'].forEach(variant => {
+            const container = document.getElementById(`auth-${variant}`);
+
+            new AuthButton({
+                type: 'login',
+                variant,
+                size: 'medium',
+                onClick: () => ModalPanel.alert({ message: "登入" })
+            }).mount(container);
+
+            new AuthButton({
+                type: 'logout',
+                variant,
+                size: 'medium',
+                confirm: true,
+                onClick: () => ModalPanel.alert({ message: "登出" })
+            }).mount(container);
+        });
+
+        // 導覽列登出按鈕
+        new AuthButton({
+            type: 'logout',
+            variant: 'outlined',
+            size: 'small',
+            confirm: true,
+            onClick: () => ModalPanel.alert({ message: "已登出" })
+        }).mount('#navbar-auth');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

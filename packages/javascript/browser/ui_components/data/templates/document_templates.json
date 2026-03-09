@@ -1,0 +1,86 @@
+{
+    "default": [
+        {
+            "id": "title",
+            "label": "文件標題",
+            "type": "text",
+            "required": true
+        },
+        {
+            "id": "description",
+            "label": "說明",
+            "type": "textarea"
+        }
+    ],
+    "meeting": [
+        {
+            "id": "title",
+            "label": "會議主題",
+            "type": "text",
+            "required": true
+        },
+        {
+            "id": "attendees",
+            "label": "出席者",
+            "type": "text",
+            "placeholder": "請輸入出席人員姓名"
+        },
+        {
+            "id": "date",
+            "label": "日期",
+            "type": "roc-date"
+        },
+        {
+            "id": "time",
+            "label": "時間",
+            "type": "time"
+        },
+        {
+            "id": "description",
+            "label": "會議摘要",
+            "type": "textarea"
+        }
+    ],
+    "financial": [
+        {
+            "id": "title",
+            "label": "報表名稱",
+            "type": "text",
+            "required": true
+        },
+        {
+            "id": "fiscalYear",
+            "label": "會計年度",
+            "type": "number"
+        },
+        {
+            "id": "department",
+            "label": "所屬部門",
+            "type": "text"
+        },
+        {
+            "id": "description",
+            "label": "備註",
+            "type": "textarea"
+        }
+    ],
+    "image": [
+        {
+            "id": "title",
+            "label": "圖片名稱",
+            "type": "text",
+            "required": true
+        },
+        {
+            "id": "tags",
+            "label": "標籤",
+            "type": "text",
+            "placeholder": "以逗號分隔"
+        },
+        {
+            "id": "description",
+            "label": "描述",
+            "type": "textarea"
+        }
+    ]
+}

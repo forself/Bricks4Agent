@@ -1,0 +1,557 @@
+/**
+ * BasicButton Component Styles
+ * 一般操作按鈕樣式
+ */
+
+/* ===== 按鈕群組 ===== */
+.basic-btn-group {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.basic-btn-group--vertical {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.basic-btn-group--right {
+    justify-content: flex-end;
+}
+
+.basic-btn-group--center {
+    justify-content: center;
+}
+
+.basic-btn-group--spread {
+    justify-content: space-between;
+    width: 100%;
+}
+
+/* ===== 基礎按鈕 ===== */
+.basic-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 500;
+    font-family: inherit;
+    position: relative;
+    white-space: nowrap;
+}
+
+.basic-btn:focus {
+    outline: none;
+}
+
+.basic-btn:focus-visible {
+    outline: 2px solid #2196F3;
+    outline-offset: 2px;
+}
+
+.basic-btn__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.basic-btn__icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* ===== 尺寸 ===== */
+.basic-btn--small {
+    padding: 6px 14px;
+    font-size: 12px;
+    gap: 4px;
+}
+
+.basic-btn--small .basic-btn__icon {
+    width: 14px;
+    height: 14px;
+}
+
+.basic-btn--medium {
+    padding: 8px 18px;
+    font-size: 14px;
+    gap: 6px;
+}
+
+.basic-btn--medium .basic-btn__icon {
+    width: 16px;
+    height: 16px;
+}
+
+.basic-btn--large {
+    padding: 12px 28px;
+    font-size: 16px;
+    gap: 8px;
+}
+
+.basic-btn--large .basic-btn__icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* ===== Primary 變體 ===== */
+.basic-btn--confirm.basic-btn--primary {
+    background: #4CAF50;
+}
+
+.basic-btn--yes.basic-btn--primary {
+    background: #4CAF50;
+}
+
+.basic-btn--cancel.basic-btn--primary {
+    background: #9E9E9E;
+}
+
+.basic-btn--no.basic-btn--primary {
+    background: #F44336;
+}
+
+.basic-btn--done.basic-btn--primary {
+    background: #2196F3;
+}
+
+.basic-btn--close.basic-btn--primary {
+    background: #757575;
+}
+
+.basic-btn--search.basic-btn--primary {
+    background: #2196F3;
+}
+
+.basic-btn--clear.basic-btn--primary {
+    background: #FF9800;
+}
+
+.basic-btn--reset.basic-btn--primary {
+    background: #9C27B0;
+}
+
+.basic-btn--save.basic-btn--primary {
+    background: #4CAF50;
+}
+
+.basic-btn--apply.basic-btn--primary {
+    background: #00BCD4;
+}
+
+.basic-btn--copy.basic-btn--primary {
+    background: #607D8B;
+}
+
+.basic-btn--refresh.basic-btn--primary {
+    background: #03A9F4;
+}
+
+.basic-btn--addRow.basic-btn--primary {
+    background: #8BC34A;
+}
+
+.basic-btn--selectAll.basic-btn--primary {
+    background: #3F51B5;
+}
+
+.basic-btn--deselectAll.basic-btn--primary {
+    background: #9E9E9E;
+}
+
+.basic-btn--back.basic-btn--primary {
+    background: #78909C;
+}
+
+.basic-btn--next.basic-btn--primary {
+    background: #2196F3;
+}
+
+.basic-btn--prev.basic-btn--primary {
+    background: #78909C;
+}
+
+.basic-btn--expandAll.basic-btn--primary {
+    background: #795548;
+}
+
+.basic-btn--collapseAll.basic-btn--primary {
+    background: #795548;
+}
+
+.basic-btn--primary {
+    color: white;
+    border: none;
+}
+
+.basic-btn--primary:hover:not(:disabled) {
+    filter: brightness(0.9);
+}
+
+/* ===== Secondary 變體 ===== */
+.basic-btn--secondary {
+    background: white;
+    border-width: 2px;
+    border-style: solid;
+}
+
+.basic-btn--confirm.basic-btn--secondary {
+    color: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.basic-btn--yes.basic-btn--secondary {
+    color: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.basic-btn--cancel.basic-btn--secondary {
+    color: #9E9E9E;
+    border-color: #9E9E9E;
+}
+
+.basic-btn--no.basic-btn--secondary {
+    color: #F44336;
+    border-color: #F44336;
+}
+
+.basic-btn--done.basic-btn--secondary {
+    color: #2196F3;
+    border-color: #2196F3;
+}
+
+.basic-btn--close.basic-btn--secondary {
+    color: #757575;
+    border-color: #757575;
+}
+
+.basic-btn--search.basic-btn--secondary {
+    color: #2196F3;
+    border-color: #2196F3;
+}
+
+.basic-btn--clear.basic-btn--secondary {
+    color: #FF9800;
+    border-color: #FF9800;
+}
+
+.basic-btn--reset.basic-btn--secondary {
+    color: #9C27B0;
+    border-color: #9C27B0;
+}
+
+.basic-btn--save.basic-btn--secondary {
+    color: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.basic-btn--apply.basic-btn--secondary {
+    color: #00BCD4;
+    border-color: #00BCD4;
+}
+
+.basic-btn--copy.basic-btn--secondary {
+    color: #607D8B;
+    border-color: #607D8B;
+}
+
+.basic-btn--refresh.basic-btn--secondary {
+    color: #03A9F4;
+    border-color: #03A9F4;
+}
+
+.basic-btn--addRow.basic-btn--secondary {
+    color: #8BC34A;
+    border-color: #8BC34A;
+}
+
+.basic-btn--selectAll.basic-btn--secondary {
+    color: #3F51B5;
+    border-color: #3F51B5;
+}
+
+.basic-btn--deselectAll.basic-btn--secondary {
+    color: #9E9E9E;
+    border-color: #9E9E9E;
+}
+
+.basic-btn--back.basic-btn--secondary {
+    color: #78909C;
+    border-color: #78909C;
+}
+
+.basic-btn--next.basic-btn--secondary {
+    color: #2196F3;
+    border-color: #2196F3;
+}
+
+.basic-btn--prev.basic-btn--secondary {
+    color: #78909C;
+    border-color: #78909C;
+}
+
+.basic-btn--expandAll.basic-btn--secondary {
+    color: #795548;
+    border-color: #795548;
+}
+
+.basic-btn--collapseAll.basic-btn--secondary {
+    color: #795548;
+    border-color: #795548;
+}
+
+/* ===== Text 變體 ===== */
+.basic-btn--text {
+    background: transparent;
+    border: none;
+}
+
+.basic-btn--confirm.basic-btn--text {
+    color: #4CAF50;
+}
+
+.basic-btn--yes.basic-btn--text {
+    color: #4CAF50;
+}
+
+.basic-btn--cancel.basic-btn--text {
+    color: #9E9E9E;
+}
+
+.basic-btn--no.basic-btn--text {
+    color: #F44336;
+}
+
+.basic-btn--done.basic-btn--text {
+    color: #2196F3;
+}
+
+.basic-btn--close.basic-btn--text {
+    color: #757575;
+}
+
+.basic-btn--search.basic-btn--text {
+    color: #2196F3;
+}
+
+.basic-btn--clear.basic-btn--text {
+    color: #FF9800;
+}
+
+.basic-btn--reset.basic-btn--text {
+    color: #9C27B0;
+}
+
+.basic-btn--save.basic-btn--text {
+    color: #4CAF50;
+}
+
+.basic-btn--apply.basic-btn--text {
+    color: #00BCD4;
+}
+
+.basic-btn--copy.basic-btn--text {
+    color: #607D8B;
+}
+
+.basic-btn--refresh.basic-btn--text {
+    color: #03A9F4;
+}
+
+.basic-btn--addRow.basic-btn--text {
+    color: #8BC34A;
+}
+
+.basic-btn--selectAll.basic-btn--text {
+    color: #3F51B5;
+}
+
+.basic-btn--deselectAll.basic-btn--text {
+    color: #9E9E9E;
+}
+
+.basic-btn--back.basic-btn--text {
+    color: #78909C;
+}
+
+.basic-btn--next.basic-btn--text {
+    color: #2196F3;
+}
+
+.basic-btn--prev.basic-btn--text {
+    color: #78909C;
+}
+
+.basic-btn--expandAll.basic-btn--text {
+    color: #795548;
+}
+
+.basic-btn--collapseAll.basic-btn--text {
+    color: #795548;
+}
+
+/* ===== Icon 變體 ===== */
+.basic-btn--icon {
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    padding: 8px;
+}
+
+.basic-btn--confirm.basic-btn--icon {
+    color: #4CAF50;
+}
+
+.basic-btn--yes.basic-btn--icon {
+    color: #4CAF50;
+}
+
+.basic-btn--cancel.basic-btn--icon {
+    color: #9E9E9E;
+}
+
+.basic-btn--no.basic-btn--icon {
+    color: #F44336;
+}
+
+.basic-btn--done.basic-btn--icon {
+    color: #2196F3;
+}
+
+.basic-btn--close.basic-btn--icon {
+    color: #757575;
+}
+
+.basic-btn--search.basic-btn--icon {
+    color: #2196F3;
+}
+
+.basic-btn--clear.basic-btn--icon {
+    color: #FF9800;
+}
+
+.basic-btn--reset.basic-btn--icon {
+    color: #9C27B0;
+}
+
+.basic-btn--save.basic-btn--icon {
+    color: #4CAF50;
+}
+
+.basic-btn--apply.basic-btn--icon {
+    color: #00BCD4;
+}
+
+.basic-btn--copy.basic-btn--icon {
+    color: #607D8B;
+}
+
+.basic-btn--refresh.basic-btn--icon {
+    color: #03A9F4;
+}
+
+.basic-btn--addRow.basic-btn--icon {
+    color: #8BC34A;
+}
+
+.basic-btn--selectAll.basic-btn--icon {
+    color: #3F51B5;
+}
+
+.basic-btn--deselectAll.basic-btn--icon {
+    color: #9E9E9E;
+}
+
+.basic-btn--back.basic-btn--icon {
+    color: #78909C;
+}
+
+.basic-btn--next.basic-btn--icon {
+    color: #2196F3;
+}
+
+.basic-btn--prev.basic-btn--icon {
+    color: #78909C;
+}
+
+.basic-btn--expandAll.basic-btn--icon {
+    color: #795548;
+}
+
+.basic-btn--collapseAll.basic-btn--icon {
+    color: #795548;
+}
+
+.basic-btn--icon:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ===== 停用狀態 ===== */
+.basic-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ===== 載入狀態 ===== */
+.basic-btn--loading {
+    pointer-events: none;
+    color: transparent !important;
+}
+
+.basic-btn--loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: basic-btn-spin 0.8s linear infinite;
+}
+
+@keyframes basic-btn-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ===== 全寬 ===== */
+.basic-btn--fullWidth {
+    width: 100%;
+}
+
+/* ===== Hover 效果 ===== */
+.basic-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.basic-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+}
+
+/* ===== 對話框按鈕區 ===== */
+.dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    margin-top: 20px;
+}
+
+/* ===== 表單按鈕區 ===== */
+.form-buttons {
+    display: flex;
+    gap: 8px;
+    padding: 16px 0;
+}
+
+.form-buttons--right {
+    justify-content: flex-end;
+}
+
+.form-buttons--center {
+    justify-content: center;
+}

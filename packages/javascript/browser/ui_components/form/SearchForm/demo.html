@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>SearchForm Demo</title>
+    <style>
+        body { font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+        h1 { font-size: 22px; }
+        h2 { font-size: 16px; margin-top: 32px; color: #555; }
+        #log { margin-top: 16px; padding: 12px; background: var(--cl-bg-secondary); border-radius: 6px; font-size: 13px; white-space: pre-wrap; min-height: 40px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>SearchForm Demo</h1>
+    <p>搜尋表單元件 — 自動產生多欄位搜尋區，支援展開收合</p>
+
+    <h2>1. 多欄位搜尋</h2>
+    <div id="demo1"></div>
+
+    <h2>2. 簡易搜尋（不可收合）</h2>
+    <div id="demo2"></div>
+
+    <div id="log"></div>
+
+    <script type="module">
+        import { SearchForm } from './SearchForm.js';
+
+        const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+        // --- Demo 1: 多欄位搜尋，含展開收合 ---
+        const form1 = new SearchForm({
+            fields: [
+                { key: 'keyword', label: '關鍵字', type: 'text', placeholder: '搜尋名稱...' },
+                { key: 'status', label: '狀態', type: 'select', options: [
+                    { value: '', label: '全部' },
+                    { value: '1', label: '啟用' },
+                    { value: '0', label: '停用' }
+                ]},
+                { key: 'amount', label: '金額', type: 'number' },
+                { key: 'active', label: '已啟用', type: 'checkbox', placeholder: '僅顯示啟用' },
+                { key: 'createDate', label: '建立日期', type: 'date' },
+                { key: 'period', label: '期間', type: 'dateRange' }
+            ],
+            columns: 4,
+            collapsible: true,
+            visibleRows: 1,
+            onSearch: (values) => log('搜尋: ' + JSON.stringify(values)),
+            onReset: () => log('已重設'),
+            onChange: (key, val) => log(`欄位變更: ${key} = ${val}`)
+        });
+        form1.mount('#demo1');
+
+        // --- Demo 2: 簡易搜尋 ---
+        const form2 = new SearchForm({
+            fields: [
+                { key: 'q', label: '搜尋', type: 'text', placeholder: '輸入關鍵字...', required: true },
+                { key: 'category', label: '分類', type: 'select', options: [
+                    { value: '', label: '全部' },
+                    { value: 'A', label: '分類A' },
+                    { value: 'B', label: '分類B' }
+                ]}
+            ],
+            columns: 3,
+            collapsible: false,
+            showReset: false,
+            searchText: '查詢',
+            onSearch: (values) => log('查詢: ' + JSON.stringify(values))
+        });
+        form2.mount('#demo2');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

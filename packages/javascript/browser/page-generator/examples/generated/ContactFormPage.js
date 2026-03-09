@@ -1,0 +1,216 @@
+/**
+ * ContactFormPage - 聯絡我們
+ *
+ * 頁面類型: form
+ * 生成時間: 2026-03-09T15:28:57.229Z
+ *
+ * @module ContactFormPage
+ */
+
+import { BasePage } from '../../core/BasePage.js';
+import { ToastPanel } from '../components/Panel/ToastPanel.js';
+import { ModalPanel } from '../components/Panel/ModalPanel.js';
+
+export class ContactFormPage extends BasePage {
+
+    async onInit() {
+        this._data = {
+            form: {
+                  "name": "",
+                  "email": "",
+                  "phone": "",
+                  "subject": "",
+                  "message": "",
+                  "subscribe": false
+        },
+            loading: false,
+            submitting: false,
+            error: null
+        };
+    }
+
+    template() {
+        const { form, loading, submitting, error } = this._data;
+
+        return `
+            <div class="contact-form-page">
+                <header class="page-header">
+                    <h1>聯絡我們</h1>
+                </header>
+
+                ${error ? `
+                    <div class="alert alert-error">
+                        <p>${this.esc(error)}</p>
+                    </div>
+                ` : ''}
+
+                <form id="main-form" class="form-container">
+                    
+                            <div class="form-group">
+                                <label for="name">姓名 *</label>
+                                <input type="text" id="name" name="name"
+                                       value="${this.escAttr(this._data.form.name)}"
+                                       required
+                                       maxlength="50">
+                                
+                            </div>
+                    
+                            <div class="form-group">
+                                <label for="email">電子郵件 *</label>
+                                <input type="email" id="email" name="email"
+                                       value="${this.escAttr(this._data.form.email)}"
+                                       required>
+                            </div>
+                    
+                            <div class="form-group">
+                                <label for="phone">電話</label>
+                                <input type="text" id="phone" name="phone"
+                                       value="${this.escAttr(this._data.form.phone)}"
+                                       
+                                       >
+                                
+                            </div>
+                    
+                            <div class="form-group">
+                                <label for="subject">主題 *</label>
+                                <select id="subject" name="subject" required>
+                                    <option value="">請選擇</option>
+                                    
+                                        <option value="general" ${this._data.form.subject === 'general' ? 'selected' : ''}>一般詢問</option>
+                                    
+                                        <option value="support" ${this._data.form.subject === 'support' ? 'selected' : ''}>技術支援</option>
+                                    
+                                        <option value="feedback" ${this._data.form.subject === 'feedback' ? 'selected' : ''}>意見回饋</option>
+                                    
+                                        <option value="other" ${this._data.form.subject === 'other' ? 'selected' : ''}>其他</option>
+                                    
+                                </select>
+                            </div>
+                    
+                            <div class="form-group full-width">
+                                <label for="message">訊息內容 *</label>
+                                <textarea id="message" name="message"
+                                          rows="6"
+                                          required>${this.esc(this._data.form.message)}</textarea>
+                                
+                            </div>
+                    
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="subscribe" name="subscribe"
+                                           ${this._data.form.subscribe ? 'checked' : ''}>
+                                    訂閱電子報
+                                </label>
+                            </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" ${submitting ? 'disabled' : ''}>
+                            ${submitting ? '處理中...' : '儲存'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+    }
+
+    events() {
+        return {
+                  "submit #main-form": "onSubmit",
+                  "input .form-group input": "onInput",
+                  "input .form-group textarea": "onInput",
+                  "change .form-group select": "onInput"
+        };
+    }
+
+    onInput(event) {
+        const { name, value, type, checked } = event.target;
+        this._data.form[name] = type === 'checkbox' ? checked : value;
+    }
+
+    async onSubmit(event) {
+        event.preventDefault();
+
+        // 驗證
+        if (!this._validate()) {
+            return;
+        }
+
+        this._data.submitting = true;
+        this._data.error = null;
+        this._scheduleUpdate();
+
+        try {
+            await this._save();
+            this.showMessage('儲存成功!', 'success');
+
+            // 執行儲存後行為
+            await this._showThankYouMessage();
+
+        } catch (error) {
+            this._data.error = error.message || '操作失敗';
+            this.showMessage('操作失敗', 'error');
+        } finally {
+            this._data.submitting = false;
+            this._scheduleUpdate();
+        }
+    }
+
+    _validate() {
+        const { form } = this._data;
+
+        if (!form.name) {
+            this._data.error = '請填寫姓名';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        if (!form.email) {
+            this._data.error = '請填寫電子郵件';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        if (form.phone && !/^[0-9-]+$/.test(form.phone)) {
+            this._data.error = '電話格式不正確';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        if (!form.subject) {
+            this._data.error = '請填寫主題';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        if (!form.message) {
+            this._data.error = '請填寫訊息內容';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        return true;
+    }
+
+    async _save() {
+        const data = { ...this._data.form };
+
+        // 判斷是新增還是更新
+        const isNew = !this.params.id;
+        const endpoint = isNew ? '/api/contact' : `/api/items/${this.params.id}`;
+        const method = isNew ? 'post' : 'put';
+
+        const response = await this.api[method](endpoint, data);
+        return response;
+    }
+
+    /**
+     * 儲存後行為
+     * TODO: 實作此方法
+     */
+    async _showThankYouMessage() {
+        // TODO: 請實作此方法
+        console.log('[ContactFormPage] _showThankYouMessage 尚未實作');
+    }
+}
+
+export default ContactFormPage;

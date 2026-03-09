@@ -1,0 +1,105 @@
+import { BaseChart } from './BaseChart.js';
+
+export class RoseChart extends BaseChart {
+    constructor(options) {
+        super(options);
+        // New data format: { labels: [], series: [{ name: '', data: [] }] }
+        this.data = options.data || { labels: [], series: [] };
+    }
+
+    render() {
+        if (!this.width || !this.height) return;
+
+        const centerX = this.width / 2;
+        const centerY = this.height / 2;
+        const maxRadius = Math.min(centerX, centerY) * 0.9;
+
+        const g = this.createSVGElement('g');
+        g.setAttribute('transform', `translate(${centerX}, ${centerY})`);
+        this.svg.appendChild(g);
+
+        // Find global max value (sum of all series for each category)
+        let maxTotalVal = 0;
+        const totalValues = new Array(this.data.labels.length).fill(0);
+
+        this.data.series.forEach(s => {
+            s.data.forEach((val, i) => {
+                totalValues[i] += val;
+            });
+        });
+        maxTotalVal = Math.max(...totalValues, 1);
+
+        const angleStep = (2 * Math.PI) / this.data.labels.length;
+
+        // Iterate by Category (Angle)
+        this.data.labels.forEach((label, i) => {
+            let currentRadius = 0;
+            const startAngle = i * angleStep;
+            const endAngle = (i + 1) * angleStep;
+
+            // Iterate by Series (Radius Stack)
+            this.data.series.forEach((s, sIndex) => {
+                const val = s.data[i] || 0;
+                if (val === 0) return;
+
+                const radiusIncrement = (val / maxTotalVal) * maxRadius;
+                const innerRadius = currentRadius;
+                const outerRadius = currentRadius + radiusIncrement;
+
+                // Draw arc
+                const x1 = Math.sin(startAngle) * outerRadius;
+                const y1 = -Math.cos(startAngle) * outerRadius;
+                const x2 = Math.sin(endAngle) * outerRadius;
+                const y2 = -Math.cos(endAngle) * outerRadius;
+
+                const x3 = Math.sin(endAngle) * innerRadius;
+                const y3 = -Math.cos(endAngle) * innerRadius;
+                const x4 = Math.sin(startAngle) * innerRadius;
+                const y4 = -Math.cos(startAngle) * innerRadius;
+
+                // Path construction
+                let d;
+                if (innerRadius === 0) {
+                    // Sector from center
+                    d = `M 0 0 L ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 0 1 ${x2} ${y2} Z`;
+                } else {
+                    // Annular sector
+                    d = `M ${x4} ${y4} L ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${innerRadius} ${innerRadius} 0 0 0 ${x4} ${y4} Z`;
+                }
+
+                const path = this.createSVGElement('path');
+                path.setAttribute('d', d);
+                path.setAttribute('fill', this.getColor(sIndex));
+                path.setAttribute('stroke', 'var(--cl-bg)');
+                path.setAttribute('stroke-width', '1');
+                path.setAttribute('opacity', '0.9');
+
+                // Interaction
+                path.onmouseenter = (e) => {
+                    path.setAttribute('opacity', 1);
+                    const safeLabel = this.escapeHtml(label);
+                    const safeName = this.escapeHtml(s.name);
+                    this.showTooltip(`
+                        <strong>${safeLabel}</strong><br/>
+                        ${safeName}: ${val}
+                    `, e);
+                };
+                path.onmouseleave = () => {
+                    path.setAttribute('opacity', 0.9);
+                    this.hideTooltip();
+                };
+
+                g.appendChild(path);
+
+                // Update computed radius for next stack
+                currentRadius = outerRadius;
+            });
+        });
+
+        // Legend
+        this._drawLegend(this.data.series.map((s, i) => ({
+            label: s.name,
+            color: this.getColor(i)
+        })));
+    }
+}

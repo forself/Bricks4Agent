@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoadingSpinner Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .variants { display: flex; gap: 48px; align-items: flex-start; flex-wrap: wrap; }
+        .variant-item { text-align: center; }
+        .variant-item p { margin-top: 12px; font-size: 13px; color: var(--cl-text-secondary); }
+        .sizes { display: flex; gap: 48px; align-items: center; flex-wrap: wrap; }
+        button { padding: 8px 20px; cursor: pointer; border: 1px solid var(--cl-border); border-radius: 4px; background: var(--cl-bg); margin-right: 8px; }
+        button:hover { border-color: #2196F3; color: #2196F3; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>LoadingSpinner Demo</h1>
+
+    <div class="demo-section">
+        <h2>四種變體</h2>
+        <div class="variants">
+            <div class="variant-item" id="v-spinner"><p>spinner</p></div>
+            <div class="variant-item" id="v-dots"><p>dots</p></div>
+            <div class="variant-item" id="v-pulse"><p>pulse</p></div>
+            <div class="variant-item" id="v-bar"><p>bar</p></div>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>三種尺寸（spinner）</h2>
+        <div class="sizes">
+            <div id="s-small"></div>
+            <div id="s-medium"></div>
+            <div id="s-large"></div>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>帶文字 + 顯示/隱藏切換</h2>
+        <div id="with-text" style="min-height:80px;"></div>
+        <button id="btnToggle">toggle()</button>
+    </div>
+
+    <div class="demo-section">
+        <h2>全螢幕遮罩（3 秒自動關閉）</h2>
+        <button id="btnOverlay">showOverlay()</button>
+    </div>
+
+    <script type="module">
+        import { LoadingSpinner } from './LoadingSpinner.js';
+
+        // 四種變體
+        ['spinner', 'dots', 'pulse', 'bar'].forEach(v => {
+            new LoadingSpinner({ variant: v, size: 'medium' }).mount(`#v-${v}`);
+        });
+
+        // 三種尺寸
+        ['small', 'medium', 'large'].forEach(s => {
+            new LoadingSpinner({ size: s }).mount(`#s-${s}`);
+        });
+
+        // 帶文字 + toggle
+        const textSpinner = new LoadingSpinner({
+            variant: 'dots',
+            text: '資料載入中...',
+            color: '#FF9800'
+        });
+        textSpinner.mount('#with-text');
+        document.getElementById('btnToggle').addEventListener('click', () => textSpinner.toggle());
+
+        // 全螢幕遮罩
+        document.getElementById('btnOverlay').addEventListener('click', () => {
+            const overlay = LoadingSpinner.showOverlay('處理中，請稍候...');
+            setTimeout(() => overlay.destroy(), 3000);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

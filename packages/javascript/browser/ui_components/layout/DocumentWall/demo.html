@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocumentWall Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; background: var(--cl-bg-secondary); }
+        h1 { color: var(--cl-text); }
+        .demo-section { background: var(--cl-bg); padding: 24px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .demo-section h2 { margin-top: 0; color: #555; font-size: 16px; }
+        .demo-section p { color: #888; font-size: 13px; margin: 4px 0 12px; }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>DocumentWall Demo</h1>
+
+    <div class="demo-section">
+        <h2>文件牆 — 可選取、批次下載</h2>
+        <p>點選文件卡片進行選取，可批次下載為 ZIP。</p>
+        <div id="wall1"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>唯讀模式</h2>
+        <div id="wall2"></div>
+    </div>
+
+    <script type="module">
+        import { DocumentWall } from './DocumentWall.js';
+
+        const sampleDocs = [
+            { id: '1', title: '專案企劃書.pdf', type: 'pdf', description: '2024 年度專案規劃' },
+            { id: '2', title: '需求規格.docx', type: 'docx', description: '系統需求規格文件' },
+            { id: '3', title: '架構圖.png', type: 'image', src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="%234CAF50" width="100" height="100"/></svg>' },
+            { id: '4', title: '測試報告.xlsx', type: 'xlsx', description: '自動化測試結果報告' },
+            { id: '5', title: '會議紀錄.pdf', type: 'pdf', description: '第三次技術審查會議' },
+            { id: '6', title: '部署手冊.md', type: 'other', description: 'Production 環境部署步驟' }
+        ];
+
+        const wall1 = new DocumentWall({
+            documents: sampleDocs,
+            onDownload: (doc) => console.log('下載:', doc.title),
+            onDescription: (doc) => alert(doc.description || '無描述'),
+            onEdit: (doc) => console.log('編輯:', doc.title),
+            onDelete: (docId) => console.log('刪除:', docId)
+        });
+        wall1.mount('#wall1');
+
+        // 唯讀模式
+        const wall2 = new DocumentWall({
+            documents: sampleDocs.slice(0, 3),
+            readOnly: true
+        });
+        wall2.mount('#wall2');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

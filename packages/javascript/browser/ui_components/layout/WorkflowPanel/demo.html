@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkflowPanel Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 32px 20px 48px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            border: 1px solid var(--cl-border);
+            border-radius: 8px;
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        .shell {
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        #detail {
+            margin-top: 16px;
+            color: var(--cl-text-secondary);
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WorkflowPanel Demo</h1>
+        <div class="toolbar">
+            <button id="load-review">Load Review Flow</button>
+            <button id="load-appeal">Load Appeal Flow</button>
+            <button id="set-next-stage">Set Next Stage</button>
+        </div>
+
+        <div class="shell">
+            <div id="workflow-host"></div>
+            <div id="detail">Click a node to inspect the stage payload.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { WorkflowPanel } from './WorkflowPanel.js';
+        import { createThemeToggle } from '../../demo-utils.js';
+
+        const detail = document.getElementById('detail');
+        const reviewFlow = [
+            { StageName: 'Create', DateTime: '2026-03-01 09:00:00', UnitName: 'Case Team', UserName: 'Amy', NextStageName: 'Edit', NextUnit: 'Case Team' },
+            { StageName: 'Edit', DateTime: '2026-03-01 10:30:00', UnitName: 'Case Team', UserName: 'Amy', NextStageName: 'Submit', NextUnit: 'Case Team' },
+            { StageName: 'Submit', DateTime: '2026-03-01 13:20:00', UnitName: 'Case Team', UserName: 'Amy', NextStageName: 'Audit', NextUnit: 'Supervisor' },
+            { StageName: 'Audit', DateTime: '2026-03-01 15:10:00', UnitName: 'Supervisor', UserName: 'Chris', NextStageName: 'Approved', NextUnit: 'Operations' }
+        ];
+
+        const appealFlow = [
+            { StageName: 'Create', DateTime: '2026-03-02 08:50:00', UnitName: 'Branch Office', UserName: 'Lena', NextStageName: 'Submit', NextUnit: 'Branch Office' },
+            { StageName: 'Submit', DateTime: '2026-03-02 09:40:00', UnitName: 'Branch Office', UserName: 'Lena', NextStageName: 'Audit', NextUnit: 'Regional Desk' },
+            { StageName: 'Audit', DateTime: '2026-03-02 11:10:00', UnitName: 'Regional Desk', UserName: 'Mark', NextStageName: 'Rej', NextUnit: 'Branch Office' },
+            { StageName: 'Rej', DateTime: '2026-03-02 13:00:00', UnitName: 'Regional Desk', UserName: 'Mark', NextStageName: 'Replenish', NextUnit: 'Branch Office' },
+            { StageName: 'Replenish', DateTime: '2026-03-02 15:00:00', UnitName: 'Branch Office', UserName: 'Lena', NextStageName: 'Submit', NextUnit: 'Branch Office' }
+        ];
+
+        const panel = new WorkflowPanel({
+            data: reviewFlow,
+            itemsPerRow: 5,
+            onNodeClick: (item, stage) => {
+                detail.innerHTML = `
+                    <strong>${stage.name}</strong><br>
+                    Datetime: ${item.DateTime || 'Pending'}<br>
+                    Unit: ${item.UnitName || '-'}<br>
+                    User: ${item.UserName || '-'}<br>
+                    Next: ${item.NextStageName || '-'}
+                `;
+            }
+        });
+
+        panel.mount('#workflow-host');
+
+        document.getElementById('load-review').addEventListener('click', () => {
+            panel.setData(reviewFlow);
+            panel.setNextStage(null);
+            detail.textContent = 'Loaded the review workflow.';
+        });
+
+        document.getElementById('load-appeal').addEventListener('click', () => {
+            panel.setData(appealFlow);
+            panel.setNextStage(null);
+            detail.textContent = 'Loaded the appeal workflow.';
+        });
+
+        document.getElementById('set-next-stage').addEventListener('click', () => {
+            panel.setNextStage({ StageName: 'Approved', NextUnit: 'Operations' });
+            detail.textContent = 'Appended a pending next stage.';
+        });
+
+        createThemeToggle();
+    </script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RegionMap Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            margin: 0;
+            padding: 32px 20px 48px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 320px;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .panel {
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border-light);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        button {
+            border: 1px solid var(--cl-border);
+            border-radius: 8px;
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        .legend {
+            display: grid;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+        }
+
+        #selection-log {
+            color: var(--cl-text-secondary);
+            line-height: 1.6;
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RegionMap Demo</h1>
+        <div class="toolbar">
+            <button id="load-sample">Load Sample Data</button>
+            <button id="clear-data">Clear Data</button>
+        </div>
+
+        <div class="layout">
+            <section class="panel">
+                <div id="map-host"></div>
+            </section>
+
+            <aside class="panel">
+                <h2>Selection</h2>
+                <div id="selection-log">Hover or click a region to inspect its data.</div>
+
+                <div class="legend">
+                    <div class="legend-item">
+                        <span class="swatch" style="background: #E3F2FD;"></span>
+                        <span>Low value</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="swatch" style="background: #64B5F6;"></span>
+                        <span>Medium value</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="swatch" style="background: #1565C0;"></span>
+                        <span>High value</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script type="module">
+        import { RegionMap } from './RegionMap.js';
+        import { createThemeToggle } from '../../demo-utils.js';
+
+        const selectionLog = document.getElementById('selection-log');
+        const sampleData = {
+            TPE: { value: 310000, label: 'Taipei City' },
+            NWT: { value: 265000, label: 'New Taipei City' },
+            TXG: { value: 240000, label: 'Taichung City' },
+            TNN: { value: 180000, label: 'Tainan City' },
+            KHH: { value: 210000, label: 'Kaohsiung City' },
+            HUA: { value: 135000, label: 'Hualien County' }
+        };
+
+        const colorScale = RegionMap.createColorScale(120000, 320000, ['#E3F2FD', '#1565C0']);
+        const map = new RegionMap({
+            data: sampleData,
+            colorScale,
+            showLabels: true,
+            showValues: true,
+            width: '100%',
+            height: '640px',
+            onChange: ({ code, name }) => {
+                const region = sampleData[code];
+                selectionLog.innerHTML = `
+                    <strong>${name}</strong><br>
+                    Code: ${code}<br>
+                    Value: ${region ? region.value.toLocaleString() : 'No data'}<br>
+                    Label: ${region ? region.label : 'No label'}
+                `;
+            }
+        });
+
+        map.mount('#map-host');
+
+        document.getElementById('load-sample').addEventListener('click', () => {
+            map.setData(sampleData);
+            selectionLog.textContent = 'Reloaded the sample data set.';
+        });
+
+        document.getElementById('clear-data').addEventListener('click', () => {
+            map.setData({});
+            selectionLog.textContent = 'Cleared all region values.';
+        });
+
+        createThemeToggle();
+    </script>
+</body>
+</html>

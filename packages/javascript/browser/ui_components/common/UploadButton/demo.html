@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Button 元件展示</title>
+    <link rel="stylesheet" href="UploadButton.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            background: linear-gradient(90deg, #64ffda, #00d2ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 40px;
+        }
+
+        .demo-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #ccd6f6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-section h2::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(180deg, #64ffda, #00d2ff);
+            border-radius: 2px;
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .size-label {
+            font-size: 12px;
+            color: #8892b0;
+            min-width: 80px;
+        }
+
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .color-item {
+            text-align: center;
+        }
+
+        .color-swatch {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            margin: 0 auto 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 9px;
+        }
+
+        .color-label {
+            font-size: 12px;
+            color: #8892b0;
+        }
+
+        .color-hex {
+            font-size: 11px;
+            color: #64ffda;
+            font-family: monospace;
+        }
+
+        /* 上傳區域展示 */
+        .upload-zone {
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .upload-zone-title {
+            font-size: 14px;
+            color: #ccd6f6;
+            margin-bottom: 20px;
+        }
+
+        .upload-zone-hint {
+            font-size: 12px;
+            color: #8892b0;
+            margin-top: 15px;
+        }
+
+        /* 檔案清單 */
+        .file-list {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .file-icon {
+            width: 32px;
+            height: 32px;
+            background: #64ffda;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-size: 13px;
+            color: #ccd6f6;
+        }
+
+        .file-size {
+            font-size: 11px;
+            color: #8892b0;
+        }
+
+        .compare-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .compare-box {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .compare-box h3 {
+            font-size: 14px;
+            color: #8892b0;
+            margin-bottom: 15px;
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>📤 Upload Button</h1>
+        <p class="subtitle">上傳按鈕元件 - 八種檔案類型圖示</p>
+
+        <!-- 基本展示 -->
+        <div class="demo-section">
+            <h2>全部類型</h2>
+            <div class="demo-row" id="all-types"></div>
+        </div>
+
+        <!-- 新增類型展示 -->
+        <div class="demo-section">
+            <h2>新增類型：通用檔案、TXT、CSV</h2>
+            <div class="demo-row" id="new-types"></div>
+        </div>
+
+        <!-- 尺寸變體 -->
+        <div class="demo-section">
+            <h2>尺寸變體</h2>
+            <div class="demo-row">
+                <span class="size-label">Large (64px)</span>
+                <div id="size-large"></div>
+            </div>
+        </div>
+
+        <!-- 含標籤 -->
+        <div class="demo-section">
+            <h2>含標籤顯示</h2>
+            <div class="demo-row" id="with-labels"></div>
+        </div>
+
+        <!-- 上傳與下載對照 -->
+        <div class="demo-section">
+            <h2>上傳 vs 下載對照</h2>
+            <div class="compare-section">
+                <div class="compare-box">
+                    <h3>⬆️ 上傳按鈕（虛線邊框 + 向上箭頭）</h3>
+                    <div id="upload-compare"></div>
+                </div>
+                <div class="compare-box">
+                    <h3>⬇️ 下載按鈕（無邊框 + 向下箭頭）</h3>
+                    <div id="download-compare"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 色彩配置 -->
+        <div class="demo-section">
+            <h2>色彩配置</h2>
+            <div class="color-palette">
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #217346;">XLS</div>
+                    <div class="color-label">Excel 綠</div>
+                    <div class="color-hex">#217346</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #2B579A;">DOC</div>
+                    <div class="color-label">Word 藍</div>
+                    <div class="color-hex">#2B579A</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #E53935;">PDF</div>
+                    <div class="color-label">PDF 紅</div>
+                    <div class="color-hex">#E53935</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #7B1FA2;">IMG</div>
+                    <div class="color-label">圖片 紫</div>
+                    <div class="color-hex">#7B1FA2</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #00838F;">PHOTO</div>
+                    <div class="color-label">人像 青</div>
+                    <div class="color-hex">#00838F</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #607D8B;">FILE</div>
+                    <div class="color-label">通用 灰</div>
+                    <div class="color-hex">#607D8B</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #455A64;">TXT</div>
+                    <div class="color-label">文字 深灰</div>
+                    <div class="color-hex">#455A64</div>
+                </div>
+                <div class="color-item">
+                    <div class="color-swatch" style="background: #43A047;">CSV</div>
+                    <div class="color-label">CSV 淺綠</div>
+                    <div class="color-hex">#43A047</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 互動測試區 -->
+        <div class="demo-section">
+            <h2>互動測試區（拖放或點擊上傳）</h2>
+            <div class="upload-zone">
+                <div class="upload-zone-title">選擇要上傳的檔案類型：</div>
+                <div class="demo-row" style="justify-content: center;" id="interactive-zone"></div>
+                <div class="upload-zone-hint">支援拖放檔案到按鈕上</div>
+            </div>
+            <div class="file-list" id="file-list"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { UploadButton } from './UploadButton.js';
+        import { DownloadButton } from '../DownloadButton/DownloadButton.js';
+
+        const allTypes = ['xls', 'word', 'pdf', 'image', 'portrait', 'file', 'txt', 'csv'];
+        const newTypes = ['file', 'txt', 'csv'];
+        const commonTypes = ['xls', 'word', 'pdf', 'image', 'portrait'];
+
+        // 全部類型展示
+        const allTypesDemo = document.getElementById('all-types');
+        allTypes.forEach(type => {
+            new UploadButton({ type, size: 'large' }).mount(allTypesDemo);
+        });
+
+        // 新增類型展示
+        const newTypesDemo = document.getElementById('new-types');
+        newTypes.forEach(type => {
+            new UploadButton({ type, size: 'large', showLabel: true }).mount(newTypesDemo);
+        });
+
+        // 尺寸展示
+        const sizeLarge = document.getElementById('size-large');
+        const largeGroup = UploadButton.createGroup(
+            allTypes.map(type => ({ type })),
+            { size: 'large' }
+        );
+        sizeLarge.appendChild(largeGroup);
+
+        // 含標籤
+        const labelsDemo = document.getElementById('with-labels');
+        allTypes.forEach(type => {
+            new UploadButton({ type, size: 'medium', showLabel: true }).mount(labelsDemo);
+        });
+
+        // 上傳下載對照
+        const uploadCompare = document.getElementById('upload-compare');
+        commonTypes.forEach(type => {
+            new UploadButton({ type, size: 'medium' }).mount(uploadCompare);
+        });
+
+        const downloadCompare = document.getElementById('download-compare');
+        commonTypes.forEach(type => {
+            new DownloadButton({ type, size: 'medium' }).mount(downloadCompare);
+        });
+
+        // 互動測試區
+        const interactiveZone = document.getElementById('interactive-zone');
+        const fileList = document.getElementById('file-list');
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function addFileToList(file, type) {
+            const item = document.createElement('div');
+            item.className = 'file-item';
+            item.innerHTML = `
+                <div class="file-icon">${type.toUpperCase()}</div>
+                <div class="file-info">
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-size">${formatSize(file.size)}</div>
+                </div>
+            `;
+            fileList.appendChild(item);
+        }
+
+        allTypes.forEach(type => {
+            new UploadButton({
+                type,
+                size: 'large',
+                showLabel: true,
+                onSelect: (files, data) => {
+                    files.forEach(file => addFileToList(file, data.type));
+                }
+            }).mount(interactiveZone);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ColorPicker 示範</title>
+    <link rel="stylesheet" href="ColorPicker.css">
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', sans-serif;
+            padding: 40px;
+            background: var(--cl-bg-secondary);
+        }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            margin-top: 0;
+            color: var(--cl-text);
+        }
+        #color-display {
+            width: 200px;
+            height: 100px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 2px solid var(--cl-border);
+        }
+    </style>
+    <link rel="stylesheet" href="../../theme.css">
+</head>
+<body>
+    <h1>ColorPicker 顏色選擇器</h1>
+
+    <div class="demo-section">
+        <h2>基本使用</h2>
+        <div id="picker1"></div>
+        <div id="color-display"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>不顯示 HEX 輸入框</h2>
+        <div id="picker2"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>多個選擇器</h2>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <div id="picker3"></div>
+            <div id="picker4"></div>
+            <div id="picker5"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import ColorPicker from './ColorPicker.js';
+
+        // Demo 1: 基本用法
+        const picker1 = new ColorPicker({
+            value: '#4CAF50',
+            label: '主色調',
+            onChange: (value) => {
+                console.log('顏色改變:', value);
+                document.getElementById('color-display').style.background = value;
+            }
+        });
+        picker1.mount('#picker1');
+        document.getElementById('color-display').style.background = '#4CAF50';
+
+        // Demo 2: 不顯示 HEX
+        const picker2 = new ColorPicker({
+            value: '#FF5722',
+            label: '次要顏色',
+            showHex: false
+        });
+        picker2.mount('#picker2');
+
+        // Demo 3-5: 多個選擇器
+        const picker3 = new ColorPicker({
+            value: '#2196F3',
+            label: '背景色'
+        });
+        picker3.mount('#picker3');
+
+        const picker4 = new ColorPicker({
+            value: '#FFC107',
+            label: '文字色'
+        });
+        picker4.mount('#picker4');
+
+        const picker5 = new ColorPicker({
+            value: '#9C27B0',
+            label: '邊框色'
+        });
+        picker5.mount('#picker5');
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>
