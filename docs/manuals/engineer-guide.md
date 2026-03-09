@@ -1,6 +1,6 @@
-# 元件庫工程師使用手冊
+# Bricks4Agent 工程師使用手冊
 
-> 本手冊面向初階工程師，涵蓋元件庫的安裝、使用、主題系統、頁面生成器與後端整合等完整指引。
+> 本手冊面向初階工程師，涵蓋 Bricks4Agent 的安裝、使用、主題系統、頁面生成器與後端整合等完整指引。
 
 ---
 
@@ -53,7 +53,7 @@ Bricks4Agent/
 ├── packages/                          # 可重用套件
 │   ├── javascript/
 │   │   └── browser/
-│   │       ├── ui_components/         # UI 元件庫（核心）
+│   │       ├── ui_components/         # Bricks4Agent UI 元件庫（核心）
 │   │       │   ├── form/              # 表單元件 (12 個)
 │   │       │   ├── common/            # 通用元件 (18 個)
 │   │       │   ├── layout/            # 佈局元件 (10 個)
@@ -102,7 +102,6 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:string"
 ```
 
-> `spa-cli.js` 目前文件描述的是 CommonJS 風格 CLI 入口；如果你的工作樹仍因 root `package.json` 的 `"type": "module"` 把它當成 ESM 載入，請先完成 CLI/模組制式修正，再執行上述命令。
 
 ---
 
@@ -170,7 +169,7 @@ input.destroy();
 
 ### 3.1 theme.css 概述
 
-元件庫使用 CSS 變數（Custom Properties）實作主題系統，所有變數使用 `--cl-` 前綴（Component Library）。
+Bricks4Agent 使用 CSS 變數（Custom Properties）實作主題系統，所有變數使用 `--cl-` 前綴。
 
 ### 3.2 變數分類
 
@@ -317,7 +316,7 @@ document.documentElement.removeAttribute('data-theme');
 
 ### 3.5 Demo 主題切換工具
 
-元件庫提供 `demo-utils.js` 工具，在 Demo 頁面中快速加入主題切換按鈕：
+Bricks4Agent 提供 `demo-utils.js` 工具，在 Demo 頁面中快速加入主題切換按鈕：
 
 ```javascript
 import { createThemeToggle } from '../../demo-utils.js';
@@ -2502,4 +2501,4 @@ app.MapPost("/api/users", async (CreateUserDto dto) =>
 
 ---
 
-> **本手冊涵蓋元件庫的核心功能與使用方式。如需更深入的特定元件文件，請參閱各元件目錄下的 README.md。**
+> **本手冊涵蓋 Bricks4Agent 的核心功能與使用方式。如需更深入的特定元件文件，請參閱各元件目錄下的 README.md。**

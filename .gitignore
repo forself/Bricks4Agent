@@ -17,7 +17,7 @@ Thumbs.db
 
 # Test artifacts
 test-results/
-screenshots/
+/screenshots/
 
 # Temp
 *.tmp

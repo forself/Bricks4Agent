@@ -1,6 +1,6 @@
-﻿# Component Library Engineer Guide
+# Bricks4Agent Engineer Guide
 
-> This guide is intended for junior engineers, covering installation, usage, theme system, page generator, and backend integration of the component library.
+> This guide is intended for junior engineers, covering installation, usage, theme system, page generator, and backend integration of Bricks4Agent.
 
 ---
 
@@ -53,7 +53,7 @@ Bricks4Agent/
 ├── packages/                            # Reusable packages
 │   ├── javascript/
 │   │   └── browser/
-│   │       ├── ui_components/           # UI component library
+│   │       ├── ui_components/           # Bricks4Agent UI component library
 │   │       │   ├── form/                # Form components (12)
 │   │       │   ├── common/              # Common components (18)
 │   │       │   ├── layout/              # Layout components (10)
@@ -102,7 +102,6 @@ node templates/spa/scripts/spa-cli.js new --name my-app --output ./projects
 node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:string"
 ```
 
-> `spa-cli.js` is currently documented as a CommonJS-style entry point. If your checkout still treats it as ESM because of the root package configuration, apply the CLI/module compatibility fix before invoking those commands.
 ---
 
 ## 2. Component Overview
@@ -168,7 +167,7 @@ input.destroy();
 
 ### 3.1 theme.css Overview
 
-The component library uses CSS Custom Properties for its theme system. All variables use the `--cl-` prefix (Component Library).
+Bricks4Agent uses CSS Custom Properties for its theme system. All variables use the `--cl-` prefix.
 
 ### 3.2 Variable Categories
 
@@ -315,7 +314,7 @@ document.documentElement.removeAttribute('data-theme');
 
 ### 3.5 Demo Theme Toggle Utility
 
-The component library provides `demo-utils.js` for quickly adding a theme toggle button to demo pages:
+Bricks4Agent provides `demo-utils.js` for quickly adding a theme toggle button to demo pages:
 
 ```javascript
 import { createThemeToggle } from '../../demo-utils.js';
@@ -2136,7 +2135,7 @@ node templates/spa/scripts/spa-cli.js api Article --fields "Title:string,Publish
 node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,PublishedAt:datetime"
 ```
 
-> If `spa-cli.js` is still being loaded as an ES module in your checkout, finish the CLI/module compatibility patch first. The command surface above remains the intended interface.
+
 
 ### 12.3 Generated Project Structure
 
@@ -2501,4 +2500,4 @@ Before deployment, verify the following:
 
 ---
 
-> **This guide covers the core features and usage of the component library. For more detailed documentation on specific components, refer to the README.md in each component's directory.**
+> **This guide covers the core features and usage of Bricks4Agent. For more detailed documentation on specific components, refer to the README.md in each component's directory.**
