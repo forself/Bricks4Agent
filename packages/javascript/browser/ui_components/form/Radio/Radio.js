@@ -85,9 +85,9 @@ export class Radio {
             width: ${sizeStyles.circle};
             height: ${sizeStyles.circle};
             border: 2px solid ${this.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)'};
-            border-radius: 50%;
+            border-radius: var(--cl-radius-round);
             background: var(--cl-bg);
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
         `;
 
         // 內部圓點
@@ -96,10 +96,10 @@ export class Radio {
         dot.style.cssText = `
             width: 50%;
             height: 50%;
-            border-radius: 50%;
+            border-radius: var(--cl-radius-round);
             background: var(--cl-primary);
             transform: scale(${this.checked ? 1 : 0});
-            transition: transform 0.2s;
+            transition: transform var(--cl-transition);
         `;
         circle.appendChild(dot);
 

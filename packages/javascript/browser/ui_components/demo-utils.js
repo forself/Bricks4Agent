@@ -12,12 +12,12 @@ export function createThemeToggle() {
     btn.id = 'theme-toggle';
     btn.style.cssText = `
         position: fixed; top: 12px; right: 12px; z-index: 9999;
-        padding: 6px 14px; border: 1px solid var(--cl-border, #ddd);
+        padding: 6px 14px; border: 1px solid var(--cl-border);
         border-radius: var(--cl-radius-md, 6px);
-        background: var(--cl-bg, #fff); color: var(--cl-text, #333);
-        cursor: pointer; font-size: 13px; font-family: inherit;
+        background: var(--cl-bg); color: var(--cl-text);
+        cursor: pointer; font-size: var(--cl-font-size-md); font-family: inherit;
         transition: background 0.2s, color 0.2s, border-color 0.2s;
-        box-shadow: var(--cl-shadow-sm, 0 1px 3px rgba(0,0,0,0.1));
+        box-shadow: var(--cl-shadow-sm);
     `;
 
     const update = () => {

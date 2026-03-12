@@ -66,50 +66,31 @@ export class CanvasMap {
         }
     }
 
+    _getThemeColor(tokenName, fallback = 'currentColor') {
+        const root = this.container || document.documentElement;
+        const value = getComputedStyle(root).getPropertyValue(tokenName).trim();
+        return value || fallback;
+    }
+
     _render() {
         // Clear main canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Draw all layers
         this.layers.forEach(layer => {
-            // Draw base image
             this.ctx.drawImage(layer.img, 0, 0, this.options.width, this.options.height);
-
-            // Draw highlight if hovered
-            if (this.hoveredLayer && this.hoveredLayer.id === layer.id) {
-                this.ctx.save();
-                this.ctx.globalCompositeOperation = 'source-atop';
-                this.ctx.fillStyle = 'rgba(255, 215, 0, 0.4)'; // Highlight color
-                // This fillRect covers the whole canvas but masked by source-atop? 
-                // No, source-atop composites onto EXISTING content.
-                // But we drew ALL layers first. This approach is wrong for single layer highlight.
-                // Correct approach: Draw layer on temp canvas, colorize it, draw on top?
-                // Simpler: Draw Highlight Overlay AFTER all layers
-            }
         });
 
         // Draw highlight overlay separately
         if (this.hoveredLayer) {
             this.ctx.save();
-            // Use the offscreen canvas of the hovered layer as a mask?
-            // Expensive to process full image per frame.
-            // Alternative: Draw the hovered image again with a tint.
-
-            // 1. Draw hovered image
             this.ctx.globalCompositeOperation = 'source-over';
-            // Actually standard draw is fine, just draw it again on top
             this.ctx.drawImage(this.hoveredLayer.img, 0, 0, this.options.width, this.options.height);
-
-            // 2. Tint it
             this.ctx.globalCompositeOperation = 'source-in';
-            this.ctx.fillStyle = 'rgba(255, 220, 50, 0.5)';
+            this.ctx.globalAlpha = 0.5;
+            this.ctx.fillStyle = this._getThemeColor('--cl-warning');
             this.ctx.fillRect(0, 0, this.options.width, this.options.height);
-
-            // Restore
             this.ctx.restore();
-
-            // Re-draw the image boundaries (optional stroke effect)
-            // Hard with just canvas.
         }
     }
 
@@ -195,13 +176,12 @@ export class CanvasMap {
 
             tCtx.drawImage(this.hoveredLayer.img, 0, 0, this.options.width, this.options.height);
             tCtx.globalCompositeOperation = 'source-in';
-            tCtx.fillStyle = 'rgba(255, 0, 0, 0.3)'; // Red tint
+            tCtx.globalAlpha = 0.3;
+            tCtx.fillStyle = this._getThemeColor('--cl-danger');
             tCtx.fillRect(0, 0, this.options.width, this.options.height);
-
-            // Reset
+            tCtx.globalAlpha = 1;
             tCtx.globalCompositeOperation = 'source-over';
 
-            // Draw temp canvas to main
             this.ctx.drawImage(this.tempCanvas, 0, 0);
         }
     }

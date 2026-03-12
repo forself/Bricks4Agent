@@ -75,9 +75,9 @@ export class SortButton {
             margin-left: 4px;
             background: transparent;
             border: none;
-            border-radius: 3px;
+            border-radius: var(--cl-radius-xs);
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: all var(--cl-transition-fast);
             color: ${SortButton.COLORS[this.state]};
             vertical-align: middle;
         `;

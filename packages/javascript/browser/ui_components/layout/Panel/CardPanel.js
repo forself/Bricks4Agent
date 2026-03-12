@@ -17,7 +17,7 @@ export class CardPanel extends BasePanel {
 
     _applyCardStyle() {
         this.element.style.cssText += `
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--cl-shadow-sm);
             border: none;
         `;
 

@@ -52,17 +52,17 @@ export class ConnectionCard {
         style.textContent = `
             .social-connection-card {
                 background: var(--cl-bg);
-                border-radius: 12px;
+                border-radius: var(--cl-radius-xl);
                 padding: 20px 16px;
                 text-align: center;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                box-shadow: var(--cl-shadow-sm);
+                transition: transform var(--cl-transition), box-shadow var(--cl-transition);
                 width: 180px;
                 flex-shrink: 0;
             }
             .social-connection-card:hover {
                 transform: translateY(-4px);
-                box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+                box-shadow: var(--cl-shadow-lg);
             }
             .social-connection-card--clickable {
                 cursor: pointer;
@@ -73,7 +73,7 @@ export class ConnectionCard {
                 margin-bottom: 12px;
             }
             .social-connection-card__name {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 font-weight: 600;
                 color: var(--cl-text);
                 margin-bottom: 4px;
@@ -82,7 +82,7 @@ export class ConnectionCard {
                 text-overflow: ellipsis;
             }
             .social-connection-card__subtitle {
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 color: var(--cl-text-secondary);
                 margin-bottom: 10px;
                 white-space: nowrap;
@@ -96,9 +96,9 @@ export class ConnectionCard {
                 justify-content: center;
             }
             .social-connection-card__tag {
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 padding: 2px 8px;
-                border-radius: 10px;
+                border-radius: var(--cl-radius-lg);
                 background: var(--cl-bg-hover);
                 color: var(--cl-text-heading);
                 white-space: nowrap;

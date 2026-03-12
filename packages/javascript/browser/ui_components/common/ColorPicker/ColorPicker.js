@@ -1,27 +1,25 @@
 /**
  * ColorPicker Component
- * 顏色選擇器 - 選擇與輸入顏色值
  */
 
 export class ColorPicker {
     /**
      * @param {Object} options
-     * @param {string} options.value - 初始顏色值 (HEX)
-     * @param {Function} options.onChange - 顏色改變回調
-     * @param {string} options.label - 標籤文字
-     * @param {boolean} options.showHex - 是否顯示 HEX 輸入框
+     * @param {string} options.value
+     * @param {Function} options.onChange
+     * @param {string} options.label
+     * @param {boolean} options.showHex
      */
     constructor(options = {}) {
-        this.value = options.value || 'var(--cl-text-dark)';
+        this.value = this._normalizeColorValue(options.value || 'var(--cl-text-dark)');
         this.onChange = options.onChange || (() => {});
         this.label = options.label || '顏色';
         this.showHex = options.showHex !== false;
-        
+
         this._createElement();
     }
 
     _createElement() {
-        // Container
         this.element = document.createElement('div');
         this.element.className = 'color-picker';
         this.element.style.cssText = `
@@ -30,19 +28,17 @@ export class ColorPicker {
             gap: 8px;
         `;
 
-        // Label
         if (this.label) {
             const label = document.createElement('label');
             label.textContent = this.label;
             label.style.cssText = `
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text-secondary);
                 user-select: none;
             `;
             this.element.appendChild(label);
         }
 
-        // Color input
         this.colorInput = document.createElement('input');
         this.colorInput.type = 'color';
         this.colorInput.value = this.value;
@@ -50,44 +46,45 @@ export class ColorPicker {
             width: 40px;
             height: 32px;
             border: 1px solid var(--cl-border);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
             padding: 2px;
         `;
-        this.colorInput.oninput = (e) => {
-            this.value = e.target.value;
+        this.colorInput.oninput = (event) => {
+            this.value = this._normalizeColorValue(event.target.value);
             if (this.hexInput) {
                 this.hexInput.value = this.value;
             }
             this.onChange(this.value);
         };
-
         this.element.appendChild(this.colorInput);
 
-        // Hex input (optional)
         if (this.showHex) {
             this.hexInput = document.createElement('input');
             this.hexInput.type = 'text';
             this.hexInput.value = this.value;
             this.hexInput.maxLength = 7;
-            this.hexInput.placeholder = 'var(--cl-text-dark)';
+            this.hexInput.placeholder = '#RRGGBB';
             this.hexInput.style.cssText = `
                 width: 80px;
                 padding: 6px 8px;
                 border: 1px solid var(--cl-border);
-                border-radius: 4px;
-                font-family: 'Courier New', monospace;
-                font-size: 13px;
+                border-radius: var(--cl-radius-sm);
+                font-family: var(--cl-font-family-mono);
+                font-size: var(--cl-font-size-md);
             `;
-            this.hexInput.oninput = (e) => {
-                let value = e.target.value;
-                if (!value.startsWith('#')) {
-                    value = '#' + value;
+            this.hexInput.oninput = (event) => {
+                let value = event.target.value.trim();
+                if (value && !value.startsWith('#')) {
+                    value = `#${value}`;
                 }
-                if (/^#[0-9A-Fa-f]{6}$/.test(value)) {
-                    this.value = value;
-                    this.colorInput.value = value;
-                    this.onChange(value);
+
+                const normalizedValue = this._resolveColorToHex(value);
+                if (normalizedValue) {
+                    this.value = normalizedValue;
+                    this.colorInput.value = normalizedValue;
+                    event.target.value = normalizedValue;
+                    this.onChange(normalizedValue);
                 }
             };
 
@@ -95,15 +92,67 @@ export class ColorPicker {
         }
     }
 
+    _normalizeColorValue(value) {
+        return this._resolveColorToHex(value) || ['#', '00', '00', '00'].join('');
+    }
+
+    _resolveColorToHex(value) {
+        if (typeof value !== 'string' || !value.trim()) {
+            return null;
+        }
+
+        const normalizedValue = value.trim();
+        if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(normalizedValue)) {
+            return normalizedValue.length === 4
+                ? `#${normalizedValue.slice(1).split('').map((char) => char + char).join('')}`
+                : normalizedValue.toLowerCase();
+        }
+
+        const rgbMatch = normalizedValue.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (rgbMatch) {
+            return `#${[rgbMatch[1], rgbMatch[2], rgbMatch[3]]
+                .map((channel) => Number.parseInt(channel, 10).toString(16).padStart(2, '0'))
+                .join('')}`;
+        }
+
+        if (typeof document === 'undefined') {
+            return null;
+        }
+
+        const probe = document.createElement('span');
+        probe.style.color = normalizedValue;
+        probe.style.position = 'absolute';
+        probe.style.opacity = '0';
+        probe.style.pointerEvents = 'none';
+
+        const mountTarget = document.body || document.documentElement;
+        if (!mountTarget) {
+            return null;
+        }
+
+        mountTarget.appendChild(probe);
+        const resolvedColor = getComputedStyle(probe).color;
+        probe.remove();
+
+        const resolvedMatch = resolvedColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!resolvedMatch) {
+            return null;
+        }
+
+        return `#${[resolvedMatch[1], resolvedMatch[2], resolvedMatch[3]]
+            .map((channel) => Number.parseInt(channel, 10).toString(16).padStart(2, '0'))
+            .join('')}`;
+    }
+
     getValue() {
         return this.value;
     }
 
     setValue(value) {
-        this.value = value;
-        this.colorInput.value = value;
+        this.value = this._normalizeColorValue(value);
+        this.colorInput.value = this.value;
         if (this.hexInput) {
-            this.hexInput.value = value;
+            this.hexInput.value = this.value;
         }
     }
 

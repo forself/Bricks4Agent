@@ -496,6 +496,45 @@ const apiHandlers = {
         }
     },
 
+    // ===== PageDefinitionEditor API =====
+
+    // 從 PageDefinition 生成頁面程式碼
+    'POST /api/generator/page-definition': async (req, res) => {
+        try {
+            const { definition } = await parseBody(req);
+            if (!definition || typeof definition !== 'object') {
+                return sendError(res, '缺少 definition 物件');
+            }
+
+            // 將 PageDefinition 格式轉為 server 端的舊格式並生成
+            const name = definition.name || 'GeneratedPage';
+            const type = (definition.type || 'form').toLowerCase();
+            const fields = (definition.fields || []).map(f => ({
+                name: f.name,
+                type: f.type || 'text',
+                label: f.label || f.name,
+                required: f.required || false,
+                default: f.default,
+                options: f.options,
+                validation: f.validation
+            }));
+
+            const oldDef = { name, type, description: definition.description || name, fields, api: {}, behaviors: {}, styles: { layout: 'single' } };
+            const code = generateStaticPageCode(oldDef);
+
+            sendJson(res, {
+                success: true,
+                data: {
+                    code,
+                    className: name,
+                    fileName: `${name}.js`
+                }
+            });
+        } catch (error) {
+            sendError(res, error.message, 500);
+        }
+    },
+
     // ===== 頁面建構器 API =====
 
     // 驗證頁面定義

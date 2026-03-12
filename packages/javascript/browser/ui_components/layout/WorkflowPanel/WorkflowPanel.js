@@ -52,10 +52,10 @@ export class WorkflowPanel {
         const container = document.createElement('div');
         container.className = 'workflow-panel';
         container.style.cssText = `
-            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            font-family: var(--cl-font-family-cjk);
             padding: 20px;
             background: var(--cl-bg);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             border: 1px solid var(--cl-border-light);
         `;
 
@@ -173,15 +173,15 @@ export class WorkflowPanel {
         circle.style.cssText = `
             width: 48px;
             height: 48px;
-            border-radius: 50%;
-            background: ${isCurrent ? stage.color : (isNext ? 'var(--cl-border-light)' : 'white')};
+            border-radius: var(--cl-radius-round);
+            background: ${isCurrent ? stage.color : (isNext ? 'var(--cl-border-light)' : 'var(--cl-bg)')};
             border: 3px solid ${stage.color};
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 20px;
             box-shadow: ${isCurrent ? `0 0 0 4px ${stage.color}40` : 'none'};
-            transition: all 0.3s;
+            transition: all var(--cl-transition-slow);
         `;
         circle.textContent = stage.icon;
 
@@ -189,7 +189,7 @@ export class WorkflowPanel {
         const label = document.createElement('div');
         label.style.cssText = `
             margin-top: 8px;
-            font-size: 13px;
+            font-size: var(--cl-font-size-md);
             font-weight: ${isCurrent ? '600' : '400'};
             color: ${isCurrent ? stage.color : 'var(--cl-text)'};
         `;
@@ -200,7 +200,7 @@ export class WorkflowPanel {
             const dateTime = document.createElement('div');
             dateTime.style.cssText = `
                 margin-top: 4px;
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 color: var(--cl-text-placeholder);
             `;
             dateTime.textContent = this._formatDateTime(item.DateTime);
@@ -212,7 +212,7 @@ export class WorkflowPanel {
             const nextLabel = document.createElement('div');
             nextLabel.style.cssText = `
                 margin-top: 4px;
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 color: var(--cl-text-placeholder);
                 font-style: italic;
             `;
@@ -227,7 +227,7 @@ export class WorkflowPanel {
             const info = document.createElement('div');
             info.style.cssText = `
                 margin-top: 4px;
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 color: var(--cl-text-secondary);
                 text-align: center;
                 max-width: 100px;
@@ -264,9 +264,9 @@ export class WorkflowPanel {
                 top: -8px;
                 background: ${stage.color};
                 color: var(--cl-text-inverse);
-                font-size: 10px;
+                font-size: var(--cl-font-size-2xs);
                 padding: 2px 6px;
-                border-radius: 10px;
+                border-radius: var(--cl-radius-pill);
             `;
             badge.textContent = Locale.t('workflowPanel.currentBadge');
             node.style.position = 'relative';
@@ -286,7 +286,7 @@ export class WorkflowPanel {
             height: 3px;
             background: linear-gradient(${isReversed ? '270deg' : '90deg'}, var(--cl-primary), var(--cl-success));
             margin: 0 8px;
-            border-radius: 2px;
+            border-radius: var(--cl-radius-xs);
             position: relative;
             align-self: center;
             margin-top: -50px;
@@ -322,7 +322,7 @@ export class WorkflowPanel {
             width: 3px;
             height: 30px;
             background: linear-gradient(180deg, var(--cl-success), var(--cl-primary));
-            border-radius: 2px;
+            border-radius: var(--cl-radius-xs);
         `;
 
         // 向下箭頭

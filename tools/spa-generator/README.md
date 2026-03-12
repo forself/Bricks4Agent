@@ -16,30 +16,24 @@ dotnet run
 
 ### Frontend Web UI
 
-建議優先使用 repo 內建的 C# 靜態伺服器。
-
-從 repo 根目錄啟動：
+**建議使用 Node server.js**（完整支援 API 路由與元件庫路徑）：
 
 ```bash
-npm run serve
+node server.js
 ```
 
-或直接啟動靜態伺服器專案：
+或使用啟動腳本（自動選擇最佳伺服器）：
 
 ```bash
-dotnet run --project ../static-server/StaticServer.csproj -- ./frontend 3080
-```
+# Windows
+start.bat
 
-如果只需要純靜態檔案伺服器，也可以使用：
-
-```bash
-cd frontend
-npx serve -l 3080
+# macOS/Linux
+./start.sh
 ```
 
 然後開啟 `http://localhost:3080`。
 
-> `server.js` 目前仍是 CommonJS 風格入口。若你的工作樹仍保留 root `package.json` 的 `"type": "module"` 設定，請先完成 CLI/server 的模組制式對齊，再使用 `node server.js`。
 
 ## Default Admin
 
@@ -61,6 +55,7 @@ spa-generator/
 │   ├── pages/
 │   ├── styles/
 │   └── index.html
+├── server.js                # Node dev server (recommended)
 ├── start.bat
 ├── start.sh
 └── project.json
@@ -69,10 +64,16 @@ spa-generator/
 ## Security Notes
 
 - PBKDF2 password hashing
-- JWT authentication
-- XSS mitigation
+- JWT authentication with Bearer token header
+- Token stored in localStorage (client-side)
+- XSS mitigation via security headers
 - CORS control
-- security audit logging
+- Rate limiting on auth endpoints
+- Security audit logging
+
+> **生產環境注意**: 務必透過環境變數設定 `Jwt:Key`，
+> 不要使用 `appsettings.json` 中的開發預設值。
+> 考慮將 token 改為 HttpOnly Cookie 以增強 XSS 防護。
 
 ## Extending
 

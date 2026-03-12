@@ -39,14 +39,14 @@ export class RegionMap {
         this.tooltip = document.createElement('div');
         this.tooltip.style.cssText = `
             position: absolute;
-            background: rgba(0, 0, 0, 0.8);
+            background: var(--cl-bg-overlay-strong);
             color: var(--cl-text-inverse);
             padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-sm);
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.2s;
+            transition: opacity var(--cl-transition);
             z-index: 1000;
             white-space: nowrap;
         `;
@@ -64,7 +64,7 @@ export class RegionMap {
             height: ${this.options.height};
             background: var(--cl-bg-tertiary);
             border: 1px solid var(--cl-border);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -120,8 +120,7 @@ export class RegionMap {
             
             // Event Listeners
             group.addEventListener('mouseenter', (e) => {
-                const paths = group.querySelectorAll('path');
-                paths.forEach(p => p.setAttribute('fill', this.options.hoverColor));
+                this._setRegionFill(group, this.options.hoverColor);
                 this._showTooltip(e, r.name, this.options.data[r.code]);
             });
             
@@ -133,12 +132,10 @@ export class RegionMap {
                 const data = this.options.data[r.code];
                 const baseColor = data?.color 
                     || (data && this.options.colorScale ? this.options.colorScale(data.value) : this.options.defaultColor);
-                
-                const paths = group.querySelectorAll('path');
                 if (this.selectedRegion === r.code) {
-                    paths.forEach(p => p.setAttribute('fill', this.options.selectedColor));
+                    this._setRegionFill(group, this.options.selectedColor);
                 } else {
-                    paths.forEach(p => p.setAttribute('fill', baseColor));
+                    this._setRegionFill(group, baseColor);
                 }
                 this._hideTooltip();
             });
@@ -151,12 +148,12 @@ export class RegionMap {
                         const prevData = this.options.data[this.selectedRegion];
                         const prevColor = prevData?.color 
                             || (prevData && this.options.colorScale ? this.options.colorScale(prevData.value) : this.options.defaultColor);
-                        prev.element.querySelectorAll('path').forEach(p => p.setAttribute('fill', prevColor));
+                        this._setRegionFill(prev.element, prevColor);
                     }
                 }
                 
                 this.selectedRegion = r.code;
-                group.querySelectorAll('path').forEach(p => p.setAttribute('fill', this.options.selectedColor));
+                this._setRegionFill(group, this.options.selectedColor);
                 
                 if (this.options.onClick) this.options.onClick(r.code);
                 if (this.options.onChange) this.options.onChange({ code: r.code, name: r.name });
@@ -177,7 +174,7 @@ export class RegionMap {
 
 
     _showTooltip(e, name, data) {
-        const escape = (str) => String(str).replaceAll(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&var(--cl-primary-dark);' }[m]));
+        const escape = (str) => String(str).replaceAll(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
         
         let content = `<div style="font-weight:600; margin-bottom:4px;">${escape(name)}</div>`;
         
@@ -188,7 +185,7 @@ export class RegionMap {
             // 顯示額外資訊
             Object.keys(data).forEach(key => {
                 if (key !== 'value' && key !== 'color' && key !== 'label' && typeof data[key] !== 'object') {
-                    content += `<div style="font-size:11px; color:var(--cl-text-light)">${key}: ${escape(data[key])}</div>`;
+                    content += `<div style="font-size:var(--cl-font-size-xs); color:var(--cl-text-light)">${key}: ${escape(data[key])}</div>`;
                 }
             });
         }
@@ -217,20 +214,34 @@ export class RegionMap {
         this.tooltip.style.opacity = '0';
     }
 
+    _getRegionPaths(regionElement) {
+        return Array.from(regionElement.querySelectorAll('path'));
+    }
+
+    _setRegionFill(regionElement, color) {
+        this._getRegionPaths(regionElement).forEach((path) => {
+            path.setAttribute('fill', color);
+            path.style.fill = color;
+        });
+    }
+
     _applyData() {
         const { data, colorScale, defaultColor, showLabels, showValues } = this.options;
 
         this.regions.forEach((region, code) => {
             const regionData = data[code];
-            const path = region.element.querySelector('path') || region.element;
+            const oldLabel = region.element.querySelector('.region-label');
+            if (oldLabel) {
+                oldLabel.remove();
+            }
 
             // 著色
             if (regionData && colorScale) {
-                path.setAttribute('fill', colorScale(regionData.value));
+                this._setRegionFill(region.element, colorScale(regionData.value));
             } else if (regionData?.color) {
-                path.setAttribute('fill', regionData.color);
+                this._setRegionFill(region.element, regionData.color);
             } else {
-                path.setAttribute('fill', region.originalFill || defaultColor);
+                this._setRegionFill(region.element, region.originalFill || defaultColor);
             }
 
             // 加入文字標籤
@@ -248,8 +259,7 @@ export class RegionMap {
         if (oldLabel) oldLabel.remove();
 
         // 取得區域中心點
-        const path = groupEl.querySelector('path') || groupEl;
-        const bbox = path.getBBox();
+        const bbox = groupEl.getBBox();
         const cx = bbox.x + bbox.width / 2;
         const cy = bbox.y + bbox.height / 2;
 
@@ -312,13 +322,17 @@ export class RegionMap {
      */
     highlightRegion(code) {
         this.regions.forEach((region, c) => {
-            const path = region.element.querySelector('path') || region.element;
+            const paths = this._getRegionPaths(region.element);
             if (c === code) {
-                path.style.stroke = 'var(--cl-text-dark)';
-                path.style.strokeWidth = '2';
+                paths.forEach((path) => {
+                    path.style.stroke = 'var(--cl-text-dark)';
+                    path.style.strokeWidth = '2';
+                });
             } else {
-                path.style.stroke = '';
-                path.style.strokeWidth = '';
+                paths.forEach((path) => {
+                    path.style.stroke = '';
+                    path.style.strokeWidth = '';
+                });
             }
         });
     }
@@ -328,9 +342,10 @@ export class RegionMap {
      */
     clearHighlight() {
         this.regions.forEach((region) => {
-            const path = region.element.querySelector('path') || region.element;
-            path.style.stroke = '';
-            path.style.strokeWidth = '';
+            this._getRegionPaths(region.element).forEach((path) => {
+                path.style.stroke = '';
+                path.style.strokeWidth = '';
+            });
         });
     }
 
@@ -338,25 +353,88 @@ export class RegionMap {
      * 建立顏色比例尺
      */
     static createColorScale(min, max, colors = ['var(--cl-primary-light)', 'var(--cl-primary-dark)']) {
+        const startColor = RegionMap._resolveColorToRgb(colors[0]) || { r: 220, g: 235, b: 255 };
+        const endColor = RegionMap._resolveColorToRgb(colors[1]) || { r: 26, g: 115, b: 232 };
         return (value) => {
-            if (value === undefined || value === null) return colors[0];
-            const ratio = (value - min) / (max - min);
+            if (value === undefined || value === null) {
+                return RegionMap._rgbToHex(startColor);
+            }
+
+            const range = max - min;
+            const ratio = range === 0 ? 1 : (value - min) / range;
             const clampedRatio = Math.max(0, Math.min(1, ratio));
 
             // 簡單線性插值
-            const r1 = Number.parseInt(colors[0].slice(1, 3), 16);
-            const g1 = Number.parseInt(colors[0].slice(3, 5), 16);
-            const b1 = Number.parseInt(colors[0].slice(5, 7), 16);
-            const r2 = Number.parseInt(colors[1].slice(1, 3), 16);
-            const g2 = Number.parseInt(colors[1].slice(3, 5), 16);
-            const b2 = Number.parseInt(colors[1].slice(5, 7), 16);
+            const r = Math.round(startColor.r + (endColor.r - startColor.r) * clampedRatio);
+            const g = Math.round(startColor.g + (endColor.g - startColor.g) * clampedRatio);
+            const b = Math.round(startColor.b + (endColor.b - startColor.b) * clampedRatio);
 
-            const r = Math.round(r1 + (r2 - r1) * clampedRatio);
-            const g = Math.round(g1 + (g2 - g1) * clampedRatio);
-            const b = Math.round(b1 + (b2 - b1) * clampedRatio);
-
-            return `rgb(${r}, ${g}, ${b})`;
+            return RegionMap._rgbToHex({ r, g, b });
         };
+    }
+
+    static _resolveColorToRgb(color) {
+        if (typeof color !== 'string' || !color.trim()) {
+            return null;
+        }
+
+        const normalizedColor = color.trim();
+        const hexMatch = normalizedColor.match(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/);
+        if (hexMatch) {
+            const hex = hexMatch[1].length === 3
+                ? hexMatch[1].split('').map((char) => char + char).join('')
+                : hexMatch[1];
+            return {
+                r: Number.parseInt(hex.slice(0, 2), 16),
+                g: Number.parseInt(hex.slice(2, 4), 16),
+                b: Number.parseInt(hex.slice(4, 6), 16)
+            };
+        }
+
+        const rgbMatch = normalizedColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (rgbMatch) {
+            return {
+                r: Number.parseInt(rgbMatch[1], 10),
+                g: Number.parseInt(rgbMatch[2], 10),
+                b: Number.parseInt(rgbMatch[3], 10)
+            };
+        }
+
+        if (typeof document === 'undefined') {
+            return null;
+        }
+
+        const probe = document.createElement('span');
+        probe.style.color = normalizedColor;
+        probe.style.position = 'absolute';
+        probe.style.opacity = '0';
+        probe.style.pointerEvents = 'none';
+
+        const mountTarget = document.body || document.documentElement;
+        if (!mountTarget) {
+            return null;
+        }
+
+        mountTarget.appendChild(probe);
+        const resolvedColor = getComputedStyle(probe).color;
+        probe.remove();
+
+        const resolvedMatch = resolvedColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!resolvedMatch) {
+            return null;
+        }
+
+        return {
+            r: Number.parseInt(resolvedMatch[1], 10),
+            g: Number.parseInt(resolvedMatch[2], 10),
+            b: Number.parseInt(resolvedMatch[3], 10)
+        };
+    }
+
+    static _rgbToHex({ r, g, b }) {
+        return `#${[r, g, b]
+            .map((channel) => channel.toString(16).padStart(2, '0'))
+            .join('')}`;
     }
 
     mount(container) {

@@ -59,30 +59,72 @@ export const ComponentPaths = {
         packages: null
     },
 
-    // 進階元件 - Packages
+    // 進階元件 - Packages (路徑對應 packages/javascript/browser/ui_components/)
     WebTextEditor: {
         spa: null,
         packages: '@component-library/ui_components/editor/WebTextEditor/WebTextEditor.js'
     },
     DrawingBoard: {
         spa: null,
-        packages: '@component-library/ui_components/drawing/DrawingBoard/DrawingBoard.js'
+        packages: '@component-library/ui_components/viz/DrawingBoard/DrawingBoard.js'
     },
     WebPainter: {
         spa: null,
-        packages: '@component-library/ui_components/drawing/WebPainter/WebPainter.js'
+        packages: '@component-library/ui_components/viz/WebPainter/WebPainter.js'
     },
     BasicButton: {
         spa: null,
-        packages: '@component-library/ui_components/buttons/BasicButton/BasicButton.js'
+        packages: '@component-library/ui_components/common/BasicButton/BasicButton.js'
     },
     EditorButton: {
         spa: null,
-        packages: '@component-library/ui_components/buttons/EditorButton/EditorButton.js'
+        packages: '@component-library/ui_components/common/EditorButton/EditorButton.js'
     },
     ButtonGroup: {
         spa: null,
-        packages: '@component-library/ui_components/buttons/ButtonGroup/ButtonGroup.js'
+        packages: '@component-library/ui_components/common/ButtonGroup/ButtonGroup.js'
+    },
+
+    // 複合輸入元件 - Packages (路徑對應 packages/javascript/browser/ui_components/input/)
+    DateTimeInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/DateTimeInput/DateTimeInput.js'
+    },
+    AddressInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/AddressInput/AddressInput.js'
+    },
+    AddressListInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/AddressListInput/AddressListInput.js'
+    },
+    ChainedInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/ChainedInput/ChainedInput.js'
+    },
+    ListInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/ListInput/ListInput.js'
+    },
+    PersonInfoList: {
+        spa: null,
+        packages: '@component-library/ui_components/input/PersonInfoList/PersonInfoList.js'
+    },
+    PhoneListInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/PhoneListInput/PhoneListInput.js'
+    },
+    SocialMediaList: {
+        spa: null,
+        packages: '@component-library/ui_components/input/SocialMediaList/SocialMediaList.js'
+    },
+    OrganizationInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/OrganizationInput/OrganizationInput.js'
+    },
+    StudentInput: {
+        spa: null,
+        packages: '@component-library/ui_components/input/StudentInput/StudentInput.js'
     }
 };
 

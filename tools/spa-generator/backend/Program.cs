@@ -28,17 +28,18 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
         ?? "Data Source=generator.db"));
 
-// JWT 認證 - 生產環境必須設定 Jwt:Key
+// JWT 認證 - 生產環境必須設定 Jwt:Key (透過環境變數 Jwt__Key)
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
 {
     if (!builder.Environment.IsDevelopment())
     {
         throw new InvalidOperationException(
-            "JWT Key 未設定或長度不足。請在 appsettings.json 或環境變數中設定 Jwt:Key (至少 32 字元)");
+            "JWT Key 未設定或長度不足。請透過環境變數 Jwt__Key 設定 (至少 32 字元)");
     }
-    // 開發環境使用預設值 (僅供開發)
+    // 開發環境使用預設值 (僅供開發，寫回 Configuration 讓 AuthService 也能讀取)
     jwtKey = "DevOnlyKey_DoNotUseInProduction_32chars!";
+    builder.Configuration["Jwt:Key"] = jwtKey;
     Console.WriteLine("警告: 使用開發環境預設 JWT Key，請勿在生產環境使用！");
 }
 

@@ -55,7 +55,7 @@ Bricks4Agent/
 │   │   └── browser/
 │   │       ├── ui_components/           # Bricks4Agent UI component library
 │   │       │   ├── form/                # Form components (12)
-│   │       │   ├── common/              # Common components (18)
+│   │       │   ├── common/              # Common components (23)
 │   │       │   ├── layout/              # Layout components (10)
 │   │       │   ├── input/               # Advanced input components (10)
 │   │       │   ├── viz/                 # Visualization (18 directly usable components + BaseChart)
@@ -111,7 +111,7 @@ node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:s
 | Category | Directory | Count | Description |
 |----------|-----------|-------|-------------|
 | Form | `form/` | 12 | Text, number, date, dropdown and other form inputs |
-| Common | `common/` | 18 | Buttons, dialogs, notifications, pagination and other general UI |
+| Common | `common/` | 23 | Buttons, badges, tags, tooltips, progress bars, dividers, dialogs, notifications, pagination and other general UI |
 | Layout | `layout/` | 10 | Panels, tables, side menus, tabs and other layout elements |
 | Advanced Input | `input/` | 10 | Address, phone, organization and other composite inputs |
 | Visualization | `viz/` | 18 | Charts, maps, drawing boards and data visualization (excluding the `BaseChart` base class) |
@@ -602,7 +602,7 @@ const uploader = new BatchUploader({
 
 ## 5. Common Components
 
-Common components are located in `packages/javascript/browser/ui_components/common/`, with 18 components total.
+Common components are located in `packages/javascript/browser/ui_components/common/`, with 23 components total.
 
 ### 5.1 Button Series
 

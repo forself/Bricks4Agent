@@ -103,21 +103,21 @@ export class DocumentCard {
             width: ${width};
             background: var(--cl-bg);
             border: 1px solid var(--cl-border-light);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             overflow: hidden;
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
             display: flex;
             flex-direction: column;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: var(--cl-shadow-sm);
         `;
 
         container.addEventListener('mouseenter', () => {
             container.style.transform = 'translateY(-2px)';
-            container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            container.style.boxShadow = 'var(--cl-shadow-md)';
         });
         container.addEventListener('mouseleave', () => {
             container.style.transform = 'translateY(0)';
-            container.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+            container.style.boxShadow = 'var(--cl-shadow-sm)';
         });
 
         // 預覽區 (圖示或圖片)
@@ -166,7 +166,7 @@ export class DocumentCard {
         titleEl.title = title;
         titleEl.style.cssText = `
             padding: 8px 12px;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: var(--cl-text);
             text-align: center;
             white-space: nowrap;
@@ -192,11 +192,11 @@ export class DocumentCard {
                 border: none;
                 background: transparent;
                 padding: 8px 0;
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: ${color};
                 cursor: pointer;
                 border-right: 1px solid var(--cl-border-light);
-                transition: background 0.2s;
+                transition: background var(--cl-transition);
             `;
             btn.onmouseenter = () => btn.style.background = 'var(--cl-bg-secondary)';
             btn.onmouseleave = () => btn.style.background = 'transparent';
@@ -231,13 +231,13 @@ export class DocumentCard {
             width: 20px;
             height: 20px;
             border: 2px solid var(--cl-border);
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 4px;
+            background: var(--cl-bg-surface-overlay);
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
             z-index: 2;
         `;
 
@@ -246,9 +246,9 @@ export class DocumentCard {
             if (isSelected) {
                 selectBox.style.background = 'var(--cl-primary)';
                 selectBox.style.borderColor = 'var(--cl-primary)';
-                selectBox.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                selectBox.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cl-text-inverse)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             } else {
-                selectBox.style.background = 'rgba(255, 255, 255, 0.9)';
+                selectBox.style.background = 'var(--cl-bg-surface-overlay)';
                 selectBox.style.borderColor = 'var(--cl-border)';
                 selectBox.innerHTML = '';
             }
@@ -286,15 +286,15 @@ export class DocumentCard {
                 height: 24px;
                 background: var(--cl-danger);
                 color: var(--cl-text-inverse);
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 cursor: pointer;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                box-shadow: var(--cl-shadow-sm);
                 z-index: 10;
                 opacity: 0;
-                transition: opacity 0.2s;
+                transition: opacity var(--cl-transition);
             `;
 
             // 懸停時顯示

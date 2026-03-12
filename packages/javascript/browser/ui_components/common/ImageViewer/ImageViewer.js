@@ -74,7 +74,7 @@ export class ImageViewer {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.85);
+            background: var(--cl-bg-overlay-strong);
             z-index: 10000;
             display: flex;
             align-items: center;
@@ -90,8 +90,8 @@ export class ImageViewer {
             max-width: 90vw;
             max-height: 85vh;
             overflow: hidden;
-            border-radius: 8px;
-            background: var(--cl-text-dark);
+            border-radius: var(--cl-radius-lg);
+            background: var(--cl-surface-contrast);
             cursor: default;
         `;
 
@@ -118,7 +118,7 @@ export class ImageViewer {
             max-width: 100%;
             max-height: calc(85vh - 50px);
             transform-origin: center center;
-            transition: transform 0.1s ease-out;
+            transition: transform var(--cl-transition-fast);
             cursor: grab;
             user-select: none;
         `;
@@ -148,7 +148,7 @@ export class ImageViewer {
             justify-content: center;
             gap: 16px;
             padding: 12px;
-            background: rgba(0, 0, 0, 0.5);
+            background: var(--cl-bg-overlay);
         `;
 
         // 縮小按鈕
@@ -166,7 +166,7 @@ export class ImageViewer {
         this.zoomDisplay.textContent = '100%';
         this.zoomDisplay.style.cssText = `
             color: var(--cl-text-inverse);
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             min-width: 50px;
             text-align: center;
         `;
@@ -229,16 +229,16 @@ export class ImageViewer {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 50%;
+            background: var(--cl-bg-overlay-soft);
+            border-radius: var(--cl-radius-round);
             cursor: pointer;
             color: var(--cl-text-inverse);
-            transition: all 0.2s;
+            transition: background var(--cl-transition), opacity var(--cl-transition);
             z-index: 10001;
         `;
 
-        btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(0, 0, 0, 0.6)');
-        btn.addEventListener('mouseleave', () => btn.style.background = 'rgba(0, 0, 0, 0.3)');
+        btn.addEventListener('mouseenter', () => btn.style.background = 'var(--cl-bg-overlay-soft-hover)');
+        btn.addEventListener('mouseleave', () => btn.style.background = 'var(--cl-bg-overlay-soft)');
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             onClick();
@@ -264,14 +264,14 @@ export class ImageViewer {
             width: 36px;
             height: 36px;
             border: none;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
+            border-radius: var(--cl-radius-round);
+            background: var(--cl-bg-inverse-soft);
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background var(--cl-transition);
         `;
 
-        btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(255, 255, 255, 0.2)');
-        btn.addEventListener('mouseleave', () => btn.style.background = 'rgba(255, 255, 255, 0.1)');
+        btn.addEventListener('mouseenter', () => btn.style.background = 'var(--cl-bg-inverse-soft-hover)');
+        btn.addEventListener('mouseleave', () => btn.style.background = 'var(--cl-bg-inverse-soft)');
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             onClick();

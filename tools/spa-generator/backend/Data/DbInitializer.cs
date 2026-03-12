@@ -23,16 +23,23 @@ public static class DbInitializer
             return;
         }
 
-        // 從設定讀取初始管理員資訊，或使用預設值
+        // 從設定讀取初始管理員資訊
         var adminEmail = configuration["SeedData:AdminEmail"] ?? "admin@example.com";
-        var adminPassword = configuration["SeedData:AdminPassword"] ?? "Admin@123";
+        var adminPassword = configuration["SeedData:AdminPassword"];
         var adminName = configuration["SeedData:AdminName"] ?? "Admin";
+
+        // 如果密碼未設定，開發環境生成隨機密碼
+        if (string.IsNullOrEmpty(adminPassword))
+        {
+            adminPassword = $"Dev_{Guid.NewGuid():N}"[..20];
+            Console.WriteLine($"[DbInitializer] 未設定 SeedData:AdminPassword，已生成開發用密碼: {adminPassword}");
+        }
 
         // 驗證密碼強度
         if (adminPassword.Length < 8)
         {
             throw new InvalidOperationException(
-                "初始管理員密碼長度必須至少 8 個字元。請在 appsettings.json 中設定 SeedData:AdminPassword");
+                "初始管理員密碼長度必須至少 8 個字元。請透過環境變數或 appsettings.json 設定 SeedData:AdminPassword");
         }
 
         // 建立管理員帳號

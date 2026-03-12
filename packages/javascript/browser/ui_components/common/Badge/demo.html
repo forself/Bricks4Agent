@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Badge Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: var(--cl-font-family);
+            padding: 24px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+        h1 { color: var(--cl-text); }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 24px;
+            border-radius: var(--cl-radius-lg);
+            margin-bottom: 16px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: var(--cl-text-secondary);
+            font-size: var(--cl-font-size-xl);
+        }
+        .demo-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+        .demo-label {
+            font-size: var(--cl-font-size-sm);
+            color: var(--cl-text-muted);
+            width: 80px;
+            flex-shrink: 0;
+        }
+
+        /* 按鈕 / 圖示容器範例 */
+        .demo-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 16px;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-md);
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            font-size: var(--cl-font-size-lg);
+            cursor: default;
+            position: relative;
+        }
+        .demo-icon-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: var(--cl-radius-md);
+            background: var(--cl-bg-secondary);
+            font-size: 20px;
+            position: relative;
+            cursor: default;
+        }
+        .demo-avatar {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: var(--cl-radius-round);
+            background: var(--cl-primary);
+            color: var(--cl-text-inverse);
+            font-size: var(--cl-font-size-lg);
+            font-weight: 600;
+            position: relative;
+        }
+
+        .attached-group {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Badge Demo</h1>
+
+    <!-- 1. 所有色彩變體 -->
+    <div class="demo-section">
+        <h2>色彩變體 (Variants)</h2>
+        <div class="demo-row" id="variants"></div>
+    </div>
+
+    <!-- 2. 三種尺寸 -->
+    <div class="demo-section">
+        <h2>尺寸 (Sizes)</h2>
+        <div class="demo-row">
+            <span class="demo-label">small</span>
+            <span id="size-small"></span>
+        </div>
+        <div class="demo-row">
+            <span class="demo-label">medium</span>
+            <span id="size-medium"></span>
+        </div>
+        <div class="demo-row">
+            <span class="demo-label">large</span>
+            <span id="size-large"></span>
+        </div>
+    </div>
+
+    <!-- 3. 計數徽章 + maxCount 溢位 -->
+    <div class="demo-section">
+        <h2>計數徽章 (Count Badge)</h2>
+        <div class="demo-row">
+            <span class="demo-label">count=5</span>
+            <span id="count-5"></span>
+        </div>
+        <div class="demo-row">
+            <span class="demo-label">count=99</span>
+            <span id="count-99"></span>
+        </div>
+        <div class="demo-row">
+            <span class="demo-label">count=128</span>
+            <span id="count-128"></span>
+        </div>
+        <div class="demo-row">
+            <span class="demo-label">count=1000</span>
+            <span id="count-1000"></span>
+        </div>
+    </div>
+
+    <!-- 4. 圓點指示器 -->
+    <div class="demo-section">
+        <h2>圓點指示器 (Dot)</h2>
+        <div class="demo-row" id="dots"></div>
+    </div>
+
+    <!-- 5. 附著至按鈕/圖示範例 -->
+    <div class="demo-section">
+        <h2>附著模式 (Attached)</h2>
+        <div class="attached-group">
+            <div>
+                <p style="font-size: var(--cl-font-size-sm); color: var(--cl-text-muted); margin: 0 0 8px;">按鈕 + 計數</p>
+                <span class="demo-btn" id="attach-btn">Messages</span>
+            </div>
+            <div>
+                <p style="font-size: var(--cl-font-size-sm); color: var(--cl-text-muted); margin: 0 0 8px;">圖示 + 圓點</p>
+                <span class="demo-icon-wrap" id="attach-icon">&#128276;</span>
+            </div>
+            <div>
+                <p style="font-size: var(--cl-font-size-sm); color: var(--cl-text-muted); margin: 0 0 8px;">頭像 + 狀態</p>
+                <span class="demo-avatar" id="attach-avatar">A</span>
+            </div>
+            <div>
+                <p style="font-size: var(--cl-font-size-sm); color: var(--cl-text-muted); margin: 0 0 8px;">圖示 + 計數溢位</p>
+                <span class="demo-icon-wrap" id="attach-icon2">&#9993;</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. 動態操作 -->
+    <div class="demo-section">
+        <h2>動態操作</h2>
+        <div class="demo-row" style="gap: 16px;">
+            <span id="dynamic-badge"></span>
+            <button class="demo-btn" id="btn-change-text" style="cursor:pointer;">setText('HOT')</button>
+            <button class="demo-btn" id="btn-change-variant" style="cursor:pointer;">setVariant('danger')</button>
+            <button class="demo-btn" id="btn-hide" style="cursor:pointer;">hide()</button>
+            <button class="demo-btn" id="btn-show" style="cursor:pointer;">show()</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Badge } from './Badge.js';
+
+        // 1. 所有色彩變體
+        const variants = ['default', 'primary', 'success', 'warning', 'danger', 'info'];
+        const variantsContainer = document.getElementById('variants');
+        variants.forEach(v => {
+            new Badge({ text: v.toUpperCase(), variant: v }).render(variantsContainer);
+        });
+
+        // 2. 三種尺寸
+        ['small', 'medium', 'large'].forEach(s => {
+            new Badge({ text: 'LABEL', variant: 'primary', size: s })
+                .render(`#size-${s}`);
+        });
+
+        // 3. 計數徽章
+        [5, 99, 128, 1000].forEach(n => {
+            new Badge({ text: String(n), type: 'count', variant: 'danger', maxCount: 99 })
+                .render(`#count-${n}`);
+        });
+
+        // 4. 圓點指示器
+        const dotsContainer = document.getElementById('dots');
+        variants.forEach(v => {
+            const wrap = document.createElement('span');
+            wrap.style.cssText = 'display:inline-flex; align-items:center; gap:6px; margin-right:16px;';
+            const label = document.createElement('span');
+            label.textContent = v;
+            label.style.cssText = `font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary);`;
+            wrap.appendChild(label);
+            dotsContainer.appendChild(wrap);
+            new Badge({ type: 'dot', variant: v }).render(wrap);
+        });
+
+        // 5. 附著模式
+        new Badge({ text: '3', type: 'count', variant: 'danger', size: 'small', attached: true })
+            .render('#attach-btn');
+        new Badge({ type: 'dot', variant: 'danger', attached: true })
+            .render('#attach-icon');
+        new Badge({ type: 'dot', variant: 'success', size: 'small', attached: true })
+            .render('#attach-avatar');
+        new Badge({ text: '999', type: 'count', variant: 'danger', size: 'small', maxCount: 99, attached: true })
+            .render('#attach-icon2');
+
+        // 6. 動態操作
+        const dynamicBadge = new Badge({ text: 'NEW', variant: 'primary', size: 'large' });
+        dynamicBadge.render('#dynamic-badge');
+
+        document.getElementById('btn-change-text').addEventListener('click', () => {
+            dynamicBadge.setText('HOT');
+        });
+        document.getElementById('btn-change-variant').addEventListener('click', () => {
+            dynamicBadge.setVariant('danger');
+        });
+        document.getElementById('btn-hide').addEventListener('click', () => {
+            dynamicBadge.hide();
+        });
+        document.getElementById('btn-show').addEventListener('click', () => {
+            dynamicBadge.show();
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

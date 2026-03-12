@@ -193,7 +193,7 @@ export class LeafletMap {
         const ctx = canvas.getContext('2d');
 
         // 白色背景
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'var(--cl-bg)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // 收集所有圖磚圖片

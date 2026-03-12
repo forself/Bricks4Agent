@@ -165,7 +165,7 @@ export class OrgChart extends BaseChart {
                     <!-- Card Body Group -->
                     <g class="card-body">
                         <rect width="${n.w}" height="${n.h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="2" 
-                              filter="drop-shadow(0 2px 2px rgba(0,0,0,0.05))"/>
+                              filter="drop-shadow(0 1px 3px var(--cl-bg-overlay-soft))"/>
                         <text x="${n.w / 2}" y="20" text-anchor="middle" font-weight="bold" font-size="14" fill="var(--cl-text)" pointer-events="none">${n.title}</text>
                         <text x="${n.w / 2}" y="40" text-anchor="middle" font-size="12" fill="var(--cl-text-secondary)" pointer-events="none">${n.label}</text>
                     </g>
@@ -233,8 +233,8 @@ export class OrgChart extends BaseChart {
 
         this.showDetailCard(`
             <h3 style="margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px">${safeTitle}</h3>
-            <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:12px; font-size:12px; margin-bottom:15px">${safeLabel}</span>
-            <div style="background:var(--cl-bg); padding:15px; border-radius:8px; font-size:14px; line-height:1.6">
+            <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px">${safeLabel}</span>
+            <div style="background:var(--cl-bg); padding:15px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-lg); line-height:1.6">
                 <p><strong>Employee ID:</strong> ${safeId}</p>
                 <p><strong>Department:</strong> ${safeLabel || 'Engineering'}</p>
                 <p><strong>Email:</strong> ${safeId.toLowerCase() || 'user'}@example.com</p>
@@ -242,7 +242,7 @@ export class OrgChart extends BaseChart {
                 <p><strong>Location:</strong> Taipei HQ, 4F</p>
             </div>
             <div style="margin-top:20px; text-align:right">
-                 <button id="${btnId}" style="padding:8px 16px; background:var(--cl-primary); color:white; border:none; border-radius:4px; cursor:pointer">${this.escapeHtml(action.label)}</button>
+                 <button id="${btnId}" style="padding:8px 16px; background:var(--cl-primary); color:var(--cl-text-inverse); border:none; border-radius:var(--cl-radius-sm); cursor:pointer">${this.escapeHtml(action.label)}</button>
             </div>
         `, `Details - ${safeTitle}`);
 

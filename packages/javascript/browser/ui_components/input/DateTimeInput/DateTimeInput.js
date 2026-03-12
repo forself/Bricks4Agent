@@ -50,7 +50,7 @@ export class DateTimeInput {
             const label = document.createElement('label');
             label.textContent = this.options.label;
             label.style.cssText = `
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 font-weight: 500;
                 color: var(--cl-text);
             `;

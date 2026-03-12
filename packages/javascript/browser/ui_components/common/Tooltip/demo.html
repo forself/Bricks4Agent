@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tooltip Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: var(--cl-font-family);
+            padding: 24px;
+            padding-top: 60px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+        h1 { color: var(--cl-text); margin-bottom: 24px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 24px;
+            border-radius: var(--cl-radius-lg);
+            margin-bottom: 20px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: var(--cl-text-secondary);
+            font-size: var(--cl-font-size-xl);
+            margin-bottom: 16px;
+        }
+        .demo-section p {
+            color: var(--cl-text-muted);
+            font-size: var(--cl-font-size-md);
+            margin-bottom: 16px;
+        }
+        .demo-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .demo-row--center {
+            justify-content: center;
+            padding: 40px 0;
+        }
+
+        /* Shared button style */
+        .btn {
+            padding: 8px 20px;
+            cursor: pointer;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-lg);
+            font-family: inherit;
+            transition: background var(--cl-transition), color var(--cl-transition);
+        }
+        .btn-primary {
+            background: var(--cl-primary);
+            color: var(--cl-text-inverse);
+            border-color: var(--cl-primary);
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-success {
+            background: var(--cl-success);
+            color: var(--cl-text-inverse);
+            border-color: var(--cl-success);
+        }
+        .btn-danger {
+            background: var(--cl-danger);
+            color: var(--cl-text-inverse);
+            border-color: var(--cl-danger);
+        }
+        .btn-warning {
+            background: var(--cl-warning);
+            color: var(--cl-text-inverse);
+            border-color: var(--cl-warning);
+        }
+        .btn-default {
+            background: var(--cl-bg);
+            color: var(--cl-text);
+        }
+        .btn-default:hover { background: var(--cl-bg-hover); }
+
+        /* Inline text link */
+        .tip-link {
+            color: var(--cl-primary);
+            text-decoration: underline;
+            cursor: pointer;
+            font-size: var(--cl-font-size-lg);
+        }
+
+        /* Icon placeholder */
+        .icon-circle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: var(--cl-radius-round);
+            background: var(--cl-bg-hover);
+            color: var(--cl-text-muted);
+            font-size: var(--cl-font-size-xl);
+            cursor: pointer;
+            transition: background var(--cl-transition);
+            border: 1px solid var(--cl-border-light);
+        }
+        .icon-circle:hover { background: var(--cl-bg-active); }
+
+        /* Disabled look */
+        .btn[disabled] {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tooltip Demo</h1>
+
+    <!-- 1. Positions -->
+    <div class="demo-section">
+        <h2>Positions (Top / Bottom / Left / Right)</h2>
+        <p>Hover over each button to see the tooltip in the specified position.</p>
+        <div class="demo-row demo-row--center">
+            <button class="btn btn-primary" id="pos-top">Top</button>
+            <button class="btn btn-success" id="pos-bottom">Bottom</button>
+            <button class="btn btn-danger" id="pos-left">Left</button>
+            <button class="btn btn-warning" id="pos-right">Right</button>
+        </div>
+    </div>
+
+    <!-- 2. Hover trigger (default) -->
+    <div class="demo-section">
+        <h2>Hover Trigger (default)</h2>
+        <p>Tooltips appear after a short delay on mouseenter and hide on mouseleave. Also accessible via keyboard focus.</p>
+        <div class="demo-row">
+            <button class="btn btn-default" id="hover-save">Save</button>
+            <button class="btn btn-default" id="hover-edit">Edit</button>
+            <button class="btn btn-default" id="hover-delete">Delete</button>
+        </div>
+    </div>
+
+    <!-- 3. Click trigger -->
+    <div class="demo-section">
+        <h2>Click Trigger</h2>
+        <p>Click the button to toggle the tooltip. Click anywhere else to dismiss.</p>
+        <div class="demo-row">
+            <button class="btn btn-primary" id="click-info">Click me for info</button>
+            <button class="btn btn-default" id="click-help">Help</button>
+        </div>
+    </div>
+
+    <!-- 4. HTML content -->
+    <div class="demo-section">
+        <h2>HTML Content</h2>
+        <p>Tooltips can render rich HTML inside the body.</p>
+        <div class="demo-row">
+            <button class="btn btn-primary" id="html-tip">Hover for HTML tooltip</button>
+        </div>
+    </div>
+
+    <!-- 5. Long text / maxWidth -->
+    <div class="demo-section">
+        <h2>Long Text with maxWidth</h2>
+        <p>The tooltip wraps long text according to the configured maxWidth.</p>
+        <div class="demo-row">
+            <button class="btn btn-default" id="long-default">maxWidth 280 (default)</button>
+            <button class="btn btn-default" id="long-narrow">maxWidth 160</button>
+            <button class="btn btn-default" id="long-wide">maxWidth 400</button>
+        </div>
+    </div>
+
+    <!-- 6. Various target elements -->
+    <div class="demo-section">
+        <h2>Tooltips on Various Elements</h2>
+        <p>Tooltips work on buttons, text spans, and icon elements.</p>
+        <div class="demo-row">
+            <button class="btn btn-primary" id="el-button">Button</button>
+            <span class="tip-link" id="el-text" tabindex="0">Underlined text</span>
+            <span class="icon-circle" id="el-icon" tabindex="0">?</span>
+            <button class="btn btn-default" id="el-disabled" disabled>Disabled (no tooltip)</button>
+        </div>
+    </div>
+
+    <!-- 7. Programmatic API -->
+    <div class="demo-section">
+        <h2>Programmatic Show / Hide</h2>
+        <p>Use manual trigger mode to control tooltips with JavaScript.</p>
+        <div class="demo-row">
+            <button class="btn btn-success" id="manual-show">Show tooltip</button>
+            <button class="btn btn-danger" id="manual-hide">Hide tooltip</button>
+            <span class="btn btn-default" id="manual-target" style="pointer-events: none;">Target element</span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Tooltip } from './Tooltip.js';
+
+        /* ------ 1. Positions ------ */
+        Tooltip.create(document.getElementById('pos-top'), 'Tooltip on top', { position: 'top' });
+        Tooltip.create(document.getElementById('pos-bottom'), 'Tooltip on bottom', { position: 'bottom' });
+        Tooltip.create(document.getElementById('pos-left'), 'Tooltip on left', { position: 'left' });
+        Tooltip.create(document.getElementById('pos-right'), 'Tooltip on right', { position: 'right' });
+
+        /* ------ 2. Hover trigger ------ */
+        Tooltip.create(document.getElementById('hover-save'), 'Save your changes (Ctrl+S)');
+        Tooltip.create(document.getElementById('hover-edit'), 'Edit this item');
+        Tooltip.create(document.getElementById('hover-delete'), 'Delete permanently', { position: 'bottom' });
+
+        /* ------ 3. Click trigger ------ */
+        Tooltip.create(document.getElementById('click-info'), 'This tooltip was toggled by a click!', {
+            trigger: 'click',
+            position: 'bottom',
+        });
+        Tooltip.create(document.getElementById('click-help'), 'Need help? Visit our docs for more info.', {
+            trigger: 'click',
+        });
+
+        /* ------ 4. HTML content ------ */
+        Tooltip.create(
+            document.getElementById('html-tip'),
+            '<strong>Rich HTML</strong><br>This tooltip contains <em>formatted</em> content and a <span style="color:var(--cl-warning)">coloured span</span>.',
+            { html: true, maxWidth: 300 },
+        );
+
+        /* ------ 5. Long text ------ */
+        const longText = 'This is a much longer tooltip message that demonstrates how the component handles text wrapping when the content exceeds the configured maximum width.';
+        Tooltip.create(document.getElementById('long-default'), longText);
+        Tooltip.create(document.getElementById('long-narrow'), longText, { maxWidth: 160 });
+        Tooltip.create(document.getElementById('long-wide'), longText, { maxWidth: 400 });
+
+        /* ------ 6. Various elements ------ */
+        Tooltip.create(document.getElementById('el-button'), 'I am a button', { position: 'bottom' });
+        Tooltip.create(document.getElementById('el-text'), 'I am a text span');
+        Tooltip.create(document.getElementById('el-icon'), 'Information icon tooltip', { position: 'right' });
+        // No tooltip on disabled button
+
+        /* ------ 7. Manual trigger ------ */
+        const manualTip = new Tooltip({
+            text: 'Manually controlled tooltip',
+            trigger: 'manual',
+            position: 'top',
+        }).attach(document.getElementById('manual-target'));
+
+        document.getElementById('manual-show').addEventListener('click', () => manualTip.show());
+        document.getElementById('manual-hide').addEventListener('click', () => manualTip.hide());
+    </script>
+
+    <!-- Theme toggle (dark mode) -->
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

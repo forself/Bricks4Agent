@@ -144,17 +144,17 @@ export class TimelineChart extends BaseChart {
 
         const html = `
             <div style="min-width: 200px;">
-                <h3 style="margin:0 0 8px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:8px; font-size:14px; color:#111827;">${safeLabel}</h3>
-                <div style="font-size:12px; color:var(--cl-text-heading); line-height:1.6;">
+                <h3 style="margin:0 0 8px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:8px; font-size:var(--cl-font-size-lg); color:var(--cl-text-dark);">${safeLabel}</h3>
+                <div style="font-size:var(--cl-font-size-sm); color:var(--cl-text-heading); line-height:1.6;">
                    <div><strong>Start:</strong> ${new Date(data.start).toLocaleTimeString()}</div>
                    <div><strong>End:</strong> ${new Date(data.end).toLocaleTimeString()}</div>
                    <div><strong>Duration:</strong> ${duration}</div>
-                   <div style="margin-top:8px; padding:6px; background:var(--cl-bg-secondary); border-radius:4px;">
+                   <div style="margin-top:8px; padding:6px; background:var(--cl-bg-secondary); border-radius:var(--cl-radius-sm);">
                         ${safeDetails}
                    </div>
                 </div>
                 <div style="margin-top:8px; text-align:right;">
-                    <button style="padding:2px 8px; font-size:11px; cursor:pointer;" onclick="ModalPanel.alert({ message: "Drilldown: ${safeId}" })">Analyze</button>
+                    <button style="padding:2px 8px; font-size:var(--cl-font-size-xs); cursor:pointer;" onclick="ModalPanel.alert({ message: "Drilldown: ${safeId}" })">Analyze</button>
                 </div>
             </div>
         `;

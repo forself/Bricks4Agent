@@ -47,7 +47,7 @@ export class Breadcrumb {
                 align-items: center;
                 flex-wrap: wrap;
                 gap: 8px;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 padding: 8px 0;
             }
             .breadcrumb-item {
@@ -77,7 +77,7 @@ export class Breadcrumb {
                 user-select: none;
             }
             .breadcrumb-icon {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
             }
         `;
         document.head.appendChild(style);

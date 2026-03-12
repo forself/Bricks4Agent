@@ -15,9 +15,9 @@
 .download-btn {
     padding: 0;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--cl-radius-lg);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all var(--cl-transition-material);
     background: transparent;
     position: relative;
     overflow: hidden;
@@ -28,7 +28,7 @@
 }
 
 .download-btn:focus-visible {
-    outline: 2px solid #2196F3;
+    outline: 2px solid var(--cl-primary);
     outline-offset: 2px;
 }
 
@@ -49,57 +49,57 @@
 
 /* 各類型的陰影效果 */
 .download-btn--xls:hover {
-    box-shadow: 0 4px 12px rgba(33, 115, 70, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--cl-brand-excel-rgb), 0.4);
 }
 
 .download-btn--word:hover {
-    box-shadow: 0 4px 12px rgba(43, 87, 154, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--cl-brand-word-rgb), 0.4);
 }
 
 .download-btn--pdf:hover {
-    box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--cl-danger-rgb), 0.4);
 }
 
 .download-btn--image:hover {
-    box-shadow: 0 4px 12px rgba(123, 31, 162, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--cl-purple-dark-rgb), 0.4);
 }
 
 .download-btn--portrait:hover {
-    box-shadow: 0 4px 12px rgba(0, 131, 143, 0.4);
+    box-shadow: 0 4px 12px rgba(var(--cl-cyan-dark-rgb), 0.4);
 }
 
 /* ===== 尺寸變體 ===== */
 .download-btn--small {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--cl-radius-md);
 }
 
 .download-btn--medium {
     width: 48px;
     height: 48px;
-    border-radius: 8px;
+    border-radius: var(--cl-radius-lg);
 }
 
 .download-btn--large {
     width: 64px;
     height: 64px;
-    border-radius: 10px;
+    border-radius: var(--cl-radius-xl);
 }
 
 /* ===== 標籤樣式 ===== */
 .download-btn-label {
-    font-size: 10px;
+    font-size: var(--cl-font-size-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-.download-btn--xls + .download-btn-label { color: #217346; }
-.download-btn--word + .download-btn-label { color: #2B579A; }
-.download-btn--pdf + .download-btn-label { color: #E53935; }
-.download-btn--image + .download-btn-label { color: #7B1FA2; }
-.download-btn--portrait + .download-btn-label { color: #00838F; }
+.download-btn--xls + .download-btn-label { color: var(--cl-success-dark); }
+.download-btn--word + .download-btn-label { color: var(--cl-indigo-dark); }
+.download-btn--pdf + .download-btn-label { color: var(--cl-danger); }
+.download-btn--image + .download-btn-label { color: var(--cl-purple-dark); }
+.download-btn--portrait + .download-btn-label { color: var(--cl-cyan-dark); }
 
 /* ===== 按鈕群組 ===== */
 .download-btn-group {
@@ -141,9 +141,9 @@
     width: 20px;
     height: 20px;
     margin: -10px 0 0 -10px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
+    border: 2px solid var(--cl-bg-inverse-muted);
+    border-top-color: var(--cl-text-inverse);
+    border-radius: var(--cl-radius-round);
     animation: download-btn-spin 0.8s linear infinite;
 }
 
@@ -153,12 +153,6 @@
     }
 }
 
-/* ===== 暗色主題 ===== */
-@media (prefers-color-scheme: dark) {
-    .download-btn-label {
-        filter: brightness(1.2);
-    }
-}
 
 /* ===== 響應式調整 ===== */
 @media (max-width: 480px) {

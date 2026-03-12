@@ -102,7 +102,7 @@ export class BatchUploader {
         const wrapper = document.createElement('div');
         wrapper.className = 'batch-uploader';
         wrapper.style.cssText = `
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: var(--cl-font-family);
             width: 100%;
         `;
 
@@ -111,11 +111,11 @@ export class BatchUploader {
         dropzone.className = 'batch-uploader__dropzone';
         dropzone.style.cssText = `
             border: 2px dashed var(--cl-border);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             padding: 40px 20px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all var(--cl-transition-slow);
             background: var(--cl-bg-input);
         `;
 
@@ -126,16 +126,16 @@ export class BatchUploader {
                 <polyline points="17,8 12,3 7,8" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <line x1="12" y1="3" x2="12" y2="15" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <p style="margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: 14px;">${labels.dropzone}</p>
+            <p style="margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-lg);">${labels.dropzone}</p>
             <button type="button" class="batch-uploader__browse-btn" style="
                 padding: 8px 20px;
                 background: var(--cl-primary);
                 color: var(--cl-text-inverse);
                 border: none;
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 cursor: pointer;
-                font-size: 14px;
-                transition: background 0.2s;
+                font-size: var(--cl-font-size-lg);
+                transition: background var(--cl-transition);
             ">${labels.browse}</button>
         `;
         dropzone.appendChild(dropzoneContent);
@@ -176,9 +176,9 @@ export class BatchUploader {
             background: var(--cl-bg-secondary);
             color: var(--cl-text-secondary);
             border: 1px solid var(--cl-border);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
 
         const uploadBtn = document.createElement('button');
@@ -190,9 +190,9 @@ export class BatchUploader {
             background: var(--cl-success);
             color: var(--cl-text-inverse);
             border: none;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
 
         actions.appendChild(clearBtn);
@@ -205,9 +205,9 @@ export class BatchUploader {
             display: none;
             padding: 12px;
             background: var(--cl-bg-secondary);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             margin-top: 16px;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: var(--cl-text-secondary);
         `;
 
@@ -286,7 +286,7 @@ export class BatchUploader {
         });
 
         this.uploadBtn.addEventListener('mouseenter', () => {
-            this.uploadBtn.style.background = 'var(--cl-success)';
+            this.uploadBtn.style.background = 'var(--cl-success-dark)';
         });
         this.uploadBtn.addEventListener('mouseleave', () => {
             this.uploadBtn.style.background = 'var(--cl-success)';
@@ -377,9 +377,9 @@ export class BatchUploader {
             padding: 12px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border-light);
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             margin-bottom: 8px;
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
         `;
 
         // File icon
@@ -407,7 +407,7 @@ export class BatchUploader {
         name.className = 'batch-uploader__file-name';
         name.textContent = fileItem.name;
         name.style.cssText = `
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: var(--cl-text);
             white-space: nowrap;
             overflow: hidden;
@@ -418,7 +418,7 @@ export class BatchUploader {
         meta.className = 'batch-uploader__file-meta';
         meta.textContent = this._formatFileSize(fileItem.size);
         meta.style.cssText = `
-            font-size: 12px;
+            font-size: var(--cl-font-size-sm);
             color: var(--cl-text-placeholder);
             margin-top: 2px;
         `;
@@ -440,7 +440,7 @@ export class BatchUploader {
         progressBar.style.cssText = `
             height: 4px;
             background: var(--cl-border-light);
-            border-radius: 2px;
+            border-radius: var(--cl-radius-sm);
             overflow: hidden;
         `;
 
@@ -450,7 +450,7 @@ export class BatchUploader {
             height: 100%;
             width: 0%;
             background: var(--cl-primary);
-            transition: width 0.2s;
+            transition: width var(--cl-transition);
         `;
 
         progressBar.appendChild(progressFill);
@@ -461,7 +461,7 @@ export class BatchUploader {
         status.className = 'batch-uploader__file-status';
         status.textContent = labels.pending;
         status.style.cssText = `
-            font-size: 12px;
+            font-size: var(--cl-font-size-sm);
             color: var(--cl-text-placeholder);
             min-width: 70px;
             text-align: center;
@@ -491,11 +491,11 @@ export class BatchUploader {
             background: transparent;
             cursor: pointer;
             padding: 4px;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.2s;
+            transition: background var(--cl-transition);
         `;
         removeBtn.addEventListener('click', () => this.removeFile(fileItem.id));
         removeBtn.addEventListener('mouseenter', () => {
@@ -566,8 +566,8 @@ export class BatchUploader {
                         color: var(--cl-danger);
                         cursor: pointer;
                         padding: 2px 8px;
-                        border-radius: 4px;
-                        font-size: 12px;
+                        border-radius: var(--cl-radius-sm);
+                        font-size: var(--cl-font-size-sm);
                     `;
                     retryBtn.addEventListener('click', () => this._retryFile(fileItem));
                     actions.insertBefore(retryBtn, actions.firstChild);

@@ -90,10 +90,10 @@ export class BasePanel {
         container.style.cssText = `
             position: relative;
             border: 1px solid var(--cl-border-light);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             background: var(--cl-bg);
             overflow: hidden;
-            transition: all 0.3s ease;
+            transition: all var(--cl-transition-slow);
         `;
 
         // 標題列
@@ -129,8 +129,8 @@ export class BasePanel {
                     border: none;
                     background: none;
                     cursor: pointer;
-                    border-radius: 4px;
-                    transition: all 0.2s;
+                    border-radius: var(--cl-radius-sm);
+                    transition: all var(--cl-transition);
                 `;
                 toggleBtn.addEventListener('click', () => this.toggle());
                 headerLeft.appendChild(toggleBtn);
@@ -141,7 +141,7 @@ export class BasePanel {
                 const titleEl = document.createElement('span');
                 titleEl.className = 'panel__title';
                 titleEl.textContent = title;
-                titleEl.style.cssText = `font-weight: 600; font-size: 14px; color: var(--cl-text);`;
+                titleEl.style.cssText = `font-weight: 600; font-size: var(--cl-font-size-lg); color: var(--cl-text);`;
                 headerLeft.appendChild(titleEl);
             }
 
@@ -164,8 +164,8 @@ export class BasePanel {
                     border: none;
                     background: none;
                     cursor: pointer;
-                    border-radius: 4px;
-                    transition: all 0.2s;
+                    border-radius: var(--cl-radius-sm);
+                    transition: all var(--cl-transition);
                 `;
                 closeBtn.addEventListener('mouseenter', () => closeBtn.style.background = 'var(--cl-border-light)');
                 closeBtn.addEventListener('mouseleave', () => closeBtn.style.background = 'none');
@@ -183,7 +183,7 @@ export class BasePanel {
         content.style.cssText = `
             padding: 16px;
             overflow: hidden;
-            transition: all 0.3s ease;
+            transition: all var(--cl-transition-slow);
         `;
         container.appendChild(content);
         this.content = content;
@@ -197,7 +197,7 @@ export class BasePanel {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.7);
+            background: var(--cl-bg-surface-overlay);
             z-index: 10;
             display: none;
             cursor: not-allowed;

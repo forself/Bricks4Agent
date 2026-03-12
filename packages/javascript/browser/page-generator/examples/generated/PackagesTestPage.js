@@ -1,0 +1,160 @@
+/**
+ * PackagesTestPage - 測試 Packages 模式元件路徑
+ *
+ * 頁面類型: form
+ * 生成時間: 2026-03-11T13:55:17.067Z
+ *
+ * @module PackagesTestPage
+ */
+
+import { BasePage } from '../../core/BasePage.js';
+import { WebTextEditor } from '@component-library/ui_components/editor/WebTextEditor/WebTextEditor.js';
+import { DrawingBoard } from '@component-library/ui_components/viz/DrawingBoard/DrawingBoard.js';
+import { BasicButton } from '@component-library/ui_components/common/BasicButton/BasicButton.js';
+import { ButtonGroup } from '@component-library/ui_components/common/ButtonGroup/ButtonGroup.js';
+import { DateTimeInput } from '@component-library/ui_components/input/DateTimeInput/DateTimeInput.js';
+import { AddressInput } from '@component-library/ui_components/input/AddressInput/AddressInput.js';
+import { OrganizationInput } from '@component-library/ui_components/input/OrganizationInput/OrganizationInput.js';
+
+export class PackagesTestPage extends BasePage {
+
+    async onInit() {
+        this._data = {
+            form: {
+                  "content": "",
+                  "sketch": "",
+                  "eventTime": "",
+                  "location": "",
+                  "org": ""
+        },
+            loading: false,
+            submitting: false,
+            error: null
+        };
+    }
+
+    template() {
+        const { form, loading, submitting, error } = this._data;
+
+        return `
+            <div class="packages-test-page">
+                <header class="page-header">
+                    <h1>測試 Packages 模式元件路徑</h1>
+                </header>
+
+                ${error ? `
+                    <div class="alert alert-error">
+                        <p>${this.esc(error)}</p>
+                    </div>
+                ` : ''}
+
+                <form id="main-form" class="form-container">
+                    
+                            <div class="form-group full-width">
+                                <label for="content">內容 *</label>
+                                <div id="content-editor"></div>
+                            </div>
+                    
+                            <div class="form-group full-width">
+                                <label for="sketch">草圖</label>
+                                <div id="sketch-canvas"></div>
+                            </div>
+                    
+                            <div class="form-group">
+                                <label for="eventTime">時間</label>
+                                <input type="datetime-local" id="eventTime" name="eventTime"
+                                       value="${this.escAttr(this._data.form.eventTime)}"
+                                       >
+                            </div>
+                    <!-- TODO: 未知欄位類型 address -->
+                    <!-- TODO: 未知欄位類型 organization -->
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" ${submitting ? 'disabled' : ''}>
+                            ${submitting ? '處理中...' : '儲存'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+    }
+
+    events() {
+        return {
+                  "submit #main-form": "onSubmit",
+                  "input .form-group input": "onInput",
+                  "input .form-group textarea": "onInput",
+                  "change .form-group select": "onInput"
+        };
+    }
+
+    async onMounted() {
+
+        // 初始化富文本編輯器: content
+        this._contentEditor = new WebTextEditor({
+            container: this.$('#content-editor'),
+            content: this._data.form.content,
+            onChange: (content) => {
+                this._data.form.content = content;
+            }
+        });
+
+        // 初始化畫布: sketch
+        this._sketchCanvas = new DrawingBoard(this.$('#sketch-canvas'), {
+            width: 600,
+            height: 400,
+            onChange: (data) => {
+                this._data.form.sketch = data;
+            }
+        });
+    }
+
+    onInput(event) {
+        const { name, value, type, checked } = event.target;
+        this._data.form[name] = type === 'checkbox' ? checked : value;
+    }
+
+    async onSubmit(event) {
+        event.preventDefault();
+
+        // 驗證
+        if (!this._validate()) {
+            return;
+        }
+
+        this._data.submitting = true;
+        this._data.error = null;
+        this._scheduleUpdate();
+
+        try {
+            await this._save();
+            this.showMessage('儲存成功!', 'success');
+
+        } catch (error) {
+            this._data.error = error.message || '操作失敗';
+            this.showMessage('操作失敗', 'error');
+        } finally {
+            this._data.submitting = false;
+            this._scheduleUpdate();
+        }
+    }
+
+    _validate() {
+        const { form } = this._data;
+
+        if (!form.content) {
+            this._data.error = '請填寫內容';
+            this._scheduleUpdate();
+            return false;
+        }
+
+        return true;
+    }
+
+    async _save() {
+        // TODO: 實作儲存邏輯
+        console.log('儲存資料:', this._data.form);
+    }
+}
+
+export default PackagesTestPage;

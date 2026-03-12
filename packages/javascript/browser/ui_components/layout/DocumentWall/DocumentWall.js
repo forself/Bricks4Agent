@@ -61,14 +61,14 @@ export class DocumentWall {
                 border: 1px solid var(--cl-border);
                 background: var(--cl-bg);
                 color: var(--cl-text-secondary);
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 cursor: not-allowed;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 display: flex;
                 align-items: center;
                 gap: 6px;
                 opacity: 0.6;
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
             `;
             // SVG Icon
             this.downloadBtn.innerHTML = `

@@ -11,14 +11,14 @@
     margin-left: 4px;
     background: transparent;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--cl-radius-xs);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--cl-transition-fast);
     vertical-align: middle;
 }
 
 .sort-btn:hover {
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--cl-bg-hover);
 }
 
 .sort-btn:focus {
@@ -26,35 +26,35 @@
 }
 
 .sort-btn:focus-visible {
-    outline: 2px solid #2196F3;
+    outline: 2px solid var(--cl-primary);
     outline-offset: 1px;
 }
 
 /* 未生效狀態 */
 .sort-btn--none {
-    color: #9E9E9E;
+    color: var(--cl-grey);
 }
 
 .sort-btn--none:hover {
-    color: #757575;
+    color: var(--cl-grey-dark);
 }
 
 /* 逆序（降冪）狀態 */
 .sort-btn--desc {
-    color: #2196F3;
+    color: var(--cl-primary);
 }
 
 .sort-btn--desc:hover {
-    color: #1976D2;
+    color: var(--cl-primary-dark);
 }
 
 /* 正序（升冪）狀態 */
 .sort-btn--asc {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 .sort-btn--asc:hover {
-    color: #388E3C;
+    color: var(--cl-success-dark);
 }
 
 /* 尺寸 */
@@ -86,12 +86,12 @@
 }
 
 .th-sortable:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: var(--cl-bg-hover);
 }
 
 .th-sortable .sort-btn {
     opacity: 0.5;
-    transition: opacity 0.15s;
+    transition: opacity var(--cl-transition-fast);
 }
 
 .th-sortable:hover .sort-btn,

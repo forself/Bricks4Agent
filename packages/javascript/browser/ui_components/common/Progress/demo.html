@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progress Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: var(--cl-font-family);
+            padding: 24px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+        h1 { color: var(--cl-text); margin-bottom: 24px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 24px;
+            border-radius: var(--cl-radius-lg);
+            margin-bottom: 16px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: var(--cl-text-secondary);
+            font-size: var(--cl-font-size-xl);
+        }
+        .demo-row {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .demo-row:last-child { margin-bottom: 0; }
+        .demo-item {
+            flex: 1;
+            min-width: 180px;
+        }
+        .demo-item label {
+            display: block;
+            font-size: var(--cl-font-size-sm);
+            color: var(--cl-text-muted);
+            margin-bottom: 8px;
+        }
+        .circle-row {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .circle-item {
+            text-align: center;
+        }
+        .circle-item p {
+            margin-top: 8px;
+            font-size: var(--cl-font-size-sm);
+            color: var(--cl-text-muted);
+        }
+        button {
+            padding: 8px 20px;
+            cursor: pointer;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-sm);
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            font-family: var(--cl-font-family);
+            font-size: var(--cl-font-size-md);
+            margin-right: 8px;
+            transition: border-color var(--cl-transition), color var(--cl-transition);
+        }
+        button:hover {
+            border-color: var(--cl-primary);
+            color: var(--cl-primary);
+        }
+    </style>
+</head>
+<body>
+    <h1>Progress Demo</h1>
+
+    <!-- Variants (bar) -->
+    <div class="demo-section">
+        <h2>Variants (bar)</h2>
+        <div class="demo-row">
+            <div class="demo-item">
+                <label>primary (60%)</label>
+                <div id="v-primary"></div>
+            </div>
+            <div class="demo-item">
+                <label>success (80%)</label>
+                <div id="v-success"></div>
+            </div>
+        </div>
+        <div class="demo-row">
+            <div class="demo-item">
+                <label>warning (45%)</label>
+                <div id="v-warning"></div>
+            </div>
+            <div class="demo-item">
+                <label>danger (30%)</label>
+                <div id="v-danger"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sizes (bar) -->
+    <div class="demo-section">
+        <h2>Sizes (bar)</h2>
+        <div class="demo-row">
+            <div class="demo-item">
+                <label>small</label>
+                <div id="s-small"></div>
+            </div>
+            <div class="demo-item">
+                <label>medium</label>
+                <div id="s-medium"></div>
+            </div>
+            <div class="demo-item">
+                <label>large</label>
+                <div id="s-large"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- With text -->
+    <div class="demo-section">
+        <h2>Show percentage text</h2>
+        <div class="demo-row">
+            <div class="demo-item" id="text-bar"></div>
+        </div>
+    </div>
+
+    <!-- Indeterminate bar -->
+    <div class="demo-section">
+        <h2>Indeterminate (bar)</h2>
+        <div class="demo-row">
+            <div class="demo-item" id="ind-bar"></div>
+        </div>
+    </div>
+
+    <!-- Circular -->
+    <div class="demo-section">
+        <h2>Circular progress</h2>
+        <div class="circle-row">
+            <div class="circle-item">
+                <div id="c-primary"></div>
+                <p>primary 75%</p>
+            </div>
+            <div class="circle-item">
+                <div id="c-success"></div>
+                <p>success 90%</p>
+            </div>
+            <div class="circle-item">
+                <div id="c-warning"></div>
+                <p>warning 50%</p>
+            </div>
+            <div class="circle-item">
+                <div id="c-danger"></div>
+                <p>danger 25%</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Circular sizes -->
+    <div class="demo-section">
+        <h2>Circular sizes (with text)</h2>
+        <div class="circle-row">
+            <div class="circle-item">
+                <div id="cs-small"></div>
+                <p>small</p>
+            </div>
+            <div class="circle-item">
+                <div id="cs-medium"></div>
+                <p>medium</p>
+            </div>
+            <div class="circle-item">
+                <div id="cs-large"></div>
+                <p>large</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indeterminate circle -->
+    <div class="demo-section">
+        <h2>Indeterminate (circle)</h2>
+        <div class="circle-row">
+            <div class="circle-item">
+                <div id="ind-circle"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Animated setValue -->
+    <div class="demo-section">
+        <h2>Animated setValue</h2>
+        <div class="demo-row">
+            <div class="demo-item" id="animated-bar"></div>
+        </div>
+        <div class="demo-row" style="margin-top:12px;">
+            <div id="animated-circle" style="display:inline-block;"></div>
+        </div>
+        <div style="margin-top:12px;">
+            <button id="btnRandom">Random value</button>
+            <button id="btnFill">Fill to 100%</button>
+            <button id="btnReset">Reset to 0%</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Progress } from './Progress.js';
+
+        // --- Variants (bar) ---
+        new Progress({ value: 60, variant: 'primary', showText: true }).render('#v-primary');
+        new Progress({ value: 80, variant: 'success', showText: true }).render('#v-success');
+        new Progress({ value: 45, variant: 'warning', showText: true }).render('#v-warning');
+        new Progress({ value: 30, variant: 'danger',  showText: true }).render('#v-danger');
+
+        // --- Sizes (bar) ---
+        new Progress({ value: 50, size: 'small'  }).render('#s-small');
+        new Progress({ value: 50, size: 'medium' }).render('#s-medium');
+        new Progress({ value: 50, size: 'large'  }).render('#s-large');
+
+        // --- With text ---
+        new Progress({ value: 72, showText: true, variant: 'primary' }).render('#text-bar');
+
+        // --- Indeterminate bar ---
+        new Progress({ indeterminate: true, variant: 'primary' }).render('#ind-bar');
+
+        // --- Circular variants ---
+        new Progress({ type: 'circle', value: 75, variant: 'primary', showText: true }).render('#c-primary');
+        new Progress({ type: 'circle', value: 90, variant: 'success', showText: true }).render('#c-success');
+        new Progress({ type: 'circle', value: 50, variant: 'warning', showText: true }).render('#c-warning');
+        new Progress({ type: 'circle', value: 25, variant: 'danger',  showText: true }).render('#c-danger');
+
+        // --- Circular sizes ---
+        new Progress({ type: 'circle', value: 65, size: 'small',  showText: true }).render('#cs-small');
+        new Progress({ type: 'circle', value: 65, size: 'medium', showText: true }).render('#cs-medium');
+        new Progress({ type: 'circle', value: 65, size: 'large',  showText: true }).render('#cs-large');
+
+        // --- Indeterminate circle ---
+        new Progress({ type: 'circle', indeterminate: true, variant: 'primary', size: 'large' }).render('#ind-circle');
+
+        // --- Animated setValue ---
+        const animBar = new Progress({ value: 0, variant: 'success', showText: true, size: 'large' });
+        animBar.render('#animated-bar');
+
+        const animCircle = new Progress({ type: 'circle', value: 0, variant: 'success', showText: true, size: 'large' });
+        animCircle.render('#animated-circle');
+
+        document.getElementById('btnRandom').addEventListener('click', () => {
+            const v = Math.round(Math.random() * 100);
+            animBar.setValue(v);
+            animCircle.setValue(v);
+        });
+        document.getElementById('btnFill').addEventListener('click', () => {
+            animBar.setValue(100);
+            animCircle.setValue(100);
+        });
+        document.getElementById('btnReset').addEventListener('click', () => {
+            animBar.setValue(0);
+            animCircle.setValue(0);
+        });
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

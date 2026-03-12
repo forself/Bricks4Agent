@@ -475,12 +475,12 @@ export class DataTable {
         const options = this.options.rowsPerPageOptions || [10, 20, 100, 500, 1000];
 
         const btnStyle = (disabled) =>
-            `padding:4px 8px;border:1px solid var(--cl-border-dark);border-radius:4px;background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};cursor:${disabled ? 'default' : 'pointer'};color:${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};min-width:28px;font-size:0.8rem;line-height:1.5;`;
+            `padding:4px 8px;border:1px solid var(--cl-border-dark);border-radius:var(--cl-radius-sm);background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};cursor:${disabled ? 'default' : 'pointer'};color:${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};min-width:28px;font-size:0.8rem;line-height:1.5;`;
 
         return `<div style="display:flex;align-items:center;justify-content:flex-end;padding:12px 0;gap:16px;font-size:0.875rem;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:4px;">
                 <span>${escapeHtml(this._textLabels.pagination.rowsPerPage)}</span>
-                <select data-action="rows-per-page" style="padding:4px 8px;border-radius:4px;border:1px solid var(--cl-border-dark);background:var(--cl-bg);color:var(--cl-text);">
+                <select data-action="rows-per-page" style="padding:4px 8px;border-radius:var(--cl-radius-sm);border:1px solid var(--cl-border-dark);background:var(--cl-bg);color:var(--cl-text);">
                     ${options.map(opt => `<option value="${opt}" ${opt === this._rowsPerPage ? 'selected' : ''}>${opt}</option>`).join('')}
                 </select>
             </div>

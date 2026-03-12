@@ -21,6 +21,48 @@ export class ModalPanel extends BasePanel {
         this._wrapWithBackdrop();
     }
 
+    _messageStyle(marginBottom = '20px') {
+        return `margin: 0 0 ${marginBottom}; color: var(--cl-text); font-size: var(--cl-font-size-lg); font-family: var(--cl-font-family);`;
+    }
+
+    _buttonRowStyle(withGap = true) {
+        return `display: flex; justify-content: flex-end;${withGap ? ' gap: 10px;' : ''}`;
+    }
+
+    _buttonStyle(variant = 'secondary') {
+        const base = [
+            'padding: 8px 16px',
+            'border-radius: var(--cl-radius-md)',
+            'cursor: pointer',
+            'font-size: var(--cl-font-size-lg)',
+            'font-family: var(--cl-font-family)',
+            'transition: opacity var(--cl-transition-fast), background var(--cl-transition-fast), border-color var(--cl-transition-fast), color var(--cl-transition-fast)'
+        ];
+
+        if (variant === 'primary') {
+            return `${base.join('; ')}; border: none; background: var(--cl-primary); color: var(--cl-text-inverse);`;
+        }
+
+        return `${base.join('; ')}; border: 1px solid var(--cl-border); background: var(--cl-bg); color: var(--cl-text);`;
+    }
+
+    _inputStyle() {
+        return [
+            'width: 100%',
+            'padding: 8px 12px',
+            'border: 1px solid var(--cl-border)',
+            'border-radius: var(--cl-radius-md)',
+            'margin-bottom: 20px',
+            'font-size: var(--cl-font-size-lg)',
+            'font-family: var(--cl-font-family)',
+            'box-sizing: border-box',
+            'background: var(--cl-bg)',
+            'color: var(--cl-text)',
+            'outline: none',
+            'transition: border-color var(--cl-transition-fast)'
+        ].join('; ') + ';';
+    }
+
     _wrapWithBackdrop() {
         // 建立遮罩
         this.backdrop = document.createElement('div');
@@ -31,14 +73,14 @@ export class ModalPanel extends BasePanel {
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
+            background: var(--cl-bg-overlay);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: ${PanelManager.calculateZIndex(this)};
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s ease;
+            transition: opacity var(--cl-transition-slow), visibility var(--cl-transition-slow);
         `;
 
         // 調整內部元素樣式
@@ -48,7 +90,7 @@ export class ModalPanel extends BasePanel {
             max-height: 90vh;
             overflow: auto;
             transform: scale(0.9);
-            transition: transform 0.3s ease;
+            transition: transform var(--cl-transition-slow);
         `;
 
         this.backdrop.appendChild(this.element);
@@ -168,20 +210,20 @@ export class ModalPanel extends BasePanel {
 
         const content = document.createElement('div');
         const msgEl = document.createElement('p');
-        msgEl.style.cssText = 'margin: 0 0 20px; color: var(--cl-text); font-size: 14px;';
+        msgEl.style.cssText = modal._messageStyle();
         msgEl.textContent = message;
 
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
+        btnRow.style.cssText = modal._buttonRowStyle();
 
         const cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
-        cancelBtn.style.cssText = 'padding: 8px 16px; border: 1px solid var(--cl-border); background: var(--cl-bg); border-radius: 6px; cursor: pointer; font-size: 14px;';
+        cancelBtn.style.cssText = modal._buttonStyle('secondary');
         cancelBtn.textContent = cancelText;
 
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
-        confirmBtn.style.cssText = 'padding: 8px 16px; border: none; background: var(--cl-primary); color: var(--cl-text-inverse); border-radius: 6px; cursor: pointer; font-size: 14px;';
+        confirmBtn.style.cssText = modal._buttonStyle('primary');
         confirmBtn.textContent = confirmText;
 
         btnRow.append(cancelBtn, confirmBtn);
@@ -224,15 +266,15 @@ export class ModalPanel extends BasePanel {
 
         const content = document.createElement('div');
         const msgEl = document.createElement('p');
-        msgEl.style.cssText = 'margin: 0 0 20px; color: var(--cl-text); font-size: 14px;';
+        msgEl.style.cssText = modal._messageStyle();
         msgEl.textContent = message;
 
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display: flex; justify-content: flex-end;';
+        btnRow.style.cssText = modal._buttonRowStyle(false);
 
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
-        confirmBtn.style.cssText = 'padding: 8px 16px; border: none; background: var(--cl-primary); color: var(--cl-text-inverse); border-radius: 6px; cursor: pointer; font-size: 14px;';
+        confirmBtn.style.cssText = modal._buttonStyle('primary');
         confirmBtn.textContent = confirmText;
 
         btnRow.append(confirmBtn);
@@ -274,25 +316,25 @@ export class ModalPanel extends BasePanel {
 
         const content = document.createElement('div');
         const msgEl = document.createElement('p');
-        msgEl.style.cssText = 'margin: 0 0 12px; color: var(--cl-text); font-size: 14px;';
+        msgEl.style.cssText = modal._messageStyle('12px');
         msgEl.textContent = message;
 
         const input = document.createElement('input');
         input.type = 'text';
         input.setAttribute('placeholder', placeholder);
-        input.style.cssText = 'width: 100%; padding: 8px 12px; border: 1px solid var(--cl-border); border-radius: 6px; margin-bottom: 20px; font-size: 14px; box-sizing: border-box; outline: none;';
+        input.style.cssText = modal._inputStyle();
 
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
+        btnRow.style.cssText = modal._buttonRowStyle();
 
         const cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
-        cancelBtn.style.cssText = 'padding: 8px 16px; border: 1px solid var(--cl-border); background: var(--cl-bg); border-radius: 6px; cursor: pointer; font-size: 14px;';
+        cancelBtn.style.cssText = modal._buttonStyle('secondary');
         cancelBtn.textContent = cancelText;
 
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
-        confirmBtn.style.cssText = 'padding: 8px 16px; border: none; background: var(--cl-primary); color: var(--cl-text-inverse); border-radius: 6px; cursor: pointer; font-size: 14px;';
+        confirmBtn.style.cssText = modal._buttonStyle('primary');
         confirmBtn.textContent = confirmText;
 
         btnRow.append(cancelBtn, confirmBtn);

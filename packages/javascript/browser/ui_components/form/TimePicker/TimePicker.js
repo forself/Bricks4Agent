@@ -49,9 +49,9 @@ export class TimePicker {
 
     _getSizeStyles() {
         const sizes = {
-            small: { height: '32px', padding: '0 8px', fontSize: '13px' },
-            medium: { height: '40px', padding: '0 12px', fontSize: '14px' },
-            large: { height: '48px', padding: '0 16px', fontSize: '16px' }
+            small: { height: '32px', padding: '0 8px', fontSize: 'var(--cl-font-size-md)' },
+            medium: { height: '40px', padding: '0 12px', fontSize: 'var(--cl-font-size-lg)' },
+            large: { height: '48px', padding: '0 16px', fontSize: 'var(--cl-font-size-xl)' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -62,13 +62,13 @@ export class TimePicker {
 
         const container = document.createElement('div');
         container.className = `timepicker ${className || ''}`;
-        container.style.cssText = `position:relative;width:100%;font-family:sans-serif;`;
+        container.style.cssText = `position:relative;width:100%;font-family:var(--cl-font-family);`;
 
         // 標籤
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `display:block;font-size:13px;font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
+            labelEl.style.cssText = `display:block;font-size:var(--cl-font-size-md);font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
             container.appendChild(labelEl);
         }
 
@@ -78,9 +78,9 @@ export class TimePicker {
         inputWrapper.style.cssText = `
             display:flex;align-items:center;position:relative;
             height:${sizeStyles.height};padding:${sizeStyles.padding};padding-right:32px;
-            background:${disabled ? 'var(--cl-bg-secondary)' : 'white'};
-            border:1px solid var(--cl-border);border-radius:6px;
-            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all 0.2s;
+            background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
+            border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
+            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all var(--cl-transition);
         `;
 
         const display = document.createElement('span');
@@ -121,8 +121,8 @@ export class TimePicker {
         panel.className = 'timepicker__panel';
         panel.style.cssText = `
             position:absolute;top:100%;left:0;margin-top:4px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:8px;
-            box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:12px;
+            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-lg);
+            box-shadow:var(--cl-shadow-md);padding:12px;
             z-index:1000;display:none;width:200px;
         `;
 
@@ -138,7 +138,7 @@ export class TimePicker {
         // 分隔符
         const separator = document.createElement('span');
         separator.textContent = ':';
-        separator.style.cssText = `font-size:24px;font-weight:bold;color:var(--cl-text);`;
+        separator.style.cssText = `font-size:var(--cl-font-size-3xl);font-weight:bold;color:var(--cl-text);`;
 
         selectorsWrapper.appendChild(hourColumn.wrapper);
         selectorsWrapper.appendChild(separator);
@@ -150,8 +150,8 @@ export class TimePicker {
         confirmBtn.textContent = Locale.t('timePicker.confirm');
         confirmBtn.style.cssText = `
             width:100%;margin-top:12px;padding:8px;
-            background:var(--cl-primary);color:white;border:none;border-radius:6px;
-            cursor:pointer;font-size:14px;transition:background 0.2s;
+            background:var(--cl-primary);color:var(--cl-text-inverse);border:none;border-radius:var(--cl-radius-md);
+            cursor:pointer;font-size:var(--cl-font-size-lg);transition:background var(--cl-transition);
         `;
         confirmBtn.addEventListener('mouseenter', () => confirmBtn.style.background = 'var(--cl-primary-dark)');
         confirmBtn.addEventListener('mouseleave', () => confirmBtn.style.background = 'var(--cl-primary)');
@@ -172,18 +172,18 @@ export class TimePicker {
 
         const labelEl = document.createElement('div');
         labelEl.textContent = label;
-        labelEl.style.cssText = `font-size:11px;color:var(--cl-text-muted);margin-bottom:6px;`;
+        labelEl.style.cssText = `font-size:var(--cl-font-size-xs);color:var(--cl-text-muted);margin-bottom:6px;`;
 
         const scrollContainer = document.createElement('div');
         scrollContainer.className = 'timepicker__scroll';
-        scrollContainer.style.cssText = `height:150px;overflow-y:auto;border:1px solid var(--cl-border-light);border-radius:6px;`;
+        scrollContainer.style.cssText = `height:150px;overflow-y:auto;border:1px solid var(--cl-border-light);border-radius:var(--cl-radius-md);`;
 
         for (let i = min; i <= max; i += step) {
             const item = document.createElement('div');
             item.className = 'timepicker__item';
             item.dataset.value = i;
             item.textContent = String(i).padStart(2, '0');
-            item.style.cssText = `padding:8px;cursor:pointer;transition:all 0.15s;font-size:14px;color:var(--cl-text);`;
+            item.style.cssText = `padding:8px;cursor:pointer;transition:all var(--cl-transition-fast);font-size:var(--cl-font-size-lg);color:var(--cl-text);`;
 
             item.addEventListener('mouseenter', () => {
                 if (!item.classList.contains('timepicker__item--selected')) {

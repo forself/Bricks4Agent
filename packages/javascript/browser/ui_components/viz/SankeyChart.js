@@ -159,12 +159,12 @@ export class SankeyChart extends BaseChart {
         const html = `
             <div style="min-width: 180px;">
                 <h3 style="margin:0 0 5px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:5px;">${safeName}</h3>
-                <div style="font-size:12px; color:var(--cl-text-secondary);">
+                <div style="font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary);">
                     Layer: ${node.col}<br/>
                     Flow Volume: ${node.value || 'N/A'}
                 </div>
                  <div style="margin-top:8px; text-align:right;">
-                    <button style="padding:2px 8px; font-size:11px;" onclick="ModalPanel.alert({ message: "Step Details: ${safeName}" })">View Step</button>
+                    <button style="padding:2px 8px; font-size:var(--cl-font-size-xs);" onclick="ModalPanel.alert({ message: "Step Details: ${safeName}" })">View Step</button>
                 </div>
             </div>
         `;

@@ -14,13 +14,13 @@
     "apiBaseUrl": "https://localhost:5002/api"
   },
   "security": {
-    "jwtKey": "SpaGeneratorSecretKey32CharactersLong!",
+    "jwtKey": "",
     "jwtIssuer": "spa-generator",
     "corsOrigins": ["http://localhost:3080"]
   },
   "admin": {
     "email": "admin@generator.local",
-    "password": "Generator@123",
+    "password": "",
     "name": "Generator Admin"
   }
 }

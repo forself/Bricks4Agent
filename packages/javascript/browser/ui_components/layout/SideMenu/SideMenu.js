@@ -72,9 +72,9 @@ export class SideMenu {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 color: var(--cl-text-secondary);
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
             }
             .side-menu-toggle:hover {
                 background: var(--cl-bg-secondary);
@@ -97,7 +97,7 @@ export class SideMenu {
                 color: var(--cl-text);
                 text-decoration: none;
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
                 border-left: 3px solid transparent;
                 white-space: nowrap;
             }
@@ -120,20 +120,20 @@ export class SideMenu {
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                font-size: 16px;
+                font-size: var(--cl-font-size-xl);
             }
             .side-menu-text {
                 flex: 1;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
             }
             .side-menu-badge {
                 padding: 2px 8px;
                 background: var(--cl-danger);
                 color: var(--cl-bg);
-                font-size: 11px;
-                border-radius: 10px;
+                font-size: var(--cl-font-size-xs);
+                border-radius: var(--cl-radius-pill);
                 flex-shrink: 0;
             }
             .side-menu-arrow {
@@ -142,7 +142,7 @@ export class SideMenu {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                transition: transform 0.2s;
+                transition: transform var(--cl-transition);
                 flex-shrink: 0;
             }
             .side-menu-arrow.expanded {
@@ -183,8 +183,8 @@ export class SideMenu {
                 background: var(--cl-text);
                 color: var(--cl-bg);
                 padding: 6px 12px;
-                border-radius: 4px;
-                font-size: 13px;
+                border-radius: var(--cl-radius-sm);
+                font-size: var(--cl-font-size-md);
                 white-space: nowrap;
                 z-index: 1000;
                 margin-left: 8px;

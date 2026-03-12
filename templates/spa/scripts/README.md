@@ -9,9 +9,7 @@
 
 ## Important Note
 
-這些 CLI 入口目前是 CommonJS 風格腳本，使用 `require(...)` 與 `__dirname`。
-
-如果你的工作樹仍保留 root `package.json` 的 `"type": "module"` 設定，請先完成 CLI 模組制式對齊，再直接執行 `spa-cli.js`。本文件描述的是預期支援的 CLI 介面。
+這份文件描述的是目前支援的 CLI 介面。
 
 ## Commands
 

@@ -41,11 +41,11 @@ export class DrawerPanel extends BasePanel {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--cl-bg-overlay-soft);
             z-index: ${PanelManager.calculateZIndex(this)};
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s ease;
+            transition: all var(--cl-transition-slow);
         `;
 
         // 位置樣式
@@ -60,7 +60,7 @@ export class DrawerPanel extends BasePanel {
             overflow: auto;
             border-radius: 0;
             transform: ${positionStyles.hiddenTransform};
-            transition: transform 0.3s ease;
+            transition: transform var(--cl-transition-slow);
             z-index: ${PanelManager.calculateZIndex(this) + 1};
         `;
 

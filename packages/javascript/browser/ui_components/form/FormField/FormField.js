@@ -57,7 +57,7 @@ export class FormField {
 
             const labelText = document.createElement('label');
             labelText.textContent = label;
-            labelText.style.cssText = 'font-size:14px;font-weight:500;color:var(--cl-text);';
+            labelText.style.cssText = 'font-size:var(--cl-font-size-lg);font-weight:500;color:var(--cl-text);';
             labelRow.appendChild(labelText);
             this._labelText = labelText;
 
@@ -81,7 +81,7 @@ export class FormField {
         // 錯誤/提示區
         const messageEl = document.createElement('div');
         messageEl.className = 'form-field__message';
-        messageEl.style.cssText = 'font-size:12px;min-height:18px;margin-top:4px;';
+        messageEl.style.cssText = 'font-size:var(--cl-font-size-sm);min-height:18px;margin-top:4px;';
         container.appendChild(messageEl);
         this._messageEl = messageEl;
 

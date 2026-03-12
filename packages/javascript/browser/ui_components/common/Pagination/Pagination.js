@@ -52,7 +52,7 @@ export class Pagination {
                 display: flex;
                 align-items: center;
                 gap: 16px;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text);
                 flex-wrap: wrap;
             }
@@ -74,13 +74,13 @@ export class Pagination {
                 padding: 0 8px;
                 border: 1px solid var(--cl-border);
                 background: var(--cl-bg);
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                transition: all 0.2s;
-                font-size: 14px;
+                transition: all var(--cl-transition);
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text);
             }
             .pagination-btn:hover:not(:disabled):not(.active) {
@@ -95,7 +95,7 @@ export class Pagination {
             .pagination-btn.active {
                 background: var(--cl-primary);
                 border-color: var(--cl-primary);
-                color: var(--cl-bg);
+                color: var(--cl-text-inverse);
             }
             .pagination-ellipsis {
                 min-width: 32px;
@@ -112,16 +112,12 @@ export class Pagination {
             }
             .pagination-size select {
                 height: 32px;
-                padding: 0 24px 0 8px;
+                padding: 0 8px;
                 border: 1px solid var(--cl-border);
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 background: var(--cl-bg);
                 cursor: pointer;
-                font-size: 14px;
-                appearance: none;
-                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
-                background-repeat: no-repeat;
-                background-position: right 8px center;
+                font-size: var(--cl-font-size-lg);
             }
             .pagination-size select:focus {
                 outline: none;
@@ -137,9 +133,9 @@ export class Pagination {
                 height: 32px;
                 padding: 0 8px;
                 border: 1px solid var(--cl-border);
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 text-align: center;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
             }
             .pagination-jumper input:focus {
                 outline: none;
@@ -150,11 +146,11 @@ export class Pagination {
                 padding: 0 12px;
                 border: 1px solid var(--cl-primary);
                 background: var(--cl-primary);
-                color: var(--cl-bg);
-                border-radius: 4px;
+                color: var(--cl-text-inverse);
+                border-radius: var(--cl-radius-sm);
                 cursor: pointer;
-                font-size: 13px;
-                transition: all 0.2s;
+                font-size: var(--cl-font-size-md);
+                transition: all var(--cl-transition);
             }
             .pagination-jumper button:hover {
                 background: var(--cl-primary-dark);

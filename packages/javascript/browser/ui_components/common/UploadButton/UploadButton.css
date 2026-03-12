@@ -15,9 +15,9 @@
 /* ===== 基礎按鈕樣式 ===== */
 .upload-btn {
     padding: 0;
-    border-radius: 8px;
+    border-radius: var(--cl-radius-lg);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all var(--cl-transition-material);
     background: transparent;
     position: relative;
     overflow: hidden;
@@ -28,7 +28,7 @@
 }
 
 .upload-btn:focus-visible {
-    outline: 2px solid #2196F3;
+    outline: 2px solid var(--cl-primary);
     outline-offset: 2px;
 }
 
@@ -49,134 +49,134 @@
 
 /* 各類型的邊框與陰影效果 */
 .upload-btn--xls {
-    border-color: rgba(33, 115, 70, 0.4);
+    border-color: rgba(var(--cl-brand-excel-rgb), 0.4);
 }
 
 .upload-btn--xls:hover {
-    border-color: #217346;
-    box-shadow: 0 4px 12px rgba(33, 115, 70, 0.4);
+    border-color: var(--cl-success-dark);
+    box-shadow: 0 4px 12px rgba(var(--cl-brand-excel-rgb), 0.4);
 }
 
 .upload-btn--word {
-    border-color: rgba(43, 87, 154, 0.4);
+    border-color: rgba(var(--cl-brand-word-rgb), 0.4);
 }
 
 .upload-btn--word:hover {
-    border-color: #2B579A;
-    box-shadow: 0 4px 12px rgba(43, 87, 154, 0.4);
+    border-color: var(--cl-indigo-dark);
+    box-shadow: 0 4px 12px rgba(var(--cl-brand-word-rgb), 0.4);
 }
 
 .upload-btn--pdf {
-    border-color: rgba(229, 57, 53, 0.4);
+    border-color: rgba(var(--cl-danger-rgb), 0.4);
 }
 
 .upload-btn--pdf:hover {
-    border-color: #E53935;
-    box-shadow: 0 4px 12px rgba(229, 57, 53, 0.4);
+    border-color: var(--cl-danger);
+    box-shadow: 0 4px 12px rgba(var(--cl-danger-rgb), 0.4);
 }
 
 .upload-btn--image {
-    border-color: rgba(123, 31, 162, 0.4);
+    border-color: rgba(var(--cl-purple-dark-rgb), 0.4);
 }
 
 .upload-btn--image:hover {
-    border-color: #7B1FA2;
-    box-shadow: 0 4px 12px rgba(123, 31, 162, 0.4);
+    border-color: var(--cl-purple-dark);
+    box-shadow: 0 4px 12px rgba(var(--cl-purple-dark-rgb), 0.4);
 }
 
 .upload-btn--portrait {
-    border-color: rgba(0, 131, 143, 0.4);
+    border-color: rgba(var(--cl-cyan-dark-rgb), 0.4);
 }
 
 .upload-btn--portrait:hover {
-    border-color: #00838F;
-    box-shadow: 0 4px 12px rgba(0, 131, 143, 0.4);
+    border-color: var(--cl-cyan-dark);
+    box-shadow: 0 4px 12px rgba(var(--cl-cyan-dark-rgb), 0.4);
 }
 
 .upload-btn--file {
-    border-color: rgba(96, 125, 139, 0.4);
+    border-color: rgba(var(--cl-blue-grey-rgb), 0.4);
 }
 
 .upload-btn--file:hover {
-    border-color: #607D8B;
-    box-shadow: 0 4px 12px rgba(96, 125, 139, 0.4);
+    border-color: var(--cl-blue-grey);
+    box-shadow: 0 4px 12px rgba(var(--cl-blue-grey-rgb), 0.4);
 }
 
 .upload-btn--txt {
-    border-color: rgba(69, 90, 100, 0.4);
+    border-color: rgba(var(--cl-blue-grey-dark-rgb), 0.4);
 }
 
 .upload-btn--txt:hover {
-    border-color: #455A64;
-    box-shadow: 0 4px 12px rgba(69, 90, 100, 0.4);
+    border-color: var(--cl-blue-grey-dark);
+    box-shadow: 0 4px 12px rgba(var(--cl-blue-grey-dark-rgb), 0.4);
 }
 
 .upload-btn--csv {
-    border-color: rgba(67, 160, 71, 0.4);
+    border-color: rgba(var(--cl-success-rgb), 0.4);
 }
 
 .upload-btn--csv:hover {
-    border-color: #43A047;
-    box-shadow: 0 4px 12px rgba(67, 160, 71, 0.4);
+    border-color: var(--cl-success);
+    box-shadow: 0 4px 12px rgba(var(--cl-success-rgb), 0.4);
 }
 
 /* ===== 尺寸變體 ===== */
 .upload-btn--small {
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--cl-radius-md);
 }
 
 .upload-btn--medium {
     width: 48px;
     height: 48px;
-    border-radius: 8px;
+    border-radius: var(--cl-radius-lg);
 }
 
 .upload-btn--large {
     width: 64px;
     height: 64px;
-    border-radius: 10px;
+    border-radius: var(--cl-radius-xl);
 }
 
 /* ===== 標籤樣式 ===== */
 .upload-btn-label {
-    font-size: 10px;
+    font-size: var(--cl-font-size-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .upload-btn--xls~.upload-btn-label {
-    color: #217346;
+    color: var(--cl-success-dark);
 }
 
 .upload-btn--word~.upload-btn-label {
-    color: #2B579A;
+    color: var(--cl-indigo-dark);
 }
 
 .upload-btn--pdf~.upload-btn-label {
-    color: #E53935;
+    color: var(--cl-danger);
 }
 
 .upload-btn--image~.upload-btn-label {
-    color: #7B1FA2;
+    color: var(--cl-purple-dark);
 }
 
 .upload-btn--portrait~.upload-btn-label {
-    color: #00838F;
+    color: var(--cl-cyan-dark);
 }
 
 .upload-btn--file~.upload-btn-label {
-    color: #607D8B;
+    color: var(--cl-blue-grey);
 }
 
 .upload-btn--txt~.upload-btn-label {
-    color: #455A64;
+    color: var(--cl-blue-grey-dark);
 }
 
 .upload-btn--csv~.upload-btn-label {
-    color: #43A047;
+    color: var(--cl-success);
 }
 
 /* ===== 按鈕群組 ===== */
@@ -217,9 +217,9 @@
     width: 20px;
     height: 20px;
     margin: -10px 0 0 -10px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
+    border: 2px solid var(--cl-bg-inverse-muted);
+    border-top-color: var(--cl-text-inverse);
+    border-radius: var(--cl-radius-round);
     animation: upload-btn-spin 0.8s linear infinite;
     z-index: 10;
 }
@@ -231,7 +231,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--cl-bg-overlay-medium);
     border-radius: inherit;
     z-index: 5;
 }
@@ -242,12 +242,6 @@
     }
 }
 
-/* ===== 暗色主題 ===== */
-@media (prefers-color-scheme: dark) {
-    .upload-btn-label {
-        filter: brightness(1.2);
-    }
-}
 
 /* ===== 響應式調整 ===== */
 @media (max-width: 480px) {

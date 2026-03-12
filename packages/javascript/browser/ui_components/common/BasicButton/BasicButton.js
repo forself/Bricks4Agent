@@ -205,9 +205,9 @@ export class BasicButton {
 
     _getSizeStyles() {
         const sizes = {
-            small: { padding: '6px 14px', fontSize: '12px', iconSize: '14px', gap: '4px' },
-            medium: { padding: '8px 18px', fontSize: '14px', iconSize: '16px', gap: '6px' },
-            large: { padding: '12px 28px', fontSize: '16px', iconSize: '20px', gap: '8px' }
+            small: { padding: '6px 14px', fontSize: 'var(--cl-font-size-sm)', iconSize: '14px', gap: '4px' },
+            medium: { padding: '8px 18px', fontSize: 'var(--cl-font-size-lg)', iconSize: '16px', gap: '6px' },
+            large: { padding: '12px 28px', fontSize: 'var(--cl-font-size-xl)', iconSize: '20px', gap: '8px' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -232,7 +232,7 @@ export class BasicButton {
             },
             plain: {
                 base: { background: 'var(--cl-bg)', color: 'var(--cl-text)', border: '1px solid var(--cl-border-light)' },
-                hover: { background: 'var(--cl-bg-secondary)', color: '#000', border: '1px solid #d0d0d0' }
+                hover: { background: 'var(--cl-bg-secondary)', color: 'var(--cl-text-dark)', border: '1px solid var(--cl-border-dark)' }
             }
         };
         return variants[this.options.variant] || variants.primary;
@@ -266,7 +266,7 @@ export class BasicButton {
             font-family: inherit;
             border-radius: ${isIconOnly ? '50%' : '6px'};
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--cl-transition);
             background: ${baseStyles.background};
             color: ${baseStyles.color};
             border: ${baseStyles.border || 'none'};

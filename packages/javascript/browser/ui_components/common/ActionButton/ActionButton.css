@@ -23,7 +23,7 @@
     top: 20%;
     height: 60%;
     width: 1px;
-    background: rgba(0, 0, 0, 0.1);
+    background: var(--cl-divider-subtle);
 }
 
 /* ===== 基礎按鈕 ===== */
@@ -31,9 +31,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 8px;
+    border-radius: var(--cl-radius-lg);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all var(--cl-transition-material);
     font-weight: 500;
     font-family: inherit;
     position: relative;
@@ -45,7 +45,7 @@
 }
 
 .action-btn:focus-visible {
-    outline: 2px solid #2196F3;
+    outline: 2px solid var(--cl-primary);
     outline-offset: 2px;
 }
 
@@ -63,7 +63,7 @@
 /* ===== 尺寸 ===== */
 .action-btn--small {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--cl-font-size-sm);
     gap: 4px;
 }
 
@@ -74,7 +74,7 @@
 
 .action-btn--medium {
     padding: 8px 16px;
-    font-size: 14px;
+    font-size: var(--cl-font-size-lg);
     gap: 6px;
 }
 
@@ -85,7 +85,7 @@
 
 .action-btn--large {
     padding: 12px 24px;
-    font-size: 16px;
+    font-size: var(--cl-font-size-xl);
     gap: 8px;
 }
 
@@ -115,148 +115,148 @@
 
 /* ===== 填滿樣式 (Filled) ===== */
 .action-btn--add.action-btn--filled {
-    background: #4CAF50;
-    color: white;
+    background: var(--cl-success);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--add.action-btn--filled:hover {
-    background: #388E3C;
+    background: var(--cl-success-dark);
 }
 
 .action-btn--delete.action-btn--filled {
-    background: #F44336;
-    color: white;
+    background: var(--cl-danger);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--delete.action-btn--filled:hover {
-    background: #D32F2F;
+    background: var(--cl-danger-dark);
 }
 
 .action-btn--edit.action-btn--filled {
-    background: #FF9800;
-    color: white;
+    background: var(--cl-warning);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--edit.action-btn--filled:hover {
-    background: #F57C00;
+    background: var(--cl-warning-dark);
 }
 
 .action-btn--detail.action-btn--filled {
-    background: #2196F3;
-    color: white;
+    background: var(--cl-primary);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--detail.action-btn--filled:hover {
-    background: #1976D2;
+    background: var(--cl-primary-dark);
 }
 
 .action-btn--submit.action-btn--filled {
-    background: #009688;
-    color: white;
+    background: var(--cl-teal);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--submit.action-btn--filled:hover {
-    background: #00796B;
+    background: var(--cl-teal-dark);
 }
 
 .action-btn--reject.action-btn--filled {
-    background: #E91E63;
-    color: white;
+    background: var(--cl-pink);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--reject.action-btn--filled:hover {
-    background: #C2185B;
+    background: var(--cl-pink-dark);
 }
 
 .action-btn--archive.action-btn--filled {
-    background: #795548;
-    color: white;
+    background: var(--cl-brown);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--archive.action-btn--filled:hover {
-    background: #5D4037;
+    background: var(--cl-brown-dark);
 }
 
 .action-btn--merge.action-btn--filled {
-    background: #673AB7;
-    color: white;
+    background: var(--cl-deep-purple);
+    color: var(--cl-text-inverse);
 }
 
 .action-btn--merge.action-btn--filled:hover {
-    background: #512DA8;
+    background: var(--cl-deep-purple-dark);
 }
 
 /* ===== 外框樣式 (Outlined) ===== */
 .action-btn--add.action-btn--outlined {
-    color: #4CAF50;
-    border: 2px solid #4CAF50;
+    color: var(--cl-success);
+    border: 2px solid var(--cl-success);
 }
 
 .action-btn--add.action-btn--outlined:hover {
-    background: rgba(76, 175, 80, 0.1);
+    background: rgba(var(--cl-success-rgb), 0.1);
 }
 
 .action-btn--delete.action-btn--outlined {
-    color: #F44336;
-    border: 2px solid #F44336;
+    color: var(--cl-danger);
+    border: 2px solid var(--cl-danger);
 }
 
 .action-btn--delete.action-btn--outlined:hover {
-    background: rgba(244, 67, 54, 0.1);
+    background: rgba(var(--cl-danger-rgb), 0.1);
 }
 
 .action-btn--edit.action-btn--outlined {
-    color: #FF9800;
-    border: 2px solid #FF9800;
+    color: var(--cl-warning);
+    border: 2px solid var(--cl-warning);
 }
 
 .action-btn--edit.action-btn--outlined:hover {
-    background: rgba(255, 152, 0, 0.1);
+    background: rgba(var(--cl-warning-rgb), 0.1);
 }
 
 .action-btn--detail.action-btn--outlined {
-    color: #2196F3;
-    border: 2px solid #2196F3;
+    color: var(--cl-primary);
+    border: 2px solid var(--cl-primary);
 }
 
 .action-btn--detail.action-btn--outlined:hover {
-    background: rgba(33, 150, 243, 0.1);
+    background: rgba(var(--cl-primary-rgb), 0.1);
 }
 
 .action-btn--submit.action-btn--outlined {
-    color: #009688;
-    border: 2px solid #009688;
+    color: var(--cl-teal);
+    border: 2px solid var(--cl-teal);
 }
 
 .action-btn--submit.action-btn--outlined:hover {
-    background: rgba(0, 150, 136, 0.1);
+    background: rgba(var(--cl-teal-rgb), 0.1);
 }
 
 .action-btn--reject.action-btn--outlined {
-    color: #E91E63;
-    border: 2px solid #E91E63;
+    color: var(--cl-pink);
+    border: 2px solid var(--cl-pink);
 }
 
 .action-btn--reject.action-btn--outlined:hover {
-    background: rgba(233, 30, 99, 0.1);
+    background: rgba(var(--cl-pink-rgb), 0.1);
 }
 
 .action-btn--archive.action-btn--outlined {
-    color: #795548;
-    border: 2px solid #795548;
+    color: var(--cl-brown);
+    border: 2px solid var(--cl-brown);
 }
 
 .action-btn--archive.action-btn--outlined:hover {
-    background: rgba(121, 85, 72, 0.1);
+    background: rgba(var(--cl-brown-rgb), 0.1);
 }
 
 .action-btn--merge.action-btn--outlined {
-    color: #673AB7;
-    border: 2px solid #673AB7;
+    color: var(--cl-deep-purple);
+    border: 2px solid var(--cl-deep-purple);
 }
 
 .action-btn--merge.action-btn--outlined:hover {
-    background: rgba(103, 58, 183, 0.1);
+    background: rgba(var(--cl-deep-purple-rgb), 0.1);
 }
 
 /* ===== 文字樣式 (Text) ===== */
@@ -266,106 +266,106 @@
 }
 
 .action-btn--add.action-btn--text {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 .action-btn--delete.action-btn--text {
-    color: #F44336;
+    color: var(--cl-danger);
 }
 
 .action-btn--edit.action-btn--text {
-    color: #FF9800;
+    color: var(--cl-warning);
 }
 
 .action-btn--detail.action-btn--text {
-    color: #2196F3;
+    color: var(--cl-primary);
 }
 
 .action-btn--submit.action-btn--text {
-    color: #009688;
+    color: var(--cl-teal);
 }
 
 .action-btn--reject.action-btn--text {
-    color: #E91E63;
+    color: var(--cl-pink);
 }
 
 .action-btn--archive.action-btn--text {
-    color: #795548;
+    color: var(--cl-brown);
 }
 
 .action-btn--merge.action-btn--text {
-    color: #673AB7;
+    color: var(--cl-deep-purple);
 }
 
 /* ===== 純圖示樣式 (Icon) ===== */
 .action-btn--icon {
     background: transparent;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--cl-radius-round);
 }
 
 .action-btn--add.action-btn--icon {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 .action-btn--add.action-btn--icon:hover {
-    background: rgba(76, 175, 80, 0.15);
+    background: rgba(var(--cl-success-rgb), 0.15);
 }
 
 .action-btn--delete.action-btn--icon {
-    color: #F44336;
+    color: var(--cl-danger);
 }
 
 .action-btn--delete.action-btn--icon:hover {
-    background: rgba(244, 67, 54, 0.15);
+    background: rgba(var(--cl-danger-rgb), 0.15);
 }
 
 .action-btn--edit.action-btn--icon {
-    color: #FF9800;
+    color: var(--cl-warning);
 }
 
 .action-btn--edit.action-btn--icon:hover {
-    background: rgba(255, 152, 0, 0.15);
+    background: rgba(var(--cl-warning-rgb), 0.15);
 }
 
 .action-btn--detail.action-btn--icon {
-    color: #2196F3;
+    color: var(--cl-primary);
 }
 
 .action-btn--detail.action-btn--icon:hover {
-    background: rgba(33, 150, 243, 0.15);
+    background: rgba(var(--cl-primary-rgb), 0.15);
 }
 
 .action-btn--submit.action-btn--icon {
-    color: #009688;
+    color: var(--cl-teal);
 }
 
 .action-btn--submit.action-btn--icon:hover {
-    background: rgba(0, 150, 136, 0.15);
+    background: rgba(var(--cl-teal-rgb), 0.15);
 }
 
 .action-btn--reject.action-btn--icon {
-    color: #E91E63;
+    color: var(--cl-pink);
 }
 
 .action-btn--reject.action-btn--icon:hover {
-    background: rgba(233, 30, 99, 0.15);
+    background: rgba(var(--cl-pink-rgb), 0.15);
 }
 
 .action-btn--archive.action-btn--icon {
-    color: #795548;
+    color: var(--cl-brown);
 }
 
 .action-btn--archive.action-btn--icon:hover {
-    background: rgba(121, 85, 72, 0.15);
+    background: rgba(var(--cl-brown-rgb), 0.15);
 }
 
 .action-btn--merge.action-btn--icon {
-    color: #673AB7;
+    color: var(--cl-deep-purple);
 }
 
 .action-btn--merge.action-btn--icon:hover {
-    background: rgba(103, 58, 183, 0.15);
+    background: rgba(var(--cl-deep-purple-rgb), 0.15);
 }
 
 /* ===== 停用狀態 ===== */
@@ -394,13 +394,13 @@
     height: 16px;
     border: 2px solid currentColor;
     border-top-color: transparent;
-    border-radius: 50%;
+    border-radius: var(--cl-radius-round);
     animation: action-btn-spin 0.8s linear infinite;
 }
 
 .action-btn--loading.action-btn--filled::after {
-    border-color: rgba(255, 255, 255, 0.3);
-    border-top-color: white;
+    border-color: var(--cl-bg-inverse-muted);
+    border-top-color: var(--cl-text-inverse);
 }
 
 @keyframes action-btn-spin {
@@ -418,37 +418,28 @@
     transform: translateY(0) scale(0.97);
 }
 
-/* ===== 暗色主題 ===== */
-@media (prefers-color-scheme: dark) {
-
-    .action-btn--outlined,
-    .action-btn--text,
-    .action-btn--icon {
-        filter: brightness(1.1);
-    }
-}
 
 /* ===== 工具列樣式 ===== */
 .action-toolbar {
     display: flex;
     gap: 8px;
     padding: 12px;
-    background: #f5f5f5;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
+    background: var(--cl-bg-secondary);
+    border-radius: var(--cl-radius-lg);
+    border: 1px solid var(--cl-border);
 }
 
 .action-toolbar--dark {
-    background: #2d2d2d;
-    border-color: #404040;
+    background: var(--cl-bg-dark);
+    border-color: var(--cl-border-dark);
 }
 
 .action-toolbar__divider {
     width: 1px;
-    background: #e0e0e0;
+    background: var(--cl-border);
     margin: 0 4px;
 }
 
 .action-toolbar--dark .action-toolbar__divider {
-    background: #404040;
+    background: var(--cl-border-dark);
 }

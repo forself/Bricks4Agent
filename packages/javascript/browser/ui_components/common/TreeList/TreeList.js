@@ -40,7 +40,7 @@ export class TreeList {
                 activeText: 'var(--cl-primary)',
                 font: '-apple-system, BlinkMacSystemFont, sans-serif',
                 rowPadding: '6px 12px',
-                borderRadius: '4px',
+                borderRadius: 'var(--cl-radius-sm)',
                 indent: 20,
                 showGuides: false,
                 arrowStyle: 'default'
@@ -109,7 +109,7 @@ export class TreeList {
             flex-direction: column;
             gap: ${this.options.theme === 'modern' ? '4px' : '0'};
             font-family: ${theme.font};
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: ${theme.text};
             user-select: none;
             height: 100%;

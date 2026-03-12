@@ -2,7 +2,7 @@
  * DiaryEditorPage - 日記編輯
  *
  * 頁面類型: form
- * 生成時間: 2026-03-09T15:28:57.226Z
+ * 生成時間: 2026-03-11T13:55:17.063Z
  *
  * @module DiaryEditorPage
  */
@@ -21,7 +21,7 @@ export class DiaryEditorPage extends BasePage {
         this._data = {
             form: {
                   "title": "",
-                  "date": "2026-03-09",
+                  "date": "2026-03-11",
                   "mood": "",
                   "content": "",
                   "location": "",

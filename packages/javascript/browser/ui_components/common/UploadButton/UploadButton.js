@@ -210,9 +210,9 @@ export class UploadButton {
             height: ${size}px;
             padding: 0;
             border: 2px dashed ${iconConfig.color}60;
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--cl-transition);
             background: transparent;
             position: relative;
             overflow: hidden;
@@ -279,7 +279,7 @@ export class UploadButton {
             label.className = 'upload-btn-label';
             label.textContent = iconConfig.label;
             label.style.cssText = `
-                font-size: 10px;
+                font-size: var(--cl-font-size-2xs);
                 font-weight: 600;
                 color: ${iconConfig.color};
                 text-transform: uppercase;

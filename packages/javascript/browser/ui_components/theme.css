@@ -10,17 +10,21 @@
     --cl-primary-dark: #1976D2;
     --cl-primary-light: #e3f2fd;
     --cl-primary-rgb: 33, 150, 243;
+    --cl-primary-soft-subtle: rgba(var(--cl-primary-rgb), 0.05);
 
     /* 語意色 */
     --cl-success: #4CAF50;
     --cl-success-light: #e8f5e9;
     --cl-success-rgb: 76, 175, 80;
+    --cl-success-dark-rgb: 46, 125, 50;
     --cl-warning: #FF9800;
     --cl-warning-light: #fff3e0;
     --cl-warning-rgb: 255, 152, 0;
+    --cl-warning-dark-rgb: 230, 81, 0;
     --cl-danger: #F44336;
     --cl-danger-light: #fdecea;
     --cl-danger-rgb: 244, 67, 54;
+    --cl-danger-dark-rgb: 198, 40, 40;
     --cl-info: #2196F3;
     --cl-info-light: #e3f2fd;
 
@@ -40,7 +44,19 @@
     --cl-bg-active: #e3f2fd;
     --cl-bg-disabled: #f9f9f9;
     --cl-bg-overlay: rgba(0, 0, 0, 0.5);
+    --cl-bg-overlay-medium: rgba(0, 0, 0, 0.4);
+    --cl-bg-overlay-strong: rgba(0, 0, 0, 0.85);
+    --cl-bg-overlay-heavy: rgba(0, 0, 0, 0.9);
+    --cl-bg-overlay-soft: rgba(0, 0, 0, 0.3);
+    --cl-bg-overlay-soft-hover: rgba(0, 0, 0, 0.6);
+    --cl-bg-inverse-soft: rgba(255, 255, 255, 0.1);
+    --cl-bg-inverse-soft-hover: rgba(255, 255, 255, 0.2);
+    --cl-bg-inverse-muted: rgba(255, 255, 255, 0.3);
+    --cl-bg-surface-overlay: rgba(255, 255, 255, 0.95);
     --cl-bg-dark: #2b2b2b;
+    --cl-surface-contrast: #000000;
+    --cl-divider-subtle: rgba(0, 0, 0, 0.1);
+    --cl-divider-inverse: rgba(255, 255, 255, 0.3);
 
     /* 邊框 */
     --cl-border: #dddddd;
@@ -55,14 +71,19 @@
     --cl-shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.25);
 
     /* 圓角 */
+    --cl-radius-xs: 3px;
     --cl-radius-sm: 4px;
     --cl-radius-md: 6px;
     --cl-radius-lg: 8px;
+    --cl-radius-pill: 10px;
     --cl-radius-xl: 12px;
     --cl-radius-round: 50%;
 
     /* 字體 */
     --cl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --cl-font-family-mono: Consolas, Monaco, 'Courier New', monospace;
+    --cl-font-family-cjk: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', 'SimSun', serif;
+    --cl-font-size-2xs: 10px;
     --cl-font-size-xs: 11px;
     --cl-font-size-sm: 12px;
     --cl-font-size-md: 13px;
@@ -70,6 +91,8 @@
     --cl-font-size-xl: 16px;
     --cl-font-size-2xl: 18px;
     --cl-font-size-3xl: 24px;
+    --cl-font-size-4xl: 28px;
+    --cl-font-size-5xl: 36px;
 
     /* 擴充語意色 */
     --cl-success-dark: #2E7D32;
@@ -80,20 +103,38 @@
     --cl-purple: #9C27B0;
     --cl-purple-dark: #7B1FA2;
     --cl-purple-light: #CE93D8;
+    --cl-purple-rgb: 156, 39, 176;
+    --cl-purple-dark-rgb: 123, 31, 162;
     --cl-indigo: #3F51B5;
     --cl-indigo-dark: #303F9F;
+    --cl-indigo-rgb: 63, 81, 181;
+    --cl-indigo-dark-rgb: 48, 63, 159;
     --cl-teal: #009688;
     --cl-teal-dark: #00796B;
+    --cl-teal-rgb: 0, 150, 136;
+    --cl-teal-dark-rgb: 0, 121, 107;
     --cl-cyan: #00BCD4;
     --cl-cyan-dark: #00838F;
+    --cl-cyan-rgb: 0, 188, 212;
+    --cl-cyan-dark-rgb: 0, 131, 143;
     --cl-pink: #E91E63;
     --cl-pink-dark: #C2185B;
+    --cl-pink-rgb: 233, 30, 99;
+    --cl-pink-dark-rgb: 194, 24, 91;
+    --cl-deep-purple: #673AB7;
+    --cl-deep-purple-dark: #512DA8;
+    --cl-deep-purple-rgb: 103, 58, 183;
+    --cl-deep-purple-dark-rgb: 81, 45, 168;
     --cl-deep-orange: #FF5722;
     --cl-deep-orange-dark: #E64A19;
     --cl-brown: #795548;
     --cl-brown-dark: #5D4037;
+    --cl-brown-rgb: 121, 85, 72;
+    --cl-brown-dark-rgb: 93, 64, 55;
     --cl-blue-grey: #607D8B;
     --cl-blue-grey-dark: #455A64;
+    --cl-blue-grey-rgb: 96, 125, 139;
+    --cl-blue-grey-dark-rgb: 69, 90, 100;
     --cl-grey: #9E9E9E;
     --cl-grey-dark: #757575;
     --cl-grey-light: #BDBDBD;
@@ -104,6 +145,8 @@
     /* Office / 品牌色 */
     --cl-brand-word: #2B579A;
     --cl-brand-excel: #217346;
+    --cl-brand-word-rgb: 43, 87, 154;
+    --cl-brand-excel-rgb: 33, 115, 70;
     --cl-brand-discord: #5865f2;
     --cl-brand-linkedin: #0a66c2;
 
@@ -138,6 +181,7 @@
     --cl-transition-fast: 0.15s ease;
     --cl-transition: 0.2s ease;
     --cl-transition-slow: 0.3s ease;
+    --cl-transition-material: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* 深色主題 */
@@ -146,6 +190,7 @@
     --cl-primary-dark: #42A5F5;
     --cl-primary-light: #1a2a4a;
     --cl-primary-rgb: 100, 181, 246;
+    --cl-primary-soft-subtle: rgba(var(--cl-primary-rgb), 0.08);
 
     --cl-success: #66BB6A;
     --cl-success-light: #1b3a1b;
@@ -173,7 +218,19 @@
     --cl-bg-active: #1a2a4a;
     --cl-bg-disabled: #252542;
     --cl-bg-overlay: rgba(0, 0, 0, 0.7);
+    --cl-bg-overlay-medium: rgba(0, 0, 0, 0.4);
+    --cl-bg-overlay-strong: rgba(0, 0, 0, 0.85);
+    --cl-bg-overlay-heavy: rgba(0, 0, 0, 0.9);
+    --cl-bg-overlay-soft: rgba(0, 0, 0, 0.45);
+    --cl-bg-overlay-soft-hover: rgba(0, 0, 0, 0.7);
+    --cl-bg-inverse-soft: rgba(255, 255, 255, 0.08);
+    --cl-bg-inverse-soft-hover: rgba(255, 255, 255, 0.16);
+    --cl-bg-inverse-muted: rgba(255, 255, 255, 0.3);
+    --cl-bg-surface-overlay: rgba(26, 26, 46, 0.95);
     --cl-bg-dark: #0f0f1e;
+    --cl-surface-contrast: #0f0f1e;
+    --cl-divider-subtle: rgba(255, 255, 255, 0.12);
+    --cl-divider-inverse: rgba(255, 255, 255, 0.3);
 
     --cl-border: #3f3f5a;
     --cl-border-light: #2d2d4a;

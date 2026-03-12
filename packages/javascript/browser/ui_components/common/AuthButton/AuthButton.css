@@ -7,9 +7,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
+    border-radius: var(--cl-radius-md);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all var(--cl-transition);
     font-weight: 500;
     font-family: inherit;
 }
@@ -19,7 +19,7 @@
 }
 
 .auth-btn:focus-visible {
-    outline: 2px solid #2196F3;
+    outline: 2px solid var(--cl-primary);
     outline-offset: 2px;
 }
 
@@ -34,90 +34,90 @@
 
 /* ===== Filled 變體 ===== */
 .auth-btn--login.auth-btn--filled {
-    background: #4CAF50;
-    color: white;
+    background: var(--cl-success);
+    color: var(--cl-text-inverse);
 }
 
 .auth-btn--login.auth-btn--filled:hover {
-    background: #388E3C;
+    background: var(--cl-success-dark);
 }
 
 .auth-btn--logout.auth-btn--filled {
-    background: #F44336;
-    color: white;
+    background: var(--cl-danger);
+    color: var(--cl-text-inverse);
 }
 
 .auth-btn--logout.auth-btn--filled:hover {
-    background: #D32F2F;
+    background: var(--cl-danger-dark);
 }
 
 /* ===== Outlined 變體 ===== */
 .auth-btn--login.auth-btn--outlined {
     background: transparent;
-    color: #4CAF50;
-    border: 2px solid #4CAF50;
+    color: var(--cl-success);
+    border: 2px solid var(--cl-success);
 }
 
 .auth-btn--login.auth-btn--outlined:hover {
-    background: rgba(76, 175, 80, 0.1);
+    background: rgba(var(--cl-success-rgb), 0.1);
 }
 
 .auth-btn--logout.auth-btn--outlined {
     background: transparent;
-    color: #F44336;
-    border: 2px solid #F44336;
+    color: var(--cl-danger);
+    border: 2px solid var(--cl-danger);
 }
 
 .auth-btn--logout.auth-btn--outlined:hover {
-    background: rgba(244, 67, 54, 0.1);
+    background: rgba(var(--cl-danger-rgb), 0.1);
 }
 
 /* ===== Text 變體 ===== */
 .auth-btn--login.auth-btn--text {
     background: transparent;
-    color: #4CAF50;
+    color: var(--cl-success);
     border: none;
 }
 
 .auth-btn--login.auth-btn--text:hover {
-    background: rgba(76, 175, 80, 0.1);
+    background: rgba(var(--cl-success-rgb), 0.1);
 }
 
 .auth-btn--logout.auth-btn--text {
     background: transparent;
-    color: #F44336;
+    color: var(--cl-danger);
     border: none;
 }
 
 .auth-btn--logout.auth-btn--text:hover {
-    background: rgba(244, 67, 54, 0.1);
+    background: rgba(var(--cl-danger-rgb), 0.1);
 }
 
 /* ===== Icon 變體 ===== */
 .auth-btn--icon {
-    border-radius: 50%;
+    border-radius: var(--cl-radius-round);
 }
 
 .auth-btn--login.auth-btn--icon {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 .auth-btn--login.auth-btn--icon:hover {
-    background: rgba(76, 175, 80, 0.15);
+    background: rgba(var(--cl-success-rgb), 0.15);
 }
 
 .auth-btn--logout.auth-btn--icon {
-    color: #F44336;
+    color: var(--cl-danger);
 }
 
 .auth-btn--logout.auth-btn--icon:hover {
-    background: rgba(244, 67, 54, 0.15);
+    background: rgba(var(--cl-danger-rgb), 0.15);
 }
 
 /* ===== 尺寸 ===== */
 .auth-btn--small {
     padding: 6px 12px;
-    font-size: 12px;
+    font-size: var(--cl-font-size-sm);
     gap: 4px;
 }
 
@@ -134,7 +134,7 @@
 
 .auth-btn--medium {
     padding: 8px 16px;
-    font-size: 14px;
+    font-size: var(--cl-font-size-lg);
     gap: 6px;
 }
 
@@ -151,7 +151,7 @@
 
 .auth-btn--large {
     padding: 12px 24px;
-    font-size: 16px;
+    font-size: var(--cl-font-size-xl);
     gap: 8px;
 }
 

@@ -22,3 +22,22 @@ test-results/
 # Temp
 *.tmp
 *.log
+
+# Generated projects (each project is independent)
+projects/
+
+# Secrets — never commit API keys or credentials
+Api.txt
+*.key
+.env
+.env.*
+
+# Solution files
+*.sln
+
+# Claude worktree metadata
+.claude/
+packages/.claude/
+
+# SQLite databases
+*.db

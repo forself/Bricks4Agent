@@ -26,7 +26,7 @@ export class SocialMediaList extends ListInput {
                 platformSelect.style.cssText = `
                     padding: 8px;
                     border: 1px solid var(--cl-border);
-                    border-radius: 4px;
+                    border-radius: var(--cl-radius-sm);
                     width: 120px;
                 `;
 
@@ -38,7 +38,7 @@ export class SocialMediaList extends ListInput {
                 accountInput.style.cssText = `
                     padding: 8px;
                     border: 1px solid var(--cl-border);
-                    border-radius: 4px;
+                    border-radius: var(--cl-radius-sm);
                     flex: 1;
                 `;
 

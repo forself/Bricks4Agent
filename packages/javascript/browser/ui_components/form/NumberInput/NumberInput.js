@@ -25,9 +25,9 @@ export class NumberInput {
 
     _getSizeStyles() {
         const sizes = {
-            small: { height: '32px', fontSize: '13px', btnWidth: '28px' },
-            medium: { height: '40px', fontSize: '14px', btnWidth: '32px' },
-            large: { height: '48px', fontSize: '16px', btnWidth: '40px' }
+            small: { height: '32px', fontSize: 'var(--cl-font-size-md)', btnWidth: '28px' },
+            medium: { height: '40px', fontSize: 'var(--cl-font-size-lg)', btnWidth: '32px' },
+            large: { height: '48px', fontSize: 'var(--cl-font-size-xl)', btnWidth: '40px' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -44,7 +44,7 @@ export class NumberInput {
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color: var(--cl-danger); margin-left: 2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `font-size: 13px; font-weight: 500; color: var(--cl-text);`;
+            labelEl.style.cssText = `font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);`;
             container.appendChild(labelEl);
         }
 
@@ -55,11 +55,11 @@ export class NumberInput {
             display: flex;
             align-items: stretch;
             border: 1px solid var(--cl-border);
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             overflow: hidden;
             height: ${sizeStyles.height};
-            transition: all 0.2s;
-            background: ${disabled ? 'var(--cl-bg-secondary)' : 'white'};
+            transition: all var(--cl-transition);
+            background: ${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
         `;
 
         // 3. Decrease Button
@@ -145,10 +145,10 @@ export class NumberInput {
             border: none;
             background: var(--cl-bg-secondary);
             color: var(--cl-text-secondary);
-            font-size: 16px;
+            font-size: var(--cl-font-size-xl);
             font-weight: bold;
             cursor: ${this.options.disabled ? 'not-allowed' : 'pointer'};
-            transition: background 0.15s;
+            transition: background var(--cl-transition-fast);
             display: flex;
             align-items: center;
             justify-content: center;

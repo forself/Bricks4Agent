@@ -50,9 +50,9 @@ export class Dropdown {
 
     _getSizeStyles() {
         const sizes = {
-            small: { padding: '6px 10px', fontSize: '12px', height: '30px' },
-            medium: { padding: '8px 12px', fontSize: '14px', height: '36px' },
-            large: { padding: '10px 14px', fontSize: '16px', height: '44px' }
+            small: { padding: '6px 10px', fontSize: 'var(--cl-font-size-sm)', height: '30px' },
+            medium: { padding: '8px 12px', fontSize: 'var(--cl-font-size-lg)', height: '36px' },
+            large: { padding: '10px 14px', fontSize: 'var(--cl-font-size-xl)', height: '44px' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -84,9 +84,9 @@ export class Dropdown {
             padding-right: 32px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             cursor: ${disabled ? 'not-allowed' : 'pointer'};
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
             opacity: ${disabled ? '0.6' : '1'};
         `;
 
@@ -144,7 +144,7 @@ export class Dropdown {
         </svg>`;
         arrow.style.cssText = `
             display: flex;
-            transition: transform 0.2s;
+            transition: transform var(--cl-transition);
         `;
         icons.appendChild(arrow);
         this.arrow = arrow;
@@ -162,8 +162,8 @@ export class Dropdown {
             margin-top: 4px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: var(--cl-radius-md);
+            box-shadow: var(--cl-shadow-md);
             max-height: 240px;
             overflow-y: auto;
             z-index: 1000;
@@ -199,7 +199,7 @@ export class Dropdown {
                 padding: 12px;
                 text-align: center;
                 color: var(--cl-text-placeholder);
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
             `;
             menu.appendChild(empty);
             return;
@@ -216,11 +216,11 @@ export class Dropdown {
         emptyOption.style.cssText = `
             padding: 10px 12px;
             cursor: pointer;
-            transition: background 0.15s;
+            transition: background var(--cl-transition-fast);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: var(--cl-text-placeholder);
             font-style: italic;
             background: ${isEmptySelected ? 'var(--cl-primary-light)' : 'transparent'};
@@ -255,11 +255,11 @@ export class Dropdown {
             option.style.cssText = `
                 padding: 10px 12px;
                 cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
-                transition: background 0.15s;
+                transition: background var(--cl-transition-fast);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: ${isDisabled ? 'var(--cl-text-light)' : 'var(--cl-text)'};
                 background: ${isSelected ? 'var(--cl-primary-light)' : 'transparent'};
             `;

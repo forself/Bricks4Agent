@@ -86,7 +86,8 @@ public class AuthService : IAuthService
 
     private string GenerateJwtToken(User user)
     {
-        var key = _config["Jwt:Key"] ?? "YourSuperSecretKeyHere_AtLeast32Characters!";
+        var key = _config["Jwt:Key"]
+            ?? throw new InvalidOperationException("JWT Key 未設定。請在 appsettings.json 或環境變數中設定 Jwt:Key (至少 32 字元)");
         var issuer = _config["Jwt:Issuer"] ?? "SpaApi";
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));

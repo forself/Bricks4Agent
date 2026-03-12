@@ -73,14 +73,15 @@ export class PhotoWall {
             border: 1px solid var(--cl-border);
             background: var(--cl-bg);
             color: var(--cl-text-secondary);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: not-allowed;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
+            font-family: var(--cl-font-family);
             display: flex;
             align-items: center;
             gap: 6px;
             opacity: 0.6;
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
         `;
         // 加入 icon
         this.downloadBtn.innerHTML = `
@@ -150,19 +151,19 @@ export class PhotoWall {
                 right: 8px;
                 width: 24px;
                 height: 24px;
-                background: ${isSelected ? 'var(--cl-primary)' : 'rgba(255, 255, 255, 0.8)'};
+                background: ${isSelected ? 'var(--cl-primary)' : 'var(--cl-bg-surface-overlay)'};
                 border: 2px solid ${isSelected ? 'var(--cl-primary)' : 'var(--cl-border)'};
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 z-index: 10;
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
             `;
 
             if (isSelected) {
-                checkbox.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                checkbox.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cl-text-inverse)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             }
 
             checkbox.onclick = (e) => {
@@ -192,15 +193,15 @@ export class PhotoWall {
                     height: 24px;
                     background: var(--cl-danger);
                     color: var(--cl-text-inverse);
-                    border-radius: 50%;
+                    border-radius: var(--cl-radius-round);
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    box-shadow: var(--cl-shadow-sm);
                     z-index: 10;
                     opacity: 0;
-                    transition: opacity 0.2s;
+                    transition: opacity var(--cl-transition);
                 `;
 
                 // 懸停時顯示刪除按鈕
@@ -230,9 +231,9 @@ export class PhotoWall {
                 aspect-ratio: 3/4;
                 background: var(--cl-bg-secondary);
                 border: 2px dashed var(--cl-border-light);
-                border-radius: 8px;
+                border-radius: var(--cl-radius-lg);
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
                 color: var(--cl-text-placeholder);
             `;
             addBtn.innerHTML = `
@@ -240,7 +241,7 @@ export class PhotoWall {
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                <span style="font-size: 13px; margin-top: 8px;">新增照片</span>
+                <span style="font-size: var(--cl-font-size-md); margin-top: 8px;">新增照片</span>
             `;
 
             addBtn.addEventListener('mouseenter', () => {

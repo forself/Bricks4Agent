@@ -28,6 +28,15 @@ export class Checkbox {
         this.element = this._createElement();
     }
 
+    _getCheckmarkMarkup(size) {
+        const iconSize = Math.max(10, size - 8);
+        return `
+            <svg viewBox="0 0 12 12" fill="none" style="width: ${iconSize}px; height: ${iconSize}px;">
+                <path d="M2 6L5 9L10 3" stroke="var(--cl-text-inverse)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        `;
+    }
+
     _getSizeStyles() {
         const sizes = {
             small: { box: '14px', font: '12px', gap: '6px' },
@@ -50,6 +59,7 @@ export class Checkbox {
             cursor: ${disabled ? 'not-allowed' : 'pointer'};
             user-select: none;
             opacity: ${disabled ? '0.6' : '1'};
+            transition: opacity var(--cl-transition-fast);
         `;
 
         // 隱藏的原生 checkbox
@@ -81,15 +91,14 @@ export class Checkbox {
             width: ${sizeStyles.box};
             height: ${sizeStyles.box};
             border: 2px solid ${this.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)'};
-            border-radius: 4px;
-            background: ${this.checked ? 'var(--cl-primary)' : 'white'};
-            transition: all 0.2s;
+            border-radius: var(--cl-radius-sm);
+            background: ${this.checked ? 'var(--cl-primary)' : 'var(--cl-bg)'};
+            transition: all var(--cl-transition);
+            box-sizing: border-box;
         `;
 
         box.innerHTML = this.checked
-            ? `<svg viewBox="0 0 12 12" fill="none" style="width: 10px; height: 10px;">
-                <path d="M2 6L5 9L10 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-               </svg>`
+            ? this._getCheckmarkMarkup(parseInt(sizeStyles.box, 10))
             : '';
 
         // 標籤
@@ -98,6 +107,7 @@ export class Checkbox {
         labelSpan.textContent = label;
         labelSpan.style.cssText = `
             font-size: ${sizeStyles.font};
+            font-family: var(--cl-font-family);
             color: var(--cl-text);
         `;
 
@@ -123,11 +133,9 @@ export class Checkbox {
 
     _updateVisual() {
         this.box.style.borderColor = this.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)';
-        this.box.style.background = this.checked ? 'var(--cl-primary)' : 'white';
+        this.box.style.background = this.checked ? 'var(--cl-primary)' : 'var(--cl-bg)';
         this.box.innerHTML = this.checked
-            ? `<svg viewBox="0 0 12 12" fill="none" style="width: 10px; height: 10px;">
-                <path d="M2 6L5 9L10 3" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-               </svg>`
+            ? this._getCheckmarkMarkup(parseInt(this._getSizeStyles().box, 10))
             : '';
     }
 

@@ -45,7 +45,7 @@ export class ListInput {
         container.className = 'list-input';
         container.style.cssText = `
             border: 1px solid var(--cl-border-light);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             padding: 16px;
             background: var(--cl-bg);
         `;
@@ -67,7 +67,7 @@ export class ListInput {
             const title = document.createElement('h3');
             title.textContent = this.options.title;
             title.style.cssText = `
-                font-size: 16px;
+                font-size: var(--cl-font-size-xl);
                 color: var(--cl-text);
                 margin: 0;
             `;
@@ -75,7 +75,7 @@ export class ListInput {
 
             // 計數器
             this.counter = document.createElement('span');
-            this.counter.style.cssText = 'font-size: 12px; color: var(--cl-text-secondary);';
+            this.counter.style.cssText = 'font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary);';
             titleArea.appendChild(this.counter);
 
             header.appendChild(titleArea);
@@ -90,10 +90,10 @@ export class ListInput {
                     border: 1px solid var(--cl-primary-dark);
                     background: var(--cl-bg);
                     color: var(--cl-primary-dark);
-                    font-size: 12px;
-                    border-radius: 4px;
+                    font-size: var(--cl-font-size-sm);
+                    border-radius: var(--cl-radius-sm);
                     cursor: pointer;
-                    transition: all 0.2s;
+                    transition: all var(--cl-transition);
                 `;
                 templateBtn.addEventListener('mouseenter', () => {
                     templateBtn.style.background = 'var(--cl-primary-dark)';
@@ -131,8 +131,8 @@ export class ListInput {
             background: var(--cl-bg-input);
             color: var(--cl-text-secondary);
             cursor: pointer;
-            border-radius: 4px;
-            transition: all 0.2s;
+            border-radius: var(--cl-radius-sm);
+            transition: all var(--cl-transition);
         `;
         this.addButton.addEventListener('mouseenter', () => {
             this.addButton.style.background = 'var(--cl-bg-subtle)';
@@ -164,9 +164,9 @@ export class ListInput {
             gap: 8px;
             padding: 12px;
             background: var(--cl-bg-tertiary);
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             position: relative;
-            transition: background 0.15s, transform 0.15s;
+            transition: background var(--cl-transition-fast), transform var(--cl-transition-fast);
         `;
 
         // 拖曳手柄
@@ -177,7 +177,7 @@ export class ListInput {
         dragHandle.style.cssText = `
             cursor: grab;
             color: var(--cl-text-light);
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             padding: 4px 2px;
             user-select: none;
             letter-spacing: -2px;
@@ -189,7 +189,7 @@ export class ListInput {
         indexLabel.className = 'index-label';
         indexLabel.textContent = `${index + 1}.`;
         indexLabel.style.cssText = `
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             color: var(--cl-text-placeholder);
             padding-top: 8px;
             min-width: 20px;
@@ -221,12 +221,12 @@ export class ListInput {
             border: none;
             background: transparent;
             color: var(--cl-text-placeholder);
-            font-size: 10px;
+            font-size: var(--cl-font-size-2xs);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             padding: 0;
         `;
         moveUpBtn.addEventListener('mouseenter', () => {
@@ -251,12 +251,12 @@ export class ListInput {
             border: none;
             background: transparent;
             color: var(--cl-text-placeholder);
-            font-size: 10px;
+            font-size: var(--cl-font-size-2xs);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             padding: 0;
         `;
         moveDownBtn.addEventListener('mouseenter', () => {
@@ -287,7 +287,7 @@ export class ListInput {
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
+            border-radius: var(--cl-radius-round);
             padding: 0;
             line-height: 1;
         `;
@@ -450,7 +450,7 @@ export class ListInput {
             if (field.label) {
                 const label = document.createElement('label');
                 label.textContent = field.label;
-                label.style.cssText = 'font-size: 12px; color: var(--cl-text-secondary);';
+                label.style.cssText = 'font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary);';
                 if (field.required) {
                     const asterisk = document.createElement('span');
                     asterisk.textContent = ' *';
@@ -466,8 +466,8 @@ export class ListInput {
                 height: 36px;
                 padding: 0 10px;
                 border: 1px solid var(--cl-border);
-                border-radius: 4px;
-                font-size: 14px;
+                border-radius: var(--cl-radius-sm);
+                font-size: var(--cl-font-size-lg);
                 outline: none;
                 box-sizing: border-box;
                 width: 100%;
@@ -681,7 +681,7 @@ export class ListInput {
             width: 80px;
             height: 80px;
             border: 2px dashed var(--cl-border);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -696,7 +696,7 @@ export class ListInput {
 
         const placeholder = document.createElement('span');
         placeholder.textContent = '📷';
-        placeholder.style.cssText = 'font-size: 24px; color: var(--cl-text-light);';
+        placeholder.style.cssText = 'font-size: var(--cl-font-size-3xl); color: var(--cl-text-light);';
         preview.appendChild(placeholder);
 
         // 如果有初始值
@@ -754,14 +754,14 @@ export class ListInput {
                     justify-content: space-between;
                     padding: 4px 8px;
                     background: var(--cl-bg-secondary);
-                    border-radius: 4px;
-                    font-size: 12px;
+                    border-radius: var(--cl-radius-sm);
+                    font-size: var(--cl-font-size-sm);
                 `;
                 item.innerHTML = `<span>📎 ${f.name || f.fileName}</span>`;
                 
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = '×';
-                removeBtn.style.cssText = 'border: none; background: none; color: var(--cl-text-placeholder); cursor: pointer; font-size: 14px;';
+                removeBtn.style.cssText = 'border: none; background: none; color: var(--cl-text-placeholder); cursor: pointer; font-size: var(--cl-font-size-lg);';
                 removeBtn.addEventListener('click', () => {
                     files.splice(idx, 1);
                     renderFiles(files);
@@ -783,9 +783,9 @@ export class ListInput {
             padding: 6px 12px;
             border: 1px dashed var(--cl-text-light);
             background: var(--cl-bg-input);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
-            font-size: 12px;
+            font-size: var(--cl-font-size-sm);
             width: 100%;
         `;
 

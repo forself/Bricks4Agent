@@ -10,16 +10,16 @@
     justify-content: center;
     font-weight: 500;
     font-family: inherit;
-    border-radius: 6px;
+    border-radius: var(--cl-radius-md);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--cl-transition-fast);
     white-space: nowrap;
     user-select: none;
     outline: none;
 }
 
 .editor-btn:focus-visible {
-    box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.5);
+    box-shadow: 0 0 0 2px rgba(var(--cl-primary-rgb), 0.5);
 }
 
 .editor-btn:disabled {
@@ -30,7 +30,7 @@
 /* 尺寸變體 */
 .editor-btn--small {
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: var(--cl-font-size-sm);
     gap: 4px;
     min-width: 24px;
     min-height: 24px;
@@ -38,7 +38,7 @@
 
 .editor-btn--medium {
     padding: 6px 12px;
-    font-size: 13px;
+    font-size: var(--cl-font-size-md);
     gap: 6px;
     min-width: 32px;
     min-height: 32px;
@@ -46,7 +46,7 @@
 
 .editor-btn--large {
     padding: 8px 16px;
-    font-size: 14px;
+    font-size: var(--cl-font-size-lg);
     gap: 8px;
     min-width: 40px;
     min-height: 40px;
@@ -82,31 +82,31 @@
 
 /* 淺色主題 */
 .editor-btn--theme-light {
-    --btn-bg: #f8f9fa;
-    --btn-bg-hover: #e9ecef;
-    --btn-bg-active: #dee2e6;
-    --btn-color: #495057;
-    --btn-color-active: #212529;
-    --btn-border: 1px solid #dee2e6;
+    --btn-bg: var(--cl-bg-tertiary);
+    --btn-bg-hover: var(--cl-border-subtle);
+    --btn-bg-active: var(--cl-border-medium);
+    --btn-color: var(--cl-text-heading);
+    --btn-color-active: var(--cl-text-dark);
+    --btn-border: 1px solid var(--cl-border-medium);
 }
 
 /* 深色主題 */
 .editor-btn--theme-dark {
-    --btn-bg: rgba(255, 255, 255, 0.1);
-    --btn-bg-hover: rgba(255, 255, 255, 0.2);
-    --btn-bg-active: rgba(255, 255, 255, 0.3);
-    --btn-color: rgba(255, 255, 255, 0.9);
-    --btn-color-active: #ffffff;
-    --btn-border: 1px solid rgba(255, 255, 255, 0.2);
+    --btn-bg: var(--cl-bg-inverse-soft);
+    --btn-bg-hover: var(--cl-bg-inverse-soft-hover);
+    --btn-bg-active: var(--cl-bg-inverse-muted);
+    --btn-color: var(--cl-text-inverse);
+    --btn-color-active: var(--cl-text-inverse);
+    --btn-border: 1px solid var(--cl-divider-inverse);
 }
 
 /* 漸層主題 */
 .editor-btn--theme-gradient {
-    --btn-bg: rgba(255, 255, 255, 0.2);
-    --btn-bg-hover: rgba(255, 255, 255, 0.3);
-    --btn-bg-active: rgba(255, 255, 255, 0.9);
-    --btn-color: white;
-    --btn-color-active: #333;
+    --btn-bg: var(--cl-bg-inverse-soft-hover);
+    --btn-bg-hover: var(--cl-bg-inverse-muted);
+    --btn-bg-active: var(--cl-bg-surface-overlay);
+    --btn-color: var(--cl-text-inverse);
+    --btn-color-active: var(--cl-text);
     --btn-border: none;
 }
 
@@ -128,13 +128,13 @@
 
 /* 樣式變體 */
 .editor-btn--variant-primary {
-    background: #4a90d9 !important;
-    color: white !important;
+    background: var(--cl-primary) !important;
+    color: var(--cl-text-inverse) !important;
     border: none !important;
 }
 
 .editor-btn--variant-primary:hover:not(:disabled) {
-    background: #3a7bc8 !important;
+    background: var(--cl-primary-dark) !important;
 }
 
 .editor-btn--variant-ghost {
@@ -181,13 +181,13 @@
 .editor-btn-group__separator {
     width: 1px;
     height: 20px;
-    background: rgba(0, 0, 0, 0.1);
+    background: var(--cl-divider-subtle);
     margin: 0 4px;
 }
 
 .editor-btn-group--theme-dark .editor-btn-group__separator,
 .editor-btn-group--theme-gradient .editor-btn-group__separator {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--cl-divider-inverse);
 }
 
 /* EditorToolbar 容器 */
@@ -196,16 +196,16 @@
     align-items: center;
     gap: 12px;
     padding: 8px 12px;
-    background: #f5f5f5;
-    border-radius: 8px;
+    background: var(--cl-bg-secondary);
+    border-radius: var(--cl-radius-lg);
 }
 
 .editor-toolbar--theme-dark {
-    background: #2b2b2b;
+    background: var(--cl-bg-dark);
 }
 
 .editor-toolbar--theme-gradient {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--cl-indigo) 0%, var(--cl-purple-dark) 100%);
 }
 
 .editor-toolbar--sticky {
@@ -215,17 +215,17 @@
 }
 
 .editor-toolbar--position-bottom {
-    border-radius: 0 0 8px 8px;
+    border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
 }
 
 .editor-toolbar--position-left {
     flex-direction: column;
-    border-radius: 8px 0 0 8px;
+    border-radius: var(--cl-radius-lg) 0 0 var(--cl-radius-lg);
 }
 
 .editor-toolbar--position-right {
     flex-direction: column;
-    border-radius: 0 8px 8px 0;
+    border-radius: 0 var(--cl-radius-lg) var(--cl-radius-lg) 0;
 }
 
 /* 動畫效果 */
@@ -251,7 +251,7 @@
 
     .editor-btn--medium {
         padding: 5px 10px;
-        font-size: 12px;
+        font-size: var(--cl-font-size-sm);
     }
 }
 

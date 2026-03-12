@@ -13,7 +13,7 @@ export class FeatureCard {
      * @param {string} options.description - 卡片描述
      * @param {string[]} [options.tags=[]] - 標籤陣列
      * @param {string} [options.badge=''] - 徽章文字 (如 'HOT', 'NEW', 'PRO')
-     * @param {string} [options.badgeColor='#5865f2'] - 徽章背景色
+     * @param {string} [options.badgeColor='var(--cl-brand-discord)'] - 徽章背景色
      * @param {string} [options.url=''] - 點擊後跳轉的 URL
      * @param {Function} [options.onClick=null] - 點擊事件回調
      * @param {boolean} [options.elevated=true] - 是否有 hover 上升效果
@@ -86,11 +86,11 @@ export class FeatureCard {
                 }
 
                 .feature-card__container {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 16px;
+                    background: var(--cl-bg-inverse-soft);
+                    border: 1px solid var(--cl-divider-inverse);
+                    border-radius: var(--cl-radius-xl);
                     padding: 24px;
-                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    transition: transform var(--cl-transition-slow), box-shadow var(--cl-transition-slow), border-color var(--cl-transition-slow), background var(--cl-transition-slow);
                     cursor: pointer;
                     height: 100%;
                     display: flex;
@@ -100,8 +100,8 @@ export class FeatureCard {
                 .feature-card__container:hover {
                     transform: translateY(-8px);
                     border-color: var(--cl-gradient-start);
-                    box-shadow: 0 20px 40px rgba(102, 126, 234, 0.3);
-                    background: rgba(255, 255, 255, 0.08);
+                    box-shadow: var(--cl-shadow-lg);
+                    background: var(--cl-bg-inverse-soft-hover);
                 }
 
                 .feature-card__header {
@@ -122,7 +122,7 @@ export class FeatureCard {
                 .feature-card__badge {
                     font-size: 0.7rem;
                     padding: 2px 8px;
-                    border-radius: 12px;
+                    border-radius: var(--cl-radius-xl);
                     color: var(--cl-bg);
                     font-weight: 500;
                     text-transform: uppercase;
@@ -145,8 +145,8 @@ export class FeatureCard {
                 .feature-card__tag {
                     font-size: 0.75rem;
                     padding: 4px 10px;
-                    background: rgba(255, 255, 255, 0.2);
-                    border-radius: 8px;
+                    background: var(--cl-bg-inverse-soft-hover);
+                    border-radius: var(--cl-radius-lg);
                     color: var(--cl-bg);
                 }
 
@@ -261,7 +261,7 @@ export class FeatureCard {
     /**
      * 設置徽章
      * @param {string} badge - 徽章文字
-     * @param {string} [color='#5865f2'] - 徽章顏色
+     * @param {string} [color='var(--cl-brand-discord)'] - 徽章顏色
      */
     setBadge(badge, color = 'var(--cl-brand-discord)') {
         this.badge = badge;

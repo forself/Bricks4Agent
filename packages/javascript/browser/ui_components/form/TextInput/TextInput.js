@@ -48,10 +48,10 @@ export class TextInput {
         const { label, type, placeholder, value, size, disabled, readonly, required, error, hint, maxLength, width } = this.options;
 
         const sizeStyles = {
-            small: { height: '32px', padding: '0 8px', fontSize: '13px' },
-            medium: { height: '40px', padding: '0 12px', fontSize: '14px' },
-            large: { height: '48px', padding: '0 16px', fontSize: '16px' }
-        }[size] || { height: '40px', padding: '0 12px', fontSize: '14px' };
+            small: { height: '32px', padding: '0 8px', fontSize: 'var(--cl-font-size-md)' },
+            medium: { height: '40px', padding: '0 12px', fontSize: 'var(--cl-font-size-lg)' },
+            large: { height: '48px', padding: '0 16px', fontSize: 'var(--cl-font-size-xl)' }
+        }[size] || { height: '40px', padding: '0 12px', fontSize: 'var(--cl-font-size-lg)' };
 
         const container = document.createElement('div');
         container.className = 'text-input-container';
@@ -67,7 +67,7 @@ export class TextInput {
             const labelEl = document.createElement('label');
             labelEl.className = 'text-input__label';
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color: var(--cl-danger); margin-left: 2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `font-size: 13px; font-weight: 500; color: var(--cl-text);`;
+            labelEl.style.cssText = `font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);`;
             container.appendChild(labelEl);
         }
 
@@ -89,10 +89,10 @@ export class TextInput {
             font-size: ${sizeStyles.fontSize};
             font-family: inherit;
             border: 1px solid ${borderColor};
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             outline: none;
-            transition: all 0.2s;
-            background: ${disabled ? 'var(--cl-bg-secondary)' : 'white'};
+            transition: all var(--cl-transition);
+            background: ${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
             color: ${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};
         `;
 
@@ -141,7 +141,7 @@ export class TextInput {
             message.className = error ? 'text-input__error' : 'text-input__hint';
             message.textContent = error || hint;
             message.style.cssText = `
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 color: ${error ? 'var(--cl-danger)' : 'var(--cl-text-muted)'};
             `;
             container.appendChild(message);
@@ -193,7 +193,7 @@ export class TextInput {
         if (!this.message) {
             const message = document.createElement('span');
             message.className = 'text-input__error';
-            message.style.cssText = `font-size: 12px; color: var(--cl-danger);`;
+            message.style.cssText = `font-size: var(--cl-font-size-sm); color: var(--cl-danger);`;
             this.element.appendChild(message);
             this.message = message;
         }

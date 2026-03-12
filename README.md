@@ -1,6 +1,6 @@
 # Bricks4Agent
 
-全端元件庫與專案生成工具集，涵蓋 **75 個可直接使用的前端 UI 元件**、**6 個前端支援模組**、**21 個 C# 後端模組**、**頁面生成引擎**與 **SPA 生成器**。
+全端元件庫與專案生成工具集，涵蓋 **80 個可直接使用的前端 UI 元件**、**6 個前端支援模組**、**21 個 C# 後端模組**、**頁面生成引擎**與 **SPA 生成器**。
 
 前端元件零外部依賴、純 Vanilla JavaScript，專為 AI Agent 驅動的應用開發而設計。
 
@@ -23,7 +23,7 @@
 
 | 項目 | 數量 |
 |------|------|
-| 前端 UI 元件 | 75（form 12 / common 18 / layout 10 / input 10 / viz 18 / social 5 / editor 1 / data 1） |
+| 前端 UI 元件 | 80（form 12 / common 23 / layout 10 / input 10 / viz 18 / social 5 / editor 1 / data 1） |
 | 前端支援模組 | 6（binding 2 / utils 4） |
 | C# 後端模組 | 21（api 7 / database 4 / security 6 / logging 1 / utils 3） |
 | 頁面生成器模組 | 9（支援 30 種欄位類型與 8 種 trigger action） |

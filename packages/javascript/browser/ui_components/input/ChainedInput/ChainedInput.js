@@ -70,7 +70,7 @@ export class ChainedInput {
         const label = document.createElement('label');
         label.className = 'chained-input__label';
         label.style.cssText = `
-            font-size: 13px;
+            font-size: var(--cl-font-size-md);
             font-weight: 500;
             color: var(--cl-text);
             min-height: 20px;
@@ -102,12 +102,12 @@ export class ChainedInput {
             height: 40px;
             padding: 0 12px;
             border: 1px solid var(--cl-border);
-            border-radius: 6px;
-            font-size: 14px;
+            border-radius: var(--cl-radius-md);
+            font-size: var(--cl-font-size-lg);
             font-family: inherit;
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
             outline: none;
-            background: ${isDisabled ? 'var(--cl-bg-secondary)' : 'white'};
+            background: ${isDisabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
             box-sizing: border-box;
         `;
 
@@ -148,7 +148,7 @@ export class ChainedInput {
 
                 const checkLabel = document.createElement('span');
                 checkLabel.textContent = field.checkboxLabel || Locale.t('chainedInput.checkboxYes');
-                checkLabel.style.cssText = 'font-size: 14px; color: var(--cl-text); cursor: pointer;';
+                checkLabel.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text); cursor: pointer;';
                 checkLabel.addEventListener('click', () => {
                     if (!input.disabled) {
                         input.checked = !input.checked;
@@ -494,7 +494,7 @@ export class ChainedInput {
             const shouldEnable = condition(value);
 
             targetEl.disabled = !shouldEnable;
-            targetEl.style.background = shouldEnable ? 'white' : 'var(--cl-bg-secondary)';
+            targetEl.style.background = shouldEnable ? 'var(--cl-bg)' : 'var(--cl-bg-secondary)';
 
             if (!shouldEnable && targetEl.type !== 'checkbox') {
                 targetEl.value = '';

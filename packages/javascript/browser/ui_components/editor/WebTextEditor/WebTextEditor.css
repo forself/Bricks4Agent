@@ -8,13 +8,13 @@
    ===================================================== */
 
 .web-text-editor {
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background: white;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--cl-bg);
+    font-family: var(--cl-font-family);
 }
 
 .web-text-editor.fullscreen {
@@ -32,17 +32,17 @@
    ===================================================== */
 
 .wte-toolbar-container {
-    background: #fff;
-    border-bottom: 1px solid #ddd;
+    background: var(--cl-bg);
+    border-bottom: 1px solid var(--cl-border);
     display: flex;
     flex-direction: column;
 }
 
 .wte-tab-list {
     display: flex;
-    background: #f3f3f3;
+    background: var(--cl-bg-secondary);
     padding: 0 10px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--cl-border);
     gap: 2px;
 }
 
@@ -51,30 +51,30 @@
     background: transparent;
     padding: 8px 16px;
     cursor: pointer;
-    font-size: 13px;
-    color: #555;
+    font-size: var(--cl-font-size-md);
+    color: var(--cl-text-secondary);
     position: relative;
     top: 1px;
     border: 1px solid transparent;
     border-bottom: none;
-    border-radius: 4px 4px 0 0;
-    transition: background 0.2s, color 0.2s;
+    border-radius: var(--cl-radius-sm) var(--cl-radius-sm) 0 0;
+    transition: background var(--cl-transition), color var(--cl-transition);
 }
 
 .wte-tab-list button:hover {
-    background: #e8e8e8;
+    background: var(--cl-bg-hover);
 }
 
 .wte-tab-list button.active {
-    background: #fff;
-    border: 1px solid #ddd;
-    border-bottom: 1px solid #fff;
-    color: #000;
+    background: var(--cl-bg);
+    border: 1px solid var(--cl-border);
+    border-bottom: 1px solid var(--cl-bg);
+    color: var(--cl-text-dark);
 }
 
 .wte-tab-content {
     padding: 10px;
-    background: #fff;
+    background: var(--cl-bg);
     display: flex;
     align-items: center;
     min-height: 45px;
@@ -90,13 +90,13 @@
     overflow-y: auto;
     outline: none;
     line-height: 1.6;
-    font-size: 16px;
+    font-size: var(--cl-font-size-xl);
     position: relative;
 }
 
 .wte-content:empty:before {
     content: attr(data-placeholder);
-    color: #999;
+    color: var(--cl-text-placeholder);
     pointer-events: none;
 }
 
@@ -104,34 +104,34 @@
 .wte-content h1 {
     font-size: 2em;
     margin: 0.5em 0;
-    border-bottom: 2px solid #eee;
+    border-bottom: 2px solid var(--cl-border-light);
     padding-bottom: 5px;
 }
 
 .wte-content h2 {
     font-size: 1.5em;
     margin: 0.5em 0;
-    color: #444;
+    color: var(--cl-text);
 }
 
 .wte-content h3 {
     font-size: 1.25em;
     margin: 0.5em 0;
-    color: #555;
+    color: var(--cl-text-secondary);
 }
 
 .wte-content h4,
 .wte-content h5,
 .wte-content h6 {
     margin: 0.5em 0;
-    color: #666;
+    color: var(--cl-text-secondary);
 }
 
 /* 引用樣式 */
 .wte-content blockquote {
-    border-left: 4px solid #ddd;
+    border-left: 4px solid var(--cl-border);
     padding-left: 15px;
-    color: #666;
+    color: var(--cl-text-secondary);
     margin: 10px 0;
     font-style: italic;
 }
@@ -139,17 +139,17 @@
 /* 圖片樣式 */
 .wte-content img {
     max-width: 100%;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--cl-radius-sm);
+    box-shadow: var(--cl-shadow-sm);
 }
 
 .wte-content img.web-painter-embed {
     cursor: pointer;
-    transition: box-shadow 0.2s;
+    transition: box-shadow var(--cl-transition);
 }
 
 .wte-content img.web-painter-embed:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--cl-shadow-md);
 }
 
 /* 列表樣式 */
@@ -160,12 +160,12 @@
 
 /* 連結樣式 */
 .wte-content a {
-    color: #2196F3;
+    color: var(--cl-primary);
     text-decoration: underline;
 }
 
 .wte-content a:hover {
-    color: #1976D2;
+    color: var(--cl-primary-dark);
 }
 
 /* =====================================================
@@ -180,18 +180,18 @@
 
 .wte-content table td,
 .wte-content table th {
-    border: 1px solid #ddd;
+    border: 1px solid var(--cl-border);
     padding: 8px;
     text-align: left;
 }
 
 .wte-content table th {
-    background: #f5f5f5;
+    background: var(--cl-bg-secondary);
     font-weight: bold;
 }
 
 .wte-content table tr:hover {
-    background: #f9f9f9;
+    background: var(--cl-bg-secondary);
 }
 
 /* =====================================================
@@ -201,11 +201,11 @@
 .wte-page-break {
     margin: 20px 0;
     padding: 10px;
-    border-top: 2px dashed #999;
+    border-top: 2px dashed var(--cl-text-placeholder);
     position: relative;
     text-align: center;
-    color: #999;
-    font-size: 12px;
+    color: var(--cl-text-placeholder);
+    font-size: var(--cl-font-size-sm);
     page-break-after: always;
 }
 
@@ -220,11 +220,11 @@
 .wte-header,
 .wte-footer {
     padding: 10px 20px;
-    font-size: 13px;
-    color: #888;
-    border: 1px dashed #eee;
+    font-size: var(--cl-font-size-md);
+    color: var(--cl-text-muted);
+    border: 1px dashed var(--cl-border-light);
     margin: 5px 0;
-    background: #fafafa;
+    background: var(--cl-bg-input);
     position: relative;
 }
 
@@ -233,7 +233,7 @@
     position: absolute;
     right: 10px;
     top: 5px;
-    font-size: 10px;
+    font-size: var(--cl-font-size-2xs);
     opacity: 0.5;
 }
 
@@ -242,13 +242,13 @@
     position: absolute;
     right: 10px;
     bottom: 5px;
-    font-size: 10px;
+    font-size: var(--cl-font-size-2xs);
     opacity: 0.5;
 }
 
 .wte-page-number {
     font-weight: bold;
-    color: #333;
+    color: var(--cl-text);
 }
 
 /* =====================================================
@@ -257,10 +257,10 @@
 
 .wte-status-bar {
     padding: 8px 15px;
-    background: #f9f9f9;
-    border-top: 1px solid #eee;
-    font-size: 12px;
-    color: #666;
+    background: var(--cl-bg-secondary);
+    border-top: 1px solid var(--cl-border-light);
+    font-size: var(--cl-font-size-sm);
+    color: var(--cl-text-secondary);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -272,7 +272,7 @@
 }
 
 .wte-status-info {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 /* =====================================================
@@ -284,10 +284,10 @@
     top: 60px;
     right: 20px;
     z-index: 10002;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    background: var(--cl-bg);
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-lg);
+    box-shadow: var(--cl-shadow-md);
     padding: 15px;
     display: flex;
     flex-direction: column;
@@ -298,38 +298,38 @@
 .wte-search-dialog input[type="text"] {
     flex: 1;
     padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
+    font-size: var(--cl-font-size-lg);
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color var(--cl-transition);
 }
 
 .wte-search-dialog input[type="text"]:focus {
-    border-color: #2196F3;
+    border-color: var(--cl-primary);
 }
 
 .wte-search-dialog button {
     padding: 6px 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: white;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background var(--cl-transition);
 }
 
 .wte-search-dialog button:hover {
-    background: #f5f5f5;
+    background: var(--cl-bg-secondary);
 }
 
 .wte-search-highlight {
-    background: #ffeb3b;
+    background: var(--cl-canvas-highlight);
     padding: 0 2px;
-    border-radius: 2px;
+    border-radius: var(--cl-radius-sm);
 }
 
 .wte-search-highlight.current {
-    background: #ff9800;
+    background: var(--cl-warning);
 }
 
 /* =====================================================
@@ -337,18 +337,18 @@
    ===================================================== */
 
 .wte-toc {
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
+    background: var(--cl-bg-tertiary);
+    border: 1px solid var(--cl-border-subtle);
+    border-radius: var(--cl-radius-lg);
     padding: 20px;
     margin-bottom: 20px;
 }
 
 .wte-toc-title {
     font-weight: bold;
-    font-size: 18px;
+    font-size: var(--cl-font-size-2xl);
     margin-bottom: 15px;
-    border-bottom: 2px solid #dee2e6;
+    border-bottom: 2px solid var(--cl-border-medium);
     padding-bottom: 10px;
 }
 
@@ -357,13 +357,13 @@
 }
 
 .wte-toc-item a {
-    color: #1976D2;
+    color: var(--cl-primary-dark);
     text-decoration: none;
-    transition: color 0.2s;
+    transition: color var(--cl-transition);
 }
 
 .wte-toc-item a:hover {
-    color: #1565C0;
+    color: var(--cl-primary-dark);
     text-decoration: underline;
 }
 
@@ -374,39 +374,39 @@
 .web-text-editor-floating-toolbar {
     position: absolute;
     z-index: 10000;
-    background: #2b2b2b;
+    background: var(--cl-bg-dark);
     padding: 6px 10px;
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    border-radius: var(--cl-radius-md);
+    box-shadow: var(--cl-shadow-lg);
     display: none;
     align-items: center;
     gap: 6px;
-    transition: opacity 0.15s, transform 0.15s;
+    transition: opacity var(--cl-transition-fast), transform var(--cl-transition-fast);
     white-space: nowrap;
 }
 
 .web-text-editor-floating-toolbar button {
     background: transparent;
     border: none;
-    color: #ddd;
+    color: var(--cl-border);
     font-size: 15px;
     cursor: pointer;
     padding: 4px;
     min-width: 26px;
     height: 26px;
-    border-radius: 3px;
+    border-radius: var(--cl-radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.1s;
+    transition: background var(--cl-transition-fast);
 }
 
 .web-text-editor-floating-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--cl-bg-inverse-soft-hover);
 }
 
 .web-text-editor-floating-toolbar button.active {
-    color: #4CAF50;
+    color: var(--cl-success);
 }
 
 /* =====================================================
@@ -416,7 +416,7 @@
 .wte-object-overlay {
     position: absolute;
     display: none;
-    border: 2px solid #2196F3;
+    border: 2px solid var(--cl-primary);
     pointer-events: none;
     z-index: 10001;
     box-sizing: border-box;
@@ -426,9 +426,9 @@
     position: absolute;
     width: 10px;
     height: 10px;
-    background: #2196F3;
-    border: 1px solid white;
-    border-radius: 50%;
+    background: var(--cl-primary);
+    border: 1px solid var(--cl-bg);
+    border-radius: var(--cl-radius-round);
     pointer-events: auto;
 }
 
@@ -461,33 +461,33 @@
     top: -45px;
     left: 50%;
     transform: translateX(-50%);
-    background: #2b2b2b;
+    background: var(--cl-bg-dark);
     padding: 6px;
-    border-radius: 6px;
+    border-radius: var(--cl-radius-md);
     display: flex;
     gap: 6px;
     pointer-events: auto;
     white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--cl-shadow-md);
 }
 
 .wte-obj-toolbar button {
     background: transparent;
     border: none;
-    color: #fff;
+    color: var(--cl-text-inverse);
     cursor: pointer;
     padding: 4px 8px;
     display: flex;
     align-items: center;
     gap: 4px;
-    border-radius: 3px;
-    font-size: 12px;
+    border-radius: var(--cl-radius-sm);
+    font-size: var(--cl-font-size-sm);
     white-space: nowrap;
-    transition: background 0.2s;
+    transition: background var(--cl-transition);
 }
 
 .wte-obj-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--cl-bg-inverse-soft-hover);
 }
 
 /* =====================================================
@@ -561,7 +561,7 @@
 
     .wte-tab-list button {
         padding: 6px 12px;
-        font-size: 12px;
+        font-size: var(--cl-font-size-sm);
     }
 
     .wte-tab-content {
@@ -593,7 +593,7 @@
 
 @keyframes highlight-fade {
     0% {
-        background-color: #fff9c4;
+        background-color: var(--cl-canvas-highlight);
     }
     100% {
         background-color: transparent;

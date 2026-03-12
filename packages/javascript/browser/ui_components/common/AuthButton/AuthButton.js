@@ -63,9 +63,9 @@ export class AuthButton {
 
     _getSizeStyles() {
         const sizes = {
-            small: { padding: '6px 12px', fontSize: '12px', iconSize: '14px', gap: '4px', iconOnly: '28px' },
-            medium: { padding: '8px 16px', fontSize: '14px', iconSize: '18px', gap: '6px', iconOnly: '36px' },
-            large: { padding: '12px 24px', fontSize: '16px', iconSize: '22px', gap: '8px', iconOnly: '48px' }
+            small: { padding: '6px 12px', fontSize: 'var(--cl-font-size-sm)', iconSize: '14px', gap: '4px', iconOnly: '28px' },
+            medium: { padding: '8px 16px', fontSize: 'var(--cl-font-size-lg)', iconSize: '18px', gap: '6px', iconOnly: '36px' },
+            large: { padding: '12px 24px', fontSize: 'var(--cl-font-size-xl)', iconSize: '22px', gap: '8px', iconOnly: '48px' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -120,7 +120,7 @@ export class AuthButton {
             border: ${baseBorder};
             border-radius: ${isIconOnly ? '50%' : '6px'};
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--cl-transition);
         `;
 
         // 圖示

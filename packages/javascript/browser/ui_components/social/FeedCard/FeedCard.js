@@ -14,7 +14,7 @@
  *     authorSub: '工程團隊',
  *     timestamp: '2026-02-15T14:30:00',
  *     type: '緊急事件',
- *     typeColor: '#E74C3C',
+ *     typeColor: 'var(--cl-danger)',
  *     title: '販毒案件',
  *     content: '於台北市中山區查獲販毒案件...',
  *     images: ['/img/evidence1.jpg', '/img/evidence2.jpg'],
@@ -23,7 +23,7 @@
  *     onClickDetail: () => navigate('/activity/123'),
  *     onClickAuthor: () => navigate('/profile/member/456')
  * });
- * feed.mount('#feed-container');
+ * feed.mount('.feed-container');
  */
 
 import { escapeHtml } from '../../utils/security.js';
@@ -89,13 +89,13 @@ export class FeedCard {
         style.textContent = `
             .social-feed-card {
                 background: var(--cl-bg);
-                border-radius: 12px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                border-radius: var(--cl-radius-xl);
+                box-shadow: var(--cl-shadow-sm);
                 overflow: hidden;
-                transition: box-shadow 0.2s ease;
+                transition: box-shadow var(--cl-transition);
             }
             .social-feed-card:hover {
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: var(--cl-shadow-md);
             }
 
             /* 頭部：作者資訊 */
@@ -110,7 +110,7 @@ export class FeedCard {
                 min-width: 0;
             }
             .social-feed-card__author {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 font-weight: 600;
                 color: var(--cl-text);
                 cursor: pointer;
@@ -120,7 +120,7 @@ export class FeedCard {
                 text-decoration: underline;
             }
             .social-feed-card__meta {
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 color: var(--cl-text-dim);
                 display: flex;
                 align-items: center;
@@ -128,10 +128,10 @@ export class FeedCard {
                 margin-top: 2px;
             }
             .social-feed-card__type-badge {
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 padding: 1px 8px;
-                border-radius: 10px;
-                color: var(--cl-bg);
+                border-radius: var(--cl-radius-lg);
+                color: var(--cl-text-inverse);
                 font-weight: 500;
             }
 
@@ -140,13 +140,13 @@ export class FeedCard {
                 padding: 0 20px;
             }
             .social-feed-card__title {
-                font-size: 16px;
+                font-size: var(--cl-font-size-xl);
                 font-weight: 600;
                 color: var(--cl-text);
                 margin-bottom: 6px;
             }
             .social-feed-card__content {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text);
                 line-height: 1.6;
             }
@@ -157,7 +157,7 @@ export class FeedCard {
                 overflow: hidden;
             }
             .social-feed-card__expand {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-brand-linkedin);
                 cursor: pointer;
                 font-weight: 500;
@@ -173,7 +173,7 @@ export class FeedCard {
                 margin-top: 12px;
                 display: grid;
                 gap: 2px;
-                border-radius: 8px;
+                border-radius: var(--cl-radius-lg);
                 overflow: hidden;
             }
             .social-feed-card__images--1 {
@@ -191,7 +191,7 @@ export class FeedCard {
                 height: 200px;
                 object-fit: cover;
                 cursor: pointer;
-                transition: opacity 0.2s;
+                transition: opacity var(--cl-transition);
             }
             .social-feed-card__image:hover {
                 opacity: 0.9;
@@ -208,12 +208,12 @@ export class FeedCard {
             .social-feed-card__image-more-overlay {
                 position: absolute;
                 inset: 0;
-                background: rgba(0,0,0,0.5);
+                background: var(--cl-bg-overlay);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: var(--cl-bg);
-                font-size: 24px;
+                color: var(--cl-text-inverse);
+                font-size: var(--cl-font-size-3xl);
                 font-weight: 700;
             }
 
@@ -233,20 +233,20 @@ export class FeedCard {
                 flex: 1;
             }
             .social-feed-card__tag {
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 padding: 2px 8px;
-                border-radius: 10px;
+                border-radius: var(--cl-radius-lg);
                 background: var(--cl-bg-hover);
                 color: var(--cl-text-heading);
             }
             .social-feed-card__related {
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 color: var(--cl-text-dim);
                 white-space: nowrap;
                 margin-left: 12px;
             }
             .social-feed-card__detail-btn {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-brand-linkedin);
                 cursor: pointer;
                 font-weight: 500;

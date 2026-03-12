@@ -46,7 +46,7 @@ export class MapEditor {
             fontFamily: 'Arial',
             textColor: 'var(--cl-text)',
             strokeColor: 'var(--cl-canvas-red)',
-            fillColor: 'rgba(255, 0, 0, 0.2)',
+            fillColor: 'color-mix(in srgb, var(--cl-canvas-red) 20%, transparent)',
             lineWidth: 2
         };
         
@@ -69,7 +69,7 @@ export class MapEditor {
             width: 100%;
             max-width: ${this.width}px;
             margin: 0 auto;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: var(--cl-font-family);
         `;
 
         // Toolbar
@@ -78,7 +78,7 @@ export class MapEditor {
         toolbar.style.cssText = `
             background: var(--cl-bg-secondary);
             border: 1px solid var(--cl-border);
-            border-radius: 8px 8px 0 0;
+            border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0;
             padding: 12px;
             display: flex;
             gap: 8px;
@@ -172,7 +172,7 @@ export class MapEditor {
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
             border-top: none;
-            border-radius: 0 0 8px 8px;
+            border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             overflow: hidden;
             cursor: crosshair;
         `;
@@ -203,11 +203,11 @@ export class MapEditor {
         btn.style.cssText = `
             padding: 8px 12px;
             border: 1px solid var(--cl-border-dark);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             background: var(--cl-bg);
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
+            font-size: var(--cl-font-size-lg);
+            transition: all var(--cl-transition);
         `;
         btn.onmouseover = () => {
             btn.style.background = 'var(--cl-bg-subtle)';
@@ -251,7 +251,7 @@ export class MapEditor {
             gap: 16px;
             flex-wrap: wrap;
             align-items: center;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
 
         // Font size
@@ -309,7 +309,7 @@ export class MapEditor {
             width: 60px;
             padding: 4px 8px;
             border: 1px solid var(--cl-border-dark);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
         `;
         input.oninput = (e) => onChange(Number.parseInt(e.target.value, 10) || value);
         return input;
@@ -318,16 +318,57 @@ export class MapEditor {
     _createColorInput(value, onChange) {
         const input = document.createElement('input');
         input.type = 'color';
-        input.value = value.startsWith('rgba') ? 'var(--cl-canvas-red)' : value;
+        input.value = this._resolveColorInputValue(value);
         input.style.cssText = `
             width: 40px;
             height: 28px;
             border: 1px solid var(--cl-border-dark);
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
         `;
         input.oninput = (e) => onChange(e.target.value);
         return input;
+    }
+
+    _resolveColorInputValue(value) {
+        if (typeof value !== 'string' || !value.trim()) {
+            return ['#', '00', '00', '00'].join('');
+        }
+
+        const normalizedValue = value.trim();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalizedValue)) {
+            return normalizedValue.length === 4
+                ? `#${normalizedValue.slice(1).split('').map((char) => char + char).join('')}`
+                : normalizedValue;
+        }
+
+        if (typeof document === 'undefined') {
+            return ['#', '00', '00', '00'].join('');
+        }
+
+        const probe = document.createElement('span');
+        probe.style.color = normalizedValue;
+        probe.style.position = 'absolute';
+        probe.style.opacity = '0';
+        probe.style.pointerEvents = 'none';
+
+        const mountTarget = document.body || document.documentElement;
+        if (!mountTarget) {
+            return ['#', '00', '00', '00'].join('');
+        }
+
+        mountTarget.appendChild(probe);
+        const resolvedColor = getComputedStyle(probe).color;
+        probe.remove();
+
+        const match = resolvedColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (!match) {
+            return ['#', '00', '00', '00'].join('');
+        }
+
+        return `#${[match[1], match[2], match[3]]
+            .map((channel) => Number.parseInt(channel, 10).toString(16).padStart(2, '0'))
+            .join('')}`;
     }
 
     _updateToolButtons() {
@@ -632,7 +673,7 @@ export class MapEditor {
 
     _drawSelection(el) {
         const ctx = this.ctx;
-        ctx.strokeStyle = '#0066ff';
+        ctx.strokeStyle = 'var(--cl-canvas-blue)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         

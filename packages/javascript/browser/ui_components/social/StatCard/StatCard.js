@@ -14,7 +14,7 @@
  *     value: 42,
  *     trend: 'up',
  *     trendValue: '+5',
- *     color: '#4A90D9'
+ *     color: 'var(--cl-primary)'
  * });
  * card.mount('#stat-container');
  */
@@ -56,17 +56,17 @@ export class StatCard {
         style.textContent = `
             .social-stat-card {
                 background: var(--cl-bg);
-                border-radius: 12px;
+                border-radius: var(--cl-radius-xl);
                 padding: 20px;
                 display: flex;
                 align-items: center;
                 gap: 16px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                box-shadow: var(--cl-shadow-sm);
+                transition: transform var(--cl-transition), box-shadow var(--cl-transition);
             }
             .social-stat-card:hover {
                 transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+                box-shadow: var(--cl-shadow-md);
             }
             .social-stat-card--clickable {
                 cursor: pointer;
@@ -74,7 +74,7 @@ export class StatCard {
             .social-stat-card__icon {
                 width: 48px;
                 height: 48px;
-                border-radius: 12px;
+                border-radius: var(--cl-radius-xl);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -86,18 +86,18 @@ export class StatCard {
                 min-width: 0;
             }
             .social-stat-card__value {
-                font-size: 24px;
+                font-size: var(--cl-font-size-3xl);
                 font-weight: 700;
                 color: var(--cl-text);
                 line-height: 1.2;
             }
             .social-stat-card__label {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-text-secondary);
                 margin-top: 2px;
             }
             .social-stat-card__trend {
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 font-weight: 600;
                 display: inline-flex;
                 align-items: center;
@@ -127,7 +127,7 @@ export class StatCard {
         const safeTrendValue = escapeHtml(trendValue);
 
         // 圖示背景用淡色
-        const iconBg = color + '1A'; // 10% opacity
+        const iconBg = this._getIconBackground(color);
 
         let trendHTML = '';
         if (trend && trendValue) {
@@ -172,6 +172,14 @@ export class StatCard {
         if (this.element && this.element.parentNode) {
             this.mount(this.element.parentNode);
         }
+    }
+
+    _getIconBackground(color) {
+        if (!color || typeof color !== 'string') {
+            return 'var(--cl-primary-soft-subtle)';
+        }
+
+        return `color-mix(in srgb, ${color} 12%, transparent)`;
     }
 
     destroy() {

@@ -51,9 +51,9 @@ export class MultiSelectDropdown {
 
     _getSizeStyles() {
         const sizes = {
-            small: { padding: '4px 8px', fontSize: '12px', minHeight: '30px', tagSize: '20px', tagFont: '11px' },
-            medium: { padding: '6px 10px', fontSize: '14px', minHeight: '36px', tagSize: '24px', tagFont: '12px' },
-            large: { padding: '8px 12px', fontSize: '16px', minHeight: '44px', tagSize: '28px', tagFont: '13px' }
+            small: { padding: '4px 8px', fontSize: 'var(--cl-font-size-sm)', minHeight: '30px', tagSize: '20px', tagFont: 'var(--cl-font-size-xs)' },
+            medium: { padding: '6px 10px', fontSize: 'var(--cl-font-size-lg)', minHeight: '36px', tagSize: '24px', tagFont: 'var(--cl-font-size-sm)' },
+            large: { padding: '8px 12px', fontSize: 'var(--cl-font-size-xl)', minHeight: '44px', tagSize: '28px', tagFont: 'var(--cl-font-size-md)' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -76,9 +76,9 @@ export class MultiSelectDropdown {
         selector.style.cssText = `
             display:flex;align-items:center;gap:6px;flex-wrap:wrap;
             min-height:${ss.minHeight};padding:${ss.padding};padding-right:56px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:6px;
+            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
             cursor:${disabled ? 'not-allowed' : 'pointer'};
-            transition:border-color 0.2s;opacity:${disabled ? '0.6' : '1'};
+            transition:border-color var(--cl-transition);opacity:${disabled ? '0.6' : '1'};
             position:relative;
         `;
 
@@ -120,7 +120,7 @@ export class MultiSelectDropdown {
         expandBtn.style.cssText = `
             display:flex;align-items:center;justify-content:center;
             width:26px;height:26px;border:none;background:transparent;
-            border-radius:4px;cursor:pointer;transition:background 0.15s;padding:0;
+            border-radius:var(--cl-radius-sm);cursor:pointer;transition:background var(--cl-transition-fast);padding:0;
         `;
 
         // 箭頭
@@ -142,8 +142,8 @@ export class MultiSelectDropdown {
         menu.className = 'msd__menu';
         menu.style.cssText = `
             position:absolute;top:100%;left:0;right:0;margin-top:4px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:6px;
-            box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:240px;
+            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
+            box-shadow:var(--cl-shadow-md);max-height:240px;
             overflow-y:auto;z-index:1000;display:none;
         `;
 
@@ -184,7 +184,7 @@ export class MultiSelectDropdown {
             tag.style.cssText = `
                 display:inline-flex;align-items:center;gap:3px;
                 height:${ss.tagSize};padding:0 6px;
-                background:var(--cl-primary-light);color:var(--cl-primary-dark);border-radius:4px;
+                background:var(--cl-primary-light);color:var(--cl-primary-dark);border-radius:var(--cl-radius-sm);
                 font-size:${ss.tagFont};white-space:nowrap;max-width:120px;
             `;
 
@@ -200,7 +200,7 @@ export class MultiSelectDropdown {
                 removeBtn.innerHTML = '&times;';
                 removeBtn.style.cssText = `
                     cursor:${canRemove ? 'pointer' : 'not-allowed'};
-                    font-size:14px;line-height:1;margin-left:2px;
+                    font-size:var(--cl-font-size-lg);line-height:1;margin-left:2px;
                     opacity:${canRemove ? '0.7' : '0.3'};
                 `;
                 if (canRemove) {
@@ -243,7 +243,7 @@ export class MultiSelectDropdown {
             const empty = document.createElement('div');
             empty.className = 'msd__empty';
             empty.textContent = this.options.emptyText;
-            empty.style.cssText = 'padding:12px;text-align:center;color:var(--cl-text-placeholder);font-size:13px;';
+            empty.style.cssText = 'padding:12px;text-align:center;color:var(--cl-text-placeholder);font-size:var(--cl-font-size-md);';
             this._menu.appendChild(empty);
             return;
         }
@@ -261,8 +261,8 @@ export class MultiSelectDropdown {
             option.dataset.index = index;
             option.style.cssText = `
                 padding:8px 12px;cursor:${isItemDisabled ? 'not-allowed' : 'pointer'};
-                transition:background 0.15s;display:flex;align-items:center;gap:8px;
-                font-size:14px;color:${isItemDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};
+                transition:background var(--cl-transition-fast);display:flex;align-items:center;gap:8px;
+                font-size:var(--cl-font-size-lg);color:${isItemDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};
                 background:${this.highlightIndex === index ? 'var(--cl-bg-secondary)' : 'transparent'};
             `;
 
@@ -272,13 +272,13 @@ export class MultiSelectDropdown {
             cb.style.cssText = `
                 display:inline-flex;align-items:center;justify-content:center;
                 width:16px;height:16px;border:2px solid ${isSelected ? 'var(--cl-primary)' : 'var(--cl-border-dark)'};
-                border-radius:3px;background:${isSelected ? 'var(--cl-primary)' : 'white'};
-                transition:all 0.15s;flex-shrink:0;
+                border-radius:var(--cl-radius-sm);background:${isSelected ? 'var(--cl-primary)' : 'var(--cl-bg)'};
+                transition:all var(--cl-transition-fast);flex-shrink:0;
                 opacity:${isItemDisabled ? '0.5' : '1'};
             `;
             if (isSelected) {
                 cb.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5L4 7L8 3" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 5L4 7L8 3" stroke="var(--cl-text-inverse)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
             }
             option.appendChild(cb);
@@ -502,7 +502,7 @@ export class MultiSelectDropdown {
 
         // 計數標籤
         const countLabel = document.createElement('span');
-        countLabel.style.cssText = 'font-size:13px;color:var(--cl-text-muted);margin-left:8px;font-weight:400;';
+        countLabel.style.cssText = 'font-size:var(--cl-font-size-md);color:var(--cl-text-muted);margin-left:8px;font-weight:400;';
 
         // 搜尋列
         const searchRow = document.createElement('div');
@@ -511,8 +511,8 @@ export class MultiSelectDropdown {
         searchInput.type = 'text';
         searchInput.placeholder = Locale.t('multiSelect.searchPlaceholder');
         searchInput.style.cssText = `
-            width:100%;padding:8px 12px;border:1px solid var(--cl-border);border-radius:6px;
-            font-size:14px;outline:none;transition:border-color 0.2s;box-sizing:border-box;
+            width:100%;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
+            font-size:var(--cl-font-size-lg);outline:none;transition:border-color var(--cl-transition);box-sizing:border-box;
         `;
         searchInput.addEventListener('focus', () => { searchInput.style.borderColor = 'var(--cl-primary)'; });
         searchInput.addEventListener('blur', () => { searchInput.style.borderColor = 'var(--cl-border)'; });
@@ -533,8 +533,8 @@ export class MultiSelectDropdown {
         leftBtns.style.cssText = 'display:flex;gap:8px;';
 
         const btnStyle = (bg, color) => `
-            padding:8px 16px;border:none;border-radius:6px;font-size:13px;
-            cursor:pointer;background:${bg};color:${color};transition:opacity 0.15s;
+            padding:8px 16px;border:none;border-radius:var(--cl-radius-md);font-size:var(--cl-font-size-md);
+            cursor:pointer;background:${bg};color:${color};transition:opacity var(--cl-transition-fast);
         `;
 
         const selectAllBtn = document.createElement('button');
@@ -545,7 +545,7 @@ export class MultiSelectDropdown {
         const deselectAllBtn = document.createElement('button');
         deselectAllBtn.type = 'button';
         deselectAllBtn.textContent = Locale.t('multiSelect.deselectAll');
-        deselectAllBtn.style.cssText = btnStyle('#fce4ec', 'var(--cl-danger)');
+        deselectAllBtn.style.cssText = btnStyle('var(--cl-bg-danger-light)', 'var(--cl-danger)');
 
         leftBtns.appendChild(selectAllBtn);
         leftBtns.appendChild(deselectAllBtn);
@@ -561,7 +561,7 @@ export class MultiSelectDropdown {
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
         confirmBtn.textContent = Locale.t('multiSelect.confirm');
-        confirmBtn.style.cssText = btnStyle('var(--cl-primary)', 'white');
+        confirmBtn.style.cssText = btnStyle('var(--cl-primary)', 'var(--cl-text-inverse)');
 
         rightBtns.appendChild(cancelBtn);
         rightBtns.appendChild(confirmBtn);
@@ -611,7 +611,7 @@ export class MultiSelectDropdown {
                 row.style.cssText = `
                     display:flex;align-items:center;gap:10px;padding:8px 12px;
                     cursor:${isDisabled ? 'not-allowed' : 'pointer'};
-                    transition:background 0.1s;font-size:14px;color:${isDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};
+                    transition:background 0.1s;font-size:var(--cl-font-size-lg);color:${isDisabled && !isSelected ? 'var(--cl-text-light)' : 'var(--cl-text)'};
                 `;
                 if (!isDisabled) {
                     row.addEventListener('mouseenter', () => { row.style.background = 'var(--cl-bg-tertiary)'; });

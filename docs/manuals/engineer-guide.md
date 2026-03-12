@@ -55,7 +55,7 @@ Bricks4Agent/
 │   │   └── browser/
 │   │       ├── ui_components/         # Bricks4Agent UI 元件庫（核心）
 │   │       │   ├── form/              # 表單元件 (12 個)
-│   │       │   ├── common/            # 通用元件 (18 個)
+│   │       │   ├── common/            # 通用元件 (23 個)
 │   │       │   ├── layout/            # 佈局元件 (10 個)
 │   │       │   ├── input/             # 進階輸入元件 (10 個)
 │   │       │   ├── viz/               # 視覺化元件 (18 個可直接使用元件 + BaseChart)
@@ -112,7 +112,7 @@ node templates/spa/scripts/spa-cli.js feature User --fields "Name:string,Email:s
 | 分類 | 目錄 | 數量 | 說明 |
 |------|------|------|------|
 | 表單元件 | `form/` | 12 | 文字、數字、日期、下拉選單等表單輸入 |
-| 通用元件 | `common/` | 18 | 按鈕、對話框、通知、分頁等通用 UI |
+| 通用元件 | `common/` | 23 | 按鈕、徽章、標籤、提示框、進度條、分隔線、對話框、通知、分頁等通用 UI |
 | 佈局元件 | `layout/` | 10 | 面板、表格、側選單、頁籤等版面配置 |
 | 進階輸入 | `input/` | 10 | 地址、電話、組織等複合輸入元件 |
 | 視覺化 | `viz/` | 18 | 圖表、地圖、畫板等資料視覺化（不含 `BaseChart` 基底類別） |
@@ -604,7 +604,7 @@ const uploader = new BatchUploader({
 
 ## 5. 通用元件
 
-通用元件位於 `packages/javascript/browser/ui_components/common/` 目錄下，共 18 個元件。
+通用元件位於 `packages/javascript/browser/ui_components/common/` 目錄下，共 23 個元件。
 
 ### 5.1 按鈕系列
 
@@ -926,6 +926,135 @@ const boldBtn = new EditorButton({
 boldBtn.mount(toolbar);
 boldBtn.active = true;    // 設定啟用狀態
 boldBtn.setDisabled(true); // 禁用
+```
+
+### 5.6 Badge — 徽章
+
+用於狀態指示、數字計數、圓點標記。
+
+```javascript
+import { Badge } from './ui_components/common/Badge/Badge.js';
+
+// 文字徽章
+const badge = new Badge({ text: 'NEW', variant: 'primary', size: 'small' });
+badge.render(container);
+
+// 數字徽章（超過 maxCount 顯示 99+）
+const count = new Badge({ text: '128', type: 'count', variant: 'danger', maxCount: 99 });
+count.render(container);
+
+// 圓點指示器
+const dot = new Badge({ type: 'dot', variant: 'success' });
+dot.render(container);
+```
+
+| 參數 | 說明 | 預設值 |
+|------|------|--------|
+| `variant` | `default`/`primary`/`success`/`warning`/`danger`/`info` | `default` |
+| `type` | `text`/`count`/`dot` | `text` |
+| `size` | `small`/`medium`/`large` | `medium` |
+| `maxCount` | 數字上限（count 類型） | `99` |
+
+### 5.7 Tag — 標籤
+
+用於分類、過濾、標示。支援可關閉和可點擊模式。
+
+```javascript
+import { Tag } from './ui_components/common/Tag/Tag.js';
+
+const tag = new Tag({
+  text: 'React',
+  variant: 'primary',
+  closable: true,
+  icon: '⚛️'
+});
+
+tag.onClose(() => console.log('標籤已移除'));
+tag.render(container);
+```
+
+| 參數 | 說明 | 預設值 |
+|------|------|--------|
+| `variant` | 9 種色彩：`default`/`primary`/`success`/`warning`/`danger`/`info`/`purple`/`teal`/`pink` | `default` |
+| `closable` | 顯示關閉按鈕 | `false` |
+| `clickable` | 可點擊模式 | `false` |
+| `icon` | 前置圖示（emoji 或文字） | — |
+
+### 5.8 Tooltip — 提示框
+
+Hover/Focus 時顯示的工具提示。支援 4 方位、HTML 內容、自動避開邊界。
+
+```javascript
+import { Tooltip } from './ui_components/common/Tooltip/Tooltip.js';
+
+// 附加到元素
+const tooltip = new Tooltip({
+  text: '這是提示文字',
+  position: 'top',   // top | bottom | left | right
+  trigger: 'hover'   // hover | click | manual
+});
+tooltip.attach(targetElement);
+
+// 靜態快捷方法
+Tooltip.create(element, '提示文字', { position: 'bottom' });
+```
+
+### 5.9 Progress — 進度條
+
+線性和環形進度指示器。支援確定值和不確定動畫。
+
+```javascript
+import { Progress } from './ui_components/common/Progress/Progress.js';
+
+// 線性進度條
+const bar = new Progress({
+  value: 60,
+  variant: 'primary',
+  showText: true
+});
+bar.render(container);
+bar.setValue(80); // 動畫過渡到 80%
+
+// 環形進度
+const circle = new Progress({
+  type: 'circle',
+  value: 75,
+  variant: 'success'
+});
+circle.render(container);
+
+// 不確定模式
+const loading = new Progress({ indeterminate: true });
+loading.render(container);
+```
+
+| 參數 | 說明 | 預設值 |
+|------|------|--------|
+| `type` | `bar`/`circle` | `bar` |
+| `variant` | `primary`/`success`/`warning`/`danger` | `primary` |
+| `size` | `small`/`medium`/`large` | `medium` |
+| `showText` | 顯示百分比文字 | `false` |
+| `indeterminate` | 不確定動畫模式 | `false` |
+
+### 5.10 Divider — 分隔線
+
+水平/垂直分隔線，可帶文字標籤。
+
+```javascript
+import { Divider } from './ui_components/common/Divider/Divider.js';
+
+// 基本水平分隔線
+new Divider().render(container);
+
+// 帶文字的分隔線
+new Divider({
+  text: 'OR',
+  textPosition: 'center', // left | center | right
+  lineStyle: 'dashed'     // solid | dashed | dotted
+}).render(container);
+
+// 垂直分隔線
+new Divider({ orientation: 'vertical' }).render(container);
 ```
 
 ---

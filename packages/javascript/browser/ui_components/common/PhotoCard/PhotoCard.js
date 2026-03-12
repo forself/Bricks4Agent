@@ -73,11 +73,11 @@ export class PhotoCard {
             position: relative;
             width: ${width};
             aspect-ratio: ${ratio.w} / ${ratio.h};
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             overflow: hidden;
             background: var(--cl-bg-secondary);
             cursor: ${clickable && hasImage ? 'pointer' : 'default'};
-            transition: all 0.2s;
+            transition: all var(--cl-transition);
         `;
 
         if (hasImage) {
@@ -107,7 +107,7 @@ export class PhotoCard {
             if (clickable) {
                 container.addEventListener('mouseenter', () => {
                     container.style.transform = 'scale(1.02)';
-                    container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                    container.style.boxShadow = 'var(--cl-shadow-md)';
                 });
                 container.addEventListener('mouseleave', () => {
                     container.style.transform = 'scale(1)';

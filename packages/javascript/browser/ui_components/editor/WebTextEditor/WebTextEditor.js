@@ -105,12 +105,12 @@ export class WebTextEditor {
         this.container.classList.add('web-text-editor');
         this.container.style.cssText = `
             border: 1px solid var(--cl-border);
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             overflow: hidden;
             display: flex;
             flex-direction: column;
             background: var(--cl-bg);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: var(--cl-font-family);
             height: ${this.options.height};
         `;
 
@@ -127,7 +127,7 @@ export class WebTextEditor {
             overflow-y: auto;
             outline: none;
             line-height: 1.6;
-            font-size: 16px;
+            font-size: var(--cl-font-size-xl);
             position: relative;
         `;
         
@@ -147,7 +147,7 @@ export class WebTextEditor {
             .wte-content h1 { font-size: 2em; margin: 0.5em 0; border-bottom: 2px solid var(--cl-border-light); padding-bottom: 5px; }
             .wte-content h2 { font-size: 1.5em; margin: 0.5em 0; color: var(--cl-text); }
             .wte-content blockquote { border-left: 4px solid var(--cl-border); padding-left: 10px; color: var(--cl-text-secondary); margin: 10px 0; }
-            .wte-content img { max-width: 100%; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .wte-content img { max-width: 100%; border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-md); }
             .wte-content ul, .wte-content ol { padding-left: 20px; }
             .wte-content a { color: var(--cl-primary); text-decoration: underline; }
             /* 表格样式 */
@@ -158,18 +158,18 @@ export class WebTextEditor {
             /* 分页符样式 */
             .wte-page-break { 
                 margin: 20px 0; padding: 10px; border-top: 2px dashed var(--cl-text-placeholder); 
-                position: relative; text-align: center; color: var(--cl-text-placeholder); font-size: 12px;
+                position: relative; text-align: center; color: var(--cl-text-placeholder); font-size: var(--cl-font-size-sm);
                 page-break-after: always;
             }
             .wte-page-break::before { content: Locale.t('webTextEditor.pageBreakLine'); }
             
             /* 分章節顯示 */
             .wte-header, .wte-footer { 
-                padding: 10px 20px; font-size: 13px; color: var(--cl-text-muted); border: 1px dashed var(--cl-border-light); 
+                padding: 10px 20px; font-size: var(--cl-font-size-md); color: var(--cl-text-muted); border: 1px dashed var(--cl-border-light); 
                 margin: 5px 0; background: var(--cl-bg-input); position: relative;
             }
-            .wte-header::after { content: '" + Locale.t('webTextEditor.headerArea') + "'; position: absolute; right: 10px; top: 5px; font-size: 10px; opacity: 0.5; }
-            .wte-footer::after { content: '" + Locale.t('webTextEditor.footerArea') + "'; position: absolute; right: 10px; bottom: 5px; font-size: 10px; opacity: 0.5; }
+            .wte-header::after { content: '" + Locale.t('webTextEditor.headerArea') + "'; position: absolute; right: 10px; top: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
+            .wte-footer::after { content: '" + Locale.t('webTextEditor.footerArea') + "'; position: absolute; right: 10px; bottom: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
             
             .wte-page-number { font-weight: bold; color: var(--cl-text); }
             
@@ -187,7 +187,7 @@ export class WebTextEditor {
         this.statusBar.className = 'wte-status-bar';
         this.statusBar.style.cssText = `
             padding: 8px 15px; background: var(--cl-bg-disabled); border-top: 1px solid var(--cl-border-light);
-            font-size: 12px; color: var(--cl-text-secondary); display: flex; justify-content: space-between; align-items: center;
+            font-size: var(--cl-font-size-sm); color: var(--cl-text-secondary); display: flex; justify-content: space-between; align-items: center;
         `;
         this.statusBar.innerHTML = `
             <div class="wte-stats">
@@ -299,7 +299,7 @@ export class WebTextEditor {
 
         const tabList = document.createElement('div');
         tabList.className = 'wte-tab-list';
-        tabList.style.cssText = `display: flex; background: #f3f3f3; padding: 0 10px; border-bottom: 1px solid var(--cl-border); gap: 2px;`;
+        tabList.style.cssText = `display: flex; background: var(--cl-bg-secondary); padding: 0 10px; border-bottom: 1px solid var(--cl-border); gap: 2px;`;
 
         const tabContent = document.createElement('div');
         tabContent.className = 'wte-tab-content';
@@ -314,8 +314,8 @@ export class WebTextEditor {
             tabBtn.textContent = tabName;
             tabBtn.style.cssText = `
                 border: none; background: transparent; padding: 8px 16px; cursor: pointer;
-                font-size: 13px; color: var(--cl-text-secondary); position: relative; top: 1px;
-                border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0;
+                font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); position: relative; top: 1px;
+                border: 1px solid transparent; border-bottom: none; border-radius: var(--cl-radius-sm) var(--cl-radius-sm) 0 0;
             `;
 
             const panel = document.createElement('div');
@@ -345,8 +345,8 @@ export class WebTextEditor {
                              const lineSpacingSelect = document.createElement('select');
                              lineSpacingSelect.title = Locale.t('webTextEditor.lineSpacing');
                              lineSpacingSelect.style.cssText = `
-                                 padding: 4px 8px; border: 1px solid var(--cl-border); border-radius: 4px;
-                                 font-size: 13px; cursor: pointer; background: var(--cl-bg);
+                                 padding: 4px 8px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm);
+                                 font-size: var(--cl-font-size-md); cursor: pointer; background: var(--cl-bg);
                              `;
                              const spacingOptions = [
                                  { value: '1', label: '1.0' },
@@ -757,15 +757,15 @@ export class WebTextEditor {
         
         // 建立全螢幕 Modal
         const overlay = document.createElement('div');
-        overlay.style.cssText = `position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter: blur(5px);`;
+        overlay.style.cssText = `position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--cl-bg-overlay-strong);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter: blur(5px);`;
         
         const modal = document.createElement('div');
-        modal.style.cssText = `width:95vw;height:95vh;background: var(--cl-bg);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;box-shadow: 0 10px 30px rgba(0,0,0,0.5);`;
+        modal.style.cssText = `width:95vw;height:95vh;background: var(--cl-bg);border-radius:var(--cl-radius-lg);display:flex;flex-direction:column;overflow:hidden;box-shadow: var(--cl-shadow-lg);`;
         
         // Modal Header
         const header = document.createElement('div');
         header.style.cssText = `padding:10px 20px;background:var(--cl-bg-secondary);border-bottom:1px solid var(--cl-border);display:flex;justify-content:space-between;align-items:center;`;
-        header.innerHTML = '<span style="font-weight:bold;font-size:18px;">🎨 繪圖板編輯模式</span>';
+        header.innerHTML = '<span style="font-weight:bold;font-size:var(--cl-font-size-2xl);">🎨 繪圖板編輯模式</span>';
 
         const btnGroup = document.createElement('div');
         btnGroup.style.gap = '10px';
@@ -773,12 +773,12 @@ export class WebTextEditor {
 
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = Locale.t('webTextEditor.cancelBtn');
-        cancelBtn.style.cssText = `padding:8px 16px;border:1px solid var(--cl-border-dark);background: var(--cl-bg);border-radius:4px;cursor:pointer;`;
+        cancelBtn.style.cssText = `padding:8px 16px;border:1px solid var(--cl-border-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;font-size:var(--cl-font-size-lg);font-family:var(--cl-font-family);`;
         cancelBtn.onclick = () => document.body.removeChild(overlay);
         
         const saveBtn = document.createElement('button');
         saveBtn.textContent = Locale.t('webTextEditor.doneBtn');
-        saveBtn.style.cssText = `background:var(--cl-success);color:white;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-weight:bold;`;
+        saveBtn.style.cssText = `background:var(--cl-success);color:var(--cl-text-inverse);border:none;padding:8px 20px;border-radius:var(--cl-radius-sm);cursor:pointer;font-weight:bold;font-size:var(--cl-font-size-lg);font-family:var(--cl-font-family);`;
         
         btnGroup.appendChild(cancelBtn);
         btnGroup.appendChild(saveBtn);
@@ -971,12 +971,12 @@ export class WebTextEditor {
             z-index: 10000;
             background: var(--cl-bg-dark);
             padding: 6px 10px;
-            border-radius: 6px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            border-radius: var(--cl-radius-md);
+            box-shadow: var(--cl-shadow-md);
             display: none;
             align-items: center;
             gap: 6px;
-            transition: opacity 0.15s, transform 0.15s;
+            transition: opacity var(--cl-transition-fast), transform var(--cl-transition-fast);
             white-space: nowrap;
         `;
         
@@ -992,10 +992,10 @@ export class WebTextEditor {
             btn.title = title || '';
             btn.style.cssText = `
                 background: transparent; border: none; color: var(--cl-border); font-size: 15px; cursor: pointer;
-                padding: 4px; min-width: 26px; height: 26px; border-radius: 3px;
-                display: flex; align-items: center; justify-content: center; transition: background 0.1s;
+                padding: 4px; min-width: 26px; height: 26px; border-radius: var(--cl-radius-sm);
+                display: flex; align-items: center; justify-content: center; transition: background var(--cl-transition-fast);
             `;
-            btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.15)';
+            btn.onmouseover = () => btn.style.background = 'var(--cl-bg-inverse-soft-hover)';
             btn.onmouseout = () => btn.style.background = 'transparent';
             btn.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); };
             
@@ -1021,8 +1021,8 @@ export class WebTextEditor {
         const fontSelect = document.createElement('select');
         fontSelect.title = "字型";
         fontSelect.style.cssText = `
-            background: #444; color: var(--cl-bg); border: 1px solid var(--cl-text-secondary); border-radius: 3px; 
-            font-size: 12px; height: 26px; width: 80px; outline: none;
+            background: var(--cl-bg-dark); color: var(--cl-bg); border: 1px solid var(--cl-text-secondary); border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-sm); height: 26px; width: 80px; outline: none;
         `;
         ['Microsoft JhengHei', 'Arial', 'Times New Roman', 'Verdana'].forEach(f => {
             const opt = document.createElement('option');
@@ -1044,8 +1044,8 @@ export class WebTextEditor {
         sizeInput.min = 12; sizeInput.max = 72; sizeInput.value = 16;
         sizeInput.title = "字體大小 (px)";
         sizeInput.style.cssText = `
-            width: 45px; background: #444; color: var(--cl-bg); border: 1px solid var(--cl-text-secondary); 
-            border-radius: 3px; padding: 0 4px; text-align: center; font-size: 12px; height: 26px;
+            width: 45px; background: var(--cl-bg-dark); color: var(--cl-bg); border: 1px solid var(--cl-text-secondary);
+            border-radius: var(--cl-radius-sm); padding: 0 4px; text-align: center; font-size: var(--cl-font-size-sm); height: 26px;
         `;
         sizeInput.onmousedown = (e) => e.stopPropagation();
         sizeInput.onclick = (e) => e.stopPropagation();
@@ -1073,7 +1073,7 @@ export class WebTextEditor {
         const strikeBtn = document.createElement('button');
         strikeBtn.innerHTML = '<s>S</s>';
         strikeBtn.style.cssText = createStyleBtn('','','','').style.cssText; // Reuse styles
-        strikeBtn.onmouseover = () => strikeBtn.style.background = 'rgba(255,255,255,0.15)';
+        strikeBtn.onmouseover = () => strikeBtn.style.background = 'var(--cl-bg-inverse-soft-hover)';
         strikeBtn.onmouseout = () => strikeBtn.style.background = 'transparent';
         strikeBtn.onmousedown = (e) => { e.preventDefault(); e.stopPropagation(); };
         strikeBtn.onclick = (e) => {
@@ -1086,7 +1086,7 @@ export class WebTextEditor {
 
         // 4. Color
         const colorWrapper = document.createElement('div');
-        colorWrapper.innerHTML = '<span style="font-size:16px;">🎨</span>';
+        colorWrapper.innerHTML = '<span style="font-size:var(--cl-font-size-xl);">🎨</span>';
         colorWrapper.style.cssText = 'position:relative; width: 26px; height: 26px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
@@ -1264,7 +1264,7 @@ export class WebTextEditor {
             handle.className = `resize-handle ${pos}`;
             handle.style.cssText = `
                 position: absolute; width: 10px; height: 10px; background: var(--cl-primary);
-                border: 1px solid var(--cl-bg); border-radius: 50%; pointer-events: auto;
+                border: 1px solid var(--cl-bg); border-radius: var(--cl-radius-round); pointer-events: auto;
                 cursor: ${pos}-resize; display: none;
             `;
             if (pos.includes('n')) handle.style.top = '-6px'; else handle.style.bottom = '-6px';
@@ -1280,9 +1280,9 @@ export class WebTextEditor {
         toolbar.className = 'wte-obj-toolbar';
         toolbar.style.cssText = `
             position: absolute; top: -45px; left: 50%; transform: translateX(-50%);
-            background: var(--cl-bg-dark); padding: 6px; border-radius: 6px;
+            background: var(--cl-bg-dark); padding: 6px; border-radius: var(--cl-radius-md);
             display: flex; gap: 6px; pointer-events: auto; white-space: nowrap;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: var(--cl-shadow-md);
         `;
 
         overlay.appendChild(toolbar);
@@ -1327,9 +1327,9 @@ export class WebTextEditor {
             btn.style.cssText = `
                 background: transparent; border: none; color: var(--cl-bg); cursor: pointer;
                 padding: 4px 8px; display: flex; align-items: center; gap: 4px;
-                border-radius: 3px; font-size: 12px; white-space: nowrap;
+                border-radius: var(--cl-radius-sm); font-size: var(--cl-font-size-sm); white-space: nowrap;
             `;
-            btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.2)';
+            btn.onmouseover = () => btn.style.background = 'var(--cl-bg-inverse-soft-hover)';
             btn.onmouseout = () => btn.style.background = 'transparent';
             btn.onmousedown = (e) => e.stopPropagation();
             btn.onclick = (e) => { e.preventDefault(); action(); };
@@ -1949,36 +1949,36 @@ export class WebTextEditor {
         dialog.className = 'wte-search-dialog';
         dialog.style.cssText = `
             position: absolute; top: 60px; right: 20px; z-index: 10002;
-            background: var(--cl-bg); border: 1px solid var(--cl-border); border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 15px;
+            background: var(--cl-bg); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-md); padding: 15px;
             display: flex; flex-direction: column; gap: 10px; min-width: 350px;
         `;
 
         dialog.innerHTML = `
             <div class="wte-search-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                <span style="font-weight:bold;font-size:14px;">搜尋與取代</span>
-                <button class="wte-search-close" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--cl-text-placeholder);">&times;</button>
+                <span style="font-weight:bold;font-size:var(--cl-font-size-lg);">搜尋與取代</span>
+                <button class="wte-search-close" style="background:none;border:none;font-size:var(--cl-font-size-2xl);cursor:pointer;color:var(--cl-text-placeholder);">&times;</button>
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
-                <input type="text" name="search" placeholder="搜尋文字..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:4px;font-size:14px;">
-                <button class="wte-btn-prev" title="上一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:4px;background: var(--cl-bg);cursor:pointer;">▲</button>
-                <button class="wte-btn-next" title="下一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:4px;background: var(--cl-bg);cursor:pointer;">▼</button>
+                <input type="text" name="search" placeholder="搜尋文字..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
+                <button class="wte-btn-prev" title="上一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▲</button>
+                <button class="wte-btn-next" title="下一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▼</button>
             </div>
             <div class="wte-replace-row" style="display:${showReplace ? 'flex' : 'none'};gap:8px;align-items:center;">
-                <input type="text" name="replace" placeholder="取代為..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:4px;font-size:14px;">
+                <input type="text" name="replace" placeholder="取代為..." style="flex:1;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
             </div>
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
                     <input type="checkbox" name="caseSensitive"> 區分大小寫
                 </label>
-                <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
                     <input type="checkbox" name="wholeWord"> 全字匹配
                 </label>
-                <span class="wte-match-count" style="font-size:12px;color:var(--cl-text-secondary);margin-left:auto;">0 個結果</span>
+                <span class="wte-match-count" style="font-size:var(--cl-font-size-sm);color:var(--cl-text-secondary);margin-left:auto;">0 個結果</span>
             </div>
             <div class="wte-replace-actions" style="display:${showReplace ? 'flex' : 'none'};gap:8px;justify-content:flex-end;">
-                <button class="wte-btn-replace" style="padding:6px 12px;border:1px solid var(--cl-border);border-radius:4px;background: var(--cl-bg);cursor:pointer;">取代</button>
-                <button class="wte-btn-replace-all" style="padding:6px 12px;border:none;border-radius:4px;background:var(--cl-primary-dark);color:white;cursor:pointer;">全部取代</button>
+                <button class="wte-btn-replace" style="padding:6px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">取代</button>
+                <button class="wte-btn-replace-all" style="padding:6px 12px;border:none;border-radius:var(--cl-radius-sm);background:var(--cl-primary-dark);color:var(--cl-text-inverse);cursor:pointer;">全部取代</button>
             </div>
         `;
 
@@ -2110,7 +2110,7 @@ export class WebTextEditor {
                     // 建立高亮 span
                     const highlightSpan = document.createElement('span');
                     highlightSpan.className = 'wte-search-highlight';
-                    highlightSpan.style.cssText = 'background: var(--cl-warning); padding: 0 2px; border-radius: 2px;';
+                    highlightSpan.style.cssText = 'background: var(--cl-warning); padding: 0 2px; border-radius: var(--cl-radius-xs);';
                     highlightSpan.textContent = matched;
 
                     // 替換節點
@@ -2296,7 +2296,7 @@ export class WebTextEditor {
             <style>
                 @media print {
                     body {
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                        font-family: var(--cl-font-family);
                         font-size: 12pt;
                         line-height: 1.6;
                         color: var(--cl-text-dark);
@@ -2359,7 +2359,7 @@ export class WebTextEditor {
                 <title>Document</title>
                 <style>
                     body {
-                        font-family: "Microsoft JhengHei", "SimSun", Arial, sans-serif;
+                        font-family: var(--cl-font-family-cjk);
                         font-size: 12pt;
                         line-height: 1.6;
                     }
@@ -2614,21 +2614,21 @@ export class WebTextEditor {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.5); z-index: 10003;
+            background: var(--cl-bg-overlay); z-index: 10003;
             display: flex; justify-content: center; align-items: center;
         `;
 
         const panel = document.createElement('div');
         panel.style.cssText = `
-            background: var(--cl-bg); border-radius: 12px; padding: 20px;
+            background: var(--cl-bg); border-radius: var(--cl-radius-xl); padding: 20px;
             max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            box-shadow: var(--cl-shadow-lg);
         `;
 
         let tocHtml = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h3 style="margin:0;">文件目錄</h3>
-                <button class="close-btn" style="background:none;border:none;font-size:24px;cursor:pointer;">&times;</button>
+                <button class="close-btn" style="background:none;border:none;font-size:var(--cl-font-size-3xl);cursor:pointer;">&times;</button>
             </div>
             <div class="toc-list" style="margin-bottom:15px;">
         `;
@@ -2637,10 +2637,10 @@ export class WebTextEditor {
             const indent = (item.level - 1) * 20;
             tocHtml += `
                 <div class="toc-item" data-id="${item.id}"
-                     style="padding:8px 10px;margin-left:${indent}px;cursor:pointer;border-radius:4px;transition:background 0.2s;"
+                     style="padding:8px 10px;margin-left:${indent}px;cursor:pointer;border-radius:var(--cl-radius-sm);transition:background var(--cl-transition);"
                      onmouseover="this.style.background='var(--cl-bg-secondary)'"
                      onmouseout="this.style.background='transparent'">
-                    <span style="color:var(--cl-text-secondary);font-size:12px;margin-right:8px;">H${item.level}</span>
+                    <span style="color:var(--cl-text-secondary);font-size:var(--cl-font-size-sm);margin-right:8px;">H${item.level}</span>
                     ${escapeHtml(item.text)}
                 </div>
             `;
@@ -2649,7 +2649,7 @@ export class WebTextEditor {
         tocHtml += `
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--cl-border-light);padding-top:15px;">
-                <button class="insert-btn" style="padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:4px;cursor:pointer;">
+                <button class="insert-btn" style="padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;">
                     插入目錄到文件
                 </button>
             </div>
@@ -2708,10 +2708,10 @@ export class WebTextEditor {
         // 建立目錄 HTML
         let tocHtml = `
             <div class="wte-toc" contenteditable="false" style="
-                background: var(--cl-bg-tertiary); border: 1px solid #e9ecef; border-radius: 8px;
+                background: var(--cl-bg-tertiary); border: 1px solid var(--cl-border-subtle); border-radius: var(--cl-radius-lg);
                 padding: 20px; margin-bottom: 20px;
             ">
-                <div style="font-weight:bold;font-size:18px;margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;">
+                <div style="font-weight:bold;font-size:var(--cl-font-size-2xl);margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;">
                     目錄
                 </div>
         `;

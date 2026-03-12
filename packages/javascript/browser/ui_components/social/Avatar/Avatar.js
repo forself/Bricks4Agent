@@ -70,7 +70,7 @@ export class Avatar {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 overflow: visible;
                 flex-shrink: 0;
                 user-select: none;
@@ -86,13 +86,13 @@ export class Avatar {
             .social-avatar__image {
                 width: 100%;
                 height: 100%;
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 object-fit: cover;
             }
             .social-avatar__fallback {
                 width: 100%;
                 height: 100%;
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -107,10 +107,10 @@ export class Avatar {
                 min-width: 18px;
                 height: 18px;
                 padding: 0 5px;
-                border-radius: 9px;
+                border-radius: var(--cl-radius-xl);
                 background: var(--cl-danger);
                 color: var(--cl-bg);
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 font-weight: 600;
                 display: flex;
                 align-items: center;

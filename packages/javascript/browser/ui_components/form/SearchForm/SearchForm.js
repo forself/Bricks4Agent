@@ -72,7 +72,7 @@ export class SearchForm {
             .search-form {
                 background: var(--cl-bg);
                 border: 1px solid var(--cl-border-light);
-                border-radius: 8px;
+                border-radius: var(--cl-radius-lg);
                 padding: 16px;
             }
             .search-form-fields {
@@ -89,7 +89,7 @@ export class SearchForm {
                 display: none;
             }
             .search-form-label {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 font-weight: 500;
                 color: var(--cl-text);
             }
@@ -118,10 +118,10 @@ export class SearchForm {
             .search-form-btn {
                 padding: 8px 24px;
                 border: 1px solid;
-                border-radius: 4px;
-                font-size: 14px;
+                border-radius: var(--cl-radius-sm);
+                font-size: var(--cl-font-size-lg);
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: all var(--cl-transition);
             }
             .search-form-btn-primary {
                 background: var(--cl-primary);
@@ -147,7 +147,7 @@ export class SearchForm {
                 border: none;
                 color: var(--cl-primary);
                 cursor: pointer;
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 display: flex;
                 align-items: center;
                 gap: 4px;
@@ -168,7 +168,7 @@ export class SearchForm {
             }
             .search-form-checkbox-wrapper label {
                 cursor: pointer;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text);
             }
         `;

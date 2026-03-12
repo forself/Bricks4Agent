@@ -75,11 +75,11 @@ export class ButtonGroup {
                 bg: 'transparent'
             },
             dark: {
-                separatorColor: 'rgba(255,255,255,0.2)',
+                separatorColor: 'var(--cl-divider-inverse)',
                 bg: 'transparent'
             },
             gradient: {
-                separatorColor: 'rgba(255,255,255,0.3)',
+                separatorColor: 'var(--cl-divider-inverse)',
                 bg: 'transparent'
             }
         };
@@ -239,17 +239,17 @@ export class EditorToolbar {
             light: {
                 bg: 'var(--cl-bg)',
                 border: '1px solid var(--cl-border-medium)',
-                shadow: '0 1px 3px rgba(0,0,0,0.08)'
+                shadow: 'var(--cl-shadow-sm)'
             },
             dark: {
                 bg: 'var(--cl-bg-dark)',
-                border: '1px solid #404040',
-                shadow: '0 1px 3px rgba(0,0,0,0.3)'
+                border: '1px solid var(--cl-border)',
+                shadow: 'var(--cl-shadow-sm)'
             },
             gradient: {
                 bg: 'linear-gradient(135deg, var(--cl-gradient-start) 0%, var(--cl-gradient-end) 100%)',
                 border: 'none',
-                shadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                shadow: 'var(--cl-shadow-md)'
             }
         };
         return themes[this.options.theme] || themes.light;
@@ -269,7 +269,7 @@ export class EditorToolbar {
             padding: ${padding};
             background: ${background || themeStyles.bg};
             border: ${themeStyles.border};
-            ${position === 'top' ? 'border-radius: 8px 8px 0 0;' : 'border-radius: 0 0 8px 8px;'}
+            ${position === 'top' ? 'border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0;' : 'border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);'}
             box-shadow: ${themeStyles.shadow};
             flex-wrap: wrap;
             ${sticky ? 'position: sticky; top: 0; z-index: 100;' : ''}
@@ -289,7 +289,7 @@ export class EditorToolbar {
                 separator.style.cssText = `
                     width: 1px;
                     height: 24px;
-                    background: ${this.options.theme === 'light' ? 'var(--cl-border-medium)' : 'rgba(255,255,255,0.2)'};
+                    background: ${this.options.theme === 'light' ? 'var(--cl-border-medium)' : 'var(--cl-divider-inverse)'};
                     margin: 0 4px;
                 `;
                 toolbar.appendChild(separator);
@@ -311,7 +311,7 @@ export class EditorToolbar {
                 separator.style.cssText = `
                     width: 1px;
                     height: 24px;
-                    background: ${this.options.theme === 'light' ? 'var(--cl-border-medium)' : 'rgba(255,255,255,0.2)'};
+                    background: ${this.options.theme === 'light' ? 'var(--cl-border-medium)' : 'var(--cl-divider-inverse)'};
                     margin: 0 4px;
                 `;
                 this.element.appendChild(separator);

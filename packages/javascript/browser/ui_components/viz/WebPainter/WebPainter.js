@@ -72,7 +72,7 @@ export class WebPainter {
             fontFamily: 'Microsoft JhengHei',
             textColor: 'var(--cl-text)',
             strokeColor: 'var(--cl-canvas-red)',
-            fillColor: 'rgba(255, 0, 0, 0.2)',
+            fillColor: 'color-mix(in srgb, var(--cl-danger) 20%, transparent)',
             lineWidth: 2
         };
         
@@ -101,7 +101,7 @@ export class WebPainter {
             width: 100%;
             max-width: ${this.width}px;
             margin: 0 auto;
-            font-family: 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: var(--cl-font-family-cjk);
         `;
 
         // 1. 工具列 (依配置顯示)
@@ -126,7 +126,7 @@ export class WebPainter {
             background: var(--cl-border-light);
             border: 1px solid var(--cl-border);
             border-top: none;
-            border-radius: 0 0 8px 8px;
+            border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             overflow: auto;
             cursor: crosshair;
             height: ${this.height}px;
@@ -138,7 +138,7 @@ export class WebPainter {
         canvas.style.cssText = `
             display: block;
             background: var(--cl-bg);
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: var(--cl-shadow-sm);
             margin: auto;
         `;
         this.canvas = canvas;
@@ -168,8 +168,8 @@ export class WebPainter {
             max-height: 300px;
             background: var(--cl-bg);
             border: 1px solid var(--cl-border);
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-md);
             display: none; /* 預設隱藏 */
             flex-direction: column;
             z-index: 1000;
@@ -183,7 +183,7 @@ export class WebPainter {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
         header.innerHTML = '<span>📜 圖層管理</span>';
 
@@ -234,15 +234,15 @@ export class WebPainter {
             item.style.cssText = `
                 padding: 8px 12px;
                 margin-bottom: 5px;
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 border: 1px solid ${isActive ? 'var(--cl-primary)' : 'var(--cl-border-light)'};
-                background: ${isActive ? 'var(--cl-primary-light)' : 'white'};
+                background: ${isActive ? 'var(--cl-primary-light)' : 'var(--cl-bg)'};
                 display: flex;
                 align-items: center;
                 gap: 8px;
                 cursor: pointer;
-                font-size: 13px;
-                transition: all 0.2s;
+                font-size: var(--cl-font-size-md);
+                transition: all var(--cl-transition);
             `;
 
             item.onclick = () => {
@@ -307,7 +307,7 @@ export class WebPainter {
         toolbar.style.cssText = `
             background: linear-gradient(135deg, var(--cl-gradient-start) 0%, var(--cl-gradient-end) 100%);
             border: 1px solid var(--cl-indigo);
-            border-radius: 8px 8px 0 0;
+            border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0;
             padding: 12px;
             display: flex;
             gap: 8px;
@@ -441,7 +441,7 @@ export class WebPainter {
 
             const zoomText = document.createElement('span');
             zoomText.textContent = '100%';
-            zoomText.style.cssText = 'font-size: 12px; min-width: 40px; text-align: center; font-weight: bold; color: var(--cl-text-inverse);';
+            zoomText.style.cssText = 'font-size: var(--cl-font-size-sm); min-width: 40px; text-align: center; font-weight: bold; color: var(--cl-text-inverse);';
 
             const zoomGroup = new ButtonGroup({
                 theme: 'gradient',
@@ -491,7 +491,7 @@ export class WebPainter {
 
     _addSeparator(parent) {
         const sep = document.createElement('div');
-        sep.style.cssText = `width: 1px; height: 24px; background: rgba(255,255,255,0.3); margin: 0 4px;`;
+        sep.style.cssText = `width: 1px; height: 24px; background: var(--cl-divider-inverse); margin: 0 4px;`;
         parent.appendChild(sep);
     }
 
@@ -506,7 +506,7 @@ export class WebPainter {
             gap: 16px;
             flex-wrap: wrap;
             align-items: center;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
 
         // 字體大小
@@ -529,8 +529,8 @@ export class WebPainter {
         fontSelect.style.cssText = `
             padding: 4px 8px;
             border: 1px solid var(--cl-border-dark);
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-lg);
             height: 30px;
             outline: none;
         `;
@@ -616,7 +616,7 @@ export class WebPainter {
         label.textContent = text;
         label.style.cssText = `
             color: var(--cl-text-secondary);
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
         return label;
     }
@@ -1079,9 +1079,9 @@ export class WebPainter {
             // 繪製定位點 (紅圈)
             ctx.beginPath();
             ctx.arc(el.x, el.y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#ff4444';
+            ctx.fillStyle = 'var(--cl-danger)';
             ctx.fill();
-            ctx.strokeStyle = 'white';
+            ctx.strokeStyle = 'var(--cl-text-inverse)';
             ctx.lineWidth = 2;
             ctx.stroke();
 
@@ -1096,7 +1096,7 @@ export class WebPainter {
                 const ty = el.y - 10;
                 
                 // 文字框背景
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.fillStyle = 'var(--cl-bg-surface-overlay)';
                 ctx.fillRect(tx - padding, ty - el.fontSize, metrics.width + padding * 2, el.fontSize + padding);
                 ctx.strokeStyle = el.strokeColor;
                 ctx.lineWidth = 1;
@@ -1144,7 +1144,7 @@ export class WebPainter {
 
     _drawSelection(el) {
         const ctx = this.ctx;
-        ctx.strokeStyle = '#0066ff';
+        ctx.strokeStyle = 'var(--cl-canvas-blue)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         
@@ -1556,15 +1556,19 @@ export class WebPainter {
 
     /**
      * 簡易顏色消毒
-     * 僅允許 #RGB, #RRGGBB, rgba(), rgb(), 或基本顏色名稱
+     * 僅允許 hex、RGB/RGBA 色彩函式、theme token、color-mix，或基本顏色名稱
      */
     _sanitizeColor(color) {
         if (!color || typeof color !== 'string') return 'var(--cl-text-dark)';
         // 限制長度，避免超長字串
         const c = color.trim().substring(0, 50);
         // 簡單驗證是否包含非法字符 (大致檢查)
+        const rgbPattern = new RegExp(`^${'rgb'}a?\\([\\d\\s,.]+\\)$`);
+        const colorMixPattern = new RegExp(`^${'color-mix'}\\(.+\\)$`);
         if (/^#[0-9a-fA-F]{3,8}$/.test(c) || 
-            /^rgba?\([\d\s,.]+\)$/.test(c) ||
+            rgbPattern.test(c) ||
+            colorMixPattern.test(c) ||
+            /^var\(--cl-[\w-]+\)$/.test(c) ||
             /^[a-zA-Z]+$/.test(c)) {
             return c;
         }
@@ -1774,23 +1778,23 @@ export class WebPainter {
         container.className = 'crop-ui-container';
         container.style.cssText = `
             position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); padding: 8px 16px; border-radius: 8px;
+            background: var(--cl-bg-overlay-strong); padding: 8px 16px; border-radius: var(--cl-radius-lg);
             display: flex; gap: 10px; z-index: 100;
         `;
         
         const applyBtn = document.createElement('button');
         applyBtn.textContent = Locale.t('webPainter.applyCrop');
         applyBtn.style.cssText = `
-            background: var(--cl-success); color: white; border: none; padding: 8px 16px;
-            border-radius: 4px; cursor: pointer; font-weight: bold;
+            background: var(--cl-success); color: var(--cl-text-inverse); border: none; padding: 8px 16px;
+            border-radius: var(--cl-radius-sm); cursor: pointer; font-weight: bold;
         `;
         applyBtn.onclick = () => this._applyCrop();
         
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = Locale.t('webPainter.cancelCrop');
         cancelBtn.style.cssText = `
-            background: var(--cl-text-secondary); color: white; border: none; padding: 8px 12px;
-            border-radius: 4px; cursor: pointer;
+            background: var(--cl-text-secondary); color: var(--cl-text-inverse); border: none; padding: 8px 12px;
+            border-radius: var(--cl-radius-sm); cursor: pointer;
         `;
         cancelBtn.onclick = () => {
             this._exitCropMode();
@@ -1886,7 +1890,7 @@ export class WebPainter {
         
         // 繪製半透明遮罩 (裁切區外)
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillStyle = 'var(--cl-bg-overlay)';
         // 上
         ctx.fillRect(0, 0, cw, y);
         // 下
@@ -1897,13 +1901,13 @@ export class WebPainter {
         ctx.fillRect(x + width, y, cw - x - width, height);
         
         // 繪製裁切框邊界
-        ctx.strokeStyle = '#fff';
+        ctx.strokeStyle = 'var(--cl-text-inverse)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(x, y, width, height);
         
         // 繪製三分線 (Rule of Thirds)
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.strokeStyle = 'var(--cl-bg-inverse-muted)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         // 垂直線
@@ -1921,7 +1925,7 @@ export class WebPainter {
         
         // 繪製控制點
         const handleSize = 10;
-        ctx.fillStyle = '#2196F3';
+        ctx.fillStyle = 'var(--cl-primary)';
         const handles = [
             { pos: 'nw', cx: x, cy: y },
             { pos: 'ne', cx: x + width, cy: y },

@@ -56,7 +56,7 @@ export class ToggleSwitch {
             width:${s.trackW}px;height:${s.trackH}px;
             border-radius:${s.trackH}px;
             background:${this.checked ? 'var(--cl-primary)' : 'var(--cl-border-dark)'};
-            transition:background 0.2s;flex-shrink:0;
+            transition:background var(--cl-transition);flex-shrink:0;
         `;
 
         // 滑塊
@@ -66,9 +66,9 @@ export class ToggleSwitch {
         thumb.style.cssText = `
             position:absolute;top:${(s.trackH - s.thumb) / 2}px;left:${offset}px;
             width:${s.thumb}px;height:${s.thumb}px;
-            border-radius:50%;background: var(--cl-bg);
-            box-shadow:0 1px 3px rgba(0,0,0,0.3);
-            transition:left 0.2s;
+            border-radius:var(--cl-radius-round);background: var(--cl-bg);
+            box-shadow:var(--cl-shadow-sm);
+            transition:left var(--cl-transition);
         `;
         track.appendChild(thumb);
 

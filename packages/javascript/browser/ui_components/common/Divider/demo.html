@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divider Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            font-family: var(--cl-font-family);
+            padding: 24px;
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+        }
+        h1 { color: var(--cl-text); margin-bottom: 24px; }
+        .demo-section {
+            background: var(--cl-bg);
+            padding: 24px;
+            border-radius: var(--cl-radius-lg);
+            margin-bottom: 16px;
+            box-shadow: var(--cl-shadow-sm);
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: var(--cl-text-secondary);
+            font-size: var(--cl-font-size-xl);
+        }
+        .demo-label {
+            font-size: var(--cl-font-size-sm);
+            color: var(--cl-text-muted);
+            margin-bottom: 8px;
+        }
+        .demo-block {
+            margin-bottom: 20px;
+        }
+        .demo-block:last-child { margin-bottom: 0; }
+        .vertical-container {
+            display: flex;
+            align-items: stretch;
+            gap: 0;
+            height: 120px;
+            padding: 0 16px;
+        }
+        .vertical-container .panel {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--cl-font-size-md);
+            color: var(--cl-text-secondary);
+        }
+        .vertical-container .panel:first-child,
+        .vertical-container .panel:last-child {
+            flex: 1;
+        }
+        button {
+            padding: 8px 20px;
+            cursor: pointer;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-sm);
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            font-family: var(--cl-font-family);
+            font-size: var(--cl-font-size-md);
+            margin-right: 8px;
+            transition: border-color var(--cl-transition), color var(--cl-transition);
+        }
+        button:hover {
+            border-color: var(--cl-primary);
+            color: var(--cl-primary);
+        }
+    </style>
+</head>
+<body>
+    <h1>Divider Demo</h1>
+
+    <!-- Basic horizontal -->
+    <div class="demo-section">
+        <h2>Basic horizontal</h2>
+        <div class="demo-block">
+            <div class="demo-label">solid (default)</div>
+            <div id="h-solid"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">dashed</div>
+            <div id="h-dashed"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">dotted</div>
+            <div id="h-dotted"></div>
+        </div>
+    </div>
+
+    <!-- Thickness -->
+    <div class="demo-section">
+        <h2>Thickness</h2>
+        <div class="demo-block">
+            <div class="demo-label">thin (1px)</div>
+            <div id="t-thin"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">normal (2px)</div>
+            <div id="t-normal"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">thick (3px)</div>
+            <div id="t-thick"></div>
+        </div>
+    </div>
+
+    <!-- With text label -->
+    <div class="demo-section">
+        <h2>With text label</h2>
+        <div class="demo-block">
+            <div class="demo-label">center (default)</div>
+            <div id="txt-center"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">left</div>
+            <div id="txt-left"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">right</div>
+            <div id="txt-right"></div>
+        </div>
+    </div>
+
+    <!-- Text + styles combined -->
+    <div class="demo-section">
+        <h2>Text + style combinations</h2>
+        <div class="demo-block">
+            <div class="demo-label">dashed + center text + thick</div>
+            <div id="combo-1"></div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">dotted + left text + normal</div>
+            <div id="combo-2"></div>
+        </div>
+    </div>
+
+    <!-- Vertical -->
+    <div class="demo-section">
+        <h2>Vertical orientation</h2>
+        <div class="demo-block">
+            <div class="demo-label">Simple vertical divider</div>
+            <div class="vertical-container" id="vert-simple">
+                <div class="panel">Left panel</div>
+                <!-- divider will be injected here -->
+                <div class="panel">Right panel</div>
+            </div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">Vertical with text</div>
+            <div class="vertical-container" id="vert-text">
+                <div class="panel">Panel A</div>
+                <!-- divider will be injected here -->
+                <div class="panel">Panel B</div>
+            </div>
+        </div>
+        <div class="demo-block">
+            <div class="demo-label">Vertical dashed + thick</div>
+            <div class="vertical-container" id="vert-dashed">
+                <div class="panel">Section 1</div>
+                <!-- divider will be injected here -->
+                <div class="panel">Section 2</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic setText -->
+    <div class="demo-section">
+        <h2>Dynamic setText()</h2>
+        <div class="demo-block">
+            <div id="dynamic-divider"></div>
+        </div>
+        <button id="btnSet1">Set "OR"</button>
+        <button id="btnSet2">Set "Section Break"</button>
+        <button id="btnSet3">Set "---"</button>
+    </div>
+
+    <script type="module">
+        import { Divider } from './Divider.js';
+
+        // --- Basic horizontal ---
+        new Divider().render('#h-solid');
+        new Divider({ lineStyle: 'dashed' }).render('#h-dashed');
+        new Divider({ lineStyle: 'dotted' }).render('#h-dotted');
+
+        // --- Thickness ---
+        new Divider({ thickness: 'thin' }).render('#t-thin');
+        new Divider({ thickness: 'normal' }).render('#t-normal');
+        new Divider({ thickness: 'thick' }).render('#t-thick');
+
+        // --- With text ---
+        new Divider({ text: 'OR' }).render('#txt-center');
+        new Divider({ text: 'Section Title', textPosition: 'left' }).render('#txt-left');
+        new Divider({ text: 'END', textPosition: 'right' }).render('#txt-right');
+
+        // --- Combos ---
+        new Divider({ text: 'BREAK', lineStyle: 'dashed', thickness: 'thick' }).render('#combo-1');
+        new Divider({ text: 'NOTE', textPosition: 'left', lineStyle: 'dotted', thickness: 'normal' }).render('#combo-2');
+
+        // --- Vertical (inject between panels) ---
+        const vertSimple = document.getElementById('vert-simple');
+        const vertSimplePanels = vertSimple.querySelectorAll('.panel');
+        new Divider({ orientation: 'vertical' }).render(vertSimple);
+        // Move the divider between panels
+        vertSimple.insertBefore(vertSimple.lastElementChild, vertSimplePanels[1]);
+
+        const vertText = document.getElementById('vert-text');
+        const vertTextPanels = vertText.querySelectorAll('.panel');
+        new Divider({ orientation: 'vertical', text: 'OR' }).render(vertText);
+        vertText.insertBefore(vertText.lastElementChild, vertTextPanels[1]);
+
+        const vertDashed = document.getElementById('vert-dashed');
+        const vertDashedPanels = vertDashed.querySelectorAll('.panel');
+        new Divider({ orientation: 'vertical', lineStyle: 'dashed', thickness: 'thick' }).render(vertDashed);
+        vertDashed.insertBefore(vertDashed.lastElementChild, vertDashedPanels[1]);
+
+        // --- Dynamic setText ---
+        const dynDivider = new Divider({ text: 'Initial Text' });
+        dynDivider.render('#dynamic-divider');
+
+        document.getElementById('btnSet1').addEventListener('click', () => dynDivider.setText('OR'));
+        document.getElementById('btnSet2').addEventListener('click', () => dynDivider.setText('Section Break'));
+        document.getElementById('btnSet3').addEventListener('click', () => dynDivider.setText('---'));
+    </script>
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+</html>

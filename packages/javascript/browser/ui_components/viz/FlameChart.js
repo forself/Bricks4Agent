@@ -89,12 +89,9 @@ export class FlameChart extends BaseChart {
     }
 
     getHeatColor(level) {
-        // Flame colors: Yellow -> Orange -> Red
-        // Or Hash based on name? Standard is random warm colors.
-        const r = 255;
-        const g = 100 + Math.random() * 155;
-        const b = 0;
-        return `rgb(${r}, ${g}, ${b})`;
+        const hue = Math.max(12, 48 - level * 6);
+        const lightness = Math.max(42, 62 - level * 3);
+        return `hsl(${hue} 100% ${lightness}%)`;
     }
 
     _bindHover(el, data) {
@@ -116,12 +113,12 @@ export class FlameChart extends BaseChart {
         const html = `
             <div style="min-width: 200px;">
                 <h3 style="margin:0 0 5px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:5px;">${safeName}</h3>
-                <div style="font-size:12px; color:var(--cl-text-secondary);">
+                <div style="font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary);">
                     <strong>Value:</strong> ${node.value} ms<br/>
                     <strong>% of Total:</strong> ${((node.width / this.width) * 100).toFixed(1)}%
                 </div>
                  <div style="margin-top:8px; text-align:right;">
-                    <button style="padding:2px 8px; font-size:11px;" onclick="ModalPanel.alert({ message: "Stack Trace: ${safeName}" })">View Stack</button>
+                    <button style="padding:2px 8px; font-size:var(--cl-font-size-xs);" onclick="ModalPanel.alert({ message: "Stack Trace: ${safeName}" })">View Stack</button>
                 </div>
             </div>
         `;

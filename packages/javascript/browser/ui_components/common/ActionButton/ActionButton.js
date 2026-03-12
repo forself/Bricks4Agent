@@ -196,17 +196,17 @@ export class ActionButton {
     _getSizeStyles() {
         const sizes = {
             small: {
-                button: 'padding: 6px 12px; font-size: 12px; gap: 4px;',
+                button: 'padding: 6px 12px; font-size: var(--cl-font-size-sm); gap: 4px;',
                 icon: 'width: 14px; height: 14px;',
                 iconOnly: 'width: 28px; height: 28px; padding: 6px;'
             },
             medium: {
-                button: 'padding: 8px 16px; font-size: 14px; gap: 6px;',
+                button: 'padding: 8px 16px; font-size: var(--cl-font-size-lg); gap: 6px;',
                 icon: 'width: 18px; height: 18px;',
                 iconOnly: 'width: 36px; height: 36px; padding: 8px;'
             },
             large: {
-                button: 'padding: 12px 24px; font-size: 16px; gap: 8px;',
+                button: 'padding: 12px 24px; font-size: var(--cl-font-size-xl); gap: 8px;',
                 icon: 'width: 22px; height: 22px;',
                 iconOnly: 'width: 48px; height: 48px; padding: 12px;'
             }
@@ -257,9 +257,9 @@ export class ActionButton {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--cl-transition);
             font-weight: 500;
             font-family: inherit;
             ${variantStyles.base}

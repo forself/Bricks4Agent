@@ -49,8 +49,8 @@ export class BaseChart {
         this.container.style.justifyContent = 'center';
         this.container.style.alignItems = 'center';
         this.container.style.background = 'var(--cl-bg)';
-        this.container.style.borderRadius = '8px';
-        this.container.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+        this.container.style.borderRadius = 'var(--cl-radius-lg)';
+        this.container.style.boxShadow = 'var(--cl-shadow-sm)';
 
         // Create SVG
         const ns = 'http://www.w3.org/2000/svg';
@@ -71,17 +71,17 @@ export class BaseChart {
                 position: absolute;
                 display: none;
                 padding: 8px 12px;
-                background: rgba(255, 255, 255, 0.95);
+                background: var(--cl-bg-surface-overlay);
                 backdrop-filter: blur(4px);
                 border: 1px solid var(--cl-border-light);
-                border-radius: 6px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                font-family: -apple-system, sans-serif;
-                font-size: 13px;
+                border-radius: var(--cl-radius-md);
+                box-shadow: var(--cl-shadow-md);
+                font-family: var(--cl-font-family);
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-text);
                 pointer-events: none;
                 z-index: 9999;
-                transition: opacity 0.1s;
+                transition: opacity var(--cl-transition-fast);
             `;
             document.body.appendChild(tip);
         }
@@ -158,7 +158,7 @@ export class BaseChart {
             .replaceAll('<', '&lt;')
             .replaceAll('>', '&gt;')
             .replaceAll('"', '&quot;')
-            .replaceAll("'", '&var(--cl-primary-dark);');
+            .replaceAll("'", '&#39;');
     }
 
     createSVGElement(type) {
@@ -218,24 +218,24 @@ export class BaseChart {
 
         card.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); z-index: ${zIndex};
+            background: var(--cl-bg-overlay); z-index: ${zIndex};
             display: flex; justify-content: center; align-items: center;
-            opacity: 0; transition: opacity 0.2s;
+            opacity: 0; transition: opacity var(--cl-transition);
         `;
 
         const content = document.createElement('div');
         content.className = 'viz-card-content';
         content.style.cssText = `
             background: var(--cl-bg); width: 600px; max-width: 90%; max-height: 90vh;
-            border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            overflow-y: auto; transform: scale(0.95); transition: transform 0.2s;
+            border-radius: var(--cl-radius-xl); padding: 24px; box-shadow: var(--cl-shadow-lg);
+            overflow-y: auto; transform: scale(0.95); transition: transform var(--cl-transition);
             position: relative;
         `;
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '×';
         closeBtn.style.cssText = `
-            position: absolute; top: 15px; right: 15px; font-size: 24px;
+            position: absolute; top: 15px; right: 15px; font-size: var(--cl-font-size-3xl);
             background: none; border: none; cursor: pointer; color: var(--cl-text-placeholder);
         `;
 

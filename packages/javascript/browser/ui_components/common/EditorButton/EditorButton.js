@@ -321,9 +321,9 @@ export class EditorButton {
 
     _getSizeStyles() {
         const sizes = {
-            small: { padding: '4px 8px', fontSize: '12px', iconSize: '14px', gap: '4px', minWidth: '24px' },
-            medium: { padding: '6px 12px', fontSize: '13px', iconSize: '16px', gap: '6px', minWidth: '32px' },
-            large: { padding: '8px 16px', fontSize: '14px', iconSize: '18px', gap: '8px', minWidth: '40px' }
+            small: { padding: '4px 8px', fontSize: 'var(--cl-font-size-sm)', iconSize: '14px', gap: '4px', minWidth: '24px' },
+            medium: { padding: '6px 12px', fontSize: 'var(--cl-font-size-md)', iconSize: '16px', gap: '6px', minWidth: '32px' },
+            large: { padding: '8px 16px', fontSize: 'var(--cl-font-size-lg)', iconSize: '18px', gap: '8px', minWidth: '40px' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -339,17 +339,17 @@ export class EditorButton {
                 border: '1px solid var(--cl-border-medium)'
             },
             dark: {
-                bg: 'rgba(255,255,255,0.1)',
-                bgHover: 'rgba(255,255,255,0.2)',
-                bgActive: 'rgba(255,255,255,0.3)',
-                color: 'rgba(255,255,255,0.9)',
+                bg: 'var(--cl-bg-inverse-soft)',
+                bgHover: 'var(--cl-bg-inverse-soft-hover)',
+                bgActive: 'var(--cl-bg-inverse-muted)',
+                color: 'var(--cl-text-inverse)',
                 colorActive: 'var(--cl-bg)',
-                border: '1px solid rgba(255,255,255,0.2)'
+                border: '1px solid var(--cl-divider-inverse)'
             },
             gradient: {
-                bg: 'rgba(255,255,255,0.2)',
-                bgHover: 'rgba(255,255,255,0.3)',
-                bgActive: 'rgba(255,255,255,0.9)',
+                bg: 'var(--cl-bg-inverse-soft-hover)',
+                bgHover: 'var(--cl-bg-inverse-muted)',
+                bgActive: 'var(--cl-bg-surface-overlay)',
                 color: 'var(--cl-text-inverse)',
                 colorActive: 'var(--cl-text)',
                 border: 'none'
@@ -430,9 +430,9 @@ export class EditorButton {
             font-size: ${sizeStyles.fontSize};
             font-weight: 500;
             font-family: inherit;
-            border-radius: 6px;
+            border-radius: var(--cl-radius-md);
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: all var(--cl-transition-fast);
             background: ${this._active ? themeStyles.bgActive : variantStyles.bg};
             color: ${variantStyles.color || (this._active ? themeStyles.colorActive : themeStyles.color)};
             border: ${variantStyles.border};

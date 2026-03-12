@@ -148,7 +148,7 @@ export class OSMMapEditor extends WebPainter {
 
     _addSeparator(parent) {
         const sep = document.createElement('div');
-        sep.style.cssText = 'width: 1px; height: 24px; background: rgba(255,255,255,0.3); margin: 0 4px;';
+        sep.style.cssText = 'width: 1px; height: 24px; background: var(--cl-divider-inverse); margin: 0 4px;';
         parent.appendChild(sep);
     }
 
@@ -165,7 +165,7 @@ export class OSMMapEditor extends WebPainter {
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.9);
+            background: var(--cl-bg-overlay-heavy);
             z-index: 10000;
             padding: 20px;
         `;
@@ -173,10 +173,10 @@ export class OSMMapEditor extends WebPainter {
         // Header
         const header = document.createElement('div');
         header.style.cssText = `
-            background: var(--cl-primary-dark, #1565C0);
+            background: var(--cl-primary-dark);
             color: var(--cl-text-inverse);
             padding: 15px 20px;
-            border-radius: 8px 8px 0 0;
+            border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -193,9 +193,9 @@ export class OSMMapEditor extends WebPainter {
             color: var(--cl-text-inverse);
             border: none;
             padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
         `;
         closeBtn.onclick = () => this._toggleMap();
 
@@ -206,7 +206,7 @@ export class OSMMapEditor extends WebPainter {
         const mapWrapper = document.createElement('div');
         mapWrapper.style.cssText = `
             background: var(--cl-bg);
-            border-radius: 0 0 8px 8px;
+            border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             height: calc(100% - 60px);
             position: relative;
             overflow: hidden;
@@ -224,11 +224,11 @@ export class OSMMapEditor extends WebPainter {
             transform: translate(-50%, -50%);
             width: ${this.width}px;
             height: ${this.height}px;
-            border: 4px solid var(--cl-primary, #1976D2);
-            background: rgba(25, 118, 210, 0.05);
+            border: 4px solid var(--cl-primary);
+            background: var(--cl-primary-soft-subtle);
             pointer-events: none;
             z-index: 999;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 0 9999px var(--cl-bg-overlay-soft-hover);
         `;
 
         const frameLabel = document.createElement('div');
@@ -237,14 +237,14 @@ export class OSMMapEditor extends WebPainter {
             position: absolute;
             top: -35px; left: 50%;
             transform: translateX(-50%);
-            background: var(--cl-primary, #1976D2);
+            background: var(--cl-primary);
             color: var(--cl-text-inverse);
             padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 15px;
+            border-radius: var(--cl-radius-md);
+            font-size: var(--cl-font-size-xl);
             font-weight: bold;
             white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            box-shadow: var(--cl-shadow-md);
         `;
         captureFrame.appendChild(frameLabel);
         this._captureFrame = captureFrame;
@@ -256,8 +256,8 @@ export class OSMMapEditor extends WebPainter {
             top: 20px; right: 20px;
             background: var(--cl-bg);
             padding: 18px;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-lg);
             z-index: 1000;
             min-width: 220px;
         `;
@@ -280,8 +280,8 @@ export class OSMMapEditor extends WebPainter {
             padding: 10px;
             margin-bottom: 12px;
             border: 1px solid var(--cl-border);
-            border-radius: 4px;
-            font-size: 14px;
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-lg);
         `;
 
         const allLayers = { ...OSMMapEditor.TILE_LAYERS, ...this.customTileLayers };
@@ -298,7 +298,7 @@ export class OSMMapEditor extends WebPainter {
 
         const hint = document.createElement('div');
         hint.innerHTML = `
-            <div style="background: var(--cl-bg-secondary); padding: 12px; border-radius: 6px; font-size: 13px; color: var(--cl-text-secondary); line-height: 1.8;">
+            <div style="background: var(--cl-bg-secondary); padding: 12px; border-radius: var(--cl-radius-md); font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.8;">
                 <div>🗺️ ${strings.hintDrag || 'Drag to adjust position'}</div>
                 <div>🔍 ${strings.hintZoom || 'Scroll to zoom'}</div>
                 <div>📸 ${strings.hintCapture || 'Capture frame content'}</div>
@@ -487,7 +487,7 @@ export class OSMMapEditor extends WebPainter {
                     useCORS: true,
                     allowTaint: false,
                     logging: false,
-                    backgroundColor: '#ffffff'
+                    backgroundColor: 'var(--cl-bg)'
                 });
 
                 const frameRect = this._captureFrame.getBoundingClientRect();
@@ -538,13 +538,13 @@ export class OSMMapEditor extends WebPainter {
         panel.style.cssText = `
             position: absolute;
             bottom: 10px; left: 10px;
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--cl-bg-surface-overlay);
             padding: 10px 15px;
-            border-radius: 6px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            border-radius: var(--cl-radius-md);
+            box-shadow: var(--cl-shadow-md);
             z-index: 1000;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 13px;
+            font-family: var(--cl-font-family-mono);
+            font-size: var(--cl-font-size-md);
             min-width: 280px;
         `;
 
@@ -570,35 +570,35 @@ export class OSMMapEditor extends WebPainter {
         ddBtn.textContent = strings.coordDD || 'DD';
         ddBtn.style.cssText = `
             flex: 1; padding: 4px 8px;
-            border: 1px solid var(--cl-primary, #1976D2);
-            background: var(--cl-primary, #1976D2);
+            border: 1px solid var(--cl-primary);
+            background: var(--cl-primary);
             color: var(--cl-text-inverse);
-            border-radius: 4px; cursor: pointer; font-size: 12px;
+            border-radius: var(--cl-radius-sm); cursor: pointer; font-size: var(--cl-font-size-sm);
         `;
 
         const dmsBtn = document.createElement('button');
         dmsBtn.textContent = strings.coordDMS || 'DMS';
         dmsBtn.style.cssText = `
             flex: 1; padding: 4px 8px;
-            border: 1px solid var(--cl-primary, #1976D2);
+            border: 1px solid var(--cl-primary);
             background: var(--cl-bg);
-            color: var(--cl-primary, #1976D2);
-            border-radius: 4px; cursor: pointer; font-size: 12px;
+            color: var(--cl-primary);
+            border-radius: var(--cl-radius-sm); cursor: pointer; font-size: var(--cl-font-size-sm);
         `;
 
         ddBtn.onclick = () => {
             this.coordFormat = 'DD';
-            ddBtn.style.background = 'var(--cl-primary, #1976D2)';
+            ddBtn.style.background = 'var(--cl-primary)';
             ddBtn.style.color = 'var(--cl-text-inverse)';
             dmsBtn.style.background = 'var(--cl-bg)';
-            dmsBtn.style.color = 'var(--cl-primary, #1976D2)';
+            dmsBtn.style.color = 'var(--cl-primary)';
         };
         dmsBtn.onclick = () => {
             this.coordFormat = 'DMS';
-            dmsBtn.style.background = 'var(--cl-primary, #1976D2)';
+            dmsBtn.style.background = 'var(--cl-primary)';
             dmsBtn.style.color = 'var(--cl-text-inverse)';
             ddBtn.style.background = 'var(--cl-bg)';
-            ddBtn.style.color = 'var(--cl-primary, #1976D2)';
+            ddBtn.style.color = 'var(--cl-primary)';
         };
 
         formatToggle.appendChild(ddBtn);
@@ -649,12 +649,12 @@ export class OSMMapEditor extends WebPainter {
         scale.style.cssText = `
             position: absolute;
             bottom: 10px; right: 10px;
-            background: rgba(255, 255, 255, 0.9);
+            background: var(--cl-bg-surface-overlay);
             padding: 5px 10px;
-            border-radius: 4px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+            border-radius: var(--cl-radius-sm);
+            box-shadow: var(--cl-shadow-sm);
             z-index: 1000;
-            font-size: 11px;
+            font-size: var(--cl-font-size-xs);
             display: flex;
             align-items: center;
             gap: 8px;
@@ -733,9 +733,9 @@ export class OSMMapEditor extends WebPainter {
             position: absolute;
             top: 10px; right: 10px;
             width: 50px; height: 50px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 50%;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            background: var(--cl-bg-surface-overlay);
+            border-radius: var(--cl-radius-round);
+            box-shadow: var(--cl-shadow-md);
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -814,11 +814,11 @@ export class OSMMapEditor extends WebPainter {
                 position: absolute;
                 top: 60px; left: 50%;
                 transform: translateX(-50%);
-                background: rgba(0, 0, 0, 0.8);
+                background: var(--cl-bg-overlay-strong);
                 color: var(--cl-text-inverse);
                 padding: 10px 20px;
-                border-radius: 6px;
-                font-size: 14px;
+                border-radius: var(--cl-radius-md);
+                font-size: var(--cl-font-size-lg);
                 z-index: 2000;
                 white-space: nowrap;
             `;
@@ -863,8 +863,8 @@ export class OSMMapEditor extends WebPainter {
         this.measurePoints.forEach((point, index) => {
             const marker = L.circleMarker([point.lat, point.lng], {
                 radius: 6,
-                color: this.measureMode === 'distance' ? '#1976D2' : '#9C27B0',
-                fillColor: '#ffffff',
+                color: this.measureMode === 'distance' ? 'var(--cl-primary-dark)' : 'var(--cl-purple)',
+                fillColor: 'var(--cl-bg)',
                 fillOpacity: 1,
                 weight: 2
             }).addTo(map);
@@ -884,7 +884,7 @@ export class OSMMapEditor extends WebPainter {
 
             if (this.measureMode === 'distance') {
                 this.measureLayer = L.polyline(latlngs, {
-                    color: '#1976D2',
+                    color: 'var(--cl-primary-dark)',
                     weight: 3,
                     dashArray: '10, 5'
                 }).addTo(map);
@@ -896,9 +896,9 @@ export class OSMMapEditor extends WebPainter {
             } else if (this.measureMode === 'area') {
                 const closed = [...latlngs, latlngs[0]];
                 this.measureLayer = L.polygon(closed, {
-                    color: '#9C27B0',
+                    color: 'var(--cl-purple)',
                     weight: 3,
-                    fillColor: '#9C27B0',
+                    fillColor: 'var(--cl-purple)',
                     fillOpacity: 0.2,
                     dashArray: '10, 5'
                 }).addTo(map);
@@ -1172,18 +1172,18 @@ export class OSMMapEditor extends WebPainter {
                     const style = feature.properties?.style || {};
                     const layer = L.geoJSON(feature, {
                         style: {
-                            color: style.color || '#1976D2',
+                            color: style.color || 'var(--cl-primary-dark)',
                             weight: style.weight || 3,
                             opacity: style.opacity || 1,
-                            fillColor: style.fillColor || '#1976D2',
+                            fillColor: style.fillColor || 'var(--cl-primary-dark)',
                             fillOpacity: style.fillOpacity || 0.2
                         },
                         pointToLayer: (feat, latlng) => {
                             bounds.extend(latlng);
                             return L.circleMarker(latlng, {
                                 radius: 8,
-                                fillColor: style.color || '#1976D2',
-                                color: '#ffffff',
+                                fillColor: style.color || 'var(--cl-primary-dark)',
+                                color: 'var(--cl-bg)',
                                 weight: 2,
                                 fillOpacity: 0.8
                             });

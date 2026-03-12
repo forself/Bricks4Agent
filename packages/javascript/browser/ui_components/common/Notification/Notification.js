@@ -94,10 +94,10 @@ export class Notification {
                 gap: 12px;
                 padding: 14px 16px;
                 background: var(--cl-bg);
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                border-radius: var(--cl-radius-lg);
+                box-shadow: var(--cl-shadow-md);
                 animation: notification-slide-in 0.3s ease-out;
-                transition: all 0.3s ease;
+                transition: all var(--cl-transition-slow);
                 border-left: 4px solid;
             }
             .notification-item.closing {
@@ -115,7 +115,7 @@ export class Notification {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 18px;
+                font-size: var(--cl-font-size-2xl);
             }
             .notification-icon.success { color: var(--cl-success); }
             .notification-icon.error { color: var(--cl-danger); }
@@ -128,12 +128,12 @@ export class Notification {
             }
             .notification-title {
                 font-weight: 600;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text);
                 margin-bottom: 4px;
             }
             .notification-message {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-text-secondary);
                 line-height: 1.4;
                 word-break: break-word;
@@ -150,9 +150,9 @@ export class Notification {
                 align-items: center;
                 justify-content: center;
                 color: var(--cl-text-placeholder);
-                font-size: 18px;
-                transition: color 0.2s;
-                border-radius: 4px;
+                font-size: var(--cl-font-size-2xl);
+                transition: color var(--cl-transition);
+                border-radius: var(--cl-radius-sm);
             }
             .notification-close:hover {
                 color: var(--cl-text);

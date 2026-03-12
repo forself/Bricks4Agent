@@ -31,9 +31,9 @@ export class RelationChart extends BaseChart {
             controls.className = 'viz-controls';
             controls.style.cssText = `
                 position: absolute; top: 10px; right: 10px; 
-                background: rgba(255,255,255,0.9); padding: 5px 10px; 
-                border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                font-size: 12px; display: flex; align-items: center; z-index: 10;
+                background: var(--cl-bg-surface-overlay); padding: 5px 10px; 
+                border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-sm);
+                font-size: var(--cl-font-size-sm); display: flex; align-items: center; z-index: 10;
             `;
 
             const label = document.createElement('label');
@@ -193,7 +193,7 @@ export class RelationChart extends BaseChart {
 
             nodeHtml += `
                 <g transform="translate(${node.x}, ${node.y})" style="cursor: pointer" class="node-group" data-id="${node.id}">
-                    <circle r="25" fill="${color}" stroke="var(--cl-bg)" stroke-width="2" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2))"/>
+                    <circle r="25" fill="${color}" stroke="var(--cl-bg)" stroke-width="2" style="filter: drop-shadow(0 1px 2px var(--cl-bg-overlay-soft))"/>
                     <text dy="0.35em" text-anchor="middle" fill="var(--cl-bg)" font-size="11" font-weight="bold" pointer-events="none">${node.label || node.id}</text>
                 </g>
             `;
@@ -254,16 +254,16 @@ export class RelationChart extends BaseChart {
 
         const html = `
             <div style="min-width: 250px; max-width: 300px;">
-                <h3 style="margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px; font-size:16px;">${safeLabel}</h3>
-                <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:12px; font-size:12px; margin-bottom:15px">${safeGroup}</span>
-                <div style="background:var(--cl-bg); padding:12px; border-radius:8px; font-size:13px; line-height:1.5; color:var(--cl-text);">
+                <h3 style="margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px; font-size:var(--cl-font-size-xl);">${safeLabel}</h3>
+                <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px">${safeGroup}</span>
+                <div style="background:var(--cl-bg); padding:12px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-md); line-height:1.5; color:var(--cl-text);">
                     <p style="margin:4px 0;"><strong>ID:</strong> ${safeId}</p>
                     <p style="margin:4px 0;"><strong>Type:</strong> Entity Node</p>
                     <p style="margin:4px 0;"><strong>Status:</strong> Active</p>
                     <p style="margin:4px 0;"><strong>Description:</strong> Node representing ${safeLabel} in the network.</p>
                 </div>
                 <div style="margin-top:12px; text-align:right;">
-                     <button style="padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:4px; cursor:pointer; font-size:12px;" onclick="console.log('Action on ${safeId}')">Copy ID</button>
+                     <button style="padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:var(--cl-radius-sm); cursor:pointer; font-size:var(--cl-font-size-sm);" onclick="console.log('Action on ${safeId}')">Copy ID</button>
                 </div>
             </div>
         `;

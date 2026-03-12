@@ -10,9 +10,9 @@
  * @example
  * const timeline = new Timeline({
  *     items: [
- *         { timestamp: '2026-02-15', type: '緊急事件', color: '#E74C3C',
+ *         { timestamp: '2026-02-15', type: '緊急事件', color: 'var(--cl-danger)',
  *           title: '販毒案件', description: '於台北市查獲...', onClick: () => {} },
- *         { timestamp: '2026-01-20', type: '一般活動', color: '#4A90D9',
+ *         { timestamp: '2026-01-20', type: '一般活動', color: 'var(--cl-primary)',
  *           title: '聚會活動', description: '成員聚會...' }
  *     ],
  *     grouped: true
@@ -71,7 +71,7 @@ export class Timeline {
                 padding: 0;
             }
             .social-timeline__group-label {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 font-weight: 600;
                 color: var(--cl-text-heading);
                 padding: 12px 0 8px 0;
@@ -106,25 +106,25 @@ export class Timeline {
                 top: 4px;
                 width: 22px;
                 height: 22px;
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 11px;
-                color: var(--cl-bg);
+                font-size: var(--cl-font-size-xs);
+                color: var(--cl-text-inverse);
                 border: 3px solid var(--cl-bg);
                 box-shadow: 0 0 0 2px var(--cl-border-medium);
                 z-index: 1;
             }
             .social-timeline__card {
                 background: var(--cl-bg);
-                border-radius: 8px;
+                border-radius: var(--cl-radius-lg);
                 padding: 14px 16px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-                transition: box-shadow 0.2s ease;
+                box-shadow: var(--cl-shadow-sm);
+                transition: box-shadow var(--cl-transition);
             }
             .social-timeline__card:hover {
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: var(--cl-shadow-md);
             }
             .social-timeline__card--clickable {
                 cursor: pointer;
@@ -137,24 +137,24 @@ export class Timeline {
                 flex-wrap: wrap;
             }
             .social-timeline__type {
-                font-size: 11px;
+                font-size: var(--cl-font-size-xs);
                 padding: 2px 8px;
-                border-radius: 10px;
-                color: var(--cl-bg);
+                border-radius: var(--cl-radius-lg);
+                color: var(--cl-text-inverse);
                 font-weight: 500;
             }
             .social-timeline__time {
-                font-size: 12px;
+                font-size: var(--cl-font-size-sm);
                 color: var(--cl-text-dim);
             }
             .social-timeline__title {
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 font-weight: 600;
                 color: var(--cl-text);
                 margin-bottom: 4px;
             }
             .social-timeline__desc {
-                font-size: 13px;
+                font-size: var(--cl-font-size-md);
                 color: var(--cl-text-secondary);
                 line-height: 1.5;
                 display: -webkit-box;
@@ -166,7 +166,7 @@ export class Timeline {
                 text-align: center;
                 padding: 40px 20px;
                 color: var(--cl-text-dim);
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
             }
         `;
         document.head.appendChild(style);

@@ -66,13 +66,13 @@ export class SimpleDialog {
         overlay.style.cssText = `
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: var(--cl-bg-overlay);
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 9999;
             opacity: 0;
-            transition: opacity 0.2s;
+            transition: opacity var(--cl-transition);
         `;
 
         // 對話框
@@ -80,23 +80,23 @@ export class SimpleDialog {
         dialog.style.cssText = `
             background: var(--cl-bg);
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+            border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-lg);
             width: 320px;
             display: flex;
             flex-direction: column;
             gap: 15px;
             transform: translateY(-20px);
-            transition: transform 0.2s;
+            transition: transform var(--cl-transition);
             text-align: left;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: var(--cl-font-family);
         `;
 
         // 標題
         const titleEl = document.createElement('h3');
         titleEl.textContent = title;
         titleEl.style.margin = '0';
-        titleEl.style.fontSize = '18px';
+        titleEl.style.fontSize = 'var(--cl-font-size-2xl)';
         titleEl.style.color = 'var(--cl-text)';
         dialog.appendChild(titleEl);
 
@@ -104,7 +104,7 @@ export class SimpleDialog {
         if (content) {
             const msgEl = document.createElement('div');
             msgEl.textContent = content;
-            msgEl.style.cssText = 'font-size: 14px; color: var(--cl-text-secondary); line-height: 1.5; white-space: pre-wrap;';
+            msgEl.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text-secondary); line-height: 1.5; white-space: pre-wrap;';
             dialog.appendChild(msgEl);
         }
 
@@ -117,9 +117,9 @@ export class SimpleDialog {
              input.style.cssText = `
                 padding: 10px;
                 border: 1px solid var(--cl-border);
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 width: 100%;
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 box-sizing: border-box;
                 font-family: inherit;
              `;
@@ -158,10 +158,10 @@ export class SimpleDialog {
                 background: var(--cl-bg);
                 color: var(--cl-text-secondary);
                 font-family: inherit;
-                border-radius: 4px;
+                border-radius: var(--cl-radius-sm);
                 cursor: pointer;
-                font-size: 14px;
-                transition: background 0.2s;
+                font-size: var(--cl-font-size-lg);
+                transition: background var(--cl-transition);
             `;
             cancelBtn.onmouseover = () => cancelBtn.style.background = 'var(--cl-bg-secondary)';
             cancelBtn.onmouseout = () => cancelBtn.style.background = 'var(--cl-bg)';
@@ -181,11 +181,11 @@ export class SimpleDialog {
             background: var(--cl-primary);
             color: var(--cl-text-inverse);
             font-family: inherit;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
-            font-size: 14px;
+            font-size: var(--cl-font-size-lg);
             font-weight: 500;
-            transition: background 0.2s;
+            transition: background var(--cl-transition);
         `;
         confirmBtn.onmouseover = () => confirmBtn.style.background = 'var(--cl-primary-dark)';
         confirmBtn.onmouseout = () => confirmBtn.style.background = 'var(--cl-primary)';

@@ -63,7 +63,7 @@ export class DrawingBoard {
             width: 100%;
             max-width: ${this.width + 40}px;
             margin: 0 auto;
-            font-family: 'Microsoft JhengHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: var(--cl-font-family);
         `;
 
         // 工具列
@@ -78,7 +78,7 @@ export class DrawingBoard {
             background: var(--cl-bg-subtle);
             border: 2px solid var(--cl-border);
             border-top: none;
-            border-radius: 0 0 12px 12px;
+            border-radius: 0 0 var(--cl-radius-xl) var(--cl-radius-xl);
             overflow: hidden;
             display: flex;
             align-items: center;
@@ -92,8 +92,8 @@ export class DrawingBoard {
         canvas.height = this.height;
         canvas.style.cssText = `
             background: var(--cl-bg);
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: var(--cl-radius-sm);
+            box-shadow: var(--cl-shadow-sm);
             cursor: crosshair;
             touch-action: none;
         `;
@@ -119,7 +119,7 @@ export class DrawingBoard {
         toolbar.className = 'drawing-board-toolbar';
         toolbar.style.cssText = `
             background: linear-gradient(135deg, var(--cl-gradient-start) 0%, var(--cl-gradient-end) 100%);
-            border-radius: 12px 12px 0 0;
+            border-radius: var(--cl-radius-xl) var(--cl-radius-xl) 0 0;
             padding: 12px 16px;
             display: flex;
             gap: 8px;
@@ -223,7 +223,7 @@ export class DrawingBoard {
             background: var(--cl-bg-tertiary);
             border: 1px solid var(--cl-border);
             border-top: none;
-            border-radius: 0 0 12px 12px;
+            border-radius: 0 0 var(--cl-radius-xl) var(--cl-radius-xl);
             padding: 12px 16px;
             display: flex;
             gap: 20px;
@@ -237,21 +237,21 @@ export class DrawingBoard {
 
         const colorLabel = document.createElement('span');
         colorLabel.textContent = Locale.t('drawingBoard.colorLabel');
-        colorLabel.style.cssText = 'font-size: 14px; color: var(--cl-text-secondary);';
+        colorLabel.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text-secondary);';
         colorGroup.appendChild(colorLabel);
 
         // 預設顏色快捷按鈕
-        const colors = ['var(--cl-text)', '#ff0000', '#0066ff', '#00aa00', '#ff9900', '#9900ff'];
+        const colors = ['var(--cl-text)', 'var(--cl-canvas-red)', 'var(--cl-canvas-blue)', 'var(--cl-success)', 'var(--cl-warning)', 'var(--cl-purple)'];
         colors.forEach(color => {
             const colorBtn = document.createElement('button');
             colorBtn.style.cssText = `
                 width: 28px;
                 height: 28px;
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 border: 2px solid ${color === this.settings.strokeColor ? 'var(--cl-text)' : 'transparent'};
                 background: ${color};
                 cursor: pointer;
-                transition: transform 0.2s;
+                transition: transform var(--cl-transition);
             `;
             colorBtn.onclick = () => {
                 this.settings.strokeColor = color;
@@ -270,7 +270,7 @@ export class DrawingBoard {
             width: 28px;
             height: 28px;
             border: none;
-            border-radius: 4px;
+            border-radius: var(--cl-radius-sm);
             cursor: pointer;
         `;
         customColor.onchange = (e) => {
@@ -294,7 +294,7 @@ export class DrawingBoard {
 
         const sizeLabel = document.createElement('span');
         sizeLabel.textContent = Locale.t('drawingBoard.thicknessLabel');
-        sizeLabel.style.cssText = 'font-size: 14px; color: var(--cl-text-secondary);';
+        sizeLabel.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text-secondary);';
         sizeGroup.appendChild(sizeLabel);
 
         // 粗細滑桿
@@ -313,7 +313,7 @@ export class DrawingBoard {
 
         const sizeValue = document.createElement('span');
         sizeValue.textContent = `${this.settings.lineWidth}px`;
-        sizeValue.style.cssText = 'font-size: 14px; color: var(--cl-text); min-width: 40px;';
+        sizeValue.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text); min-width: 40px;';
         sizeGroup.appendChild(sizeValue);
 
         this.sizeSlider = sizeSlider;
@@ -332,7 +332,7 @@ export class DrawingBoard {
 
         const opacityLabel = document.createElement('span');
         opacityLabel.textContent = Locale.t('drawingBoard.opacityLabel');
-        opacityLabel.style.cssText = 'font-size: 14px; color: var(--cl-text-secondary);';
+        opacityLabel.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text-secondary);';
         opacityGroup.appendChild(opacityLabel);
 
         const opacitySlider = document.createElement('input');
@@ -349,7 +349,7 @@ export class DrawingBoard {
 
         const opacityValue = document.createElement('span');
         opacityValue.textContent = `${Math.round(this.settings.opacity * 100)}%`;
-        opacityValue.style.cssText = 'font-size: 14px; color: var(--cl-text); min-width: 40px;';
+        opacityValue.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text); min-width: 40px;';
         opacityGroup.appendChild(opacityValue);
 
         this.opacitySlider = opacitySlider;
@@ -391,7 +391,7 @@ export class DrawingBoard {
 
         if (this.settings.tool === 'eraser') {
             // 橡皮擦游標
-            this.canvas.style.cursor = `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="white" stroke="black" stroke-width="1"/></svg>') ${size/2} ${size/2}, crosshair`;
+            this.canvas.style.cursor = `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="%23ffffff" stroke="%23000000" stroke-width="1"/></svg>') ${size/2} ${size/2}, crosshair`;
         } else if (this.settings.tool === 'line') {
             // 直線游標
             this.canvas.style.cursor = 'crosshair';
@@ -406,7 +406,7 @@ export class DrawingBoard {
     }
 
     _updateColorButtons() {
-        const colors = ['var(--cl-text)', '#ff0000', '#0066ff', '#00aa00', '#ff9900', '#9900ff'];
+        const colors = ['var(--cl-text)', 'var(--cl-canvas-red)', 'var(--cl-canvas-blue)', 'var(--cl-success)', 'var(--cl-warning)', 'var(--cl-purple)'];
         this.colorButtons.forEach((btn, i) => {
             btn.style.borderColor = colors[i] === this.settings.strokeColor ? 'var(--cl-text)' : 'transparent';
         });
@@ -501,7 +501,7 @@ export class DrawingBoard {
         // 設定繪製樣式
         if (this.settings.tool === 'eraser') {
             this.ctx.globalCompositeOperation = 'destination-out';
-            this.ctx.strokeStyle = 'rgba(0,0,0,1)';
+            this.ctx.strokeStyle = 'black';
             this.ctx.globalAlpha = 1.0;
         } else if (this.settings.tool === 'highlighter') {
             this.ctx.globalCompositeOperation = 'multiply';
@@ -611,7 +611,7 @@ export class DrawingBoard {
         if (this.backgroundImage) {
             this.ctx.drawImage(this.backgroundImage, 0, 0, this.width, this.height);
         } else {
-            this.ctx.fillStyle = 'white';
+            this.ctx.fillStyle = 'var(--cl-bg)';
             this.ctx.fillRect(0, 0, this.width, this.height);
         }
 
@@ -648,7 +648,7 @@ export class DrawingBoard {
         if (this.backgroundImage) {
             this.ctx.drawImage(this.backgroundImage, 0, 0, this.width, this.height);
         } else {
-            this.ctx.fillStyle = 'white';
+            this.ctx.fillStyle = 'var(--cl-bg)';
             this.ctx.fillRect(0, 0, this.width, this.height);
         }
 
@@ -659,7 +659,7 @@ export class DrawingBoard {
             // 設定樣式
             if (path.tool === 'eraser') {
                 this.ctx.globalCompositeOperation = 'destination-out';
-                this.ctx.strokeStyle = 'rgba(0,0,0,1)';
+                this.ctx.strokeStyle = 'black';
                 this.ctx.globalAlpha = 1.0;
             } else if (path.tool === 'highlighter') {
                 this.ctx.globalCompositeOperation = 'multiply';

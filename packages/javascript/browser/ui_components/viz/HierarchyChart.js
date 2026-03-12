@@ -24,12 +24,12 @@ export class HierarchyChart extends OrgChart {
         const content = `
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px; margin-bottom:15px">
                 <h3 style="margin:0">${safeTitle} - 組織架構</h3>
-                <span style="font-size:12px; color:var(--cl-text-secondary)">單位 ID: ${safeId}</span>
+                <span style="font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary)">單位 ID: ${safeId}</span>
             </div>
-            <div style="background:var(--cl-bg-info-light); padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; color:var(--cl-primary-dark)">
+            <div style="background:var(--cl-bg-info-light); padding:10px; border-radius:var(--cl-radius-md); margin-bottom:15px; font-size:var(--cl-font-size-md); color:var(--cl-primary-dark)">
                 此單位的下屬成員與職位結構
             </div>
-            <div id="nested-org-chart-container" style="width:100%; height:400px; background:var(--cl-bg-input); border:1px solid var(--cl-border-medium); border-radius:8px"></div>
+            <div id="nested-org-chart-container" style="width:100%; height:400px; background:var(--cl-bg-input); border:1px solid var(--cl-border-medium); border-radius:var(--cl-radius-lg)"></div>
         `;
 
         // 2. Open Card with content

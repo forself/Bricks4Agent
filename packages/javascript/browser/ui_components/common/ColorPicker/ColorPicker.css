@@ -5,49 +5,49 @@
 }
 
 .color-picker label {
-    font-size: 14px;
-    color: #666;
+    font-size: var(--cl-font-size-lg);
+    color: var(--cl-text-secondary);
     user-select: none;
 }
 
 .color-picker input[type="color"] {
     width: 40px;
     height: 32px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
     cursor: pointer;
     padding: 2px;
-    transition: border-color 0.2s;
+    transition: border-color var(--cl-transition);
 }
 
 .color-picker input[type="color"]:hover {
-    border-color: #4CAF50;
+    border-color: var(--cl-success);
 }
 
 .color-picker input[type="color"]:focus {
     outline: none;
-    border-color: #4CAF50;
-    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+    border-color: var(--cl-success);
+    box-shadow: 0 0 0 2px rgba(var(--cl-success-rgb), 0.2);
 }
 
 .color-picker input[type="text"] {
     width: 80px;
     padding: 6px 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    transition: border-color 0.2s;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
+    font-family: var(--cl-font-family-mono);
+    font-size: var(--cl-font-size-md);
+    transition: border-color var(--cl-transition);
 }
 
 .color-picker input[type="text"]:hover {
-    border-color: #999;
+    border-color: var(--cl-text-placeholder);
 }
 
 .color-picker input[type="text"]:focus {
     outline: none;
-    border-color: #4CAF50;
-    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+    border-color: var(--cl-success);
+    box-shadow: 0 0 0 2px rgba(var(--cl-success-rgb), 0.2);
 }
 
 .color-picker input[type="text"]:disabled,

@@ -33,7 +33,7 @@ export class PersonInfoList extends ListInput {
 
                     const label = document.createElement('label');
                     label.textContent = field.label;
-                    label.style.cssText = 'font-size: 13px; color: var(--cl-text-secondary);';
+                    label.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary);';
                     fieldDiv.appendChild(label);
 
                     let input;
@@ -59,9 +59,9 @@ export class PersonInfoList extends ListInput {
                     input.style.cssText = `
                         padding: 6px 10px;
                         border: 1px solid var(--cl-border);
-                        border-radius: 4px;
+                        border-radius: var(--cl-radius-sm);
                         font-family: inherit;
-                        font-size: 14px;
+                        font-size: var(--cl-font-size-lg);
                         width: 100%;
                     `;
 

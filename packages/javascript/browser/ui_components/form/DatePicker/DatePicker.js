@@ -61,9 +61,9 @@ export class DatePicker {
 
     _getSizeStyles() {
         const sizes = {
-            small: { height: '32px', padding: '0 8px', fontSize: '13px' },
-            medium: { height: '40px', padding: '0 12px', fontSize: '14px' },
-            large: { height: '48px', padding: '0 16px', fontSize: '16px' }
+            small: { height: '32px', padding: '0 8px', fontSize: 'var(--cl-font-size-md)' },
+            medium: { height: '40px', padding: '0 12px', fontSize: 'var(--cl-font-size-lg)' },
+            large: { height: '48px', padding: '0 16px', fontSize: 'var(--cl-font-size-xl)' }
         };
         return sizes[this.options.size] || sizes.medium;
     }
@@ -74,13 +74,13 @@ export class DatePicker {
 
         this.element = document.createElement('div');
         this.element.className = `datepicker ${className || ''}`;
-        this.element.style.cssText = `position:relative;display:inline-block;max-width:200px;font-family:sans-serif;`;
+        this.element.style.cssText = `position:relative;display:inline-block;max-width:200px;font-family:var(--cl-font-family);`;
 
         // 標籤
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `display:block;font-size:13px;font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
+            labelEl.style.cssText = `display:block;font-size:var(--cl-font-size-md);font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
             this.element.appendChild(labelEl);
         }
 
@@ -90,9 +90,9 @@ export class DatePicker {
         inputWrapper.style.cssText = `
             display:flex;align-items:center;position:relative;
             height:${sizeStyles.height};padding:${sizeStyles.padding};padding-right:32px;
-            background:${disabled ? 'var(--cl-bg-secondary)' : 'white'};
-            border:1px solid var(--cl-border);border-radius:6px;
-            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all 0.2s;
+            background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
+            border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
+            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all var(--cl-transition);
         `;
 
         const display = document.createElement('span');
@@ -115,8 +115,8 @@ export class DatePicker {
         calendar.className = 'datepicker__calendar';
         calendar.style.cssText = `
             position:absolute;top:100%;left:0;margin-top:4px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:8px;
-            box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:6px;
+            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-lg);
+            box-shadow:var(--cl-shadow-md);padding:6px;
             z-index:1000;display:none;width:220px;
         `;
 
@@ -163,19 +163,19 @@ export class DatePicker {
 
         this.calendar.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:2px;">
-                <button type="button" class="dp-prev" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:12px;flex-shrink:0;">◀</button>
+                <button type="button" class="dp-prev" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:var(--cl-font-size-sm);flex-shrink:0;">◀</button>
                 <div style="display:flex;gap:2px;min-width:0;justify-content:center;">
-                    <select class="dp-year-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:3px;font-size:11px;cursor:pointer;width:52px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px white;">
+                    <select class="dp-year-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-xs);cursor:pointer;width:52px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px var(--cl-bg);">
                         ${yearOptions}
                     </select>
-                    <select class="dp-month-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:3px;font-size:11px;cursor:pointer;width:44px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px white;">
+                    <select class="dp-month-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-xs);cursor:pointer;width:44px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px var(--cl-bg);">
                         ${monthOptions}
                     </select>
                 </div>
-                <button type="button" class="dp-next" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:12px;flex-shrink:0;">▶</button>
+                <button type="button" class="dp-next" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:var(--cl-font-size-sm);flex-shrink:0;">▶</button>
             </div>
             <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;text-align:center;">
-                ${Object.values(Locale.t('datePicker.weekdays')).map(d => `<div style="font-size:10px;color:var(--cl-text-muted);padding:2px 0;">${d}</div>`).join('')}
+                ${Object.values(Locale.t('datePicker.weekdays')).map(d => `<div style="font-size:var(--cl-font-size-2xs);color:var(--cl-text-muted);padding:2px 0;">${d}</div>`).join('')}
                 ${this._renderDays()}
             </div>
         `;
@@ -232,9 +232,9 @@ export class DatePicker {
             const isDisabled = !this._isDateInRange(currentDate);
 
             const style = `
-                padding:3px 2px;border-radius:3px;cursor:${isDisabled ? 'not-allowed' : 'pointer'};font-size:12px;
+                padding:3px 2px;border-radius:var(--cl-radius-sm);cursor:${isDisabled ? 'not-allowed' : 'pointer'};font-size:var(--cl-font-size-sm);
                 background:${isSelected ? 'var(--cl-primary)' : isToday ? 'var(--cl-primary-light)' : 'transparent'};
-                color:${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'white' : 'var(--cl-text)'};
+                color:${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)'};
                 ${isToday && !isSelected ? 'font-weight:600;' : ''}
                 ${isDisabled ? 'opacity:0.5;' : ''}
             `;

@@ -87,7 +87,7 @@ export class LoadingSpinner {
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: rgba(255, 255, 255, 0.85);
+                background: var(--cl-bg-surface-overlay);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -149,7 +149,7 @@ export class LoadingSpinner {
             textEl.className = 'ls-text';
             textEl.textContent = text;
             textEl.style.cssText = `
-                font-size: 14px;
+                font-size: var(--cl-font-size-lg);
                 color: var(--cl-text-secondary);
                 margin-top: 8px;
             `;
@@ -167,7 +167,7 @@ export class LoadingSpinner {
             height: ${size}px;
             border: ${Math.max(2, size / 10)}px solid var(--cl-border-light);
             border-top-color: ${color};
-            border-radius: 50%;
+            border-radius: var(--cl-radius-round);
             animation: ls-spin 0.8s linear infinite;
         `;
         return spinner;
@@ -186,7 +186,7 @@ export class LoadingSpinner {
                 width: ${dotSize}px;
                 height: ${dotSize}px;
                 background: ${color};
-                border-radius: 50%;
+                border-radius: var(--cl-radius-round);
                 animation: ls-dots 1.4s ease-in-out infinite;
                 animation-delay: ${i * 0.16}s;
             `;
@@ -202,7 +202,7 @@ export class LoadingSpinner {
             width: ${size}px;
             height: ${size}px;
             background: ${color};
-            border-radius: 50%;
+            border-radius: var(--cl-radius-round);
             animation: ls-pulse 1.5s ease-in-out infinite;
         `;
         return pulse;
@@ -214,7 +214,7 @@ export class LoadingSpinner {
             width: ${width}px;
             height: 4px;
             background: var(--cl-border-light);
-            border-radius: 2px;
+            border-radius: var(--cl-radius-xs);
             overflow: hidden;
         `;
 
@@ -222,7 +222,7 @@ export class LoadingSpinner {
         bar.style.cssText = `
             height: 100%;
             background: ${color};
-            border-radius: 2px;
+            border-radius: var(--cl-radius-xs);
             animation: ls-bar 1.5s ease-in-out infinite;
         `;
 

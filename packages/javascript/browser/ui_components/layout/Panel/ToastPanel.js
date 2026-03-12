@@ -48,14 +48,14 @@ export class ToastPanel extends BasePanel {
             align-items: center;
             gap: 10px;
             padding: 12px 16px;
-            border-radius: 8px;
+            border-radius: var(--cl-radius-lg);
             background: var(--cl-bg);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: var(--cl-shadow-md);
             min-width: 250px;
             max-width: 400px;
             opacity: 0;
             transform: translateX(100%);
-            transition: all 0.3s ease;
+            transition: all var(--cl-transition-slow);
             margin-bottom: 10px;
         `;
 
@@ -69,7 +69,7 @@ export class ToastPanel extends BasePanel {
         // 內容
         const content = document.createElement('div');
         content.className = 'toast__content';
-        content.style.cssText = `flex: 1; font-size: 14px; color: var(--cl-text);`;
+        content.style.cssText = `flex: 1; font-size: var(--cl-font-size-lg); color: var(--cl-text);`;
         toast.appendChild(content);
         this.content = content;
 

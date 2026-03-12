@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tag Component Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--cl-font-family);
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: var(--cl-font-size-3xl);
+            color: var(--cl-text);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--cl-text-secondary);
+            margin-bottom: 36px;
+            font-size: var(--cl-font-size-lg);
+        }
+
+        .demo-section {
+            background: var(--cl-bg);
+            border-radius: var(--cl-radius-xl);
+            padding: 28px;
+            margin-bottom: 24px;
+            border: 1px solid var(--cl-border-light);
+            box-shadow: var(--cl-shadow-sm);
+        }
+
+        .demo-section h2 {
+            font-size: var(--cl-font-size-xl);
+            margin-bottom: 18px;
+            color: var(--cl-text-heading);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .demo-section h2::before {
+            content: '';
+            width: 4px;
+            height: 18px;
+            background: var(--cl-primary);
+            border-radius: var(--cl-radius-xs);
+        }
+
+        .demo-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .demo-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row-label {
+            font-size: var(--cl-font-size-sm);
+            color: var(--cl-text-muted);
+            min-width: 90px;
+            flex-shrink: 0;
+        }
+
+        .demo-note {
+            font-size: var(--cl-font-size-xs);
+            color: var(--cl-text-muted);
+            margin-top: 8px;
+        }
+
+        #event-log {
+            font-family: var(--cl-font-family-mono);
+            font-size: var(--cl-font-size-xs);
+            color: var(--cl-text-secondary);
+            background: var(--cl-bg-secondary);
+            border: 1px solid var(--cl-border-light);
+            border-radius: var(--cl-radius-sm);
+            padding: 8px 12px;
+            margin-top: 10px;
+            min-height: 24px;
+            max-height: 120px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Tag</h1>
+        <p class="subtitle">Tag / Chip element for categorisation, filtering, and labels</p>
+
+        <!-- All colour variants -->
+        <div class="demo-section">
+            <h2>Colour Variants</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Standard</span>
+                <span id="variants-standard"></span>
+            </div>
+
+            <div class="demo-row">
+                <span class="row-label">Rounded</span>
+                <span id="variants-rounded"></span>
+            </div>
+        </div>
+
+        <!-- Sizes -->
+        <div class="demo-section">
+            <h2>Sizes</h2>
+
+            <div class="demo-row">
+                <span class="row-label">Small</span>
+                <span id="size-sm"></span>
+            </div>
+            <div class="demo-row">
+                <span class="row-label">Medium</span>
+                <span id="size-md"></span>
+            </div>
+            <div class="demo-row">
+                <span class="row-label">Large</span>
+                <span id="size-lg"></span>
+            </div>
+        </div>
+
+        <!-- Closable tags -->
+        <div class="demo-section">
+            <h2>Closable Tags</h2>
+            <p class="demo-note">Click the &times; button to remove a tag.</p>
+            <div class="demo-row" id="closable-tags" style="margin-top: 12px;"></div>
+            <div id="event-log">Waiting for events...</div>
+        </div>
+
+        <!-- Clickable tags -->
+        <div class="demo-section">
+            <h2>Clickable Tags</h2>
+            <p class="demo-note">Hover to see the filled style; click to trigger an event.</p>
+            <div class="demo-row" id="clickable-tags" style="margin-top: 12px;"></div>
+        </div>
+
+        <!-- Tags with icons -->
+        <div class="demo-section">
+            <h2>Tags with Icons</h2>
+
+            <div class="demo-row" id="icon-tags"></div>
+        </div>
+
+        <!-- Tag group / list layout -->
+        <div class="demo-section">
+            <h2>Tag Group / List Layout</h2>
+            <p class="demo-note">Tags flow naturally in a flex container.</p>
+
+            <div class="demo-row" id="tag-group" style="margin-top: 12px;"></div>
+        </div>
+
+        <!-- Runtime API -->
+        <div class="demo-section">
+            <h2>Runtime API</h2>
+            <p class="demo-note">Use setText() and setVariant() to update tags at runtime.</p>
+            <div class="demo-row" style="margin-top: 12px; gap: 12px;">
+                <span id="runtime-tag"></span>
+                <button id="btn-change-text" style="padding: 4px 10px; font-size: var(--cl-font-size-sm); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); background: var(--cl-bg); color: var(--cl-text); cursor: pointer;">Change Text</button>
+                <button id="btn-change-variant" style="padding: 4px 10px; font-size: var(--cl-font-size-sm); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); background: var(--cl-bg); color: var(--cl-text); cursor: pointer;">Cycle Variant</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Tag } from './Tag.js';
+
+        /* ---- Colour Variants ---- */
+        const variants = ['default', 'primary', 'success', 'warning', 'danger', 'info', 'purple', 'teal', 'pink'];
+
+        const standardContainer = document.getElementById('variants-standard');
+        const roundedContainer  = document.getElementById('variants-rounded');
+        variants.forEach(v => {
+            new Tag({ text: v, variant: v }).render(standardContainer);
+            new Tag({ text: v, variant: v, rounded: true }).render(roundedContainer);
+        });
+
+        /* ---- Sizes ---- */
+        ['sm', 'md', 'lg'].forEach(size => {
+            const el = document.getElementById(`size-${size}`);
+            variants.forEach(v => {
+                new Tag({ text: v, variant: v, size }).render(el);
+            });
+        });
+
+        /* ---- Closable Tags ---- */
+        const logEl = document.getElementById('event-log');
+        function log(msg) {
+            logEl.textContent = msg + '\n' + logEl.textContent;
+        }
+
+        const closableContainer = document.getElementById('closable-tags');
+        const closableItems = [
+            { text: 'React',      variant: 'primary', icon: '\u269b\ufe0f' },
+            { text: 'Vue',        variant: 'success', icon: '\ud83c\udf3f' },
+            { text: 'Angular',    variant: 'danger',  icon: '\ud83d\udee1\ufe0f' },
+            { text: 'Svelte',     variant: 'warning', icon: '\ud83d\udd25' },
+            { text: 'TypeScript', variant: 'info',    icon: '\ud83d\udcdd' },
+            { text: 'Python',     variant: 'teal',    icon: '\ud83d\udc0d' },
+        ];
+        closableItems.forEach(item => {
+            new Tag({ ...item, closable: true })
+                .onClose(tag => log(`Closed: ${tag.getText()}`))
+                .render(closableContainer);
+        });
+
+        /* ---- Clickable Tags ---- */
+        const clickableContainer = document.getElementById('clickable-tags');
+        const clickableItems = [
+            { text: 'Frontend',  variant: 'primary' },
+            { text: 'Backend',   variant: 'teal' },
+            { text: 'DevOps',    variant: 'purple' },
+            { text: 'Design',    variant: 'pink' },
+            { text: 'Data',      variant: 'warning' },
+        ];
+        clickableItems.forEach(item => {
+            new Tag({ ...item, clickable: true, rounded: true })
+                .onClick(tag => log(`Clicked: ${tag.getText()}`))
+                .render(clickableContainer);
+        });
+
+        /* ---- Tags with Icons ---- */
+        const iconContainer = document.getElementById('icon-tags');
+        const iconItems = [
+            { text: 'Bug',      icon: '\ud83d\udc1b', variant: 'danger' },
+            { text: 'Feature',  icon: '\u2728',       variant: 'success' },
+            { text: 'Docs',     icon: '\ud83d\udcda', variant: 'info' },
+            { text: 'Urgent',   icon: '\ud83d\udea8', variant: 'warning' },
+            { text: 'Security', icon: '\ud83d\udd12', variant: 'purple' },
+            { text: 'Refactor', icon: '\ud83d\udd27', variant: 'teal' },
+            { text: 'Style',    icon: '\ud83c\udfa8', variant: 'pink' },
+        ];
+        iconItems.forEach(item => {
+            new Tag({ ...item, rounded: true }).render(iconContainer);
+        });
+
+        /* ---- Tag Group ---- */
+        const groupContainer = document.getElementById('tag-group');
+        const skills = [
+            'JavaScript', 'TypeScript', 'React', 'Vue', 'Node.js',
+            'Python', 'Go', 'Rust', 'Docker', 'Kubernetes',
+            'PostgreSQL', 'Redis', 'GraphQL', 'REST API', 'CI/CD'
+        ];
+        skills.forEach((skill, i) => {
+            const v = variants[i % variants.length];
+            new Tag({ text: skill, variant: v, rounded: true, size: 'sm' }).render(groupContainer);
+        });
+
+        /* ---- Runtime API ---- */
+        const runtimeTag = new Tag({ text: 'Mutable', variant: 'primary', size: 'lg' });
+        runtimeTag.render(document.getElementById('runtime-tag'));
+
+        let textIdx = 0;
+        const texts = ['Mutable', 'Dynamic', 'Updated', 'Changed'];
+        document.getElementById('btn-change-text').addEventListener('click', () => {
+            textIdx = (textIdx + 1) % texts.length;
+            runtimeTag.setText(texts[textIdx]);
+        });
+
+        let varIdx = 0;
+        document.getElementById('btn-change-variant').addEventListener('click', () => {
+            varIdx = (varIdx + 1) % variants.length;
+            runtimeTag.setVariant(variants[varIdx]);
+        });
+    </script>
+
+    <script type="module">
+        import { createThemeToggle } from '../../demo-utils.js';
+        createThemeToggle();
+    </script>
+</body>
+
+</html>
