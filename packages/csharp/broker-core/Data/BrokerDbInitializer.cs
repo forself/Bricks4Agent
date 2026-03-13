@@ -5,7 +5,7 @@ namespace BrokerCore.Data;
 
 /// <summary>
 /// 資料庫初始化 —— EnsureTable + 種子資料
-/// 啟動時呼叫，確保 13 張表存在並植入 Phase 1 種子
+/// 啟動時呼叫，確保 17 張表存在並植入種子資料
 /// </summary>
 public class BrokerDbInitializer
 {
@@ -25,9 +25,10 @@ public class BrokerDbInitializer
         SeedCapabilities();
     }
 
-    /// <summary>建立 13 張表</summary>
+    /// <summary>建立 17 張表</summary>
     private void EnsureTables()
     {
+        // ── Phase 1：核心控制平面（12 張） ──
         _db.EnsureTable<Principal>();
         _db.EnsureTable<Role>();
         _db.EnsureTable<RoleBinding>();
@@ -41,13 +42,22 @@ public class BrokerDbInitializer
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
-        // 額外建立複合唯一約束（EnsureTable 不自動建立）
+        // ── Phase 4：因果工作流（4 張） + 觀測（1 張） ──
+        _db.EnsureTable<Plan>();
+        _db.EnsureTable<PlanNode>();
+        _db.EnsureTable<PlanEdge>();
+        _db.EnsureTable<Checkpoint>();
+        _db.EnsureTable<ObservationEvent>();
+
+        // 額外建立複合唯一約束 + 索引（EnsureTable 不自動建立）
         CreateUniqueConstraints();
     }
 
-    /// <summary>建立 EnsureTable 無法自動產生的唯一約束</summary>
+    /// <summary>建立 EnsureTable 無法自動產生的唯一約束 + 查詢索引</summary>
     private void CreateUniqueConstraints()
     {
+        // ── Phase 1 ──
+
         // ExecutionRequest: (task_id, idempotency_key) 防重複執行
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_requests_idempotency
                       ON execution_requests(task_id, idempotency_key)");
@@ -55,6 +65,48 @@ public class BrokerDbInitializer
         // AuditEvent: (trace_id, trace_seq) per-trace chain 序列化
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_events_trace_seq
                       ON audit_events(trace_id, trace_seq)");
+
+        // ── Phase 4：因果工作流索引 ──
+
+        // PlanNode: (plan_id, ordinal) 拓撲序查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_plan_nodes_plan
+                      ON plan_nodes(plan_id, ordinal)");
+
+        // PlanEdge: plan_id 查詢 + from/to 依賴查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_plan_edges_plan
+                      ON plan_edges(plan_id)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_plan_edges_from
+                      ON plan_edges(from_node_id)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_plan_edges_to
+                      ON plan_edges(to_node_id)");
+
+        // Checkpoint: (plan_id, node_id) 快照查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_checkpoints_plan
+                      ON checkpoints(plan_id, node_id)");
+
+        // ── SharedContext 查詢索引 ──
+
+        // (document_id, version) 版本查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_shared_context_doc_ver
+                      ON shared_context_entries(document_id, version)");
+
+        // (key, task_id) node output 查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_shared_context_key_task
+                      ON shared_context_entries(key, task_id)");
+
+        // ── 觀測事件索引 ──
+
+        // trace_id correlation 查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
+                      ON observation_events(trace_id)");
+
+        // plan_id correlation 查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_plan
+                      ON observation_events(plan_id)");
+
+        // severity + observed_at 告警查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_severity
+                      ON observation_events(severity, observed_at)");
     }
 
     /// <summary>初始化 SystemEpoch（僅一行，epoch=1）</summary>

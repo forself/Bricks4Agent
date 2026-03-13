@@ -1,0 +1,40 @@
+<Solution>
+  <Folder Name="/broker-core/">
+    <Project Path="broker-core/BrokerCore.csproj" />
+  </Folder>
+  <Folder Name="/broker/">
+    <Project Path="broker/Broker.csproj" />
+  </Folder>
+  <Folder Name="/cache-client/">
+    <Project Path="cache-client/CacheClient.csproj" />
+  </Folder>
+  <Folder Name="/cache-protocol/">
+    <Project Path="cache-protocol/CacheProtocol.csproj" />
+  </Folder>
+  <Folder Name="/cache-server/">
+    <Project Path="cache-server/CacheServer.csproj" />
+  </Folder>
+  <Folder Name="/database/">
+    <Project Path="database/BaseCache/BaseCache.csproj" />
+  </Folder>
+  <Folder Name="/database/BaseOrm/" />
+  <Folder Name="/database/BaseOrm/net8/">
+    <Project Path="database/BaseOrm/net8/BaseOrm.csproj" />
+  </Folder>
+  <Folder Name="/function-pool/">
+    <Project Path="function-pool/FunctionPool.csproj" />
+  </Folder>
+  <Folder Name="/logging/">
+    <Project Path="logging/BaseLogger/BaseLogger.csproj" />
+  </Folder>
+  <Folder Name="/security/">
+    <Project Path="security/RateLimiting/RateLimiting.csproj" />
+  </Folder>
+  <Folder Name="/worker-sdk/">
+    <Project Path="worker-sdk/WorkerSdk.csproj" />
+  </Folder>
+  <Folder Name="/workers/" />
+  <Folder Name="/workers/file-worker/">
+    <Project Path="workers/file-worker/FileWorker.csproj" />
+  </Folder>
+</Solution>

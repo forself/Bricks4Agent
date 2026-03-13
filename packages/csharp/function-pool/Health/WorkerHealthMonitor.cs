@@ -1,3 +1,7 @@
+using System.Text.Json;
+using BrokerCore;
+using BrokerCore.Models;
+using BrokerCore.Services;
 using FunctionPool.Models;
 using FunctionPool.Registry;
 using Microsoft.Extensions.Logging;
@@ -11,12 +15,14 @@ namespace FunctionPool.Health;
 /// 1. 定時掃描所有 Worker 的心跳時間
 /// 2. 超過 HeartbeatTimeout 未收到 PING → 標記 Disconnected
 /// 3. 從 Registry 移除已斷線 Worker
+/// 4. 發射 WORKER_HEARTBEAT_LOST 觀測事件（Phase 4）
 /// </summary>
 public class WorkerHealthMonitor : IDisposable
 {
     private readonly IWorkerRegistry _registry;
     private readonly PoolConfig _config;
     private readonly ILogger<WorkerHealthMonitor> _logger;
+    private readonly IObservationService? _observationService;
 
     private Timer? _timer;
     private volatile bool _disposed;
@@ -24,11 +30,13 @@ public class WorkerHealthMonitor : IDisposable
     public WorkerHealthMonitor(
         IWorkerRegistry registry,
         PoolConfig config,
-        ILogger<WorkerHealthMonitor> logger)
+        ILogger<WorkerHealthMonitor> logger,
+        IObservationService? observationService = null)
     {
         _registry = registry;
         _config = config;
         _logger = logger;
+        _observationService = observationService;
     }
 
     /// <summary>啟動健康監控</summary>
@@ -81,6 +89,35 @@ public class WorkerHealthMonitor : IDisposable
 
                     _registry.Deregister(worker.WorkerId);
                     timedOut++;
+
+                    // Phase 4: 發射 WORKER_HEARTBEAT_LOST 觀測事件
+                    _observationService?.Record(new ObservationEvent
+                    {
+                        ObservationId = IdGen.New("obs"),
+                        Source = ObservationSource.Internal,
+                        EventType = "WORKER_HEARTBEAT_LOST",
+                        TraceId = IdGen.New("trace"),
+                        WorkerId = worker.WorkerId,
+                        ObservedState = JsonSerializer.Serialize(new
+                        {
+                            workerState = "Disconnected",
+                            lastHeartbeat = worker.LastHeartbeat,
+                            elapsedSeconds = elapsed.TotalSeconds,
+                            capabilities = worker.Capabilities
+                        }),
+                        ExpectedState = JsonSerializer.Serialize(new
+                        {
+                            workerState = "Ready",
+                            maxHeartbeatIntervalSeconds = _config.HeartbeatTimeout.TotalSeconds
+                        }),
+                        Severity = ObservationSeverity.Warning,
+                        Details = JsonSerializer.Serialize(new
+                        {
+                            workerId = worker.WorkerId,
+                            reason = $"Heartbeat timeout ({elapsed.TotalSeconds:F1}s > {_config.HeartbeatTimeout.TotalSeconds:F1}s)"
+                        }),
+                        ObservedAt = DateTime.UtcNow
+                    });
                 }
             }
 

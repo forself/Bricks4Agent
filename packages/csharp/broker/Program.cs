@@ -17,7 +17,7 @@ var dbPath = builder.Configuration.GetValue<string>("Database:Path") ?? "broker.
 var connectionString = $"Data Source={dbPath}";
 builder.Services.AddSingleton(sp => BrokerDb.UseSqlite(connectionString));
 
-// ── 初始化資料庫（13 張表 + 種子資料） ──
+// ── 初始化資料庫（16 張表 + 種子資料） ──
 using (var initDb = BrokerDb.UseSqlite(connectionString))
 {
     var initializer = new BrokerDbInitializer(initDb);
@@ -141,6 +141,7 @@ builder.Services.AddSingleton<IPolicyEngine>(sp =>
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
 var poolEnabled = builder.Configuration.GetValue<bool>("FunctionPool:Enabled", false);
+var strictMode = builder.Configuration.GetValue<bool>("FunctionPool:StrictMode", false);
 
 if (poolEnabled)
 {
@@ -161,30 +162,70 @@ if (poolEnabled)
     builder.Services.AddSingleton(poolConfig);
     builder.Services.AddSingleton<IWorkerRegistry, WorkerRegistry>();
     builder.Services.AddSingleton<PoolListener>();
-    builder.Services.AddSingleton<WorkerHealthMonitor>();
-
-    // FallbackDispatcher = PoolDispatcher + InProcessDispatcher
-    builder.Services.AddSingleton<IExecutionDispatcher>(sp =>
-    {
-        var inProcess = new InProcessDispatcher(
-            sp.GetRequiredService<ILogger<InProcessDispatcher>>());
-        var poolDispatcher = new PoolDispatcher(
+    builder.Services.AddSingleton(sp =>
+        new WorkerHealthMonitor(
             sp.GetRequiredService<IWorkerRegistry>(),
-            poolConfig,
-            sp.GetRequiredService<ILogger<PoolDispatcher>>());
-        return new FallbackDispatcher(
-            poolDispatcher, inProcess, inProcess.CanHandle,
-            sp.GetRequiredService<ILogger<FallbackDispatcher>>());
-    });
+            sp.GetRequiredService<PoolConfig>(),
+            sp.GetRequiredService<ILogger<WorkerHealthMonitor>>(),
+            sp.GetService<IObservationService>()));
+
+    if (strictMode)
+    {
+        // 生產模式：StrictPoolDispatcher — 無 Worker 就 fail，絕不降級
+        builder.Services.AddSingleton<IExecutionDispatcher>(sp =>
+        {
+            var poolDispatcher = new PoolDispatcher(
+                sp.GetRequiredService<IWorkerRegistry>(),
+                poolConfig,
+                sp.GetRequiredService<ILogger<PoolDispatcher>>());
+            return new StrictPoolDispatcher(
+                poolDispatcher,
+                sp.GetRequiredService<ILogger<StrictPoolDispatcher>>());
+        });
+    }
+    else
+    {
+        // 開發/測試模式：FallbackDispatcher — Pool + InProcess 降級
+        builder.Services.AddSingleton<IExecutionDispatcher>(sp =>
+        {
+            var inProcess = new InProcessDispatcher(
+                sp.GetRequiredService<ILogger<InProcessDispatcher>>());
+            var poolDispatcher = new PoolDispatcher(
+                sp.GetRequiredService<IWorkerRegistry>(),
+                poolConfig,
+                sp.GetRequiredService<ILogger<PoolDispatcher>>());
+            return new FallbackDispatcher(
+                poolDispatcher, inProcess, inProcess.CanHandle,
+                sp.GetRequiredService<ILogger<FallbackDispatcher>>());
+        });
+    }
 
     var poolLog = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
-    poolLog.LogInformation("Function pool enabled: port={Port}", poolConfig.ListenPort);
+    poolLog.LogInformation(
+        "Function pool enabled: port={Port}, strictMode={Strict}",
+        poolConfig.ListenPort, strictMode);
 }
 else
 {
     builder.Services.AddSingleton<IExecutionDispatcher>(sp =>
         new InProcessDispatcher(sp.GetRequiredService<ILogger<InProcessDispatcher>>()));
 }
+
+// ── Phase 4: 因果工作流服務 ──
+builder.Services.AddSingleton<ISharedContextService>(sp =>
+    new SharedContextService(
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IAuditService>()));
+
+builder.Services.AddSingleton<IPlanService>(sp =>
+    new PlanService(
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IAuditService>()));
+
+builder.Services.AddSingleton<IObservationService>(sp =>
+    new ObservationService(
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IAuditService>()));
 
 builder.Services.AddSingleton<IBrokerService>(sp =>
     new BrokerService(
@@ -196,6 +237,14 @@ builder.Services.AddSingleton<IBrokerService>(sp =>
         sp.GetRequiredService<IRevocationService>(),
         sp.GetRequiredService<ITaskRouter>(),
         sp.GetRequiredService<IExecutionDispatcher>()));
+
+builder.Services.AddSingleton<IPlanEngine>(sp =>
+    new PlanEngine(
+        sp.GetRequiredService<IPlanService>(),
+        sp.GetRequiredService<IBrokerService>(),
+        sp.GetRequiredService<ISharedContextService>(),
+        sp.GetRequiredService<IAuditService>(),
+        sp.GetRequiredService<IObservationService>()));
 
 var app = builder.Build();
 
@@ -222,6 +271,8 @@ ExecutionEndpoints.Map(api);
 CapabilityEndpoints.Map(api);
 AuditEndpoints.Map(api);
 AdminEndpoints.Map(api);
+ContextEndpoints.Map(api);
+PlanEndpoints.Map(api);
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)
