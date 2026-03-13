@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "reporting-abstractions-and-examples",
+      "paths": [
+        "packages/csharp/reporting/Models",
+        "packages/csharp/reporting/Services",
+        "packages/csharp/reporting/Examples"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "literal",
+          "value": "using ClosedXML.Excel;",
+          "message": "Abstraction and generated-style layers must not reference ClosedXML directly. Depend on IExcelReportService instead."
+        },
+        {
+          "type": "regex",
+          "value": "\\bClosedXML\\b|\\bXLWorkbook\\b|\\bIXL",
+          "message": "Abstraction and generated-style layers must not use ClosedXML workbook APIs."
+        },
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "Abstraction and generated-style layers must not reference alternate Excel libraries directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bFile\\.|\\bDirectory\\.",
+          "message": "Abstraction and generated-style layers must not perform direct filesystem operations for report generation."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "Abstraction and generated-style layers must not construct HttpClient directly."
+        }
+      ]
+    },
+    {
+      "name": "reporting-example-host",
+      "paths": [
+        "packages/csharp/reporting/ExampleHost"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "literal",
+          "value": "using ClosedXML.Excel;",
+          "message": "Host layer should register the adapter, not use ClosedXML APIs directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bClosedXML\\b|\\bXLWorkbook\\b|\\bIXL",
+          "message": "Host layer should not manipulate Excel workbooks directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "Host layer should not reference alternate Excel libraries directly."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "Host layer should use injected clients or platform abstractions instead of constructing HttpClient directly."
+        }
+      ]
+    },
+    {
+      "name": "reporting-closedxml-adapter",
+      "paths": [
+        "packages/csharp/reporting/ClosedXmlAdapter"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "ClosedXmlAdapter must not mix alternate Excel libraries."
+        },
+        {
+          "type": "regex",
+          "value": "\\bFile\\.|\\bDirectory\\.",
+          "message": "ClosedXmlAdapter should generate reports in memory rather than writing to the local filesystem."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "ClosedXmlAdapter must not construct HttpClient directly."
+        }
+      ]
+    }
+  ]
+}

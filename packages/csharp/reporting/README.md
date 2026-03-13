@@ -70,6 +70,18 @@ Validate dependency boundaries:
 npm run validate:dotnet-deps
 ```
 
+Validate source-level API usage boundaries:
+
+```bash
+npm run validate:dotnet-api-usage
+```
+
+Run both governance checks together:
+
+```bash
+npm run validate:backend-governance
+```
+
 Run the example host:
 
 ```bash

@@ -162,6 +162,10 @@ The first enforcement pass is intentionally small and explicit.
   [dotnet-dependency-policy.json](/d:/Bricks4Agent/tools/scripts/dotnet-dependency-policy.json)
 - validator:
   [validate-dotnet-dependencies.mjs](/d:/Bricks4Agent/tools/scripts/validate-dotnet-dependencies.mjs)
+- API usage policy:
+  [dotnet-api-usage-policy.json](/d:/Bricks4Agent/tools/scripts/dotnet-api-usage-policy.json)
+- API usage validator:
+  [validate-dotnet-api-usage.mjs](/d:/Bricks4Agent/tools/scripts/validate-dotnet-api-usage.mjs)
 
 Current policy coverage includes:
 
@@ -175,6 +179,18 @@ Run it with:
 
 ```bash
 node tools/scripts/validate-dotnet-dependencies.mjs
+```
+
+Run the source-level API policy with:
+
+```bash
+node tools/scripts/validate-dotnet-api-usage.mjs
+```
+
+Or run both checks together with:
+
+```bash
+npm run validate:backend-governance
 ```
 
 For a concrete host/composition example, see:
