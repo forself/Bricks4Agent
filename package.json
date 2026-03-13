@@ -7,6 +7,7 @@
     "test": "node packages/javascript/browser/page-generator/examples/test-all.js",
     "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
     "audit:ui-styles": "node tools/scripts/audit-ui-style-rules.mjs",
+    "validate:dotnet-deps": "node tools/scripts/validate-dotnet-dependencies.mjs",
     "validate:ui-library": "node tools/scripts/validate-ui-library.mjs",
     "validate:ui-library:browser": "node tools/scripts/validate-ui-library.mjs --browser --require-browser",
     "serve": "dotnet run --project tools/static-server/StaticServer.csproj -- ./tools/spa-generator/frontend 3080"

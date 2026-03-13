@@ -169,9 +169,15 @@ Current policy coverage includes:
 - [BrokerCore.csproj](/d:/Bricks4Agent/packages/csharp/broker-core/BrokerCore.csproj)
 - [Reporting.Abstractions.csproj](/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj)
 - [ClosedXmlAdapter.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj)
+- [ReportingExampleHost.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
 
 Run it with:
 
 ```bash
 node tools/scripts/validate-dotnet-dependencies.mjs
 ```
+
+For a concrete host/composition example, see:
+
+- [Program.cs](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs)
+- [README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.md)

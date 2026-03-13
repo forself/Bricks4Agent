@@ -49,6 +49,8 @@ This package narrows the problem so generated code only composes
 - `Models/ReportFile.cs`
 - `Services/IExcelReportService.cs`
 - `Examples/ExportEmployeesReportUseCase.cs`
+- `ClosedXmlAdapter/ClosedXmlExcelReportService.cs`
+- `ExampleHost/Program.cs`
 - `CapabilitySchemas/excel-report.enterprise.json`
 
 ## Example flow
@@ -59,3 +61,17 @@ This package narrows the problem so generated code only composes
 4. The use case calls `IExcelReportService.GenerateAsync(...)`.
 5. An adapter package renders the workbook using an approved third-party library.
 6. The host returns or stores the resulting `ReportFile`.
+
+## Local verification
+
+Validate dependency boundaries:
+
+```bash
+npm run validate:dotnet-deps
+```
+
+Run the example host:
+
+```bash
+dotnet run --project packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj --urls http://127.0.0.1:5087
+```

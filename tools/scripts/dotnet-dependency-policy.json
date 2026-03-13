@@ -41,6 +41,15 @@
         "ClosedXML"
       ],
       "allowedFrameworkReferences": []
+    },
+    {
+      "project": "packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj",
+      "allowedProjectReferences": [
+        "packages/csharp/reporting/Reporting.Abstractions.csproj",
+        "packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj"
+      ],
+      "allowedPackageReferences": [],
+      "allowedFrameworkReferences": []
     }
   ]
 }

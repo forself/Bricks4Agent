@@ -21,6 +21,11 @@ Forbidden responsibility:
 builder.Services.AddScoped<IExcelReportService, ClosedXmlExcelReportService>();
 ```
 
+For a concrete host example, see:
+
+- [Program.cs](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/Program.cs)
+- [ReportingExampleHost.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
+
 ## Dependency boundary
 
 Generated code should reference only:
