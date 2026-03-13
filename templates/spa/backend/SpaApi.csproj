@@ -13,14 +13,4 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Stale EF Core service variants; template runtime currently ships the BaseOrm-backed auth/user slice. -->
-    <Compile Remove="Services\BalanceRecordService.cs" />
-    <Compile Remove="Services\CartItemService.cs" />
-    <Compile Remove="Services\CategoryService.cs" />
-    <Compile Remove="Services\OrderItemService.cs" />
-    <Compile Remove="Services\OrderService.cs" />
-    <Compile Remove="Services\ProductService.cs" />
-  </ItemGroup>
-
 </Project>
