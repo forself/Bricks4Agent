@@ -50,6 +50,34 @@
       ],
       "allowedPackageReferences": [],
       "allowedFrameworkReferences": []
+    },
+    {
+      "project": "templates/spa/backend/SpaApi.csproj",
+      "allowedProjectReferences": [],
+      "allowedPackageReferences": [
+        "Microsoft.Data.Sqlite",
+        "Microsoft.AspNetCore.Authentication.JwtBearer"
+      ],
+      "allowedFrameworkReferences": []
+    },
+    {
+      "project": "tools/spa-generator/backend/spa-generator.csproj",
+      "allowedProjectReferences": [],
+      "allowedPackageReferences": [
+        "Microsoft.EntityFrameworkCore.Sqlite",
+        "Microsoft.EntityFrameworkCore.Design",
+        "Microsoft.AspNetCore.Authentication.JwtBearer"
+      ],
+      "allowedFrameworkReferences": []
+    },
+    {
+      "project": "projects/ShopBricks-Gen/backend/ShopBricks.csproj",
+      "allowedProjectReferences": [],
+      "allowedPackageReferences": [
+        "Microsoft.Data.Sqlite",
+        "Microsoft.AspNetCore.Authentication.JwtBearer"
+      ],
+      "allowedFrameworkReferences": []
     }
   ]
 }

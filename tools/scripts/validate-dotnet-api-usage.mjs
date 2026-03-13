@@ -24,7 +24,16 @@ function loadPolicy() {
 }
 
 function walkFiles(rootPath, extensions, files = []) {
-    if (!statSync(rootPath).isDirectory()) {
+    const stats = statSync(rootPath);
+    if (stats.isFile()) {
+        if (extensions.includes(path.extname(rootPath))) {
+            files.push(rootPath);
+        }
+
+        return files;
+    }
+
+    if (!stats.isDirectory()) {
         return files;
     }
 

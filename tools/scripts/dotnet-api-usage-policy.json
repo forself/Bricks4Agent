@@ -95,6 +95,118 @@
           "message": "ClosedXmlAdapter must not construct HttpClient directly."
         }
       ]
+    },
+    {
+      "name": "generated-backend-domain-and-services",
+      "paths": [
+        "templates/spa/backend/Models",
+        "templates/spa/backend/Services",
+        "tools/spa-generator/backend/Models",
+        "tools/spa-generator/backend/Services",
+        "projects/ShopBricks-Gen/backend/Models",
+        "projects/ShopBricks-Gen/backend/Services"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "literal",
+          "value": "using ClosedXML.Excel;",
+          "message": "Generated backend domain and service code must not reference ClosedXML directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bClosedXML\\b|\\bXLWorkbook\\b|\\bIXL",
+          "message": "Generated backend domain and service code must not use ClosedXML workbook APIs."
+        },
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "Generated backend domain and service code must not reference alternate Excel libraries directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bFile\\.|\\bDirectory\\.",
+          "message": "Generated backend domain and service code must not perform direct filesystem operations."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "Generated backend domain and service code must not construct HttpClient directly."
+        }
+      ]
+    },
+    {
+      "name": "generated-backend-data",
+      "paths": [
+        "templates/spa/backend/Data",
+        "tools/spa-generator/backend/Data",
+        "projects/ShopBricks-Gen/backend/Data"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "literal",
+          "value": "using ClosedXML.Excel;",
+          "message": "Generated backend data layer must not reference ClosedXML directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bClosedXML\\b|\\bXLWorkbook\\b|\\bIXL",
+          "message": "Generated backend data layer must not use ClosedXML workbook APIs."
+        },
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "Generated backend data layer must not reference alternate Excel libraries directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bFile\\.|\\bDirectory\\.",
+          "message": "Generated backend data layer must not perform direct filesystem operations."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "Generated backend data layer must not construct HttpClient directly."
+        }
+      ]
+    },
+    {
+      "name": "generated-backend-host-programs",
+      "paths": [
+        "templates/spa/backend/Program.cs",
+        "tools/spa-generator/backend/Program.cs",
+        "projects/ShopBricks-Gen/backend/Program.cs"
+      ],
+      "extensions": [
+        ".cs"
+      ],
+      "forbidden": [
+        {
+          "type": "literal",
+          "value": "using ClosedXML.Excel;",
+          "message": "Generated backend host code must not reference ClosedXML directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bClosedXML\\b|\\bXLWorkbook\\b|\\bIXL",
+          "message": "Generated backend host code must not manipulate ClosedXML workbooks directly."
+        },
+        {
+          "type": "regex",
+          "value": "\\bEPPlus\\b|\\bOfficeOpenXml\\b|\\bNPOI\\b",
+          "message": "Generated backend host code must not reference alternate Excel libraries directly."
+        },
+        {
+          "type": "regex",
+          "value": "new\\s+HttpClient\\s*\\(",
+          "message": "Generated backend host code must not construct HttpClient directly."
+        }
+      ]
     }
   ]
 }

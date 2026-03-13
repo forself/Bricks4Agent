@@ -174,6 +174,9 @@ Current policy coverage includes:
 - [Reporting.Abstractions.csproj](/d:/Bricks4Agent/packages/csharp/reporting/Reporting.Abstractions.csproj)
 - [ClosedXmlAdapter.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj)
 - [ReportingExampleHost.csproj](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/ReportingExampleHost.csproj)
+- [SpaApi.csproj](/d:/Bricks4Agent/templates/spa/backend/SpaApi.csproj)
+- [spa-generator.csproj](/d:/Bricks4Agent/tools/spa-generator/backend/spa-generator.csproj)
+- [ShopBricks.csproj](/d:/Bricks4Agent/projects/ShopBricks-Gen/backend/ShopBricks.csproj)
 
 Run it with:
 
@@ -192,6 +195,14 @@ Or run both checks together with:
 ```bash
 npm run validate:backend-governance
 ```
+
+The current API usage policy is intentionally narrow. It now covers:
+
+- reporting abstraction, adapter, and host layers
+- template SPA backend service/model/data layers
+- SPA generator backend service/model/data layers
+- generated ShopBricks backend service/model/data layers
+- selected generated backend host `Program.cs` files
 
 For a concrete host/composition example, see:
 
