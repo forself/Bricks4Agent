@@ -32,27 +32,42 @@ public class WorkerRegistry : IWorkerRegistry
         _logger = logger;
     }
 
+    /// <summary>
+    /// H-9 修復：Register 使用 _indexLock 保護整個操作，消除 TOCTOU 競態
+    /// （ContainsKey → Deregister → TryAdd 不再拆分為三個非原子步驟）
+    /// </summary>
     public bool Register(WorkerInfo worker, WorkerConnection connection)
     {
         if (string.IsNullOrEmpty(worker.WorkerId))
             return false;
 
-        // 如果已存在相同 workerId → 先移除舊的
-        if (_workers.ContainsKey(worker.WorkerId))
-        {
-            Deregister(worker.WorkerId);
-        }
-
         worker.State = WorkerState.Ready;
         worker.ConnectedAt = DateTime.UtcNow;
         worker.LastHeartbeat = DateTime.UtcNow;
 
-        if (!_workers.TryAdd(worker.WorkerId, (worker, connection)))
-            return false;
-
-        // 更新能力索引
         lock (_indexLock)
         {
+            // 原子操作：先移除舊的（若存在）→ 再新增
+            if (_workers.TryRemove(worker.WorkerId, out var oldEntry))
+            {
+                oldEntry.Info.State = WorkerState.Disconnected;
+
+                // 清除舊的能力索引
+                foreach (var cap in oldEntry.Info.Capabilities)
+                {
+                    if (_capabilityIndex.TryGetValue(cap, out var oldList))
+                    {
+                        oldList.Remove(worker.WorkerId);
+                        if (oldList.Count == 0)
+                            _capabilityIndex.Remove(cap);
+                    }
+                }
+            }
+
+            // 直接設值（不用 TryAdd，因 lock 內已保證無競態）
+            _workers[worker.WorkerId] = (worker, connection);
+
+            // 更新能力索引
             foreach (var cap in worker.Capabilities)
             {
                 if (!_capabilityIndex.TryGetValue(cap, out var list))
@@ -75,14 +90,14 @@ public class WorkerRegistry : IWorkerRegistry
 
     public bool Deregister(string workerId)
     {
-        if (!_workers.TryRemove(workerId, out var entry))
-            return false;
-
-        entry.Info.State = WorkerState.Disconnected;
-
-        // 清除能力索引
         lock (_indexLock)
         {
+            if (!_workers.TryRemove(workerId, out var entry))
+                return false;
+
+            entry.Info.State = WorkerState.Disconnected;
+
+            // 清除能力索引
             foreach (var cap in entry.Info.Capabilities)
             {
                 if (_capabilityIndex.TryGetValue(cap, out var list))
@@ -136,10 +151,14 @@ public class WorkerRegistry : IWorkerRegistry
             workerIds = new List<string>(list);
         }
 
-        return workerIds
-            .Where(id => _workers.TryGetValue(id, out _))
-            .Select(id => _workers[id].Info)
-            .ToList();
+        // L-6 修復：使用單一 TryGetValue 防止 Where/Select 間的 TOCTOU 競態
+        var result = new List<WorkerInfo>();
+        foreach (var id in workerIds)
+        {
+            if (_workers.TryGetValue(id, out var entry))
+                result.Add(entry.Info);
+        }
+        return result;
     }
 
     public List<WorkerInfo> GetAllWorkers()

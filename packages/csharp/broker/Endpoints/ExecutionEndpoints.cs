@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Broker.Helpers;
 using Broker.Middleware;
 using BrokerCore.Services;
@@ -12,20 +11,25 @@ public static class ExecutionEndpoints
     {
         var exec = group.MapGroup("/execution-requests");
 
-        exec.MapPost("/submit", (HttpContext ctx, IBrokerService broker) =>
+        exec.MapPost("/submit", async (HttpContext ctx, IBrokerService broker) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
-            var taskId = ctx.Items[BrokerAuthMiddleware.TaskIdKey] as string ?? "";
-            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+            var taskId = RequestBodyHelper.GetTaskId(ctx);
+            var sessionId = RequestBodyHelper.GetSessionId(ctx);
             var traceId = ctx.Items.TryGetValue("audit_trace_id", out var t) ? t as string ?? "" : Guid.NewGuid().ToString("N");
 
-            var capabilityId = body.GetProperty("capability_id").GetString() ?? "";
+            // M-1 修復：驗證必填欄位
+            if (!RequestBodyHelper.TryGetRequired(body, "capability_id", out var capabilityId, out var err))
+                return err!;
+            if (!RequestBodyHelper.TryGetRequired(body, "idempotency_key", out var idempotencyKey, out err))
+                return err!;
+
             var intent = body.TryGetProperty("intent", out var i) ? i.GetString() ?? "" : "";
             var payload = body.TryGetProperty("payload", out var p) ? p.GetRawText() : "{}";
-            var idempotencyKey = body.GetProperty("idempotency_key").GetString() ?? "";
 
-            var request = broker.SubmitExecutionRequest(
+            // H-3 修復：proper await，消除 sync-over-async
+            var request = await broker.SubmitExecutionRequestAsync(
                 principalId, taskId, sessionId, capabilityId,
                 intent, payload, idempotencyKey, traceId);
 
@@ -41,8 +45,9 @@ public static class ExecutionEndpoints
 
         exec.MapPost("/query", (HttpContext ctx, IBrokerService broker) =>
         {
-            var body = GetBody(ctx);
-            var requestId = body.GetProperty("request_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "request_id", out var requestId, out var err))
+                return err!;
 
             var request = broker.GetExecutionRequest(requestId);
             if (request == null)
@@ -50,11 +55,5 @@ public static class ExecutionEndpoints
 
             return Results.Ok(ApiResponseHelper.Success(request));
         });
-    }
-
-    private static JsonElement GetBody(HttpContext ctx)
-    {
-        var json = ctx.Items[EncryptionMiddleware.DecryptedBodyKey] as string ?? "{}";
-        return JsonDocument.Parse(json).RootElement;
     }
 }

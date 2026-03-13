@@ -43,4 +43,8 @@ public class Checkpoint
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>L-3 修復：Phase 5 需要狀態更新追蹤（Captured → Verified → RolledBack）</summary>
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
 }

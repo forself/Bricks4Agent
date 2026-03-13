@@ -50,4 +50,8 @@ public class PlanEdge
     /// <summary>條件表達式（JSON，Phase 5 擴充）</summary>
     [Column("condition")]
     public string? Condition { get; set; }
+
+    /// <summary>建立時間（M-6 修復：與 Plan, PlanNode, Checkpoint 對齊）</summary>
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

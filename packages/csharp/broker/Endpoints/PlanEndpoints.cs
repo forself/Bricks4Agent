@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Broker.Helpers;
 using Broker.Middleware;
 using BrokerCore;
@@ -17,10 +16,14 @@ public static class PlanEndpoints
         // ── 建立計畫 ──
         plans.MapPost("/create", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
-            var taskId = body.GetProperty("task_id").GetString() ?? "";
-            var title = body.GetProperty("title").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+            // M-1 修復：驗證必填欄位
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                new[] { "task_id", "title" }, out var fields, out var err))
+                return err!;
+            var taskId = fields["task_id"];
+            var title = fields["title"];
             var description = body.TryGetProperty("description", out var d)
                 ? d.GetString() : null;
 
@@ -31,8 +34,9 @@ public static class PlanEndpoints
         // ── 查詢計畫 ──
         plans.MapPost("/get", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
+                return err!;
 
             var plan = planService.GetPlan(planId);
             if (plan == null)
@@ -44,10 +48,14 @@ public static class PlanEndpoints
         // ── 新增節點 ──
         plans.MapPost("/add-node", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
-            var capabilityId = body.GetProperty("capability_id").GetString() ?? "";
-            var intent = body.GetProperty("intent").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            // M-1 修復：驗證必填欄位
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                new[] { "plan_id", "capability_id", "intent" }, out var fields, out var err))
+                return err!;
+            var planId = fields["plan_id"];
+            var capabilityId = fields["capability_id"];
+            var intent = fields["intent"];
             var requestPayload = body.TryGetProperty("request_payload", out var rp)
                 ? rp.GetRawText() : "{}";
             var outputContextKey = body.TryGetProperty("output_context_key", out var ock)
@@ -70,10 +78,14 @@ public static class PlanEndpoints
         // ── 新增邊 ──
         plans.MapPost("/add-edge", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
-            var fromNodeId = body.GetProperty("from_node_id").GetString() ?? "";
-            var toNodeId = body.GetProperty("to_node_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            // M-1 修復：驗證必填欄位
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                new[] { "plan_id", "from_node_id", "to_node_id" }, out var fields, out var err))
+                return err!;
+            var planId = fields["plan_id"];
+            var fromNodeId = fields["from_node_id"];
+            var toNodeId = fields["to_node_id"];
             var edgeType = body.TryGetProperty("edge_type", out var et)
                 ? Enum.Parse<EdgeType>(et.GetString() ?? "ControlFlow", true)
                 : EdgeType.ControlFlow;
@@ -97,8 +109,9 @@ public static class PlanEndpoints
         // ── DAG 驗證 ──
         plans.MapPost("/validate", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
+                return err!;
 
             var (isValid, error) = planService.ValidateDag(planId);
 
@@ -117,19 +130,28 @@ public static class PlanEndpoints
         });
 
         // ── 提交並執行計畫 ──
-        plans.MapPost("/submit", (HttpContext ctx, IPlanEngine planEngine) =>
+        plans.MapPost("/submit", async (HttpContext ctx, IPlanEngine planEngine) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
-            var sessionId = body.TryGetProperty("session_id", out var sid)
-                ? sid.GetString() ?? "" : "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+            var sessionId = RequestBodyHelper.GetSessionId(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var valErr))
+                return valErr!;
             var traceId = body.TryGetProperty("trace_id", out var tid)
                 ? tid.GetString() ?? IdGen.New("trace") : IdGen.New("trace");
 
+            // session_id 從 token claims 取得（而非 body），確保一致性
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(
+                    "Session ID is required. Ensure scoped_token contains a valid session."));
+            }
+
             try
             {
-                var plan = planEngine.SubmitAndExecute(planId, principalId, sessionId, traceId);
+                // H-3 修復：proper await，消除 sync-over-async
+                // M-8 修復：傳遞 RequestAborted 取消令牌
+                var plan = await planEngine.SubmitAndExecuteAsync(planId, principalId, sessionId, traceId, ctx.RequestAborted);
                 return Results.Ok(ApiResponseHelper.Success(plan));
             }
             catch (InvalidOperationException ex)
@@ -141,8 +163,9 @@ public static class PlanEndpoints
         // ── 查詢執行狀態 ──
         plans.MapPost("/status", (HttpContext ctx, IPlanService planService) =>
         {
-            var body = GetBody(ctx);
-            var planId = body.GetProperty("plan_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "plan_id", out var planId, out var err))
+                return err!;
 
             var plan = planService.GetPlan(planId);
             if (plan == null)
@@ -170,11 +193,5 @@ public static class PlanEndpoints
                 }
             }));
         });
-    }
-
-    private static JsonElement GetBody(HttpContext ctx)
-    {
-        var json = ctx.Items[EncryptionMiddleware.DecryptedBodyKey] as string ?? "{}";
-        return JsonDocument.Parse(json).RootElement;
     }
 }

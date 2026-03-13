@@ -19,9 +19,10 @@ public interface IBrokerService
     bool CancelTask(string taskId, string cancelledBy, string reason);
 
     /// <summary>
-    /// 提交執行請求（核心 PEP 16 步流程）
+    /// 提交執行請求（核心 PEP 16 步流程，非同步版本）
+    /// H-3 修復：消除 sync-over-async，避免執行緒池飢餓
     /// </summary>
-    ExecutionRequest SubmitExecutionRequest(
+    Task<ExecutionRequest> SubmitExecutionRequestAsync(
         string principalId,
         string taskId,
         string sessionId,

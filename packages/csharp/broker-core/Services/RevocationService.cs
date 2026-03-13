@@ -96,10 +96,13 @@ public class RevocationService : IRevocationService
             Revoke(RevocationTargetType.Token, $"epoch_{epoch}", reason, triggeredBy);
         });
 
-        // 立即刷新快取
+        // M-9 修復：確保快取只會向前遞增，防止並發 IncrementEpoch 導致快取倒退
         lock (_epochLock)
         {
-            _cachedEpoch = newEpoch;
+            if (newEpoch > _cachedEpoch)
+            {
+                _cachedEpoch = newEpoch;
+            }
             _cacheExpiry = DateTime.UtcNow.AddSeconds(CacheTtlSeconds);
         }
 

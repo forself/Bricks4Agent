@@ -1,4 +1,5 @@
 using BrokerCore.Services;
+using Broker.Helpers;
 
 namespace Broker.Middleware;
 
@@ -150,20 +151,14 @@ public class BrokerAuthMiddleware
         await _next(context);
     }
 
+    /// <summary>
+    /// M-10 修復：統一使用 ApiResponseHelper 格式
+    /// </summary>
     private static async Task WriteAuthError(HttpContext context, int statusCode, string message)
     {
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
-
-        var error = new
-        {
-            success = false,
-            message,
-            error_code = statusCode,
-            trace_id = Guid.NewGuid().ToString("N")
-        };
-
-        await context.Response.WriteAsJsonAsync(error);
+        await context.Response.WriteAsJsonAsync(ApiResponseHelper.Error(message, statusCode));
     }
 }
 

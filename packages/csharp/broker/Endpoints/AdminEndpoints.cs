@@ -8,7 +8,7 @@ using BrokerCore.Services;
 
 namespace Broker.Endpoints;
 
-/// <summary>POST /api/v1/admin/*</summary>
+/// <summary>POST /api/v1/admin/* — 需 role_admin 授權</summary>
 public static class AdminEndpoints
 {
     public static void Map(RouteGroupBuilder group)
@@ -18,8 +18,10 @@ public static class AdminEndpoints
         // Kill Switch：epoch 遞增 → 所有舊 token 即時失效
         admin.MapPost("/kill-switch", (HttpContext ctx, IRevocationService revocationService) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
             var reason = body.TryGetProperty("reason", out var r)
                 ? r.GetString() ?? "" : "Kill switch activated";
 
@@ -38,8 +40,10 @@ public static class AdminEndpoints
             ISessionService sessionService,
             ISessionKeyStore keyStore) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
             var targetType = body.GetProperty("target_type").GetString() ?? "";
             var targetId = body.GetProperty("target_id").GetString() ?? "";
             var reason = body.TryGetProperty("reason", out var r)
@@ -68,7 +72,9 @@ public static class AdminEndpoints
         // 註冊主體
         admin.MapPost("/principals/create", (HttpContext ctx, BrokerDb db) =>
         {
-            var body = GetBody(ctx);
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
             var actorType = body.GetProperty("actor_type").GetString() ?? "AI";
             var displayName = body.GetProperty("display_name").GetString() ?? "";
             var publicKey = body.TryGetProperty("public_key", out var pk) ? pk.GetString() : null;
@@ -96,7 +102,9 @@ public static class AdminEndpoints
         // 定義角色
         admin.MapPost("/roles/create", (HttpContext ctx, BrokerDb db) =>
         {
-            var body = GetBody(ctx);
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
             var displayName = body.GetProperty("display_name").GetString() ?? "";
             var allowedTaskTypes = body.TryGetProperty("allowed_task_types", out var att)
                 ? att.GetRawText() : "[]";
@@ -122,7 +130,7 @@ public static class AdminEndpoints
             }));
         });
 
-        // 查詢 epoch
+        // 查詢 epoch（允許所有已認證角色查詢，但 kill-switch/revoke/create 需 admin）
         admin.MapPost("/epoch/query", (HttpContext ctx, IRevocationService revocationService) =>
         {
             var epoch = revocationService.GetCurrentEpoch();
@@ -130,9 +138,20 @@ public static class AdminEndpoints
         });
     }
 
-    private static JsonElement GetBody(HttpContext ctx)
+    /// <summary>
+    /// 角色授權閘道：僅 role_admin 可通過
+    /// </summary>
+    private static bool RequireAdmin(HttpContext ctx, out IResult denied)
     {
-        var json = ctx.Items[EncryptionMiddleware.DecryptedBodyKey] as string ?? "{}";
-        return JsonDocument.Parse(json).RootElement;
+        if (RequestBodyHelper.IsAdmin(ctx))
+        {
+            denied = null!;
+            return true;
+        }
+
+        denied = Results.Json(
+            ApiResponseHelper.Error("Forbidden: admin role required.", 403),
+            statusCode: 403);
+        return false;
     }
 }

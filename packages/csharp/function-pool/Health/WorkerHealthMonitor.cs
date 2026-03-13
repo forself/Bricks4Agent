@@ -26,6 +26,8 @@ public class WorkerHealthMonitor : IDisposable
 
     private Timer? _timer;
     private volatile bool _disposed;
+    // H-11 修復：防止 timer callback 重入（CheckHealth 跑超過 interval 時避免重疊）
+    private int _checkHealthRunning;
 
     public WorkerHealthMonitor(
         IWorkerRegistry registry,
@@ -62,10 +64,14 @@ public class WorkerHealthMonitor : IDisposable
         _timer = null;
     }
 
-    /// <summary>健康檢查 tick</summary>
+    /// <summary>健康檢查 tick（H-11 修復：Interlocked 防重入）</summary>
     private void CheckHealth(object? state)
     {
         if (_disposed) return;
+
+        // H-11：若上一次 CheckHealth 仍在執行，跳過本次（防止 timer overlap）
+        if (Interlocked.CompareExchange(ref _checkHealthRunning, 1, 0) != 0)
+            return;
 
         try
         {
@@ -131,6 +137,10 @@ public class WorkerHealthMonitor : IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error in worker health check");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _checkHealthRunning, 0);
         }
     }
 

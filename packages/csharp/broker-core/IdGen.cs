@@ -28,6 +28,7 @@ public static class IdGen
         var randomBytes = RandomNumberGenerator.GetBytes(8);
         var randHex = Convert.ToHexString(randomBytes); // 16 hex chars
 
-        return $"{prefix}_{tsHex}{randHex}";
+        // L-1 修復：統一格式為 {prefix}_{timestamp}_{random}，與文檔一致，方便反推時間戳
+        return $"{prefix}_{tsHex}_{randHex}";
     }
 }

@@ -12,12 +12,16 @@ using FunctionPool.Registry;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── 共用 LoggerFactory（修復 M-7：消除冗餘 LoggerFactory 實例） ──
+using var startupLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+var startupLogger = startupLoggerFactory.CreateLogger("Program");
+
 // ── 資料庫 ──
 var dbPath = builder.Configuration.GetValue<string>("Database:Path") ?? "broker.db";
 var connectionString = $"Data Source={dbPath}";
 builder.Services.AddSingleton(sp => BrokerDb.UseSqlite(connectionString));
 
-// ── 初始化資料庫（16 張表 + 種子資料） ──
+// ── 初始化資料庫（17 張表 + 種子資料） ──
 using (var initDb = BrokerDb.UseSqlite(connectionString))
 {
     var initializer = new BrokerDbInitializer(initDb);
@@ -37,10 +41,13 @@ else
     // 開發模式：自動生成金鑰對（每次重啟不同）
     var crypto = new EnvelopeCrypto();
     builder.Services.AddSingleton<IEnvelopeCrypto>(crypto);
-    var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
-    logger.LogWarning(
+    // M-3 修復：不再將完整金鑰記錄到 log（即使是 public key 也不應洩漏至 log aggregation）
+    startupLogger.LogWarning(
         "Using auto-generated ECDH key pair. Set Broker:Encryption:EcdhPrivateKeyBase64 in production.");
-    logger.LogInformation("Broker public key (share with clients): {PublicKey}", crypto.GetBrokerPublicKey());
+    var pubKey = crypto.GetBrokerPublicKey();
+    startupLogger.LogInformation(
+        "Broker public key generated (length={KeyLength}, prefix={KeyPrefix}...)",
+        pubKey.Length, pubKey[..Math.Min(8, pubKey.Length)]);
 }
 
 // ── Phase 2: 分散式快取（條件式接入） ──
@@ -61,17 +68,15 @@ if (cacheEnabled)
 
     var rawCache = new CacheClient.DistributedCacheClient(cacheOptions);
     var fallbackCache = new CacheClient.FallbackDecorator(rawCache);
+    var cacheFallbackLogger = startupLoggerFactory.CreateLogger("CacheFallback");
     fallbackCache.OnFallback += (operation, ex) =>
     {
-        var log = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CacheFallback");
-        log.LogWarning(ex, "Cache fallback triggered: {Operation}", operation);
+        cacheFallbackLogger.LogWarning(ex, "Cache fallback triggered: {Operation}", operation);
     };
 
     distributedCache = fallbackCache;
     builder.Services.AddSingleton<CacheClient.IDistributedCache>(fallbackCache);
-
-    var log2 = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
-    log2.LogInformation("Cache cluster enabled: nodes={Nodes}", string.Join(", ", cacheNodes));
+    startupLogger.LogInformation("Cache cluster enabled: nodes={Nodes}", string.Join(", ", cacheNodes));
 }
 
 // Session 金鑰存儲（DB 後端，主金鑰加密）
@@ -135,8 +140,11 @@ else
         new CapabilityCatalog(sp.GetRequiredService<BrokerDb>()));
 }
 
+// M-2 修復：PolicyEngine 黑名單從配置讀取（無配置時使用預設值）
+var policyOptions = builder.Configuration.GetSection("PolicyEngine").Get<PolicyEngineOptions>()
+    ?? new PolicyEngineOptions();
 builder.Services.AddSingleton<IPolicyEngine>(sp =>
-    new PolicyEngine(sp.GetRequiredService<ISchemaValidator>()));
+    new PolicyEngine(sp.GetRequiredService<ISchemaValidator>(), policyOptions));
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -200,8 +208,7 @@ if (poolEnabled)
         });
     }
 
-    var poolLog = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Program");
-    poolLog.LogInformation(
+    startupLogger.LogInformation(
         "Function pool enabled: port={Port}, strictMode={Strict}",
         poolConfig.ListenPort, strictMode);
 }
@@ -249,8 +256,11 @@ builder.Services.AddSingleton<IPlanEngine>(sp =>
 var app = builder.Build();
 
 // ── Middleware 管線（順序關鍵） ──
-// [1] ExceptionMiddleware（全域例外）— TODO: Phase 2
-// [2] IpRateLimiter（限流）— TODO: Phase 2
+// [0] BodySizeLimitMiddleware（H-10 修復：防止 DoS 超大 payload）
+var maxBodyBytes = builder.Configuration.GetValue<long>("Broker:MaxRequestBodyBytes", 1_048_576); // 1MB default
+app.UseBodySizeLimit(maxBodyBytes);
+// [1] ExceptionMiddleware（全域例外）— TODO: Phase 5
+// [2] IpRateLimiter（限流）— TODO: Phase 5
 // [3] EncryptionMiddleware（信封解密/加密）
 app.UseEnvelopeEncryption();
 // [4] BrokerAuthMiddleware（Token 驗證）
@@ -258,11 +268,13 @@ app.UseBrokerAuth();
 // [5] AuditMiddleware（稽核記錄）
 app.UseBrokerAudit();
 
-// ── 路由（全 POST，零 GET） ──
+// ── 路由 ──
 var api = app.MapGroup("/api/v1");
 
-// 健康檢查（唯一非加密端點，用於 load balancer）
-api.MapPost("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
+// L-7 修復：健康檢查同時支援 GET（標準 LB 探測）和 POST（向後相容）
+var healthHandler = () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow });
+api.MapGet("/health", healthHandler);
+api.MapPost("/health", healthHandler);
 
 // 業務端點
 TaskEndpoints.Map(api);
@@ -284,11 +296,16 @@ if (poolEnabled)
     healthMonitor.Start();
 
     // 優雅關閉
+    // L-8 修復：Register 只接受 Action（非 Func<Task>），sync-over-async 在 shutdown hook 不可避免
+    // 加入 10 秒 timeout 防止 shutdown 卡住（無 SynchronizationContext，不會 deadlock）
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
     lifetime.ApplicationStopping.Register(() =>
     {
         healthMonitor.Dispose();
-        poolListener.StopAsync().GetAwaiter().GetResult();
+        if (!poolListener.StopAsync().Wait(TimeSpan.FromSeconds(10)))
+        {
+            // StopAsync 超時，強制繼續 shutdown 流程
+        }
     });
 }
 

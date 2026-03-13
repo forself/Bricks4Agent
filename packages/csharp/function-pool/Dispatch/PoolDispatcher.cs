@@ -87,6 +87,9 @@ public class PoolDispatcher : IExecutionDispatcher
                 var (respOpCode, respPayload) = await conn.SendAndWaitAsync(
                     frame, request.RequestId, _config.DispatchTimeout);
 
+                // 成功完成 → 歸還活躍任務計數
+                _registry.DecrementActiveTask(conn.WorkerId);
+
                 return ParseExecutionResult(request.RequestId, respOpCode, respPayload);
             }
             catch (TimeoutException ex)
@@ -106,6 +109,9 @@ public class PoolDispatcher : IExecutionDispatcher
                 _logger.LogWarning(ex,
                     "Worker dispatch failed for request {R} (attempt {A}), retrying",
                     request.RequestId, attempt + 1);
+
+                // 異常重試 → 歸還活躍任務計數
+                _registry.DecrementActiveTask(conn.WorkerId);
                 continue;
             }
             catch (Exception ex)
@@ -113,6 +119,10 @@ public class PoolDispatcher : IExecutionDispatcher
                 _logger.LogError(ex,
                     "Worker dispatch failed for request {R}, no more retries",
                     request.RequestId);
+
+                // 最終失敗 → 歸還活躍任務計數
+                _registry.DecrementActiveTask(conn.WorkerId);
+
                 return ExecutionResult.Fail(request.RequestId,
                     $"Worker dispatch failed: {ex.Message}");
             }

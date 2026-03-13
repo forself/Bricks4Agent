@@ -44,29 +44,34 @@ public class SharedContextService : ISharedContextService
                 $"SharedContext only accepts plan-related types: {string.Join(", ", AllowedContentTypes)}");
         }
 
-        // 查詢同 documentId 的最新版本
-        var existing = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
-            new { docId = documentId });
-
-        var latestVersion = existing.Count > 0 ? existing[0].Version : 0;
-
-        var entry = new SharedContextEntry
+        // 使用交易確保版本號原子遞增（修復 H-6：版本 race condition）
+        var entry = _db.InTransaction(() =>
         {
-            EntryId = IdGen.New("ctx"),
-            DocumentId = documentId,
-            Version = latestVersion + 1,
-            ParentVersion = latestVersion > 0 ? latestVersion : null,
-            Key = key,
-            ContentRef = contentRef,
-            ContentType = contentType,
-            Acl = acl,
-            AuthorPrincipalId = authorPrincipalId,
-            TaskId = taskId,
-            CreatedAt = DateTime.UtcNow
-        };
+            // 查詢同 documentId 的最新版本（在交易中鎖定行）
+            var existing = _db.Query<SharedContextEntry>(
+                "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+                new { docId = documentId });
 
-        _db.Insert(entry);
+            var latestVersion = existing.Count > 0 ? existing[0].Version : 0;
+
+            var newEntry = new SharedContextEntry
+            {
+                EntryId = IdGen.New("ctx"),
+                DocumentId = documentId,
+                Version = latestVersion + 1,
+                ParentVersion = latestVersion > 0 ? latestVersion : null,
+                Key = key,
+                ContentRef = contentRef,
+                ContentType = contentType,
+                Acl = acl,
+                AuthorPrincipalId = authorPrincipalId,
+                TaskId = taskId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Insert(newEntry);
+            return newEntry;
+        });
 
         _auditService.RecordEvent(
             traceId: entry.EntryId,
@@ -213,17 +218,23 @@ public class SharedContextService : ISharedContextService
     /// 檢查 readerPrincipalId 是否在 ACL 的 read 清單中
     /// ACL 格式：{"read":["role_reader","role_admin"],"write":["role_pm"]}
     /// "*" 表示允許所有人
+    ///
+    /// 安全原則：Fail-Closed（解析失敗 → 拒絕存取）
     /// </summary>
     private static bool CheckReadAccess(string acl, string readerPrincipalId)
     {
+        // 無 ACL 或空 ACL → 拒絕（fail-closed）
         if (string.IsNullOrEmpty(acl) || acl == "{}")
-            return true; // 無 ACL = 公開
+            return false;
 
         try
         {
             using var doc = JsonDocument.Parse(acl);
             if (!doc.RootElement.TryGetProperty("read", out var readArray))
-                return true; // 無 read 陣列 = 公開
+                return false; // 無 read 陣列 → 拒絕（fail-closed）
+
+            if (readArray.ValueKind != JsonValueKind.Array)
+                return false; // read 欄位不是陣列 → 拒絕
 
             foreach (var item in readArray.EnumerateArray())
             {
@@ -239,9 +250,9 @@ public class SharedContextService : ISharedContextService
 
             return false; // 不在 read 清單中
         }
-        catch
+        catch (JsonException)
         {
-            return true; // ACL 解析失敗 = 預設公開（安全降級）
+            return false; // ACL 解析失敗 → 拒絕（fail-closed）
         }
     }
 }

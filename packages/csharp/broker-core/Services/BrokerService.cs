@@ -117,7 +117,7 @@ public class BrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public ExecutionRequest SubmitExecutionRequest(
+    public async Task<ExecutionRequest> SubmitExecutionRequestAsync(
         string principalId, string taskId, string sessionId,
         string capabilityId, string intent, string requestPayload,
         string idempotencyKey, string traceId)
@@ -263,11 +263,11 @@ public class BrokerService : IBrokerService
         _auditService.RecordEvent(traceId, "EXECUTION_DISPATCHED",
             principalId, taskId, sessionId, capabilityId);
 
-        // ── Step 14: 收集結果（同步 Phase 1） ──
+        // ── Step 14: 收集結果（H-3 修復：proper async，消除 sync-over-async） ──
         ExecutionResult executionResult;
         try
         {
-            executionResult = _executionDispatcher.DispatchAsync(approvedRequest).GetAwaiter().GetResult();
+            executionResult = await _executionDispatcher.DispatchAsync(approvedRequest);
         }
         catch (Exception ex)
         {

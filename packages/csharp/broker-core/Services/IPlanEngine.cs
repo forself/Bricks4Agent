@@ -15,13 +15,17 @@ namespace BrokerCore.Services;
 public interface IPlanEngine
 {
     /// <summary>
-    /// 提交並執行計畫（同步循序）
+    /// 提交並執行計畫（非同步循序）
+    /// H-3 修復：完整 async 鏈，消除 sync-over-async
+    /// M-8 修復：CancellationToken 傳播，支援請求取消
     /// </summary>
     /// <param name="planId">計畫 ID</param>
     /// <param name="principalId">提交者 principal_id</param>
     /// <param name="sessionId">Session ID（PEP 需要）</param>
     /// <param name="traceId">追蹤 ID</param>
+    /// <param name="cancellationToken">取消令牌（預設 = 不取消）</param>
     /// <returns>執行後的計畫狀態</returns>
-    Plan SubmitAndExecute(string planId, string principalId,
-                          string sessionId, string traceId);
+    Task<Plan> SubmitAndExecuteAsync(string planId, string principalId,
+                                      string sessionId, string traceId,
+                                      CancellationToken cancellationToken = default);
 }

@@ -164,9 +164,11 @@ public class InProcessDispatcher : IExecutionDispatcher
                 }
                 if (results.Count >= 50) break;
             }
-            catch
+            catch (OutOfMemoryException) { throw; } // L-9 修復：不可恢復的例外必須重新拋出
+            catch (Exception ex)
             {
-                // 跳過無法讀取的檔案
+                // 跳過無法讀取的檔案（IO 錯誤、權限不足等可恢復例外）
+                _logger.LogDebug(ex, "Skipping unreadable file during content search: {File}", file);
             }
         }
 

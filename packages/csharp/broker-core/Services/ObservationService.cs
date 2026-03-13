@@ -53,31 +53,33 @@ public class ObservationService : IObservationService
         return observation;
     }
 
-    public List<ObservationEvent> GetByTrace(string traceId)
+    // L-4 修復：所有查詢加入 LIMIT/OFFSET 分頁，防止大量資料一次載入導致 OOM
+
+    public List<ObservationEvent> GetByTrace(string traceId, int limit = 200, int offset = 0)
     {
         return _db.Query<ObservationEvent>(
-            "SELECT * FROM observation_events WHERE trace_id = @tid ORDER BY observed_at",
-            new { tid = traceId });
+            "SELECT * FROM observation_events WHERE trace_id = @tid ORDER BY observed_at LIMIT @limit OFFSET @offset",
+            new { tid = traceId, limit, offset });
     }
 
-    public List<ObservationEvent> GetByPlan(string planId)
+    public List<ObservationEvent> GetByPlan(string planId, int limit = 200, int offset = 0)
     {
         return _db.Query<ObservationEvent>(
-            "SELECT * FROM observation_events WHERE plan_id = @pid ORDER BY observed_at",
-            new { pid = planId });
+            "SELECT * FROM observation_events WHERE plan_id = @pid ORDER BY observed_at LIMIT @limit OFFSET @offset",
+            new { pid = planId, limit, offset });
     }
 
-    public List<ObservationEvent> GetByNode(string nodeId)
+    public List<ObservationEvent> GetByNode(string nodeId, int limit = 200, int offset = 0)
     {
         return _db.Query<ObservationEvent>(
-            "SELECT * FROM observation_events WHERE node_id = @nid ORDER BY observed_at",
-            new { nid = nodeId });
+            "SELECT * FROM observation_events WHERE node_id = @nid ORDER BY observed_at LIMIT @limit OFFSET @offset",
+            new { nid = nodeId, limit, offset });
     }
 
-    public List<ObservationEvent> GetAlerts(DateTime since, ObservationSeverity minSeverity)
+    public List<ObservationEvent> GetAlerts(DateTime since, ObservationSeverity minSeverity, int limit = 200, int offset = 0)
     {
         return _db.Query<ObservationEvent>(
-            "SELECT * FROM observation_events WHERE severity >= @sev AND observed_at >= @since ORDER BY observed_at DESC",
-            new { sev = (int)minSeverity, since });
+            "SELECT * FROM observation_events WHERE severity >= @sev AND observed_at >= @since ORDER BY observed_at DESC LIMIT @limit OFFSET @offset",
+            new { sev = (int)minSeverity, since, limit, offset });
     }
 }

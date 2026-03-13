@@ -20,22 +20,14 @@ namespace BrokerCore.Services;
 public class PolicyEngine : IPolicyEngine
 {
     private readonly ISchemaValidator _schemaValidator;
+    private readonly PolicyEngineOptions _options;
 
-    // Phase 1 指令黑名單
-    private static readonly HashSet<string> CommandBlacklist = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "rm", "rm -rf", "del", "format", "fdisk",
-        "mkfs", "dd", "shutdown", "reboot", "halt",
-        "kill", "killall", "pkill",
-        "chmod 777", "chown",
-        "curl", "wget", "nc", "ncat",
-        "eval", "exec",
-        "DROP TABLE", "DROP DATABASE", "TRUNCATE"
-    };
+    // M-2 修復：黑名單從 PolicyEngineOptions 讀取，不再硬編碼
 
-    public PolicyEngine(ISchemaValidator schemaValidator)
+    public PolicyEngine(ISchemaValidator schemaValidator, PolicyEngineOptions? options = null)
     {
         _schemaValidator = schemaValidator;
+        _options = options ?? new PolicyEngineOptions();
     }
 
     /// <inheritdoc />
@@ -117,43 +109,59 @@ public class PolicyEngine : IPolicyEngine
         }
     }
 
-    /// <summary>路徑沙箱檢查：禁止路徑遍歷</summary>
-    private static bool IsPathSandboxed(string payload)
+    /// <summary>
+    /// 路徑沙箱檢查：禁止路徑遍歷（修復 H-8：處理 URL 編碼遍歷）
+    /// M-2 修復：禁止路徑前綴從 PolicyEngineOptions 讀取
+    /// </summary>
+    private bool IsPathSandboxed(string payload)
     {
         try
         {
             var path = ExtractPath(payload);
             if (path == null) return true;
 
-            // 禁止路徑遍歷
-            if (path.Contains("..") || path.Contains("~"))
+            // 先解碼 URL 編碼（防止 %2e%2e 繞過）
+            var decoded = Uri.UnescapeDataString(path);
+
+            // 禁止路徑遍歷（原始路徑和解碼後都檢查）
+            if (decoded.Contains("..") || path.Contains(".."))
                 return false;
 
-            // 禁止存取系統目錄
-            var normalized = NormalizePath(path);
-            var forbiddenPrefixes = new[]
-            {
-                "/etc/", "/proc/", "/sys/", "/dev/",
-                "C:\\Windows\\", "C:\\System32\\",
-                "/root/", "/home/../"
-            };
+            // 禁止 ~ 展開（但允許 Windows 路徑中的合法字元）
+            if (decoded.Contains('~') || path.Contains('~'))
+                return false;
 
-            foreach (var prefix in forbiddenPrefixes)
+            // 禁止 null byte 注入
+            if (decoded.Contains('\0') || path.Contains('\0'))
+                return false;
+
+            // 禁止存取系統目錄（M-2 修復：從配置讀取）
+            var normalized = NormalizePath(decoded);
+
+            foreach (var prefix in _options.ForbiddenPathPrefixes)
             {
-                if (normalized.StartsWith(NormalizePath(prefix), StringComparison.OrdinalIgnoreCase))
-                    return false;
+                if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    // 必須完全匹配或後接 /（避免 /etcetera 被攔）
+                    if (normalized.Length == prefix.Length ||
+                        normalized[prefix.Length] == '/')
+                        return false;
+                }
             }
 
             return true;
         }
         catch
         {
-            return true;
+            return false; // 解析失敗 → 拒絕（fail-closed）
         }
     }
 
-    /// <summary>指令黑名單檢查</summary>
-    private static bool ContainsBlacklistedCommand(string payload)
+    /// <summary>
+    /// 指令黑名單檢查（修復 H-5：使用前綴匹配避免 "rm" 誤攔 "firmware" 等）
+    /// M-2 修復：黑名單從 PolicyEngineOptions 讀取
+    /// </summary>
+    private bool ContainsBlacklistedCommand(string payload)
     {
         try
         {
@@ -163,10 +171,27 @@ public class PolicyEngine : IPolicyEngine
             // 檢查 command 欄位
             if (root.TryGetProperty("command", out var cmdProp))
             {
-                var command = cmdProp.GetString() ?? "";
-                foreach (var blacklisted in CommandBlacklist)
+                var command = (cmdProp.GetString() ?? "").Trim();
+                if (string.IsNullOrEmpty(command)) return false;
+
+                // 精確匹配（command 完全等於黑名單項目）
+                foreach (var exact in _options.CommandExactBlacklist)
                 {
-                    if (command.Contains(blacklisted, StringComparison.OrdinalIgnoreCase))
+                    if (command.Equals(exact, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                // 前綴匹配（command 以黑名單項目開頭，後接空白/tab）
+                foreach (var prefix in _options.CommandPrefixBlacklist)
+                {
+                    if (command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                // SQL 注入檢查（不區分大小寫的子字串匹配，保留原有行為）
+                foreach (var sql in _options.SqlBlacklist)
+                {
+                    if (command.Contains(sql, StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
             }

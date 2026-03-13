@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BrokerCore.Crypto;
+using Broker.Helpers;
 
 namespace Broker.Middleware;
 
@@ -71,6 +72,14 @@ public class EncryptionMiddleware
         }
 
         // ── 1. 讀取並解析 EncryptedRequest ──
+        // L-5 修復：縱深防禦 — 即使上游有 BodySizeLimitMiddleware，此處也檢查 Content-Length
+        const long EncryptionMaxBodyBytes = 2_097_152; // 2MB（加密 envelope 比明文大）
+        if (context.Request.ContentLength.HasValue && context.Request.ContentLength.Value > EncryptionMaxBodyBytes)
+        {
+            await WriteEncryptionError(context, 413, $"Encrypted body too large (max {EncryptionMaxBodyBytes} bytes).");
+            return;
+        }
+
         string requestBody;
         context.Request.EnableBuffering();
         using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: true))
@@ -153,8 +162,8 @@ public class EncryptionMiddleware
             // 2c. 解密
             try
             {
-                // AAD = session_id + seq + endpoint_path
-                var aad = $"{sessionId}{seq}{path}";
+                // AAD = direction + session_id + seq + endpoint_path（H-1 修復：加方向標記）
+                var aad = $"req:{sessionId}{seq}{path}";
                 decryptedBody = _crypto.Decrypt(encryptedReq.Envelope, sessionKey, aad);
             }
             catch (CryptographicException ex)
@@ -191,9 +200,13 @@ public class EncryptionMiddleware
         // ── 5. 執行後續管線 ──
         await _next(context);
 
-        // ── 6. 加密 response body ──
+        // ── 6. 加密 response body ──（M-5 修復：StreamReader 使用 using 確保釋放）
         responseBuffer.Seek(0, SeekOrigin.Begin);
-        var responseBody = await new StreamReader(responseBuffer).ReadToEndAsync();
+        string responseBody;
+        using (var responseReader = new StreamReader(responseBuffer, leaveOpen: true))
+        {
+            responseBody = await responseReader.ReadToEndAsync();
+        }
 
         if (!string.IsNullOrEmpty(responseBody))
         {
@@ -210,7 +223,7 @@ public class EncryptionMiddleware
             {
                 // 用 session_key 加密回應
                 var sessionIdStr = context.Items[SessionIdKey] as string ?? "";
-                var responseAad = $"{sessionIdStr}{responseSeq}{path}";
+                var responseAad = $"resp:{sessionIdStr}{responseSeq}{path}";
                 var encryptedEnvelope = _crypto.Encrypt(responseBody, sessionKey2, responseSeq, responseAad);
 
                 var encryptedResponse = new EncryptedResponse { V = 1, Envelope = encryptedEnvelope };
@@ -243,21 +256,15 @@ public class EncryptionMiddleware
         }
     }
 
-    /// <summary>寫出未加密的錯誤回應（加密層本身的錯誤無法加密）</summary>
+    /// <summary>
+    /// 寫出未加密的錯誤回應（加密層本身的錯誤無法加密）
+    /// M-10 修復：統一使用 ApiResponseHelper 格式
+    /// </summary>
     private static async Task WriteEncryptionError(HttpContext context, int statusCode, string message)
     {
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
-
-        var error = new
-        {
-            success = false,
-            message,
-            error_code = statusCode,
-            trace_id = Guid.NewGuid().ToString("N")
-        };
-
-        await context.Response.WriteAsJsonAsync(error);
+        await context.Response.WriteAsJsonAsync(ApiResponseHelper.Error(message, statusCode));
     }
 }
 

@@ -27,6 +27,10 @@ public class WorkerConnection : IAsyncDisposable
 
     private volatile bool _disposed;
 
+    // H-4 修復：持久化接收緩衝區，避免 TCP 讀取中多餘 bytes 被丟棄
+    private byte[] _receiveBuffer = new byte[4096];
+    private int _receiveFilled;
+
     public string WorkerId { get; set; } = string.Empty;
     public string RemoteEndpoint { get; }
     public bool IsConnected => !_disposed && _tcpClient.Connected;
@@ -123,22 +127,35 @@ public class WorkerConnection : IAsyncDisposable
 
     /// <summary>
     /// 讀取一個完整的 frame（阻塞直到接收完成）
+    /// H-4 修復：使用持久化接收緩衝區，保留 TCP 讀取中超出一個 frame 的剩餘 bytes
     /// </summary>
     public async Task<(byte OpCode, ReadOnlyMemory<byte> Payload)?> ReceiveFrameAsync(
         CancellationToken ct = default)
     {
         if (_disposed) return null;
 
-        var buffer = new byte[4096];
-        int filled = 0;
-
         while (!ct.IsCancellationRequested)
         {
+            // 先嘗試從已有緩衝區解析（上次讀取可能已包含完整 frame）
+            var result = TryParseAndAdvance();
+            if (result.HasValue)
+            {
+                return result.Value;
+            }
+
+            // 確保緩衝區有空間
+            if (_receiveFilled >= _receiveBuffer.Length)
+            {
+                var newBuffer = new byte[_receiveBuffer.Length * 2];
+                Buffer.BlockCopy(_receiveBuffer, 0, newBuffer, 0, _receiveFilled);
+                _receiveBuffer = newBuffer;
+            }
+
             int bytesRead;
             try
             {
                 bytesRead = await _stream.ReadAsync(
-                    buffer.AsMemory(filled, buffer.Length - filled), ct);
+                    _receiveBuffer.AsMemory(_receiveFilled, _receiveBuffer.Length - _receiveFilled), ct);
             }
             catch (OperationCanceledException)
             {
@@ -152,40 +169,42 @@ public class WorkerConnection : IAsyncDisposable
             if (bytesRead == 0)
                 return null; // 連線已關閉
 
-            filled += bytesRead;
+            _receiveFilled += bytesRead;
             LastActivity = DateTime.UtcNow;
 
-            // 嘗試解析 frame（同步，避免 Span 跨 await）
-            var result = TryParseFromBuffer(buffer, filled);
+            // 再次嘗試解析（加入新資料後）
+            result = TryParseAndAdvance();
             if (result.HasValue)
             {
                 return result.Value;
-            }
-
-            // Buffer 不足，擴容
-            if (filled >= buffer.Length)
-            {
-                var newBuffer = new byte[buffer.Length * 2];
-                Buffer.BlockCopy(buffer, 0, newBuffer, 0, filled);
-                buffer = newBuffer;
             }
         }
 
         return null;
     }
 
-    /// <summary>同步 frame 解析（避免 Span 跨 await）</summary>
-    private static (byte OpCode, ReadOnlyMemory<byte> Payload)? TryParseFromBuffer(
-        byte[] buffer, int filled)
+    /// <summary>
+    /// 嘗試從持久化緩衝區解析一個完整 frame，成功後移除已消耗的 bytes
+    /// </summary>
+    private (byte OpCode, ReadOnlyMemory<byte> Payload)? TryParseAndAdvance()
     {
-        if (filled < FrameCodec.HeaderSize)
+        if (_receiveFilled < FrameCodec.HeaderSize)
             return null;
 
-        var span = buffer.AsSpan(0, filled);
+        var span = _receiveBuffer.AsSpan(0, _receiveFilled);
         if (FrameCodec.TryParse(span, out var frame))
         {
             var payload = new byte[frame.Payload.Length];
             frame.Payload.Span.CopyTo(payload);
+
+            // 將剩餘 bytes 移到緩衝區開頭（保留後續 frame 資料）
+            var remaining = _receiveFilled - frame.TotalLength;
+            if (remaining > 0)
+            {
+                Buffer.BlockCopy(_receiveBuffer, frame.TotalLength, _receiveBuffer, 0, remaining);
+            }
+            _receiveFilled = remaining;
+
             return (frame.OpCode, payload);
         }
         return null;

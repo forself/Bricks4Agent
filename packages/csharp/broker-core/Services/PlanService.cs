@@ -318,29 +318,53 @@ public class PlanService : IPlanService
 
     public List<PlanNode> GetReadyNodes(string planId)
     {
-        var nodes = _db.Query<PlanNode>(
-            "SELECT * FROM plan_nodes WHERE plan_id = @pid AND state = @pending ORDER BY ordinal",
-            new { pid = planId, pending = (int)NodeState.Pending });
+        // M-11 修復：批次載入，消除 N+1 查詢
+        // 一次取出 plan 下所有節點 + 所有邊，在記憶體內做 ready 判斷
+        var allNodes = _db.Query<PlanNode>(
+            "SELECT * FROM plan_nodes WHERE plan_id = @pid",
+            new { pid = planId });
+        var allEdges = _db.Query<PlanEdge>(
+            "SELECT * FROM plan_edges WHERE plan_id = @pid",
+            new { pid = planId });
+
+        // 建立 nodeId → state 快查表
+        var nodeStateMap = new Dictionary<string, NodeState>(allNodes.Count);
+        foreach (var n in allNodes)
+            nodeStateMap[n.NodeId] = n.State;
+
+        // 建立 toNodeId → List<fromNodeId> 入邊索引
+        var incomingMap = new Dictionary<string, List<string>>();
+        foreach (var edge in allEdges)
+        {
+            if (!incomingMap.TryGetValue(edge.ToNodeId, out var list))
+            {
+                list = new List<string>();
+                incomingMap[edge.ToNodeId] = list;
+            }
+            list.Add(edge.FromNodeId);
+        }
 
         var readyNodes = new List<PlanNode>();
 
-        foreach (var node in nodes)
+        foreach (var node in allNodes)
         {
-            var incomingEdges = GetIncomingEdges(node.NodeId);
+            if (node.State != NodeState.Pending)
+                continue;
 
-            if (incomingEdges.Count == 0)
+            if (!incomingMap.TryGetValue(node.NodeId, out var predecessorIds) ||
+                predecessorIds.Count == 0)
             {
                 // 無入邊 → 直接就緒
                 readyNodes.Add(node);
                 continue;
             }
 
-            // 所有入邊的 fromNode 都已 Succeeded
+            // 所有入邊的 fromNode 都已 Succeeded（記憶體查找，零 DB 查詢）
             bool allPredecessorsSucceeded = true;
-            foreach (var edge in incomingEdges)
+            foreach (var fromId in predecessorIds)
             {
-                var fromNode = _db.Get<PlanNode>(edge.FromNodeId);
-                if (fromNode == null || fromNode.State != NodeState.Succeeded)
+                if (!nodeStateMap.TryGetValue(fromId, out var fromState) ||
+                    fromState != NodeState.Succeeded)
                 {
                     allPredecessorsSucceeded = false;
                     break;
@@ -351,6 +375,8 @@ public class PlanService : IPlanService
                 readyNodes.Add(node);
         }
 
+        // 按拓撲序排列
+        readyNodes.Sort((a, b) => a.Ordinal.CompareTo(b.Ordinal));
         return readyNodes;
     }
 

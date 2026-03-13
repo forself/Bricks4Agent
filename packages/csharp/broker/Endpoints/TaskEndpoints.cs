@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Broker.Helpers;
 using Broker.Middleware;
 using BrokerCore.Services;
@@ -14,9 +13,11 @@ public static class TaskEndpoints
 
         tasks.MapPost("/create", (HttpContext ctx, IBrokerService broker) =>
         {
-            var body = GetBody(ctx);
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
-            var taskType = body.GetProperty("task_type").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+            // M-1 修復：驗證必填欄位
+            if (!RequestBodyHelper.TryGetRequired(body, "task_type", out var taskType, out var err))
+                return err!;
             var scope = body.TryGetProperty("scope_descriptor", out var s)
                 ? s.GetRawText() : "{}";
 
@@ -26,8 +27,9 @@ public static class TaskEndpoints
 
         tasks.MapPost("/query", (HttpContext ctx, IBrokerService broker) =>
         {
-            var body = GetBody(ctx);
-            var taskId = body.GetProperty("task_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "task_id", out var taskId, out var err))
+                return err!;
 
             var task = broker.GetTask(taskId);
             if (task == null)
@@ -38,11 +40,12 @@ public static class TaskEndpoints
 
         tasks.MapPost("/cancel", (HttpContext ctx, IBrokerService broker) =>
         {
-            var body = GetBody(ctx);
-            var taskId = body.GetProperty("task_id").GetString() ?? "";
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "task_id", out var taskId, out var err))
+                return err!;
             var reason = body.TryGetProperty("reason", out var r)
                 ? r.GetString() ?? "" : "Cancelled by user";
-            var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
+            var principalId = RequestBodyHelper.GetPrincipalId(ctx);
 
             var success = broker.CancelTask(taskId, principalId, reason);
             if (!success)
@@ -50,11 +53,5 @@ public static class TaskEndpoints
 
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Task cancelled."));
         });
-    }
-
-    private static JsonElement GetBody(HttpContext ctx)
-    {
-        var json = ctx.Items[EncryptionMiddleware.DecryptedBodyKey] as string ?? "{}";
-        return JsonDocument.Parse(json).RootElement;
     }
 }

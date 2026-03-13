@@ -39,6 +39,9 @@ Api.txt
 .claude/
 packages/.claude/
 
+# Issue tracking reports (local only)
+ISSUES/
+
 # SQLite databases
 *.db
 tools/*.png
