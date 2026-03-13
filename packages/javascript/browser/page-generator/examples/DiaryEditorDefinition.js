@@ -44,7 +44,7 @@ export const DiaryEditorDefinition = {
             type: FieldTypes.DATE,
             label: '日期',
             required: true,
-            default: new Date().toISOString().split('T')[0]
+            default: 'today' // 由 runtime 解析為當日日期，避免 codegen 時固化
         },
         {
             name: 'mood',

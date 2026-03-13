@@ -14,7 +14,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Session ID
         /// </summary>
-        public string SessionId { get; set; }
+        public string SessionId { get; set; } = string.Empty;
 
         /// <summary>
         /// User ID
@@ -24,17 +24,17 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// IP address at login
         /// </summary>
-        public string IpAddress { get; set; }
+        public string IpAddress { get; set; } = string.Empty;
 
         /// <summary>
         /// User agent at login
         /// </summary>
-        public string UserAgent { get; set; }
+        public string UserAgent { get; set; } = string.Empty;
 
         /// <summary>
         /// Device fingerprint
         /// </summary>
-        public string Fingerprint { get; set; }
+        public string Fingerprint { get; set; } = string.Empty;
 
         /// <summary>
         /// Session creation time
@@ -59,17 +59,17 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Location info (if available)
         /// </summary>
-        public string Location { get; set; }
+        public string Location { get; set; } = string.Empty;
 
         /// <summary>
         /// Device type
         /// </summary>
-        public string DeviceType { get; set; }
+        public string DeviceType { get; set; } = string.Empty;
 
         /// <summary>
         /// Browser info
         /// </summary>
-        public string Browser { get; set; }
+        public string Browser { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether this is current session
@@ -85,17 +85,17 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Attempted email/username
         /// </summary>
-        public string Identifier { get; set; }
+        public string Identifier { get; set; } = string.Empty;
 
         /// <summary>
         /// IP address
         /// </summary>
-        public string IpAddress { get; set; }
+        public string IpAddress { get; set; } = string.Empty;
 
         /// <summary>
         /// User agent
         /// </summary>
-        public string UserAgent { get; set; }
+        public string UserAgent { get; set; } = string.Empty;
 
         /// <summary>
         /// Attempt timestamp
@@ -110,7 +110,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Failure reason if not successful
         /// </summary>
-        public string FailureReason { get; set; }
+        public string FailureReason { get; set; } = string.Empty;
 
         /// <summary>
         /// User ID if login was successful
@@ -131,7 +131,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Get session by ID
         /// </summary>
-        UserSession GetSession(string sessionId);
+        UserSession? GetSession(string sessionId);
 
         /// <summary>
         /// Get all active sessions for a user
@@ -213,15 +213,15 @@ namespace Bricks4Agent.Security.RateLimiting
             {
                 SessionId = sessionId,
                 UserId = userId,
-                IpAddress = connectionInfo?.IpAddress,
-                UserAgent = connectionInfo?.UserAgent,
-                Fingerprint = connectionInfo?.Fingerprint,
+                IpAddress = connectionInfo?.IpAddress ?? string.Empty,
+                UserAgent = connectionInfo?.UserAgent ?? string.Empty,
+                Fingerprint = connectionInfo?.Fingerprint ?? string.Empty,
                 CreatedAt = now,
                 LastActivityAt = now,
                 ExpiresAt = now.Add(duration),
                 IsActive = true,
-                DeviceType = connectionInfo?.UserAgentInfo?.DeviceType,
-                Browser = connectionInfo?.UserAgentInfo?.Browser
+                DeviceType = connectionInfo?.UserAgentInfo?.DeviceType ?? string.Empty,
+                Browser = connectionInfo?.UserAgentInfo?.Browser ?? string.Empty
             };
 
             _sessions[sessionId] = session;
@@ -241,7 +241,7 @@ namespace Bricks4Agent.Security.RateLimiting
         }
 
         /// <inheritdoc />
-        public UserSession GetSession(string sessionId)
+        public UserSession? GetSession(string sessionId)
         {
             if (string.IsNullOrEmpty(sessionId))
                 return null;
@@ -401,7 +401,7 @@ namespace Bricks4Agent.Security.RateLimiting
             return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private void Cleanup(object state)
+        private void Cleanup(object? state)
         {
             var now = DateTime.UtcNow;
             var cutoff = now.AddHours(-24); // Keep login attempts for 24 hours

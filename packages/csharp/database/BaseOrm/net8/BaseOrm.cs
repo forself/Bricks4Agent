@@ -134,7 +134,7 @@ public class BaseDb : IDisposable
     public static BaseDb UseSqlServer(string connectionString)
     {
         var factory = GetProviderFactory("Microsoft.Data.SqlClient.SqlClientFactory, Microsoft.Data.SqlClient");
-        return new BaseDb(connectionString, factory, DbType.SqlServer);
+        return new BaseDb(connectionString, factory!, DbType.SqlServer);
     }
 
     /// <summary>

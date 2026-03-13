@@ -16,7 +16,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Client IP address
         /// </summary>
-        public string IpAddress { get; set; }
+        public string IpAddress { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether IP is from a proxy (X-Forwarded-For)
@@ -26,7 +26,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Original IP if proxied
         /// </summary>
-        public string OriginalIp { get; set; }
+        public string OriginalIp { get; set; } = string.Empty;
 
         /// <summary>
         /// All IPs in the chain (for proxied requests)
@@ -36,42 +36,42 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// User agent string
         /// </summary>
-        public string UserAgent { get; set; }
+        public string UserAgent { get; set; } = string.Empty;
 
         /// <summary>
         /// Parsed user agent info
         /// </summary>
-        public UserAgentInfo UserAgentInfo { get; set; }
+        public UserAgentInfo UserAgentInfo { get; set; } = new();
 
         /// <summary>
         /// Request origin/referer
         /// </summary>
-        public string Referer { get; set; }
+        public string Referer { get; set; } = string.Empty;
 
         /// <summary>
         /// Accept-Language header
         /// </summary>
-        public string AcceptLanguage { get; set; }
+        public string AcceptLanguage { get; set; } = string.Empty;
 
         /// <summary>
         /// Request host
         /// </summary>
-        public string Host { get; set; }
+        public string Host { get; set; } = string.Empty;
 
         /// <summary>
         /// Request scheme (http/https)
         /// </summary>
-        public string Scheme { get; set; }
+        public string Scheme { get; set; } = string.Empty;
 
         /// <summary>
         /// Request path
         /// </summary>
-        public string Path { get; set; }
+        public string Path { get; set; } = string.Empty;
 
         /// <summary>
         /// Request method
         /// </summary>
-        public string Method { get; set; }
+        public string Method { get; set; } = string.Empty;
 
         /// <summary>
         /// Connection timestamp
@@ -81,7 +81,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Unique fingerprint based on connection characteristics
         /// </summary>
-        public string Fingerprint { get; set; }
+        public string Fingerprint { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether this appears to be a bot/crawler
@@ -91,7 +91,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Country code (if geo-IP is configured)
         /// </summary>
-        public string CountryCode { get; set; }
+        public string CountryCode { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether connection is secure (HTTPS)
@@ -107,22 +107,22 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Browser name
         /// </summary>
-        public string Browser { get; set; }
+        public string Browser { get; set; } = string.Empty;
 
         /// <summary>
         /// Browser version
         /// </summary>
-        public string BrowserVersion { get; set; }
+        public string BrowserVersion { get; set; } = string.Empty;
 
         /// <summary>
         /// Operating system
         /// </summary>
-        public string OS { get; set; }
+        public string OS { get; set; } = string.Empty;
 
         /// <summary>
         /// Device type (Desktop, Mobile, Tablet, Bot)
         /// </summary>
-        public string DeviceType { get; set; }
+        public string DeviceType { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether this is a mobile device
@@ -184,7 +184,7 @@ namespace Bricks4Agent.Security.RateLimiting
             "windows phone", "opera mini", "opera mobi"
         };
 
-        public ConnectionInfoService(ConnectionInfoOptions options = null)
+        public ConnectionInfoService(ConnectionInfoOptions? options = null)
         {
             _options = options ?? new ConnectionInfoOptions();
         }
@@ -221,7 +221,7 @@ namespace Bricks4Agent.Security.RateLimiting
                     .Select(ip => ip.Trim())
                     .Where(ip => !string.IsNullOrEmpty(ip))
                     .ToList();
-                info.OriginalIp = info.IpChain.FirstOrDefault();
+                info.OriginalIp = info.IpChain.FirstOrDefault() ?? string.Empty;
             }
 
             // Generate fingerprint
@@ -237,9 +237,9 @@ namespace Bricks4Agent.Security.RateLimiting
         public string GetClientIp(HttpContext context)
         {
             if (context == null)
-                return null;
+                return string.Empty;
 
-            string ip = null;
+            string? ip = null;
 
             // Check trusted proxy headers (in order of preference)
             if (_options.TrustProxyHeaders)
@@ -267,7 +267,7 @@ namespace Bricks4Agent.Security.RateLimiting
 
             // Fall back to remote IP
             ip = context.Connection.RemoteIpAddress?.ToString();
-            return NormalizeIp(ip);
+            return NormalizeIp(ip ?? string.Empty);
         }
 
         /// <inheritdoc />
@@ -312,7 +312,7 @@ namespace Bricks4Agent.Security.RateLimiting
         public string GenerateFingerprint(HttpContext context)
         {
             if (context == null)
-                return null;
+                return string.Empty;
 
             var request = context.Request;
 
@@ -346,7 +346,7 @@ namespace Bricks4Agent.Security.RateLimiting
         private static string NormalizeIp(string ip)
         {
             if (string.IsNullOrEmpty(ip))
-                return null;
+                return string.Empty;
 
             ip = ip.Trim();
 
@@ -405,13 +405,13 @@ namespace Bricks4Agent.Security.RateLimiting
             if (ua.Contains("msie") || ua.Contains("trident"))
                 return ("Internet Explorer", ExtractVersion(ua, "msie "));
 
-            return ("Unknown", null);
+            return ("Unknown", string.Empty);
         }
 
         private static string ExtractVersion(string ua, string marker)
         {
             var index = ua.IndexOf(marker);
-            if (index < 0) return null;
+            if (index < 0) return string.Empty;
 
             var start = index + marker.Length;
             var end = start;
@@ -421,7 +421,7 @@ namespace Bricks4Agent.Security.RateLimiting
                 end++;
             }
 
-            return end > start ? ua.Substring(start, end - start) : null;
+            return end > start ? ua.Substring(start, end - start) : string.Empty;
         }
 
         #endregion

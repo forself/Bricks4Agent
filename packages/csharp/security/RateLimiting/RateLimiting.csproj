@@ -14,8 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ASP.NET Core -->
-    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
+    <!-- L-1 修復：net8.0 應使用 FrameworkReference 取代舊版 2.2 NuGet 套件 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

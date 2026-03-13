@@ -44,12 +44,12 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Rule name that was applied
         /// </summary>
-        public string RuleName { get; set; }
+        public string RuleName { get; set; } = string.Empty;
 
         /// <summary>
         /// Client identifier (IP, user ID, etc.)
         /// </summary>
-        public string ClientId { get; set; }
+        public string ClientId { get; set; } = string.Empty;
 
         public static RateLimitResult Allowed(string ruleName, string clientId, int currentCount, int limit, DateTime windowReset)
         {
@@ -86,7 +86,7 @@ namespace Bricks4Agent.Security.RateLimiting
         /// <summary>
         /// Rule name for identification
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// Maximum requests allowed in the window
@@ -170,7 +170,7 @@ namespace Bricks4Agent.Security.RateLimiting
     /// </summary>
     public class IpStatistics
     {
-        public string IpAddress { get; set; }
+        public string IpAddress { get; set; } = string.Empty;
         public Dictionary<string, int> RequestCounts { get; set; } = new();
         public int TotalRequests { get; set; }
         public int BlockedRequests { get; set; }
@@ -178,7 +178,7 @@ namespace Bricks4Agent.Security.RateLimiting
         public DateTime LastSeen { get; set; }
         public bool IsSuspicious { get; set; }
         public bool IsBlocked { get; set; }
-        public string BlockReason { get; set; }
+        public string BlockReason { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -426,7 +426,7 @@ namespace Bricks4Agent.Security.RateLimiting
             stats.RuleCounts.AddOrUpdate(ruleName, 1, (_, count) => count + 1);
         }
 
-        private void Cleanup(object state)
+        private void Cleanup(object? state)
         {
             var now = DateTime.UtcNow;
 
