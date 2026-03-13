@@ -34,8 +34,7 @@ if (validation.valid) {
 // 2. 生成頁面程式碼
 console.log('2. 生成頁面程式碼...');
 const generator = new PageGenerator({
-    baseImportPath: '../../core/BasePage.js',
-    usePackages: false
+    baseImportPath: '../../core/BasePage.js'
 });
 
 const result = generator.generate(DiaryEditorDefinition);

@@ -212,7 +212,6 @@ const generator = new PageGenerator(options);
 | 參數 | 型別 | 預設值 | 說明 |
 |------|------|--------|------|
 | `baseImportPath` | `string` | `'../core/BasePage.js'` | BasePage 的 import 路徑 |
-| `usePackages` | `boolean` | `false` | 是否使用 packages 進階元件 |
 
 **公開方法：**
 

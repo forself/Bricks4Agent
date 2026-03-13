@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PageGenerator - 頁面生成器核心
  *
  * 根據 PageDefinition 生成實際的頁面程式碼
@@ -24,106 +24,83 @@ import {
 
 /**
  * 元件的 import 路徑映射
- * @type {Object<string, { spa: string, packages: string }>}
+ * @type {Object<string, { packages: string }>}
  */
 export const ComponentPaths = {
     // UI 元件 - SPA 範本
     DatePicker: {
-        spa: '../components/DatePicker/DatePicker.js',
-        packages: null
+        packages: '@component-library/ui_components/form/DatePicker/DatePicker.js'
     },
     ColorPicker: {
-        spa: '../components/ColorPicker/ColorPicker.js',
-        packages: null
+        packages: '@component-library/ui_components/common/ColorPicker/ColorPicker.js'
     },
     ImageViewer: {
-        spa: '../components/ImageViewer/ImageViewer.js',
-        packages: null
+        packages: '@component-library/ui_components/common/ImageViewer/ImageViewer.js'
     },
     ToastPanel: {
-        spa: '../components/Panel/ToastPanel.js',
-        packages: null
+        packages: '@component-library/ui_components/layout/Panel/ToastPanel.js'
     },
     ModalPanel: {
-        spa: '../components/Panel/ModalPanel.js',
-        packages: null
+        packages: '@component-library/ui_components/layout/Panel/ModalPanel.js'
     },
 
     // 服務元件 - SPA 範本
     GeolocationService: {
-        spa: '../components/services/GeolocationService.js',
-        packages: null
+        packages: '@component-library/ui_components/utils/GeolocationService.js'
     },
     WeatherService: {
-        spa: '../components/services/WeatherService.js',
-        packages: null
+        packages: '@component-library/ui_components/utils/WeatherService.js'
     },
 
     // 進階元件 - Packages (路徑對應 packages/javascript/browser/ui_components/)
     WebTextEditor: {
-        spa: null,
         packages: '@component-library/ui_components/editor/WebTextEditor/WebTextEditor.js'
     },
     DrawingBoard: {
-        spa: null,
         packages: '@component-library/ui_components/viz/DrawingBoard/DrawingBoard.js'
     },
     WebPainter: {
-        spa: null,
         packages: '@component-library/ui_components/viz/WebPainter/WebPainter.js'
     },
     BasicButton: {
-        spa: null,
         packages: '@component-library/ui_components/common/BasicButton/BasicButton.js'
     },
     EditorButton: {
-        spa: null,
         packages: '@component-library/ui_components/common/EditorButton/EditorButton.js'
     },
     ButtonGroup: {
-        spa: null,
         packages: '@component-library/ui_components/common/ButtonGroup/ButtonGroup.js'
     },
 
     // 複合輸入元件 - Packages (路徑對應 packages/javascript/browser/ui_components/input/)
     DateTimeInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/DateTimeInput/DateTimeInput.js'
     },
     AddressInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/AddressInput/AddressInput.js'
     },
     AddressListInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/AddressListInput/AddressListInput.js'
     },
     ChainedInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/ChainedInput/ChainedInput.js'
     },
     ListInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/ListInput/ListInput.js'
     },
     PersonInfoList: {
-        spa: null,
         packages: '@component-library/ui_components/input/PersonInfoList/PersonInfoList.js'
     },
     PhoneListInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/PhoneListInput/PhoneListInput.js'
     },
     SocialMediaList: {
-        spa: null,
         packages: '@component-library/ui_components/input/SocialMediaList/SocialMediaList.js'
     },
     OrganizationInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/OrganizationInput/OrganizationInput.js'
     },
     StudentInput: {
-        spa: null,
         packages: '@component-library/ui_components/input/StudentInput/StudentInput.js'
     }
 };
@@ -322,11 +299,9 @@ export class PageGenerator {
     /**
      * @param {Object} options
      * @param {string} options.baseImportPath - 基礎 import 路徑
-     * @param {boolean} options.usePackages - 是否使用 packages 元件
      */
     constructor(options = {}) {
         this.baseImportPath = options.baseImportPath || '../core/BasePage.js';
-        this.usePackages = options.usePackages || false;
     }
 
     /**
@@ -353,13 +328,32 @@ export class PageGenerator {
             ])
         ];
 
-        // 生成程式碼
+        const componentImportErrors = this._validateComponentImports(allComponents);
+        if (componentImportErrors.length > 0) {
+            return {
+                code: null,
+                errors: componentImportErrors
+            };
+        }
+
         const code = this._generateCode(definition, allComponents);
 
         return {
             code,
             errors: []
         };
+    }
+
+    _validateComponentImports(components) {
+        const errors = [];
+
+        for (const comp of components) {
+            if (!ComponentPaths[comp]?.packages) {
+                errors.push(`Component ${comp} is not available in the custom component library`);
+            }
+        }
+
+        return errors;
     }
 
     /**
@@ -429,21 +423,13 @@ export default ${className};
         const imports = [`import { BasePage } from '${this.baseImportPath}';`];
 
         for (const comp of components) {
-            const paths = ComponentPaths[comp];
-            if (!paths) {
-                imports.push(`// TODO: 未知元件 ${comp}，請手動添加 import`);
+            const importPath = ComponentPaths[comp]?.packages;
+            if (!importPath) {
+                imports.push(`// TODO: missing custom component library path for ${comp}`);
                 continue;
             }
 
-            const path = this.usePackages && paths.packages
-                ? paths.packages
-                : paths.spa;
-
-            if (path) {
-                imports.push(`import { ${comp} } from '${path}';`);
-            } else {
-                imports.push(`// TODO: 元件 ${comp} 在當前模式下不可用`);
-            }
+            imports.push(`import { ${comp} } from '${importPath}';`);
         }
 
         return imports.join('\n');

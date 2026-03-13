@@ -169,18 +169,41 @@ export const ComponentMapping = {
 
 export const AvailableComponents = {
     // SPA 範本內建 (templates/spa/frontend/components/)
-    spa: [
+    custom: [
         'DatePicker',
         'ColorPicker',
         'ImageViewer',
         'ToastPanel',
         'ModalPanel',
         'GeolocationService',
-        'WeatherService'
+        'WeatherService',
+        'WebTextEditor',
+        'DrawingBoard',
+        'WebPainter',
+        'BasicButton',
+        'EditorButton',
+        'ButtonGroup',
+        'DateTimeInput',
+        'AddressInput',
+        'AddressListInput',
+        'ChainedInput',
+        'ListInput',
+        'PersonInfoList',
+        'PhoneListInput',
+        'SocialMediaList',
+        'OrganizationInput',
+        'StudentInput'
     ],
 
     // Packages 進階元件 (packages/javascript/browser/ui_components/)
     packages: [
+        'DatePicker',
+        'ColorPicker',
+        'ImageViewer',
+        'ToastPanel',
+        'ModalPanel',
+        'GeolocationService',
+        'WeatherService',
         'WebTextEditor',
         'DrawingBoard',
         'WebPainter',
@@ -228,10 +251,7 @@ export function validateDefinition(definition) {
 
     // 元件檢查
     if (definition.components) {
-        const allComponents = [
-            ...AvailableComponents.spa,
-            ...AvailableComponents.packages
-        ];
+        const allComponents = AvailableComponents.custom;
 
         for (const comp of definition.components) {
             const compName = typeof comp === 'string' ? comp : comp.name;

@@ -8,12 +8,12 @@
  */
 
 import { BasePage } from '../../core/BasePage.js';
-import { DatePicker } from '../components/DatePicker/DatePicker.js';
-import { ColorPicker } from '../components/ColorPicker/ColorPicker.js';
-import { GeolocationService } from '../components/services/GeolocationService.js';
-import { WeatherService } from '../components/services/WeatherService.js';
-import { ToastPanel } from '../components/Panel/ToastPanel.js';
-import { ModalPanel } from '../components/Panel/ModalPanel.js';
+import { DatePicker } from '@component-library/ui_components/form/DatePicker/DatePicker.js';
+import { ColorPicker } from '@component-library/ui_components/common/ColorPicker/ColorPicker.js';
+import { GeolocationService } from '@component-library/ui_components/utils/GeolocationService.js';
+import { WeatherService } from '@component-library/ui_components/utils/WeatherService.js';
+import { ToastPanel } from '@component-library/ui_components/layout/Panel/ToastPanel.js';
+import { ModalPanel } from '@component-library/ui_components/layout/Panel/ModalPanel.js';
 
 export class DiaryEditorPage extends BasePage {
 

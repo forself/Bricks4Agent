@@ -8,8 +8,8 @@
  */
 
 import { BasePage } from '../../core/BasePage.js';
-import { ToastPanel } from '../components/Panel/ToastPanel.js';
-import { ModalPanel } from '../components/Panel/ModalPanel.js';
+import { ToastPanel } from '@component-library/ui_components/layout/Panel/ToastPanel.js';
+import { ModalPanel } from '@component-library/ui_components/layout/Panel/ModalPanel.js';
 
 export class ContactFormPage extends BasePage {
 
