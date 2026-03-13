@@ -4,6 +4,7 @@ const { TOOL_DEFINITIONS, executeTool } = require('./tool-registry');
 const { buildSystemPrompt } = require('./system-prompt');
 const { parseToolCalls, hasToolCalls, stripToolCalls, formatToolResult } = require('./react-parser');
 const { colorize, bold, logInfo, logWarn, logError, logTool, formatDuration } = require('./utils');
+const { GovernedExecutor } = require('./governed-executor');
 
 /**
  * 核心 Agent 迴圈
@@ -24,6 +25,12 @@ class AgentLoop {
      * @param {boolean} options.verbose - 顯示除錯
      * @param {number} options.maxIterations - 最大迭代數
      * @param {string} options.forceStrategy - 'react' | 'native' | null
+     * @param {Object} [options.governed] - 受控模式配置
+     * @param {string} options.governed.brokerUrl - Broker API URL
+     * @param {string} options.governed.brokerPubKey - Broker ECDH 公鑰 (Base64)
+     * @param {string} options.governed.principalId - 主體 ID
+     * @param {string} options.governed.taskId - 任務 ID
+     * @param {string} options.governed.roleId - 角色 ID
      */
     constructor(options) {
         this.model = options.model || 'llama3.1';
@@ -34,6 +41,10 @@ class AgentLoop {
         this.verbose = options.verbose || false;
         this.maxIterations = options.maxIterations || 20;
         this.forceStrategy = options.forceStrategy || null;
+
+        // 受控模式（--governed）
+        this.governedConfig = options.governed || null;
+        this.governedExecutor = null;
 
         this.messages = [];
         this.useNativeTools = true;
@@ -77,9 +88,19 @@ class AgentLoop {
         this.messages = [{ role: 'system', content: systemPrompt }];
         this.initialized = true;
 
+        // 受控模式初始化
+        if (this.governedConfig) {
+            this.governedExecutor = new GovernedExecutor({
+                ...this.governedConfig,
+                verbose: this.verbose,
+            });
+            await this.governedExecutor.init();
+        }
+
         // 顯示策略
         const strategy = this.useNativeTools ? '原生 Tool Calling' : 'ReAct XML';
-        logInfo(`模型: ${bold(this.model)} | Provider: ${this.provider.name} | 策略: ${strategy}`);
+        const mode = this.governedExecutor ? ' | 模式: 🔒 受控' : '';
+        logInfo(`模型: ${bold(this.model)} | Provider: ${this.provider.name} | 策略: ${strategy}${mode}`);
     }
 
     /**
@@ -189,13 +210,21 @@ class AgentLoop {
                     logTool(toolName, JSON.stringify(toolArgs));
                 }
 
-                console.log(colorize(`  🔧 ${toolName}(${this._formatArgs(toolArgs)})`, 'gray'));
+                const modeIcon = this.governedExecutor ? '🔒' : '🔧';
+                console.log(colorize(`  ${modeIcon} ${toolName}(${this._formatArgs(toolArgs)})`, 'gray'));
 
-                const toolResult = await executeTool(toolName, toolArgs, {
-                    projectRoot: this.projectRoot,
-                    noConfirm: this.noConfirm,
-                    verbose: this.verbose,
-                });
+                // 受控模式：路由到 Broker 中介核心；否則直接執行
+                const toolResult = this.governedExecutor
+                    ? await this.governedExecutor.executeTool(toolName, toolArgs, {
+                        projectRoot: this.projectRoot,
+                        noConfirm: this.noConfirm,
+                        verbose: this.verbose,
+                    })
+                    : await executeTool(toolName, toolArgs, {
+                        projectRoot: this.projectRoot,
+                        noConfirm: this.noConfirm,
+                        verbose: this.verbose,
+                    });
 
                 if (this.useNativeTools) {
                     const toolMsg = { role: 'tool', content: toolResult };
@@ -269,6 +298,16 @@ class AgentLoop {
         }
     }
 
+    /**
+     * 優雅關閉（清理 Broker session 等資源）
+     */
+    async close() {
+        if (this.governedExecutor) {
+            await this.governedExecutor.close();
+            this.governedExecutor = null;
+        }
+    }
+
     clearHistory() {
         if (this.messages.length > 0) {
             this.messages = [this.messages[0]];
@@ -278,7 +317,8 @@ class AgentLoop {
     getStats() {
         const msgCount = this.messages.length;
         const charCount = this.messages.reduce((sum, m) => sum + (m.content || '').length, 0);
-        return { messageCount: msgCount, totalChars: charCount };
+        const governed = this.governedExecutor ? this.governedExecutor.isActive : false;
+        return { messageCount: msgCount, totalChars: charCount, governed };
     }
 
     _formatArgs(args) {

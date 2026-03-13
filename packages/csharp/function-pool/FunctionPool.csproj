@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FunctionPool</RootNamespace>
+
+    <PackageId>FunctionPool</PackageId>
+    <Version>1.0.0</Version>
+    <Description>功能池核心 — Worker 註冊、TCP 監聽、分派路由（Broker 內嵌）</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 複用 FrameCodec + OpCodes（Binary TCP 協議） -->
+    <ProjectReference Include="..\cache-protocol\CacheProtocol.csproj" />
+    <!-- 複用 IExecutionDispatcher, ApprovedRequest, ExecutionResult -->
+    <ProjectReference Include="..\broker-core\BrokerCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

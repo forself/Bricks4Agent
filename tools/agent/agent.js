@@ -52,6 +52,13 @@ function parseArgs(argv) {
         listModels: false,
         help: false,
         version: false,
+        // 受控模式
+        governed: false,
+        brokerUrl: null,
+        brokerPubKey: null,
+        principalId: null,
+        taskId: null,
+        roleId: null,
     };
 
     for (let i = 0; i < argv.length; i++) {
@@ -121,6 +128,25 @@ function parseArgs(argv) {
                 break;
             case '--force':
                 args.force = true;
+                break;
+            // 受控模式
+            case '--governed':
+                args.governed = true;
+                break;
+            case '--broker-url':
+                args.brokerUrl = argv[++i] || '';
+                break;
+            case '--broker-pub-key':
+                args.brokerPubKey = argv[++i] || '';
+                break;
+            case '--principal-id':
+                args.principalId = argv[++i] || '';
+                break;
+            case '--task-id':
+                args.taskId = argv[++i] || '';
+                break;
+            case '--role-id':
+                args.roleId = argv[++i] || '';
                 break;
         }
     }
@@ -192,6 +218,23 @@ ${bold('管線模式 (手動指定):')}
   --entity <Name>          實體名稱 (PascalCase)
   --fields '<json>'        欄位定義 JSON 陣列
   --project-path <path>    專案子路徑（相對於根目錄）
+
+${bold('受控模式 (Broker 中介核心):')}
+  node agent.js --governed --broker-url http://localhost:5000 --broker-pub-key <base64> --principal-id prn_xxx --task-id task_xxx --role-id role_reader -r "讀取 README.md"
+
+  --governed               啟用受控模式（所有工具呼叫經 Broker 裁決）
+  --broker-url <url>       Broker API URL (預設: http://localhost:5000)
+  --broker-pub-key <key>   Broker ECDH P-256 公鑰 (Base64, 啟動 broker 時顯示)
+  --principal-id <id>      主體 ID (e.g., prn_xxx)
+  --task-id <id>           任務 ID (e.g., task_xxx)
+  --role-id <id>           角色 ID (e.g., role_reader)
+
+  ${bold('環境變數（替代 CLI 參數）:')}
+  BROKER_URL=http://localhost:5000
+  BROKER_PUB_KEY=MFkwEwYHKo...
+  BROKER_PRINCIPAL_ID=prn_xxx
+  BROKER_TASK_ID=task_xxx
+  BROKER_ROLE_ID=role_reader
 
 ${bold('REPL 指令:')}
   /help     顯示指令說明    /model <name>  切換模型
@@ -284,6 +327,33 @@ async function main() {
         return;
     }
 
+    // 受控模式配置（CLI 參數 > 環境變數）
+    let governedConfig = null;
+    if (args.governed) {
+        const brokerUrl = args.brokerUrl || process.env.BROKER_URL || 'http://localhost:5000';
+        const brokerPubKey = args.brokerPubKey || process.env.BROKER_PUB_KEY || '';
+        const principalId = args.principalId || process.env.BROKER_PRINCIPAL_ID || '';
+        const taskId = args.taskId || process.env.BROKER_TASK_ID || '';
+        const roleId = args.roleId || process.env.BROKER_ROLE_ID || 'role_reader';
+
+        if (!brokerPubKey) {
+            logError('受控模式需要 --broker-pub-key 或 BROKER_PUB_KEY 環境變數');
+            logInfo('提示: 啟動 broker 時會顯示公鑰，例如:\n  Broker public key (share with clients): MFkwEwYH...');
+            process.exit(1);
+        }
+        if (!principalId) {
+            logError('受控模式需要 --principal-id 或 BROKER_PRINCIPAL_ID 環境變數');
+            process.exit(1);
+        }
+        if (!taskId) {
+            logError('受控模式需要 --task-id 或 BROKER_TASK_ID 環境變數');
+            process.exit(1);
+        }
+
+        governedConfig = { brokerUrl, brokerPubKey, principalId, taskId, roleId };
+        logInfo(`🔒 受控模式: Broker=${brokerUrl}, Principal=${principalId}, Task=${taskId}`);
+    }
+
     // 建立 Agent（只在需要 LLM 時）
     const agent = new AgentLoop({
         model: args.model,
@@ -294,6 +364,7 @@ async function main() {
         verbose: args.verbose,
         maxIterations: args.maxIterations,
         forceStrategy: args.forceStrategy,
+        governed: governedConfig,
     });
 
     if (args.generate) {
@@ -377,15 +448,36 @@ async function main() {
         } catch (e) {
             logError(e.message);
             process.exit(1);
+        } finally {
+            // 受控模式：優雅關閉 session
+            await agent.close();
         }
     } else {
         // 互動式 REPL
         const repl = new AgentRepl(agent);
+
+        // 受控模式：攔截退出信號，優雅關閉 session
+        if (governedConfig) {
+            const cleanup = async () => {
+                await agent.close();
+            };
+            process.on('SIGINT', async () => {
+                await cleanup();
+                process.exit(0);
+            });
+            process.on('SIGTERM', async () => {
+                await cleanup();
+                process.exit(0);
+            });
+        }
+
         try {
             await repl.start();
         } catch (e) {
             logError(e.message);
             process.exit(1);
+        } finally {
+            await agent.close();
         }
     }
 }

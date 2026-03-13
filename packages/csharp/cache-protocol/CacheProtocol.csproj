@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CacheProtocol</RootNamespace>
+    <PackageId>CacheProtocol</PackageId>
+    <Version>1.0.0</Version>
+    <Description>分散式快取服務的共用協議型別（Wire Format、OpCodes、序列化）</Description>
+  </PropertyGroup>
+
+  <!-- 零外部依賴 -->
+
+</Project>

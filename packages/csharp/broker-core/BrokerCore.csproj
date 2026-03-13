@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BrokerCore</RootNamespace>
+
+    <PackageId>BrokerCore</PackageId>
+    <Version>1.0.0</Version>
+    <Description>中介核心 — Control Plane / PEP 核心邏輯（純領域層，無 HTTP 依賴）</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- BaseOrm: EnsureTable、CRUD、Transaction（透明切換 SQLite/PostgreSQL/SQL Server） -->
+    <ProjectReference Include="..\database\BaseOrm\net8\BaseOrm.csproj" />
+    <!-- CacheClient: 分散式快取客戶端（Phase 2 可選） -->
+    <ProjectReference Include="..\cache-client\CacheClient.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Scoped Token: 獨立 JWT 實作（不依賴 JwtHelper，claim 模型不同） -->
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

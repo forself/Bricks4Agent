@@ -30,7 +30,7 @@ namespace BaseCache;
 /// <summary>
 /// 輕量級記憶體快取
 /// </summary>
-public class BaseCache : IDisposable
+public class BaseCache : IBaseCache
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _store = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<object>> _queues = new();

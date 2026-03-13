@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Broker</RootNamespace>
+
+    <Version>1.0.0</Version>
+    <Description>中介核心 — ASP.NET Core 8 Minimal API Host（全 POST、E2E 加密）</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\broker-core\BrokerCore.csproj" />
+    <!-- Phase 3: 功能池 -->
+    <ProjectReference Include="..\function-pool\FunctionPool.csproj" />
+    <!-- 重用現有模組 -->
+    <ProjectReference Include="..\security\RateLimiting\RateLimiting.csproj" />
+    <ProjectReference Include="..\logging\BaseLogger\BaseLogger.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
