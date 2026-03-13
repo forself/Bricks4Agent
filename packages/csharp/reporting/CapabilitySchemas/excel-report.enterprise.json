@@ -1,0 +1,41 @@
+{
+  "$schema": "https://bricks4agent.local/schemas/capability-profile-v1.json",
+  "capability": "excel_report",
+  "profile": "enterprise",
+  "serviceContract": {
+    "interface": "Bricks4Agent.Reporting.Abstractions.Services.IExcelReportService",
+    "requestType": "Bricks4Agent.Reporting.Abstractions.Models.ExcelReportRequest",
+    "resultType": "Bricks4Agent.Reporting.Abstractions.Models.ReportFile"
+  },
+  "generatedLayer": {
+    "allowedReferences": [
+      "System.*",
+      "Bricks4Agent.Reporting.Abstractions"
+    ],
+    "allowedOperations": [
+      "query_business_data",
+      "compose_report_request",
+      "call_generate_async",
+      "return_report_file"
+    ],
+    "forbiddenOperations": [
+      "direct_third_party_excel_package",
+      "direct_openxml_generation",
+      "direct_filesystem_write",
+      "direct_http_download_response_from_use_case"
+    ]
+  },
+  "adapterLayer": {
+    "allowedReferences": [
+      "ClosedXML",
+      "EPPlus",
+      "NPOI"
+    ],
+    "responsibilities": [
+      "workbook_creation",
+      "worksheet_styling",
+      "formula_support",
+      "stream_serialization"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Bricks4Agent.Reporting.Abstractions</RootNamespace>
+    <AssemblyName>Bricks4Agent.Reporting.Abstractions</AssemblyName>
+    <PackageId>Bricks4Agent.Reporting.Abstractions</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Generator-friendly reporting contracts for platform and adapter boundaries.</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="ClosedXmlAdapter\**\*.cs" />
+  </ItemGroup>
+
+</Project>

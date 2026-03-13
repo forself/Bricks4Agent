@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "project": "packages/csharp/broker/Broker.csproj",
+      "allowedProjectReferences": [
+        "packages/csharp/broker-core/BrokerCore.csproj",
+        "packages/csharp/function-pool/FunctionPool.csproj",
+        "packages/csharp/security/RateLimiting/RateLimiting.csproj",
+        "packages/csharp/logging/BaseLogger/BaseLogger.csproj"
+      ],
+      "allowedPackageReferences": [
+        "Microsoft.AspNetCore.Authentication.JwtBearer"
+      ],
+      "allowedFrameworkReferences": []
+    },
+    {
+      "project": "packages/csharp/broker-core/BrokerCore.csproj",
+      "allowedProjectReferences": [
+        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj",
+        "packages/csharp/cache-client/CacheClient.csproj"
+      ],
+      "allowedPackageReferences": [
+        "System.IdentityModel.Tokens.Jwt",
+        "Microsoft.IdentityModel.Tokens"
+      ],
+      "allowedFrameworkReferences": []
+    },
+    {
+      "project": "packages/csharp/reporting/Reporting.Abstractions.csproj",
+      "allowedProjectReferences": [],
+      "allowedPackageReferences": [],
+      "allowedFrameworkReferences": []
+    },
+    {
+      "project": "packages/csharp/reporting/ClosedXmlAdapter/ClosedXmlAdapter.csproj",
+      "allowedProjectReferences": [
+        "packages/csharp/reporting/Reporting.Abstractions.csproj"
+      ],
+      "allowedPackageReferences": [
+        "ClosedXML"
+      ],
+      "allowedFrameworkReferences": []
+    }
+  ]
+}

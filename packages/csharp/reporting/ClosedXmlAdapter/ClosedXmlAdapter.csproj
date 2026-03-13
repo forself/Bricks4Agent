@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Bricks4Agent.Reporting.ClosedXmlAdapter</RootNamespace>
+    <AssemblyName>Bricks4Agent.Reporting.ClosedXmlAdapter</AssemblyName>
+    <PackageId>Bricks4Agent.Reporting.ClosedXmlAdapter</PackageId>
+    <Version>1.0.0</Version>
+    <Description>ClosedXML adapter for Bricks4Agent reporting abstractions.</Description>
+    <Authors>Bricks4Agent</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reporting.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.3" />
+  </ItemGroup>
+
+</Project>
