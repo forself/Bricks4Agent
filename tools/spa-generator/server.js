@@ -20,11 +20,17 @@ const url = require('url');
 const { spawn, execSync } = require('child_process');
 const { pathToFileURL } = require('url');
 const {
+    isDefinitionTemplate,
     assertValidDefinitionTemplate,
     validateDefinitionTemplate,
     resolveTemplateEnvelope,
-    extractPageEntry
+    extractPageEntry,
+    extractAppEntry
 } = require('../lib/definition-template.js');
+const {
+    validateAppGenerationSupport,
+    materializeAppBackendProject
+} = require('../lib/app-generator.js');
 
 // ===== 配置 =====
 const PORT = parseInt(process.argv.find(a => a.startsWith('--port='))?.split('=')[1] || '3080');
@@ -139,6 +145,30 @@ function pluralize(word) {
     return word + 's';
 }
 
+function resolveTemplateDocument(payload) {
+    if (isDefinitionTemplate(payload)) {
+        return payload;
+    }
+
+    if (!payload || typeof payload !== 'object') {
+        return null;
+    }
+
+    const envelope = resolveTemplateEnvelope(payload);
+    if (envelope?.template) {
+        return envelope.template;
+    }
+
+    const candidates = ['definitionTemplate', 'template', 'definition'];
+    for (const key of candidates) {
+        if (isDefinitionTemplate(payload[key])) {
+            return payload[key];
+        }
+    }
+
+    return null;
+}
+
 let pageDefinitionAdapterPromise = null;
 
 async function loadPageDefinitionAdapter() {
@@ -185,6 +215,25 @@ async function normalizeTemplateToNewPageDefinition(payload, pageIdOverride = nu
         oldDefinition: extracted.pageDefinition,
         definition: newDefinition,
         templateStats: extracted.templateStats
+    };
+}
+
+async function normalizeTemplateToAppDefinition(payload, appIdOverride = null) {
+    const template = resolveTemplateDocument(payload);
+    if (!template) {
+        return null;
+    }
+
+    const validation = await assertValidDefinitionTemplate(template);
+    const appId = appIdOverride || payload?.appId || null;
+    const appEntry = extractAppEntry(template, appId);
+    const support = validateAppGenerationSupport(appEntry);
+
+    return {
+        template,
+        appEntry,
+        templateStats: validation.stats,
+        support
     };
 }
 
@@ -579,6 +628,39 @@ const apiHandlers = {
     },
 
     // 從 PageDefinition 生成頁面程式碼
+    'POST /api/definition-template/app/validate': async (req, res) => {
+        try {
+            const payload = await parseBody(req);
+            const normalized = await normalizeTemplateToAppDefinition(payload, payload.appId);
+            if (!normalized) {
+                return sendError(res, 'Input must be a DefinitionTemplate document');
+            }
+
+            if (!normalized.support.valid) {
+                return sendJson(res, {
+                    success: false,
+                    errors: normalized.support.errors,
+                    data: null
+                });
+            }
+
+            sendJson(res, {
+                success: true,
+                errors: [],
+                data: {
+                    message: 'DefinitionTemplate app is valid for minimal backend generation',
+                    appId: normalized.appEntry.id,
+                    stats: normalized.templateStats
+                }
+            });
+        } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendValidationErrors(res, error.errors);
+            }
+            sendError(res, error.message);
+        }
+    },
+
     'POST /api/generator/page-definition': async (req, res) => {
         try {
             const payload = await parseBody(req);
@@ -640,6 +722,47 @@ const apiHandlers = {
     // ===== 頁面建構器 API =====
 
     // 驗證頁面定義
+    'POST /api/generator/app-definition': async (req, res) => {
+        try {
+            const payload = await parseBody(req);
+            const normalized = await normalizeTemplateToAppDefinition(payload, payload.appId);
+            if (!normalized) {
+                return sendError(res, 'Input must be a DefinitionTemplate document');
+            }
+
+            if (!normalized.support.valid) {
+                return sendValidationErrors(res, normalized.support.errors);
+            }
+
+            if (!payload.outputDir || typeof payload.outputDir !== 'string') {
+                return sendError(res, 'Missing outputDir');
+            }
+
+            const result = materializeAppBackendProject(
+                normalized.template,
+                normalized.appEntry.id,
+                payload.outputDir
+            );
+
+            sendJson(res, {
+                success: true,
+                data: {
+                    appId: result.appId,
+                    templateStats: normalized.templateStats,
+                    projectRoot: result.projectRoot,
+                    backendDir: result.backendDir,
+                    csprojPath: result.csprojPath,
+                    generatedFilePath: result.generatedFilePath
+                }
+            });
+        } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendValidationErrors(res, error.errors);
+            }
+            sendError(res, error.message, 500);
+        }
+    },
+
     'POST /api/page-builder/validate': async (req, res) => {
         try {
             const payload = await parseBody(req);
