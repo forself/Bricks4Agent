@@ -6,6 +6,8 @@ const { extractAppEntry } = require('./definition-template.js');
 
 const TEMPLATE_BACKEND_DIR = path.resolve(__dirname, '../../templates/spa/backend');
 const TEMPLATE_FRONTEND_DIR = path.resolve(__dirname, '../../templates/spa/frontend');
+const PAGE_GENERATOR_RUNTIME_DIR = path.resolve(__dirname, '../../packages/javascript/browser/page-generator');
+const UI_COMPONENTS_RUNTIME_DIR = path.resolve(__dirname, '../../packages/javascript/browser/ui_components');
 const SKIP_DIRECTORIES = new Set(['bin', 'obj']);
 const SUPPORTED_SERVICE_PAIRS = new Map([
     ['SpaApi.Services.IUserService', 'SpaApi.Services.UserService'],
@@ -101,6 +103,29 @@ function copyDirectory(sourceDir, targetDir) {
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
         fs.copyFileSync(sourcePath, targetPath);
     }
+}
+
+function copyPageGeneratorRuntime(targetDir) {
+    fs.mkdirSync(targetDir, { recursive: true });
+
+    for (const entry of fs.readdirSync(PAGE_GENERATOR_RUNTIME_DIR, { withFileTypes: true })) {
+        if (!entry.isFile() || path.extname(entry.name) !== '.js') {
+            continue;
+        }
+
+        const sourcePath = path.join(PAGE_GENERATOR_RUNTIME_DIR, entry.name);
+        const targetPath = path.join(targetDir, entry.name);
+        fs.copyFileSync(sourcePath, targetPath);
+    }
+}
+
+function materializeFrontendRuntime(frontendDir) {
+    const runtimeDir = path.join(frontendDir, 'runtime');
+    const pageGeneratorDir = path.join(runtimeDir, 'page-generator');
+    const uiComponentsDir = path.join(runtimeDir, 'ui_components');
+
+    copyPageGeneratorRuntime(pageGeneratorDir);
+    copyDirectory(UI_COMPONENTS_RUNTIME_DIR, uiComponentsDir);
 }
 
 function validateAppGenerationSupport(appEntry) {
@@ -535,6 +560,7 @@ function materializeAppProject(template, appId, outputRoot) {
     if (pageRefs.length > 0) {
         frontendDir = path.join(backendResult.projectRoot, 'frontend');
         copyDirectory(TEMPLATE_FRONTEND_DIR, frontendDir);
+        materializeFrontendRuntime(frontendDir);
 
         const generatedPagesDir = path.join(frontendDir, 'pages', 'generated');
         fs.mkdirSync(generatedPagesDir, { recursive: true });
