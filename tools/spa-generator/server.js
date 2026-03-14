@@ -18,6 +18,11 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const { spawn, execSync } = require('child_process');
+const { pathToFileURL } = require('url');
+const {
+    resolveTemplateEnvelope,
+    extractPageEntry
+} = require('../lib/definition-template.js');
 
 // ===== 配置 =====
 const PORT = parseInt(process.argv.find(a => a.startsWith('--port='))?.split('=')[1] || '3080');
@@ -126,6 +131,48 @@ function pluralize(word) {
     if (word.endsWith('y')) return word.slice(0, -1) + 'ies';
     if (word.endsWith('s') || word.endsWith('x') || word.endsWith('ch') || word.endsWith('sh')) return word + 'es';
     return word + 's';
+}
+
+let pageDefinitionAdapterPromise = null;
+
+async function loadPageDefinitionAdapter() {
+    if (!pageDefinitionAdapterPromise) {
+        const adapterPath = pathToFileURL(
+            path.resolve(__dirname, '../../packages/javascript/browser/page-generator/PageDefinitionAdapter.js')
+        ).href;
+        pageDefinitionAdapterPromise = import(adapterPath).then(module => module.PageDefinitionAdapter || module.default);
+    }
+
+    return pageDefinitionAdapterPromise;
+}
+
+async function normalizeTemplateToOldPageDefinition(payload, pageIdOverride = null) {
+    const envelope = resolveTemplateEnvelope(payload, pageIdOverride);
+    if (!envelope) {
+        return null;
+    }
+
+    return extractPageEntry(envelope.template, envelope.pageId);
+}
+
+async function normalizeTemplateToNewPageDefinition(payload, pageIdOverride = null) {
+    const extracted = await normalizeTemplateToOldPageDefinition(payload, pageIdOverride);
+    if (!extracted) {
+        return null;
+    }
+
+    const PageDefinitionAdapter = await loadPageDefinitionAdapter();
+    const newDefinition = PageDefinitionAdapter.toNewFormat(extracted.pageDefinition);
+
+    if (!newDefinition) {
+        throw new Error(`無法將 page ${extracted.pageId} 轉為 page-builder 格式`);
+    }
+
+    return {
+        pageId: extracted.pageId,
+        oldDefinition: extracted.pageDefinition,
+        definition: newDefinition
+    };
 }
 
 // ===== 頁面建構器輔助函數 =====
@@ -501,9 +548,27 @@ const apiHandlers = {
     // 從 PageDefinition 生成頁面程式碼
     'POST /api/generator/page-definition': async (req, res) => {
         try {
-            const { definition } = await parseBody(req);
+            const payload = await parseBody(req);
+            const { definition } = payload;
             if (!definition || typeof definition !== 'object') {
                 return sendError(res, '缺少 definition 物件');
+            }
+
+            const normalized = await normalizeTemplateToOldPageDefinition(definition, payload.pageId);
+            if (normalized) {
+                const oldDef = normalized.pageDefinition;
+                const code = generateStaticPageCode(oldDef);
+
+                return sendJson(res, {
+                    success: true,
+                    data: {
+                        code,
+                        className: oldDef.name,
+                        fileName: `${oldDef.name}.js`,
+                        pageId: normalized.pageId,
+                        source: 'definition-template'
+                    }
+                });
             }
 
             // 將 PageDefinition 格式轉為 server 端的舊格式並生成
@@ -540,13 +605,19 @@ const apiHandlers = {
     // 驗證頁面定義
     'POST /api/page-builder/validate': async (req, res) => {
         try {
-            const definition = await parseBody(req);
+            const payload = await parseBody(req);
+            const normalized = await normalizeTemplateToNewPageDefinition(payload, payload.pageId);
+            const definition = normalized?.definition || payload;
             const errors = validatePageDefinition(definition);
 
             sendJson(res, {
                 success: errors.length === 0,
                 errors,
-                data: errors.length === 0 ? { message: '定義驗證通過' } : null
+                data: errors.length === 0 ? {
+                    message: '定義驗證通過',
+                    pageId: normalized?.pageId || null,
+                    source: normalized ? 'definition-template' : 'legacy-page-definition'
+                } : null
             });
         } catch (error) {
             sendError(res, error.message);
@@ -556,7 +627,9 @@ const apiHandlers = {
     // 生成靜態 .js 頁面
     'POST /api/page-builder/generate': async (req, res) => {
         try {
-            const definition = await parseBody(req);
+            const payload = await parseBody(req);
+            const normalized = await normalizeTemplateToNewPageDefinition(payload, payload.pageId);
+            const definition = normalized?.definition || payload;
             const errors = validatePageDefinition(definition);
 
             if (errors.length > 0) {
@@ -574,7 +647,9 @@ const apiHandlers = {
                 data: {
                     code,
                     className: oldDef.name,
-                    fileName: `${oldDef.name}.js`
+                    fileName: `${oldDef.name}.js`,
+                    pageId: normalized?.pageId || null,
+                    source: normalized ? 'definition-template' : 'legacy-page-definition'
                 }
             });
         } catch (error) {
@@ -585,7 +660,9 @@ const apiHandlers = {
     // 匯出定義 JSON
     'POST /api/page-builder/export': async (req, res) => {
         try {
-            const definition = await parseBody(req);
+            const payload = await parseBody(req);
+            const normalized = await normalizeTemplateToNewPageDefinition(payload, payload.pageId);
+            const definition = normalized?.definition || payload;
             const errors = validatePageDefinition(definition);
 
             if (errors.length > 0) {
@@ -596,6 +673,8 @@ const apiHandlers = {
                 success: true,
                 data: {
                     definition,
+                    pageId: normalized?.pageId || null,
+                    source: normalized ? 'definition-template' : 'legacy-page-definition',
                     exportedAt: new Date().toISOString()
                 }
             });

@@ -16,6 +16,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const {
+    resolveTemplateEnvelope,
+    extractPageEntry
+} = require('./lib/definition-template.js');
 
 // ============================================================
 // 常數定義
@@ -76,6 +80,7 @@ const VIEW_TO_PAGE_TYPE = {
 function parseArgs(argv) {
     const args = {
         def: null,
+        page: null,
         mode: 'static',
         output: null,
         validate: false,
@@ -91,6 +96,9 @@ function parseArgs(argv) {
         switch (arg) {
             case '--def':
                 args.def = rawArgs[++i];
+                break;
+            case '--page':
+                args.page = rawArgs[++i];
                 break;
             case '--mode':
                 args.mode = rawArgs[++i];
@@ -131,6 +139,7 @@ page-gen.js - 頁面生成 CLI 工具
 
 選項：
   --def <path>       頁面定義 JSON 檔案路徑
+  --page <id>        DefinitionTemplate 內要選用的 page id
   --mode <mode>      生成模式：static | dynamic | both（預設：static）
   --output <dir>     輸出目錄
   --validate         僅驗證定義，不生成檔案
@@ -140,6 +149,9 @@ page-gen.js - 頁面生成 CLI 工具
 範例：
   # 生成靜態頁面
   node tools/page-gen.js --def employee.json --mode static --output ./output/
+
+  # 從 DefinitionTemplate 選取單一 page
+  node tools/page-gen.js --def site-definition.json --page products-list --mode static --output ./output/
 
   # 生成動態定義 JSON
   node tools/page-gen.js --def employee.json --mode dynamic --output ./output/
@@ -408,6 +420,78 @@ function hasStdinPipe() {
     return !process.stdin.isTTY;
 }
 
+let pageDefinitionModulesPromise = null;
+
+async function loadPageDefinitionModules() {
+    if (!pageDefinitionModulesPromise) {
+        const adapterPath = pathToFileURL(
+            path.resolve(__dirname, '../packages/javascript/browser/page-generator/PageDefinitionAdapter.js')
+        ).href;
+        const definitionPath = pathToFileURL(
+            path.resolve(__dirname, '../packages/javascript/browser/page-generator/PageDefinition.js')
+        ).href;
+
+        pageDefinitionModulesPromise = Promise.all([
+            import(adapterPath),
+            import(definitionPath)
+        ]).then(([adapterModule, definitionModule]) => ({
+            PageDefinitionAdapter: adapterModule.PageDefinitionAdapter || adapterModule.default,
+            validatePageDefinition: definitionModule.validateDefinition
+        }));
+    }
+
+    return pageDefinitionModulesPromise;
+}
+
+async function normalizeDefinitionInput(definition, pageId) {
+    const envelope = resolveTemplateEnvelope(definition, pageId);
+    if (!envelope) {
+        return {
+            source: 'legacy-page-definition',
+            definition,
+            pageId: null,
+            oldDefinition: null
+        };
+    }
+
+    const { pageId: selectedPageId, pageDefinition } = extractPageEntry(envelope.template, envelope.pageId);
+    const { PageDefinitionAdapter } = await loadPageDefinitionModules();
+    const newDefinition = PageDefinitionAdapter.toNewFormat(pageDefinition);
+
+    if (!newDefinition) {
+        throw new Error(`無法將 page ${selectedPageId} 轉為 CLI 可用格式`);
+    }
+
+    return {
+        source: 'definition-template',
+        definition: newDefinition,
+        pageId: selectedPageId,
+        oldDefinition: pageDefinition
+    };
+}
+
+async function validateNormalizedDefinition(normalized) {
+    const errors = [];
+
+    if (normalized.oldDefinition) {
+        const { validatePageDefinition } = await loadPageDefinitionModules();
+        const pageValidation = validatePageDefinition(normalized.oldDefinition);
+        if (!pageValidation.valid) {
+            errors.push(...pageValidation.errors);
+        }
+    }
+
+    const newValidation = validateNewDefinition(normalized.definition);
+    if (!newValidation.valid) {
+        errors.push(...newValidation.errors);
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+
 // ============================================================
 // 生成功能
 // ============================================================
@@ -421,7 +505,10 @@ function hasStdinPipe() {
 async function generateStatic(newDef, outputDir) {
     // 轉換為舊格式
     const oldDef = convertToOldFormat(newDef);
+    return generateStaticFromOldDefinition(oldDef, outputDir);
+}
 
+async function generateStaticFromOldDefinition(oldDef, outputDir) {
     // 動態載入 PageGenerator
     const generatorPath = pathToFileURL(
         path.resolve(__dirname, '../packages/javascript/browser/page-generator/PageGenerator.js')
@@ -458,7 +545,7 @@ async function generateStatic(newDef, outputDir) {
  * @param {string} outputDir - 輸出目錄
  * @returns {Object} 生成結果 { path, type, size }
  */
-function generateDynamic(newDef, outputDir) {
+function generateDynamic(newDef, outputDir, fileBaseName = null) {
     // 驗證
     const validation = validateNewDefinition(newDef);
     if (!validation.valid) {
@@ -470,7 +557,8 @@ function generateDynamic(newDef, outputDir) {
 
     // 決定檔名
     const entity = newDef.page.entity || newDef.page.pageName || 'unknown';
-    const fileName = `${entity.toLowerCase()}-definition.json`;
+    const baseName = fileBaseName || entity.toLowerCase();
+    const fileName = `${baseName}-definition.json`;
     const filePath = path.join(outputDir, fileName);
 
     // 寫入 JSON
@@ -556,11 +644,24 @@ async function main() {
         process.exit(1);
     }
 
+    let normalized;
+    try {
+        normalized = await normalizeDefinitionInput(definition, args.page);
+    } catch (e) {
+        outputError([e.message]);
+        process.exit(1);
+    }
+
     // 僅驗證模式
     if (args.validate) {
-        const validation = validateNewDefinition(definition);
+        const validation = await validateNormalizedDefinition(normalized);
         if (validation.valid) {
-            outputJSON({ success: true, message: '定義驗證通過' });
+            outputJSON({
+                success: true,
+                message: '定義驗證通過',
+                source: normalized.source,
+                pageId: normalized.pageId
+            });
         } else {
             outputError(validation.errors);
         }
@@ -582,7 +683,7 @@ async function main() {
     const outputDir = path.resolve(args.output);
 
     // 先驗證定義
-    const validation = validateNewDefinition(definition);
+    const validation = await validateNormalizedDefinition(normalized);
     if (!validation.valid) {
         outputError(validation.errors);
         process.exit(1);
@@ -593,16 +694,23 @@ async function main() {
 
     try {
         if (args.mode === 'static' || args.mode === 'both') {
-            const result = await generateStatic(definition, outputDir);
+            const result = normalized.oldDefinition
+                ? await generateStaticFromOldDefinition(normalized.oldDefinition, outputDir)
+                : await generateStatic(normalized.definition, outputDir);
             files.push(result);
         }
 
         if (args.mode === 'dynamic' || args.mode === 'both') {
-            const result = generateDynamic(definition, outputDir);
+            const result = generateDynamic(normalized.definition, outputDir, normalized.pageId);
             files.push(result);
         }
 
-        outputJSON({ success: true, files });
+        outputJSON({
+            success: true,
+            source: normalized.source,
+            pageId: normalized.pageId,
+            files
+        });
     } catch (e) {
         outputError([e.message]);
         process.exit(1);

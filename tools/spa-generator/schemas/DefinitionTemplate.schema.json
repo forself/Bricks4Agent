@@ -1,0 +1,606 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bricks4agent.local/schemas/definition-template.schema.json",
+  "title": "DefinitionTemplate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "version",
+    "definitions"
+  ],
+  "properties": {
+    "kind": {
+      "const": "definition-template"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "meta": {
+      "type": "object"
+    },
+    "definitions": {
+      "$ref": "#/$defs/definitionsEnvelope"
+    }
+  },
+  "$defs": {
+    "definitionsEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pageEntry"
+          }
+        },
+        "apps": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/appEntry"
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "pages"
+          ]
+        },
+        {
+          "required": [
+            "apps"
+          ]
+        }
+      ]
+    },
+    "pageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "definition"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "definition": {
+          "$ref": "#/$defs/pageDefinition"
+        }
+      }
+    },
+    "pageDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][a-zA-Z0-9]*Page$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "form",
+            "list",
+            "detail",
+            "dashboard"
+          ]
+        },
+        "components": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pageService"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pageField"
+          }
+        },
+        "api": {
+          "type": "object"
+        },
+        "behaviors": {
+          "type": "object"
+        },
+        "styles": {
+          "type": "object"
+        }
+      }
+    },
+    "pageField": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {}
+      }
+    },
+    "pageService": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "object"
+        }
+      }
+    },
+    "appEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "app"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "app": {
+          "$ref": "#/$defs/appDefinition"
+        }
+      }
+    },
+    "appDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "profiles",
+        "backend"
+      ],
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/appIdentity"
+        },
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "configuration": {
+          "$ref": "#/$defs/configuration"
+        },
+        "frontend": {
+          "$ref": "#/$defs/frontend"
+        },
+        "backend": {
+          "$ref": "#/$defs/backend"
+        }
+      }
+    },
+    "appIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "web",
+              "dotnet-backend",
+              "browser-runtime",
+              "worker",
+              "api-only"
+            ]
+          }
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "featureValues": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "boolean",
+              "string",
+              "number"
+            ]
+          }
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pageRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          }
+        }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "features",
+        "services",
+        "middleware",
+        "routeGroups",
+        "hosting"
+      ],
+      "properties": {
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feature"
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/serviceRegistration"
+          }
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/policy"
+          }
+        },
+        "middleware": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/middleware"
+          }
+        },
+        "endpointModules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/endpointModule"
+          }
+        },
+        "routeGroups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeGroup"
+          }
+        },
+        "startupHooks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/startupHook"
+          }
+        },
+        "hosting": {
+          "$ref": "#/$defs/hosting"
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "serviceRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "lifetime",
+        "contract",
+        "implementation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "lifetime": {
+          "type": "string",
+          "enum": [
+            "singleton",
+            "scoped",
+            "transient"
+          ]
+        },
+        "contract": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "type": "string"
+        },
+        "implementation": {
+          "$ref": "#/$defs/implementation"
+        }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reference"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "type",
+            "factory",
+            "capability"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "role",
+            "claim",
+            "custom"
+          ]
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "middleware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "reference",
+        "order"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "framework",
+            "custom",
+            "capability"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer"
+        },
+        "condition": {
+          "type": "string"
+        }
+      }
+    },
+    "endpointModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "reference"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "module",
+            "inline",
+            "capability"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "routeGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "prefix",
+        "moduleRefs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "prefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          }
+        },
+        "moduleRefs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          }
+        }
+      }
+    },
+    "startupHook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "phase",
+        "kind",
+        "reference"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "beforeBuild",
+            "beforeRun",
+            "afterStart",
+            "onStopping"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "module",
+            "inline",
+            "capability"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "hosting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "api",
+            "spa-static",
+            "mixed"
+          ]
+        },
+        "staticRoot": {
+          "type": "string"
+        },
+        "fallbackFile": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
