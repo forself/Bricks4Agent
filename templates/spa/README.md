@@ -37,7 +37,7 @@ spa/
     ├── SpaApi.csproj           # 專案檔
     ├── appsettings.json        # 設定檔
     ├── Data/
-    │   └── AppDbContext.cs     # EF Core DbContext
+    │   └── AppDbContext.cs     # BaseOrm AppDb
     ├── Models/
     │   └── User.cs             # 使用者實體
     └── Services/               # 服務層
@@ -93,7 +93,7 @@ dotnet run
 
 4. 預設管理員帳號：
    - Email: `admin@example.com`
-   - Password: `admin123`
+   - Password: 若 `SeedData:AdminPassword` 未設定，首次啟動時會在後端 console 輸出一組開發用隨機密碼
 
 ## 前端架構
 
@@ -136,6 +136,8 @@ store.subscribe('user', (user) => console.log(user));
 - JWT Token 管理
 - 請求/響應攔截器
 - 快取支援
+
+> 目前範本預設使用 `Authorization: Bearer` 標頭傳送 JWT，token 由 `ApiService` 存放於 `localStorage`。
 
 ```javascript
 // 使用範例
@@ -198,8 +200,8 @@ class UsersPage extends NestedPage {
 
 ### 技術棧
 - ASP.NET Core 8 Minimal API
-- Entity Framework Core + SQLite
-- JWT 認證
+- BaseOrm + SQLite
+- JWT Bearer 認證
 
 ### API 端點
 
@@ -269,9 +271,9 @@ export const routes = [
 在 `Program.cs` 新增端點：
 
 ```csharp
-app.MapGet("/api/items", async (AppDbContext db) =>
+app.MapGet("/api/items", (AppDb db) =>
 {
-    var items = await db.Items.ToListAsync();
+    var items = db.Query<Item>("SELECT * FROM Items");
     return Results.Ok(items);
 }).RequireAuthorization();
 ```
@@ -279,8 +281,8 @@ app.MapGet("/api/items", async (AppDbContext db) =>
 ### 新增資料表
 
 1. 在 `Models/` 建立實體類別
-2. 在 `AppDbContext.cs` 加入 DbSet
-3. 執行 EF Core Migration 或讓 EnsureCreated() 建立
+2. 在 `AppDbContext.cs` 的 EnsureCreated() 中加入建表 SQL
+3. 執行應用程式，EnsureCreated() 會自動建立資料表
 
 ## 部署
 

@@ -38,7 +38,7 @@
 | 前端 | Vanilla JavaScript (ES6+), CSS3, HTML5 |
 | 後端 | .NET 8 Minimal API |
 | 資料庫 | SQLite（預設），可配置 SQL Server / MySQL / PostgreSQL |
-| 認證 | JWT + HttpOnly Cookie |
+| 認證 | JWT Bearer Token（預設透過 `Authorization` header，可依需求改為 HttpOnly Cookie） |
 | 主題 | CSS Custom Properties（`--cl-*`，支援深色主題） |
 
 ---

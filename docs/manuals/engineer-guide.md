@@ -1928,7 +1928,7 @@ import { ApiService } from './core/ApiService.js';
 
 const api = new ApiService({
   baseUrl: '/api',
-  // JWT 自動附加在 HttpOnly Cookie
+  // JWT 自動附加在 Authorization: Bearer 標頭（token 預設存於 localStorage）
 });
 
 // CRUD 操作
@@ -2288,7 +2288,7 @@ projects/my-app/
 │   └── index.html          # 入口檔案
 ├── backend/
 │   ├── Controllers/        # 控制器
-│   ├── Data/               # DbContext / 初始化
+│   ├── Data/               # AppDb (BaseOrm) / 初始化
 │   ├── Models/             # 資料模型
 │   ├── Services/           # 業務邏輯
 │   ├── Program.cs          # .NET 8 Minimal API 入口
@@ -2536,6 +2536,10 @@ bool isMatch = PasswordHasher.Verify(plainPassword, hashedPassword);
 
 ```csharp
 // 設定 JWT（在 Program.cs）
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is required");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SpaApi";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -2545,32 +2549,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = config["Jwt:Issuer"],
-            ValidAudience = config["Jwt:Audience"],
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(config["Jwt:SecretKey"]))
+                Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(1)
         };
     });
 ```
 
-JWT Token 透過 HttpOnly Cookie 傳輸，防止 JavaScript 存取。
+目前 SPA 範本與 SPA Generator 預設透過 `Authorization: Bearer` 標頭傳送 JWT，前端 token 目前保存在 `localStorage`。若改用 Cookie 傳輸，應啟用 `HttpOnly`、`Secure` 與 `SameSite`。
 
 ### 14.4 CORS 設定
 
 ```csharp
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowedOrigins", policy =>
+    options.AddDefaultPolicy(policy =>
     {
         policy.WithOrigins("http://localhost:3080")  // 明確指定允許來源
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowAnyHeader();
     });
 });
 ```
 
-> 切勿在正式環境使用 `AllowAnyOrigin()`。
+> 切勿在正式環境使用 `AllowAnyOrigin()`。只有在採用 Cookie 型認證時，才需要額外設定 `AllowCredentials()`。
 
 ### 14.5 速率限制
 
@@ -2621,7 +2625,7 @@ app.MapPost("/api/users", async (CreateUserDto dto) =>
 
 - [ ] 所有使用者輸入已使用 `escapeHtml()` / `sanitizeUrl()` 跳脫
 - [ ] 密碼使用 PBKDF2（100K iterations）雜湊
-- [ ] JWT 使用 HttpOnly Cookie 傳輸
+- [ ] JWT 傳輸與儲存方式已審查（預設 Bearer Header；若使用 Cookie 則需 `HttpOnly` / `Secure` / `SameSite`）
 - [ ] CORS 已設定明確的允許來源（非 `*`）
 - [ ] API 端點已啟用速率限制
 - [ ] 所有輸入已在後端驗證

@@ -198,10 +198,10 @@ export class FeatureGeneratorPage extends BasePage {
 
                         <h4>生成後需要手動完成</h4>
                         <ol>
-                            <li>在 <code>AppDbContext.cs</code> 加入 DbSet</li>
+                            <li>在 <code>AppDbContext.cs</code> 的 <code>EnsureCreated()</code> 中加入建表 SQL</li>
                             <li>在 <code>Program.cs</code> 註冊服務和 API 端點</li>
                             <li>在 <code>routes.js</code> 加入路由設定</li>
-                            <li>執行 EF Core 遷移</li>
+                            <li>重新啟動應用程式，讓 <code>EnsureCreated()</code> 自動建表</li>
                         </ol>
 
                         <h4>範例：生成 Product 功能</h4>
@@ -256,8 +256,9 @@ export class FeatureGeneratorPage extends BasePage {
                         <h3>下一步</h3>
                         <ol>
                             <li>
-                                <strong>更新 AppDbContext.cs</strong>
-                                <pre class="code-inline">public DbSet&lt;Entity&gt; Entities { get; set; } = null!;</pre>
+                                <strong>更新 AppDbContext.cs / EnsureCreated()</strong>
+                                <pre class="code-inline">// EnsureCreated()
+Execute(@"CREATE TABLE IF NOT EXISTS Entities (...)");</pre>
                             </li>
                             <li>
                                 <strong>更新 Program.cs</strong>
@@ -273,9 +274,8 @@ import { EntityDetailPage } from './entities/EntityDetailPage.js';
 { path: '/entities/:id', component: EntityDetailPage }</pre>
                             </li>
                             <li>
-                                <strong>執行資料庫遷移</strong>
-                                <pre class="code-inline">dotnet ef migrations add AddEntity
-dotnet ef database update</pre>
+                                <strong>重新啟動應用程式</strong>
+                                <pre class="code-inline">dotnet run</pre>
                             </li>
                         </ol>
                     </div>

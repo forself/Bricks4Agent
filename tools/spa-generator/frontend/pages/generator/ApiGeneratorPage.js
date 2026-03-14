@@ -142,9 +142,9 @@ export class ApiGeneratorPage extends BasePage {
 
                         <h4>生成後續步驟</h4>
                         <ol>
-                            <li>在 <code>AppDbContext.cs</code> 加入 DbSet</li>
+                            <li>在 <code>AppDbContext.cs</code> 的 <code>EnsureCreated()</code> 中加入建表 SQL</li>
                             <li>在 <code>Program.cs</code> 註冊服務並加入 API 端點</li>
-                            <li>執行 EF Core 遷移更新資料庫</li>
+                            <li>重新啟動應用程式，讓 <code>EnsureCreated()</code> 自動建表</li>
                         </ol>
                     </div>
                 </div>
@@ -247,13 +247,14 @@ export class ApiGeneratorPage extends BasePage {
                     <div class="result-section">
                         <h3>下一步</h3>
                         <ol>
-                            <li>在 <code>AppDbContext.cs</code> 加入：
-                                <pre class="code-inline">public DbSet&lt;Entity&gt; Entities { get; set; } = null!;</pre>
+                            <li>在 <code>AppDbContext.cs</code> 加入建表 SQL：
+                                <pre class="code-inline">// EnsureCreated()
+Execute(@"CREATE TABLE IF NOT EXISTS Entities (...)");</pre>
                             </li>
                             <li>在 <code>Program.cs</code> 註冊服務</li>
                             <li>複製 API 端點程式碼到 <code>Program.cs</code></li>
-                            <li>執行 <code>dotnet ef migrations add AddEntity</code></li>
-                            <li>執行 <code>dotnet ef database update</code></li>
+                            <li>重新啟動應用程式</li>
+                            <li>確認資料表已由 <code>EnsureCreated()</code> 自動建立</li>
                         </ol>
                     </div>
 

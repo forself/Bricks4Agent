@@ -122,7 +122,7 @@ async function generateFeature() {
     console.log(`已生成 ${featureName} 功能的完整程式碼。`);
     console.log('');
     console.log('請按照上述說明完成以下步驟:');
-    console.log('1. 更新 AppDbContext.cs');
+    console.log('1. 更新 AppDbContext.cs 的 EnsureCreated() 與 AppDb 方法');
     console.log('2. 更新 Program.cs (服務註冊 + API 端點)');
     console.log('3. 更新 routes.js (前端路由)');
     console.log('');

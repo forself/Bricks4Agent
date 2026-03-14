@@ -194,9 +194,9 @@ export class HomePage extends BasePage {
                             <ul>
                                 <li>.NET 8 Minimal API</li>
                                 <li>SQLite 資料庫</li>
-                                <li>Entity Framework Core</li>
+                                <li>BaseOrm 輕量 ORM</li>
                                 <li>JWT 認證</li>
-                                <li>Repository Pattern</li>
+                                <li>Service Layer</li>
                             </ul>
                         </div>
                         <div class="spec-category">

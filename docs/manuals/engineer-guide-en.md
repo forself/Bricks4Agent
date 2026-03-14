@@ -1797,7 +1797,7 @@ import { ApiService } from './core/ApiService.js';
 
 const api = new ApiService({
   baseUrl: '/api',
-  // JWT automatically attached via HttpOnly Cookie
+  // JWT is attached via the Authorization: Bearer header (tokens are stored in localStorage by default)
 });
 
 // CRUD operations
@@ -2159,7 +2159,7 @@ projects/my-app/
 │   └── index.html          # Entry file
 ├── backend/
 │   ├── Controllers/        # Controllers
-│   ├── Data/               # DbContext / initialization
+│   ├── Data/               # AppDb (BaseOrm) / initialization
 │   ├── Models/             # Data models
 │   ├── Services/           # Business logic
 │   ├── Program.cs          # .NET 8 Minimal API entry
@@ -2406,6 +2406,10 @@ bool isMatch = PasswordHasher.Verify(plainPassword, hashedPassword);
 
 ```csharp
 // Configure JWT (in Program.cs)
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is required");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SpaApi";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -2415,32 +2419,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = config["Jwt:Issuer"],
-            ValidAudience = config["Jwt:Audience"],
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(config["Jwt:SecretKey"]))
+                Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(1)
         };
     });
 ```
 
-JWT Tokens are transmitted via HttpOnly Cookies to prevent JavaScript access.
+The current SPA template and SPA Generator send JWTs through the `Authorization: Bearer` header, with tokens stored in `localStorage` by default. If you switch to cookie transport, enable `HttpOnly`, `Secure`, and `SameSite`.
 
 ### 14.4 CORS Configuration
 
 ```csharp
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowedOrigins", policy =>
+    options.AddDefaultPolicy(policy =>
     {
         policy.WithOrigins("http://localhost:3080")  // Explicitly specify allowed origins
               .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowAnyHeader();
     });
 });
 ```
 
-> Never use `AllowAnyOrigin()` in production.
+> Never use `AllowAnyOrigin()` in production. Only add `AllowCredentials()` when you actually use cookie-based authentication.
 
 ### 14.5 Rate Limiting
 
@@ -2491,7 +2495,7 @@ Before deployment, verify the following:
 
 - [ ] All user input is escaped with `escapeHtml()` / `sanitizeUrl()`
 - [ ] Passwords are hashed with PBKDF2 (100K iterations)
-- [ ] JWT uses HttpOnly Cookie transport
+- [ ] JWT transport and storage are reviewed (default: Bearer header; if cookies are used, `HttpOnly` / `Secure` / `SameSite` are enabled)
 - [ ] CORS has explicitly configured allowed origins (not `*`)
 - [ ] API endpoints have rate limiting enabled
 - [ ] All input is validated on the backend

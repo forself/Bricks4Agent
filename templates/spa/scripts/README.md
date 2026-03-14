@@ -64,7 +64,7 @@ node spa-cli.js feature Product --fields "Name:string,Price:decimal,Stock:int"
 
 產生後仍需手動整合：
 
-1. `backend/Data/AppDbContext.cs`
+1. `backend/Data/AppDbContext.cs` (AppDb 建表 SQL)
 2. `backend/Program.cs`
 3. `frontend/pages/routes.js`
 
