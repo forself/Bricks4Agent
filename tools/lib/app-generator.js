@@ -73,6 +73,15 @@ function serializeJs(value) {
     return JSON.stringify(value, null, 4);
 }
 
+function readNumericOrStringFeature(featureValues, key, fallback) {
+    const value = featureValues?.[key];
+    if (typeof value === 'number' || typeof value === 'string') {
+        return String(value);
+    }
+
+    return fallback;
+}
+
 function copyDirectory(sourceDir, targetDir) {
     fs.mkdirSync(targetDir, { recursive: true });
 
@@ -398,6 +407,74 @@ export default generatedRoutes;
 `;
 }
 
+function buildProjectManifest(appEntry, outputRoot, hasFrontend) {
+    const app = appEntry.app;
+    const featureValues = app.configuration?.featureValues || {};
+    const apiPort = readNumericOrStringFeature(featureValues, 'apiPort', '5001');
+    const frontendPort = readNumericOrStringFeature(featureValues, 'frontendPort', '3000');
+
+    const manifest = {
+        project: {
+            name: appEntry.id,
+            displayName: app.identity?.name || appEntry.id,
+            description: `Generated from DefinitionTemplate app ${appEntry.id}`,
+            outputDir: path.resolve(outputRoot)
+        },
+        backend: {
+            dbName: `${appEntry.id}.db`,
+            apiPort
+        },
+        definitionTemplate: {
+            appId: appEntry.id,
+            pageRefs: ensureArray(app.frontend?.pageRefs)
+        }
+    };
+
+    if (hasFrontend) {
+        manifest.frontend = {
+            devPort: frontendPort,
+            apiBaseUrl: `https://localhost:${apiPort}/api`
+        };
+    }
+
+    return manifest;
+}
+
+function buildProjectReadme(appEntry, result) {
+    const lines = [
+        `# ${appEntry.app.identity?.name || appEntry.id}`,
+        '',
+        'Generated from DefinitionTemplate.',
+        '',
+        '## Paths',
+        '',
+        `- App Id: \`${appEntry.id}\``,
+        `- Backend: \`${result.backendDir}\``
+    ];
+
+    if (result.frontendDir) {
+        lines.push(`- Frontend: \`${result.frontendDir}\``);
+    }
+
+    lines.push(`- Definition Snapshot: \`${path.join(result.projectRoot, 'definition-template.json')}\``);
+    lines.push('');
+    lines.push('## Generated Assets');
+    lines.push('');
+    lines.push(`- Backend composition: \`${result.generatedFilePath}\``);
+
+    if (result.routesFilePath) {
+        lines.push(`- Frontend generated routes: \`${result.routesFilePath}\``);
+    }
+
+    if (result.generatedPagePaths.length > 0) {
+        for (const pagePath of result.generatedPagePaths) {
+            lines.push(`- Frontend page: \`${pagePath}\``);
+        }
+    }
+
+    return `${lines.join('\n')}\n`;
+}
+
 function materializeAppBackendProject(template, appId, outputRoot) {
     const appEntry = extractAppEntry(template, appId);
     const support = validateAppGenerationSupport(appEntry);
@@ -476,11 +553,25 @@ function materializeAppProject(template, appId, outputRoot) {
         fs.writeFileSync(routesFilePath, buildGeneratedRoutesSource(selectedPages), 'utf8');
     }
 
-    return {
+    const projectJsonPath = path.join(backendResult.projectRoot, 'project.json');
+    const readmePath = path.join(backendResult.projectRoot, 'README.md');
+    const manifest = buildProjectManifest(appEntry, outputRoot, Boolean(frontendDir));
+
+    fs.writeFileSync(projectJsonPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+    const result = {
         ...backendResult,
         frontendDir,
         routesFilePath,
         generatedPagePaths
+    };
+
+    fs.writeFileSync(readmePath, buildProjectReadme(appEntry, result), 'utf8');
+
+    return {
+        ...result,
+        projectJsonPath,
+        readmePath
     };
 }
 

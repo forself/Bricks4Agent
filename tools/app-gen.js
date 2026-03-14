@@ -200,6 +200,8 @@ async function main() {
                 result.generatedFilePath,
                 ...(result.routesFilePath ? [result.routesFilePath] : []),
                 ...result.generatedPagePaths,
+                result.projectJsonPath,
+                result.readmePath,
                 path.join(result.projectRoot, 'definition-template.json'),
                 path.join(result.projectRoot, 'app-selection.json')
             ]

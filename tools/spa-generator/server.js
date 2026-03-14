@@ -755,7 +755,9 @@ const apiHandlers = {
                     generatedFilePath: result.generatedFilePath,
                     frontendDir: result.frontendDir,
                     routesFilePath: result.routesFilePath,
-                    generatedPagePaths: result.generatedPagePaths
+                    generatedPagePaths: result.generatedPagePaths,
+                    projectJsonPath: result.projectJsonPath,
+                    readmePath: result.readmePath
                 }
             });
         } catch (error) {
