@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using SpaApi.Data;
+using SpaApi.Generated;
 using SpaApi.Services;
 
 /**
@@ -130,6 +131,8 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddEndpointsApiExplorer();
+DefinitionTemplateGeneratedComposition.BeforeBuild(builder);
+DefinitionTemplateGeneratedComposition.ConfigureServices(builder.Services, builder.Configuration);
 
 var app = builder.Build();
 
@@ -181,6 +184,7 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+DefinitionTemplateGeneratedComposition.ConfigureMiddleware(app);
 
 // ===== API 端點 =====
 
@@ -311,6 +315,10 @@ app.MapGet("/api/dashboard", (AppDb db) =>
         }
     });
 }).WithName("GetDashboard").RequireAuthorization().RequireRateLimiting("api");
+
+DefinitionTemplateGeneratedComposition.MapEndpoints(app);
+DefinitionTemplateGeneratedComposition.BeforeRun(app);
+DefinitionTemplateGeneratedComposition.RegisterLifetimeHooks(app);
 
 app.Run();
 

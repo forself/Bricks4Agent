@@ -300,11 +300,41 @@ function extractPageEntry(template, pageId = null) {
     };
 }
 
+function extractAppEntry(template, appId = null) {
+    if (!isDefinitionTemplate(template)) {
+        throw new Error('Invalid DefinitionTemplate');
+    }
+
+    const apps = template.definitions?.apps;
+    if (!Array.isArray(apps) || apps.length === 0) {
+        throw new Error('DefinitionTemplate must contain definitions.apps');
+    }
+
+    let selected = null;
+    if (appId) {
+        selected = apps.find(app => app.id === appId) || null;
+        if (!selected) {
+            throw new Error(`Unable to find app id: ${appId}`);
+        }
+    } else if (apps.length === 1) {
+        selected = apps[0];
+    } else {
+        throw new Error(`DefinitionTemplate contains ${apps.length} apps; please specify an app id`);
+    }
+
+    if (!isObject(selected.app)) {
+        throw new Error(`app ${selected.id} must contain an app object`);
+    }
+
+    return selected;
+}
+
 module.exports = {
     DefinitionTemplateValidationError,
     isDefinitionTemplate,
     validateDefinitionTemplate,
     assertValidDefinitionTemplate,
     resolveTemplateEnvelope,
-    extractPageEntry
+    extractPageEntry,
+    extractAppEntry
 };
