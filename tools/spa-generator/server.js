@@ -754,6 +754,7 @@ const apiHandlers = {
                     csprojPath: result.csprojPath,
                     generatedFilePath: result.generatedFilePath,
                     frontendDir: result.frontendDir,
+                    runtimeDir: result.runtimeDir,
                     routesFilePath: result.routesFilePath,
                     generatedPagePaths: result.generatedPagePaths,
                     projectJsonPath: result.projectJsonPath,

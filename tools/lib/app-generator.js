@@ -49,6 +49,17 @@ function toRouteSegment(value, fallback = 'module') {
     return normalized || fallback;
 }
 
+function deriveEntityKey(pageEntry) {
+    const definition = pageEntry.definition || {};
+    const api = definition.api || {};
+    return api.list || api.get || api.create || api.update || api.delete || definition.name || pageEntry.id;
+}
+
+function buildGeneratedRoutePath(pageEntry) {
+    const basePath = `/${toRouteSegment(pageEntry.id, 'page')}`;
+    return pageEntry.definition?.type === 'detail' ? `${basePath}/:id` : basePath;
+}
+
 function ensureLeadingSlash(value) {
     if (!value) {
         return '/';
@@ -376,19 +387,60 @@ export default ${className};
 
 function buildGeneratedRoutesSource(pageEntries) {
     const imports = [];
+    const routeSpecs = pageEntries.map(pageEntry => {
+        const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
+        return {
+            pageEntry,
+            className,
+            pageType: pageEntry.definition?.type || 'form',
+            path: buildGeneratedRoutePath(pageEntry),
+            entityKey: deriveEntityKey(pageEntry)
+        };
+    });
+    const entityRoutes = new Map();
     const routes = [];
 
-    for (const pageEntry of pageEntries) {
-        const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
+    for (const routeSpec of routeSpecs) {
+        const { pageEntry, className } = routeSpec;
         imports.push(`import { ${className} } from './${className}.js';`);
+
+        if (!entityRoutes.has(routeSpec.entityKey)) {
+            entityRoutes.set(routeSpec.entityKey, []);
+        }
+        entityRoutes.get(routeSpec.entityKey).push(routeSpec);
+    }
+
+    for (const routeSpec of routeSpecs) {
+        const siblings = entityRoutes.get(routeSpec.entityKey) || [];
+        const detailRoute = siblings.find(item => item.pageType === 'detail');
+        const formRoute = siblings.find(item => item.pageType === 'form');
+        const actionRoutes = {};
+
+        if (routeSpec.pageType === 'list') {
+            if (detailRoute) {
+                actionRoutes.view = detailRoute.path;
+            } else if (formRoute) {
+                actionRoutes.view = `${formRoute.path}?id=:id`;
+            }
+
+            if (formRoute) {
+                actionRoutes.edit = `${formRoute.path}?id=:id`;
+            }
+        }
+
+        if (routeSpec.pageType === 'detail' && formRoute) {
+            actionRoutes.edit = `${formRoute.path}?id=:id`;
+        }
+
         routes.push(`    {
-        path: '/${toRouteSegment(pageEntry.id, 'page')}',
-        component: ${className},
+        path: ${serializeJs(routeSpec.path)},
+        component: ${routeSpec.className},
         meta: {
-            title: ${serializeJs(pageEntry.definition?.description || className.replace(/Page$/, ''))},
+            title: ${serializeJs(routeSpec.pageEntry.definition?.description || routeSpec.className.replace(/Page$/, ''))},
             requiresAuth: false,
             generated: true,
-            definitionId: ${serializeJs(pageEntry.id)}
+            definitionId: ${serializeJs(routeSpec.pageEntry.id)},
+            actionRoutes: ${serializeJs(actionRoutes)}
         }
     }`);
     }
@@ -429,7 +481,14 @@ function buildProjectManifest(appEntry, outputRoot, hasFrontend) {
     if (hasFrontend) {
         manifest.frontend = {
             devPort: frontendPort,
-            apiBaseUrl: `https://localhost:${apiPort}/api`
+            apiBaseUrl: `https://localhost:${apiPort}/api`,
+            runtime: {
+                mode: 'definition-runtime',
+                entry: 'frontend/runtime/DefinitionRuntimePage.js',
+                pageGeneratorDir: 'frontend/runtime/page-generator',
+                uiComponentsDir: 'frontend/runtime/ui_components',
+                generatedRoutes: 'frontend/pages/generated/routes.generated.js'
+            }
         };
     }
 
@@ -450,6 +509,7 @@ function buildProjectReadme(appEntry, result) {
 
     if (result.frontendDir) {
         lines.push(`- Frontend: \`${result.frontendDir}\``);
+        lines.push(`- Frontend runtime: \`${path.join(result.frontendDir, 'runtime')}\``);
     }
 
     lines.push(`- Definition Snapshot: \`${path.join(result.projectRoot, 'definition-template.json')}\``);
@@ -466,6 +526,15 @@ function buildProjectReadme(appEntry, result) {
         for (const pagePath of result.generatedPagePaths) {
             lines.push(`- Frontend page: \`${pagePath}\``);
         }
+    }
+
+    if (result.frontendDir) {
+        lines.push('');
+        lines.push('## Frontend Runtime');
+        lines.push('');
+        lines.push('- Generated frontend pages are thin DefinitionRuntimePage wrappers.');
+        lines.push('- Runtime renderer lives under `frontend/runtime/page-generator`.');
+        lines.push('- Shared UI components live under `frontend/runtime/ui_components`.');
     }
 
     return `${lines.join('\n')}\n`;
@@ -525,6 +594,7 @@ function materializeAppProject(template, appId, outputRoot) {
     const pageRefs = ensureArray(appEntry.app.frontend?.pageRefs);
 
     let frontendDir = null;
+    let runtimeDir = null;
     let routesFilePath = null;
     const generatedPagePaths = [];
 
@@ -532,6 +602,7 @@ function materializeAppProject(template, appId, outputRoot) {
         frontendDir = path.join(backendResult.projectRoot, 'frontend');
         copyDirectory(TEMPLATE_FRONTEND_DIR, frontendDir);
         materializeFrontendRuntime(frontendDir);
+        runtimeDir = path.join(frontendDir, 'runtime');
 
         const generatedPagesDir = path.join(frontendDir, 'pages', 'generated');
         fs.mkdirSync(generatedPagesDir, { recursive: true });
@@ -558,6 +629,7 @@ function materializeAppProject(template, appId, outputRoot) {
     const result = {
         ...backendResult,
         frontendDir,
+        runtimeDir,
         routesFilePath,
         generatedPagePaths
     };

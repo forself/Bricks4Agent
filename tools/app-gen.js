@@ -68,7 +68,7 @@ Options:
 
 Notes:
   - This phase always generates a backend skeleton.
-  - If app.frontend.pageRefs is present, frontend placeholder pages and routes are generated too.
+  - If app.frontend.pageRefs is present, frontend runtime wrapper pages and routes are generated too.
   - The current implementation supports backend.hosting.mode = "api".
   - Service registrations are limited to the built-in SPA template service pairs.
 `;
@@ -198,6 +198,7 @@ async function main() {
             files: [
                 result.csprojPath,
                 result.generatedFilePath,
+                ...(result.runtimeDir ? [result.runtimeDir] : []),
                 ...(result.routesFilePath ? [result.routesFilePath] : []),
                 ...result.generatedPagePaths,
                 result.projectJsonPath,
