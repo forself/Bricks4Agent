@@ -56,6 +56,7 @@ export class DefinitionRuntimePage extends BasePage {
         this._renderer = new DynamicPageRenderer(this._buildRendererOptions());
         await this._renderer.init();
         this._renderer.mount(host);
+        await this._hydrateRuntimeData();
     }
 
     async onDestroy() {
@@ -68,14 +69,51 @@ export class DefinitionRuntimePage extends BasePage {
     }
 
     getInitialData() {
-        return null;
+        return this._runtimeState?.record || null;
     }
 
-    async handleSave() {}
+    async handleSave(values) {
+        const { definition } = this._runtimeState;
+        const recordId = this._getRecordId();
+        const canUpdate = Boolean(recordId && definition.api?.update);
+        const endpoint = canUpdate
+            ? this._resolveResourceEndpoint(definition.api?.update, recordId)
+            : this._resolveCollectionEndpoint(definition.api?.create);
 
-    async handleSearch() {}
+        if (!this.api || !endpoint) {
+            this.showMessage('Save endpoint is not configured for this page', 'warning');
+            return;
+        }
 
-    async handleAction() {}
+        this.showLoading();
+        try {
+            const response = canUpdate
+                ? await this.api.put(endpoint, values)
+                : await this.api.post(endpoint, values);
+            const record = this._normalizeRecordResult(response, values);
+            this._runtimeState.record = record;
+            this._applyRecordToRenderer(record);
+            this.showMessage(canUpdate ? 'Saved changes' : 'Created record', 'success');
+        } catch (error) {
+            this.showMessage(error.message || 'Save failed', 'error');
+            throw error;
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async handleSearch(filters = {}, page = 1, pageSize = 20) {
+        await this._loadListData(filters, page, pageSize);
+    }
+
+    async handleAction(action, row) {
+        if (action === 'delete') {
+            await this._deleteRow(row);
+            return;
+        }
+
+        this._navigateRowAction(action, row);
+    }
 
     handleCancel() {
         this.router?.back?.();
@@ -85,7 +123,16 @@ export class DefinitionRuntimePage extends BasePage {
         this.router?.back?.();
     }
 
-    handleEdit() {}
+    handleEdit() {
+        const actionRoutes = this.meta?.actionRoutes || {};
+        const recordId = this._getRecordId();
+        if (!recordId || !actionRoutes.edit) {
+            this.showMessage('Edit route is not configured for this page', 'warning');
+            return;
+        }
+
+        this.navigate(this._interpolateRoute(actionRoutes.edit, recordId));
+    }
 
     _resolveDefinition() {
         const definition = this.constructor.definition;
@@ -130,6 +177,225 @@ export class DefinitionRuntimePage extends BasePage {
             onBack: () => this.handleBack(),
             onEdit: () => this.handleEdit()
         };
+    }
+
+    async _hydrateRuntimeData() {
+        if (!this.api) {
+            return;
+        }
+
+        if (this._runtimeState.mode === 'list') {
+            await this._loadListData({}, 1, 20);
+            return;
+        }
+
+        if ((this._runtimeState.mode === 'form' || this._runtimeState.mode === 'detail') && this._getRecordId()) {
+            await this._loadRecord();
+        }
+    }
+
+    async _loadRecord() {
+        const endpoint = this._resolveResourceEndpoint(
+            this._runtimeState.definition.api?.get,
+            this._getRecordId()
+        );
+        if (!endpoint) {
+            return;
+        }
+
+        this.showLoading();
+        try {
+            const response = await this.api.get(endpoint);
+            const record = this._normalizeRecordResult(response, {});
+            this._runtimeState.record = record;
+            this._applyRecordToRenderer(record);
+        } catch (error) {
+            this.showMessage(error.message || 'Failed to load record', 'error');
+            throw error;
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async _loadListData(filters = {}, page = 1, pageSize = 20) {
+        const endpoint = this._resolveCollectionEndpoint(this._runtimeState.definition.api?.list);
+        if (!endpoint) {
+            return;
+        }
+
+        this._runtimeState.listState = {
+            filters,
+            page,
+            pageSize
+        };
+
+        this.showLoading();
+        try {
+            const response = await this.api.get(
+                this._appendQuery(endpoint, {
+                    ...filters,
+                    page,
+                    pageSize
+                })
+            );
+            const normalized = this._normalizeListResult(response);
+            this._runtimeState.listState.total = normalized.total;
+            this._renderer?.getRenderer?.()?.setData?.(normalized.items, normalized.total);
+        } catch (error) {
+            this.showMessage(error.message || 'Failed to load list data', 'error');
+            throw error;
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async _deleteRow(row) {
+        const endpoint = this._resolveResourceEndpoint(
+            this._runtimeState.definition.api?.delete,
+            this._extractRowId(row)
+        );
+        if (!this.api || !endpoint) {
+            this.showMessage('Delete endpoint is not configured for this page', 'warning');
+            return;
+        }
+
+        this.showLoading();
+        try {
+            await this.api.delete(endpoint);
+            this.showMessage('Deleted record', 'success');
+
+            const listState = this._runtimeState.listState || {
+                filters: {},
+                page: 1,
+                pageSize: 20
+            };
+            await this._loadListData(listState.filters, listState.page, listState.pageSize);
+        } catch (error) {
+            this.showMessage(error.message || 'Delete failed', 'error');
+            throw error;
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    _applyRecordToRenderer(record) {
+        const renderer = this._renderer?.getRenderer?.();
+        if (!renderer || !record) {
+            return;
+        }
+
+        if (typeof renderer.setValues === 'function') {
+            renderer.setValues(record);
+            return;
+        }
+
+        if (typeof renderer.setData === 'function') {
+            renderer.setData(record);
+        }
+    }
+
+    _normalizeRecordResult(response, fallback) {
+        if (response && typeof response === 'object' && !Array.isArray(response)) {
+            if (response.data && typeof response.data === 'object' && !Array.isArray(response.data)) {
+                return response.data;
+            }
+
+            if (response.item && typeof response.item === 'object' && !Array.isArray(response.item)) {
+                return response.item;
+            }
+
+            return response;
+        }
+
+        return fallback;
+    }
+
+    _normalizeListResult(response) {
+        if (Array.isArray(response)) {
+            return {
+                items: response,
+                total: response.length
+            };
+        }
+
+        if (response && typeof response === 'object') {
+            const candidates = ['items', 'rows', 'results', 'data'];
+            for (const key of candidates) {
+                if (Array.isArray(response[key])) {
+                    return {
+                        items: response[key],
+                        total: Number(response.total) || response[key].length
+                    };
+                }
+            }
+        }
+
+        return {
+            items: [],
+            total: 0
+        };
+    }
+
+    _appendQuery(endpoint, params) {
+        const [path, queryString] = String(endpoint).split('?');
+        const search = new URLSearchParams(queryString || '');
+
+        for (const [key, value] of Object.entries(params || {})) {
+            if (value === null || value === undefined || value === '') {
+                continue;
+            }
+
+            search.set(key, String(value));
+        }
+
+        const nextQuery = search.toString();
+        return nextQuery ? `${path}?${nextQuery}` : path;
+    }
+
+    _resolveCollectionEndpoint(endpoint) {
+        return typeof endpoint === 'string' && endpoint.trim() !== '' ? endpoint.trim() : null;
+    }
+
+    _resolveResourceEndpoint(endpoint, recordId) {
+        if (recordId === null || recordId === undefined || recordId === '') {
+            return this._resolveCollectionEndpoint(endpoint);
+        }
+
+        const resolved = this._resolveCollectionEndpoint(endpoint);
+        if (!resolved) {
+            return null;
+        }
+
+        if (resolved.includes(':id')) {
+            return resolved.replace(':id', encodeURIComponent(String(recordId)));
+        }
+
+        return `${resolved.replace(/\/+$/, '')}/${encodeURIComponent(String(recordId))}`;
+    }
+
+    _getRecordId() {
+        return this.params?.id ?? this.query?.id ?? null;
+    }
+
+    _extractRowId(row) {
+        return row?.id ?? row?.Id ?? row?.ID ?? null;
+    }
+
+    _navigateRowAction(action, row) {
+        const actionRoutes = this.meta?.actionRoutes || {};
+        const recordId = this._extractRowId(row);
+        const routeTemplate = actionRoutes[action];
+
+        if (!recordId || !routeTemplate) {
+            this.showMessage(`${action} route is not configured for this page`, 'warning');
+            return;
+        }
+
+        this.navigate(this._interpolateRoute(routeTemplate, recordId));
+    }
+
+    _interpolateRoute(routeTemplate, recordId) {
+        return String(routeTemplate).replace(':id', encodeURIComponent(String(recordId)));
     }
 }
 
