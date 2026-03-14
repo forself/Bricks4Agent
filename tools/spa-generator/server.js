@@ -20,6 +20,8 @@ const url = require('url');
 const { spawn, execSync } = require('child_process');
 const { pathToFileURL } = require('url');
 const {
+    assertValidDefinitionTemplate,
+    validateDefinitionTemplate,
     resolveTemplateEnvelope,
     extractPageEntry
 } = require('../lib/definition-template.js');
@@ -70,6 +72,10 @@ function sendJson(res, data, status = 200) {
 
 function sendError(res, message, status = 400) {
     sendJson(res, { success: false, error: message }, status);
+}
+
+function sendValidationErrors(res, errors, status = 400) {
+    sendJson(res, { success: false, errors }, status);
 }
 
 function runScript(scriptName, args = []) {
@@ -152,7 +158,13 @@ async function normalizeTemplateToOldPageDefinition(payload, pageIdOverride = nu
         return null;
     }
 
-    return extractPageEntry(envelope.template, envelope.pageId);
+    const validation = await assertValidDefinitionTemplate(envelope.template);
+    const extracted = extractPageEntry(envelope.template, envelope.pageId);
+
+    return {
+        ...extracted,
+        templateStats: validation.stats
+    };
 }
 
 async function normalizeTemplateToNewPageDefinition(payload, pageIdOverride = null) {
@@ -171,7 +183,8 @@ async function normalizeTemplateToNewPageDefinition(payload, pageIdOverride = nu
     return {
         pageId: extracted.pageId,
         oldDefinition: extracted.pageDefinition,
-        definition: newDefinition
+        definition: newDefinition,
+        templateStats: extracted.templateStats
     };
 }
 
@@ -545,6 +558,26 @@ const apiHandlers = {
 
     // ===== PageDefinitionEditor API =====
 
+    'POST /api/definition-template/validate': async (req, res) => {
+        try {
+            const payload = await parseBody(req);
+            const envelope = resolveTemplateEnvelope(payload, payload.pageId);
+            const template = envelope?.template || payload;
+            const validation = await validateDefinitionTemplate(template);
+
+            sendJson(res, {
+                success: validation.valid,
+                errors: validation.errors,
+                data: validation.valid ? {
+                    message: 'DefinitionTemplate 驗證通過',
+                    stats: validation.stats
+                } : null
+            });
+        } catch (error) {
+            sendError(res, error.message);
+        }
+    },
+
     // 從 PageDefinition 生成頁面程式碼
     'POST /api/generator/page-definition': async (req, res) => {
         try {
@@ -566,7 +599,8 @@ const apiHandlers = {
                         className: oldDef.name,
                         fileName: `${oldDef.name}.js`,
                         pageId: normalized.pageId,
-                        source: 'definition-template'
+                        source: 'definition-template',
+                        templateStats: normalized.templateStats
                     }
                 });
             }
@@ -596,6 +630,9 @@ const apiHandlers = {
                 }
             });
         } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendValidationErrors(res, error.errors);
+            }
             sendError(res, error.message, 500);
         }
     },
@@ -616,10 +653,14 @@ const apiHandlers = {
                 data: errors.length === 0 ? {
                     message: '定義驗證通過',
                     pageId: normalized?.pageId || null,
-                    source: normalized ? 'definition-template' : 'legacy-page-definition'
+                    source: normalized ? 'definition-template' : 'legacy-page-definition',
+                    templateStats: normalized?.templateStats || null
                 } : null
             });
         } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendJson(res, { success: false, errors: error.errors, data: null });
+            }
             sendError(res, error.message);
         }
     },
@@ -649,10 +690,14 @@ const apiHandlers = {
                     className: oldDef.name,
                     fileName: `${oldDef.name}.js`,
                     pageId: normalized?.pageId || null,
-                    source: normalized ? 'definition-template' : 'legacy-page-definition'
+                    source: normalized ? 'definition-template' : 'legacy-page-definition',
+                    templateStats: normalized?.templateStats || null
                 }
             });
         } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendValidationErrors(res, error.errors);
+            }
             sendError(res, error.message, 500);
         }
     },
@@ -675,10 +720,14 @@ const apiHandlers = {
                     definition,
                     pageId: normalized?.pageId || null,
                     source: normalized ? 'definition-template' : 'legacy-page-definition',
+                    templateStats: normalized?.templateStats || null,
                     exportedAt: new Date().toISOString()
                 }
             });
         } catch (error) {
+            if (Array.isArray(error.errors)) {
+                return sendValidationErrors(res, error.errors);
+            }
             sendError(res, error.message);
         }
     },

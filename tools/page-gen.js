@@ -17,6 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const {
+    assertValidDefinitionTemplate,
     resolveTemplateEnvelope,
     extractPageEntry
 } = require('./lib/definition-template.js');
@@ -450,10 +451,12 @@ async function normalizeDefinitionInput(definition, pageId) {
             source: 'legacy-page-definition',
             definition,
             pageId: null,
-            oldDefinition: null
+            oldDefinition: null,
+            templateStats: null
         };
     }
 
+    const templateValidation = await assertValidDefinitionTemplate(envelope.template);
     const { pageId: selectedPageId, pageDefinition } = extractPageEntry(envelope.template, envelope.pageId);
     const { PageDefinitionAdapter } = await loadPageDefinitionModules();
     const newDefinition = PageDefinitionAdapter.toNewFormat(pageDefinition);
@@ -466,7 +469,8 @@ async function normalizeDefinitionInput(definition, pageId) {
         source: 'definition-template',
         definition: newDefinition,
         pageId: selectedPageId,
-        oldDefinition: pageDefinition
+        oldDefinition: pageDefinition,
+        templateStats: templateValidation.stats
     };
 }
 
@@ -640,7 +644,7 @@ async function main() {
             process.exit(1);
         }
     } catch (e) {
-        outputError([e.message]);
+        outputError(Array.isArray(e.errors) ? e.errors : [e.message]);
         process.exit(1);
     }
 
@@ -648,7 +652,7 @@ async function main() {
     try {
         normalized = await normalizeDefinitionInput(definition, args.page);
     } catch (e) {
-        outputError([e.message]);
+        outputError(Array.isArray(e.errors) ? e.errors : [e.message]);
         process.exit(1);
     }
 
@@ -660,7 +664,8 @@ async function main() {
                 success: true,
                 message: '定義驗證通過',
                 source: normalized.source,
-                pageId: normalized.pageId
+                pageId: normalized.pageId,
+                templateStats: normalized.templateStats
             });
         } else {
             outputError(validation.errors);
@@ -709,10 +714,11 @@ async function main() {
             success: true,
             source: normalized.source,
             pageId: normalized.pageId,
+            templateStats: normalized.templateStats,
             files
         });
     } catch (e) {
-        outputError([e.message]);
+        outputError(Array.isArray(e.errors) ? e.errors : [e.message]);
         process.exit(1);
     }
 }
