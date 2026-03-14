@@ -227,7 +227,7 @@ async function normalizeTemplateToAppDefinition(payload, appIdOverride = null) {
     const validation = await assertValidDefinitionTemplate(template);
     const appId = appIdOverride || payload?.appId || null;
     const appEntry = extractAppEntry(template, appId);
-    const support = validateAppGenerationSupport(appEntry);
+    const support = validateAppGenerationSupport(appEntry, template);
 
     return {
         template,

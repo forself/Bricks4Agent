@@ -123,7 +123,7 @@ async function normalizeInput(payload, appIdOverride) {
 
     const templateValidation = await assertValidDefinitionTemplate(template);
     const appEntry = extractAppEntry(template, selectedAppId);
-    const support = validateAppGenerationSupport(appEntry);
+    const support = validateAppGenerationSupport(appEntry, template);
 
     return {
         template,

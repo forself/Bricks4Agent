@@ -75,6 +75,10 @@ function serializeJs(value) {
     return JSON.stringify(value, null, 4);
 }
 
+function isSupportedRuntimePageType(type) {
+    return type === 'form' || type === 'list' || type === 'detail';
+}
+
 function readNumericOrStringFeature(featureValues, key, fallback) {
     const value = featureValues?.[key];
     if (typeof value === 'number' || typeof value === 'string') {
@@ -128,7 +132,14 @@ function materializeFrontendRuntime(frontendDir) {
     copyDirectory(UI_COMPONENTS_RUNTIME_DIR, uiComponentsDir);
 }
 
-function validateAppGenerationSupport(appEntry) {
+function getSelectedPageEntries(template, appEntry) {
+    const pagesById = new Map(ensureArray(template?.definitions?.pages).map(page => [page.id, page]));
+    return ensureArray(appEntry?.app?.frontend?.pageRefs)
+        .map(pageRef => pagesById.get(pageRef))
+        .filter(Boolean);
+}
+
+function validateAppGenerationSupport(appEntry, template = null) {
     const errors = [];
 
     if (!appEntry || typeof appEntry !== 'object' || typeof appEntry.app !== 'object') {
@@ -176,6 +187,17 @@ function validateAppGenerationSupport(appEntry) {
 
         if (!Array.isArray(policy.roles) || policy.roles.length === 0) {
             errors.push(`app ${appId}: policy ${policy.id} must declare at least one role`);
+        }
+    }
+
+    if (template) {
+        for (const pageEntry of getSelectedPageEntries(template, appEntry)) {
+            const pageType = pageEntry.definition?.type;
+            if (!isSupportedRuntimePageType(pageType)) {
+                errors.push(
+                    `app ${appId}: frontend page ${pageEntry.id} uses unsupported runtime page type "${pageType}"`
+                );
+            }
         }
     }
 
@@ -334,70 +356,19 @@ function buildGeneratedCompositionSource(appEntry) {
 function buildGeneratedFrontendPageSource(pageEntry) {
     const pageDefinition = pageEntry.definition || {};
     const className = pageDefinition.name || `${toPascalCase(pageEntry.id)}Page`;
-    const title = pageDefinition.description || className.replace(/Page$/, '');
+    const runtimeMode = isSupportedRuntimePageType(pageDefinition.type) ? pageDefinition.type : null;
 
-    return `import { BasePage } from '../../core/BasePage.js';
+    return `import { DefinitionRuntimePage } from '../../runtime/DefinitionRuntimePage.js';
 
 const definition = ${serializeJs(pageDefinition)};
 const pageId = ${serializeJs(pageEntry.id)};
+const runtimeMode = ${serializeJs(runtimeMode)};
 
-export class ${className} extends BasePage {
-    async onInit() {
-        this._data = {
-            definition,
-            pageId
-        };
-    }
+export class ${className} extends DefinitionRuntimePage {}
 
-    template() {
-        const rows = (definition.fields || []).map(field => \`
-            <tr>
-                <td>\${this.esc(field.name || '')}</td>
-                <td>\${this.esc(field.type || '')}</td>
-                <td>\${this.esc(field.label || '')}</td>
-                <td>\${field.required ? 'yes' : 'no'}</td>
-            </tr>
-        \`).join('');
-
-        return \`
-            <div class="generated-definition-page">
-                <header class="page-header">
-                    <h1>${title}</h1>
-                    <p>Generated from DefinitionTemplate page id: \${this.esc(this._data.pageId)}</p>
-                </header>
-                <section class="card">
-                    <div class="card-body">
-                        <h2>Definition</h2>
-                        <dl>
-                            <dt>Name</dt>
-                            <dd>\${this.esc(definition.name || '')}</dd>
-                            <dt>Type</dt>
-                            <dd>\${this.esc(definition.type || '')}</dd>
-                            <dt>Description</dt>
-                            <dd>\${this.esc(definition.description || '')}</dd>
-                        </dl>
-                    </div>
-                </section>
-                <section class="card">
-                    <div class="card-body">
-                        <h2>Fields</h2>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Label</th>
-                                    <th>Required</th>
-                                </tr>
-                            </thead>
-                            <tbody>\${rows}</tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-        \`;
-    }
-}
+${className}.definition = definition;
+${className}.pageId = pageId;
+${className}.mode = runtimeMode;
 
 export default ${className};
 `;
@@ -502,7 +473,7 @@ function buildProjectReadme(appEntry, result) {
 
 function materializeAppBackendProject(template, appId, outputRoot) {
     const appEntry = extractAppEntry(template, appId);
-    const support = validateAppGenerationSupport(appEntry);
+    const support = validateAppGenerationSupport(appEntry, template);
     if (!support.valid) {
         const error = new Error(support.errors.join('; '));
         error.errors = support.errors;
@@ -565,8 +536,7 @@ function materializeAppProject(template, appId, outputRoot) {
         const generatedPagesDir = path.join(frontendDir, 'pages', 'generated');
         fs.mkdirSync(generatedPagesDir, { recursive: true });
 
-        const pagesById = new Map(ensureArray(template.definitions?.pages).map(page => [page.id, page]));
-        const selectedPages = pageRefs.map(pageRef => pagesById.get(pageRef)).filter(Boolean);
+        const selectedPages = getSelectedPageEntries(template, appEntry);
 
         for (const pageEntry of selectedPages) {
             const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
