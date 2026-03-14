@@ -29,7 +29,7 @@ const {
 } = require('../lib/definition-template.js');
 const {
     validateAppGenerationSupport,
-    materializeAppBackendProject
+    materializeAppProject
 } = require('../lib/app-generator.js');
 
 // ===== 配置 =====
@@ -738,7 +738,7 @@ const apiHandlers = {
                 return sendError(res, 'Missing outputDir');
             }
 
-            const result = materializeAppBackendProject(
+            const result = materializeAppProject(
                 normalized.template,
                 normalized.appEntry.id,
                 payload.outputDir
@@ -752,7 +752,10 @@ const apiHandlers = {
                     projectRoot: result.projectRoot,
                     backendDir: result.backendDir,
                     csprojPath: result.csprojPath,
-                    generatedFilePath: result.generatedFilePath
+                    generatedFilePath: result.generatedFilePath,
+                    frontendDir: result.frontendDir,
+                    routesFilePath: result.routesFilePath,
+                    generatedPagePaths: result.generatedPagePaths
                 }
             });
         } catch (error) {

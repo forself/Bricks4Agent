@@ -15,6 +15,7 @@ import { UserDetailPage } from './users/UserDetailPage.js';
 import { UserCreatePage } from './users/UserCreatePage.js';
 import { SettingsPage } from './SettingsPage.js';
 import { LoginPage } from './LoginPage.js';
+import { generatedRoutes } from './generated/routes.generated.js';
 
 /**
  * 路由表
@@ -85,7 +86,7 @@ export const routes = [
             requiresAuth: true
         }
     }
-];
+].concat(generatedRoutes);
 
 /**
  * 路由守衛示例

@@ -11,7 +11,7 @@ const {
 } = require('./lib/definition-template.js');
 const {
     validateAppGenerationSupport,
-    materializeAppBackendProject
+    materializeAppProject
 } = require('./lib/app-generator.js');
 
 function parseArgs(argv) {
@@ -67,7 +67,8 @@ Options:
   --help, -h         Show help
 
 Notes:
-  - This phase generates a minimal backend skeleton only.
+  - This phase always generates a backend skeleton.
+  - If app.frontend.pageRefs is present, frontend placeholder pages and routes are generated too.
   - The current implementation supports backend.hosting.mode = "api".
   - Service registrations are limited to the built-in SPA template service pairs.
 `;
@@ -189,7 +190,7 @@ async function main() {
     }
 
     try {
-        const result = materializeAppBackendProject(normalized.template, normalized.appEntry.id, args.output);
+        const result = materializeAppProject(normalized.template, normalized.appEntry.id, args.output);
         outputJson({
             success: true,
             appId: result.appId,
@@ -197,6 +198,8 @@ async function main() {
             files: [
                 result.csprojPath,
                 result.generatedFilePath,
+                ...(result.routesFilePath ? [result.routesFilePath] : []),
+                ...result.generatedPagePaths,
                 path.join(result.projectRoot, 'definition-template.json'),
                 path.join(result.projectRoot, 'app-selection.json')
             ]

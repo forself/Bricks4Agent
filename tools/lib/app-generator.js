@@ -5,6 +5,7 @@ const path = require('node:path');
 const { extractAppEntry } = require('./definition-template.js');
 
 const TEMPLATE_BACKEND_DIR = path.resolve(__dirname, '../../templates/spa/backend');
+const TEMPLATE_FRONTEND_DIR = path.resolve(__dirname, '../../templates/spa/frontend');
 const SKIP_DIRECTORIES = new Set(['bin', 'obj']);
 const SUPPORTED_SERVICE_PAIRS = new Map([
     ['SpaApi.Services.IUserService', 'SpaApi.Services.UserService'],
@@ -66,6 +67,10 @@ function serializeStringArray(values) {
     }
 
     return `new[] { ${values.map(value => `"${escapeCSharpString(value)}"`).join(', ')} }`;
+}
+
+function serializeJs(value) {
+    return JSON.stringify(value, null, 4);
 }
 
 function copyDirectory(sourceDir, targetDir) {
@@ -292,6 +297,107 @@ function buildGeneratedCompositionSource(appEntry) {
     return `${lines.join('\n')}\n`;
 }
 
+function buildGeneratedFrontendPageSource(pageEntry) {
+    const pageDefinition = pageEntry.definition || {};
+    const className = pageDefinition.name || `${toPascalCase(pageEntry.id)}Page`;
+    const title = pageDefinition.description || className.replace(/Page$/, '');
+
+    return `import { BasePage } from '../../core/BasePage.js';
+
+const definition = ${serializeJs(pageDefinition)};
+const pageId = ${serializeJs(pageEntry.id)};
+
+export class ${className} extends BasePage {
+    async onInit() {
+        this._data = {
+            definition,
+            pageId
+        };
+    }
+
+    template() {
+        const rows = (definition.fields || []).map(field => \`
+            <tr>
+                <td>\${this.esc(field.name || '')}</td>
+                <td>\${this.esc(field.type || '')}</td>
+                <td>\${this.esc(field.label || '')}</td>
+                <td>\${field.required ? 'yes' : 'no'}</td>
+            </tr>
+        \`).join('');
+
+        return \`
+            <div class="generated-definition-page">
+                <header class="page-header">
+                    <h1>${title}</h1>
+                    <p>Generated from DefinitionTemplate page id: \${this.esc(this._data.pageId)}</p>
+                </header>
+                <section class="card">
+                    <div class="card-body">
+                        <h2>Definition</h2>
+                        <dl>
+                            <dt>Name</dt>
+                            <dd>\${this.esc(definition.name || '')}</dd>
+                            <dt>Type</dt>
+                            <dd>\${this.esc(definition.type || '')}</dd>
+                            <dt>Description</dt>
+                            <dd>\${this.esc(definition.description || '')}</dd>
+                        </dl>
+                    </div>
+                </section>
+                <section class="card">
+                    <div class="card-body">
+                        <h2>Fields</h2>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Label</th>
+                                    <th>Required</th>
+                                </tr>
+                            </thead>
+                            <tbody>\${rows}</tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        \`;
+    }
+}
+
+export default ${className};
+`;
+}
+
+function buildGeneratedRoutesSource(pageEntries) {
+    const imports = [];
+    const routes = [];
+
+    for (const pageEntry of pageEntries) {
+        const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
+        imports.push(`import { ${className} } from './${className}.js';`);
+        routes.push(`    {
+        path: '/${toRouteSegment(pageEntry.id, 'page')}',
+        component: ${className},
+        meta: {
+            title: ${serializeJs(pageEntry.definition?.description || className.replace(/Page$/, ''))},
+            requiresAuth: false,
+            generated: true,
+            definitionId: ${serializeJs(pageEntry.id)}
+        }
+    }`);
+    }
+
+    return `${imports.join('\n')}
+
+export const generatedRoutes = [
+${routes.join(',\n')}
+];
+
+export default generatedRoutes;
+`;
+}
+
 function materializeAppBackendProject(template, appId, outputRoot) {
     const appEntry = extractAppEntry(template, appId);
     const support = validateAppGenerationSupport(appEntry);
@@ -340,8 +446,47 @@ function materializeAppBackendProject(template, appId, outputRoot) {
     };
 }
 
+function materializeAppProject(template, appId, outputRoot) {
+    const backendResult = materializeAppBackendProject(template, appId, outputRoot);
+    const appEntry = extractAppEntry(template, appId);
+    const pageRefs = ensureArray(appEntry.app.frontend?.pageRefs);
+
+    let frontendDir = null;
+    let routesFilePath = null;
+    const generatedPagePaths = [];
+
+    if (pageRefs.length > 0) {
+        frontendDir = path.join(backendResult.projectRoot, 'frontend');
+        copyDirectory(TEMPLATE_FRONTEND_DIR, frontendDir);
+
+        const generatedPagesDir = path.join(frontendDir, 'pages', 'generated');
+        fs.mkdirSync(generatedPagesDir, { recursive: true });
+
+        const pagesById = new Map(ensureArray(template.definitions?.pages).map(page => [page.id, page]));
+        const selectedPages = pageRefs.map(pageRef => pagesById.get(pageRef)).filter(Boolean);
+
+        for (const pageEntry of selectedPages) {
+            const className = pageEntry.definition?.name || `${toPascalCase(pageEntry.id)}Page`;
+            const pageFilePath = path.join(generatedPagesDir, `${className}.js`);
+            fs.writeFileSync(pageFilePath, buildGeneratedFrontendPageSource(pageEntry), 'utf8');
+            generatedPagePaths.push(pageFilePath);
+        }
+
+        routesFilePath = path.join(generatedPagesDir, 'routes.generated.js');
+        fs.writeFileSync(routesFilePath, buildGeneratedRoutesSource(selectedPages), 'utf8');
+    }
+
+    return {
+        ...backendResult,
+        frontendDir,
+        routesFilePath,
+        generatedPagePaths
+    };
+}
+
 module.exports = {
     validateAppGenerationSupport,
     buildGeneratedCompositionSource,
-    materializeAppBackendProject
+    materializeAppBackendProject,
+    materializeAppProject
 };
