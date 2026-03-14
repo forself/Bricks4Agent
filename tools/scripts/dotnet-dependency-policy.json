@@ -64,8 +64,7 @@
       "project": "tools/spa-generator/backend/spa-generator.csproj",
       "allowedProjectReferences": [],
       "allowedPackageReferences": [
-        "Microsoft.EntityFrameworkCore.Sqlite",
-        "Microsoft.EntityFrameworkCore.Design",
+        "Microsoft.Data.Sqlite",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
       ],
       "allowedFrameworkReferences": []

@@ -1,0 +1,437 @@
+{
+  "kind": "definition-template",
+  "version": "0.1.0",
+  "meta": {
+    "source": "projects/ShopBricks-Gen/backend/Program.cs",
+    "extractedAt": "2026-03-14",
+    "extractionMethod": "manual",
+    "description": "Golden extraction of the ShopBricks commerce site — a richer website example with 28 endpoints, AdminOnly policy, 7 services, and SPA static hosting"
+  },
+  "definitions": {
+    "pages": [
+      {
+        "id": "home",
+        "definition": {
+          "name": "HomePage",
+          "type": "dashboard",
+          "description": "Commerce site landing page"
+        }
+      },
+      {
+        "id": "login",
+        "definition": {
+          "name": "LoginPage",
+          "type": "form",
+          "description": "User login form",
+          "fields": [
+            { "name": "email", "type": "email", "label": "Email", "required": true },
+            { "name": "password", "type": "password", "label": "Password", "required": true }
+          ],
+          "api": {
+            "submit": { "method": "POST", "url": "/api/auth/login" }
+          }
+        }
+      },
+      {
+        "id": "register",
+        "definition": {
+          "name": "RegisterPage",
+          "type": "form",
+          "description": "User registration form",
+          "fields": [
+            { "name": "name", "type": "text", "label": "Name", "required": true },
+            { "name": "email", "type": "email", "label": "Email", "required": true },
+            { "name": "password", "type": "password", "label": "Password", "required": true }
+          ],
+          "api": {
+            "submit": { "method": "POST", "url": "/api/auth/register" }
+          }
+        }
+      },
+      {
+        "id": "profile",
+        "definition": {
+          "name": "ProfilePage",
+          "type": "form",
+          "description": "User profile editing page",
+          "fields": [
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "email", "type": "email", "label": "Email" },
+            { "name": "phone", "type": "tel", "label": "Phone" }
+          ],
+          "api": {
+            "get": { "method": "GET", "url": "/api/auth/me" },
+            "submit": { "method": "PUT", "url": "/api/auth/profile" }
+          }
+        }
+      },
+      {
+        "id": "product-list",
+        "definition": {
+          "name": "ProductListPage",
+          "type": "list",
+          "description": "Public product catalog with search, category filter, and pagination",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "price", "type": "number", "label": "Price" },
+            { "name": "categoryId", "type": "number", "label": "Category" },
+            { "name": "stock", "type": "number", "label": "Stock" },
+            { "name": "imageUrl", "type": "text", "label": "Image" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/products" }
+          }
+        }
+      },
+      {
+        "id": "product-detail",
+        "definition": {
+          "name": "ProductDetailPage",
+          "type": "detail",
+          "description": "Product detail with add-to-cart action",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "description", "type": "textarea", "label": "Description" },
+            { "name": "price", "type": "number", "label": "Price" },
+            { "name": "stock", "type": "number", "label": "Stock" },
+            { "name": "imageUrl", "type": "text", "label": "Image" }
+          ],
+          "api": {
+            "get": { "method": "GET", "url": "/api/products/:id" }
+          }
+        }
+      },
+      {
+        "id": "cart",
+        "definition": {
+          "name": "CartPage",
+          "type": "list",
+          "description": "Shopping cart with quantity update and remove actions",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "productId", "type": "number", "label": "Product" },
+            { "name": "productName", "type": "text", "label": "Name" },
+            { "name": "price", "type": "number", "label": "Price" },
+            { "name": "quantity", "type": "number", "label": "Quantity" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/cart" }
+          }
+        }
+      },
+      {
+        "id": "checkout",
+        "definition": {
+          "name": "CheckoutPage",
+          "type": "form",
+          "description": "Order checkout form",
+          "fields": [
+            { "name": "shippingAddress", "type": "textarea", "label": "Shipping Address", "required": true },
+            { "name": "note", "type": "textarea", "label": "Note" }
+          ],
+          "api": {
+            "submit": { "method": "POST", "url": "/api/orders" }
+          }
+        }
+      },
+      {
+        "id": "order-list",
+        "definition": {
+          "name": "OrderListPage",
+          "type": "list",
+          "description": "My orders list with pagination",
+          "fields": [
+            { "name": "id", "type": "number", "label": "Order ID" },
+            { "name": "totalAmount", "type": "number", "label": "Total" },
+            { "name": "status", "type": "text", "label": "Status" },
+            { "name": "createdAt", "type": "datetime", "label": "Date" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/orders" }
+          }
+        }
+      },
+      {
+        "id": "order-detail",
+        "definition": {
+          "name": "OrderDetailPage",
+          "type": "detail",
+          "description": "Order detail with items and status",
+          "fields": [
+            { "name": "id", "type": "number", "label": "Order ID" },
+            { "name": "totalAmount", "type": "number", "label": "Total" },
+            { "name": "status", "type": "text", "label": "Status" },
+            { "name": "shippingAddress", "type": "text", "label": "Address" },
+            { "name": "createdAt", "type": "datetime", "label": "Date" }
+          ],
+          "api": {
+            "get": { "method": "GET", "url": "/api/orders/:id" }
+          }
+        }
+      },
+      {
+        "id": "admin-dashboard",
+        "definition": {
+          "name": "AdminDashboardPage",
+          "type": "dashboard",
+          "description": "Admin dashboard with user/product/revenue stats and recent orders",
+          "api": {
+            "get": { "method": "GET", "url": "/api/admin/dashboard" }
+          }
+        }
+      },
+      {
+        "id": "admin-product",
+        "definition": {
+          "name": "AdminProductPage",
+          "type": "list",
+          "description": "Admin product management with CRUD",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "price", "type": "number", "label": "Price" },
+            { "name": "stock", "type": "number", "label": "Stock" },
+            { "name": "status", "type": "text", "label": "Status" },
+            { "name": "categoryId", "type": "number", "label": "Category" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/admin/products" },
+            "create": { "method": "POST", "url": "/api/admin/products" },
+            "update": { "method": "PUT", "url": "/api/admin/products/:id" },
+            "delete": { "method": "DELETE", "url": "/api/admin/products/:id" }
+          }
+        }
+      },
+      {
+        "id": "admin-category",
+        "definition": {
+          "name": "AdminCategoryPage",
+          "type": "list",
+          "description": "Admin category management with CRUD",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "parentId", "type": "number", "label": "Parent" },
+            { "name": "sortOrder", "type": "number", "label": "Sort Order" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/categories" },
+            "create": { "method": "POST", "url": "/api/admin/categories" },
+            "update": { "method": "PUT", "url": "/api/admin/categories/:id" },
+            "delete": { "method": "DELETE", "url": "/api/admin/categories/:id" }
+          }
+        }
+      },
+      {
+        "id": "admin-order",
+        "definition": {
+          "name": "AdminOrderPage",
+          "type": "list",
+          "description": "Admin order management with status filter and status update",
+          "fields": [
+            { "name": "id", "type": "number", "label": "Order ID" },
+            { "name": "userId", "type": "number", "label": "User" },
+            { "name": "totalAmount", "type": "number", "label": "Total" },
+            { "name": "status", "type": "text", "label": "Status" },
+            { "name": "createdAt", "type": "datetime", "label": "Date" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/admin/orders" }
+          }
+        }
+      },
+      {
+        "id": "admin-user",
+        "definition": {
+          "name": "AdminUserPage",
+          "type": "list",
+          "description": "Admin user management with search, paged list, and role change",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "email", "type": "email", "label": "Email" },
+            { "name": "role", "type": "text", "label": "Role" },
+            { "name": "balance", "type": "number", "label": "Balance" },
+            { "name": "createdAt", "type": "datetime", "label": "Joined" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/admin/users" }
+          }
+        }
+      }
+    ],
+    "apps": [
+      {
+        "id": "shop-bricks",
+        "app": {
+          "identity": {
+            "name": "ShopBricks",
+            "targets": ["web", "dotnet-backend"]
+          },
+          "profiles": ["website", "commerce"],
+          "configuration": {
+            "sections": ["ConnectionStrings", "Jwt", "Cors"],
+            "featureValues": {
+              "database": "sqlite-baseorm",
+              "jsonNamingPolicy": "camelCase"
+            }
+          },
+          "frontend": {
+            "pageRefs": [
+              "home",
+              "login",
+              "register",
+              "profile",
+              "product-list",
+              "product-detail",
+              "cart",
+              "checkout",
+              "order-list",
+              "order-detail",
+              "admin-dashboard",
+              "admin-product",
+              "admin-category",
+              "admin-order",
+              "admin-user"
+            ]
+          },
+          "backend": {
+            "features": [
+              { "id": "auth.jwt", "enabled": true },
+              { "id": "auth.admin-policy", "enabled": true },
+              { "id": "rate-limiting", "enabled": true },
+              { "id": "cors", "enabled": true },
+              { "id": "security-headers", "enabled": true },
+              { "id": "https-redirect", "enabled": true },
+              { "id": "json-camel-case", "enabled": true }
+            ],
+            "services": [
+              {
+                "id": "auth-service",
+                "lifetime": "scoped",
+                "contract": "IAuthService",
+                "implementation": { "kind": "type", "reference": "AuthService" }
+              },
+              {
+                "id": "user-service",
+                "lifetime": "scoped",
+                "contract": "IUserService",
+                "implementation": { "kind": "type", "reference": "UserService" }
+              },
+              {
+                "id": "product-service",
+                "lifetime": "scoped",
+                "contract": "IProductService",
+                "implementation": { "kind": "type", "reference": "ProductService" }
+              },
+              {
+                "id": "category-service",
+                "lifetime": "scoped",
+                "contract": "ICategoryService",
+                "implementation": { "kind": "type", "reference": "CategoryService" }
+              },
+              {
+                "id": "cart-service",
+                "lifetime": "scoped",
+                "contract": "ICartService",
+                "implementation": { "kind": "type", "reference": "CartService" }
+              },
+              {
+                "id": "order-service",
+                "lifetime": "scoped",
+                "contract": "IOrderService",
+                "implementation": { "kind": "type", "reference": "OrderService" }
+              },
+              {
+                "id": "balance-service",
+                "lifetime": "scoped",
+                "contract": "IBalanceService",
+                "implementation": { "kind": "type", "reference": "BalanceService" }
+              }
+            ],
+            "policies": [
+              {
+                "id": "admin-only",
+                "kind": "claim",
+                "roles": ["admin"]
+              }
+            ],
+            "middleware": [
+              { "id": "security-headers", "kind": "custom", "reference": "SecurityHeadersMiddleware", "order": 1 },
+              { "id": "exception-handler", "kind": "framework", "reference": "UseExceptionHandler", "order": 2, "condition": "!IsDevelopment" },
+              { "id": "developer-exception", "kind": "framework", "reference": "UseDeveloperExceptionPage", "order": 2, "condition": "IsDevelopment" },
+              { "id": "https-redirect", "kind": "framework", "reference": "UseHttpsRedirection", "order": 3 },
+              { "id": "cors", "kind": "framework", "reference": "UseCors", "order": 4 },
+              { "id": "rate-limiter", "kind": "framework", "reference": "UseRateLimiter", "order": 5 },
+              { "id": "authentication", "kind": "framework", "reference": "UseAuthentication", "order": 6 },
+              { "id": "authorization", "kind": "framework", "reference": "UseAuthorization", "order": 7 }
+            ],
+            "endpointModules": [
+              { "id": "health-endpoints", "source": "inline", "reference": "HealthEndpoints" },
+              { "id": "auth-endpoints", "source": "inline", "reference": "AuthEndpoints" },
+              { "id": "product-endpoints", "source": "inline", "reference": "ProductEndpoints" },
+              { "id": "category-endpoints", "source": "inline", "reference": "CategoryEndpoints" },
+              { "id": "cart-endpoints", "source": "inline", "reference": "CartEndpoints" },
+              { "id": "order-endpoints", "source": "inline", "reference": "OrderEndpoints" },
+              { "id": "balance-endpoints", "source": "inline", "reference": "BalanceEndpoints" },
+              { "id": "admin-product-endpoints", "source": "inline", "reference": "AdminProductEndpoints" },
+              { "id": "admin-category-endpoints", "source": "inline", "reference": "AdminCategoryEndpoints" },
+              { "id": "admin-order-endpoints", "source": "inline", "reference": "AdminOrderEndpoints" },
+              { "id": "admin-user-endpoints", "source": "inline", "reference": "AdminUserEndpoints" },
+              { "id": "admin-dashboard-endpoints", "source": "inline", "reference": "AdminDashboardEndpoints" }
+            ],
+            "routeGroups": [
+              {
+                "id": "root",
+                "prefix": "/",
+                "moduleRefs": ["health-endpoints"]
+              },
+              {
+                "id": "auth-api",
+                "prefix": "/api/auth",
+                "moduleRefs": ["auth-endpoints"]
+              },
+              {
+                "id": "public-api",
+                "prefix": "/api",
+                "moduleRefs": ["product-endpoints", "category-endpoints"]
+              },
+              {
+                "id": "user-api",
+                "prefix": "/api",
+                "moduleRefs": ["cart-endpoints", "order-endpoints", "balance-endpoints"]
+              },
+              {
+                "id": "admin-api",
+                "prefix": "/api/admin",
+                "policies": ["admin-only"],
+                "moduleRefs": [
+                  "admin-product-endpoints",
+                  "admin-category-endpoints",
+                  "admin-order-endpoints",
+                  "admin-user-endpoints",
+                  "admin-dashboard-endpoints"
+                ]
+              }
+            ],
+            "startupHooks": [
+              {
+                "id": "db-init",
+                "phase": "beforeRun",
+                "kind": "inline",
+                "reference": "DbInitializer.Initialize"
+              }
+            ],
+            "hosting": {
+              "mode": "spa-static",
+              "staticRoot": "../frontend",
+              "fallbackFile": "index.html"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

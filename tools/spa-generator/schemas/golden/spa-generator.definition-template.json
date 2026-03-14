@@ -1,0 +1,215 @@
+{
+  "kind": "definition-template",
+  "version": "0.1.0",
+  "meta": {
+    "source": "tools/spa-generator/backend/Program.cs",
+    "extractedAt": "2026-03-14",
+    "extractionMethod": "manual",
+    "description": "Golden extraction of the SPA Generator backend — the simplest generator-native backend baseline"
+  },
+  "definitions": {
+    "pages": [
+      {
+        "id": "home",
+        "definition": {
+          "name": "HomePage",
+          "type": "dashboard",
+          "description": "Landing / home page"
+        }
+      },
+      {
+        "id": "login",
+        "definition": {
+          "name": "LoginPage",
+          "type": "form",
+          "description": "User login form",
+          "fields": [
+            { "name": "email", "type": "email", "label": "Email", "required": true },
+            { "name": "password", "type": "password", "label": "Password", "required": true }
+          ],
+          "api": {
+            "submit": { "method": "POST", "url": "/api/auth/login" }
+          }
+        }
+      },
+      {
+        "id": "settings",
+        "definition": {
+          "name": "SettingsPage",
+          "type": "form",
+          "description": "Application settings page"
+        }
+      },
+      {
+        "id": "user-list",
+        "definition": {
+          "name": "UserListPage",
+          "type": "list",
+          "description": "User management list",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "email", "type": "email", "label": "Email" },
+            { "name": "role", "type": "text", "label": "Role" },
+            { "name": "status", "type": "text", "label": "Status" }
+          ],
+          "api": {
+            "list": { "method": "GET", "url": "/api/users" }
+          }
+        }
+      },
+      {
+        "id": "user-detail",
+        "definition": {
+          "name": "UserDetailPage",
+          "type": "detail",
+          "description": "User detail view",
+          "fields": [
+            { "name": "id", "type": "number", "label": "ID" },
+            { "name": "name", "type": "text", "label": "Name" },
+            { "name": "email", "type": "email", "label": "Email" },
+            { "name": "role", "type": "text", "label": "Role" },
+            { "name": "status", "type": "text", "label": "Status" },
+            { "name": "department", "type": "text", "label": "Department" },
+            { "name": "phone", "type": "tel", "label": "Phone" }
+          ],
+          "api": {
+            "get": { "method": "GET", "url": "/api/users/:id" }
+          }
+        }
+      },
+      {
+        "id": "user-create",
+        "definition": {
+          "name": "UserCreatePage",
+          "type": "form",
+          "description": "Create new user form",
+          "fields": [
+            { "name": "name", "type": "text", "label": "Name", "required": true },
+            { "name": "email", "type": "email", "label": "Email", "required": true },
+            { "name": "password", "type": "password", "label": "Password" },
+            { "name": "role", "type": "select", "label": "Role", "required": true, "options": ["user", "editor", "admin"] },
+            { "name": "department", "type": "text", "label": "Department" },
+            { "name": "phone", "type": "tel", "label": "Phone" }
+          ],
+          "api": {
+            "submit": { "method": "POST", "url": "/api/users" }
+          }
+        }
+      },
+      {
+        "id": "dashboard",
+        "definition": {
+          "name": "DashboardPage",
+          "type": "dashboard",
+          "description": "Admin dashboard with user count and activity stats",
+          "api": {
+            "get": { "method": "GET", "url": "/api/dashboard" }
+          }
+        }
+      }
+    ],
+    "apps": [
+      {
+        "id": "spa-generator",
+        "app": {
+          "identity": {
+            "name": "SpaGenerator",
+            "targets": ["web", "dotnet-backend"]
+          },
+          "profiles": ["website"],
+          "configuration": {
+            "sections": ["ConnectionStrings", "Jwt", "Cors"],
+            "featureValues": {
+              "database": "sqlite-baseorm"
+            }
+          },
+          "frontend": {
+            "pageRefs": [
+              "home",
+              "login",
+              "settings",
+              "user-list",
+              "user-detail",
+              "user-create",
+              "dashboard"
+            ]
+          },
+          "backend": {
+            "features": [
+              { "id": "auth.jwt", "enabled": true },
+              { "id": "rate-limiting", "enabled": true },
+              { "id": "cors", "enabled": true },
+              { "id": "security-headers", "enabled": true },
+              { "id": "https-redirect", "enabled": true }
+            ],
+            "services": [
+              {
+                "id": "user-service",
+                "lifetime": "scoped",
+                "contract": "IUserService",
+                "implementation": { "kind": "type", "reference": "UserService" }
+              },
+              {
+                "id": "auth-service",
+                "lifetime": "scoped",
+                "contract": "IAuthService",
+                "implementation": { "kind": "type", "reference": "AuthService" }
+              }
+            ],
+            "policies": [],
+            "middleware": [
+              { "id": "security-headers", "kind": "custom", "reference": "SecurityHeadersMiddleware", "order": 1 },
+              { "id": "exception-handler", "kind": "framework", "reference": "UseExceptionHandler", "order": 2, "condition": "!IsDevelopment" },
+              { "id": "developer-exception", "kind": "framework", "reference": "UseDeveloperExceptionPage", "order": 2, "condition": "IsDevelopment" },
+              { "id": "https-redirect", "kind": "framework", "reference": "UseHttpsRedirection", "order": 3 },
+              { "id": "cors", "kind": "framework", "reference": "UseCors", "order": 4 },
+              { "id": "rate-limiter", "kind": "framework", "reference": "UseRateLimiter", "order": 5 },
+              { "id": "authentication", "kind": "framework", "reference": "UseAuthentication", "order": 6 },
+              { "id": "authorization", "kind": "framework", "reference": "UseAuthorization", "order": 7 }
+            ],
+            "endpointModules": [
+              { "id": "health-endpoints", "source": "inline", "reference": "HealthEndpoints" },
+              { "id": "auth-endpoints", "source": "inline", "reference": "AuthEndpoints" },
+              { "id": "user-endpoints", "source": "inline", "reference": "UserEndpoints" },
+              { "id": "dashboard-endpoints", "source": "inline", "reference": "DashboardEndpoints" }
+            ],
+            "routeGroups": [
+              {
+                "id": "root",
+                "prefix": "/",
+                "moduleRefs": ["health-endpoints"]
+              },
+              {
+                "id": "auth-api",
+                "prefix": "/api/auth",
+                "moduleRefs": ["auth-endpoints"]
+              },
+              {
+                "id": "users-api",
+                "prefix": "/api/users",
+                "moduleRefs": ["user-endpoints"]
+              },
+              {
+                "id": "dashboard-api",
+                "prefix": "/api",
+                "moduleRefs": ["dashboard-endpoints"]
+              }
+            ],
+            "startupHooks": [
+              {
+                "id": "db-init",
+                "phase": "beforeRun",
+                "kind": "inline",
+                "reference": "DbInitializer.Initialize"
+              }
+            ],
+            "hosting": {
+              "mode": "api"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

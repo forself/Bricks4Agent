@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Bricks4Agent.Api.Controllers;
 using Bricks4Agent.Api.FileHandling.Models;
 using Bricks4Agent.Api.FileHandling.Services;

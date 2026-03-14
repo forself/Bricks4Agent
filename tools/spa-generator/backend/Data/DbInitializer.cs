@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using SpaGenerator.Models;
 
 namespace SpaGenerator.Data;
@@ -12,13 +11,13 @@ public static class DbInitializer
     /// <summary>
     /// 初始化資料庫並建立種子資料
     /// </summary>
-    public static async Task InitializeAsync(AppDbContext context, IConfiguration configuration)
+    public static void Initialize(AppDb db, IConfiguration configuration)
     {
-        // 確保資料庫已建立
-        await context.Database.EnsureCreatedAsync();
+        // 確保資料表已建立
+        db.EnsureCreated();
 
         // 如果已有使用者，跳過種子資料
-        if (await context.Users.AnyAsync())
+        if (db.GetUserCount() > 0)
         {
             return;
         }
@@ -53,18 +52,9 @@ public static class DbInitializer
             CreatedAt = DateTime.UtcNow
         };
 
-        context.Users.Add(adminUser);
-        await context.SaveChangesAsync();
+        db.CreateUser(adminUser);
 
         Console.WriteLine($"[DbInitializer] 已建立初始管理員帳號: {adminEmail}");
         Console.WriteLine("[DbInitializer] 警告: 請在首次登入後立即更改預設密碼!");
-    }
-
-    /// <summary>
-    /// 同步版本的初始化方法 (供 Program.cs 使用)
-    /// </summary>
-    public static void Initialize(AppDbContext context, IConfiguration configuration)
-    {
-        InitializeAsync(context, configuration).GetAwaiter().GetResult();
     }
 }

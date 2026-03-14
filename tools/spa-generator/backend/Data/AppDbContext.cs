@@ -1,40 +1,93 @@
-using Microsoft.EntityFrameworkCore;
+using BaseOrm;
 using SpaGenerator.Models;
 
 namespace SpaGenerator.Data;
 
 /**
- * 應用程式資料庫上下文
- * 使用 SQLite 作為預設資料庫
+ * 應用程式資料庫
+ * 使用 BaseOrm 輕量級 ORM
  */
-public class AppDbContext : DbContext
+public class AppDb : BaseDb
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    public AppDb(string connectionString) : base(connectionString) { }
+
+    /// <summary>
+    /// 初始化資料表結構
+    /// </summary>
+    public void EnsureCreated()
     {
+        // 建立 Users 資料表
+        Execute(@"
+            CREATE TABLE IF NOT EXISTS Users (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Email TEXT NOT NULL,
+                PasswordHash TEXT NOT NULL,
+                Role TEXT NOT NULL DEFAULT 'user',
+                Status TEXT NOT NULL DEFAULT 'active',
+                Department TEXT,
+                Phone TEXT,
+                CreatedAt TEXT NOT NULL,
+                LastLoginAt TEXT
+            )
+        ");
+
+        // 建立 Email 唯一索引
+        Execute(@"
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_Users_Email ON Users(Email)
+        ");
     }
 
-    public DbSet<User> Users { get; set; } = null!;
+    #region User Operations
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    public List<User> GetAllUsers()
     {
-        base.OnModelCreating(modelBuilder);
-
-        // User 配置
-        modelBuilder.Entity<User>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
-            entity.HasIndex(e => e.Email).IsUnique();
-            entity.Property(e => e.PasswordHash).IsRequired();
-            entity.Property(e => e.Role).HasMaxLength(50).HasDefaultValue("user");
-            entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("active");
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("datetime('now')");
-        });
-
-        // 種子資料改為在 DbInitializer.Initialize() 中處理
-        // 這樣可以使用動態密碼雜湊，更適合生產環境
+        return Query<User>("SELECT * FROM Users ORDER BY CreatedAt DESC");
     }
+
+    public User? GetUserById(int id)
+    {
+        return QueryFirst<User>("SELECT * FROM Users WHERE Id = @Id", new { Id = id });
+    }
+
+    public User? GetUserByEmail(string email)
+    {
+        return QueryFirst<User>("SELECT * FROM Users WHERE Email = @Email", new { Email = email.ToLowerInvariant() });
+    }
+
+    public bool EmailExists(string email)
+    {
+        var count = Scalar<int>("SELECT COUNT(*) FROM Users WHERE Email = @Email", new { Email = email.ToLowerInvariant() });
+        return count > 0;
+    }
+
+    public int GetUserCount()
+    {
+        return Scalar<int>("SELECT COUNT(*) FROM Users");
+    }
+
+    public long CreateUser(User user)
+    {
+        return Insert(user);
+    }
+
+    public int UpdateUser(User user)
+    {
+        return Update(user);
+    }
+
+    public int DeleteUser(int id)
+    {
+        return Delete<User>(id);
+    }
+
+    public void UpdateLastLogin(int userId)
+    {
+        Execute("UPDATE Users SET LastLoginAt = @Now WHERE Id = @Id",
+            new { Now = DateTime.UtcNow.ToString("o"), Id = userId });
+    }
+
+    #endregion
 }
 
 /**

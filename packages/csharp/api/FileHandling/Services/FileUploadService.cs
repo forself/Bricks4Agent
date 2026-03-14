@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Bricks4Agent.Api.FileHandling.Models;
 using Bricks4Agent.Database.Repository;
@@ -214,9 +213,9 @@ namespace Bricks4Agent.Api.FileHandling.Services
                 query = query.Where(f => f.UploadedBy == uploadedBy.Value);
             }
 
-            var files = await query
+            var files = query
                 .OrderByDescending(f => f.UploadedAt)
-                .ToListAsync();
+                .ToList();
 
             return files.Select(FileRecordDto.FromEntity);
         }

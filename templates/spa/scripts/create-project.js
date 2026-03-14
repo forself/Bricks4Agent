@@ -589,7 +589,7 @@ ${config.project.name}/
 ## 新增 API 端點
 
 1. 在 \`backend/Models/\` 建立資料模型
-2. 在 \`AppDbContext.cs\` 新增 DbSet
+2. 在 \`AppDbContext.cs\` 的 EnsureCreated() 中加入建表 SQL
 3. 在 \`Program.cs\` 新增 API 端點
 
 ---

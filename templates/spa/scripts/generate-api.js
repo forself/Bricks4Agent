@@ -53,8 +53,7 @@ public record {{className}}Response(
     DateTime CreatedAt);
 `;
 
-const SERVICE_TEMPLATE = `using Microsoft.EntityFrameworkCore;
-using {{namespace}}.Data;
+const SERVICE_TEMPLATE = `using {{namespace}}.Data;
 using {{namespace}}.Models;
 
 namespace {{namespace}}.Services;
@@ -76,28 +75,26 @@ public interface I{{className}}Service
 /// </summary>
 public class {{className}}Service : I{{className}}Service
 {
-    private readonly AppDbContext _context;
+    private readonly AppDb _db;
 
-    public {{className}}Service(AppDbContext context)
+    public {{className}}Service(AppDb db)
     {
-        _context = context;
+        _db = db;
     }
 
-    public async Task<List<{{className}}Response>> GetAllAsync()
+    public Task<List<{{className}}Response>> GetAllAsync()
     {
-        return await _context.{{pluralName}}
-            .OrderByDescending(x => x.CreatedAt)
-            .Select(x => ToResponse(x))
-            .ToListAsync();
+        var items = _db.Query<{{className}}>("SELECT * FROM {{pluralName}} ORDER BY CreatedAt DESC");
+        return Task.FromResult(items.Select(ToResponse).ToList());
     }
 
-    public async Task<{{className}}Response?> GetByIdAsync(int id)
+    public Task<{{className}}Response?> GetByIdAsync(int id)
     {
-        var entity = await _context.{{pluralName}}.FindAsync(id);
-        return entity != null ? ToResponse(entity) : null;
+        var entity = _db.Get<{{className}}>(id);
+        return Task.FromResult(entity != null ? ToResponse(entity) : null);
     }
 
-    public async Task<{{className}}Response> CreateAsync(Create{{className}}Request request)
+    public Task<{{className}}Response> CreateAsync(Create{{className}}Request request)
     {
         var entity = new {{className}}
         {
@@ -105,32 +102,28 @@ public class {{className}}Service : I{{className}}Service
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.{{pluralName}}.Add(entity);
-        await _context.SaveChangesAsync();
+        var newId = _db.Insert(entity);
+        entity.Id = (int)newId;
 
-        return ToResponse(entity);
+        return Task.FromResult(ToResponse(entity));
     }
 
-    public async Task<{{className}}Response?> UpdateAsync(int id, Update{{className}}Request request)
+    public Task<{{className}}Response?> UpdateAsync(int id, Update{{className}}Request request)
     {
-        var entity = await _context.{{pluralName}}.FindAsync(id);
-        if (entity == null) return null;
+        var entity = _db.Get<{{className}}>(id);
+        if (entity == null) return Task.FromResult<{{className}}Response?>(null);
 
 {{updateMapping}}
         entity.UpdatedAt = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync();
-        return ToResponse(entity);
+        _db.Update(entity);
+        return Task.FromResult<{{className}}Response?>(ToResponse(entity));
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public Task<bool> DeleteAsync(int id)
     {
-        var entity = await _context.{{pluralName}}.FindAsync(id);
-        if (entity == null) return false;
-
-        _context.{{pluralName}}.Remove(entity);
-        await _context.SaveChangesAsync();
-        return true;
+        var affected = _db.Delete<{{className}}>(id);
+        return Task.FromResult(affected > 0);
     }
 
     private static {{className}}Response ToResponse({{className}} entity) => new(
@@ -418,13 +411,11 @@ async function main() {
     console.log('');
     console.log('下一步:');
     console.log('');
-    console.log('1. 在 AppDbContext.cs 中加入 DbSet:');
-    console.log('');
-    console.log(`   public DbSet<${endpoints.className}> ${endpoints.pluralName} { get; set; } = null!;`);
+    console.log('1. 在 AppDbContext.cs 的 EnsureCreated() 中加入建表 SQL');
     console.log('');
     console.log('2. 在 Program.cs 中註冊服務:');
     console.log('');
-    console.log(`   builder.Services.AddScoped<I${endpoints.className}Service, ${endpoints.className}Service>();`);
+    console.log(`   builder.Services.AddSingleton<I${endpoints.className}Service, ${endpoints.className}Service>();`);
     console.log('');
     console.log('3. 在 Program.cs 中加入以下端點 (在 app.Run() 之前):');
     console.log('');

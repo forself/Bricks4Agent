@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -13,34 +12,33 @@ namespace SpaGenerator.Services;
  */
 public class AuthService : IAuthService
 {
-    private readonly AppDbContext _db;
+    private readonly AppDb _db;
     private readonly IConfiguration _config;
 
-    public AuthService(AppDbContext db, IConfiguration config)
+    public AuthService(AppDb db, IConfiguration config)
     {
         _db = db;
         _config = config;
     }
 
-    public async Task<LoginResult?> LoginAsync(string email, string password)
+    public Task<LoginResult?> LoginAsync(string email, string password)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
-        if (user == null) return null;
+        var user = _db.GetUserByEmail(email);
+        if (user == null) return Task.FromResult<LoginResult?>(null);
 
         if (!BCryptHelper.VerifyPassword(password, user.PasswordHash))
         {
-            return null;
+            return Task.FromResult<LoginResult?>(null);
         }
 
         // 更新最後登入時間
-        user.LastLoginAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        _db.UpdateLastLogin(user.Id);
 
         // 產生 Token
         var accessToken = GenerateJwtToken(user);
         var refreshToken = Guid.NewGuid().ToString();
 
-        return new LoginResult
+        return Task.FromResult<LoginResult?>(new LoginResult
         {
             AccessToken = accessToken,
             RefreshToken = refreshToken,
@@ -51,20 +49,19 @@ public class AuthService : IAuthService
                 Email = user.Email,
                 Role = user.Role
             }
-        };
+        });
     }
 
-    public async Task<RegisterResult> RegisterAsync(RegisterRequest request)
+    public Task<RegisterResult> RegisterAsync(RegisterRequest request)
     {
         // 檢查 Email 是否已存在
-        var exists = await _db.Users.AnyAsync(u => u.Email == request.Email);
-        if (exists)
+        if (_db.EmailExists(request.Email))
         {
-            return new RegisterResult
+            return Task.FromResult(new RegisterResult
             {
                 Success = false,
                 Message = "Email 已被使用"
-            };
+            });
         }
 
         var user = new User
@@ -77,22 +74,21 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow
         };
 
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+        var id = _db.CreateUser(user);
 
-        return new RegisterResult
+        return Task.FromResult(new RegisterResult
         {
             Success = true,
             Message = "註冊成功",
-            UserId = user.Id
-        };
+            UserId = (int)id
+        });
     }
 
     private string GenerateJwtToken(User user)
     {
         var key = _config["Jwt:Key"]
             ?? throw new InvalidOperationException("JWT Key 未設定。請在 appsettings.json 或環境變數中設定 Jwt:Key (至少 32 字元)");
-        var issuer = _config["Jwt:Issuer"] ?? "SpaGenerator";
+        var issuer = _config["Jwt:Issuer"] ?? "SpaApi";
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);

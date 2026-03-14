@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using SpaGenerator.Data;
 using SpaGenerator.Models;
 
@@ -9,29 +8,26 @@ namespace SpaGenerator.Services;
  */
 public class UserService : IUserService
 {
-    private readonly AppDbContext _db;
+    private readonly AppDb _db;
 
-    public UserService(AppDbContext db)
+    public UserService(AppDb db)
     {
         _db = db;
     }
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync()
+    public Task<IEnumerable<UserDto>> GetAllAsync()
     {
-        var users = await _db.Users
-            .OrderByDescending(u => u.CreatedAt)
-            .ToListAsync();
-
-        return users.Select(UserDto.FromEntity);
+        var users = _db.GetAllUsers();
+        return Task.FromResult(users.Select(UserDto.FromEntity));
     }
 
-    public async Task<UserDto?> GetByIdAsync(int id)
+    public Task<UserDto?> GetByIdAsync(int id)
     {
-        var user = await _db.Users.FindAsync(id);
-        return user == null ? null : UserDto.FromEntity(user);
+        var user = _db.GetUserById(id);
+        return Task.FromResult(user == null ? null : UserDto.FromEntity(user));
     }
 
-    public async Task<UserDto> CreateAsync(CreateUserRequest request)
+    public Task<UserDto> CreateAsync(CreateUserRequest request)
     {
         var user = new User
         {
@@ -45,16 +41,16 @@ public class UserService : IUserService
             CreatedAt = DateTime.UtcNow
         };
 
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+        var id = _db.CreateUser(user);
+        user.Id = (int)id;
 
-        return UserDto.FromEntity(user);
+        return Task.FromResult(UserDto.FromEntity(user));
     }
 
-    public async Task<UserDto?> UpdateAsync(int id, UpdateUserRequest request)
+    public Task<UserDto?> UpdateAsync(int id, UpdateUserRequest request)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return null;
+        var user = _db.GetUserById(id);
+        if (user == null) return Task.FromResult<UserDto?>(null);
 
         if (request.Name != null) user.Name = request.Name;
         if (request.Email != null) user.Email = request.Email;
@@ -63,19 +59,14 @@ public class UserService : IUserService
         if (request.Department != null) user.Department = request.Department;
         if (request.Phone != null) user.Phone = request.Phone;
 
-        await _db.SaveChangesAsync();
+        _db.UpdateUser(user);
 
-        return UserDto.FromEntity(user);
+        return Task.FromResult<UserDto?>(UserDto.FromEntity(user));
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public Task<bool> DeleteAsync(int id)
     {
-        var user = await _db.Users.FindAsync(id);
-        if (user == null) return false;
-
-        _db.Users.Remove(user);
-        await _db.SaveChangesAsync();
-
-        return true;
+        var affected = _db.DeleteUser(id);
+        return Task.FromResult(affected > 0);
     }
 }

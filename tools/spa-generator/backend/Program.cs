@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
@@ -10,7 +9,7 @@ using SpaGenerator.Services;
 
 /**
  * SPA API - ASP.NET Core 8 Minimal API
- * 使用 SQLite + Entity Framework Core
+ * 使用 SQLite + BaseOrm
  *
  * 資安加強:
  * - 速率限制 (Rate Limiting)
@@ -23,10 +22,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ===== 服務註冊 =====
 
-// SQLite 資料庫
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? "Data Source=generator.db"));
+// SQLite 資料庫 (BaseOrm)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Data Source=generator.db";
+builder.Services.AddSingleton(new AppDb(connectionString));
 
 // JWT 認證 - 生產環境必須設定 Jwt:Key (透過環境變數 Jwt__Key)
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -118,18 +117,17 @@ builder.Services.AddCors(options =>
 });
 
 // 服務
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddSingleton<IUserService, UserService>();
+builder.Services.AddSingleton<IAuthService, AuthService>();
 
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
 // ===== 初始化資料庫 =====
-using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var db = app.Services.GetRequiredService<AppDb>();
+    var config = app.Services.GetRequiredService<IConfiguration>();
     DbInitializer.Initialize(db, config);
 }
 
@@ -287,9 +285,9 @@ app.MapDelete("/api/users/{id:int}", async (int id, IUserService userService) =>
 }).WithName("DeleteUser").RequireAuthorization().RequireRateLimiting("api");
 
 // 儀表板端點
-app.MapGet("/api/dashboard", async (AppDbContext db) =>
+app.MapGet("/api/dashboard", (AppDb db) =>
 {
-    var userCount = await db.Users.CountAsync();
+    var userCount = db.GetUserCount();
     return Results.Ok(new
     {
         stats = new
