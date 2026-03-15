@@ -359,6 +359,8 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     internal string BuildPagedSql(string sql) => _dialect.BuildPagedSql(sql);
 
+    internal string BuildCountSql(string sql) => _dialect.BuildCountSql(sql);
+
     private string GetLastInsertIdSql() => _dialect.GetLastInsertIdSql();
 
     private string QuoteIdentifier(string name)
@@ -742,12 +744,16 @@ public class BaseDb : IDisposable, IAsyncDisposable
     public long Insert<T>(T entity) where T : class
     {
         var meta = TypeMeta.Get<T>();
-        var sql = $"INSERT INTO {QuoteIdentifier(meta.TableName)} ({BuildInsertColumns(meta)}) VALUES ({BuildInsertValues(meta)})";
+        var tableName = QuoteIdentifier(meta.TableName);
+        var columns = BuildInsertColumns(meta);
+        var values = BuildInsertValues(meta);
+        var insertAndReturnIdSql = meta.HasAutoIncrementKey
+            ? _dialect.BuildInsertAndReturnIdSql(tableName, columns, values, QuoteIdentifier(meta.KeyColumn))
+            : null;
 
-        if (_dbType == DbType.PostgreSql && meta.HasAutoIncrementKey)
+        if (!string.IsNullOrWhiteSpace(insertAndReturnIdSql))
         {
-            sql += $" RETURNING {QuoteIdentifier(meta.KeyColumn)}";
-            var returningCommand = CreateCommand(sql, null, out var returningConnection, out var returningOwnsConnection);
+            var returningCommand = CreateCommand(insertAndReturnIdSql, null, out var returningConnection, out var returningOwnsConnection);
             try
             {
                 AddEntityParameters(returningCommand, entity, meta, excludeKey: true);
@@ -763,6 +769,7 @@ public class BaseDb : IDisposable, IAsyncDisposable
             }
         }
 
+        var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
         var command = CreateCommand(sql, null, out var connection, out var ownsConnection);
         try
         {
@@ -794,13 +801,17 @@ public class BaseDb : IDisposable, IAsyncDisposable
         where T : class
     {
         var meta = TypeMeta.Get<T>();
-        var sql = $"INSERT INTO {QuoteIdentifier(meta.TableName)} ({BuildInsertColumns(meta)}) VALUES ({BuildInsertValues(meta)})";
+        var tableName = QuoteIdentifier(meta.TableName);
+        var columns = BuildInsertColumns(meta);
+        var values = BuildInsertValues(meta);
+        var insertAndReturnIdSql = meta.HasAutoIncrementKey
+            ? _dialect.BuildInsertAndReturnIdSql(tableName, columns, values, QuoteIdentifier(meta.KeyColumn))
+            : null;
 
-        if (_dbType == DbType.PostgreSql && meta.HasAutoIncrementKey)
+        if (!string.IsNullOrWhiteSpace(insertAndReturnIdSql))
         {
-            sql += $" RETURNING {QuoteIdentifier(meta.KeyColumn)}";
             var (returningCommand, returningConnection, returningOwnsConnection) =
-                await CreateCommandAsync(sql, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await CreateCommandAsync(insertAndReturnIdSql, cancellationToken: cancellationToken).ConfigureAwait(false);
             try
             {
                 AddEntityParameters(returningCommand, entity, meta, excludeKey: true);
@@ -817,6 +828,7 @@ public class BaseDb : IDisposable, IAsyncDisposable
             }
         }
 
+        var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
         var (command, connection, ownsConnection) =
             await CreateCommandAsync(sql, cancellationToken: cancellationToken).ConfigureAwait(false);
         try
@@ -1271,6 +1283,17 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
         public abstract string BuildPagedSql(string sql);
 
+        public virtual string BuildCountSql(string sql) => $"SELECT COUNT(*) FROM ({sql}) AS CountQuery";
+
+        public virtual string? BuildInsertAndReturnIdSql(
+            string quotedTableName,
+            string insertColumns,
+            string insertValues,
+            string quotedKeyColumn)
+        {
+            return null;
+        }
+
         public virtual string NormalizeParameterNames(string sql) => sql;
 
         public virtual void ConfigureConnection(DbConnection connection)
@@ -1386,6 +1409,109 @@ public class BaseDb : IDisposable, IAsyncDisposable
             return MySqlParameterRegex.Replace(sql, "?$1");
         }
 
+        protected static string StripTrailingTopLevelOrderBy(string sql)
+        {
+            var orderByIndex = FindTopLevelOrderByIndex(sql);
+            return orderByIndex >= 0 ? sql[..orderByIndex].TrimEnd() : sql;
+        }
+
+        private static int FindTopLevelOrderByIndex(string sql)
+        {
+            var depth = 0;
+            var inSingleQuote = false;
+            var lastOrderByIndex = -1;
+
+            for (var index = 0; index < sql.Length; index++)
+            {
+                var current = sql[index];
+
+                if (inSingleQuote)
+                {
+                    if (current == '\'')
+                    {
+                        if (index + 1 < sql.Length && sql[index + 1] == '\'')
+                        {
+                            index++;
+                        }
+                        else
+                        {
+                            inSingleQuote = false;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (current == '\'')
+                {
+                    inSingleQuote = true;
+                    continue;
+                }
+
+                if (current == '(')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (current == ')' && depth > 0)
+                {
+                    depth--;
+                    continue;
+                }
+
+                if (depth == 0 && IsKeywordAt(sql, index, "ORDER"))
+                {
+                    var probe = index + 5;
+                    while (probe < sql.Length && char.IsWhiteSpace(sql[probe]))
+                    {
+                        probe++;
+                    }
+
+                    if (IsKeywordAt(sql, probe, "BY"))
+                    {
+                        lastOrderByIndex = index;
+                    }
+                }
+            }
+
+            return lastOrderByIndex;
+        }
+
+        private static bool IsKeywordAt(string sql, int index, string keyword)
+        {
+            if (index < 0 || index + keyword.Length > sql.Length)
+            {
+                return false;
+            }
+
+            if (!sql.AsSpan(index, keyword.Length).Equals(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (index > 0)
+            {
+                var previous = sql[index - 1];
+                if (char.IsLetterOrDigit(previous) || previous == '_')
+                {
+                    return false;
+                }
+            }
+
+            var end = index + keyword.Length;
+            if (end < sql.Length)
+            {
+                var next = sql[end];
+                if (char.IsLetterOrDigit(next) || next == '_')
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         public static DbDialect Create(DbType dbType)
         {
             return dbType switch
@@ -1445,6 +1571,13 @@ public class BaseDb : IDisposable, IAsyncDisposable
         public override string GetCreateTablePrefix(string escapedTableName) => $"IF OBJECT_ID(N'{escapedTableName}', N'U') IS NULL CREATE TABLE";
         public override string GetAutoIncrementColumn(string quotedColumnName) => $"{quotedColumnName} INT IDENTITY(1,1) PRIMARY KEY";
         public override string BuildPagedSql(string sql) => $"{sql} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+        public override string BuildCountSql(string sql) => $"SELECT COUNT(*) FROM ({StripTrailingTopLevelOrderBy(sql)}) AS CountQuery";
+        public override string BuildInsertAndReturnIdSql(
+            string quotedTableName,
+            string insertColumns,
+            string insertValues,
+            string quotedKeyColumn)
+            => $"INSERT INTO {quotedTableName} ({insertColumns}) OUTPUT INSERTED.{quotedKeyColumn} VALUES ({insertValues})";
 
         protected override string Int32Type => "INT";
         protected override string Int64Type => "BIGINT";
@@ -1513,6 +1646,12 @@ public class BaseDb : IDisposable, IAsyncDisposable
         public override string GetCreateTablePrefix(string escapedTableName) => "CREATE TABLE IF NOT EXISTS";
         public override string GetAutoIncrementColumn(string quotedColumnName) => $"{quotedColumnName} SERIAL PRIMARY KEY";
         public override string BuildPagedSql(string sql) => $"{sql} LIMIT @PageSize OFFSET @Offset";
+        public override string BuildInsertAndReturnIdSql(
+            string quotedTableName,
+            string insertColumns,
+            string insertValues,
+            string quotedKeyColumn)
+            => $"INSERT INTO {quotedTableName} ({insertColumns}) VALUES ({insertValues}) RETURNING {quotedKeyColumn}";
 
         protected override string Int32Type => "INT";
         protected override string Int64Type => "BIGINT";
@@ -1709,7 +1848,7 @@ public static class BaseDbExtensions
         object? parameters = null)
         where T : new()
     {
-        var totalCount = db.Scalar<int>($"SELECT COUNT(*) FROM ({sql}) AS CountQuery", parameters);
+        var totalCount = db.Scalar<int>(db.BuildCountSql(sql), parameters);
         var pagedSql = db.BuildPagedSql(sql);
         var offset = Math.Max(page - 1, 0) * pageSize;
         var pagedParameters = BuildPagedParameters(parameters, pageSize, offset);
@@ -1735,7 +1874,7 @@ public static class BaseDbExtensions
         where T : new()
     {
         var totalCount = await db.ScalarAsync<int>(
-            $"SELECT COUNT(*) FROM ({sql}) AS CountQuery",
+            db.BuildCountSql(sql),
             parameters,
             cancellationToken).ConfigureAwait(false);
         var pagedSql = db.BuildPagedSql(sql);

@@ -55,6 +55,8 @@ The repository includes an executable verification project for provider resoluti
 dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
 ```
 
+If `BASEORM_SQLSERVER_CONNECTION_STRING` is set, the verifier also runs a live SQL Server CRUD integration against a temporary database.
+
 From the repo root you can also run:
 
 ```bash
