@@ -1,6 +1,8 @@
 using System.Reflection;
 using BaseOrm;
 using Microsoft.Data.SqlClient;
+using MySqlConnector;
+using Npgsql;
 
 var failures = new List<string>();
 
@@ -10,6 +12,8 @@ try
     VerifyDialectSurface();
     await VerifyAsyncCrudAsync();
     await VerifySqlServerIntegrationIfConfiguredAsync();
+    await VerifyMySqlIntegrationIfConfiguredAsync();
+    await VerifyPostgreSqlIntegrationIfConfiguredAsync();
 }
 catch (Exception ex)
 {
@@ -81,10 +85,11 @@ static async Task VerifyAsyncCrudAsync()
 
 static async Task VerifySqlServerIntegrationIfConfiguredAsync()
 {
-    var connectionString = Environment.GetEnvironmentVariable("BASEORM_SQLSERVER_CONNECTION_STRING");
+    const string envVar = "BASEORM_SQLSERVER_CONNECTION_STRING";
+    var connectionString = Environment.GetEnvironmentVariable(envVar);
     if (string.IsNullOrWhiteSpace(connectionString))
     {
-        Console.WriteLine("Live SQL Server integration test skipped. Set BASEORM_SQLSERVER_CONNECTION_STRING to enable.");
+        Console.WriteLine($"Live SQL Server integration test skipped. Set {envVar} to enable.");
         return;
     }
 
@@ -111,6 +116,80 @@ static async Task VerifySqlServerIntegrationIfConfiguredAsync()
     {
         await masterDb.ExecuteAsync(
             $"IF DB_ID(N'{databaseName}') IS NOT NULL BEGIN ALTER DATABASE [{databaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{databaseName}]; END");
+    }
+}
+
+static async Task VerifyMySqlIntegrationIfConfiguredAsync()
+{
+    const string envVar = "BASEORM_MYSQL_CONNECTION_STRING";
+    var connectionString = Environment.GetEnvironmentVariable(envVar);
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        Console.WriteLine($"Live MySQL integration test skipped. Set {envVar} to enable.");
+        return;
+    }
+
+    var databaseName = $"baseorm_verify_{Guid.NewGuid():N}";
+    var adminBuilder = new MySqlConnectionStringBuilder(connectionString)
+    {
+        Database = string.IsNullOrWhiteSpace(new MySqlConnectionStringBuilder(connectionString).Database)
+            ? "mysql"
+            : new MySqlConnectionStringBuilder(connectionString).Database
+    };
+    var testBuilder = new MySqlConnectionStringBuilder(adminBuilder.ConnectionString)
+    {
+        Database = databaseName
+    };
+
+    await using var adminDb = BaseDb.UseMySql(adminBuilder.ConnectionString);
+    await adminDb.ExecuteAsync($"CREATE DATABASE `{databaseName}`");
+
+    try
+    {
+        await using var mySqlDb = BaseDb.UseMySql(testBuilder.ConnectionString);
+        await RunWidgetCrudFlowAsync(mySqlDb, "MySQL");
+    }
+    finally
+    {
+        await adminDb.ExecuteAsync($"DROP DATABASE IF EXISTS `{databaseName}`");
+    }
+}
+
+static async Task VerifyPostgreSqlIntegrationIfConfiguredAsync()
+{
+    const string envVar = "BASEORM_POSTGRESQL_CONNECTION_STRING";
+    var connectionString = Environment.GetEnvironmentVariable(envVar);
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        Console.WriteLine($"Live PostgreSQL integration test skipped. Set {envVar} to enable.");
+        return;
+    }
+
+    var databaseName = $"baseorm_verify_{Guid.NewGuid():N}";
+    var parsedBuilder = new NpgsqlConnectionStringBuilder(connectionString);
+    var adminBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+    {
+        Database = string.IsNullOrWhiteSpace(parsedBuilder.Database) ? "postgres" : parsedBuilder.Database
+    };
+    var testBuilder = new NpgsqlConnectionStringBuilder(adminBuilder.ConnectionString)
+    {
+        Database = databaseName
+    };
+
+    await using var adminDb = BaseDb.UsePostgreSql(adminBuilder.ConnectionString);
+    await adminDb.ExecuteAsync($"CREATE DATABASE \"{databaseName}\"");
+
+    try
+    {
+        await using var postgreSqlDb = BaseDb.UsePostgreSql(testBuilder.ConnectionString);
+        await RunWidgetCrudFlowAsync(postgreSqlDb, "PostgreSQL");
+    }
+    finally
+    {
+        await adminDb.ExecuteAsync(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = @Database AND pid <> pg_backend_pid()",
+            new { Database = databaseName });
+        await adminDb.ExecuteAsync($"DROP DATABASE IF EXISTS \"{databaseName}\"");
     }
 }
 
