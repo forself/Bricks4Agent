@@ -16,7 +16,8 @@ const readline = require('readline');
 
 // ===== 配置 =====
 const PAGES_DIR = path.join(__dirname, '..', 'frontend', 'pages');
-const ROUTES_FILE = path.join(PAGES_DIR, 'routes.js');
+const GENERATED_ROUTES_DIR = path.join(PAGES_DIR, 'generated');
+const GENERATED_ROUTES_FILE = path.join(GENERATED_ROUTES_DIR, 'routes.generated.js');
 
 // ===== 模板 =====
 
@@ -342,6 +343,70 @@ function toKebabCase(str) {
         .toLowerCase();
 }
 
+function ensureGeneratedRoutesFile(routesFile = GENERATED_ROUTES_FILE) {
+    if (!fs.existsSync(path.dirname(routesFile))) {
+        fs.mkdirSync(path.dirname(routesFile), { recursive: true });
+    }
+
+    if (!fs.existsSync(routesFile)) {
+        fs.writeFileSync(
+            routesFile,
+            'export const generatedRoutes = [\n];\n\nexport default generatedRoutes;\n',
+            'utf8'
+        );
+    }
+}
+
+function buildGeneratedRouteRegistration(result, options = {}) {
+    const relativeImport = path.relative(GENERATED_ROUTES_DIR, result.filePath).replace(/\\/g, '/');
+    const importPath = relativeImport.startsWith('.') ? relativeImport : `./${relativeImport}`;
+    const title = (options.title || result.className.replace(/Page$/, '')).replace(/'/g, "\\'");
+
+    return {
+        importStatement: `import ${result.className} from '${importPath}';`,
+        routeEntry: `    {\n`
+            + `        path: '${result.routePath}',\n`
+            + `        component: ${result.className},\n`
+            + `        meta: {\n`
+            + `            title: '${title}',\n`
+            + `            generated: true\n`
+            + `        }\n`
+            + `    }`
+    };
+}
+
+function registerGeneratedRoute(result, options = {}, routesFile = GENERATED_ROUTES_FILE) {
+    ensureGeneratedRoutesFile(routesFile);
+
+    let content = fs.readFileSync(routesFile, 'utf8');
+    const { importStatement, routeEntry } = buildGeneratedRouteRegistration(result, options);
+
+    if (!content.includes(importStatement)) {
+        const importMatches = [...content.matchAll(/^import .*;$/gm)];
+        if (importMatches.length > 0) {
+            const lastMatch = importMatches[importMatches.length - 1];
+            const insertPos = lastMatch.index + lastMatch[0].length;
+            content = content.slice(0, insertPos) + '\n' + importStatement + content.slice(insertPos);
+        } else {
+            content = importStatement + '\n\n' + content;
+        }
+    }
+
+    const hasRoute = content.includes(`path: '${result.routePath}'`) || content.includes(`component: ${result.className}`);
+    if (!hasRoute) {
+        const arrayCloseIndex = content.lastIndexOf('];');
+        if (arrayCloseIndex === -1) {
+            throw new Error(`Invalid generated routes file: ${routesFile}`);
+        }
+
+        const hasExistingRoutes = content.slice(0, arrayCloseIndex).includes('path:');
+        const insertion = `${hasExistingRoutes ? ',\n' : ''}${routeEntry}\n`;
+        content = content.slice(0, arrayCloseIndex) + insertion + content.slice(arrayCloseIndex);
+    }
+
+    fs.writeFileSync(routesFile, content, 'utf8');
+}
+
 function generatePage(pageName, options = {}) {
     // 解析路徑
     const parts = pageName.split('/');
@@ -427,6 +492,15 @@ async function main() {
     const result = generatePage(args.pageName, {
         detail: args.flags.detail
     });
+
+    if (!args.flags['no-register']) {
+        registerGeneratedRoute(result, {
+            title: args.pageName.split('/').pop()
+        });
+        console.log(`Auto-registered route: ${result.routePath}`);
+        console.log(`Updated: ${GENERATED_ROUTES_FILE}`);
+        console.log('');
+    }
 
     console.log(`✓ 已建立: ${result.filePath}`);
     console.log('');

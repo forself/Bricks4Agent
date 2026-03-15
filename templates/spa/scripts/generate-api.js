@@ -5,6 +5,8 @@
  * 用法:
  *   node generate-api.js Product
  *   node generate-api.js Order --fields "CustomerId:int,Total:decimal,Status:string"
+ *   node generate-api.js Product --fields "Name:string,Price:decimal"
+ *   node generate-api.js Product --fields "Name:string,Price:decimal" --no-patch
  *
  * @module generate-api
  */
@@ -248,6 +250,24 @@ function getCSharpType(type) {
     return typeMap[type.toLowerCase()] || 'string';
 }
 
+function getSqlType(type) {
+    const typeMap = {
+        'string': "TEXT NOT NULL DEFAULT ''",
+        'int': 'INTEGER NOT NULL DEFAULT 0',
+        'integer': 'INTEGER NOT NULL DEFAULT 0',
+        'long': 'INTEGER NOT NULL DEFAULT 0',
+        'decimal': 'REAL NOT NULL DEFAULT 0',
+        'float': 'REAL NOT NULL DEFAULT 0',
+        'double': 'REAL NOT NULL DEFAULT 0',
+        'bool': 'INTEGER NOT NULL DEFAULT 0',
+        'boolean': 'INTEGER NOT NULL DEFAULT 0',
+        'datetime': "TEXT NOT NULL DEFAULT (datetime('now'))",
+        'date': "TEXT NOT NULL DEFAULT (datetime('now'))",
+        'guid': "TEXT NOT NULL DEFAULT ''"
+    };
+    return typeMap[type.toLowerCase()] || "TEXT NOT NULL DEFAULT ''";
+}
+
 function getNullableType(type) {
     const csharpType = getCSharpType(type);
     if (csharpType === 'string') return 'string?';
@@ -302,14 +322,9 @@ function generateModel(entityName, fields, namespace) {
         .replace(/\{\{updateProperties\}\}/g, updateProperties.trimEnd())
         .replace(/\{\{responseProperties\}\}/g, responseProperties);
 
-    const outputPath = path.join(MODELS_DIR, `${className}.cs`);
+    const filePath = path.join(MODELS_DIR, `${className}.cs`);
 
-    if (!fs.existsSync(MODELS_DIR)) {
-        fs.mkdirSync(MODELS_DIR, { recursive: true });
-    }
-
-    fs.writeFileSync(outputPath, content, 'utf8');
-    return outputPath;
+    return { content, filePath };
 }
 
 function generateService(entityName, fields, namespace) {
@@ -339,17 +354,12 @@ function generateService(entityName, fields, namespace) {
         .replace(/\{\{updateMapping\}\}/g, updateMapping.trimEnd())
         .replace(/\{\{responseMapping\}\}/g, responseMapping);
 
-    const outputPath = path.join(SERVICES_DIR, `${className}Service.cs`);
+    const filePath = path.join(SERVICES_DIR, `${className}Service.cs`);
 
-    if (!fs.existsSync(SERVICES_DIR)) {
-        fs.mkdirSync(SERVICES_DIR, { recursive: true });
-    }
-
-    fs.writeFileSync(outputPath, content, 'utf8');
-    return outputPath;
+    return { content, filePath };
 }
 
-function generateEndpoints(entityName) {
+function generateEndpoints(entityName, fields) {
     const className = toPascalCase(entityName);
     const pluralName = pluralize(className);
     const routePath = toKebabCase(pluralName);
@@ -368,6 +378,210 @@ function generateEndpoints(entityName) {
     };
 }
 
+function generateDbMethods(entityName, fields) {
+    const className = toPascalCase(entityName);
+    const pluralName = pluralize(className);
+    const allFields = fields.length > 0 ? fields : [{ name: 'Name', type: 'string' }];
+
+    // Generate CREATE TABLE SQL
+    let columnDefs = [];
+    columnDefs.push('            Id INTEGER PRIMARY KEY AUTOINCREMENT');
+    allFields.forEach(field => {
+        const propName = toPascalCase(field.name);
+        const sqlType = getSqlType(field.type);
+        columnDefs.push(`            ${propName} ${sqlType}`);
+    });
+    columnDefs.push("            CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))");
+    columnDefs.push('            UpdatedAt TEXT');
+
+    const tableSql = `        Execute(@"
+            CREATE TABLE IF NOT EXISTS ${pluralName} (
+${columnDefs.join(',\n')}
+            )
+        ");`;
+
+    // Generate CRUD methods
+    const methods = `    // #region ${className} Operations
+
+    public IEnumerable<${className}> GetAll${pluralName}()
+        => Query<${className}>("SELECT * FROM ${pluralName} ORDER BY Id DESC");
+
+    public ${className}? Get${className}ById(int id)
+        => QueryFirst<${className}>("SELECT * FROM ${pluralName} WHERE Id = @Id", new { Id = id });
+
+    public long Create${className}(${className} entity)
+        => Insert(entity);
+
+    public void Update${className}(${className} entity)
+    {
+        entity.UpdatedAt = DateTime.UtcNow;
+        Update(entity);
+    }
+
+    public int Delete${className}(int id)
+        => Delete<${className}>(id);
+
+    // #endregion`;
+
+    return { tableSql, methods };
+}
+
+// ===== Patch 模式 =====
+
+function patchFile(filePath, marker, insertion, entityName, dupCheckString) {
+    if (!fs.existsSync(filePath)) {
+        console.error(`  ✗ File not found: ${filePath}`);
+        return false;
+    }
+
+    let content = fs.readFileSync(filePath, 'utf8');
+    const className = toPascalCase(entityName);
+    const markerIndex = content.indexOf(marker);
+    if (markerIndex === -1) {
+        console.error(`  ✗ Marker not found: ${marker} in ${filePath}`);
+        return false;
+    }
+
+    // Idempotency: check for a marker-specific duplicate string
+    if (dupCheckString && content.includes(dupCheckString)) {
+        console.warn(`  ⚠ ${className} already exists in ${path.basename(filePath)}, skipping.`);
+        return true;
+    }
+
+    const newContent = content.replace(marker, insertion + '\n\n' + marker);
+    fs.writeFileSync(filePath, newContent, 'utf8');
+    return true;
+}
+
+function ensureUsings(filePath, namespace) {
+    let content = fs.readFileSync(filePath, 'utf8');
+    const requiredUsings = [
+        `using ${namespace}.Models;`,
+        `using ${namespace}.Services;`
+    ];
+    let changed = false;
+    for (const u of requiredUsings) {
+        if (!content.includes(u)) {
+            // Insert after last existing using statement
+            const lastUsing = content.lastIndexOf('using ');
+            const lineEnd = content.indexOf('\n', lastUsing);
+            content = content.substring(0, lineEnd + 1) + u + '\n' + content.substring(lineEnd + 1);
+            changed = true;
+        }
+    }
+    if (changed) fs.writeFileSync(filePath, content, 'utf8');
+    return changed;
+}
+
+function buildServiceRegistration(className) {
+    return `builder.Services.AddScoped<I${className}Service, ${className}Service>();`;
+}
+
+function runPatch(entityName, fields) {
+    const className = toPascalCase(entityName);
+    const dbContextPath = path.join(BACKEND_DIR, 'Data', 'AppDbContext.cs');
+    const programPath = path.join(BACKEND_DIR, 'Program.cs');
+    const ns = getNamespace();
+
+    console.log('');
+    console.log('Patching files...');
+
+    // Ensure Program.cs has required using statements
+    ensureUsings(programPath, ns);
+
+    // Generate DB methods
+    const dbResult = generateDbMethods(entityName, fields);
+
+    const pluralName = pluralize(className);
+
+    // Patch AppDbContext.cs - TABLE_SQL
+    const tableSqlOk = patchFile(
+        dbContextPath,
+        '// --- BRICKS:TABLE_SQL ---',
+        '\n' + dbResult.tableSql,
+        entityName,
+        `CREATE TABLE IF NOT EXISTS ${pluralName}`
+    );
+    if (tableSqlOk) {
+        console.log(`  ✓ Patched AppDbContext.cs with CREATE TABLE for ${className}`);
+    }
+
+    // Patch AppDbContext.cs - DB_METHODS
+    const dbMethodsOk = patchFile(
+        dbContextPath,
+        '// --- BRICKS:DB_METHODS ---',
+        '\n' + dbResult.methods,
+        entityName,
+        `#region ${className} Operations`
+    );
+    if (dbMethodsOk) {
+        console.log(`  ✓ Patched AppDbContext.cs with CRUD methods for ${className}`);
+    }
+
+    // Patch Program.cs - SERVICES
+    const serviceRegistration = buildServiceRegistration(className);
+    const servicesOk = patchFile(
+        programPath,
+        '// --- BRICKS:SERVICES ---',
+        serviceRegistration,
+        entityName,
+        `I${className}Service, ${className}Service`
+    );
+    if (servicesOk) {
+        console.log(`  ✓ Patched Program.cs with service registration for ${className}`);
+    }
+
+    // Patch Program.cs - ENDPOINTS
+    const endpoints = generateEndpoints(entityName, fields);
+    const endpointsOk = patchFile(
+        programPath,
+        '// --- BRICKS:ENDPOINTS ---',
+        endpoints.content,
+        entityName,
+        `"Get${className}ById"`
+    );
+    if (endpointsOk) {
+        console.log(`  ✓ Patched Program.cs with endpoints for ${className}`);
+    }
+}
+
+// ===== 統合生成函數 =====
+
+function generateAll(entityName, fields, options = {}) {
+    const namespace = options.namespace || getNamespace();
+    const patch = options.patch || false;
+
+    const model = generateModel(entityName, fields, namespace);
+    const service = generateService(entityName, fields, namespace);
+    const endpoints = generateEndpoints(entityName, fields);
+    const dbMethods = generateDbMethods(entityName, fields);
+
+    // Write Model
+    if (!fs.existsSync(path.dirname(model.filePath))) {
+        fs.mkdirSync(path.dirname(model.filePath), { recursive: true });
+    }
+    fs.writeFileSync(model.filePath, model.content, 'utf8');
+
+    // Write Service
+    if (!fs.existsSync(path.dirname(service.filePath))) {
+        fs.mkdirSync(path.dirname(service.filePath), { recursive: true });
+    }
+    fs.writeFileSync(service.filePath, service.content, 'utf8');
+
+    const result = {
+        model,
+        service,
+        endpoints,
+        dbMethods
+    };
+
+    if (patch) {
+        runPatch(entityName, fields);
+    }
+
+    return result;
+}
+
 // ===== 主程式 =====
 
 async function main() {
@@ -383,6 +597,13 @@ async function main() {
         console.log('範例:');
         console.log('  node generate-api.js Product');
         console.log('  node generate-api.js Order --fields "CustomerId:int,Total:decimal,Status:string"');
+        console.log('  node generate-api.js Product --fields "Name:string,Price:decimal"');
+        console.log('  node generate-api.js Product --fields "Name:string,Price:decimal" --no-patch');
+        console.log('');
+        console.log('選項:');
+        console.log('  --fields      欄位定義 (格式: Name:type,Name2:type2)');
+        console.log('  --patch       保留的相容旗標，等同預設自動整合');
+        console.log('  --no-patch    只產生檔案，不修改 AppDbContext.cs 和 Program.cs');
         console.log('');
         console.log('支援的欄位類型:');
         console.log('  string, int, long, decimal, float, double, bool, datetime, guid');
@@ -397,30 +618,57 @@ async function main() {
     console.log('');
 
     // 生成 Model
-    const modelPath = generateModel(args.entityName, args.fields, namespace);
-    console.log(`✓ Model: ${modelPath}`);
+    const model = generateModel(args.entityName, args.fields, namespace);
+    if (!fs.existsSync(path.dirname(model.filePath))) {
+        fs.mkdirSync(path.dirname(model.filePath), { recursive: true });
+    }
+    fs.writeFileSync(model.filePath, model.content, 'utf8');
+    console.log(`✓ Model: ${model.filePath}`);
 
     // 生成 Service
-    const servicePath = generateService(args.entityName, args.fields, namespace);
-    console.log(`✓ Service: ${servicePath}`);
+    const service = generateService(args.entityName, args.fields, namespace);
+    if (!fs.existsSync(path.dirname(service.filePath))) {
+        fs.mkdirSync(path.dirname(service.filePath), { recursive: true });
+    }
+    fs.writeFileSync(service.filePath, service.content, 'utf8');
+    console.log(`✓ Service: ${service.filePath}`);
 
     // 生成 Endpoints
-    const endpoints = generateEndpoints(args.entityName);
+    const endpoints = generateEndpoints(args.entityName, args.fields);
     console.log(`✓ Endpoints: /api/${endpoints.routePath}`);
 
-    console.log('');
-    console.log('下一步:');
-    console.log('');
-    console.log('1. 在 AppDbContext.cs 的 EnsureCreated() 中加入建表 SQL');
-    console.log('');
-    console.log('2. 在 Program.cs 中註冊服務:');
-    console.log('');
-    console.log(`   builder.Services.AddSingleton<I${endpoints.className}Service, ${endpoints.className}Service>();`);
-    console.log('');
-    console.log('3. 在 Program.cs 中加入以下端點 (在 app.Run() 之前):');
-    console.log('');
-    console.log(endpoints.content);
-    console.log('');
+    const shouldPatch = args.flags.patch || !args.flags['no-patch'];
+
+    if (shouldPatch) {
+        runPatch(args.entityName, args.fields);
+    } else {
+        console.log('');
+        console.log('下一步:');
+        console.log('');
+        console.log('1. 在 AppDbContext.cs 的 EnsureCreated() 中加入建表 SQL');
+        console.log('');
+        console.log('2. 在 Program.cs 中註冊服務:');
+        console.log('');
+        console.log(`   ${buildServiceRegistration(endpoints.className)}`);
+        console.log('');
+        console.log('3. 在 Program.cs 中加入以下端點 (在 app.Run() 之前):');
+        console.log('');
+        console.log(endpoints.content);
+        console.log('');
+        console.log('提示: 預設會自動整合；使用 --no-patch 可停用自動整合。');
+        console.log('');
+    }
 }
 
-main().catch(console.error);
+if (require.main === module) {
+    main().catch(console.error);
+}
+
+module.exports = {
+    buildServiceRegistration,
+    generateModel,
+    generateService,
+    generateEndpoints,
+    generateDbMethods,
+    generateAll
+};

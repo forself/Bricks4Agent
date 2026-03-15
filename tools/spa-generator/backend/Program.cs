@@ -117,8 +117,10 @@ builder.Services.AddCors(options =>
 });
 
 // 服務
-builder.Services.AddSingleton<IUserService, UserService>();
-builder.Services.AddSingleton<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// --- BRICKS:SERVICES ---
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -302,6 +304,8 @@ app.MapGet("/api/dashboard", (AppDb db) =>
         }
     });
 }).WithName("GetDashboard").RequireAuthorization().RequireRateLimiting("api");
+
+// --- BRICKS:ENDPOINTS ---
 
 app.Run();
 
