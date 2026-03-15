@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+
+WORKDIR /src
+COPY . .
+RUN dotnet publish packages/csharp/broker/Broker.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+
+WORKDIR /app
+COPY --from=build /app/publish .
+
+RUN adduser --disabled-password --gecos "" --uid 10002 broker \
+    && mkdir -p /data \
+    && chown -R broker:broker /app /data
+
+USER broker
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:5000
+EXPOSE 5000
+
+ENTRYPOINT ["dotnet", "Broker.dll"]

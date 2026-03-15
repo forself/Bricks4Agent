@@ -19,6 +19,43 @@ require_env BROKER_PUB_KEY
 require_env BROKER_PRINCIPAL_ID
 require_env BROKER_TASK_ID
 
+if [ "${BROKER_WAIT_FOR_HEALTH:-1}" = "1" ]; then
+  BROKER_HEALTH_URL="${BROKER_HEALTH_URL:-$BROKER_URL/api/v1/health}"
+  BROKER_WAIT_TIMEOUT_SECONDS="${BROKER_WAIT_TIMEOUT_SECONDS:-60}"
+
+  node - "$BROKER_HEALTH_URL" "$BROKER_WAIT_TIMEOUT_SECONDS" <<'EOF'
+const [url, timeoutSecondsText] = process.argv.slice(2);
+const timeoutMs = Math.max(1000, Number(timeoutSecondsText || '60') * 1000);
+const startedAt = Date.now();
+
+async function main() {
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (response.ok) {
+        process.exit(0);
+      }
+    } catch (_) {
+      // keep polling until timeout
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  console.error(`Broker health check timed out: ${url}`);
+  process.exit(3);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(3);
+});
+EOF
+fi
+
 WORKSPACE_DIR="${AGENT_PROJECT_ROOT:-/workspace}"
 BROKER_ROLE="${BROKER_ROLE_ID:-role_reader}"
 
