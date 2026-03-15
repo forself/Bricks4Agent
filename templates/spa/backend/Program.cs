@@ -130,6 +130,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// --- BRICKS:SERVICES ---
+
 builder.Services.AddEndpointsApiExplorer();
 DefinitionTemplateGeneratedComposition.BeforeBuild(builder);
 DefinitionTemplateGeneratedComposition.ConfigureServices(builder.Services, builder.Configuration);
@@ -315,6 +317,8 @@ app.MapGet("/api/dashboard", (AppDb db) =>
         }
     });
 }).WithName("GetDashboard").RequireAuthorization().RequireRateLimiting("api");
+
+// --- BRICKS:ENDPOINTS ---
 
 DefinitionTemplateGeneratedComposition.MapEndpoints(app);
 DefinitionTemplateGeneratedComposition.BeforeRun(app);

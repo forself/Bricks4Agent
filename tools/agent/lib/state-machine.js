@@ -230,6 +230,9 @@ class State {
      * @param {string} config.name - 顯示名稱
      * @param {CompletionContract} config.contract - 完成合約
      * @param {Function} config.promptBuilder - (context, taskContext) => string
+     * @param {Function} [config.handler] - async (context, taskContext, projectRoot) => string
+     *   確定性處理器：設定後將取代 LLM agent 執行，直接回傳結果字串。
+     *   設定 handler 時不需要 promptBuilder。
      * @param {number} config.maxRetries - 最大重試次數 (預設 2)
      * @param {Function} [config.preCheck] - (projectRoot) => { passed, errors, report? }
      *   前置檢查：在 Agent 執行前先檢查外部條件（例如依賴是否存在、元件是否到位）。
@@ -243,6 +246,7 @@ class State {
         this.contract = config.contract;
         this.promptBuilder = config.promptBuilder;
         this.maxRetries = config.maxRetries ?? 2;
+        this.handler = config.handler || null;
         this.preCheck = config.preCheck || null;
         this.reportBuilder = config.reportBuilder || null;
     }
@@ -381,19 +385,22 @@ class StateMachine {
                 const context = state.contract.buildContext(this.projectRoot);
                 logInfo(`  前置檢核: ${context.allowedRefs.length} 個允許引用, ${context.constraints.length} 個約束`);
 
-                // 建構 prompt
-                let prompt = state.promptBuilder(context, taskContext);
-
-                // 重試時注入上次的錯誤訊息
-                if (attempt > 0 && lastValidation && lastValidation.errors.length > 0) {
-                    prompt += '\n\n【上次執行的檢核失敗，請修正以下問題】:\n';
-                    prompt += lastValidation.errors.map((e, i) => `${i + 1}. ${e}`).join('\n');
+                let agentResponse;
+                if (state.handler) {
+                    // Deterministic handler — no LLM needed
+                    logInfo('  確定性處理中...');
+                    agentResponse = await state.handler(context, taskContext, this.projectRoot);
+                } else {
+                    // LLM agent execution
+                    let prompt = state.promptBuilder(context, taskContext);
+                    if (attempt > 0 && lastValidation && lastValidation.errors.length > 0) {
+                        prompt += '\n\n【上次執行的檢核失敗，請修正以下問題】:\n';
+                        prompt += lastValidation.errors.map((e, i) => `${i + 1}. ${e}`).join('\n');
+                    }
+                    logInfo('  Agent 執行中...');
+                    this.agent.clearHistory();
+                    agentResponse = await this.agent.send(prompt);
                 }
-
-                // === AGENT EXECUTION ===
-                logInfo('  Agent 執行中...');
-                this.agent.clearHistory();
-                const agentResponse = await this.agent.send(prompt);
                 lastAgentResponse = agentResponse;
 
                 // === Rate Limit 偵測: 跳過無意義的重試 ===

@@ -29,7 +29,7 @@ const {
 /** 新格式（AI 格式）允許的欄位類型 */
 const VALID_FIELD_TYPES = [
     // 基本類型
-    'text', 'email', 'password', 'number', 'textarea',
+    'text', 'email', 'password', 'number', 'textarea', 'tel', 'url',
     // 日期時間
     'date', 'time', 'datetime',
     // 選擇類型
@@ -42,6 +42,8 @@ const VALID_FIELD_TYPES = [
     'address', 'addresslist', 'chained', 'list',
     'personinfo', 'phonelist', 'socialmedia',
     'organization', 'student',
+    // 評分 / 標籤
+    'rating', 'tags',
     // 隱藏
     'hidden'
 ];
@@ -285,9 +287,9 @@ function convertToOldFormat(newDef) {
         : viewLower.includes('detail') ? 'detail'
         : VIEW_TO_PAGE_TYPE[page.view] || 'form';
 
-    // 從 entity 推導 PascalCase 頁面名稱（PageGenerator 要求 PascalCase + Page 結尾）
+    // 使用 pageName（若提供）或從 entity 推導 PascalCase 頁面名稱
     const entity = page.entity || 'unnamed';
-    const pageName = entity.charAt(0).toUpperCase() + entity.slice(1) + 'Page';
+    const pageName = page.pageName || (entity.charAt(0).toUpperCase() + entity.slice(1) + 'Page');
 
     // 轉換欄位
     const oldFields = (fields || []).map(field => {

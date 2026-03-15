@@ -36,6 +36,8 @@ public class AppDb : BaseDb
         Execute(@"
             CREATE UNIQUE INDEX IF NOT EXISTS IX_Users_Email ON Users(Email)
         ");
+
+        // --- BRICKS:TABLE_SQL ---
     }
 
     #region User Operations
@@ -86,6 +88,8 @@ public class AppDb : BaseDb
         Execute("UPDATE Users SET LastLoginAt = @Now WHERE Id = @Id",
             new { Now = DateTime.UtcNow.ToString("o"), Id = userId });
     }
+
+    // --- BRICKS:DB_METHODS ---
 
     #endregion
 }
