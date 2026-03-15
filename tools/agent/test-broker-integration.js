@@ -169,8 +169,8 @@ async function runTests() {
             const result = await client.submitRequest(
                 'file.read',
                 {
-                    tool_name: 'read_file',
-                    tool_args: { path: './README.md' },
+                    route: 'read_file',
+                    args: { path: './README.md' },
                     project_root: '.'
                 },
                 `idem-read-${Date.now()}`,
@@ -206,8 +206,8 @@ async function runTests() {
             const result = await client.submitRequest(
                 'command.execute',
                 {
-                    tool_name: 'run_command',
-                    tool_args: { command: 'rm -rf /' },
+                    route: 'run_command',
+                    args: { command: 'rm -rf /' },
                     project_root: '.'
                 },
                 `idem-cmd-${Date.now()}`,
@@ -240,7 +240,7 @@ async function runTests() {
             // 第一次提交
             const result1 = await client.submitRequest(
                 'file.read',
-                { tool_name: 'read_file', tool_args: { path: './test.txt' }, project_root: '.' },
+                { route: 'read_file', args: { path: './test.txt' }, project_root: '.' },
                 idempKey,
                 'Idempotency test'
             );
@@ -248,7 +248,7 @@ async function runTests() {
             // 第二次提交（相同 idempotency_key）
             const result2 = await client.submitRequest(
                 'file.read',
-                { tool_name: 'read_file', tool_args: { path: './test.txt' }, project_root: '.' },
+                { route: 'read_file', args: { path: './test.txt' }, project_root: '.' },
                 idempKey,
                 'Idempotency test duplicate'
             );

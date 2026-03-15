@@ -24,4 +24,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="verify\**\*.cs" />
+    <EmbeddedResource Remove="verify\**\*" />
+    <None Remove="verify\**\*" />
+  </ItemGroup>
+
 </Project>

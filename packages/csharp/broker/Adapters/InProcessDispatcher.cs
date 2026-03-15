@@ -56,7 +56,11 @@ public class InProcessDispatcher : IExecutionDispatcher
     private ExecutionResult ExecuteReadFile(ApprovedRequest request)
     {
         using var doc = JsonDocument.Parse(request.Payload);
-        var filePath = doc.RootElement.GetProperty("path").GetString() ?? "";
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var filePath = TryGetString(args, "path", "file_path") ?? "";
 
         var fullPath = ResolveSandboxedPath(filePath);
         if (fullPath == null)
@@ -78,7 +82,11 @@ public class InProcessDispatcher : IExecutionDispatcher
     private ExecutionResult ExecuteListDirectory(ApprovedRequest request)
     {
         using var doc = JsonDocument.Parse(request.Payload);
-        var dirPath = doc.RootElement.GetProperty("path").GetString() ?? "";
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var dirPath = TryGetString(args, "path", "directory") ?? ".";
 
         var fullPath = ResolveSandboxedPath(dirPath);
         if (fullPath == null)
@@ -107,8 +115,12 @@ public class InProcessDispatcher : IExecutionDispatcher
     private ExecutionResult ExecuteSearchFiles(ApprovedRequest request)
     {
         using var doc = JsonDocument.Parse(request.Payload);
-        var pattern = doc.RootElement.GetProperty("pattern").GetString() ?? "*";
-        var basePath = doc.RootElement.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var pattern = TryGetString(args, "pattern") ?? "*";
+        var basePath = TryGetString(args, "directory", "path") ?? ".";
 
         var fullPath = ResolveSandboxedPath(basePath);
         if (fullPath == null)
@@ -129,9 +141,13 @@ public class InProcessDispatcher : IExecutionDispatcher
     private ExecutionResult ExecuteSearchContent(ApprovedRequest request)
     {
         using var doc = JsonDocument.Parse(request.Payload);
-        var query = doc.RootElement.GetProperty("query").GetString() ?? "";
-        var basePath = doc.RootElement.TryGetProperty("path", out var p) ? p.GetString() ?? "." : ".";
-        var filePattern = doc.RootElement.TryGetProperty("file_pattern", out var fp) ? fp.GetString() ?? "*" : "*";
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var query = TryGetString(args, "pattern", "query") ?? "";
+        var basePath = TryGetString(args, "directory", "path") ?? ".";
+        var filePattern = TryGetString(args, "file_pattern") ?? "*";
 
         var fullPath = ResolveSandboxedPath(basePath);
         if (fullPath == null)
@@ -182,6 +198,33 @@ public class InProcessDispatcher : IExecutionDispatcher
         "read_file" or "list_directory" or "search_files" or "search_content" => true,
         _ => false
     };
+
+    private static JsonElement GetArgsElement(JsonElement root)
+    {
+        if (root.TryGetProperty("args", out var args) && args.ValueKind == JsonValueKind.Object)
+            return args;
+        if (root.TryGetProperty("tool_args", out var legacyArgs) && legacyArgs.ValueKind == JsonValueKind.Object)
+            return legacyArgs;
+        return root;
+    }
+
+    private static bool IsPayloadRouteValid(JsonElement root, string approvedRoute)
+    {
+        var payloadRoute = TryGetString(root, "route", "tool_name");
+        return string.IsNullOrWhiteSpace(payloadRoute) ||
+               payloadRoute.Equals(approvedRoute, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryGetString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString();
+        }
+
+        return null;
+    }
 
     /// <summary>解析路徑，確保在沙箱範圍內</summary>
     private string? ResolveSandboxedPath(string path)

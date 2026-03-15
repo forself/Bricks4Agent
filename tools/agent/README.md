@@ -89,11 +89,16 @@ node tools/agent/agent.js --governed --broker-url http://localhost:5000 --broker
 - `POST /api/v1/capabilities/list`
 - `POST /api/v1/grants/list`
 
+目前能力模型分成兩層：
+
+- 功能層：`capability_id`，例如 `file.read`、`file.write`
+- 範圍層：`scope`，例如 `paths` 與 `routes`
+
 Agent 啟動後，系統提示會直接注入目前這個 session 的：
 
 - Broker base URL 與完整路由
 - 這個 Agent 目前可請求的 capability / scope / quota / expiry
-- `execution-requests/submit` 的標準 JSON body 格式
+- `execution-requests/submit` 的標準 JSON body 格式（`payload.route + payload.args + project_root`）
 - 其他受控 POST body 格式（register / heartbeat / grants / close）
 
 模型可見的工具集合也會依目前 grants 自動收斂；未授權的工具不會暴露給模型，就算模型仍嘗試請求，也會先在本地受控執行器層被拒絕。
@@ -102,6 +107,7 @@ Agent 啟動後，系統提示會直接注入目前這個 session 的：
 
 ```bash
 npm run validate:agent-governed
+npm run validate:broker-scope
 ```
 
 這個驗證會檢查：
@@ -110,6 +116,7 @@ npm run validate:agent-governed
 - 模型可見工具是否依 grants 過濾
 - 未授權 capability 是否會在送出前被本地拒絕
 - 已授權 capability 是否會正常轉送到 Broker client
+- broker policy 是否同時驗證 capability 功能層與 `scope.paths/scope.routes` 範圍層
 
 ## 主要參數
 

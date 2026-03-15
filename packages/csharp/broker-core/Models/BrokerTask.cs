@@ -39,7 +39,7 @@ public class BrokerTask
         set => StateValue = (int)value;
     }
 
-    /// <summary>任務範圍描述（JSON，例如 {"paths": [...], "resources": [...]}）</summary>
+    /// <summary>任務範圍描述（JSON，例如 {"paths": [...], "routes": [...], "resources": [...]}）</summary>
     [Column("scope_descriptor")]
     public string ScopeDescriptor { get; set; } = "{}";
 

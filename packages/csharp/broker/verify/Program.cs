@@ -1,0 +1,168 @@
+using System.Text.Json;
+using Broker.Adapters;
+using BrokerCore.Models;
+using BrokerCore.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+
+static void AssertTrue(bool condition, string message)
+{
+    if (!condition)
+        throw new Exception(message);
+
+    Console.WriteLine($"  ✓ {message}");
+}
+
+var sandboxRoot = Path.Combine(Path.GetTempPath(), "broker-verify-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(sandboxRoot);
+
+try
+{
+    Console.WriteLine("=== Broker Verify ===");
+
+    var readmePath = Path.Combine(sandboxRoot, "README.txt");
+    File.WriteAllText(readmePath, "hello broker");
+
+    var policy = new PolicyEngine(new SchemaValidator(), new PolicyEngineOptions());
+    var capability = new Capability
+    {
+        CapabilityId = "file.read",
+        Route = "read_file",
+        ActionType = ActionType.Read,
+        ResourceType = "file",
+        RiskLevel = RiskLevel.Low,
+        ApprovalPolicy = "auto",
+        ParamSchema = JsonSerializer.Serialize(new
+        {
+            type = "object",
+            properties = new
+            {
+                path = new { type = "string" }
+            },
+            required = new[] { "path" }
+        })
+    };
+
+    var grant = new CapabilityGrant
+    {
+        CapabilityId = "file.read",
+        ScopeOverride = JsonSerializer.Serialize(new
+        {
+            paths = new[] { sandboxRoot },
+            routes = new[] { "read_file" }
+        }),
+        RemainingQuota = -1,
+        ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+        Status = GrantStatus.Active
+    };
+
+    var task = new BrokerTask
+    {
+        TaskId = "task_verify",
+        TaskType = "analysis",
+        SubmittedBy = "tester",
+        ScopeDescriptor = "{}",
+        State = TaskState.Active,
+        RiskLevel = RiskLevel.Low
+    };
+
+    var allowed = new ExecutionRequest
+    {
+        RequestPayload = JsonSerializer.Serialize(new
+        {
+            route = "read_file",
+            args = new { path = "README.txt" },
+            project_root = sandboxRoot
+        })
+    };
+
+    var allowedResult = policy.Evaluate(allowed, capability, grant, task, 1, 1);
+    AssertTrue(allowedResult.Decision == PolicyDecision.Allow, "policy allows matching capability + route + path scope");
+
+    var wrongRoute = new ExecutionRequest
+    {
+        RequestPayload = JsonSerializer.Serialize(new
+        {
+            route = "list_directory",
+            args = new { path = "README.txt" },
+            project_root = sandboxRoot
+        })
+    };
+
+    var wrongRouteResult = policy.Evaluate(wrongRoute, capability, grant, task, 1, 1);
+    AssertTrue(wrongRouteResult.Decision == PolicyDecision.Deny, "policy denies payload route outside capability route");
+
+    var wrongPath = new ExecutionRequest
+    {
+        RequestPayload = JsonSerializer.Serialize(new
+        {
+            route = "read_file",
+            args = new { path = "../secret.txt" },
+            project_root = sandboxRoot
+        })
+    };
+
+    var wrongPathResult = policy.Evaluate(wrongPath, capability, grant, task, 1, 1);
+    AssertTrue(wrongPathResult.Decision == PolicyDecision.Deny, "policy denies path outside granted path scope");
+
+    var missingPath = new ExecutionRequest
+    {
+        RequestPayload = JsonSerializer.Serialize(new
+        {
+            route = "read_file",
+            args = new { },
+            project_root = sandboxRoot
+        })
+    };
+
+    var missingPathResult = policy.Evaluate(missingPath, capability, grant, task, 1, 1);
+    AssertTrue(missingPathResult.Decision == PolicyDecision.Deny, "policy validates args schema instead of wrapper payload");
+
+    var dispatcher = new InProcessDispatcher(NullLogger<InProcessDispatcher>.Instance, sandboxRoot);
+
+    var readResult = await dispatcher.DispatchAsync(new BrokerCore.Contracts.ApprovedRequest
+    {
+        RequestId = "req_read",
+        Route = "read_file",
+        Payload = JsonSerializer.Serialize(new
+        {
+            route = "read_file",
+            args = new { path = "README.txt" }
+        })
+    });
+    AssertTrue(readResult.Success, "dispatcher reads file from canonical route+args payload");
+
+    var searchResult = await dispatcher.DispatchAsync(new BrokerCore.Contracts.ApprovedRequest
+    {
+        RequestId = "req_search",
+        Route = "search_content",
+        Payload = JsonSerializer.Serialize(new
+        {
+            route = "search_content",
+            args = new
+            {
+                directory = ".",
+                pattern = "hello",
+                file_pattern = "*.txt"
+            }
+        })
+    });
+    AssertTrue(searchResult.Success, "dispatcher searches content from canonical route+args payload");
+
+    var routeMismatchResult = await dispatcher.DispatchAsync(new BrokerCore.Contracts.ApprovedRequest
+    {
+        RequestId = "req_bad_route",
+        Route = "read_file",
+        Payload = JsonSerializer.Serialize(new
+        {
+            route = "list_directory",
+            args = new { path = "README.txt" }
+        })
+    });
+    AssertTrue(!routeMismatchResult.Success, "dispatcher denies mismatched payload route");
+
+    Console.WriteLine("Broker verify passed.");
+}
+finally
+{
+    Directory.Delete(sandboxRoot, recursive: true);
+}

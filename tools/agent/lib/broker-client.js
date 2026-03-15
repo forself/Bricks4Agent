@@ -11,7 +11,11 @@
  * 使用方式：
  *   const client = new BrokerClient('http://localhost:5000', brokerPubKeyBase64);
  *   await client.registerSession(principalId, taskId, roleId);
- *   const result = await client.submitRequest('file.read', { path: './README.md' }, 'key-1');
+ *   const result = await client.submitRequest(
+ *     'file.read',
+ *     { route: 'read_file', args: { path: './README.md' }, project_root: '.' },
+ *     'key-1'
+ *   );
  *   await client.closeSession();
  *
  * 加密協議：

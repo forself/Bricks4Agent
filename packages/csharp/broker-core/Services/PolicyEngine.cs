@@ -5,24 +5,17 @@ using BrokerCore.Models;
 namespace BrokerCore.Services;
 
 /// <summary>
-/// 政策裁決引擎 —— 7 條確定性規則
+/// Broker 政策裁決引擎。
 ///
-/// 規則 1: Epoch 閘道    — token.epoch &lt; current_epoch → Deny
-/// 規則 2: 風險閘道      — risk_level &gt; Medium → Deny（Phase 3: 允許 Low + Medium）
-/// 規則 3: 範圍匹配      — 請求路徑 ⊆ scope
-/// 規則 4: 角色匹配      — 角色 allowed_task_types 包含任務類型
-/// 規則 5: 路徑沙箱      — 檔案路徑 ⊆ 允許路徑
-/// 規則 6: 指令黑名單    — 命令黑名單
-/// 規則 7: Schema 驗證   — payload 符合 param_schema
-///
-/// ML 僅用於建議性風險評分，絕不用於授權決策。
+/// 核心原則：
+/// 1. capability 決定「功能層」：這次請求在做什麼。
+/// 2. scope 決定「範圍層」：這個 capability 可作用在哪些 route / path。
+/// 3. payload 統一採用 { route, args, project_root }，schema 只驗證 args。
 /// </summary>
 public class PolicyEngine : IPolicyEngine
 {
     private readonly ISchemaValidator _schemaValidator;
     private readonly PolicyEngineOptions _options;
-
-    // M-2 修復：黑名單從 PolicyEngineOptions 讀取，不再硬編碼
 
     public PolicyEngine(ISchemaValidator schemaValidator, PolicyEngineOptions? options = null)
     {
@@ -39,113 +32,117 @@ public class PolicyEngine : IPolicyEngine
         int currentEpoch,
         int tokenEpoch)
     {
-        // ── 規則 1: Epoch 閘道 ──
         if (tokenEpoch < currentEpoch)
         {
             return PolicyResult.Deny(
                 $"Token epoch ({tokenEpoch}) is behind system epoch ({currentEpoch}). Token invalidated by kill switch.");
         }
 
-        // ── 規則 2: 風險閘道（Phase 3: 允許 Low + Medium） ──
         if (capability.RiskLevel > RiskLevel.Medium)
         {
             return PolicyResult.Deny(
                 $"Capability '{capability.CapabilityId}' has risk level {capability.RiskLevel}. Only Low and Medium risk are allowed.");
         }
 
-        // ── 規則 3: 範圍匹配 ──
-        // 檢查請求的資源是否在 grant 的 scope 範圍內
-        if (!IsScopeValid(request.RequestPayload, grant.ScopeOverride, task.ScopeDescriptor))
+        var requestedRoute = ExtractRoute(request.RequestPayload) ?? capability.Route;
+        if (!string.IsNullOrWhiteSpace(requestedRoute) &&
+            !requestedRoute.Equals(capability.Route, StringComparison.OrdinalIgnoreCase))
+        {
+            return PolicyResult.Deny(
+                $"Payload route '{requestedRoute}' does not match capability route '{capability.Route}'.");
+        }
+
+        if (!IsScopeValid(request.RequestPayload, requestedRoute, grant.ScopeOverride, task.ScopeDescriptor))
         {
             return PolicyResult.Deny("Request resource is outside the granted scope.");
         }
 
-        // ── 規則 4: 角色匹配（驗證任務類型是否在允許列表） ──
-        // 此規則在 BrokerService 層處理（需要 Role 資訊），此處信任上游已驗證
-
-        // ── 規則 5: 路徑沙箱 ──
         if (!IsPathSandboxed(request.RequestPayload))
         {
             return PolicyResult.Deny("File path violates sandbox restrictions.");
         }
 
-        // ── 規則 6: 指令黑名單 ──
         if (ContainsBlacklistedCommand(request.RequestPayload))
         {
             return PolicyResult.Deny("Request contains blacklisted command.");
         }
 
-        // ── 規則 7: Schema 驗證 ──
-        var (isValid, errorMsg) = _schemaValidator.Validate(request.RequestPayload, capability.ParamSchema);
+        var argsPayload = ExtractArgsPayload(request.RequestPayload);
+        var (isValid, errorMsg) = _schemaValidator.Validate(argsPayload, capability.ParamSchema);
         if (!isValid)
         {
             return PolicyResult.Deny($"Payload schema validation failed: {errorMsg}");
         }
 
-        // ── 通過所有規則 ──
         return PolicyResult.Allow();
     }
 
-    // ── 內部驗證方法 ──
-
-    /// <summary>驗證請求資源在 scope 範圍內</summary>
-    private static bool IsScopeValid(string payload, string grantScope, string taskScope)
+    private static bool IsScopeValid(string payload, string requestedRoute, string grantScope, string taskScope)
     {
-        // Phase 1 簡易實作：檢查 payload 中的 path 是否在 scope 的 paths 陣列內
         try
         {
-            string? requestPath = ExtractPath(payload);
-            if (requestPath == null) return true; // 無路徑的請求不需 scope 檢查
+            var scopeRoutes = ExtractRoutes(grantScope) ?? ExtractRoutes(taskScope);
+            if (scopeRoutes is { Count: > 0 })
+            {
+                if (string.IsNullOrWhiteSpace(requestedRoute))
+                    return false;
 
-            var allowedPaths = ExtractPaths(grantScope) ?? ExtractPaths(taskScope);
-            if (allowedPaths == null || allowedPaths.Count == 0) return true; // 無 scope 限制
+                if (!scopeRoutes.Contains(requestedRoute, StringComparer.OrdinalIgnoreCase))
+                    return false;
+            }
 
-            requestPath = NormalizePath(requestPath);
-            return allowedPaths.Any(allowed => requestPath.StartsWith(NormalizePath(allowed), StringComparison.OrdinalIgnoreCase));
+            var scopePaths = ExtractScopePaths(grantScope) ?? ExtractScopePaths(taskScope);
+            if (scopePaths is not { Count: > 0 })
+                return true;
+
+            var projectRoot = ExtractProjectRoot(payload);
+            var requestedPaths = ExtractRequestedPaths(payload, projectRoot);
+            if (requestedPaths.Count == 0)
+                return true;
+
+            var normalizedAllowed = scopePaths
+                .Select(path => NormalizePath(ResolvePath(path, projectRoot) ?? path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return requestedPaths.All(requestPath =>
+                normalizedAllowed.Any(allowedPath => IsPathWithin(requestPath, allowedPath)));
         }
         catch
         {
-            return true; // 解析失敗 → 不阻斷（Phase 1 寬鬆）
+            return true;
         }
     }
 
-    /// <summary>
-    /// 路徑沙箱檢查：禁止路徑遍歷（修復 H-8：處理 URL 編碼遍歷）
-    /// M-2 修復：禁止路徑前綴從 PolicyEngineOptions 讀取
-    /// </summary>
     private bool IsPathSandboxed(string payload)
     {
         try
         {
-            var path = ExtractPath(payload);
-            if (path == null) return true;
+            var projectRoot = ExtractProjectRoot(payload);
+            var rawPaths = ExtractRawRequestedPaths(payload);
 
-            // 先解碼 URL 編碼（防止 %2e%2e 繞過）
-            var decoded = Uri.UnescapeDataString(path);
-
-            // 禁止路徑遍歷（原始路徑和解碼後都檢查）
-            if (decoded.Contains("..") || path.Contains(".."))
-                return false;
-
-            // 禁止 ~ 展開（但允許 Windows 路徑中的合法字元）
-            if (decoded.Contains('~') || path.Contains('~'))
-                return false;
-
-            // 禁止 null byte 注入
-            if (decoded.Contains('\0') || path.Contains('\0'))
-                return false;
-
-            // 禁止存取系統目錄（M-2 修復：從配置讀取）
-            var normalized = NormalizePath(decoded);
-
-            foreach (var prefix in _options.ForbiddenPathPrefixes)
+            foreach (var rawPath in rawPaths)
             {
-                if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                var decoded = Uri.UnescapeDataString(rawPath);
+
+                if (decoded.Contains("..", StringComparison.Ordinal) || rawPath.Contains("..", StringComparison.Ordinal))
+                    return false;
+
+                if (decoded.Contains('~') || rawPath.Contains('~'))
+                    return false;
+
+                if (decoded.Contains('\0') || rawPath.Contains('\0'))
+                    return false;
+
+                var normalized = NormalizePath(ResolvePath(decoded, projectRoot) ?? decoded);
+                foreach (var prefix in _options.ForbiddenPathPrefixes)
                 {
-                    // 必須完全匹配或後接 /（避免 /etcetera 被攔）
-                    if (normalized.Length == prefix.Length ||
-                        normalized[prefix.Length] == '/')
-                        return false;
+                    if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (normalized.Length == prefix.Length ||
+                            normalized[prefix.Length] == '/')
+                            return false;
+                    }
                 }
             }
 
@@ -153,47 +150,36 @@ public class PolicyEngine : IPolicyEngine
         }
         catch
         {
-            return false; // 解析失敗 → 拒絕（fail-closed）
+            return false;
         }
     }
 
-    /// <summary>
-    /// 指令黑名單檢查（修復 H-5：使用前綴匹配避免 "rm" 誤攔 "firmware" 等）
-    /// M-2 修復：黑名單從 PolicyEngineOptions 讀取
-    /// </summary>
     private bool ContainsBlacklistedCommand(string payload)
     {
         try
         {
-            using var doc = JsonDocument.Parse(payload);
-            var root = doc.RootElement;
+            var command = ExtractCommand(payload);
+            if (string.IsNullOrWhiteSpace(command))
+                return false;
 
-            // 檢查 command 欄位
-            if (root.TryGetProperty("command", out var cmdProp))
+            command = command.Trim();
+
+            foreach (var exact in _options.CommandExactBlacklist)
             {
-                var command = (cmdProp.GetString() ?? "").Trim();
-                if (string.IsNullOrEmpty(command)) return false;
+                if (command.Equals(exact, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
 
-                // 精確匹配（command 完全等於黑名單項目）
-                foreach (var exact in _options.CommandExactBlacklist)
-                {
-                    if (command.Equals(exact, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
+            foreach (var prefix in _options.CommandPrefixBlacklist)
+            {
+                if (command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
 
-                // 前綴匹配（command 以黑名單項目開頭，後接空白/tab）
-                foreach (var prefix in _options.CommandPrefixBlacklist)
-                {
-                    if (command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-
-                // SQL 注入檢查（不區分大小寫的子字串匹配，保留原有行為）
-                foreach (var sql in _options.SqlBlacklist)
-                {
-                    if (command.Contains(sql, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
+            foreach (var sql in _options.SqlBlacklist)
+            {
+                if (command.Contains(sql, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
 
             return false;
@@ -204,23 +190,118 @@ public class PolicyEngine : IPolicyEngine
         }
     }
 
-    // ── 工具方法 ──
-
-    private static string? ExtractPath(string json)
+    private static string ExtractArgsPayload(string payload)
     {
         try
         {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("path", out var p))
-                return p.GetString();
-            if (doc.RootElement.TryGetProperty("file_path", out var fp))
-                return fp.GetString();
-            return null;
+            using var doc = JsonDocument.Parse(payload);
+            if (doc.RootElement.TryGetProperty("args", out var args) && args.ValueKind == JsonValueKind.Object)
+                return args.GetRawText();
+            if (doc.RootElement.TryGetProperty("tool_args", out var legacyArgs) && legacyArgs.ValueKind == JsonValueKind.Object)
+                return legacyArgs.GetRawText();
         }
-        catch { return null; }
+        catch
+        {
+            // fall through
+        }
+
+        return payload;
     }
 
-    private static List<string>? ExtractPaths(string json)
+    private static string? ExtractRoute(string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return TryGetString(doc.RootElement, "route", "tool_name");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractProjectRoot(string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return TryGetString(doc.RootElement, "project_root");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractCommand(string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var args = GetArgsElement(doc.RootElement);
+            return TryGetString(args, "command");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<string> ExtractRequestedPaths(string payload, string? projectRoot)
+    {
+        return ExtractRawRequestedPaths(payload)
+            .Select(path => NormalizePath(ResolvePath(path, projectRoot) ?? path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> ExtractRawRequestedPaths(string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var args = GetArgsElement(doc.RootElement);
+            var results = new List<string>();
+
+            AddIfPresent(results, args, "path", "file_path", "directory", "cwd");
+
+            if (results.Count == 0)
+                AddIfPresent(results, doc.RootElement, "path", "file_path", "directory", "cwd");
+
+            return results
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private static void AddIfPresent(List<string> results, JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+            {
+                var text = value.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    results.Add(text);
+            }
+        }
+    }
+
+    private static JsonElement GetArgsElement(JsonElement root)
+    {
+        if (root.TryGetProperty("args", out var args) && args.ValueKind == JsonValueKind.Object)
+            return args;
+        if (root.TryGetProperty("tool_args", out var legacyArgs) && legacyArgs.ValueKind == JsonValueKind.Object)
+            return legacyArgs;
+        return root;
+    }
+
+    private static List<string>? ExtractScopePaths(string json)
     {
         try
         {
@@ -228,17 +309,81 @@ public class PolicyEngine : IPolicyEngine
             if (doc.RootElement.TryGetProperty("paths", out var paths) && paths.ValueKind == JsonValueKind.Array)
             {
                 return paths.EnumerateArray()
-                    .Select(p => p.GetString() ?? "")
-                    .Where(p => !string.IsNullOrEmpty(p))
+                    .Select(path => path.GetString() ?? "")
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
                     .ToList();
             }
+
             return null;
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<string>? ExtractRoutes(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("routes", out var routes) && routes.ValueKind == JsonValueKind.Array)
+            {
+                return routes.EnumerateArray()
+                    .Select(route => route.GetString() ?? "")
+                    .Where(route => !string.IsNullOrWhiteSpace(route))
+                    .ToList();
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolvePath(string path, string? projectRoot)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            var decoded = Uri.UnescapeDataString(path);
+
+            if (!string.IsNullOrWhiteSpace(projectRoot) && !Path.IsPathRooted(decoded))
+                return Path.GetFullPath(Path.Combine(projectRoot, decoded));
+
+            return Path.GetFullPath(decoded);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsPathWithin(string path, string allowedPath)
+    {
+        if (path.Equals(allowedPath, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return path.StartsWith(allowedPath + "/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizePath(string path)
     {
         return path.Replace('\\', '/').TrimEnd('/');
+    }
+
+    private static string? TryGetString(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString();
+        }
+
+        return null;
     }
 }

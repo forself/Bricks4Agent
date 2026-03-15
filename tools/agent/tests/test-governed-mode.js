@@ -76,7 +76,7 @@ function createFakeClient() {
                 data: [
                     {
                         capabilityId: 'file.read',
-                        scopeOverride: JSON.stringify({ paths: [ROOT] }),
+                        scopeOverride: JSON.stringify({ paths: [ROOT], routes: ['read_file'] }),
                         remainingQuota: 3,
                         expiresAt: '2030-01-01T00:00:00Z',
                         statusValue: 0,
@@ -136,13 +136,15 @@ async function main() {
     assert(prompt.includes('Governed Broker Contract'));
     assert(prompt.includes('POST http://broker.local:5000/api/v1/execution-requests/submit'));
     assert(prompt.includes('"capability_id": "file.read"'));
-    assert(prompt.includes('"tool_name": "read_file"'));
+    assert(prompt.includes('"route": "read_file"'));
+    assert(prompt.includes('"args"'));
     assert(prompt.includes('"paths"'));
+    assert(prompt.includes('"routes"'));
     assert(prompt.includes('只可請求目前 grants 允許的 capability_id'));
 
     assert.strictEqual(promptContext.session.sessionId, 'sess_test_001');
     assert.deepStrictEqual(promptContext.allowedCapabilities.map((item) => item.capabilityId), ['file.read']);
-    assert.deepStrictEqual(promptContext.allowedCapabilities[0].scopeOverride, { paths: [ROOT] });
+    assert.deepStrictEqual(promptContext.allowedCapabilities[0].scopeOverride, { paths: [ROOT], routes: ['read_file'] });
 
     const denied = await agent.governedExecutor.executeTool('run_command', { command: 'dir' }, {
         projectRoot: ROOT,

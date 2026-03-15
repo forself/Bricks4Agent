@@ -29,7 +29,7 @@ public class CapabilityGrant
     [Required]
     public string CapabilityId { get; set; } = string.Empty;
 
-    /// <summary>範圍覆寫（JSON，例如 {"paths": ["/workspace/proj-a"]}）</summary>
+    /// <summary>範圍覆寫（JSON，例如 {"paths": ["/workspace/proj-a"], "routes": ["read_file"]}）</summary>
     [Column("scope_override")]
     public string ScopeOverride { get; set; } = "{}";
 

@@ -126,8 +126,8 @@ class GovernedExecutor {
         const idempotencyKey = `${this.sessionInfo.sessionId}-${this.requestCounter}-${Date.now()}`;
 
         const payload = {
-            tool_name: toolName,
-            tool_args: toolArgs,
+            route: toolName,
+            args: toolArgs,
             project_root: context.projectRoot || '',
         };
 
@@ -333,8 +333,8 @@ class GovernedExecutor {
                         capability_id: this.allowedCapabilities[0]?.capabilityId || '<capability_id>',
                         intent: 'Describe the specific action requested',
                         payload: {
-                            tool_name: this.allowedCapabilities[0]?.toolName || '<tool_name>',
-                            tool_args: this._sampleToolArgs(this.allowedCapabilities[0]),
+                            route: this.allowedCapabilities[0]?.toolName || '<route>',
+                            args: this._sampleToolArgs(this.allowedCapabilities[0]),
                             project_root: '<workspace-root>',
                         },
                         idempotency_key: '<unique-request-key>',

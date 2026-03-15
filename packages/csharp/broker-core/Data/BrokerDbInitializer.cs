@@ -204,7 +204,12 @@ public class BrokerDbInitializer
                 ParamSchema = ToJson(new
                 {
                     type = "object",
-                    properties = new { path = new { type = "string" } },
+                    properties = new
+                    {
+                        path = new { type = "string" },
+                        offset = new { type = "integer" },
+                        limit = new { type = "integer" }
+                    },
                     required = new[] { "path" }
                 })
             },
@@ -220,8 +225,12 @@ public class BrokerDbInitializer
                 ParamSchema = ToJson(new
                 {
                     type = "object",
-                    properties = new { path = new { type = "string" } },
-                    required = new[] { "path" }
+                    properties = new
+                    {
+                        path = new { type = "string" },
+                        depth = new { type = "integer" }
+                    },
+                    required = Array.Empty<string>()
                 })
             },
             new Capability
@@ -238,10 +247,10 @@ public class BrokerDbInitializer
                     type = "object",
                     properties = new
                     {
-                        path = new { type = "string" },
+                        directory = new { type = "string" },
                         pattern = new { type = "string" }
                     },
-                    required = new[] { "path", "pattern" }
+                    required = new[] { "pattern" }
                 })
             },
             new Capability
@@ -258,10 +267,11 @@ public class BrokerDbInitializer
                     type = "object",
                     properties = new
                     {
-                        path = new { type = "string" },
-                        pattern = new { type = "string" }
+                        directory = new { type = "string" },
+                        pattern = new { type = "string" },
+                        file_pattern = new { type = "string" }
                     },
-                    required = new[] { "path", "pattern" }
+                    required = new[] { "pattern" }
                 })
             },
 
@@ -281,7 +291,8 @@ public class BrokerDbInitializer
                     properties = new
                     {
                         path = new { type = "string" },
-                        content = new { type = "string" }
+                        content = new { type = "string" },
+                        mode = new { type = "string", @enum = new[] { "rewrite", "append" } }
                     },
                     required = new[] { "path", "content" }
                 })
@@ -319,7 +330,7 @@ public class BrokerDbInitializer
                     properties = new
                     {
                         command = new { type = "string" },
-                        working_directory = new { type = "string" }
+                        cwd = new { type = "string" }
                     },
                     required = new[] { "command" }
                 })
@@ -328,8 +339,19 @@ public class BrokerDbInitializer
 
         foreach (var cap in capabilities)
         {
-            if (_db.Get<Capability>(cap.CapabilityId) == null)
+            var existing = _db.Get<Capability>(cap.CapabilityId);
+            if (existing == null)
+            {
                 _db.Insert(cap);
+                continue;
+            }
+
+            cap.Version = existing.Version;
+            if (CapabilityChanged(existing, cap))
+            {
+                cap.Version = existing.Version + 1;
+                _db.Update(cap);
+            }
         }
     }
 
@@ -337,6 +359,19 @@ public class BrokerDbInitializer
 
     private static string ToJson(object value)
         => JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = false });
+
+    private static bool CapabilityChanged(Capability existing, Capability candidate)
+    {
+        return existing.Route != candidate.Route ||
+               existing.ActionType != candidate.ActionType ||
+               existing.ResourceType != candidate.ResourceType ||
+               existing.ParamSchema != candidate.ParamSchema ||
+               existing.RiskLevel != candidate.RiskLevel ||
+               existing.ApprovalPolicy != candidate.ApprovalPolicy ||
+               existing.TtlSeconds != candidate.TtlSeconds ||
+               existing.Quota != candidate.Quota ||
+               existing.AuditLevel != candidate.AuditLevel;
+    }
 
     private void TryExecute(string sql)
     {

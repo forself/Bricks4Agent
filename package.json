@@ -8,6 +8,7 @@
     "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
     "audit:ui-styles": "node tools/scripts/audit-ui-style-rules.mjs",
     "validate:agent-governed": "node tools/agent/tests/test-governed-mode.js",
+    "validate:broker-scope": "dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj",
     "validate:baseorm": "dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj",
     "validate:backend-governance": "node tools/scripts/validate-dotnet-dependencies.mjs && node tools/scripts/validate-dotnet-api-usage.mjs",
     "validate:baseorm-sync": "node tools/scripts/validate-baseorm-sync.mjs",
