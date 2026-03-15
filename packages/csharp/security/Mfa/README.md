@@ -24,8 +24,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<IMfaRepository, InMemoryMfaRepository>();
 builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
 builder.Services.AddSingleton<IEmailService, SmtpEmailService>(); // 或自訂實作
-builder.Services.AddScoped<IMfaService, MfaService>();
-builder.Services.AddScoped<IMfaAuthService, MfaAuthService>();
+builder.Services.AddSingleton<IMfaService, MfaService>();
+builder.Services.AddSingleton<IMfaAuthService, MfaAuthService>();
 
 // JWT 認證
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -313,25 +313,26 @@ MFA Token 是短期 JWT (5 分鐘)，只能用於完成 MFA 驗證:
 ```csharp
 public class SqlMfaRepository : IMfaRepository
 {
-    private readonly AppDbContext _db;
+    private readonly AppDb _db;
 
-    public SqlMfaRepository(AppDbContext db)
+    public SqlMfaRepository(AppDb db)
     {
         _db = db;
     }
 
     public UserMfaConfig GetUserMfaConfig(int userId)
     {
-        return _db.UserMfaConfigs.FirstOrDefault(c => c.UserId == userId);
+        return _db.QueryFirst<UserMfaConfig>(
+            "SELECT * FROM UserMfaConfigs WHERE UserId = @UserId",
+            new { UserId = userId });
     }
 
     public void SaveUserMfaConfig(UserMfaConfig config)
     {
         if (config.Id == 0)
-            _db.UserMfaConfigs.Add(config);
+            _db.Insert(config);
         else
-            _db.UserMfaConfigs.Update(config);
-        _db.SaveChanges();
+            _db.Update(config);
     }
 
     // ... 實作其他方法
