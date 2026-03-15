@@ -8,6 +8,7 @@
     "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
     "audit:ui-styles": "node tools/scripts/audit-ui-style-rules.mjs",
     "validate:backend-governance": "node tools/scripts/validate-dotnet-dependencies.mjs && node tools/scripts/validate-dotnet-api-usage.mjs",
+    "validate:baseorm-sync": "node tools/scripts/validate-baseorm-sync.mjs",
     "validate:dotnet-api-usage": "node tools/scripts/validate-dotnet-api-usage.mjs",
     "validate:dotnet-deps": "node tools/scripts/validate-dotnet-dependencies.mjs",
     "validate:ui-library": "node tools/scripts/validate-ui-library.mjs",

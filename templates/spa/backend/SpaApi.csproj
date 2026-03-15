@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Data\BaseOrm.cs" Condition="Exists('..\..\..\packages\csharp\database\BaseOrm\net8\BaseOrm.csproj')" />
+    <ProjectReference Include="..\..\..\packages\csharp\database\BaseOrm\net8\BaseOrm.csproj" Condition="Exists('..\..\..\packages\csharp\database\BaseOrm\net8\BaseOrm.csproj')" />
     <!-- SQLite ADO.NET Provider (輕量級) -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <!-- JWT 認證 -->

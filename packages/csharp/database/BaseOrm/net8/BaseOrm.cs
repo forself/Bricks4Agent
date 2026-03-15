@@ -96,7 +96,7 @@ public class BaseDb : IDisposable
     private readonly string _connectionString;
     private readonly DbProviderFactory _factory;
     private readonly DbType _dbType;
-    private DbConnection? _connection;
+    private DbConnection? _transactionConnection;
     private DbTransaction? _transaction;
 
     /// <summary>
@@ -133,8 +133,8 @@ public class BaseDb : IDisposable
     /// </summary>
     public static BaseDb UseSqlServer(string connectionString)
     {
-        var factory = GetProviderFactory("Microsoft.Data.SqlClient.SqlClientFactory, Microsoft.Data.SqlClient");
-        return new BaseDb(connectionString, factory!, DbType.SqlServer);
+        var factory = RequireProviderFactory("Microsoft.Data.SqlClient.SqlClientFactory, Microsoft.Data.SqlClient");
+        return new BaseDb(connectionString, factory, DbType.SqlServer);
     }
 
     /// <summary>
@@ -142,9 +142,11 @@ public class BaseDb : IDisposable
     /// </summary>
     public static BaseDb UseMySql(string connectionString)
     {
-        var factory = GetProviderFactory("MySqlConnector.MySqlConnectorFactory, MySqlConnector")
-            ?? GetProviderFactory("MySql.Data.MySqlClient.MySqlClientFactory, MySql.Data");
-        return new BaseDb(connectionString, factory!, DbType.MySql);
+        var factory = RequireProviderFactory(
+            "MySqlConnector.MySqlConnectorFactory, MySqlConnector",
+            "MySql.Data.MySqlClient.MySqlClientFactory, MySql.Data"
+        );
+        return new BaseDb(connectionString, factory, DbType.MySql);
     }
 
     /// <summary>
@@ -152,8 +154,8 @@ public class BaseDb : IDisposable
     /// </summary>
     public static BaseDb UsePostgreSql(string connectionString)
     {
-        var factory = GetProviderFactory("Npgsql.NpgsqlFactory, Npgsql");
-        return new BaseDb(connectionString, factory!, DbType.PostgreSql);
+        var factory = RequireProviderFactory("Npgsql.NpgsqlFactory, Npgsql");
+        return new BaseDb(connectionString, factory, DbType.PostgreSql);
     }
 
     /// <summary>
@@ -166,7 +168,7 @@ public class BaseDb : IDisposable
 
     private static DbProviderFactory GetSqliteFactory()
     {
-        return GetProviderFactory("Microsoft.Data.Sqlite.SqliteFactory, Microsoft.Data.Sqlite")!;
+        return RequireProviderFactory("Microsoft.Data.Sqlite.SqliteFactory, Microsoft.Data.Sqlite");
     }
 
     private static DbProviderFactory? GetProviderFactory(string typeName)
@@ -175,6 +177,21 @@ public class BaseDb : IDisposable
         if (type == null) return null;
         var field = type.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
         return field?.GetValue(null) as DbProviderFactory;
+    }
+
+    private static DbProviderFactory RequireProviderFactory(params string[] typeNames)
+    {
+        foreach (var typeName in typeNames)
+        {
+            var factory = GetProviderFactory(typeName);
+            if (factory != null)
+            {
+                return factory;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Unable to resolve ADO.NET provider factory: {string.Join(" | ", typeNames)}");
     }
 
     private static DbType DetectDbType(DbProviderFactory factory)
@@ -191,25 +208,83 @@ public class BaseDb : IDisposable
 
     #region Connection Management
 
-    private DbConnection GetConnection()
+    /// <summary>
+    /// 建立新連線 (每次操作使用獨立連線，避免 SQLite 鎖定問題)
+    /// </summary>
+    private DbConnection CreateConnection()
     {
-        if (_connection == null)
+        var conn = _factory.CreateConnection()!;
+        conn.ConnectionString = _connectionString;
+        conn.Open();
+
+        // SQLite WAL 模式改善並行讀取
+        if (_dbType == DbType.SQLite)
         {
-            _connection = _factory.CreateConnection()!;
-            _connection.ConnectionString = _connectionString;
+            using var walCmd = conn.CreateCommand();
+            walCmd.CommandText = "PRAGMA journal_mode=WAL;";
+            walCmd.ExecuteNonQuery();
+
+            ApplySqlitePragmas(conn);
         }
 
-        if (_connection.State != ConnectionState.Open)
+        return conn;
+    }
+
+    private static void ApplySqlitePragmas(DbConnection conn)
+    {
+        foreach (var pragma in new[]
         {
-            _connection.Open();
+            "PRAGMA busy_timeout=5000;",
+            "PRAGMA foreign_keys=ON;"
+        })
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = pragma;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
+    /// 取得連線：交易期間使用交易連線，否則建立新連線
+    /// 呼叫端負責在非交易情境下 Dispose 回傳的連線
+    /// </summary>
+    private DbConnection GetConnection(out bool ownsConnection)
+    {
+        if (_transaction != null && _transactionConnection != null)
+        {
+            ownsConnection = false;
+            return _transactionConnection;
         }
 
-        return _connection;
+        ownsConnection = true;
+        return CreateConnection();
     }
 
     private DbCommand CreateCommand(string sql, object? parameters = null)
     {
-        var conn = GetConnection();
+        var conn = GetConnection(out _);
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        if (_transaction != null)
+        {
+            cmd.Transaction = _transaction;
+        }
+
+        if (parameters != null)
+        {
+            AddParameters(cmd, parameters);
+        }
+
+        return cmd;
+    }
+
+    /// <summary>
+    /// 建立命令並回傳連線擁有權資訊
+    /// </summary>
+    private DbCommand CreateCommand(string sql, object? parameters, out DbConnection conn, out bool ownsConnection)
+    {
+        conn = GetConnection(out ownsConnection);
         var cmd = conn.CreateCommand();
         cmd.CommandText = sql;
 
@@ -276,9 +351,17 @@ public class BaseDb : IDisposable
     /// </summary>
     public List<T> Query<T>(string sql, object? parameters = null) where T : new()
     {
-        using var cmd = CreateCommand(NormalizeParameterNames(sql), parameters);
-        using var reader = cmd.ExecuteReader();
-        return MapToList<T>(reader);
+        var cmd = CreateCommand(NormalizeParameterNames(sql), parameters, out var conn, out var ownsConnection);
+        try
+        {
+            using var reader = cmd.ExecuteReader();
+            return MapToList<T>(reader);
+        }
+        finally
+        {
+            cmd.Dispose();
+            if (ownsConnection) conn.Dispose();
+        }
     }
 
     /// <summary>
@@ -286,9 +369,17 @@ public class BaseDb : IDisposable
     /// </summary>
     public T? QueryFirst<T>(string sql, object? parameters = null) where T : class, new()
     {
-        using var cmd = CreateCommand(NormalizeParameterNames(sql), parameters);
-        using var reader = cmd.ExecuteReader();
-        return reader.Read() ? MapToObject<T>(reader) : null;
+        var cmd = CreateCommand(NormalizeParameterNames(sql), parameters, out var conn, out var ownsConnection);
+        try
+        {
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? MapToObject<T>(reader) : null;
+        }
+        finally
+        {
+            cmd.Dispose();
+            if (ownsConnection) conn.Dispose();
+        }
     }
 
     /// <summary>
@@ -296,11 +387,19 @@ public class BaseDb : IDisposable
     /// </summary>
     public T? Scalar<T>(string sql, object? parameters = null)
     {
-        using var cmd = CreateCommand(NormalizeParameterNames(sql), parameters);
-        var result = cmd.ExecuteScalar();
-        if (result == null || result == DBNull.Value)
-            return default;
-        return (T)Convert.ChangeType(result, typeof(T));
+        var cmd = CreateCommand(NormalizeParameterNames(sql), parameters, out var conn, out var ownsConnection);
+        try
+        {
+            var result = cmd.ExecuteScalar();
+            if (result == null || result == DBNull.Value)
+                return default;
+            return (T)Convert.ChangeType(result, typeof(T));
+        }
+        finally
+        {
+            cmd.Dispose();
+            if (ownsConnection) conn.Dispose();
+        }
     }
 
     /// <summary>
@@ -308,8 +407,16 @@ public class BaseDb : IDisposable
     /// </summary>
     public int Execute(string sql, object? parameters = null)
     {
-        using var cmd = CreateCommand(NormalizeParameterNames(sql), parameters);
-        return cmd.ExecuteNonQuery();
+        var cmd = CreateCommand(NormalizeParameterNames(sql), parameters, out var conn, out var ownsConnection);
+        try
+        {
+            return cmd.ExecuteNonQuery();
+        }
+        finally
+        {
+            cmd.Dispose();
+            if (ownsConnection) conn.Dispose();
+        }
     }
 
     /// <summary>
@@ -366,23 +473,39 @@ public class BaseDb : IDisposable
         {
             // PostgreSQL 使用 RETURNING
             sql = $"INSERT INTO {QuoteIdentifier(meta.TableName)} ({columns}) VALUES ({values}) RETURNING {meta.KeyColumn}";
-            using var cmd = CreateCommand(NormalizeParameterNames(sql));
-            AddEntityParameters(cmd, entity, meta, excludeKey: true);
-            var result = cmd.ExecuteScalar();
-            return Convert.ToInt64(result);
+            var cmd = CreateCommand(NormalizeParameterNames(sql), null, out var conn, out var ownsConnection);
+            try
+            {
+                AddEntityParameters(cmd, entity, meta, excludeKey: true);
+                var result = cmd.ExecuteScalar();
+                return Convert.ToInt64(result);
+            }
+            finally
+            {
+                cmd.Dispose();
+                if (ownsConnection) conn.Dispose();
+            }
         }
         else
         {
             sql = $"INSERT INTO {QuoteIdentifier(meta.TableName)} ({columns}) VALUES ({values})";
-            using var cmd = CreateCommand(NormalizeParameterNames(sql));
-            AddEntityParameters(cmd, entity, meta, excludeKey: true);
-            cmd.ExecuteNonQuery();
+            var cmd = CreateCommand(NormalizeParameterNames(sql), null, out var conn, out var ownsConnection);
+            try
+            {
+                AddEntityParameters(cmd, entity, meta, excludeKey: true);
+                cmd.ExecuteNonQuery();
 
-            // 取得自動產生的 ID
-            cmd.CommandText = GetLastInsertIdSql();
-            cmd.Parameters.Clear();
-            var result = cmd.ExecuteScalar();
-            return result != null ? Convert.ToInt64(result) : 0;
+                // 取得自動產生的 ID (同一連線)
+                cmd.CommandText = GetLastInsertIdSql();
+                cmd.Parameters.Clear();
+                var result = cmd.ExecuteScalar();
+                return result != null ? Convert.ToInt64(result) : 0;
+            }
+            finally
+            {
+                cmd.Dispose();
+                if (ownsConnection) conn.Dispose();
+            }
         }
     }
 
@@ -408,9 +531,17 @@ public class BaseDb : IDisposable
 
         var sql = $"UPDATE {QuoteIdentifier(meta.TableName)} SET {setClause} WHERE {QuoteIdentifier(meta.KeyColumn)} = @{meta.KeyProperty}";
 
-        using var cmd = CreateCommand(NormalizeParameterNames(sql));
-        AddEntityParameters(cmd, entity, meta, excludeKey: false);
-        return cmd.ExecuteNonQuery();
+        var cmd = CreateCommand(NormalizeParameterNames(sql), null, out var conn, out var ownsConnection);
+        try
+        {
+            AddEntityParameters(cmd, entity, meta, excludeKey: false);
+            return cmd.ExecuteNonQuery();
+        }
+        finally
+        {
+            cmd.Dispose();
+            if (ownsConnection) conn.Dispose();
+        }
     }
 
     /// <summary>
@@ -518,8 +649,25 @@ public class BaseDb : IDisposable
     /// </summary>
     public void BeginTransaction()
     {
-        var conn = GetConnection();
-        _transaction = conn.BeginTransaction();
+        if (_transaction != null || _transactionConnection != null)
+        {
+            throw new InvalidOperationException("A transaction is already active.");
+        }
+
+        var connection = CreateConnection();
+
+        try
+        {
+            _transactionConnection = connection;
+            _transaction = connection.BeginTransaction();
+        }
+        catch
+        {
+            connection.Dispose();
+            _transactionConnection = null;
+            _transaction = null;
+            throw;
+        }
     }
 
     /// <summary>
@@ -527,9 +675,19 @@ public class BaseDb : IDisposable
     /// </summary>
     public void Commit()
     {
-        _transaction?.Commit();
-        _transaction?.Dispose();
-        _transaction = null;
+        if (_transaction == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _transaction.Commit();
+        }
+        finally
+        {
+            CleanupTransaction();
+        }
     }
 
     /// <summary>
@@ -537,9 +695,27 @@ public class BaseDb : IDisposable
     /// </summary>
     public void Rollback()
     {
-        _transaction?.Rollback();
+        if (_transaction == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _transaction.Rollback();
+        }
+        finally
+        {
+            CleanupTransaction();
+        }
+    }
+
+    private void CleanupTransaction()
+    {
         _transaction?.Dispose();
         _transaction = null;
+        _transactionConnection?.Dispose();
+        _transactionConnection = null;
     }
 
     /// <summary>
@@ -831,8 +1007,19 @@ public class BaseDb : IDisposable
 
     public void Dispose()
     {
-        _transaction?.Dispose();
-        _connection?.Dispose();
+        if (_transaction != null)
+        {
+            try
+            {
+                _transaction.Rollback();
+            }
+            catch
+            {
+                // Dispose should be best-effort cleanup.
+            }
+        }
+
+        CleanupTransaction();
     }
 }
 
