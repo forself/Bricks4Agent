@@ -159,6 +159,22 @@ export const FieldRenderers = {
                    ${field.required ? 'required' : ''}>
         </div>`,
 
+    [FieldTypes.TEL]: (field) => `
+        <div class="form-group">
+            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <input type="tel" id="${field.name}" name="${field.name}"
+                   value="\${this.escAttr(this._data.form.${field.name})}"
+                   ${field.required ? 'required' : ''}>
+        </div>`,
+
+    [FieldTypes.URL]: (field) => `
+        <div class="form-group">
+            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <input type="url" id="${field.name}" name="${field.name}"
+                   value="\${this.escAttr(this._data.form.${field.name})}"
+                   ${field.required ? 'required' : ''}>
+        </div>`,
+
     [FieldTypes.SELECT]: (field) => `
         <div class="form-group">
             <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
@@ -284,6 +300,38 @@ export const FieldRenderers = {
                     <span class="weather-desc">\${this._data.${field.name}.description}</span>
                 \` : '需要先取得位置'}
             </div>
+        </div>`,
+
+    [FieldTypes.RATING]: (field) => `
+        <div class="form-group">
+            <label>${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <div class="rating-group" data-field="${field.name}">
+                ${[1,2,3,4,5].map(n => `
+                    <label class="rating-star">
+                        <input type="radio" name="${field.name}" value="${n}"
+                               \${this._data.form.${field.name} == ${n} ? 'checked' : ''}>
+                        <span class="star">\${this._data.form.${field.name} >= ${n} ? '★' : '☆'}</span>
+                    </label>`).join('')}
+            </div>
+            ${field.description ? `<small>${field.description}</small>` : ''}
+        </div>`,
+
+    [FieldTypes.TAGS]: (field) => `
+        <div class="form-group">
+            <label for="${field.name}">${field.label || field.name}${field.required ? ' *' : ''}</label>
+            <div class="tags-input-container">
+                <div class="tags-list" id="${field.name}-tags">
+                    \${(this._data.form.${field.name} || []).map(tag => \`
+                        <span class="tag-badge">
+                            \${this.esc(tag)}
+                            <button type="button" class="tag-remove" data-field="${field.name}" data-tag="\${tag}">&times;</button>
+                        </span>
+                    \`).join('')}
+                </div>
+                <input type="text" id="${field.name}" placeholder="${field.config?.placeholder || '輸入後按 Enter 新增'}"
+                       data-action="tag-input" data-field="${field.name}">
+            </div>
+            ${field.description ? `<small>${field.description}</small>` : ''}
         </div>`,
 
     [FieldTypes.HIDDEN]: (field) => `

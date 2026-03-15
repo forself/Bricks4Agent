@@ -87,6 +87,8 @@ export const FieldTypes = {
     NUMBER: 'number',
     EMAIL: 'email',
     PASSWORD: 'password',
+    TEL: 'tel',
+    URL: 'url',
 
     // 選擇類型
     SELECT: 'select',
@@ -121,6 +123,10 @@ export const FieldTypes = {
     SOCIALMEDIA: 'socialmedia',     // 需要 SocialMediaList
     ORGANIZATION: 'organization',   // 需要 OrganizationInput
     STUDENT: 'student',             // 需要 StudentInput
+
+    // 評分 / 標籤
+    RATING: 'rating',
+    TAGS: 'tags',
 
     // 隱藏類型
     HIDDEN: 'hidden'
