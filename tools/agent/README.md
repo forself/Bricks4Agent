@@ -142,11 +142,45 @@ Governed prompt 會注入：
 - AgentLoop 會把 governed executor 當成 provider 使用
 - LLM 連線是 broker-mediated，不是 agent 直連 upstream provider
 
+## Podman 容器
+
+最小 governed agent 容器定義在 `tools/agent/Containerfile`。
+
+### 建置
+
+```bash
+podman build -f tools/agent/Containerfile -t bricks4agent-agent:dev .
+```
+
+### 執行
+
+```bash
+podman run --rm -it \
+  -v %CD%:/workspace \
+  -e BROKER_URL=http://host.containers.internal:5000 \
+  -e BROKER_PUB_KEY=<base64> \
+  -e BROKER_PRINCIPAL_ID=prn_xxx \
+  -e BROKER_TASK_ID=task_xxx \
+  -e BROKER_ROLE_ID=role_reader \
+  -e AGENT_MODEL=llama3.1 \
+  -e AGENT_RUN="讀取 README.md 並摘要重點" \
+  bricks4agent-agent:dev
+```
+
+容器入口只接受 governed 路徑：
+
+- 必須提供 `BROKER_URL`、`BROKER_PUB_KEY`、`BROKER_PRINCIPAL_ID`、`BROKER_TASK_ID`
+- 不接受 direct provider API key 作為正式執行模式
+- 預設 workspace 掛載點是 `/workspace`
+- 預設會加上 `--governed` 與 broker/session 參數
+- `AGENT_RUN` 有值時跑單次任務；沒有時會進 REPL
+
 ## 驗證
 
 ```bash
 npm run validate:agent-governed
 npm run validate:broker-scope
+npm run validate:broker-llm-proxy
 ```
 
 目前驗證覆蓋：
@@ -154,6 +188,7 @@ npm run validate:broker-scope
 - governed prompt 是否包含 broker route 與標準 POST JSON contract
 - governed agent 初始化是否不再觸碰本地 direct provider
 - broker-mediated `health/models/chat` 是否可被 agent 使用
+- live broker + fake upstream LLM 是否真的能完成 governed session 與 chat
 - tool visibility 是否依 grant 過濾
 - 未授權 capability 是否會在本地 governed executor 直接拒絕
 - broker policy 是否同時驗證 capability 與 `scope.paths/scope.routes`

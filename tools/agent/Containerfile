@@ -1,0 +1,14 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+COPY package.json /app/package.json
+COPY tools/agent /app/tools/agent
+
+RUN useradd --create-home --uid 10001 agent \
+    && chmod +x /app/tools/agent/container/entrypoint.sh \
+    && chown -R agent:agent /app
+
+USER agent
+
+ENTRYPOINT ["/app/tools/agent/container/entrypoint.sh"]
