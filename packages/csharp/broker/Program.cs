@@ -25,7 +25,8 @@ builder.Services.AddSingleton(sp => BrokerDb.UseSqlite(connectionString));
 using (var initDb = BrokerDb.UseSqlite(connectionString))
 {
     var initializer = new BrokerDbInitializer(initDb);
-    initializer.Initialize();
+    var developmentSeed = builder.Configuration.GetSection("DevelopmentSeed").Get<DevelopmentSeedOptions>();
+    initializer.Initialize(developmentSeed);
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -145,6 +146,10 @@ var policyOptions = builder.Configuration.GetSection("PolicyEngine").Get<PolicyE
     ?? new PolicyEngineOptions();
 builder.Services.AddSingleton<IPolicyEngine>(sp =>
     new PolicyEngine(sp.GetRequiredService<ISchemaValidator>(), policyOptions));
+var llmProxyOptions = builder.Configuration.GetSection("LlmProxy").Get<LlmProxyOptions>()
+    ?? new LlmProxyOptions();
+builder.Services.AddSingleton(llmProxyOptions);
+builder.Services.AddHttpClient<ILlmProxyService, LlmProxyService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -285,6 +290,7 @@ AuditEndpoints.Map(api);
 AdminEndpoints.Map(api);
 ContextEndpoints.Map(api);
 PlanEndpoints.Map(api);
+RuntimeEndpoints.Map(api);
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)

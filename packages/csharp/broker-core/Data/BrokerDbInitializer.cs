@@ -17,12 +17,13 @@ public class BrokerDbInitializer
     }
 
     /// <summary>初始化所有表結構 + 種子資料</summary>
-    public void Initialize()
+    public void Initialize(DevelopmentSeedOptions? developmentSeed = null)
     {
         EnsureTables();
         SeedSystemEpoch();
         SeedRoles();
         SeedCapabilities();
+        SeedDevelopmentData(developmentSeed);
     }
 
     /// <summary>建立 17 張表</summary>
@@ -377,5 +378,44 @@ public class BrokerDbInitializer
     {
         try { _db.Execute(sql); }
         catch { /* 索引已存在等情況忽略 */ }
+    }
+    private void SeedDevelopmentData(DevelopmentSeedOptions? developmentSeed)
+    {
+        if (developmentSeed?.Enabled != true)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(developmentSeed.PrincipalId) &&
+            _db.Get<Principal>(developmentSeed.PrincipalId) == null)
+        {
+            var actorType = Enum.TryParse<ActorType>(developmentSeed.ActorType, true, out var parsedActorType)
+                ? parsedActorType
+                : ActorType.AI;
+
+            _db.Insert(new Principal
+            {
+                PrincipalId = developmentSeed.PrincipalId,
+                ActorType = actorType,
+                DisplayName = developmentSeed.DisplayName,
+                Status = EntityStatus.Active,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(developmentSeed.TaskId) &&
+            _db.Get<BrokerTask>(developmentSeed.TaskId) == null)
+        {
+            _db.Insert(new BrokerTask
+            {
+                TaskId = developmentSeed.TaskId,
+                TaskType = developmentSeed.TaskType,
+                SubmittedBy = developmentSeed.PrincipalId,
+                RiskLevel = RiskLevel.Low,
+                State = TaskState.Active,
+                ScopeDescriptor = developmentSeed.ScopeDescriptor,
+                AssignedPrincipalId = developmentSeed.PrincipalId,
+                AssignedRoleId = developmentSeed.AssignedRoleId,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
     }
 }

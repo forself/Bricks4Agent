@@ -1,45 +1,25 @@
 #!/usr/bin/env node
 'use strict';
 
-/**
- * AI Agent CLI
- *
- * 讓本機 Ollama 或雲端 API 模型成為自主代理，支援檔案讀寫、指令執行、專案操作。
- * 零外部依賴，只用 Node.js 內建模組。
- *
- * 用法:
- *   node agent.js                                          # 互動式 REPL（Ollama）
- *   node agent.js --run "讀取 AGENT.md"                    # 單次執行
- *   node agent.js --model qwen2.5:14b                      # 指定模型
- *   node agent.js --provider openai --api-key sk-xxx       # 使用 OpenAI
- *   node agent.js --provider gemini --model gemini-2.0-flash # 使用 Gemini
- *   node agent.js --list-models                            # 列出可用模型
- *
- * @module agent
- * @version 2.0.0
- */
-
 const { AgentLoop } = require('./lib/agent-loop');
 const { AgentRepl } = require('./lib/repl');
 const { StateMachine } = require('./lib/state-machine');
 const { buildCrudPipeline } = require('./lib/pipelines/crud-pipeline');
-const { runPipelines, loadProjectConfig, detectEntityStatus } = require('./lib/pipelines/pipeline-runner');
+const { runPipelines } = require('./lib/pipelines/pipeline-runner');
 const { createProvider, listProviders } = require('./lib/providers/provider-factory');
-const { resolveProjectRoot, bold, colorize, logInfo, logError, logSuccess, logWarn } = require('./lib/utils');
-
-// ─── 參數解析 ───
+const { resolveProjectRoot, bold, logInfo, logError, logWarn } = require('./lib/utils');
 
 function parseArgs(argv) {
     const args = {
         run: null,
-        generate: false,       // 自動化模式: 讀 project.json 批次生成
-        pipeline: null,        // 管線模式: 'crud'
-        pipelineEntity: null,  // 實體名稱
-        pipelineFields: null,  // 欄位定義 (JSON)
-        pipelinePath: null,    // 專案子路徑
-        dryRun: false,         // 乾跑: 只顯示計畫
-        validateOnly: false,   // 只驗證: 跳過 Agent
-        force: false,          // 強制: 重新生成已存在的
+        generate: false,
+        pipeline: null,
+        pipelineEntity: null,
+        pipelineFields: null,
+        pipelinePath: null,
+        dryRun: false,
+        validateOnly: false,
+        force: false,
         model: 'llama3.1',
         host: null,
         provider: null,
@@ -52,7 +32,6 @@ function parseArgs(argv) {
         listModels: false,
         help: false,
         version: false,
-        // 受控模式
         governed: false,
         brokerUrl: null,
         brokerPubKey: null,
@@ -63,19 +42,24 @@ function parseArgs(argv) {
 
     for (let i = 0; i < argv.length; i++) {
         switch (argv[i]) {
-            case '--run': case '-r':
+            case '--run':
+            case '-r':
                 args.run = argv[++i] || '';
                 break;
-            case '--model': case '-m':
+            case '--model':
+            case '-m':
                 args.model = argv[++i] || args.model;
                 break;
-            case '--host': case '-H':
+            case '--host':
+            case '-H':
                 args.host = argv[++i] || args.host;
                 break;
-            case '--provider': case '-P':
+            case '--provider':
+            case '-P':
                 args.provider = argv[++i] || args.provider;
                 break;
-            case '--api-key': case '-k':
+            case '--api-key':
+            case '-k':
                 args.apiKey = argv[++i] || args.apiKey;
                 break;
             case '--no-stream':
@@ -93,13 +77,15 @@ function parseArgs(argv) {
             case '--no-confirm':
                 args.noConfirm = true;
                 break;
-            case '--verbose': case '-v':
+            case '--verbose':
+            case '-v':
                 args.verbose = true;
                 break;
             case '--list-models':
                 args.listModels = true;
                 break;
-            case '--help': case '-h':
+            case '--help':
+            case '-h':
                 args.help = true;
                 break;
             case '--version':
@@ -117,7 +103,8 @@ function parseArgs(argv) {
             case '--project-path':
                 args.pipelinePath = argv[++i] || '';
                 break;
-            case '--generate': case '-g':
+            case '--generate':
+            case '-g':
                 args.generate = true;
                 break;
             case '--dry-run':
@@ -129,7 +116,6 @@ function parseArgs(argv) {
             case '--force':
                 args.force = true;
                 break;
-            // 受控模式
             case '--governed':
                 args.governed = true;
                 break;
@@ -154,97 +140,108 @@ function parseArgs(argv) {
     return args;
 }
 
-// ─── 說明文字 ───
-
 function showHelp() {
     const providers = listProviders().join(', ');
     console.log(`
-${bold('AI Agent CLI')} — 讓本機或雲端模型成為自主代理
+${bold('AI Agent CLI')}
 
-${bold('用法:')}
-  node agent.js [選項]
+Usage:
+  node agent.js [options]
 
-${bold('選項:')}
-  --run, -r "<prompt>"     單次執行指令後退出
-  --model, -m <name>       模型名稱 (預設: llama3.1)
-  --provider, -P <type>    Provider: ${providers} (自動偵測)
-  --api-key, -k <key>      雲端 API 金鑰（或用環境變數）
-  --host, -H <url>         覆蓋 Provider 預設端點
-  --no-stream              關閉串流輸出
-  --force-react            強制使用 ReAct XML 回退模式
-  --force-native           強制使用原生 tool calling
-  --max-iterations <n>     最大迭代輪數 (預設: 20)
-  --no-confirm             跳過確認提示 (CI/自動化用)
-  --verbose, -v            顯示除錯資訊
-  --list-models            列出可用模型
-  --help, -h               顯示此說明
-  --version                顯示版本
+General:
+  --run, -r "<prompt>"     Run a single prompt
+  --model, -m <name>       Model name (default: llama3.1)
+  --provider, -P <type>    Provider: ${providers}
+  --api-key, -k <key>      Provider API key
+  --host, -H <url>         Custom provider base URL
+  --no-stream              Disable streaming output
+  --force-react            Force ReAct XML tool mode
+  --force-native           Force native tool calling mode
+  --max-iterations <n>     Max agent iterations (default: 20)
+  --no-confirm             Skip confirmation prompts
+  --verbose, -v            Verbose logging
+  --list-models            List available models
+  --help, -h               Show help
+  --version                Show version
 
-${bold('範例:')}
-  node agent.js                                        # 本地 Ollama 互動式對話
-  node agent.js -m qwen2.5:14b                         # 使用特定 Ollama 模型
-  node agent.js -r "列出專案結構"                       # 單次執行
-  node agent.js -r "生成部落格功能" --no-confirm        # 自動化
-  node agent.js --force-react -m phi3                   # 強制 ReAct 模式
+Pipelines:
+  --generate, -g           Run project.json generation pipeline
+  --pipeline crud          Run CRUD pipeline
+  --entity <Name>          Entity name for CRUD pipeline
+  --fields '<json>'        Field definition JSON
+  --project-path <path>    Target project path
+  --dry-run                Validate generated plan without writing
+  --validate               Validate generation pipeline only
+  --force                  Overwrite existing generated artifacts
 
-  ${bold('雲端 API:')}
-  node agent.js -P openai -k sk-xxx -m gpt-4o          # OpenAI
-  node agent.js -P gemini -k AIza... -m gemini-2.0-flash # Gemini
-  node agent.js -P deepseek -k sk-xxx -m deepseek-chat  # DeepSeek
-  node agent.js -P groq -k gsk_xxx -m llama-3.1-70b-versatile # Groq
-  node agent.js -P openai -H http://localhost:8000 -m my-model # 自架 vLLM
+Governed mode:
+  --governed
+  --broker-url <url>
+  --broker-pub-key <base64>
+  --principal-id <id>
+  --task-id <id>
+  --role-id <id>
 
-  ${bold('環境變數（自動偵測 provider）:')}
-  OPENAI_API_KEY=sk-xxx node agent.js -m gpt-4o
-  GEMINI_API_KEY=AIza... node agent.js -P gemini -m gemini-2.0-flash
-
-${bold('自動化生成 (讀取 project.json):')}
-  node agent.js --generate --project-path projects/PhotoDiary              # 生成所有未完成實體
-  node agent.js --generate --project-path projects/PhotoDiary --dry-run    # 乾跑：只顯示計畫
-  node agent.js --generate --project-path projects/PhotoDiary --validate   # 只驗證已有檔案
-  node agent.js --generate --project-path projects/PhotoDiary --force      # 強制重新生成
-  node agent.js --generate --project-path projects/PhotoDiary --entity DiaryEntry  # 只處理特定實體
-
-  --generate, -g           從 project.json 讀取 entities，批次執行管線
-  --dry-run                乾跑模式：只顯示執行計畫
-  --validate               只驗證模式：不執行 Agent，只跑 postcondition
-  --force                  強制重新生成已存在的實體
-
-${bold('管線模式 (手動指定):')}
-  node agent.js --pipeline crud --entity DiaryEntry --fields '[{"name":"Title","type":"string"},{"name":"Content","type":"text"}]'
-  node agent.js --pipeline crud --entity Product --fields '[{"name":"Name","type":"string"},{"name":"Price","type":"decimal"}]' --project-path projects/Shop
-
-  --pipeline <type>        管線類型: crud
-  --entity <Name>          實體名稱 (PascalCase)
-  --fields '<json>'        欄位定義 JSON 陣列
-  --project-path <path>    專案子路徑（相對於根目錄）
-
-${bold('受控模式 (Broker 中介核心):')}
-  node agent.js --governed --broker-url http://localhost:5000 --broker-pub-key <base64> --principal-id prn_xxx --task-id task_xxx --role-id role_reader -r "讀取 README.md"
-
-  --governed               啟用受控模式（所有工具呼叫經 Broker 裁決）
-  --broker-url <url>       Broker API URL (預設: http://localhost:5000)
-  --broker-pub-key <key>   Broker ECDH P-256 公鑰 (Base64, 啟動 broker 時顯示)
-  --principal-id <id>      主體 ID (e.g., prn_xxx)
-  --task-id <id>           任務 ID (e.g., task_xxx)
-  --role-id <id>           角色 ID (e.g., role_reader)
-
-  ${bold('環境變數（替代 CLI 參數）:')}
-  BROKER_URL=http://localhost:5000
-  BROKER_PUB_KEY=MFkwEwYHKo...
-  BROKER_PRINCIPAL_ID=prn_xxx
-  BROKER_TASK_ID=task_xxx
-  BROKER_ROLE_ID=role_reader
-
-${bold('REPL 指令:')}
-  /help     顯示指令說明    /model <name>  切換模型
-  /models   列出可用模型    /clear         清除歷史
-  /history  對話統計        /tools         列出工具
-  /exit     退出
+Examples:
+  node agent.js
+  node agent.js --run "Read AGENT.md and summarize the constraints"
+  node agent.js -P openai -k sk-xxx -m gpt-5
+  node agent.js --governed --broker-url http://localhost:5000 --broker-pub-key <base64> --principal-id prn_x --task-id task_x --role-id role_reader --run "Inspect the repo"
 `);
 }
 
-// ─── 主程式 ───
+function getGovernedConfig(args) {
+    if (!args.governed) {
+        return null;
+    }
+
+    const brokerUrl = args.brokerUrl || process.env.BROKER_URL || 'http://localhost:5000';
+    const brokerPubKey = args.brokerPubKey || process.env.BROKER_PUB_KEY || '';
+    const principalId = args.principalId || process.env.BROKER_PRINCIPAL_ID || '';
+    const taskId = args.taskId || process.env.BROKER_TASK_ID || '';
+    const roleId = args.roleId || process.env.BROKER_ROLE_ID || 'role_reader';
+
+    if (!brokerPubKey) {
+        throw new Error('Governed mode requires --broker-pub-key or BROKER_PUB_KEY');
+    }
+    if (!principalId) {
+        throw new Error('Governed mode requires --principal-id or BROKER_PRINCIPAL_ID');
+    }
+    if (!taskId) {
+        throw new Error('Governed mode requires --task-id or BROKER_TASK_ID');
+    }
+
+    return { brokerUrl, brokerPubKey, principalId, taskId, roleId };
+}
+
+function createAgent(args, projectRoot, governedConfig, provider) {
+    return new AgentLoop({
+        model: args.model,
+        provider,
+        projectRoot,
+        stream: args.stream,
+        noConfirm: args.noConfirm,
+        verbose: args.verbose,
+        maxIterations: args.maxIterations,
+        forceStrategy: args.forceStrategy,
+        governed: governedConfig,
+    });
+}
+
+async function printModels(agentOrProvider, governed) {
+    const models = await agentOrProvider.listModels();
+    if (models.length === 0) {
+        console.log('No models returned.');
+        return;
+    }
+
+    const label = governed ? agentOrProvider.name : agentOrProvider.name;
+    console.log(bold(`Available models (${label}):`));
+    for (const model of models) {
+        const size = model.size ? ` (${(model.size / 1024 / 1024 / 1024).toFixed(1)} GB)` : '';
+        console.log(`  ${model.name}${size}`);
+    }
+}
 
 async function main() {
     const args = parseArgs(process.argv.slice(2));
@@ -259,51 +256,44 @@ async function main() {
         return;
     }
 
-    // 建立 Provider
-    let provider;
+    let governedConfig;
     try {
-        provider = createProvider({
-            provider: args.provider,
-            host: args.host,
-            apiKey: args.apiKey,
-        });
+        governedConfig = getGovernedConfig(args);
     } catch (e) {
         logError(e.message);
         process.exit(1);
     }
 
-    // 列出模型
-    if (args.listModels) {
+    if (governedConfig) {
+        logInfo(`Governed mode enabled: broker=${governedConfig.brokerUrl}, principal=${governedConfig.principalId}, task=${governedConfig.taskId}`);
+        if (args.provider || args.host || args.apiKey) {
+            logWarn('Direct provider/api-key/host options are ignored in governed mode.');
+        }
+    }
+
+    let provider = null;
+    if (!governedConfig) {
         try {
-            const models = await provider.listModels();
-            if (models.length === 0) {
-                console.log('沒有可用模型');
-            } else {
-                console.log(bold(`可用模型 (${provider.name}):`));
-                for (const m of models) {
-                    const size = m.size ? ` (${(m.size / 1024 / 1024 / 1024).toFixed(1)} GB)` : '';
-                    console.log(`  ${m.name}${size}`);
-                }
-            }
+            provider = createProvider({
+                provider: args.provider,
+                host: args.host,
+                apiKey: args.apiKey,
+            });
         } catch (e) {
-            logError(`無法連線到 ${provider.name}: ${e.message}`);
+            logError(e.message);
             process.exit(1);
         }
-        return;
     }
 
-    // 解析專案根目錄
     const projectRoot = resolveProjectRoot();
     if (args.verbose) {
-        logInfo(`專案根目錄: ${projectRoot}`);
+        logInfo(`Project root: ${projectRoot}`);
     }
 
-    // 快速路徑: --generate --validate 或 --generate --dry-run 不需要 Agent
     if (args.generate && (args.validateOnly || args.dryRun)) {
         try {
             if (!args.pipelinePath) {
-                logError('自動化模式需要 --project-path 參數 (e.g. --project-path projects/PhotoDiary)');
-                process.exit(1);
+                throw new Error('Generation validation requires --project-path');
             }
 
             const result = await runPipelines({
@@ -327,52 +317,29 @@ async function main() {
         return;
     }
 
-    // 受控模式配置（CLI 參數 > 環境變數）
-    let governedConfig = null;
-    if (args.governed) {
-        const brokerUrl = args.brokerUrl || process.env.BROKER_URL || 'http://localhost:5000';
-        const brokerPubKey = args.brokerPubKey || process.env.BROKER_PUB_KEY || '';
-        const principalId = args.principalId || process.env.BROKER_PRINCIPAL_ID || '';
-        const taskId = args.taskId || process.env.BROKER_TASK_ID || '';
-        const roleId = args.roleId || process.env.BROKER_ROLE_ID || 'role_reader';
-
-        if (!brokerPubKey) {
-            logError('受控模式需要 --broker-pub-key 或 BROKER_PUB_KEY 環境變數');
-            logInfo('提示: 啟動 broker 時會顯示公鑰，例如:\n  Broker public key (share with clients): MFkwEwYH...');
+    if (args.listModels) {
+        try {
+            if (governedConfig) {
+                const agent = createAgent(args, projectRoot, governedConfig, null);
+                await agent.init();
+                await printModels(agent.provider, true);
+                await agent.close();
+            } else {
+                await printModels(provider, false);
+            }
+        } catch (e) {
+            logError(e.message);
             process.exit(1);
         }
-        if (!principalId) {
-            logError('受控模式需要 --principal-id 或 BROKER_PRINCIPAL_ID 環境變數');
-            process.exit(1);
-        }
-        if (!taskId) {
-            logError('受控模式需要 --task-id 或 BROKER_TASK_ID 環境變數');
-            process.exit(1);
-        }
-
-        governedConfig = { brokerUrl, brokerPubKey, principalId, taskId, roleId };
-        logInfo(`🔒 受控模式: Broker=${brokerUrl}, Principal=${principalId}, Task=${taskId}`);
+        return;
     }
 
-    // 建立 Agent（只在需要 LLM 時）
-    const agent = new AgentLoop({
-        model: args.model,
-        provider,
-        projectRoot,
-        stream: args.stream,
-        noConfirm: args.noConfirm,
-        verbose: args.verbose,
-        maxIterations: args.maxIterations,
-        forceStrategy: args.forceStrategy,
-        governed: governedConfig,
-    });
+    const agent = createAgent(args, projectRoot, governedConfig, provider);
 
     if (args.generate) {
-        // 自動化模式: 讀 project.json 批次生成（需要 Agent）
         try {
             if (!args.pipelinePath) {
-                logError('自動化模式需要 --project-path 參數 (e.g. --project-path projects/PhotoDiary)');
-                process.exit(1);
+                throw new Error('Generation requires --project-path');
             }
 
             const result = await runPipelines({
@@ -392,30 +359,31 @@ async function main() {
             logError(e.message);
             if (args.verbose) console.error(e.stack);
             process.exit(1);
+        } finally {
+            await agent.close();
         }
-    } else if (args.pipeline) {
-        // 管線模式（狀態機 + 檢核點）
+        return;
+    }
+
+    if (args.pipeline) {
         try {
             if (args.pipeline !== 'crud') {
-                logError(`未知管線類型: ${args.pipeline} (目前只支援: crud)`);
-                process.exit(1);
+                throw new Error(`Unsupported pipeline: ${args.pipeline}`);
             }
             if (!args.pipelineEntity) {
-                logError('管線模式需要 --entity 參數');
-                process.exit(1);
+                throw new Error('CRUD pipeline requires --entity');
             }
 
             let fields;
             try {
                 fields = JSON.parse(args.pipelineFields || '[]');
             } catch {
-                logError('--fields 必須是合法 JSON 陣列');
-                process.exit(1);
+                throw new Error('--fields must be valid JSON');
             }
 
             if (fields.length === 0) {
                 fields = [{ name: 'Name', type: 'string' }];
-                logInfo('未指定欄位，使用預設: Name:string');
+                logInfo('No fields provided, using default Name:string');
             }
 
             const states = buildCrudPipeline({
@@ -440,49 +408,50 @@ async function main() {
             logError(e.message);
             if (args.verbose) console.error(e.stack);
             process.exit(1);
+        } finally {
+            await agent.close();
         }
-    } else if (args.run) {
-        // 單次執行模式
+        return;
+    }
+
+    if (args.run) {
         try {
             await agent.send(args.run);
         } catch (e) {
             logError(e.message);
             process.exit(1);
         } finally {
-            // 受控模式：優雅關閉 session
             await agent.close();
         }
-    } else {
-        // 互動式 REPL
-        const repl = new AgentRepl(agent);
+        return;
+    }
 
-        // 受控模式：攔截退出信號，優雅關閉 session
-        if (governedConfig) {
-            const cleanup = async () => {
-                await agent.close();
-            };
-            process.on('SIGINT', async () => {
-                await cleanup();
-                process.exit(0);
-            });
-            process.on('SIGTERM', async () => {
-                await cleanup();
-                process.exit(0);
-            });
-        }
-
-        try {
-            await repl.start();
-        } catch (e) {
-            logError(e.message);
-            process.exit(1);
-        } finally {
+    const repl = new AgentRepl(agent);
+    if (governedConfig) {
+        const cleanup = async () => {
             await agent.close();
-        }
+        };
+        process.on('SIGINT', async () => {
+            await cleanup();
+            process.exit(0);
+        });
+        process.on('SIGTERM', async () => {
+            await cleanup();
+            process.exit(0);
+        });
+    }
+
+    try {
+        await repl.start();
+    } catch (e) {
+        logError(e.message);
+        process.exit(1);
+    } finally {
+        await agent.close();
     }
 }
 
 main().catch((e) => {
-    logError(`致命錯誤: ${e.message}`);
+    logError(`Fatal error: ${e.message}`);
     process.exit(1);
 });

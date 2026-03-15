@@ -1,57 +1,54 @@
 # AI Agent CLI
 
-讓本機或雲端模型成為自主代理，支援讀寫檔案、執行指令、搜尋程式碼、批次生成 CRUD/服務管線，並可接入 Broker 受控模式。
+`tools/agent` 是 Bricks4Agent 的本地代理與生成入口，支援三種模式：
 
-**零 npm 依賴** — 只需 Node.js (v18+)。本地推理可搭配 Ollama；雲端模式可使用支援的 API provider。
+- 本地模式：Agent 直接連 Ollama 或 OpenAI-compatible provider。
+- Pipeline 模式：Agent 驅動 CRUD / `project.json` 生成流程。
+- Governed 模式：Agent 只向 broker 發送 `POST + JSON` 請求；工具執行與 LLM 對話都由 broker 轉發與裁決。
+
+## 需求
+
+- Node.js 18+
+- 本地模式可搭配 Ollama
+- 雲端模式可用 OpenAI-compatible API provider
+- Governed 模式需搭配 broker
+
+## Provider
+
+支援的 provider alias：
+
+| Provider | 說明 |
+|---|---|
+| `ollama` | 本地 Ollama，預設 `http://localhost:11434` |
+| `openai` | OpenAI，預設使用 Responses API |
+| `gemini` | Gemini 的 OpenAI-compatible endpoint |
+| `deepseek` | DeepSeek 的 OpenAI-compatible endpoint |
+| `groq` | Groq 的 OpenAI-compatible endpoint |
+| `mistral` | Mistral 的 OpenAI-compatible endpoint |
+
+若未指定 `--provider`，CLI 會優先看 API key；有 key 時預設用 `openai`，否則用 `ollama`。
 
 ## 快速開始
 
 ### 本地 Ollama
 
 ```bash
-# 1. 確認 Ollama 已執行
 ollama serve
-
-# 2. 拉取模型（若尚未下載）
 ollama pull llama3.1
-
-# 3. 啟動 Agent
 node tools/agent/agent.js
 ```
 
-### 雲端 Provider
+### 雲端 provider
 
 ```bash
-node tools/agent/agent.js --provider openai --api-key sk-xxx --model gpt-4o
+node tools/agent/agent.js --provider openai --api-key sk-xxx --model gpt-5
 node tools/agent/agent.js --provider gemini --api-key AIza... --model gemini-2.0-flash
-```
-
-## 支援的 Provider
-
-| Provider | 說明 |
-|----------|------|
-| `ollama` | 本地 Ollama (`http://localhost:11434`) |
-| `openai` | OpenAI，預設走 Responses API |
-| `gemini` | Gemini OpenAI-compatible endpoint |
-| `deepseek` | DeepSeek OpenAI-compatible endpoint |
-| `groq` | Groq OpenAI-compatible endpoint |
-| `mistral` | Mistral OpenAI-compatible endpoint |
-
-> 若未指定 `--provider`，Agent 會優先偵測 API key；有 key 時預設走 `openai`，否則走 `ollama`。
-
-## 用法
-
-### 互動式對話
-
-```bash
-node tools/agent/agent.js
 ```
 
 ### 單次執行
 
 ```bash
-node tools/agent/agent.js --run "讀取 AGENT.md 並總結專案結構"
-node tools/agent/agent.js --run "生成一個部落格功能，含 Title, Content, Author 欄位" --no-confirm
+node tools/agent/agent.js --run "閱讀 AGENT.md 並摘要限制"
 ```
 
 ### 列出模型
@@ -60,7 +57,7 @@ node tools/agent/agent.js --run "生成一個部落格功能，含 Title, Conten
 node tools/agent/agent.js --list-models
 ```
 
-### 自動化生成（讀取 `project.json`）
+### 生成 `project.json`
 
 ```bash
 node tools/agent/agent.js --generate --project-path projects/PhotoDiary
@@ -68,19 +65,48 @@ node tools/agent/agent.js --generate --project-path projects/PhotoDiary --dry-ru
 node tools/agent/agent.js --generate --project-path projects/PhotoDiary --validate
 ```
 
-### 手動管線模式
+### CRUD pipeline
 
 ```bash
 node tools/agent/agent.js --pipeline crud --entity Product --fields "[{\"name\":\"Name\",\"type\":\"string\"},{\"name\":\"Price\",\"type\":\"decimal\"}]"
 ```
 
-### Broker 受控模式
+## Governed 模式
+
+Governed 模式不是只有「工具經 broker」，而是：
+
+- 工具請求走 broker
+- LLM health / models / chat 也走 broker
+- agent 不應直接持有 provider API key 作為正式執行路徑
+- broker 依 session / role / grant / capability / scope / policy 決定是否允許
+
+### 啟動
 
 ```bash
-node tools/agent/agent.js --governed --broker-url http://localhost:5000 --broker-pub-key <base64> --principal-id prn_xxx --task-id task_xxx --role-id role_reader --run "讀取 README.md"
+node tools/agent/agent.js \
+  --governed \
+  --broker-url http://localhost:5000 \
+  --broker-pub-key <base64> \
+  --principal-id prn_xxx \
+  --task-id task_xxx \
+  --role-id role_reader \
+  --run "讀取 README.md"
 ```
 
-受控模式下，Agent 不會直接執行本地檔案或 shell 操作。所有副作用都只會透過 Broker 的 `POST` + `application/json` 路由送出，再由 Broker 依 `role/session/grant/scope/policy` 裁決：
+也可用環境變數：
+
+```bash
+set BROKER_URL=http://localhost:5000
+set BROKER_PUB_KEY=MFkwEwYH...
+set BROKER_PRINCIPAL_ID=prn_xxx
+set BROKER_TASK_ID=task_xxx
+set BROKER_ROLE_ID=role_reader
+node tools/agent/agent.js --governed
+```
+
+### Broker 契約
+
+Governed agent 只能透過 broker 的 `POST` 路由提出請求：
 
 - `POST /api/v1/sessions/register`
 - `POST /api/v1/execution-requests/submit`
@@ -88,140 +114,112 @@ node tools/agent/agent.js --governed --broker-url http://localhost:5000 --broker
 - `POST /api/v1/sessions/close`
 - `POST /api/v1/capabilities/list`
 - `POST /api/v1/grants/list`
+- `POST /api/v1/runtime/spec`
+- `POST /api/v1/llm/health`
+- `POST /api/v1/llm/models`
+- `POST /api/v1/llm/chat`
 
-目前能力模型分成兩層：
+Governed prompt 會注入：
 
-- 功能層：`capability_id`，例如 `file.read`、`file.write`
-- 範圍層：`scope`，例如 `paths` 與 `routes`
+- 當前 session 資訊
+- 目前 granted capability 清單
+- `scope.paths` / `scope.routes`
+- broker URL 與完整路由
+- 每個 POST 路由的標準 JSON body 格式
+- LLM runtime spec，例如 default model / override policy / tool-calling 能力
 
-Agent 啟動後，系統提示會直接注入目前這個 session 的：
+### 功能層與範圍層
 
-- Broker base URL 與完整路由
-- 這個 Agent 目前可請求的 capability / scope / quota / expiry
-- `execution-requests/submit` 的標準 JSON body 格式（`payload.route + payload.args + project_root`）
-- 其他受控 POST body 格式（register / heartbeat / grants / close）
+- 功能層：`capability_id`
+- 範圍層：`scope.routes`、`scope.paths`
 
-模型可見的工具集合也會依目前 grants 自動收斂；未授權的工具不會暴露給模型，就算模型仍嘗試請求，也會先在本地受控執行器層被拒絕。
+也就是說，不是只有「能不能讀檔」，而是「能不能以某個 capability 對某些 route / path 發請求」。
 
-### 驗證受控模式
+### Governed 模式的重要行為
+
+- `--provider`、`--api-key`、`--host` 在 governed 模式下會被忽略
+- `--list-models` 在 governed 模式下會改走 broker `/api/v1/llm/models`
+- AgentLoop 會把 governed executor 當成 provider 使用
+- LLM 連線是 broker-mediated，不是 agent 直連 upstream provider
+
+## 驗證
 
 ```bash
 npm run validate:agent-governed
 npm run validate:broker-scope
 ```
 
-這個驗證會檢查：
+目前驗證覆蓋：
 
-- governed prompt 是否包含 Broker URL / route / POST JSON contract
-- 模型可見工具是否依 grants 過濾
-- 未授權 capability 是否會在送出前被本地拒絕
-- 已授權 capability 是否會正常轉送到 Broker client
-- broker policy 是否同時驗證 capability 功能層與 `scope.paths/scope.routes` 範圍層
+- governed prompt 是否包含 broker route 與標準 POST JSON contract
+- governed agent 初始化是否不再觸碰本地 direct provider
+- broker-mediated `health/models/chat` 是否可被 agent 使用
+- tool visibility 是否依 grant 過濾
+- 未授權 capability 是否會在本地 governed executor 直接拒絕
+- broker policy 是否同時驗證 capability 與 `scope.paths/scope.routes`
 
 ## 主要參數
 
-| 參數 | 縮寫 | 說明 | 預設 |
-|------|------|------|------|
-| `--run "<prompt>"` | `-r` | 單次執行 | 互動模式 |
-| `--model <name>` | `-m` | 模型名稱 | `llama3.1` |
-| `--provider <type>` | `-P` | Provider 類型 | 自動偵測 |
-| `--api-key <key>` | `-k` | 雲端 API 金鑰 | 讀環境變數 |
-| `--host <url>` | `-H` | 覆蓋 provider 預設端點 | provider 預設值 |
-| `--no-stream` | | 關閉串流輸出 | 串流開啟 |
-| `--force-react` | | 強制 ReAct XML 模式 | 自動偵測 |
-| `--force-native` | | 強制原生 tool calling | 自動偵測 |
-| `--max-iterations <n>` | | 最大迭代輪數 | `20` |
-| `--no-confirm` | | 跳過確認提示 | 關閉 |
-| `--verbose` | `-v` | 顯示除錯資訊 | 關閉 |
-| `--generate` | `-g` | 從 `project.json` 批次執行管線 | 關閉 |
-| `--pipeline <type>` | | 手動指定管線類型 | 無 |
-| `--project-path <path>` | | 專案子路徑 | 無 |
-| `--dry-run` | | 顯示計畫但不執行 | 關閉 |
-| `--validate` | | 只做 postcondition 驗證 | 關閉 |
-| `--force` | | 強制重新生成已存在產物 | 關閉 |
-| `--governed` | | 啟用 Broker 受控模式 | 關閉 |
+| 參數 | 短參數 | 說明 |
+|---|---|---|
+| `--run "<prompt>"` | `-r` | 單次執行 |
+| `--model <name>` | `-m` | 模型名稱 |
+| `--provider <type>` | `-P` | 本地模式 provider |
+| `--api-key <key>` | `-k` | 本地模式 API key |
+| `--host <url>` | `-H` | 覆蓋 provider base URL |
+| `--list-models` |  | 列出模型 |
+| `--no-stream` |  | 關閉串流輸出 |
+| `--force-react` |  | 強制 ReAct XML |
+| `--force-native` |  | 強制 native tool calling |
+| `--max-iterations <n>` |  | 最大迭代數 |
+| `--generate` | `-g` | 執行 `project.json` 生成 |
+| `--pipeline <type>` |  | 執行指定 pipeline |
+| `--project-path <path>` |  | 目標專案路徑 |
+| `--dry-run` |  | 只驗證不寫檔 |
+| `--validate` |  | 只驗證 pipeline |
+| `--force` |  | 覆蓋既有生成內容 |
+| `--governed` |  | 啟用 broker 受控模式 |
+| `--broker-url <url>` |  | broker URL |
+| `--broker-pub-key <base64>` |  | broker public key |
+| `--principal-id <id>` |  | principal id |
+| `--task-id <id>` |  | task id |
+| `--role-id <id>` |  | role id |
 
-## REPL 指令
+## REPL 命令
 
-| 指令 | 說明 |
-|------|------|
-| `/help` | 顯示指令說明 |
+| 命令 | 說明 |
+|---|---|
+| `/help` | 顯示說明 |
 | `/model <name>` | 切換模型 |
-| `/models` | 列出可用模型 |
-| `/clear` | 清除對話歷史 |
-| `/history` | 對話統計 |
-| `/tools` | 列出工具 |
-| `/exit` | 退出 |
+| `/models` | 列出模型 |
+| `/clear` | 清除歷史 |
+| `/history` | 顯示歷史 |
+| `/tools` | 顯示目前可用工具 |
+| `/exit` | 離開 |
 
-## 工具呼叫策略
-
-### 原生 Tool Calling（推薦）
-
-支援原生 tool calling 的模型會直接走 provider 原生介面。OpenAI provider 會依 provider 設定自動選擇 `chat` 或 `responses` 格式。
-
-### ReAct XML 回退
-
-不支援原生 tool calling 的模型會自動切換到 XML 標籤模式。模型輸出 `<tool_call>` 區塊後，Agent 會解析並執行。
-
-可用 `--force-react` 或 `--force-native` 強制切換策略。
-
-## 內建工具
-
-| 工具 | 說明 |
-|------|------|
-| `read_file` | 讀取檔案（含行號，可分頁） |
-| `write_file` | 寫入檔案（支援覆寫/追加） |
-| `list_directory` | 列出目錄結構 |
-| `run_command` | 執行 shell 指令 |
-| `search_files` | 搜尋檔名（glob 模式） |
-| `search_content` | 搜尋檔案內容（regex） |
-
-## 安全機制
-
-- **路徑沙箱**：所有檔案操作限制在專案根目錄
-- **指令封鎖**：危險指令（`rm -rf /`、`format`、`shutdown` 等）自動阻擋
-- **確認提示**：覆寫既有檔案、破壞性操作前詢問使用者
-- **輸出限制**：防止大量輸出造成記憶體溢出
-- **受控模式**：可透過 Broker 進行 capability、session、audit 與 revocation 控制
-
-## Bricks4Agent 整合
-
-在 Bricks4Agent 專案中執行時，Agent 會自動偵測並載入 `AGENT.md` 操作手冊，並可直接搭配：
-
-- SPA CLI 指令格式與欄位型別對應
-- `project.json` 實體/服務定義
-- PageGenerator 30 種欄位類型
-- 自動路由更新與 convention-based 基礎設施
-- CRUD / extended service pipeline
-
-## 架構
+## 目錄
 
 ```text
 tools/agent/
-├── agent.js                    # CLI 入口
+├── agent.js
+├── README.md
 ├── lib/
-│   ├── agent-loop.js           # 核心代理迴圈
-│   ├── repl.js                 # REPL 介面
-│   ├── state-machine.js        # 狀態機 / 檢核點執行器
-│   ├── tool-registry.js        # 工具註冊與分派
-│   ├── governed-executor.js    # Broker 受控執行
-│   ├── broker-client.js        # Broker API 客戶端
+│   ├── agent-loop.js
+│   ├── repl.js
+│   ├── state-machine.js
+│   ├── tool-registry.js
+│   ├── governed-executor.js
+│   ├── broker-client.js
 │   ├── providers/
-│   │   ├── provider-factory.js # Provider 選擇與別名
-│   │   ├── ollama-provider.js  # Ollama provider
-│   │   └── openai-provider.js  # OpenAI-compatible / Responses provider
+│   │   ├── provider-factory.js
+│   │   ├── ollama-provider.js
+│   │   └── openai-provider.js
 │   ├── pipelines/
-│   │   ├── pipeline-runner.js  # project.json 批次執行
-│   │   ├── crud-pipeline.js    # CRUD 生成管線
-│   │   └── service-pipeline.js # Extended service 管線
-│   ├── tools/
-│   │   ├── file-tools.js       # 檔案操作工具
-│   │   ├── dir-tools.js        # 目錄列表工具
-│   │   └── command-tool.js     # 指令執行工具
-│   ├── react-parser.js         # ReAct XML 解析器
-│   ├── streaming.js            # 串流回應處理
-│   ├── responses-parser.js     # Responses API 事件解析
-│   ├── safety.js               # 安全層
-│   └── utils.js                # 共用工具
-└── README.md
+│   ├── react-parser.js
+│   ├── streaming.js
+│   ├── responses-parser.js
+│   ├── safety.js
+│   └── utils.js
+└── tests/
+    └── test-governed-mode.js
 ```

@@ -1,16 +1,5 @@
 'use strict';
 
-/**
- * Governed Executor — 受控執行模式
- *
- * 將工具呼叫路由到 Broker 中介核心，透過加密通道提交執行請求。
- * Broker 負責政策裁決（PEP 16 步流程），只有被允許的操作才會執行。
- *
- * 生命週期：
- *   1. init()        → ECDH 金鑰交換、建立加密 session
- *   2. executeTool() → 每次工具呼叫 → 加密提交 → 裁決 → 回傳結果
- *   3. close()       → 優雅關閉 session、清零金鑰
- */
 const { BrokerClient } = require('./broker-client');
 const {
     TOOL_TO_CAPABILITY,
@@ -28,22 +17,16 @@ const BROKER_ROUTES = {
     close: '/api/v1/sessions/close',
     capabilitiesList: '/api/v1/capabilities/list',
     grantsList: '/api/v1/grants/list',
+    runtimeSpec: '/api/v1/runtime/spec',
+    llmHealth: '/api/v1/llm/health',
+    llmModels: '/api/v1/llm/models',
+    llmChat: '/api/v1/llm/chat',
 };
 
 const RISK_LEVEL_LABELS = ['Low', 'Medium', 'High', 'Critical'];
 const GRANT_STATUS_LABELS = ['Active', 'Expired', 'Revoked', 'Exhausted'];
 
 class GovernedExecutor {
-    /**
-     * @param {Object} options
-     * @param {string} options.brokerUrl       - Broker API URL (e.g., 'http://localhost:5000')
-     * @param {string} options.brokerPubKey    - Broker ECDH P-256 公鑰 (Base64 SPKI)
-     * @param {string} options.principalId     - 主體 ID (e.g., 'prn_xxx')
-     * @param {string} options.taskId          - 任務 ID (e.g., 'task_xxx')
-     * @param {string} options.roleId          - 角色 ID (e.g., 'role_reader')
-     * @param {boolean} options.verbose        - 是否顯示除錯訊息
-     * @param {(brokerUrl: string, brokerPubKey: string) => BrokerClient} [options.clientFactory]
-     */
     constructor(options) {
         this.brokerUrl = options.brokerUrl;
         this.brokerPubKey = options.brokerPubKey;
@@ -59,19 +42,25 @@ class GovernedExecutor {
         this.capabilities = [];
         this.grants = [];
         this.allowedCapabilities = [];
+        this.runtimeSpec = null;
         this.promptContext = null;
         this._heartbeatTimer = null;
     }
 
-    /**
-     * 初始化：建立 BrokerClient、ECDH 交握、註冊 session，並載入目前 session 的能力範圍
-     */
+    get name() {
+        return 'broker-governed';
+    }
+
+    get baseUrl() {
+        return this.brokerUrl;
+    }
+
     async init() {
         this.client = this.clientFactory(this.brokerUrl, this.brokerPubKey);
 
         if (this.verbose) {
-            logInfo(`[Governed] 連線到 Broker: ${this.brokerUrl}`);
-            logInfo(`[Governed] 主體: ${this.principalId}, 任務: ${this.taskId}, 角色: ${this.roleId}`);
+            logInfo(`[Governed] broker=${this.brokerUrl}`);
+            logInfo(`[Governed] principal=${this.principalId} task=${this.taskId} role=${this.roleId}`);
         }
 
         try {
@@ -82,59 +71,54 @@ class GovernedExecutor {
             );
 
             await this._loadGovernanceSnapshot();
+            await this._loadRuntimeSpec();
 
-            logInfo(`[Governed] Session 建立成功: ${this.sessionInfo.sessionId}`);
+            this.promptContext = this._buildPromptContext();
+
+            logInfo(`[Governed] session=${this.sessionInfo.sessionId}`);
             if (this.verbose) {
-                logInfo(`[Governed] Session 到期: ${this.sessionInfo.expiresAt}`);
-                logInfo(`[Governed] 已載入 ${this.allowedCapabilities.length} 個可請求 capability`);
+                logInfo(`[Governed] session_expires_at=${this.sessionInfo.expiresAt}`);
+                logInfo(`[Governed] granted_capabilities=${this.allowedCapabilities.length}`);
+                if (this.runtimeSpec) {
+                    logInfo(`[Governed] llm_provider=${this.runtimeSpec.provider} model=${this.resolveModel()}`);
+                }
             }
 
             this._startHeartbeat();
-
             return this.sessionInfo;
         } catch (e) {
-            logError(`[Governed] Session 註冊失敗: ${e.message}`);
-            throw new Error(`Broker session 註冊失敗: ${e.message}`);
+            logError(`[Governed] init failed: ${e.message}`);
+            throw new Error(`Broker session init failed: ${e.message}`);
         }
     }
 
-    /**
-     * 透過 Broker 執行工具呼叫（替代直接 executeTool）
-     *
-     * @param {string} toolName  - JS 工具名稱 (e.g., 'read_file')
-     * @param {Object} toolArgs  - 工具參數
-     * @param {Object} context   - 執行上下文 { projectRoot, noConfirm, verbose }
-     * @returns {Promise<string>} 執行結果（或拒絕訊息）
-     */
     async executeTool(toolName, toolArgs, context) {
         const capabilityId = capabilityIdForTool(toolName);
         if (!capabilityId) {
-            return `❌ [Governed] 未知工具: ${toolName}（無對應 capability 映射）`;
+            return `[Governed] unsupported tool: ${toolName}`;
         }
 
         const grantedCapabilityIds = this.getAllowedCapabilityIds();
         if (this.promptContext && grantedCapabilityIds.length === 0) {
-            return '❌ [Governed] 目前這個 session 沒有任何可請求 capability。';
+            return '[Governed] session has no granted capabilities.';
         }
         if (!grantedCapabilityIds.includes(capabilityId)) {
-            return `❌ [Governed] Capability 未授權: ${capabilityId}\n` +
-                   `   工具: ${toolName}\n` +
-                   `   目前可請求: ${grantedCapabilityIds.join(', ')}`;
+            return `[Governed] capability denied: ${capabilityId}\n` +
+                `tool: ${toolName}\n` +
+                `granted: ${grantedCapabilityIds.join(', ')}`;
         }
 
         this.requestCounter++;
         const idempotencyKey = `${this.sessionInfo.sessionId}-${this.requestCounter}-${Date.now()}`;
-
         const payload = {
             route: toolName,
             args: toolArgs,
             project_root: context.projectRoot || '',
         };
-
         const intent = this._describeIntent(toolName, toolArgs);
 
         if (this.verbose) {
-            console.log(colorize(`  🔒 [Governed] ${capabilityId} → Broker 裁決中...`, 'yellow'));
+            console.log(colorize(`  [Governed] ${capabilityId} -> broker`, 'yellow'));
         }
 
         try {
@@ -146,11 +130,9 @@ class GovernedExecutor {
             );
 
             if (result.success === false || result.data?.execution_state === 'denied') {
-                const reason = result.data?.policy_reason || result.message || '政策拒絕';
-                console.log(colorize(`  🚫 [Governed] 裁決拒絕: ${reason}`, 'red'));
-                return `❌ [Governed] 操作被拒絕: ${reason}\n` +
-                       `   能力: ${capabilityId}\n` +
-                       `   工具: ${toolName}`;
+                const reason = result.data?.policy_reason || result.message || 'Request denied';
+                console.log(colorize(`  [Governed] denied: ${reason}`, 'red'));
+                return `[Governed] request denied: ${reason}\ncapability: ${capabilityId}\ntool: ${toolName}`;
             }
 
             if (result.data?.result_payload) {
@@ -159,43 +141,118 @@ class GovernedExecutor {
                     : JSON.stringify(result.data.result_payload);
 
                 if (this.verbose) {
-                    console.log(colorize('  ✅ [Governed] 裁決通過，執行完成', 'green'));
+                    console.log(colorize('  [Governed] tool request succeeded', 'green'));
                 }
                 return resultPayload;
             }
 
             if (result.data?.execution_state === 'dispatched') {
-                return `⏳ [Governed] 請求已提交，等待執行結果 (request_id: ${result.data?.request_id})`;
+                return `[Governed] request dispatched (request_id: ${result.data?.request_id})`;
             }
 
             return result.data
                 ? JSON.stringify(result.data)
-                : '✅ [Governed] 操作完成';
+                : '[Governed] request completed';
         } catch (e) {
-            logError(`[Governed] 執行請求失敗: ${e.message}`);
-            return `❌ [Governed] Broker 通訊錯誤: ${e.message}`;
+            logError(`[Governed] tool request failed: ${e.message}`);
+            return `[Governed] broker error: ${e.message}`;
         }
     }
 
-    /**
-     * 優雅關閉 session
-     */
+    async healthCheck() {
+        try {
+            const response = await this.client.llmHealth();
+            const healthy = response?.data?.healthy;
+            return healthy === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    async listModels() {
+        const response = await this.client.llmModels();
+        const models = Array.isArray(response?.data) ? response.data : [];
+        return models.map((model) => ({
+            name: readField(model, ['name'], ''),
+            size: readField(model, ['size'], null),
+        })).filter((model) => model.name);
+    }
+
+    supportsToolCalling() {
+        return !!this.runtimeSpec?.supportsToolCalling;
+    }
+
+    resolveModel(requestedModel) {
+        if (!this.runtimeSpec) {
+            return requestedModel || '';
+        }
+        if (this.runtimeSpec.allowModelOverride && requestedModel) {
+            return requestedModel;
+        }
+        return this.runtimeSpec.defaultModel || requestedModel || '';
+    }
+
+    async chat(params) {
+        const model = this.resolveModel(params.model);
+        const payload = {
+            model,
+            messages: params.messages,
+            tools: params.tools || [],
+            stream: false,
+        };
+
+        const startTime = Date.now();
+        if (params.onHeartbeat) {
+            params.onHeartbeat({
+                elapsed: 0,
+                sinceLastToken: 0,
+                status: 'thinking',
+                noDataCount: 0,
+                runningModels: null,
+            });
+        }
+
+        const response = await this.client.llmChat(payload);
+        const data = response?.data || {};
+        const content = readField(data, ['content'], '');
+        const toolCalls = normalizeToolCalls(readField(data, ['tool_calls', 'toolCalls'], []));
+        const result = {
+            content,
+            toolCalls,
+            thinking: readField(data, ['thinking'], ''),
+            done: readField(data, ['done'], true),
+            model: readField(data, ['model'], model),
+            totalDuration: readField(data, ['total_duration', 'totalDuration'], 0),
+            evalCount: readField(data, ['eval_count', 'evalCount'], 0),
+        };
+
+        if (params.onToken && content) {
+            params.onToken(content);
+        }
+        if (params.onHeartbeat) {
+            params.onHeartbeat({
+                elapsed: Date.now() - startTime,
+                sinceLastToken: 0,
+                status: 'done',
+            });
+        }
+
+        return result;
+    }
+
     async close() {
         this._stopHeartbeat();
 
         if (this.client && this.client.sessionId) {
             try {
                 await this.client.closeSession('Agent session ending');
-                logInfo('[Governed] Session 已優雅關閉');
+                logInfo('[Governed] session closed');
             } catch (e) {
-                logWarn(`[Governed] Session 關閉失敗（非致命）: ${e.message}`);
+                logWarn(`[Governed] close failed: ${e.message}`);
             }
         }
     }
 
-    /**
-     * 是否已建立 session
-     */
     get isActive() {
         return !!(this.client && this.client.sessionId !== null);
     }
@@ -216,13 +273,9 @@ class GovernedExecutor {
         return this.promptContext;
     }
 
-    // ── 內部方法 ──
-
     async _loadGovernanceSnapshot() {
-        const [capabilitiesResponse, grantsResponse] = await Promise.all([
-            this.client.listCapabilities(),
-            this.client.listGrants(),
-        ]);
+        const capabilitiesResponse = await this.client.listCapabilities();
+        const grantsResponse = await this.client.listGrants();
 
         this.capabilities = toArray(capabilitiesResponse)
             .map(normalizeCapability)
@@ -258,8 +311,21 @@ class GovernedExecutor {
                 grantStatus: grant.status,
             };
         });
+    }
 
-        this.promptContext = this._buildPromptContext();
+    async _loadRuntimeSpec() {
+        const response = await this.client.getRuntimeSpec();
+        const data = response?.data || {};
+        this.runtimeSpec = {
+            provider: readField(data, ['provider'], 'ollama'),
+            apiFormat: readField(data, ['api_format', 'apiFormat'], 'chat'),
+            defaultModel: readField(data, ['default_model', 'defaultModel'], ''),
+            allowModelOverride: !!readField(data, ['allow_model_override', 'allowModelOverride'], false),
+            supportsToolCalling: !!readField(data, ['supports_tool_calling', 'supportsToolCalling'], true),
+            streamingEnabled: !!readField(data, ['streaming_enabled', 'streamingEnabled'], false),
+            llmRoutes: readField(data, ['llm_routes', 'llmRoutes'], {}),
+            requestBodies: readField(data, ['request_bodies', 'requestBodies'], {}),
+        };
     }
 
     _buildPromptContext() {
@@ -272,6 +338,10 @@ class GovernedExecutor {
                 close: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.close),
                 capabilitiesList: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.capabilitiesList),
                 grantsList: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.grantsList),
+                runtimeSpec: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.runtimeSpec),
+                llmHealth: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmHealth),
+                llmModels: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmModels),
+                llmChat: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmChat),
             },
             session: {
                 principalId: this.principalId,
@@ -280,6 +350,16 @@ class GovernedExecutor {
                 sessionId: this.sessionInfo?.sessionId || '',
                 expiresAt: this.sessionInfo?.expiresAt || '',
             },
+            runtimeSpec: this.runtimeSpec ? {
+                provider: this.runtimeSpec.provider,
+                apiFormat: this.runtimeSpec.apiFormat,
+                defaultModel: this.runtimeSpec.defaultModel,
+                resolvedModel: this.resolveModel(),
+                allowModelOverride: this.runtimeSpec.allowModelOverride,
+                supportsToolCalling: this.runtimeSpec.supportsToolCalling,
+                streamingEnabled: this.runtimeSpec.streamingEnabled,
+                llmRoutes: this.runtimeSpec.llmRoutes,
+            } : null,
             allowedCapabilities: this.allowedCapabilities.map((item) => ({
                 capabilityId: item.capabilityId,
                 toolName: item.toolName,
@@ -355,6 +435,35 @@ class GovernedExecutor {
                     url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.capabilitiesList),
                     body: { scoped_token: '<scoped token issued for this session>', filter: null },
                 },
+                runtimeSpecPlaintext: {
+                    method: 'POST',
+                    url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.runtimeSpec),
+                    body: { scoped_token: '<scoped token issued for this session>' },
+                },
+                llmHealthPlaintext: this.runtimeSpec?.requestBodies?.health || {
+                    method: 'POST',
+                    url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmHealth),
+                    body: { scoped_token: '<scoped token issued for this session>' },
+                },
+                llmModelsPlaintext: this.runtimeSpec?.requestBodies?.models || {
+                    method: 'POST',
+                    url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmModels),
+                    body: { scoped_token: '<scoped token issued for this session>' },
+                },
+                llmChatPlaintext: this.runtimeSpec?.requestBodies?.chat || {
+                    method: 'POST',
+                    url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.llmChat),
+                    body: {
+                        scoped_token: '<scoped token issued for this session>',
+                        model: this.resolveModel(),
+                        messages: [
+                            { role: 'system', content: 'You are a governed agent.' },
+                            { role: 'user', content: '<prompt>' },
+                        ],
+                        tools: [],
+                        stream: false,
+                    },
+                },
                 closePlaintext: {
                     method: 'POST',
                     url: buildRouteUrl(this.brokerUrl, BROKER_ROUTES.close),
@@ -395,9 +504,6 @@ class GovernedExecutor {
         return args;
     }
 
-    /**
-     * 描述工具呼叫意圖（用於稽核）
-     */
     _describeIntent(toolName, args) {
         switch (toolName) {
             case 'read_file':
@@ -417,19 +523,16 @@ class GovernedExecutor {
         }
     }
 
-    /**
-     * 啟動定期心跳（每 5 分鐘）
-     */
     _startHeartbeat() {
         this._stopHeartbeat();
         this._heartbeatTimer = setInterval(async () => {
             try {
                 await this.client.heartbeat();
                 if (this.verbose) {
-                    logInfo('[Governed] 心跳成功');
+                    logInfo('[Governed] heartbeat ok');
                 }
             } catch (e) {
-                logWarn(`[Governed] 心跳失敗: ${e.message}`);
+                logWarn(`[Governed] heartbeat failed: ${e.message}`);
             }
         }, 5 * 60 * 1000);
 
@@ -438,9 +541,6 @@ class GovernedExecutor {
         }
     }
 
-    /**
-     * 停止心跳
-     */
     _stopHeartbeat() {
         if (this._heartbeatTimer) {
             clearInterval(this._heartbeatTimer);
@@ -511,6 +611,35 @@ function normalizeGrant(grant) {
         expiresAt: readField(grant, ['expiresAt', 'expires_at'], ''),
         status: GRANT_STATUS_LABELS[statusValue] || 'Unknown',
     };
+}
+
+function normalizeToolCalls(toolCalls) {
+    if (!Array.isArray(toolCalls)) {
+        return [];
+    }
+
+    return toolCalls.map((toolCall) => {
+        const fn = toolCall.function || {};
+        let args = fn.arguments || {};
+        if (typeof args === 'string') {
+            try {
+                args = JSON.parse(args);
+            } catch (_) {
+                args = { _raw: args };
+            }
+        }
+
+        const normalized = {
+            function: {
+                name: fn.name || '',
+                arguments: args,
+            },
+        };
+        if (toolCall.id) {
+            normalized.id = toolCall.id;
+        }
+        return normalized;
+    });
 }
 
 function buildRouteUrl(baseUrl, routePath) {

@@ -6,49 +6,30 @@ const { getToolDescriptions } = require('./tool-registry');
 const { logInfo, logWarn } = require('./utils');
 
 const MAX_AGENT_MD_CHARS_NATIVE = 8000;
-const MAX_AGENT_MD_CHARS_REACT = 4000; // ReAct 模式需為工具說明留空間
+const MAX_AGENT_MD_CHARS_REACT = 4000;
 
-// ─── 基礎 Agent 身份 ───
-
-const BASE_PROMPT = `你是一個 AI 程式助手。你會閱讀、理解和修改使用者專案中的程式碼。
-
-工作準則：
-- 修改前先閱讀相關檔案
-- 做出變更前先說明你的計畫
-- 做最小、聚焦的修改
-- 保持既有程式碼風格
-- 不確定時向使用者確認
-- 使用繁體中文回應`;
-
-// ─── ReAct 工具呼叫說明 ───
+const BASE_PROMPT = `You are an AI coding agent operating inside the user's project.
+Follow project instructions exactly, inspect before changing code, and stay within the allowed tool and policy boundaries.
+- Be concrete and technical.
+- Prefer deterministic edits over speculative changes.
+- Do not claim to have performed actions you did not actually perform.
+- If access is governed, only use the routes, capabilities, and scopes explicitly granted.`;
 
 const REACT_INSTRUCTIONS = `
-## 工具呼叫
+## Tool Calls
 
-你可以使用以下工具。要呼叫工具，請使用 <tool_call> 區塊：
+When using ReAct mode, emit tool calls with this exact wrapper:
 
 <tool_call>
-{"name": "工具名稱", "arguments": {"參數1": "值1", "參數2": "值2"}}
+{"name": "tool_name", "arguments": {"arg1": "value"}}
 </tool_call>
 
-每次工具呼叫後，你會收到一個 <tool_result> 區塊包含執行結果。
-你可以連續呼叫多個工具（每次一個 <tool_call> 區塊）。
-當你收集到足夠資訊後，用純文字給出最終回答（不再包含 <tool_call>）。
+After each tool result, continue reasoning from the returned data and only stop once the task is complete.
 
-### 可用工具
+## Available Tools
 
 `;
 
-/**
- * 建構完整系統提示詞
- * @param {Object} options
- * @param {string} options.projectRoot - 專案根目錄
- * @param {boolean} options.useReact - 是否使用 ReAct 模式
- * @param {boolean} options.verbose - 是否顯示偵測資訊
- * @param {string} [options.toolDescriptions] - 自訂工具描述
- * @param {Object} [options.governed] - 受控模式 broker 契約摘要
- * @returns {string} 系統提示詞
- */
 function buildSystemPrompt(options) {
     const {
         projectRoot,
@@ -57,38 +38,39 @@ function buildSystemPrompt(options) {
         toolDescriptions = getToolDescriptions(),
         governed = null,
     } = options;
+
     const parts = [BASE_PROMPT];
 
     if (governed) {
         parts.push(buildGovernedSection(governed));
     } else {
-        parts.push('\n## 執行模型\n\n你可以直接透過工具與本地工作區互動。');
+        parts.push('\n## Execution Mode\n\nYou may use the locally registered tools directly.');
     }
 
     const agentMdPath = findAgentMd(projectRoot);
     const maxChars = useReact ? MAX_AGENT_MD_CHARS_REACT : MAX_AGENT_MD_CHARS_NATIVE;
     if (agentMdPath) {
-        if (verbose) logInfo(`載入專案手冊: ${agentMdPath}`);
+        if (verbose) logInfo(`Loading project manual: ${agentMdPath}`);
         try {
             let content = fs.readFileSync(agentMdPath, 'utf8');
             if (content.length > maxChars) {
                 const sections = content.split(/\n## /);
                 let truncated = sections[0];
                 for (let i = 1; i < sections.length; i++) {
-                    const candidate = truncated + '\n## ' + sections[i];
+                    const candidate = `${truncated}\n## ${sections[i]}`;
                     if (candidate.length > maxChars) break;
                     truncated = candidate;
                 }
-                content = truncated + '\n\n（完整手冊可透過 read_file(\'AGENT.md\') 取得）';
-                if (verbose) logWarn(`AGENT.md 已截斷至 ${content.length} 字元`);
+                content = `${truncated}\n\nIf you need the rest, read AGENT.md via a file tool call.`;
+                if (verbose) logWarn(`AGENT.md truncated to ${content.length} characters`);
             }
 
-            parts.push(`\n## 專案上下文\n\n本專案提供了 AI Agent 操作手冊，以下是相關內容：\n\n<project_manual>\n${content}\n</project_manual>`);
+            parts.push(`\n## Project Manual\n\n<project_manual>\n${content}\n</project_manual>`);
         } catch (e) {
-            if (verbose) logWarn(`無法載入 AGENT.md: ${e.message}`);
+            if (verbose) logWarn(`Failed to load AGENT.md: ${e.message}`);
         }
     } else if (verbose) {
-        logInfo('未偵測到 AGENT.md，以通用模式運行');
+        logInfo('No AGENT.md found near the project root');
     }
 
     if (useReact) {
@@ -103,60 +85,89 @@ function buildGovernedSection(governed) {
         ? governed.allowedCapabilities.map((capability, index) => {
             const scope = JSON.stringify(capability.scopeOverride || {});
             const schema = JSON.stringify(capability.paramSchema || {});
-            return `${index + 1}. ${capability.capabilityId} → tool=${capability.toolName || capability.route || '(unmapped)'} | route=${capability.route || '(n/a)'} | risk=${capability.riskLevel} | approval=${capability.approvalPolicy} | scope=${scope} | quota=${capability.remainingQuota} | expires_at=${capability.expiresAt} | params=${schema}`;
+            return `${index + 1}. ${capability.capabilityId} | tool=${capability.toolName || capability.route || '(unmapped)'} | route=${capability.route || '(n/a)'} | risk=${capability.riskLevel} | approval=${capability.approvalPolicy} | scope=${scope} | quota=${capability.remainingQuota} | expires_at=${capability.expiresAt} | params=${schema}`;
         }).join('\n')
-        : '目前這個 agent 沒有任何可請求 capability。若任務需要額外權限，必須明確回報權限不足。';
+        : 'This agent currently has no granted capabilities.';
+
+    const runtimeSection = governed.runtimeSpec
+        ? `
+## LLM Runtime Contract
+
+All model traffic must go through the broker. Do not assume direct provider access or direct API keys.
+- Upstream provider label: ${governed.runtimeSpec.provider}
+- API format: ${governed.runtimeSpec.apiFormat}
+- Default model: ${governed.runtimeSpec.defaultModel}
+- Resolved model for this agent: ${governed.runtimeSpec.resolvedModel}
+- Model override allowed: ${governed.runtimeSpec.allowModelOverride}
+- Tool calling enabled at LLM layer: ${governed.runtimeSpec.supportsToolCalling}
+- Streaming enabled: ${governed.runtimeSpec.streamingEnabled}
+- Health route: ${governed.runtimeSpec.llmRoutes?.health || governed.brokerRoutes.llmHealth}
+- Models route: ${governed.runtimeSpec.llmRoutes?.models || governed.brokerRoutes.llmModels}
+- Chat route: ${governed.runtimeSpec.llmRoutes?.chat || governed.brokerRoutes.llmChat}
+
+LLM request bodies:
+\`\`\`json
+${JSON.stringify({
+    runtime_spec: governed.requestBodies.runtimeSpecPlaintext,
+    llm_health: governed.requestBodies.llmHealthPlaintext,
+    llm_models: governed.requestBodies.llmModelsPlaintext,
+    llm_chat: governed.requestBodies.llmChatPlaintext,
+}, null, 2)}
+\`\`\`
+`
+        : '';
 
     return `
 ## Governed Broker Contract
 
-你目前運行於受控容器模式。你沒有直接的檔案系統、shell 或網路副作用權限。
-你只能要求執行階段透過 HTTP POST + JSON body 向 Broker 中介核心送出請求，再由 Broker 依照這個 agent 的 role、session、grant、scope 與 policy 決定是否執行。
+This agent operates in governed mode.
+- You can only request capabilities explicitly granted to this session.
+- Every side-effecting action must be sent to the broker as an HTTP POST with a JSON body.
+- The broker validates role, session, grants, capability, scope, schema, and policy before dispatch.
+- Function permission and scope are separate:
+  capability_id controls what operation may be requested;
+  scope.routes and scope.paths control where that operation may apply.
+- Do not assume shell, filesystem write, or direct network access outside the broker contract.
 
-硬限制：
-- 只可請求下列 Broker 路由，且只能使用 POST。
-- 只可請求目前 grants 允許的 capability_id。
-- 每次請求都必須對應單一 capability_id 與單一 payload。
-- 如果需要的 capability 不在目前清單內，直接說明權限不足，不可自行假設已授權。
-- 你不可把自己描述成直接執行 shell、直接讀寫檔案或直接呼叫外部 API；所有動作都必須經 Broker。
-
-目前 Broker 目標：
-- Base URL: ${governed.brokerUrl}
+Broker routes:
 - Register: POST ${governed.brokerRoutes.register}
 - Submit: POST ${governed.brokerRoutes.submit}
 - Heartbeat: POST ${governed.brokerRoutes.heartbeat}
 - Close: POST ${governed.brokerRoutes.close}
-- List Capabilities: POST ${governed.brokerRoutes.capabilitiesList}
-- List Grants: POST ${governed.brokerRoutes.grantsList}
+- List capabilities: POST ${governed.brokerRoutes.capabilitiesList}
+- List grants: POST ${governed.brokerRoutes.grantsList}
+- Runtime spec: POST ${governed.brokerRoutes.runtimeSpec}
+- LLM health: POST ${governed.brokerRoutes.llmHealth}
+- LLM models: POST ${governed.brokerRoutes.llmModels}
+- LLM chat: POST ${governed.brokerRoutes.llmChat}
 
-目前這個 agent 的身分：
+Current session:
 - principal_id: ${governed.session.principalId}
 - task_id: ${governed.session.taskId}
 - role_id: ${governed.session.roleId}
 - session_id: ${governed.session.sessionId}
 - expires_at: ${governed.session.expiresAt}
 
-目前這個 agent 可請求的功能與範圍：
+Granted capabilities:
 ${capabilityLines}
 
-標準 POST JSON 格式：
-
-1. Session register 外層 POST JSON
+Broker request bodies:
+1. Session register outer envelope
 \`\`\`json
 ${JSON.stringify(governed.requestBodies.registerOuter, null, 2)}
 \`\`\`
 
-2. Execution submit 外層 POST JSON
+2. Execution submit outer envelope
 \`\`\`json
 ${JSON.stringify(governed.requestBodies.submitOuter.body, null, 2)}
 \`\`\`
 
-3. Execution submit 解密前的 plaintext JSON body
+3. Execution submit plaintext body
 \`\`\`json
 ${JSON.stringify(governed.requestBodies.submitOuter.plaintext, null, 2)}
 \`\`\`
 
-4. 其他受控 POST JSON body
+4. Other broker plaintext POST bodies
 \`\`\`json
 ${JSON.stringify({
     heartbeat: governed.requestBodies.heartbeatPlaintext,
@@ -165,19 +176,14 @@ ${JSON.stringify({
     close: governed.requestBodies.closePlaintext,
 }, null, 2)}
 \`\`\`
-
-執行語意：
-- 你要做的不是直接執行副作用，而是選擇當前 grants 內最合適的 capability/tool 請求 Broker。
-- 你的每次工具呼叫都會被轉成上面的 POST 契約，由 Broker 做權限審核後才可能實際執行。
-`;
+${runtimeSection}
+Behavioral constraints:
+- Never invent new capability IDs, routes, paths, or schemas.
+- If the required action is outside the granted capabilities or scope, say so explicitly.
+- If there is no grant for an operation, do not imply it can be requested.
+- Use the broker contract exactly as provided above.`;
 }
 
-/**
- * 搜尋 AGENT.md 檔案
- * 從 projectRoot 開始，向上搜尋最多 3 層
- * @param {string} startDir
- * @returns {string|null}
- */
 function findAgentMd(startDir) {
     let dir = startDir;
     const root = path.parse(dir).root;
@@ -188,7 +194,7 @@ function findAgentMd(startDir) {
             fs.accessSync(candidate);
             return candidate;
         } catch (_) {
-            // 也檢查 .agentrc
+            // keep walking upward
         }
         const parent = path.dirname(dir);
         if (parent === dir || parent === root) break;
