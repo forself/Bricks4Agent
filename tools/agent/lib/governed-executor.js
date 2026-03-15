@@ -317,12 +317,18 @@ class GovernedExecutor {
         const response = await this.client.getRuntimeSpec();
         const data = response?.data || {};
         this.runtimeSpec = {
+            source: readField(data, ['source'], 'broker_default'),
             provider: readField(data, ['provider'], 'ollama'),
             apiFormat: readField(data, ['api_format', 'apiFormat'], 'chat'),
             defaultModel: readField(data, ['default_model', 'defaultModel'], ''),
             allowModelOverride: !!readField(data, ['allow_model_override', 'allowModelOverride'], false),
             supportsToolCalling: !!readField(data, ['supports_tool_calling', 'supportsToolCalling'], true),
             streamingEnabled: !!readField(data, ['streaming_enabled', 'streamingEnabled'], false),
+            taskId: readField(data, ['task_id', 'taskId'], ''),
+            taskType: readField(data, ['task_type', 'taskType'], ''),
+            assignedRoleId: readField(data, ['assigned_role_id', 'assignedRoleId'], ''),
+            scopeDescriptor: readField(data, ['scope_descriptor', 'scopeDescriptor'], '{}'),
+            capabilityIds: readField(data, ['capability_ids', 'capabilityIds'], []),
             llmRoutes: readField(data, ['llm_routes', 'llmRoutes'], {}),
             requestBodies: readField(data, ['request_bodies', 'requestBodies'], {}),
         };
@@ -351,6 +357,7 @@ class GovernedExecutor {
                 expiresAt: this.sessionInfo?.expiresAt || '',
             },
             runtimeSpec: this.runtimeSpec ? {
+                source: this.runtimeSpec.source,
                 provider: this.runtimeSpec.provider,
                 apiFormat: this.runtimeSpec.apiFormat,
                 defaultModel: this.runtimeSpec.defaultModel,
@@ -358,6 +365,11 @@ class GovernedExecutor {
                 allowModelOverride: this.runtimeSpec.allowModelOverride,
                 supportsToolCalling: this.runtimeSpec.supportsToolCalling,
                 streamingEnabled: this.runtimeSpec.streamingEnabled,
+                taskId: this.runtimeSpec.taskId,
+                taskType: this.runtimeSpec.taskType,
+                assignedRoleId: this.runtimeSpec.assignedRoleId,
+                scopeDescriptor: this.runtimeSpec.scopeDescriptor,
+                capabilityIds: this.runtimeSpec.capabilityIds,
                 llmRoutes: this.runtimeSpec.llmRoutes,
             } : null,
             allowedCapabilities: this.allowedCapabilities.map((item) => ({

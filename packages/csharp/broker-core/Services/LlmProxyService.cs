@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using BrokerCore.Models;
 
 namespace BrokerCore.Services;
 
@@ -33,16 +34,27 @@ public class LlmProxyService : ILlmProxyService
 
     public bool IsEnabled => _options.Enabled;
 
-    public AgentRuntimeSpec BuildRuntimeSpec()
+    public AgentRuntimeSpec BuildRuntimeSpec(BrokerTask? task = null, IEnumerable<string>? capabilityIds = null)
     {
+        var runtime = ResolveRuntime(task);
         return new AgentRuntimeSpec
         {
             Provider = _options.Provider,
             ApiFormat = _options.ApiFormat,
-            DefaultModel = _options.DefaultModel,
-            AllowModelOverride = _options.AllowModelOverride,
-            SupportsToolCalling = _options.SupportsToolCalling,
-            StreamingEnabled = _options.StreamingEnabled,
+            DefaultModel = runtime.DefaultModel,
+            AllowModelOverride = runtime.AllowModelOverride,
+            SupportsToolCalling = runtime.SupportsToolCalling,
+            StreamingEnabled = runtime.StreamingEnabled,
+            Source = runtime.Source,
+            TaskId = task?.TaskId ?? string.Empty,
+            TaskType = task?.TaskType ?? string.Empty,
+            AssignedRoleId = task?.AssignedRoleId ?? string.Empty,
+            ScopeDescriptor = task?.ScopeDescriptor ?? "{}",
+            CapabilityIds = capabilityIds?
+                .Where(capabilityId => !string.IsNullOrWhiteSpace(capabilityId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+                ?? Array.Empty<string>(),
         };
     }
 
@@ -74,25 +86,30 @@ public class LlmProxyService : ILlmProxyService
         return ParseOpenAiModels(modelsRoot);
     }
 
-    public async Task<LlmChatResult> ChatAsync(JsonElement body, CancellationToken cancellationToken = default)
+    public async Task<LlmChatResult> ChatAsync(JsonElement body, BrokerTask? task = null, CancellationToken cancellationToken = default)
     {
         EnsureEnabled();
+        var runtime = ResolveRuntime(task);
 
         var resolvedModel = ResolveModel(body.TryGetProperty("model", out var modelProp)
             ? modelProp.GetString()
-            : null);
+            : null, runtime);
 
         if (IsOllama())
         {
-            return await SendOllamaChatAsync(body, resolvedModel, cancellationToken);
+            return await SendOllamaChatAsync(body, resolvedModel, runtime, cancellationToken);
         }
 
         return string.Equals(_options.ApiFormat, "responses", StringComparison.OrdinalIgnoreCase)
-            ? await SendResponsesChatAsync(body, resolvedModel, cancellationToken)
-            : await SendChatCompletionsAsync(body, resolvedModel, cancellationToken);
+            ? await SendResponsesChatAsync(body, resolvedModel, runtime, cancellationToken)
+            : await SendChatCompletionsAsync(body, resolvedModel, runtime, cancellationToken);
     }
 
-    private async Task<LlmChatResult> SendOllamaChatAsync(JsonElement body, string model, CancellationToken cancellationToken)
+    private async Task<LlmChatResult> SendOllamaChatAsync(
+        JsonElement body,
+        string model,
+        ResolvedRuntimeOptions runtime,
+        CancellationToken cancellationToken)
     {
         var request = new JsonObject
         {
@@ -105,7 +122,7 @@ public class LlmProxyService : ILlmProxyService
             request["messages"] = JsonNode.Parse(messages.GetRawText());
         }
 
-        if (_options.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
+        if (runtime.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
         {
             request["tools"] = JsonNode.Parse(tools.GetRawText());
         }
@@ -125,7 +142,11 @@ public class LlmProxyService : ILlmProxyService
         };
     }
 
-    private async Task<LlmChatResult> SendChatCompletionsAsync(JsonElement body, string model, CancellationToken cancellationToken)
+    private async Task<LlmChatResult> SendChatCompletionsAsync(
+        JsonElement body,
+        string model,
+        ResolvedRuntimeOptions runtime,
+        CancellationToken cancellationToken)
     {
         var request = new JsonObject
         {
@@ -138,7 +159,7 @@ public class LlmProxyService : ILlmProxyService
             request["messages"] = JsonNode.Parse(messages.GetRawText());
         }
 
-        if (_options.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
+        if (runtime.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
         {
             request["tools"] = JsonNode.Parse(tools.GetRawText());
         }
@@ -158,7 +179,11 @@ public class LlmProxyService : ILlmProxyService
         };
     }
 
-    private async Task<LlmChatResult> SendResponsesChatAsync(JsonElement body, string model, CancellationToken cancellationToken)
+    private async Task<LlmChatResult> SendResponsesChatAsync(
+        JsonElement body,
+        string model,
+        ResolvedRuntimeOptions runtime,
+        CancellationToken cancellationToken)
     {
         var request = new JsonObject
         {
@@ -173,7 +198,7 @@ public class LlmProxyService : ILlmProxyService
         }
         request["input"] = input;
 
-        if (_options.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
+        if (runtime.SupportsToolCalling && body.TryGetProperty("tools", out var tools))
         {
             request["tools"] = ConvertToolsForResponses(tools);
         }
@@ -511,16 +536,33 @@ public class LlmProxyService : ILlmProxyService
         return arguments.GetRawText();
     }
 
-    private string ResolveModel(string? requestedModel)
+    private string ResolveModel(string? requestedModel, ResolvedRuntimeOptions runtime)
     {
-        if (_options.AllowModelOverride && !string.IsNullOrWhiteSpace(requestedModel))
+        if (runtime.AllowModelOverride && !string.IsNullOrWhiteSpace(requestedModel))
         {
             return requestedModel;
         }
 
-        return !string.IsNullOrWhiteSpace(_options.DefaultModel)
-            ? _options.DefaultModel
+        return !string.IsNullOrWhiteSpace(runtime.DefaultModel)
+            ? runtime.DefaultModel
             : requestedModel ?? string.Empty;
+    }
+
+    private ResolvedRuntimeOptions ResolveRuntime(BrokerTask? task)
+    {
+        var descriptor = TaskRuntimeDescriptor.Parse(task?.RuntimeDescriptor);
+        return new ResolvedRuntimeOptions
+        {
+            DefaultModel = !string.IsNullOrWhiteSpace(descriptor.Llm.DefaultModel)
+                ? descriptor.Llm.DefaultModel
+                : _options.DefaultModel,
+            AllowModelOverride = descriptor.Llm.AllowModelOverride ?? _options.AllowModelOverride,
+            SupportsToolCalling = descriptor.Llm.SupportsToolCalling ?? _options.SupportsToolCalling,
+            StreamingEnabled = descriptor.Llm.StreamingEnabled ?? _options.StreamingEnabled,
+            Source = descriptor.Llm.HasOverrides || descriptor.HasCapabilityOverrides
+                ? "task_runtime_descriptor"
+                : "broker_default"
+        };
     }
 
     private bool IsOllama()
@@ -532,5 +574,14 @@ public class LlmProxyService : ILlmProxyService
         {
             throw new InvalidOperationException("LlmProxy is disabled.");
         }
+    }
+
+    private sealed class ResolvedRuntimeOptions
+    {
+        public string DefaultModel { get; set; } = string.Empty;
+        public bool AllowModelOverride { get; set; }
+        public bool SupportsToolCalling { get; set; }
+        public bool StreamingEnabled { get; set; }
+        public string Source { get; set; } = "broker_default";
     }
 }

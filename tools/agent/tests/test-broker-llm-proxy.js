@@ -11,12 +11,31 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const { AgentLoop } = require('../lib/agent-loop');
+const { BrokerClient } = require('../lib/broker-client');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const TEST_PRINCIPAL_ID = 'prn_dev_test';
 const TEST_TASK_ID = 'task_dev_test';
-const TEST_ROLE_ID = 'role_reader';
+const TEST_ROLE_ID = 'role_admin';
 const TEST_MODEL = 'proxy-test-model';
+const TEST_RUNTIME_DESCRIPTOR = JSON.stringify({
+    llm: {
+        default_model: TEST_MODEL,
+        allow_model_override: false,
+        supports_tool_calling: true,
+        streaming_enabled: false,
+    },
+    capability_grants: [
+        {
+            capability_id: 'file.read',
+            scope: {
+                paths: [ROOT],
+                routes: ['read_file'],
+            },
+            quota: 2,
+        },
+    ],
+});
 
 function createForbiddenDirectProvider() {
     return {
@@ -130,6 +149,46 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function runProcess(command, args, env = process.env) {
+    return await new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            cwd: ROOT,
+            env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        child.on('error', reject);
+        child.on('close', (code) => {
+            resolve({ code, stdout, stderr });
+        });
+    });
+}
+
+async function buildBrokerProject() {
+    const result = await runProcess('dotnet', [
+        'build',
+        '--nologo',
+        '-v',
+        'q',
+        '-m:1',
+        '/nodeReuse:false',
+        'packages/csharp/broker/Broker.csproj',
+    ]);
+
+    if (result.code !== 0) {
+        throw new Error(`Broker build failed.\n${result.stdout}\n${result.stderr}`);
+    }
+}
+
 async function waitForHealth(url, timeoutMs, logs) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
@@ -158,6 +217,7 @@ async function startBroker(brokerPort, upstreamPort, brokerPrivateKeyBase64) {
 
     const child = spawn('dotnet', [
         'run',
+        '--no-build',
         '--no-launch-profile',
         '--project',
         'packages/csharp/broker/Broker.csproj',
@@ -183,6 +243,7 @@ async function startBroker(brokerPort, upstreamPort, brokerPrivateKeyBase64) {
             DevelopmentSeed__TaskId: TEST_TASK_ID,
             DevelopmentSeed__TaskType: 'analysis',
             DevelopmentSeed__AssignedRoleId: TEST_ROLE_ID,
+            DevelopmentSeed__RuntimeDescriptor: TEST_RUNTIME_DESCRIPTOR,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -222,6 +283,8 @@ async function main() {
         publicKeyEncoding: { type: 'spki', format: 'der' },
     });
 
+    await buildBrokerProject();
+
     const broker = await startBroker(
         brokerPort,
         upstream.port,
@@ -229,6 +292,15 @@ async function main() {
     );
 
     try {
+        const mismatchClient = new BrokerClient(
+            `http://127.0.0.1:${brokerPort}`,
+            Buffer.from(publicKey).toString('base64')
+        );
+        await assert.rejects(
+            () => mismatchClient.registerSession(TEST_PRINCIPAL_ID, TEST_TASK_ID, 'role_reader'),
+            /task-assigned role/i
+        );
+
         const agent = new AgentLoop({
             model: 'user-requested-model',
             provider: createForbiddenDirectProvider(),
@@ -249,6 +321,13 @@ async function main() {
 
         assert.strictEqual(agent.provider.name, 'broker-governed');
         assert.strictEqual(agent.model, TEST_MODEL);
+        assert.deepStrictEqual(
+            agent.getAvailableToolDefinitions().map((definition) => definition.function.name),
+            ['read_file']
+        );
+        const promptContext = agent.getGovernedPromptContext();
+        assert.strictEqual(promptContext.runtimeSpec.assignedRoleId, TEST_ROLE_ID);
+        assert.deepStrictEqual(promptContext.runtimeSpec.capabilityIds, ['file.read']);
 
         const prompt = agent.messages[0].content;
         assert(prompt.includes(`/api/v1/runtime/spec`));
@@ -264,6 +343,13 @@ async function main() {
         assert.strictEqual(upstream.captured.chatBodies.length, 1);
         assert.strictEqual(upstream.captured.chatBodies[0].model, TEST_MODEL);
         assert.strictEqual(upstream.captured.chatBodies[0].stream, false);
+
+        const denied = await agent.governedExecutor.executeTool('run_command', { command: 'dir' }, {
+            projectRoot: ROOT,
+            noConfirm: true,
+            verbose: false,
+        });
+        assert(denied.includes('capability denied'));
 
         await agent.close();
         console.log('Broker LLM proxy integration test passed.');

@@ -49,6 +49,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<PlanEdge>();
         _db.EnsureTable<Checkpoint>();
         _db.EnsureTable<ObservationEvent>();
+        EnsureColumns();
 
         // 額外建立複合唯一約束 + 索引（EnsureTable 不自動建立）
         CreateUniqueConstraints();
@@ -108,6 +109,11 @@ public class BrokerDbInitializer
         // severity + observed_at 告警查詢
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_severity
                       ON observation_events(severity, observed_at)");
+    }
+
+    private void EnsureColumns()
+    {
+        TryExecute("ALTER TABLE broker_tasks ADD COLUMN runtime_descriptor TEXT DEFAULT '{}'");
     }
 
     /// <summary>初始化 SystemEpoch（僅一行，epoch=1）</summary>
@@ -412,6 +418,7 @@ public class BrokerDbInitializer
                 RiskLevel = RiskLevel.Low,
                 State = TaskState.Active,
                 ScopeDescriptor = developmentSeed.ScopeDescriptor,
+                RuntimeDescriptor = developmentSeed.RuntimeDescriptor,
                 AssignedPrincipalId = developmentSeed.PrincipalId,
                 AssignedRoleId = developmentSeed.AssignedRoleId,
                 CreatedAt = DateTime.UtcNow
