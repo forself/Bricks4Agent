@@ -10,7 +10,13 @@ namespace BrokerCore.Services;
 public interface IBrokerService
 {
     /// <summary>建立任務</summary>
-    BrokerTask CreateTask(string submittedBy, string taskType, string scopeDescriptor);
+    BrokerTask CreateTask(
+        string submittedBy,
+        string taskType,
+        string scopeDescriptor,
+        string? assignedPrincipalId = null,
+        string? assignedRoleId = null,
+        string? runtimeDescriptor = null);
 
     /// <summary>查詢任務</summary>
     BrokerTask? GetTask(string taskId);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Broker.Helpers;
 using Broker.Middleware;
 using BrokerCore.Crypto;
@@ -14,7 +15,6 @@ public static class SessionEndpoints
     {
         var sessions = group.MapGroup("/sessions");
 
-        // 初始交握：ECDH 金鑰交換 + 建立 session + 發行 scoped token
         sessions.MapPost("/register", (HttpContext ctx,
             ISessionService sessionService,
             IScopedTokenService tokenService,
@@ -22,44 +22,82 @@ public static class SessionEndpoints
             IEnvelopeCrypto crypto,
             ISessionKeyStore keyStore,
             ICapabilityCatalog capabilityCatalog,
+            ITaskRouter taskRouter,
             BrokerDb db) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
-            var taskId = body.GetProperty("task_id").GetString() ?? "";
-            var principalId = body.GetProperty("principal_id").GetString() ?? "";
-            var roleId = body.GetProperty("role_id").GetString() ?? "";
+            var taskId = body.GetProperty("task_id").GetString() ?? string.Empty;
+            var principalId = body.GetProperty("principal_id").GetString() ?? string.Empty;
+            var requestedRoleId = body.TryGetProperty("role_id", out var roleProp)
+                ? roleProp.GetString() ?? string.Empty
+                : string.Empty;
 
-            // ── C-2 修復：身份驗證 ──
-            // 驗證 principal_id 確實存在於 DB
             var principal = db.Get<Principal>(principalId);
             if (principal == null || principal.Status != EntityStatus.Active)
+            {
                 return Results.BadRequest(ApiResponseHelper.Error("Invalid or inactive principal_id."));
+            }
 
-            // 驗證 role_id 確實存在且有效
+            var task = db.Get<BrokerTask>(taskId);
+            if (task == null)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Invalid task_id."));
+            }
+
+            if (task.State is TaskState.Cancelled or TaskState.Completed)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Task is not active."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.AssignedPrincipalId) &&
+                !string.Equals(task.AssignedPrincipalId, principalId, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Task is assigned to a different principal."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.AssignedRoleId) &&
+                !string.IsNullOrWhiteSpace(requestedRoleId) &&
+                !string.Equals(task.AssignedRoleId, requestedRoleId, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Requested role does not match task-assigned role."));
+            }
+
+            var roleId = ResolveRoleId(task, requestedRoleId, taskRouter);
+            if (string.IsNullOrWhiteSpace(roleId))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Unable to resolve role for task."));
+            }
+
             var role = db.Get<Role>(roleId);
             if (role == null || role.Status != EntityStatus.Active)
+            {
                 return Results.BadRequest(ApiResponseHelper.Error("Invalid or inactive role_id."));
+            }
 
-            // 取得 client 的 ECDH 臨時公鑰
+            if (!IsRoleAllowedForTask(role, task.TaskType))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Role is not allowed for this task type."));
+            }
+
             var clientPub = ctx.Items[EncryptionMiddleware.ClientEphemeralPubKey] as string;
             if (string.IsNullOrEmpty(clientPub))
+            {
                 return Results.BadRequest(ApiResponseHelper.Error("Missing client ephemeral public key."));
+            }
 
-            // 取得當前 epoch
             var currentEpoch = revocationService.GetCurrentEpoch();
-
-            // ── H-2 修復：消除 double derivation ──
-            // 先建立 session 取得 session_id，再一次性 derive key
             var jti = BrokerCore.IdGen.New("jti");
             var session = sessionService.RegisterSession(
-                taskId, principalId, roleId, jti, currentEpoch, "");
+                taskId, principalId, roleId, jti, currentEpoch, string.Empty);
 
-            // ECDH → session_key（一次性，用 session.SessionId 作為 HKDF salt）
             var sessionKey = crypto.DeriveSessionKey(clientPub, session.SessionId);
             keyStore.Store(session.SessionId, sessionKey);
 
-            // 為 session 自動授予角色預設能力
-            var defaultCapabilityIds = GetDefaultCapabilities(roleId, role);
+            var plannedGrants = BuildGrantPlan(task, role, capabilityCatalog);
+            var grantedCapabilityIds = plannedGrants
+                .Select(grant => grant.CapabilityId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
             var tokenClaims = new ScopedTokenClaims
             {
@@ -68,23 +106,32 @@ public static class SessionEndpoints
                 TaskId = taskId,
                 SessionId = session.SessionId,
                 RoleId = roleId,
-                CapabilityIds = defaultCapabilityIds,
-                Scope = "{}",
+                CapabilityIds = grantedCapabilityIds,
+                Scope = string.IsNullOrWhiteSpace(task.ScopeDescriptor) ? "{}" : task.ScopeDescriptor,
                 Epoch = currentEpoch
             };
 
             var scopedToken = tokenService.GenerateToken(tokenClaims);
 
-            // 自動授予預設能力（H-7 修復：grant 過期時間與 session 一致）
-            foreach (var capId in defaultCapabilityIds)
+            foreach (var grant in plannedGrants)
             {
                 capabilityCatalog.CreateGrant(
-                    taskId, session.SessionId, principalId,
-                    capId, "{}", -1, // -1 = 無限配額
-                    session.ExpiresAt); // 與 session 過期時間一致，而非硬編碼 1 小時
+                    taskId,
+                    session.SessionId,
+                    principalId,
+                    grant.CapabilityId,
+                    grant.ScopeOverride,
+                    grant.Quota,
+                    session.ExpiresAt);
             }
 
-            // 回應（由 EncryptionMiddleware 處理加密 — 交握回應透過 HttpContext.Items 傳遞 session_key）
+            if (task.State == TaskState.Created)
+            {
+                db.Execute(
+                    "UPDATE broker_tasks SET state = @state WHERE task_id = @taskId",
+                    new { state = (int)TaskState.Active, taskId });
+            }
+
             ctx.Items[EncryptionMiddleware.SessionKeyKey] = sessionKey;
             ctx.Items[EncryptionMiddleware.SessionIdKey] = session.SessionId;
             ctx.Items[EncryptionMiddleware.RequestSeqKey] = 0;
@@ -100,11 +147,13 @@ public static class SessionEndpoints
 
         sessions.MapPost("/heartbeat", (HttpContext ctx, ISessionService sessionService) =>
         {
-            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? "";
+            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? string.Empty;
 
             var success = sessionService.Heartbeat(sessionId);
             if (!success)
+            {
                 return Results.BadRequest(ApiResponseHelper.Error("Session not found or inactive."));
+            }
 
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Heartbeat acknowledged."));
         });
@@ -112,49 +161,111 @@ public static class SessionEndpoints
         sessions.MapPost("/close", (HttpContext ctx, ISessionService sessionService, ISessionKeyStore keyStore) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
-            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? "";
-            var reason = body.TryGetProperty("reason", out var r)
-                ? r.GetString() ?? "" : "Client requested close";
+            var sessionId = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? string.Empty;
+            var reason = body.TryGetProperty("reason", out var reasonProp)
+                ? reasonProp.GetString() ?? string.Empty
+                : "Client requested close";
 
             keyStore.Remove(sessionId);
             var success = sessionService.CloseSession(sessionId, reason);
 
             if (!success)
+            {
                 return Results.BadRequest(ApiResponseHelper.Error("Session not found or already closed."));
+            }
 
             return Results.Ok(ApiResponseHelper.Success<object>(null, "Session closed."));
         });
     }
 
-    /// <summary>
-    /// 取得角色的預設能力清單
-    /// 優先使用 DB Role.DefaultCapabilityIds，若無則使用硬編碼映射
-    /// </summary>
-    private static string[] GetDefaultCapabilities(string roleId, Role role)
+    private static string ResolveRoleId(BrokerTask task, string requestedRoleId, ITaskRouter taskRouter)
     {
-        // 嘗試從 DB Role 的 DefaultCapabilityIds 讀取
-        if (!string.IsNullOrEmpty(role.DefaultCapabilityIds) && role.DefaultCapabilityIds != "[]")
+        if (!string.IsNullOrWhiteSpace(task.AssignedRoleId))
         {
-            try
-            {
-                var caps = System.Text.Json.JsonSerializer.Deserialize<string[]>(role.DefaultCapabilityIds);
-                if (caps != null && caps.Length > 0)
-                    return caps;
-            }
-            catch (System.Text.Json.JsonException)
-            {
-                // 解析失敗 → 使用硬編碼映射
-            }
+            return task.AssignedRoleId;
         }
 
-        // 退回硬編碼映射（Phase 1 相容）
-        return roleId switch
+        if (!string.IsNullOrWhiteSpace(requestedRoleId))
         {
-            "role_reader" => new[] { "file.read", "file.list", "file.search_name", "file.search_content" },
-            "role_sa" => new[] { "file.read", "file.list", "file.search_name", "file.search_content" },
-            "role_executor" => new[] { "file.read", "file.list", "file.search_name", "file.search_content" },
-            "role_admin" => new[] { "file.read", "file.list", "file.search_name", "file.search_content", "file.write", "command.execute" },
-            _ => Array.Empty<string>()
-        };
+            return requestedRoleId;
+        }
+
+        return taskRouter.RecommendRole(task.TaskType) ?? string.Empty;
     }
+
+    private static bool IsRoleAllowedForTask(Role role, string taskType)
+    {
+        var allowedTaskTypes = ParseStringArray(role.AllowedTaskTypes);
+        return allowedTaskTypes.Contains("*", StringComparer.OrdinalIgnoreCase) ||
+               allowedTaskTypes.Contains(taskType, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static GrantPlanEntry[] BuildGrantPlan(BrokerTask task, Role role, ICapabilityCatalog capabilityCatalog)
+    {
+        var descriptor = TaskRuntimeDescriptor.Parse(task.RuntimeDescriptor);
+        var fallbackScope = string.IsNullOrWhiteSpace(task.ScopeDescriptor) ? "{}" : task.ScopeDescriptor;
+
+        if (descriptor.CapabilityGrants.Count > 0)
+        {
+            return descriptor.CapabilityGrants
+                .Where(template => !string.IsNullOrWhiteSpace(template.CapabilityId))
+                .Select(template => new GrantPlanEntry(
+                    template.CapabilityId,
+                    template.ResolveScopeOverride(fallbackScope),
+                    template.ResolveQuota()))
+                .ToArray();
+        }
+
+        if (descriptor.CapabilityIds.Count > 0)
+        {
+            return descriptor.CapabilityIds
+                .Where(capabilityId => !string.IsNullOrWhiteSpace(capabilityId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(capabilityId => new GrantPlanEntry(capabilityId, fallbackScope, -1))
+                .ToArray();
+        }
+
+        return GetDefaultCapabilities(role, capabilityCatalog)
+            .Select(capabilityId => new GrantPlanEntry(capabilityId, fallbackScope, -1))
+            .ToArray();
+    }
+
+    private static string[] GetDefaultCapabilities(Role role, ICapabilityCatalog capabilityCatalog)
+    {
+        var defaults = ParseStringArray(role.DefaultCapabilityIds);
+        if (defaults.Length == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        if (defaults.Contains("*", StringComparer.OrdinalIgnoreCase))
+        {
+            return capabilityCatalog.ListCapabilities()
+                .Select(capability => capability.CapabilityId)
+                .Where(capabilityId => !string.IsNullOrWhiteSpace(capabilityId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        return defaults;
+    }
+
+    private static string[] ParseStringArray(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) || raw == "[]")
+        {
+            return Array.Empty<string>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(raw) ?? Array.Empty<string>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private sealed record GrantPlanEntry(string CapabilityId, string ScopeOverride, int Quota);
 }

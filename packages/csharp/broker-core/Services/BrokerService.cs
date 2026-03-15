@@ -58,7 +58,13 @@ public class BrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public BrokerTask CreateTask(string submittedBy, string taskType, string scopeDescriptor)
+    public BrokerTask CreateTask(
+        string submittedBy,
+        string taskType,
+        string scopeDescriptor,
+        string? assignedPrincipalId = null,
+        string? assignedRoleId = null,
+        string? runtimeDescriptor = null)
     {
         var riskLevel = _taskRouter.AssessRisk(taskType, scopeDescriptor);
 
@@ -70,6 +76,9 @@ public class BrokerService : IBrokerService
             RiskLevel = riskLevel,
             State = TaskState.Created,
             ScopeDescriptor = scopeDescriptor,
+            RuntimeDescriptor = string.IsNullOrWhiteSpace(runtimeDescriptor) ? "{}" : runtimeDescriptor,
+            AssignedPrincipalId = string.IsNullOrWhiteSpace(assignedPrincipalId) ? null : assignedPrincipalId,
+            AssignedRoleId = string.IsNullOrWhiteSpace(assignedRoleId) ? null : assignedRoleId,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -80,7 +89,13 @@ public class BrokerService : IBrokerService
             eventType: "TASK_CREATED",
             principalId: submittedBy,
             taskId: task.TaskId,
-            details: JsonSerializer.Serialize(new { taskType, riskLevel = riskLevel.ToString() }));
+            details: JsonSerializer.Serialize(new
+            {
+                taskType,
+                riskLevel = riskLevel.ToString(),
+                assignedPrincipalId,
+                assignedRoleId
+            }));
 
         return task;
     }

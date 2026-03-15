@@ -9,5 +9,6 @@ public class DevelopmentSeedOptions
     public string TaskId { get; set; } = string.Empty;
     public string TaskType { get; set; } = "analysis";
     public string ScopeDescriptor { get; set; } = "{}";
+    public string RuntimeDescriptor { get; set; } = "{}";
     public string AssignedRoleId { get; set; } = "role_reader";
 }

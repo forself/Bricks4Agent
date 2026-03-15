@@ -43,6 +43,9 @@ public class BrokerTask
     [Column("scope_descriptor")]
     public string ScopeDescriptor { get; set; } = "{}";
 
+    [Column("runtime_descriptor")]
+    public string RuntimeDescriptor { get; set; } = "{}";
+
     [Column("assigned_principal_id")]
     public string? AssignedPrincipalId { get; set; }
 
