@@ -102,6 +102,15 @@ const TOOL_DEFINITIONS = [
     },
 ];
 
+const TOOL_TO_CAPABILITY = {
+    read_file: 'file.read',
+    write_file: 'file.write',
+    list_directory: 'file.list',
+    search_files: 'file.search_name',
+    search_content: 'file.search_content',
+    run_command: 'command.execute',
+};
+
 // ─── 工具分派 ───
 
 const TOOL_HANDLERS = {
@@ -133,12 +142,51 @@ async function executeTool(name, args, context) {
     }
 }
 
+function getToolDefinitions(options = {}) {
+    const { names = null, capabilityIds = null } = options;
+
+    if (!Array.isArray(names) && !Array.isArray(capabilityIds)) {
+        return TOOL_DEFINITIONS.slice();
+    }
+
+    const allowedNames = Array.isArray(names)
+        ? new Set(names)
+        : new Set(getToolNamesForCapabilities(capabilityIds));
+
+    return TOOL_DEFINITIONS.filter((def) => allowedNames.has(def.function.name));
+}
+
+function getToolNamesForCapabilities(capabilityIds = []) {
+    const allowedCapabilities = new Set((capabilityIds || []).filter(Boolean));
+    const seen = new Set();
+
+    return TOOL_DEFINITIONS
+        .map((def) => def.function.name)
+        .filter((toolName) => {
+            const capabilityId = TOOL_TO_CAPABILITY[toolName];
+            if (!capabilityId || !allowedCapabilities.has(capabilityId) || seen.has(toolName)) {
+                return false;
+            }
+            seen.add(toolName);
+            return true;
+        });
+}
+
+function capabilityIdForTool(name) {
+    return TOOL_TO_CAPABILITY[name] || null;
+}
+
 /**
  * 取得工具的純文字描述（用於 ReAct 提示詞）
  * @returns {string}
  */
-function getToolDescriptions() {
-    return TOOL_DEFINITIONS.map((def, i) => {
+function getToolDescriptions(options = {}) {
+    const definitions = getToolDefinitions(options);
+    if (definitions.length === 0) {
+        return 'No broker-approved tool capabilities are currently available.';
+    }
+
+    return definitions.map((def, i) => {
         const fn = def.function;
         const params = fn.parameters.properties;
         const required = fn.parameters.required || [];
@@ -152,6 +200,10 @@ function getToolDescriptions() {
 
 module.exports = {
     TOOL_DEFINITIONS,
+    TOOL_TO_CAPABILITY,
+    capabilityIdForTool,
     executeTool,
+    getToolDefinitions,
     getToolDescriptions,
+    getToolNamesForCapabilities,
 };

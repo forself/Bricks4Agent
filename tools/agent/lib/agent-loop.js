@@ -1,6 +1,6 @@
 'use strict';
 
-const { TOOL_DEFINITIONS, executeTool } = require('./tool-registry');
+const { TOOL_DEFINITIONS, executeTool, getToolDescriptions } = require('./tool-registry');
 const { buildSystemPrompt } = require('./system-prompt');
 const { parseToolCalls, hasToolCalls, stripToolCalls, formatToolResult } = require('./react-parser');
 const { colorize, bold, logInfo, logWarn, logError, logTool, formatDuration } = require('./utils');
@@ -48,6 +48,8 @@ class AgentLoop {
 
         this.messages = [];
         this.useNativeTools = true;
+        this.toolDefinitions = TOOL_DEFINITIONS.slice();
+        this.toolDescriptions = getToolDescriptions();
         this.initialized = false;
     }
 
@@ -55,6 +57,11 @@ class AgentLoop {
      * 初始化：健康檢查 + 策略偵測 + 建構系統提示詞
      */
     async init() {
+        if (this.governedExecutor) {
+            await this.governedExecutor.close();
+            this.governedExecutor = null;
+        }
+
         // 健康檢查
         const ok = await this.provider.healthCheck();
         if (!ok) {
@@ -78,16 +85,6 @@ class AgentLoop {
             }
         }
 
-        // 建構系統提示詞
-        const systemPrompt = buildSystemPrompt({
-            projectRoot: this.projectRoot,
-            useReact: !this.useNativeTools,
-            verbose: this.verbose,
-        });
-
-        this.messages = [{ role: 'system', content: systemPrompt }];
-        this.initialized = true;
-
         // 受控模式初始化
         if (this.governedConfig) {
             this.governedExecutor = new GovernedExecutor({
@@ -95,7 +92,24 @@ class AgentLoop {
                 verbose: this.verbose,
             });
             await this.governedExecutor.init();
+            this.toolDefinitions = this.governedExecutor.getAllowedToolDefinitions();
+            this.toolDescriptions = this.governedExecutor.getAllowedToolDescriptions();
+        } else {
+            this.toolDefinitions = TOOL_DEFINITIONS.slice();
+            this.toolDescriptions = getToolDescriptions();
         }
+
+        // 建構系統提示詞
+        const systemPrompt = buildSystemPrompt({
+            projectRoot: this.projectRoot,
+            useReact: !this.useNativeTools,
+            verbose: this.verbose,
+            toolDescriptions: this.toolDescriptions,
+            governed: this.governedExecutor ? this.governedExecutor.getPromptContext() : null,
+        });
+
+        this.messages = [{ role: 'system', content: systemPrompt }];
+        this.initialized = true;
 
         // 顯示策略
         const strategy = this.useNativeTools ? '原生 Tool Calling' : 'ReAct XML';
@@ -126,8 +140,8 @@ class AgentLoop {
                 stream: this.stream,
             };
 
-            if (this.useNativeTools) {
-                chatParams.tools = TOOL_DEFINITIONS;
+            if (this.useNativeTools && this.toolDefinitions.length > 0) {
+                chatParams.tools = this.toolDefinitions;
             }
 
             if (this.stream) {
@@ -312,6 +326,18 @@ class AgentLoop {
         if (this.messages.length > 0) {
             this.messages = [this.messages[0]];
         }
+    }
+
+    getAvailableToolDefinitions() {
+        return this.toolDefinitions.slice();
+    }
+
+    getAvailableToolDescriptions() {
+        return this.toolDescriptions;
+    }
+
+    getGovernedPromptContext() {
+        return this.governedExecutor ? this.governedExecutor.getPromptContext() : null;
     }
 
     getStats() {

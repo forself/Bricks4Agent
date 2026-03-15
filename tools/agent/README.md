@@ -80,6 +80,37 @@ node tools/agent/agent.js --pipeline crud --entity Product --fields "[{\"name\":
 node tools/agent/agent.js --governed --broker-url http://localhost:5000 --broker-pub-key <base64> --principal-id prn_xxx --task-id task_xxx --role-id role_reader --run "讀取 README.md"
 ```
 
+受控模式下，Agent 不會直接執行本地檔案或 shell 操作。所有副作用都只會透過 Broker 的 `POST` + `application/json` 路由送出，再由 Broker 依 `role/session/grant/scope/policy` 裁決：
+
+- `POST /api/v1/sessions/register`
+- `POST /api/v1/execution-requests/submit`
+- `POST /api/v1/sessions/heartbeat`
+- `POST /api/v1/sessions/close`
+- `POST /api/v1/capabilities/list`
+- `POST /api/v1/grants/list`
+
+Agent 啟動後，系統提示會直接注入目前這個 session 的：
+
+- Broker base URL 與完整路由
+- 這個 Agent 目前可請求的 capability / scope / quota / expiry
+- `execution-requests/submit` 的標準 JSON body 格式
+- 其他受控 POST body 格式（register / heartbeat / grants / close）
+
+模型可見的工具集合也會依目前 grants 自動收斂；未授權的工具不會暴露給模型，就算模型仍嘗試請求，也會先在本地受控執行器層被拒絕。
+
+### 驗證受控模式
+
+```bash
+npm run validate:agent-governed
+```
+
+這個驗證會檢查：
+
+- governed prompt 是否包含 Broker URL / route / POST JSON contract
+- 模型可見工具是否依 grants 過濾
+- 未授權 capability 是否會在送出前被本地拒絕
+- 已授權 capability 是否會正常轉送到 Broker client
+
 ## 主要參數
 
 | 參數 | 縮寫 | 說明 | 預設 |

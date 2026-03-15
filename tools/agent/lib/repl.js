@@ -130,9 +130,8 @@ class AgentRepl {
                 break;
 
             case 'tools':
-                const { getToolDescriptions } = require('./tool-registry');
                 console.log(bold('\n可用工具:'));
-                console.log(getToolDescriptions());
+                console.log(this.agent.getAvailableToolDescriptions());
                 break;
 
             case 'exit':
