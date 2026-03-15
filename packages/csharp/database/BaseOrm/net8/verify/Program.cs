@@ -195,6 +195,9 @@ static async Task VerifyPostgreSqlIntegrationIfConfiguredAsync()
 
 static async Task RunWidgetCrudFlowAsync(BaseDb db, string label)
 {
+    var tableName = QuoteIdentifier(db, "Widgets");
+    var keyColumn = QuoteIdentifier(db, "Id");
+
     await db.EnsureTableAsync<Widget>();
 
     var createdAt = DateTime.UtcNow;
@@ -215,7 +218,7 @@ static async Task RunWidgetCrudFlowAsync(BaseDb db, string label)
     await db.UpdateAsync(loaded);
 
     var updated = await db.QueryFirstAsync<Widget>(
-        "SELECT * FROM Widgets WHERE Id = @Id",
+        $"SELECT * FROM {tableName} WHERE {keyColumn} = @Id",
         new { Id = firstId });
     Assert(updated?.Name == "Updated", $"{label}: UpdateAsync should persist changes.");
 
@@ -236,7 +239,7 @@ static async Task RunWidgetCrudFlowAsync(BaseDb db, string label)
         });
     });
 
-    var countAfterCommit = await db.ScalarAsync<int>("SELECT COUNT(*) FROM Widgets");
+    var countAfterCommit = await db.ScalarAsync<int>($"SELECT COUNT(*) FROM {tableName}");
     Assert(countAfterCommit == 3, $"{label}: InTransactionAsync should commit all writes.");
 
     try
@@ -257,11 +260,11 @@ static async Task RunWidgetCrudFlowAsync(BaseDb db, string label)
     {
     }
 
-    var countAfterRollback = await db.ScalarAsync<int>("SELECT COUNT(*) FROM Widgets");
+    var countAfterRollback = await db.ScalarAsync<int>($"SELECT COUNT(*) FROM {tableName}");
     Assert(countAfterRollback == 3, $"{label}: failed async transaction should rollback.");
 
     var paged = await db.QueryPagedAsync<Widget>(
-        "SELECT * FROM Widgets ORDER BY Id",
+        $"SELECT * FROM {tableName} ORDER BY {keyColumn}",
         page: 1,
         pageSize: 2);
     Assert(paged.TotalCount == 3, $"{label}: QueryPagedAsync should calculate total count.");
@@ -269,12 +272,12 @@ static async Task RunWidgetCrudFlowAsync(BaseDb db, string label)
     Assert(paged.HasNext, $"{label}: QueryPagedAsync should expose next-page metadata.");
 
     var dictionary = await db.QueryDictionaryAsync<int, Widget>(
-        "SELECT * FROM Widgets ORDER BY Id",
+        $"SELECT * FROM {tableName} ORDER BY {keyColumn}",
         widget => widget.Id);
     Assert(dictionary.Count == 3, $"{label}: QueryDictionaryAsync should materialize keyed results.");
 
     await db.DeleteAsync<Widget>(firstId);
-    var finalCount = await db.ScalarAsync<int>("SELECT COUNT(*) FROM Widgets");
+    var finalCount = await db.ScalarAsync<int>($"SELECT COUNT(*) FROM {tableName}");
     Assert(finalCount == 2, $"{label}: DeleteAsync should remove the target row.");
 }
 
@@ -284,6 +287,11 @@ static T InvokeNonPublic<T>(object instance, string methodName, params object[] 
         ?? throw new InvalidOperationException($"Method not found: {methodName}");
     var result = method.Invoke(instance, args);
     return (T)result!;
+}
+
+static string QuoteIdentifier(BaseDb db, string identifier)
+{
+    return InvokeNonPublic<string>(db, "QuoteIdentifier", identifier);
 }
 
 static void Assert(bool condition, string message)
