@@ -11,6 +11,8 @@
     "validate:broker-scope": "dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj",
     "validate:broker-llm-proxy": "node tools/agent/tests/test-broker-llm-proxy.js",
     "validate:podman-governed-stack": "node tools/agent/tests/test-podman-governed-stack.js",
+    "validate:podman-openai-compatible-stack": "node tools/agent/tests/test-podman-openai-compatible-stack.js",
+    "validate:podman-ollama-host-stack": "node tools/agent/tests/test-podman-ollama-host-stack.js",
     "validate:baseorm": "dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj",
     "validate:backend-governance": "node tools/scripts/validate-dotnet-dependencies.mjs && node tools/scripts/validate-dotnet-api-usage.mjs",
     "validate:baseorm-sync": "node tools/scripts/validate-baseorm-sync.mjs",

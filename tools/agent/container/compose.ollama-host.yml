@@ -1,21 +1,10 @@
 services:
-  mock-ollama:
-    build:
-      context: ../../..
-      dockerfile: tools/agent/container/mock-ollama.Containerfile
-    environment:
-      PORT: "11434"
-      MOCK_MODEL: "${STACK_MODEL:-stack-test-model}"
-      MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
-    ports:
-      - "${STACK_LLM_PORT:-11434}:11434"
-
   broker:
     build:
       context: ../../..
       dockerfile: packages/csharp/broker/Containerfile
-    depends_on:
-      - mock-ollama
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/broker.db"
@@ -24,26 +13,26 @@ services:
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg+oxf+eIdOKgNveCoXr8rgrh/9NAtuBSto3XjXjajsW+hRANCAAS8WmQxu8c1Nwb+P8uoewmd9/gHlz/2i6pUZ+/WrMD+YiKf+mkfND1V37tF9eImxrlJGpMW5NR5vuk5dLRKuFWl}"
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
-      LlmProxy__BaseUrl: "http://mock-ollama:11434"
+      LlmProxy__BaseUrl: "${OLLAMA_BASE_URL:-http://host.containers.internal:11434}"
       LlmProxy__ApiFormat: "chat"
-      LlmProxy__DefaultModel: "${STACK_MODEL:-stack-test-model}"
+      LlmProxy__DefaultModel: "${STACK_MODEL:-qwen3-coder:30b}"
       LlmProxy__AllowModelOverride: "false"
       LlmProxy__SupportsToolCalling: "true"
       LlmProxy__StreamingEnabled: "false"
-      LlmProxy__TimeoutSeconds: "60"
+      LlmProxy__TimeoutSeconds: "180"
       DevelopmentSeed__Enabled: "true"
-      DevelopmentSeed__PrincipalId: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
-      DevelopmentSeed__DisplayName: "Podman Development Principal"
+      DevelopmentSeed__PrincipalId: "${BROKER_PRINCIPAL_ID:-prn_ollama_host}"
+      DevelopmentSeed__DisplayName: "Host Ollama Development Principal"
       DevelopmentSeed__ActorType: "AI"
-      DevelopmentSeed__TaskId: "${BROKER_TASK_ID:-task_podman_dev}"
+      DevelopmentSeed__TaskId: "${BROKER_TASK_ID:-task_ollama_host}"
       DevelopmentSeed__TaskType: "analysis"
       DevelopmentSeed__AssignedRoleId: "${BROKER_ROLE_ID:-role_reader}"
       DevelopmentSeed__RuntimeDescriptor: >-
-        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1}]}
+        {"llm":{"default_model":"${STACK_MODEL:-qwen3-coder:30b}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1}]}
     ports:
-      - "${BROKER_PORT:-5000}:5000"
+      - "${BROKER_PORT:-5002}:5000"
     volumes:
-      - broker-data:/data
+      - broker-ollama-data:/data
 
   agent:
     build:
@@ -54,20 +43,20 @@ services:
     environment:
       BROKER_URL: "http://broker:5000"
       BROKER_PUB_KEY: "${BROKER_ECDH_PUBLIC_KEY_BASE64:-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvFpkMbvHNTcG/j/LqHsJnff4B5c/9ouqVGfv1qzA/mIin/ppHzQ9Vd+7RfXiJsa5SRqTFuTUeb7pOXS0SrhVpQ==}"
-      BROKER_PRINCIPAL_ID: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
-      BROKER_TASK_ID: "${BROKER_TASK_ID:-task_podman_dev}"
+      BROKER_PRINCIPAL_ID: "${BROKER_PRINCIPAL_ID:-prn_ollama_host}"
+      BROKER_TASK_ID: "${BROKER_TASK_ID:-task_ollama_host}"
       BROKER_ROLE_ID: "${BROKER_ROLE_ID:-role_reader}"
       BROKER_WAIT_FOR_HEALTH: "1"
       BROKER_WAIT_TIMEOUT_SECONDS: "90"
       AGENT_PROJECT_ROOT: "/workspace"
-      AGENT_MODEL: "${STACK_MODEL:-stack-test-model}"
+      AGENT_MODEL: "${STACK_MODEL:-qwen3-coder:30b}"
       AGENT_MAX_ITERATIONS: "4"
       AGENT_NO_CONFIRM: "1"
-      AGENT_VERBOSE: "${AGENT_VERBOSE:-0}"
-      AGENT_RUN: "${AGENT_RUN:-Reply with the exact text STACK_OK.}"
+      AGENT_VERBOSE: "${AGENT_VERBOSE:-1}"
+      AGENT_RUN: "${AGENT_RUN:-Reply with a short sentence that contains OLLAMA_STACK_OK.}"
     volumes:
       - ../../..:/workspace
     restart: "no"
 
 volumes:
-  broker-data:
+  broker-ollama-data:
