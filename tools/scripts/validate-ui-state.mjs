@@ -267,6 +267,95 @@ await test('Dropdown phase 2: state and legacy methods stay aligned', async () =
     }
 });
 
+await test('DatePicker phase 2: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { DatePicker } = await importModule('packages/javascript/browser/ui_components/form/DatePicker/DatePicker.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const picker = new DatePicker({
+            value: '2024-03-15',
+            min: '2024-03-01',
+            max: '2024-03-31'
+        });
+
+        assert(typeof picker.snapshot === 'function', 'DatePicker exposes snapshot');
+        assert(typeof picker.send === 'function', 'DatePicker exposes send');
+        assert(typeof picker.setValue === 'function', 'legacy setValue remains');
+        assert(typeof picker.setDisabled === 'function', 'legacy setDisabled remains');
+        assert(typeof picker.clear === 'function', 'legacy clear remains');
+        assert(typeof picker.mount === 'function', 'legacy mount remains');
+
+        picker.mount(host);
+        assert(picker.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(picker.getFormattedValue() === '2024/03/15', 'initial formatted value should be preserved');
+
+        picker.open();
+        assert(picker.snapshot().open === true, 'open should update state');
+        assert(picker.calendar.style.display === 'block', 'open should update DOM');
+
+        picker.send('SELECT_DAY', { day: 20 });
+        assert(picker.getFormattedValue() === '2024/03/20', 'select day should update formatted value');
+        assert(picker.snapshot().open === false, 'select day should close calendar');
+
+        picker.setDisabled(true);
+        assert(picker.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(picker.snapshot().open === false, 'disabled datepicker should close');
+
+        picker.clear();
+        assert(picker.getValue() === null, 'clear should reset selected date');
+        assert(picker.snapshot().selectedValue === null, 'clear should update state');
+    } finally {
+        dom.cleanup();
+    }
+});
+
+await test('TimePicker phase 2: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { TimePicker } = await importModule('packages/javascript/browser/ui_components/form/TimePicker/TimePicker.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const picker = new TimePicker({ value: '08:15', step: 15 });
+
+        assert(typeof picker.snapshot === 'function', 'TimePicker exposes snapshot');
+        assert(typeof picker.send === 'function', 'TimePicker exposes send');
+        assert(typeof picker.setValue === 'function', 'legacy setValue remains');
+        assert(typeof picker.setDisabled === 'function', 'legacy setDisabled remains');
+        assert(typeof picker.clear === 'function', 'legacy clear remains');
+        assert(typeof picker.mount === 'function', 'legacy mount remains');
+
+        picker.mount(host);
+        assert(picker.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(picker.getValue() === '08:15', 'initial value should be preserved');
+
+        picker.open();
+        assert(picker.snapshot().open === true, 'open should update state');
+        assert(picker.panel.style.display === 'block', 'open should update DOM');
+
+        picker.send('SELECT_HOUR', { value: 9 });
+        picker.send('SELECT_MINUTE', { value: 30 });
+        picker.send('CONFIRM');
+
+        assert(picker.getValue() === '09:30', 'confirm should commit selected time');
+        assert(picker.snapshot().hour === 9, 'confirm should update committed hour');
+        assert(picker.snapshot().minute === 30, 'confirm should update committed minute');
+
+        picker.setDisabled(true);
+        assert(picker.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(picker.snapshot().open === false, 'disabled timepicker should close');
+
+        picker.clear();
+        assert(picker.getValue() === '', 'clear should reset time');
+        assert(picker.snapshot().hour === null, 'clear should reset committed hour');
+        assert(picker.snapshot().minute === null, 'clear should reset committed minute');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;

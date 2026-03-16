@@ -1,10 +1,28 @@
 import { escapeHtml } from '../../utils/security.js';
-
 import Locale from '../../i18n/index.js';
-/**
- * TimePicker Component
- * 時間選擇器元件
- */
+import { createComponentState } from '../../utils/component-state.js';
+
+function parseTime(value) {
+    if (!value) return { hour: null, minute: null };
+
+    const match = String(value).match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return { hour: null, minute: null };
+
+    const hour = Number.parseInt(match[1], 10);
+    const minute = Number.parseInt(match[2], 10);
+
+    if (Number.isNaN(hour) || Number.isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return { hour: null, minute: null };
+    }
+
+    return { hour, minute };
+}
+
+function formatTime(hour, minute) {
+    if (hour === null || minute === null) return '';
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
 export class TimePicker {
     constructor(options = {}) {
         this.options = {
@@ -14,37 +32,156 @@ export class TimePicker {
             disabled: false,
             required: false,
             size: 'medium',
-            minuteStep: 1, // 分鐘間隔 (1, 5, 10, 15, 30)
+            minuteStep: 1,
             className: '',
             onChange: null,
             ...options
         };
 
-        // 兼容 step 參數
         if (options.step) {
             this.options.minuteStep = options.step;
         }
 
-        this.hour = null;
-        this.minute = null;
-        this.isOpen = false;
-        this.element = null;
+        const initial = parseTime(this.options.value);
 
-        // 解析初始值
-        if (this.options.value) {
-            this._parseValue(this.options.value);
-        }
+        this.hour = initial.hour;
+        this.minute = initial.minute;
+        this.isOpen = false;
+
+        this.element = null;
+        this.container = null;
+        this.inputWrapper = null;
+        this.display = null;
+        this.panel = null;
+        this.confirmButton = null;
+        this.hourColumn = null;
+        this.minuteColumn = null;
 
         this.element = this._create();
+        this._state = createComponentState(this._buildInitialState(initial), {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed', open: false }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden', open: false }),
+            OPEN: (state) => {
+                if (state.availability === 'disabled' || state.open) return state;
+                return {
+                    ...state,
+                    open: true,
+                    draftHour: state.hour,
+                    draftMinute: state.minute
+                };
+            },
+            CLOSE: (state) => ({
+                ...state,
+                open: false,
+                draftHour: state.hour,
+                draftMinute: state.minute
+            }),
+            TOGGLE: (state) => {
+                if (state.availability === 'disabled') return state;
+                return state.open
+                    ? {
+                        ...state,
+                        open: false,
+                        draftHour: state.hour,
+                        draftMinute: state.minute
+                    }
+                    : {
+                        ...state,
+                        open: true,
+                        draftHour: state.hour,
+                        draftMinute: state.minute
+                    };
+            },
+            SET_VALUE: (state, payload) => {
+                if (payload?.value == null || payload?.value === '') {
+                    return {
+                        ...state,
+                        hour: null,
+                        minute: null,
+                        draftHour: null,
+                        draftMinute: null
+                    };
+                }
+
+                const next = parseTime(payload?.value);
+                if (next.hour === null || next.minute === null) return state;
+
+                return {
+                    ...state,
+                    hour: next.hour,
+                    minute: next.minute,
+                    draftHour: next.hour,
+                    draftMinute: next.minute
+                };
+            },
+            CLEAR: (state) => ({
+                ...state,
+                hour: null,
+                minute: null,
+                draftHour: null,
+                draftMinute: null
+            }),
+            SET_DISABLED: (state, payload) => ({
+                ...state,
+                availability: payload?.disabled ? 'disabled' : 'enabled',
+                open: payload?.disabled ? false : state.open,
+                draftHour: payload?.disabled ? state.hour : state.draftHour,
+                draftMinute: payload?.disabled ? state.minute : state.draftMinute
+            }),
+            SELECT_HOUR: (state, payload) => {
+                if (state.availability === 'disabled') return state;
+                const value = Number.parseInt(payload?.value, 10);
+                if (Number.isNaN(value) || value < 0 || value > 23) return state;
+                return {
+                    ...state,
+                    draftHour: value
+                };
+            },
+            SELECT_MINUTE: (state, payload) => {
+                if (state.availability === 'disabled') return state;
+                const value = Number.parseInt(payload?.value, 10);
+                if (Number.isNaN(value) || value < 0 || value > 59) return state;
+                return {
+                    ...state,
+                    draftMinute: value
+                };
+            },
+            CONFIRM: (state) => {
+                if (state.draftHour === null || state.draftMinute === null) {
+                    return {
+                        ...state,
+                        open: false,
+                        draftHour: state.hour,
+                        draftMinute: state.minute
+                    };
+                }
+
+                return {
+                    ...state,
+                    hour: state.draftHour,
+                    minute: state.draftMinute,
+                    open: false
+                };
+            }
+        });
+
+        this._bindEvents();
+        this._applyState();
     }
 
-    _parseValue(value) {
-        if (!value) return;
-        const match = String(value).match(/^(\d{1,2}):(\d{2})$/);
-        if (match) {
-            this.hour = Number.parseInt(match[1], 10);
-            this.minute = Number.parseInt(match[2], 10);
-        }
+    _buildInitialState(initial) {
+        return {
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            open: false,
+            hour: initial.hour,
+            minute: initial.minute,
+            draftHour: initial.hour,
+            draftMinute: initial.minute
+        };
     }
 
     _getSizeStyles() {
@@ -56,49 +193,76 @@ export class TimePicker {
         return sizes[this.options.size] || sizes.medium;
     }
 
+    _parseValue(value) {
+        return parseTime(value);
+    }
+
     _create() {
-        const { label, required, disabled, placeholder, className } = this.options;
+        const { label, required, className } = this.options;
         const sizeStyles = this._getSizeStyles();
 
         const container = document.createElement('div');
-        container.className = `timepicker ${className || ''}`;
-        container.style.cssText = `position:relative;width:100%;font-family:var(--cl-font-family);`;
+        container.className = `timepicker ${className || ''}`.trim();
+        container.style.cssText = `
+            position: relative;
+            width: 100%;
+            font-family: var(--cl-font-family);
+        `;
 
-        // 標籤
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `display:block;font-size:var(--cl-font-size-md);font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
+            labelEl.style.cssText = `
+                display: block;
+                font-size: var(--cl-font-size-md);
+                font-weight: 500;
+                color: var(--cl-text);
+                margin-bottom: 4px;
+            `;
             container.appendChild(labelEl);
         }
 
-        // 輸入區域
         const inputWrapper = document.createElement('div');
         inputWrapper.className = 'timepicker__input-wrapper';
         inputWrapper.style.cssText = `
-            display:flex;align-items:center;position:relative;
-            height:${sizeStyles.height};padding:${sizeStyles.padding};padding-right:32px;
-            background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
-            border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
-            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all var(--cl-transition);
+            display: flex;
+            align-items: center;
+            position: relative;
+            height: ${sizeStyles.height};
+            padding: ${sizeStyles.padding};
+            padding-right: 32px;
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-md);
+            cursor: pointer;
+            transition: all var(--cl-transition);
         `;
 
         const display = document.createElement('span');
         display.className = 'timepicker__display';
-        display.textContent = this._formatTime() || placeholder;
-        display.style.cssText = `flex:1;font-size:${sizeStyles.fontSize};color:${this._formatTime() ? 'var(--cl-text)' : 'var(--cl-text-placeholder)'};`;
+        display.style.cssText = `
+            flex: 1;
+            font-size: ${sizeStyles.fontSize};
+            color: var(--cl-text-placeholder);
+        `;
 
         const icon = document.createElement('span');
+        icon.className = 'timepicker__icon';
         icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="var(--cl-text-secondary)" stroke-width="1.5"/>
             <path d="M8 4V8L11 10" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round"/>
         </svg>`;
-        icon.style.cssText = `position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;`;
+        icon.style.cssText = `
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+        `;
 
         inputWrapper.appendChild(display);
         inputWrapper.appendChild(icon);
 
-        // 選擇面板
         const panel = this._createPanel();
 
         container.appendChild(inputWrapper);
@@ -109,52 +273,72 @@ export class TimePicker {
         this.display = display;
         this.panel = panel;
 
-        this._bindEvents();
-
         return container;
     }
 
     _createPanel() {
-        const { minuteStep } = this.options;
-
         const panel = document.createElement('div');
         panel.className = 'timepicker__panel';
         panel.style.cssText = `
-            position:absolute;top:100%;left:0;margin-top:4px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-lg);
-            box-shadow:var(--cl-shadow-md);padding:12px;
-            z-index:1000;display:none;width:200px;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-md);
+            padding: 12px;
+            z-index: 1000;
+            display: none;
+            width: 200px;
         `;
 
-        // 時間選擇區
         const selectorsWrapper = document.createElement('div');
-        selectorsWrapper.style.cssText = `display:flex;gap:8px;align-items:center;`;
+        selectorsWrapper.className = 'timepicker__selectors';
+        selectorsWrapper.style.cssText = `
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        `;
 
-        // 小時選擇
-        const hourColumn = this._createColumn(Locale.t('timePicker.hour'), 0, 23);
-        // 分鐘選擇
-        const minuteColumn = this._createColumn(Locale.t('timePicker.minute'), 0, 59, minuteStep);
+        const hourColumn = this._createColumn(Locale.t('timePicker.hour'), 0, 23, 1, 'hour');
+        const minuteColumn = this._createColumn(Locale.t('timePicker.minute'), 0, 59, this.options.minuteStep, 'minute');
 
-        // 分隔符
         const separator = document.createElement('span');
         separator.textContent = ':';
-        separator.style.cssText = `font-size:var(--cl-font-size-3xl);font-weight:bold;color:var(--cl-text);`;
+        separator.style.cssText = `
+            font-size: var(--cl-font-size-3xl);
+            font-weight: bold;
+            color: var(--cl-text);
+        `;
 
         selectorsWrapper.appendChild(hourColumn.wrapper);
         selectorsWrapper.appendChild(separator);
         selectorsWrapper.appendChild(minuteColumn.wrapper);
 
-        // 確認按鈕
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
+        confirmBtn.className = 'timepicker__confirm';
         confirmBtn.textContent = Locale.t('timePicker.confirm');
         confirmBtn.style.cssText = `
-            width:100%;margin-top:12px;padding:8px;
-            background:var(--cl-primary);color:var(--cl-text-inverse);border:none;border-radius:var(--cl-radius-md);
-            cursor:pointer;font-size:var(--cl-font-size-lg);transition:background var(--cl-transition);
+            width: 100%;
+            margin-top: 12px;
+            padding: 8px;
+            background: var(--cl-primary);
+            color: var(--cl-text-inverse);
+            border: none;
+            border-radius: var(--cl-radius-md);
+            cursor: pointer;
+            font-size: var(--cl-font-size-lg);
+            transition: background var(--cl-transition);
         `;
-        confirmBtn.addEventListener('mouseenter', () => confirmBtn.style.background = 'var(--cl-primary-dark)');
-        confirmBtn.addEventListener('mouseleave', () => confirmBtn.style.background = 'var(--cl-primary)');
+        confirmBtn.addEventListener('mouseenter', () => {
+            confirmBtn.style.background = 'var(--cl-primary-dark)';
+        });
+        confirmBtn.addEventListener('mouseleave', () => {
+            confirmBtn.style.background = 'var(--cl-primary)';
+        });
         confirmBtn.addEventListener('click', () => this._confirm());
 
         panel.appendChild(selectorsWrapper);
@@ -162,28 +346,49 @@ export class TimePicker {
 
         this.hourColumn = hourColumn;
         this.minuteColumn = minuteColumn;
+        this.confirmButton = confirmBtn;
 
         return panel;
     }
 
-    _createColumn(label, min, max, step = 1) {
+    _createColumn(label, min, max, step, type) {
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = `flex:1;text-align:center;`;
+        wrapper.className = `timepicker__column timepicker__column--${type}`;
+        wrapper.style.cssText = `
+            flex: 1;
+            text-align: center;
+        `;
 
         const labelEl = document.createElement('div');
         labelEl.textContent = label;
-        labelEl.style.cssText = `font-size:var(--cl-font-size-xs);color:var(--cl-text-muted);margin-bottom:6px;`;
+        labelEl.style.cssText = `
+            font-size: var(--cl-font-size-xs);
+            color: var(--cl-text-muted);
+            margin-bottom: 6px;
+        `;
 
         const scrollContainer = document.createElement('div');
         scrollContainer.className = 'timepicker__scroll';
-        scrollContainer.style.cssText = `height:150px;overflow-y:auto;border:1px solid var(--cl-border-light);border-radius:var(--cl-radius-md);`;
+        scrollContainer.style.cssText = `
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid var(--cl-border-light);
+            border-radius: var(--cl-radius-md);
+        `;
 
-        for (let i = min; i <= max; i += step) {
+        const items = [];
+        for (let value = min; value <= max; value += step) {
             const item = document.createElement('div');
             item.className = 'timepicker__item';
-            item.dataset.value = i;
-            item.textContent = String(i).padStart(2, '0');
-            item.style.cssText = `padding:8px;cursor:pointer;transition:all var(--cl-transition-fast);font-size:var(--cl-font-size-lg);color:var(--cl-text);`;
+            item.dataset.value = String(value);
+            item.textContent = String(value).padStart(2, '0');
+            item.style.cssText = `
+                padding: 8px;
+                cursor: pointer;
+                transition: all var(--cl-transition-fast);
+                font-size: var(--cl-font-size-lg);
+                color: var(--cl-text);
+            `;
 
             item.addEventListener('mouseenter', () => {
                 if (!item.classList.contains('timepicker__item--selected')) {
@@ -196,17 +401,15 @@ export class TimePicker {
                 }
             });
             item.addEventListener('click', () => {
-                scrollContainer.querySelectorAll('.timepicker__item').forEach(el => {
-                    el.classList.remove('timepicker__item--selected');
-                    el.style.background = 'transparent';
-                    el.style.color = 'var(--cl-text)';
-                });
-                item.classList.add('timepicker__item--selected');
-                item.style.background = 'var(--cl-primary)';
-                item.style.color = 'var(--cl-text-inverse)';
+                if (type === 'hour') {
+                    this.send('SELECT_HOUR', { value });
+                } else {
+                    this.send('SELECT_MINUTE', { value });
+                }
             });
 
             scrollContainer.appendChild(item);
+            items.push(item);
         }
 
         wrapper.appendChild(labelEl);
@@ -215,87 +418,119 @@ export class TimePicker {
         return {
             wrapper,
             scrollContainer,
-            getValue: () => {
-                const selected = scrollContainer.querySelector('.timepicker__item--selected');
-                return selected ? Number.parseInt(selected.dataset.value, 10) : null;
-            },
-            setValue: (val) => {
-                scrollContainer.querySelectorAll('.timepicker__item').forEach(el => {
-                    if (Number.parseInt(el.dataset.value, 10) === val) {
-                        el.classList.add('timepicker__item--selected');
-                        el.style.background = 'var(--cl-primary)';
-                        el.style.color = 'var(--cl-text-inverse)';
-                        el.scrollIntoView({ block: 'center' });
-                    } else {
-                        el.classList.remove('timepicker__item--selected');
-                        el.style.background = 'transparent';
-                        el.style.color = 'var(--cl-text)';
-                    }
-                });
-            }
+            items
         };
     }
 
     _bindEvents() {
         this.inputWrapper.addEventListener('click', () => this.toggle());
 
-        document.addEventListener('click', (e) => {
-            if (!this.container.contains(e.target)) {
+        this._onDocumentClick = (event) => {
+            if (!this.container.contains(event.target)) {
                 this.close();
             }
-        });
+        };
+        document.addEventListener('click', this._onDocumentClick);
 
         this.inputWrapper.addEventListener('mouseenter', () => {
-            if (this.options.disabled) return;
+            if (this.snapshot().availability === 'disabled') return;
             this.inputWrapper.style.borderColor = 'var(--cl-primary)';
         });
         this.inputWrapper.addEventListener('mouseleave', () => {
-            if (!this.isOpen) this.inputWrapper.style.borderColor = 'var(--cl-border)';
+            if (!this.snapshot().open) {
+                this.inputWrapper.style.borderColor = 'var(--cl-border)';
+            }
         });
     }
 
-    _confirm() {
-        const hour = this.hourColumn.getValue();
-        const minute = this.minuteColumn.getValue();
+    _syncLegacyFields(state) {
+        this.hour = state.hour;
+        this.minute = state.minute;
+        this.isOpen = state.open;
+        this.options.disabled = state.availability === 'disabled';
+    }
 
-        if (hour !== null && minute !== null) {
-            this.hour = hour;
-            this.minute = minute;
-            this.display.textContent = this._formatTime();
-            this.display.style.color = 'var(--cl-text)';
+    _applyColumnSelection(column, selectedValue) {
+        if (!column) return;
 
-            if (this.options.onChange) {
-                this.options.onChange(this._formatTime(), { hour, minute });
-            }
+        for (const item of column.items) {
+            const itemValue = Number.parseInt(item.dataset.value, 10);
+            const isSelected = itemValue === selectedValue;
+
+            item.classList[isSelected ? 'add' : 'remove']('timepicker__item--selected');
+            item.style.background = isSelected ? 'var(--cl-primary)' : 'transparent';
+            item.style.color = isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)';
+        }
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+        this._syncLegacyFields(state);
+
+        if (this.container) {
+            this.container.style.display = state.visibility === 'hidden' ? 'none' : '';
         }
 
-        this.close();
+        if (this.inputWrapper) {
+            this.inputWrapper.style.background = state.availability === 'disabled' ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.inputWrapper.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
+            this.inputWrapper.style.opacity = state.availability === 'disabled' ? '0.6' : '1';
+            this.inputWrapper.style.borderColor = state.open ? 'var(--cl-primary)' : 'var(--cl-border)';
+        }
+
+        if (this.display) {
+            const value = this._formatTime();
+            this.display.textContent = value || this.options.placeholder;
+            this.display.style.color = value ? 'var(--cl-text)' : 'var(--cl-text-placeholder)';
+        }
+
+        if (this.panel) {
+            this.panel.style.display = state.open ? 'block' : 'none';
+        }
+
+        this._applyColumnSelection(this.hourColumn, state.draftHour);
+        this._applyColumnSelection(this.minuteColumn, state.draftMinute);
+    }
+
+    _confirm() {
+        const previousValue = this.getValue();
+        const nextState = this.send('CONFIRM');
+        const nextValue = formatTime(nextState.hour, nextState.minute);
+
+        if (nextValue && nextValue !== previousValue && this.options.onChange) {
+            this.options.onChange(nextValue, {
+                hour: nextState.hour,
+                minute: nextState.minute
+            });
+        }
     }
 
     _formatTime() {
-        if (this.hour === null || this.minute === null) return '';
-        return `${String(this.hour).padStart(2, '0')}:${String(this.minute).padStart(2, '0')}`;
+        return formatTime(this.hour, this.minute);
+    }
+
+    snapshot() {
+        return this._state.snapshot();
+    }
+
+    send(event, payload = null) {
+        this._state.send(event, payload);
+        this._applyState();
+        return this.snapshot();
     }
 
     open() {
-        if (this.options.disabled) return;
-        this.isOpen = true;
-        this.panel.style.display = 'block';
-        this.inputWrapper.style.borderColor = 'var(--cl-primary)';
-
-        // 設定初始選中
-        if (this.hour !== null) this.hourColumn.setValue(this.hour);
-        if (this.minute !== null) this.minuteColumn.setValue(this.minute);
+        if (this.options.disabled || this.isOpen) return;
+        this.send('OPEN');
     }
 
     close() {
-        this.isOpen = false;
-        this.panel.style.display = 'none';
-        this.inputWrapper.style.borderColor = 'var(--cl-border)';
+        if (!this.isOpen) return;
+        this.send('CLOSE');
     }
 
     toggle() {
-        this.isOpen ? this.close() : this.open();
+        this.send('TOGGLE');
     }
 
     getValue() {
@@ -303,39 +538,39 @@ export class TimePicker {
     }
 
     setValue(value) {
-        this._parseValue(value);
-        this.display.textContent = this._formatTime() || this.options.placeholder;
-        this.display.style.color = this._formatTime() ? 'var(--cl-text)' : 'var(--cl-text-placeholder)';
+        this.send('SET_VALUE', { value });
     }
 
     clear() {
-        this.hour = null;
-        this.minute = null;
-        this.display.textContent = this.options.placeholder;
-        this.display.style.color = 'var(--cl-text-placeholder)';
+        this.send('CLEAR');
     }
 
     setDisabled(disabled) {
-        this.options.disabled = disabled;
+        this.send('SET_DISABLED', { disabled });
+    }
 
-        if (disabled) {
-            this.close();
-        }
+    show() {
+        this.send('SHOW');
+    }
 
-        if (this.inputWrapper) {
-            this.inputWrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
-            this.inputWrapper.style.cursor = disabled ? 'not-allowed' : 'pointer';
-            this.inputWrapper.style.opacity = disabled ? '0.6' : '1';
-        }
+    hide() {
+        this.send('HIDE');
     }
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target) target.appendChild(this.element);
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
         return this;
     }
 
     destroy() {
+        this.send('DESTROY');
+        if (this._onDocumentClick) {
+            document.removeEventListener('click', this._onDocumentClick);
+        }
         if (this.element?.parentNode) {
             this.element.remove();
         }

@@ -1,10 +1,29 @@
 import { escapeHtml } from '../../utils/security.js';
-
 import Locale from '../../i18n/index.js';
-/**
- * DatePicker Component
- * 日期選擇器元件 - 支援民國年 (ROC) 格式
- */
+import { createComponentState } from '../../utils/component-state.js';
+
+function normalizeDate(value) {
+    if (!value) return null;
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function toDateValue(date) {
+    if (!date) return null;
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function fromDateValue(value) {
+    return normalizeDate(value);
+}
+
 export class DatePicker {
     constructor(options = {}) {
         this.options = {
@@ -14,49 +33,157 @@ export class DatePicker {
             disabled: false,
             required: false,
             size: 'medium',
-            useROC: false, // 是否使用民國年
-            format: 'western', // 日期格式: 'western' (西元) 或 'taiwan' (民國)
-            min: null, // 最小日期
-            max: null, // 最大日期
+            useROC: false,
+            format: 'western',
+            min: null,
+            max: null,
             className: '',
             onChange: null,
             ...options
         };
 
-        // 支援 format 參數，轉換為 useROC
         if (this.options.format === 'taiwan') {
             this.options.useROC = true;
         } else if (this.options.format === 'western') {
             this.options.useROC = false;
         }
 
-        // 標準化 min 和 max 日期（移除時間部分）
-        if (this.options.min) {
-            const minDate = new Date(this.options.min);
-            this.minDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
-        } else {
-            this.minDate = null;
-        }
+        this.minDate = normalizeDate(this.options.min);
+        this.maxDate = normalizeDate(this.options.max);
 
-        if (this.options.max) {
-            const maxDate = new Date(this.options.max);
-            this.maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
-        } else {
-            this.maxDate = null;
-        }
+        const selectedDate = normalizeDate(this.options.value);
+        const baseDate = selectedDate || new Date();
 
-        this.selectedDate = null;
-        this.currentMonth = new Date().getMonth();
-        this.currentYear = new Date().getFullYear();
+        this.selectedDate = selectedDate;
+        this.currentMonth = baseDate.getMonth();
+        this.currentYear = baseDate.getFullYear();
         this.isOpen = false;
-        this.element = null;
 
-        // 解析初始值
-        if (this.options.value) {
-            this.selectedDate = new Date(this.options.value);
-            this.currentMonth = this.selectedDate.getMonth();
-            this.currentYear = this.selectedDate.getFullYear();
-        }
+        this.element = null;
+        this.inputWrapper = null;
+        this.display = null;
+        this.calendar = null;
+        this.yearSelect = null;
+        this.monthSelect = null;
+        this.daysGrid = null;
+        this.prevButton = null;
+        this.nextButton = null;
+
+        this.element = this._createElement();
+        this._state = createComponentState(this._buildInitialState(selectedDate, baseDate), {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed', open: false }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden', open: false }),
+            OPEN: (state) => {
+                if (state.availability === 'disabled' || state.open) return state;
+                return { ...state, open: true };
+            },
+            CLOSE: (state) => ({ ...state, open: false }),
+            TOGGLE: (state) => {
+                if (state.availability === 'disabled') return state;
+                return { ...state, open: !state.open };
+            },
+            SET_DISABLED: (state, payload) => ({
+                ...state,
+                availability: payload?.disabled ? 'disabled' : 'enabled',
+                open: payload?.disabled ? false : state.open
+            }),
+            SET_VALUE: (state, payload) => {
+                if (payload?.value == null || payload?.value === '') {
+                    return {
+                        ...state,
+                        selectedValue: null
+                    };
+                }
+
+                const date = normalizeDate(payload?.value);
+                if (!date || !this._isDateInRange(date)) return state;
+
+                return {
+                    ...state,
+                    selectedValue: toDateValue(date),
+                    currentMonth: date.getMonth(),
+                    currentYear: date.getFullYear()
+                };
+            },
+            CLEAR: (state) => ({
+                ...state,
+                selectedValue: null
+            }),
+            PREV_MONTH: (state) => {
+                let month = state.currentMonth - 1;
+                let year = state.currentYear;
+                if (month < 0) {
+                    month = 11;
+                    year -= 1;
+                }
+                return {
+                    ...state,
+                    currentMonth: month,
+                    currentYear: year
+                };
+            },
+            NEXT_MONTH: (state) => {
+                let month = state.currentMonth + 1;
+                let year = state.currentYear;
+                if (month > 11) {
+                    month = 0;
+                    year += 1;
+                }
+                return {
+                    ...state,
+                    currentMonth: month,
+                    currentYear: year
+                };
+            },
+            SET_YEAR: (state, payload) => {
+                const year = Number.parseInt(payload?.year, 10);
+                if (Number.isNaN(year)) return state;
+                return {
+                    ...state,
+                    currentYear: year
+                };
+            },
+            SET_MONTH: (state, payload) => {
+                const month = Number.parseInt(payload?.month, 10);
+                if (Number.isNaN(month) || month < 0 || month > 11) return state;
+                return {
+                    ...state,
+                    currentMonth: month
+                };
+            },
+            SELECT_DAY: (state, payload) => {
+                const day = Number.parseInt(payload?.day, 10);
+                if (Number.isNaN(day) || day < 1) return state;
+
+                const date = new Date(state.currentYear, state.currentMonth, day);
+                if (date.getMonth() !== state.currentMonth || !this._isDateInRange(date)) {
+                    return state;
+                }
+
+                return {
+                    ...state,
+                    selectedValue: toDateValue(date),
+                    open: false
+                };
+            }
+        });
+
+        this._bindEvents();
+        this._applyState();
+    }
+
+    _buildInitialState(selectedDate, baseDate) {
+        return {
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            open: false,
+            selectedValue: selectedDate ? toDateValue(selectedDate) : null,
+            currentMonth: baseDate.getMonth(),
+            currentYear: baseDate.getFullYear()
+        };
     }
 
     _getSizeStyles() {
@@ -68,186 +195,357 @@ export class DatePicker {
         return sizes[this.options.size] || sizes.medium;
     }
 
-    render(container) {
-        const { label, required, disabled, placeholder, className } = this.options;
+    _createElement() {
+        const { label, required, className } = this.options;
         const sizeStyles = this._getSizeStyles();
 
-        this.element = document.createElement('div');
-        this.element.className = `datepicker ${className || ''}`;
-        this.element.style.cssText = `position:relative;display:inline-block;max-width:200px;font-family:var(--cl-font-family);`;
+        const container = document.createElement('div');
+        container.className = `datepicker ${className || ''}`.trim();
+        container.style.cssText = `
+            position: relative;
+            display: inline-block;
+            max-width: 220px;
+            font-family: var(--cl-font-family);
+        `;
 
-        // 標籤
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `display:block;font-size:var(--cl-font-size-md);font-weight:500;color:var(--cl-text);margin-bottom:4px;`;
-            this.element.appendChild(labelEl);
+            labelEl.style.cssText = `
+                display: block;
+                font-size: var(--cl-font-size-md);
+                font-weight: 500;
+                color: var(--cl-text);
+                margin-bottom: 4px;
+            `;
+            container.appendChild(labelEl);
         }
 
-        // 輸入區域
         const inputWrapper = document.createElement('div');
         inputWrapper.className = 'datepicker__input-wrapper';
         inputWrapper.style.cssText = `
-            display:flex;align-items:center;position:relative;
-            height:${sizeStyles.height};padding:${sizeStyles.padding};padding-right:32px;
-            background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
-            border:1px solid var(--cl-border);border-radius:var(--cl-radius-md);
-            cursor:${disabled ? 'not-allowed' : 'pointer'};transition:all var(--cl-transition);
+            display: flex;
+            align-items: center;
+            position: relative;
+            height: ${sizeStyles.height};
+            padding: ${sizeStyles.padding};
+            padding-right: 32px;
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-md);
+            cursor: pointer;
+            transition: all var(--cl-transition);
         `;
 
         const display = document.createElement('span');
         display.className = 'datepicker__display';
-        display.textContent = this.selectedDate ? this._formatDate(this.selectedDate) : placeholder;
-        display.style.cssText = `flex:1;font-size:${sizeStyles.fontSize};color:${this.selectedDate ? 'var(--cl-text)' : 'var(--cl-text-placeholder)'};`;
+        display.style.cssText = `
+            flex: 1;
+            font-size: ${sizeStyles.fontSize};
+            color: var(--cl-text-placeholder);
+        `;
 
         const icon = document.createElement('span');
+        icon.className = 'datepicker__icon';
         icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <rect x="2" y="3" width="12" height="11" rx="2" stroke="var(--cl-text-secondary)" stroke-width="1.5"/>
             <path d="M2 6H14M5 1V4M11 1V4" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round"/>
         </svg>`;
-        icon.style.cssText = `position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;`;
+        icon.style.cssText = `
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+        `;
 
         inputWrapper.appendChild(display);
         inputWrapper.appendChild(icon);
 
-        // 日曆面板
         const calendar = document.createElement('div');
         calendar.className = 'datepicker__calendar';
         calendar.style.cssText = `
-            position:absolute;top:100%;left:0;margin-top:4px;
-            background: var(--cl-bg);border:1px solid var(--cl-border);border-radius:var(--cl-radius-lg);
-            box-shadow:var(--cl-shadow-md);padding:6px;
-            z-index:1000;display:none;width:220px;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: var(--cl-bg);
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-lg);
+            box-shadow: var(--cl-shadow-md);
+            padding: 6px;
+            z-index: 1000;
+            display: none;
+            width: 220px;
         `;
 
-        this.element.appendChild(inputWrapper);
-        this.element.appendChild(calendar);
+        const header = document.createElement('div');
+        header.className = 'datepicker__header';
+        header.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            gap: 2px;
+        `;
+
+        const prevButton = document.createElement('button');
+        prevButton.type = 'button';
+        prevButton.className = 'dp-prev';
+        prevButton.textContent = '<';
+        prevButton.style.cssText = `
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 1px 4px;
+            font-size: var(--cl-font-size-sm);
+            flex-shrink: 0;
+        `;
+
+        const selectorGroup = document.createElement('div');
+        selectorGroup.className = 'datepicker__selectors';
+        selectorGroup.style.cssText = `
+            display: flex;
+            gap: 2px;
+            min-width: 0;
+            justify-content: center;
+        `;
+
+        const yearSelect = document.createElement('select');
+        yearSelect.className = 'dp-year-select';
+        yearSelect.style.cssText = `
+            padding: 0 12px 0 4px;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-xs);
+            cursor: pointer;
+            width: 56px;
+            height: 22px;
+            line-height: 20px;
+            background: var(--cl-bg);
+        `;
+
+        const monthSelect = document.createElement('select');
+        monthSelect.className = 'dp-month-select';
+        monthSelect.style.cssText = `
+            padding: 0 12px 0 4px;
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-sm);
+            font-size: var(--cl-font-size-xs);
+            cursor: pointer;
+            width: 48px;
+            height: 22px;
+            line-height: 20px;
+            background: var(--cl-bg);
+        `;
+
+        selectorGroup.appendChild(yearSelect);
+        selectorGroup.appendChild(monthSelect);
+
+        const nextButton = document.createElement('button');
+        nextButton.type = 'button';
+        nextButton.className = 'dp-next';
+        nextButton.textContent = '>';
+        nextButton.style.cssText = prevButton.style.cssText;
+
+        header.appendChild(prevButton);
+        header.appendChild(selectorGroup);
+        header.appendChild(nextButton);
+
+        const daysGrid = document.createElement('div');
+        daysGrid.className = 'datepicker__days';
+        daysGrid.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0;
+            text-align: center;
+        `;
+
+        calendar.appendChild(header);
+        calendar.appendChild(daysGrid);
+
+        container.appendChild(inputWrapper);
+        container.appendChild(calendar);
 
         this.inputWrapper = inputWrapper;
         this.display = display;
         this.calendar = calendar;
+        this.yearSelect = yearSelect;
+        this.monthSelect = monthSelect;
+        this.daysGrid = daysGrid;
+        this.prevButton = prevButton;
+        this.nextButton = nextButton;
 
-        this._renderCalendar();
-        this._bindEvents();
+        return container;
+    }
 
-        // 掛載到容器
-        if (container) {
-            const target = typeof container === 'string' ? document.querySelector(container) : container;
-            if (target) target.appendChild(this.element);
-        }
-
-        return this.element;
+    _getYearBounds() {
+        const currentYear = new Date().getFullYear();
+        return this.options.useROC
+            ? { start: 1912, end: currentYear + 10 }
+            : { start: currentYear - 100, end: currentYear + 10 };
     }
 
     _renderCalendar() {
-        const months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-        const currentYear = new Date().getFullYear();
-        const yearStart = this.options.useROC ? 1 : currentYear - 100; // 民國1年 或 西元前100年
-        const yearEnd = this.options.useROC ? currentYear - 1911 + 10 : currentYear + 10;
+        const state = this.snapshot();
+        const { start, end } = this._getYearBounds();
 
-        // 生成年份選項
-        let yearOptions = '';
-        for (let y = yearEnd; y >= yearStart; y--) {
-            const actualYear = this.options.useROC ? y + 1911 : y;
-            const displayYear = this.options.useROC ? `${y}` : `${y}`;
-            const selected = actualYear === this.currentYear ? 'selected' : '';
-            yearOptions += `<option value="${actualYear}" ${selected}>${displayYear}</option>`;
+        this.yearSelect.innerHTML = '';
+        for (let year = end; year >= start; year -= 1) {
+            const option = document.createElement('option');
+            option.value = String(year);
+            option.textContent = this.options.useROC ? String(year - 1911) : String(year);
+            this.yearSelect.appendChild(option);
+        }
+        this.yearSelect.value = String(state.currentYear);
+
+        this.monthSelect.innerHTML = '';
+        for (let month = 0; month < 12; month += 1) {
+            const option = document.createElement('option');
+            option.value = String(month);
+            option.textContent = String(month + 1);
+            this.monthSelect.appendChild(option);
+        }
+        this.monthSelect.value = String(state.currentMonth);
+
+        this.daysGrid.innerHTML = '';
+        const weekdays = Object.values(Locale.t('datePicker.weekdays'));
+        for (const weekday of weekdays) {
+            const headerCell = document.createElement('div');
+            headerCell.className = 'datepicker__weekday';
+            headerCell.textContent = weekday;
+            headerCell.style.cssText = `
+                font-size: var(--cl-font-size-2xs);
+                color: var(--cl-text-muted);
+                padding: 2px 0;
+            `;
+            this.daysGrid.appendChild(headerCell);
         }
 
-        // 生成月份選項
-        let monthOptions = '';
-        months.forEach((m, i) => {
-            const selected = i === this.currentMonth ? 'selected' : '';
-            monthOptions += `<option value="${i}" ${selected}>${m}</option>`;
-        });
+        const firstDay = new Date(state.currentYear, state.currentMonth, 1).getDay();
+        const daysInMonth = new Date(state.currentYear, state.currentMonth + 1, 0).getDate();
+        const todayValue = toDateValue(new Date());
 
-        this.calendar.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:2px;">
-                <button type="button" class="dp-prev" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:var(--cl-font-size-sm);flex-shrink:0;">◀</button>
-                <div style="display:flex;gap:2px;min-width:0;justify-content:center;">
-                    <select class="dp-year-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-xs);cursor:pointer;width:52px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px var(--cl-bg);">
-                        ${yearOptions}
-                    </select>
-                    <select class="dp-month-select" style="padding:0 12px 0 4px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-xs);cursor:pointer;width:44px;height:22px;line-height:20px;appearance:none;-webkit-appearance:none;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%225%22><path d=%22M0 0l4 5 4-5z%22 fill=%22%23666%22/></svg>') no-repeat right 2px center/8px 5px var(--cl-bg);">
-                        ${monthOptions}
-                    </select>
-                </div>
-                <button type="button" class="dp-next" style="background:none;border:none;cursor:pointer;padding:1px 4px;font-size:var(--cl-font-size-sm);flex-shrink:0;">▶</button>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;text-align:center;">
-                ${Object.values(Locale.t('datePicker.weekdays')).map(d => `<div style="font-size:var(--cl-font-size-2xs);color:var(--cl-text-muted);padding:2px 0;">${d}</div>`).join('')}
-                ${this._renderDays()}
-            </div>
-        `;
-
-        // 綁定年份選擇
-        this.calendar.querySelector('.dp-year-select').onchange = (e) => {
-            e.stopPropagation();
-            this.currentYear = Number.parseInt(e.target.value, 10);
-            this._renderCalendar();
-        };
-
-        // 綁定月份選擇
-        this.calendar.querySelector('.dp-month-select').onchange = (e) => {
-            e.stopPropagation();
-            this.currentMonth = Number.parseInt(e.target.value, 10);
-            this._renderCalendar();
-        };
-
-        // 綁定月份切換箭頭
-        this.calendar.querySelector('.dp-prev').onclick = (e) => { e.stopPropagation(); this._prevMonth(); };
-        this.calendar.querySelector('.dp-next').onclick = (e) => { e.stopPropagation(); this._nextMonth(); };
-
-        // 綁定日期點擊
-        this.calendar.querySelectorAll('.dp-day').forEach(el => {
-            el.onclick = (e) => {
-                e.stopPropagation();
-                // 檢查是否為禁用日期
-                if (el.dataset.disabled === 'true') {
-                    return;
-                }
-                const day = Number.parseInt(el.dataset.day, 10);
-                this._selectDate(day);
-            };
-        });
-    }
-
-    _renderDays() {
-        const firstDay = new Date(this.currentYear, this.currentMonth, 1).getDay();
-        const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
-        const today = new Date();
-
-        let html = '';
-
-        // 空白填充
-        for (let i = 0; i < firstDay; i++) {
-            html += '<div></div>';
+        for (let index = 0; index < firstDay; index += 1) {
+            const blank = document.createElement('div');
+            blank.className = 'datepicker__blank';
+            this.daysGrid.appendChild(blank);
         }
 
-        // 日期
-        for (let d = 1; d <= daysInMonth; d++) {
-            const currentDate = new Date(this.currentYear, this.currentMonth, d);
-            const isToday = today.getDate() === d && today.getMonth() === this.currentMonth && today.getFullYear() === this.currentYear;
-            const isSelected = this.selectedDate && this.selectedDate.getDate() === d && this.selectedDate.getMonth() === this.currentMonth && this.selectedDate.getFullYear() === this.currentYear;
-            const isDisabled = !this._isDateInRange(currentDate);
+        for (let day = 1; day <= daysInMonth; day += 1) {
+            const date = new Date(state.currentYear, state.currentMonth, day);
+            const dateValue = toDateValue(date);
+            const isSelected = state.selectedValue === dateValue;
+            const isToday = todayValue === dateValue;
+            const isDisabled = !this._isDateInRange(date);
 
-            const style = `
-                padding:3px 2px;border-radius:var(--cl-radius-sm);cursor:${isDisabled ? 'not-allowed' : 'pointer'};font-size:var(--cl-font-size-sm);
-                background:${isSelected ? 'var(--cl-primary)' : isToday ? 'var(--cl-primary-light)' : 'transparent'};
-                color:${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)'};
+            const dayEl = document.createElement('button');
+            dayEl.type = 'button';
+            dayEl.className = 'dp-day';
+            dayEl.dataset.day = String(day);
+            dayEl.dataset.disabled = isDisabled ? 'true' : 'false';
+            dayEl.textContent = String(day);
+            dayEl.style.cssText = `
+                padding: 3px 2px;
+                border: none;
+                border-radius: var(--cl-radius-sm);
+                cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
+                font-size: var(--cl-font-size-sm);
+                background: ${isSelected ? 'var(--cl-primary)' : isToday ? 'var(--cl-primary-light)' : 'transparent'};
+                color: ${isDisabled ? 'var(--cl-border-dark)' : isSelected ? 'var(--cl-text-inverse)' : 'var(--cl-text)'};
                 ${isToday && !isSelected ? 'font-weight:600;' : ''}
                 ${isDisabled ? 'opacity:0.5;' : ''}
             `;
-            const disabledAttr = isDisabled ? 'data-disabled="true"' : '';
-            html += `<div class="dp-day" data-day="${d}" ${disabledAttr} style="${style}">${d}</div>`;
+
+            dayEl.addEventListener('click', (event) => {
+                event.stopPropagation?.();
+                if (isDisabled) return;
+                this._selectDate(day);
+            });
+
+            this.daysGrid.appendChild(dayEl);
+        }
+    }
+
+    _bindEvents() {
+        this.inputWrapper.addEventListener('click', () => this.toggle());
+        this.inputWrapper.addEventListener('mouseenter', () => {
+            if (this.snapshot().availability === 'disabled') return;
+            this.inputWrapper.style.borderColor = 'var(--cl-primary)';
+        });
+        this.inputWrapper.addEventListener('mouseleave', () => {
+            if (!this.snapshot().open) {
+                this.inputWrapper.style.borderColor = 'var(--cl-border)';
+            }
+        });
+
+        this.prevButton.addEventListener('click', (event) => {
+            event.stopPropagation?.();
+            this._prevMonth();
+        });
+
+        this.nextButton.addEventListener('click', (event) => {
+            event.stopPropagation?.();
+            this._nextMonth();
+        });
+
+        this.yearSelect.addEventListener('change', (event) => {
+            event.stopPropagation?.();
+            this.send('SET_YEAR', { year: event.target.value });
+        });
+
+        this.monthSelect.addEventListener('change', (event) => {
+            event.stopPropagation?.();
+            this.send('SET_MONTH', { month: event.target.value });
+        });
+
+        this._onDocumentClick = (event) => {
+            if (!this.element.contains(event.target)) {
+                this.close();
+            }
+        };
+        document.addEventListener('click', this._onDocumentClick);
+    }
+
+    _syncLegacyFields(state) {
+        this.selectedDate = fromDateValue(state.selectedValue);
+        this.currentMonth = state.currentMonth;
+        this.currentYear = state.currentYear;
+        this.isOpen = state.open;
+        this.options.disabled = state.availability === 'disabled';
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+        this._syncLegacyFields(state);
+
+        if (this.element) {
+            this.element.style.display = state.visibility === 'hidden' ? 'none' : 'inline-block';
         }
 
-        return html;
+        if (this.inputWrapper) {
+            this.inputWrapper.style.background = state.availability === 'disabled' ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.inputWrapper.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
+            this.inputWrapper.style.opacity = state.availability === 'disabled' ? '0.6' : '1';
+            this.inputWrapper.style.borderColor = state.open ? 'var(--cl-primary)' : 'var(--cl-border)';
+        }
+
+        if (this.display) {
+            const selectedDate = fromDateValue(state.selectedValue);
+            this.display.textContent = selectedDate ? this._formatDate(selectedDate) : this.options.placeholder;
+            this.display.style.color = selectedDate ? 'var(--cl-text)' : 'var(--cl-text-placeholder)';
+        }
+
+        if (this.calendar) {
+            this.calendar.style.display = state.open ? 'block' : 'none';
+        }
+
+        this._renderCalendar();
     }
 
     _isDateInRange(date) {
-        // 標準化日期（移除時間部分）
-        const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const checkDate = normalizeDate(date);
+        if (!checkDate) return false;
 
         if (this.minDate && checkDate < this.minDate) {
             return false;
@@ -260,97 +558,76 @@ export class DatePicker {
         return true;
     }
 
-    _bindEvents() {
-        this.inputWrapper.addEventListener('click', () => this.toggle());
-
-        // 注意：_renderCalendar() 會替換 innerHTML，導致舊 select 元素脫離 DOM
-        // 此時 e.target 已不在文件中，不應觸發關閉
-        document.addEventListener('click', (e) => {
-            if (!document.contains(e.target)) return;
-            if (!this.element.contains(e.target)) this.close();
-        });
-
-        this.inputWrapper.addEventListener('mouseenter', () => {
-            if (this.options.disabled) return;
-            this.inputWrapper.style.borderColor = 'var(--cl-primary)';
-        });
-        this.inputWrapper.addEventListener('mouseleave', () => {
-            if (!this.isOpen) this.inputWrapper.style.borderColor = 'var(--cl-border)';
-        });
-    }
-
-    _selectDate(day) {
-        const date = new Date(this.currentYear, this.currentMonth, day);
-
-        // 檢查日期是否在範圍內
-        if (!this._isDateInRange(date)) {
-            return;
-        }
-
-        this.selectedDate = date;
-        this.display.textContent = this._formatDate(this.selectedDate);
-        this.display.style.color = 'var(--cl-text)';
-        this._renderCalendar();
-        this.close();
-
-        if (this.options.onChange) {
-            this.options.onChange(this.selectedDate, this._formatDate(this.selectedDate));
-        }
-    }
-
-    _prevMonth() {
-        this.currentMonth--;
-        if (this.currentMonth < 0) {
-            this.currentMonth = 11;
-            this.currentYear--;
-        }
-        this._renderCalendar();
-    }
-
-    _nextMonth() {
-        this.currentMonth++;
-        if (this.currentMonth > 11) {
-            this.currentMonth = 0;
-            this.currentYear++;
-        }
-        this._renderCalendar();
-    }
-
     _formatDate(date) {
         if (!date) return '';
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
+
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
 
         if (this.options.useROC) {
-            return `${y - 1911}/${m}/${d}`;
+            return `${year - 1911}/${month}/${day}`;
         }
-        return `${y}/${m}/${d}`;
+
+        return `${year}/${month}/${day}`;
     }
 
     _getYearDisplay(year) {
         if (this.options.useROC) {
             return Locale.t('datePicker.rocYear', { year: year - 1911 });
         }
-        return `${year} 年`;
+        return String(year);
+    }
+
+    snapshot() {
+        return this._state.snapshot();
+    }
+
+    send(event, payload = null) {
+        this._state.send(event, payload);
+        this._applyState();
+        return this.snapshot();
+    }
+
+    render(container) {
+        const target = typeof container === 'string' ? document.querySelector(container) : container;
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
+        return this.element;
+    }
+
+    _selectDate(day) {
+        const previousValue = this.snapshot().selectedValue;
+        const nextState = this.send('SELECT_DAY', { day });
+
+        if (nextState.selectedValue !== previousValue && nextState.selectedValue && this.options.onChange) {
+            const selectedDate = fromDateValue(nextState.selectedValue);
+            this.options.onChange(selectedDate, this._formatDate(selectedDate));
+        }
+    }
+
+    _prevMonth() {
+        this.send('PREV_MONTH');
+    }
+
+    _nextMonth() {
+        this.send('NEXT_MONTH');
     }
 
     open() {
-        if (this.options.disabled) return;
-        this.isOpen = true;
-        this.calendar.style.display = 'block';
-        this._renderCalendar(); // 在可見狀態下重新渲染，修正 appearance:none 初始佈局問題
-        this.inputWrapper.style.borderColor = 'var(--cl-primary)';
+        if (this.options.disabled || this.isOpen) return;
+        this.send('OPEN');
     }
 
     close() {
-        this.isOpen = false;
-        this.calendar.style.display = 'none';
-        this.inputWrapper.style.borderColor = 'var(--cl-border)';
+        if (!this.isOpen) return;
+        this.send('CLOSE');
     }
 
     toggle() {
-        this.isOpen ? this.close() : this.open();
+        this.send('TOGGLE');
     }
 
     getValue() {
@@ -362,33 +639,23 @@ export class DatePicker {
     }
 
     setValue(value) {
-        this.selectedDate = new Date(value);
-        this.currentMonth = this.selectedDate.getMonth();
-        this.currentYear = this.selectedDate.getFullYear();
-        this.display.textContent = this._formatDate(this.selectedDate);
-        this.display.style.color = 'var(--cl-text)';
-        this._renderCalendar();
+        this.send('SET_VALUE', { value });
     }
 
     clear() {
-        this.selectedDate = null;
-        this.display.textContent = this.options.placeholder;
-        this.display.style.color = 'var(--cl-text-placeholder)';
-        this._renderCalendar();
+        this.send('CLEAR');
     }
 
     setDisabled(disabled) {
-        this.options.disabled = disabled;
+        this.send('SET_DISABLED', { disabled });
+    }
 
-        if (disabled) {
-            this.close();
-        }
+    show() {
+        this.send('SHOW');
+    }
 
-        if (this.inputWrapper) {
-            this.inputWrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
-            this.inputWrapper.style.cursor = disabled ? 'not-allowed' : 'pointer';
-            this.inputWrapper.style.opacity = disabled ? '0.6' : '1';
-        }
+    hide() {
+        this.send('HIDE');
     }
 
     mount(container) {
@@ -396,6 +663,10 @@ export class DatePicker {
     }
 
     destroy() {
+        this.send('DESTROY');
+        if (this._onDocumentClick) {
+            document.removeEventListener('click', this._onDocumentClick);
+        }
         if (this.element?.parentNode) {
             this.element.remove();
         }
