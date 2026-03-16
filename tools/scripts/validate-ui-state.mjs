@@ -504,6 +504,71 @@ await test('DateTimeInput phase 3: composite state stays aligned with child inpu
     }
 });
 
+await test('ListInput phase 3: list state stays aligned with item lifecycle', async () => {
+    const dom = installFakeDom();
+    try {
+        const { ListInput } = await importModule('packages/javascript/browser/ui_components/input/ListInput/ListInput.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const input = new ListInput({
+            minItems: 0,
+            maxItems: 3,
+            renderItem: (container, index, value) => {
+                const marker = dom.document.createElement('span');
+                marker.textContent = `${index}:${value?.label || ''}`;
+                container.appendChild(marker);
+            }
+        });
+
+        assert(typeof input.snapshot === 'function', 'ListInput exposes snapshot');
+        assert(typeof input.send === 'function', 'ListInput exposes send');
+        assert(typeof input.setValues === 'function', 'legacy setValues remains');
+        assert(typeof input.mount === 'function', 'legacy mount remains');
+
+        input.mount(host);
+        assert(input.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(input.snapshot().items.length === 0, 'initial items should match minItems');
+
+        input._addItem({ label: 'first' });
+        input._addItem({ label: 'second' });
+        assert(input.snapshot().items.length === 2, 'addItem should update state');
+
+        input._moveItem(1, -1);
+        assert(input.snapshot().items[0].label === 'second', 'moveItem should reorder state');
+
+        input._removeItem(1);
+        assert(input.snapshot().items.length === 1, 'removeItem should update state');
+
+        input.setValues([{ label: 'one' }, { label: 'two' }]);
+        assert(input.snapshot().items.length === 2, 'setValues should update state');
+        assert(input.getValues()[1].label === 'two', 'setValues should keep legacy behavior');
+    } finally {
+        dom.cleanup();
+    }
+});
+
+await test('PhoneListInput phase 3: inherited list contract stays available', async () => {
+    const dom = installFakeDom();
+    try {
+        const { PhoneListInput } = await importModule('packages/javascript/browser/ui_components/input/PhoneListInput/PhoneListInput.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const input = new PhoneListInput();
+
+        assert(typeof input.snapshot === 'function', 'PhoneListInput inherits snapshot');
+        assert(typeof input.send === 'function', 'PhoneListInput inherits send');
+        assert(typeof input.getValues === 'function', 'legacy getValues remains');
+
+        input.mount(host);
+        assert(input.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(input.snapshot().items.length === 1, 'minItems should create one initial row');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;
