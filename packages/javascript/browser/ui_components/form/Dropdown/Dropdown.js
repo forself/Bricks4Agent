@@ -1,29 +1,12 @@
-/**
- * Dropdown Component
- * 下拉選單元件 - 支援基本選擇與可搜尋模式
- */
 import Locale from '../../i18n/index.js';
-
+import { createComponentState } from '../../utils/component-state.js';
 
 export class Dropdown {
     static VARIANTS = {
-        BASIC: 'basic',        // 基本下拉選單
-        SEARCHABLE: 'searchable' // 可搜尋下拉選單
+        BASIC: 'basic',
+        SEARCHABLE: 'searchable'
     };
 
-    /**
-     * @param {Object} options
-     * @param {string} options.variant - 'basic' 或 'searchable'
-     * @param {Array} options.items - 選項 [{value, label, disabled?}]
-     * @param {string} options.placeholder - 預設提示文字
-     * @param {any} options.value - 初始值
-     * @param {Function} options.onChange - 選擇變更回調
-     * @param {string} options.size - 尺寸 (small, medium, large)
-     * @param {boolean} options.disabled - 停用
-     * @param {boolean} options.clearable - 可清除選擇
-     * @param {string} options.width - 寬度
-     * @param {string} options.emptyText - 無結果文字
-     */
     constructor(options = {}) {
         this.options = {
             variant: 'basic',
@@ -43,9 +26,110 @@ export class Dropdown {
         this.selectedValue = this.options.value;
         this.filteredItems = [...this.options.items];
         this.highlightIndex = -1;
+        this.filterQuery = '';
+
+        this.input = null;
+        this.display = null;
+        this.arrow = null;
+        this.menu = null;
+        this.selector = null;
+        this.container = null;
 
         this.element = this._createElement();
+        this._state = createComponentState(this._buildInitialState(), {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed', open: false }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden', open: false }),
+            OPEN: (state) => {
+                if (state.availability === 'disabled' || state.open) return state;
+                return {
+                    ...state,
+                    open: true,
+                    filteredItems: this.options.variant === Dropdown.VARIANTS.SEARCHABLE
+                        ? [...this.options.items]
+                        : state.filteredItems
+                };
+            },
+            CLOSE: (state) => ({
+                ...state,
+                open: false,
+                highlightIndex: -1
+            }),
+            TOGGLE: (state) => (
+                state.open
+                    ? { ...state, open: false, highlightIndex: -1 }
+                    : (state.availability === 'disabled'
+                        ? state
+                        : {
+                            ...state,
+                            open: true,
+                            filteredItems: this.options.variant === Dropdown.VARIANTS.SEARCHABLE
+                                ? [...this.options.items]
+                                : state.filteredItems
+                        })
+            ),
+            SET_VALUE: (state, payload) => ({
+                ...state,
+                selectedValue: payload?.value ?? null,
+                open: false,
+                highlightIndex: -1
+            }),
+            CLEAR: (state) => ({
+                ...state,
+                selectedValue: null,
+                filterQuery: '',
+                filteredItems: [...this.options.items],
+                open: false,
+                highlightIndex: -1
+            }),
+            SET_ITEMS: (state, payload) => ({
+                ...state,
+                filteredItems: [...(payload?.items ?? [])],
+                highlightIndex: -1
+            }),
+            SET_DISABLED: (state, payload) => ({
+                ...state,
+                availability: payload?.disabled ? 'disabled' : 'enabled',
+                open: payload?.disabled ? false : state.open,
+                highlightIndex: payload?.disabled ? -1 : state.highlightIndex
+            }),
+            FILTER: (state, payload) => {
+                const query = String(payload?.query ?? '').toLowerCase().trim();
+                const filteredItems = !query
+                    ? [...this.options.items]
+                    : this.options.items.filter((item) =>
+                        String(item.label).toLowerCase().includes(query)
+                    );
+                return {
+                    ...state,
+                    filterQuery: query,
+                    filteredItems,
+                    open: true,
+                    highlightIndex: -1
+                };
+            },
+            SET_HIGHLIGHT: (state, payload) => ({
+                ...state,
+                highlightIndex: payload?.index ?? -1
+            })
+        });
+
         this._bindEvents();
+        this._applyState();
+    }
+
+    _buildInitialState() {
+        return {
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            open: false,
+            selectedValue: this.options.value,
+            filteredItems: [...this.options.items],
+            highlightIndex: -1,
+            filterQuery: ''
+        };
     }
 
     _getSizeStyles() {
@@ -60,9 +144,8 @@ export class Dropdown {
     _createElement() {
         const { variant, placeholder, disabled, width } = this.options;
         const sizeStyles = this._getSizeStyles();
-        const isSearchable = variant === 'searchable';
+        const isSearchable = variant === Dropdown.VARIANTS.SEARCHABLE;
 
-        // 容器
         const container = document.createElement('div');
         container.className = `dropdown dropdown--${variant}`;
         container.style.cssText = `
@@ -72,7 +155,6 @@ export class Dropdown {
             font-family: inherit;
         `;
 
-        // 選擇器區域
         const selector = document.createElement('div');
         selector.className = 'dropdown__selector';
         selector.style.cssText = `
@@ -90,7 +172,6 @@ export class Dropdown {
             opacity: ${disabled ? '0.6' : '1'};
         `;
 
-        // 顯示文字或輸入框
         if (isSearchable) {
             const input = document.createElement('input');
             input.className = 'dropdown__input';
@@ -123,7 +204,6 @@ export class Dropdown {
             this.display = display;
         }
 
-        // 圖示區域
         const icons = document.createElement('div');
         icons.className = 'dropdown__icons';
         icons.style.cssText = `
@@ -136,22 +216,15 @@ export class Dropdown {
             align-items: center;
         `;
 
-        // 箭頭圖示
         const arrow = document.createElement('span');
         arrow.className = 'dropdown__arrow';
         arrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>`;
-        arrow.style.cssText = `
-            display: flex;
-            transition: transform var(--cl-transition);
-        `;
+        arrow.style.cssText = 'display: flex; transition: transform var(--cl-transition);';
         icons.appendChild(arrow);
-        this.arrow = arrow;
-
         selector.appendChild(icons);
 
-        // 下拉選單區域
         const menu = document.createElement('div');
         menu.className = 'dropdown__menu';
         menu.style.cssText = `
@@ -170,28 +243,82 @@ export class Dropdown {
             display: none;
         `;
 
-        this._renderItems(menu);
-
         container.appendChild(selector);
         container.appendChild(menu);
 
         this.container = container;
         this.selector = selector;
         this.menu = menu;
-
-        // 設定初始值
-        if (this.selectedValue !== null) {
-            this._setDisplayValue(this.selectedValue);
-        }
+        this.arrow = arrow;
 
         return container;
     }
 
+    _syncLegacyFields(state) {
+        this.isOpen = state.open;
+        this.selectedValue = state.selectedValue;
+        this.filteredItems = [...state.filteredItems];
+        this.highlightIndex = state.highlightIndex;
+        this.filterQuery = state.filterQuery;
+        this.options.disabled = state.availability === 'disabled';
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+        this._syncLegacyFields(state);
+
+        if (this.container) {
+            this.container.style.display = state.visibility === 'hidden' ? 'none' : 'inline-block';
+        }
+
+        if (this.selector) {
+            this.selector.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
+            this.selector.style.opacity = state.availability === 'disabled' ? '0.6' : '1';
+            this.selector.style.background = state.availability === 'disabled' ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.selector.style.borderColor = state.open ? 'var(--cl-primary)' : 'var(--cl-border)';
+        }
+
+        if (this.input) {
+            this.input.disabled = state.availability === 'disabled';
+            this.input.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'text';
+            const selectedItem = this._findItem(state.selectedValue);
+            this.input.value = state.filterQuery || selectedItem?.label || '';
+        }
+
+        if (this.display) {
+            const selectedItem = this._findItem(state.selectedValue);
+            if (selectedItem) {
+                this.display.textContent = selectedItem.label;
+                this.display.style.color = 'var(--cl-text)';
+            } else {
+                this.display.textContent = this.options.placeholder;
+                this.display.style.color = 'var(--cl-text-placeholder)';
+            }
+        }
+
+        if (this.arrow) {
+            this.arrow.style.transform = state.open ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+
+        if (this.menu) {
+            this.menu.style.display = state.open ? 'block' : 'none';
+        }
+
+        this._renderItems();
+    }
+
+    _findItem(value) {
+        return this.options.items.find((item) => item.value === value) || null;
+    }
+
     _renderItems(menu = this.menu) {
+        if (!menu) return;
+
+        const state = this.snapshot();
         const { emptyText, placeholder } = this.options;
         menu.innerHTML = '';
 
-        if (this.filteredItems.length === 0) {
+        if (state.filteredItems.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'dropdown__empty';
             empty.textContent = emptyText;
@@ -205,14 +332,11 @@ export class Dropdown {
             return;
         }
 
-        // 先加入空白選項 (placeholder)
         const emptyOption = document.createElement('div');
         emptyOption.className = 'dropdown__option dropdown__option--empty';
         emptyOption.dataset.value = '';
-        emptyOption.dataset.index = -1;
-        
-        const isEmptySelected = this.selectedValue === null || this.selectedValue === '' || this.selectedValue === undefined;
-        
+        emptyOption.dataset.index = '-1';
+        const isEmptySelected = state.selectedValue === null || state.selectedValue === '' || state.selectedValue === undefined;
         emptyOption.style.cssText = `
             padding: 10px 12px;
             cursor: pointer;
@@ -225,11 +349,10 @@ export class Dropdown {
             font-style: italic;
             background: ${isEmptySelected ? 'var(--cl-primary-light)' : 'transparent'};
         `;
-        
+
         const emptyLabel = document.createElement('span');
-        emptyLabel.textContent = placeholder || '-- 請選擇 --';
+        emptyLabel.textContent = placeholder || '-- Select --';
         emptyOption.appendChild(emptyLabel);
-        
         emptyOption.addEventListener('mouseenter', () => {
             if (!isEmptySelected) emptyOption.style.background = 'var(--cl-bg-secondary)';
         });
@@ -237,20 +360,20 @@ export class Dropdown {
             if (!isEmptySelected) emptyOption.style.background = 'transparent';
         });
         emptyOption.addEventListener('click', () => {
+            if (state.availability === 'disabled') return;
             this._clearSelection();
         });
-        
         menu.appendChild(emptyOption);
 
-        // 渲染其他選項
-        this.filteredItems.forEach((item, index) => {
+        state.filteredItems.forEach((item, index) => {
             const option = document.createElement('div');
             option.className = 'dropdown__option';
             option.dataset.value = item.value;
-            option.dataset.index = index;
+            option.dataset.index = String(index);
 
-            const isSelected = item.value === this.selectedValue;
-            const isDisabled = item.disabled;
+            const isSelected = item.value === state.selectedValue;
+            const isDisabled = !!item.disabled;
+            const isHighlighted = index === state.highlightIndex;
 
             option.style.cssText = `
                 padding: 10px 12px;
@@ -261,7 +384,7 @@ export class Dropdown {
                 justify-content: space-between;
                 font-size: var(--cl-font-size-lg);
                 color: ${isDisabled ? 'var(--cl-text-light)' : 'var(--cl-text)'};
-                background: ${isSelected ? 'var(--cl-primary-light)' : 'transparent'};
+                background: ${isSelected ? 'var(--cl-primary-light)' : isHighlighted ? 'var(--cl-bg-secondary)' : 'transparent'};
             `;
 
             const labelSpan = document.createElement('span');
@@ -278,11 +401,12 @@ export class Dropdown {
 
             if (!isDisabled) {
                 option.addEventListener('mouseenter', () => {
-                    if (!isSelected) option.style.background = 'var(--cl-bg-secondary)';
-                    this.highlightIndex = index;
+                    this.send('SET_HIGHLIGHT', { index });
                 });
                 option.addEventListener('mouseleave', () => {
-                    if (!isSelected) option.style.background = 'transparent';
+                    if (!isSelected) {
+                        option.style.background = 'transparent';
+                    }
                 });
                 option.addEventListener('click', () => {
                     this._selectItem(item);
@@ -294,92 +418,80 @@ export class Dropdown {
     }
 
     _clearSelection() {
-        this.selectedValue = null;
-        
-        if (this.options.variant === 'searchable' && this.input) {
-            this.input.value = '';
-        } else if (this.display) {
-            this.display.textContent = this.options.placeholder;
-            this.display.style.color = 'var(--cl-text-placeholder)';
-        }
-        
-        this.close();
-        this._renderItems();
-        
+        this.send('CLEAR');
+
         if (this.options.onChange) {
             this.options.onChange(null, null);
         }
     }
 
     _bindEvents() {
-        const { variant } = this.options;
-
-        // 點擊選擇器
-        this.selector.addEventListener('click', (e) => {
-            if (this.options.disabled) return;
-            if (variant === 'searchable' && this.isOpen) return;
+        this.selector.addEventListener('click', () => {
+            if (this.snapshot().availability === 'disabled') return;
+            if (this.options.variant === Dropdown.VARIANTS.SEARCHABLE && this.snapshot().open) return;
             this.toggle();
         });
 
-        // 搜尋輸入
-        if (variant === 'searchable' && this.input) {
-            this.input.addEventListener('input', (e) => {
-                if (this.options.disabled) return;
-                this._filterItems(e.target.value);
+        if (this.options.variant === Dropdown.VARIANTS.SEARCHABLE && this.input) {
+            this.input.addEventListener('input', (event) => {
+                if (this.snapshot().availability === 'disabled') return;
+                this._filterItems(event.target.value);
             });
 
             this.input.addEventListener('focus', () => {
-                if (this.options.disabled) return;
+                if (this.snapshot().availability === 'disabled') return;
                 this.open();
             });
 
-            // 鍵盤導航
-            this.input.addEventListener('keydown', (e) => {
-                if (this.options.disabled) return;
-                this._handleKeydown(e);
+            this.input.addEventListener('keydown', (event) => {
+                if (this.snapshot().availability === 'disabled') return;
+                this._handleKeydown(event);
             });
         }
 
-        // 點擊外部關閉
-        this._onDocumentClick = (e) => {
-            if (!this.container.contains(e.target)) {
+        this._onDocumentClick = (event) => {
+            if (!this.container.contains(event.target)) {
                 this.close();
             }
         };
         document.addEventListener('click', this._onDocumentClick);
 
-        // Hover 效果
         this.selector.addEventListener('mouseenter', () => {
-            if (!this.options.disabled) {
+            if (this.snapshot().availability !== 'disabled') {
                 this.selector.style.borderColor = 'var(--cl-primary)';
             }
         });
+
         this.selector.addEventListener('mouseleave', () => {
-            if (!this.isOpen) {
+            if (!this.snapshot().open) {
                 this.selector.style.borderColor = 'var(--cl-border)';
             }
         });
     }
 
-    _handleKeydown(e) {
-        const itemCount = this.filteredItems.length;
+    _handleKeydown(event) {
+        const itemCount = this.snapshot().filteredItems.length;
 
-        switch (e.key) {
+        switch (event.key) {
             case 'ArrowDown':
-                e.preventDefault();
-                if (!this.isOpen) this.open();
-                this.highlightIndex = Math.min(this.highlightIndex + 1, itemCount - 1);
+                event.preventDefault?.();
+                if (!this.snapshot().open) this.open();
+                this.send('SET_HIGHLIGHT', {
+                    index: Math.min(this.snapshot().highlightIndex + 1, itemCount - 1)
+                });
                 this._scrollToHighlight();
                 break;
             case 'ArrowUp':
-                e.preventDefault();
-                this.highlightIndex = Math.max(this.highlightIndex - 1, 0);
+                event.preventDefault?.();
+                this.send('SET_HIGHLIGHT', {
+                    index: Math.max(this.snapshot().highlightIndex - 1, 0)
+                });
                 this._scrollToHighlight();
                 break;
             case 'Enter':
-                e.preventDefault();
-                if (this.highlightIndex >= 0 && this.filteredItems[this.highlightIndex]) {
-                    this._selectItem(this.filteredItems[this.highlightIndex]);
+                event.preventDefault?.();
+                if (this.snapshot().highlightIndex >= 0 && this.snapshot().filteredItems[this.snapshot().highlightIndex]) {
+                    this._selectItem(this.snapshot().filteredItems[this.snapshot().highlightIndex]);
                 }
                 break;
             case 'Escape':
@@ -389,82 +501,57 @@ export class Dropdown {
     }
 
     _scrollToHighlight() {
-        const options = this.menu.querySelectorAll('.dropdown__option');
-        if (options[this.highlightIndex]) {
-            options[this.highlightIndex].scrollIntoView({ block: 'nearest' });
-            // 視覺反饋
-            options.forEach((opt, i) => {
-                opt.style.background = i === this.highlightIndex ? 'var(--cl-bg-secondary)' : 'transparent';
-            });
-        }
+        const options = this.menu?.querySelectorAll('.dropdown__option') || [];
+        const option = options[this.snapshot().highlightIndex];
+        option?.scrollIntoView?.({ block: 'nearest' });
     }
 
     _filterItems(query) {
-        const q = query.toLowerCase().trim();
-        if (!q) {
-            this.filteredItems = [...this.options.items];
-        } else {
-            this.filteredItems = this.options.items.filter(item =>
-                item.label.toLowerCase().includes(q)
-            );
-        }
-        this._renderItems();
-        this.highlightIndex = -1;
+        this.send('FILTER', { query });
     }
 
     _selectItem(item) {
-        this.selectedValue = item.value;
-        this._setDisplayValue(item.value);
-        this.close();
+        this.send('SET_VALUE', { value: item.value });
 
         if (this.options.onChange) {
             this.options.onChange(item.value, item);
         }
     }
 
-    _setDisplayValue(value) {
-        const item = this.options.items.find(i => i.value === value);
-        if (!item) return;
+    snapshot() {
+        return this._state.snapshot();
+    }
 
-        if (this.options.variant === 'searchable' && this.input) {
-            this.input.value = item.label;
-        } else if (this.display) {
-            this.display.textContent = item.label;
-            this.display.style.color = 'var(--cl-text)';
+    send(event, payload = null) {
+        const nextState = this._state.send(event, payload);
+
+        if (event === 'SET_ITEMS') {
+            this.options.items = [...(payload?.items ?? [])];
+            if (!this.options.items.some((item) => item.value === nextState.selectedValue)) {
+                this._state.replace({
+                    ...nextState,
+                    selectedValue: null,
+                    filteredItems: [...this.options.items]
+                });
+            }
         }
+
+        this._applyState();
+        return this.snapshot();
     }
 
     open() {
         if (this.options.disabled || this.isOpen) return;
-
-        this.isOpen = true;
-        this.menu.style.display = 'block';
-        this.selector.style.borderColor = 'var(--cl-primary)';
-        this.arrow.style.transform = 'rotate(180deg)';
-
-        if (this.options.variant === 'searchable') {
-            this.filteredItems = [...this.options.items];
-            this._renderItems();
-        }
+        this.send('OPEN');
     }
 
     close() {
         if (!this.isOpen) return;
-
-        this.isOpen = false;
-        this.menu.style.display = 'none';
-        this.selector.style.borderColor = 'var(--cl-border)';
-        this.arrow.style.transform = 'rotate(0deg)';
-        this.highlightIndex = -1;
-
-        // 恢復顯示
-        if (this.options.variant === 'searchable' && this.input && this.selectedValue !== null) {
-            this._setDisplayValue(this.selectedValue);
-        }
+        this.send('CLOSE');
     }
 
     toggle() {
-        this.isOpen ? this.close() : this.open();
+        this.send('TOGGLE');
     }
 
     getValue() {
@@ -472,55 +559,40 @@ export class Dropdown {
     }
 
     setValue(value) {
-        this.selectedValue = value;
-        this._setDisplayValue(value);
-        this._renderItems();
+        this.send('SET_VALUE', { value });
     }
 
     setItems(items) {
-        this.options.items = items;
-        this.filteredItems = [...items];
-        this._renderItems();
+        this.send('SET_ITEMS', { items });
     }
 
     setDisabled(disabled) {
-        this.options.disabled = disabled;
-
-        if (disabled) {
-            this.close();
-        }
-
-        this.selector.style.cursor = disabled ? 'not-allowed' : 'pointer';
-        this.selector.style.opacity = disabled ? '0.6' : '1';
-        this.selector.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
-
-        if (this.input) {
-            this.input.disabled = disabled;
-            this.input.style.cursor = disabled ? 'not-allowed' : 'text';
-        }
+        this.send('SET_DISABLED', { disabled });
     }
 
     clear() {
-        this.selectedValue = null;
-        this.filteredItems = [...this.options.items];
+        this.send('CLEAR');
+    }
 
-        if (this.options.variant === 'searchable' && this.input) {
-            this.input.value = '';
-        } else if (this.display) {
-            this.display.textContent = this.options.placeholder;
-            this.display.style.color = 'var(--cl-text-placeholder)';
-        }
+    show() {
+        this.send('SHOW');
+    }
 
-        this._renderItems();
+    hide() {
+        this.send('HIDE');
     }
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target) target.appendChild(this.element);
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
         return this;
     }
 
     destroy() {
+        this.send('DESTROY');
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
         }

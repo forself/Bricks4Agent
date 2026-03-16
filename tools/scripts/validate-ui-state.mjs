@@ -215,6 +215,58 @@ await test('Checkbox phase 1: state and legacy methods stay aligned', async () =
     }
 });
 
+await test('Dropdown phase 2: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { Dropdown } = await importModule('packages/javascript/browser/ui_components/form/Dropdown/Dropdown.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const dropdown = new Dropdown({
+            items: [
+                { value: 'a', label: 'Alpha' },
+                { value: 'b', label: 'Beta' }
+            ],
+            value: 'a'
+        });
+
+        assert(typeof dropdown.snapshot === 'function', 'Dropdown exposes snapshot');
+        assert(typeof dropdown.send === 'function', 'Dropdown exposes send');
+        assert(typeof dropdown.setValue === 'function', 'legacy setValue remains');
+        assert(typeof dropdown.setItems === 'function', 'legacy setItems remains');
+        assert(typeof dropdown.setDisabled === 'function', 'legacy setDisabled remains');
+        assert(typeof dropdown.clear === 'function', 'legacy clear remains');
+        assert(typeof dropdown.mount === 'function', 'legacy mount remains');
+
+        dropdown.mount(host);
+        assert(dropdown.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(dropdown.getValue() === 'a', 'initial value should be preserved');
+
+        dropdown.open();
+        assert(dropdown.snapshot().open === true, 'open should update state');
+        assert(dropdown.menu.style.display === 'block', 'open should update DOM');
+
+        dropdown.setValue('b');
+        assert(dropdown.getValue() === 'b', 'setValue should keep legacy behavior');
+        assert(dropdown.snapshot().selectedValue === 'b', 'setValue should update state');
+
+        dropdown.setDisabled(true);
+        assert(dropdown.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(dropdown.snapshot().open === false, 'disabled dropdown should close');
+
+        dropdown.setDisabled(false);
+        dropdown.send('FILTER', { query: 'alp' });
+        assert(dropdown.snapshot().filteredItems.length === 1, 'filter should update filtered items');
+        assert(dropdown.snapshot().filteredItems[0].value === 'a', 'filter should preserve matching item');
+
+        dropdown.clear();
+        assert(dropdown.getValue() === null, 'clear should reset selection');
+        assert(dropdown.snapshot().selectedValue === null, 'clear should update state');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;
