@@ -1,4 +1,5 @@
 import { escapeHtml } from '../../utils/security.js';
+import { createComponentState } from '../../utils/component-state.js';
 
 export class NumberInput {
     constructor(options = {}) {
@@ -13,14 +14,61 @@ export class NumberInput {
             showButtons: true,
             placeholder: '',
             width: '100%',
-            size: 'medium', // small, medium, large
+            size: 'medium',
             onChange: null,
             className: '',
             ...options
         };
 
         this.value = this.options.value !== null ? Number.parseFloat(this.options.value) : null;
+        this.input = null;
+        this.wrapper = null;
+        this.decreaseBtn = null;
+        this.increaseBtn = null;
         this.element = this._create();
+        this._state = createComponentState(this._buildInitialState(), {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed' }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden' }),
+            FOCUS: (state) => (
+                state.availability === 'disabled'
+                    ? state
+                    : { ...state, interaction: 'focused' }
+            ),
+            BLUR: (state) => ({ ...state, interaction: 'idle' }),
+            SET_VALUE: (state, payload) => ({
+                ...state,
+                value: payload?.value === null || payload?.value === undefined
+                    ? null
+                    : Number.parseFloat(payload.value)
+            }),
+            CLEAR: (state) => ({ ...state, value: null }),
+            SET_DISABLED: (state, payload) => ({
+                ...state,
+                availability: payload?.disabled ? 'disabled' : 'enabled',
+                interaction: payload?.disabled ? 'idle' : state.interaction
+            }),
+            INCREASE: (state) => ({
+                ...state,
+                value: this._clampValue((state.value ?? this.options.min) + this.options.step)
+            }),
+            DECREASE: (state) => ({
+                ...state,
+                value: this._clampValue((state.value ?? this.options.min) - this.options.step)
+            })
+        });
+        this._applyState();
+    }
+
+    _buildInitialState() {
+        return {
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            interaction: 'idle',
+            value: this.value
+        };
     }
 
     _getSizeStyles() {
@@ -40,15 +88,13 @@ export class NumberInput {
         container.className = `number-input-container ${className}`;
         container.style.cssText = `display: flex; flex-direction: column; gap: 4px; width: ${width};`;
 
-        // 1. Label
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color: var(--cl-danger); margin-left: 2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);`;
+            labelEl.style.cssText = 'font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);';
             container.appendChild(labelEl);
         }
 
-        // 2. Wrapper
         const wrapper = document.createElement('div');
         wrapper.className = 'number-input__wrapper';
         wrapper.style.cssText = `
@@ -62,14 +108,12 @@ export class NumberInput {
             background: ${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
         `;
 
-        // 3. Decrease Button
         if (showButtons) {
             const decreaseBtn = this._createButton('-', () => this._decrease());
             wrapper.appendChild(decreaseBtn);
             this.decreaseBtn = decreaseBtn;
         }
 
-        // 4. Input
         const input = document.createElement('input');
         input.type = 'text';
         input.inputMode = 'numeric';
@@ -88,33 +132,23 @@ export class NumberInput {
             color: ${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};
         `;
 
-        // Events
-        input.addEventListener('focus', () => {
-            if (this.options.disabled) return;
-            wrapper.style.borderColor = 'var(--cl-primary)';
-            wrapper.style.boxShadow = '0 0 0 3px rgba(var(--cl-primary-rgb), 0.1)';
-        });
-
+        input.addEventListener('focus', () => this.send('FOCUS'));
         input.addEventListener('blur', () => {
-            if (this.options.disabled) return;
-            wrapper.style.borderColor = 'var(--cl-border)';
-            wrapper.style.boxShadow = 'none';
+            this.send('BLUR');
             this._validateAndUpdate(input.value);
         });
-
-        input.addEventListener('keydown', (e) => {
-            if (this.options.disabled) return;
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
+        input.addEventListener('keydown', (event) => {
+            if (this.snapshot().availability === 'disabled') return;
+            if (event.key === 'ArrowUp') {
+                event.preventDefault?.();
                 this._increase();
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault?.();
                 this._decrease();
-            } else if (e.key === 'Enter') {
+            } else if (event.key === 'Enter') {
                 this._validateAndUpdate(input.value);
             }
         });
-
         input.addEventListener('input', () => {
             this._adjustFontSize(input.value);
         });
@@ -122,7 +156,6 @@ export class NumberInput {
         wrapper.appendChild(input);
         this.input = input;
 
-        // 5. Increase Button
         if (showButtons) {
             const increaseBtn = this._createButton('+', () => this._increase());
             wrapper.appendChild(increaseBtn);
@@ -156,79 +189,138 @@ export class NumberInput {
             margin: 0;
         `;
 
-        if (!this.options.disabled) {
-            btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--cl-border-light)'; });
-            btn.addEventListener('mouseleave', () => { btn.style.background = 'var(--cl-bg-secondary)'; });
-            
-            // 重要：在 mousedown 阻止 focus 轉移，這對編輯器體驗至關重要
-            btn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-            });
+        btn.addEventListener('mouseenter', () => {
+            if (this.snapshot().availability === 'disabled') return;
+            btn.style.background = 'var(--cl-border-light)';
+        });
 
-            btn.addEventListener('click', (e) => {
-                e.preventDefault(); 
-                onClick();
-            });
-        }
+        btn.addEventListener('mouseleave', () => {
+            btn.style.background = 'var(--cl-bg-secondary)';
+        });
+
+        btn.addEventListener('mousedown', (event) => {
+            event.preventDefault?.();
+        });
+
+        btn.addEventListener('click', (event) => {
+            event.preventDefault?.();
+            if (this.snapshot().availability === 'disabled') return;
+            onClick();
+        });
 
         return btn;
     }
 
     _formatValue(value) {
         if (value === null || value === undefined || isNaN(value)) return '';
-        const str = this.options.precision > 0
+        return this.options.precision > 0
             ? Number(value).toFixed(this.options.precision)
             : String(Math.round(value));
-        return str;
     }
 
-    _adjustFontSize(valStr) {
+    _adjustFontSize(valueString) {
         if (!this.input) return;
-        
-        const len = valStr.length;
+
+        const len = valueString.length;
         const sizeStyles = this._getSizeStyles();
-        const baseSize = Number.parseInt(sizeStyles.fontSize);
-        
-        // 寬度以12位數能正常顯示為準，位數高於12之後，每兩位數字級大小縮減1px
+        const baseSize = Number.parseInt(sizeStyles.fontSize, 10);
+
         if (len > 12) {
-             const reduction = Math.ceil((len - 12) / 2);
-             const newSize = Math.max(8, baseSize - reduction); // 最小 8px 防止不可讀
-             this.input.style.fontSize = `${newSize}px`;
+            const reduction = Math.ceil((len - 12) / 2);
+            const nextSize = Math.max(8, baseSize - reduction);
+            this.input.style.fontSize = `${nextSize}px`;
         } else {
-             this.input.style.fontSize = sizeStyles.fontSize;
+            this.input.style.fontSize = sizeStyles.fontSize;
         }
+    }
+
+    _clampValue(value) {
+        return Math.max(this.options.min, Math.min(this.options.max, value));
     }
 
     _validateAndUpdate(inputValue) {
         let num = Number.parseFloat(inputValue);
 
         if (Number.isNaN(num)) {
-            // Revert to old valid value or clear if allowable? 
-            // Here we allow null if input is empty
             if (inputValue.trim() === '') {
                 this.setValue(null);
-            } else {
-                // Invalid input, revert to current value
+            } else if (this.input) {
                 this.input.value = this._formatValue(this.value);
             }
         } else {
-            num = Math.max(this.options.min, Math.min(this.options.max, num));
-            this.setValue(num);
+            this.setValue(this._clampValue(num));
         }
     }
 
+    _syncOptionsFromState(state) {
+        this.value = state.value;
+        this.options.value = state.value;
+        this.options.disabled = state.availability === 'disabled';
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+
+        if (this.element) {
+            this.element.style.display = state.visibility === 'hidden' ? 'none' : '';
+        }
+
+        if (this.input) {
+            const text = this._formatValue(state.value);
+            this.input.value = text;
+            this.input.disabled = state.availability === 'disabled';
+            this.input.style.color = state.availability === 'disabled' ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
+            this.input.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'text';
+            this._adjustFontSize(text);
+        }
+
+        if (this.wrapper) {
+            this.wrapper.style.background = state.availability === 'disabled' ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            if (state.availability === 'disabled') {
+                this.wrapper.style.borderColor = 'var(--cl-border)';
+                this.wrapper.style.boxShadow = 'none';
+            } else if (state.interaction === 'focused') {
+                this.wrapper.style.borderColor = 'var(--cl-primary)';
+                this.wrapper.style.boxShadow = '0 0 0 3px rgba(var(--cl-primary-rgb), 0.1)';
+            } else {
+                this.wrapper.style.borderColor = 'var(--cl-border)';
+                this.wrapper.style.boxShadow = 'none';
+            }
+        }
+
+        [this.decreaseBtn, this.increaseBtn].filter(Boolean).forEach((btn) => {
+            btn.disabled = state.availability === 'disabled';
+            btn.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'pointer';
+            btn.style.color = state.availability === 'disabled' ? 'var(--cl-text-placeholder)' : 'var(--cl-text-secondary)';
+            btn.style.background = 'var(--cl-bg-secondary)';
+        });
+    }
+
+    snapshot() {
+        return this._state.snapshot();
+    }
+
+    send(event, payload = null) {
+        const nextState = this._state.send(event, payload);
+        this._syncOptionsFromState(nextState);
+        this._applyState();
+        return nextState;
+    }
+
     _increase() {
-        if (this.options.disabled) return;
-        const current = this.value ?? this.options.min;
-        const newValue = Math.min(this.options.max, current + this.options.step);
-        this.setValue(newValue);
+        if (this.snapshot().availability === 'disabled') return;
+        this.send('INCREASE');
+        if (this.options.onChange) {
+            this.options.onChange(this.value);
+        }
     }
 
     _decrease() {
-        if (this.options.disabled) return;
-        const current = this.value ?? this.options.min;
-        const newValue = Math.max(this.options.min, current - this.options.step);
-        this.setValue(newValue);
+        if (this.snapshot().availability === 'disabled') return;
+        this.send('DECREASE');
+        if (this.options.onChange) {
+            this.options.onChange(this.value);
+        }
     }
 
     getValue() {
@@ -236,50 +328,45 @@ export class NumberInput {
     }
 
     setValue(value) {
-        this.value = value;
-        if (this.input) {
-            const str = this._formatValue(value);
-            this.input.value = str;
-            this._adjustFontSize(str);
-        }
+        const normalizedValue = value === null || value === undefined
+            ? null
+            : Number.parseFloat(value);
+        this.send('SET_VALUE', { value: normalizedValue });
         if (this.options.onChange) {
-            this.options.onChange(value);
+            this.options.onChange(this.value);
         }
     }
 
     clear() {
-        this.setValue(null);
+        this.send('CLEAR');
+        if (this.options.onChange) {
+            this.options.onChange(this.value);
+        }
     }
 
     setDisabled(disabled) {
-        this.options.disabled = disabled;
+        this.send('SET_DISABLED', { disabled });
+    }
 
-        if (this.input) {
-            this.input.disabled = disabled;
-            this.input.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
-        }
+    show() {
+        this.send('SHOW');
+    }
 
-        if (this.wrapper) {
-            this.wrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
-            this.wrapper.style.borderColor = 'var(--cl-border)';
-            this.wrapper.style.boxShadow = 'none';
-        }
-
-        [this.decreaseBtn, this.increaseBtn].filter(Boolean).forEach((btn) => {
-            btn.disabled = disabled;
-            btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
-            btn.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text-secondary)';
-            btn.style.background = 'var(--cl-bg-secondary)';
-        });
+    hide() {
+        this.send('HIDE');
     }
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target) target.appendChild(this.element);
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
         return this;
     }
 
     destroy() {
+        this.send('DESTROY');
         if (this.element?.parentNode) {
             this.element.remove();
         }

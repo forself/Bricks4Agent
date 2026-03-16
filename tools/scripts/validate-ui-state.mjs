@@ -134,6 +134,87 @@ await test('TextInput pilot: state and legacy methods stay aligned', async () =>
     }
 });
 
+await test('NumberInput phase 1: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { NumberInput } = await importModule('packages/javascript/browser/ui_components/form/NumberInput/NumberInput.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const input = new NumberInput({ value: 5, min: 0, max: 10, step: 2 });
+
+        assert(typeof input.snapshot === 'function', 'NumberInput exposes snapshot');
+        assert(typeof input.send === 'function', 'NumberInput exposes send');
+        assert(typeof input.setValue === 'function', 'legacy setValue remains');
+        assert(typeof input.setDisabled === 'function', 'legacy setDisabled remains');
+        assert(typeof input.clear === 'function', 'legacy clear remains');
+        assert(typeof input.mount === 'function', 'legacy mount remains');
+
+        input.mount(host);
+        assert(input.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+
+        input.setValue(8);
+        assert(input.getValue() === 8, 'setValue should keep getValue compatible');
+        assert(input.snapshot().value === 8, 'setValue should update state');
+
+        input.send('INCREASE');
+        assert(input.getValue() === 10, 'increase should clamp at max');
+
+        input.send('DECREASE');
+        assert(input.getValue() === 8, 'decrease should update value');
+
+        input.setDisabled(true);
+        assert(input.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(input.input.disabled === true, 'setDisabled should update DOM');
+
+        input.clear();
+        assert(input.getValue() === null, 'clear should reset value to null');
+        assert(input.snapshot().value === null, 'clear should update state');
+    } finally {
+        dom.cleanup();
+    }
+});
+
+await test('Checkbox phase 1: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { Checkbox } = await importModule('packages/javascript/browser/ui_components/form/Checkbox/Checkbox.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const checkbox = new Checkbox({ checked: false, value: 'yes' });
+
+        assert(typeof checkbox.snapshot === 'function', 'Checkbox exposes snapshot');
+        assert(typeof checkbox.send === 'function', 'Checkbox exposes send');
+        assert(typeof checkbox.setValue === 'function', 'legacy setValue remains');
+        assert(typeof checkbox.setDisabled === 'function', 'legacy setDisabled remains');
+        assert(typeof checkbox.clear === 'function', 'legacy clear remains');
+        assert(typeof checkbox.mount === 'function', 'legacy mount remains');
+
+        checkbox.mount(host);
+        assert(checkbox.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+
+        checkbox.setChecked(true);
+        assert(checkbox.isChecked() === true, 'setChecked should keep legacy behavior');
+        assert(checkbox.snapshot().checked === true, 'setChecked should update state');
+
+        checkbox.toggle();
+        assert(checkbox.isChecked() === false, 'toggle should invert state');
+
+        checkbox.setDisabled(true);
+        assert(checkbox.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(checkbox.input.disabled === true, 'setDisabled should update DOM');
+
+        checkbox.setValue(true);
+        assert(checkbox.isChecked() === true, 'setValue should still drive checked state');
+
+        checkbox.clear();
+        assert(checkbox.isChecked() === false, 'clear should uncheck');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;
