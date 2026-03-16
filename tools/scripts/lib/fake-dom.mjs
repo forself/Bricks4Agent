@@ -46,7 +46,7 @@ class FakeElement {
         this.eventListeners = new Map();
         this.className = '';
         this.textContent = '';
-        this.innerHTML = '';
+        this._innerHTML = '';
         this.id = '';
         this.type = '';
         this.value = '';
@@ -57,7 +57,21 @@ class FakeElement {
         this.classList = new FakeClassList(this);
     }
 
+    get innerHTML() {
+        return this._innerHTML;
+    }
+
+    set innerHTML(value) {
+        this._innerHTML = String(value);
+        if (value === '') {
+            this.children = [];
+        }
+    }
+
     appendChild(child) {
+        if (child.parentNode) {
+            child.parentNode.removeChild(child);
+        }
         child.parentNode = this;
         this.children.push(child);
         return child;
@@ -107,7 +121,18 @@ class FakeElement {
         if (selector.startsWith('#')) {
             return this._find((node) => node.id === selector.slice(1));
         }
+        if (selector.startsWith('.')) {
+            return this._find((node) => node.classList.contains(selector.slice(1)));
+        }
         return null;
+    }
+
+    querySelectorAll(selector) {
+        const matches = [];
+        if (selector.startsWith('.')) {
+            this._collect((node) => node.classList.contains(selector.slice(1)), matches);
+        }
+        return matches;
     }
 
     _find(predicate) {
@@ -119,15 +144,31 @@ class FakeElement {
         return null;
     }
 
+    _collect(predicate, matches) {
+        for (const child of this.children) {
+            if (predicate(child)) matches.push(child);
+            child._collect(predicate, matches);
+        }
+    }
+
+    contains(node) {
+        if (!node) return false;
+        if (node === this) return true;
+        return this.children.some((child) => child.contains(node));
+    }
+
     focus() {
         this.dispatchEvent({ type: 'focus' });
     }
+
+    scrollIntoView() {}
 }
 
 class FakeDocument {
     constructor() {
         this.head = new FakeElement('head', this);
         this.body = new FakeElement('body', this);
+        this.eventListeners = new Map();
     }
 
     createElement(tagName) {
@@ -140,6 +181,29 @@ class FakeDocument {
 
     querySelector(selector) {
         return this.body.querySelector(selector) || this.head.querySelector(selector);
+    }
+
+    querySelectorAll(selector) {
+        return [...this.body.querySelectorAll(selector), ...this.head.querySelectorAll(selector)];
+    }
+
+    addEventListener(type, handler) {
+        if (!this.eventListeners.has(type)) {
+            this.eventListeners.set(type, []);
+        }
+        this.eventListeners.get(type).push(handler);
+    }
+
+    removeEventListener(type, handler) {
+        const handlers = this.eventListeners.get(type) || [];
+        this.eventListeners.set(type, handlers.filter((entry) => entry !== handler));
+    }
+
+    dispatchEvent(event) {
+        const handlers = this.eventListeners.get(event.type) || [];
+        for (const handler of handlers) {
+            handler(event);
+        }
     }
 }
 
