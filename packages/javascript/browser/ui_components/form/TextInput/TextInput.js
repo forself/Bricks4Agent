@@ -186,6 +186,17 @@ export class TextInput {
         this.clearError();
     }
 
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+
+        if (!this.input) return;
+
+        this.input.disabled = disabled;
+        this.input.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+        this.input.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
+        this.input.style.cursor = disabled ? 'not-allowed' : 'text';
+    }
+
     setError(error) {
         this.options.error = error;
         this.input.style.borderColor = error ? 'var(--cl-danger)' : 'var(--cl-border)';

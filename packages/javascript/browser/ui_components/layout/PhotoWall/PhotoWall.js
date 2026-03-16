@@ -3,12 +3,12 @@
  * 照片牆元件 - 支援新增、刪除、預覽導航、多選下載
  */
 
-import { PhotoCard } from '../../common/PhotoCard/PhotoCard.js';
-import { ImageViewer } from '../../common/ImageViewer/ImageViewer.js';
-import { ModalPanel } from '../Panel/ModalPanel.js';
-import { ActionButton } from '../../common/ActionButton/ActionButton.js'; // 假設有的話，或是直接用 icon
-import { UploadButton } from '../../common/UploadButton/UploadButton.js'; // 假如需要內部引用
-import { DownloadButton } from '../../common/DownloadButton/DownloadButton.js'; // 用於樣式或按鈕
+import { PhotoCard } from '../../common/PhotoCard/index.js';
+import { ImageViewer } from '../../common/ImageViewer/index.js';
+import { ModalPanel } from '../Panel/index.js';
+import { ActionButton } from '../../common/ActionButton/index.js';
+import { UploadButton } from '../../common/UploadButton/index.js';
+import { DownloadButton } from '../../common/DownloadButton/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
 
 import Locale from '../../i18n/index.js';

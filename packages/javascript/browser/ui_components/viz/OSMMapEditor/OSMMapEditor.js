@@ -12,10 +12,10 @@
  * - 地圖截圖 → 設為繪圖背景
  */
 
-import { WebPainter } from '../WebPainter/WebPainter.js';
+import { WebPainter } from '../WebPainter/index.js';
 import { LeafletMap } from '../LeafletMap.js';
-import { EditorButton } from '../../common/EditorButton/EditorButton.js';
-import { UploadButton } from '../../common/UploadButton/UploadButton.js';
+import { EditorButton } from '../../common/EditorButton/index.js';
+import { UploadButton } from '../../common/UploadButton/index.js';
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
 

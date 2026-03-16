@@ -27,7 +27,7 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
-import { Avatar } from '../Avatar/Avatar.js';
+import { Avatar } from '../Avatar/index.js';
 import Locale from '../../i18n/index.js';
 
 export class FeedCard {

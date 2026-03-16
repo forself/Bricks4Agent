@@ -312,12 +312,11 @@ export class Dropdown {
     }
 
     _bindEvents() {
-        const { variant, disabled } = this.options;
-
-        if (disabled) return;
+        const { variant } = this.options;
 
         // 點擊選擇器
         this.selector.addEventListener('click', (e) => {
+            if (this.options.disabled) return;
             if (variant === 'searchable' && this.isOpen) return;
             this.toggle();
         });
@@ -325,15 +324,18 @@ export class Dropdown {
         // 搜尋輸入
         if (variant === 'searchable' && this.input) {
             this.input.addEventListener('input', (e) => {
+                if (this.options.disabled) return;
                 this._filterItems(e.target.value);
             });
 
             this.input.addEventListener('focus', () => {
+                if (this.options.disabled) return;
                 this.open();
             });
 
             // 鍵盤導航
             this.input.addEventListener('keydown', (e) => {
+                if (this.options.disabled) return;
                 this._handleKeydown(e);
             });
         }
@@ -348,7 +350,7 @@ export class Dropdown {
 
         // Hover 效果
         this.selector.addEventListener('mouseenter', () => {
-            if (!disabled) {
+            if (!this.options.disabled) {
                 this.selector.style.borderColor = 'var(--cl-primary)';
             }
         });
@@ -479,6 +481,23 @@ export class Dropdown {
         this.options.items = items;
         this.filteredItems = [...items];
         this._renderItems();
+    }
+
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+
+        if (disabled) {
+            this.close();
+        }
+
+        this.selector.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        this.selector.style.opacity = disabled ? '0.6' : '1';
+        this.selector.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+
+        if (this.input) {
+            this.input.disabled = disabled;
+            this.input.style.cursor = disabled ? 'not-allowed' : 'text';
+        }
     }
 
     clear() {

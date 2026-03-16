@@ -237,8 +237,6 @@ export class TimePicker {
     }
 
     _bindEvents() {
-        if (this.options.disabled) return;
-
         this.inputWrapper.addEventListener('click', () => this.toggle());
 
         document.addEventListener('click', (e) => {
@@ -248,6 +246,7 @@ export class TimePicker {
         });
 
         this.inputWrapper.addEventListener('mouseenter', () => {
+            if (this.options.disabled) return;
             this.inputWrapper.style.borderColor = 'var(--cl-primary)';
         });
         this.inputWrapper.addEventListener('mouseleave', () => {
@@ -314,6 +313,20 @@ export class TimePicker {
         this.minute = null;
         this.display.textContent = this.options.placeholder;
         this.display.style.color = 'var(--cl-text-placeholder)';
+    }
+
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+
+        if (disabled) {
+            this.close();
+        }
+
+        if (this.inputWrapper) {
+            this.inputWrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.inputWrapper.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            this.inputWrapper.style.opacity = disabled ? '0.6' : '1';
+        }
     }
 
     mount(container) {

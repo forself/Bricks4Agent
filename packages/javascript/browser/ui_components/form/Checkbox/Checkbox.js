@@ -157,6 +157,13 @@ export class Checkbox {
         this.setChecked(!!value);
     }
 
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+        this.input.disabled = disabled;
+        this.element.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        this.element.style.opacity = disabled ? '0.6' : '1';
+    }
+
     clear() {
         this.setChecked(false);
     }

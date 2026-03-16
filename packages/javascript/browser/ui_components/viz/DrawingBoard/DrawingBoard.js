@@ -4,11 +4,11 @@
  * 不含編輯功能（文字、形狀、選擇等）
  */
 
-import { BasicButton } from '../../common/BasicButton/BasicButton.js';
-import { EditorButton } from '../../common/EditorButton/EditorButton.js';
-import { ButtonGroup } from '../../common/ButtonGroup/ButtonGroup.js';
-import { ColorPicker } from '../../common/ColorPicker/ColorPicker.js';
-import { NumberInput } from '../../form/NumberInput/NumberInput.js';
+import { BasicButton } from '../../common/BasicButton/index.js';
+import { EditorButton } from '../../common/EditorButton/index.js';
+import { ButtonGroup } from '../../common/ButtonGroup/index.js';
+import { ColorPicker } from '../../common/ColorPicker/index.js';
+import { NumberInput } from '../../form/NumberInput/index.js';
 import Locale from '../../i18n/index.js';
 
 export class DrawingBoard {

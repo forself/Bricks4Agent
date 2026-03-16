@@ -11,14 +11,14 @@
  * - WebPainter 整合
  */
 
-import { EditorButton } from '../../common/EditorButton/EditorButton.js';
-import { ButtonGroup } from '../../common/ButtonGroup/ButtonGroup.js';
-import { ColorPicker } from '../../common/ColorPicker/ColorPicker.js';
-import { UploadButton } from '../../common/UploadButton/UploadButton.js';
-import { SimpleDialog } from '../../common/Dialog/SimpleDialog.js';
+import { EditorButton } from '../../common/EditorButton/index.js';
+import { ButtonGroup } from '../../common/ButtonGroup/index.js';
+import { ColorPicker } from '../../common/ColorPicker/index.js';
+import { UploadButton } from '../../common/UploadButton/index.js';
+import { SimpleDialog } from '../../common/Dialog/index.js';
 import { escapeHtml, sanitizeUrl } from '../../utils/security.js';
-import { WebPainter } from '../../viz/WebPainter/WebPainter.js';
-import { NumberInput } from '../../form/NumberInput/NumberInput.js';
+import { WebPainter } from '../../viz/WebPainter/index.js';
+import { NumberInput } from '../../form/NumberInput/index.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';

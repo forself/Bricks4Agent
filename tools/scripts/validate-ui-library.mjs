@@ -149,6 +149,83 @@ async function validatePublicSurface() {
     return modules.length;
 }
 
+function readImportReferences(source) {
+    const refs = [];
+    for (const match of source.matchAll(/^\s*import\s+(?:[^'"]+?\s+from\s+)?["']([^"']+)["']/gm)) {
+        refs.push(match[1]);
+    }
+    return refs;
+}
+
+function validateComponentCompositionSurface() {
+    const componentCategories = new Set([
+        'common',
+        'data',
+        'editor',
+        'form',
+        'input',
+        'layout',
+        'social',
+        'viz'
+    ]);
+    const files = walkFiles(
+        uiRoot,
+        (filePath) => filePath.endsWith('.js') && !filePath.endsWith('.bak')
+    );
+    const violations = [];
+
+    for (const filePath of files) {
+        const source = readFileSync(filePath, 'utf8');
+        const sourceRelative = path.relative(uiRoot, filePath);
+        const sourceParts = sourceRelative.split(path.sep);
+        const sourceComponentKey = sourceParts.length >= 3
+            ? `${sourceParts[0]}/${sourceParts[1]}`
+            : null;
+
+        for (const ref of readImportReferences(source)) {
+            if (!ref.startsWith('.')) continue;
+
+            const resolvedPath = path.resolve(path.dirname(filePath), ref);
+            if (!resolvedPath.startsWith(uiRoot)) continue;
+
+            const targetRelative = path.relative(uiRoot, resolvedPath);
+            const targetParts = targetRelative.split(path.sep);
+            const targetBase = path.basename(resolvedPath);
+
+            if (!componentCategories.has(targetParts[0])) {
+                continue;
+            }
+
+            if (targetParts[1] === 'utils') {
+                continue;
+            }
+
+            if (targetParts.length < 3 || targetBase === 'index.js') {
+                continue;
+            }
+
+            const targetComponentKey = `${targetParts[0]}/${targetParts[1]}`;
+            if (sourceComponentKey && sourceComponentKey === targetComponentKey) {
+                continue;
+            }
+
+            violations.push(
+                `${path.relative(repoRoot, filePath)} -> ${ref}`
+            );
+        }
+    }
+
+    if (violations.length > 0) {
+        const sample = violations.slice(0, 20).map((line) => `- ${line}`).join('\n');
+        const suffix = violations.length > 20 ? `\n...and ${violations.length - 20} more.` : '';
+        throw new Error(
+            `Component composition should use library entrypoints instead of cross-component implementation files:\n${sample}${suffix}`
+        );
+    }
+
+    return files.length;
+}
+
 function normalizeReference(reference) {
     const normalized = reference.trim();
     if (!normalized) return null;
@@ -340,6 +417,7 @@ async function main() {
     runAudit();
     const importedFiles = await validateImports();
     const publicSurfaceModules = await validatePublicSurface();
+    const componentSurfaceFiles = validateComponentCompositionSurface();
     const demoReferenceSummary = validateDemoReferences();
     const browserSummary = shouldRunBrowserSmoke || requireBrowserSmoke
         ? await runBrowserSmoke()
@@ -349,6 +427,7 @@ async function main() {
     console.log(`- Style audit: passed`);
     console.log(`- JS import smoke: passed (${importedFiles} files)`);
     console.log(`- Public surface check: passed (${publicSurfaceModules} entrypoints)`);
+    console.log(`- Component composition surface: passed (${componentSurfaceFiles} files checked)`);
     console.log(`- Demo reference check: passed (${demoReferenceSummary.demosChecked} demos, ${demoReferenceSummary.refsChecked} references)`);
     if (browserSummary.skipped) {
         console.log(`- Browser smoke: skipped (${browserSummary.reason})`);

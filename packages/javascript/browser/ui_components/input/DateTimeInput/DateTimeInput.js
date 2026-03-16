@@ -3,8 +3,8 @@
  * 整合 DatePicker 和 TimePicker 元件
  */
 
-import { DatePicker } from '../../form/DatePicker/DatePicker.js';
-import { TimePicker } from '../../form/TimePicker/TimePicker.js';
+import { DatePicker } from '../../form/DatePicker/index.js';
+import { TimePicker } from '../../form/TimePicker/index.js';
 
 import Locale from '../../i18n/index.js';
 export class DateTimeInput {

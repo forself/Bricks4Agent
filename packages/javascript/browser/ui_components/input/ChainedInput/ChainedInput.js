@@ -1,18 +1,15 @@
 /**
- * ChainedInput - 相依輸入基底元件
- * 前一個欄位有值後，下一個欄位才能操作
+ * ChainedInput composes public single-field components with dependency flow.
  */
 import Locale from '../../i18n/index.js';
-
+import { Checkbox } from '../../form/Checkbox/index.js';
+import { DatePicker } from '../../form/DatePicker/index.js';
+import { Dropdown } from '../../form/Dropdown/index.js';
+import { NumberInput } from '../../form/NumberInput/index.js';
+import { TextInput } from '../../form/TextInput/index.js';
+import { TimePicker } from '../../form/TimePicker/index.js';
 
 export class ChainedInput {
-    /**
-     * @param {Object} options
-     * @param {Array} options.fields - 欄位定義陣列
-     * @param {Function} options.onChange - 值變更回調
-     * @param {string} options.layout - 布局方式 'horizontal' | 'vertical'
-     * @param {string} options.gap - 欄位間距
-     */
     constructor(options = {}) {
         this.options = {
             fields: [],
@@ -25,8 +22,6 @@ export class ChainedInput {
         this.values = {};
         this.fieldElements = new Map();
         this.element = this._createElement();
-
-        // 初始化後觸發第一個欄位的載入
         this._initializeFields();
     }
 
@@ -42,13 +37,10 @@ export class ChainedInput {
         `;
 
         this.options.fields.forEach((field, index) => {
-            const fieldWrapper = this._createField(field, index);
-            container.appendChild(fieldWrapper);
-            this.fieldElements.set(field.name, {
-                wrapper: fieldWrapper,
-                input: fieldWrapper.querySelector('[data-chained-input]'),
-                field
-            });
+            const entry = this._createField(field, index);
+            container.appendChild(entry.wrapper);
+            this.fieldElements.set(field.name, entry);
+            this.values[field.name] = field.type === 'checkbox' ? false : '';
         });
 
         return container;
@@ -66,7 +58,6 @@ export class ChainedInput {
             ${field.flex ? `flex: ${field.flex};` : ''}
         `;
 
-        // 標籤 (永遠顯示，即使沒有 label 也佔位)
         const label = document.createElement('label');
         label.className = 'chained-input__label';
         label.style.cssText = `
@@ -87,156 +78,129 @@ export class ChainedInput {
         }
         wrapper.appendChild(label);
 
-        // 輸入元素
-        const input = this._createInputElement(field, index);
-        wrapper.appendChild(input);
+        const host = document.createElement('div');
+        host.className = 'chained-input__host';
+        wrapper.appendChild(host);
 
-        return wrapper;
+        const component = this._createFieldComponent(field, index);
+        component.mount(host);
+
+        if (index > 0 && field.hideWhenDisabled) {
+            wrapper.style.display = 'none';
+        }
+
+        return { wrapper, host, component, field };
     }
 
-    _createInputElement(field, index) {
-        let input;
-        const isDisabled = index > 0; // 第一個以外都先禁用
-
-        const baseStyle = `
-            height: 40px;
-            padding: 0 12px;
-            border: 1px solid var(--cl-border);
-            border-radius: var(--cl-radius-md);
-            font-size: var(--cl-font-size-lg);
-            font-family: inherit;
-            transition: all var(--cl-transition);
-            outline: none;
-            background: ${isDisabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};
-            box-sizing: border-box;
-        `;
+    _createFieldComponent(field, index) {
+        const disabled = index > 0;
+        const textType = ['text', 'email', 'tel', 'url', 'password'].includes(field.type)
+            ? field.type
+            : 'text';
 
         switch (field.type) {
             case 'select':
-                input = document.createElement('select');
-                input.style.cssText = baseStyle + 'cursor: pointer; min-width: 100px; width: 100%;';
-
-                // 預設選項
-                const defaultOpt = document.createElement('option');
-                defaultOpt.value = '';
-                defaultOpt.textContent = field.placeholder || Locale.t('chainedInput.placeholder');
-                input.appendChild(defaultOpt);
-
-                // 如果有靜態選項
-                if (field.options) {
-                    field.options.forEach(opt => {
-                        const option = document.createElement('option');
-                        if (typeof opt === 'object') {
-                            option.value = opt.value;
-                            option.textContent = opt.label;
-                        } else {
-                            option.value = opt;
-                            option.textContent = opt;
-                        }
-                        input.appendChild(option);
-                    });
-                }
-                break;
+                return new Dropdown({
+                    items: this._normalizeOptions(field.options),
+                    placeholder: field.placeholder || Locale.t('chainedInput.placeholder'),
+                    value: null,
+                    disabled,
+                    width: '100%',
+                    onChange: (value) => this._handleFieldChange(field.name, value)
+                });
 
             case 'checkbox':
-                const checkWrapper = document.createElement('div');
-                checkWrapper.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 8px 0;';
-
-                input = document.createElement('input');
-                input.type = 'checkbox';
-                input.style.cssText = 'width: 18px; height: 18px; cursor: pointer;';
-
-                const checkLabel = document.createElement('span');
-                checkLabel.textContent = field.checkboxLabel || Locale.t('chainedInput.checkboxYes');
-                checkLabel.style.cssText = 'font-size: var(--cl-font-size-lg); color: var(--cl-text); cursor: pointer;';
-                checkLabel.addEventListener('click', () => {
-                    if (!input.disabled) {
-                        input.checked = !input.checked;
-                        input.dispatchEvent(new Event('change'));
-                    }
+                return new Checkbox({
+                    label: field.checkboxLabel || Locale.t('chainedInput.checkboxYes'),
+                    checked: false,
+                    disabled,
+                    onChange: (checked) => this._handleFieldChange(field.name, checked)
                 });
-
-                checkWrapper.appendChild(input);
-                checkWrapper.appendChild(checkLabel);
-
-                // 返回包裝器而非 input
-                checkWrapper.querySelector = () => input;
-                input.setAttribute('data-chained-input', '');
-                input.disabled = isDisabled;
-                input.addEventListener('change', () => this._handleFieldChange(field.name, input.checked));
-                input.addEventListener('focus', () => {
-                    if (!input.disabled) input.style.borderColor = 'var(--cl-primary)';
-                });
-                input.addEventListener('blur', () => {
-                    input.style.borderColor = 'var(--cl-border)';
-                });
-                return checkWrapper;
-
-            case 'roc-date':
-                input = document.createElement('input');
-                input.type = 'text';
-                input.style.cssText = baseStyle;
-                input.placeholder = 'YYY/MM/DD';
-                input.maxLength = 9; // e.g. 113/01/01
-                // 簡單自動格式化: 輸入 7 碼數字自動加斜線? 這裡先保持純文字
-                input.addEventListener('input', (e) => {
-                    let val = e.target.value.replaceAll(/[^\d/]/g, '');
-                    e.target.value = val;
-                });
-                break;
 
             case 'date':
-                input = document.createElement('input');
-                input.type = 'date';
-                input.style.cssText = baseStyle;
-                break;
+                return new DatePicker({
+                    placeholder: field.placeholder || '',
+                    value: null,
+                    disabled,
+                    onChange: (date) => this._handleFieldChange(field.name, this._toIsoDate(date))
+                });
 
             case 'time':
-                input = document.createElement('input');
-                input.type = 'time';
-                input.style.cssText = baseStyle;
-                break;
+                return new TimePicker({
+                    placeholder: field.placeholder || '',
+                    value: null,
+                    disabled,
+                    onChange: (value) => this._handleFieldChange(field.name, value)
+                });
 
             case 'number':
-                input = document.createElement('input');
-                input.type = 'number';
-                input.style.cssText = baseStyle;
-                if (field.min !== undefined) input.min = field.min;
-                if (field.max !== undefined) input.max = field.max;
-                break;
+                return new NumberInput({
+                    value: null,
+                    min: field.min ?? Number.NEGATIVE_INFINITY,
+                    max: field.max ?? Number.POSITIVE_INFINITY,
+                    showButtons: false,
+                    placeholder: field.placeholder || '',
+                    width: '100%',
+                    disabled,
+                    onChange: (value) => this._handleFieldChange(field.name, value ?? '')
+                });
+
+            case 'roc-date': {
+                let component = null;
+                component = new TextInput({
+                    type: 'text',
+                    placeholder: field.placeholder || 'YYY/MM/DD',
+                    value: '',
+                    maxLength: 9,
+                    width: '100%',
+                    disabled,
+                    onChange: (value) => {
+                        const sanitized = String(value ?? '').replace(/[^\d/]/g, '');
+                        if (sanitized !== value) {
+                            component.setValue(sanitized);
+                        }
+                        this._handleFieldChange(field.name, sanitized);
+                    }
+                });
+                return component;
+            }
 
             case 'text':
+            case 'email':
+            case 'tel':
+            case 'url':
+            case 'password':
             default:
-                input = document.createElement('input');
-                input.type = 'text';
-                input.style.cssText = baseStyle;
-                if (field.maxLength) input.maxLength = field.maxLength;
-                break;
+                return new TextInput({
+                    type: textType,
+                    placeholder: field.placeholder || '',
+                    value: '',
+                    maxLength: field.maxLength || null,
+                    width: '100%',
+                    disabled,
+                    onChange: (value) => this._handleFieldChange(field.name, value)
+                });
+        }
+    }
+
+    _normalizeOptions(options = []) {
+        return (options || []).map((opt) => {
+            if (typeof opt === 'object') {
+                return { value: opt.value, label: opt.label, disabled: opt.disabled };
+            }
+            return { value: opt, label: opt };
+        });
+    }
+
+    _toIsoDate(date) {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+            return '';
         }
 
-        input.setAttribute('data-chained-input', '');
-        input.placeholder = field.placeholder || '';
-        input.disabled = isDisabled;
-
-        // 事件監聽
-        input.addEventListener('change', () => {
-            const value = field.type === 'checkbox' ? input.checked : input.value;
-            this._handleFieldChange(field.name, value);
-        });
-
-        input.addEventListener('focus', () => {
-            if (!input.disabled) {
-                input.style.borderColor = 'var(--cl-primary)';
-                input.style.boxShadow = '0 0 0 3px rgba(var(--cl-primary-rgb), 0.1)';
-            }
-        });
-
-        input.addEventListener('blur', () => {
-            input.style.borderColor = 'var(--cl-border)';
-            input.style.boxShadow = 'none';
-        });
-
-        return input;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     async _initializeFields() {
@@ -249,210 +213,176 @@ export class ChainedInput {
     async _handleFieldChange(fieldName, value) {
         this.values[fieldName] = value;
 
-        // 找到當前欄位的索引
-        const fieldIndex = this.options.fields.findIndex(f => f.name === fieldName);
+        const fieldIndex = this.options.fields.findIndex((field) => field.name === fieldName);
 
-        // 重置後續欄位
         for (let i = fieldIndex + 1; i < this.options.fields.length; i++) {
             const nextField = this.options.fields[i];
             const nextElement = this.fieldElements.get(nextField.name);
 
-            if (nextElement) {
-                const input = nextElement.input;
-                if (nextField.type === 'checkbox') {
-                    input.checked = false;
-                } else if (nextField.type === 'select') {
-                    // 清空選項（保留預設）
-                    while (input.options.length > 1) {
-                        input.remove(1);
-                    }
-                    input.value = '';
-                } else {
-                    input.value = '';
-                }
+            if (!nextElement) continue;
 
-                // 禁用
-                input.disabled = true;
-                input.style.background = 'var(--cl-bg-secondary)';
+            this._clearField(nextElement);
+            this._setDisabled(nextElement, true);
 
-                // 隱藏（如果配置了 hideWhenDisabled）
-                if (nextField.hideWhenDisabled) {
-                    nextElement.wrapper.style.display = 'none';
-                }
-
-                this.values[nextField.name] = nextField.type === 'checkbox' ? false : '';
+            if (nextField.hideWhenDisabled) {
+                nextElement.wrapper.style.display = 'none';
             }
+
+            this.values[nextField.name] = nextField.type === 'checkbox' ? false : '';
         }
 
-        // 判斷是否有值
-        const hasValue = field => {
-            const f = this.options.fields.find(x => x.name === fieldName);
-            if (f.type === 'checkbox') return value === true;
-            return value !== '' && value !== null && value !== undefined;
-        };
+        const currentField = this.options.fields[fieldIndex];
+        const hasValue = currentField?.type === 'checkbox'
+            ? value === true
+            : value !== '' && value !== null && value !== undefined;
 
-        // 啟用下一個欄位
-        if (hasValue() && fieldIndex < this.options.fields.length - 1) {
+        if (hasValue && fieldIndex < this.options.fields.length - 1) {
             const nextField = this.options.fields[fieldIndex + 1];
             const nextElement = this.fieldElements.get(nextField.name);
 
             if (nextElement) {
-                const input = nextElement.input;
-
-                // 載入選項（如果需要）
                 if (nextField.loadOptions) {
                     await this._loadFieldOptions(nextField.name, value);
+                } else {
+                    this._restoreStaticOptions(nextElement);
                 }
 
-                // 啟用
-                input.disabled = false;
-                input.style.background = 'var(--cl-bg)';
+                this._setDisabled(nextElement, false);
 
-                // 顯示
                 if (nextField.hideWhenDisabled) {
                     nextElement.wrapper.style.display = '';
                 }
             }
         }
 
-        // 觸發 onChange
         if (this.options.onChange) {
             this.options.onChange(this.getValues());
         }
     }
 
-    async _loadFieldOptions(fieldName, parentValue) {
-        const field = this.options.fields.find(f => f.name === fieldName);
-        const element = this.fieldElements.get(fieldName);
+    _restoreStaticOptions(entry) {
+        if (entry.field.type !== 'select') return;
+        entry.component.setItems(this._normalizeOptions(entry.field.options));
+    }
 
-        if (!field || !element || !field.loadOptions) return;
+    _clearField(entry) {
+        const { field, component } = entry;
 
-        const input = element.input;
-
-        // 顯示載入中
         if (field.type === 'select') {
-            input.disabled = true;
-            const loadingOpt = input.options[0];
-            loadingOpt.textContent = Locale.t('chainedInput.loading');
+            component.clear();
+            if (field.loadOptions) {
+                component.setItems([]);
+            } else {
+                component.setItems(this._normalizeOptions(field.options));
+            }
+            return;
         }
 
-        try {
-            const options = await field.loadOptions(parentValue);
-
-            if (field.type === 'select') {
-                // 清空現有選項
-                while (input.options.length > 1) {
-                    input.remove(1);
-                }
-
-                // 新增選項
-                options.forEach(opt => {
-                    const option = document.createElement('option');
-                    if (typeof opt === 'object') {
-                        option.value = opt.value;
-                        option.textContent = opt.label;
-                    } else {
-                        option.value = opt;
-                        option.textContent = opt;
-                    }
-                    input.appendChild(option);
-                });
-
-                // 恢復預設文字
-                input.options[0].textContent = field.placeholder || Locale.t('chainedInput.placeholder');
-
-                // 如果沒有選項，保持禁用；否則啟用
-                if (options.length === 0) {
-                    input.disabled = true;
-                    input.options[0].textContent = Locale.t('chainedInput.noOptions');
-                    if (field.hideWhenEmpty) {
-                        element.wrapper.style.display = 'none';
-                    }
-                } else {
-                    input.disabled = false;
-                    element.wrapper.style.display = '';
-                }
-            }
-        } catch (error) {
-            console.error(`載入 ${fieldName} 選項失敗:`, error);
-            if (field.type === 'select') {
-                input.options[0].textContent = Locale.t('chainedInput.loadError');
-            }
+        component.clear?.();
+        if (field.type === 'checkbox') {
+            component.setValue(false);
         }
     }
 
-    /**
-     * 取得所有值
-     */
+    _setDisabled(entry, disabled) {
+        entry.component.setDisabled?.(disabled);
+    }
+
+    async _loadFieldOptions(fieldName, parentValue) {
+        const field = this.options.fields.find((item) => item.name === fieldName);
+        const entry = this.fieldElements.get(fieldName);
+
+        if (!field || !entry || !field.loadOptions || field.type !== 'select') return;
+
+        this._setDisabled(entry, true);
+        entry.component.setItems([]);
+
+        try {
+            const options = await field.loadOptions(parentValue);
+            const normalizedOptions = this._normalizeOptions(options);
+            entry.component.setItems(normalizedOptions);
+
+            if (normalizedOptions.length === 0) {
+                this._setDisabled(entry, true);
+                if (field.hideWhenEmpty) {
+                    entry.wrapper.style.display = 'none';
+                }
+            } else {
+                this._setDisabled(entry, false);
+                entry.wrapper.style.display = '';
+            }
+        } catch (error) {
+            console.error(`Failed to load options for ${fieldName}:`, error);
+            entry.component.setItems([]);
+            this._setDisabled(entry, true);
+        }
+    }
+
     getValues() {
         return { ...this.values };
     }
 
-    /**
-     * 設定值
-     */
     async setValues(values) {
         for (const [fieldName, value] of Object.entries(values)) {
-            const element = this.fieldElements.get(fieldName);
-            const field = this.options.fields.find(f => f.name === fieldName);
+            const entry = this.fieldElements.get(fieldName);
+            const field = this.options.fields.find((item) => item.name === fieldName);
 
-            if (element && field) {
-                const input = element.input;
-                if (field.type === 'checkbox') {
-                    input.checked = value;
-                } else {
-                    input.value = value;
-                }
-                await this._handleFieldChange(fieldName, value);
+            if (!entry || !field) continue;
+
+            if (field.type === 'select' && field.loadOptions) {
+                await this._loadFieldOptions(fieldName, this._getParentFieldValue(fieldName));
             }
+
+            entry.component.setValue?.(value);
+            await this._handleFieldChange(fieldName, value);
         }
     }
 
-    /**
-     * 重置
-     */
+    _getParentFieldValue(fieldName) {
+        const fieldIndex = this.options.fields.findIndex((item) => item.name === fieldName);
+        if (fieldIndex <= 0) return '';
+        const parentField = this.options.fields[fieldIndex - 1];
+        return this.values[parentField.name] ?? '';
+    }
+
     reset() {
         this.options.fields.forEach((field, index) => {
-            const element = this.fieldElements.get(field.name);
-            if (element) {
-                const input = element.input;
-                if (field.type === 'checkbox') {
-                    input.checked = false;
-                } else {
-                    input.value = '';
-                }
+            const entry = this.fieldElements.get(field.name);
+            if (!entry) return;
 
-                if (index > 0) {
-                    input.disabled = true;
-                    input.style.background = 'var(--cl-bg-secondary)';
-                }
-            }
+            this._clearField(entry);
             this.values[field.name] = field.type === 'checkbox' ? false : '';
+
+            if (index > 0) {
+                this._setDisabled(entry, true);
+                if (field.hideWhenDisabled) {
+                    entry.wrapper.style.display = 'none';
+                }
+            } else if (field.type === 'select') {
+                this._restoreStaticOptions(entry);
+            }
         });
 
         this._initializeFields();
     }
 
-    /**
-     * 驗證
-     */
     validate() {
         const errors = [];
-        this.options.fields.forEach(field => {
-            if (field.required) {
-                const value = this.values[field.name];
-                const isEmpty = field.type === 'checkbox' ? !value : (!value || value === '');
-                if (isEmpty) {
-                    errors.push({ field: field.name, message: `${field.label || field.name} 為必填` });
-                }
+        this.options.fields.forEach((field) => {
+            if (!field.required) return;
+
+            const value = this.values[field.name];
+            const isEmpty = field.type === 'checkbox' ? !value : (!value && value !== 0);
+            if (isEmpty) {
+                errors.push({
+                    field: field.name,
+                    message: `${field.label || field.name} is required`
+                });
             }
         });
         return errors;
     }
 
-    /**
-     * 掛載
-     */
     mount(container) {
         const target = typeof container === 'string'
             ? document.querySelector(container)
@@ -461,21 +391,20 @@ export class ChainedInput {
         return this;
     }
 
-    /**
-     * 移除
-     */
     destroy() {
+        this.fieldElements.forEach(({ component }) => {
+            component.destroy?.();
+        });
+
         if (this.element?.parentNode) {
             this.element.remove();
         }
+
         this.fieldElements.clear();
     }
 
-    /**
-     * 靜態方法：綁定自定義相依
-     */
     static bindDependency(config) {
-        const { source, target, condition = (v) => !!v } = config;
+        const { source, target, condition = (value) => !!value } = config;
 
         const sourceEl = typeof source === 'string'
             ? document.querySelector(source)
@@ -485,7 +414,7 @@ export class ChainedInput {
             : target;
 
         if (!sourceEl || !targetEl) {
-            console.error('ChainedInput.bindDependency: source 或 target 未找到');
+            console.error('ChainedInput.bindDependency: source or target was not found');
             return;
         }
 
@@ -501,10 +430,7 @@ export class ChainedInput {
             }
         };
 
-        // 初始觸發
         updateTarget();
-
-        // 監聽變化
         sourceEl.addEventListener('change', updateTarget);
         sourceEl.addEventListener('input', updateTarget);
 

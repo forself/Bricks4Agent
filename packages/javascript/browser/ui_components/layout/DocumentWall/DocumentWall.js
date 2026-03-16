@@ -4,7 +4,7 @@
  */
 
 import { DocumentCard } from './DocumentCard.js';
-import { ModalPanel } from '../Panel/ModalPanel.js';
+import { ModalPanel } from '../Panel/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
 
 import Locale from '../../i18n/index.js';

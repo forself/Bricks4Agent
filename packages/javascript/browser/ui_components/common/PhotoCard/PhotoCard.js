@@ -3,7 +3,7 @@
  * 照片卡片元件 - 支援人像(4:3)與地點(3:4)兩種比例
  */
 
-import { ImageViewer } from '../ImageViewer/ImageViewer.js';
+import { ImageViewer } from '../ImageViewer/index.js';
 
 export class PhotoCard {
     static TYPES = {

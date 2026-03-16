@@ -3,7 +3,7 @@
  * 多選下拉選單元件 - 支援搜尋篩選、選中置頂、展開 Modal 全選操作
  */
 
-import { ModalPanel } from '../../../ui_components/layout/Panel/ModalPanel.js';
+import { ModalPanel } from '../../layout/Panel/index.js';
 
 import Locale from '../../i18n/index.js';
 export class MultiSelectDropdown {

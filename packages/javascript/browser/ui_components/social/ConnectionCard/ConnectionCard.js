@@ -19,7 +19,7 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
-import { Avatar } from '../Avatar/Avatar.js';
+import { Avatar } from '../Avatar/index.js';
 
 export class ConnectionCard {
     /**

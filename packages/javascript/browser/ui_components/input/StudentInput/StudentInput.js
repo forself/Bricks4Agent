@@ -1,4 +1,4 @@
-import { ChainedInput } from '../ChainedInput/ChainedInput.js';
+import { ChainedInput } from '../ChainedInput/index.js';
 
 import Locale from '../../i18n/index.js';
 export class StudentInput extends ChainedInput {
