@@ -13,8 +13,8 @@
  *
  * @example 基本使用
  * ```javascript
- * import { ButtonGroup } from './ButtonGroup.js';
- * import { EditorButton } from '../EditorButton/EditorButton.js';
+ * import { ButtonGroup } from './index.js';
+ * import { EditorButton } from '../EditorButton/index.js';
  *
  * const group = new ButtonGroup({
  *     theme: 'light',

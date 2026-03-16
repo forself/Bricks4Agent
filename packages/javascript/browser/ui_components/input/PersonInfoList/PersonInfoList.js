@@ -1,6 +1,9 @@
-import { ListInput } from '../ListInput/ListInput.js';
-
+import { Dropdown } from '../../form/Dropdown/index.js';
+import { NumberInput } from '../../form/NumberInput/index.js';
+import { TextInput } from '../../form/TextInput/index.js';
+import { ListInput } from '../ListInput/index.js';
 import Locale from '../../i18n/index.js';
+
 export class PersonInfoList extends ListInput {
     constructor(options = {}) {
         super({
@@ -16,18 +19,17 @@ export class PersonInfoList extends ListInput {
                     gap: 12px;
                 `;
 
-                // 定義欄位
                 const fields = [
                     { name: 'name', label: Locale.t('personInfoList.nameLabel'), type: 'text', placeholder: Locale.t('personInfoList.namePlaceholder') },
                     { name: 'gender', label: Locale.t('personInfoList.genderLabel'), type: 'select', options: Object.values(Locale.t('personInfoList.genderOptions')) },
                     { name: 'age', label: Locale.t('personInfoList.ageLabel'), type: 'number', min: 0, max: 150 },
-                    { name: 'id', label: Locale.t('personInfoList.idLabel'), type: 'text', maxLength: 20, placeholder: Locale.t('personInfoList.idPlaceholder') }, // 用戶要求 20 碼自由填寫
+                    { name: 'id', label: Locale.t('personInfoList.idLabel'), type: 'text', maxLength: 20, placeholder: Locale.t('personInfoList.idPlaceholder') },
                     { name: 'otherId', label: Locale.t('personInfoList.otherIdLabel'), type: 'text' }
                 ];
 
                 const currentValues = value || {};
 
-                fields.forEach(field => {
+                fields.forEach((field) => {
                     const fieldDiv = document.createElement('div');
                     fieldDiv.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
 
@@ -36,44 +38,47 @@ export class PersonInfoList extends ListInput {
                     label.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary);';
                     fieldDiv.appendChild(label);
 
-                    let input;
+                    let component;
                     if (field.type === 'select') {
-                        input = document.createElement('select');
-                        field.options.forEach(opt => {
-                            const option = document.createElement('option');
-                            option.value = opt;
-                            option.textContent = opt;
-                            input.appendChild(option);
+                        component = new Dropdown({
+                            items: field.options.map((opt) => ({ value: opt, label: opt })),
+                            value: currentValues[field.name] || field.options[0],
+                            width: '100%',
+                            onChange: (selected) => {
+                                currentValues[field.name] = selected;
+                                onChange({ ...currentValues });
+                            }
                         });
-                        input.value = currentValues[field.name] || field.options[0];
+                    } else if (field.type === 'number') {
+                        component = new NumberInput({
+                            value: currentValues[field.name] ?? null,
+                            min: field.min ?? Number.NEGATIVE_INFINITY,
+                            max: field.max ?? Number.POSITIVE_INFINITY,
+                            showButtons: false,
+                            width: '100%',
+                            onChange: (selected) => {
+                                currentValues[field.name] = selected;
+                                onChange({ ...currentValues });
+                            }
+                        });
                     } else {
-                        input = document.createElement('input');
-                        input.type = field.type;
-                        if (field.placeholder) input.placeholder = field.placeholder;
-                        if (field.maxLength) input.maxLength = field.maxLength;
-                        if (field.min) input.min = field.min;
-                        if (field.max) input.max = field.max;
-                        input.value = currentValues[field.name] || '';
+                        component = new TextInput({
+                            type: field.type,
+                            value: currentValues[field.name] || '',
+                            placeholder: field.placeholder || '',
+                            maxLength: field.maxLength || null,
+                            width: '100%',
+                            onChange: (selected) => {
+                                currentValues[field.name] = selected;
+                                onChange({ ...currentValues });
+                            }
+                        });
                     }
 
-                    input.style.cssText = `
-                        padding: 6px 10px;
-                        border: 1px solid var(--cl-border);
-                        border-radius: var(--cl-radius-sm);
-                        font-family: inherit;
-                        font-size: var(--cl-font-size-lg);
-                        width: 100%;
-                    `;
-
-                    // 綁定事件
-                    const updateField = () => {
-                        currentValues[field.name] = input.value;
-                        onChange(currentValues);
-                    };
-                    input.addEventListener('input', updateField);
-                    input.addEventListener('change', updateField);
-
-                    fieldDiv.appendChild(input);
+                    const host = document.createElement('div');
+                    host.style.cssText = 'width: 100%;';
+                    component.mount(host);
+                    fieldDiv.appendChild(host);
                     wrapper.appendChild(fieldDiv);
                 });
 

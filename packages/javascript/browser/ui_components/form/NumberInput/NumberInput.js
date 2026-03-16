@@ -251,6 +251,28 @@ export class NumberInput {
         this.setValue(null);
     }
 
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+
+        if (this.input) {
+            this.input.disabled = disabled;
+            this.input.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
+        }
+
+        if (this.wrapper) {
+            this.wrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.wrapper.style.borderColor = 'var(--cl-border)';
+            this.wrapper.style.boxShadow = 'none';
+        }
+
+        [this.decreaseBtn, this.increaseBtn].filter(Boolean).forEach((btn) => {
+            btn.disabled = disabled;
+            btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            btn.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text-secondary)';
+            btn.style.background = 'var(--cl-bg-secondary)';
+        });
+    }
+
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target) target.appendChild(this.element);

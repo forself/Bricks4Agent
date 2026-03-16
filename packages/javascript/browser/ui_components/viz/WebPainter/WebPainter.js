@@ -3,13 +3,13 @@
  * 功能：支援圖層、縮放、多種繪圖工具、匯出 PNG/JSON
  */
 
-import { EditorButton } from '../../common/EditorButton/EditorButton.js';
-import { BasicButton } from '../../common/BasicButton/BasicButton.js';
-import { ButtonGroup } from '../../common/ButtonGroup/ButtonGroup.js';
-import { UploadButton } from '../../common/UploadButton/UploadButton.js';
-import { ColorPicker } from '../../common/ColorPicker/ColorPicker.js';
-import { NumberInput } from '../../form/NumberInput/NumberInput.js';
-import { SimpleDialog } from '../../common/Dialog/SimpleDialog.js';
+import { EditorButton } from '../../common/EditorButton/index.js';
+import { BasicButton } from '../../common/BasicButton/index.js';
+import { ButtonGroup } from '../../common/ButtonGroup/index.js';
+import { UploadButton } from '../../common/UploadButton/index.js';
+import { ColorPicker } from '../../common/ColorPicker/index.js';
+import { NumberInput } from '../../form/NumberInput/index.js';
+import { SimpleDialog } from '../../common/Dialog/index.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';

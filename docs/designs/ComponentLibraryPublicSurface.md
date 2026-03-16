@@ -140,6 +140,15 @@ Based on the current structure, the library can make these claims about itself:
 - it can change internal implementation files as long as the chosen public
   entrypoints remain stable
 
+For library-owned code, that also means:
+
+- composite components should prefer public entrypoints when they compose other
+  components from the library
+- when a child component has a folder-level `index.js`, library-owned composite
+  code should prefer that leaf entrypoint over the child implementation file
+- this is a rule about library maintenance inside `ui_components`, not a rule
+  imposed on external applications
+
 ## What The Library Should Not Claim
 
 The library should not claim:
@@ -167,4 +176,6 @@ That is enough to define a truthful contract:
 - the library already has public surfaces
 - those surfaces are currently uneven
 - normalizing them is a library maintenance task
+- library-owned composite components should move toward those same public
+  surfaces instead of cross-component deep imports
 - consumer behavior should be described separately from the library contract

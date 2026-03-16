@@ -1,6 +1,8 @@
-import { ListInput } from '../ListInput/ListInput.js';
-
+import { Dropdown } from '../../form/Dropdown/index.js';
+import { TextInput } from '../../form/TextInput/index.js';
+import { ListInput } from '../ListInput/index.js';
 import Locale from '../../i18n/index.js';
+
 export class SocialMediaList extends ListInput {
     constructor(options = {}) {
         super({
@@ -14,47 +16,40 @@ export class SocialMediaList extends ListInput {
 
                 const currentValues = value || { platform: 'LINE', account: '' };
 
-                // 平台
-                const platformSelect = document.createElement('select');
-                ['LINE', 'Facebook', 'Instagram', 'Twitter (X)', 'WeChat', 'Telegram', '其他'].forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt;
-                    if (opt === currentValues.platform) option.selected = true;
-                    platformSelect.appendChild(option);
+                const platformSelect = new Dropdown({
+                    items: ['LINE', 'Facebook', 'Instagram', 'Twitter (X)', 'WeChat', 'Telegram', 'Other'].map((opt) => ({
+                        value: opt,
+                        label: opt
+                    })),
+                    value: currentValues.platform,
+                    width: '120px',
+                    onChange: (selected) => {
+                        currentValues.platform = selected;
+                        onChange({ ...currentValues });
+                    }
                 });
-                platformSelect.style.cssText = `
-                    padding: 8px;
-                    border: 1px solid var(--cl-border);
-                    border-radius: var(--cl-radius-sm);
-                    width: 120px;
-                `;
 
-                // 帳號
-                const accountInput = document.createElement('input');
-                accountInput.type = 'text';
-                accountInput.placeholder = Locale.t('socialMediaList.placeholder');
-                accountInput.value = currentValues.account || '';
-                accountInput.style.cssText = `
-                    padding: 8px;
-                    border: 1px solid var(--cl-border);
-                    border-radius: var(--cl-radius-sm);
-                    flex: 1;
-                `;
+                const accountInput = new TextInput({
+                    type: 'text',
+                    placeholder: Locale.t('socialMediaList.placeholder'),
+                    value: currentValues.account || '',
+                    width: '100%',
+                    onChange: (inputValue) => {
+                        currentValues.account = inputValue;
+                        onChange({ ...currentValues });
+                    }
+                });
 
-                // 事件
-                const update = () => {
-                    onChange({
-                        platform: platformSelect.value,
-                        account: accountInput.value
-                    });
-                };
+                const platformHost = document.createElement('div');
+                platformHost.style.cssText = 'width: 120px;';
+                platformSelect.mount(platformHost);
 
-                platformSelect.addEventListener('change', update);
-                accountInput.addEventListener('input', update);
+                const accountHost = document.createElement('div');
+                accountHost.style.cssText = 'flex: 1;';
+                accountInput.mount(accountHost);
 
-                wrapper.appendChild(platformSelect);
-                wrapper.appendChild(accountInput);
+                wrapper.appendChild(platformHost);
+                wrapper.appendChild(accountHost);
                 container.appendChild(wrapper);
             },
             ...options

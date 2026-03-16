@@ -1,6 +1,8 @@
-import { ListInput } from '../ListInput/ListInput.js';
-
+import { Dropdown } from '../../form/Dropdown/index.js';
+import { TextInput } from '../../form/TextInput/index.js';
+import { ListInput } from '../ListInput/index.js';
 import Locale from '../../i18n/index.js';
+
 export class PhoneListInput extends ListInput {
     constructor(options = {}) {
         super({
@@ -14,47 +16,40 @@ export class PhoneListInput extends ListInput {
 
                 const currentValues = value || { type: Locale.t('phoneListInput.types').mobile, number: '' };
 
-                // 類型
-                const typeSelect = document.createElement('select');
-                Object.values(Locale.t('phoneListInput.types')).forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt;
-                    if (opt === currentValues.type) option.selected = true;
-                    typeSelect.appendChild(option);
+                const typeSelect = new Dropdown({
+                    items: Object.values(Locale.t('phoneListInput.types')).map((opt) => ({
+                        value: opt,
+                        label: opt
+                    })),
+                    value: currentValues.type,
+                    width: '96px',
+                    onChange: (selected) => {
+                        currentValues.type = selected;
+                        onChange({ ...currentValues });
+                    }
                 });
-                typeSelect.style.cssText = `
-                    padding: 8px;
-                    border: 1px solid var(--cl-border);
-                    border-radius: var(--cl-radius-sm);
-                    width: 80px;
-                `;
 
-                // 號碼
-                const numberInput = document.createElement('input');
-                numberInput.type = 'tel';
-                numberInput.placeholder = Locale.t('phoneListInput.placeholder');
-                numberInput.value = currentValues.number || '';
-                numberInput.style.cssText = `
-                    padding: 8px;
-                    border: 1px solid var(--cl-border);
-                    border-radius: var(--cl-radius-sm);
-                    flex: 1;
-                `;
+                const numberInput = new TextInput({
+                    type: 'tel',
+                    placeholder: Locale.t('phoneListInput.placeholder'),
+                    value: currentValues.number || '',
+                    width: '100%',
+                    onChange: (inputValue) => {
+                        currentValues.number = inputValue;
+                        onChange({ ...currentValues });
+                    }
+                });
 
-                // 事件
-                const update = () => {
-                    onChange({
-                        type: typeSelect.value,
-                        number: numberInput.value
-                    });
-                };
+                const typeHost = document.createElement('div');
+                typeHost.style.cssText = 'width: 96px;';
+                typeSelect.mount(typeHost);
 
-                typeSelect.addEventListener('change', update);
-                numberInput.addEventListener('input', update);
+                const numberHost = document.createElement('div');
+                numberHost.style.cssText = 'flex: 1;';
+                numberInput.mount(numberHost);
 
-                wrapper.appendChild(typeSelect);
-                wrapper.appendChild(numberInput);
+                wrapper.appendChild(typeHost);
+                wrapper.appendChild(numberHost);
                 container.appendChild(wrapper);
             },
             ...options

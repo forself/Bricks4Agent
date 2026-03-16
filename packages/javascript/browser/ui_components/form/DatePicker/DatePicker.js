@@ -261,8 +261,6 @@ export class DatePicker {
     }
 
     _bindEvents() {
-        if (this.options.disabled) return;
-
         this.inputWrapper.addEventListener('click', () => this.toggle());
 
         // 注意：_renderCalendar() 會替換 innerHTML，導致舊 select 元素脫離 DOM
@@ -273,6 +271,7 @@ export class DatePicker {
         });
 
         this.inputWrapper.addEventListener('mouseenter', () => {
+            if (this.options.disabled) return;
             this.inputWrapper.style.borderColor = 'var(--cl-primary)';
         });
         this.inputWrapper.addEventListener('mouseleave', () => {
@@ -376,6 +375,20 @@ export class DatePicker {
         this.display.textContent = this.options.placeholder;
         this.display.style.color = 'var(--cl-text-placeholder)';
         this._renderCalendar();
+    }
+
+    setDisabled(disabled) {
+        this.options.disabled = disabled;
+
+        if (disabled) {
+            this.close();
+        }
+
+        if (this.inputWrapper) {
+            this.inputWrapper.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.inputWrapper.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            this.inputWrapper.style.opacity = disabled ? '0.6' : '1';
+        }
     }
 
     mount(container) {

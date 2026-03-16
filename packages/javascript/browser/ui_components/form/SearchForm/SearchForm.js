@@ -8,10 +8,10 @@
  */
 
 import { escapeHtml } from '../../utils/security.js';
-import { TextInput } from '../TextInput/TextInput.js';
-import { Dropdown } from '../Dropdown/Dropdown.js';
-import { DatePicker } from '../DatePicker/DatePicker.js';
-import { NumberInput } from '../NumberInput/NumberInput.js';
+import { TextInput } from '../TextInput/index.js';
+import { Dropdown } from '../Dropdown/index.js';
+import { DatePicker } from '../DatePicker/index.js';
+import { NumberInput } from '../NumberInput/index.js';
 
 import Locale from '../../i18n/index.js';
 export class SearchForm {

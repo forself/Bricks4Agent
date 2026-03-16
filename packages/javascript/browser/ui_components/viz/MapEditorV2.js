@@ -3,10 +3,10 @@
  * 功能：上傳圖片、添加文字與形狀標註、匯出 PNG（含元數據）
  */
 
-import { BasicButton } from '../common/BasicButton/BasicButton.js';
-import { UploadButton } from '../common/UploadButton/UploadButton.js';
-import { ColorPicker } from '../common/ColorPicker/ColorPicker.js';
-import { NumberInput } from '../form/NumberInput/NumberInput.js';
+import { BasicButton } from '../common/BasicButton/index.js';
+import { UploadButton } from '../common/UploadButton/index.js';
+import { ColorPicker } from '../common/ColorPicker/index.js';
+import { NumberInput } from '../form/NumberInput/index.js';
 
 import { ModalPanel } from '../layout/Panel/index.js';
 import Locale from '../i18n/index.js';

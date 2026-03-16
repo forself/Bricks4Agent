@@ -1,5 +1,5 @@
-import { ListInput } from '../ListInput/ListInput.js';
-import { AddressInput } from '../AddressInput/AddressInput.js';
+import { ListInput } from '../ListInput/index.js';
+import { AddressInput } from '../AddressInput/index.js';
 
 import Locale from '../../i18n/index.js';
 export class AddressListInput extends ListInput {
