@@ -1,24 +1,7 @@
 import { escapeHtml, hasSqlInjectionRisk, hasPathTraversalRisk } from '../../utils/security.js';
+import { createComponentState } from '../../utils/component-state.js';
 
 export class TextInput {
-    /**
-     * @param {Object} options
-     * @param {string} options.type - 輸入類型 'text', 'password', 'email', 'tel'
-     * @param {string} options.placeholder - 預設提示
-     * @param {string} options.value - 初始值
-     * @param {string} options.label - 標籤文字
-     * @param {string} options.size - 尺寸 'small', 'medium', 'large'
-     * @param {boolean} options.disabled - 停用
-     * @param {boolean} options.readonly - 唯讀
-     * @param {boolean} options.required - 必填
-     * @param {string} options.error - 錯誤訊息
-     * @param {string} options.hint - 提示訊息
-     * @param {number} options.maxLength - 最大長度
-     * @param {string} options.width - 寬度
-     * @param {boolean} options.enableSecurity - 啟用資安檢查 (SQL/Path)
-     * @param {Function} options.onChange - 變更回調
-     * @param {Function} options.onBlur - 失焦回調
-     */
     constructor(options = {}) {
         this.options = {
             type: 'text',
@@ -39,13 +22,84 @@ export class TextInput {
             ...options
         };
 
-        this.element = this._create();
         this.input = null;
         this.message = null;
+        this.element = this._create();
+        this._state = createComponentState(this._buildInitialState(), {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed' }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden' }),
+            FOCUS: (state) => (
+                state.availability === 'disabled'
+                    ? state
+                    : { ...state, interaction: 'focused' }
+            ),
+            BLUR: (state) => ({ ...state, interaction: 'idle' }),
+            SET_VALUE: (state, payload) => ({
+                ...state,
+                value: String(payload?.value ?? '')
+            }),
+            CLEAR: (state) => ({
+                ...state,
+                value: '',
+                validation: this._defaultValidationState()
+            }),
+            SET_DISABLED: (state, payload) => ({
+                ...state,
+                availability: payload?.disabled ? 'disabled' : 'enabled',
+                interaction: payload?.disabled ? 'idle' : state.interaction
+            }),
+            SET_ERROR: (state, payload) => ({
+                ...state,
+                validation: {
+                    status: 'error',
+                    message: String(payload?.error ?? '')
+                }
+            }),
+            CLEAR_ERROR: (state) => ({
+                ...state,
+                validation: this._defaultValidationState()
+            })
+        });
+        this._applyState();
+    }
+
+    _buildInitialState() {
+        return {
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            interaction: 'idle',
+            value: String(this.options.value ?? ''),
+            readonly: !!this.options.readonly,
+            validation: this.options.error
+                ? { status: 'error', message: this.options.error }
+                : this._defaultValidationState()
+        };
+    }
+
+    _defaultValidationState() {
+        return this.options.hint
+            ? { status: 'hint', message: this.options.hint }
+            : { status: 'idle', message: '' };
     }
 
     _create() {
-        const { label, type, placeholder, value, size, disabled, readonly, required, error, hint, maxLength, width } = this.options;
+        const {
+            label,
+            type,
+            placeholder,
+            value,
+            size,
+            disabled,
+            readonly,
+            required,
+            error,
+            hint,
+            maxLength,
+            width
+        } = this.options;
 
         const sizeStyles = {
             small: { height: '32px', padding: '0 8px', fontSize: 'var(--cl-font-size-md)' },
@@ -62,16 +116,14 @@ export class TextInput {
             width: ${width};
         `;
 
-        // 標籤
         if (label) {
             const labelEl = document.createElement('label');
             labelEl.className = 'text-input__label';
             labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color: var(--cl-danger); margin-left: 2px;">*</span>' : ''}`;
-            labelEl.style.cssText = `font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);`;
+            labelEl.style.cssText = 'font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);';
             container.appendChild(labelEl);
         }
 
-        // 輸入框
         const input = document.createElement('input');
         input.className = 'text-input';
         input.type = type;
@@ -80,15 +132,13 @@ export class TextInput {
         input.disabled = disabled;
         input.readOnly = readonly;
         if (maxLength) input.maxLength = maxLength;
-
-        const borderColor = error ? 'var(--cl-danger)' : 'var(--cl-border)';
         input.style.cssText = `
             width: 100%;
             height: ${sizeStyles.height};
             padding: ${sizeStyles.padding};
             font-size: ${sizeStyles.fontSize};
             font-family: inherit;
-            border: 1px solid ${borderColor};
+            border: 1px solid ${error ? 'var(--cl-danger)' : 'var(--cl-border)'};
             border-radius: var(--cl-radius-md);
             outline: none;
             transition: all var(--cl-transition);
@@ -96,19 +146,13 @@ export class TextInput {
             color: ${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};
         `;
 
-        // Focus 效果
         input.addEventListener('focus', () => {
-            if (this.options.error) return; // Error state overrides focus color
-            input.style.borderColor = 'var(--cl-primary)';
-            input.style.boxShadow = `0 0 0 3px rgba(var(--cl-primary-rgb), 0.1)`;
+            this.send('FOCUS');
         });
 
         input.addEventListener('blur', () => {
-            if (this.options.error) return;
-            input.style.borderColor = 'var(--cl-border)';
-            input.style.boxShadow = 'none';
+            this.send('BLUR');
 
-            // Security Check on Blur
             if (this.options.enableSecurity) {
                 this._validateSecurity(input.value);
             }
@@ -119,13 +163,11 @@ export class TextInput {
         });
 
         input.addEventListener('input', () => {
-            this.options.error = ''; // Clear error on input
-            input.style.borderColor = 'var(--cl-primary)'; // Restore focus color
+            if (this.snapshot().validation.status === 'error') {
+                this.send('CLEAR_ERROR');
+            }
 
-            // Optional: aggressive security check on input
-            // if (this.options.enableSecurity) {
-            //     this._validateSecurity(input.value);
-            // }
+            this.send('SET_VALUE', { value: input.value });
 
             if (this.options.onChange) {
                 this.options.onChange(input.value);
@@ -135,7 +177,6 @@ export class TextInput {
         container.appendChild(input);
         this.input = input;
 
-        // 提示/錯誤訊息
         if (error || hint) {
             const message = document.createElement('span');
             message.className = error ? 'text-input__error' : 'text-input__hint';
@@ -149,6 +190,55 @@ export class TextInput {
         }
 
         return container;
+    }
+
+    _syncOptionsFromState(state) {
+        this.options.value = state.value;
+        this.options.disabled = state.availability === 'disabled';
+        this.options.error = state.validation.status === 'error' ? state.validation.message : '';
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+
+        if (this.element) {
+            this.element.style.display = state.visibility === 'hidden' ? 'none' : '';
+        }
+
+        if (this.input) {
+            this.input.value = state.value;
+            this.input.disabled = state.availability === 'disabled';
+            this.input.readOnly = state.readonly;
+            this.input.style.background = state.availability === 'disabled' ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
+            this.input.style.color = state.availability === 'disabled' ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
+            this.input.style.cursor = state.availability === 'disabled' ? 'not-allowed' : 'text';
+
+            if (state.validation.status === 'error') {
+                this.input.style.borderColor = 'var(--cl-danger)';
+                this.input.style.boxShadow = '0 0 0 3px rgba(var(--cl-danger-rgb), 0.1)';
+            } else if (state.interaction === 'focused' && state.availability !== 'disabled') {
+                this.input.style.borderColor = 'var(--cl-primary)';
+                this.input.style.boxShadow = '0 0 0 3px rgba(var(--cl-primary-rgb), 0.1)';
+            } else {
+                this.input.style.borderColor = 'var(--cl-border)';
+                this.input.style.boxShadow = 'none';
+            }
+        }
+
+        const messageText = state.validation.message;
+        if (!this.message && messageText) {
+            const message = document.createElement('span');
+            message.className = state.validation.status === 'error' ? 'text-input__error' : 'text-input__hint';
+            message.style.cssText = `font-size: var(--cl-font-size-sm);`;
+            this.element.appendChild(message);
+            this.message = message;
+        }
+
+        if (this.message) {
+            this.message.textContent = messageText;
+            this.message.className = state.validation.status === 'error' ? 'text-input__error' : 'text-input__hint';
+            this.message.style.color = state.validation.status === 'error' ? 'var(--cl-danger)' : 'var(--cl-text-muted)';
+        }
     }
 
     _validateSecurity(value) {
@@ -173,73 +263,64 @@ export class TextInput {
         return true;
     }
 
+    snapshot() {
+        return this._state.snapshot();
+    }
+
+    send(event, payload = null) {
+        const nextState = this._state.send(event, payload);
+        this._syncOptionsFromState(nextState);
+        this._applyState();
+        return nextState;
+    }
+
     getValue() {
-        return this.input.value;
+        return this.snapshot().value;
     }
 
     setValue(value) {
-        this.input.value = value;
+        this.send('SET_VALUE', { value });
     }
 
     clear() {
-        this.setValue('');
-        this.clearError();
+        this.send('CLEAR');
     }
 
     setDisabled(disabled) {
-        this.options.disabled = disabled;
-
-        if (!this.input) return;
-
-        this.input.disabled = disabled;
-        this.input.style.background = disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)';
-        this.input.style.color = disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)';
-        this.input.style.cursor = disabled ? 'not-allowed' : 'text';
+        this.send('SET_DISABLED', { disabled });
     }
 
     setError(error) {
-        this.options.error = error;
-        this.input.style.borderColor = error ? 'var(--cl-danger)' : 'var(--cl-border)';
-
-        if (!this.message) {
-            const message = document.createElement('span');
-            message.className = 'text-input__error';
-            message.style.cssText = `font-size: var(--cl-font-size-sm); color: var(--cl-danger);`;
-            this.element.appendChild(message);
-            this.message = message;
-        }
-
-        this.message.textContent = error;
-        this.message.style.color = 'var(--cl-danger)';
-        this.input.style.boxShadow = `0 0 0 3px rgba(var(--cl-danger-rgb), 0.1)`;
+        this.send('SET_ERROR', { error });
     }
 
     clearError() {
-        this.options.error = '';
-        if (this.input) {
-            this.input.style.borderColor = 'var(--cl-border)';
-            this.input.style.boxShadow = 'none';
-        }
-        if (this.message) {
-            this.message.textContent = this.options.hint || '';
-            this.message.style.color = 'var(--cl-text-muted)';
-            if (!this.options.hint) {
-                this.message.textContent = '';
-            }
-        }
+        this.send('CLEAR_ERROR');
+    }
+
+    show() {
+        this.send('SHOW');
+    }
+
+    hide() {
+        this.send('HIDE');
     }
 
     focus() {
-        this.input.focus();
+        this.input?.focus?.();
     }
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target) target.appendChild(this.element);
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
         return this;
     }
 
     destroy() {
+        this.send('DESTROY');
         if (this.element?.parentNode) {
             this.element.remove();
         }
