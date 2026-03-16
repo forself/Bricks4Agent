@@ -467,6 +467,43 @@ await test('ChainedInput phase 3: parent state stays aligned with child flow', a
     }
 });
 
+await test('DateTimeInput phase 3: composite state stays aligned with child inputs', async () => {
+    const dom = installFakeDom();
+    try {
+        const { DateTimeInput } = await importModule('packages/javascript/browser/ui_components/input/DateTimeInput/DateTimeInput.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const input = new DateTimeInput({
+            dateValue: '2024-03-10',
+            timeValue: '08:15'
+        });
+
+        assert(typeof input.snapshot === 'function', 'DateTimeInput exposes snapshot');
+        assert(typeof input.send === 'function', 'DateTimeInput exposes send');
+        assert(typeof input.setValue === 'function', 'legacy setValue remains');
+        assert(typeof input.mount === 'function', 'legacy mount remains');
+
+        input.mount(host);
+        assert(input.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(input.getValue().date === '2024-03-10', 'initial date should be preserved');
+        assert(input.getValue().time === '08:15', 'initial time should be preserved');
+
+        input.setValue('2024-03-12', '09:30');
+        assert(input.snapshot().dateValue === '2024-03-12', 'setValue should update date state');
+        assert(input.snapshot().timeValue === '09:30', 'setValue should update time state');
+
+        input.setDisabled(true);
+        assert(input.snapshot().availability === 'disabled', 'setDisabled should update availability');
+
+        input.clear();
+        assert(input.getValue().date === '', 'clear should reset date');
+        assert(input.getValue().time === '', 'clear should reset time');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;

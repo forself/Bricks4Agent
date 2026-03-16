@@ -1,23 +1,22 @@
-/**
- * DateTimeInput - 日期時間輸入元件
- * 整合 DatePicker 和 TimePicker 元件
- */
-
 import { DatePicker } from '../../form/DatePicker/index.js';
 import { TimePicker } from '../../form/TimePicker/index.js';
-
 import Locale from '../../i18n/index.js';
+import { createComponentState } from '../../utils/component-state.js';
+
+function toIsoDate(value) {
+    if (!value) return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return toIsoDate(date);
+}
+
 export class DateTimeInput {
-    /**
-     * @param {Object} options
-     * @param {string} options.label - 整體標籤
-     * @param {boolean} options.useROC - 使用民國年 (預設 true)
-     * @param {boolean} options.showTime - 顯示時間選擇 (預設 true)
-     * @param {number} options.minuteStep - 分鐘間隔 (預設 15)
-     * @param {string} options.dateValue - 預設日期 (YYYY-MM-DD 或 ROC 格式)
-     * @param {string} options.timeValue - 預設時間 (HH:MM)
-     * @param {Function} options.onChange - 值變更回調
-     */
     constructor(options = {}) {
         this.options = {
             label: '',
@@ -26,83 +25,110 @@ export class DateTimeInput {
             minuteStep: 15,
             dateValue: '',
             timeValue: '',
+            disabled: false,
             onChange: null,
             ...options
         };
 
-        this.dateValue = this.options.dateValue;
-        this.timeValue = this.options.timeValue;
+        this.dateValue = toIsoDate(this.options.dateValue);
+        this.timeValue = this.options.timeValue || '';
+
+        this.element = null;
+        this.datePicker = null;
+        this.timePicker = null;
+        this.inputRow = null;
 
         this.element = this._createElement();
+        this._state = createComponentState({
+            lifecycle: 'created',
+            visibility: 'visible',
+            availability: this.options.disabled ? 'disabled' : 'enabled',
+            dateValue: this.dateValue,
+            timeValue: this.timeValue,
+            showTime: !!this.options.showTime
+        }, {
+            MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
+            DESTROY: (state) => ({ ...state, lifecycle: 'destroyed' }),
+            SHOW: (state) => ({ ...state, visibility: 'visible' }),
+            HIDE: (state) => ({ ...state, visibility: 'hidden' }),
+            SET_DATE: (state, payload) => ({ ...state, dateValue: toIsoDate(payload?.value) }),
+            SET_TIME: (state, payload) => ({ ...state, timeValue: String(payload?.value ?? '') }),
+            SET_DISABLED: (state, payload) => ({ ...state, availability: payload?.disabled ? 'disabled' : 'enabled' }),
+            CLEAR: (state) => ({ ...state, dateValue: '', timeValue: '' })
+        });
+
+        this._applyState();
     }
 
     _createElement() {
         const container = document.createElement('div');
         container.className = 'datetime-input';
-        container.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        `;
+        container.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 
-        // 標籤
         if (this.options.label) {
             const label = document.createElement('label');
             label.textContent = this.options.label;
-            label.style.cssText = `
-                font-size: var(--cl-font-size-md);
-                font-weight: 500;
-                color: var(--cl-text);
-            `;
+            label.style.cssText = 'font-size:var(--cl-font-size-md);font-weight:500;color:var(--cl-text);';
             container.appendChild(label);
         }
 
-        // 輸入區
         const inputRow = document.createElement('div');
-        inputRow.style.cssText = `
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        `;
+        inputRow.className = 'datetime-input__row';
+        inputRow.style.cssText = 'display:flex;gap:12px;align-items:flex-start;';
 
-        // DatePicker 容器
         const dateContainer = document.createElement('div');
-        dateContainer.style.cssText = 'flex: 1; min-width: 160px;';
+        dateContainer.style.cssText = 'flex:1;min-width:160px;';
         inputRow.appendChild(dateContainer);
 
-        // 建立 DatePicker (使用 render 方法)
         this.datePicker = new DatePicker({
             label: Locale.t('dateTimeInput.dateLabel'),
             useROC: this.options.useROC,
             value: this.dateValue,
-            onChange: (val) => {
-                this.dateValue = val;
+            disabled: this.options.disabled,
+            onChange: (value) => {
+                this.send('SET_DATE', { value });
                 this._triggerChange();
             }
         });
-        this.datePicker.render(dateContainer);
+        this.datePicker.mount(dateContainer);
 
-        // TimePicker
         if (this.options.showTime) {
             const timeContainer = document.createElement('div');
-            timeContainer.style.cssText = 'min-width: 140px;';
-            
+            timeContainer.style.cssText = 'min-width:140px;';
+            inputRow.appendChild(timeContainer);
+
             this.timePicker = new TimePicker({
                 label: Locale.t('dateTimeInput.timeLabel'),
                 minuteStep: this.options.minuteStep,
                 value: this.timeValue,
-                onChange: (val) => {
-                    this.timeValue = val;
+                disabled: this.options.disabled,
+                onChange: (value) => {
+                    this.send('SET_TIME', { value });
                     this._triggerChange();
                 }
             });
-            // TimePicker 在建構時就有 element
-            timeContainer.appendChild(this.timePicker.element);
-            inputRow.appendChild(timeContainer);
+            this.timePicker.mount(timeContainer);
         }
 
         container.appendChild(inputRow);
+        this.inputRow = inputRow;
         return container;
+    }
+
+    _syncLegacyFields(state) {
+        this.dateValue = state.dateValue;
+        this.timeValue = state.timeValue;
+        this.options.disabled = state.availability === 'disabled';
+    }
+
+    _applyState() {
+        const state = this.snapshot();
+        this._syncLegacyFields(state);
+        if (this.element) {
+            this.element.style.display = state.visibility === 'hidden' ? 'none' : 'flex';
+        }
+        this.datePicker?.setDisabled?.(state.availability === 'disabled');
+        this.timePicker?.setDisabled?.(state.availability === 'disabled');
     }
 
     _triggerChange() {
@@ -115,9 +141,16 @@ export class DateTimeInput {
         }
     }
 
-    /**
-     * 取得值
-     */
+    snapshot() {
+        return this._state.snapshot();
+    }
+
+    send(event, payload = null) {
+        this._state.send(event, payload);
+        this._applyState();
+        return this.snapshot();
+    }
+
     getValue() {
         return {
             date: this.dateValue,
@@ -125,42 +158,50 @@ export class DateTimeInput {
         };
     }
 
-    /**
-     * 設定值
-     */
     setValue(date, time) {
         if (date !== undefined) {
-            this.dateValue = date;
-            if (this.datePicker) {
-                this.datePicker.setValue?.(date);
-            }
+            const normalizedDate = toIsoDate(date);
+            this.send('SET_DATE', { value: normalizedDate });
+            this.datePicker?.setValue?.(normalizedDate);
         }
         if (time !== undefined && this.timePicker) {
-            this.timeValue = time;
+            this.send('SET_TIME', { value: time });
             this.timePicker.setValue?.(time);
         }
     }
 
-    /**
-     * 掛載
-     */
+    setDisabled(disabled) {
+        this.send('SET_DISABLED', { disabled });
+    }
+
+    clear() {
+        this.send('CLEAR');
+        this.datePicker?.clear?.();
+        this.timePicker?.clear?.();
+    }
+
+    show() {
+        this.send('SHOW');
+    }
+
+    hide() {
+        this.send('HIDE');
+    }
+
     mount(container) {
-        const target = typeof container === 'string'
-            ? document.querySelector(container)
-            : container;
-        if (target) target.appendChild(this.element);
+        const target = typeof container === 'string' ? document.querySelector(container) : container;
+        if (target) {
+            target.appendChild(this.element);
+            this.send('MOUNT');
+        }
         return this;
     }
 
-    /**
-     * 移除
-     */
     destroy() {
-        if (this.datePicker) this.datePicker.destroy?.();
-        if (this.timePicker) this.timePicker.destroy?.();
-        if (this.element?.parentNode) {
-            this.element.remove();
-        }
+        this.send('DESTROY');
+        this.datePicker?.destroy?.();
+        this.timePicker?.destroy?.();
+        if (this.element?.parentNode) this.element.remove();
     }
 }
 
