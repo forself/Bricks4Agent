@@ -356,6 +356,58 @@ await test('TimePicker phase 2: state and legacy methods stay aligned', async ()
     }
 });
 
+await test('MultiSelectDropdown phase 2: state and legacy methods stay aligned', async () => {
+    const dom = installFakeDom();
+    try {
+        const { MultiSelectDropdown } = await importModule('packages/javascript/browser/ui_components/form/MultiSelectDropdown/MultiSelectDropdown.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const dropdown = new MultiSelectDropdown({
+            items: [
+                { value: 'a', label: 'Alpha' },
+                { value: 'b', label: 'Beta' },
+                { value: 'c', label: 'Gamma' }
+            ],
+            values: ['a'],
+            maxCount: 2
+        });
+
+        assert(typeof dropdown.snapshot === 'function', 'MultiSelectDropdown exposes snapshot');
+        assert(typeof dropdown.send === 'function', 'MultiSelectDropdown exposes send');
+        assert(typeof dropdown.setValues === 'function', 'legacy setValues remains');
+        assert(typeof dropdown.setItems === 'function', 'legacy setItems remains');
+        assert(typeof dropdown.clear === 'function', 'legacy clear remains');
+        assert(typeof dropdown.mount === 'function', 'legacy mount remains');
+
+        dropdown.mount(host);
+        assert(dropdown.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(dropdown.getValues().length === 1 && dropdown.getValues()[0] === 'a', 'initial selected values should be preserved');
+
+        dropdown.open();
+        assert(dropdown.snapshot().open === true, 'open should update state');
+        assert(dropdown._menu.style.display === 'block', 'open should update DOM');
+
+        dropdown.send('TOGGLE_VALUE', { value: 'b' });
+        assert(dropdown.getValues().includes('b'), 'toggle should add value');
+        assert(dropdown.snapshot().selectedValues.length === 2, 'toggle should update selected value state');
+
+        dropdown.send('FILTER', { query: 'ga' });
+        assert(dropdown.snapshot().filteredItems.length === 1, 'filter should update filtered items');
+        assert(dropdown.snapshot().filteredItems[0].value === 'c', 'filter should preserve matching item');
+
+        dropdown.setDisabled(true);
+        assert(dropdown.snapshot().availability === 'disabled', 'setDisabled should update state');
+        assert(dropdown.snapshot().open === false, 'disabled multiselect should close');
+
+        dropdown.clear();
+        assert(dropdown.getValues().length === 0, 'clear should reset selection');
+        assert(dropdown.snapshot().selectedValues.length === 0, 'clear should update state');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;
