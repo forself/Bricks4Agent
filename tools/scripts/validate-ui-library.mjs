@@ -79,6 +79,76 @@ async function validateImports() {
     return files.length;
 }
 
+async function validatePublicSurface() {
+    const modules = [
+        {
+            label: 'ui_components root',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'index.js'],
+            expectedExports: [
+                'TextInput',
+                'ColorPicker',
+                'DataTable',
+                'AddressInput',
+                'Timeline',
+                'RegionMap',
+                'WebTextEditor',
+                'BarChart',
+                'GeolocationService',
+                'ComponentBinder',
+                'Locale'
+            ]
+        },
+        {
+            label: 'ui_components/utils',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'utils', 'index.js'],
+            expectedExports: [
+                'GeolocationService',
+                'GeolocationError',
+                'WeatherService',
+                'WeatherError',
+                'SimpleZip',
+                'escapeHtml',
+                'sanitizeHTML'
+            ]
+        },
+        {
+            label: 'ui_components/binding',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'binding', 'index.js'],
+            expectedExports: [
+                'ComponentBinder',
+                'ComponentFactory'
+            ]
+        },
+        {
+            label: 'ui_components/form',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'form', 'index.js'],
+            expectedExports: ['TextInput', 'NumberInput', 'DatePicker', 'ToggleSwitch']
+        },
+        {
+            label: 'ui_components/layout',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'layout', 'index.js'],
+            expectedExports: ['DataTable', 'FormRow', 'PanelManager', 'ModalPanel', 'ToastPanel']
+        },
+        {
+            label: 'ui_components/viz',
+            pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'viz', 'index.js'],
+            expectedExports: ['BarChart', 'LineChart', 'DrawingBoard', 'WebPainter']
+        }
+    ];
+
+    for (const entry of modules) {
+        const filePath = path.join(repoRoot, ...entry.pathParts);
+        const imported = await import(pathToFileURL(filePath).href);
+        const missing = entry.expectedExports.filter((name) => !(name in imported));
+
+        if (missing.length > 0) {
+            throw new Error(`${entry.label} is missing exports: ${missing.join(', ')}`);
+        }
+    }
+
+    return modules.length;
+}
+
 function normalizeReference(reference) {
     const normalized = reference.trim();
     if (!normalized) return null;
@@ -269,6 +339,7 @@ async function main() {
 
     runAudit();
     const importedFiles = await validateImports();
+    const publicSurfaceModules = await validatePublicSurface();
     const demoReferenceSummary = validateDemoReferences();
     const browserSummary = shouldRunBrowserSmoke || requireBrowserSmoke
         ? await runBrowserSmoke()
@@ -277,6 +348,7 @@ async function main() {
     console.log('\nValidation summary:');
     console.log(`- Style audit: passed`);
     console.log(`- JS import smoke: passed (${importedFiles} files)`);
+    console.log(`- Public surface check: passed (${publicSurfaceModules} entrypoints)`);
     console.log(`- Demo reference check: passed (${demoReferenceSummary.demosChecked} demos, ${demoReferenceSummary.refsChecked} references)`);
     if (browserSummary.skipped) {
         console.log(`- Browser smoke: skipped (${browserSummary.reason})`);
