@@ -408,6 +408,65 @@ await test('MultiSelectDropdown phase 2: state and legacy methods stay aligned',
     }
 });
 
+await test('ChainedInput phase 3: parent state stays aligned with child flow', async () => {
+    const dom = installFakeDom();
+    try {
+        const { ChainedInput } = await importModule('packages/javascript/browser/ui_components/input/ChainedInput/ChainedInput.js');
+        const host = dom.document.createElement('div');
+        dom.document.body.appendChild(host);
+
+        const input = new ChainedInput({
+            fields: [
+                {
+                    name: 'country',
+                    label: 'Country',
+                    type: 'select',
+                    options: [{ value: 'tw', label: 'Taiwan' }],
+                    required: true
+                },
+                {
+                    name: 'city',
+                    label: 'City',
+                    type: 'text',
+                    hideWhenDisabled: true
+                }
+            ]
+        });
+
+        assert(typeof input.snapshot === 'function', 'ChainedInput exposes snapshot');
+        assert(typeof input.send === 'function', 'ChainedInput exposes send');
+        assert(typeof input.setValues === 'function', 'legacy setValues remains');
+        assert(typeof input.reset === 'function', 'legacy reset remains');
+        assert(typeof input.validate === 'function', 'legacy validate remains');
+        assert(typeof input.mount === 'function', 'legacy mount remains');
+
+        input.mount(host);
+        assert(input.snapshot().lifecycle === 'mounted', 'mount should update lifecycle');
+        assert(input.snapshot().fields.country.availability === 'enabled', 'first field should start enabled');
+        assert(input.snapshot().fields.city.availability === 'disabled', 'dependent field should start disabled');
+        assert(input.snapshot().fields.city.visibility === 'hidden', 'dependent hidden field should start hidden');
+
+        await input.setValues({ country: 'tw' });
+        assert(input.getValues().country === 'tw', 'setValues should update parent values');
+        assert(input.snapshot().fields.city.availability === 'enabled', 'setting parent should enable dependent field');
+        assert(input.snapshot().fields.city.visibility === 'visible', 'setting parent should show dependent field');
+
+        await input.setValues({ city: 'Taipei' });
+        assert(input.getValues().city === 'Taipei', 'child value should propagate to parent state');
+
+        input.reset();
+        assert(input.getValues().country === '', 'reset should clear first field');
+        assert(input.getValues().city === '', 'reset should clear dependent field');
+        assert(input.snapshot().fields.city.availability === 'disabled', 'reset should disable dependent field');
+        assert(input.snapshot().fields.city.visibility === 'hidden', 'reset should hide dependent field again');
+
+        const errors = input.validate();
+        assert(errors.length === 1 && errors[0].field === 'country', 'validate should reflect required field state');
+    } finally {
+        dom.cleanup();
+    }
+});
+
 console.log(`\nSummary: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
     process.exitCode = 1;
