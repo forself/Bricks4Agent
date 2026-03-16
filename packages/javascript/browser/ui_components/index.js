@@ -11,5 +11,7 @@ export * from './form/index.js';
 export * from './layout/index.js';
 export * from './input/index.js';
 export * from './social/index.js';
+export * from './binding/index.js';
+export * from './utils/index.js';
 export * from './viz/index.js';
 export { default as Locale } from './i18n/index.js';
