@@ -25,7 +25,9 @@ public class ReadFileHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var filePath = doc.RootElement.GetProperty("path").GetString() ?? "";
+            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
+                ? argsEl : doc.RootElement;
+            var filePath = root.GetProperty("path").GetString() ?? "";
 
             var fullPath = ResolveSandboxedPath(filePath);
             if (fullPath == null)

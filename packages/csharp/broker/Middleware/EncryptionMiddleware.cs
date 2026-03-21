@@ -42,6 +42,12 @@ public class EncryptionMiddleware
         "/api/v1/health"
     };
 
+    private static bool IsPlainJsonTrustedPath(string path)
+    {
+        return path.StartsWith("/api/v1/high-level/line/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/tool-specs/", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -65,8 +71,24 @@ public class EncryptionMiddleware
         var path = context.Request.Path.Value ?? "";
 
         // 排除不需加密的端點
-        if (ExcludedPaths.Contains(path) || context.Request.Method != "POST")
+        if (ExcludedPaths.Contains(path)
+            || path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase)
+            || context.Request.Method != "POST")
         {
+            await _next(context);
+            return;
+        }
+
+        if (IsPlainJsonTrustedPath(path))
+        {
+            context.Request.EnableBuffering();
+            using (var plainReader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: true))
+            {
+                var plainBody = await plainReader.ReadToEndAsync();
+                context.Items[DecryptedBodyKey] = string.IsNullOrWhiteSpace(plainBody) ? "{}" : plainBody;
+            }
+
+            context.Request.Body.Position = 0;
             await _next(context);
             return;
         }

@@ -51,6 +51,11 @@ public class SharedContextEntry
     [Column("task_id")]
     public string? TaskId { get; set; }
 
+    /// <summary>分類標籤（JSON 陣列，如 ["消費者保護法","法律"]）</summary>
+    [Column("tags")]
+    [MaxLength(1000)]
+    public string Tags { get; set; } = "[]";
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

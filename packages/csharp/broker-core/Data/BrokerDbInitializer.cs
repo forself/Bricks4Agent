@@ -26,7 +26,7 @@ public class BrokerDbInitializer
         SeedDevelopmentData(developmentSeed);
     }
 
-    /// <summary>建立 17 張表</summary>
+    /// <summary>建立 19 張表（含向量 + FTS5）</summary>
     private void EnsureTables()
     {
         // ── Phase 1：核心控制平面（12 張） ──
@@ -49,7 +49,14 @@ public class BrokerDbInitializer
         _db.EnsureTable<PlanEdge>();
         _db.EnsureTable<Checkpoint>();
         _db.EnsureTable<ObservationEvent>();
+
+        // ── 向量嵌入（1 張） ──
+        _db.EnsureTable<VectorEntry>();
+
         EnsureColumns();
+
+        // FTS5 全文檢索虛擬表（BM25）
+        EnsureFts5();
 
         // 額外建立複合唯一約束 + 索引（EnsureTable 不自動建立）
         CreateUniqueConstraints();
@@ -96,6 +103,18 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_shared_context_key_task
                       ON shared_context_entries(key, task_id)");
 
+        // ── 向量嵌入索引 ──
+
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_source
+                      ON vector_entries(source_key, task_id)");
+
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_entries_hash
+                      ON vector_entries(content_hash, task_id)");
+
+        // 分塊父文件查詢索引
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_parent
+                      ON vector_entries(parent_key, task_id)");
+
         // ── 觀測事件索引 ──
 
         // trace_id correlation 查詢
@@ -114,6 +133,41 @@ public class BrokerDbInitializer
     private void EnsureColumns()
     {
         TryExecute("ALTER TABLE broker_tasks ADD COLUMN runtime_descriptor TEXT DEFAULT '{}'");
+
+        // VectorEntry 新增欄位（智慧分塊 + 多標籤）
+        TryExecute("ALTER TABLE vector_entries ADD COLUMN tags TEXT DEFAULT '[]'");
+        TryExecute("ALTER TABLE vector_entries ADD COLUMN chunk_index INTEGER DEFAULT 0");
+        TryExecute("ALTER TABLE vector_entries ADD COLUMN chunk_total INTEGER DEFAULT 0");
+        TryExecute("ALTER TABLE vector_entries ADD COLUMN parent_key TEXT DEFAULT ''");
+
+        // SharedContextEntry 新增 tags 欄位
+        TryExecute("ALTER TABLE shared_context_entries ADD COLUMN tags TEXT DEFAULT '[]'");
+    }
+
+    /// <summary>
+    /// 建立 FTS5 全文檢索虛擬表（BM25 排序）
+    /// - memory_fts：智慧記憶全文索引
+    /// - convlog_fts：對話日誌全文索引
+    /// unicode61 tokenizer 會將 CJK 字元逐字拆分，適合中文搜尋
+    /// </summary>
+    private void EnsureFts5()
+    {
+        // 智慧記憶全文索引
+        TryExecute(@"CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+            source_key,
+            content,
+            task_id UNINDEXED,
+            tokenize='unicode61 remove_diacritics 2'
+        )");
+
+        // 對話日誌全文索引
+        TryExecute(@"CREATE VIRTUAL TABLE IF NOT EXISTS convlog_fts USING fts5(
+            user_id,
+            role UNINDEXED,
+            content,
+            task_id UNINDEXED,
+            tokenize='unicode61 remove_diacritics 2'
+        )");
     }
 
     /// <summary>初始化 SystemEpoch（僅一行，epoch=1）</summary>
@@ -340,6 +394,449 @@ public class BrokerDbInitializer
                         cwd = new { type = "string" }
                     },
                     required = new[] { "command" }
+                })
+            },
+
+            // ── LINE 通訊能力 ──
+
+            new Capability
+            {
+                CapabilityId = "line.message.send",
+                Route = "send_line_message",
+                ActionType = ActionType.Execute,
+                ResourceType = "communication",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        to = new { type = "string" },
+                        text = new { type = "string", maxLength = 5000 }
+                    },
+                    required = new[] { "text" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "line.notification.send",
+                Route = "send_line_notification",
+                ActionType = ActionType.Execute,
+                ResourceType = "communication",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        to = new { type = "string" },
+                        title = new { type = "string" },
+                        body = new { type = "string" },
+                        level = new { type = "string", @enum = new[] { "info", "warning", "error", "success" } }
+                    },
+                    required = new[] { "title", "body" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "line.audio.send",
+                Route = "send_line_audio",
+                ActionType = ActionType.Execute,
+                ResourceType = "communication",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        to = new { type = "string" },
+                        text = new { type = "string" },
+                        audio_url = new { type = "string" },
+                        duration_ms = new { type = "integer" }
+                    },
+                    required = Array.Empty<string>()
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "line.message.read",
+                Route = "read_line_messages",
+                ActionType = ActionType.Read,
+                ResourceType = "communication",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        limit = new { type = "integer" },
+                        consume = new { type = "boolean" }
+                    },
+                    required = Array.Empty<string>()
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "line.approval.request",
+                Route = "request_line_approval",
+                ActionType = ActionType.Execute,
+                ResourceType = "communication",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        to = new { type = "string" },
+                        description = new { type = "string" },
+                        request_id = new { type = "string" },
+                        timeout_sec = new { type = "integer" }
+                    },
+                    required = new[] { "description" }
+                })
+            },
+
+            // ── Agent 管理能力 ──
+
+            new Capability
+            {
+                CapabilityId = "agent.list",
+                Route = "list_agents",
+                ActionType = ActionType.Read,
+                ResourceType = "agent",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        filter = new { type = "string" }
+                    },
+                    required = Array.Empty<string>()
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "agent.create",
+                Route = "create_agent",
+                ActionType = ActionType.Execute,
+                ResourceType = "agent",
+                RiskLevel = RiskLevel.High,
+                ApprovalPolicy = "require_approval",
+                TtlSeconds = 300,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        display_name = new { type = "string" },
+                        capability_ids = new { type = "array", items = new { type = "string" } },
+                        task_type = new { type = "string" }
+                    },
+                    required = Array.Empty<string>()
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "agent.stop",
+                Route = "stop_agent",
+                ActionType = ActionType.Execute,
+                ResourceType = "agent",
+                RiskLevel = RiskLevel.High,
+                ApprovalPolicy = "require_approval",
+                TtlSeconds = 300,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        agent_id = new { type = "string" }
+                    },
+                    required = new[] { "agent_id" }
+                })
+            },
+
+            // ── 對話日誌能力（Layer 1：自動機械式紀錄） ──
+
+            new Capability
+            {
+                CapabilityId = "conv.log.write",
+                Route = "conv_log_append",
+                ActionType = ActionType.Write,
+                ResourceType = "conversation",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        user_id = new { type = "string" },
+                        role = new { type = "string", @enum = new[] { "user", "assistant" } },
+                        content = new { type = "string" },
+                        metadata = new { type = "string" }
+                    },
+                    required = new[] { "user_id", "role", "content" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "conv.log.read",
+                Route = "conv_log_read",
+                ActionType = ActionType.Read,
+                ResourceType = "conversation",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        user_id = new { type = "string" },
+                        limit = new { type = "integer" },
+                        before = new { type = "string" }
+                    },
+                    required = new[] { "user_id" }
+                })
+            },
+
+            // ── 記憶能力（Layer 2：Agent 判斷式持久化） ──
+
+            new Capability
+            {
+                CapabilityId = "memory.read",
+                Route = "memory_retrieve",
+                ActionType = ActionType.Read,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        key = new { type = "string" },
+                        search = new { type = "string" },
+                        limit = new { type = "integer" }
+                    },
+                    required = Array.Empty<string>()
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "memory.write",
+                Route = "memory_store",
+                ActionType = ActionType.Write,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        key = new { type = "string" },
+                        value = new { type = "string" },
+                        content_type = new { type = "string" }
+                    },
+                    required = new[] { "key", "value" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "memory.delete",
+                Route = "memory_delete",
+                ActionType = ActionType.Write,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 300,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        key = new { type = "string" }
+                    },
+                    required = new[] { "key" }
+                })
+            },
+
+            // ── 搜尋能力（BM25 + 向量 + RAG） ──
+
+            new Capability
+            {
+                CapabilityId = "memory.fulltext_search",
+                Route = "memory_fulltext_search",
+                ActionType = ActionType.Read,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string" },
+                        scope = new { type = "string", @enum = new[] { "memory", "convlog", "all" } },
+                        limit = new { type = "integer" }
+                    },
+                    required = new[] { "query" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "memory.semantic_search",
+                Route = "memory_semantic_search",
+                ActionType = ActionType.Read,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string" },
+                        limit = new { type = "integer" },
+                        threshold = new { type = "number" }
+                    },
+                    required = new[] { "query" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "rag.retrieve",
+                Route = "rag_retrieve",
+                ActionType = ActionType.Read,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string" },
+                        mode = new { type = "string", @enum = new[] { "hybrid", "semantic", "fulltext" } },
+                        limit = new { type = "integer" },
+                        threshold = new { type = "number" },
+                        include_convlog = new { type = "boolean" },
+                        tags = new { type = "array", items = new { type = "string" }, description = "標籤過濾" },
+                        rewrite = new { type = "boolean", description = "LLM 查詢改寫（預設 true）" },
+                        rerank = new { type = "boolean", description = "LLM 重排序（預設 true）" }
+                    },
+                    required = new[] { "query" }
+                })
+            },
+
+            new Capability
+            {
+                CapabilityId = "rag.import",
+                Route = "rag_import",
+                ActionType = ActionType.Write,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 1800,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        format = new { type = "string", @enum = new[] { "json", "csv" }, description = "匯入格式" },
+                        tag = new { type = "string", description = "分類標籤（作為 source_key 前綴）" },
+                        data = new { type = "string", description = "JSON 陣列或 CSV 字串" },
+                        task_id = new { type = "string" }
+                    },
+                    required = new[] { "format", "tag", "data" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "rag.import_web",
+                Route = "rag_import_web",
+                ActionType = ActionType.Write,
+                ResourceType = "memory",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 1800,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "搜尋關鍵字" },
+                        tag = new { type = "string", description = "分類標籤" },
+                        urls = new { type = "array", items = new { type = "string" }, description = "直接指定 URL 列表" },
+                        max_pages = new { type = "integer", description = "最大抓取頁面數（預設 5）" },
+                        chunk_size = new { type = "integer", description = "分段大小（預設 1000 字元）" },
+                        chunk_overlap = new { type = "integer", description = "分段重疊（預設 100 字元）" },
+                        task_id = new { type = "string" }
+                    },
+                    required = new[] { "query" }
+                })
+            },
+
+            // ── 網路能力 ──
+
+            new Capability
+            {
+                CapabilityId = "web.search",
+                Route = "web_search",
+                ActionType = ActionType.Read,
+                ResourceType = "web",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string" },
+                        limit = new { type = "integer" }
+                    },
+                    required = new[] { "query" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "web.fetch",
+                Route = "web_fetch",
+                ActionType = ActionType.Read,
+                ResourceType = "web",
+                RiskLevel = RiskLevel.Low,
+                ApprovalPolicy = "auto",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        url = new { type = "string" },
+                        max_length = new { type = "integer" }
+                    },
+                    required = new[] { "url" }
                 })
             }
         };

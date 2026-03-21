@@ -17,5 +17,6 @@ USER broker
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:5000
 EXPOSE 5000
+EXPOSE 7000
 
 ENTRYPOINT ["dotnet", "Broker.dll"]

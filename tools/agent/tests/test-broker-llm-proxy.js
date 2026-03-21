@@ -149,6 +149,26 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function removeDirWithRetry(targetPath, attempts = 20, delayMs = 250) {
+    let lastError = null;
+    for (let index = 0; index < attempts; index += 1) {
+        try {
+            fs.rmSync(targetPath, { recursive: true, force: true });
+            return;
+        } catch (error) {
+            lastError = error;
+            if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code)) {
+                throw error;
+            }
+            await sleep(delayMs);
+        }
+    }
+
+    if (lastError) {
+        throw lastError;
+    }
+}
+
 async function runProcess(command, args, env = process.env) {
     return await new Promise((resolve, reject) => {
         const child = spawn(command, args, {
@@ -269,7 +289,7 @@ async function startBroker(brokerPort, upstreamPort, brokerPrivateKeyBase64) {
                 new Promise((resolve) => child.once('exit', resolve)),
                 sleep(5000),
             ]);
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            await removeDirWithRetry(tempDir);
         },
     };
 }

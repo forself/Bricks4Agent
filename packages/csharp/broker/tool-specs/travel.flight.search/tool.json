@@ -1,0 +1,58 @@
+{
+  "tool_id": "travel.flight.search",
+  "display_name": "Flight Search",
+  "summary": "Find candidate flights through broker-approved flight sources.",
+  "kind": "travel",
+  "status": "planned",
+  "version": "2026-03-21",
+  "tags": ["travel", "flight", "search", "high-level"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "travel",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "travel.flight.search",
+      "route": "travel_flight_search",
+      "purpose": "Broker-mediated flight lookup."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "origin": { "type": "string" },
+      "destination": { "type": "string" },
+      "depart_date": { "type": "string" },
+      "return_date": { "type": "string" },
+      "passengers": { "type": "integer", "minimum": 1 },
+      "cabin_class": { "type": "string" }
+    },
+    "required": ["origin", "destination", "depart_date"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "results": { "type": "array" },
+      "currency": { "type": "string" },
+      "sources_used": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": []
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "requires_source_policy": true,
+    "default_limit": 5
+  },
+  "response_contract": {
+    "must_include_currency": true,
+    "must_identify_sources": true,
+    "result_wording": "Present options as candidates, not final booking advice."
+  }
+}

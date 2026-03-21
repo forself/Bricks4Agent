@@ -25,8 +25,10 @@ public class WriteFileHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var filePath = doc.RootElement.GetProperty("path").GetString() ?? "";
-            var content = doc.RootElement.GetProperty("content").GetString() ?? "";
+            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
+                ? argsEl : doc.RootElement;
+            var filePath = root.GetProperty("path").GetString() ?? "";
+            var content = root.GetProperty("content").GetString() ?? "";
 
             var fullPath = ResolveSandboxedPath(filePath);
             if (fullPath == null)

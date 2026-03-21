@@ -30,4 +30,13 @@
     <None Remove="verify\**\*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="tool-specs\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Update="tool-specs\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

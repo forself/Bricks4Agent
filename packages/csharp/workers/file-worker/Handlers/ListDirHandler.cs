@@ -25,7 +25,9 @@ public class ListDirHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var dirPath = doc.RootElement.GetProperty("path").GetString() ?? "";
+            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
+                ? argsEl : doc.RootElement;
+            var dirPath = root.GetProperty("path").GetString() ?? "";
 
             var fullPath = ResolveSandboxedPath(dirPath);
             if (fullPath == null)

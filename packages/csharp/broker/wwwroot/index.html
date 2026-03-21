@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B4A Broker Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.9.1/dist/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@element-plus/icons-vue@2.3.1/dist/index.css">
+<style>
+:root{--bg:#0f1117;--s:#1a1d27;--s2:#242836;--bd:#2e3347;--t:#e4e7f0;--td:#8b90a5}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}
+.el-menu--horizontal{background:var(--s)!important;border-bottom:1px solid var(--bd)!important}
+.el-menu--horizontal .el-menu-item{color:var(--td)!important}.el-menu--horizontal .el-menu-item.is-active{color:#409eff!important;border-bottom-color:#409eff!important}
+.el-card{background:var(--s)!important;border:1px solid var(--bd)!important;color:var(--t)!important}
+.el-card__header{border-bottom:1px solid var(--bd)!important;padding:14px 18px!important}
+.el-table{--el-table-bg-color:var(--s);--el-table-tr-bg-color:var(--s);--el-table-header-bg-color:var(--s2);--el-table-border-color:var(--bd);--el-table-text-color:var(--t);--el-table-header-text-color:var(--td);--el-table-row-hover-bg-color:rgba(108,140,255,.06)}
+.el-dialog{background:var(--s)!important;border:1px solid var(--bd)!important}
+.el-dialog__header{border-bottom:1px solid var(--bd)!important}.el-dialog__title{color:var(--t)!important}
+.el-input__wrapper,.el-select__wrapper{background:var(--s2)!important;box-shadow:0 0 0 1px var(--bd) inset!important;color:var(--t)!important}
+.el-input__inner{color:var(--t)!important}
+.el-checkbox__label{color:var(--t)!important}
+.el-statistic__head{color:var(--td)!important}.el-statistic__number{color:var(--t)!important}
+.el-descriptions__label{color:var(--td)!important}.el-descriptions__content{color:var(--t)!important}
+.el-tag{border:none!important}
+.el-empty__description p{color:var(--td)!important}
+.el-select-dropdown{background:var(--s2)!important;border:1px solid var(--bd)!important}
+.el-select-dropdown__item{color:var(--t)!important}.el-select-dropdown__item.is-hovering{background:rgba(108,140,255,.1)!important}
+.hdr{background:var(--s);border-bottom:1px solid var(--bd);padding:10px 24px;display:flex;align-items:center;gap:16px}
+.hdr h1{font-size:18px;font-weight:600}.hdr h1 em{color:#409eff;font-style:normal}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:12px}
+.login-w{display:flex;justify-content:center;align-items:center;min-height:100vh}
+.login-b{width:420px}
+.stat-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+.stat-c{background:var(--s);border:1px solid var(--bd);border-radius:8px;padding:16px 20px}
+.cap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.cap-item{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:12px;cursor:pointer;transition:all .15s}
+.cap-item:hover{border-color:#409eff}.cap-item.sel{border-color:#409eff;background:rgba(64,158,255,.08)}
+.cap-item .cap-id{font-weight:600;font-size:13px}.cap-item .cap-desc{font-size:12px;color:var(--td);margin-top:4px}
+.crypto-info{font-size:11px;color:var(--td);margin-top:12px;padding:8px 10px;background:var(--s2);border-radius:6px;font-family:monospace;word-break:break-all;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="app">
+<!-- ── Login ── -->
+<div v-if="!loggedIn" class="login-w">
+  <el-card class="login-b">
+    <template #header><h2><em>B4A</em> Broker {{t('login')}}</h2></template>
+    <el-form label-position="top">
+      <el-form-item :label="t('principalId')"><el-input v-model="loginForm.principal" /></el-form-item>
+      <el-form-item :label="t('taskId')"><el-input v-model="loginForm.task" /></el-form-item>
+      <el-form-item :label="t('roleId')"><el-input v-model="loginForm.role" /></el-form-item>
+      <el-form-item>
+        <el-button type="primary" style="width:100%" :loading="loginLoading" @click="doLogin">
+          ECDH Handshake & {{t('login')}}
+        </el-button>
+      </el-form-item>
+    </el-form>
+    <el-alert v-if="loginError" :title="loginError" type="error" :closable="false" show-icon style="margin-bottom:10px"/>
+    <div class="crypto-info">{{cryptoInfo}}</div>
+    <div style="text-align:right;margin-top:10px">
+      <el-button text size="small" @click="toggleLang">{{lang==='zh'?'English':'中文'}}</el-button>
+    </div>
+  </el-card>
+</div>
+
+<!-- ── Main ── -->
+<div v-else>
+  <div class="hdr">
+    <h1><em>B4A</em> Broker Dashboard</h1>
+    <div class="hdr-r">
+      <el-tag type="success" effect="dark" size="small" round>
+        <el-icon style="margin-right:4px"><i class="el-icon-circle-check"></i></el-icon>
+        {{t('encrypted')}}
+      </el-tag>
+      <el-button text @click="toggleLang" size="small">{{lang==='zh'?'EN':'中文'}}</el-button>
+      <el-button size="small" @click="refreshAll" :loading="refreshing">{{t('refresh')}}</el-button>
+      <el-button size="small" type="danger" plain @click="doLogout">{{t('logout')}}</el-button>
+    </div>
+  </div>
+  <div style="max-width:1400px;margin:0 auto;padding:20px">
+    <el-tabs v-model="activeTab" @tab-change="onTabChange">
+      <!-- ── Overview ── -->
+      <el-tab-pane :label="t('overview')" name="overview">
+        <div class="stat-g">
+          <div class="stat-c"><el-statistic :title="t('totalAgents')" :value="agents.length" /></div>
+          <div class="stat-c"><el-statistic :title="t('activeAgents')" :value="agents.filter(a=>a.state==='Active').length" /></div>
+          <div class="stat-c"><el-statistic :title="t('capabilities')" :value="caps.length" /></div>
+          <div class="stat-c"><el-statistic :title="t('sessionSeq')" :value="session?.seq||0" /></div>
+        </div>
+        <el-card>
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('agents')}}</span>
+              <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="agents" stripe :empty-text="t('noAgents')">
+            <el-table-column prop="agentId" label="Agent ID" min-width="180"><template #default="{row}"><code>{{row.agentId}}</code></template></el-table-column>
+            <el-table-column prop="state" :label="t('state')" width="100">
+              <template #default="{row}"><el-tag :type="row.state==='Active'?'success':'info'" size="small">{{row.state}}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="roleId" :label="t('role')" width="130"/>
+            <el-table-column prop="taskType" :label="t('taskType')" width="130">
+              <template #default="{row}">{{formatTaskType(row.taskType)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('capabilities')" min-width="220">
+              <template #default="{row}">
+                <el-tag v-for="c in (row.capabilities||[]).slice(0,3)" :key="c" size="small" style="margin:2px" type="info">{{c}}</el-tag>
+                <el-tag v-if="(row.capabilities||[]).length>3" size="small" style="margin:2px">+{{row.capabilities.length-3}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="170">
+              <template #default="{row}">{{fmtDate(row.createdAt)}}</template>
+            </el-table-column>
+            <el-table-column width="100" align="right">
+              <template #default="{row}">
+                <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── Agents ── -->
+      <el-tab-pane :label="t('agents')" name="agents">
+        <el-card>
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('allAgents')}}</span>
+              <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="agents" stripe :empty-text="t('noAgents')">
+            <el-table-column prop="agentId" label="Agent ID" min-width="160"><template #default="{row}"><code>{{row.agentId}}</code></template></el-table-column>
+            <el-table-column prop="principalId" label="Principal" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.principalId}}</code></template></el-table-column>
+            <el-table-column prop="taskId" label="Task" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.taskId}}</code></template></el-table-column>
+            <el-table-column prop="state" :label="t('state')" width="100">
+              <template #default="{row}"><el-tag :type="row.state==='Active'?'success':'info'" size="small">{{row.state}}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="roleId" :label="t('role')" width="120"/>
+            <el-table-column prop="taskType" :label="t('taskType')" width="120">
+              <template #default="{row}">{{formatTaskType(row.taskType)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('capabilities')" width="80" align="center">
+              <template #default="{row}"><el-tag round size="small">{{row.capabilityCount}}</el-tag></template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="170"><template #default="{row}">{{fmtDate(row.createdAt)}}</template></el-table-column>
+            <el-table-column width="80" align="right">
+              <template #default="{row}">
+                <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── Capabilities ── -->
+      <el-tab-pane :label="t('capabilities')" name="caps">
+        <el-card>
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('capList')}}</span>
+              <el-tag round size="small" style="margin-left:8px">{{caps.length}}</el-tag>
+            </div>
+          </template>
+          <el-table :data="caps" stripe :empty-text="t('noData')">
+            <el-table-column prop="capabilityId" label="ID" min-width="180"><template #default="{row}"><code>{{row.capabilityId}}</code></template></el-table-column>
+            <el-table-column prop="route" :label="t('route')" min-width="160"><template #default="{row}"><code>{{row.route}}</code></template></el-table-column>
+            <el-table-column :label="t('category')" width="130">
+              <template #default="{row}">{{localized(row.category)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('riskLevel')" width="110">
+              <template #default="{row}">
+                <el-tag :type="riskType(row.riskLevel)" size="small">{{row.riskLevel}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="approvalPolicy" :label="t('policy')" width="120"/>
+            <el-table-column :label="t('description')" min-width="250">
+              <template #default="{row}"><span style="color:var(--td)">{{localized(row.description)}}</span></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+    </el-tabs>
+  </div>
+</div>
+
+<!-- ── Create Agent Dialog ── -->
+<el-dialog v-model="createVisible" :title="t('createAgent')" width="700px" :close-on-click-modal="false">
+  <el-form label-position="top">
+    <el-form-item :label="t('displayName')"><el-input v-model="createForm.name" :placeholder="t('namePH')" /></el-form-item>
+    <el-row :gutter="16">
+      <el-col :span="12">
+        <el-form-item :label="t('taskType')">
+          <el-select v-model="createForm.taskType" style="width:100%">
+            <el-option value="analysis" :label="t('ttGeneral')"/>
+            <el-option value="code_gen" :label="t('ttCodeGen')"/>
+            <el-option value="review" :label="t('ttReview')"/>
+          </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <el-form-item :label="t('selectCaps')">
+      <div style="margin-bottom:8px">
+        <el-button size="small" @click="selDefaults">{{t('selDefaults')}}</el-button>
+        <el-button size="small" @click="selAll">{{t('selAll')}}</el-button>
+        <el-button size="small" @click="selNone">{{t('selNone')}}</el-button>
+      </div>
+      <div class="cap-grid">
+        <div v-for="c in caps" :key="c.capabilityId" class="cap-item" :class="{sel:createForm.selected.has(c.capabilityId)}" @click="toggleCap(c.capabilityId)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <el-checkbox :model-value="createForm.selected.has(c.capabilityId)" @click.stop @change="toggleCap(c.capabilityId)" />
+            <div>
+              <div class="cap-id">{{c.capabilityId}} <el-tag :type="riskType(c.riskLevel)" size="small" style="margin-left:4px">{{c.riskLevel}}</el-tag></div>
+              <div class="cap-desc">{{localized(c.description)}}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-form-item>
+  </el-form>
+  <template #footer>
+    <el-button @click="createVisible=false">{{t('cancel')}}</el-button>
+    <el-button type="primary" @click="doCreate" :loading="creating">{{t('create')}}</el-button>
+  </template>
+</el-dialog>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/element-plus@2.9.1/dist/index.full.min.js"></script>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════
+// ECDH P-256 + AES-256-GCM Envelope Crypto
+// ═══════════════════════════════════════════════
+function b64e(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)))}
+function b64d(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0))}
+function enc(s){return new TextEncoder().encode(s)}
+function dec(b){return new TextDecoder().decode(b)}
+function concat(...a){const r=new Uint8Array(a.reduce((s,x)=>s+x.byteLength,0));let o=0;for(const x of a){r.set(new Uint8Array(x),o);o+=x.byteLength}return r}
+
+class CryptoSession{
+  constructor(){this.sessionId=null;this.sessionKey=null;this.scopedToken=null;this.seq=0}
+  async handshake(url,pubB64,pid,tid,rid){
+    const kp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+    const spki=await crypto.subtle.exportKey('spki',kp.publicKey);
+    const cpb=b64e(spki);
+    const bpub=await crypto.subtle.importKey('spki',b64d(pubB64),{name:'ECDH',namedCurve:'P-256'},false,[]);
+    const shared=new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:bpub},kp.privateKey,256));
+    this._shared=shared;
+    const nonce=crypto.getRandomValues(new Uint8Array(12));
+    const hk=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);
+    const handshakeKey=await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:nonce,info:enc('broker-handshake-v1')},hk,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+    const payload=JSON.stringify({principal_id:pid,task_id:tid,role_id:rid});
+    const aad=enc(cpb+'/api/v1/sessions/register');
+    const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},handshakeKey,enc(payload));
+    const ctb=new Uint8Array(ct);
+    const body={v:1,client_ephemeral_pub:cpb,envelope:{alg:'ECDH-ES+A256GCM',seq:0,nonce:b64e(nonce),ciphertext:b64e(ctb.slice(0,ctb.length-16)),tag:b64e(ctb.slice(ctb.length-16))}};
+    const resp=await fetch(url+'/api/v1/sessions/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const raw=await resp.json();if(!resp.ok)throw new Error(raw.message||'Handshake failed');
+    this.sessionId=raw.session_id;if(!this.sessionId)throw new Error('No session_id');
+    const sk=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);
+    this.sessionKey=await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:enc(this.sessionId),info:enc('broker-session-v1')},sk,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+    if(raw.envelope){
+      const ra=enc(`resp:${this.sessionId}0/api/v1/sessions/register`);
+      const rc=concat(b64d(raw.envelope.ciphertext),b64d(raw.envelope.tag));
+      const d=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(raw.envelope.nonce),additionalData:ra,tagLength:128},this.sessionKey,rc);
+      const inner=JSON.parse(dec(d));this.scopedToken=inner.data?.scoped_token||inner.scoped_token;return inner;
+    }
+    this.scopedToken=raw.data?.scoped_token;return raw;
+  }
+  async post(url,path,obj){
+    const seq=++this.seq;const plain=JSON.stringify({scoped_token:this.scopedToken,...obj});
+    const aad=enc(`req:${this.sessionId}${seq}${path}`);const nonce=crypto.getRandomValues(new Uint8Array(12));
+    const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce,additionalData:aad,tagLength:128},this.sessionKey,enc(plain));
+    const ctb=new Uint8Array(ct);
+    const body={v:1,session_id:this.sessionId,envelope:{alg:'A256GCM',seq,nonce:b64e(nonce),ciphertext:b64e(ctb.slice(0,ctb.length-16)),tag:b64e(ctb.slice(ctb.length-16))}};
+    const resp=await fetch(url+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const raw=await resp.json();
+    if(raw.envelope){
+      const ra=enc(`resp:${this.sessionId}${seq}${path}`);
+      const rc=concat(b64d(raw.envelope.ciphertext),b64d(raw.envelope.tag));
+      const d=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(raw.envelope.nonce),additionalData:ra,tagLength:128},this.sessionKey,rc);
+      return JSON.parse(dec(d));
+    }
+    return raw;
+  }
+  async close(url){if(!this.sessionId)return;try{await this.post(url,'/api/v1/sessions/close',{reason:'Dashboard logout'})}catch{};this.sessionId=null;this.sessionKey=null;this.seq=0}
+}
+
+// ═══════════════════════════════════════════════
+// i18n
+// ═══════════════════════════════════════════════
+const I18N={
+  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
+    overview:'總覽',agents:'代理',capabilities:'能力',capList:'能力清單',allAgents:'所有代理',
+    totalAgents:'代理總數',activeAgents:'活躍中',sessionSeq:'Session 序號',
+    state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',
+    createAgent:'建立代理',displayName:'顯示名稱',namePH:'例：檔案分析代理',
+    selectCaps:'選擇能力',selDefaults:'預設（低權限）',selAll:'全選',selNone:'清除',
+    cancel:'取消',create:'建立',noAgents:'尚無代理',noData:'無資料',
+    category:'分類',riskLevel:'風險等級',policy:'策略',description:'說明',route:'路由',
+    ttGeneral:'通用',ttCodeGen:'程式碼生成',ttReview:'審查',
+    confirmStop:'確定要停止代理 "{id}" 嗎？',confirmTitle:'確認',
+  },
+  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
+    overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
+    totalAgents:'Total Agents',activeAgents:'Active',sessionSeq:'Session Seq',
+    state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',
+    createAgent:'Create Agent',displayName:'Display Name',namePH:'e.g., File Analysis Agent',
+    selectCaps:'Select Capabilities',selDefaults:'Defaults (Low Risk)',selAll:'Select All',selNone:'Clear',
+    cancel:'Cancel',create:'Create',noAgents:'No agents',noData:'No data',
+    category:'Category',riskLevel:'Risk Level',policy:'Policy',description:'Description',route:'Route',
+    ttGeneral:'General',ttCodeGen:'Code Gen',ttReview:'Review',
+    confirmStop:'Stop agent "{id}"?',confirmTitle:'Confirm',
+  }
+};
+
+// ═══════════════════════════════════════════════
+// Vue App
+// ═══════════════════════════════════════════════
+const {createApp,ref,reactive,computed,onMounted}=Vue;
+
+const app=createApp({
+  setup(){
+    const lang=ref(localStorage.getItem('b4a_lang')||'zh');
+    const t=(k)=>I18N[lang.value]?.[k]||k;
+    const toggleLang=()=>{lang.value=lang.value==='zh'?'en':'zh';localStorage.setItem('b4a_lang',lang.value)};
+    const localized=(s)=>{if(!s)return '';const parts=s.split('|');return lang.value==='zh'?(parts[1]||parts[0]):parts[0]};
+
+    const loggedIn=ref(false);const loginLoading=ref(false);const loginError=ref('');
+    const cryptoInfo=ref('Waiting for ECDH P-256 handshake...');
+    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin'});
+
+    let session=null;let brokerUrl='';let brokerPubKey='';
+
+    const activeTab=ref('overview');const refreshing=ref(false);
+    const agents=ref([]);const caps=ref([]);const defaultCaps=ref([]);
+
+    const createVisible=ref(false);const creating=ref(false);
+    const createForm=reactive({name:'',taskType:'analysis',selected:new Set()});
+
+    const taskTypeMap={zh:{analysis:'通用',code_gen:'程式碼生成',review:'審查'},en:{analysis:'General',code_gen:'Code Gen',review:'Review'}};
+    const formatTaskType=(tt)=>taskTypeMap[lang.value]?.[tt]||tt;
+
+    async function doLogin(){
+      loginLoading.value=true;loginError.value='';
+      brokerUrl=window.location.origin;
+      try{
+        cryptoInfo.value='Fetching broker public key...';
+        const h=await(await fetch(brokerUrl+'/api/v1/health')).json();
+        brokerPubKey=h.broker_public_key;
+        if(!brokerPubKey)throw new Error('No broker_public_key in health');
+        cryptoInfo.value=`Broker PK: ${brokerPubKey.substring(0,24)}...\nGenerating ECDH P-256 keypair...`;
+        session=new CryptoSession();
+        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role);
+        cryptoInfo.value=`Session: ${session.sessionId}\nEncryption: AES-256-GCM | Key Exchange: ECDH P-256 + HKDF-SHA256`;
+        loggedIn.value=true;
+        await refreshAll();
+      }catch(e){loginError.value=e.message;cryptoInfo.value='Handshake failed';session=null}
+      loginLoading.value=false;
+    }
+
+    async function doLogout(){
+      if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
+    }
+
+    async function api(path,body={}){
+      if(!session)throw new Error('No session');return await session.post(brokerUrl,path,body);
+    }
+
+    async function loadAgents(){try{const r=await api('/api/v1/agents/list');agents.value=r.data?.agents||[]}catch{agents.value=[]}}
+    async function loadCaps(){
+      try{const r=await api('/api/v1/agents/capabilities');caps.value=r.data?.capabilities||[]}catch{caps.value=[]}
+      try{const r=await api('/api/v1/agents/capabilities/defaults');defaultCaps.value=r.data?.capability_ids||[]}catch{defaultCaps.value=[]}
+    }
+
+    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps()]);refreshing.value=false}
+    function onTabChange(){}
+
+    function riskType(r){const s=(r||'').toLowerCase();if(s==='low')return'success';if(s==='medium')return'warning';if(s==='high'||s==='critical')return'danger';return'info'}
+
+    function openCreate(){
+      createForm.name='';createForm.taskType='analysis';
+      createForm.selected=new Set(defaultCaps.value);
+      createVisible.value=true;
+    }
+    function toggleCap(id){if(createForm.selected.has(id))createForm.selected.delete(id);else createForm.selected.add(id);createForm.selected=new Set(createForm.selected)}
+    function selDefaults(){createForm.selected=new Set(defaultCaps.value)}
+    function selAll(){createForm.selected=new Set(caps.value.map(c=>c.capabilityId))}
+    function selNone(){createForm.selected=new Set()}
+
+    async function doCreate(){
+      creating.value=true;
+      try{
+        const body={capability_ids:Array.from(createForm.selected),task_type:createForm.taskType};
+        if(createForm.name)body.display_name=createForm.name;
+        const r=await api('/api/v1/agents/create',body);
+        if(r.success){createVisible.value=false;await refreshAll();ElementPlus.ElMessage.success(lang.value==='zh'?`代理已建立: ${r.data?.agent_id}`:`Agent created: ${r.data?.agent_id}`)}
+        else ElementPlus.ElMessage.error(r.message||'Failed');
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      creating.value=false;
+    }
+
+    async function doStop(id){
+      try{
+        await ElementPlus.ElMessageBox.confirm(t('confirmStop').replace('{id}',id),t('confirmTitle'),{type:'warning'});
+        await api('/api/v1/agents/stop',{agent_id:id});
+        await refreshAll();
+        ElementPlus.ElMessage.success('OK');
+      }catch{}
+    }
+
+    function fmtDate(d){if(!d)return'';try{return new Date(d).toLocaleString()}catch{return d}}
+
+    return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
+      activeTab,refreshing,agents,caps,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,
+      createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
+      session:computed(()=>session)};
+  }
+});
+app.use(ElementPlus);
+app.mount('#app');
+</script>
+</body>
+</html>

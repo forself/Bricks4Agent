@@ -1,0 +1,68 @@
+{
+  "tool_id": "web.search.google",
+  "display_name": "Google Web Search",
+  "summary": "Search the public web through the Google search entrypoint under broker mediation.",
+  "kind": "search",
+  "status": "planned",
+  "version": "2026-03-21",
+  "tags": ["web", "search", "google", "high-level"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "web",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 30, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "web.search.google",
+      "route": "web_search_google",
+      "purpose": "Broker-mediated Google search for the high-level model."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "locale": { "type": "string" },
+      "safe_mode": { "type": "string", "enum": ["off", "moderate", "strict"] },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 10 }
+    },
+    "required": ["query"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "engine": { "type": "string" },
+      "query": { "type": "string" },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rank": { "type": "integer" },
+            "title": { "type": "string" },
+            "url": { "type": "string" },
+            "snippet": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["google"]
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "allow_follow_fetch": false,
+    "cache_ttl_seconds": 300,
+    "default_limit": 5
+  },
+  "response_contract": {
+    "must_include_engine": true,
+    "must_return_ranked_results": true,
+    "result_wording": "Summarize results and cite engine plus URLs."
+  }
+}

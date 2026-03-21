@@ -1,0 +1,55 @@
+{
+  "tool_id": "commerce.price.search",
+  "display_name": "Price Search",
+  "summary": "Find candidate prices for a product through broker-approved commerce sources.",
+  "kind": "commerce",
+  "status": "planned",
+  "version": "2026-03-21",
+  "tags": ["commerce", "price", "search", "high-level"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "commerce",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "commerce.price.search",
+      "route": "commerce_price_search",
+      "purpose": "Broker-mediated product price lookup."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "currency": { "type": "string" },
+      "market": { "type": "string" },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 10 }
+    },
+    "required": ["query"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "results": { "type": "array" },
+      "sources_used": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": []
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "requires_source_policy": true,
+    "default_limit": 5
+  },
+  "response_contract": {
+    "must_identify_sources": true,
+    "must_include_price_context": true,
+    "result_wording": "Return candidate prices with source and product title, not purchasing advice."
+  }
+}
