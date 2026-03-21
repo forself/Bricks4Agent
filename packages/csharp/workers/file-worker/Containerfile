@@ -1,0 +1,25 @@
+# ── Build Stage ──
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+
+WORKDIR /src
+COPY . .
+RUN dotnet publish packages/csharp/workers/file-worker/FileWorker.csproj \
+    -c Release -o /app/publish /p:UseAppHost=false
+
+# ── Runtime Stage ──
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+
+WORKDIR /app
+COPY --from=build /app/publish .
+
+RUN adduser --disabled-password --gecos "" --uid 10003 fileworker \
+    && mkdir -p /workspace \
+    && chown -R fileworker:fileworker /app /workspace
+
+USER fileworker
+
+# No port needed — worker connects outbound to broker:7000
+# /workspace is the sandboxed root for file operations
+VOLUME ["/workspace"]
+
+ENTRYPOINT ["dotnet", "FileWorker.dll"]

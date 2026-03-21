@@ -25,8 +25,10 @@ public class SearchFilesHandler : ICapabilityHandler
         try
         {
             using var doc = JsonDocument.Parse(payload);
-            var pattern = doc.RootElement.GetProperty("pattern").GetString() ?? "*";
-            var basePath = doc.RootElement.TryGetProperty("path", out var p)
+            var root = doc.RootElement.TryGetProperty("args", out var argsEl)
+                ? argsEl : doc.RootElement;
+            var pattern = root.GetProperty("pattern").GetString() ?? "*";
+            var basePath = root.TryGetProperty("path", out var p)
                 ? p.GetString() ?? "." : ".";
 
             var fullPath = ResolveSandboxedPath(basePath);

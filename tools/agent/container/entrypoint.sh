@@ -91,7 +91,16 @@ if [ "${AGENT_VERBOSE:-0}" = "1" ]; then
   set -- "$@" --verbose
 fi
 
-if [ -n "${AGENT_RUN:-}" ]; then
+if [ "${AGENT_LINE_LISTEN:-0}" = "1" ]; then
+  if [ "${AGENT_ENABLE_LEGACY_LINE_LISTEN:-0}" != "1" ]; then
+    echo "AGENT_LINE_LISTEN is a legacy development path. Set AGENT_ENABLE_LEGACY_LINE_LISTEN=1 to opt in." >&2
+    exit 2
+  fi
+  set -- "$@" --line-listen
+  if [ -n "${AGENT_LINE_POLL_INTERVAL:-}" ]; then
+    set -- "$@" --line-poll-interval "$AGENT_LINE_POLL_INTERVAL"
+  fi
+elif [ -n "${AGENT_RUN:-}" ]; then
   set -- "$@" --run "$AGENT_RUN"
 fi
 

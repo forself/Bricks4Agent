@@ -43,7 +43,7 @@ services:
       DevelopmentSeed__RuntimeDescriptor: >-
         {"llm":{"default_model":"${STACK_MODEL:-openai-proxy-dev}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1}]}
     ports:
-      - "${BROKER_PORT:-5001}:5000"
+      - "${BROKER_PORT:-5361}:5000"
     volumes:
       - broker-openai-data:/data
 

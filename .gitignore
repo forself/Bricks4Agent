@@ -44,4 +44,17 @@ ISSUES/
 
 # SQLite databases
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 tools/*.png
+
+# Local tool/runtime state
+.dotnet/
+.run/
+.test-output/
+ngrok_recovery_codes.txt
+packages/csharp/broker/appsettings.Development.json
+packages/csharp/workers/line-worker/appsettings.json
+packages/csharp/workers/line-worker/.last-tunnel-url
+packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/

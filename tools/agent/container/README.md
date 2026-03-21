@@ -108,3 +108,15 @@ The governed agent container does not change. It still only knows about:
 - `BROKER_PRINCIPAL_ID`
 - `BROKER_TASK_ID`
 - `BROKER_ROLE_ID`
+
+## LINE Integration Boundary
+
+The canonical LINE production path is:
+
+- `line-worker` receives webhook traffic
+- `line-worker` forwards user messages to the broker high-level coordinator
+- the broker decides `conversation`, `query`, or `production`
+- only confirmed production work becomes task/plan/handoff state
+
+The agent's `--line-listen` mode is kept only as a legacy development path.
+It is not the primary production integration model.

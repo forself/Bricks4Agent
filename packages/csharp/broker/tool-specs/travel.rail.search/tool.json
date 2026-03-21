@@ -1,0 +1,55 @@
+{
+  "tool_id": "travel.rail.search",
+  "display_name": "Rail Search",
+  "summary": "Find candidate rail tickets or schedules through broker-approved rail sources.",
+  "kind": "travel",
+  "status": "planned",
+  "version": "2026-03-21",
+  "tags": ["travel", "rail", "search", "high-level"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "travel",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "travel.rail.search",
+      "route": "travel_rail_search",
+      "purpose": "Broker-mediated rail lookup."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "origin": { "type": "string" },
+      "destination": { "type": "string" },
+      "travel_date": { "type": "string" },
+      "travel_time": { "type": "string" },
+      "passengers": { "type": "integer", "minimum": 1 }
+    },
+    "required": ["origin", "destination", "travel_date"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "results": { "type": "array" },
+      "sources_used": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": []
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "requires_source_policy": true,
+    "default_limit": 5
+  },
+  "response_contract": {
+    "must_identify_sources": true,
+    "result_wording": "Return candidate rail options with departure and arrival times."
+  }
+}

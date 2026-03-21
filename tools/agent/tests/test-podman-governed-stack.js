@@ -39,6 +39,12 @@ async function main() {
         ...process.env,
         AGENT_RUN: 'Reply with the exact text STACK_OK.',
         STACK_RESPONSE_TEXT: 'STACK_OK',
+        BROKER_ROLE_ID: process.env.BROKER_ROLE_ID || 'role_reader',
+        BROKER_TASK_TYPE: process.env.BROKER_TASK_TYPE || 'analysis',
+        LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN || 'stack-test-token',
+        LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET || 'stack-test-secret',
+        LINE_DEFAULT_RECIPIENT_ID: process.env.LINE_DEFAULT_RECIPIENT_ID || 'Ustacktestrecipient',
+        LINE_ALLOWED_USER_IDS: process.env.LINE_ALLOWED_USER_IDS || 'Ustacktestrecipient',
     };
 
     let upResult = null;

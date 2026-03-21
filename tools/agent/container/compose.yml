@@ -9,6 +9,8 @@ services:
       MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
     ports:
       - "${STACK_LLM_PORT:-11434}:11434"
+    networks:
+      - control-net
 
   broker:
     build:
@@ -22,6 +24,7 @@ services:
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET:-THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64:-BEjqln/N4iLKmxh5ltylZvLxax+iQc+m9T+1BkAz1+w=}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg+oxf+eIdOKgNveCoXr8rgrh/9NAtuBSto3XjXjajsW+hRANCAAS8WmQxu8c1Nwb+P8uoewmd9/gHlz/2i6pUZ+/WrMD+YiKf+mkfND1V37tF9eImxrlJGpMW5NR5vuk5dLRKuFWl}"
+      # ── LLM Proxy ──
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
       LlmProxy__BaseUrl: "http://mock-ollama:11434"
@@ -31,20 +34,86 @@ services:
       LlmProxy__SupportsToolCalling: "true"
       LlmProxy__StreamingEnabled: "false"
       LlmProxy__TimeoutSeconds: "60"
+      # ── Development Seed ──
       DevelopmentSeed__Enabled: "true"
       DevelopmentSeed__PrincipalId: "${BROKER_PRINCIPAL_ID:-prn_podman_dev}"
       DevelopmentSeed__DisplayName: "Podman Development Principal"
       DevelopmentSeed__ActorType: "AI"
       DevelopmentSeed__TaskId: "${BROKER_TASK_ID:-task_podman_dev}"
-      DevelopmentSeed__TaskType: "analysis"
+      DevelopmentSeed__TaskType: "${BROKER_TASK_TYPE:-analysis}"
       DevelopmentSeed__AssignedRoleId: "${BROKER_ROLE_ID:-role_reader}"
       DevelopmentSeed__RuntimeDescriptor: >-
-        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1}]}
+        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search","scope":{"paths":["/workspace"],"routes":["search_files","search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
+      # ── Function Pool (Worker TCP Dispatch) ──
+      FunctionPool__Enabled: "true"
+      FunctionPool__ListenPort: "7000"
+      FunctionPool__StrictMode: "${POOL_STRICT_MODE:-false}"
+      FunctionPool__DispatchTimeoutSeconds: "30"
+      FunctionPool__MaxRetries: "2"
+      FunctionPool__MaxWorkers: "100"
+      # ── Container Manager ──
+      FunctionPool__ContainerManager__Enabled: "${CONTAINER_MANAGER_ENABLED:-false}"
+      FunctionPool__ContainerManager__Runtime: "${CONTAINER_RUNTIME:-docker}"
+      FunctionPool__ContainerManager__NetworkName: "bricks4agent_worker-net"
+      FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
+      FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
+      FunctionPool__ContainerManager__MaxContainersPerType: "3"
+      # Worker image configs
+      FunctionPool__ContainerManager__WorkerImages__file-worker__Image: "bricks4agent-file-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__file-worker__MemoryLimit: "256m"
+      FunctionPool__ContainerManager__WorkerImages__line-worker__Image: "bricks4agent-line-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__line-worker__MemoryLimit: "256m"
     ports:
       - "${BROKER_PORT:-5000}:5000"
     volumes:
       - broker-data:/data
+      # Mount Docker socket so broker can spawn worker containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - control-net
+      - worker-net
 
+  # ── File Worker ──
+  file-worker:
+    build:
+      context: ../../..
+      dockerfile: packages/csharp/workers/file-worker/Containerfile
+    depends_on:
+      - broker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__MaxConcurrent: "4"
+      WORKER_Worker__SandboxRoot: "/workspace"
+    volumes:
+      - ../../..:/workspace:ro
+    restart: "on-failure:5"
+    networks:
+      - worker-net
+
+  # ── LINE Worker ──
+  line-worker:
+    build:
+      context: ../../..
+      dockerfile: packages/csharp/workers/line-worker/Containerfile
+    depends_on:
+      - broker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__MaxConcurrent: "4"
+      WORKER_Line__ChannelAccessToken: "${LINE_CHANNEL_ACCESS_TOKEN}"
+      WORKER_Line__ChannelSecret: "${LINE_CHANNEL_SECRET}"
+      WORKER_Line__DefaultRecipientId: "${LINE_DEFAULT_RECIPIENT_ID}"
+      WORKER_Line__AllowedUserIds: "${LINE_ALLOWED_USER_IDS}"
+      WORKER_Line__WebhookPort: "19090"
+    ports:
+      - "${LINE_WEBHOOK_PORT:-19090}:19090"
+    restart: "on-failure:5"
+    networks:
+      - worker-net
+
+  # ── Agent ──
   agent:
     build:
       context: ../../..
@@ -64,10 +133,23 @@ services:
       AGENT_MAX_ITERATIONS: "4"
       AGENT_NO_CONFIRM: "1"
       AGENT_VERBOSE: "${AGENT_VERBOSE:-0}"
+      AGENT_LINE_LISTEN: "${AGENT_LINE_LISTEN:-0}"
+      AGENT_LINE_POLL_INTERVAL: "${AGENT_LINE_POLL_INTERVAL:-3000}"
       AGENT_RUN: "${AGENT_RUN:-Reply with the exact text STACK_OK.}"
     volumes:
       - ../../..:/workspace
     restart: "no"
+    networks:
+      - control-net
+
+# ── Network Isolation ──
+# control-net: broker + agent + LLM (agent cannot reach workers directly)
+# worker-net:  broker + workers (workers cannot reach agent or LLM directly)
+networks:
+  control-net:
+    driver: bridge
+  worker-net:
+    driver: bridge
 
 volumes:
   broker-data:

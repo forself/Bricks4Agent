@@ -39,6 +39,12 @@ public class BrokerAuthMiddleware
         "/api/v1/sessions/register" // 初始交握不帶 Scoped Token
     };
 
+    private static bool IsTrustedInternalPlainJsonPath(string path)
+    {
+        return path.StartsWith("/api/v1/high-level/line/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/tool-specs/", StringComparison.OrdinalIgnoreCase);
+    }
+
     public BrokerAuthMiddleware(
         RequestDelegate next,
         IScopedTokenService tokenService,
@@ -56,7 +62,10 @@ public class BrokerAuthMiddleware
         var path = context.Request.Path.Value ?? "";
 
         // 排除不需驗證的端點
-        if (ExcludedPaths.Contains(path) || context.Request.Method != "POST")
+        if (ExcludedPaths.Contains(path)
+            || IsTrustedInternalPlainJsonPath(path)
+            || path.StartsWith("/dev/", StringComparison.OrdinalIgnoreCase)
+            || context.Request.Method != "POST")
         {
             await _next(context);
             return;

@@ -33,6 +33,8 @@ function parseArgs(argv) {
         help: false,
         version: false,
         governed: false,
+        lineListen: false,
+        linePollInterval: 3000,
         brokerUrl: null,
         brokerPubKey: null,
         principalId: null,
@@ -119,6 +121,13 @@ function parseArgs(argv) {
             case '--governed':
                 args.governed = true;
                 break;
+            case '--line-listen':
+                args.lineListen = true;
+                args.governed = true; // LINE listen 模式自動啟用 governed
+                break;
+            case '--line-poll-interval':
+                args.linePollInterval = parseInt(argv[++i], 10) || 3000;
+                break;
             case '--broker-url':
                 args.brokerUrl = argv[++i] || '';
                 break;
@@ -181,6 +190,10 @@ Governed mode:
   --principal-id <id>
   --task-id <id>
   --role-id <id>
+
+LINE Listener mode:
+  --line-listen              Legacy direct LINE listener (development only)
+  --line-poll-interval <ms>  Poll interval in ms (default: 3000)
 
 Examples:
   node agent.js
@@ -410,6 +423,33 @@ async function main() {
             process.exit(1);
         } finally {
             await agent.close();
+        }
+        return;
+    }
+
+    // ── LINE Listener 模式（legacy / development only） ──
+    if (args.lineListen) {
+        const { LineListener } = require('./lib/line-listener');
+        logWarn('LINE listener is a legacy development path. The canonical production path is line-worker -> broker high-level coordinator.');
+        const listener = new LineListener(agent, {
+            pollIntervalMs: args.linePollInterval,
+            verbose: args.verbose,
+        });
+
+        const cleanup = async () => {
+            listener.stop();
+            await agent.close();
+        };
+        process.on('SIGINT', async () => { await cleanup(); process.exit(0); });
+        process.on('SIGTERM', async () => { await cleanup(); process.exit(0); });
+
+        try {
+            await listener.start();
+        } catch (e) {
+            logError(e.message);
+            process.exit(1);
+        } finally {
+            await cleanup();
         }
         return;
     }

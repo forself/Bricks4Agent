@@ -53,7 +53,9 @@
     },
     {
       "project": "templates/spa/backend/SpaApi.csproj",
-      "allowedProjectReferences": [],
+      "allowedProjectReferences": [
+        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj"
+      ],
       "allowedPackageReferences": [
         "Microsoft.Data.Sqlite",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
@@ -62,7 +64,9 @@
     },
     {
       "project": "tools/spa-generator/backend/spa-generator.csproj",
-      "allowedProjectReferences": [],
+      "allowedProjectReferences": [
+        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj"
+      ],
       "allowedPackageReferences": [
         "Microsoft.Data.Sqlite",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
