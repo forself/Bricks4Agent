@@ -1,23 +1,23 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    啟動 cloudflared Quick Tunnel + LINE Worker，自動更新 LINE Webhook URL。
+    ?? cloudflared Quick Tunnel + LINE Worker嚗???LINE Webhook URL??
 
 .DESCRIPTION
-    1. 嘗試啟動 cloudflared quick tunnel（背景）
-    2. 若 Cloudflare API 不可用，fallback 到上次成功的 URL 或手動輸入
-    3. 呼叫 LINE API 更新 webhook endpoint
-    4. 啟動 LINE Worker（前景）
-    5. Ctrl+C 時同時清理 cloudflared
+    1. ?岫?? cloudflared quick tunnel嚗??荔?
+    2. ??Cloudflare API 銝?剁?fallback ?唬?甈⊥??? URL ???撓??
+    3. ?澆 LINE API ?湔 webhook endpoint
+    4. ?? LINE Worker嚗??荔?
+    5. Ctrl+C ??????cloudflared
 
 .PARAMETER WebhookPort
-    本地 webhook 監聯埠，預設 8090
+    本地 webhook 監聽埠，預設 5357
 
 .PARAMETER TunnelUrl
-    手動指定 tunnel URL，跳過 cloudflared 啟動
+    ???? tunnel URL嚗歲??cloudflared ??
 
 .PARAMETER ConfigPath
-    appsettings.json 路徑，預設為腳本同目錄下的 appsettings.json
+    appsettings.json 頝臬?嚗?閮剔?單?????appsettings.json
 #>
 param(
     [int]$WebhookPort = 5357,
@@ -32,10 +32,10 @@ if (-not $ConfigPath) {
     $ConfigPath = Join-Path $scriptDir "appsettings.json"
 }
 
-# 上次成功的 URL 快取檔
+# 銝活????URL 敹怠?瑼?
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 
-# ── 讀取設定 ──
+# ?? 霈?身摰???
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $channelAccessToken = $config.Line.ChannelAccessToken
 $channelSecret = $config.Line.ChannelSecret
@@ -45,12 +45,12 @@ if (-not $channelAccessToken -or -not $channelSecret) {
     exit 1
 }
 
-# 從 config 讀取 port（若未透過參數指定）
+# 敺?config 霈??port嚗?芷????嚗?
 if ($WebhookPort -eq 5357 -and $config.Line.WebhookPort) {
     $WebhookPort = [int]$config.Line.WebhookPort
 }
 
-# ── 找 cloudflared ──
+# ?? ??cloudflared ??
 $cloudflared = $null
 foreach ($p in @(
     "cloudflared",
@@ -76,7 +76,7 @@ Write-Host ""
 $tunnelProcess = $null
 $tunnelUrl = $TunnelUrl
 
-# ── Step 1: Tunnel ──
+# ?? Step 1: Tunnel ??
 if ($tunnelUrl) {
     Write-Host "[1/3] Using provided tunnel URL: $tunnelUrl" -ForegroundColor Yellow
 } else {
@@ -135,12 +135,12 @@ if ($tunnelUrl) {
         }
     }
 
-    # Fallback: 嘗試上次成功的 URL 或查詢 LINE 目前設定
+    # Fallback: ?岫銝活????URL ?閰?LINE ?桀?閮剖?
     if (-not $tunnelUrl) {
         Write-Host ""
         Write-Host "  Could not create new tunnel." -ForegroundColor Red
 
-        # 嘗試讀取 LINE 目前設定的 webhook
+        # ?岫霈??LINE ?桀?閮剖???webhook
         $currentWebhook = $null
         try {
             $headers = @{
@@ -153,13 +153,13 @@ if ($tunnelUrl) {
             }
         } catch {}
 
-        # 嘗試上次快取
+        # ?岫銝活敹怠?
         $lastUrl = $null
         if (Test-Path $lastUrlFile) {
             $lastUrl = (Get-Content $lastUrlFile -Raw).Trim()
         }
 
-        # 提供選項
+        # ???賊?
         Write-Host ""
         Write-Host "  Options:" -ForegroundColor Yellow
         if ($currentWebhook) {
@@ -200,12 +200,12 @@ if ($tunnelUrl) {
     }
 }
 
-# ── 快取成功的 URL ──
+# ?? 敹怠?????URL ??
 if ($tunnelUrl) {
     $tunnelUrl | Out-File -FilePath $lastUrlFile -Encoding utf8 -NoNewline
 }
 
-# ── Step 2: 更新 LINE Webhook ──
+# ?? Step 2: ?湔 LINE Webhook ??
 if ($tunnelUrl) {
     $webhookUrl = if ($tunnelUrl -match '/webhook/line') { $tunnelUrl } else { "$tunnelUrl/webhook/line/" }
 
@@ -230,7 +230,7 @@ if ($tunnelUrl) {
         Write-Host "  Please update manually in LINE Developers Console" -ForegroundColor Red
     }
 
-    # 驗證
+    # 撽?
     try {
         $testResult = Invoke-RestMethod -Uri "https://api.line.me/v2/bot/channel/webhook/test" `
             -Method POST -Body "{`"endpoint`":`"$webhookUrl`"}" -Headers $headers
@@ -248,7 +248,7 @@ if ($tunnelUrl) {
 
 Write-Host ""
 
-# ── Step 3: 啟動 LINE Worker ──
+# ?? Step 3: ?? LINE Worker ??
 Write-Host "[3/3] Starting LINE Worker..." -ForegroundColor Yellow
 Write-Host "  Press Ctrl+C to stop" -ForegroundColor DarkGray
 Write-Host "========================================" -ForegroundColor Cyan
