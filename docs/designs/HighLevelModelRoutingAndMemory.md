@@ -47,7 +47,8 @@ The mechanism uses three memory layers.
 The high-level layer must define a broker-owned filesystem root for agent-accessible work.
 
 - config key: `HighLevelCoordinator:AccessRoot`
-- current default: `./managed-workspaces`
+- current default: `%LOCALAPPDATA%\Bricks4Agent\managed-workspaces` on Windows
+- relative paths are not allowed; the configured value must already be absolute after environment-variable expansion
 - this is the canonical agent-access root for high-level production tasks
 
 Within that root, the current layout is:
