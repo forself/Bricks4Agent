@@ -710,10 +710,17 @@ public class HighLevelCoordinator
     {
         if (string.IsNullOrWhiteSpace(configuredRoot))
         {
-            configuredRoot = "managed-workspaces";
+            return HighLevelCoordinatorDefaults.DefaultAccessRoot;
         }
 
-        return Path.GetFullPath(configuredRoot);
+        var expanded = Environment.ExpandEnvironmentVariables(configuredRoot.Trim());
+        if (!Path.IsPathRooted(expanded))
+        {
+            throw new InvalidOperationException(
+                "HighLevelCoordinator:AccessRoot must be an absolute path. Relative paths are not allowed.");
+        }
+
+        return Path.GetFullPath(expanded);
     }
 
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
@@ -842,11 +849,20 @@ public class HighLevelCoordinator
     }
 }
 
+public static class HighLevelCoordinatorDefaults
+{
+    public static string DefaultAccessRoot =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Bricks4Agent",
+            "managed-workspaces");
+}
+
 public class HighLevelCoordinatorOptions
 {
     public int DraftTtlMinutes { get; set; } = 30;
     public int MaxDraftSummaryLength { get; set; } = 160;
-    public string AccessRoot { get; set; } = "managed-workspaces";
+    public string AccessRoot { get; set; } = HighLevelCoordinatorDefaults.DefaultAccessRoot;
     public string[] QueryKeywords { get; set; } = new[]
     {
         "\u67e5\u8a62",
