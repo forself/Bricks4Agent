@@ -190,3 +190,21 @@ The current broker entrypoints for the high-level LINE coordinator are:
 
 The line conversation gateway remains the direct conversation/query executor.
 The high-level coordinator is the routing and confirmation layer above it.
+
+## Current Query Tool Boundary
+
+The high-level layer is still broker-mediated.
+It does not own unrestricted external access.
+
+Current documented query-tool state:
+
+- `web.search.duckduckgo`
+  - active
+  - broker-registered
+  - backed by a broker-owned execution route
+- `web.search.google`
+  - planned
+  - kept in the tool registry
+  - not currently activated because the observed public Google response path is not yet stable enough for a broker-owned parser
+
+This means high-level query expansion should currently assume DuckDuckGo is the broker-supported public web search path.

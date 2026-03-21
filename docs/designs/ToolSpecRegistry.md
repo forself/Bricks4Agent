@@ -33,8 +33,8 @@ The broker now:
 - validates whether bound capability ids already exist in the capability catalog
 - synchronizes active tool specs into broker capabilities at startup
 
-This is intentionally only a registry layer.
-Execution adapters still remain separate from the specs.
+This is intentionally a registry-first layer.
+Execution adapters still remain separate from the specs, but active specs may already be mapped to broker-owned execution routes.
 
 ## Status Handling
 
@@ -113,7 +113,10 @@ The initial spec set is:
 - `travel.rail.search`
 - `commerce.price.search`
 
-At this stage, they are registered as documented tools, not yet executable adapters.
+At this stage, the registry contains both:
+
+- documented-only planned tools
+- active tools that already have a broker-owned execution adapter
 
 Right now:
 
@@ -122,3 +125,8 @@ Right now:
 - `travel.flight.search` is planned
 - `travel.rail.search` is planned
 - `commerce.price.search` is planned
+
+Current execution reality:
+
+- `web.search.duckduckgo` is executable through broker mediation
+- `web.search.google` remains documented but not activated, because the currently observed public Google entrypoint does not produce a stable broker-owned parser path
