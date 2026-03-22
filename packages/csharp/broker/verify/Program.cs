@@ -166,6 +166,14 @@ try
             "allowed_actions": ["read", "navigate"],
             "confirmation_policy": "broker_policy"
           },
+          "browser_session_policy": {
+            "binding_mode": "ephemeral",
+            "credential_binding": "none",
+            "reuse_scope": "none",
+            "lease_minutes": 15,
+            "requires_consent_record": false,
+            "requires_interactive_login": false
+          },
           "input_schema": { "type": "object" },
           "output_schema": { "type": "object" },
           "source_policy": { "allowed_sources": ["public_web"] },
@@ -192,6 +200,9 @@ try
         AssertTrue(browserSpec!.BrowserProfile != null, "tool spec registry preserves browser profile");
         AssertTrue(browserSpec.BrowserProfile!.IdentityMode == "anonymous", "browser profile keeps identity mode");
         AssertTrue(browserSpec.BrowserProfile.CredentialSource == "none", "browser profile keeps credential source");
+        AssertTrue(browserSpec.BrowserSessionPolicy != null, "tool spec registry preserves browser session policy");
+        AssertTrue(browserSpec.BrowserSessionPolicy!.BindingMode == "ephemeral", "browser session policy keeps binding mode");
+        AssertTrue(browserSpec.BrowserSessionPolicy.CredentialBinding == "none", "browser session policy keeps credential binding");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
