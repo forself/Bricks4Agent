@@ -22,8 +22,11 @@ This guide now reflects a repository-wide validation run on 2026-03-22.
   - BaseOrm verification
   - governed Podman stacks
   - LINE sidecar webhook ingress and high-level broker routing
+- Verified high-level query behavior:
+  - explicit `?search <keywords>` now executes broker-mediated DuckDuckGo search
+  - plain `?query` still routes to the high-level dialogue path
 - Important current limit:
-  - high-level `query` routing is active, but real-time broker-mediated search/fetch is not yet generally wired into the live conversation path, so requests like weather lookup may still fall back to normal dialogue/RAG responses
+  - real-time broker-mediated search is currently explicit rather than automatic; if the user wants controlled live search, use `?search <keywords>`
 - Important backend note:
   - the solution builds successfully, but it still emits `207` existing warnings, mostly in `Mfa`, `AuditLog`, and `AccountLock`
 

@@ -13,23 +13,25 @@ Verified on 2026-03-22:
 - broker high-level processing accepted UTF-8 Chinese production input
 - canonical sidecar ingress path remained functional on ports `5357/5361`
 
-Current limitation confirmed by test:
+Current verified query boundary:
 
-- `query` routing is active, but the high-level path does not yet provide general real-time web/tool execution for all query types
-- a live weather-style query still fell back to normal dialogue/RAG behavior instead of a broker-mediated real-time search tool
+- explicit broker-mediated search is available through `?search <keywords>`
+- plain `?query` messages still go through the high-level dialogue path
+- real-time query tooling is not yet auto-selected for arbitrary query text; the current controlled live path is the explicit `?search` subcommand
 
 Recommended sidecar flow:
 
 1. Copy `appsettings.sidecar.example.json` to local `appsettings.json` and fill in real LINE credentials.
 2. Run `line-sidecar.ps1 up`.
 3. Run `line-sidecar.ps1 verify` to send a signed synthetic webhook event.
-4. Use `line-sidecar.ps1 status` and `line-sidecar.ps1 down` for runtime control.
+4. Use `line-sidecar.ps1 status`, `line-sidecar.ps1 restart`, and `line-sidecar.ps1 down` for runtime control.
 
 Unified one-command entrypoint:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -MessageBase64Utf8 <base64-utf8>
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker -UserId test-user -MessageBase64Utf8 <base64-utf8>
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
@@ -58,5 +60,6 @@ Notes:
 - `verify-live-webhook.ps1` reads the current LINE webhook endpoint from LINE first, then falls back to `.last-tunnel-url`.
 - all broker and webhook verification should use UTF-8 input; use `verify-high-level-process.ps1` or `verify-live-webhook.ps1` with `-MessageFile` / `-MessageBase64Utf8` when shell encoding is unreliable.
 - `start-sidecar-stack.ps1`, `status-sidecar-stack.ps1`, `stop-sidecar-stack.ps1`, `verify-live-webhook.ps1`, and `verify-high-level-process.ps1` remain as lower-level scripts behind `line-sidecar.ps1`.
+- `line-sidecar.ps1 restart` is the canonical reload path after broker or worker changes.
 - `start-with-tunnel.ps1` is a legacy tunnel launcher path, not the canonical sidecar flow.
 - the current canonical sidecar pair is `5357` for the webhook ingress and `5361` for the broker.
