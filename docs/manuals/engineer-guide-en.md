@@ -2525,6 +2525,35 @@ Before deployment, verify the following:
 - [ ] Sensitive settings (keys, connection strings) are not hardcoded
 - [ ] HTTPS is enabled
 
+### 14.8 Azure VM IIS Deployment
+
+The broker now includes a governed deployment path for Azure virtual machines that host IIS.
+
+What exists now:
+
+- broker-managed Azure IIS deployment targets
+- dry-run request build and preview
+- execution path that runs `dotnet publish`, packages the output, and invokes PowerShell remoting
+- broker route: `deploy_azure_vm_iis`
+
+Configuration:
+
+- define deployment credentials in `DeploymentSecrets:Mappings`
+- or expose them through environment variables derived from `secret_ref`
+
+Limits:
+
+- only `winrm_powershell` transport is implemented
+- target project paths must be absolute
+- a directory input must resolve to exactly one `.csproj`
+- the target VM must already expose PowerShell remoting and IIS management modules
+
+See:
+
+- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
+- [tool.json](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/tool.json)
+- [TOOL.md](/d:/Bricks4Agent/packages/csharp/broker/tool-specs/deploy.azure-vm-iis/TOOL.md)
+
 ---
 
 > **This guide covers the core features and usage of Bricks4Agent. For more detailed documentation on specific components, refer to the README.md in each component's directory.**
