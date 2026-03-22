@@ -67,7 +67,7 @@ public class LineChatGateway
 
             string? ragContext = null;
             List<RagSnippet>? ragSnippets = null;
-            if (_options.RagEnabled)
+            if (_options.RagEnabled && ShouldUseRag(message))
             {
                 (ragContext, ragSnippets) = await RetrieveRagContext(message, ct);
             }
@@ -552,6 +552,16 @@ public class LineChatGateway
 
     private static string Truncate(string s, int max)
         => s.Length <= max ? s : s[..max] + "...";
+
+    private bool ShouldUseRag(string message)
+    {
+        if (_options.RagTriggerKeywords == null || _options.RagTriggerKeywords.Length == 0)
+            return true;
+
+        return _options.RagTriggerKeywords.Any(keyword =>
+            !string.IsNullOrWhiteSpace(keyword) &&
+            message.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public class LineChatGatewayOptions
@@ -560,8 +570,34 @@ public class LineChatGatewayOptions
     public int MaxConversationHistory { get; set; } = 20;
     public bool RagEnabled { get; set; } = true;
     public int RagTopK { get; set; } = 3;
+    public string[] RagTriggerKeywords { get; set; } =
+    {
+        "法律",
+        "法規",
+        "條文",
+        "契約",
+        "合約",
+        "權益",
+        "申訴",
+        "罰則",
+        "民法",
+        "刑法",
+        "勞基法",
+        "消費者",
+        "消保",
+        "法務",
+        "regulation",
+        "compliance",
+        "consumer protection",
+        "contract",
+        "law",
+        "legal"
+    };
     public string SystemPrompt { get; set; } =
-        "你是一個透過 LINE 通訊的智慧助理。請用繁體中文回答，語氣親切簡潔。你可以利用內建的知識庫（RAG）來回答法律相關問題。";
+        "你是一個透過 LINE 與使用者互動的高階智慧助理。請使用繁體中文，語氣簡潔清楚。"
+        + " 你的角色是對話、澄清需求、回答一般問題，並在適當時引導使用者使用明確前綴。"
+        + " 若問題需要受控網路搜尋，請建議使用 ?search 關鍵字。"
+        + " 若使用者要建立或修改交付物，請引導使用 / 開頭的任務指令。";
 }
 
 public class ChatResult
