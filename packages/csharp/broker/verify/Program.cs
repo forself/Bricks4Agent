@@ -218,6 +218,7 @@ try
         var executionIntent = executionIntentStore.ReadLatest("line", "tester");
         AssertTrue(executionIntent != null, "execution intent store persists promoted executable intent");
         AssertTrue(executionIntent!.Stage == "executable", "execution intent store preserves promotion stage");
+        AssertTrue(HighLevelExecutionIntentStore.BuildDocumentId("line", "tester") == "hlm.execution.line.tester", "execution intent document id is stable for downstream references");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
