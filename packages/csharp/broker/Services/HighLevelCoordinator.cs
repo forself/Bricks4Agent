@@ -17,6 +17,7 @@ public class HighLevelCoordinator
     private readonly IPlanService _planService;
     private readonly ITaskRouter _taskRouter;
     private readonly LineChatGateway _lineChatGateway;
+    private readonly HighLevelQueryToolMediator _queryToolMediator;
     private readonly HighLevelCoordinatorOptions _options;
     private readonly HighLevelCommandParser _commandParser;
     private readonly HighLevelInputTrustPolicy _inputTrustPolicy;
@@ -35,6 +36,7 @@ public class HighLevelCoordinator
         IPlanService planService,
         ITaskRouter taskRouter,
         LineChatGateway lineChatGateway,
+        HighLevelQueryToolMediator queryToolMediator,
         HighLevelCoordinatorOptions options,
         ILogger<HighLevelCoordinator> logger)
     {
@@ -43,6 +45,7 @@ public class HighLevelCoordinator
         _planService = planService;
         _taskRouter = taskRouter;
         _lineChatGateway = lineChatGateway;
+        _queryToolMediator = queryToolMediator;
         _options = options;
         _commandParser = new HighLevelCommandParser(_options);
         _inputTrustPolicy = new HighLevelInputTrustPolicy();
@@ -253,15 +256,47 @@ public class HighLevelCoordinator
             });
         }
 
-        var chat = await _lineChatGateway.ChatAsync(userId, trimmed, cancellationToken);
-        var chatReply = PrepareReply(profile, trimmed, chat.Reply);
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase))
+        {
+            var searchResult = await _queryToolMediator.SearchWebAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var searchReply = PrepareReply(profile, trimmed, searchResult.Reply);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = searchReply,
+                Error = searchResult.Error,
+                DecisionReason = searchResult.Success
+                    ? "explicit query subcommand mediated by broker tool"
+                    : "explicit query subcommand failed during broker tool mediation"
+            });
+        }
+
+        var chatInput = decision.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body)
+            ? parsed.Body
+            : trimmed;
+        var chat = await _lineChatGateway.ChatAsync(userId, chatInput, cancellationToken);
+        var replyBody = chat.Reply;
+        if (decision.Mode == HighLevelRouteMode.Query && string.IsNullOrWhiteSpace(replyBody))
+        {
+            replyBody = string.IsNullOrWhiteSpace(parsed.Body)
+                ? "目前沒有取得穩定答案。若要進行受控網路搜尋，請輸入 ?search 關鍵字。"
+                : $"目前沒有取得穩定答案。若要進行受控網路搜尋，請輸入 ?search {parsed.Body}";
+        }
+
+        var chatReply = PrepareReply(profile, trimmed, replyBody);
         SaveUserProfile(channel, userId, profile);
         return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
         {
             Mode = decision.Mode,
             Reply = chatReply,
-            Error = chat.Error,
-            DecisionReason = decision.Reason,
+            Error = string.IsNullOrWhiteSpace(chat.Reply) && decision.Mode == HighLevelRouteMode.Query
+                ? "query_reply_empty"
+                : chat.Error,
+            DecisionReason = string.IsNullOrWhiteSpace(chat.Reply) && decision.Mode == HighLevelRouteMode.Query
+                ? "query route returned empty high-level answer and was downgraded to explicit search guidance"
+                : decision.Reason,
             RagSnippets = chat.RagSnippets,
             HistoryCount = chat.HistoryCount
         });
@@ -1076,6 +1111,7 @@ public class HighLevelCoordinator
             "前綴規則：",
             "- 一般對話：直接輸入",
             "- 查詢：?內容",
+            "- 受控搜尋：?search 關鍵字",
             "- 任務/指令：/內容",
             "- 專案名稱：#名稱",
             "- 使用說明：?help",
@@ -1170,7 +1206,10 @@ public class HighLevelCoordinator
         }
         else if (result.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body))
         {
-            currentGoal = parsed.Body;
+            currentGoal = string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase) &&
+                          !string.IsNullOrWhiteSpace(parsed.QueryArgument)
+                ? parsed.QueryArgument
+                : parsed.Body;
         }
         else if (result.Mode == HighLevelRouteMode.Conversation && !string.IsNullOrWhiteSpace(parsed.Raw))
         {
@@ -1194,7 +1233,9 @@ public class HighLevelCoordinator
         {
             currentGoalCommitLevel = HighLevelMemoryCommitLevel.Candidate.ToString();
             currentGoalSource = HighLevelMemorySource.User.ToString();
-            currentGoalCommitReason = "candidate extracted from query";
+            currentGoalCommitReason = string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase)
+                ? "candidate extracted from explicit search query"
+                : "candidate extracted from query";
         }
 
         var projectName = draft?.ProjectName ?? previous?.ProjectName;
@@ -1269,7 +1310,10 @@ public class HighLevelCoordinator
             WorkflowAction = workflow.Action.ToString(),
             CommandExtractionAllowed = trustedParse.Trust.Allowed,
             TrustReason = trustedParse.Trust.Reason,
-            CandidateGoal = string.IsNullOrWhiteSpace(parsed.Body) ? null : parsed.Body,
+            CandidateGoal = string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase) &&
+                            !string.IsNullOrWhiteSpace(parsed.QueryArgument)
+                ? parsed.QueryArgument
+                : string.IsNullOrWhiteSpace(parsed.Body) ? null : parsed.Body,
             TaskType = result.CreatedTask?.TaskType ?? result.Draft?.TaskType,
             ProjectName = result.Draft?.ProjectName,
             DraftId = result.Draft?.DraftId,

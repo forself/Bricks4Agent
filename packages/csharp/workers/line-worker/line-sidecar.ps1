@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("up", "status", "verify", "verify-broker", "down")]
+    [ValidateSet("up", "status", "verify", "verify-broker", "down", "restart")]
     [string]$Action = "status",
 
     [int]$BrokerPort = 5361,
@@ -95,6 +95,26 @@ switch ($Action) {
         Invoke-ChildScript -ScriptName "stop-sidecar-stack.ps1" -Parameters @{
             WebhookPort = $WebhookPort
         }
+        break
+    }
+
+    "restart" {
+        Invoke-ChildScript -ScriptName "stop-sidecar-stack.ps1" -Parameters @{
+            WebhookPort = $WebhookPort
+        }
+
+        $params = @{
+            BrokerPort = $BrokerPort
+            WebhookPort = $WebhookPort
+        }
+        if ($SkipBuild) {
+            $params.SkipBuild = $true
+        }
+        if ($SkipWebhookUpdate) {
+            $params.SkipWebhookUpdate = $true
+        }
+
+        Invoke-ChildScript -ScriptName "start-sidecar-stack.ps1" -Parameters $params
         break
     }
 }
