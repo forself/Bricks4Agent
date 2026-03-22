@@ -141,6 +141,26 @@ try
         AssertTrue(memoryState != null, "memory store persists projected memory state");
         AssertTrue(memoryState!.CurrentGoal == "build website", "memory store keeps de-commanded current goal");
         AssertTrue(memoryState.PendingDraftId == "draft_123", "memory store preserves reusable workflow state");
+
+        var interpretationStore = new HighLevelInterpretationStore(logDb);
+        interpretationStore.Record(new HighLevelInterpretationRecord
+        {
+            Channel = "line",
+            UserId = "tester",
+            InteractionType = HighLevelRouteMode.Production.ToString(),
+            ParsedKind = HighLevelInputKind.Production.ToString(),
+            WorkflowState = HighLevelWorkflowState.Idle.ToString(),
+            WorkflowAction = HighLevelWorkflowAction.StartProduction.ToString(),
+            CommandExtractionAllowed = true,
+            TrustReason = "raw user input may issue commands",
+            CandidateGoal = "build website",
+            TaskType = "code_gen",
+            DraftId = "draft_123"
+        });
+
+        var interpretations = interpretationStore.ReadLatest("line", "tester", 10);
+        AssertTrue(interpretations.Count == 1, "interpretation store persists append-only interpreted records");
+        AssertTrue(interpretations[0].CandidateGoal == "build website", "interpretation store keeps candidate goal separate from raw log");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
