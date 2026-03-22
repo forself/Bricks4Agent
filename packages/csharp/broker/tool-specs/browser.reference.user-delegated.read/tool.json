@@ -1,0 +1,56 @@
+{
+  "tool_id": "browser.reference.user-delegated.read",
+  "display_name": "Browser Reference: User Delegated Read",
+  "summary": "Reference spec for broker-governed browser access using user-delegated credentials or session grants.",
+  "kind": "browser",
+  "status": "planned",
+  "version": "2026-03-22",
+  "tags": ["browser", "reference", "user-delegated", "read"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "browser",
+    "risk_level": "high",
+    "approval_policy": "user_required",
+    "ttl_seconds": 900,
+    "audit_level": "full",
+    "quota": { "max_calls": 10, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [],
+  "browser_profile": {
+    "identity_mode": "user_delegated",
+    "credential_source": "user_grant",
+    "session_owner": "user",
+    "allowed_actions": ["read", "navigate", "authenticate"],
+    "confirmation_policy": "user_required"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "site_binding": { "type": "string" },
+      "user_grant_id": { "type": "string" },
+      "url": { "type": "string" }
+    },
+    "required": ["site_binding", "user_grant_id", "url"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "site_binding": { "type": "string" },
+      "url": { "type": "string" },
+      "title": { "type": "string" },
+      "content": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["user_authorized_site_bindings"]
+  },
+  "execution_rules": {
+    "runtime_required": "browser_worker",
+    "session_persistence": "user_bound",
+    "allow_authenticated_access": true
+  },
+  "response_contract": {
+    "must_identify_identity_mode": true,
+    "must_identify_user_grant": true
+  }
+}

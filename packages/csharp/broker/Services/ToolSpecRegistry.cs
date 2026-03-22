@@ -120,6 +120,7 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             InputSchema = spec.InputSchema,
             OutputSchema = spec.OutputSchema,
             ResponseContract = spec.ResponseContract,
+            BrowserProfile = spec.BrowserProfile,
             ExecutionRules = spec.ExecutionRules,
             CapabilityTemplate = spec.CapabilityTemplate ?? new ToolCapabilityTemplateFile(),
             CapabilityBindings = spec.CapabilityBindings,
@@ -159,6 +160,16 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             InputSchema = spec.InputSchema,
             OutputSchema = spec.OutputSchema,
             ResponseContract = spec.ResponseContract,
+            BrowserProfile = spec.BrowserProfile == null
+                ? null
+                : new BrowserToolProfileView
+                {
+                    IdentityMode = spec.BrowserProfile.IdentityMode,
+                    CredentialSource = spec.BrowserProfile.CredentialSource,
+                    SessionOwner = spec.BrowserProfile.SessionOwner,
+                    AllowedActions = spec.BrowserProfile.AllowedActions,
+                    ConfirmationPolicy = spec.BrowserProfile.ConfirmationPolicy
+                },
             ExecutionRules = spec.ExecutionRules,
             CapabilityBindings = bindings,
             DocMarkdown = spec.DocMarkdown,
@@ -219,6 +230,9 @@ public sealed class ToolSpecFile
 
     [JsonPropertyName("response_contract")]
     public JsonElement ResponseContract { get; set; }
+
+    [JsonPropertyName("browser_profile")]
+    public BrowserToolProfileFile? BrowserProfile { get; set; }
 }
 
 public sealed class ToolCapabilityBindingFile
@@ -263,6 +277,24 @@ public sealed class ToolCapabilityTemplateFile
     public JsonElement Quota { get; set; }
 }
 
+public sealed class BrowserToolProfileFile
+{
+    [JsonPropertyName("identity_mode")]
+    public string IdentityMode { get; set; } = string.Empty;
+
+    [JsonPropertyName("credential_source")]
+    public string CredentialSource { get; set; } = string.Empty;
+
+    [JsonPropertyName("session_owner")]
+    public string SessionOwner { get; set; } = string.Empty;
+
+    [JsonPropertyName("allowed_actions")]
+    public string[] AllowedActions { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("confirmation_policy")]
+    public string ConfirmationPolicy { get; set; } = string.Empty;
+}
+
 public sealed class ToolSpecDocument
 {
     public string ToolId { get; set; } = string.Empty;
@@ -277,6 +309,7 @@ public sealed class ToolSpecDocument
     public JsonElement OutputSchema { get; set; }
     public JsonElement ExecutionRules { get; set; }
     public JsonElement ResponseContract { get; set; }
+    public BrowserToolProfileFile? BrowserProfile { get; set; }
     public ToolCapabilityTemplateFile CapabilityTemplate { get; set; } = new();
     public ToolCapabilityBindingFile[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingFile>();
     public string DocMarkdown { get; set; } = string.Empty;
@@ -298,10 +331,20 @@ public sealed class ToolSpecView
     public JsonElement OutputSchema { get; set; }
     public JsonElement ExecutionRules { get; set; }
     public JsonElement ResponseContract { get; set; }
+    public BrowserToolProfileView? BrowserProfile { get; set; }
     public ToolCapabilityBindingView[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingView>();
     public string DocMarkdown { get; set; } = string.Empty;
     public string ToolJsonPath { get; set; } = string.Empty;
     public string ToolDocPath { get; set; } = string.Empty;
+}
+
+public sealed class BrowserToolProfileView
+{
+    public string IdentityMode { get; set; } = string.Empty;
+    public string CredentialSource { get; set; } = string.Empty;
+    public string SessionOwner { get; set; } = string.Empty;
+    public string[] AllowedActions { get; set; } = Array.Empty<string>();
+    public string ConfirmationPolicy { get; set; } = string.Empty;
 }
 
 public sealed class ToolCapabilityBindingView
