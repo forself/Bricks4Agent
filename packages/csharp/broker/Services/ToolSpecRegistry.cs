@@ -123,6 +123,7 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             BrowserProfile = spec.BrowserProfile,
             BrowserSessionPolicy = spec.BrowserSessionPolicy,
             BrowserSitePolicy = spec.BrowserSitePolicy,
+            BrowserActionPolicy = spec.BrowserActionPolicy,
             ExecutionRules = spec.ExecutionRules,
             CapabilityTemplate = spec.CapabilityTemplate ?? new ToolCapabilityTemplateFile(),
             CapabilityBindings = spec.CapabilityBindings,
@@ -193,6 +194,17 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
                     RequiresExactOriginMatch = spec.BrowserSitePolicy.RequiresExactOriginMatch,
                     AllowsCrossOriginNavigation = spec.BrowserSitePolicy.AllowsCrossOriginNavigation
                 },
+            BrowserActionPolicy = spec.BrowserActionPolicy == null
+                ? null
+                : new BrowserActionPolicyView
+                {
+                    MaxActionLevel = spec.BrowserActionPolicy.MaxActionLevel,
+                    RequiresHumanConfirmationOn = spec.BrowserActionPolicy.RequiresHumanConfirmationOn,
+                    AllowsFormFill = spec.BrowserActionPolicy.AllowsFormFill,
+                    AllowsSubmit = spec.BrowserActionPolicy.AllowsSubmit,
+                    AllowsDownload = spec.BrowserActionPolicy.AllowsDownload,
+                    AllowsFileUpload = spec.BrowserActionPolicy.AllowsFileUpload
+                },
             ExecutionRules = spec.ExecutionRules,
             CapabilityBindings = bindings,
             DocMarkdown = spec.DocMarkdown,
@@ -262,6 +274,9 @@ public sealed class ToolSpecFile
 
     [JsonPropertyName("browser_site_policy")]
     public BrowserSitePolicyFile? BrowserSitePolicy { get; set; }
+
+    [JsonPropertyName("browser_action_policy")]
+    public BrowserActionPolicyFile? BrowserActionPolicy { get; set; }
 }
 
 public sealed class ToolCapabilityBindingFile
@@ -363,6 +378,27 @@ public sealed class BrowserSitePolicyFile
     public bool AllowsCrossOriginNavigation { get; set; }
 }
 
+public sealed class BrowserActionPolicyFile
+{
+    [JsonPropertyName("max_action_level")]
+    public string MaxActionLevel { get; set; } = string.Empty;
+
+    [JsonPropertyName("requires_human_confirmation_on")]
+    public string[] RequiresHumanConfirmationOn { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("allows_form_fill")]
+    public bool AllowsFormFill { get; set; }
+
+    [JsonPropertyName("allows_submit")]
+    public bool AllowsSubmit { get; set; }
+
+    [JsonPropertyName("allows_download")]
+    public bool AllowsDownload { get; set; }
+
+    [JsonPropertyName("allows_file_upload")]
+    public bool AllowsFileUpload { get; set; }
+}
+
 public sealed class ToolSpecDocument
 {
     public string ToolId { get; set; } = string.Empty;
@@ -380,6 +416,7 @@ public sealed class ToolSpecDocument
     public BrowserToolProfileFile? BrowserProfile { get; set; }
     public BrowserSessionPolicyFile? BrowserSessionPolicy { get; set; }
     public BrowserSitePolicyFile? BrowserSitePolicy { get; set; }
+    public BrowserActionPolicyFile? BrowserActionPolicy { get; set; }
     public ToolCapabilityTemplateFile CapabilityTemplate { get; set; } = new();
     public ToolCapabilityBindingFile[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingFile>();
     public string DocMarkdown { get; set; } = string.Empty;
@@ -404,6 +441,7 @@ public sealed class ToolSpecView
     public BrowserToolProfileView? BrowserProfile { get; set; }
     public BrowserSessionPolicyView? BrowserSessionPolicy { get; set; }
     public BrowserSitePolicyView? BrowserSitePolicy { get; set; }
+    public BrowserActionPolicyView? BrowserActionPolicy { get; set; }
     public ToolCapabilityBindingView[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingView>();
     public string DocMarkdown { get; set; } = string.Empty;
     public string ToolJsonPath { get; set; } = string.Empty;
@@ -436,6 +474,16 @@ public sealed class BrowserSitePolicyView
     public bool RequiresRegisteredSiteBinding { get; set; }
     public bool RequiresExactOriginMatch { get; set; }
     public bool AllowsCrossOriginNavigation { get; set; }
+}
+
+public sealed class BrowserActionPolicyView
+{
+    public string MaxActionLevel { get; set; } = string.Empty;
+    public string[] RequiresHumanConfirmationOn { get; set; } = Array.Empty<string>();
+    public bool AllowsFormFill { get; set; }
+    public bool AllowsSubmit { get; set; }
+    public bool AllowsDownload { get; set; }
+    public bool AllowsFileUpload { get; set; }
 }
 
 public sealed class ToolCapabilityBindingView

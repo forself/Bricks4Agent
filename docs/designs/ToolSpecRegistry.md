@@ -71,6 +71,7 @@ Machine-readable definition, including:
 - `browser_profile` (optional, for broker-governed browser tools)
 - `browser_session_policy` (optional, for browser session and credential governance)
 - `browser_site_policy` (optional, for site/origin governance)
+- `browser_action_policy` (optional, for browser action and approval governance)
 
 ### `TOOL.md`
 
@@ -139,6 +140,17 @@ The registry can also carry browser site policy through `browser_site_policy`, i
 - `allows_cross_origin_navigation`
 
 This makes site/origin constraints visible before browser workers and site-binding catalogs are implemented.
+
+The registry can also carry browser action policy through `browser_action_policy`, including:
+
+- `max_action_level`
+- `requires_human_confirmation_on`
+- `allows_form_fill`
+- `allows_submit`
+- `allows_download`
+- `allows_file_upload`
+
+This makes the intended action ceiling explicit before runtime browser workers exist.
 
 ## First Registered Specs
 

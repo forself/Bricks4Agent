@@ -38,6 +38,14 @@
     "requires_exact_origin_match": false,
     "allows_cross_origin_navigation": true
   },
+  "browser_action_policy": {
+    "max_action_level": "navigate",
+    "requires_human_confirmation_on": [],
+    "allows_form_fill": false,
+    "allows_submit": false,
+    "allows_download": false,
+    "allows_file_upload": false
+  },
   "input_schema": {
     "type": "object",
     "properties": {
