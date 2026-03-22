@@ -91,6 +91,12 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
                     continue;
                 }
 
+                if (!TryValidateSpec(spec, out var validationError))
+                {
+                    _logger.LogWarning("Skipping invalid tool spec {ToolId}: {Error}", spec.ToolId, validationError);
+                    continue;
+                }
+
                 var docPath = Path.Combine(Path.GetDirectoryName(toolJsonPath)!, "TOOL.md");
                 specs.Add(ToDocument(spec, toolJsonPath, docPath));
             }
@@ -219,6 +225,121 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             return configuredRoot;
 
         return Path.GetFullPath(Path.Combine(contentRootPath, configuredRoot));
+    }
+
+    private static bool TryValidateSpec(ToolSpecFile spec, out string error)
+    {
+        error = string.Empty;
+        if (!string.Equals(spec.Kind, "browser", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (spec.BrowserProfile == null)
+        {
+            error = "browser tools must define browser_profile";
+            return false;
+        }
+
+        if (spec.BrowserSessionPolicy == null)
+        {
+            error = "browser tools must define browser_session_policy";
+            return false;
+        }
+
+        if (spec.BrowserSitePolicy == null)
+        {
+            error = "browser tools must define browser_site_policy";
+            return false;
+        }
+
+        if (spec.BrowserActionPolicy == null)
+        {
+            error = "browser tools must define browser_action_policy";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(spec.BrowserProfile.IdentityMode) ||
+            string.IsNullOrWhiteSpace(spec.BrowserProfile.CredentialSource) ||
+            string.IsNullOrWhiteSpace(spec.BrowserProfile.SessionOwner))
+        {
+            error = "browser_profile must include identity_mode, credential_source, and session_owner";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(spec.BrowserSessionPolicy.BindingMode) ||
+            string.IsNullOrWhiteSpace(spec.BrowserSessionPolicy.CredentialBinding) ||
+            string.IsNullOrWhiteSpace(spec.BrowserSessionPolicy.ReuseScope))
+        {
+            error = "browser_session_policy must include binding_mode, credential_binding, and reuse_scope";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(spec.BrowserSitePolicy.SiteBindingMode))
+        {
+            error = "browser_site_policy must include site_binding_mode";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(spec.BrowserActionPolicy.MaxActionLevel))
+        {
+            error = "browser_action_policy must include max_action_level";
+            return false;
+        }
+
+        return spec.BrowserProfile.IdentityMode switch
+        {
+            "anonymous" => ValidateIdentityConsistency(
+                spec,
+                expectedCredentialSource: "none",
+                expectedSessionOwner: "none",
+                expectedCredentialBinding: "none",
+                expectedSiteBindingMode: "public_open",
+                out error),
+            "system_account" => ValidateIdentityConsistency(
+                spec,
+                expectedCredentialSource: "system_vault",
+                expectedSessionOwner: "system",
+                expectedCredentialBinding: "system_vault",
+                expectedSiteBindingMode: "registered_site",
+                out error),
+            "user_delegated" => ValidateIdentityConsistency(
+                spec,
+                expectedCredentialSource: "user_grant",
+                expectedSessionOwner: "user",
+                expectedCredentialBinding: "user_grant",
+                expectedSiteBindingMode: "user_authorized_site",
+                out error),
+            _ => Fail("browser_profile.identity_mode must be anonymous, system_account, or user_delegated", out error)
+        };
+    }
+
+    private static bool ValidateIdentityConsistency(
+        ToolSpecFile spec,
+        string expectedCredentialSource,
+        string expectedSessionOwner,
+        string expectedCredentialBinding,
+        string expectedSiteBindingMode,
+        out string error)
+    {
+        if (!string.Equals(spec.BrowserProfile!.CredentialSource, expectedCredentialSource, StringComparison.Ordinal))
+            return Fail($"browser_profile.credential_source must be {expectedCredentialSource} for identity_mode {spec.BrowserProfile.IdentityMode}", out error);
+
+        if (!string.Equals(spec.BrowserProfile.SessionOwner, expectedSessionOwner, StringComparison.Ordinal))
+            return Fail($"browser_profile.session_owner must be {expectedSessionOwner} for identity_mode {spec.BrowserProfile.IdentityMode}", out error);
+
+        if (!string.Equals(spec.BrowserSessionPolicy!.CredentialBinding, expectedCredentialBinding, StringComparison.Ordinal))
+            return Fail($"browser_session_policy.credential_binding must be {expectedCredentialBinding} for identity_mode {spec.BrowserProfile.IdentityMode}", out error);
+
+        if (!string.Equals(spec.BrowserSitePolicy!.SiteBindingMode, expectedSiteBindingMode, StringComparison.Ordinal))
+            return Fail($"browser_site_policy.site_binding_mode must be {expectedSiteBindingMode} for identity_mode {spec.BrowserProfile.IdentityMode}", out error);
+
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool Fail(string message, out string error)
+    {
+        error = message;
+        return false;
     }
 }
 
