@@ -42,6 +42,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
         _db.EnsureTable<BrowserSessionLease>();
+        _db.EnsureTable<BrowserUserGrant>();
+        _db.EnsureTable<BrowserSystemBinding>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
@@ -128,6 +130,12 @@ public class BrokerDbInitializer
                       ON browser_session_leases(principal_id, lease_state, expires_at)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_session_leases_site
                       ON browser_session_leases(site_binding_id, lease_state)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_user_grants_principal
+                      ON browser_user_grants(principal_id, status, expires_at)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_user_grants_site
+                      ON browser_user_grants(site_binding_id, status)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_system_bindings_site
+                      ON browser_system_bindings(site_binding_id, status)");
 
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");

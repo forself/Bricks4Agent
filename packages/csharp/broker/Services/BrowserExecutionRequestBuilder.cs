@@ -88,6 +88,7 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
             return BrowserExecutionRequestBuildResult.Fail("browser_request_missing_user_grant");
         }
 
+        BrowserUserGrant? userGrant = null;
         if (string.Equals(spec.BrowserProfile.IdentityMode, "user_delegated", StringComparison.Ordinal) &&
             siteBinding != null &&
             !string.Equals(siteBinding.PrincipalId, input.PrincipalId, StringComparison.Ordinal))
@@ -99,6 +100,38 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
             string.IsNullOrWhiteSpace(input.SystemBindingId))
         {
             return BrowserExecutionRequestBuildResult.Fail("browser_request_missing_system_binding");
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.UserGrantId))
+        {
+            userGrant = _db.Get<BrowserUserGrant>(input.UserGrantId);
+            if (userGrant == null || !string.Equals(userGrant.Status, "active", StringComparison.OrdinalIgnoreCase))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_user_grant_not_found");
+
+            if (!string.Equals(userGrant.PrincipalId, input.PrincipalId, StringComparison.Ordinal))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_user_grant_principal_mismatch");
+
+            if (!string.IsNullOrWhiteSpace(userGrant.SiteBindingId) &&
+                !string.Equals(userGrant.SiteBindingId, input.SiteBindingId, StringComparison.Ordinal))
+            {
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_user_grant_site_binding_mismatch");
+            }
+
+            if (userGrant.ExpiresAt.HasValue && userGrant.ExpiresAt.Value < DateTime.UtcNow)
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_user_grant_expired");
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.SystemBindingId))
+        {
+            var systemBinding = _db.Get<BrowserSystemBinding>(input.SystemBindingId);
+            if (systemBinding == null || !string.Equals(systemBinding.Status, "active", StringComparison.OrdinalIgnoreCase))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_system_binding_not_found");
+
+            if (!string.IsNullOrWhiteSpace(systemBinding.SiteBindingId) &&
+                !string.Equals(systemBinding.SiteBindingId, input.SiteBindingId, StringComparison.Ordinal))
+            {
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_system_binding_site_mismatch");
+            }
         }
 
         return BrowserExecutionRequestBuildResult.Ok(new BrowserExecutionRequest
