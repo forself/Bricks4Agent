@@ -29,6 +29,33 @@ try
     var trustPolicy = new HighLevelInputTrustPolicy();
     var workflowMachine = new HighLevelWorkflowStateMachine();
     var promotionGate = new HighLevelExecutionPromotionGate();
+    var browserRequest = new BrowserExecutionRequest
+    {
+        RequestId = "req_browser_1",
+        ToolId = "browser.reference.anonymous.read",
+        CapabilityId = "browser.read",
+        Route = "browser_read",
+        IdentityMode = "anonymous",
+        CredentialBinding = "none",
+        SessionBindingMode = "ephemeral",
+        SessionReuseScope = "none",
+        SiteBindingMode = "public_open",
+        AllowedSiteClasses = new[] { "public_web" },
+        MaxActionLevel = "navigate",
+        RequiresHumanConfirmationOn = Array.Empty<string>(),
+        PrincipalId = "principal_1",
+        TaskId = "task_1",
+        SessionId = "session_1",
+        StartUrl = "https://example.com",
+        IntendedActionLevel = "read"
+    };
+    var browserRequestJson = JsonSerializer.Serialize(browserRequest);
+    var browserRequestRoundtrip = JsonSerializer.Deserialize<BrowserExecutionRequest>(browserRequestJson);
+    AssertTrue(browserRequestRoundtrip != null && browserRequestRoundtrip.SiteBindingMode == "public_open", "browser execution request round-trips canonical site policy");
+    var browserResult = BrowserExecutionResult.Ok("req_browser_1", "browser.reference.anonymous.read", "read", "https://example.com", title: "Example");
+    var browserResultJson = JsonSerializer.Serialize(browserResult);
+    var browserResultRoundtrip = JsonSerializer.Deserialize<BrowserExecutionResult>(browserResultJson);
+    AssertTrue(browserResultRoundtrip != null && browserResultRoundtrip.ActionLevelReached == "read", "browser execution result round-trips canonical action level");
     AssertTrue(parser.Parse("?help").Kind == HighLevelInputKind.Help, "parser recognizes explicit help command");
     AssertTrue(parser.Parse("/build website").Kind == HighLevelInputKind.Production, "parser recognizes production prefix");
     AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
