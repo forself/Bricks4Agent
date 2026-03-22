@@ -64,6 +64,12 @@ try
     AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
     var searchParsed = parser.Parse("?search taipei weather");
     AssertTrue(searchParsed.QueryCommand == "search" && searchParsed.QueryArgument == "taipei weather", "parser extracts explicit search query subcommand");
+    var railParsed = parser.Parse("?rail 台北 台中 今天 18:00");
+    AssertTrue(railParsed.QueryCommand == "rail" && railParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts explicit rail query subcommand");
+    var busParsed = parser.Parse("?bus 台北 台中 今天 18:00");
+    AssertTrue(busParsed.QueryCommand == "bus" && busParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts explicit bus query subcommand");
+    var flightParsed = parser.Parse("?flight TPE KIX tomorrow");
+    AssertTrue(flightParsed.QueryCommand == "flight" && flightParsed.QueryArgument == "TPE KIX tomorrow", "parser extracts explicit flight query subcommand");
     var profileParsed = parser.Parse("?profile");
     AssertTrue(profileParsed.QueryCommand == "profile", "parser extracts explicit profile query subcommand");
     var plainQueryParsed = parser.Parse("?weather taipei");
@@ -180,6 +186,13 @@ try
     AssertTrue(mediatedSearch.Success, "query tool mediator executes explicit search through broker-owned tool binding");
     AssertTrue(mediatedSearch.Reply.Contains("duckduckgo", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites search engine");
     AssertTrue(mediatedSearch.Reply.Contains("https://example.com/weather", StringComparison.OrdinalIgnoreCase), "query tool mediator reply includes ranked URLs");
+    var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
+    AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
+    AssertTrue(mediatedRail.Reply.Contains("18:30", StringComparison.OrdinalIgnoreCase), "rail query mediator reply includes candidate time information");
+    var mediatedBus = await mediator.SearchBusAsync("line", "tester", "台北 台中 今天 18:00");
+    AssertTrue(mediatedBus.Success, "query tool mediator executes explicit bus query through broker-owned transport tool");
+    var mediatedFlight = await mediator.SearchFlightAsync("line", "tester", "TPE KIX tomorrow");
+    AssertTrue(mediatedFlight.Success, "query tool mediator executes explicit flight query through broker-owned transport tool");
 
     var specRoot = Path.Combine(sandboxRoot, "tool-specs");
     Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.anonymous.read"));
@@ -1008,6 +1021,7 @@ try
                 AccessRoot = Path.Combine(sandboxRoot, "managed"),
                 CommandGuideReminderMinutes = 60
             },
+            new BrowserBindingService(coordinatorDb),
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
@@ -1023,6 +1037,8 @@ try
         var profileView = await coordinator.ProcessLineMessageAsync("line-user-a", "?profile");
         AssertTrue(profileView.Reply.Contains("display_name: 小布", StringComparison.Ordinal), "profile query shows preferred display name");
         AssertTrue(profileView.Reply.Contains("user_code: bricks001", StringComparison.Ordinal), "profile query shows preferred alphanumeric user id");
+        AssertTrue(profileView.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "profile query shows current permission summary");
+        AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
 
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
@@ -1030,6 +1046,9 @@ try
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
+
+        var firstConversation = await coordinator.ProcessLineMessageAsync("line-user-c", "你好");
+        AssertTrue(firstConversation.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "first interaction guide shows current permission summary");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
@@ -1210,34 +1229,94 @@ finally
 
 file sealed class FakeToolSpecRegistry : IToolSpecRegistry
 {
-    private readonly ToolSpecView _view = new()
-    {
-        ToolId = "web.search.duckduckgo",
-        DisplayName = "DuckDuckGo Web Search",
-        Summary = "broker mediated search",
-        Kind = "search",
-        Status = "active",
-        CapabilityBindings =
-        [
-            new ToolCapabilityBindingView
-            {
-                CapabilityId = "web.search.duckduckgo",
-                Route = "web_search_duckduckgo",
-                Purpose = "test",
-                Registered = true,
-                RegisteredRoute = "web_search_duckduckgo"
-            }
-        ]
-    };
+    private readonly IReadOnlyList<ToolSpecView> _views =
+    [
+        new ToolSpecView
+        {
+            ToolId = "web.search.duckduckgo",
+            DisplayName = "DuckDuckGo Web Search",
+            Summary = "broker mediated search",
+            Kind = "search",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "web.search.duckduckgo",
+                    Route = "web_search_duckduckgo",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "web_search_duckduckgo"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
+            ToolId = "travel.rail.search",
+            DisplayName = "Rail Search",
+            Summary = "broker mediated rail search",
+            Kind = "travel",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "travel.rail.search",
+                    Route = "travel_rail_search",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "travel_rail_search"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
+            ToolId = "travel.bus.search",
+            DisplayName = "Bus Search",
+            Summary = "broker mediated bus search",
+            Kind = "travel",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "travel.bus.search",
+                    Route = "travel_bus_search",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "travel_bus_search"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
+            ToolId = "travel.flight.search",
+            DisplayName = "Flight Search",
+            Summary = "broker mediated flight search",
+            Kind = "travel",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "travel.flight.search",
+                    Route = "travel_flight_search",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "travel_flight_search"
+                }
+            ]
+        }
+    ];
 
     public ToolSpecView? Get(string toolId)
-        => string.Equals(toolId, _view.ToolId, StringComparison.OrdinalIgnoreCase) ? _view : null;
+        => _views.FirstOrDefault(view => string.Equals(toolId, view.ToolId, StringComparison.OrdinalIgnoreCase));
 
     public IReadOnlyList<ToolSpecDocument> GetDefinitions()
         => Array.Empty<ToolSpecDocument>();
 
     public IReadOnlyList<ToolSpecView> List(string? filter = null)
-        => [_view];
+        => _views;
 }
 
 file sealed class FakeHttpClientFactory : IHttpClientFactory
@@ -1341,21 +1420,80 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
 {
     public Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {
-        var payload = JsonSerializer.Serialize(new
+        object payloadObject = approvedRequest.Route switch
         {
-            engine = "duckduckgo",
-            query = "taipei weather",
-            results = new[]
+            "travel_rail_search" => new
             {
-                new
+                mode = "rail",
+                query = "台北 台中 今天 18:00",
+                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
+                sources_used = new[] { "DuckDuckGo / public transport web" },
+                results = new[]
                 {
-                    rank = 1,
-                    title = "Taipei Weather",
-                    url = "https://example.com/weather",
-                    snippet = "Rain later this afternoon."
+                    new
+                    {
+                        rank = 1,
+                        title = "台北到台中列車候選",
+                        url = "https://example.com/rail",
+                        snippet = "晚間班次候選",
+                        time_candidates = new[] { "18:30", "19:00" }
+                    }
+                }
+            },
+            "travel_bus_search" => new
+            {
+                mode = "bus",
+                query = "台北 台中 今天 18:00",
+                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
+                sources_used = new[] { "DuckDuckGo / public transport web" },
+                results = new[]
+                {
+                    new
+                    {
+                        rank = 1,
+                        title = "台北到台中客運候選",
+                        url = "https://example.com/bus",
+                        snippet = "晚間客運候選",
+                        time_candidates = new[] { "18:10", "18:40" }
+                    }
+                }
+            },
+            "travel_flight_search" => new
+            {
+                mode = "flight",
+                query = "TPE KIX tomorrow",
+                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
+                sources_used = new[] { "DuckDuckGo / public travel web" },
+                results = new[]
+                {
+                    new
+                    {
+                        rank = 1,
+                        title = "TPE 到 KIX 航班候選",
+                        url = "https://example.com/flight",
+                        snippet = "航班時刻候選",
+                        time_candidates = new[] { "09:15", "13:40" }
+                    }
+                }
+            },
+            _ => new
+            {
+                engine = "duckduckgo",
+                query = "taipei weather",
+                results = new[]
+                {
+                    new
+                    {
+                        rank = 1,
+                        title = "Taipei Weather",
+                        url = "https://example.com/weather",
+                        snippet = "Rain later this afternoon."
+                    }
                 }
             }
-        });
+        };
+
+        var payload = JsonSerializer.Serialize(payloadObject);
 
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
     }

@@ -8,6 +8,27 @@ public sealed class HighLevelCommandParser
         "search",
         "\u641c\u5c0b"
     };
+    private static readonly HashSet<string> QueryRailCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "rail",
+        "train",
+        "\u706b\u8eca",
+        "\u53f0\u9435",
+        "\u9ad8\u9435"
+    };
+    private static readonly HashSet<string> QueryBusCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bus",
+        "\u516c\u8eca",
+        "\u5ba2\u904b"
+    };
+    private static readonly HashSet<string> QueryFlightCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "flight",
+        "flights",
+        "\u822a\u73ed",
+        "\u6a5f\u7968"
+    };
     private static readonly HashSet<string> QueryProfileCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "profile",
@@ -190,6 +211,24 @@ public sealed class HighLevelCommandParser
         {
             var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
             return ("search", argument);
+        }
+
+        if (QueryRailCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("rail", argument);
+        }
+
+        if (QueryBusCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("bus", argument);
+        }
+
+        if (QueryFlightCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("flight", argument);
         }
 
         if (QueryProfileCommands.Contains(candidate))

@@ -1,11 +1,11 @@
 {
-  "tool_id": "travel.rail.search",
-  "display_name": "Rail Search",
-  "summary": "Find candidate rail tickets or schedules through broker-approved rail sources.",
+  "tool_id": "travel.bus.search",
+  "display_name": "Bus Search",
+  "summary": "Find candidate bus schedules through broker-approved sources and return candidate departure times.",
   "kind": "travel",
   "status": "active",
   "version": "2026-03-22",
-  "tags": ["travel", "rail", "search", "high-level"],
+  "tags": ["travel", "bus", "schedule", "high-level"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "travel",
@@ -17,9 +17,9 @@
   },
   "capability_bindings": [
     {
-      "capability_id": "travel.rail.search",
-      "route": "travel_rail_search",
-      "purpose": "Broker-mediated rail lookup."
+      "capability_id": "travel.bus.search",
+      "route": "travel_bus_search",
+      "purpose": "Broker-mediated bus lookup."
     }
   ],
   "input_schema": {
@@ -52,6 +52,6 @@
   "response_contract": {
     "must_identify_sources": true,
     "must_identify_retrieval_time": true,
-    "result_wording": "Return candidate rail options with detected departure or arrival time candidates."
+    "result_wording": "Return candidate bus options with any detected departure times."
   }
 }

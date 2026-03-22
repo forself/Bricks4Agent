@@ -91,6 +91,9 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "rag_import_web" => ExecuteRagImportWebAsync(request),
                 "web_search_google" => ExecuteWebSearchGoogleAsync(request),
                 "web_search_duckduckgo" => ExecuteWebSearchDuckDuckGoAsync(request),
+                "travel_rail_search" => ExecuteTravelRailSearchAsync(request),
+                "travel_bus_search" => ExecuteTravelBusSearchAsync(request),
+                "travel_flight_search" => ExecuteTravelFlightSearchAsync(request),
                 "web_search" => ExecuteWebSearchAsync(request),
                 "web_fetch" => ExecuteWebFetchAsync(request),
                 "deploy_azure_vm_iis" => ExecuteAzureIisDeploymentAsync(request),
@@ -1247,6 +1250,105 @@ public class InProcessDispatcher : IExecutionDispatcher
         }
     }
 
+    private Task<ExecutionResult> ExecuteTravelRailSearchAsync(ApprovedRequest request)
+        => ExecuteTravelSearchAsync(
+            request,
+            mode: "rail",
+            sourceLabel: "DuckDuckGo / railway.gov.tw / thsrc.com.tw",
+            queryDecorator: query => $"{query} site:railway.gov.tw OR site:thsrc.com.tw 火車 台鐵 高鐵 時刻表 班次");
+
+    private Task<ExecutionResult> ExecuteTravelBusSearchAsync(ApprovedRequest request)
+        => ExecuteTravelSearchAsync(
+            request,
+            mode: "bus",
+            sourceLabel: "DuckDuckGo / public transport web",
+            queryDecorator: query => $"{query} 公車 OR 客運 時刻表 班次");
+
+    private Task<ExecutionResult> ExecuteTravelFlightSearchAsync(ApprovedRequest request)
+        => ExecuteTravelSearchAsync(
+            request,
+            mode: "flight",
+            sourceLabel: "DuckDuckGo / public travel web",
+            queryDecorator: query => $"{query} 航班 班次 時刻表");
+
+    private async Task<ExecutionResult> ExecuteTravelSearchAsync(
+        ApprovedRequest request,
+        string mode,
+        string sourceLabel,
+        Func<string, string> queryDecorator)
+    {
+        using var doc = JsonDocument.Parse(request.Payload);
+        var args = GetArgsElement(doc.RootElement);
+        var query = TryGetString(args, "query") ?? "";
+        var locale = TryGetString(args, "locale") ?? "zh-TW";
+        var limit = TryGetInt(args, "limit") ?? 5;
+        limit = Math.Clamp(limit, 1, 5);
+
+        if (string.IsNullOrWhiteSpace(query))
+            return ExecutionResult.Fail(request.RequestId, "query is required.");
+
+        try
+        {
+            var searchResults = await SearchDuckDuckGoAsync(queryDecorator(query), limit, locale);
+            var normalizedResults = new List<object>();
+            foreach (var searchResult in searchResults.Take(limit))
+            {
+                var resultJson = JsonSerializer.Serialize(searchResult);
+                using var resultDoc = JsonDocument.Parse(resultJson);
+                var root = resultDoc.RootElement;
+                var url = TryGetString(root, "url") ?? string.Empty;
+                var snippet = TryGetString(root, "snippet") ?? string.Empty;
+                var title = TryGetString(root, "title") ?? string.Empty;
+                var rank = TryGetInt(root, "rank") ?? (normalizedResults.Count + 1);
+                var timeCandidates = new List<string>();
+
+                if (!string.IsNullOrWhiteSpace(snippet))
+                    timeCandidates.AddRange(ExtractTimeCandidates(snippet));
+
+                if (timeCandidates.Count < 4 && !string.IsNullOrWhiteSpace(url))
+                {
+                    try
+                    {
+                        var html = await _httpClient.GetStringAsync(url);
+                        var content = HtmlToText(html);
+                        timeCandidates.AddRange(ExtractTimeCandidates(content));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Skipping follow fetch for travel result {Url}", url);
+                    }
+                }
+
+                normalizedResults.Add(new
+                {
+                    rank,
+                    title,
+                    url,
+                    snippet,
+                    time_candidates = timeCandidates
+                        .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(6)
+                        .ToArray()
+                });
+            }
+
+            return ExecutionResult.Ok(request.RequestId,
+                JsonSerializer.Serialize(new
+                {
+                    mode,
+                    query,
+                    retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
+                    results = normalizedResults,
+                    sources_used = new[] { sourceLabel }
+                }));
+        }
+        catch (Exception ex)
+        {
+            return ExecutionResult.Fail(request.RequestId, $"{mode} travel search failed: {ex.Message}");
+        }
+    }
+
     private static async Task<List<object>> SearchDuckDuckGoAsync(string query, int limit, string locale)
     {
         var url = $"https://html.duckduckgo.com/html/?q={Uri.EscapeDataString(query)}&kl={Uri.EscapeDataString(locale)}";
@@ -1366,6 +1468,15 @@ public class InProcessDispatcher : IExecutionDispatcher
         }
 
         return results;
+    }
+
+    private static IEnumerable<string> ExtractTimeCandidates(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            yield break;
+
+        foreach (Match match in Regex.Matches(text, @"(?<!\d)([01]?\d|2[0-3]):[0-5]\d(?!\d)"))
+            yield return match.Value;
     }
 
     private static string HtmlToText(string html)
