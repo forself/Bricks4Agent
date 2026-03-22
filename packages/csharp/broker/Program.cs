@@ -697,6 +697,12 @@ api.MapPost("/health", healthHandler);
     });
 
     // DELETE /dev/conversations/{userId} — 清除對話
+    app.MapGet("/dev/line-users", (Broker.Services.HighLevelCoordinator coordinator) =>
+    {
+        var users = coordinator.ListLineUsers();
+        return Results.Ok(new { users, total = users.Count });
+    });
+
     app.MapDelete("/dev/conversations/{userId}", (string userId) =>
     {
         gateway.ClearConversation(userId);

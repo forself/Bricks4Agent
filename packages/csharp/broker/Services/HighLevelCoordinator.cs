@@ -368,6 +368,76 @@ public class HighLevelCoordinator
     public HighLevelTaskDraft? GetLineDraft(string userId)
         => LoadTaskDraft("line", userId);
 
+    public IReadOnlyList<HighLevelLineUserSummary> ListLineUsers()
+    {
+        var entries = _db.Query<SharedContextEntry>(
+            @"SELECT e.*
+              FROM shared_context_entries e
+              INNER JOIN (
+                  SELECT document_id, MAX(version) AS max_version
+                  FROM shared_context_entries
+                  WHERE document_id LIKE @prefix
+                  GROUP BY document_id
+              ) latest
+                ON latest.document_id = e.document_id AND latest.max_version = e.version
+              ORDER BY e.created_at DESC",
+            new { prefix = "hlm.profile.line.%" });
+
+        var summaries = new List<HighLevelLineUserSummary>();
+        foreach (var entry in entries)
+        {
+            HighLevelUserProfile? profile;
+            try
+            {
+                profile = JsonSerializer.Deserialize<HighLevelUserProfile>(entry.ContentRef);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (profile == null || string.IsNullOrWhiteSpace(profile.UserId))
+                continue;
+
+            var draft = LoadTaskDraft("line", profile.UserId);
+            var managedPaths = BuildManagedPaths("line", profile.UserId, profile, draft?.ProjectFolderName);
+            var principalCandidates = ResolvePrincipalCandidates(profile).ToArray();
+            var activeUserGrants = principalCandidates
+                .SelectMany(principalId => _browserBindingService.ListUserGrants(principalId))
+                .Where(grant => grant.Status == "active" && (grant.ExpiresAt == null || grant.ExpiresAt > DateTime.UtcNow))
+                .GroupBy(grant => grant.UserGrantId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .Count();
+            var activeUserSites = principalCandidates
+                .SelectMany(principalId => _browserBindingService.ListSiteBindings("user_delegated", principalId))
+                .Where(binding => binding.Status == "active")
+                .GroupBy(binding => binding.SiteBindingId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .Count();
+
+            summaries.Add(new HighLevelLineUserSummary
+            {
+                UserId = profile.UserId,
+                DisplayName = profile.PreferredDisplayName,
+                UserCode = profile.PreferredUserCode,
+                LastInteractionAt = profile.LastInteractionAt,
+                LastDecision = profile.LastDecision,
+                PendingDraftId = profile.PendingDraftId,
+                LastTaskId = profile.LastTaskId,
+                LastPlanId = profile.LastPlanId,
+                UserRoot = managedPaths.UserRoot,
+                ProjectsRoot = managedPaths.ProjectsRoot,
+                ActiveUserGrantCount = activeUserGrants,
+                ActiveUserSiteBindingCount = activeUserSites
+            });
+        }
+
+        return summaries
+            .OrderByDescending(summary => summary.LastInteractionAt ?? DateTimeOffset.MinValue)
+            .ThenBy(summary => summary.UserId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private bool TryHandleProfileCommand(
         string channel,
         string userId,
@@ -1982,6 +2052,22 @@ public class HighLevelUserProfile
     public string? PendingDraftId { get; set; }
     public Dictionary<string, int> DecisionCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class HighLevelLineUserSummary
+{
+    public string UserId { get; set; } = string.Empty;
+    public string? DisplayName { get; set; }
+    public string? UserCode { get; set; }
+    public DateTimeOffset? LastInteractionAt { get; set; }
+    public string? LastDecision { get; set; }
+    public string? PendingDraftId { get; set; }
+    public string? LastTaskId { get; set; }
+    public string? LastPlanId { get; set; }
+    public string UserRoot { get; set; } = string.Empty;
+    public string ProjectsRoot { get; set; } = string.Empty;
+    public int ActiveUserGrantCount { get; set; }
+    public int ActiveUserSiteBindingCount { get; set; }
 }
 
 internal enum CommandGuideMode

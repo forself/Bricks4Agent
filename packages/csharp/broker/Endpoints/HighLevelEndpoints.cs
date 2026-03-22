@@ -72,5 +72,15 @@ public static class HighLevelEndpoints
 
             return Results.Ok(ApiResponseHelper.Success(draft));
         });
+
+        line.MapGet("/users", (HighLevelCoordinator coordinator) =>
+        {
+            var users = coordinator.ListLineUsers();
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                total = users.Count,
+                users
+            }));
+        });
     }
 }
