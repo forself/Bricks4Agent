@@ -88,7 +88,8 @@ public class HighLevelCoordinator
         envelope = BuildLineEnvelope(trimmed);
         trustedParse = _inputTrustPolicy.Apply(envelope, _commandParser.Parse(trimmed));
         parsed = trustedParse.Parsed;
-        var profile = LoadUserProfile(channel, userId) ?? new HighLevelUserProfile
+        var existingProfile = LoadUserProfile(channel, userId);
+        var profile = existingProfile ?? new HighLevelUserProfile
         {
             Channel = channel,
             UserId = userId
@@ -103,6 +104,11 @@ public class HighLevelCoordinator
         }
 
         workflow = _workflowStateMachine.Evaluate(draft, parsed);
+
+        if (TryHandleRegistrationGate(channel, userId, trimmed, existingProfile == null, profile, draft, trustedParse, workflow, out var registrationResult))
+        {
+            return registrationResult;
+        }
 
         if (TryHandleProfileCommand(channel, userId, trimmed, profile, draft, parsed, trustedParse, workflow, out var profileResult))
         {
@@ -420,6 +426,10 @@ public class HighLevelCoordinator
                 UserId = profile.UserId,
                 DisplayName = profile.PreferredDisplayName,
                 UserCode = profile.PreferredUserCode,
+                RegistrationStatus = ResolveRegistrationStatus(profile),
+                RegistrationRequestedAt = profile.RegistrationRequestedAt,
+                RegistrationReviewedAt = profile.RegistrationReviewedAt,
+                RegistrationReviewNote = profile.RegistrationReviewNote,
                 LastInteractionAt = profile.LastInteractionAt,
                 LastDecision = profile.LastDecision,
                 PendingDraftId = profile.PendingDraftId,
@@ -436,6 +446,207 @@ public class HighLevelCoordinator
             .OrderByDescending(summary => summary.LastInteractionAt ?? DateTimeOffset.MinValue)
             .ThenBy(summary => summary.UserId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    public string GetLineAnonymousRegistrationPolicy()
+        => GetAnonymousRegistrationPolicy("line");
+
+    public string SetLineAnonymousRegistrationPolicy(string policy, string updatedBy = "admin")
+    {
+        var normalized = NormalizeAnonymousRegistrationPolicy(policy);
+        var state = new HighLevelRegistrationPolicyState
+        {
+            Channel = "line",
+            Policy = normalized,
+            UpdatedBy = string.IsNullOrWhiteSpace(updatedBy) ? "admin" : updatedBy,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        UpsertDocument(
+            BuildRegistrationPolicyDocumentId("line"),
+            BuildRegistrationPolicyDocumentId("line"),
+            JsonSerializer.Serialize(state),
+            "application/json",
+            "global");
+
+        return normalized;
+    }
+
+    public HighLevelRegistrationReviewResult? ReviewLineUserRegistration(string userId, string action, string? note = null)
+    {
+        var profile = LoadUserProfile("line", userId);
+        if (profile == null)
+            return null;
+
+        var normalizedAction = Normalize(action);
+        var approved = normalizedAction is "approve" or "approved" or "allow";
+        var rejected = normalizedAction is "reject" or "rejected" or "deny";
+        if (!approved && !rejected)
+            throw new InvalidOperationException("Unsupported registration review action.");
+
+        profile.RegistrationStatus = approved
+            ? HighLevelRegistrationStatus.Approved
+            : HighLevelRegistrationStatus.Rejected;
+        profile.RegistrationReviewedAt = DateTimeOffset.UtcNow;
+        profile.RegistrationReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        SaveUserProfile("line", userId, profile);
+
+        if (rejected)
+        {
+            DeleteDocument(BuildDraftDocumentId("line", userId));
+            profile.PendingDraftId = null;
+            SaveUserProfile("line", userId, profile);
+        }
+
+        var notification = EnqueueLineNotification(
+            userId,
+            approved ? "註冊審核通過" : "註冊審核結果",
+            approved
+                ? (string.IsNullOrWhiteSpace(note)
+                    ? "你的使用申請已通過，現在可以開始使用。"
+                    : $"你的使用申請已通過。\n備註：{note}")
+                : (string.IsNullOrWhiteSpace(note)
+                    ? "你的使用申請未通過，若需要可再聯絡管理者。"
+                    : $"你的使用申請未通過。\n原因：{note}"));
+
+        return new HighLevelRegistrationReviewResult
+        {
+            UserId = userId,
+            RegistrationStatus = profile.RegistrationStatus,
+            ReviewNote = profile.RegistrationReviewNote,
+            Notification = notification
+        };
+    }
+
+    public IReadOnlyList<HighLevelLineNotification> ListPendingLineNotifications(int limit = 20)
+    {
+        var entries = _db.Query<SharedContextEntry>(
+            @"SELECT e.*
+              FROM shared_context_entries e
+              INNER JOIN (
+                  SELECT document_id, MAX(version) AS max_version
+                  FROM shared_context_entries
+                  WHERE document_id LIKE @prefix
+                  GROUP BY document_id
+              ) latest
+                ON latest.document_id = e.document_id AND latest.max_version = e.version
+              ORDER BY e.created_at ASC
+              LIMIT @lim",
+            new { prefix = "hlm.notify.line.%", lim = Math.Max(1, limit) });
+
+        return entries
+            .Select(entry =>
+            {
+                try { return JsonSerializer.Deserialize<HighLevelLineNotification>(entry.ContentRef); }
+                catch { return null; }
+            })
+            .Where(notification => notification != null &&
+                                   string.Equals(notification.DeliveryStatus, "pending", StringComparison.OrdinalIgnoreCase))
+            .Cast<HighLevelLineNotification>()
+            .ToArray();
+    }
+
+    public HighLevelLineNotification? CompleteLineNotification(string notificationId, string deliveryStatus, string? error = null)
+    {
+        var notification = LoadLatestJson<HighLevelLineNotification>(BuildLineNotificationDocumentId(notificationId));
+        if (notification == null)
+            return null;
+
+        notification.DeliveryStatus = NormalizeNotificationStatus(deliveryStatus);
+        notification.Error = string.IsNullOrWhiteSpace(error) ? null : error.Trim();
+        notification.CompletedAt = DateTimeOffset.UtcNow;
+        UpsertDocument(
+            BuildLineNotificationDocumentId(notificationId),
+            BuildLineNotificationDocumentId(notificationId),
+            JsonSerializer.Serialize(notification),
+            "application/json",
+            "global");
+        return notification;
+    }
+
+    private bool TryHandleRegistrationGate(
+        string channel,
+        string userId,
+        string message,
+        bool isNewUser,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft? draft,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        out HighLevelProcessResult result)
+    {
+        result = default!;
+        var registrationStatus = ResolveRegistrationStatus(profile);
+        if (!isNewUser)
+        {
+            if (string.Equals(registrationStatus, HighLevelRegistrationStatus.PendingReview, StringComparison.OrdinalIgnoreCase))
+            {
+                SaveUserProfile(channel, userId, profile);
+                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Conversation,
+                    Reply = BuildPendingRegistrationReply(profile),
+                    Error = "registration_pending_review",
+                    DecisionReason = "registration gate: pending review"
+                });
+                return true;
+            }
+
+            if (string.Equals(registrationStatus, HighLevelRegistrationStatus.Rejected, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(registrationStatus, HighLevelRegistrationStatus.DeniedByPolicy, StringComparison.OrdinalIgnoreCase))
+            {
+                SaveUserProfile(channel, userId, profile);
+                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Conversation,
+                    Reply = BuildRejectedRegistrationReply(profile),
+                    Error = "registration_not_allowed",
+                    DecisionReason = "registration gate: denied"
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        var policy = GetAnonymousRegistrationPolicy(channel);
+        switch (policy)
+        {
+            case HighLevelAnonymousRegistrationPolicy.AllowAll:
+                profile.RegistrationStatus = HighLevelRegistrationStatus.Approved;
+                profile.RegistrationReviewedAt ??= DateTimeOffset.UtcNow;
+                SaveUserProfile(channel, userId, profile);
+                return false;
+
+            case HighLevelAnonymousRegistrationPolicy.ManualReview:
+                profile.RegistrationStatus = HighLevelRegistrationStatus.PendingReview;
+                profile.RegistrationRequestedAt = DateTimeOffset.UtcNow;
+                profile.RegistrationReviewNote = null;
+                SaveUserProfile(channel, userId, profile);
+                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Conversation,
+                    Reply = BuildPendingRegistrationReply(profile),
+                    Error = "registration_pending_review",
+                    DecisionReason = "registration gate: manual review"
+                });
+                return true;
+
+            case HighLevelAnonymousRegistrationPolicy.DenyAll:
+            default:
+                profile.RegistrationStatus = HighLevelRegistrationStatus.DeniedByPolicy;
+                profile.RegistrationReviewedAt = DateTimeOffset.UtcNow;
+                profile.RegistrationReviewNote = "目前未開放匿名註冊。";
+                SaveUserProfile(channel, userId, profile);
+                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Conversation,
+                    Reply = BuildRejectedRegistrationReply(profile),
+                    Error = "registration_denied_by_policy",
+                    DecisionReason = "registration gate: deny all"
+                });
+                return true;
+        }
     }
 
     private bool TryHandleProfileCommand(
@@ -1435,11 +1646,70 @@ public class HighLevelCoordinator
             new { docId = documentId });
     }
 
+    private string GetAnonymousRegistrationPolicy(string channel)
+    {
+        var state = LoadLatestJson<HighLevelRegistrationPolicyState>(BuildRegistrationPolicyDocumentId(channel));
+        return NormalizeAnonymousRegistrationPolicy(state?.Policy);
+    }
+
+    private static string NormalizeAnonymousRegistrationPolicy(string? policy)
+        => Normalize(policy ?? string.Empty) switch
+        {
+            HighLevelAnonymousRegistrationPolicy.DenyAll => HighLevelAnonymousRegistrationPolicy.DenyAll,
+            HighLevelAnonymousRegistrationPolicy.ManualReview => HighLevelAnonymousRegistrationPolicy.ManualReview,
+            _ => HighLevelAnonymousRegistrationPolicy.AllowAll
+        };
+
+    private static string ResolveRegistrationStatus(HighLevelUserProfile profile)
+        => string.IsNullOrWhiteSpace(profile.RegistrationStatus)
+            ? HighLevelRegistrationStatus.Approved
+            : Normalize(profile.RegistrationStatus) switch
+            {
+                HighLevelRegistrationStatus.PendingReview => HighLevelRegistrationStatus.PendingReview,
+                HighLevelRegistrationStatus.Rejected => HighLevelRegistrationStatus.Rejected,
+                HighLevelRegistrationStatus.DeniedByPolicy => HighLevelRegistrationStatus.DeniedByPolicy,
+                _ => HighLevelRegistrationStatus.Approved
+            };
+
+    private HighLevelLineNotification EnqueueLineNotification(string userId, string title, string body)
+    {
+        var notification = new HighLevelLineNotification
+        {
+            NotificationId = IdGen.New("hlmnoti"),
+            Channel = "line",
+            UserId = userId,
+            Title = title,
+            Body = body,
+            DeliveryStatus = "pending",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        UpsertDocument(
+            BuildLineNotificationDocumentId(notification.NotificationId),
+            BuildLineNotificationDocumentId(notification.NotificationId),
+            JsonSerializer.Serialize(notification),
+            "application/json",
+            "global");
+
+        return notification;
+    }
+
+    private static string NormalizeNotificationStatus(string? status)
+        => Normalize(status ?? string.Empty) switch
+        {
+            "sent" => "sent",
+            "failed" => "failed",
+            _ => "pending"
+        };
+
     private static string BuildConversationDocumentId(string userId)
         => $"{ConversationDocumentPrefix}{userId}";
 
     private static string BuildProfileDocumentId(string channel, string userId)
         => $"hlm.profile.{channel}.{userId}";
+
+    private static string BuildRegistrationPolicyDocumentId(string channel)
+        => $"hlm.registration-policy.{channel}";
 
     private static string BuildDraftDocumentId(string channel, string userId)
         => $"hlm.draft.{channel}.{userId}";
@@ -1449,6 +1719,9 @@ public class HighLevelCoordinator
 
     private static string BuildUserCodeDocumentId(string channel, string userCode)
         => $"hlm.usercode.{channel}.{Normalize(userCode)}";
+
+    private static string BuildLineNotificationDocumentId(string notificationId)
+        => $"hlm.notify.line.{notificationId}";
 
     private static string Normalize(string value)
         => value.Trim().ToLowerInvariant();
@@ -1464,6 +1737,22 @@ public class HighLevelCoordinator
 
     private static bool ContainsAny(string normalized, IEnumerable<string> keywords)
         => keywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildPendingRegistrationReply(HighLevelUserProfile profile)
+    {
+        var note = string.IsNullOrWhiteSpace(profile.RegistrationReviewNote)
+            ? string.Empty
+            : $"\n備註：{profile.RegistrationReviewNote}";
+        return $"目前採人工審核註冊。\n已收到你的申請，審核完成後會再通知。{note}";
+    }
+
+    private static string BuildRejectedRegistrationReply(HighLevelUserProfile profile)
+    {
+        var note = string.IsNullOrWhiteSpace(profile.RegistrationReviewNote)
+            ? string.Empty
+            : $"\n原因：{profile.RegistrationReviewNote}";
+        return $"目前無法使用此服務。{note}";
+    }
 
     private string PrepareReplySafe(HighLevelUserProfile profile, string message, string reply)
     {
@@ -1932,6 +2221,7 @@ public class HighLevelCoordinatorOptions
     public int MaxDraftSummaryLength { get; set; } = 160;
     public int CommandGuideReminderMinutes { get; set; } = 60;
     public string AccessRoot { get; set; } = HighLevelCoordinatorDefaults.DefaultAccessRoot;
+    public string AnonymousRegistrationPolicy { get; set; } = HighLevelAnonymousRegistrationPolicy.AllowAll;
     public string[] QueryPrefixes { get; set; } = new[] { "?", "\uFF1F" };
     public string[] ProductionPrefixes { get; set; } = new[] { "/", "\uFF0F" };
     public string[] QueryKeywords { get; set; } = new[]
@@ -2044,6 +2334,10 @@ public class HighLevelUserProfile
     public string UserId { get; set; } = string.Empty;
     public string? PreferredDisplayName { get; set; }
     public string? PreferredUserCode { get; set; }
+    public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
+    public DateTimeOffset? RegistrationRequestedAt { get; set; }
+    public DateTimeOffset? RegistrationReviewedAt { get; set; }
+    public string? RegistrationReviewNote { get; set; }
     public string? LastDecision { get; set; }
     public DateTimeOffset? LastInteractionAt { get; set; }
     public DateTimeOffset? LastCommandGuideAt { get; set; }
@@ -2059,6 +2353,10 @@ public sealed class HighLevelLineUserSummary
     public string UserId { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
     public string? UserCode { get; set; }
+    public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
+    public DateTimeOffset? RegistrationRequestedAt { get; set; }
+    public DateTimeOffset? RegistrationReviewedAt { get; set; }
+    public string? RegistrationReviewNote { get; set; }
     public DateTimeOffset? LastInteractionAt { get; set; }
     public string? LastDecision { get; set; }
     public string? PendingDraftId { get; set; }
@@ -2075,6 +2373,50 @@ internal enum CommandGuideMode
     None = 0,
     Short = 1,
     Full = 2
+}
+
+public static class HighLevelAnonymousRegistrationPolicy
+{
+    public const string DenyAll = "deny_all";
+    public const string ManualReview = "manual_review";
+    public const string AllowAll = "allow_all";
+}
+
+public static class HighLevelRegistrationStatus
+{
+    public const string Approved = "approved";
+    public const string PendingReview = "pending_review";
+    public const string Rejected = "rejected";
+    public const string DeniedByPolicy = "denied_by_policy";
+}
+
+public sealed class HighLevelRegistrationPolicyState
+{
+    public string Channel { get; set; } = "line";
+    public string Policy { get; set; } = HighLevelAnonymousRegistrationPolicy.AllowAll;
+    public string UpdatedBy { get; set; } = "system:high-level-coordinator";
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class HighLevelLineNotification
+{
+    public string NotificationId { get; set; } = string.Empty;
+    public string Channel { get; set; } = "line";
+    public string UserId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string DeliveryStatus { get; set; } = "pending";
+    public string? Error { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class HighLevelRegistrationReviewResult
+{
+    public string UserId { get; set; } = string.Empty;
+    public string RegistrationStatus { get; set; } = string.Empty;
+    public string? ReviewNote { get; set; }
+    public HighLevelLineNotification? Notification { get; set; }
 }
 
 public class HighLevelTaskDraft

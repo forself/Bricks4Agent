@@ -1,5 +1,6 @@
 using Broker.Helpers;
 using Broker.Services;
+using System.Text.Json;
 
 namespace Broker.Endpoints;
 
@@ -81,6 +82,74 @@ public static class HighLevelEndpoints
                 total = users.Count,
                 users
             }));
+        });
+
+        line.MapGet("/registration-policy", (HighLevelCoordinator coordinator) =>
+            Results.Ok(ApiResponseHelper.Success(new
+            {
+                policy = coordinator.GetLineAnonymousRegistrationPolicy()
+            })));
+
+        line.MapPost("/registration-policy", (HttpContext ctx, HighLevelCoordinator coordinator) =>
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "policy", out var policy, out var err))
+            {
+                return err!;
+            }
+
+            var updated = coordinator.SetLineAnonymousRegistrationPolicy(policy);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                policy = updated
+            }));
+        });
+
+        line.MapPost("/users/registration/review", (HttpContext ctx, HighLevelCoordinator coordinator) =>
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body, new[] { "user_id", "action" }, out var values, out var err))
+            {
+                return err!;
+            }
+
+            var note = body.TryGetProperty("note", out var noteProp) && noteProp.ValueKind == JsonValueKind.String
+                ? noteProp.GetString()
+                : null;
+            var reviewed = coordinator.ReviewLineUserRegistration(values["user_id"], values["action"], note);
+            if (reviewed == null)
+            {
+                return Results.NotFound(ApiResponseHelper.Error("Profile not found.", 404));
+            }
+
+            return Results.Ok(ApiResponseHelper.Success(reviewed));
+        });
+
+        line.MapGet("/notifications/pending", (HighLevelCoordinator coordinator, int limit = 20) =>
+            Results.Ok(ApiResponseHelper.Success(new
+            {
+                total = coordinator.ListPendingLineNotifications(limit).Count,
+                notifications = coordinator.ListPendingLineNotifications(limit)
+            })));
+
+        line.MapPost("/notifications/complete", (HttpContext ctx, HighLevelCoordinator coordinator) =>
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body, new[] { "notification_id", "status" }, out var values, out var err))
+            {
+                return err!;
+            }
+
+            var error = body.TryGetProperty("error", out var errorProp) && errorProp.ValueKind == JsonValueKind.String
+                ? errorProp.GetString()
+                : null;
+            var completed = coordinator.CompleteLineNotification(values["notification_id"], values["status"], error);
+            if (completed == null)
+            {
+                return Results.NotFound(ApiResponseHelper.Error("Notification not found.", 404));
+            }
+
+            return Results.Ok(ApiResponseHelper.Success(completed));
         });
     }
 }
