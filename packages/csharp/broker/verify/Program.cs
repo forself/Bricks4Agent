@@ -174,6 +174,13 @@ try
             "requires_consent_record": false,
             "requires_interactive_login": false
           },
+          "browser_site_policy": {
+            "site_binding_mode": "public_open",
+            "allowed_site_classes": ["public_web"],
+            "requires_registered_site_binding": false,
+            "requires_exact_origin_match": false,
+            "allows_cross_origin_navigation": true
+          },
           "input_schema": { "type": "object" },
           "output_schema": { "type": "object" },
           "source_policy": { "allowed_sources": ["public_web"] },
@@ -203,6 +210,9 @@ try
         AssertTrue(browserSpec.BrowserSessionPolicy != null, "tool spec registry preserves browser session policy");
         AssertTrue(browserSpec.BrowserSessionPolicy!.BindingMode == "ephemeral", "browser session policy keeps binding mode");
         AssertTrue(browserSpec.BrowserSessionPolicy.CredentialBinding == "none", "browser session policy keeps credential binding");
+        AssertTrue(browserSpec.BrowserSitePolicy != null, "tool spec registry preserves browser site policy");
+        AssertTrue(browserSpec.BrowserSitePolicy!.SiteBindingMode == "public_open", "browser site policy keeps site binding mode");
+        AssertTrue(browserSpec.BrowserSitePolicy.AllowedSiteClasses.Length == 1 && browserSpec.BrowserSitePolicy.AllowedSiteClasses[0] == "public_web", "browser site policy keeps allowed site classes");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");

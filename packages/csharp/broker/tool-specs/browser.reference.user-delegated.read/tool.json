@@ -31,6 +31,13 @@
     "requires_consent_record": true,
     "requires_interactive_login": true
   },
+  "browser_site_policy": {
+    "site_binding_mode": "user_authorized_site",
+    "allowed_site_classes": ["user_authorized_site"],
+    "requires_registered_site_binding": true,
+    "requires_exact_origin_match": true,
+    "allows_cross_origin_navigation": false
+  },
   "input_schema": {
     "type": "object",
     "properties": {

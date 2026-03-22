@@ -31,6 +31,13 @@
     "requires_consent_record": false,
     "requires_interactive_login": false
   },
+  "browser_site_policy": {
+    "site_binding_mode": "public_open",
+    "allowed_site_classes": ["public_web"],
+    "requires_registered_site_binding": false,
+    "requires_exact_origin_match": false,
+    "allows_cross_origin_navigation": true
+  },
   "input_schema": {
     "type": "object",
     "properties": {
