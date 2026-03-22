@@ -2,6 +2,31 @@
 
 > This guide is intended for junior engineers, covering installation, usage, theme system, page generator, and backend integration of Bricks4Agent.
 
+## Verified Status (2026-03-22)
+
+This guide now reflects a repository-wide validation run on 2026-03-22.
+
+- Verified environment:
+  - Node.js `v22.17.1`
+  - npm `11.5.1`
+  - .NET SDK `10.0.104`
+  - Podman `5.5.2`
+- Verified passing checks:
+  - solution build
+  - page-generator examples
+  - UI library validation
+  - browser smoke
+  - UI state contract validation
+  - broker scope and governed-agent validation
+  - broker LLM proxy integration
+  - BaseOrm verification
+  - governed Podman stacks
+  - LINE sidecar webhook ingress and high-level broker routing
+- Important current limit:
+  - high-level `query` routing is active, but real-time broker-mediated search/fetch is not yet generally wired into the live conversation path, so requests like weather lookup may still fall back to normal dialogue/RAG responses
+- Important backend note:
+  - the solution builds successfully, but it still emits `207` existing warnings, mostly in `Mfa`, `AuditLog`, and `AccountLock`
+
 ---
 
 ## Table of Contents
@@ -28,8 +53,9 @@
 ### 1.1 Prerequisites
 
 - Node.js 18+
-- .NET 8 SDK
+- .NET 8 SDK or newer (`10.0.104` verified)
 - Git
+- Podman 5+ for the full governed-stack validation matrix
 
 ### 1.2 Installation & Startup
 

@@ -18,6 +18,8 @@ public class HighLevelCoordinator
     private readonly ITaskRouter _taskRouter;
     private readonly LineChatGateway _lineChatGateway;
     private readonly HighLevelCoordinatorOptions _options;
+    private readonly HighLevelCommandParser _commandParser;
+    private readonly HighLevelWorkflowStateMachine _workflowStateMachine;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -36,6 +38,8 @@ public class HighLevelCoordinator
         _taskRouter = taskRouter;
         _lineChatGateway = lineChatGateway;
         _options = options;
+        _commandParser = new HighLevelCommandParser(_options);
+        _workflowStateMachine = new HighLevelWorkflowStateMachine();
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -57,7 +61,7 @@ public class HighLevelCoordinator
 
         const string channel = "line";
         var trimmed = message.Trim();
-        var normalized = Normalize(trimmed);
+        var parsed = _commandParser.Parse(trimmed);
         var profile = LoadUserProfile(channel, userId) ?? new HighLevelUserProfile
         {
             Channel = channel,
@@ -72,101 +76,137 @@ public class HighLevelCoordinator
             profile.PendingDraftId = null;
         }
 
+        var workflow = _workflowStateMachine.Evaluate(draft, parsed);
+
+        if (workflow.Action == HighLevelWorkflowAction.ShowHelp)
+        {
+            profile.LastInteractionAt = DateTimeOffset.UtcNow;
+            profile.LastUpdatedAt = DateTime.UtcNow;
+            profile.LastDecision = HighLevelRouteMode.Query.ToString();
+            IncrementDecisionCount(profile, HighLevelRouteMode.Query);
+            var helpReply = BuildHelpReply(draft);
+            profile.LastCommandGuideAt = DateTimeOffset.UtcNow;
+            SaveUserProfile(channel, userId, profile);
+
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = helpReply,
+                DecisionReason = "matched help query",
+                Draft = draft
+            };
+        }
+
         if (draft != null)
         {
             if (draft.RequiresProjectName && string.IsNullOrWhiteSpace(draft.ProjectName))
             {
-                if (IsCancel(normalized))
+                if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
                 {
                     DeleteDocument(BuildDraftDocumentId(channel, userId));
                     profile.PendingDraftId = null;
                     profile.LastDecision = HighLevelRouteMode.Production.ToString();
                     profile.LastUpdatedAt = DateTime.UtcNow;
                     IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+                    var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                     SaveUserProfile(channel, userId, profile);
 
                     return new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
-                        Reply = "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002",
+                        Reply = reply,
                         DraftCleared = true
                     };
                 }
 
-                if (IsConfirm(normalized))
+                if (workflow.Action == HighLevelWorkflowAction.RequestProjectNameFirst)
                 {
+                    var reply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
                     return new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
-                        Reply = BuildProjectNameRequestReply(draft),
+                        Reply = reply,
                         Draft = draft,
                         DecisionReason = "project name required before confirmation"
                     };
                 }
 
-                if (TryAssignProjectName(draft, trimmed, out var projectNameError))
+                var projectNameError = "\u8acb\u4ee5 # \u958b\u982d\u56de\u8986\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982 #MySite\u3002\u4e0d\u8981\u91cd\u65b0\u8f38\u5165\u6574\u6bb5\u9700\u6c42\u3002";
+                if (workflow.Action == HighLevelWorkflowAction.CaptureProjectName &&
+                    TryAssignProjectName(draft, parsed.Body, out projectNameError))
                 {
                     SaveTaskDraft(channel, userId, draft);
                     profile.PendingDraftId = draft.DraftId;
+                    var reply = PrepareReply(profile, trimmed, BuildDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
                     return new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
-                        Reply = BuildDraftConfirmationReply(draft),
+                        Reply = reply,
                         Draft = draft,
                         DecisionReason = "project name captured"
                     };
                 }
 
-                draft.ProjectNameValidationError = projectNameError;
-                SaveTaskDraft(channel, userId, draft);
-                SaveUserProfile(channel, userId, profile);
-                return new HighLevelProcessResult
+                if (workflow.Action == HighLevelWorkflowAction.RemindProjectName)
                 {
-                    Mode = HighLevelRouteMode.Production,
-                    Reply = BuildProjectNameRequestReply(draft),
-                    Draft = draft,
-                    DecisionReason = "project name required"
-                };
+                    draft.ProjectNameValidationError = projectNameError;
+                    SaveTaskDraft(channel, userId, draft);
+                    var projectNameReply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
+                    SaveUserProfile(channel, userId, profile);
+                    return new HighLevelProcessResult
+                    {
+                        Mode = HighLevelRouteMode.Production,
+                        Reply = projectNameReply,
+                        Draft = draft,
+                        DecisionReason = workflow.Reason
+                    };
+                }
             }
 
-            if (IsConfirm(normalized))
+            if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
             {
                 var confirmed = ConfirmDraft(channel, userId, profile, draft);
+                confirmed.Result.Reply = PrepareReply(confirmed.Profile, trimmed, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
                 return confirmed.Result;
             }
 
-            if (IsCancel(normalized))
+            if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
             {
                 DeleteDocument(BuildDraftDocumentId(channel, userId));
                 profile.PendingDraftId = null;
                 profile.LastDecision = HighLevelRouteMode.Production.ToString();
                 profile.LastUpdatedAt = DateTime.UtcNow;
                 IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+                var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                 SaveUserProfile(channel, userId, profile);
 
                 return new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
-                    Reply = "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002",
+                    Reply = reply,
                     DraftCleared = true
                 };
             }
 
-            SaveUserProfile(channel, userId, profile);
-            return new HighLevelProcessResult
+            if (workflow.Action == HighLevelWorkflowAction.RemindPendingDraft)
             {
-                Mode = HighLevelRouteMode.Production,
-                Reply = BuildPendingDraftReminder(draft),
-                Draft = draft,
-                DecisionReason = "pending draft requires confirmation"
-            };
+                var pendingReply = PrepareReply(profile, trimmed, BuildPendingDraftReminder(draft));
+                SaveUserProfile(channel, userId, profile);
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = pendingReply,
+                    Draft = draft,
+                    DecisionReason = workflow.Reason
+                };
+            }
         }
 
-        var decision = Classify(trimmed);
+        var decision = Classify(parsed);
         profile.LastDecision = decision.Mode.ToString();
         profile.LastUpdatedAt = DateTime.UtcNow;
         IncrementDecisionCount(profile, decision.Mode);
@@ -177,26 +217,30 @@ public class HighLevelCoordinator
             SaveTaskDraft(channel, userId, nextDraft);
 
             profile.PendingDraftId = nextDraft.DraftId;
+            var reply = PrepareReply(
+                profile,
+                trimmed,
+                nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
+                    ? BuildProjectNameRequestReply(nextDraft)
+                    : BuildDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
-                Reply = nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
-                    ? BuildProjectNameRequestReply(nextDraft)
-                    : BuildDraftConfirmationReply(nextDraft),
+                Reply = reply,
                 Draft = nextDraft,
                 DecisionReason = decision.Reason
             };
         }
 
-        SaveUserProfile(channel, userId, profile);
-
         var chat = await _lineChatGateway.ChatAsync(userId, trimmed, cancellationToken);
+        var chatReply = PrepareReply(profile, trimmed, chat.Reply);
+        SaveUserProfile(channel, userId, profile);
         return new HighLevelProcessResult
         {
             Mode = decision.Mode,
-            Reply = chat.Reply,
+            Reply = chatReply,
             Error = chat.Error,
             DecisionReason = decision.Reason,
             RagSnippets = chat.RagSnippets,
@@ -289,28 +333,26 @@ public class HighLevelCoordinator
         }, profile);
     }
 
-    private HighLevelRouteDecision Classify(string message)
+    private HighLevelRouteDecision Classify(HighLevelParsedInput parsed)
     {
-        var normalized = Normalize(message);
-
-        if (ContainsAny(normalized, _options.ProductionKeywords))
+        if (parsed.Kind == HighLevelInputKind.Production)
         {
-            var taskType = InferTaskType(normalized);
+            var taskType = InferTaskType(parsed.Normalized);
             return new HighLevelRouteDecision
             {
                 Mode = HighLevelRouteMode.Production,
                 TaskType = taskType,
-                Reason = "matched production keywords"
+                Reason = "matched production prefix"
             };
         }
 
-        if (ContainsAny(normalized, _options.QueryKeywords) || normalized.Contains('?'))
+        if (parsed.Kind == HighLevelInputKind.Query || parsed.Kind == HighLevelInputKind.Help)
         {
             return new HighLevelRouteDecision
             {
                 Mode = HighLevelRouteMode.Query,
                 TaskType = "query",
-                Reason = "matched query keywords"
+                Reason = "matched query prefix"
             };
         }
 
@@ -366,16 +408,6 @@ public class HighLevelCoordinator
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(Math.Max(1, _options.DraftTtlMinutes))
         };
-
-        if (requiresProjectName)
-        {
-            var hintedProjectName = TryExtractProjectNameHint(message);
-            if (!string.IsNullOrWhiteSpace(hintedProjectName) &&
-                !TryAssignProjectName(draft, hintedProjectName, out var projectNameError))
-            {
-                draft.ProjectNameValidationError = projectNameError;
-            }
-        }
 
         UpdateDraftDescriptors(draft);
         return draft;
@@ -452,7 +484,7 @@ public class HighLevelCoordinator
             $"projects_root: {draft.ManagedPaths.ProjectsRoot}",
             "",
             string.IsNullOrWhiteSpace(draft.ProjectNameValidationError)
-                ? "\u8acb\u5148\u63d0\u4f9b\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982\uff1a\u300c\u5c08\u6848\u540d\u7a31\uff1aMySite\u300d\u6216\u76f4\u63a5\u56de\u8986 MySite\u3002"
+                ? "\u8acb\u4ee5 # \u958b\u982d\u63d0\u4f9b\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982\uff1a#MySite\u3002"
                 : draft.ProjectNameValidationError,
             "\u5c08\u6848\u540d\u7a31\u6703\u5728\u4f60\u7684 user_root/projects \u4e0b\u5efa\u7acb\u5c08\u5c6c\u76ee\u9304\uff0c\u540c\u540d\u5c08\u6848\u4e0d\u6703\u91cd\u8907\u5efa\u7acb\u3002",
             "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u6216 cancel\u3002"
@@ -841,6 +873,109 @@ public class HighLevelCoordinator
     private static bool ContainsAny(string normalized, IEnumerable<string> keywords)
         => keywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase));
 
+    private string PrepareReply(HighLevelUserProfile profile, string message, string reply)
+    {
+        var now = DateTimeOffset.UtcNow;
+        profile.LastInteractionAt = now;
+
+        var guideMode = GetCommandGuideMode(profile, message);
+        if (guideMode == CommandGuideMode.None)
+        {
+            return reply;
+        }
+
+        profile.LastCommandGuideAt = now;
+        if (guideMode == CommandGuideMode.Full)
+        {
+            return string.Join('\n', new[]
+            {
+                reply,
+                "",
+                BuildCommandGuideBlock()
+            });
+        }
+
+        return string.Join('\n', new[]
+        {
+            reply,
+            "",
+            "若要查看前綴規則，請輸入 ?help。"
+        });
+    }
+
+    private CommandGuideMode GetCommandGuideMode(HighLevelUserProfile profile, string message)
+    {
+        if (profile.LastCommandGuideAt == null)
+        {
+            return CommandGuideMode.Full;
+        }
+
+        if (LooksLikePotentialCommandWithoutPrefix(message) && IsCommandGuideExpired(profile.LastCommandGuideAt))
+        {
+            return CommandGuideMode.Short;
+        }
+
+        return CommandGuideMode.None;
+    }
+
+    private bool LooksLikePotentialCommandWithoutPrefix(string message)
+    {
+        var trimmed = message.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return false;
+        }
+
+        if (_commandParser.Parse(trimmed).Kind != HighLevelInputKind.Conversation)
+        {
+            return false;
+        }
+
+        var normalized = Normalize(trimmed);
+        return ContainsAny(normalized, _options.ProductionKeywords) ||
+               ContainsAny(normalized, _options.QueryKeywords);
+    }
+
+    private bool IsCommandGuideExpired(DateTimeOffset? lastCommandGuideAt)
+    {
+        if (lastCommandGuideAt == null)
+        {
+            return true;
+        }
+
+        return lastCommandGuideAt.Value.AddMinutes(Math.Max(1, _options.CommandGuideReminderMinutes)) <= DateTimeOffset.UtcNow;
+    }
+
+    private string BuildHelpReply(HighLevelTaskDraft? draft)
+    {
+        if (draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName))
+        {
+            return string.Join('\n', new[]
+            {
+                "你目前正在提供專案名稱。",
+                "請用 # 開頭回覆專案名稱，例如 #MySite。",
+                "",
+                BuildCommandGuideBlock()
+            });
+        }
+
+        return BuildCommandGuideBlock();
+    }
+
+    private static string BuildCommandGuideBlock()
+    {
+        return string.Join('\n', new[]
+        {
+            "前綴規則：",
+            "- 一般對話：直接輸入",
+            "- 查詢：?內容",
+            "- 任務/指令：/內容",
+            "- 專案名稱：#名稱",
+            "- 使用說明：?help",
+            "- 確認 / 取消：確認 或 取消"
+        });
+    }
+
     private static void IncrementDecisionCount(HighLevelUserProfile profile, HighLevelRouteMode mode)
     {
         var key = mode.ToString().ToLowerInvariant();
@@ -862,7 +997,10 @@ public class HighLevelCoordinatorOptions
 {
     public int DraftTtlMinutes { get; set; } = 30;
     public int MaxDraftSummaryLength { get; set; } = 160;
+    public int CommandGuideReminderMinutes { get; set; } = 60;
     public string AccessRoot { get; set; } = HighLevelCoordinatorDefaults.DefaultAccessRoot;
+    public string[] QueryPrefixes { get; set; } = new[] { "?", "\uFF1F" };
+    public string[] ProductionPrefixes { get; set; } = new[] { "/", "\uFF0F" };
     public string[] QueryKeywords { get; set; } = new[]
     {
         "\u67e5\u8a62",
@@ -972,11 +1110,20 @@ public class HighLevelUserProfile
     public string Channel { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public string? LastDecision { get; set; }
+    public DateTimeOffset? LastInteractionAt { get; set; }
+    public DateTimeOffset? LastCommandGuideAt { get; set; }
     public string? LastTaskId { get; set; }
     public string? LastPlanId { get; set; }
     public string? PendingDraftId { get; set; }
     public Dictionary<string, int> DecisionCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+internal enum CommandGuideMode
+{
+    None = 0,
+    Short = 1,
+    Full = 2
 }
 
 public class HighLevelTaskDraft

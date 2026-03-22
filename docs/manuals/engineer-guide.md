@@ -2,6 +2,33 @@
 
 > ??????????????????銵??擏???Bricks4Agent ???????頩????皞頩????賃ㄟ?蹇??豯頩????????????????????ㄞ??????
 
+## 2026-03-22 實測狀態
+
+本手冊已依 2026-03-22 的整體測試結果更新，這次實際驗證的環境為：
+
+- Node.js `v22.17.1`
+- npm `11.5.1`
+- .NET SDK `10.0.104`
+- Podman `5.5.2`
+
+已實際通過：
+
+- solution build
+- page-generator 範例測試
+- UI library 驗證
+- browser smoke
+- UI state contract 驗證
+- broker scope / governed agent 驗證
+- broker LLM proxy 整合
+- BaseOrm 驗證
+- governed Podman stacks
+- LINE sidecar webhook 與高階 broker 路徑
+
+目前已確認的限制：
+
+- 高階 `query` 分流已啟用，但即時搜尋/抓取工具尚未全面接進 live 對話路徑，所以像天氣查詢這類需求目前仍可能退回一般對話或 RAG 回覆
+- solution 雖然可成功編譯，但目前仍有 `207` 個既有 warnings，主要集中在 `Mfa`、`AuditLog`、`AccountLock`
+
 ---
 
 ## ???
