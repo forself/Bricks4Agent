@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Broker.Adapters;
+using Broker.Services;
 using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,6 +19,41 @@ Directory.CreateDirectory(sandboxRoot);
 try
 {
     Console.WriteLine("=== Broker Verify ===");
+
+    var parserOptions = new HighLevelCoordinatorOptions();
+    var parser = new HighLevelCommandParser(parserOptions);
+    var workflowMachine = new HighLevelWorkflowStateMachine();
+    AssertTrue(parser.Parse("?help").Kind == HighLevelInputKind.Help, "parser recognizes explicit help command");
+    AssertTrue(parser.Parse("/build website").Kind == HighLevelInputKind.Production, "parser recognizes production prefix");
+    AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
+    AssertTrue(parser.Parse("#MySite").Kind == HighLevelInputKind.ProjectName, "parser recognizes project-name prefix");
+    AssertTrue(parser.Parse("confirm").Kind == HighLevelInputKind.Confirm, "parser recognizes confirm token");
+    AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
+    AssertTrue(parser.Parse("hello world").Kind == HighLevelInputKind.Conversation, "parser keeps bare text as conversation");
+
+    var awaitingProjectDraft = new HighLevelTaskDraft
+    {
+        RequiresProjectName = true,
+        ProjectName = null
+    };
+    AssertTrue(
+        workflowMachine.Evaluate(awaitingProjectDraft, parser.Parse("#MySite")).Action == HighLevelWorkflowAction.CaptureProjectName,
+        "workflow accepts project-name command only in awaiting-project-name state");
+    AssertTrue(
+        workflowMachine.Evaluate(awaitingProjectDraft, parser.Parse("confirm")).Action == HighLevelWorkflowAction.RequestProjectNameFirst,
+        "workflow blocks confirmation before project name is captured");
+
+    var pendingDraft = new HighLevelTaskDraft
+    {
+        RequiresProjectName = true,
+        ProjectName = "MySite"
+    };
+    AssertTrue(
+        workflowMachine.Evaluate(pendingDraft, parser.Parse("confirm")).Action == HighLevelWorkflowAction.ConfirmDraft,
+        "workflow accepts confirm after draft requirements are satisfied");
+    AssertTrue(
+        workflowMachine.Evaluate(null, parser.Parse("/build website")).Action == HighLevelWorkflowAction.StartProduction,
+        "workflow starts production only from explicit production command");
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
     File.WriteAllText(readmePath, "hello broker");

@@ -9,6 +9,7 @@ namespace BrokerCore.Data;
 public class BrokerDb : IDisposable
 {
     private readonly BaseDb _db;
+    private readonly object _writeGate = new();
 
     /// <summary>SQLite（開發/單節點）</summary>
     public BrokerDb(string connectionString)
@@ -33,11 +34,29 @@ public class BrokerDb : IDisposable
 
     public List<T> GetAll<T>() where T : new() => _db.GetAll<T>();
 
-    public long Insert<T>(T entity) where T : class => _db.Insert(entity);
+    public long Insert<T>(T entity) where T : class
+    {
+        lock (_writeGate)
+        {
+            return _db.Insert(entity);
+        }
+    }
 
-    public int Update<T>(T entity) where T : class => _db.Update(entity);
+    public int Update<T>(T entity) where T : class
+    {
+        lock (_writeGate)
+        {
+            return _db.Update(entity);
+        }
+    }
 
-    public int Delete<T>(object id) => _db.Delete<T>(id);
+    public int Delete<T>(object id)
+    {
+        lock (_writeGate)
+        {
+            return _db.Delete<T>(id);
+        }
+    }
 
     public List<T> Query<T>(string sql, object? parameters = null) where T : new()
         => _db.Query<T>(sql, parameters);
@@ -49,14 +68,50 @@ public class BrokerDb : IDisposable
         => _db.Scalar<T>(sql, parameters);
 
     public int Execute(string sql, object? parameters = null)
-        => _db.Execute(sql, parameters);
+    {
+        lock (_writeGate)
+        {
+            return _db.Execute(sql, parameters);
+        }
+    }
 
-    public void BeginTransaction() => _db.BeginTransaction();
-    public void Commit() => _db.Commit();
-    public void Rollback() => _db.Rollback();
+    public void BeginTransaction()
+    {
+        lock (_writeGate)
+        {
+            _db.BeginTransaction();
+        }
+    }
+    public void Commit()
+    {
+        lock (_writeGate)
+        {
+            _db.Commit();
+        }
+    }
+    public void Rollback()
+    {
+        lock (_writeGate)
+        {
+            _db.Rollback();
+        }
+    }
 
-    public void InTransaction(Action action) => _db.InTransaction(action);
-    public T InTransaction<T>(Func<T> action) => _db.InTransaction(action);
+    public void InTransaction(Action action)
+    {
+        lock (_writeGate)
+        {
+            _db.InTransaction(action);
+        }
+    }
+
+    public T InTransaction<T>(Func<T> action)
+    {
+        lock (_writeGate)
+        {
+            return _db.InTransaction(action);
+        }
+    }
 
     public void Dispose() => _db.Dispose();
 
