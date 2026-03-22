@@ -19,6 +19,7 @@ public class HighLevelCoordinator
     private readonly LineChatGateway _lineChatGateway;
     private readonly HighLevelCoordinatorOptions _options;
     private readonly HighLevelCommandParser _commandParser;
+    private readonly HighLevelInputTrustPolicy _inputTrustPolicy;
     private readonly HighLevelWorkflowStateMachine _workflowStateMachine;
     private readonly HighLevelInteractionRecorder _interactionRecorder;
     private readonly HighLevelMemoryStore _memoryStore;
@@ -41,6 +42,7 @@ public class HighLevelCoordinator
         _lineChatGateway = lineChatGateway;
         _options = options;
         _commandParser = new HighLevelCommandParser(_options);
+        _inputTrustPolicy = new HighLevelInputTrustPolicy();
         _workflowStateMachine = new HighLevelWorkflowStateMachine();
         _interactionRecorder = new HighLevelInteractionRecorder(_db);
         _memoryStore = new HighLevelMemoryStore(_db);
@@ -54,12 +56,14 @@ public class HighLevelCoordinator
         CancellationToken cancellationToken = default)
     {
         const string channel = "line";
-        var parsed = _commandParser.Parse(message);
+        var envelope = BuildLineEnvelope(message);
+        var trustedParse = _inputTrustPolicy.Apply(envelope, _commandParser.Parse(message));
+        var parsed = trustedParse.Parsed;
         var workflow = _workflowStateMachine.Evaluate(null, parsed);
 
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(message))
         {
-            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Conversation,
                 Reply = "user_id and message are required.",
@@ -68,7 +72,9 @@ public class HighLevelCoordinator
         }
 
         var trimmed = message.Trim();
-        parsed = _commandParser.Parse(trimmed);
+        envelope = BuildLineEnvelope(trimmed);
+        trustedParse = _inputTrustPolicy.Apply(envelope, _commandParser.Parse(trimmed));
+        parsed = trustedParse.Parsed;
         var profile = LoadUserProfile(channel, userId) ?? new HighLevelUserProfile
         {
             Channel = channel,
@@ -95,7 +101,7 @@ public class HighLevelCoordinator
             profile.LastCommandGuideAt = DateTimeOffset.UtcNow;
             SaveUserProfile(channel, userId, profile);
 
-            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Query,
                 Reply = helpReply,
@@ -118,7 +124,7 @@ public class HighLevelCoordinator
                     var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                     SaveUserProfile(channel, userId, profile);
 
-                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
@@ -130,7 +136,7 @@ public class HighLevelCoordinator
                 {
                     var reply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
-                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
@@ -148,7 +154,7 @@ public class HighLevelCoordinator
                     var reply = PrepareReply(profile, trimmed, BuildDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
-                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
@@ -163,7 +169,7 @@ public class HighLevelCoordinator
                     SaveTaskDraft(channel, userId, draft);
                     var projectNameReply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
-                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = projectNameReply,
@@ -178,7 +184,7 @@ public class HighLevelCoordinator
                 var confirmed = ConfirmDraft(channel, userId, profile, draft);
                 confirmed.Result.Reply = PrepareReply(confirmed.Profile, trimmed, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
-                return FinalizeResult(channel, userId, parsed, workflow, confirmed.Result);
+                return FinalizeResult(channel, userId, envelope, trustedParse, workflow, confirmed.Result);
             }
 
             if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
@@ -191,7 +197,7 @@ public class HighLevelCoordinator
                 var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                 SaveUserProfile(channel, userId, profile);
 
-                return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = reply,
@@ -203,7 +209,7 @@ public class HighLevelCoordinator
             {
                 var pendingReply = PrepareReply(profile, trimmed, BuildPendingDraftReminder(draft));
                 SaveUserProfile(channel, userId, profile);
-                return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+                return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = pendingReply,
@@ -232,7 +238,7 @@ public class HighLevelCoordinator
                     : BuildDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
-            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = reply,
@@ -244,7 +250,7 @@ public class HighLevelCoordinator
         var chat = await _lineChatGateway.ChatAsync(userId, trimmed, cancellationToken);
         var chatReply = PrepareReply(profile, trimmed, chat.Reply);
         SaveUserProfile(channel, userId, profile);
-        return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
+        return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
         {
             Mode = decision.Mode,
             Reply = chatReply,
@@ -993,10 +999,12 @@ public class HighLevelCoordinator
     private HighLevelProcessResult FinalizeResult(
         string channel,
         string userId,
-        HighLevelParsedInput parsed,
+        HighLevelInputEnvelope envelope,
+        HighLevelTrustedParseResult trustedParse,
         HighLevelWorkflowDecision workflow,
         HighLevelProcessResult result)
     {
+        var parsed = trustedParse.Parsed;
         try
         {
             _interactionRecorder.Record(new HighLevelInteractionRecord
@@ -1008,6 +1016,11 @@ public class HighLevelCoordinator
                 ParsedKind = parsed.Kind.ToString(),
                 ParsedPrefix = parsed.Prefix,
                 ParsedBody = parsed.Body,
+                InputSource = envelope.Source.ToString(),
+                InputTaint = envelope.Taint.ToString(),
+                AppliedTransforms = envelope.Transforms.Select(t => t.ToString()).ToArray(),
+                CommandExtractionAllowed = trustedParse.Trust.Allowed,
+                CommandTrustReason = trustedParse.Trust.Reason,
                 WorkflowState = workflow.State.ToString(),
                 WorkflowAction = workflow.Action.ToString(),
                 WorkflowReason = workflow.Reason,
@@ -1081,7 +1094,7 @@ public class HighLevelCoordinator
 
     private string ToMemoryGoal(string rawInput)
     {
-        var parsed = _commandParser.Parse(rawInput);
+        var parsed = _inputTrustPolicy.Apply(BuildLineEnvelope(rawInput), _commandParser.Parse(rawInput)).Parsed;
         if (!string.IsNullOrWhiteSpace(parsed.Body))
         {
             return parsed.Body;
@@ -1089,6 +1102,14 @@ public class HighLevelCoordinator
 
         return rawInput.Trim();
     }
+
+    private static HighLevelInputEnvelope BuildLineEnvelope(string rawText)
+        => new()
+        {
+            RawText = rawText,
+            Source = HighLevelInputSource.UserMessage,
+            Taint = HighLevelInputTaint.UserText
+        };
 }
 
 public static class HighLevelCoordinatorDefaults

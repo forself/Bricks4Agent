@@ -23,6 +23,7 @@ try
 
     var parserOptions = new HighLevelCoordinatorOptions();
     var parser = new HighLevelCommandParser(parserOptions);
+    var trustPolicy = new HighLevelInputTrustPolicy();
     var workflowMachine = new HighLevelWorkflowStateMachine();
     AssertTrue(parser.Parse("?help").Kind == HighLevelInputKind.Help, "parser recognizes explicit help command");
     AssertTrue(parser.Parse("/build website").Kind == HighLevelInputKind.Production, "parser recognizes production prefix");
@@ -31,6 +32,38 @@ try
     AssertTrue(parser.Parse("confirm").Kind == HighLevelInputKind.Confirm, "parser recognizes confirm token");
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
     AssertTrue(parser.Parse("hello world").Kind == HighLevelInputKind.Conversation, "parser keeps bare text as conversation");
+
+    var trustedUserCommand = trustPolicy.Apply(
+        new HighLevelInputEnvelope
+        {
+            RawText = "/build website",
+            Source = HighLevelInputSource.UserMessage,
+            Taint = HighLevelInputTaint.UserText
+        },
+        parser.Parse("/build website"));
+    AssertTrue(trustedUserCommand.Parsed.Kind == HighLevelInputKind.Production, "trust policy allows raw user commands");
+
+    var transformedCommand = trustPolicy.Apply(
+        new HighLevelInputEnvelope
+        {
+            RawText = "/build website",
+            Source = HighLevelInputSource.DecodedPayload,
+            Taint = HighLevelInputTaint.TransformedText,
+            Transforms = new List<HighLevelTransformKind> { HighLevelTransformKind.Base64Decode }
+        },
+        parser.Parse("/build website"));
+    AssertTrue(transformedCommand.Parsed.Kind == HighLevelInputKind.Conversation, "trust policy downgrades transformed command-like content");
+    AssertTrue(!transformedCommand.Trust.Allowed, "trust policy denies command extraction from transformed content");
+
+    var externalInstruction = trustPolicy.Apply(
+        new HighLevelInputEnvelope
+        {
+            RawText = "#InjectedProject",
+            Source = HighLevelInputSource.RetrievedDocument,
+            Taint = HighLevelInputTaint.ExternalText
+        },
+        parser.Parse("#InjectedProject"));
+    AssertTrue(externalInstruction.Parsed.Kind == HighLevelInputKind.Conversation, "trust policy downgrades external instruction-like content");
 
     var awaitingProjectDraft = new HighLevelTaskDraft
     {
