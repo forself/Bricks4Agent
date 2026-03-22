@@ -371,6 +371,7 @@ builder.Services.AddHttpClient("high-level-llm", client =>
     }
 });
 builder.Services.AddSingleton<Broker.Services.LineChatGateway>();
+builder.Services.AddSingleton<Broker.Services.HighLevelQueryToolMediator>();
 startupLogger.LogInformation(
     "LINE Chat Gateway: enabled={Enabled}, rag={Rag}, provider={Provider}, model={Model}",
     lineChatConfig.Enabled, lineChatConfig.RagEnabled, highLevelLlmOptions.Provider, highLevelLlmOptions.DefaultModel);

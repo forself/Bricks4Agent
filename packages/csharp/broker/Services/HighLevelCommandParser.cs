@@ -3,6 +3,11 @@ namespace Broker.Services;
 public sealed class HighLevelCommandParser
 {
     private static readonly string[] ProjectNamePrefixes = { "#", "\uFF03" };
+    private static readonly HashSet<string> QuerySearchCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "search",
+        "\u641c\u5c0b"
+    };
     private static readonly HashSet<string> ConfirmTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "\u78ba\u8a8d",
@@ -49,13 +54,16 @@ public sealed class HighLevelCommandParser
 
         if (TryExtractPrefixedBody(trimmed, _options.QueryPrefixes, out var queryPrefix, out var queryBody))
         {
+            var (queryCommand, queryArgument) = ParseQueryBody(queryBody);
             return Create(
                 HighLevelInputKind.Query,
                 rawMessage!,
                 trimmed,
                 queryPrefix,
                 queryBody,
-                Normalize(queryBody));
+                Normalize(queryBody),
+                queryCommand,
+                queryArgument);
         }
 
         if (TryExtractPrefixedBody(trimmed, _options.ProductionPrefixes, out var productionPrefix, out var productionBody))
@@ -125,7 +133,9 @@ public sealed class HighLevelCommandParser
         string trimmed,
         string prefix,
         string body,
-        string normalized)
+        string normalized,
+        string queryCommand = "",
+        string queryArgument = "")
         => new()
         {
             Kind = kind,
@@ -133,8 +143,28 @@ public sealed class HighLevelCommandParser
             Trimmed = trimmed,
             Prefix = prefix,
             Body = body,
-            Normalized = normalized
+            Normalized = normalized,
+            QueryCommand = queryCommand,
+            QueryArgument = queryArgument
         };
+
+    private static (string QueryCommand, string QueryArgument) ParseQueryBody(string body)
+    {
+        var trimmed = body.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return (string.Empty, string.Empty);
+
+        var parts = trimmed.Split(new[] { ' ', '\t', '\r', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return (string.Empty, string.Empty);
+
+        var candidate = Normalize(parts[0]);
+        if (!QuerySearchCommands.Contains(candidate))
+            return (string.Empty, trimmed);
+
+        var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+        return ("search", argument);
+    }
 
     private static string Normalize(string value)
         => value.Trim().ToLowerInvariant();
@@ -160,4 +190,6 @@ public sealed class HighLevelParsedInput
     public string Prefix { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public string Normalized { get; set; } = string.Empty;
+    public string QueryCommand { get; set; } = string.Empty;
+    public string QueryArgument { get; set; } = string.Empty;
 }

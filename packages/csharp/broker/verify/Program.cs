@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Broker.Adapters;
 using Broker.Services;
+using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
@@ -29,6 +30,10 @@ try
     AssertTrue(parser.Parse("?help").Kind == HighLevelInputKind.Help, "parser recognizes explicit help command");
     AssertTrue(parser.Parse("/build website").Kind == HighLevelInputKind.Production, "parser recognizes production prefix");
     AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
+    var searchParsed = parser.Parse("?search taipei weather");
+    AssertTrue(searchParsed.QueryCommand == "search" && searchParsed.QueryArgument == "taipei weather", "parser extracts explicit search query subcommand");
+    var plainQueryParsed = parser.Parse("?weather taipei");
+    AssertTrue(string.IsNullOrWhiteSpace(plainQueryParsed.QueryCommand), "parser keeps plain query text outside tool subcommands");
     AssertTrue(parser.Parse("#MySite").Kind == HighLevelInputKind.ProjectName, "parser recognizes project-name prefix");
     AssertTrue(parser.Parse("confirm").Kind == HighLevelInputKind.Confirm, "parser recognizes confirm token");
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
@@ -128,6 +133,15 @@ try
         ProjectName = null
     });
     AssertTrue(!deniedPromotion.Allowed, "promotion gate denies execution without required project name");
+
+    var mediator = new HighLevelQueryToolMediator(
+        new FakeToolSpecRegistry(),
+        new FakeExecutionDispatcher(),
+        NullLogger<HighLevelQueryToolMediator>.Instance);
+    var mediatedSearch = await mediator.SearchWebAsync("line", "tester", "taipei weather");
+    AssertTrue(mediatedSearch.Success, "query tool mediator executes explicit search through broker-owned tool binding");
+    AssertTrue(mediatedSearch.Reply.Contains("duckduckgo", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites search engine");
+    AssertTrue(mediatedSearch.Reply.Contains("https://example.com/weather", StringComparison.OrdinalIgnoreCase), "query tool mediator reply includes ranked URLs");
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
     using (var logDb = BrokerDb.UseSqlite($"Data Source={logDbPath}"))
@@ -394,5 +408,61 @@ finally
     if (!deleted)
     {
         Console.WriteLine($"Warning: verify temp directory not deleted: {sandboxRoot}");
+    }
+}
+
+file sealed class FakeToolSpecRegistry : IToolSpecRegistry
+{
+    private readonly ToolSpecView _view = new()
+    {
+        ToolId = "web.search.duckduckgo",
+        DisplayName = "DuckDuckGo Web Search",
+        Summary = "broker mediated search",
+        Kind = "search",
+        Status = "active",
+        CapabilityBindings =
+        [
+            new ToolCapabilityBindingView
+            {
+                CapabilityId = "web.search.duckduckgo",
+                Route = "web_search_duckduckgo",
+                Purpose = "test",
+                Registered = true,
+                RegisteredRoute = "web_search_duckduckgo"
+            }
+        ]
+    };
+
+    public ToolSpecView? Get(string toolId)
+        => string.Equals(toolId, _view.ToolId, StringComparison.OrdinalIgnoreCase) ? _view : null;
+
+    public IReadOnlyList<ToolSpecDocument> GetDefinitions()
+        => Array.Empty<ToolSpecDocument>();
+
+    public IReadOnlyList<ToolSpecView> List(string? filter = null)
+        => [_view];
+}
+
+file sealed class FakeExecutionDispatcher : IExecutionDispatcher
+{
+    public Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            engine = "duckduckgo",
+            query = "taipei weather",
+            results = new[]
+            {
+                new
+                {
+                    rank = 1,
+                    title = "Taipei Weather",
+                    url = "https://example.com/weather",
+                    snippet = "Rain later this afternoon."
+                }
+            }
+        });
+
+        return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
     }
 }
