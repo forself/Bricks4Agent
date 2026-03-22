@@ -4,6 +4,7 @@ using BrokerCore.Contracts;
 using BrokerCore.Models;
 using BrokerCore.Services;
 using BrokerCore.Data;
+using Broker.Services;
 using Broker.Scripts;
 
 namespace Broker.Adapters;
@@ -28,6 +29,7 @@ public class InProcessDispatcher : IExecutionDispatcher
     private readonly BrokerDb? _db;
     private readonly EmbeddingService? _embeddingService;
     private readonly RagPipelineService? _ragPipeline;
+    private readonly AzureIisDeploymentExecutionService? _azureIisDeploymentExecutionService;
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     static InProcessDispatcher()
@@ -41,7 +43,8 @@ public class InProcessDispatcher : IExecutionDispatcher
         AgentSpawnService? agentSpawnService = null,
         BrokerDb? db = null,
         EmbeddingService? embeddingService = null,
-        RagPipelineService? ragPipeline = null)
+        RagPipelineService? ragPipeline = null,
+        AzureIisDeploymentExecutionService? azureIisDeploymentExecutionService = null)
     {
         _logger = logger;
         _sandboxRoot = sandboxRoot ?? Path.GetFullPath(".");
@@ -49,6 +52,7 @@ public class InProcessDispatcher : IExecutionDispatcher
         _db = db;
         _embeddingService = embeddingService;
         _ragPipeline = ragPipeline;
+        _azureIisDeploymentExecutionService = azureIisDeploymentExecutionService;
     }
 
     /// <inheritdoc />
@@ -89,6 +93,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "web_search_duckduckgo" => ExecuteWebSearchDuckDuckGoAsync(request),
                 "web_search" => ExecuteWebSearchAsync(request),
                 "web_fetch" => ExecuteWebFetchAsync(request),
+                "deploy_azure_vm_iis" => ExecuteAzureIisDeploymentAsync(request),
                 _ => Task.FromResult(ExecutionResult.Fail(request.RequestId,
                     $"Route '{request.Route}' not supported in InProcessDispatcher."))
             };
@@ -1496,9 +1501,51 @@ public class InProcessDispatcher : IExecutionDispatcher
             or "memory_store" or "memory_retrieve" or "memory_delete"
             or "memory_semantic_search" or "memory_fulltext_search" or "rag_retrieve"
             or "rag_import" or "rag_import_web"
-            or "web_search" or "web_search_google" or "web_search_duckduckgo" or "web_fetch" => true,
+            or "web_search" or "web_search_google" or "web_search_duckduckgo" or "web_fetch"
+            or "deploy_azure_vm_iis" => true,
         _ => false
     };
+
+    private async Task<ExecutionResult> ExecuteAzureIisDeploymentAsync(ApprovedRequest request)
+    {
+        if (_azureIisDeploymentExecutionService == null)
+            return ExecutionResult.Fail(request.RequestId, "AzureIisDeploymentExecutionService not available.");
+
+        using var doc = JsonDocument.Parse(request.Payload);
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var targetId = TryGetString(args, "target_id") ?? "";
+        var projectPath = TryGetString(args, "project_path") ?? "";
+        if (string.IsNullOrWhiteSpace(targetId) || string.IsNullOrWhiteSpace(projectPath))
+            return ExecutionResult.Fail(request.RequestId, "target_id and project_path are required.");
+
+        var input = new AzureIisDeploymentBuildInput
+        {
+            RequestId = request.RequestId,
+            CapabilityId = request.CapabilityId,
+            Route = request.Route,
+            PrincipalId = request.PrincipalId,
+            TaskId = request.TaskId,
+            SessionId = request.SessionId,
+            TargetId = targetId,
+            ProjectPath = projectPath,
+            Configuration = TryGetString(args, "configuration") ?? "Release",
+            RuntimeIdentifier = TryGetString(args, "runtime_identifier"),
+            SelfContained = args.TryGetProperty("self_contained", out var selfContainedProp) && selfContainedProp.ValueKind == JsonValueKind.True,
+            CleanupTarget = !args.TryGetProperty("cleanup_target", out var cleanupProp) || cleanupProp.ValueKind == JsonValueKind.True,
+            RestartSite = !args.TryGetProperty("restart_site", out var restartProp) || restartProp.ValueKind == JsonValueKind.True,
+            ScopeJson = request.Scope
+        };
+
+        var dryRun = args.TryGetProperty("dry_run", out var dryRunProp) && dryRunProp.ValueKind == JsonValueKind.True;
+        var result = await _azureIisDeploymentExecutionService.ExecuteAsync("deploy.azure-vm-iis", input, dryRun);
+        if (!result.Success || result.Result == null)
+            return ExecutionResult.Fail(request.RequestId, result.Result?.Message ?? result.Error ?? "deployment_failed");
+
+        return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(result.Result));
+    }
 
     private static JsonElement GetArgsElement(JsonElement root)
     {

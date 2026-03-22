@@ -739,6 +739,53 @@ try
         AssertTrue(deploymentPreview.Success && deploymentPreview.Result != null, "deployment preview builds dry-run deployment result");
         AssertTrue(deploymentPreview.Result!.ScriptPreview.Contains("New-PSSession", StringComparison.Ordinal), "deployment preview renders winrm powershell script");
         AssertTrue(deploymentPreview.Result!.DetailsJson.Contains("dotnet publish", StringComparison.Ordinal), "deployment preview includes dotnet publish command");
+
+        var fakeProcessRunner = new FakeProcessRunner();
+        var executionService = new AzureIisDeploymentExecutionService(
+            deploymentBuilder,
+            new FakeAzureIisDeploymentSecretResolver(),
+            fakeProcessRunner);
+        var dryRunExecution = await executionService.ExecuteAsync(
+            "deploy.azure-vm-iis",
+            new AzureIisDeploymentBuildInput
+            {
+                RequestId = "dreq_exec_dry",
+                CapabilityId = "deploy.azure-vm-iis",
+                Route = "deploy_azure_vm_iis",
+                PrincipalId = "principal_deployer",
+                TaskId = "task_deploy",
+                SessionId = "session_deploy",
+                TargetId = deploymentTarget.TargetId,
+                ProjectPath = verifyProjectDirectory
+            },
+            dryRun: true);
+        AssertTrue(dryRunExecution.Success && dryRunExecution.Result != null, "deployment execution service supports dry-run package preparation");
+        AssertTrue(dryRunExecution.Result!.Stage == "dry_run", "deployment execution service marks dry-run stage");
+        AssertTrue(File.Exists(dryRunExecution.Result.PackagePath), "deployment execution service produces zip package during dry run");
+        AssertTrue(fakeProcessRunner.Invocations.Count == 1 && fakeProcessRunner.Invocations[0].FileName == "dotnet", "deployment execution dry-run only invokes dotnet publish");
+
+        var executeProcessRunner = new FakeProcessRunner();
+        var actualExecutionService = new AzureIisDeploymentExecutionService(
+            deploymentBuilder,
+            new FakeAzureIisDeploymentSecretResolver(),
+            executeProcessRunner);
+        var actualExecution = await actualExecutionService.ExecuteAsync(
+            "deploy.azure-vm-iis",
+            new AzureIisDeploymentBuildInput
+            {
+                RequestId = "dreq_exec_live",
+                CapabilityId = "deploy.azure-vm-iis",
+                Route = "deploy_azure_vm_iis",
+                PrincipalId = "principal_deployer",
+                TaskId = "task_deploy",
+                SessionId = "session_deploy",
+                TargetId = deploymentTarget.TargetId,
+                ProjectPath = verifyProjectDirectory
+            },
+            dryRun: false);
+        AssertTrue(actualExecution.Success && actualExecution.Result != null, "deployment execution service completes with resolved secret and fake runner");
+        AssertTrue(actualExecution.Result!.Stage == "deployed", "deployment execution service marks deployed stage");
+        AssertTrue(executeProcessRunner.Invocations.Count == 2 && executeProcessRunner.Invocations[1].FileName == "powershell", "deployment execution invokes remote powershell after publish");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
@@ -1093,4 +1140,30 @@ file sealed class FakeWebHostEnvironment : IWebHostEnvironment
     public string EnvironmentName { get; set; }
     public string ContentRootPath { get; set; }
     public IFileProvider ContentRootFileProvider { get; set; } = null!;
+}
+
+file sealed class FakeAzureIisDeploymentSecretResolver : IAzureIisDeploymentSecretResolver
+{
+    public AzureIisDeploymentSecret? Resolve(string secretRef)
+        => new()
+        {
+            UserName = "vm-user",
+            Password = "vm-password"
+        };
+}
+
+file sealed class FakeProcessRunner : IProcessRunner
+{
+    public List<ProcessRunSpec> Invocations { get; } = new();
+
+    public Task<ProcessRunResult> RunAsync(ProcessRunSpec spec, CancellationToken cancellationToken = default)
+    {
+        Invocations.Add(spec);
+        return Task.FromResult(new ProcessRunResult
+        {
+            ExitCode = 0,
+            StandardOutput = $"ok:{spec.FileName}",
+            StandardError = string.Empty
+        });
+    }
 }
