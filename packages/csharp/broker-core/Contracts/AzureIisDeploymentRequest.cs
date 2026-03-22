@@ -16,8 +16,11 @@ public sealed class AzureIisDeploymentRequest
     public int Port { get; set; }
     public bool UseSsl { get; set; }
     public string SiteName { get; set; } = string.Empty;
+    public string DeploymentMode { get; set; } = "site_root";
+    public string ApplicationPath { get; set; } = string.Empty;
     public string AppPoolName { get; set; } = string.Empty;
     public string PhysicalPath { get; set; } = string.Empty;
+    public string HealthCheckPath { get; set; } = string.Empty;
     public string SecretRef { get; set; } = string.Empty;
     public string ProjectPath { get; set; } = string.Empty;
     public string ProjectFile { get; set; } = string.Empty;

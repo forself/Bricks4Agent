@@ -35,6 +35,14 @@ public class AzureIisDeploymentTarget
     [MaxLength(200)]
     public string SiteName { get; set; } = string.Empty;
 
+    [Column("deployment_mode")]
+    [MaxLength(50)]
+    public string DeploymentMode { get; set; } = "site_root";
+
+    [Column("application_path")]
+    [MaxLength(300)]
+    public string ApplicationPath { get; set; } = string.Empty;
+
     [Column("app_pool_name")]
     [MaxLength(200)]
     public string AppPoolName { get; set; } = string.Empty;
@@ -42,6 +50,10 @@ public class AzureIisDeploymentTarget
     [Column("physical_path")]
     [MaxLength(500)]
     public string PhysicalPath { get; set; } = string.Empty;
+
+    [Column("health_check_path")]
+    [MaxLength(300)]
+    public string HealthCheckPath { get; set; } = string.Empty;
 
     [Column("secret_ref")]
     [MaxLength(200)]

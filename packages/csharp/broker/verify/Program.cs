@@ -715,6 +715,25 @@ try
         });
         AssertTrue(!string.IsNullOrWhiteSpace(deploymentTarget.TargetId), "deployment target service upserts azure iis target");
 
+        var deploymentSubAppTarget = deploymentTargetService.UpsertTarget(new AzureIisDeploymentTarget
+        {
+            DisplayName = "Azure IIS Child App",
+            Provider = "azure_vm_iis",
+            VmHost = "vm.example.com",
+            Port = 5986,
+            UseSsl = true,
+            Transport = "winrm_powershell",
+            SiteName = "Default Web Site",
+            DeploymentMode = "iis_application",
+            ApplicationPath = "/apps/verify",
+            AppPoolName = "VerifyChildPool",
+            PhysicalPath = @"C:\inetpub\apps\verify",
+            HealthCheckPath = "/apps/verify/health",
+            SecretRef = "vault://deploy/test",
+            Status = "active"
+        });
+        AssertTrue(!string.IsNullOrWhiteSpace(deploymentSubAppTarget.TargetId), "deployment target service upserts child-application target");
+
         var deploymentBuilder = new AzureIisDeploymentRequestBuilder(registry, toolSpecDb);
         var deploymentBuild = deploymentBuilder.TryBuild("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
         {
@@ -745,6 +764,38 @@ try
         AssertTrue(deploymentPreview.Success && deploymentPreview.Result != null, "deployment preview builds dry-run deployment result");
         AssertTrue(deploymentPreview.Result!.ScriptPreview.Contains("New-PSSession", StringComparison.Ordinal), "deployment preview renders winrm powershell script");
         AssertTrue(deploymentPreview.Result!.DetailsJson.Contains("dotnet publish", StringComparison.Ordinal), "deployment preview includes dotnet publish command");
+
+        var deploymentSubAppBuild = deploymentBuilder.TryBuild("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
+        {
+            RequestId = "dreq_subapp",
+            CapabilityId = "deploy.azure-vm-iis",
+            Route = "deploy_azure_vm_iis",
+            PrincipalId = "principal_deployer",
+            TaskId = "task_deploy",
+            SessionId = "session_deploy",
+            TargetId = deploymentSubAppTarget.TargetId,
+            ProjectPath = verifyProjectDirectory
+        });
+        AssertTrue(deploymentSubAppBuild.Success && deploymentSubAppBuild.Request != null, "deployment builder supports iis child-application targets");
+        AssertTrue(deploymentSubAppBuild.Request!.DeploymentMode == "iis_application", "deployment builder preserves child-application mode");
+        AssertTrue(deploymentSubAppBuild.Request!.ApplicationPath == "/apps/verify", "deployment builder normalizes child-application path");
+
+        var deploymentSubAppPreview = deploymentPreviewService.Preview("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
+        {
+            RequestId = "dreq_preview_subapp",
+            CapabilityId = "deploy.azure-vm-iis",
+            Route = "deploy_azure_vm_iis",
+            PrincipalId = "principal_deployer",
+            TaskId = "task_deploy",
+            SessionId = "session_deploy",
+            TargetId = deploymentSubAppTarget.TargetId,
+            ProjectPath = verifyProjectDirectory
+        });
+        AssertTrue(deploymentSubAppPreview.Success && deploymentSubAppPreview.Result != null, "deployment preview supports iis child-application targets");
+        AssertTrue(deploymentSubAppPreview.Result!.ScriptPreview.Contains("New-WebApplication", StringComparison.Ordinal), "deployment preview creates or updates IIS child application");
+        AssertTrue(deploymentSubAppPreview.Result!.DetailsJson.Contains("\"DeploymentMode\":\"iis_application\"", StringComparison.OrdinalIgnoreCase) ||
+                   deploymentSubAppPreview.Result!.DetailsJson.Contains("\"deploymentmode\":\"iis_application\"", StringComparison.OrdinalIgnoreCase),
+            "deployment preview details include child-application mode");
 
         var fakeProcessRunner = new FakeProcessRunner();
         var executionService = new AzureIisDeploymentExecutionService(

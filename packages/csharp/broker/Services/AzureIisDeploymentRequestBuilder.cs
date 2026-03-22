@@ -51,6 +51,17 @@ public sealed class AzureIisDeploymentRequestBuilder : IAzureIisDeploymentReques
         if (!string.Equals(target.Transport, "winrm_powershell", StringComparison.Ordinal))
             return AzureIisDeploymentRequestBuildResult.Fail("deployment_target_transport_not_supported");
 
+        var deploymentMode = NormalizeDeploymentMode(target.DeploymentMode);
+        if (deploymentMode == null)
+            return AzureIisDeploymentRequestBuildResult.Fail("deployment_target_mode_not_supported");
+
+        var applicationPath = NormalizeApplicationPath(target.ApplicationPath);
+        if (string.Equals(deploymentMode, "iis_application", StringComparison.Ordinal) &&
+            string.IsNullOrWhiteSpace(applicationPath))
+        {
+            return AzureIisDeploymentRequestBuildResult.Fail("deployment_application_path_required");
+        }
+
         if (!Path.IsPathRooted(input.ProjectPath))
             return AzureIisDeploymentRequestBuildResult.Fail("deployment_project_path_must_be_absolute");
 
@@ -82,8 +93,11 @@ public sealed class AzureIisDeploymentRequestBuilder : IAzureIisDeploymentReques
             Port = target.Port,
             UseSsl = target.UseSsl,
             SiteName = target.SiteName,
+            DeploymentMode = deploymentMode,
+            ApplicationPath = applicationPath,
             AppPoolName = target.AppPoolName,
             PhysicalPath = target.PhysicalPath,
+            HealthCheckPath = NormalizeHealthCheckPath(target.HealthCheckPath),
             SecretRef = target.SecretRef,
             ProjectPath = normalizedProjectPath,
             ProjectFile = projectFile,
@@ -97,6 +111,47 @@ public sealed class AzureIisDeploymentRequestBuilder : IAzureIisDeploymentReques
             ScopeJson = string.IsNullOrWhiteSpace(input.ScopeJson) ? "{}" : input.ScopeJson,
             MetadataJson = string.IsNullOrWhiteSpace(input.MetadataJson) ? "{}" : input.MetadataJson
         });
+    }
+
+    private static string? NormalizeDeploymentMode(string? deploymentMode)
+    {
+        var normalized = (deploymentMode ?? "site_root").Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "site_root" => "site_root",
+            "iis_application" => "iis_application",
+            _ => null
+        };
+    }
+
+    private static string NormalizeApplicationPath(string? applicationPath)
+    {
+        if (string.IsNullOrWhiteSpace(applicationPath))
+            return string.Empty;
+
+        var trimmed = applicationPath.Trim();
+        if (!trimmed.StartsWith('/'))
+            trimmed = "/" + trimmed;
+
+        while (trimmed.Contains("//", StringComparison.Ordinal))
+        {
+            trimmed = trimmed.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        return trimmed.Length > 1
+            ? trimmed.TrimEnd('/')
+            : trimmed;
+    }
+
+    private static string NormalizeHealthCheckPath(string? healthCheckPath)
+    {
+        if (string.IsNullOrWhiteSpace(healthCheckPath))
+            return string.Empty;
+
+        var trimmed = healthCheckPath.Trim();
+        return trimmed.StartsWith('/')
+            ? trimmed
+            : "/" + trimmed;
     }
 
     private static string? ResolveProjectFile(string normalizedProjectPath)

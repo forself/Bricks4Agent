@@ -56,12 +56,27 @@ public static class DeploymentAdminEndpoints
                 UseSsl = body.TryGetProperty("use_ssl", out var sslProp) && sslProp.ValueKind == JsonValueKind.True,
                 Transport = body.TryGetProperty("transport", out var transportProp) ? transportProp.GetString() ?? "winrm_powershell" : "winrm_powershell",
                 SiteName = values["site_name"],
+                DeploymentMode = body.TryGetProperty("deployment_mode", out var deploymentModeProp) ? deploymentModeProp.GetString() ?? "site_root" : "site_root",
+                ApplicationPath = body.TryGetProperty("application_path", out var appPathProp) ? appPathProp.GetString() ?? string.Empty : string.Empty,
                 AppPoolName = values["app_pool_name"],
                 PhysicalPath = values["physical_path"],
+                HealthCheckPath = body.TryGetProperty("health_check_path", out var healthPathProp) ? healthPathProp.GetString() ?? string.Empty : string.Empty,
                 SecretRef = values["secret_ref"],
                 Status = body.TryGetProperty("status", out var statusProp) ? statusProp.GetString() ?? "active" : "active",
                 MetadataJson = body.TryGetProperty("metadata_json", out var metadataProp) ? metadataProp.GetRawText() : "{}"
             };
+
+            if (!string.Equals(target.DeploymentMode, "site_root", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(target.DeploymentMode, "iis_application", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("deployment_mode must be site_root or iis_application."));
+            }
+
+            if (string.Equals(target.DeploymentMode, "iis_application", StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrWhiteSpace(target.ApplicationPath))
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("application_path is required when deployment_mode is iis_application."));
+            }
 
             return Results.Ok(ApiResponseHelper.Success(service.UpsertTarget(target)));
         });
