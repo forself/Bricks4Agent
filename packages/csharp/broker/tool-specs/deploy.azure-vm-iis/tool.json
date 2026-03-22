@@ -1,0 +1,61 @@
+{
+  "tool_id": "deploy.azure-vm-iis",
+  "display_name": "Deploy to Azure VM IIS",
+  "summary": "Publish a .NET project and deploy the output to a broker-registered Azure virtual machine IIS target.",
+  "kind": "deployment",
+  "status": "beta",
+  "version": "2026-03-22",
+  "tags": ["deployment", "azure", "iis", "vm", "dotnet"],
+  "capability_template": {
+    "action_type": "write",
+    "resource_type": "deployment",
+    "risk_level": "high",
+    "approval_policy": "require_approval",
+    "ttl_seconds": 1800,
+    "audit_level": "full",
+    "quota": { "max_calls": 10, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "deploy.azure-vm-iis",
+      "route": "deploy_azure_vm_iis",
+      "purpose": "Broker-mediated deployment of a .NET publish output to a registered Azure VM IIS target."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "target_id": { "type": "string" },
+      "project_path": { "type": "string" },
+      "configuration": { "type": "string" },
+      "runtime_identifier": { "type": "string" },
+      "self_contained": { "type": "boolean" },
+      "cleanup_target": { "type": "boolean" },
+      "restart_site": { "type": "boolean" }
+    },
+    "required": ["target_id", "project_path"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "target_id": { "type": "string" },
+      "stage": { "type": "string" },
+      "publish_output_path": { "type": "string" },
+      "package_path": { "type": "string" },
+      "message": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["broker_registered_deployment_targets"]
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "publish_required": true,
+    "transport": "winrm_powershell"
+  },
+  "response_contract": {
+    "must_identify_target": true,
+    "must_identify_stage": true,
+    "must_include_publish_paths": true
+  }
+}

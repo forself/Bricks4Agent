@@ -167,6 +167,9 @@ var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry
 builder.Services.AddSingleton(toolSpecRegistryOptions);
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
+builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
+builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
+builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentPreviewService>();
 builder.Services.AddHttpClient<Broker.Services.BrowserExecutionPreviewService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -737,6 +740,7 @@ ExecutionEndpoints.Map(api);
 CapabilityEndpoints.Map(api);
 ToolSpecEndpoints.Map(api);
 BrowserBindingEndpoints.Map(api);
+DeploymentAdminEndpoints.Map(api);
 AuditEndpoints.Map(api);
 AdminEndpoints.Map(api);
 ContextEndpoints.Map(api);
