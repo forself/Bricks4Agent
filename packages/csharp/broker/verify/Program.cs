@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Broker.Adapters;
 using Broker.Services;
+using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,6 +55,60 @@ try
     AssertTrue(
         workflowMachine.Evaluate(null, parser.Parse("/build website")).Action == HighLevelWorkflowAction.StartProduction,
         "workflow starts production only from explicit production command");
+
+    var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
+    using (var logDb = BrokerDb.UseSqlite($"Data Source={logDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(logDb);
+        initializer.Initialize();
+        var recorder = new HighLevelInteractionRecorder(logDb);
+        recorder.Record(new HighLevelInteractionRecord
+        {
+            Channel = "line",
+            UserId = "tester",
+            RawInput = "/build website",
+            RawReply = "project name required",
+            ParsedKind = HighLevelInputKind.Production.ToString(),
+            WorkflowState = HighLevelWorkflowState.Idle.ToString(),
+            WorkflowAction = HighLevelWorkflowAction.StartProduction.ToString(),
+            RouteMode = HighLevelRouteMode.Production.ToString()
+        });
+        recorder.Record(new HighLevelInteractionRecord
+        {
+            Channel = "line",
+            UserId = "tester",
+            RawInput = "#MySite",
+            RawReply = "draft updated",
+            ParsedKind = HighLevelInputKind.ProjectName.ToString(),
+            WorkflowState = HighLevelWorkflowState.AwaitingProjectName.ToString(),
+            WorkflowAction = HighLevelWorkflowAction.CaptureProjectName.ToString(),
+            RouteMode = HighLevelRouteMode.Production.ToString()
+        });
+
+        var logEntries = recorder.ReadLatest("line", "tester", 10);
+        AssertTrue(logEntries.Count == 2, "interaction recorder persists append-only records by channel and user");
+        AssertTrue(logEntries[0].RawInput == "/build website", "interaction recorder preserves raw input");
+        AssertTrue(logEntries[1].WorkflowAction == HighLevelWorkflowAction.CaptureProjectName.ToString(), "interaction recorder preserves interpreted workflow action");
+
+        var memoryStore = new HighLevelMemoryStore(logDb);
+        memoryStore.Write(new HighLevelMemoryState
+        {
+            Channel = "line",
+            UserId = "tester",
+            CurrentGoal = "build website",
+            LastRouteMode = HighLevelRouteMode.Production.ToString(),
+            WorkflowState = HighLevelWorkflowState.AwaitingProjectName.ToString(),
+            WorkflowAction = HighLevelWorkflowAction.CaptureProjectName.ToString(),
+            PendingDraftId = "draft_123",
+            PendingProjectName = true,
+            LastTaskType = "code_gen"
+        });
+
+        var memoryState = memoryStore.ReadLatest("line", "tester");
+        AssertTrue(memoryState != null, "memory store persists projected memory state");
+        AssertTrue(memoryState!.CurrentGoal == "build website", "memory store keeps de-commanded current goal");
+        AssertTrue(memoryState.PendingDraftId == "draft_123", "memory store preserves reusable workflow state");
+    }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
     File.WriteAllText(readmePath, "hello broker");
@@ -200,5 +255,33 @@ try
 }
 finally
 {
-    Directory.Delete(sandboxRoot, recursive: true);
+    var deleted = false;
+    for (var attempt = 0; attempt < 5; attempt++)
+    {
+        try
+        {
+            Directory.Delete(sandboxRoot, recursive: true);
+            deleted = true;
+            break;
+        }
+        catch (IOException)
+        {
+            if (attempt < 4)
+            {
+                Thread.Sleep(250 * (attempt + 1));
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            if (attempt < 4)
+            {
+                Thread.Sleep(250 * (attempt + 1));
+            }
+        }
+    }
+
+    if (!deleted)
+    {
+        Console.WriteLine($"Warning: verify temp directory not deleted: {sandboxRoot}");
+    }
 }
