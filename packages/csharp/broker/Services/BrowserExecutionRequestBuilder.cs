@@ -134,6 +134,28 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(input.SessionLeaseId))
+        {
+            var lease = _db.Get<BrowserSessionLease>(input.SessionLeaseId);
+            if (lease == null || !string.Equals(lease.LeaseState, "active", StringComparison.OrdinalIgnoreCase))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_not_found");
+
+            if (!string.Equals(lease.PrincipalId, input.PrincipalId, StringComparison.Ordinal))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_principal_mismatch");
+
+            if (!string.Equals(lease.IdentityMode, spec.BrowserProfile.IdentityMode, StringComparison.Ordinal))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_identity_mismatch");
+
+            if (lease.ExpiresAt < DateTime.UtcNow)
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_expired");
+
+            if (!string.IsNullOrWhiteSpace(lease.SiteBindingId) &&
+                !string.Equals(lease.SiteBindingId, input.SiteBindingId, StringComparison.Ordinal))
+            {
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_site_mismatch");
+            }
+        }
+
         return BrowserExecutionRequestBuildResult.Ok(new BrowserExecutionRequest
         {
             RequestId = input.RequestId,
