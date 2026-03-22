@@ -88,6 +88,11 @@ public sealed class HighLevelInteractionRecord
     public string ParsedKind { get; set; } = string.Empty;
     public string ParsedPrefix { get; set; } = string.Empty;
     public string ParsedBody { get; set; } = string.Empty;
+    public string InputSource { get; set; } = string.Empty;
+    public string InputTaint { get; set; } = string.Empty;
+    public string[] AppliedTransforms { get; set; } = Array.Empty<string>();
+    public bool CommandExtractionAllowed { get; set; }
+    public string CommandTrustReason { get; set; } = string.Empty;
     public string WorkflowState { get; set; } = string.Empty;
     public string WorkflowAction { get; set; } = string.Empty;
     public string WorkflowReason { get; set; } = string.Empty;
