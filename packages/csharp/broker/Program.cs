@@ -162,6 +162,9 @@ builder.Services.AddHttpClient<ILlmProxyService, LlmProxyService>();
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
+var deploymentSecretOptions = builder.Configuration.GetSection("DeploymentSecrets").Get<Broker.Services.AzureIisDeploymentSecretResolverOptions>()
+    ?? new Broker.Services.AzureIisDeploymentSecretResolverOptions();
+builder.Services.AddSingleton(deploymentSecretOptions);
 var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry").Get<Broker.Services.ToolSpecRegistryOptions>()
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
@@ -170,6 +173,9 @@ builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, B
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentPreviewService>();
+builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentSecretResolver, Broker.Services.AzureIisDeploymentSecretResolver>();
+builder.Services.AddSingleton<Broker.Services.IProcessRunner, Broker.Services.ProcessRunner>();
+builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentExecutionService>();
 builder.Services.AddHttpClient<Broker.Services.BrowserExecutionPreviewService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -233,7 +239,8 @@ if (poolEnabled)
                 sp.GetRequiredService<AgentSpawnService>(),
                 sp.GetRequiredService<BrokerDb>(),
                 sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
-                sp.GetRequiredService<BrokerCore.Services.RagPipelineService>());
+                sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
+                sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>());
             var poolDispatcher = new PoolDispatcher(
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
@@ -315,7 +322,8 @@ else
             sp.GetRequiredService<AgentSpawnService>(),
             sp.GetRequiredService<BrokerDb>(),
             sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
-            sp.GetRequiredService<BrokerCore.Services.RagPipelineService>()));
+            sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
+            sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>()));
     builder.Services.AddSingleton<IContainerManager>(sp => new NoOpContainerManager());
 }
 

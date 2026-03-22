@@ -99,6 +99,26 @@ public static class DeploymentAdminEndpoints
                 result = result.Result
             }));
         });
+
+        deployment.MapPost("/requests/execute", async (HttpContext ctx, AzureIisDeploymentExecutionService executionService, CancellationToken cancellationToken) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!TryParseBuildInput(body, out var input, out var err))
+                return err!;
+
+            var dryRun = body.TryGetProperty("dry_run", out var dryRunProp) && dryRunProp.ValueKind == JsonValueKind.True;
+            var toolId = body.TryGetProperty("tool_id", out var toolProp) ? toolProp.GetString() ?? "deploy.azure-vm-iis" : "deploy.azure-vm-iis";
+            var result = await executionService.ExecuteAsync(toolId, input, dryRun, cancellationToken);
+            if (!result.Success)
+                return Results.BadRequest(ApiResponseHelper.Error(result.Result?.Message ?? result.Error ?? "deployment_execute_failed"));
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                request = result.Request,
+                result = result.Result
+            }));
+        });
     }
 
     private static bool TryParseBuildInput(JsonElement body, out AzureIisDeploymentBuildInput input, out IResult? error)
