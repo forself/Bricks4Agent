@@ -24,6 +24,8 @@ public class HighLevelCoordinator
     private readonly HighLevelInteractionRecorder _interactionRecorder;
     private readonly HighLevelInterpretationStore _interpretationStore;
     private readonly HighLevelMemoryStore _memoryStore;
+    private readonly HighLevelExecutionIntentStore _executionIntentStore;
+    private readonly HighLevelExecutionPromotionGate _executionPromotionGate;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -48,6 +50,8 @@ public class HighLevelCoordinator
         _interactionRecorder = new HighLevelInteractionRecorder(_db);
         _interpretationStore = new HighLevelInterpretationStore(_db);
         _memoryStore = new HighLevelMemoryStore(_db);
+        _executionIntentStore = new HighLevelExecutionIntentStore(_db);
+        _executionPromotionGate = new HighLevelExecutionPromotionGate();
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -300,6 +304,23 @@ public class HighLevelCoordinator
 
         EnsureManagedWorkspaceLayout(draft.ManagedPaths);
 
+        var memory = _memoryStore.ReadLatest(channel, userId);
+        var promotion = _executionPromotionGate.Evaluate(memory, draft);
+        if (!promotion.Allowed)
+        {
+            return (new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = $"無法將目前 draft 升格為 executable intent：{promotion.Reason}",
+                Draft = draft,
+                Error = "execution_promotion_denied",
+                DecisionReason = promotion.Reason
+            }, profile);
+        }
+
+        var executionIntent = BuildExecutionIntent(channel, userId, draft, memory!, promotion);
+        _executionIntentStore.Write(executionIntent);
+
         var submittedBy = $"{channel}:{userId}";
         var assignedRole = _taskRouter.RecommendRole(draft.TaskType);
         var task = _brokerService.CreateTask(
@@ -328,6 +349,7 @@ public class HighLevelCoordinator
         var reply = string.Join('\n', new[]
         {
             "\u5df2\u78ba\u8a8d\u70ba production \u4efb\u52d9\u3002",
+            $"execution_intent_id: {executionIntent.IntentId}",
             $"task_id: {task.TaskId}",
             $"plan_id: {plan.PlanId}",
             $"task_type: {task.TaskType}",
@@ -594,6 +616,28 @@ public class HighLevelCoordinator
                 folder_name = draft.ProjectFolderName
             }
         });
+    }
+
+    private HighLevelExecutionIntent BuildExecutionIntent(
+        string channel,
+        string userId,
+        HighLevelTaskDraft draft,
+        HighLevelMemoryState memory,
+        HighLevelExecutionPromotionDecision promotion)
+    {
+        return new HighLevelExecutionIntent
+        {
+            Channel = channel,
+            UserId = userId,
+            Stage = promotion.Stage,
+            PromotionReason = promotion.Reason,
+            Goal = memory.CurrentGoal ?? ToMemoryGoal(draft.OriginalMessage),
+            TaskType = draft.TaskType,
+            ProjectName = draft.ProjectName,
+            DraftId = draft.DraftId,
+            ScopeDescriptor = draft.ScopeDescriptor,
+            RuntimeDescriptor = draft.RuntimeDescriptor
+        };
     }
 
     private HighLevelManagedPaths BuildManagedPaths(string channel, string userId, string? projectFolderName)
