@@ -8,6 +8,8 @@ The browser request builder now validates against real broker data for:
 
 - `BrowserSiteBinding`
 - `BrowserSessionLease`
+- `BrowserUserGrant`
+- `BrowserSystemBinding`
 
 Current implementation only actively validates site bindings.
 Session leases are introduced now so future runtime/session pooling work has a canonical record shape to target.
@@ -60,6 +62,34 @@ Current fields:
 This is not yet used by runtime dispatch.
 It exists so future browser workers do not invent their own lease identifiers and lifecycle rules outside the broker.
 
+## BrowserUserGrant
+
+`BrowserUserGrant` represents a broker-owned delegated user authorization record.
+
+Current fields:
+
+- `user_grant_id`
+- `principal_id`
+- `site_binding_id`
+- `status`
+- `consent_ref`
+- `scopes_json`
+- `expires_at`
+- `created_at`
+
+## BrowserSystemBinding
+
+`BrowserSystemBinding` represents a broker-owned system credential binding.
+
+Current fields:
+
+- `system_binding_id`
+- `display_name`
+- `site_binding_id`
+- `status`
+- `secret_ref`
+- `created_at`
+
 ## Current Builder Enforcement
 
 `BrowserExecutionRequestBuilder` now validates:
@@ -69,6 +99,8 @@ It exists so future browser workers do not invent their own lease identifiers an
 - site binding identity matches tool identity mode
 - site binding class is allowed by tool site policy
 - for user-delegated tools, the site binding principal must match the requesting principal
+- referenced user grant exists, is active, belongs to the requesting principal, and matches the site binding when pinned
+- referenced system binding exists, is active, and matches the site binding when pinned
 
 It still also validates:
 
@@ -81,14 +113,15 @@ It still also validates:
 Implemented:
 
 - broker tables for site bindings and session leases
+- broker tables for user grants and system bindings
 - indexes for lookup by identity/principal/state
 - builder validation against `BrowserSiteBinding`
+- builder validation against `BrowserUserGrant`
+- builder validation against `BrowserSystemBinding`
 
 Not yet implemented:
 
 - site-binding catalog management API
-- user grant record model
-- system credential binding record model
 - session lease issuance and revocation flow
 - browser worker reuse of lease records
 

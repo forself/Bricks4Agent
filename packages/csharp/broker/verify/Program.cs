@@ -402,6 +402,22 @@ try
             PrincipalId = "principal_user",
             Status = "active"
         });
+        toolSpecDb.Insert(new BrowserUserGrant
+        {
+            UserGrantId = "grant_user_1",
+            PrincipalId = "principal_user",
+            SiteBindingId = "site_binding_user",
+            Status = "active",
+            ConsentRef = "consent_1"
+        });
+        toolSpecDb.Insert(new BrowserSystemBinding
+        {
+            SystemBindingId = "system_binding_1",
+            DisplayName = "System Binding",
+            SiteBindingId = "site_binding_system",
+            Status = "active",
+            SecretRef = "vault://system/example"
+        });
         var registry = new ToolSpecRegistry(
             new FakeWebHostEnvironment(Path.Combine(sandboxRoot, "content-root")),
             new ToolSpecRegistryOptions { Root = specRoot },
@@ -466,12 +482,27 @@ try
         });
         AssertTrue(!builtSystemMissing.Success && builtSystemMissing.Error == "browser_request_missing_system_binding", "browser request builder requires system binding for system-account tools");
 
+        var builtSystemSuccess = builder.TryBuild("browser.reference.system-account.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_3b",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_system",
+            SystemBindingId = "system_binding_1"
+        });
+        AssertTrue(builtSystemSuccess.Success, "browser request builder accepts matching system binding record");
+
         var builtUserMissingGrant = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
         {
             RequestId = "req_browser_built_4",
             CapabilityId = "browser.read",
             Route = "browser_read",
-            PrincipalId = "principal_1",
+            PrincipalId = "principal_user",
             TaskId = "task_1",
             SessionId = "session_1",
             StartUrl = "https://example.com",
@@ -494,6 +525,21 @@ try
             UserGrantId = "grant_1"
         });
         AssertTrue(!builtUserPrincipalMismatch.Success && builtUserPrincipalMismatch.Error == "browser_request_site_binding_principal_mismatch", "browser request builder enforces user-delegated site binding ownership");
+
+        var builtUserSuccess = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_6",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_user",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_user",
+            UserGrantId = "grant_user_1"
+        });
+        AssertTrue(builtUserSuccess.Success, "browser request builder accepts matching user grant record");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
