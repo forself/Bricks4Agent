@@ -5,6 +5,8 @@ using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 
 static void AssertTrue(bool condition, string message)
@@ -142,6 +144,55 @@ try
     AssertTrue(mediatedSearch.Success, "query tool mediator executes explicit search through broker-owned tool binding");
     AssertTrue(mediatedSearch.Reply.Contains("duckduckgo", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites search engine");
     AssertTrue(mediatedSearch.Reply.Contains("https://example.com/weather", StringComparison.OrdinalIgnoreCase), "query tool mediator reply includes ranked URLs");
+
+    var specRoot = Path.Combine(sandboxRoot, "tool-specs");
+    Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.anonymous.read"));
+    File.WriteAllText(
+        Path.Combine(specRoot, "browser.reference.anonymous.read", "tool.json"),
+        """
+        {
+          "tool_id": "browser.reference.anonymous.read",
+          "display_name": "Browser Reference",
+          "summary": "reference",
+          "kind": "browser",
+          "status": "planned",
+          "version": "2026-03-22",
+          "tags": ["browser"],
+          "capability_bindings": [],
+          "browser_profile": {
+            "identity_mode": "anonymous",
+            "credential_source": "none",
+            "session_owner": "none",
+            "allowed_actions": ["read", "navigate"],
+            "confirmation_policy": "broker_policy"
+          },
+          "input_schema": { "type": "object" },
+          "output_schema": { "type": "object" },
+          "source_policy": { "allowed_sources": ["public_web"] },
+          "execution_rules": { "runtime_required": "browser_worker" },
+          "response_contract": { "must_identify_identity_mode": true }
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(specRoot, "browser.reference.anonymous.read", "TOOL.md"),
+        "# Reference");
+
+    var toolSpecDbPath = Path.Combine(sandboxRoot, "tool-spec-registry.db");
+    using (var toolSpecDb = BrokerDb.UseSqlite($"Data Source={toolSpecDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(toolSpecDb);
+        initializer.Initialize();
+        var registry = new ToolSpecRegistry(
+            new FakeWebHostEnvironment(Path.Combine(sandboxRoot, "content-root")),
+            new ToolSpecRegistryOptions { Root = specRoot },
+            toolSpecDb,
+            NullLogger<ToolSpecRegistry>.Instance);
+        var browserSpec = registry.Get("browser.reference.anonymous.read");
+        AssertTrue(browserSpec != null, "tool spec registry loads browser reference spec");
+        AssertTrue(browserSpec!.BrowserProfile != null, "tool spec registry preserves browser profile");
+        AssertTrue(browserSpec.BrowserProfile!.IdentityMode == "anonymous", "browser profile keeps identity mode");
+        AssertTrue(browserSpec.BrowserProfile.CredentialSource == "none", "browser profile keeps credential source");
+    }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
     using (var logDb = BrokerDb.UseSqlite($"Data Source={logDbPath}"))
@@ -465,4 +516,22 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
 
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
     }
+}
+
+file sealed class FakeWebHostEnvironment : IWebHostEnvironment
+{
+    public FakeWebHostEnvironment(string contentRootPath)
+    {
+        ContentRootPath = contentRootPath;
+        WebRootPath = contentRootPath;
+        ApplicationName = "Broker.Verify";
+        EnvironmentName = "Development";
+    }
+
+    public string ApplicationName { get; set; }
+    public IFileProvider WebRootFileProvider { get; set; } = null!;
+    public string WebRootPath { get; set; }
+    public string EnvironmentName { get; set; }
+    public string ContentRootPath { get; set; }
+    public IFileProvider ContentRootFileProvider { get; set; } = null!;
 }

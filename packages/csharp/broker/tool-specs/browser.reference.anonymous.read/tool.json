@@ -1,0 +1,53 @@
+{
+  "tool_id": "browser.reference.anonymous.read",
+  "display_name": "Browser Reference: Anonymous Read",
+  "summary": "Reference spec for broker-governed anonymous browser retrieval.",
+  "kind": "browser",
+  "status": "planned",
+  "version": "2026-03-22",
+  "tags": ["browser", "reference", "anonymous", "read"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "browser",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 30, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [],
+  "browser_profile": {
+    "identity_mode": "anonymous",
+    "credential_source": "none",
+    "session_owner": "none",
+    "allowed_actions": ["read", "navigate"],
+    "confirmation_policy": "broker_policy"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string" }
+    },
+    "required": ["url"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string" },
+      "title": { "type": "string" },
+      "content": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["public_web"]
+  },
+  "execution_rules": {
+    "runtime_required": "browser_worker",
+    "session_persistence": "ephemeral",
+    "allow_authenticated_access": false
+  },
+  "response_contract": {
+    "must_identify_identity_mode": true,
+    "must_identify_source_type": true
+  }
+}

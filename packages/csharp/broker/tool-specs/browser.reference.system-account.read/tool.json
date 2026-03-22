@@ -1,0 +1,55 @@
+{
+  "tool_id": "browser.reference.system-account.read",
+  "display_name": "Browser Reference: System Account Read",
+  "summary": "Reference spec for broker-governed browser access using a broker-owned system account.",
+  "kind": "browser",
+  "status": "planned",
+  "version": "2026-03-22",
+  "tags": ["browser", "reference", "system-account", "read"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "browser",
+    "risk_level": "medium",
+    "approval_policy": "broker_policy",
+    "ttl_seconds": 900,
+    "audit_level": "full",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [],
+  "browser_profile": {
+    "identity_mode": "system_account",
+    "credential_source": "system_vault",
+    "session_owner": "system",
+    "allowed_actions": ["read", "navigate", "authenticate"],
+    "confirmation_policy": "broker_policy"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "site_binding": { "type": "string" },
+      "url": { "type": "string" }
+    },
+    "required": ["site_binding", "url"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "site_binding": { "type": "string" },
+      "url": { "type": "string" },
+      "title": { "type": "string" },
+      "content": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["broker_managed_site_bindings"]
+  },
+  "execution_rules": {
+    "runtime_required": "browser_worker",
+    "session_persistence": "broker_managed",
+    "allow_authenticated_access": true
+  },
+  "response_contract": {
+    "must_identify_identity_mode": true,
+    "must_identify_site_binding": true
+  }
+}

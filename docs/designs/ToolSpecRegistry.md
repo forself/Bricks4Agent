@@ -68,6 +68,7 @@ Machine-readable definition, including:
 - `source_policy`
 - `execution_rules`
 - `response_contract`
+- `browser_profile` (optional, for broker-governed browser tools)
 
 ### `TOOL.md`
 
@@ -103,6 +104,19 @@ toward:
 - prompt exposure derived from specs
 - execution adapters selected under broker control
 
+For browser tools, the registry can now also carry first-level identity metadata through `browser_profile`, including:
+
+- `identity_mode`
+  - `anonymous`
+  - `system_account`
+  - `user_delegated`
+- `credential_source`
+- `session_owner`
+- `allowed_actions`
+- `confirmation_policy`
+
+This allows browser-tool governance to start from identity and trust boundaries before runtime implementation is complete.
+
 ## First Registered Specs
 
 The initial spec set is:
@@ -136,3 +150,12 @@ Current high-level usage:
 - `web.search.duckduckgo` is now wired into the high-level command grammar through the explicit `?search <keywords>` path
 - the high-level model does not receive unrestricted web access; it must go through this broker-mediated tool path
 - plain `?query` dialogue does not automatically become a search tool call
+
+Current browser identity references:
+
+- `browser.reference.anonymous.read`
+- `browser.reference.system-account.read`
+- `browser.reference.user-delegated.read`
+
+These are `planned` reference specs.
+They are present so the registry and capability model can carry the browser identity split before browser-worker execution is implemented.
