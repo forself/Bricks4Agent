@@ -181,6 +181,14 @@ try
             "requires_exact_origin_match": false,
             "allows_cross_origin_navigation": true
           },
+          "browser_action_policy": {
+            "max_action_level": "navigate",
+            "requires_human_confirmation_on": [],
+            "allows_form_fill": false,
+            "allows_submit": false,
+            "allows_download": false,
+            "allows_file_upload": false
+          },
           "input_schema": { "type": "object" },
           "output_schema": { "type": "object" },
           "source_policy": { "allowed_sources": ["public_web"] },
@@ -213,6 +221,9 @@ try
         AssertTrue(browserSpec.BrowserSitePolicy != null, "tool spec registry preserves browser site policy");
         AssertTrue(browserSpec.BrowserSitePolicy!.SiteBindingMode == "public_open", "browser site policy keeps site binding mode");
         AssertTrue(browserSpec.BrowserSitePolicy.AllowedSiteClasses.Length == 1 && browserSpec.BrowserSitePolicy.AllowedSiteClasses[0] == "public_web", "browser site policy keeps allowed site classes");
+        AssertTrue(browserSpec.BrowserActionPolicy != null, "tool spec registry preserves browser action policy");
+        AssertTrue(browserSpec.BrowserActionPolicy!.MaxActionLevel == "navigate", "browser action policy keeps max action level");
+        AssertTrue(browserSpec.BrowserActionPolicy.RequiresHumanConfirmationOn.Length == 0, "browser action policy keeps confirmation requirements");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
