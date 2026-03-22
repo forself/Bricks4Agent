@@ -225,6 +225,49 @@ public static class BrowserBindingEndpoints
 
             return Results.Ok(ApiResponseHelper.Success(result.Request));
         });
+
+        browser.MapPost("/requests/preview-fetch", async (HttpContext ctx, BrowserExecutionPreviewService previewService, CancellationToken cancellationToken) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                    new[] { "tool_id", "capability_id", "route", "principal_id", "task_id", "session_id", "start_url", "intended_action_level" },
+                    out var values,
+                    out var err))
+            {
+                return err!;
+            }
+
+            var input = new BrowserExecutionRequestBuildInput
+            {
+                RequestId = body.TryGetProperty("request_id", out var requestIdProp)
+                    ? requestIdProp.GetString() ?? BrokerCore.IdGen.New("breq")
+                    : BrokerCore.IdGen.New("breq"),
+                CapabilityId = values["capability_id"],
+                Route = values["route"],
+                PrincipalId = values["principal_id"],
+                TaskId = values["task_id"],
+                SessionId = values["session_id"],
+                StartUrl = values["start_url"],
+                IntendedActionLevel = values["intended_action_level"],
+                ArgumentsJson = body.TryGetProperty("arguments_json", out var argsProp) ? argsProp.GetRawText() : "{}",
+                ScopeJson = body.TryGetProperty("scope_json", out var scopeProp) ? scopeProp.GetRawText() : "{}",
+                SiteBindingId = body.TryGetProperty("site_binding_id", out var siteProp) ? siteProp.GetString() : null,
+                UserGrantId = body.TryGetProperty("user_grant_id", out var grantProp) ? grantProp.GetString() : null,
+                SystemBindingId = body.TryGetProperty("system_binding_id", out var sysProp) ? sysProp.GetString() : null,
+                SessionLeaseId = body.TryGetProperty("session_lease_id", out var leaseProp) ? leaseProp.GetString() : null
+            };
+
+            var result = await previewService.ExecuteAnonymousReadAsync(values["tool_id"], input, cancellationToken);
+            if (!result.Success)
+                return Results.BadRequest(ApiResponseHelper.Error(result.Error ?? "browser_preview_failed"));
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                request = result.Request,
+                result = result.Result
+            }));
+        });
     }
 
     private static DateTime? TryGetDateTime(JsonElement body, string propertyName)

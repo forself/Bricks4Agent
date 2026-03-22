@@ -8,6 +8,8 @@ using BrokerCore.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
+using System.Net.Http;
 
 static void AssertTrue(bool condition, string message)
 {
@@ -623,6 +625,26 @@ try
 
         var revokedLease = bindingService.RevokeSessionLease(issuedLease.SessionLeaseId);
         AssertTrue(revokedLease != null && revokedLease.LeaseState == "revoked", "browser binding service revokes session leases");
+
+        var previewHttpClient = new HttpClient(new FakeBrowserPreviewHandler())
+        {
+            BaseAddress = new Uri("https://preview.test/")
+        };
+        var previewService = new BrowserExecutionPreviewService(builder, previewHttpClient);
+        var previewResult = await previewService.ExecuteAnonymousReadAsync("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_preview_1",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_public"
+        });
+        AssertTrue(previewResult.Success, "browser preview service fetches anonymous public content");
+        AssertTrue(previewResult.Result != null && previewResult.Result.Title == "Example Preview", "browser preview service extracts page title");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
@@ -946,6 +968,18 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
         });
 
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
+    }
+}
+
+file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var html = "<html><head><title>Example Preview</title></head><body><h1>Hello</h1><p>Preview body text.</p></body></html>";
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html)
+        });
     }
 }
 
