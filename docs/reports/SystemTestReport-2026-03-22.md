@@ -96,8 +96,9 @@ This report records the repository-wide validation run performed on 2026-03-22 i
 
 ## Current Limitations Confirmed By Test
 
-1. Query routing works, but real-time query tooling is not yet generally wired into the high-level conversation path.
-   A live Chinese weather query routed as `query`, but the reply still fell back to non-real-time conversation/RAG behavior instead of executing a broker-mediated live search/fetch tool.
+1. Query routing works, but only explicit broker-mediated query tooling is currently available.
+   The live controlled search path is `?search <keywords>`, which now executes `web.search.duckduckgo` under broker mediation.
+   Plain `?query` traffic still follows the high-level dialogue path rather than auto-selecting a real-time search tool.
 
 2. High-level production flow is operational up to draft creation and confirmation handoff, but this report does not claim full downstream artifact generation from LINE.
 
@@ -114,4 +115,4 @@ The repository is currently in a testable and operational state for:
 - governed Podman stacks
 - high-level LINE ingress and production draft routing
 
-The main remaining functional gap exposed by the test run is the lack of broker-mediated real-time query tooling in the high-level conversation path.
+The main remaining functional gap exposed by the test run is that broker-mediated real-time query tooling is explicit rather than generally auto-selected for arbitrary query text.

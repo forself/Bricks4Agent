@@ -130,3 +130,9 @@ Current execution reality:
 
 - `web.search.duckduckgo` is executable through broker mediation
 - `web.search.google` remains documented but not activated, because the currently observed public Google entrypoint does not produce a stable broker-owned parser path
+
+Current high-level usage:
+
+- `web.search.duckduckgo` is now wired into the high-level command grammar through the explicit `?search <keywords>` path
+- the high-level model does not receive unrestricted web access; it must go through this broker-mediated tool path
+- plain `?query` dialogue does not automatically become a search tool call

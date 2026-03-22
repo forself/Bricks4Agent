@@ -192,6 +192,23 @@ The current broker entrypoints for the high-level LINE coordinator are:
 The line conversation gateway remains the direct conversation/query executor.
 The high-level coordinator is the routing and confirmation layer above it.
 
+## Current Explicit Query Mediation
+
+The high-level query layer now has one explicit broker-mediated live search path:
+
+- `?search <keywords>`
+
+Current behavior:
+
+- the command is parsed as an explicit query subcommand in the high-level command grammar
+- the broker routes it through `HighLevelQueryToolMediator`
+- the mediator resolves `web.search.duckduckgo` from the tool-spec registry
+- execution goes through the broker-owned dispatcher route, not through unrestricted model-side web access
+- the reply is returned directly to the user with ranked URLs and engine citation
+
+Plain `?query` messages still remain in the high-level dialogue path.
+They do not automatically escalate into tool execution.
+
 ## Current Query Tool Boundary
 
 The high-level layer is still broker-mediated.

@@ -187,6 +187,12 @@ Likewise:
 
 The prefix is retained in logs, but stripped from memory and execution state.
 
+Current implementation note:
+
+- explicit `?search <keywords>` remains verbatim in raw interaction logs
+- the memory projection stores only the de-commanded goal text (`<keywords>`)
+- the execution layer references the broker-mediated tool capability separately, rather than reusing raw prefixed text
+
 ## Control-Plane State Must Not Pollute Conversation Memory
 
 The following should remain control-plane state, not normal conversation memory:
