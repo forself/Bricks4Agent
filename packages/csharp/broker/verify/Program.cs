@@ -21,6 +21,7 @@ static void AssertTrue(bool condition, string message)
 
 var sandboxRoot = Path.Combine(Path.GetTempPath(), "broker-verify-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(sandboxRoot);
+var verifyProjectDirectory = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "packages", "csharp", "broker", "verify"));
 
 try
 {
@@ -370,6 +371,51 @@ try
           "response_contract": { "must_identify_identity_mode": true }
         }
         """);
+    Directory.CreateDirectory(Path.Combine(specRoot, "deploy.azure-vm-iis"));
+    File.WriteAllText(
+        Path.Combine(specRoot, "deploy.azure-vm-iis", "tool.json"),
+        """
+        {
+          "tool_id": "deploy.azure-vm-iis",
+          "display_name": "Deploy to Azure VM IIS",
+          "summary": "deployment",
+          "kind": "deployment",
+          "status": "beta",
+          "version": "2026-03-22",
+          "tags": ["deployment", "azure", "iis"],
+          "capability_template": {
+            "action_type": "write",
+            "resource_type": "deployment",
+            "risk_level": "high",
+            "approval_policy": "require_approval",
+            "ttl_seconds": 1800,
+            "audit_level": "full",
+            "quota": { "max_calls": 10, "per_window_seconds": 3600 }
+          },
+          "capability_bindings": [
+            {
+              "capability_id": "deploy.azure-vm-iis",
+              "route": "deploy_azure_vm_iis",
+              "purpose": "test deployment"
+            }
+          ],
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "target_id": { "type": "string" },
+              "project_path": { "type": "string" }
+            },
+            "required": ["target_id", "project_path"]
+          },
+          "output_schema": { "type": "object" },
+          "source_policy": { "allowed_sources": ["broker_registered_deployment_targets"] },
+          "execution_rules": { "transport": "winrm_powershell" },
+          "response_contract": { "must_identify_target": true }
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(specRoot, "deploy.azure-vm-iis", "TOOL.md"),
+        "# Deploy");
 
     var toolSpecDbPath = Path.Combine(sandboxRoot, "tool-spec-registry.db");
     using (var toolSpecDb = BrokerDb.UseSqlite($"Data Source={toolSpecDbPath}"))
@@ -645,6 +691,54 @@ try
         });
         AssertTrue(previewResult.Success, "browser preview service fetches anonymous public content");
         AssertTrue(previewResult.Result != null && previewResult.Result.Title == "Example Preview", "browser preview service extracts page title");
+
+        var deploymentTargetService = new AzureIisDeploymentTargetService(toolSpecDb);
+        var deploymentTarget = deploymentTargetService.UpsertTarget(new AzureIisDeploymentTarget
+        {
+            DisplayName = "Azure IIS Test",
+            Provider = "azure_vm_iis",
+            VmHost = "vm.example.com",
+            Port = 5986,
+            UseSsl = true,
+            Transport = "winrm_powershell",
+            SiteName = "Default Web Site",
+            AppPoolName = "DefaultAppPool",
+            PhysicalPath = @"C:\inetpub\wwwroot\TestApp",
+            SecretRef = "vault://deploy/test",
+            Status = "active"
+        });
+        AssertTrue(!string.IsNullOrWhiteSpace(deploymentTarget.TargetId), "deployment target service upserts azure iis target");
+
+        var deploymentBuilder = new AzureIisDeploymentRequestBuilder(registry, toolSpecDb);
+        var deploymentBuild = deploymentBuilder.TryBuild("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
+        {
+            RequestId = "dreq_1",
+            CapabilityId = "deploy.azure-vm-iis",
+            Route = "deploy_azure_vm_iis",
+            PrincipalId = "principal_deployer",
+            TaskId = "task_deploy",
+            SessionId = "session_deploy",
+            TargetId = deploymentTarget.TargetId,
+            ProjectPath = verifyProjectDirectory
+        });
+        AssertTrue(deploymentBuild.Success && deploymentBuild.Request != null, "deployment builder resolves target and project file");
+        AssertTrue(deploymentBuild.Request!.ProjectFile.EndsWith("Broker.Verify.csproj", StringComparison.OrdinalIgnoreCase), "deployment builder resolves the unique project file from directory");
+
+        var deploymentPreviewService = new AzureIisDeploymentPreviewService(deploymentBuilder);
+        var deploymentPreview = deploymentPreviewService.Preview("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
+        {
+            RequestId = "dreq_preview",
+            CapabilityId = "deploy.azure-vm-iis",
+            Route = "deploy_azure_vm_iis",
+            PrincipalId = "principal_deployer",
+            TaskId = "task_deploy",
+            SessionId = "session_deploy",
+            TargetId = deploymentTarget.TargetId,
+            ProjectPath = verifyProjectDirectory
+        });
+        AssertTrue(deploymentPreview.Success && deploymentPreview.Result != null, "deployment preview builds dry-run deployment result");
+        AssertTrue(deploymentPreview.Result!.ScriptPreview.Contains("New-PSSession", StringComparison.Ordinal), "deployment preview renders winrm powershell script");
+        AssertTrue(deploymentPreview.Result!.DetailsJson.Contains("dotnet publish", StringComparison.Ordinal), "deployment preview includes dotnet publish command");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
