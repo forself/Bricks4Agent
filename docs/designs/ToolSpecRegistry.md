@@ -70,6 +70,7 @@ Machine-readable definition, including:
 - `response_contract`
 - `browser_profile` (optional, for broker-governed browser tools)
 - `browser_session_policy` (optional, for browser session and credential governance)
+- `browser_site_policy` (optional, for site/origin governance)
 
 ### `TOOL.md`
 
@@ -128,6 +129,16 @@ The registry can also carry browser session policy through `browser_session_poli
 - `requires_interactive_login`
 
 This makes session and credential handling registry-visible instead of hiding it in runtime code.
+
+The registry can also carry browser site policy through `browser_site_policy`, including:
+
+- `site_binding_mode`
+- `allowed_site_classes`
+- `requires_registered_site_binding`
+- `requires_exact_origin_match`
+- `allows_cross_origin_navigation`
+
+This makes site/origin constraints visible before browser workers and site-binding catalogs are implemented.
 
 ## First Registered Specs
 

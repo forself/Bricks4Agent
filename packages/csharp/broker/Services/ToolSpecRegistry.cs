@@ -122,6 +122,7 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             ResponseContract = spec.ResponseContract,
             BrowserProfile = spec.BrowserProfile,
             BrowserSessionPolicy = spec.BrowserSessionPolicy,
+            BrowserSitePolicy = spec.BrowserSitePolicy,
             ExecutionRules = spec.ExecutionRules,
             CapabilityTemplate = spec.CapabilityTemplate ?? new ToolCapabilityTemplateFile(),
             CapabilityBindings = spec.CapabilityBindings,
@@ -181,6 +182,16 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
                     LeaseMinutes = spec.BrowserSessionPolicy.LeaseMinutes,
                     RequiresConsentRecord = spec.BrowserSessionPolicy.RequiresConsentRecord,
                     RequiresInteractiveLogin = spec.BrowserSessionPolicy.RequiresInteractiveLogin
+                },
+            BrowserSitePolicy = spec.BrowserSitePolicy == null
+                ? null
+                : new BrowserSitePolicyView
+                {
+                    SiteBindingMode = spec.BrowserSitePolicy.SiteBindingMode,
+                    AllowedSiteClasses = spec.BrowserSitePolicy.AllowedSiteClasses,
+                    RequiresRegisteredSiteBinding = spec.BrowserSitePolicy.RequiresRegisteredSiteBinding,
+                    RequiresExactOriginMatch = spec.BrowserSitePolicy.RequiresExactOriginMatch,
+                    AllowsCrossOriginNavigation = spec.BrowserSitePolicy.AllowsCrossOriginNavigation
                 },
             ExecutionRules = spec.ExecutionRules,
             CapabilityBindings = bindings,
@@ -248,6 +259,9 @@ public sealed class ToolSpecFile
 
     [JsonPropertyName("browser_session_policy")]
     public BrowserSessionPolicyFile? BrowserSessionPolicy { get; set; }
+
+    [JsonPropertyName("browser_site_policy")]
+    public BrowserSitePolicyFile? BrowserSitePolicy { get; set; }
 }
 
 public sealed class ToolCapabilityBindingFile
@@ -331,6 +345,24 @@ public sealed class BrowserSessionPolicyFile
     public bool RequiresInteractiveLogin { get; set; }
 }
 
+public sealed class BrowserSitePolicyFile
+{
+    [JsonPropertyName("site_binding_mode")]
+    public string SiteBindingMode { get; set; } = string.Empty;
+
+    [JsonPropertyName("allowed_site_classes")]
+    public string[] AllowedSiteClasses { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("requires_registered_site_binding")]
+    public bool RequiresRegisteredSiteBinding { get; set; }
+
+    [JsonPropertyName("requires_exact_origin_match")]
+    public bool RequiresExactOriginMatch { get; set; }
+
+    [JsonPropertyName("allows_cross_origin_navigation")]
+    public bool AllowsCrossOriginNavigation { get; set; }
+}
+
 public sealed class ToolSpecDocument
 {
     public string ToolId { get; set; } = string.Empty;
@@ -347,6 +379,7 @@ public sealed class ToolSpecDocument
     public JsonElement ResponseContract { get; set; }
     public BrowserToolProfileFile? BrowserProfile { get; set; }
     public BrowserSessionPolicyFile? BrowserSessionPolicy { get; set; }
+    public BrowserSitePolicyFile? BrowserSitePolicy { get; set; }
     public ToolCapabilityTemplateFile CapabilityTemplate { get; set; } = new();
     public ToolCapabilityBindingFile[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingFile>();
     public string DocMarkdown { get; set; } = string.Empty;
@@ -370,6 +403,7 @@ public sealed class ToolSpecView
     public JsonElement ResponseContract { get; set; }
     public BrowserToolProfileView? BrowserProfile { get; set; }
     public BrowserSessionPolicyView? BrowserSessionPolicy { get; set; }
+    public BrowserSitePolicyView? BrowserSitePolicy { get; set; }
     public ToolCapabilityBindingView[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingView>();
     public string DocMarkdown { get; set; } = string.Empty;
     public string ToolJsonPath { get; set; } = string.Empty;
@@ -393,6 +427,15 @@ public sealed class BrowserSessionPolicyView
     public int LeaseMinutes { get; set; }
     public bool RequiresConsentRecord { get; set; }
     public bool RequiresInteractiveLogin { get; set; }
+}
+
+public sealed class BrowserSitePolicyView
+{
+    public string SiteBindingMode { get; set; } = string.Empty;
+    public string[] AllowedSiteClasses { get; set; } = Array.Empty<string>();
+    public bool RequiresRegisteredSiteBinding { get; set; }
+    public bool RequiresExactOriginMatch { get; set; }
+    public bool AllowsCrossOriginNavigation { get; set; }
 }
 
 public sealed class ToolCapabilityBindingView
