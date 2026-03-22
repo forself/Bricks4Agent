@@ -72,14 +72,36 @@ public sealed class HighLevelMemoryState
     public string Channel { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public string? CurrentGoal { get; set; }
+    public string CurrentGoalCommitLevel { get; set; } = string.Empty;
+    public string CurrentGoalSource { get; set; } = string.Empty;
+    public string CurrentGoalCommitReason { get; set; } = string.Empty;
     public string LastRouteMode { get; set; } = string.Empty;
     public string WorkflowState { get; set; } = string.Empty;
     public string WorkflowAction { get; set; } = string.Empty;
     public string? PendingDraftId { get; set; }
     public bool PendingProjectName { get; set; }
     public string? ProjectName { get; set; }
+    public string ProjectNameCommitLevel { get; set; } = string.Empty;
+    public string ProjectNameSource { get; set; } = string.Empty;
+    public string ProjectNameCommitReason { get; set; } = string.Empty;
     public string? LastTaskType { get; set; }
     public string? LastTaskId { get; set; }
     public string? LastPlanId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public enum HighLevelMemoryCommitLevel
+{
+    Candidate = 0,
+    Confirmed = 1,
+    SystemDerived = 2
+}
+
+public enum HighLevelMemorySource
+{
+    User = 0,
+    ConfirmedUser = 1,
+    System = 2,
+    Tool = 3,
+    Planner = 4
 }

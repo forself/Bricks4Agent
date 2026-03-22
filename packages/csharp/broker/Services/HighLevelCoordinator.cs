@@ -22,6 +22,7 @@ public class HighLevelCoordinator
     private readonly HighLevelInputTrustPolicy _inputTrustPolicy;
     private readonly HighLevelWorkflowStateMachine _workflowStateMachine;
     private readonly HighLevelInteractionRecorder _interactionRecorder;
+    private readonly HighLevelInterpretationStore _interpretationStore;
     private readonly HighLevelMemoryStore _memoryStore;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
@@ -45,6 +46,7 @@ public class HighLevelCoordinator
         _inputTrustPolicy = new HighLevelInputTrustPolicy();
         _workflowStateMachine = new HighLevelWorkflowStateMachine();
         _interactionRecorder = new HighLevelInteractionRecorder(_db);
+        _interpretationStore = new HighLevelInterpretationStore(_db);
         _memoryStore = new HighLevelMemoryStore(_db);
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
@@ -1039,6 +1041,15 @@ public class HighLevelCoordinator
 
         try
         {
+            _interpretationStore.Record(BuildInterpretationRecord(channel, userId, parsed, trustedParse, workflow, result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to append high-level interpretation record for {Channel}:{UserId}", channel, userId);
+        }
+
+        try
+        {
             var latestMemory = _memoryStore.ReadLatest(channel, userId);
             var projectedMemory = BuildMemoryState(channel, userId, parsed, workflow, result, latestMemory);
             _memoryStore.Write(projectedMemory);
@@ -1074,17 +1085,54 @@ public class HighLevelCoordinator
             currentGoal ??= parsed.Raw.Trim();
         }
 
+        var currentGoalCommitLevel = previous?.CurrentGoalCommitLevel ?? HighLevelMemoryCommitLevel.Candidate.ToString();
+        var currentGoalSource = previous?.CurrentGoalSource ?? HighLevelMemorySource.System.ToString();
+        var currentGoalCommitReason = previous?.CurrentGoalCommitReason ?? "carry-forward";
+        if (!string.IsNullOrWhiteSpace(draft?.OriginalMessage))
+        {
+            currentGoalCommitLevel = result.CreatedTask != null
+                ? HighLevelMemoryCommitLevel.Confirmed.ToString()
+                : HighLevelMemoryCommitLevel.Candidate.ToString();
+            currentGoalSource = HighLevelMemorySource.User.ToString();
+            currentGoalCommitReason = result.CreatedTask != null
+                ? "draft confirmed into executable task"
+                : "candidate extracted from explicit user command";
+        }
+        else if (result.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body))
+        {
+            currentGoalCommitLevel = HighLevelMemoryCommitLevel.Candidate.ToString();
+            currentGoalSource = HighLevelMemorySource.User.ToString();
+            currentGoalCommitReason = "candidate extracted from query";
+        }
+
+        var projectName = draft?.ProjectName ?? previous?.ProjectName;
+        var projectNameCommitLevel = previous?.ProjectNameCommitLevel ?? string.Empty;
+        var projectNameSource = previous?.ProjectNameSource ?? string.Empty;
+        var projectNameCommitReason = previous?.ProjectNameCommitReason ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(draft?.ProjectName))
+        {
+            projectNameCommitLevel = HighLevelMemoryCommitLevel.Confirmed.ToString();
+            projectNameSource = HighLevelMemorySource.ConfirmedUser.ToString();
+            projectNameCommitReason = "explicit #project_name command accepted by workflow";
+        }
+
         return new HighLevelMemoryState
         {
             Channel = channel,
             UserId = userId,
             CurrentGoal = currentGoal,
+            CurrentGoalCommitLevel = currentGoalCommitLevel,
+            CurrentGoalSource = currentGoalSource,
+            CurrentGoalCommitReason = currentGoalCommitReason,
             LastRouteMode = result.Mode.ToString(),
             WorkflowState = workflow.State.ToString(),
             WorkflowAction = workflow.Action.ToString(),
             PendingDraftId = draft?.DraftId,
             PendingProjectName = draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName),
-            ProjectName = draft?.ProjectName ?? previous?.ProjectName,
+            ProjectName = projectName,
+            ProjectNameCommitLevel = projectNameCommitLevel,
+            ProjectNameSource = projectNameSource,
+            ProjectNameCommitReason = projectNameCommitReason,
             LastTaskType = result.CreatedTask?.TaskType ?? draft?.TaskType ?? previous?.LastTaskType,
             LastTaskId = result.CreatedTask?.TaskId ?? previous?.LastTaskId,
             LastPlanId = result.CreatedPlan?.PlanId ?? previous?.LastPlanId,
@@ -1110,6 +1158,32 @@ public class HighLevelCoordinator
             Source = HighLevelInputSource.UserMessage,
             Taint = HighLevelInputTaint.UserText
         };
+
+    private HighLevelInterpretationRecord BuildInterpretationRecord(
+        string channel,
+        string userId,
+        HighLevelParsedInput parsed,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        HighLevelProcessResult result)
+    {
+        return new HighLevelInterpretationRecord
+        {
+            Channel = channel,
+            UserId = userId,
+            InteractionType = result.Mode.ToString(),
+            ParsedKind = parsed.Kind.ToString(),
+            WorkflowState = workflow.State.ToString(),
+            WorkflowAction = workflow.Action.ToString(),
+            CommandExtractionAllowed = trustedParse.Trust.Allowed,
+            TrustReason = trustedParse.Trust.Reason,
+            CandidateGoal = string.IsNullOrWhiteSpace(parsed.Body) ? null : parsed.Body,
+            TaskType = result.CreatedTask?.TaskType ?? result.Draft?.TaskType,
+            ProjectName = result.Draft?.ProjectName,
+            DraftId = result.Draft?.DraftId,
+            DecisionReason = result.DecisionReason
+        };
+    }
 }
 
 public static class HighLevelCoordinatorDefaults
