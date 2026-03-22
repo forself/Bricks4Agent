@@ -64,8 +64,14 @@ try
     AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
     var searchParsed = parser.Parse("?search taipei weather");
     AssertTrue(searchParsed.QueryCommand == "search" && searchParsed.QueryArgument == "taipei weather", "parser extracts explicit search query subcommand");
+    var profileParsed = parser.Parse("?profile");
+    AssertTrue(profileParsed.QueryCommand == "profile", "parser extracts explicit profile query subcommand");
     var plainQueryParsed = parser.Parse("?weather taipei");
     AssertTrue(string.IsNullOrWhiteSpace(plainQueryParsed.QueryCommand), "parser keeps plain query text outside tool subcommands");
+    var nameParsed = parser.Parse("/name 小布");
+    AssertTrue(nameParsed.ProductionCommand == "name" && nameParsed.ProductionArgument == "小布", "parser extracts display-name production command");
+    var idParsed = parser.Parse("/id bricks001");
+    AssertTrue(idParsed.ProductionCommand == "id" && idParsed.ProductionArgument == "bricks001", "parser extracts alphanumeric-id production command");
     AssertTrue(parser.Parse("#MySite").Kind == HighLevelInputKind.ProjectName, "parser recognizes project-name prefix");
     AssertTrue(parser.Parse("confirm").Kind == HighLevelInputKind.Confirm, "parser recognizes confirm token");
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
@@ -880,6 +886,77 @@ try
         AssertTrue(HighLevelExecutionIntentStore.BuildDocumentId("line", "tester") == "hlm.execution.line.tester", "execution intent document id is stable for downstream references");
     }
 
+    var coordinatorDbPath = Path.Combine(sandboxRoot, "coordinator-profile.db");
+    using (var coordinatorDb = BrokerDb.UseSqlite($"Data Source={coordinatorDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(coordinatorDb);
+        initializer.Initialize();
+
+        var queryMediator = new HighLevelQueryToolMediator(
+            new FakeToolSpecRegistry(),
+            new FakeExecutionDispatcher(),
+            NullLogger<HighLevelQueryToolMediator>.Instance);
+
+        var lineGateway = new LineChatGateway(
+            new LineChatGatewayOptions
+            {
+                Enabled = true,
+                RagEnabled = false,
+                SystemPrompt = "verify"
+            },
+            new HighLevelLlmOptions
+            {
+                Provider = "ollama",
+                BaseUrl = "http://localhost:11434",
+                DefaultModel = "verify"
+            },
+            new FakeHttpClientFactory(),
+            coordinatorDb,
+            new EmbeddingService(new EmbeddingOptions { Enabled = false }),
+            new RagPipelineService(new RagPipelineOptions
+            {
+                QueryRewriteEnabled = false,
+                RerankEnabled = false,
+                CacheEnabled = false
+            }),
+            NullLogger<LineChatGateway>.Instance);
+
+        var coordinator = new HighLevelCoordinator(
+            coordinatorDb,
+            new FakeBrokerService(),
+            new FakePlanService(),
+            new FakeTaskRouter(),
+            lineGateway,
+            queryMediator,
+            new HighLevelCoordinatorOptions
+            {
+                AccessRoot = Path.Combine(sandboxRoot, "managed"),
+                CommandGuideReminderMinutes = 60
+            },
+            NullLogger<HighLevelCoordinator>.Instance);
+
+        var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
+        AssertTrue(setName.Error == null, "coordinator accepts explicit display-name command");
+        var profileAfterName = coordinator.GetLineUserProfile("line-user-a");
+        AssertTrue(profileAfterName?.PreferredDisplayName == "小布", "coordinator persists preferred display name");
+
+        var setId = await coordinator.ProcessLineMessageAsync("line-user-a", "/id bricks001");
+        AssertTrue(setId.Error == null, "coordinator accepts explicit alphanumeric user id command");
+        var profileAfterId = coordinator.GetLineUserProfile("line-user-a");
+        AssertTrue(profileAfterId?.PreferredUserCode == "bricks001", "coordinator persists preferred alphanumeric user id");
+
+        var profileView = await coordinator.ProcessLineMessageAsync("line-user-a", "?profile");
+        AssertTrue(profileView.Reply.Contains("display_name: 小布", StringComparison.Ordinal), "profile query shows preferred display name");
+        AssertTrue(profileView.Reply.Contains("user_code: bricks001", StringComparison.Ordinal), "profile query shows preferred alphanumeric user id");
+
+        var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
+        AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
+        AssertTrue(buildDraft.Draft!.ManagedPaths.UserRoot.Contains("bricks001", StringComparison.OrdinalIgnoreCase), "managed paths use preferred alphanumeric user id");
+
+        var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
+        AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
+    }
+
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
     File.WriteAllText(readmePath, "hello broker");
 
@@ -1086,6 +1163,103 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
 
     public IReadOnlyList<ToolSpecView> List(string? filter = null)
         => [_view];
+}
+
+file sealed class FakeHttpClientFactory : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name)
+        => new(new FakeLlmHandler())
+        {
+            BaseAddress = new Uri("http://localhost/")
+        };
+}
+
+file sealed class FakeLlmHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var body = """
+        {
+          "message": {
+            "content": "verify-reply"
+          }
+        }
+        """;
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body)
+        });
+    }
+}
+
+file sealed class FakeBrokerService : IBrokerService
+{
+    public BrokerTask CreateTask(string submittedBy, string taskType, string scopeDescriptor, string? assignedPrincipalId = null, string? assignedRoleId = null, string? runtimeDescriptor = null)
+        => new()
+        {
+            TaskId = "task_fake",
+            TaskType = taskType,
+            SubmittedBy = submittedBy,
+            ScopeDescriptor = scopeDescriptor,
+            RuntimeDescriptor = runtimeDescriptor ?? "{}",
+            State = TaskState.Active,
+            RiskLevel = RiskLevel.Low
+        };
+
+    public BrokerTask? GetTask(string taskId) => null;
+
+    public bool CancelTask(string taskId, string cancelledBy, string reason) => true;
+
+    public Task<ExecutionRequest> SubmitExecutionRequestAsync(string principalId, string taskId, string sessionId, string capabilityId, string intent, string requestPayload, string idempotencyKey, string traceId)
+        => Task.FromResult(new ExecutionRequest
+        {
+            RequestId = "req_fake",
+            PrincipalId = principalId,
+            TaskId = taskId,
+            SessionId = sessionId,
+            CapabilityId = capabilityId,
+            Intent = intent,
+            RequestPayload = requestPayload,
+            IdempotencyKey = idempotencyKey,
+            TraceId = traceId
+        });
+
+    public ExecutionRequest? GetExecutionRequest(string requestId) => null;
+}
+
+file sealed class FakePlanService : IPlanService
+{
+    public Plan CreatePlan(string taskId, string submittedBy, string title, string? description)
+        => new()
+        {
+            PlanId = "plan_fake",
+            TaskId = taskId,
+            SubmittedBy = submittedBy,
+            Title = title,
+            Description = description,
+            State = PlanState.Draft
+        };
+
+    public Plan? GetPlan(string planId) => null;
+    public bool UpdatePlanState(string planId, PlanState newState) => true;
+    public PlanNode AddNode(string planId, string capabilityId, string intent, string requestPayload, string? outputContextKey, int maxRetries) => new();
+    public List<PlanNode> GetNodes(string planId) => [];
+    public bool UpdateNodeState(string nodeId, NodeState state, string? requestId) => true;
+    public bool IncrementRetryCount(string nodeId) => true;
+    public PlanEdge AddEdge(string planId, string fromNodeId, string toNodeId, EdgeType edgeType, string? contextKey, string? condition) => new();
+    public List<PlanEdge> GetEdges(string planId) => [];
+    public List<PlanEdge> GetIncomingEdges(string nodeId) => [];
+    public (bool IsValid, string? Error) ValidateDag(string planId) => (true, null);
+    public List<PlanNode> GetReadyNodes(string planId) => [];
+    public Checkpoint CreateCheckpoint(string planId, string nodeId, string snapshotRef) => new();
+    public List<Checkpoint> GetCheckpoints(string planId) => [];
+}
+
+file sealed class FakeTaskRouter : ITaskRouter
+{
+    public RiskLevel AssessRisk(string taskType, string scopeDescriptor) => RiskLevel.Low;
+    public string? RecommendRole(string taskType) => "role_admin";
 }
 
 file sealed class FakeExecutionDispatcher : IExecutionDispatcher

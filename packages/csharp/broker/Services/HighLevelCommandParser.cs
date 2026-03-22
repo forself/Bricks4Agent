@@ -8,6 +8,26 @@ public sealed class HighLevelCommandParser
         "search",
         "\u641c\u5c0b"
     };
+    private static readonly HashSet<string> QueryProfileCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "profile",
+        "me",
+        "whoami"
+    };
+    private static readonly HashSet<string> ProductionNameCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "name",
+        "display-name",
+        "displayname",
+        "\u7a31\u547c"
+    };
+    private static readonly HashSet<string> ProductionIdCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "id",
+        "user-id",
+        "userid",
+        "code"
+    };
     private static readonly HashSet<string> ConfirmTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "\u78ba\u8a8d",
@@ -68,13 +88,16 @@ public sealed class HighLevelCommandParser
 
         if (TryExtractPrefixedBody(trimmed, _options.ProductionPrefixes, out var productionPrefix, out var productionBody))
         {
+            var (productionCommand, productionArgument) = ParseProductionBody(productionBody);
             return Create(
                 HighLevelInputKind.Production,
                 rawMessage!,
                 trimmed,
                 productionPrefix,
                 productionBody,
-                Normalize(productionBody));
+                Normalize(productionBody),
+                productionCommand: productionCommand,
+                productionArgument: productionArgument);
         }
 
         if (TryExtractPrefixedBody(trimmed, ProjectNamePrefixes, out var projectPrefix, out var projectBody))
@@ -135,7 +158,9 @@ public sealed class HighLevelCommandParser
         string body,
         string normalized,
         string queryCommand = "",
-        string queryArgument = "")
+        string queryArgument = "",
+        string productionCommand = "",
+        string productionArgument = "")
         => new()
         {
             Kind = kind,
@@ -145,7 +170,9 @@ public sealed class HighLevelCommandParser
             Body = body,
             Normalized = normalized,
             QueryCommand = queryCommand,
-            QueryArgument = queryArgument
+            QueryArgument = queryArgument,
+            ProductionCommand = productionCommand,
+            ProductionArgument = productionArgument
         };
 
     private static (string QueryCommand, string QueryArgument) ParseQueryBody(string body)
@@ -159,11 +186,41 @@ public sealed class HighLevelCommandParser
             return (string.Empty, string.Empty);
 
         var candidate = Normalize(parts[0]);
-        if (!QuerySearchCommands.Contains(candidate))
-            return (string.Empty, trimmed);
+        if (QuerySearchCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("search", argument);
+        }
 
+        if (QueryProfileCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("profile", argument);
+        }
+
+        return (string.Empty, trimmed);
+    }
+
+    private static (string ProductionCommand, string ProductionArgument) ParseProductionBody(string body)
+    {
+        var trimmed = body.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return (string.Empty, string.Empty);
+
+        var parts = trimmed.Split(new[] { ' ', '\t', '\r', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return (string.Empty, string.Empty);
+
+        var candidate = Normalize(parts[0]);
         var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-        return ("search", argument);
+
+        if (ProductionNameCommands.Contains(candidate))
+            return ("name", argument);
+
+        if (ProductionIdCommands.Contains(candidate))
+            return ("id", argument);
+
+        return (string.Empty, trimmed);
     }
 
     private static string Normalize(string value)
@@ -192,4 +249,6 @@ public sealed class HighLevelParsedInput
     public string Normalized { get; set; } = string.Empty;
     public string QueryCommand { get; set; } = string.Empty;
     public string QueryArgument { get; set; } = string.Empty;
+    public string ProductionCommand { get; set; } = string.Empty;
+    public string ProductionArgument { get; set; } = string.Empty;
 }
