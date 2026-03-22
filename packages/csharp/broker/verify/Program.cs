@@ -540,6 +540,46 @@ try
             UserGrantId = "grant_user_1"
         });
         AssertTrue(builtUserSuccess.Success, "browser request builder accepts matching user grant record");
+
+        var bindingService = new BrowserBindingService(toolSpecDb);
+        var createdSite = bindingService.UpsertSiteBinding(new BrowserSiteBinding
+        {
+            DisplayName = "Created Site",
+            IdentityMode = "anonymous",
+            SiteClass = "public_web",
+            Origin = "https://created.example.com",
+            Status = "active"
+        });
+        AssertTrue(!string.IsNullOrWhiteSpace(createdSite.SiteBindingId), "browser binding service creates site bindings");
+
+        var createdGrant = bindingService.UpsertUserGrant(new BrowserUserGrant
+        {
+            PrincipalId = "principal_created",
+            ConsentRef = "consent_created",
+            SiteBindingId = createdSite.SiteBindingId,
+            Status = "active"
+        });
+        AssertTrue(!string.IsNullOrWhiteSpace(createdGrant.UserGrantId), "browser binding service creates user grants");
+
+        var createdSystemBinding = bindingService.UpsertSystemBinding(new BrowserSystemBinding
+        {
+            DisplayName = "Created System",
+            SiteBindingId = "site_binding_system",
+            Status = "active",
+            SecretRef = "vault://created/system"
+        });
+        AssertTrue(!string.IsNullOrWhiteSpace(createdSystemBinding.SystemBindingId), "browser binding service creates system bindings");
+
+        var issuedLease = bindingService.IssueSessionLease(
+            toolId: "browser.reference.anonymous.read",
+            principalId: "principal_created",
+            identityMode: "anonymous",
+            expiresAt: DateTime.UtcNow.AddMinutes(15),
+            siteBindingId: createdSite.SiteBindingId);
+        AssertTrue(!string.IsNullOrWhiteSpace(issuedLease.SessionLeaseId), "browser binding service issues session leases");
+
+        var revokedLease = bindingService.RevokeSessionLease(issuedLease.SessionLeaseId);
+        AssertTrue(revokedLease != null && revokedLease.LeaseState == "revoked", "browser binding service revokes session leases");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
