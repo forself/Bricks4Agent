@@ -71,6 +71,8 @@ public sealed class HighLevelMemoryState
 {
     public string Channel { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
+    public string? PreferredDisplayName { get; set; }
+    public string? PreferredUserCode { get; set; }
     public string? CurrentGoal { get; set; }
     public string CurrentGoalCommitLevel { get; set; } = string.Empty;
     public string CurrentGoalSource { get; set; } = string.Empty;

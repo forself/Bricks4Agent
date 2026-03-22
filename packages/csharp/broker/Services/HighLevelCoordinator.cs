@@ -11,6 +11,7 @@ public class HighLevelCoordinator
 {
     private const string SystemPrincipalId = "system:high-level-coordinator";
     private const string ConversationDocumentPrefix = "convlog:";
+    private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
 
     private readonly BrokerDb _db;
     private readonly IBrokerService _brokerService;
@@ -100,13 +101,18 @@ public class HighLevelCoordinator
 
         workflow = _workflowStateMachine.Evaluate(draft, parsed);
 
+        if (TryHandleProfileCommand(channel, userId, trimmed, profile, draft, parsed, trustedParse, workflow, out var profileResult))
+        {
+            return profileResult;
+        }
+
         if (workflow.Action == HighLevelWorkflowAction.ShowHelp)
         {
             profile.LastInteractionAt = DateTimeOffset.UtcNow;
             profile.LastUpdatedAt = DateTime.UtcNow;
             profile.LastDecision = HighLevelRouteMode.Query.ToString();
             IncrementDecisionCount(profile, HighLevelRouteMode.Query);
-            var helpReply = BuildHelpReply(draft);
+            var helpReply = BuildHelpReplySafe(draft);
             profile.LastCommandGuideAt = DateTimeOffset.UtcNow;
             SaveUserProfile(channel, userId, profile);
 
@@ -130,7 +136,7 @@ public class HighLevelCoordinator
                     profile.LastDecision = HighLevelRouteMode.Production.ToString();
                     profile.LastUpdatedAt = DateTime.UtcNow;
                     IncrementDecisionCount(profile, HighLevelRouteMode.Production);
-                    var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
+                    var reply = PrepareReplySafe(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                     SaveUserProfile(channel, userId, profile);
 
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -143,7 +149,7 @@ public class HighLevelCoordinator
 
                 if (workflow.Action == HighLevelWorkflowAction.RequestProjectNameFirst)
                 {
-                    var reply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
+                    var reply = PrepareReplySafe(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
@@ -160,7 +166,7 @@ public class HighLevelCoordinator
                 {
                     SaveTaskDraft(channel, userId, draft);
                     profile.PendingDraftId = draft.DraftId;
-                    var reply = PrepareReply(profile, trimmed, BuildDraftConfirmationReply(draft));
+                    var reply = PrepareReplySafe(profile, trimmed, BuildDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -176,7 +182,7 @@ public class HighLevelCoordinator
                 {
                     draft.ProjectNameValidationError = projectNameError;
                     SaveTaskDraft(channel, userId, draft);
-                    var projectNameReply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
+                    var projectNameReply = PrepareReplySafe(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
@@ -191,7 +197,7 @@ public class HighLevelCoordinator
             if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
             {
                 var confirmed = ConfirmDraft(channel, userId, profile, draft);
-                confirmed.Result.Reply = PrepareReply(confirmed.Profile, trimmed, confirmed.Result.Reply);
+                confirmed.Result.Reply = PrepareReplySafe(confirmed.Profile, trimmed, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, confirmed.Result);
             }
@@ -203,7 +209,7 @@ public class HighLevelCoordinator
                 profile.LastDecision = HighLevelRouteMode.Production.ToString();
                 profile.LastUpdatedAt = DateTime.UtcNow;
                 IncrementDecisionCount(profile, HighLevelRouteMode.Production);
-                var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
+                var reply = PrepareReplySafe(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                 SaveUserProfile(channel, userId, profile);
 
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -216,7 +222,7 @@ public class HighLevelCoordinator
 
             if (workflow.Action == HighLevelWorkflowAction.RemindPendingDraft)
             {
-                var pendingReply = PrepareReply(profile, trimmed, BuildPendingDraftReminder(draft));
+                var pendingReply = PrepareReplySafe(profile, trimmed, BuildPendingDraftReminder(draft));
                 SaveUserProfile(channel, userId, profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
@@ -235,11 +241,11 @@ public class HighLevelCoordinator
 
         if (decision.Mode == HighLevelRouteMode.Production)
         {
-            var nextDraft = CreateDraft(channel, userId, trimmed, decision);
+            var nextDraft = CreateDraft(channel, userId, profile, trimmed, decision);
             SaveTaskDraft(channel, userId, nextDraft);
 
             profile.PendingDraftId = nextDraft.DraftId;
-            var reply = PrepareReply(
+            var reply = PrepareReplySafe(
                 profile,
                 trimmed,
                 nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
@@ -260,7 +266,7 @@ public class HighLevelCoordinator
             string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase))
         {
             var searchResult = await _queryToolMediator.SearchWebAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var searchReply = PrepareReply(profile, trimmed, searchResult.Reply);
+            var searchReply = PrepareReplySafe(profile, trimmed, searchResult.Reply);
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
@@ -285,7 +291,7 @@ public class HighLevelCoordinator
                 : $"目前沒有取得穩定答案。若要進行受控網路搜尋，請輸入 ?search {parsed.Body}";
         }
 
-        var chatReply = PrepareReply(profile, trimmed, replyBody);
+        var chatReply = PrepareReplySafe(profile, trimmed, replyBody);
         SaveUserProfile(channel, userId, profile);
         return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
         {
@@ -307,6 +313,83 @@ public class HighLevelCoordinator
 
     public HighLevelTaskDraft? GetLineDraft(string userId)
         => LoadTaskDraft("line", userId);
+
+    private bool TryHandleProfileCommand(
+        string channel,
+        string userId,
+        string message,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft? draft,
+        HighLevelParsedInput parsed,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        out HighLevelProcessResult result)
+    {
+        result = default!;
+
+        if (parsed.Kind == HighLevelInputKind.Query &&
+            string.Equals(parsed.QueryCommand, "profile", StringComparison.OrdinalIgnoreCase))
+        {
+            profile.LastDecision = HighLevelRouteMode.Query.ToString();
+            profile.LastUpdatedAt = DateTime.UtcNow;
+            IncrementDecisionCount(profile, HighLevelRouteMode.Query);
+            SaveUserProfile(channel, userId, profile);
+
+            result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = PrepareReplySafe(profile, message, BuildProfileReply(profile, draft)),
+                DecisionReason = "explicit profile query"
+            });
+            return true;
+        }
+
+        if (parsed.Kind != HighLevelInputKind.Production || string.IsNullOrWhiteSpace(parsed.ProductionCommand))
+        {
+            return false;
+        }
+
+        string reply;
+        string? error = null;
+        switch (parsed.ProductionCommand)
+        {
+            case "name":
+                if (!TryUpdatePreferredDisplayName(channel, userId, profile, parsed.ProductionArgument, out reply))
+                {
+                    error = "invalid_display_name";
+                }
+                break;
+
+            case "id":
+                if (!TryUpdatePreferredUserCode(channel, userId, profile, draft, parsed.ProductionArgument, out reply))
+                {
+                    error = "invalid_user_code";
+                }
+                else if (draft != null)
+                {
+                    SaveTaskDraft(channel, userId, draft);
+                }
+                break;
+
+            default:
+                return false;
+        }
+
+        profile.LastDecision = HighLevelRouteMode.Production.ToString();
+        profile.LastUpdatedAt = DateTime.UtcNow;
+        IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+        SaveUserProfile(channel, userId, profile);
+
+        result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Production,
+            Reply = PrepareReplySafe(profile, message, reply),
+            Error = error,
+            DecisionReason = $"explicit profile command: {parsed.ProductionCommand}",
+            Draft = draft
+        });
+        return true;
+    }
 
     private (HighLevelProcessResult Result, HighLevelUserProfile Profile) ConfirmDraft(
         string channel,
@@ -450,6 +533,7 @@ public class HighLevelCoordinator
     private HighLevelTaskDraft CreateDraft(
         string channel,
         string userId,
+        HighLevelUserProfile profile,
         string message,
         HighLevelRouteDecision decision)
     {
@@ -465,7 +549,7 @@ public class HighLevelCoordinator
             _ => $"Production task from {channel} request"
         };
         var requiresProjectName = decision.TaskType == "code_gen";
-        var managedPaths = BuildManagedPaths(channel, userId, null);
+        var managedPaths = BuildManagedPaths(channel, userId, profile, null);
 
         var draft = new HighLevelTaskDraft
         {
@@ -566,6 +650,145 @@ public class HighLevelCoordinator
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
+    private string BuildProfileReply(HighLevelUserProfile profile, HighLevelTaskDraft? draft)
+    {
+        var managedPaths = BuildManagedPaths(profile.Channel, profile.UserId, profile, null);
+        return string.Join('\n', new[]
+        {
+            "目前使用者設定如下：",
+            $"line_user_id: {profile.UserId}",
+            $"display_name: {profile.PreferredDisplayName ?? "(not set)"}",
+            $"user_code: {profile.PreferredUserCode ?? "(not set)"}",
+            $"user_root: {managedPaths.UserRoot}",
+            $"documents_root: {managedPaths.DocumentsRoot}",
+            $"conversations_root: {managedPaths.ConversationsRoot}",
+            $"projects_root: {managedPaths.ProjectsRoot}",
+            draft?.DraftId is null ? null : $"pending_draft_id: {draft.DraftId}",
+            "",
+            "可用設定指令：",
+            "- /name <稱呼>",
+            "- /id <英數字ID>",
+            "- ?profile",
+            "- ?help"
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private bool TryUpdatePreferredDisplayName(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        string rawValue,
+        out string reply)
+    {
+        var displayName = NormalizeDisplayName(rawValue);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            reply = "稱呼不能是空白。請使用 /name <稱呼>，例如 /name 小布。";
+            return false;
+        }
+
+        profile.PreferredDisplayName = displayName;
+        var managedPaths = BuildManagedPaths(channel, userId, profile, null);
+        reply = string.Join('\n', new[]
+        {
+            $"已更新稱呼為 {displayName}。",
+            $"之後回覆會優先使用這個稱呼。",
+            $"目前 user_root: {managedPaths.UserRoot}"
+        });
+        return true;
+    }
+
+    private bool TryUpdatePreferredUserCode(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft? draft,
+        string rawValue,
+        out string reply)
+    {
+        var userCode = rawValue.Trim();
+        if (!PreferredUserCodePattern.IsMatch(userCode))
+        {
+            reply = "使用者 ID 只能包含英文字母與數字，長度需介於 3 到 32。請使用 /id <AlphanumericId>，例如 /id bricks001。";
+            return false;
+        }
+
+        var currentCode = profile.PreferredUserCode;
+        if (string.Equals(currentCode, userCode, StringComparison.OrdinalIgnoreCase))
+        {
+            reply = $"使用者 ID 已經是 {currentCode}。";
+            return true;
+        }
+
+        var existingReservation = LoadUserCodeReservation(channel, userCode);
+        if (existingReservation != null && !string.Equals(existingReservation.UserId, userId, StringComparison.OrdinalIgnoreCase))
+        {
+            reply = $"使用者 ID {userCode} 已被其他使用者占用，請換一個新的英數字 ID。";
+            return false;
+        }
+
+        var currentPaths = BuildManagedPaths(channel, userId, profile, draft?.ProjectFolderName);
+        var candidateProfile = new HighLevelUserProfile
+        {
+            Channel = profile.Channel,
+            UserId = profile.UserId,
+            PreferredDisplayName = profile.PreferredDisplayName,
+            PreferredUserCode = userCode
+        };
+        var nextPaths = BuildManagedPaths(channel, userId, candidateProfile, draft?.ProjectFolderName);
+
+        if (!TryMoveManagedWorkspace(currentPaths, nextPaths, out var moveError))
+        {
+            reply = moveError;
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentCode))
+        {
+            DeleteDocument(BuildUserCodeDocumentId(channel, currentCode));
+        }
+
+        profile.PreferredUserCode = userCode;
+        SaveUserCodeReservation(channel, userId, userCode);
+
+        if (draft != null)
+        {
+            draft.ManagedPaths = nextPaths;
+            UpdateDraftDescriptors(draft);
+        }
+
+        reply = string.Join('\n', new[]
+        {
+            $"已更新使用者 ID 為 {userCode}。",
+            $"之後個人工作區與延伸服務識別會使用這個 ID。",
+            $"目前 user_root: {nextPaths.UserRoot}"
+        });
+        return true;
+    }
+
+    private bool TryMoveManagedWorkspace(HighLevelManagedPaths currentPaths, HighLevelManagedPaths nextPaths, out string error)
+    {
+        error = string.Empty;
+        if (string.Equals(currentPaths.UserRoot, nextPaths.UserRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (Directory.Exists(nextPaths.UserRoot))
+        {
+            error = $"目標 user_root 已存在：{nextPaths.UserRoot}。請換一個不重複的使用者 ID。";
+            return false;
+        }
+
+        Directory.CreateDirectory(nextPaths.ChannelRoot);
+        if (Directory.Exists(currentPaths.UserRoot))
+        {
+            Directory.Move(currentPaths.UserRoot, nextPaths.UserRoot);
+        }
+
+        return true;
+    }
+
     private HighLevelTaskHandoff BuildHandoff(
         BrokerTask task,
         Plan plan,
@@ -624,6 +847,7 @@ public class HighLevelCoordinator
         {
             channel = draft.Channel,
             origin_user_id = draft.UserId,
+            preferred_user_code = LoadUserProfile(draft.Channel, draft.UserId)?.PreferredUserCode,
             mode = "production",
             source = "high-level-coordinator",
             path_scope = new
@@ -645,6 +869,8 @@ public class HighLevelCoordinator
         {
             source = draft.Channel,
             source_user_id = draft.UserId,
+            preferred_display_name = LoadUserProfile(draft.Channel, draft.UserId)?.PreferredDisplayName,
+            preferred_user_code = LoadUserProfile(draft.Channel, draft.UserId)?.PreferredUserCode,
             high_level = true,
             conversation_document = BuildConversationDocumentId(draft.UserId),
             user_profile_document = BuildProfileDocumentId(draft.Channel, draft.UserId),
@@ -688,6 +914,8 @@ public class HighLevelCoordinator
         {
             source = draft.Channel,
             source_user_id = draft.UserId,
+            preferred_display_name = LoadUserProfile(draft.Channel, draft.UserId)?.PreferredDisplayName,
+            preferred_user_code = LoadUserProfile(draft.Channel, draft.UserId)?.PreferredUserCode,
             high_level = true,
             conversation_document = BuildConversationDocumentId(draft.UserId),
             user_profile_document = BuildProfileDocumentId(draft.Channel, draft.UserId),
@@ -723,12 +951,16 @@ public class HighLevelCoordinator
         });
     }
 
-    private HighLevelManagedPaths BuildManagedPaths(string channel, string userId, string? projectFolderName)
+    private HighLevelManagedPaths BuildManagedPaths(
+        string channel,
+        string userId,
+        HighLevelUserProfile? profile,
+        string? projectFolderName)
     {
         var safeChannel = SanitizePathSegment(channel, "channel");
-        var safeUserId = SanitizePathSegment(userId, "user");
+        var userFolderName = ResolveUserFolderName(profile, userId);
         var channelRoot = Path.Combine(_accessRoot, safeChannel);
-        var userRoot = Path.Combine(channelRoot, safeUserId);
+        var userRoot = Path.Combine(channelRoot, userFolderName);
         var conversationsRoot = Path.Combine(userRoot, "conversations");
         var documentsRoot = Path.Combine(userRoot, "documents");
         var projectsRoot = Path.Combine(userRoot, "projects");
@@ -737,6 +969,7 @@ public class HighLevelCoordinator
         {
             AccessRoot = _accessRoot,
             ChannelRoot = channelRoot,
+            UserFolderName = userFolderName,
             UserRoot = userRoot,
             ConversationsRoot = conversationsRoot,
             DocumentsRoot = documentsRoot,
@@ -780,7 +1013,8 @@ public class HighLevelCoordinator
             return false;
         }
 
-        var managedPaths = BuildManagedPaths(draft.Channel, draft.UserId, projectFolderName);
+        var profile = LoadUserProfile(draft.Channel, draft.UserId);
+        var managedPaths = BuildManagedPaths(draft.Channel, draft.UserId, profile, projectFolderName);
         if (Directory.Exists(managedPaths.ProjectRoot))
         {
             error = $"\u5c08\u6848\u540d\u7a31\u300c{projectName}\u300d\u5df2\u5b58\u5728\u3002\u8acb\u63db\u4e00\u500b\u4e0d\u91cd\u8907\u7684\u540d\u7a31\u3002";
@@ -826,7 +1060,8 @@ public class HighLevelCoordinator
         draft.ProjectName = null;
         draft.ProjectFolderName = null;
         draft.ProjectNameValidationError = "\u5728\u78ba\u8a8d\u524d\uff0c\u540c\u540d\u5c08\u6848\u5df2\u88ab\u5efa\u7acb\u3002\u8acb\u63d0\u4f9b\u65b0\u7684\u5c08\u6848\u540d\u7a31\u3002";
-        draft.ManagedPaths = BuildManagedPaths(draft.Channel, draft.UserId, null);
+        var profile = LoadUserProfile(draft.Channel, draft.UserId);
+        draft.ManagedPaths = BuildManagedPaths(draft.Channel, draft.UserId, profile, null);
         UpdateDraftDescriptors(draft);
         reply = BuildProjectNameRequestReply(draft);
         return false;
@@ -860,6 +1095,29 @@ public class HighLevelCoordinator
         candidate = Regex.Replace(candidate, @"^(?:project\s*name|project|專案名稱|name)\s*[:：]\s*", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         candidate = candidate.Trim().Trim('"', '\'', '“', '”', '「', '」', '『', '』');
         return candidate;
+    }
+
+    private static string NormalizeDisplayName(string rawInput)
+    {
+        var candidate = rawInput.Trim();
+        candidate = Regex.Replace(candidate, @"\s+", " ");
+        candidate = new string(candidate.Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+        if (candidate.Length > 40)
+        {
+            candidate = candidate[..40].Trim();
+        }
+
+        return candidate;
+    }
+
+    private static string ResolveUserFolderName(HighLevelUserProfile? profile, string userId)
+    {
+        if (!string.IsNullOrWhiteSpace(profile?.PreferredUserCode))
+        {
+            return SanitizePathSegment(profile.PreferredUserCode, "user");
+        }
+
+        return SanitizePathSegment(userId, "user");
     }
 
     private static string SanitizePathSegment(string value, string fallback)
@@ -900,6 +1158,9 @@ public class HighLevelCoordinator
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
         => LoadLatestJson<HighLevelUserProfile>(BuildProfileDocumentId(channel, userId));
 
+    private HighLevelUserCodeReservation? LoadUserCodeReservation(string channel, string userCode)
+        => LoadLatestJson<HighLevelUserCodeReservation>(BuildUserCodeDocumentId(channel, userCode));
+
     private void SaveUserProfile(string channel, string userId, HighLevelUserProfile profile)
     {
         profile.Channel = channel;
@@ -908,6 +1169,24 @@ public class HighLevelCoordinator
             BuildProfileDocumentId(channel, userId),
             BuildProfileDocumentId(channel, userId),
             JsonSerializer.Serialize(profile),
+            "application/json",
+            "global");
+    }
+
+    private void SaveUserCodeReservation(string channel, string userId, string userCode)
+    {
+        var reservation = new HighLevelUserCodeReservation
+        {
+            Channel = channel,
+            UserCode = userCode,
+            UserId = userId,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        UpsertDocument(
+            BuildUserCodeDocumentId(channel, userCode),
+            BuildUserCodeDocumentId(channel, userCode),
+            JsonSerializer.Serialize(reservation),
             "application/json",
             "global");
     }
@@ -1000,6 +1279,9 @@ public class HighLevelCoordinator
     private static string BuildHandoffDocumentId(string taskId)
         => $"hlm.handoff.{taskId}";
 
+    private static string BuildUserCodeDocumentId(string channel, string userCode)
+        => $"hlm.usercode.{channel}.{Normalize(userCode)}";
+
     private static string Normalize(string value)
         => value.Trim().ToLowerInvariant();
 
@@ -1015,15 +1297,19 @@ public class HighLevelCoordinator
     private static bool ContainsAny(string normalized, IEnumerable<string> keywords)
         => keywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase));
 
-    private string PrepareReply(HighLevelUserProfile profile, string message, string reply)
+    private string PrepareReplySafe(HighLevelUserProfile profile, string message, string reply)
     {
         var now = DateTimeOffset.UtcNow;
         profile.LastInteractionAt = now;
 
+        var personalizedReply = string.IsNullOrWhiteSpace(profile.PreferredDisplayName)
+            ? reply
+            : $"{profile.PreferredDisplayName}，\n{reply}";
+
         var guideMode = GetCommandGuideMode(profile, message);
         if (guideMode == CommandGuideMode.None)
         {
-            return reply;
+            return personalizedReply;
         }
 
         profile.LastCommandGuideAt = now;
@@ -1031,7 +1317,140 @@ public class HighLevelCoordinator
         {
             return string.Join('\n', new[]
             {
-                reply,
+                personalizedReply,
+                "",
+                BuildCommandGuideBlockSafe()
+            });
+        }
+
+        return string.Join('\n', new[]
+        {
+            personalizedReply,
+            "",
+            "若要再次查看規則，請輸入 ?help。"
+        });
+    }
+
+    private string BuildHelpReplySafe(HighLevelTaskDraft? draft)
+    {
+        if (draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName))
+        {
+            return string.Join('\n', new[]
+            {
+                "目前這個 production draft 正在等待專案名稱。",
+                "請用 # 開頭提供專案名稱，例如 #MySite。",
+                "",
+                BuildCommandGuideBlockSafe()
+            });
+        }
+
+        return BuildCommandGuideBlockSafe();
+    }
+
+    private static string BuildCommandGuideBlockSafe()
+    {
+        return string.Join('\n', new[]
+        {
+            "使用規則：",
+            "- 一般對話：直接輸入",
+            "- 查詢：?內容",
+            "- 顯式搜尋：?search 關鍵字",
+            "- 任務或指令：/內容",
+            "- 專案名稱：#名稱",
+            "- 個人設定：/name <稱呼>、/id <英數字ID>",
+            "- 查看個人設定：?profile",
+            "- 查看說明：?help",
+            "- 確認 / 取消：確認、confirm、取消、cancel"
+        });
+    }
+
+    private string PrepareReplyClean(HighLevelUserProfile profile, string message, string reply)
+    {
+        var now = DateTimeOffset.UtcNow;
+        profile.LastInteractionAt = now;
+
+        var personalizedReply = string.IsNullOrWhiteSpace(profile.PreferredDisplayName)
+            ? reply
+            : $"{profile.PreferredDisplayName}，\n{reply}";
+
+        var guideMode = GetCommandGuideMode(profile, message);
+        if (guideMode == CommandGuideMode.None)
+        {
+            return personalizedReply;
+        }
+
+        profile.LastCommandGuideAt = now;
+        if (guideMode == CommandGuideMode.Full)
+        {
+            return string.Join('\n', new[]
+            {
+                personalizedReply,
+                "",
+                BuildCommandGuideBlockClean()
+            });
+        }
+
+        return string.Join('\n', new[]
+        {
+            personalizedReply,
+            "",
+            "若要查看前綴規則與個人設定指令，請輸入 ?help。"
+        });
+    }
+
+    private string BuildHelpReplyClean(HighLevelTaskDraft? draft)
+    {
+        if (draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName))
+        {
+            return string.Join('\n', new[]
+            {
+                "目前這個 production draft 正在等待專案名稱。",
+                "請用 # 開頭提供專案名稱，例如 #MySite。",
+                "",
+                BuildCommandGuideBlockClean()
+            });
+        }
+
+        return BuildCommandGuideBlockClean();
+    }
+
+    private static string BuildCommandGuideBlockClean()
+    {
+        return string.Join('\n', new[]
+        {
+            "使用規則：",
+            "- 一般對話：直接輸入",
+            "- 查詢：?內容",
+            "- 顯式搜尋：?search 關鍵字",
+            "- 任務/指令：/內容",
+            "- 專案名稱：#名稱",
+            "- 個人設定：/name <稱呼>、/id <英數字ID>",
+            "- 查看個人設定：?profile",
+            "- 查看說明：?help",
+            "- 確認 / 取消：確認、confirm、取消、cancel"
+        });
+    }
+
+    private string PrepareReply(HighLevelUserProfile profile, string message, string reply)
+    {
+        var now = DateTimeOffset.UtcNow;
+        profile.LastInteractionAt = now;
+        var personalizedReply = string.IsNullOrWhiteSpace(profile.PreferredDisplayName)
+            ? reply
+            : $"{profile.PreferredDisplayName}，\n{reply}";
+
+        var guideMode = GetCommandGuideMode(profile, message);
+        if (guideMode == CommandGuideMode.None)
+        {
+            return personalizedReply;
+        }
+
+        profile.LastCommandGuideAt = now;
+        if (guideMode == CommandGuideMode.Full)
+        {
+            return string.Join('\n', new[]
+            {
+                personalizedReply,
                 "",
                 BuildCommandGuideBlock()
             });
@@ -1039,7 +1458,7 @@ public class HighLevelCoordinator
 
         return string.Join('\n', new[]
         {
-            reply,
+            personalizedReply,
             "",
             "若要查看前綴規則，請輸入 ?help。"
         });
@@ -1179,7 +1598,8 @@ public class HighLevelCoordinator
         try
         {
             var latestMemory = _memoryStore.ReadLatest(channel, userId);
-            var projectedMemory = BuildMemoryState(channel, userId, parsed, workflow, result, latestMemory);
+            var currentProfile = LoadUserProfile(channel, userId);
+            var projectedMemory = BuildMemoryState(channel, userId, currentProfile, parsed, workflow, result, latestMemory);
             _memoryStore.Write(projectedMemory);
         }
         catch (Exception ex)
@@ -1193,6 +1613,7 @@ public class HighLevelCoordinator
     private HighLevelMemoryState BuildMemoryState(
         string channel,
         string userId,
+        HighLevelUserProfile? profile,
         HighLevelParsedInput parsed,
         HighLevelWorkflowDecision workflow,
         HighLevelProcessResult result,
@@ -1253,6 +1674,8 @@ public class HighLevelCoordinator
         {
             Channel = channel,
             UserId = userId,
+            PreferredDisplayName = profile?.PreferredDisplayName,
+            PreferredUserCode = profile?.PreferredUserCode,
             CurrentGoal = currentGoal,
             CurrentGoalCommitLevel = currentGoalCommitLevel,
             CurrentGoalSource = currentGoalSource,
@@ -1447,6 +1870,8 @@ public class HighLevelUserProfile
 {
     public string Channel { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
+    public string? PreferredDisplayName { get; set; }
+    public string? PreferredUserCode { get; set; }
     public string? LastDecision { get; set; }
     public DateTimeOffset? LastInteractionAt { get; set; }
     public DateTimeOffset? LastCommandGuideAt { get; set; }
@@ -1521,9 +1946,18 @@ public class HighLevelManagedPaths
 {
     public string AccessRoot { get; set; } = string.Empty;
     public string ChannelRoot { get; set; } = string.Empty;
+    public string UserFolderName { get; set; } = string.Empty;
     public string UserRoot { get; set; } = string.Empty;
     public string ConversationsRoot { get; set; } = string.Empty;
     public string DocumentsRoot { get; set; } = string.Empty;
     public string ProjectsRoot { get; set; } = string.Empty;
     public string ProjectRoot { get; set; } = string.Empty;
+}
+
+public class HighLevelUserCodeReservation
+{
+    public string Channel { get; set; } = string.Empty;
+    public string UserCode { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
