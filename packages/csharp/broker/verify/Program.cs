@@ -25,6 +25,7 @@ try
     var parser = new HighLevelCommandParser(parserOptions);
     var trustPolicy = new HighLevelInputTrustPolicy();
     var workflowMachine = new HighLevelWorkflowStateMachine();
+    var promotionGate = new HighLevelExecutionPromotionGate();
     AssertTrue(parser.Parse("?help").Kind == HighLevelInputKind.Help, "parser recognizes explicit help command");
     AssertTrue(parser.Parse("/build website").Kind == HighLevelInputKind.Production, "parser recognizes production prefix");
     AssertTrue(parser.Parse("?weather taipei").Kind == HighLevelInputKind.Query, "parser recognizes query prefix");
@@ -88,6 +89,45 @@ try
     AssertTrue(
         workflowMachine.Evaluate(null, parser.Parse("/build website")).Action == HighLevelWorkflowAction.StartProduction,
         "workflow starts production only from explicit production command");
+
+    var promotableMemory = new HighLevelMemoryState
+    {
+        Channel = "line",
+        UserId = "tester",
+        CurrentGoal = "build website",
+        CurrentGoalCommitLevel = HighLevelMemoryCommitLevel.Candidate.ToString(),
+        LastRouteMode = HighLevelRouteMode.Production.ToString(),
+        ProjectName = "MySite",
+        ProjectNameCommitLevel = HighLevelMemoryCommitLevel.Confirmed.ToString()
+    };
+    var promotableDraft = new HighLevelTaskDraft
+    {
+        DraftId = "draft_123",
+        Channel = "line",
+        UserId = "tester",
+        TaskType = "code_gen",
+        OriginalMessage = "/build website",
+        ScopeDescriptor = "{}",
+        RuntimeDescriptor = "{}",
+        RequiresProjectName = true,
+        ProjectName = "MySite"
+    };
+    var promotion = promotionGate.Evaluate(promotableMemory, promotableDraft);
+    AssertTrue(promotion.Allowed, "promotion gate allows confirmed project metadata plus candidate user goal");
+
+    var deniedPromotion = promotionGate.Evaluate(promotableMemory, new HighLevelTaskDraft
+    {
+        DraftId = "draft_456",
+        Channel = "line",
+        UserId = "tester",
+        TaskType = "code_gen",
+        OriginalMessage = "/build website",
+        ScopeDescriptor = "{}",
+        RuntimeDescriptor = "{}",
+        RequiresProjectName = true,
+        ProjectName = null
+    });
+    AssertTrue(!deniedPromotion.Allowed, "promotion gate denies execution without required project name");
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
     using (var logDb = BrokerDb.UseSqlite($"Data Source={logDbPath}"))
@@ -161,6 +201,23 @@ try
         var interpretations = interpretationStore.ReadLatest("line", "tester", 10);
         AssertTrue(interpretations.Count == 1, "interpretation store persists append-only interpreted records");
         AssertTrue(interpretations[0].CandidateGoal == "build website", "interpretation store keeps candidate goal separate from raw log");
+
+        var executionIntentStore = new HighLevelExecutionIntentStore(logDb);
+        executionIntentStore.Write(new HighLevelExecutionIntent
+        {
+            Channel = "line",
+            UserId = "tester",
+            Stage = "executable",
+            PromotionReason = "explicit confirm",
+            Goal = "build website",
+            TaskType = "code_gen",
+            ProjectName = "MySite",
+            DraftId = "draft_123"
+        });
+
+        var executionIntent = executionIntentStore.ReadLatest("line", "tester");
+        AssertTrue(executionIntent != null, "execution intent store persists promoted executable intent");
+        AssertTrue(executionIntent!.Stage == "executable", "execution intent store preserves promotion stage");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
