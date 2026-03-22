@@ -20,6 +20,8 @@ public class HighLevelCoordinator
     private readonly HighLevelCoordinatorOptions _options;
     private readonly HighLevelCommandParser _commandParser;
     private readonly HighLevelWorkflowStateMachine _workflowStateMachine;
+    private readonly HighLevelInteractionRecorder _interactionRecorder;
+    private readonly HighLevelMemoryStore _memoryStore;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -40,6 +42,8 @@ public class HighLevelCoordinator
         _options = options;
         _commandParser = new HighLevelCommandParser(_options);
         _workflowStateMachine = new HighLevelWorkflowStateMachine();
+        _interactionRecorder = new HighLevelInteractionRecorder(_db);
+        _memoryStore = new HighLevelMemoryStore(_db);
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -49,19 +53,22 @@ public class HighLevelCoordinator
         string message,
         CancellationToken cancellationToken = default)
     {
+        const string channel = "line";
+        var parsed = _commandParser.Parse(message);
+        var workflow = _workflowStateMachine.Evaluate(null, parsed);
+
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(message))
         {
-            return new HighLevelProcessResult
+            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Conversation,
                 Reply = "user_id and message are required.",
                 Error = "empty_input"
-            };
+            });
         }
 
-        const string channel = "line";
         var trimmed = message.Trim();
-        var parsed = _commandParser.Parse(trimmed);
+        parsed = _commandParser.Parse(trimmed);
         var profile = LoadUserProfile(channel, userId) ?? new HighLevelUserProfile
         {
             Channel = channel,
@@ -76,7 +83,7 @@ public class HighLevelCoordinator
             profile.PendingDraftId = null;
         }
 
-        var workflow = _workflowStateMachine.Evaluate(draft, parsed);
+        workflow = _workflowStateMachine.Evaluate(draft, parsed);
 
         if (workflow.Action == HighLevelWorkflowAction.ShowHelp)
         {
@@ -88,13 +95,13 @@ public class HighLevelCoordinator
             profile.LastCommandGuideAt = DateTimeOffset.UtcNow;
             SaveUserProfile(channel, userId, profile);
 
-            return new HighLevelProcessResult
+            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Query,
                 Reply = helpReply,
                 DecisionReason = "matched help query",
                 Draft = draft
-            };
+            });
         }
 
         if (draft != null)
@@ -111,25 +118,25 @@ public class HighLevelCoordinator
                     var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                     SaveUserProfile(channel, userId, profile);
 
-                    return new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
                         DraftCleared = true
-                    };
+                    });
                 }
 
                 if (workflow.Action == HighLevelWorkflowAction.RequestProjectNameFirst)
                 {
                     var reply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
-                    return new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
                         Draft = draft,
                         DecisionReason = "project name required before confirmation"
-                    };
+                    });
                 }
 
                 var projectNameError = "\u8acb\u4ee5 # \u958b\u982d\u56de\u8986\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982 #MySite\u3002\u4e0d\u8981\u91cd\u65b0\u8f38\u5165\u6574\u6bb5\u9700\u6c42\u3002";
@@ -141,13 +148,13 @@ public class HighLevelCoordinator
                     var reply = PrepareReply(profile, trimmed, BuildDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
-                    return new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
                         Draft = draft,
                         DecisionReason = "project name captured"
-                    };
+                    });
                 }
 
                 if (workflow.Action == HighLevelWorkflowAction.RemindProjectName)
@@ -156,13 +163,13 @@ public class HighLevelCoordinator
                     SaveTaskDraft(channel, userId, draft);
                     var projectNameReply = PrepareReply(profile, trimmed, BuildProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
-                    return new HighLevelProcessResult
+                    return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = projectNameReply,
                         Draft = draft,
                         DecisionReason = workflow.Reason
-                    };
+                    });
                 }
             }
 
@@ -171,7 +178,7 @@ public class HighLevelCoordinator
                 var confirmed = ConfirmDraft(channel, userId, profile, draft);
                 confirmed.Result.Reply = PrepareReply(confirmed.Profile, trimmed, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
-                return confirmed.Result;
+                return FinalizeResult(channel, userId, parsed, workflow, confirmed.Result);
             }
 
             if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
@@ -184,25 +191,25 @@ public class HighLevelCoordinator
                 var reply = PrepareReply(profile, trimmed, "\u5df2\u53d6\u6d88\u672c\u6b21 production \u898f\u5283\uff0c\u4e0d\u6703\u5efa\u7acb task \u6216 plan\u3002");
                 SaveUserProfile(channel, userId, profile);
 
-                return new HighLevelProcessResult
+                return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = reply,
                     DraftCleared = true
-                };
+                });
             }
 
             if (workflow.Action == HighLevelWorkflowAction.RemindPendingDraft)
             {
                 var pendingReply = PrepareReply(profile, trimmed, BuildPendingDraftReminder(draft));
                 SaveUserProfile(channel, userId, profile);
-                return new HighLevelProcessResult
+                return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = pendingReply,
                     Draft = draft,
                     DecisionReason = workflow.Reason
-                };
+                });
             }
         }
 
@@ -225,19 +232,19 @@ public class HighLevelCoordinator
                     : BuildDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
-            return new HighLevelProcessResult
+            return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = reply,
                 Draft = nextDraft,
                 DecisionReason = decision.Reason
-            };
+            });
         }
 
         var chat = await _lineChatGateway.ChatAsync(userId, trimmed, cancellationToken);
         var chatReply = PrepareReply(profile, trimmed, chat.Reply);
         SaveUserProfile(channel, userId, profile);
-        return new HighLevelProcessResult
+        return FinalizeResult(channel, userId, parsed, workflow, new HighLevelProcessResult
         {
             Mode = decision.Mode,
             Reply = chatReply,
@@ -245,7 +252,7 @@ public class HighLevelCoordinator
             DecisionReason = decision.Reason,
             RagSnippets = chat.RagSnippets,
             HistoryCount = chat.HistoryCount
-        };
+        });
     }
 
     public HighLevelUserProfile? GetLineUserProfile(string userId)
@@ -981,6 +988,106 @@ public class HighLevelCoordinator
         var key = mode.ToString().ToLowerInvariant();
         profile.DecisionCounts.TryGetValue(key, out var current);
         profile.DecisionCounts[key] = current + 1;
+    }
+
+    private HighLevelProcessResult FinalizeResult(
+        string channel,
+        string userId,
+        HighLevelParsedInput parsed,
+        HighLevelWorkflowDecision workflow,
+        HighLevelProcessResult result)
+    {
+        try
+        {
+            _interactionRecorder.Record(new HighLevelInteractionRecord
+            {
+                Channel = channel,
+                UserId = userId,
+                RawInput = parsed.Raw,
+                RawReply = result.Reply,
+                ParsedKind = parsed.Kind.ToString(),
+                ParsedPrefix = parsed.Prefix,
+                ParsedBody = parsed.Body,
+                WorkflowState = workflow.State.ToString(),
+                WorkflowAction = workflow.Action.ToString(),
+                WorkflowReason = workflow.Reason,
+                RouteMode = result.Mode.ToString(),
+                DecisionReason = result.DecisionReason,
+                Error = result.Error,
+                DraftId = result.Draft?.DraftId,
+                TaskId = result.CreatedTask?.TaskId,
+                PlanId = result.CreatedPlan?.PlanId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to append high-level interaction log for {Channel}:{UserId}", channel, userId);
+        }
+
+        try
+        {
+            var latestMemory = _memoryStore.ReadLatest(channel, userId);
+            var projectedMemory = BuildMemoryState(channel, userId, parsed, workflow, result, latestMemory);
+            _memoryStore.Write(projectedMemory);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to project high-level memory state for {Channel}:{UserId}", channel, userId);
+        }
+
+        return result;
+    }
+
+    private HighLevelMemoryState BuildMemoryState(
+        string channel,
+        string userId,
+        HighLevelParsedInput parsed,
+        HighLevelWorkflowDecision workflow,
+        HighLevelProcessResult result,
+        HighLevelMemoryState? previous)
+    {
+        var draft = result.Draft;
+        var currentGoal = previous?.CurrentGoal;
+        if (!string.IsNullOrWhiteSpace(draft?.OriginalMessage))
+        {
+            currentGoal = ToMemoryGoal(draft.OriginalMessage);
+        }
+        else if (result.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body))
+        {
+            currentGoal = parsed.Body;
+        }
+        else if (result.Mode == HighLevelRouteMode.Conversation && !string.IsNullOrWhiteSpace(parsed.Raw))
+        {
+            currentGoal ??= parsed.Raw.Trim();
+        }
+
+        return new HighLevelMemoryState
+        {
+            Channel = channel,
+            UserId = userId,
+            CurrentGoal = currentGoal,
+            LastRouteMode = result.Mode.ToString(),
+            WorkflowState = workflow.State.ToString(),
+            WorkflowAction = workflow.Action.ToString(),
+            PendingDraftId = draft?.DraftId,
+            PendingProjectName = draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName),
+            ProjectName = draft?.ProjectName ?? previous?.ProjectName,
+            LastTaskType = result.CreatedTask?.TaskType ?? draft?.TaskType ?? previous?.LastTaskType,
+            LastTaskId = result.CreatedTask?.TaskId ?? previous?.LastTaskId,
+            LastPlanId = result.CreatedPlan?.PlanId ?? previous?.LastPlanId,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    private string ToMemoryGoal(string rawInput)
+    {
+        var parsed = _commandParser.Parse(rawInput);
+        if (!string.IsNullOrWhiteSpace(parsed.Body))
+        {
+            return parsed.Body;
+        }
+
+        return rawInput.Trim();
     }
 }
 
