@@ -121,6 +121,7 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
             OutputSchema = spec.OutputSchema,
             ResponseContract = spec.ResponseContract,
             BrowserProfile = spec.BrowserProfile,
+            BrowserSessionPolicy = spec.BrowserSessionPolicy,
             ExecutionRules = spec.ExecutionRules,
             CapabilityTemplate = spec.CapabilityTemplate ?? new ToolCapabilityTemplateFile(),
             CapabilityBindings = spec.CapabilityBindings,
@@ -169,6 +170,17 @@ public sealed class ToolSpecRegistry : IToolSpecRegistry
                     SessionOwner = spec.BrowserProfile.SessionOwner,
                     AllowedActions = spec.BrowserProfile.AllowedActions,
                     ConfirmationPolicy = spec.BrowserProfile.ConfirmationPolicy
+                },
+            BrowserSessionPolicy = spec.BrowserSessionPolicy == null
+                ? null
+                : new BrowserSessionPolicyView
+                {
+                    BindingMode = spec.BrowserSessionPolicy.BindingMode,
+                    CredentialBinding = spec.BrowserSessionPolicy.CredentialBinding,
+                    ReuseScope = spec.BrowserSessionPolicy.ReuseScope,
+                    LeaseMinutes = spec.BrowserSessionPolicy.LeaseMinutes,
+                    RequiresConsentRecord = spec.BrowserSessionPolicy.RequiresConsentRecord,
+                    RequiresInteractiveLogin = spec.BrowserSessionPolicy.RequiresInteractiveLogin
                 },
             ExecutionRules = spec.ExecutionRules,
             CapabilityBindings = bindings,
@@ -233,6 +245,9 @@ public sealed class ToolSpecFile
 
     [JsonPropertyName("browser_profile")]
     public BrowserToolProfileFile? BrowserProfile { get; set; }
+
+    [JsonPropertyName("browser_session_policy")]
+    public BrowserSessionPolicyFile? BrowserSessionPolicy { get; set; }
 }
 
 public sealed class ToolCapabilityBindingFile
@@ -295,6 +310,27 @@ public sealed class BrowserToolProfileFile
     public string ConfirmationPolicy { get; set; } = string.Empty;
 }
 
+public sealed class BrowserSessionPolicyFile
+{
+    [JsonPropertyName("binding_mode")]
+    public string BindingMode { get; set; } = string.Empty;
+
+    [JsonPropertyName("credential_binding")]
+    public string CredentialBinding { get; set; } = string.Empty;
+
+    [JsonPropertyName("reuse_scope")]
+    public string ReuseScope { get; set; } = string.Empty;
+
+    [JsonPropertyName("lease_minutes")]
+    public int LeaseMinutes { get; set; }
+
+    [JsonPropertyName("requires_consent_record")]
+    public bool RequiresConsentRecord { get; set; }
+
+    [JsonPropertyName("requires_interactive_login")]
+    public bool RequiresInteractiveLogin { get; set; }
+}
+
 public sealed class ToolSpecDocument
 {
     public string ToolId { get; set; } = string.Empty;
@@ -310,6 +346,7 @@ public sealed class ToolSpecDocument
     public JsonElement ExecutionRules { get; set; }
     public JsonElement ResponseContract { get; set; }
     public BrowserToolProfileFile? BrowserProfile { get; set; }
+    public BrowserSessionPolicyFile? BrowserSessionPolicy { get; set; }
     public ToolCapabilityTemplateFile CapabilityTemplate { get; set; } = new();
     public ToolCapabilityBindingFile[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingFile>();
     public string DocMarkdown { get; set; } = string.Empty;
@@ -332,6 +369,7 @@ public sealed class ToolSpecView
     public JsonElement ExecutionRules { get; set; }
     public JsonElement ResponseContract { get; set; }
     public BrowserToolProfileView? BrowserProfile { get; set; }
+    public BrowserSessionPolicyView? BrowserSessionPolicy { get; set; }
     public ToolCapabilityBindingView[] CapabilityBindings { get; set; } = Array.Empty<ToolCapabilityBindingView>();
     public string DocMarkdown { get; set; } = string.Empty;
     public string ToolJsonPath { get; set; } = string.Empty;
@@ -345,6 +383,16 @@ public sealed class BrowserToolProfileView
     public string SessionOwner { get; set; } = string.Empty;
     public string[] AllowedActions { get; set; } = Array.Empty<string>();
     public string ConfirmationPolicy { get; set; } = string.Empty;
+}
+
+public sealed class BrowserSessionPolicyView
+{
+    public string BindingMode { get; set; } = string.Empty;
+    public string CredentialBinding { get; set; } = string.Empty;
+    public string ReuseScope { get; set; } = string.Empty;
+    public int LeaseMinutes { get; set; }
+    public bool RequiresConsentRecord { get; set; }
+    public bool RequiresInteractiveLogin { get; set; }
 }
 
 public sealed class ToolCapabilityBindingView

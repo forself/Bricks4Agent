@@ -23,6 +23,14 @@
     "allowed_actions": ["read", "navigate", "authenticate"],
     "confirmation_policy": "broker_policy"
   },
+  "browser_session_policy": {
+    "binding_mode": "broker_managed",
+    "credential_binding": "system_vault",
+    "reuse_scope": "site",
+    "lease_minutes": 240,
+    "requires_consent_record": false,
+    "requires_interactive_login": false
+  },
   "input_schema": {
     "type": "object",
     "properties": {

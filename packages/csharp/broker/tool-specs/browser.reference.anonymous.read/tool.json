@@ -23,6 +23,14 @@
     "allowed_actions": ["read", "navigate"],
     "confirmation_policy": "broker_policy"
   },
+  "browser_session_policy": {
+    "binding_mode": "ephemeral",
+    "credential_binding": "none",
+    "reuse_scope": "none",
+    "lease_minutes": 15,
+    "requires_consent_record": false,
+    "requires_interactive_login": false
+  },
   "input_schema": {
     "type": "object",
     "properties": {

@@ -23,6 +23,14 @@
     "allowed_actions": ["read", "navigate", "authenticate"],
     "confirmation_policy": "user_required"
   },
+  "browser_session_policy": {
+    "binding_mode": "user_bound",
+    "credential_binding": "user_grant",
+    "reuse_scope": "user",
+    "lease_minutes": 120,
+    "requires_consent_record": true,
+    "requires_interactive_login": true
+  },
   "input_schema": {
     "type": "object",
     "properties": {

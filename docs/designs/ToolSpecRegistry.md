@@ -69,6 +69,7 @@ Machine-readable definition, including:
 - `execution_rules`
 - `response_contract`
 - `browser_profile` (optional, for broker-governed browser tools)
+- `browser_session_policy` (optional, for browser session and credential governance)
 
 ### `TOOL.md`
 
@@ -116,6 +117,17 @@ For browser tools, the registry can now also carry first-level identity metadata
 - `confirmation_policy`
 
 This allows browser-tool governance to start from identity and trust boundaries before runtime implementation is complete.
+
+The registry can also carry browser session policy through `browser_session_policy`, including:
+
+- `binding_mode`
+- `credential_binding`
+- `reuse_scope`
+- `lease_minutes`
+- `requires_consent_record`
+- `requires_interactive_login`
+
+This makes session and credential handling registry-visible instead of hiding it in runtime code.
 
 ## First Registered Specs
 
