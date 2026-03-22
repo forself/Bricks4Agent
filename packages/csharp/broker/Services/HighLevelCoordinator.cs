@@ -28,6 +28,7 @@ public class HighLevelCoordinator
     private readonly HighLevelMemoryStore _memoryStore;
     private readonly HighLevelExecutionIntentStore _executionIntentStore;
     private readonly HighLevelExecutionPromotionGate _executionPromotionGate;
+    private readonly BrowserBindingService _browserBindingService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -39,6 +40,7 @@ public class HighLevelCoordinator
         LineChatGateway lineChatGateway,
         HighLevelQueryToolMediator queryToolMediator,
         HighLevelCoordinatorOptions options,
+        BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
     {
         _db = db;
@@ -56,6 +58,7 @@ public class HighLevelCoordinator
         _memoryStore = new HighLevelMemoryStore(_db);
         _executionIntentStore = new HighLevelExecutionIntentStore(_db);
         _executionPromotionGate = new HighLevelExecutionPromotionGate();
+        _browserBindingService = browserBindingService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -112,7 +115,7 @@ public class HighLevelCoordinator
             profile.LastUpdatedAt = DateTime.UtcNow;
             profile.LastDecision = HighLevelRouteMode.Query.ToString();
             IncrementDecisionCount(profile, HighLevelRouteMode.Query);
-            var helpReply = BuildHelpReplySafe(draft);
+            var helpReply = BuildHelpReplySafe(profile, draft);
             profile.LastCommandGuideAt = DateTimeOffset.UtcNow;
             SaveUserProfile(channel, userId, profile);
 
@@ -276,6 +279,57 @@ public class HighLevelCoordinator
                 DecisionReason = searchResult.Success
                     ? "explicit query subcommand mediated by broker tool"
                     : "explicit query subcommand failed during broker tool mediation"
+            });
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "rail", StringComparison.OrdinalIgnoreCase))
+        {
+            var transportResult = await _queryToolMediator.SearchRailAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = transportReply,
+                Error = transportResult.Error,
+                DecisionReason = transportResult.Success
+                    ? "explicit rail query subcommand mediated by broker tool"
+                    : "explicit rail query subcommand failed during broker tool mediation"
+            });
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "bus", StringComparison.OrdinalIgnoreCase))
+        {
+            var transportResult = await _queryToolMediator.SearchBusAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = transportReply,
+                Error = transportResult.Error,
+                DecisionReason = transportResult.Success
+                    ? "explicit bus query subcommand mediated by broker tool"
+                    : "explicit bus query subcommand failed during broker tool mediation"
+            });
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "flight", StringComparison.OrdinalIgnoreCase))
+        {
+            var transportResult = await _queryToolMediator.SearchFlightAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = transportReply,
+                Error = transportResult.Error,
+                DecisionReason = transportResult.Success
+                    ? "explicit flight query subcommand mediated by broker tool"
+                    : "explicit flight query subcommand failed during broker tool mediation"
             });
         }
 
@@ -665,6 +719,8 @@ public class HighLevelCoordinator
             $"projects_root: {managedPaths.ProjectsRoot}",
             draft?.DraftId is null ? null : $"pending_draft_id: {draft.DraftId}",
             "",
+            BuildPermissionSummary(profile),
+            "",
             "可用設定指令：",
             "- /name <稱呼>",
             "- /id <英數字ID>",
@@ -696,6 +752,48 @@ public class HighLevelCoordinator
             $"目前 user_root: {managedPaths.UserRoot}"
         });
         return true;
+    }
+
+    private string BuildPermissionSummary(HighLevelUserProfile profile)
+    {
+        var principalCandidates = ResolvePrincipalCandidates(profile).ToArray();
+        var activeUserGrants = principalCandidates
+            .SelectMany(principalId => _browserBindingService.ListUserGrants(principalId))
+            .Where(grant => grant.Status == "active" && (grant.ExpiresAt == null || grant.ExpiresAt > DateTime.UtcNow))
+            .GroupBy(grant => grant.UserGrantId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        var activeUserSites = principalCandidates
+            .SelectMany(principalId => _browserBindingService.ListSiteBindings("user_delegated", principalId))
+            .Where(binding => binding.Status == "active")
+            .GroupBy(binding => binding.SiteBindingId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        return string.Join('\n', new[]
+        {
+            "目前擁有的權限：",
+            "- 高階對話與需求澄清",
+            "- 受控網路搜尋：?search",
+            "- 交通查詢：?rail、?bus、?flight",
+            "- 建立 production draft：/ 指令",
+            "- 個人設定：/name、/id、?profile、?help",
+            activeUserGrants.Length == 0
+                ? "- 使用者授權網站能力：目前沒有"
+                : $"- 使用者授權網站能力：{activeUserGrants.Length} 個 grant、{activeUserSites.Length} 個 site binding"
+        });
+    }
+
+    private static IEnumerable<string> ResolvePrincipalCandidates(HighLevelUserProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.Channel) && !string.IsNullOrWhiteSpace(profile.UserId))
+            yield return $"{profile.Channel}:{profile.UserId}";
+
+        if (!string.IsNullOrWhiteSpace(profile.UserId))
+            yield return profile.UserId;
+
+        if (!string.IsNullOrWhiteSpace(profile.PreferredUserCode))
+            yield return profile.PreferredUserCode;
     }
 
     private bool TryUpdatePreferredUserCode(
@@ -1319,7 +1417,7 @@ public class HighLevelCoordinator
             {
                 personalizedReply,
                 "",
-                BuildCommandGuideBlockSafe()
+                BuildCommandGuideBlockSafe(profile)
             });
         }
 
@@ -1331,7 +1429,7 @@ public class HighLevelCoordinator
         });
     }
 
-    private string BuildHelpReplySafe(HighLevelTaskDraft? draft)
+    private string BuildHelpReplySafe(HighLevelUserProfile profile, HighLevelTaskDraft? draft)
     {
         if (draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName))
         {
@@ -1340,21 +1438,25 @@ public class HighLevelCoordinator
                 "目前這個 production draft 正在等待專案名稱。",
                 "請用 # 開頭提供專案名稱，例如 #MySite。",
                 "",
-                BuildCommandGuideBlockSafe()
+                BuildCommandGuideBlockSafe(profile)
             });
         }
 
-        return BuildCommandGuideBlockSafe();
+        return BuildCommandGuideBlockSafe(profile);
     }
 
-    private static string BuildCommandGuideBlockSafe()
+    private string BuildCommandGuideBlockSafe(HighLevelUserProfile profile)
     {
         return string.Join('\n', new[]
         {
+            BuildPermissionSummary(profile),
+            "",
             "使用規則：",
             "- 一般對話：直接輸入",
-            "- 查詢：?內容",
             "- 顯式搜尋：?search 關鍵字",
+            "- 火車查詢：?rail 條件",
+            "- 公車查詢：?bus 條件",
+            "- 航班查詢：?flight 條件",
             "- 任務或指令：/內容",
             "- 專案名稱：#名稱",
             "- 個人設定：/name <稱呼>、/id <英數字ID>",
