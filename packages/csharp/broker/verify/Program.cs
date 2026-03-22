@@ -226,6 +226,106 @@ try
     File.WriteAllText(
         Path.Combine(specRoot, "browser.reference.anonymous.read", "TOOL.md"),
         "# Reference");
+    Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.system-account.read"));
+    File.WriteAllText(
+        Path.Combine(specRoot, "browser.reference.system-account.read", "tool.json"),
+        """
+        {
+          "tool_id": "browser.reference.system-account.read",
+          "display_name": "Browser System Reference",
+          "summary": "system",
+          "kind": "browser",
+          "status": "planned",
+          "version": "2026-03-22",
+          "tags": ["browser"],
+          "capability_bindings": [],
+          "browser_profile": {
+            "identity_mode": "system_account",
+            "credential_source": "system_vault",
+            "session_owner": "system",
+            "allowed_actions": ["read", "navigate", "authenticate"],
+            "confirmation_policy": "broker_policy"
+          },
+          "browser_session_policy": {
+            "binding_mode": "broker_managed",
+            "credential_binding": "system_vault",
+            "reuse_scope": "site",
+            "lease_minutes": 240,
+            "requires_consent_record": false,
+            "requires_interactive_login": false
+          },
+          "browser_site_policy": {
+            "site_binding_mode": "registered_site",
+            "allowed_site_classes": ["broker_managed_site"],
+            "requires_registered_site_binding": true,
+            "requires_exact_origin_match": true,
+            "allows_cross_origin_navigation": false
+          },
+          "browser_action_policy": {
+            "max_action_level": "authenticate",
+            "requires_human_confirmation_on": [],
+            "allows_form_fill": false,
+            "allows_submit": false,
+            "allows_download": false,
+            "allows_file_upload": false
+          },
+          "input_schema": { "type": "object" },
+          "output_schema": { "type": "object" },
+          "source_policy": { "allowed_sources": ["broker_managed_site_bindings"] },
+          "execution_rules": { "runtime_required": "browser_worker" },
+          "response_contract": { "must_identify_identity_mode": true }
+        }
+        """);
+    Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.user-delegated.read"));
+    File.WriteAllText(
+        Path.Combine(specRoot, "browser.reference.user-delegated.read", "tool.json"),
+        """
+        {
+          "tool_id": "browser.reference.user-delegated.read",
+          "display_name": "Browser User Reference",
+          "summary": "user",
+          "kind": "browser",
+          "status": "planned",
+          "version": "2026-03-22",
+          "tags": ["browser"],
+          "capability_bindings": [],
+          "browser_profile": {
+            "identity_mode": "user_delegated",
+            "credential_source": "user_grant",
+            "session_owner": "user",
+            "allowed_actions": ["read", "navigate", "authenticate"],
+            "confirmation_policy": "user_required"
+          },
+          "browser_session_policy": {
+            "binding_mode": "user_bound",
+            "credential_binding": "user_grant",
+            "reuse_scope": "user",
+            "lease_minutes": 120,
+            "requires_consent_record": true,
+            "requires_interactive_login": true
+          },
+          "browser_site_policy": {
+            "site_binding_mode": "user_authorized_site",
+            "allowed_site_classes": ["user_authorized_site"],
+            "requires_registered_site_binding": true,
+            "requires_exact_origin_match": true,
+            "allows_cross_origin_navigation": false
+          },
+          "browser_action_policy": {
+            "max_action_level": "authenticate",
+            "requires_human_confirmation_on": ["authenticate"],
+            "allows_form_fill": false,
+            "allows_submit": false,
+            "allows_download": false,
+            "allows_file_upload": false
+          },
+          "input_schema": { "type": "object" },
+          "output_schema": { "type": "object" },
+          "source_policy": { "allowed_sources": ["user_authorized_site_bindings"] },
+          "execution_rules": { "runtime_required": "browser_worker" },
+          "response_contract": { "must_identify_identity_mode": true }
+        }
+        """);
     Directory.CreateDirectory(Path.Combine(specRoot, "browser.invalid.missing-action"));
     File.WriteAllText(
         Path.Combine(specRoot, "browser.invalid.missing-action", "tool.json"),
@@ -294,6 +394,62 @@ try
         AssertTrue(browserSpec.BrowserActionPolicy!.MaxActionLevel == "navigate", "browser action policy keeps max action level");
         AssertTrue(browserSpec.BrowserActionPolicy.RequiresHumanConfirmationOn.Length == 0, "browser action policy keeps confirmation requirements");
         AssertTrue(registry.Get("browser.invalid.missing-action") == null, "tool spec registry rejects incomplete browser specs");
+
+        var builder = new BrowserExecutionRequestBuilder(registry);
+        var builtAnonymous = builder.TryBuild("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_1",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read"
+        });
+        AssertTrue(builtAnonymous.Success, "browser request builder builds anonymous browser request from registry metadata");
+        AssertTrue(builtAnonymous.Request!.IdentityMode == "anonymous", "browser request builder projects identity mode into runtime contract");
+
+        var builtTooPowerful = builder.TryBuild("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_2",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "committed_action"
+        });
+        AssertTrue(!builtTooPowerful.Success && builtTooPowerful.Error == "browser_request_action_level_exceeds_policy", "browser request builder denies action level above browser policy");
+
+        var builtSystemMissing = builder.TryBuild("browser.reference.system-account.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_3",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_1"
+        });
+        AssertTrue(!builtSystemMissing.Success && builtSystemMissing.Error == "browser_request_missing_system_binding", "browser request builder requires system binding for system-account tools");
+
+        var builtUserMissingGrant = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_4",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_2"
+        });
+        AssertTrue(!builtUserMissingGrant.Success && builtUserMissingGrant.Error == "browser_request_missing_user_grant", "browser request builder requires user grant for user-delegated tools");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
