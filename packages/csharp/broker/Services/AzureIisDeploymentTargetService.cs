@@ -54,8 +54,11 @@ public sealed class AzureIisDeploymentTargetService
         existing.UseSsl = target.UseSsl;
         existing.Transport = target.Transport;
         existing.SiteName = target.SiteName;
+        existing.DeploymentMode = string.IsNullOrWhiteSpace(target.DeploymentMode) ? "site_root" : target.DeploymentMode;
+        existing.ApplicationPath = target.ApplicationPath ?? string.Empty;
         existing.AppPoolName = target.AppPoolName;
         existing.PhysicalPath = target.PhysicalPath;
+        existing.HealthCheckPath = target.HealthCheckPath ?? string.Empty;
         existing.SecretRef = target.SecretRef;
         existing.Status = target.Status;
         existing.MetadataJson = string.IsNullOrWhiteSpace(target.MetadataJson) ? "{}" : target.MetadataJson;

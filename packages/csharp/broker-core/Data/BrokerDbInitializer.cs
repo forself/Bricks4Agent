@@ -166,6 +166,9 @@ public class BrokerDbInitializer
 
         // SharedContextEntry 新增 tags 欄位
         TryExecute("ALTER TABLE shared_context_entries ADD COLUMN tags TEXT DEFAULT '[]'");
+        TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN deployment_mode TEXT DEFAULT 'site_root'");
+        TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN application_path TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_path TEXT DEFAULT ''");
     }
 
     /// <summary>

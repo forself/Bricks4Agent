@@ -38,8 +38,11 @@ public sealed class AzureIisDeploymentPreviewService
                     request.Port,
                     request.UseSsl,
                     request.SiteName,
+                    request.DeploymentMode,
+                    request.ApplicationPath,
                     request.AppPoolName,
-                    request.PhysicalPath
+                    request.PhysicalPath,
+                    request.HealthCheckPath
                 }
             }));
 
@@ -103,15 +106,17 @@ public static class AzureIisPowerShellScriptBuilder
             "try {",
             $"    $physicalPath = '{EscapeSingleQuotes(request.PhysicalPath)}'",
             $"    $siteName = '{EscapeSingleQuotes(request.SiteName)}'",
+            $"    $deploymentMode = '{EscapeSingleQuotes(request.DeploymentMode)}'",
+            $"    $applicationPath = '{EscapeSingleQuotes(request.ApplicationPath)}'",
             $"    $appPoolName = '{EscapeSingleQuotes(request.AppPoolName)}'",
-            "    Invoke-Command -Session $session -ArgumentList $physicalPath, $siteName, $appPoolName -ScriptBlock {",
-            "        param($physicalPath, $siteName, $appPoolName)",
+            "    Invoke-Command -Session $session -ArgumentList $physicalPath, $siteName, $deploymentMode, $applicationPath, $appPoolName -ScriptBlock {",
+            "        param($physicalPath, $siteName, $deploymentMode, $applicationPath, $appPoolName)",
             "        Import-Module WebAdministration",
             "        if (!(Test-Path $physicalPath)) { New-Item -Path $physicalPath -ItemType Directory -Force | Out-Null }",
             "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Stop-WebAppPool -Name $appPoolName -ErrorAction SilentlyContinue }"
         };
 
-        if (request.RestartSite)
+        if (request.RestartSite && string.Equals(request.DeploymentMode, "site_root", StringComparison.Ordinal))
         {
             lines.Add("        if ($siteName -and (Test-Path (\"IIS:\\Sites\\\" + $siteName))) { Stop-Website -Name $siteName -ErrorAction SilentlyContinue }");
         }
@@ -125,15 +130,31 @@ public static class AzureIisPowerShellScriptBuilder
         [
             "    }",
             $"    Copy-Item -ToSession $session -Path '{EscapeSingleQuotes(request.PackagePath)}' -Destination ($physicalPath + '\\deploy.zip') -Force",
-            "    Invoke-Command -Session $session -ArgumentList $physicalPath, $siteName, $appPoolName -ScriptBlock {",
-            "        param($physicalPath, $siteName, $appPoolName)",
+            "    Invoke-Command -Session $session -ArgumentList $physicalPath, $siteName, $deploymentMode, $applicationPath, $appPoolName -ScriptBlock {",
+            "        param($physicalPath, $siteName, $deploymentMode, $applicationPath, $appPoolName)",
             "        Import-Module WebAdministration",
             "        Expand-Archive -Path ($physicalPath + '\\deploy.zip') -DestinationPath $physicalPath -Force",
             "        Remove-Item -Path ($physicalPath + '\\deploy.zip') -Force -ErrorAction SilentlyContinue",
+            "        if ($deploymentMode -eq 'iis_application') {",
+            "            $applicationName = $applicationPath.TrimStart('/').Replace('/', '\\')",
+            "            $iisApplicationPath = ('IIS:\\Sites\\' + $siteName + '\\' + $applicationName)",
+            "            if (!(Test-Path $iisApplicationPath)) {",
+            "                if ($appPoolName) {",
+            "                    New-WebApplication -Site $siteName -Name $applicationName -PhysicalPath $physicalPath -ApplicationPool $appPoolName | Out-Null",
+            "                }",
+            "                else {",
+            "                    New-WebApplication -Site $siteName -Name $applicationName -PhysicalPath $physicalPath | Out-Null",
+            "                }",
+            "            }",
+            "            else {",
+            "                Set-ItemProperty -Path $iisApplicationPath -Name physicalPath -Value $physicalPath",
+            "                if ($appPoolName) { Set-ItemProperty -Path $iisApplicationPath -Name applicationPool -Value $appPoolName }",
+            "            }",
+            "        }",
             "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Start-WebAppPool -Name $appPoolName }"
         ]);
 
-        if (request.RestartSite)
+        if (request.RestartSite && string.Equals(request.DeploymentMode, "site_root", StringComparison.Ordinal))
         {
             lines.Add("        if ($siteName -and (Test-Path (\"IIS:\\Sites\\\" + $siteName))) { Start-Website -Name $siteName }");
         }
