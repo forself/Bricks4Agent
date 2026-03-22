@@ -78,7 +78,14 @@ public static class DeploymentAdminEndpoints
                 return Results.BadRequest(ApiResponseHelper.Error("application_path is required when deployment_mode is iis_application."));
             }
 
-            return Results.Ok(ApiResponseHelper.Success(service.UpsertTarget(target)));
+            try
+            {
+                return Results.Ok(ApiResponseHelper.Success(service.UpsertTarget(target)));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
         });
 
         deployment.MapPost("/requests/build", (HttpContext ctx, IAzureIisDeploymentRequestBuilder builder) =>

@@ -2534,6 +2534,7 @@ What exists now:
 - broker-managed Azure IIS deployment targets
 - dry-run request build and preview
 - execution path that runs `dotnet publish`, packages the output, and invokes PowerShell remoting
+- child-application deployment mode under a parent IIS site via `deployment_mode=iis_application`
 - broker route: `deploy_azure_vm_iis`
 
 Configuration:
@@ -2546,6 +2547,8 @@ Limits:
 - only `winrm_powershell` transport is implemented
 - target project paths must be absolute
 - a directory input must resolve to exactly one `.csproj`
+- `iis_application` targets must define `application_path`
+- the current implementation creates or updates the IIS application, but app-specific path-base handling is still application-dependent
 - the target VM must already expose PowerShell remoting and IIS management modules
 
 See:
