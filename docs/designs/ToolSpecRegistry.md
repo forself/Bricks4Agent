@@ -194,3 +194,34 @@ Current browser identity references:
 
 These are `planned` reference specs.
 They are present so the registry and capability model can carry the browser identity split before browser-worker execution is implemented.
+
+## Browser Spec Validation
+
+Browser tool specs are no longer treated as free-form optional metadata.
+
+For `kind = browser`, the registry now requires all of the following:
+
+- `browser_profile`
+- `browser_session_policy`
+- `browser_site_policy`
+- `browser_action_policy`
+
+The registry also enforces basic cross-field consistency:
+
+- `anonymous`
+  - `credential_source = none`
+  - `session_owner = none`
+  - `credential_binding = none`
+  - `site_binding_mode = public_open`
+- `system_account`
+  - `credential_source = system_vault`
+  - `session_owner = system`
+  - `credential_binding = system_vault`
+  - `site_binding_mode = registered_site`
+- `user_delegated`
+  - `credential_source = user_grant`
+  - `session_owner = user`
+  - `credential_binding = user_grant`
+  - `site_binding_mode = user_authorized_site`
+
+Invalid browser specs are skipped at registry load time instead of being silently accepted.

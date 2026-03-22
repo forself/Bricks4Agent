@@ -199,6 +199,48 @@ try
     File.WriteAllText(
         Path.Combine(specRoot, "browser.reference.anonymous.read", "TOOL.md"),
         "# Reference");
+    Directory.CreateDirectory(Path.Combine(specRoot, "browser.invalid.missing-action"));
+    File.WriteAllText(
+        Path.Combine(specRoot, "browser.invalid.missing-action", "tool.json"),
+        """
+        {
+          "tool_id": "browser.invalid.missing-action",
+          "display_name": "Invalid Browser Reference",
+          "summary": "invalid",
+          "kind": "browser",
+          "status": "planned",
+          "version": "2026-03-22",
+          "tags": ["browser"],
+          "capability_bindings": [],
+          "browser_profile": {
+            "identity_mode": "anonymous",
+            "credential_source": "none",
+            "session_owner": "none",
+            "allowed_actions": ["read"],
+            "confirmation_policy": "broker_policy"
+          },
+          "browser_session_policy": {
+            "binding_mode": "ephemeral",
+            "credential_binding": "none",
+            "reuse_scope": "none",
+            "lease_minutes": 15,
+            "requires_consent_record": false,
+            "requires_interactive_login": false
+          },
+          "browser_site_policy": {
+            "site_binding_mode": "public_open",
+            "allowed_site_classes": ["public_web"],
+            "requires_registered_site_binding": false,
+            "requires_exact_origin_match": false,
+            "allows_cross_origin_navigation": true
+          },
+          "input_schema": { "type": "object" },
+          "output_schema": { "type": "object" },
+          "source_policy": { "allowed_sources": ["public_web"] },
+          "execution_rules": { "runtime_required": "browser_worker" },
+          "response_contract": { "must_identify_identity_mode": true }
+        }
+        """);
 
     var toolSpecDbPath = Path.Combine(sandboxRoot, "tool-spec-registry.db");
     using (var toolSpecDb = BrokerDb.UseSqlite($"Data Source={toolSpecDbPath}"))
@@ -224,6 +266,7 @@ try
         AssertTrue(browserSpec.BrowserActionPolicy != null, "tool spec registry preserves browser action policy");
         AssertTrue(browserSpec.BrowserActionPolicy!.MaxActionLevel == "navigate", "browser action policy keeps max action level");
         AssertTrue(browserSpec.BrowserActionPolicy.RequiresHumanConfirmationOn.Length == 0, "browser action policy keeps confirmation requirements");
+        AssertTrue(registry.Get("browser.invalid.missing-action") == null, "tool spec registry rejects incomplete browser specs");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
