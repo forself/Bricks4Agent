@@ -167,6 +167,11 @@ var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry
 builder.Services.AddSingleton(toolSpecRegistryOptions);
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
+builder.Services.AddHttpClient<Broker.Services.BrowserExecutionPreviewService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserPreview/1.0");
+});
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
