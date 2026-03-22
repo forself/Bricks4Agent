@@ -733,6 +733,30 @@ try
             Status = "active"
         });
         AssertTrue(!string.IsNullOrWhiteSpace(deploymentSubAppTarget.TargetId), "deployment target service upserts child-application target");
+        try
+        {
+            deploymentTargetService.UpsertTarget(new AzureIisDeploymentTarget
+            {
+                DisplayName = "Azure IIS Child App Duplicate",
+                Provider = "azure_vm_iis",
+                VmHost = "vm.example.com",
+                Port = 5986,
+                UseSsl = true,
+                Transport = "winrm_powershell",
+                SiteName = "Default Web Site",
+                DeploymentMode = "iis_application",
+                ApplicationPath = "/apps/verify",
+                AppPoolName = "VerifyChildPool2",
+                PhysicalPath = @"C:\inetpub\apps\verify-dup",
+                SecretRef = "vault://deploy/test",
+                Status = "active"
+            });
+            throw new Exception("Expected duplicate child-application target registration to fail.");
+        }
+        catch (InvalidOperationException)
+        {
+            AssertTrue(true, "deployment target service rejects duplicate child-application route on the same site");
+        }
 
         var deploymentBuilder = new AzureIisDeploymentRequestBuilder(registry, toolSpecDb);
         var deploymentBuild = deploymentBuilder.TryBuild("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput

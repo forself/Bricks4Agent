@@ -31,7 +31,15 @@
       "runtime_identifier": { "type": "string" },
       "self_contained": { "type": "boolean" },
       "cleanup_target": { "type": "boolean" },
-      "restart_site": { "type": "boolean" }
+      "restart_site": { "type": "boolean" },
+      "notes": {
+        "type": "object",
+        "properties": {
+          "deployment_mode": { "type": "string", "enum": ["site_root", "iis_application"] },
+          "application_path": { "type": "string" },
+          "health_check_path": { "type": "string" }
+        }
+      }
     },
     "required": ["target_id", "project_path"]
   },
@@ -40,6 +48,8 @@
     "properties": {
       "target_id": { "type": "string" },
       "stage": { "type": "string" },
+      "deployment_mode": { "type": "string" },
+      "application_path": { "type": "string" },
       "publish_output_path": { "type": "string" },
       "package_path": { "type": "string" },
       "message": { "type": "string" }

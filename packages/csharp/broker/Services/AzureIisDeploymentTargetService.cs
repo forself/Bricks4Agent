@@ -31,6 +31,8 @@ public sealed class AzureIisDeploymentTargetService
 
     public AzureIisDeploymentTarget UpsertTarget(AzureIisDeploymentTarget target)
     {
+        ValidateTarget(target);
+
         if (string.IsNullOrWhiteSpace(target.TargetId))
         {
             target.TargetId = BrokerCore.IdGen.New("ait");
@@ -64,5 +66,82 @@ public sealed class AzureIisDeploymentTargetService
         existing.MetadataJson = string.IsNullOrWhiteSpace(target.MetadataJson) ? "{}" : target.MetadataJson;
         _db.Update(existing);
         return existing;
+    }
+
+    private void ValidateTarget(AzureIisDeploymentTarget target)
+    {
+        if (!Path.IsPathRooted(target.PhysicalPath))
+        {
+            throw new InvalidOperationException("physical_path must be an absolute path.");
+        }
+
+        var deploymentMode = string.IsNullOrWhiteSpace(target.DeploymentMode) ? "site_root" : target.DeploymentMode.Trim().ToLowerInvariant();
+        if (deploymentMode is not ("site_root" or "iis_application"))
+        {
+            throw new InvalidOperationException("deployment_mode must be site_root or iis_application.");
+        }
+
+        target.DeploymentMode = deploymentMode;
+        target.ApplicationPath = NormalizeApplicationPath(target.ApplicationPath);
+        target.HealthCheckPath = NormalizeOptionalPath(target.HealthCheckPath);
+
+        if (deploymentMode == "iis_application" && string.IsNullOrWhiteSpace(target.ApplicationPath))
+        {
+            throw new InvalidOperationException("application_path is required when deployment_mode is iis_application.");
+        }
+
+        if (deploymentMode == "iis_application")
+        {
+            var duplicate = _db.Query<AzureIisDeploymentTarget>(
+                @"SELECT * FROM azure_iis_deployment_targets
+                  WHERE vm_host = @vmHost
+                    AND site_name = @siteName
+                    AND application_path = @applicationPath
+                    AND status = 'active'
+                    AND (@targetId = '' OR target_id <> @targetId)
+                  LIMIT 1",
+                new
+                {
+                    vmHost = target.VmHost,
+                    siteName = target.SiteName,
+                    applicationPath = target.ApplicationPath,
+                    targetId = target.TargetId ?? string.Empty
+                }).FirstOrDefault();
+
+            if (duplicate != null)
+            {
+                throw new InvalidOperationException("An active child-application target already exists for the same vm_host, site_name, and application_path.");
+            }
+        }
+    }
+
+    private static string NormalizeApplicationPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Trim();
+        if (!normalized.StartsWith('/'))
+        {
+            normalized = "/" + normalized;
+        }
+
+        while (normalized.Contains("//", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("//", "/", StringComparison.Ordinal);
+        }
+
+        return normalized.Length > 1 ? normalized.TrimEnd('/') : normalized;
+    }
+
+    private static string NormalizeOptionalPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Trim();
+        return normalized.StartsWith('/')
+            ? normalized
+            : "/" + normalized;
     }
 }

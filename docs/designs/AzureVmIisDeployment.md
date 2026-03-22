@@ -16,8 +16,21 @@ Current broker entities:
   - provider: `azure_vm_iis`
   - transport: `winrm_powershell`
   - VM host / port / TLS
-  - IIS site name / app pool / physical path
+  - IIS site name / deployment mode / app pool / physical path
+  - optional child application path under a parent site
+  - optional health check path
   - `secret_ref`
+
+Deployment modes:
+
+- `site_root`
+  - deploy directly into the registered IIS site physical path
+  - current `restart_site` behavior still applies
+- `iis_application`
+  - treat `site_name` as the parent site
+  - treat `application_path` such as `/apps/project-a` as the IIS child application route
+  - create or update the IIS application during deployment
+  - recycle app pool, but do not stop/start the whole site as the main path
 
 Current broker admin endpoints:
 
@@ -41,8 +54,9 @@ Execution flow:
 3. Run `dotnet publish`.
 4. Zip the publish output.
 5. Generate a PowerShell remoting script.
-6. Resolve deployment credentials from broker-side secret bindings.
-7. Run the PowerShell script against the registered VM.
+6. If the target uses `iis_application`, create or update the child IIS application under the parent site.
+7. Resolve deployment credentials from broker-side secret bindings.
+8. Run the PowerShell script against the registered VM.
 
 Secret resolution:
 
@@ -56,6 +70,8 @@ Current limits:
 - only `winrm_powershell` is implemented
 - target project path must be absolute
 - directory input must resolve to exactly one `.csproj`
+- `iis_application` mode assumes the target VM already has a parent IIS site created
+- application path semantics are implemented at IIS deployment level; application-specific path-base adaptation remains app-dependent
 - the target VM must already have:
   - PowerShell remoting enabled
   - IIS installed
