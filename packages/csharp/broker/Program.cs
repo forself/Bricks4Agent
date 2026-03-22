@@ -166,6 +166,7 @@ var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
+builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
