@@ -40,6 +40,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<ExecutionRequest>();
         _db.EnsureTable<AuditEvent>();
         _db.EnsureTable<SharedContextEntry>();
+        _db.EnsureTable<BrowserSiteBinding>();
+        _db.EnsureTable<BrowserSessionLease>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
@@ -118,6 +120,15 @@ public class BrokerDbInitializer
         // ── 觀測事件索引 ──
 
         // trace_id correlation 查詢
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_site_bindings_identity
+                      ON browser_site_bindings(identity_mode, site_class, status)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_site_bindings_principal
+                      ON browser_site_bindings(principal_id, status)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_session_leases_principal
+                      ON browser_session_leases(principal_id, lease_state, expires_at)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_session_leases_site
+                      ON browser_session_leases(site_binding_id, lease_state)");
+
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");
 

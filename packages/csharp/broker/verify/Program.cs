@@ -374,6 +374,34 @@ try
     {
         var initializer = new BrokerDbInitializer(toolSpecDb);
         initializer.Initialize();
+        toolSpecDb.Insert(new BrowserSiteBinding
+        {
+            SiteBindingId = "site_binding_public",
+            DisplayName = "Public Example",
+            IdentityMode = "anonymous",
+            SiteClass = "public_web",
+            Origin = "https://example.com",
+            Status = "active"
+        });
+        toolSpecDb.Insert(new BrowserSiteBinding
+        {
+            SiteBindingId = "site_binding_system",
+            DisplayName = "System Example",
+            IdentityMode = "system_account",
+            SiteClass = "broker_managed_site",
+            Origin = "https://system.example.com",
+            Status = "active"
+        });
+        toolSpecDb.Insert(new BrowserSiteBinding
+        {
+            SiteBindingId = "site_binding_user",
+            DisplayName = "User Example",
+            IdentityMode = "user_delegated",
+            SiteClass = "user_authorized_site",
+            Origin = "https://user.example.com",
+            PrincipalId = "principal_user",
+            Status = "active"
+        });
         var registry = new ToolSpecRegistry(
             new FakeWebHostEnvironment(Path.Combine(sandboxRoot, "content-root")),
             new ToolSpecRegistryOptions { Root = specRoot },
@@ -395,7 +423,7 @@ try
         AssertTrue(browserSpec.BrowserActionPolicy.RequiresHumanConfirmationOn.Length == 0, "browser action policy keeps confirmation requirements");
         AssertTrue(registry.Get("browser.invalid.missing-action") == null, "tool spec registry rejects incomplete browser specs");
 
-        var builder = new BrowserExecutionRequestBuilder(registry);
+        var builder = new BrowserExecutionRequestBuilder(registry, toolSpecDb);
         var builtAnonymous = builder.TryBuild("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
         {
             RequestId = "req_browser_built_1",
@@ -405,7 +433,8 @@ try
             TaskId = "task_1",
             SessionId = "session_1",
             StartUrl = "https://example.com",
-            IntendedActionLevel = "read"
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_public"
         });
         AssertTrue(builtAnonymous.Success, "browser request builder builds anonymous browser request from registry metadata");
         AssertTrue(builtAnonymous.Request!.IdentityMode == "anonymous", "browser request builder projects identity mode into runtime contract");
@@ -433,7 +462,7 @@ try
             SessionId = "session_1",
             StartUrl = "https://example.com",
             IntendedActionLevel = "read",
-            SiteBindingId = "site_binding_1"
+            SiteBindingId = "site_binding_system"
         });
         AssertTrue(!builtSystemMissing.Success && builtSystemMissing.Error == "browser_request_missing_system_binding", "browser request builder requires system binding for system-account tools");
 
@@ -447,9 +476,24 @@ try
             SessionId = "session_1",
             StartUrl = "https://example.com",
             IntendedActionLevel = "read",
-            SiteBindingId = "site_binding_2"
+            SiteBindingId = "site_binding_user"
         });
         AssertTrue(!builtUserMissingGrant.Success && builtUserMissingGrant.Error == "browser_request_missing_user_grant", "browser request builder requires user grant for user-delegated tools");
+
+        var builtUserPrincipalMismatch = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_5",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_other",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_user",
+            UserGrantId = "grant_1"
+        });
+        AssertTrue(!builtUserPrincipalMismatch.Success && builtUserPrincipalMismatch.Error == "browser_request_site_binding_principal_mismatch", "browser request builder enforces user-delegated site binding ownership");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");

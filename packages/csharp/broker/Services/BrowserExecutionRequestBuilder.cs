@@ -1,4 +1,6 @@
 using BrokerCore.Contracts;
+using BrokerCore.Data;
+using BrokerCore.Models;
 
 namespace Broker.Services;
 
@@ -19,10 +21,12 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
     };
 
     private readonly IToolSpecRegistry _registry;
+    private readonly BrokerDb _db;
 
-    public BrowserExecutionRequestBuilder(IToolSpecRegistry registry)
+    public BrowserExecutionRequestBuilder(IToolSpecRegistry registry, BrokerDb db)
     {
         _registry = registry;
+        _db = db;
     }
 
     public BrowserExecutionRequestBuildResult TryBuild(string toolId, BrowserExecutionRequestBuildInput input)
@@ -61,10 +65,34 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
         if (spec.BrowserSitePolicy.RequiresRegisteredSiteBinding && string.IsNullOrWhiteSpace(input.SiteBindingId))
             return BrowserExecutionRequestBuildResult.Fail("browser_request_missing_site_binding");
 
+        BrowserSiteBinding? siteBinding = null;
+        if (!string.IsNullOrWhiteSpace(input.SiteBindingId))
+        {
+            siteBinding = _db.Get<BrowserSiteBinding>(input.SiteBindingId);
+            if (siteBinding == null || !string.Equals(siteBinding.Status, "active", StringComparison.OrdinalIgnoreCase))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_site_binding_not_found");
+
+            if (!string.Equals(siteBinding.IdentityMode, spec.BrowserProfile.IdentityMode, StringComparison.Ordinal))
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_site_binding_identity_mismatch");
+
+            if (spec.BrowserSitePolicy.AllowedSiteClasses.Length > 0 &&
+                !spec.BrowserSitePolicy.AllowedSiteClasses.Contains(siteBinding.SiteClass, StringComparer.Ordinal))
+            {
+                return BrowserExecutionRequestBuildResult.Fail("browser_request_site_binding_class_mismatch");
+            }
+        }
+
         if (string.Equals(spec.BrowserProfile.IdentityMode, "user_delegated", StringComparison.Ordinal) &&
             string.IsNullOrWhiteSpace(input.UserGrantId))
         {
             return BrowserExecutionRequestBuildResult.Fail("browser_request_missing_user_grant");
+        }
+
+        if (string.Equals(spec.BrowserProfile.IdentityMode, "user_delegated", StringComparison.Ordinal) &&
+            siteBinding != null &&
+            !string.Equals(siteBinding.PrincipalId, input.PrincipalId, StringComparison.Ordinal))
+        {
+            return BrowserExecutionRequestBuildResult.Fail("browser_request_site_binding_principal_mismatch");
         }
 
         if (string.Equals(spec.BrowserProfile.IdentityMode, "system_account", StringComparison.Ordinal) &&
