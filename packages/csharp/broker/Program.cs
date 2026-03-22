@@ -380,6 +380,7 @@ var highLevelCoordinatorConfig = builder.Configuration.GetSection("HighLevelCoor
     ?? new Broker.Services.HighLevelCoordinatorOptions();
 builder.Services.AddSingleton(highLevelCoordinatorConfig);
 builder.Services.AddSingleton<Broker.Services.HighLevelCoordinator>();
+builder.Services.AddSingleton<Broker.Services.BrowserBindingService>();
 startupLogger.LogInformation(
     "High-level coordinator: draftTtlMinutes={DraftTtlMinutes}, maxDraftSummaryLength={MaxDraftSummaryLength}",
     highLevelCoordinatorConfig.DraftTtlMinutes,
@@ -730,6 +731,7 @@ SessionEndpoints.Map(api);
 ExecutionEndpoints.Map(api);
 CapabilityEndpoints.Map(api);
 ToolSpecEndpoints.Map(api);
+BrowserBindingEndpoints.Map(api);
 AuditEndpoints.Map(api);
 AdminEndpoints.Map(api);
 ContextEndpoints.Map(api);
