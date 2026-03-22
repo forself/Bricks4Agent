@@ -418,6 +418,16 @@ try
             Status = "active",
             SecretRef = "vault://system/example"
         });
+        toolSpecDb.Insert(new BrowserSessionLease
+        {
+            SessionLeaseId = "lease_user_1",
+            ToolId = "browser.reference.user-delegated.read",
+            SiteBindingId = "site_binding_user",
+            PrincipalId = "principal_user",
+            IdentityMode = "user_delegated",
+            LeaseState = "active",
+            ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+        });
         var registry = new ToolSpecRegistry(
             new FakeWebHostEnvironment(Path.Combine(sandboxRoot, "content-root")),
             new ToolSpecRegistryOptions { Root = specRoot },
@@ -540,6 +550,39 @@ try
             UserGrantId = "grant_user_1"
         });
         AssertTrue(builtUserSuccess.Success, "browser request builder accepts matching user grant record");
+        AssertTrue(builtUserSuccess.Request!.SiteBindingId == "site_binding_user", "browser request builder preserves selected site binding in runtime request");
+
+        var builtUserLeaseMismatch = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_7",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_other",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_user",
+            UserGrantId = "grant_user_1",
+            SessionLeaseId = "lease_user_1"
+        });
+        AssertTrue(!builtUserLeaseMismatch.Success && builtUserLeaseMismatch.Error == "browser_request_site_binding_principal_mismatch", "browser request builder still denies mismatched site owner before lease acceptance");
+
+        var builtUserWithLease = builder.TryBuild("browser.reference.user-delegated.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_8",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_user",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read",
+            SiteBindingId = "site_binding_user",
+            UserGrantId = "grant_user_1",
+            SessionLeaseId = "lease_user_1"
+        });
+        AssertTrue(builtUserWithLease.Success, "browser request builder accepts matching active session lease");
 
         var bindingService = new BrowserBindingService(toolSpecDb);
         var createdSite = bindingService.UpsertSiteBinding(new BrowserSiteBinding
