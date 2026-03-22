@@ -80,5 +80,6 @@ public sealed class HighLevelExecutionIntent
     public string DraftId { get; set; } = string.Empty;
     public string ScopeDescriptor { get; set; } = "{}";
     public string RuntimeDescriptor { get; set; } = "{}";
+    public string DocumentId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

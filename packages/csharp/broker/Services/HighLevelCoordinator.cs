@@ -323,15 +323,18 @@ public class HighLevelCoordinator
 
         var submittedBy = $"{channel}:{userId}";
         var assignedRole = _taskRouter.RecommendRole(draft.TaskType);
+        var promotedRuntimeDescriptor = BuildPromotedRuntimeDescriptor(draft, executionIntent);
+        var promotedScopeDescriptor = BuildPromotedScopeDescriptor(draft, executionIntent);
+
         var task = _brokerService.CreateTask(
             submittedBy,
             draft.TaskType,
-            draft.ScopeDescriptor,
+            promotedScopeDescriptor,
             assignedRoleId: assignedRole,
-            runtimeDescriptor: draft.RuntimeDescriptor);
+            runtimeDescriptor: promotedRuntimeDescriptor);
 
         var plan = _planService.CreatePlan(task.TaskId, submittedBy, draft.Title, draft.Description);
-        var handoff = BuildHandoff(task, plan, draft, channel, userId);
+        var handoff = BuildHandoff(task, plan, draft, executionIntent, channel, userId);
         SaveHandoff(task.TaskId, handoff);
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
@@ -532,6 +535,7 @@ public class HighLevelCoordinator
         BrokerTask task,
         Plan plan,
         HighLevelTaskDraft draft,
+        HighLevelExecutionIntent executionIntent,
         string channel,
         string userId)
     {
@@ -547,10 +551,12 @@ public class HighLevelCoordinator
             Title = draft.Title,
             Description = draft.Description,
             ProposedPhases = draft.ProposedPhases,
-            RuntimeDescriptor = JsonSerializer.Deserialize<JsonElement>(draft.RuntimeDescriptor),
-            ScopeDescriptor = JsonSerializer.Deserialize<JsonElement>(draft.ScopeDescriptor),
+            RuntimeDescriptor = JsonSerializer.Deserialize<JsonElement>(task.RuntimeDescriptor),
+            ScopeDescriptor = JsonSerializer.Deserialize<JsonElement>(task.ScopeDescriptor),
             ConversationDocument = BuildConversationDocumentId(userId),
             UserProfileDocument = BuildProfileDocumentId(channel, userId),
+            ExecutionIntentId = executionIntent.IntentId,
+            ExecutionIntentDocument = HighLevelExecutionIntentStore.BuildDocumentId(channel, userId),
             ProjectName = draft.ProjectName,
             ProjectFolderName = draft.ProjectFolderName,
             ManagedPaths = draft.ManagedPaths,
@@ -636,8 +642,50 @@ public class HighLevelCoordinator
             ProjectName = draft.ProjectName,
             DraftId = draft.DraftId,
             ScopeDescriptor = draft.ScopeDescriptor,
-            RuntimeDescriptor = draft.RuntimeDescriptor
+            RuntimeDescriptor = draft.RuntimeDescriptor,
+            DocumentId = HighLevelExecutionIntentStore.BuildDocumentId(channel, userId)
         };
+    }
+
+    private string BuildPromotedRuntimeDescriptor(HighLevelTaskDraft draft, HighLevelExecutionIntent executionIntent)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            source = draft.Channel,
+            source_user_id = draft.UserId,
+            high_level = true,
+            conversation_document = BuildConversationDocumentId(draft.UserId),
+            user_profile_document = BuildProfileDocumentId(draft.Channel, draft.UserId),
+            draft_document = BuildDraftDocumentId(draft.Channel, draft.UserId),
+            execution_intent_document = HighLevelExecutionIntentStore.BuildDocumentId(draft.Channel, draft.UserId),
+            execution_intent_id = executionIntent.IntentId,
+            execution_stage = executionIntent.Stage,
+            promotion_reason = executionIntent.PromotionReason,
+            managed_paths = draft.ManagedPaths,
+            project = new
+            {
+                required = draft.RequiresProjectName,
+                name = draft.ProjectName,
+                folder_name = draft.ProjectFolderName
+            }
+        });
+    }
+
+    private string BuildPromotedScopeDescriptor(HighLevelTaskDraft draft, HighLevelExecutionIntent executionIntent)
+    {
+        using var baseScope = JsonDocument.Parse(draft.ScopeDescriptor);
+        return JsonSerializer.Serialize(new
+        {
+            channel = draft.Channel,
+            origin_user_id = draft.UserId,
+            mode = "production",
+            source = "high-level-coordinator",
+            execution_intent_id = executionIntent.IntentId,
+            execution_intent_document = HighLevelExecutionIntentStore.BuildDocumentId(draft.Channel, draft.UserId),
+            path_scope = baseScope.RootElement.TryGetProperty("path_scope", out var pathScope)
+                ? JsonSerializer.Deserialize<object>(pathScope.GetRawText())
+                : null
+        });
     }
 
     private HighLevelManagedPaths BuildManagedPaths(string channel, string userId, string? projectFolderName)
@@ -1416,6 +1464,8 @@ public class HighLevelTaskHandoff
     public string? ProjectFolderName { get; set; }
     public string ConversationDocument { get; set; } = string.Empty;
     public string UserProfileDocument { get; set; } = string.Empty;
+    public string ExecutionIntentId { get; set; } = string.Empty;
+    public string ExecutionIntentDocument { get; set; } = string.Empty;
     public HighLevelManagedPaths ManagedPaths { get; set; } = new();
     public JsonElement ScopeDescriptor { get; set; }
     public JsonElement RuntimeDescriptor { get; set; }
