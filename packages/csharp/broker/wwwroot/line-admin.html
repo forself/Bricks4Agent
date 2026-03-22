@@ -39,6 +39,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 .user-code{font-size:11px;color:var(--acc);font-family:monospace;margin-top:2px}
 .user-extra{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--td)}
 .mini-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--bd);font-size:11px;color:var(--td)}
+.user-actions{display:flex;gap:8px;margin-top:8px}
 
 /* Messages */
 .msg-container{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
@@ -127,6 +128,10 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           <div class="user-name">{{user.displayName||user.userId}}</div>
           <div class="user-code">{{user.userCode||'未設定英數 ID'}}</div>
           <div class="user-extra">
+            <span>註冊 {{user.registrationStatus||'approved'}}</span>
+            <span>{{fmtTime(user.registrationRequestedAt)||'--'}}</span>
+          </div>
+          <div class="user-extra">
             <span>{{fmtTime(user.lastInteractionAt)||'未互動'}}</span>
             <span>{{user.lastDecision||'N/A'}}</span>
           </div>
@@ -134,7 +139,20 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             <span>授權 {{user.activeUserGrantCount}}</span>
             <span>站點 {{user.activeUserSiteBindingCount}}</span>
           </div>
+          <div v-if="user.registrationStatus==='pending_review'" class="user-actions">
+            <el-button size="small" type="success" @click.stop="reviewRegistration(user,'approve')">Approve</el-button>
+            <el-button size="small" type="danger" @click.stop="reviewRegistration(user,'reject')">Reject</el-button>
+          </div>
         </div>
+      </div>
+      <div style="padding-top:12px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--td)">Anonymous Registration</span>
+        <el-select v-model="registrationPolicy" size="small" style="width:170px">
+          <el-option label="全部允許" value="allow_all" />
+          <el-option label="人工審核" value="manual_review" />
+          <el-option label="全部禁止" value="deny_all" />
+        </el-select>
+        <el-button size="small" @click="saveRegistrationPolicy">Save</el-button>
       </div>
     </el-card>
 
@@ -233,6 +251,7 @@ const app=createApp({
     const messages=ref([]);
     const selectedUserId=ref('');
     const selectedUser=ref(null);
+    const registrationPolicy=ref('allow_all');
     const inputText=ref('');
     const sysStatus=ref({status:'unknown',services:{},database:{}});
     const lastRagSnippets=ref(null);
@@ -258,6 +277,13 @@ const app=createApp({
         if(selectedUserId.value){
           selectedUser.value=users.value.find(u=>u.userId===selectedUserId.value)||null;
         }
+      }catch{}
+    }
+
+    async function fetchRegistrationPolicy(){
+      try{
+        const r=await(await fetch(BASE+'/api/v1/high-level/line/registration-policy')).json();
+        registrationPolicy.value=r?.data?.policy||'allow_all';
       }catch{}
     }
 
@@ -292,6 +318,35 @@ const app=createApp({
         });
       }
       fetchMessages(user.userId);
+    }
+
+    async function saveRegistrationPolicy(){
+      try{
+        await fetch(BASE+'/api/v1/high-level/line/registration-policy',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({policy:registrationPolicy.value})
+        });
+        ElementPlus.ElMessage.success('Registration policy updated');
+      }catch(e){
+        ElementPlus.ElMessage.error('Failed to update registration policy');
+      }
+    }
+
+    async function reviewRegistration(user,action){
+      try{
+        const note=window.prompt(action==='approve'?'審核備註（可留空）':'拒絕原因（可留空）','')??'';
+        const resp=await fetch(BASE+'/api/v1/high-level/line/users/registration/review',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({user_id:user.userId,action,note})
+        });
+        if(!resp.ok) throw new Error('review failed');
+        await fetchUsers();
+        ElementPlus.ElMessage.success(action==='approve'?'Registration approved':'Registration rejected');
+      }catch(e){
+        ElementPlus.ElMessage.error('Failed to review registration');
+      }
     }
 
     function startTestChat(){
@@ -349,7 +404,7 @@ const app=createApp({
 
     async function refreshAll(){
       loading.value=true;
-      await Promise.all([fetchStatus(),fetchConversations(),fetchUsers()]);
+      await Promise.all([fetchStatus(),fetchConversations(),fetchUsers(),fetchRegistrationPolicy()]);
       if(selectedUserId.value) await fetchMessages(selectedUserId.value);
       loading.value=false;
     }
@@ -376,8 +431,8 @@ const app=createApp({
       },5000);
     });
 
-    return{loading,sending,users,conversations,messages,selectedUserId,selectedUser,inputText,sysStatus,lastRagSnippets,
-      msgContainer,inputEl,fetchUsers,selectConversation,selectUser,startTestChat,sendMessage,clearConversation,refreshAll,
+    return{loading,sending,users,conversations,messages,selectedUserId,selectedUser,registrationPolicy,inputText,sysStatus,lastRagSnippets,
+      msgContainer,inputEl,fetchUsers,saveRegistrationPolicy,reviewRegistration,selectConversation,selectUser,startTestChat,sendMessage,clearConversation,refreshAll,
       autoResize,fmtTime};
   }
 });

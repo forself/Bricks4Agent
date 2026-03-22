@@ -23,6 +23,7 @@ public class InboundDispatcher
     private readonly HashSet<string> _allowedUserIds;
     private readonly Dictionary<string, PendingApproval> _pendingApprovals = new();
     private readonly object _approvalLock = new();
+    private DateTime _lastNotificationPollAt = DateTime.MinValue;
 
     public InboundDispatcher(
         WebhookReceiver receiver,
@@ -60,6 +61,12 @@ public class InboundDispatcher
                 else
                 {
                     await Task.Delay(200, ct);
+                }
+
+                if (DateTime.UtcNow - _lastNotificationPollAt >= TimeSpan.FromSeconds(5))
+                {
+                    _lastNotificationPollAt = DateTime.UtcNow;
+                    await DispatchPendingNotifications(ct);
                 }
             }
         }
@@ -335,6 +342,68 @@ public class InboundDispatcher
         }
 
         return Task.FromResult("[audio:download_failed]");
+    }
+
+    private async Task DispatchPendingNotifications(CancellationToken ct)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/pending?limit=10", ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseBody);
+            if (!doc.RootElement.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("notifications", out var notifications) ||
+                notifications.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (var notification in notifications.EnumerateArray())
+            {
+                var notificationId = notification.TryGetProperty("notificationId", out var idProp) ? idProp.GetString() : null;
+                var userId = notification.TryGetProperty("userId", out var userProp) ? userProp.GetString() : null;
+                var title = notification.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? string.Empty : string.Empty;
+                var body = notification.TryGetProperty("body", out var bodyProp) ? bodyProp.GetString() ?? string.Empty : string.Empty;
+                if (string.IsNullOrWhiteSpace(notificationId) || string.IsNullOrWhiteSpace(userId))
+                {
+                    continue;
+                }
+
+                var message = string.IsNullOrWhiteSpace(title) ? body : $"{title}\n\n{body}";
+                if (message.Length > 4900)
+                {
+                    message = message[..4900];
+                }
+
+                var (success, error) = await _lineApi.PushTextMessageAsync(userId, message, ct);
+                await CompleteNotification(notificationId, success ? "sent" : "failed", error, ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to dispatch pending LINE notifications.");
+        }
+    }
+
+    private async Task CompleteNotification(string notificationId, string status, string? error, CancellationToken ct)
+    {
+        var requestBody = JsonSerializer.Serialize(new
+        {
+            notification_id = notificationId,
+            status,
+            error
+        });
+        using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/complete", content, ct);
+        _ = response;
     }
 }
 
