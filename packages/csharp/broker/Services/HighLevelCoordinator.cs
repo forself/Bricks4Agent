@@ -278,7 +278,20 @@ public class HighLevelCoordinator
             string.Equals(parsed.QueryCommand, "search", StringComparison.OrdinalIgnoreCase))
         {
             var searchResult = await _queryToolMediator.SearchWebAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var searchReply = PrepareReplySafe(profile, trimmed, searchResult.Reply);
+            var searchReplyBody = searchResult.Reply;
+            if (searchResult.Success && searchResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId,
+                    "web_search",
+                    parsed.QueryArgument,
+                    searchResult.Results,
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    searchReplyBody = synthesized;
+            }
+
+            var searchReply = PrepareReplySafe(profile, trimmed, searchReplyBody);
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
@@ -295,7 +308,20 @@ public class HighLevelCoordinator
             string.Equals(parsed.QueryCommand, "rail", StringComparison.OrdinalIgnoreCase))
         {
             var transportResult = await _queryToolMediator.SearchRailAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            var transportReplyBody = transportResult.Reply;
+            if (transportResult.Success && transportResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId,
+                    "rail_search",
+                    parsed.QueryArgument,
+                    transportResult.Results,
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    transportReplyBody = synthesized;
+            }
+
+            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
@@ -312,7 +338,20 @@ public class HighLevelCoordinator
             string.Equals(parsed.QueryCommand, "bus", StringComparison.OrdinalIgnoreCase))
         {
             var transportResult = await _queryToolMediator.SearchBusAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            var transportReplyBody = transportResult.Reply;
+            if (transportResult.Success && transportResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId,
+                    "bus_search",
+                    parsed.QueryArgument,
+                    transportResult.Results,
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    transportReplyBody = synthesized;
+            }
+
+            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
@@ -329,7 +368,20 @@ public class HighLevelCoordinator
             string.Equals(parsed.QueryCommand, "flight", StringComparison.OrdinalIgnoreCase))
         {
             var transportResult = await _queryToolMediator.SearchFlightAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReply = PrepareReplySafe(profile, trimmed, transportResult.Reply);
+            var transportReplyBody = transportResult.Reply;
+            if (transportResult.Success && transportResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId,
+                    "flight_search",
+                    parsed.QueryArgument,
+                    transportResult.Results,
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    transportReplyBody = synthesized;
+            }
+
+            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {

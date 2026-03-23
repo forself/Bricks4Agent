@@ -109,6 +109,59 @@ public class LineChatGateway
         }
     }
 
+    public async Task<string?> SummarizeQueryResultsAsync(
+        string userId,
+        string queryKind,
+        string originalQuery,
+        IReadOnlyList<HighLevelQuerySearchResult> results,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId) ||
+            string.IsNullOrWhiteSpace(originalQuery) ||
+            results.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var cappedResults = results
+                .Where(result => !string.IsNullOrWhiteSpace(result.Title) || !string.IsNullOrWhiteSpace(result.Snippet))
+                .OrderBy(result => result.Rank)
+                .Take(5)
+                .ToArray();
+
+            if (cappedResults.Length == 0)
+                return null;
+
+            var prompt = BuildQueryResultSummaryPrompt(queryKind, originalQuery, cappedResults);
+            var messages = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["role"] = "system",
+                    ["content"] =
+                        "你是高階查詢協調者。你的任務是根據工具取得的多筆結果，整理出直接可用的答案。" +
+                        "請優先回答使用者真正想知道的內容，而不是單純重列搜尋結果。" +
+                        "若結果不足以得出確定答案，請明確說出不確定之處，並指出哪一筆來源最值得點開。" +
+                        "回覆請使用繁體中文。"
+                },
+                new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = prompt
+                }
+            };
+
+            return await CallLlmAsync(messages, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[LineChatGW] Query-result synthesis failed for {User}", userId);
+            return null;
+        }
+    }
+
     public List<ConversationSummary> ListConversations()
     {
         var entries = _db.Query<SharedContextEntry>(
@@ -365,6 +418,36 @@ public class LineChatGateway
         });
 
         return messages;
+    }
+
+    private static string BuildQueryResultSummaryPrompt(
+        string queryKind,
+        string originalQuery,
+        IReadOnlyList<HighLevelQuerySearchResult> results)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"查詢類型：{queryKind}");
+        sb.AppendLine($"原始查詢：{originalQuery}");
+        sb.AppendLine();
+        sb.AppendLine("以下是工具取得的候選結果，請綜合前 3 到 5 筆內容，整理成直接回答：");
+        sb.AppendLine();
+
+        foreach (var result in results)
+        {
+            sb.AppendLine($"[{result.Rank}] {result.Title}");
+            if (!string.IsNullOrWhiteSpace(result.Url))
+                sb.AppendLine($"URL: {result.Url}");
+            if (!string.IsNullOrWhiteSpace(result.Snippet))
+                sb.AppendLine($"內容摘要: {result.Snippet}");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("輸出要求：");
+        sb.AppendLine("1. 先直接回答重點。");
+        sb.AppendLine("2. 若有多個可能答案，整理成條列。");
+        sb.AppendLine("3. 最後附上“參考來源：”並列出 1 到 3 個最重要的網址。");
+        sb.AppendLine("4. 不要逐筆重貼所有搜尋結果。");
+        return sb.ToString();
     }
 
     private async Task<string?> CallLlmAsync(JsonArray messages, CancellationToken ct)
