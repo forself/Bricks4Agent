@@ -202,14 +202,18 @@ public sealed class HighLevelExecutionModelPlanner : IHighLevelExecutionModelPla
             if (msg is not JsonObject obj)
                 continue;
 
+            var role = obj["role"]?.GetValue<string>() ?? "user";
+            var contentType = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                ? "output_text"
+                : "input_text";
             input.Add(new JsonObject
             {
-                ["role"] = obj["role"]?.GetValue<string>() ?? "user",
+                ["role"] = role,
                 ["content"] = new JsonArray
                 {
                     new JsonObject
                     {
-                        ["type"] = "input_text",
+                        ["type"] = contentType,
                         ["text"] = obj["content"]?.GetValue<string>() ?? string.Empty
                     }
                 }
