@@ -172,6 +172,7 @@ var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
+builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
@@ -432,6 +433,18 @@ builder.Services.AddSingleton<IPlanEngine>(sp =>
         sp.GetRequiredService<IObservationService>()));
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/dev/admin", StringComparison.OrdinalIgnoreCase) ||
+        context.Request.Path.Equals("/dev/line-users", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
 
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
 app.UseStaticFiles();
@@ -703,13 +716,6 @@ api.MapPost("/health", healthHandler);
         return Results.Ok(new { user_id = userId, messages, total = messages.Count });
     });
 
-    // DELETE /dev/conversations/{userId} — 清除對話
-    app.MapGet("/dev/line-users", (Broker.Services.HighLevelCoordinator coordinator) =>
-    {
-        var users = coordinator.ListLineUsers();
-        return Results.Ok(new { users, total = users.Count });
-    });
-
     app.MapDelete("/dev/conversations/{userId}", (string userId) =>
     {
         gateway.ClearConversation(userId);
@@ -768,6 +774,7 @@ ContextEndpoints.Map(api);
 PlanEndpoints.Map(api);
 RuntimeEndpoints.Map(api);
 HighLevelEndpoints.Map(api);
+LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
 if (poolEnabled)
     WorkerEndpoints.Map(api);

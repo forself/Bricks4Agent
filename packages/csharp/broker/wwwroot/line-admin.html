@@ -3,495 +3,1002 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>B4A LINE Admin</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.9.1/dist/index.css">
+<title>B4A Admin</title>
 <style>
-:root{--bg:#0f1117;--s:#1a1d27;--s2:#242836;--bd:#2e3347;--t:#e4e7f0;--td:#8b90a5;--acc:#409eff;--green:#67c23a;--red:#f56c6c}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}
-.hdr{background:var(--s);border-bottom:1px solid var(--bd);padding:10px 24px;display:flex;align-items:center;gap:16px}
-.hdr h1{font-size:18px;font-weight:600}.hdr h1 em{color:var(--acc);font-style:normal}
-.hdr-r{margin-left:auto;display:flex;align-items:center;gap:12px}
-.main{max-width:1400px;margin:0 auto;padding:20px;display:flex;gap:20px;height:calc(100vh - 54px)}
-.el-card{background:var(--s)!important;border:1px solid var(--bd)!important;color:var(--t)!important}
-.el-card__header{border-bottom:1px solid var(--bd)!important;padding:14px 18px!important}
-.el-input__wrapper{background:var(--s2)!important;box-shadow:0 0 0 1px var(--bd) inset!important}
-.el-input__inner{color:var(--t)!important}
-.el-tag{border:none!important}
-
-/* Layout */
-.sidebar{width:320px;flex-shrink:0;display:flex;flex-direction:column;gap:16px}
-.chat-area{flex:1;display:flex;flex-direction:column;min-width:0}
-
-/* Conversation list */
-.conv-list{overflow-y:auto;flex:1}
-.conv-item{padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .15s}
-.conv-item:hover{background:rgba(64,158,255,.06)}
-.conv-item.active{background:rgba(64,158,255,.12);border-left:3px solid var(--acc)}
-.conv-uid{font-size:12px;color:var(--td);font-family:monospace}
-.conv-last{font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.conv-meta{display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--td)}
-.user-list{max-height:240px;overflow-y:auto}
-.user-item{padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .15s}
-.user-item:hover{background:rgba(64,158,255,.06)}
-.user-item.active{background:rgba(64,158,255,.12);border-left:3px solid var(--acc)}
-.user-name{font-size:13px;font-weight:600}
-.user-code{font-size:11px;color:var(--acc);font-family:monospace;margin-top:2px}
-.user-extra{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:11px;color:var(--td)}
-.mini-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--bd);font-size:11px;color:var(--td)}
-.user-actions{display:flex;gap:8px;margin-top:8px}
-
-/* Messages */
-.msg-container{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
-.msg{max-width:75%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word;white-space:pre-wrap}
-.msg.user{align-self:flex-end;background:#2563eb;color:white;border-bottom-right-radius:4px}
-.msg.assistant{align-self:flex-start;background:var(--s2);color:var(--t);border-bottom-left-radius:4px}
-.msg-time{font-size:10px;color:var(--td);margin-top:4px}
-.msg.user .msg-time{text-align:right}
-
-/* Input */
-.input-bar{padding:12px 16px;border-top:1px solid var(--bd);background:var(--s);display:flex;gap:10px;align-items:flex-end}
-.input-bar textarea{flex:1;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;color:var(--t);font-size:14px;resize:none;outline:none;font-family:inherit;min-height:42px;max-height:120px}
-.input-bar textarea:focus{border-color:var(--acc)}
-.send-btn{background:var(--acc);color:white;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap}
-.send-btn:hover{background:#337ecc}
-.send-btn:disabled{opacity:.5;cursor:not-allowed}
-
-/* Status cards */
-.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px}
-.stat-card{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:12px;text-align:center}
-.stat-val{font-size:22px;font-weight:700;color:var(--acc)}
-.stat-lbl{font-size:11px;color:var(--td);margin-top:4px}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-.dot.green{background:var(--green)}.dot.red{background:var(--red)}
-
-/* RAG snippets */
-.rag-panel{max-height:200px;overflow-y:auto;margin-top:8px;padding:8px;background:var(--s2);border-radius:6px;font-size:12px}
-.rag-item{padding:6px 0;border-bottom:1px solid var(--bd)}.rag-item:last-child{border:none}
-.rag-key{color:var(--acc);font-weight:600}.rag-score{color:var(--td);font-size:11px}
+:root{
+  --bg:#0f1117;--panel:#171b26;--panel-2:#202635;--border:#30384b;--text:#e7ebf5;--muted:#97a0b8;--accent:#53a7ff;--danger:#ff6b6b;--warn:#ffbf69;--ok:#56d39b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+button,input,select,textarea{font:inherit}
+a{color:var(--accent)}
+.shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+.sidebar{background:#0b0e14;border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:16px}
+.brand{font-size:20px;font-weight:700}
+.muted{color:var(--muted)}
+.mono{font-family:Consolas,"Cascadia Mono","Courier New",monospace}
+.nav{display:flex;flex-direction:column;gap:8px}
+.nav button,.button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 12px;cursor:pointer}
+.nav button.active{border-color:var(--accent);background:#18253a}
+.button.primary{background:#1a3558;border-color:#2f5d96}.button.danger{background:#442126;border-color:#7b303a}.button.warn{background:#45351e;border-color:#7b5f2c}.button.ghost{background:transparent}.button:disabled{opacity:.5;cursor:not-allowed}
+.content{padding:16px;display:flex;flex-direction:column;gap:16px}
+.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel)}.tag.ok{color:var(--ok)}.tag.bad{color:var(--danger)}
+.grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1fr}.grid.line{grid-template-columns:320px 1fr}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}.panel h2,.panel h3{margin:0 0 12px 0;font-size:18px}
+.stack{display:flex;flex-direction:column;gap:10px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.list{border:1px solid var(--border);border-radius:10px;overflow:auto;max-height:360px;background:var(--panel-2)}
+.item{padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer}.item:last-child{border-bottom:none}.item:hover,.item.active{background:#263046}.item-title{font-weight:600;margin-bottom:4px}
+.small{font-size:12px}
+.messages{min-height:340px;max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel-2)}
+.message{margin-bottom:10px;padding:10px 12px;border-radius:12px;white-space:pre-wrap;line-height:1.5}.message.user{background:#26487a;margin-left:18%}.message.assistant{background:#1f2432;margin-right:18%}
+.json{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1 / -1}
+label{font-size:13px;color:var(--muted)}
+input,select,textarea{width:100%;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--text);padding:10px 12px}
+textarea{min-height:110px;resize:vertical}
+.hidden{display:none}
+.notice{padding:10px 12px;border-radius:10px;background:#132033;border:1px solid #28476f}
+.error{color:var(--danger)}
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{width:min(460px,100%);background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.login-title{font-size:24px;font-weight:700}
+@media (max-width:1180px){.shell{grid-template-columns:1fr}.grid.two,.grid.line,.form-grid{grid-template-columns:1fr}.message.user,.message.assistant{margin:0}}
 </style>
 </head>
 <body>
-<div id="app">
-<div class="hdr">
-  <h1><em>B4A</em> LINE Admin</h1>
-  <div class="hdr-r">
-    <el-tag :type="sysStatus.status==='ok'?'success':'danger'" effect="dark" size="small" round>
-      <span class="dot" :class="sysStatus.status==='ok'?'green':'red'"></span>
-      {{sysStatus.status==='ok'?'System OK':'Degraded'}}
-    </el-tag>
-    <el-button size="small" @click="refreshAll" :loading="loading">Refresh</el-button>
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <div class="login-title">B4A Admin Login</div>
+    <div id="login-hint" class="muted">請輸入管理密碼。</div>
+    <div class="field">
+      <label for="login-password">管理密碼</label>
+      <input id="login-password" type="password" autocomplete="current-password">
+    </div>
+    <div class="field" id="new-password-field">
+      <label for="login-new-password">新密碼</label>
+      <input id="login-new-password" type="password" autocomplete="new-password">
+    </div>
+    <div class="row">
+      <button class="button primary" id="login-submit">登入</button>
+      <button class="button ghost" id="login-refresh-status">重新檢查狀態</button>
+    </div>
+    <div class="small muted">若資料庫尚未建立密碼，初始密碼為 <span class="mono">admin</span>，首次登入必須設定新密碼。</div>
+    <div id="login-error" class="error"></div>
   </div>
 </div>
-
-<div class="main">
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <!-- System Status -->
-    <el-card>
-      <template #header><span style="font-weight:600">System Status</span></template>
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-val">{{sysStatus.database?.active_conversations||0}}</div>
-          <div class="stat-lbl">Conversations</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-val">{{sysStatus.database?.shared_context_entries||0}}</div>
-          <div class="stat-lbl">Context Entries</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-val">{{sysStatus.database?.vector_entries||0}}</div>
-          <div class="stat-lbl">Vectors</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-val"><span class="dot" :class="sysStatus.services?.llm?.ok?'green':'red'"></span>{{sysStatus.services?.llm?.ok?'ON':'OFF'}}</div>
-          <div class="stat-lbl">LLM ({{sysStatus.services?.llm?.model||'N/A'}})</div>
-        </div>
-      </div>
-    </el-card>
-
-    <el-card>
-      <template #header>
-        <div style="display:flex;align-items:center">
-          <span style="font-weight:600">Users</span>
-          <el-tag round size="small" style="margin-left:8px">{{users.length}}</el-tag>
-          <el-button size="small" text style="margin-left:auto" @click="fetchUsers">Refresh</el-button>
-        </div>
-      </template>
-      <div class="user-list">
-        <div v-if="users.length===0" style="padding:20px;text-align:center;color:var(--td)">
-          No LINE users yet.
-        </div>
-        <div v-for="user in users" :key="user.userId"
-             class="user-item" :class="{active:selectedUserId===user.userId}"
-             @click="selectUser(user)">
-          <div class="user-name">{{user.displayName||user.userId}}</div>
-          <div class="user-code">{{user.userCode||'未設定英數 ID'}}</div>
-          <div class="user-extra">
-            <span>註冊 {{user.registrationStatus||'approved'}}</span>
-            <span>{{fmtTime(user.registrationRequestedAt)||'--'}}</span>
-          </div>
-          <div class="user-extra">
-            <span>{{fmtTime(user.lastInteractionAt)||'未互動'}}</span>
-            <span>{{user.lastDecision||'N/A'}}</span>
-          </div>
-          <div class="user-extra">
-            <span>授權 {{user.activeUserGrantCount}}</span>
-            <span>站點 {{user.activeUserSiteBindingCount}}</span>
-          </div>
-          <div v-if="user.registrationStatus==='pending_review'" class="user-actions">
-            <el-button size="small" type="success" @click.stop="reviewRegistration(user,'approve')">Approve</el-button>
-            <el-button size="small" type="danger" @click.stop="reviewRegistration(user,'reject')">Reject</el-button>
-          </div>
-        </div>
-      </div>
-      <div style="padding-top:12px;border-top:1px solid var(--bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--td)">Anonymous Registration</span>
-        <el-select v-model="registrationPolicy" size="small" style="width:170px">
-          <el-option label="全部允許" value="allow_all" />
-          <el-option label="人工審核" value="manual_review" />
-          <el-option label="全部禁止" value="deny_all" />
-        </el-select>
-        <el-button size="small" @click="saveRegistrationPolicy">Save</el-button>
-      </div>
-    </el-card>
-
-    <!-- Conversations -->
-    <el-card style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-      <template #header>
-        <div style="display:flex;align-items:center">
-          <span style="font-weight:600">Conversations</span>
-          <el-tag round size="small" style="margin-left:8px">{{conversations.length}}</el-tag>
-          <el-button size="small" text style="margin-left:auto" @click="startTestChat">+ Test Chat</el-button>
-        </div>
-      </template>
-      <div class="conv-list">
-        <div v-if="conversations.length===0" style="padding:20px;text-align:center;color:var(--td)">
-          No conversations yet.<br>Start a test chat or send a LINE message.
-        </div>
-        <div v-for="c in conversations" :key="c.userId"
-             class="conv-item" :class="{active:selectedUserId===c.userId}"
-             @click="selectConversation(c.userId)">
-          <div class="conv-uid">{{c.userId}}</div>
-          <div class="conv-last">{{c.lastRole==='user'?'You: ':''}}{{c.lastMessage}}</div>
-          <div class="conv-meta">
-            <span>{{c.messageCount}} messages</span>
-            <span>{{fmtTime(c.lastTimestamp)}}</span>
-          </div>
-        </div>
-      </div>
-    </el-card>
-  </div>
-
-  <!-- Chat Area -->
-  <el-card class="chat-area" style="display:flex;flex-direction:column;overflow:hidden">
-    <template #header>
-      <div style="display:flex;align-items:center">
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <span style="font-weight:600">{{selectedUser?.displayName||selectedUserId||'Select a conversation'}}</span>
-          <div v-if="selectedUserId" style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="mini-pill">{{selectedUser?.userCode||'未設定英數 ID'}}</span>
-            <span class="mini-pill">授權 {{selectedUser?.activeUserGrantCount||0}}</span>
-            <span class="mini-pill">站點 {{selectedUser?.activeUserSiteBindingCount||0}}</span>
-          </div>
-        </div>
-        <el-button v-if="selectedUserId" size="small" type="danger" text style="margin-left:auto"
-                   @click="clearConversation">Clear History</el-button>
-      </div>
-      <div v-if="selectedUserId" style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-        <span class="mini-pill">Query <el-switch v-model="permissionForm.allowQuery" size="small" style="margin-left:8px" /></span>
-        <span class="mini-pill">Transport <el-switch v-model="permissionForm.allowTransport" size="small" style="margin-left:8px" /></span>
-        <span class="mini-pill">Production <el-switch v-model="permissionForm.allowProduction" size="small" style="margin-left:8px" /></span>
-        <span class="mini-pill">Browser <el-switch v-model="permissionForm.allowBrowserDelegated" size="small" style="margin-left:8px" /></span>
-        <span class="mini-pill">Deploy <el-switch v-model="permissionForm.allowDeployment" size="small" style="margin-left:8px" /></span>
-        <el-button size="small" type="primary" @click="savePermissions" :loading="savingPermissions">Save Permissions</el-button>
-      </div>
-    </template>
-
-    <div class="msg-container" ref="msgContainer">
-      <div v-if="!selectedUserId" style="text-align:center;color:var(--td);margin-top:40px">
-        Select a conversation from the left panel, or start a test chat.
-      </div>
-      <div v-for="(msg,i) in messages" :key="i" class="msg" :class="msg.role">
-        {{msg.content}}
-        <div class="msg-time">{{fmtTime(msg.timestamp)}}</div>
-      </div>
-      <div v-if="sending" class="msg assistant" style="opacity:.6">
-        Thinking...
-      </div>
+<div id="admin-shell" class="shell hidden">
+  <aside class="sidebar">
+    <div>
+      <div class="brand">B4A Admin</div>
+      <div class="muted small">統一管理後台</div>
     </div>
-
-    <!-- RAG Snippets -->
-    <div v-if="lastRagSnippets&&lastRagSnippets.length>0" class="rag-panel" style="margin:0 16px">
-      <div style="font-weight:600;margin-bottom:6px;color:var(--acc)">RAG Context Used:</div>
-      <div v-for="s in lastRagSnippets" :key="s.key" class="rag-item">
-        <span class="rag-key">{{s.key}}</span> <span class="rag-score">(score: {{s.score?.toFixed(4)}})</span>
-        <div style="color:var(--td);margin-top:2px">{{s.content?.substring(0,150)}}...</div>
+    <div class="stack">
+      <div class="tag" id="status-tag">狀態讀取中</div>
+      <div class="small muted" id="status-meta">載入中</div>
+    </div>
+    <nav class="nav">
+      <button data-tab="line" class="active">LINE 與使用者</button>
+      <button data-tab="browser">Browser 綁定</button>
+      <button data-tab="deployment">Deployment</button>
+      <button data-tab="tools">Tool Specs</button>
+    </nav>
+    <div class="stack">
+      <button class="button primary" id="refresh-all">全部重新整理</button>
+      <button class="button ghost" id="auto-refresh-toggle">自動刷新：關</button>
+    </div>
+  </aside>
+  <main class="content">
+    <section id="tab-line" class="grid line">
+      <div class="stack">
+        <div class="panel">
+          <h3>系統摘要</h3>
+          <div class="stack small">
+            <div>對話數：<span id="summary-conversations">0</span></div>
+            <div>Context：<span id="summary-context">0</span></div>
+            <div>Vectors：<span id="summary-vectors">0</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>註冊政策</h3>
+          <div class="stack">
+            <select id="registration-policy">
+              <option value="allow_all">全部允許</option>
+              <option value="manual_review">人工審核</option>
+              <option value="deny_all">全部禁止</option>
+            </select>
+            <button class="button primary" id="save-registration-policy">儲存政策</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h3>使用者</h3>
+            <button class="button" id="refresh-users">重新整理</button>
+          </div>
+          <div class="list" id="user-list"></div>
+        </div>
+        <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h3>對話</h3>
+            <button class="button" id="refresh-conversations">重新整理</button>
+          </div>
+          <div class="list" id="conversation-list"></div>
+        </div>
       </div>
-    </div>
+      <div class="stack">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h2 id="selected-user-title">尚未選擇使用者</h2>
+            <div class="row">
+              <button class="button warn" id="approve-user">核准</button>
+              <button class="button danger" id="reject-user">拒絕</button>
+              <button class="button danger" id="clear-conversation">清除對話</button>
+            </div>
+          </div>
+          <div id="selected-user-meta" class="small muted">請先從左側選擇使用者。</div>
+          <div class="grid two" style="margin-top:12px">
+            <div class="panel">
+              <h3>高階權限</h3>
+              <div class="stack">
+                <label><input type="checkbox" id="perm-query"> 允許查詢</label>
+                <label><input type="checkbox" id="perm-transport"> 允許交通查詢</label>
+                <label><input type="checkbox" id="perm-production"> 允許建立任務</label>
+                <label><input type="checkbox" id="perm-browser"> 允許使用者授權瀏覽器能力</label>
+                <label><input type="checkbox" id="perm-deployment"> 允許部署能力</label>
+                <button class="button primary" id="save-permissions">儲存權限</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>使用者資料</h3>
+              <div id="selected-user-json" class="json">尚無資料</div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>對話紀錄</h3>
+          <div id="messages" class="messages"></div>
+          <div class="field full" style="margin-top:12px">
+            <label for="chat-input">測試訊息</label>
+            <textarea id="chat-input" placeholder="輸入訊息後按送出。"></textarea>
+          </div>
+          <div class="row">
+            <button class="button primary" id="send-message">送出訊息</button>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <!-- Input -->
-    <div class="input-bar">
-      <textarea v-model="inputText" placeholder="Type a message..." rows="1"
-                @keydown.enter.exact.prevent="sendMessage"
-                @input="autoResize" ref="inputEl"></textarea>
-      <button class="send-btn" @click="sendMessage" :disabled="!inputText.trim()||sending||!selectedUserId">
-        {{sending?'Sending...':'Send'}}
-      </button>
-    </div>
-  </el-card>
+    <section id="tab-browser" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>Site Bindings</h2>
+          <button class="button" id="refresh-browser">重新整理</button>
+        </div>
+        <div class="json" id="site-bindings-json"></div>
+        <div class="form-grid">
+          <div class="field"><label>Site Binding ID</label><input id="site-binding-id"></div>
+          <div class="field"><label>Display Name</label><input id="site-display-name"></div>
+          <div class="field"><label>Identity Mode</label><input id="site-identity-mode" value="anonymous"></div>
+          <div class="field"><label>Site Class</label><input id="site-class" value="public_open"></div>
+          <div class="field"><label>Origin</label><input id="site-origin" value="https://example.com"></div>
+          <div class="field"><label>Principal ID</label><input id="site-principal-id"></div>
+          <div class="field"><label>Status</label><input id="site-status" value="active"></div>
+          <div class="field full"><label>Metadata JSON</label><textarea id="site-metadata-json">{}</textarea></div>
+          <div class="field full"><button class="button primary" id="save-site-binding">儲存 Site Binding</button></div>
+        </div>
+      </div>
+      <div class="panel stack">
+        <h2>User Grants</h2>
+        <div class="json" id="user-grants-json"></div>
+        <div class="form-grid">
+          <div class="field"><label>User Grant ID</label><input id="grant-id"></div>
+          <div class="field"><label>Principal ID</label><input id="grant-principal-id"></div>
+          <div class="field"><label>Site Binding ID</label><input id="grant-site-binding-id"></div>
+          <div class="field"><label>Status</label><input id="grant-status" value="active"></div>
+          <div class="field"><label>Consent Ref</label><input id="grant-consent-ref"></div>
+          <div class="field"><label>Expires At (ISO)</label><input id="grant-expires-at"></div>
+          <div class="field full"><label>Scopes JSON</label><textarea id="grant-scopes-json">{}</textarea></div>
+          <div class="field full"><button class="button primary" id="save-user-grant">儲存 User Grant</button></div>
+        </div>
+      </div>
+      <div class="panel stack">
+        <h2>System Bindings</h2>
+        <div class="json" id="system-bindings-json"></div>
+        <div class="form-grid">
+          <div class="field"><label>System Binding ID</label><input id="system-binding-id"></div>
+          <div class="field"><label>Display Name</label><input id="system-display-name"></div>
+          <div class="field"><label>Site Binding ID</label><input id="system-site-binding-id"></div>
+          <div class="field"><label>Status</label><input id="system-status" value="active"></div>
+          <div class="field"><label>Secret Ref</label><input id="system-secret-ref"></div>
+          <div class="field full"><button class="button primary" id="save-system-binding">儲存 System Binding</button></div>
+        </div>
+      </div>
+      <div class="panel stack">
+        <h2>Session Leases</h2>
+        <div class="json" id="leases-json"></div>
+        <div class="form-grid">
+          <div class="field"><label>Tool ID</label><input id="lease-tool-id" value="web.search.google"></div>
+          <div class="field"><label>Principal ID</label><input id="lease-principal-id"></div>
+          <div class="field"><label>Identity Mode</label><input id="lease-identity-mode" value="anonymous"></div>
+          <div class="field"><label>Site Binding ID</label><input id="lease-site-binding-id"></div>
+          <div class="field"><label>Expires At (ISO)</label><input id="lease-expires-at"></div>
+          <div class="field"><label>Session Lease ID to revoke</label><input id="revoke-lease-id"></div>
+          <div class="field"><button class="button primary" id="issue-lease">簽發 Lease</button></div>
+          <div class="field"><button class="button danger" id="revoke-lease">撤銷 Lease</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-deployment" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>Deployment Targets</h2>
+          <button class="button" id="refresh-deployment">重新整理</button>
+        </div>
+        <div class="json" id="deployment-targets-json"></div>
+        <div class="form-grid">
+          <div class="field"><label>Target ID</label><input id="deploy-target-id"></div>
+          <div class="field"><label>Display Name</label><input id="deploy-display-name"></div>
+          <div class="field"><label>VM Host</label><input id="deploy-vm-host"></div>
+          <div class="field"><label>Port</label><input id="deploy-port" value="5985"></div>
+          <div class="field"><label>Use SSL</label><select id="deploy-use-ssl"><option value="false">false</option><option value="true">true</option></select></div>
+          <div class="field"><label>Site Name</label><input id="deploy-site-name"></div>
+          <div class="field"><label>Deployment Mode</label><select id="deploy-mode"><option value="site_root">site_root</option><option value="iis_application">iis_application</option></select></div>
+          <div class="field"><label>Application Path</label><input id="deploy-app-path"></div>
+          <div class="field"><label>App Pool Name</label><input id="deploy-app-pool-name"></div>
+          <div class="field"><label>Physical Path</label><input id="deploy-physical-path"></div>
+          <div class="field"><label>Health Check Path</label><input id="deploy-health-path"></div>
+          <div class="field"><label>Secret Ref</label><input id="deploy-secret-ref"></div>
+          <div class="field"><label>Status</label><input id="deploy-status" value="active"></div>
+          <div class="field full"><label>Metadata JSON</label><textarea id="deploy-metadata-json">{}</textarea></div>
+          <div class="field full"><button class="button primary" id="save-deployment-target">儲存 Deployment Target</button></div>
+        </div>
+      </div>
+      <div class="panel stack">
+        <h2>Deployment Preview / Execute</h2>
+        <div class="form-grid">
+          <div class="field"><label>Target ID</label><input id="deploy-run-target-id"></div>
+          <div class="field"><label>Project Path</label><input id="deploy-project-path"></div>
+          <div class="field"><label>Dry Run</label><select id="deploy-dry-run"><option value="true">true</option><option value="false">false</option></select></div>
+          <div class="field full"><button class="button warn" id="preview-deployment">Preview</button></div>
+          <div class="field full"><button class="button primary" id="execute-deployment">Execute</button></div>
+        </div>
+        <div class="json" id="deployment-result-json">尚無結果</div>
+      </div>
+    </section>
+
+    <section id="tab-tools" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>Tool Specs</h2>
+          <button class="button" id="refresh-tools">重新整理</button>
+        </div>
+        <div class="row">
+          <input id="tool-filter" placeholder="filter">
+          <button class="button" id="apply-tool-filter">套用</button>
+        </div>
+        <div class="list" id="tool-list"></div>
+      </div>
+      <div class="panel stack">
+        <h2>Tool Detail</h2>
+        <div id="tool-summary" class="notice">請先從左側選擇 tool spec。</div>
+        <div id="tool-detail-json" class="json">尚無資料</div>
+      </div>
+    </section>
+
+    <div id="notice" class="notice">後台已載入。</div>
+  </main>
 </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/element-plus@2.9.1/dist/index.full.min.js"></script>
 <script>
-'use strict';
-const {createApp,ref,reactive,onMounted,nextTick,watch}=Vue;
-const BASE=window.location.origin;
+const BASE = "";
+const state = {
+  tab: "line",
+  autoRefresh: false,
+  autoRefreshTimer: null,
+  users: [],
+  conversations: [],
+  messages: [],
+  selectedUserId: "",
+  selectedUser: null,
+  system: null,
+  registrationPolicy: "allow_all",
+  browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [] },
+  deploymentTargets: [],
+  toolSpecs: [],
+  selectedToolId: "",
+  selectedTool: null,
+  browserLoaded: false,
+  deploymentLoaded: false,
+  toolsLoaded: false,
+  authStatus: null
+};
+let requestChain = Promise.resolve();
 
-const app=createApp({
-  setup(){
-    const loading=ref(false);
-    const sending=ref(false);
-    const users=ref([]);
-    const conversations=ref([]);
-    const messages=ref([]);
-    const selectedUserId=ref('');
-    const selectedUser=ref(null);
-    const registrationPolicy=ref('allow_all');
-    const savingPermissions=ref(false);
-    const permissionForm=reactive({
-      allowQuery:true,
-      allowTransport:true,
-      allowProduction:true,
-      allowBrowserDelegated:false,
-      allowDeployment:false
+function byId(id) { return document.getElementById(id); }
+
+function setNotice(message, kind = "info") {
+  const el = byId("notice");
+  el.textContent = message;
+  el.className = "notice" + (kind === "error" ? " error" : "");
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  try { return new Date(value).toLocaleString("zh-TW", { hour12: false }); }
+  catch { return String(value); }
+}
+
+function prettyJson(value) {
+  try { return JSON.stringify(value, null, 2); }
+  catch { return String(value ?? ""); }
+}
+
+function parseJsonField(raw, fallbackText = "{}") {
+  const text = (raw ?? "").trim();
+  if (!text) return JSON.parse(fallbackText);
+  return JSON.parse(text);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function request(path, options = {}) {
+  const execute = async () => {
+    const response = await fetch(BASE + path, {
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      ...options
     });
-    const inputText=ref('');
-    const sysStatus=ref({status:'unknown',services:{},database:{}});
-    const lastRagSnippets=ref(null);
-    const msgContainer=ref(null);
-    const inputEl=ref(null);
-    let pollTimer=null;
-
-    async function fetchStatus(){
-      try{const r=await(await fetch(BASE+'/dev/system/status')).json();sysStatus.value=r}catch{}
+    let payload = null;
+    const text = await response.text();
+    if (text) {
+      try { payload = JSON.parse(text); }
+      catch { payload = text; }
     }
-
-    async function fetchConversations(){
-      try{
-        const r=await(await fetch(BASE+'/dev/conversations')).json();
-        conversations.value=r.conversations||[];
-      }catch{}
+    if (!response.ok) {
+      const message = payload?.message || payload?.Message || response.statusText || "request_failed";
+      throw new Error(message);
     }
-
-    async function fetchUsers(){
-      try{
-        const r=await(await fetch(BASE+'/dev/line-users')).json();
-        users.value=r.users||[];
-        if(selectedUserId.value){
-          selectedUser.value=users.value.find(u=>u.userId===selectedUserId.value)||null;
-          syncPermissionForm();
-        }
-      }catch{}
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "success")) {
+      if (!payload.success) throw new Error(payload.message || "request_failed");
+      return payload.data;
     }
+    return payload;
+  };
+  const pending = requestChain.then(execute, execute);
+  requestChain = pending.catch(() => {});
+  return pending;
+}
 
-    async function fetchRegistrationPolicy(){
-      try{
-        const r=await(await fetch(BASE+'/api/v1/high-level/line/registration-policy')).json();
-        registrationPolicy.value=r?.data?.policy||'allow_all';
-      }catch{}
-    }
+function renderAuthState() {
+  const authenticated = state.authStatus?.authenticated === true;
+  byId("login-screen").classList.toggle("hidden", authenticated);
+  byId("admin-shell").classList.toggle("hidden", !authenticated);
+  byId("new-password-field").classList.toggle("hidden", !(state.authStatus?.requiresPasswordChange || state.authStatus?.initialPasswordActive));
+  const hint = state.authStatus?.initialPasswordActive
+    ? "首次登入請輸入初始密碼 admin，並設定新密碼。"
+    : (state.authStatus?.requiresPasswordChange ? "目前必須先變更管理密碼。" : "請輸入管理密碼。");
+  byId("login-hint").textContent = hint;
+}
 
-    async function fetchMessages(userId){
-      if(!userId)return;
-      try{
-        const r=await(await fetch(BASE+'/dev/conversations/'+encodeURIComponent(userId))).json();
-        messages.value=r.messages||[];
-        await nextTick();
-        scrollToBottom();
-      }catch{}
-    }
+function activePermissions(user) {
+  const p = user?.permissions || {};
+  return {
+    allowQuery: p.allowQuery !== false,
+    allowTransport: p.allowTransport !== false,
+    allowProduction: p.allowProduction !== false,
+    allowBrowserDelegated: p.allowBrowserDelegated === true,
+    allowDeployment: p.allowDeployment === true
+  };
+}
 
-    function selectConversation(userId){
-      selectedUserId.value=userId;
-      selectedUser.value=users.value.find(u=>u.userId===userId)||null;
-      syncPermissionForm();
-      lastRagSnippets.value=null;
-      fetchMessages(userId);
-    }
+function syncPermissionForm() {
+  const permissions = activePermissions(state.selectedUser);
+  byId("perm-query").checked = permissions.allowQuery;
+  byId("perm-transport").checked = permissions.allowTransport;
+  byId("perm-production").checked = permissions.allowProduction;
+  byId("perm-browser").checked = permissions.allowBrowserDelegated;
+  byId("perm-deployment").checked = permissions.allowDeployment;
+}
 
-    function selectUser(user){
-      selectedUser.value=user;
-      selectedUserId.value=user.userId;
-      syncPermissionForm();
-      lastRagSnippets.value=null;
-      if(!conversations.value.find(c=>c.userId===user.userId)){
-        conversations.value.unshift({
-          userId:user.userId,
-          messageCount:0,
-          lastMessage:'',
-          lastRole:'',
-          lastTimestamp:user.lastInteractionAt||new Date().toISOString()
-        });
-      }
-      fetchMessages(user.userId);
-    }
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
-    function syncPermissionForm(){
-      const p=selectedUser.value?.permissions||{};
-      permissionForm.allowQuery = p.allowQuery ?? true;
-      permissionForm.allowTransport = p.allowTransport ?? true;
-      permissionForm.allowProduction = p.allowProduction ?? true;
-      permissionForm.allowBrowserDelegated = p.allowBrowserDelegated ?? false;
-      permissionForm.allowDeployment = p.allowDeployment ?? false;
-    }
+function renderSystem() {
+  const status = state.system?.status || "unknown";
+  const tag = byId("status-tag");
+  tag.textContent = "系統狀態：" + status;
+  tag.className = "tag " + (status === "ok" ? "ok" : "bad");
+  const llm = state.system?.services?.llm;
+  byId("status-meta").textContent = llm ? `${llm.provider || "n/a"} / ${llm.model || "n/a"}` : "尚無 LLM 資訊";
+  byId("summary-conversations").textContent = state.system?.database?.active_conversations ?? 0;
+  byId("summary-context").textContent = state.system?.database?.shared_context_entries ?? 0;
+  byId("summary-vectors").textContent = state.system?.database?.vector_entries ?? 0;
+}
 
-    async function saveRegistrationPolicy(){
-      try{
-        await fetch(BASE+'/api/v1/high-level/line/registration-policy',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({policy:registrationPolicy.value})
-        });
-        ElementPlus.ElMessage.success('Registration policy updated');
-      }catch(e){
-        ElementPlus.ElMessage.error('Failed to update registration policy');
-      }
-    }
-
-    async function reviewRegistration(user,action){
-      try{
-        const note=window.prompt(action==='approve'?'審核備註（可留空）':'拒絕原因（可留空）','')??'';
-        const resp=await fetch(BASE+'/api/v1/high-level/line/users/registration/review',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({user_id:user.userId,action,note})
-        });
-        if(!resp.ok) throw new Error('review failed');
-        await fetchUsers();
-        ElementPlus.ElMessage.success(action==='approve'?'Registration approved':'Registration rejected');
-      }catch(e){
-        ElementPlus.ElMessage.error('Failed to review registration');
-      }
-    }
-
-    async function savePermissions(){
-      if(!selectedUserId.value)return;
-      savingPermissions.value=true;
-      try{
-        const resp=await fetch(BASE+'/api/v1/high-level/line/users/permissions',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({
-            user_id:selectedUserId.value,
-            allow_query:permissionForm.allowQuery,
-            allow_transport:permissionForm.allowTransport,
-            allow_production:permissionForm.allowProduction,
-            allow_browser_delegated:permissionForm.allowBrowserDelegated,
-            allow_deployment:permissionForm.allowDeployment
-          })
-        });
-        if(!resp.ok) throw new Error('save failed');
-        await fetchUsers();
-        ElementPlus.ElMessage.success('Permissions updated');
-      }catch(e){
-        ElementPlus.ElMessage.error('Failed to update permissions');
-      }finally{
-        savingPermissions.value=false;
-      }
-    }
-
-    function startTestChat(){
-      const testId='test-user-'+Date.now().toString(36);
-      selectedUserId.value=testId;
-      messages.value=[];
-      lastRagSnippets.value=null;
-      // Add to conversations if not exists
-      if(!conversations.value.find(c=>c.userId===testId)){
-        conversations.value.unshift({userId:testId,messageCount:0,lastMessage:'',lastRole:'',lastTimestamp:new Date().toISOString()});
-      }
-    }
-
-    async function sendMessage(){
-      const text=inputText.value.trim();
-      if(!text||!selectedUserId.value||sending.value)return;
-      inputText.value='';
-      sending.value=true;
-      lastRagSnippets.value=null;
-
-      // Optimistic: add user message
-      messages.value.push({role:'user',content:text,timestamp:new Date().toISOString()});
-      await nextTick();scrollToBottom();
-
-      try{
-        const resp=await fetch(BASE+'/dev/line-chat',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({user_id:selectedUserId.value,message:text})
-        });
-        const data=await resp.json();
-        messages.value.push({role:'assistant',content:data.reply||'(no reply)',timestamp:new Date().toISOString()});
-        if(data.rag_snippets&&data.rag_snippets.length>0) lastRagSnippets.value=data.rag_snippets;
-        // Update conversation list
-        const conv=conversations.value.find(c=>c.userId===selectedUserId.value);
-        if(conv){conv.messageCount=data.history_count||conv.messageCount+2;conv.lastMessage=data.reply;conv.lastRole='assistant';conv.lastTimestamp=new Date().toISOString()}
-      }catch(e){
-        messages.value.push({role:'assistant',content:'Error: '+e.message,timestamp:new Date().toISOString()});
-      }
-      sending.value=false;
-      await nextTick();scrollToBottom();
-    }
-
-    async function clearConversation(){
-      if(!selectedUserId.value)return;
-      try{
-        await ElementPlus.ElMessageBox.confirm(`Clear conversation for ${selectedUserId.value}?`,'Confirm',{type:'warning'});
-        await fetch(BASE+'/dev/conversations/'+encodeURIComponent(selectedUserId.value),{method:'DELETE'});
-        messages.value=[];
-        lastRagSnippets.value=null;
-        await fetchConversations();
-        ElementPlus.ElMessage.success('Conversation cleared');
-      }catch{}
-    }
-
-    async function refreshAll(){
-      loading.value=true;
-      await Promise.all([fetchStatus(),fetchConversations(),fetchUsers(),fetchRegistrationPolicy()]);
-      if(selectedUserId.value) await fetchMessages(selectedUserId.value);
-      loading.value=false;
-    }
-
-    function scrollToBottom(){
-      if(msgContainer.value) msgContainer.value.scrollTop=msgContainer.value.scrollHeight;
-    }
-
-    function autoResize(e){
-      const el=e.target;el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';
-    }
-
-    function fmtTime(ts){
-      if(!ts)return'';
-      try{const d=new Date(ts);return d.toLocaleString('zh-TW',{hour12:false})}catch{return ts}
-    }
-
-    onMounted(async()=>{
-      await refreshAll();
-      // Auto-poll every 5 seconds
-      pollTimer=setInterval(async()=>{
-        await Promise.all([fetchConversations(),fetchUsers()]);
-        if(selectedUserId.value) await fetchMessages(selectedUserId.value);
-      },5000);
-    });
-
-    return{loading,sending,users,conversations,messages,selectedUserId,selectedUser,registrationPolicy,savingPermissions,permissionForm,inputText,sysStatus,lastRagSnippets,
-      msgContainer,inputEl,fetchUsers,saveRegistrationPolicy,reviewRegistration,savePermissions,selectConversation,selectUser,startTestChat,sendMessage,clearConversation,refreshAll,
-      autoResize,fmtTime};
+function renderUsers() {
+  const container = byId("user-list");
+  container.innerHTML = "";
+  if (!state.users.length) {
+    container.innerHTML = '<div class="item muted">尚無使用者。</div>';
+    return;
   }
-});
-app.use(ElementPlus);
-app.mount('#app');
+  for (const user of state.users) {
+    const item = document.createElement("div");
+    item.className = "item" + (user.userId === state.selectedUserId ? " active" : "");
+    item.innerHTML = `
+      <div class="item-title">${escapeHtml(user.displayName || user.userId)}</div>
+      <div class="small muted mono">${escapeHtml(user.userCode || "(未設定英數 ID)")}</div>
+      <div class="small muted">${escapeHtml(formatDateTime(user.lastInteractionAt) || "尚無互動")} / ${escapeHtml(user.registrationStatus || "approved")}</div>
+    `;
+    item.addEventListener("click", () => selectUser(user.userId));
+    container.appendChild(item);
+  }
+}
+
+function renderConversations() {
+  const container = byId("conversation-list");
+  container.innerHTML = "";
+  if (!state.conversations.length) {
+    container.innerHTML = '<div class="item muted">尚無對話。</div>';
+    return;
+  }
+  for (const conversation of state.conversations) {
+    const item = document.createElement("div");
+    item.className = "item" + (conversation.userId === state.selectedUserId ? " active" : "");
+    item.innerHTML = `
+      <div class="item-title">${escapeHtml(conversation.userId)}</div>
+      <div class="small muted">${escapeHtml(conversation.lastRole || "")} / ${escapeHtml(formatDateTime(conversation.lastTimestamp) || "")}</div>
+      <div class="small">${escapeHtml(conversation.lastMessage || "(空)")}</div>
+    `;
+    item.addEventListener("click", () => selectUser(conversation.userId));
+    container.appendChild(item);
+  }
+}
+
+function renderSelectedUser() {
+  const user = state.selectedUser;
+  byId("selected-user-title").textContent = user ? (user.displayName || user.userId) : "尚未選擇使用者";
+  if (!user) {
+    byId("selected-user-meta").textContent = "請先從左側選擇使用者。";
+    byId("selected-user-json").textContent = "尚無資料";
+    syncPermissionForm();
+    return;
+  }
+  const meta = [
+    `userId: ${user.userId}`,
+    `userCode: ${user.userCode || "(未設定)"}`,
+    `registration: ${user.registrationStatus || "approved"}`,
+    `lastInteraction: ${formatDateTime(user.lastInteractionAt) || "尚無"}`,
+    `lastDecision: ${user.lastDecision || "尚無"}`
+  ];
+  byId("selected-user-meta").textContent = meta.join(" | ");
+  byId("selected-user-json").textContent = prettyJson(user);
+  syncPermissionForm();
+}
+
+function renderMessages() {
+  const container = byId("messages");
+  container.innerHTML = "";
+  if (!state.messages.length) {
+    container.innerHTML = '<div class="muted">尚無對話紀錄。</div>';
+    return;
+  }
+  for (const message of state.messages) {
+    const item = document.createElement("div");
+    const role = message.role === "user" ? "user" : "assistant";
+    item.className = "message " + role;
+    item.textContent = message.content || "";
+    const ts = document.createElement("div");
+    ts.className = "small muted";
+    ts.textContent = formatDateTime(message.timestamp);
+    item.appendChild(document.createElement("br"));
+    item.appendChild(ts);
+    container.appendChild(item);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderBrowser() {
+  byId("site-bindings-json").textContent = prettyJson(state.browser.siteBindings);
+  byId("user-grants-json").textContent = prettyJson(state.browser.userGrants);
+  byId("system-bindings-json").textContent = prettyJson(state.browser.systemBindings);
+  byId("leases-json").textContent = prettyJson(state.browser.leases);
+}
+
+function renderDeployment() {
+  byId("deployment-targets-json").textContent = prettyJson(state.deploymentTargets);
+}
+
+function renderToolList() {
+  const container = byId("tool-list");
+  container.innerHTML = "";
+  if (!state.toolSpecs.length) {
+    container.innerHTML = '<div class="item muted">尚無 tool specs。</div>';
+    return;
+  }
+  for (const itemData of state.toolSpecs) {
+    const item = document.createElement("div");
+    item.className = "item" + (itemData.toolId === state.selectedToolId ? " active" : "");
+    item.innerHTML = `
+      <div class="item-title">${escapeHtml(itemData.displayName || itemData.toolId)}</div>
+      <div class="small muted mono">${escapeHtml(itemData.toolId)}</div>
+      <div class="small muted">${escapeHtml(itemData.status || "unknown")} / ${escapeHtml(itemData.kind || "")}</div>
+      <div class="small">${escapeHtml(itemData.summary || "")}</div>
+    `;
+    item.addEventListener("click", () => selectTool(itemData.toolId));
+    container.appendChild(item);
+  }
+}
+
+function renderSelectedTool() {
+  byId("tool-summary").textContent = state.selectedTool
+    ? `${state.selectedTool.displayName || state.selectedTool.toolId} / ${state.selectedTool.status || "unknown"}`
+    : "請先從左側選擇 tool spec。";
+  byId("tool-detail-json").textContent = state.selectedTool ? prettyJson(state.selectedTool) : "尚無資料";
+}
+
+async function showTab(tab) {
+  state.tab = tab;
+  for (const button of document.querySelectorAll("[data-tab]")) {
+    button.classList.toggle("active", button.dataset.tab === tab);
+  }
+  for (const section of document.querySelectorAll("main > section")) {
+    section.classList.toggle("hidden", section.id !== `tab-${tab}`);
+  }
+  if (tab === "browser" && !state.browserLoaded) {
+    await loadBrowser();
+    state.browserLoaded = true;
+  }
+  if (tab === "deployment" && !state.deploymentLoaded) {
+    await loadDeploymentTargets();
+    state.deploymentLoaded = true;
+  }
+  if (tab === "tools" && !state.toolsLoaded) {
+    await loadToolSpecs();
+    state.toolsLoaded = true;
+  }
+}
+
+async function loadSystem() {
+  state.system = await request("/api/v1/local-admin/system/status");
+  renderSystem();
+}
+
+async function loadUsers() {
+  const result = await request("/api/v1/local-admin/line/users");
+  state.users = result.users || [];
+  if (state.selectedUserId) {
+    state.selectedUser = state.users.find((u) => u.userId === state.selectedUserId) || null;
+  }
+  renderUsers();
+  renderSelectedUser();
+}
+
+async function loadConversations() {
+  const result = await request("/api/v1/local-admin/line/conversations");
+  state.conversations = result.conversations || [];
+  renderConversations();
+}
+
+async function loadMessages(userId) {
+  if (!userId) {
+    state.messages = [];
+    renderMessages();
+    return;
+  }
+  const result = await request(`/api/v1/local-admin/line/conversations/${encodeURIComponent(userId)}`);
+  state.messages = result.messages || [];
+  renderMessages();
+}
+
+async function loadRegistrationPolicy() {
+  const result = await request("/api/v1/local-admin/line/registration-policy");
+  state.registrationPolicy = result.policy || "allow_all";
+  byId("registration-policy").value = state.registrationPolicy;
+}
+
+async function loadBrowser() {
+  const siteBindings = await request("/api/v1/local-admin/browser/site-bindings");
+  await sleep(75);
+  const userGrants = await request("/api/v1/local-admin/browser/user-grants");
+  await sleep(75);
+  const systemBindings = await request("/api/v1/local-admin/browser/system-bindings");
+  await sleep(75);
+  const leases = await request("/api/v1/local-admin/browser/leases");
+  state.browser.siteBindings = siteBindings.items || [];
+  state.browser.userGrants = userGrants.items || [];
+  state.browser.systemBindings = systemBindings.items || [];
+  state.browser.leases = leases.items || [];
+  state.browserLoaded = true;
+  renderBrowser();
+}
+
+async function loadDeploymentTargets() {
+  const result = await request("/api/v1/local-admin/deployment/targets");
+  state.deploymentTargets = result.items || [];
+  state.deploymentLoaded = true;
+  renderDeployment();
+}
+
+async function loadToolSpecs() {
+  const filter = byId("tool-filter").value.trim();
+  const suffix = filter ? `?filter=${encodeURIComponent(filter)}` : "";
+  const result = await request(`/api/v1/local-admin/tool-specs${suffix}`);
+  state.toolSpecs = result.items || [];
+  state.toolsLoaded = true;
+  if (state.selectedToolId) {
+    state.selectedTool = state.toolSpecs.find((x) => x.toolId === state.selectedToolId) || state.selectedTool;
+  }
+  renderToolList();
+  renderSelectedTool();
+}
+
+async function selectTool(toolId) {
+  state.selectedToolId = toolId;
+  const result = await request("/api/v1/local-admin/tool-specs/get", {
+    method: "POST",
+    body: JSON.stringify({ tool_id: toolId })
+  });
+  state.selectedTool = result.item || null;
+  renderToolList();
+  renderSelectedTool();
+}
+
+async function selectUser(userId) {
+  state.selectedUserId = userId;
+  state.selectedUser = state.users.find((u) => u.userId === userId) || null;
+  renderUsers();
+  renderConversations();
+  renderSelectedUser();
+  await loadMessages(userId);
+}
+
+async function refreshAll() {
+  setNotice("正在重新整理後台資料...");
+  await loadSystem();
+  await sleep(120);
+  await loadUsers();
+  await sleep(120);
+  await loadConversations();
+  await sleep(120);
+  await loadRegistrationPolicy();
+  await sleep(120);
+  if (state.browserLoaded) {
+    await loadBrowser();
+    await sleep(120);
+  }
+  if (state.deploymentLoaded) {
+    await loadDeploymentTargets();
+    await sleep(120);
+  }
+  if (state.toolsLoaded) {
+    await loadToolSpecs();
+  }
+  if (state.selectedUserId) {
+    await sleep(120);
+    await loadMessages(state.selectedUserId);
+  }
+  setNotice("後台資料已更新。");
+}
+
+async function saveRegistrationPolicy() {
+  await request("/api/v1/local-admin/line/registration-policy", {
+    method: "POST",
+    body: JSON.stringify({ policy: byId("registration-policy").value })
+  });
+  await loadRegistrationPolicy();
+  setNotice("註冊政策已更新。");
+}
+
+async function reviewRegistration(action) {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  const note = window.prompt(action === "approve" ? "核准備註（可留空）" : "拒絕原因（可留空）", "") ?? "";
+  await request("/api/v1/local-admin/line/users/registration/review", {
+    method: "POST",
+    body: JSON.stringify({ user_id: state.selectedUserId, action, note })
+  });
+  await loadUsers();
+  renderSelectedUser();
+  setNotice(action === "approve" ? "已核准使用者。" : "已拒絕使用者。");
+}
+
+async function savePermissions() {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  await request("/api/v1/local-admin/line/users/permissions", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: state.selectedUserId,
+      allow_query: byId("perm-query").checked,
+      allow_transport: byId("perm-transport").checked,
+      allow_production: byId("perm-production").checked,
+      allow_browser_delegated: byId("perm-browser").checked,
+      allow_deployment: byId("perm-deployment").checked
+    })
+  });
+  await loadUsers();
+  renderSelectedUser();
+  setNotice("使用者權限已更新。");
+}
+
+async function sendMessage() {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  const message = byId("chat-input").value.trim();
+  if (!message) throw new Error("請輸入訊息。");
+  byId("chat-input").value = "";
+  await request("/api/v1/local-admin/line/chat", {
+    method: "POST",
+    body: JSON.stringify({ user_id: state.selectedUserId, message })
+  });
+  await loadConversations();
+  await loadMessages(state.selectedUserId);
+  setNotice("測試訊息已送出。");
+}
+
+async function clearConversation() {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  await request(`/api/v1/local-admin/line/conversations/${encodeURIComponent(state.selectedUserId)}`, { method: "DELETE" });
+  await loadConversations();
+  await loadMessages(state.selectedUserId);
+  setNotice("對話已清除。");
+}
+
+async function saveSiteBinding() {
+  await request("/api/v1/local-admin/browser/site-bindings", {
+    method: "POST",
+    body: JSON.stringify({
+      site_binding_id: byId("site-binding-id").value.trim(),
+      display_name: byId("site-display-name").value.trim(),
+      identity_mode: byId("site-identity-mode").value.trim(),
+      site_class: byId("site-class").value.trim(),
+      origin: byId("site-origin").value.trim(),
+      principal_id: byId("site-principal-id").value.trim(),
+      status: byId("site-status").value.trim(),
+      metadata_json: parseJsonField(byId("site-metadata-json").value)
+    })
+  });
+  await loadBrowser();
+  setNotice("Site Binding 已更新。");
+}
+
+async function saveUserGrant() {
+  await request("/api/v1/local-admin/browser/user-grants", {
+    method: "POST",
+    body: JSON.stringify({
+      user_grant_id: byId("grant-id").value.trim(),
+      principal_id: byId("grant-principal-id").value.trim(),
+      site_binding_id: byId("grant-site-binding-id").value.trim(),
+      status: byId("grant-status").value.trim(),
+      consent_ref: byId("grant-consent-ref").value.trim(),
+      scopes_json: parseJsonField(byId("grant-scopes-json").value),
+      expires_at: byId("grant-expires-at").value.trim() || null
+    })
+  });
+  await loadBrowser();
+  setNotice("User Grant 已更新。");
+}
+
+async function saveSystemBinding() {
+  await request("/api/v1/local-admin/browser/system-bindings", {
+    method: "POST",
+    body: JSON.stringify({
+      system_binding_id: byId("system-binding-id").value.trim(),
+      display_name: byId("system-display-name").value.trim(),
+      site_binding_id: byId("system-site-binding-id").value.trim(),
+      status: byId("system-status").value.trim(),
+      secret_ref: byId("system-secret-ref").value.trim()
+    })
+  });
+  await loadBrowser();
+  setNotice("System Binding 已更新。");
+}
+
+async function issueLease() {
+  await request("/api/v1/local-admin/browser/leases/issue", {
+    method: "POST",
+    body: JSON.stringify({
+      tool_id: byId("lease-tool-id").value.trim(),
+      principal_id: byId("lease-principal-id").value.trim(),
+      identity_mode: byId("lease-identity-mode").value.trim(),
+      site_binding_id: byId("lease-site-binding-id").value.trim(),
+      expires_at: byId("lease-expires-at").value.trim() || null
+    })
+  });
+  await loadBrowser();
+  setNotice("Session Lease 已簽發。");
+}
+
+async function revokeLease() {
+  await request("/api/v1/local-admin/browser/leases/revoke", {
+    method: "POST",
+    body: JSON.stringify({ session_lease_id: byId("revoke-lease-id").value.trim() })
+  });
+  await loadBrowser();
+  setNotice("Session Lease 已撤銷。");
+}
+
+async function saveDeploymentTarget() {
+  await request("/api/v1/local-admin/deployment/targets", {
+    method: "POST",
+    body: JSON.stringify({
+      target_id: byId("deploy-target-id").value.trim(),
+      display_name: byId("deploy-display-name").value.trim(),
+      vm_host: byId("deploy-vm-host").value.trim(),
+      port: Number(byId("deploy-port").value || 5985),
+      use_ssl: byId("deploy-use-ssl").value === "true",
+      site_name: byId("deploy-site-name").value.trim(),
+      deployment_mode: byId("deploy-mode").value,
+      application_path: byId("deploy-app-path").value.trim(),
+      app_pool_name: byId("deploy-app-pool-name").value.trim(),
+      physical_path: byId("deploy-physical-path").value.trim(),
+      health_check_path: byId("deploy-health-path").value.trim(),
+      secret_ref: byId("deploy-secret-ref").value.trim(),
+      status: byId("deploy-status").value.trim(),
+      metadata_json: parseJsonField(byId("deploy-metadata-json").value)
+    })
+  });
+  await loadDeploymentTargets();
+  setNotice("Deployment Target 已更新。");
+}
+
+async function previewDeployment() {
+  const result = await request("/api/v1/local-admin/deployment/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      target_id: byId("deploy-run-target-id").value.trim(),
+      project_path: byId("deploy-project-path").value.trim()
+    })
+  });
+  byId("deployment-result-json").textContent = prettyJson(result);
+  setNotice("Deployment preview 已完成。");
+}
+
+async function executeDeployment() {
+  const result = await request("/api/v1/local-admin/deployment/execute", {
+    method: "POST",
+    body: JSON.stringify({
+      target_id: byId("deploy-run-target-id").value.trim(),
+      project_path: byId("deploy-project-path").value.trim(),
+      dry_run: byId("deploy-dry-run").value === "true"
+    })
+  });
+  byId("deployment-result-json").textContent = prettyJson(result);
+  setNotice("Deployment execute 已完成。");
+}
+
+async function loadAdminStatus() {
+  state.authStatus = await request("/api/v1/local-admin/status");
+  renderAuthState();
+}
+
+async function loginAdmin() {
+  byId("login-error").textContent = "";
+  const password = byId("login-password").value;
+  const newPassword = byId("login-new-password").value;
+  const result = await request("/api/v1/local-admin/login", {
+    method: "POST",
+    body: JSON.stringify({
+      password,
+      new_password: newPassword || null
+    })
+  });
+  state.authStatus = {
+    ...(state.authStatus || {}),
+    authenticated: result.authenticated,
+    requiresPasswordChange: result.requiresPasswordChange,
+    initialPasswordActive: false,
+    sessionExpiresAt: result.sessionExpiresAt
+  };
+  byId("login-password").value = "";
+  byId("login-new-password").value = "";
+  renderAuthState();
+  if (result.authenticated) {
+    await initializeAdminApp();
+    setNotice("管理後台已登入。");
+  } else {
+    byId("login-error").textContent = result.message || "登入失敗。";
+  }
+}
+
+async function logoutAdmin() {
+  await request("/api/v1/local-admin/logout", {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  state.authStatus = {
+    ...(state.authStatus || {}),
+    authenticated: false
+  };
+  renderAuthState();
+  setNotice("已登出管理後台。");
+}
+
+async function initializeAdminApp() {
+  byId("auto-refresh-toggle").textContent = `自動刷新：${state.autoRefresh ? "開" : "關"}`;
+  state.browserLoaded = false;
+  state.deploymentLoaded = false;
+  state.toolsLoaded = false;
+  await refreshAll();
+}
+
+function toggleAutoRefresh() {
+  state.autoRefresh = !state.autoRefresh;
+  byId("auto-refresh-toggle").textContent = `自動刷新：${state.autoRefresh ? "開" : "關"}`;
+  if (state.autoRefresh) {
+    state.autoRefreshTimer = window.setInterval(async () => {
+      try {
+        await loadUsers();
+        await loadConversations();
+        if (state.selectedUserId) {
+          await loadMessages(state.selectedUserId);
+        }
+      } catch {
+      }
+    }, 5000);
+  } else if (state.autoRefreshTimer) {
+    window.clearInterval(state.autoRefreshTimer);
+    state.autoRefreshTimer = null;
+  }
+}
+
+function wrapAction(fn) {
+  return async () => {
+    try {
+      await fn();
+    } catch (error) {
+      console.error(error);
+      setNotice(error.message || String(error), "error");
+    }
+  };
+}
+
+function bindEvents() {
+  for (const button of document.querySelectorAll("[data-tab]")) {
+    button.addEventListener("click", wrapAction(() => showTab(button.dataset.tab)));
+  }
+  byId("login-submit").addEventListener("click", wrapAction(loginAdmin));
+  byId("login-refresh-status").addEventListener("click", wrapAction(loadAdminStatus));
+  byId("refresh-all").addEventListener("click", wrapAction(refreshAll));
+  byId("auto-refresh-toggle").addEventListener("click", toggleAutoRefresh);
+  byId("refresh-users").addEventListener("click", wrapAction(loadUsers));
+  byId("refresh-conversations").addEventListener("click", wrapAction(loadConversations));
+  byId("save-registration-policy").addEventListener("click", wrapAction(saveRegistrationPolicy));
+  byId("approve-user").addEventListener("click", wrapAction(() => reviewRegistration("approve")));
+  byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
+  byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
+  byId("send-message").addEventListener("click", wrapAction(sendMessage));
+  byId("clear-conversation").addEventListener("click", wrapAction(clearConversation));
+  byId("refresh-browser").addEventListener("click", wrapAction(loadBrowser));
+  byId("save-site-binding").addEventListener("click", wrapAction(saveSiteBinding));
+  byId("save-user-grant").addEventListener("click", wrapAction(saveUserGrant));
+  byId("save-system-binding").addEventListener("click", wrapAction(saveSystemBinding));
+  byId("issue-lease").addEventListener("click", wrapAction(issueLease));
+  byId("revoke-lease").addEventListener("click", wrapAction(revokeLease));
+  byId("refresh-deployment").addEventListener("click", wrapAction(loadDeploymentTargets));
+  byId("save-deployment-target").addEventListener("click", wrapAction(saveDeploymentTarget));
+  byId("preview-deployment").addEventListener("click", wrapAction(previewDeployment));
+  byId("execute-deployment").addEventListener("click", wrapAction(executeDeployment));
+  byId("refresh-tools").addEventListener("click", wrapAction(loadToolSpecs));
+  byId("apply-tool-filter").addEventListener("click", wrapAction(loadToolSpecs));
+}
+
+async function start() {
+  bindEvents();
+  await loadAdminStatus();
+  if (state.authStatus?.authenticated) {
+    await initializeAdminApp();
+  } else {
+    setNotice("請先登入管理後台。");
+  }
+}
+
+void start();
 </script>
 </body>
 </html>

@@ -5,6 +5,7 @@ using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,6 +18,30 @@ static void AssertTrue(bool condition, string message)
         throw new Exception(message);
 
     Console.WriteLine($"  ✓ {message}");
+}
+
+static string ExtractCookieValue(HttpContext context, string cookieName)
+{
+    var setCookie = context.Response.Headers.SetCookie.ToString();
+    var marker = cookieName + "=";
+    var start = setCookie.IndexOf(marker, StringComparison.Ordinal);
+    if (start < 0)
+        throw new Exception($"Cookie '{cookieName}' not found.");
+
+    start += marker.Length;
+    var end = setCookie.IndexOf(';', start);
+    if (end < 0)
+        end = setCookie.Length;
+    return setCookie[start..end];
+}
+
+static DefaultHttpContext CreateLocalHttpContext(string? cookieValue = null)
+{
+    var context = new DefaultHttpContext();
+    context.Connection.RemoteIpAddress = IPAddress.Loopback;
+    if (!string.IsNullOrWhiteSpace(cookieValue))
+        context.Request.Headers["Cookie"] = $"{LocalAdminAuthService.SessionCookieName}={cookieValue}";
+    return context;
 }
 
 var sandboxRoot = Path.Combine(Path.GetTempPath(), "broker-verify-" + Guid.NewGuid().ToString("N"));
@@ -917,6 +942,42 @@ try
         AssertTrue(actualExecution.Success && actualExecution.Result != null, "deployment execution service completes with resolved secret and fake runner");
         AssertTrue(actualExecution.Result!.Stage == "deployed", "deployment execution service marks deployed stage");
         AssertTrue(executeProcessRunner.Invocations.Count == 2 && executeProcessRunner.Invocations[1].FileName == "powershell", "deployment execution invokes remote powershell after publish");
+    }
+
+    var localAdminDbPath = Path.Combine(sandboxRoot, "local-admin.db");
+    using (var localAdminDb = BrokerDb.UseSqlite($"Data Source={localAdminDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(localAdminDb);
+        initializer.Initialize();
+
+        var localAdmin = new LocalAdminAuthService(localAdminDb, NullLogger<LocalAdminAuthService>.Instance);
+        var initialContext = CreateLocalHttpContext();
+        var initialStatus = localAdmin.GetStatus(initialContext);
+        AssertTrue(initialStatus.LocalRequest, "local admin status recognizes localhost requests");
+        AssertTrue(!initialStatus.HasPassword && initialStatus.InitialPasswordActive, "local admin status starts with initial password mode");
+
+        var firstLogin = localAdmin.Login(initialContext, "admin", "AdminPass#2026");
+        AssertTrue(firstLogin.Authenticated && !firstLogin.RequiresPasswordChange, "local admin accepts initial password only when new password is supplied");
+
+        var sessionCookie = ExtractCookieValue(initialContext, LocalAdminAuthService.SessionCookieName);
+        var authenticatedContext = CreateLocalHttpContext(sessionCookie);
+        var authenticatedStatus = localAdmin.GetStatus(authenticatedContext);
+        AssertTrue(authenticatedStatus.Authenticated, "local admin status recognizes authenticated session cookie");
+        AssertTrue(localAdmin.TryRequireAuthenticated(authenticatedContext, out _, out _), "local admin gate accepts authenticated localhost session");
+
+        var changedPassword = localAdmin.ChangePassword(authenticatedContext, "AdminPass#2026", "AdminPass#2026B");
+        AssertTrue(changedPassword.Authenticated && changedPassword.Message.Contains("updated", StringComparison.OrdinalIgnoreCase), "local admin can change password after login");
+
+        localAdmin.Logout(authenticatedContext);
+        var loggedOutContext = CreateLocalHttpContext(sessionCookie);
+        AssertTrue(!localAdmin.TryRequireAuthenticated(loggedOutContext, out _, out _), "local admin gate rejects revoked session after logout");
+
+        var oldPasswordLogin = localAdmin.Login(CreateLocalHttpContext(), "AdminPass#2026", null);
+        AssertTrue(!oldPasswordLogin.Authenticated, "local admin rejects the old password after password change");
+
+        var secondLoginContext = CreateLocalHttpContext();
+        var secondLogin = localAdmin.Login(secondLoginContext, "AdminPass#2026B", null);
+        AssertTrue(secondLogin.Authenticated, "local admin accepts the updated password on subsequent login");
     }
 
     var logDbPath = Path.Combine(sandboxRoot, "interaction-log.db");
