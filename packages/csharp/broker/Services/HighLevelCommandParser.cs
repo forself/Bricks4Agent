@@ -6,11 +6,13 @@ public sealed class HighLevelCommandParser
     private static readonly HashSet<string> QuerySearchCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "search",
+        "s",
         "\u641c\u5c0b"
     };
     private static readonly HashSet<string> QueryRailCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "rail",
+        "r",
         "train",
         "\u706b\u8eca",
         "\u53f0\u9435",
@@ -19,12 +21,14 @@ public sealed class HighLevelCommandParser
     private static readonly HashSet<string> QueryBusCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "bus",
+        "b",
         "\u516c\u8eca",
         "\u5ba2\u904b"
     };
     private static readonly HashSet<string> QueryFlightCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "flight",
+        "f",
         "flights",
         "\u822a\u73ed",
         "\u6a5f\u7968"
@@ -32,12 +36,14 @@ public sealed class HighLevelCommandParser
     private static readonly HashSet<string> QueryProfileCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "profile",
+        "p",
         "me",
         "whoami"
     };
     private static readonly HashSet<string> ProductionNameCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "name",
+        "n",
         "display-name",
         "displayname",
         "\u7a31\u547c"
@@ -45,6 +51,7 @@ public sealed class HighLevelCommandParser
     private static readonly HashSet<string> ProductionIdCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "id",
+        "i",
         "user-id",
         "userid",
         "code"
@@ -147,7 +154,7 @@ public sealed class HighLevelCommandParser
     }
 
     public bool IsHelpCommand(string message)
-        => message.Trim() is "?help" or "?Help" or "\uFF1Fhelp" or "\uFF1FHelp";
+        => message.Trim() is "?help" or "?Help" or "?h" or "?H" or "\uFF1Fhelp" or "\uFF1FHelp" or "\uFF1Fh" or "\uFF1FH";
 
     private static bool TryExtractPrefixedBody(
         string message,
