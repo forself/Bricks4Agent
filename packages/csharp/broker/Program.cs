@@ -162,6 +162,9 @@ builder.Services.AddHttpClient<ILlmProxyService, LlmProxyService>();
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
+var highLevelExecutionModelPolicy = builder.Configuration.GetSection("HighLevelExecutionModelPolicy").Get<Broker.Services.HighLevelExecutionModelPolicyOptions>()
+    ?? new Broker.Services.HighLevelExecutionModelPolicyOptions();
+builder.Services.AddSingleton(highLevelExecutionModelPolicy);
 var deploymentSecretOptions = builder.Configuration.GetSection("DeploymentSecrets").Get<Broker.Services.AzureIisDeploymentSecretResolverOptions>()
     ?? new Broker.Services.AzureIisDeploymentSecretResolverOptions();
 builder.Services.AddSingleton(deploymentSecretOptions);
@@ -392,6 +395,7 @@ builder.Services.AddHttpClient("high-level-llm", client =>
 builder.Services.AddSingleton<Broker.Services.LineChatGateway>();
 builder.Services.AddSingleton<Broker.Services.HighLevelQueryToolMediator>();
 builder.Services.AddSingleton<Broker.Services.HighLevelRelationQueryService>();
+builder.Services.AddSingleton<Broker.Services.IHighLevelExecutionModelPlanner, Broker.Services.HighLevelExecutionModelPlanner>();
 startupLogger.LogInformation(
     "LINE Chat Gateway: enabled={Enabled}, rag={Rag}, provider={Provider}, model={Model}",
     lineChatConfig.Enabled, lineChatConfig.RagEnabled, highLevelLlmOptions.Provider, highLevelLlmOptions.DefaultModel);

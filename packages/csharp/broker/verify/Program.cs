@@ -1061,6 +1061,7 @@ try
                 AccessRoot = Path.Combine(sandboxRoot, "managed"),
                 CommandGuideReminderMinutes = 60
             },
+            new FakeHighLevelExecutionModelPlanner(),
             new BrowserBindingService(coordinatorDb),
             NullLogger<HighLevelCoordinator>.Instance);
 
@@ -1083,6 +1084,16 @@ try
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
         AssertTrue(buildDraft.Draft!.ManagedPaths.UserRoot.Contains("bricks001", StringComparison.OrdinalIgnoreCase), "managed paths use preferred alphanumeric user id");
+
+        var projectNamed = await coordinator.ProcessLineMessageAsync("line-user-a", "#VerifySite");
+        AssertTrue(projectNamed.Draft?.ProjectName == "VerifySite", "project-name command updates production draft");
+        var confirmedDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "confirm");
+        AssertTrue(confirmedDraft.CreatedTask != null, "confirm creates broker task");
+        using var runtimeDescriptorDoc = JsonDocument.Parse(confirmedDraft.CreatedTask!.RuntimeDescriptor);
+        AssertTrue(runtimeDescriptorDoc.RootElement.TryGetProperty("requested_execution_model", out var requestedModelNode), "runtime descriptor includes requested execution model");
+        AssertTrue(requestedModelNode.GetProperty("alias").GetString() == "execution-strong", "runtime descriptor preserves planner-requested model alias");
+        AssertTrue(runtimeDescriptorDoc.RootElement.TryGetProperty("llm", out var llmNode), "runtime descriptor includes forwarded llm overrides");
+        AssertTrue(llmNode.GetProperty("default_model").GetString() == "verify-strong-model", "runtime descriptor forwards validated execution model");
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
@@ -1394,6 +1405,23 @@ file sealed class FakeHttpClientFactory : IHttpClientFactory
         {
             BaseAddress = new Uri("http://localhost/")
         };
+}
+
+file sealed class FakeHighLevelExecutionModelPlanner : IHighLevelExecutionModelPlanner
+{
+    public Task<HighLevelExecutionModelRequest?> RecommendAsync(
+        HighLevelTaskDraft draft,
+        HighLevelMemoryState memory,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<HighLevelExecutionModelRequest?>(new HighLevelExecutionModelRequest
+        {
+            Alias = "execution-strong",
+            Model = "verify-strong-model",
+            Tier = "strong",
+            Reason = $"verify planner request for {draft.TaskType}",
+            RequestedBy = "high-level-entry-model",
+            ValidationStatus = "validated"
+        });
 }
 
 file sealed class FakeLlmHandler : HttpMessageHandler

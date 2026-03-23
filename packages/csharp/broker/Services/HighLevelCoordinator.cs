@@ -29,6 +29,7 @@ public class HighLevelCoordinator
     private readonly HighLevelMemoryStore _memoryStore;
     private readonly HighLevelExecutionIntentStore _executionIntentStore;
     private readonly HighLevelExecutionPromotionGate _executionPromotionGate;
+    private readonly IHighLevelExecutionModelPlanner _executionModelPlanner;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
@@ -42,6 +43,7 @@ public class HighLevelCoordinator
         HighLevelQueryToolMediator queryToolMediator,
         HighLevelRelationQueryService relationQueryService,
         HighLevelCoordinatorOptions options,
+        IHighLevelExecutionModelPlanner executionModelPlanner,
         BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
     {
@@ -61,6 +63,7 @@ public class HighLevelCoordinator
         _memoryStore = new HighLevelMemoryStore(_db);
         _executionIntentStore = new HighLevelExecutionIntentStore(_db);
         _executionPromotionGate = new HighLevelExecutionPromotionGate();
+        _executionModelPlanner = executionModelPlanner;
         _browserBindingService = browserBindingService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
@@ -208,7 +211,7 @@ public class HighLevelCoordinator
 
             if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
             {
-                var confirmed = ConfirmDraft(channel, userId, profile, draft);
+                var confirmed = await ConfirmDraft(channel, userId, profile, draft, cancellationToken);
                 confirmed.Result.Reply = PrepareReplySafe(confirmed.Profile, trimmed, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, confirmed.Result);
@@ -813,11 +816,12 @@ public class HighLevelCoordinator
         return true;
     }
 
-    private (HighLevelProcessResult Result, HighLevelUserProfile Profile) ConfirmDraft(
+    private async Task<(HighLevelProcessResult Result, HighLevelUserProfile Profile)> ConfirmDraft(
         string channel,
         string userId,
         HighLevelUserProfile profile,
-        HighLevelTaskDraft draft)
+        HighLevelTaskDraft draft,
+        CancellationToken cancellationToken)
     {
         if (draft.RequiresProjectName && string.IsNullOrWhiteSpace(draft.ProjectName))
         {
@@ -858,7 +862,8 @@ public class HighLevelCoordinator
             }, profile);
         }
 
-        var executionIntent = BuildExecutionIntent(channel, userId, draft, memory!, promotion);
+        var requestedExecutionModel = await _executionModelPlanner.RecommendAsync(draft, memory!, cancellationToken);
+        var executionIntent = BuildExecutionIntent(channel, userId, draft, memory!, promotion, requestedExecutionModel);
         _executionIntentStore.Write(executionIntent);
 
         var submittedBy = $"{channel}:{userId}";
@@ -896,6 +901,9 @@ public class HighLevelCoordinator
             $"task_id: {task.TaskId}",
             $"plan_id: {plan.PlanId}",
             $"task_type: {task.TaskType}",
+            executionIntent.RequestedExecutionModel == null
+                ? null
+                : $"requested_execution_model: {executionIntent.RequestedExecutionModel.Alias} -> {executionIntent.RequestedExecutionModel.Model}",
             $"title: {draft.Title}",
             string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
             string.IsNullOrWhiteSpace(draft.ManagedPaths?.ProjectRoot) ? null : $"project_root: {draft.ManagedPaths.ProjectRoot}",
@@ -1356,7 +1364,8 @@ public class HighLevelCoordinator
         string userId,
         HighLevelTaskDraft draft,
         HighLevelMemoryState memory,
-        HighLevelExecutionPromotionDecision promotion)
+        HighLevelExecutionPromotionDecision promotion,
+        HighLevelExecutionModelRequest? requestedExecutionModel)
     {
         return new HighLevelExecutionIntent
         {
@@ -1368,6 +1377,7 @@ public class HighLevelCoordinator
             TaskType = draft.TaskType,
             ProjectName = draft.ProjectName,
             DraftId = draft.DraftId,
+            RequestedExecutionModel = requestedExecutionModel,
             ScopeDescriptor = draft.ScopeDescriptor,
             RuntimeDescriptor = draft.RuntimeDescriptor,
             DocumentId = HighLevelExecutionIntentStore.BuildDocumentId(channel, userId)
@@ -1390,6 +1400,14 @@ public class HighLevelCoordinator
             execution_intent_id = executionIntent.IntentId,
             execution_stage = executionIntent.Stage,
             promotion_reason = executionIntent.PromotionReason,
+            requested_execution_model = executionIntent.RequestedExecutionModel,
+            llm = executionIntent.RequestedExecutionModel == null
+                ? null
+                : new
+                {
+                    default_model = executionIntent.RequestedExecutionModel.Model,
+                    allow_model_override = false
+                },
             managed_paths = draft.ManagedPaths,
             project = new
             {
