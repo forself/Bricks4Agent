@@ -360,6 +360,20 @@ public class HighLevelCoordinator
             }
         }
 
+        if (ShouldSuggestControlledSearch(decision, parsed))
+        {
+            var suggestedReply = PrepareReplySafe(profile, trimmed, BuildControlledSearchSuggestion(parsed));
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = decision.Mode,
+                Reply = suggestedReply,
+                DecisionReason = decision.Mode == HighLevelRouteMode.Query
+                    ? "lookup-style query was redirected to explicit controlled search guidance"
+                    : "lookup-style conversation was redirected to explicit controlled search guidance"
+            });
+        }
+
         var chatInput = decision.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body)
             ? parsed.Body
             : trimmed;
@@ -2025,6 +2039,62 @@ public class HighLevelCoordinator
         var key = mode.ToString().ToLowerInvariant();
         profile.DecisionCounts.TryGetValue(key, out var current);
         profile.DecisionCounts[key] = current + 1;
+    }
+
+    private bool ShouldSuggestControlledSearch(HighLevelRouteDecision decision, HighLevelParsedInput parsed)
+    {
+        if (!string.IsNullOrWhiteSpace(parsed.QueryCommand))
+            return false;
+
+        var text = parsed.Kind == HighLevelInputKind.Query && !string.IsNullOrWhiteSpace(parsed.Body)
+            ? parsed.Body
+            : parsed.Raw;
+        var normalized = Normalize(text);
+
+        if (decision.Mode == HighLevelRouteMode.Query)
+            return LooksLikeLookupNeed(normalized);
+
+        if (decision.Mode == HighLevelRouteMode.Conversation)
+            return LooksLikeLookupNeed(normalized);
+
+        return false;
+    }
+
+    private static bool LooksLikeLookupNeed(string normalized)
+    {
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        var keywords = new[]
+        {
+            "附近", "鄰近", "相鄰", "接壤", "行政區", "行政區劃",
+            "官網", "網址", "哪裡", "哪個", "哪些", "多少",
+            "最新", "價格", "規格", "班次", "時刻", "時刻表", "最早", "最晚",
+            "火車", "台鐵", "高鐵", "公車", "客運", "航班", "機票",
+            "schedule", "official", "nearby",
+            "district", "borough", "county", "province", "state"
+        };
+
+        return keywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string BuildControlledSearchSuggestion(HighLevelParsedInput parsed)
+    {
+        var target = parsed.Kind == HighLevelInputKind.Query && !string.IsNullOrWhiteSpace(parsed.Body)
+            ? parsed.Body
+            : parsed.Raw;
+        var normalized = Normalize(target);
+
+        if (ContainsAny(normalized, new[] { "火車", "台鐵", "高鐵", "rail", "train" }))
+            return $"這題較適合做受控查詢。可直接輸入 ?rail {target}";
+
+        if (ContainsAny(normalized, new[] { "公車", "客運", "bus" }))
+            return $"這題較適合做受控查詢。可直接輸入 ?bus {target}";
+
+        if (ContainsAny(normalized, new[] { "航班", "機票", "flight", "flights" }))
+            return $"這題較適合做受控查詢。可直接輸入 ?flight {target}";
+
+        return $"這題較適合做受控搜尋。可直接輸入 ?search {target}";
     }
 
     private HighLevelProcessResult FinalizeResult(
