@@ -236,6 +236,7 @@ if (poolEnabled)
             var inProcess = new InProcessDispatcher(
                 sp.GetRequiredService<ILogger<InProcessDispatcher>>(),
                 null,
+                sp.GetRequiredService<Broker.Services.IProcessRunner>(),
                 sp.GetRequiredService<AgentSpawnService>(),
                 sp.GetRequiredService<BrokerDb>(),
                 sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
@@ -319,6 +320,7 @@ else
         new InProcessDispatcher(
             sp.GetRequiredService<ILogger<InProcessDispatcher>>(),
             null,
+            sp.GetRequiredService<Broker.Services.IProcessRunner>(),
             sp.GetRequiredService<AgentSpawnService>(),
             sp.GetRequiredService<BrokerDb>(),
             sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
