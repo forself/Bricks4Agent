@@ -1074,6 +1074,12 @@ try
 
         var firstConversation = await coordinator.ProcessLineMessageAsync("line-user-c", "你好");
         AssertTrue(firstConversation.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "first interaction guide shows current permission summary");
+
+        var querySuggestion = await coordinator.ProcessLineMessageAsync("line-user-d", "?中央氣象署官網");
+        AssertTrue(querySuggestion.Reply.Contains("?search", StringComparison.Ordinal), "generic high-level query prompts controlled search when lookup is likely");
+
+        var railSuggestion = await coordinator.ProcessLineMessageAsync("line-user-e", "台北到台中最晚高鐵班次");
+        AssertTrue(railSuggestion.Reply.Contains("?rail", StringComparison.Ordinal), "lookup-style transport conversation prompts controlled rail search");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
