@@ -2,7 +2,7 @@
 
 Purpose: broker-mediated public web search through Google for high-level query tasks.
 
-Current status: planned. The spec is kept in the registry, but the current public Google entrypoint does not yet yield a stable broker-owned execution adapter.
+Current status: active. The high-level `?search` path now prefers this Google route and falls back to DuckDuckGo only when Google fails.
 
 Rules:
 

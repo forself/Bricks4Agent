@@ -184,7 +184,7 @@ try
         NullLogger<HighLevelQueryToolMediator>.Instance);
     var mediatedSearch = await mediator.SearchWebAsync("line", "tester", "taipei weather");
     AssertTrue(mediatedSearch.Success, "query tool mediator executes explicit search through broker-owned tool binding");
-    AssertTrue(mediatedSearch.Reply.Contains("duckduckgo", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites search engine");
+    AssertTrue(mediatedSearch.Reply.Contains("google", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites Google as the primary search engine");
     AssertTrue(mediatedSearch.Reply.Contains("https://example.com/weather", StringComparison.OrdinalIgnoreCase), "query tool mediator reply includes ranked URLs");
     var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
@@ -1233,6 +1233,25 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
     [
         new ToolSpecView
         {
+            ToolId = "web.search.google",
+            DisplayName = "Google Web Search",
+            Summary = "broker mediated search",
+            Kind = "search",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "web.search.google",
+                    Route = "web_search_google",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "web_search_google"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
             ToolId = "web.search.duckduckgo",
             DisplayName = "DuckDuckGo Web Search",
             Summary = "broker mediated search",
@@ -1422,6 +1441,21 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
     {
         object payloadObject = approvedRequest.Route switch
         {
+            "web_search_google" => new
+            {
+                engine = "google",
+                query = "taipei weather",
+                results = new[]
+                {
+                    new
+                    {
+                        rank = 1,
+                        title = "Taipei Weather",
+                        url = "https://example.com/weather",
+                        snippet = "Rain later this afternoon."
+                    }
+                }
+            },
             "travel_rail_search" => new
             {
                 mode = "rail",
