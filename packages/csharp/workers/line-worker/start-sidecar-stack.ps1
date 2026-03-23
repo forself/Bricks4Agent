@@ -23,6 +23,8 @@ $workerPidFile = Join-Path $runRoot "line-worker.pid"
 $tunnelName = "line$WebhookPort"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
+$openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
+$brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
 
 foreach ($dir in @($runRoot, $brokerOut, $workerOut, $logDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -129,6 +131,20 @@ foreach ($logPath in @($brokerLog, $brokerErrLog, $workerLog, $workerErrLog)) {
 }
 
 $env:ASPNETCORE_URLS = "http://127.0.0.1:$BrokerPort"
+if (Test-Path $brokerProductionOverridePath) {
+    Remove-Item $brokerProductionOverridePath -Force
+}
+if (Test-Path $openAiApiKeyFile) {
+    $openAiApiKey = (Get-Content -Encoding utf8 $openAiApiKeyFile -Raw).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
+        $productionOverride = @{
+            HighLevelLlm = @{
+                ApiKey = $openAiApiKey
+            }
+        } | ConvertTo-Json -Depth 5
+        [System.IO.File]::WriteAllText($brokerProductionOverridePath, $productionOverride, [System.Text.UTF8Encoding]::new($false))
+    }
+}
 $brokerProc = Start-Process `
     -FilePath (Join-Path $brokerOut "Broker.exe") `
     -WorkingDirectory $brokerOut `
