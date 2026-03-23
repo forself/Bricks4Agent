@@ -1090,10 +1090,10 @@ public class HighLevelCoordinator
         {
             "目前擁有的權限：",
             "- 高階對話與需求澄清",
-            "- 受控網路搜尋：?search",
-            "- 交通查詢：?rail、?bus、?flight",
+            "- 受控網路搜尋：?search（快捷：?s）",
+            "- 交通查詢：?rail、?bus、?flight（快捷：?r、?b、?f）",
             "- 建立 production draft：/ 指令",
-            "- 個人設定：/name、/id、?profile、?help",
+            "- 個人設定：/name、/id、?profile、?help（快捷：/n、/i、?p、?h）",
             activeUserGrants.Length == 0
                 ? "- 使用者授權網站能力：目前沒有"
                 : $"- 使用者授權網站能力：{activeUserGrants.Length} 個 grant、{activeUserSites.Length} 個 site binding"
@@ -1847,15 +1847,15 @@ public class HighLevelCoordinator
             "",
             "使用規則：",
             "- 一般對話：直接輸入",
-            "- 顯式搜尋：?search 關鍵字",
-            "- 火車查詢：?rail 條件",
-            "- 公車查詢：?bus 條件",
-            "- 航班查詢：?flight 條件",
+            "- 顯式搜尋：?search 關鍵字（快捷：?s 關鍵字）",
+            "- 火車查詢：?rail 條件（快捷：?r 條件）",
+            "- 公車查詢：?bus 條件（快捷：?b 條件）",
+            "- 航班查詢：?flight 條件（快捷：?f 條件）",
             "- 任務或指令：/內容",
             "- 專案名稱：#名稱",
-            "- 個人設定：/name <稱呼>、/id <英數字ID>",
-            "- 查看個人設定：?profile",
-            "- 查看說明：?help",
+            "- 個人設定：/name <稱呼>（快捷：/n）、/id <英數字ID>（快捷：/i）",
+            "- 查看個人設定：?profile（快捷：?p）",
+            "- 查看說明：?help（快捷：?h）",
             "- 確認 / 取消：確認、confirm、取消、cancel"
         });
     }
