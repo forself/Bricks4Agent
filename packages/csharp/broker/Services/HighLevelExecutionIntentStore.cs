@@ -78,6 +78,7 @@ public sealed class HighLevelExecutionIntent
     public string TaskType { get; set; } = string.Empty;
     public string? ProjectName { get; set; }
     public string DraftId { get; set; } = string.Empty;
+    public HighLevelExecutionModelRequest? RequestedExecutionModel { get; set; }
     public string ScopeDescriptor { get; set; } = "{}";
     public string RuntimeDescriptor { get; set; } = "{}";
     public string DocumentId { get; set; } = string.Empty;
