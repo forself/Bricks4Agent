@@ -186,6 +186,21 @@ try
     AssertTrue(mediatedSearch.Success, "query tool mediator executes explicit search through broker-owned tool binding");
     AssertTrue(mediatedSearch.Reply.Contains("google", StringComparison.OrdinalIgnoreCase), "query tool mediator reply cites Google as the primary search engine");
     AssertTrue(mediatedSearch.Reply.Contains("https://example.com/weather", StringComparison.OrdinalIgnoreCase), "query tool mediator reply includes ranked URLs");
+    AssertTrue(HighLevelRelationQueryService.TryExtractAdministrativeRelationQuery("北京市附近的行政區", out var relationPlan), "relation query service recognizes administrative relation prompt");
+    AssertTrue(relationPlan.Subject == "北京市", "relation query service extracts core subject");
+    var relationQueryService = new HighLevelRelationQueryService(
+        mediator,
+        new HighLevelLlmOptions
+        {
+            Provider = "ollama",
+            BaseUrl = "http://localhost:11434",
+            DefaultModel = "verify"
+        },
+        new FakeHttpClientFactory(),
+        NullLogger<HighLevelRelationQueryService>.Instance);
+    var relationAnswer = await relationQueryService.TryAnswerAsync("line", "tester", "北京市附近的行政區");
+    AssertTrue(relationAnswer.Handled, "relation query service handles administrative relation queries");
+    AssertTrue(relationAnswer.Reply.Contains("verify-reply", StringComparison.OrdinalIgnoreCase), "relation query service uses high-level model to synthesize final answer");
     var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
     AssertTrue(mediatedRail.Reply.Contains("18:30", StringComparison.OrdinalIgnoreCase), "rail query mediator reply includes candidate time information");
@@ -1016,6 +1031,16 @@ try
             new FakeTaskRouter(),
             lineGateway,
             queryMediator,
+            new HighLevelRelationQueryService(
+                queryMediator,
+                new HighLevelLlmOptions
+                {
+                    Provider = "ollama",
+                    BaseUrl = "http://localhost:11434",
+                    DefaultModel = "verify"
+                },
+                new FakeHttpClientFactory(),
+                NullLogger<HighLevelRelationQueryService>.Instance),
             new HighLevelCoordinatorOptions
             {
                 AccessRoot = Path.Combine(sandboxRoot, "managed"),
@@ -1439,22 +1464,20 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
 {
     public Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {
+        using var payloadDoc = JsonDocument.Parse(approvedRequest.Payload);
+        var query = payloadDoc.RootElement
+            .GetProperty("args")
+            .TryGetProperty("query", out var queryNode)
+            ? queryNode.GetString() ?? string.Empty
+            : string.Empty;
+
         object payloadObject = approvedRequest.Route switch
         {
             "web_search_google" => new
             {
                 engine = "google",
-                query = "taipei weather",
-                results = new[]
-                {
-                    new
-                    {
-                        rank = 1,
-                        title = "Taipei Weather",
-                        url = "https://example.com/weather",
-                        snippet = "Rain later this afternoon."
-                    }
-                }
+                query = string.IsNullOrWhiteSpace(query) ? "taipei weather" : query,
+                results = BuildGoogleResults(query)
             },
             "travel_rail_search" => new
             {
@@ -1530,6 +1553,41 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
         var payload = JsonSerializer.Serialize(payloadObject);
 
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
+    }
+
+    private static object[] BuildGoogleResults(string query)
+    {
+        if (query.Contains("北京", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                new
+                {
+                    rank = 1,
+                    title = "北京市行政區劃 - 維基百科",
+                    url = "https://zh.wikipedia.org/wiki/%E5%8C%97%E4%BA%AC%E5%B8%82%E8%A1%8C%E6%94%BF%E5%8D%80%E5%8A%83",
+                    snippet = "北京市現轄東城區、西城區、朝陽區、海淀區、豐台區等多個市轄區。"
+                },
+                new
+                {
+                    rank = 2,
+                    title = "行政區劃_首都之窗",
+                    url = "https://www.beijing.gov.cn/renwen/bjgk/xzqh/",
+                    snippet = "北京市行政區包括朝陽區、海淀區、豐台區、通州區等。"
+                }
+            ];
+        }
+
+        return
+        [
+            new
+            {
+                rank = 1,
+                title = "Taipei Weather",
+                url = "https://example.com/weather",
+                snippet = "Rain later this afternoon."
+            }
+        ];
     }
 }
 

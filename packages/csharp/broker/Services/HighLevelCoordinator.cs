@@ -19,6 +19,7 @@ public class HighLevelCoordinator
     private readonly ITaskRouter _taskRouter;
     private readonly LineChatGateway _lineChatGateway;
     private readonly HighLevelQueryToolMediator _queryToolMediator;
+    private readonly HighLevelRelationQueryService _relationQueryService;
     private readonly HighLevelCoordinatorOptions _options;
     private readonly HighLevelCommandParser _commandParser;
     private readonly HighLevelInputTrustPolicy _inputTrustPolicy;
@@ -39,6 +40,7 @@ public class HighLevelCoordinator
         ITaskRouter taskRouter,
         LineChatGateway lineChatGateway,
         HighLevelQueryToolMediator queryToolMediator,
+        HighLevelRelationQueryService relationQueryService,
         HighLevelCoordinatorOptions options,
         BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
@@ -49,6 +51,7 @@ public class HighLevelCoordinator
         _taskRouter = taskRouter;
         _lineChatGateway = lineChatGateway;
         _queryToolMediator = queryToolMediator;
+        _relationQueryService = relationQueryService;
         _options = options;
         _commandParser = new HighLevelCommandParser(_options);
         _inputTrustPolicy = new HighLevelInputTrustPolicy();
@@ -336,7 +339,25 @@ public class HighLevelCoordinator
                 DecisionReason = transportResult.Success
                     ? "explicit flight query subcommand mediated by broker tool"
                     : "explicit flight query subcommand failed during broker tool mediation"
-            });
+              });
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.IsNullOrWhiteSpace(parsed.QueryCommand) &&
+            !string.IsNullOrWhiteSpace(parsed.Body))
+        {
+            var relationResult = await _relationQueryService.TryAnswerAsync(channel, userId, parsed.Body, cancellationToken);
+            if (relationResult.Handled)
+            {
+                var relationReply = PrepareReplySafe(profile, trimmed, relationResult.Reply);
+                SaveUserProfile(channel, userId, profile);
+                return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Query,
+                    Reply = relationReply,
+                    DecisionReason = relationResult.DecisionReason
+                });
+            }
         }
 
         var chatInput = decision.Mode == HighLevelRouteMode.Query && !string.IsNullOrWhiteSpace(parsed.Body)
