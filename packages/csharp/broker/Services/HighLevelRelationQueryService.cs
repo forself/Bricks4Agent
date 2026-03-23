@@ -310,6 +310,9 @@ public sealed class HighLevelRelationQueryService
         {
             var role = msg["role"]?.GetValue<string>() ?? "user";
             var text = msg["content"]?.GetValue<string>() ?? string.Empty;
+            var contentType = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                ? "output_text"
+                : "input_text";
             input.Add(new JsonObject
             {
                 ["role"] = role,
@@ -317,7 +320,7 @@ public sealed class HighLevelRelationQueryService
                 {
                     new JsonObject
                     {
-                        ["type"] = "input_text",
+                        ["type"] = contentType,
                         ["text"] = text
                     }
                 }

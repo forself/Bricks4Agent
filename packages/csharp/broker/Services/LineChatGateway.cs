@@ -539,6 +539,9 @@ public class LineChatGateway
 
             var role = obj["role"]?.GetValue<string>() ?? "user";
             var text = obj["content"]?.GetValue<string>() ?? string.Empty;
+            var contentType = string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase)
+                ? "output_text"
+                : "input_text";
             input.Add(new JsonObject
             {
                 ["role"] = role,
@@ -546,7 +549,7 @@ public class LineChatGateway
                 {
                     new JsonObject
                     {
-                        ["type"] = "input_text",
+                        ["type"] = contentType,
                         ["text"] = text
                     }
                 }
