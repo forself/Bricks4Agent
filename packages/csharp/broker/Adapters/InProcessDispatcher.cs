@@ -96,6 +96,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "web_search_google" => ExecuteWebSearchGoogleAsync(request),
                 "web_search_duckduckgo" => ExecuteWebSearchDuckDuckGoAsync(request),
                 "travel_rail_search" => ExecuteTravelRailSearchAsync(request),
+                "travel_hsr_search" => ExecuteTravelHsrSearchAsync(request),
                 "travel_bus_search" => ExecuteTravelBusSearchAsync(request),
                 "travel_flight_search" => ExecuteTravelFlightSearchAsync(request),
                 "web_search" => ExecuteWebSearchAsync(request),
@@ -1339,8 +1340,15 @@ public class InProcessDispatcher : IExecutionDispatcher
         => ExecuteTravelSearchAsync(
             request,
             mode: "rail",
-            sourceLabel: "DuckDuckGo / railway.gov.tw / thsrc.com.tw",
-            queryDecorator: query => $"{query} site:railway.gov.tw OR site:thsrc.com.tw 火車 台鐵 高鐵 時刻表 班次");
+            sourceLabel: "DuckDuckGo / railway.gov.tw",
+            queryDecorator: query => $"{query} site:railway.gov.tw 火車 台鐵 時刻表 班次");
+
+    private Task<ExecutionResult> ExecuteTravelHsrSearchAsync(ApprovedRequest request)
+        => ExecuteTravelSearchAsync(
+            request,
+            mode: "hsr",
+            sourceLabel: "DuckDuckGo / thsrc.com.tw",
+            queryDecorator: query => $"{query} site:thsrc.com.tw 高鐵 時刻表 班次");
 
     private Task<ExecutionResult> ExecuteTravelBusSearchAsync(ApprovedRequest request)
         => ExecuteTravelSearchAsync(

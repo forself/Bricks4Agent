@@ -338,6 +338,36 @@ public class HighLevelCoordinator
         }
 
         if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "hsr", StringComparison.OrdinalIgnoreCase))
+        {
+            var transportResult = await _queryToolMediator.SearchHsrAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var transportReplyBody = transportResult.Reply;
+            if (transportResult.Success && transportResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId,
+                    "hsr_search",
+                    parsed.QueryArgument,
+                    transportResult.Results,
+                    cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    transportReplyBody = synthesized;
+            }
+
+            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = transportReply,
+                Error = transportResult.Error,
+                DecisionReason = transportResult.Success
+                    ? "explicit hsr query subcommand mediated by broker tool"
+                    : "explicit hsr query subcommand failed during broker tool mediation"
+            });
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
             string.Equals(parsed.QueryCommand, "bus", StringComparison.OrdinalIgnoreCase))
         {
             var transportResult = await _queryToolMediator.SearchBusAsync(channel, userId, parsed.QueryArgument, cancellationToken);
@@ -1151,7 +1181,7 @@ public class HighLevelCoordinator
             "目前擁有的權限：",
             "- 高階對話與需求澄清",
             "- 受控網路搜尋：?search（快捷：?s）",
-            "- 交通查詢：?rail、?bus、?flight（快捷：?r、?b、?f）",
+            "- 交通查詢：?rail、?hsr、?bus、?flight（快捷：?r、?hsr、?b、?f）",
             "- 建立 production draft：/ 指令",
             "- 個人設定：/name、/id、?profile、?help（快捷：/n、/i、?p、?h）",
             activeUserGrants.Length == 0
@@ -1919,6 +1949,7 @@ public class HighLevelCoordinator
             "- 一般對話：直接輸入",
             "- 顯式搜尋：?search 關鍵字（快捷：?s 關鍵字）",
             "- 火車查詢：?rail 條件（快捷：?r 條件）",
+            "- 高鐵查詢：?hsr 條件（快捷：?hsr 條件）",
             "- 公車查詢：?bus 條件（快捷：?b 條件）",
             "- 航班查詢：?flight 條件（快捷：?f 條件）",
             "- 任務或指令：/內容",
@@ -2155,7 +2186,10 @@ public class HighLevelCoordinator
             : parsed.Raw;
         var normalized = Normalize(target);
 
-        if (ContainsAny(normalized, new[] { "火車", "台鐵", "高鐵", "rail", "train" }))
+        if (ContainsAny(normalized, new[] { "高鐵", "hsr", "thsr" }))
+            return $"這題較適合做受控查詢。可直接輸入 ?hsr {target}";
+
+        if (ContainsAny(normalized, new[] { "火車", "台鐵", "rail", "train" }))
             return $"這題較適合做受控查詢。可直接輸入 ?rail {target}";
 
         if (ContainsAny(normalized, new[] { "公車", "客運", "bus" }))

@@ -14,8 +14,14 @@ public sealed class HighLevelCommandParser
         "rail",
         "r",
         "train",
+        "tra",
         "\u706b\u8eca",
-        "\u53f0\u9435",
+        "\u53f0\u9435"
+    };
+    private static readonly HashSet<string> QueryHsrCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "hsr",
+        "thsr",
         "\u9ad8\u9435"
     };
     private static readonly HashSet<string> QueryBusCommands = new(StringComparer.OrdinalIgnoreCase)
@@ -224,6 +230,12 @@ public sealed class HighLevelCommandParser
         {
             var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
             return ("rail", argument);
+        }
+
+        if (QueryHsrCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("hsr", argument);
         }
 
         if (QueryBusCommands.Contains(candidate))

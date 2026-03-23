@@ -9,6 +9,7 @@ public sealed class HighLevelQueryToolMediator
     private const string GoogleToolId = "web.search.google";
     private const string DuckDuckGoToolId = "web.search.duckduckgo";
     private const string RailToolId = "travel.rail.search";
+    private const string HsrToolId = "travel.hsr.search";
     private const string BusToolId = "travel.bus.search";
     private const string FlightToolId = "travel.flight.search";
 
@@ -78,6 +79,13 @@ public sealed class HighLevelQueryToolMediator
         string query,
         CancellationToken cancellationToken = default)
         => SearchTransportAsync(channel, userId, RailToolId, query, cancellationToken);
+
+    public Task<HighLevelQueryToolResult> SearchHsrAsync(
+        string channel,
+        string userId,
+        string query,
+        CancellationToken cancellationToken = default)
+        => SearchTransportAsync(channel, userId, HsrToolId, query, cancellationToken);
 
     public Task<HighLevelQueryToolResult> SearchBusAsync(
         string channel,
@@ -240,8 +248,16 @@ public sealed class HighLevelQueryToolMediator
 
         if (string.IsNullOrWhiteSpace(query))
         {
+            var exampleCommand = toolId switch
+            {
+                HsrToolId => "?hsr 台北 台中 今天 18:00",
+                RailToolId => "?rail 台北 台中 今天 18:00",
+                BusToolId => "?bus 台北 台中 今天 18:00",
+                FlightToolId => "?flight TPE KIX tomorrow",
+                _ => "?search 關鍵字"
+            };
             return HighLevelQueryToolResult.Fail(
-                "請在查詢指令後提供條件，例如 ?rail 台北 台中 今天 18:00。",
+                $"請在查詢指令後提供條件，例如 {exampleCommand}。",
                 "transport_query_missing");
         }
 
