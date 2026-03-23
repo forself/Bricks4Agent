@@ -45,6 +45,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<BrowserUserGrant>();
         _db.EnsureTable<BrowserSystemBinding>();
         _db.EnsureTable<AzureIisDeploymentTarget>();
+        _db.EnsureTable<LocalAdminCredential>();
+        _db.EnsureTable<LocalAdminSession>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
@@ -141,6 +143,8 @@ public class BrokerDbInitializer
                       ON azure_iis_deployment_targets(status, provider)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_azure_iis_targets_host
                       ON azure_iis_deployment_targets(vm_host, site_name)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_expires
+                      ON local_admin_sessions(expires_at, revoked_at)");
 
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");
