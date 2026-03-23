@@ -1095,6 +1095,9 @@ try
 
         var railSuggestion = await coordinator.ProcessLineMessageAsync("line-user-e", "台北到台中最晚高鐵班次");
         AssertTrue(railSuggestion.Reply.Contains("?rail", StringComparison.Ordinal), "lookup-style transport conversation prompts controlled rail search");
+
+        var explicitSearchReply = await coordinator.ProcessLineMessageAsync("line-user-f", "?search 中央氣象署官網");
+        AssertTrue(explicitSearchReply.Reply.Contains("verify-reply", StringComparison.OrdinalIgnoreCase), "explicit search uses high-level model to synthesize broker search results");
     }
 
     var readmePath = Path.Combine(sandboxRoot, "README.txt");
