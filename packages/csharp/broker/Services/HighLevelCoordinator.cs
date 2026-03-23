@@ -254,6 +254,11 @@ public class HighLevelCoordinator
         profile.LastUpdatedAt = DateTime.UtcNow;
         IncrementDecisionCount(profile, decision.Mode);
 
+        if (TryHandlePermissionGate(channel, userId, trimmed, profile, draft, parsed, trustedParse, workflow, decision, out var permissionResult))
+        {
+            return permissionResult;
+        }
+
         if (decision.Mode == HighLevelRouteMode.Production)
         {
             var nextDraft = CreateDraft(channel, userId, profile, trimmed, decision);
@@ -447,6 +452,22 @@ public class HighLevelCoordinator
 
         if (ShouldSuggestControlledSearch(decision, parsed))
         {
+            var permissions = EnsurePermissions(profile);
+            var suggestionIsTransport = IsTransportLookupSuggestion(parsed);
+            if ((suggestionIsTransport && !permissions.AllowTransport) ||
+                (!suggestionIsTransport && !permissions.AllowQuery))
+            {
+                var deniedReply = suggestionIsTransport
+                    ? "目前你的帳戶不能使用交通查詢。若需要此權限，請聯絡管理員。"
+                    : "目前你的帳戶不能使用受控查詢。若需要此權限，請聯絡管理員。";
+                var deniedResult = BuildPermissionDeniedResult(
+                    channel, userId, trimmed, profile, trustedParse, workflow,
+                    HighLevelRouteMode.Query,
+                    deniedReply,
+                    suggestionIsTransport ? "transport_disabled" : "query_disabled");
+                return deniedResult;
+            }
+
             var suggestedReply = PrepareReplySafe(profile, trimmed, BuildControlledSearchSuggestion(parsed));
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -546,6 +567,7 @@ public class HighLevelCoordinator
                 UserId = profile.UserId,
                 DisplayName = profile.PreferredDisplayName,
                 UserCode = profile.PreferredUserCode,
+                Permissions = EnsurePermissions(profile),
                 RegistrationStatus = ResolveRegistrationStatus(profile),
                 RegistrationRequestedAt = profile.RegistrationRequestedAt,
                 RegistrationReviewedAt = profile.RegistrationReviewedAt,
@@ -566,6 +588,24 @@ public class HighLevelCoordinator
             .OrderByDescending(summary => summary.LastInteractionAt ?? DateTimeOffset.MinValue)
             .ThenBy(summary => summary.UserId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    public HighLevelUserProfile? SetLineUserPermissions(string userId, HighLevelUserPermissionsPatch patch)
+    {
+        var profile = LoadUserProfile("line", userId);
+        if (profile == null)
+            return null;
+
+        var permissions = EnsurePermissions(profile);
+        if (patch.AllowQuery.HasValue) permissions.AllowQuery = patch.AllowQuery.Value;
+        if (patch.AllowTransport.HasValue) permissions.AllowTransport = patch.AllowTransport.Value;
+        if (patch.AllowProduction.HasValue) permissions.AllowProduction = patch.AllowProduction.Value;
+        if (patch.AllowBrowserDelegated.HasValue) permissions.AllowBrowserDelegated = patch.AllowBrowserDelegated.Value;
+        if (patch.AllowDeployment.HasValue) permissions.AllowDeployment = patch.AllowDeployment.Value;
+
+        profile.LastUpdatedAt = DateTime.UtcNow;
+        SaveUserProfile("line", userId, profile);
+        return profile;
     }
 
     public string GetLineAnonymousRegistrationPolicy()
@@ -1057,8 +1097,19 @@ public class HighLevelCoordinator
 
     private static string BuildDraftConfirmationReply(HighLevelTaskDraft draft)
     {
+        var permissions = HighLevelUserPermissions.CreateDefault();
         return string.Join('\n', new[]
         {
+            $"- 受控網路搜尋：{(permissions.AllowQuery ? "允許" : "停用")}",
+            $"- 交通查詢：{(permissions.AllowTransport ? "允許" : "停用")}",
+            $"- Production 任務：{(permissions.AllowProduction ? "允許" : "停用")}",
+            $"- 使用者授權網站：{(permissions.AllowBrowserDelegated ? "允許" : "停用")}",
+            $"- 佈署能力：{(permissions.AllowDeployment ? "允許" : "停用")}",
+            $"- 受控網路搜尋：{(permissions.AllowQuery ? "允許" : "停用")}",
+            $"- 交通查詢：{(permissions.AllowTransport ? "允許" : "停用")}",
+            $"- Production 任務：{(permissions.AllowProduction ? "允許" : "停用")}",
+            $"- 使用者授權網站：{(permissions.AllowBrowserDelegated ? "允許" : "停用")}",
+            $"- 佈署能力：{(permissions.AllowDeployment ? "允許" : "停用")}",
             "\u6211\u5224\u65b7\u9019\u662f\u4e00\u500b production \u8acb\u6c42\uff0c\u6e96\u5099\u9032\u5165\u53d7\u63a7\u4efb\u52d9\u6d41\u7a0b\u3002",
             $"task_type: {draft.TaskType}",
             $"title: {draft.Title}",
@@ -1075,7 +1126,7 @@ public class HighLevelCoordinator
             "",
             "\u82e5\u78ba\u8a8d\u8981\u5efa\u7acb task / plan\uff0c\u8acb\u56de\u8986\u300c\u78ba\u8a8d\u300d\u6216 confirm\u3002",
             "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u6216 cancel\u3002"
-        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+        }.Skip(10).Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
     private static string BuildPendingDraftReminder(HighLevelTaskDraft draft)
@@ -1162,6 +1213,7 @@ public class HighLevelCoordinator
 
     private string BuildPermissionSummary(HighLevelUserProfile profile)
     {
+        var permissions = EnsurePermissions(profile);
         var principalCandidates = ResolvePrincipalCandidates(profile).ToArray();
         var activeUserGrants = principalCandidates
             .SelectMany(principalId => _browserBindingService.ListUserGrants(principalId))
@@ -1200,6 +1252,91 @@ public class HighLevelCoordinator
 
         if (!string.IsNullOrWhiteSpace(profile.PreferredUserCode))
             yield return profile.PreferredUserCode;
+    }
+
+    private bool IsTransportQueryCommand(HighLevelParsedInput parsed)
+        => parsed.Kind == HighLevelInputKind.Query &&
+           parsed.QueryCommand != null &&
+           (string.Equals(parsed.QueryCommand, "rail", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(parsed.QueryCommand, "hsr", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(parsed.QueryCommand, "bus", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(parsed.QueryCommand, "flight", StringComparison.OrdinalIgnoreCase));
+
+    private bool TryHandlePermissionGate(
+        string channel,
+        string userId,
+        string message,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft? draft,
+        HighLevelParsedInput parsed,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        HighLevelRouteDecision decision,
+        out HighLevelProcessResult result)
+    {
+        result = default!;
+        var permissions = EnsurePermissions(profile);
+
+        if (decision.Mode == HighLevelRouteMode.Production &&
+            draft == null &&
+            parsed.Kind == HighLevelInputKind.Production &&
+            !string.Equals(parsed.ProductionCommand, "name", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(parsed.ProductionCommand, "id", StringComparison.OrdinalIgnoreCase) &&
+            !permissions.AllowProduction)
+        {
+            result = BuildPermissionDeniedResult(
+                channel, userId, message, profile, trustedParse, workflow,
+                HighLevelRouteMode.Production,
+                "目前你的帳戶不能建立 production 任務。若需要此權限，請聯絡管理員。",
+                "production_disabled");
+            return true;
+        }
+
+        if (IsTransportQueryCommand(parsed) && !permissions.AllowTransport)
+        {
+            result = BuildPermissionDeniedResult(
+                channel, userId, message, profile, trustedParse, workflow,
+                HighLevelRouteMode.Query,
+                "目前你的帳戶不能使用交通查詢。若需要此權限，請聯絡管理員。",
+                "transport_disabled");
+            return true;
+        }
+
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            !IsTransportQueryCommand(parsed) &&
+            !permissions.AllowQuery)
+        {
+            result = BuildPermissionDeniedResult(
+                channel, userId, message, profile, trustedParse, workflow,
+                HighLevelRouteMode.Query,
+                "目前你的帳戶不能使用受控查詢。若需要此權限，請聯絡管理員。",
+                "query_disabled");
+            return true;
+        }
+
+        return false;
+    }
+
+    private HighLevelProcessResult BuildPermissionDeniedResult(
+        string channel,
+        string userId,
+        string message,
+        HighLevelUserProfile profile,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        HighLevelRouteMode mode,
+        string reply,
+        string error)
+    {
+        SaveUserProfile(channel, userId, profile);
+
+        return FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+        {
+            Mode = mode,
+            Reply = PrepareReplySafe(profile, message, reply),
+            Error = error,
+            DecisionReason = "user permission gate denied request"
+        });
     }
 
     private bool TryUpdatePreferredUserCode(
@@ -1670,7 +1807,15 @@ public class HighLevelCoordinator
     }
 
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
-        => LoadLatestJson<HighLevelUserProfile>(BuildProfileDocumentId(channel, userId));
+    {
+        var profile = LoadLatestJson<HighLevelUserProfile>(BuildProfileDocumentId(channel, userId));
+        if (profile != null)
+        {
+            EnsurePermissions(profile);
+        }
+
+        return profile;
+    }
 
     private HighLevelUserCodeReservation? LoadUserCodeReservation(string channel, string userCode)
         => LoadLatestJson<HighLevelUserCodeReservation>(BuildUserCodeDocumentId(channel, userCode));
@@ -1679,12 +1824,19 @@ public class HighLevelCoordinator
     {
         profile.Channel = channel;
         profile.UserId = userId;
+        EnsurePermissions(profile);
         UpsertDocument(
             BuildProfileDocumentId(channel, userId),
             BuildProfileDocumentId(channel, userId),
             JsonSerializer.Serialize(profile),
             "application/json",
             "global");
+    }
+
+    private static HighLevelUserPermissions EnsurePermissions(HighLevelUserProfile profile)
+    {
+        profile.Permissions ??= HighLevelUserPermissions.CreateDefault();
+        return profile.Permissions;
     }
 
     private void SaveUserCodeReservation(string channel, string userId, string userCode)
@@ -2201,6 +2353,16 @@ public class HighLevelCoordinator
         return $"這題較適合做受控搜尋。可直接輸入 ?search {target}";
     }
 
+    private bool IsTransportLookupSuggestion(HighLevelParsedInput parsed)
+    {
+        var target = parsed.Kind == HighLevelInputKind.Query && !string.IsNullOrWhiteSpace(parsed.Body)
+            ? parsed.Body
+            : parsed.Raw;
+        var normalized = Normalize(target);
+
+        return ContainsAny(normalized, new[] { "高鐵", "hsr", "thsr", "火車", "台鐵", "rail", "train", "公車", "客運", "bus", "航班", "機票", "flight", "flights" });
+    }
+
     private HighLevelProcessResult FinalizeResult(
         string channel,
         string userId,
@@ -2529,6 +2691,7 @@ public class HighLevelUserProfile
     public string UserId { get; set; } = string.Empty;
     public string? PreferredDisplayName { get; set; }
     public string? PreferredUserCode { get; set; }
+    public HighLevelUserPermissions Permissions { get; set; } = HighLevelUserPermissions.CreateDefault();
     public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
     public DateTimeOffset? RegistrationRequestedAt { get; set; }
     public DateTimeOffset? RegistrationReviewedAt { get; set; }
@@ -2548,6 +2711,7 @@ public sealed class HighLevelLineUserSummary
     public string UserId { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
     public string? UserCode { get; set; }
+    public HighLevelUserPermissions Permissions { get; set; } = HighLevelUserPermissions.CreateDefault();
     public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
     public DateTimeOffset? RegistrationRequestedAt { get; set; }
     public DateTimeOffset? RegistrationReviewedAt { get; set; }
@@ -2561,6 +2725,27 @@ public sealed class HighLevelLineUserSummary
     public string ProjectsRoot { get; set; } = string.Empty;
     public int ActiveUserGrantCount { get; set; }
     public int ActiveUserSiteBindingCount { get; set; }
+}
+
+public sealed class HighLevelUserPermissions
+{
+    public bool AllowQuery { get; set; } = true;
+    public bool AllowTransport { get; set; } = true;
+    public bool AllowProduction { get; set; } = true;
+    public bool AllowBrowserDelegated { get; set; }
+    public bool AllowDeployment { get; set; }
+
+    public static HighLevelUserPermissions CreateDefault()
+        => new();
+}
+
+public sealed class HighLevelUserPermissionsPatch
+{
+    public bool? AllowQuery { get; set; }
+    public bool? AllowTransport { get; set; }
+    public bool? AllowProduction { get; set; }
+    public bool? AllowBrowserDelegated { get; set; }
+    public bool? AllowDeployment { get; set; }
 }
 
 internal enum CommandGuideMode
