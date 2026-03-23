@@ -71,6 +71,10 @@ try
     AssertTrue(railParsed.QueryCommand == "rail" && railParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts explicit rail query subcommand");
     var railAliasParsed = parser.Parse("?r 台北 台中 今天 18:00");
     AssertTrue(railAliasParsed.QueryCommand == "rail" && railAliasParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts rail alias subcommand");
+    var hsrParsed = parser.Parse("?hsr 台北 台中 今天 18:00");
+    AssertTrue(hsrParsed.QueryCommand == "hsr" && hsrParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts explicit hsr query subcommand");
+    var hsrAliasParsed = parser.Parse("?thsr 台北 台中 今天 18:00");
+    AssertTrue(hsrAliasParsed.QueryCommand == "hsr" && hsrAliasParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts thsr alias subcommand");
     var busParsed = parser.Parse("?bus 台北 台中 今天 18:00");
     AssertTrue(busParsed.QueryCommand == "bus" && busParsed.QueryArgument == "台北 台中 今天 18:00", "parser extracts explicit bus query subcommand");
     var busAliasParsed = parser.Parse("?b 台北 台中 今天 18:00");
@@ -219,6 +223,9 @@ try
     var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
     AssertTrue(mediatedRail.Reply.Contains("18:30", StringComparison.OrdinalIgnoreCase), "rail query mediator reply includes candidate time information");
+    var mediatedHsr = await mediator.SearchHsrAsync("line", "tester", "台北 台中 今天 18:00");
+    AssertTrue(mediatedHsr.Success, "query tool mediator executes explicit hsr query through broker-owned transport tool");
+    AssertTrue(mediatedHsr.Reply.Contains("06:15", StringComparison.OrdinalIgnoreCase), "hsr query mediator reply includes candidate time information");
     var mediatedBus = await mediator.SearchBusAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedBus.Success, "query tool mediator executes explicit bus query through broker-owned transport tool");
     var mediatedFlight = await mediator.SearchFlightAsync("line", "tester", "TPE KIX tomorrow");
@@ -1079,7 +1086,7 @@ try
         AssertTrue(profileView.Reply.Contains("display_name: 小布", StringComparison.Ordinal), "profile query shows preferred display name");
         AssertTrue(profileView.Reply.Contains("user_code: bricks001", StringComparison.Ordinal), "profile query shows preferred alphanumeric user id");
         AssertTrue(profileView.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "profile query shows current permission summary");
-        AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
+        AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?hsr、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
 
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
@@ -1105,7 +1112,7 @@ try
         AssertTrue(querySuggestion.Reply.Contains("?search", StringComparison.Ordinal), "generic high-level query prompts controlled search when lookup is likely");
 
         var railSuggestion = await coordinator.ProcessLineMessageAsync("line-user-e", "台北到台中最晚高鐵班次");
-        AssertTrue(railSuggestion.Reply.Contains("?rail", StringComparison.Ordinal), "lookup-style transport conversation prompts controlled rail search");
+        AssertTrue(railSuggestion.Reply.Contains("?hsr", StringComparison.Ordinal), "lookup-style transport conversation prompts controlled hsr search");
 
         var explicitSearchReply = await coordinator.ProcessLineMessageAsync("line-user-f", "?search 中央氣象署官網");
         AssertTrue(explicitSearchReply.Reply.Contains("verify-reply", StringComparison.OrdinalIgnoreCase), "explicit search uses high-level model to synthesize broker search results");
@@ -1350,6 +1357,25 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
         },
         new ToolSpecView
         {
+            ToolId = "travel.hsr.search",
+            DisplayName = "HSR Search",
+            Summary = "broker mediated hsr search",
+            Kind = "travel",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "travel.hsr.search",
+                    Route = "travel_hsr_search",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "travel_hsr_search"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
             ToolId = "travel.bus.search",
             DisplayName = "Bus Search",
             Summary = "broker mediated bus search",
@@ -1536,7 +1562,7 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                 mode = "rail",
                 query = "台北 台中 今天 18:00",
                 retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                sources_used = new[] { "DuckDuckGo / public transport web" },
+                sources_used = new[] { "DuckDuckGo / railway.gov.tw" },
                 results = new[]
                 {
                     new
@@ -1546,6 +1572,24 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                         url = "https://example.com/rail",
                         snippet = "晚間班次候選",
                         time_candidates = new[] { "18:30", "19:00" }
+                    }
+                }
+            },
+            "travel_hsr_search" => new
+            {
+                mode = "hsr",
+                query = "台北 台中 今天 18:00",
+                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
+                sources_used = new[] { "DuckDuckGo / thsrc.com.tw" },
+                results = new[]
+                {
+                    new
+                    {
+                        rank = 1,
+                        title = "台北到台中高鐵班次",
+                        url = "https://example.com/hsr",
+                        snippet = "高鐵候選班次",
+                        time_candidates = new[] { "06:15", "06:30" }
                     }
                 }
             },

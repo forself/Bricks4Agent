@@ -1,11 +1,11 @@
 {
-  "tool_id": "travel.rail.search",
-  "display_name": "TRA Rail Search",
-  "summary": "Find candidate Taiwan Railways train tickets or schedules through broker-approved TRA sources.",
+  "tool_id": "travel.hsr.search",
+  "display_name": "THSR Search",
+  "summary": "Find candidate Taiwan High Speed Rail schedules through broker-approved THSR sources.",
   "kind": "travel",
   "status": "active",
-  "version": "2026-03-22",
-  "tags": ["travel", "rail", "tra", "train", "search", "high-level"],
+  "version": "2026-03-23",
+  "tags": ["travel", "hsr", "thsr", "high-speed-rail", "search", "high-level"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "travel",
@@ -17,9 +17,9 @@
   },
   "capability_bindings": [
     {
-      "capability_id": "travel.rail.search",
-      "route": "travel_rail_search",
-      "purpose": "Broker-mediated Taiwan Railways lookup."
+      "capability_id": "travel.hsr.search",
+      "route": "travel_hsr_search",
+      "purpose": "Broker-mediated Taiwan High Speed Rail lookup."
     }
   ],
   "input_schema": {
@@ -42,7 +42,7 @@
     }
   },
   "source_policy": {
-    "allowed_sources": ["duckduckgo", "railway.gov.tw"]
+    "allowed_sources": ["duckduckgo", "thsrc.com.tw"]
   },
   "execution_rules": {
     "mediation_required": true,
@@ -52,6 +52,6 @@
   "response_contract": {
     "must_identify_sources": true,
     "must_identify_retrieval_time": true,
-    "result_wording": "Return candidate Taiwan Railways options with detected departure or arrival time candidates."
+    "result_wording": "Return candidate Taiwan High Speed Rail options with detected departure or arrival time candidates."
   }
 }
