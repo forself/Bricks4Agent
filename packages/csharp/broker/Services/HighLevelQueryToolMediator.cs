@@ -6,6 +6,7 @@ namespace Broker.Services;
 
 public sealed class HighLevelQueryToolMediator
 {
+    private const string GoogleToolId = "web.search.google";
     private const string DuckDuckGoToolId = "web.search.duckduckgo";
     private const string RailToolId = "travel.rail.search";
     private const string BusToolId = "travel.bus.search";
@@ -40,16 +41,70 @@ public sealed class HighLevelQueryToolMediator
                 "search_query_missing");
         }
 
-        var spec = _toolSpecRegistry.Get(DuckDuckGoToolId);
+        var primaryResult = await SearchWebWithToolAsync(GoogleToolId, query);
+        if (primaryResult.Success)
+            return primaryResult;
+
+        _logger.LogWarning(
+            "High-level Google web search failed with {Error}; falling back to DuckDuckGo.",
+            primaryResult.Error ?? "unknown_error");
+
+        var fallbackResult = await SearchWebWithToolAsync(DuckDuckGoToolId, query);
+        if (fallbackResult.Success)
+        {
+            if (!string.IsNullOrWhiteSpace(primaryResult.Error))
+            {
+                fallbackResult.Reply = string.Join('\n', new[]
+                {
+                    "Google 搜尋目前不可用，已改用 DuckDuckGo 作為備援。",
+                    string.Empty,
+                    fallbackResult.Reply
+                });
+            }
+
+            return fallbackResult;
+        }
+
+        return HighLevelQueryToolResult.Fail(
+            !string.IsNullOrWhiteSpace(primaryResult.Error)
+                ? $"搜尋失敗：{primaryResult.Error}"
+                : "目前沒有可用的 web search 工具。",
+            primaryResult.Error ?? "tool_spec_unavailable");
+    }
+
+    public Task<HighLevelQueryToolResult> SearchRailAsync(
+        string channel,
+        string userId,
+        string query,
+        CancellationToken cancellationToken = default)
+        => SearchTransportAsync(channel, userId, RailToolId, query, cancellationToken);
+
+    public Task<HighLevelQueryToolResult> SearchBusAsync(
+        string channel,
+        string userId,
+        string query,
+        CancellationToken cancellationToken = default)
+        => SearchTransportAsync(channel, userId, BusToolId, query, cancellationToken);
+
+    public Task<HighLevelQueryToolResult> SearchFlightAsync(
+        string channel,
+        string userId,
+        string query,
+        CancellationToken cancellationToken = default)
+        => SearchTransportAsync(channel, userId, FlightToolId, query, cancellationToken);
+
+    private async Task<HighLevelQueryToolResult> SearchWebWithToolAsync(string toolId, string query)
+    {
+        var spec = _toolSpecRegistry.Get(toolId);
         if (spec == null || !string.Equals(spec.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
             return HighLevelQueryToolResult.Fail(
-                "\u76ee\u524d\u6c92\u6709\u53ef\u7528\u7684 web search \u5de5\u5177\u3002",
+                "目前沒有可用的 web search 工具。",
                 "tool_spec_unavailable");
         }
 
         var binding = spec.CapabilityBindings.FirstOrDefault(binding =>
-            string.Equals(binding.CapabilityId, DuckDuckGoToolId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(binding.CapabilityId, toolId, StringComparison.OrdinalIgnoreCase));
         if (binding == null || !binding.Registered || string.IsNullOrWhiteSpace(binding.Route))
         {
             return HighLevelQueryToolResult.Fail(
@@ -74,7 +129,8 @@ public sealed class HighLevelQueryToolMediator
                 {
                     query,
                     locale = "zh-TW",
-                    limit = 5
+                    limit = 5,
+                    safe_mode = "moderate"
                 }
             })
         };
@@ -93,8 +149,8 @@ public sealed class HighLevelQueryToolMediator
         {
             using var doc = JsonDocument.Parse(executionResult.ResultPayload);
             var engine = doc.RootElement.TryGetProperty("engine", out var engineNode)
-                ? engineNode.GetString() ?? "duckduckgo"
-                : "duckduckgo";
+                ? engineNode.GetString() ?? toolId
+                : toolId;
             var returnedQuery = doc.RootElement.TryGetProperty("query", out var queryNode)
                 ? queryNode.GetString() ?? query
                 : query;
@@ -128,7 +184,7 @@ public sealed class HighLevelQueryToolMediator
             {
                 Success = true,
                 Reply = reply,
-                ToolId = DuckDuckGoToolId,
+                ToolId = toolId,
                 Engine = engine,
                 Results = items
             };
@@ -141,27 +197,6 @@ public sealed class HighLevelQueryToolMediator
                 "tool_result_parse_failed");
         }
     }
-
-    public Task<HighLevelQueryToolResult> SearchRailAsync(
-        string channel,
-        string userId,
-        string query,
-        CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, RailToolId, query, cancellationToken);
-
-    public Task<HighLevelQueryToolResult> SearchBusAsync(
-        string channel,
-        string userId,
-        string query,
-        CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, BusToolId, query, cancellationToken);
-
-    public Task<HighLevelQueryToolResult> SearchFlightAsync(
-        string channel,
-        string userId,
-        string query,
-        CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, FlightToolId, query, cancellationToken);
 
     private static string BuildSearchReply(string engine, string query, IReadOnlyList<HighLevelQuerySearchResult> results)
     {

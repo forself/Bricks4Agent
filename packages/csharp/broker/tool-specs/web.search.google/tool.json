@@ -3,7 +3,7 @@
   "display_name": "Google Web Search",
   "summary": "Search the public web through the Google search entrypoint under broker mediation.",
   "kind": "search",
-  "status": "planned",
+  "status": "active",
   "version": "2026-03-21",
   "tags": ["web", "search", "google", "high-level"],
   "capability_template": {
