@@ -198,6 +198,14 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         <el-button v-if="selectedUserId" size="small" type="danger" text style="margin-left:auto"
                    @click="clearConversation">Clear History</el-button>
       </div>
+      <div v-if="selectedUserId" style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <span class="mini-pill">Query <el-switch v-model="permissionForm.allowQuery" size="small" style="margin-left:8px" /></span>
+        <span class="mini-pill">Transport <el-switch v-model="permissionForm.allowTransport" size="small" style="margin-left:8px" /></span>
+        <span class="mini-pill">Production <el-switch v-model="permissionForm.allowProduction" size="small" style="margin-left:8px" /></span>
+        <span class="mini-pill">Browser <el-switch v-model="permissionForm.allowBrowserDelegated" size="small" style="margin-left:8px" /></span>
+        <span class="mini-pill">Deploy <el-switch v-model="permissionForm.allowDeployment" size="small" style="margin-left:8px" /></span>
+        <el-button size="small" type="primary" @click="savePermissions" :loading="savingPermissions">Save Permissions</el-button>
+      </div>
     </template>
 
     <div class="msg-container" ref="msgContainer">
@@ -252,6 +260,14 @@ const app=createApp({
     const selectedUserId=ref('');
     const selectedUser=ref(null);
     const registrationPolicy=ref('allow_all');
+    const savingPermissions=ref(false);
+    const permissionForm=reactive({
+      allowQuery:true,
+      allowTransport:true,
+      allowProduction:true,
+      allowBrowserDelegated:false,
+      allowDeployment:false
+    });
     const inputText=ref('');
     const sysStatus=ref({status:'unknown',services:{},database:{}});
     const lastRagSnippets=ref(null);
@@ -276,6 +292,7 @@ const app=createApp({
         users.value=r.users||[];
         if(selectedUserId.value){
           selectedUser.value=users.value.find(u=>u.userId===selectedUserId.value)||null;
+          syncPermissionForm();
         }
       }catch{}
     }
@@ -300,6 +317,7 @@ const app=createApp({
     function selectConversation(userId){
       selectedUserId.value=userId;
       selectedUser.value=users.value.find(u=>u.userId===userId)||null;
+      syncPermissionForm();
       lastRagSnippets.value=null;
       fetchMessages(userId);
     }
@@ -307,6 +325,7 @@ const app=createApp({
     function selectUser(user){
       selectedUser.value=user;
       selectedUserId.value=user.userId;
+      syncPermissionForm();
       lastRagSnippets.value=null;
       if(!conversations.value.find(c=>c.userId===user.userId)){
         conversations.value.unshift({
@@ -318,6 +337,15 @@ const app=createApp({
         });
       }
       fetchMessages(user.userId);
+    }
+
+    function syncPermissionForm(){
+      const p=selectedUser.value?.permissions||{};
+      permissionForm.allowQuery = p.allowQuery ?? true;
+      permissionForm.allowTransport = p.allowTransport ?? true;
+      permissionForm.allowProduction = p.allowProduction ?? true;
+      permissionForm.allowBrowserDelegated = p.allowBrowserDelegated ?? false;
+      permissionForm.allowDeployment = p.allowDeployment ?? false;
     }
 
     async function saveRegistrationPolicy(){
@@ -346,6 +374,32 @@ const app=createApp({
         ElementPlus.ElMessage.success(action==='approve'?'Registration approved':'Registration rejected');
       }catch(e){
         ElementPlus.ElMessage.error('Failed to review registration');
+      }
+    }
+
+    async function savePermissions(){
+      if(!selectedUserId.value)return;
+      savingPermissions.value=true;
+      try{
+        const resp=await fetch(BASE+'/api/v1/high-level/line/users/permissions',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            user_id:selectedUserId.value,
+            allow_query:permissionForm.allowQuery,
+            allow_transport:permissionForm.allowTransport,
+            allow_production:permissionForm.allowProduction,
+            allow_browser_delegated:permissionForm.allowBrowserDelegated,
+            allow_deployment:permissionForm.allowDeployment
+          })
+        });
+        if(!resp.ok) throw new Error('save failed');
+        await fetchUsers();
+        ElementPlus.ElMessage.success('Permissions updated');
+      }catch(e){
+        ElementPlus.ElMessage.error('Failed to update permissions');
+      }finally{
+        savingPermissions.value=false;
       }
     }
 
@@ -431,8 +485,8 @@ const app=createApp({
       },5000);
     });
 
-    return{loading,sending,users,conversations,messages,selectedUserId,selectedUser,registrationPolicy,inputText,sysStatus,lastRagSnippets,
-      msgContainer,inputEl,fetchUsers,saveRegistrationPolicy,reviewRegistration,selectConversation,selectUser,startTestChat,sendMessage,clearConversation,refreshAll,
+    return{loading,sending,users,conversations,messages,selectedUserId,selectedUser,registrationPolicy,savingPermissions,permissionForm,inputText,sysStatus,lastRagSnippets,
+      msgContainer,inputEl,fetchUsers,saveRegistrationPolicy,reviewRegistration,savePermissions,selectConversation,selectUser,startTestChat,sendMessage,clearConversation,refreshAll,
       autoResize,fmtTime};
   }
 });

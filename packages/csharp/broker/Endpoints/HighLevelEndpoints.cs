@@ -84,6 +84,44 @@ public static class HighLevelEndpoints
             }));
         });
 
+        line.MapPost("/users/permissions", (HttpContext ctx, HighLevelCoordinator coordinator) =>
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "user_id", out var userId, out var err))
+            {
+                return err!;
+            }
+
+            static bool? ReadBoolean(JsonElement body, string name)
+            {
+                if (!body.TryGetProperty(name, out var prop))
+                    return null;
+
+                return prop.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    _ => null
+                };
+            }
+
+            var updated = coordinator.SetLineUserPermissions(userId, new HighLevelUserPermissionsPatch
+            {
+                AllowQuery = ReadBoolean(body, "allow_query"),
+                AllowTransport = ReadBoolean(body, "allow_transport"),
+                AllowProduction = ReadBoolean(body, "allow_production"),
+                AllowBrowserDelegated = ReadBoolean(body, "allow_browser_delegated"),
+                AllowDeployment = ReadBoolean(body, "allow_deployment")
+            });
+
+            if (updated == null)
+            {
+                return Results.NotFound(ApiResponseHelper.Error("Profile not found.", 404));
+            }
+
+            return Results.Ok(ApiResponseHelper.Success(updated));
+        });
+
         line.MapGet("/registration-policy", (HighLevelCoordinator coordinator) =>
             Results.Ok(ApiResponseHelper.Success(new
             {

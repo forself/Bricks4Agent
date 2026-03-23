@@ -1088,6 +1088,32 @@ try
         AssertTrue(profileView.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "profile query shows current permission summary");
         AssertTrue(profileView.Reply.Contains("交通查詢：?rail、?hsr、?bus、?flight", StringComparison.Ordinal), "profile query lists transport query permissions");
 
+        var updatedPermissions = coordinator.SetLineUserPermissions("line-user-a", new HighLevelUserPermissionsPatch
+        {
+            AllowQuery = false,
+            AllowTransport = false,
+            AllowProduction = false
+        });
+        AssertTrue(updatedPermissions?.Permissions.AllowQuery == false, "coordinator persists per-user query permission updates");
+        AssertTrue(updatedPermissions?.Permissions.AllowTransport == false, "coordinator persists per-user transport permission updates");
+        AssertTrue(updatedPermissions?.Permissions.AllowProduction == false, "coordinator persists per-user production permission updates");
+
+        var deniedSearch = await coordinator.ProcessLineMessageAsync("line-user-a", "?search 中央氣象署官網");
+        AssertTrue(deniedSearch.Error == "query_disabled", "coordinator denies explicit search when query permission is disabled");
+
+        var deniedTransport = await coordinator.ProcessLineMessageAsync("line-user-a", "?hsr 台北 台中 今天 18:00");
+        AssertTrue(deniedTransport.Error == "transport_disabled", "coordinator denies explicit transport query when transport permission is disabled");
+
+        var deniedProduction = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
+        AssertTrue(deniedProduction.Error == "production_disabled", "coordinator denies production command when production permission is disabled");
+
+        coordinator.SetLineUserPermissions("line-user-a", new HighLevelUserPermissionsPatch
+        {
+            AllowQuery = true,
+            AllowTransport = true,
+            AllowProduction = true
+        });
+
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
         AssertTrue(buildDraft.Draft!.ManagedPaths.UserRoot.Contains("bricks001", StringComparison.OrdinalIgnoreCase), "managed paths use preferred alphanumeric user id");
