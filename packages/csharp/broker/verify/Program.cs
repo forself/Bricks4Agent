@@ -1192,6 +1192,18 @@ try
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
 
+        var realLineConversation = await coordinator.ProcessLineMessageAsync("U1234567890abcdef1234567890abcdef", "hello");
+        AssertTrue(!string.IsNullOrWhiteSpace(realLineConversation.Reply), "real line-style user can create profile");
+
+        var listedUsers = coordinator.ListLineUsers();
+        var testUserSummary = listedUsers.Single(user => user.UserId == "line-user-a");
+        AssertTrue(testUserSummary.IsTestAccount, "synthetic line user is marked as test account");
+        AssertTrue(testUserSummary.AccountType == "test", "synthetic line user exposes test account type");
+
+        var realUserSummary = listedUsers.Single(user => user.UserId == "U1234567890abcdef1234567890abcdef");
+        AssertTrue(!realUserSummary.IsTestAccount, "real line-style user is not marked as test account");
+        AssertTrue(realUserSummary.AccountType == "line_user", "real line-style user exposes line_user account type");
+
         var firstConversation = await coordinator.ProcessLineMessageAsync("line-user-c", "你好");
         AssertTrue(firstConversation.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "first interaction guide shows current permission summary");
 

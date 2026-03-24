@@ -22,7 +22,7 @@ a{color:var(--accent)}
 .nav button.active{border-color:var(--accent);background:#18253a}
 .button.primary{background:#1a3558;border-color:#2f5d96}.button.danger{background:#442126;border-color:#7b303a}.button.warn{background:#45351e;border-color:#7b5f2c}.button.ghost{background:transparent}.button:disabled{opacity:.5;cursor:not-allowed}
 .content{padding:16px;display:flex;flex-direction:column;gap:16px}
-.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel)}.tag.ok{color:var(--ok)}.tag.bad{color:var(--danger)}
+.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel)}.tag.ok{color:var(--ok)}.tag.bad{color:var(--danger)}.tag.test{color:var(--warn);border-color:#7b5f2c;background:#45351e}
 .grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1fr}.grid.line{grid-template-columns:320px 1fr}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}.panel h2,.panel h3{margin:0 0 12px 0;font-size:18px}
 .stack{display:flex;flex-direction:column;gap:10px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -433,8 +433,11 @@ function renderUsers() {
   for (const user of state.users) {
     const item = document.createElement("div");
     item.className = "item" + (user.userId === state.selectedUserId ? " active" : "");
+    const accountTag = user.isTestAccount
+      ? '<span class="tag test small">測試帳戶</span>'
+      : '<span class="tag ok small">真實 LINE</span>';
     item.innerHTML = `
-      <div class="item-title">${escapeHtml(user.displayName || user.userId)}</div>
+      <div class="item-title">${escapeHtml(user.displayName || user.userId)} ${accountTag}</div>
       <div class="small muted mono">${escapeHtml(user.userCode || "(未設定英數 ID)")}</div>
       <div class="small muted">${escapeHtml(formatDateTime(user.lastInteractionAt) || "尚無互動")} / ${escapeHtml(user.registrationStatus || "approved")}</div>
     `;
@@ -474,6 +477,8 @@ function renderSelectedUser() {
   }
   const meta = [
     `userId: ${user.userId}`,
+    `accountType: ${user.accountType || (user.isTestAccount ? "test" : "line_user")}`,
+    `isTestAccount: ${user.isTestAccount === true ? "true" : "false"}`,
     `userCode: ${user.userCode || "(未設定)"}`,
     `registration: ${user.registrationStatus || "approved"}`,
     `lastInteraction: ${formatDateTime(user.lastInteractionAt) || "尚無"}`,
