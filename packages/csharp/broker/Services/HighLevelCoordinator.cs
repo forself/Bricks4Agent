@@ -12,6 +12,7 @@ public class HighLevelCoordinator
     private const string SystemPrincipalId = "system:high-level-coordinator";
     private const string ConversationDocumentPrefix = "convlog:";
     private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
+    private static readonly Regex LineUserIdPattern = new("^U[a-fA-F0-9]{32}$", RegexOptions.CultureInvariant);
 
     private readonly BrokerDb _db;
     private readonly IBrokerService _brokerService;
@@ -567,6 +568,8 @@ public class HighLevelCoordinator
                 UserId = profile.UserId,
                 DisplayName = profile.PreferredDisplayName,
                 UserCode = profile.PreferredUserCode,
+                IsTestAccount = IsTestLineAccount(profile.UserId),
+                AccountType = IsTestLineAccount(profile.UserId) ? "test" : "line_user",
                 Permissions = EnsurePermissions(profile),
                 RegistrationStatus = ResolveRegistrationStatus(profile),
                 RegistrationRequestedAt = profile.RegistrationRequestedAt,
@@ -1771,6 +1774,9 @@ public class HighLevelCoordinator
         return SanitizePathSegment(userId, "user");
     }
 
+    private static bool IsTestLineAccount(string userId)
+        => !string.IsNullOrWhiteSpace(userId) && !LineUserIdPattern.IsMatch(userId);
+
     private static string SanitizePathSegment(string value, string fallback)
     {
         var sanitized = value.Trim();
@@ -2711,6 +2717,8 @@ public sealed class HighLevelLineUserSummary
     public string UserId { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
     public string? UserCode { get; set; }
+    public bool IsTestAccount { get; set; }
+    public string AccountType { get; set; } = "line_user";
     public HighLevelUserPermissions Permissions { get; set; } = HighLevelUserPermissions.CreateDefault();
     public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
     public DateTimeOffset? RegistrationRequestedAt { get; set; }
