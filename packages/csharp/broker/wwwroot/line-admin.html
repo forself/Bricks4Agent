@@ -86,6 +86,7 @@ textarea{min-height:110px;resize:vertical}
     <div class="stack">
       <button class="button primary" id="refresh-all">全部重新整理</button>
       <button class="button ghost" id="auto-refresh-toggle">自動刷新：關</button>
+      <button class="button danger" id="logout-admin">登出</button>
     </div>
   </aside>
   <main class="content">
@@ -911,6 +912,16 @@ async function logoutAdmin() {
     method: "POST",
     body: JSON.stringify({})
   });
+  state.users = [];
+  state.conversations = [];
+  state.messages = [];
+  state.selectedUserId = "";
+  state.selectedUser = null;
+  state.system = null;
+  renderUsers();
+  renderConversations();
+  renderMessages();
+  renderSelectedUser();
   state.authStatus = {
     ...(state.authStatus || {}),
     authenticated: false
@@ -965,6 +976,7 @@ function bindEvents() {
   byId("login-submit").addEventListener("click", wrapAction(loginAdmin));
   byId("login-refresh-status").addEventListener("click", wrapAction(loadAdminStatus));
   byId("refresh-all").addEventListener("click", wrapAction(refreshAll));
+  byId("logout-admin").addEventListener("click", wrapAction(logoutAdmin));
   byId("auto-refresh-toggle").addEventListener("click", toggleAutoRefresh);
   byId("refresh-users").addEventListener("click", wrapAction(loadUsers));
   byId("refresh-conversations").addEventListener("click", wrapAction(loadConversations));
