@@ -10,9 +10,11 @@ namespace Broker.Services;
 public sealed class GoogleDriveDeliveryOptions
 {
     public string ServiceAccountJsonPath { get; set; } = string.Empty;
+    public string OAuthClientJsonPath { get; set; } = string.Empty;
     public string DefaultFolderId { get; set; } = string.Empty;
     public string DefaultShareMode { get; set; } = "anyone_with_link";
     public string DefaultPermissionRole { get; set; } = "reader";
+    public string DelegatedRedirectUri { get; set; } = "http://localhost:5361/api/v1/google-drive/oauth/callback";
 }
 
 public sealed class GoogleDriveShareRequest
@@ -21,14 +23,19 @@ public sealed class GoogleDriveShareRequest
     public string FileName { get; set; } = string.Empty;
     public string FolderId { get; set; } = string.Empty;
     public string ShareMode { get; set; } = string.Empty;
+    public string IdentityMode { get; set; } = "system_account";
+    public string Channel { get; set; } = "line";
+    public string UserId { get; set; } = string.Empty;
 }
 
 public sealed class GoogleDriveShareStatus
 {
     public bool Enabled { get; set; }
     public bool HasCredentialFile { get; set; }
+    public bool HasOAuthClientFile { get; set; }
     public bool HasDefaultFolderId { get; set; }
     public string ServiceAccountJsonPath { get; set; } = string.Empty;
+    public string OAuthClientJsonPath { get; set; } = string.Empty;
     public string DefaultFolderId { get; set; } = string.Empty;
 }
 
@@ -37,15 +44,18 @@ public sealed class GoogleDriveShareService
     private const string DriveScope = "https://www.googleapis.com/auth/drive.file";
 
     private readonly GoogleDriveDeliveryOptions _options;
+    private readonly GoogleDriveOAuthService _oauthService;
     private readonly HttpClient _httpClient;
     private readonly ILogger<GoogleDriveShareService> _logger;
 
     public GoogleDriveShareService(
         GoogleDriveDeliveryOptions options,
+        GoogleDriveOAuthService oauthService,
         HttpClient httpClient,
         ILogger<GoogleDriveShareService> logger)
     {
         _options = options;
+        _oauthService = oauthService;
         _httpClient = httpClient;
         _logger = logger;
     }
@@ -53,10 +63,13 @@ public sealed class GoogleDriveShareService
     public GoogleDriveShareStatus GetStatus()
         => new()
         {
-            Enabled = File.Exists(_options.ServiceAccountJsonPath) && !string.IsNullOrWhiteSpace(_options.DefaultFolderId),
+            Enabled = (File.Exists(_options.ServiceAccountJsonPath) || File.Exists(_options.OAuthClientJsonPath))
+                      && !string.IsNullOrWhiteSpace(_options.DefaultFolderId),
             HasCredentialFile = File.Exists(_options.ServiceAccountJsonPath),
+            HasOAuthClientFile = File.Exists(_options.OAuthClientJsonPath),
             HasDefaultFolderId = !string.IsNullOrWhiteSpace(_options.DefaultFolderId),
             ServiceAccountJsonPath = _options.ServiceAccountJsonPath,
+            OAuthClientJsonPath = _options.OAuthClientJsonPath,
             DefaultFolderId = _options.DefaultFolderId
         };
 
@@ -69,9 +82,6 @@ public sealed class GoogleDriveShareService
 
         if (!File.Exists(request.FilePath))
             return Fail("file_path not found.");
-
-        if (!File.Exists(_options.ServiceAccountJsonPath))
-            return Fail("google drive service account json not found.");
 
         var folderId = string.IsNullOrWhiteSpace(request.FolderId) ? _options.DefaultFolderId : request.FolderId.Trim();
         if (string.IsNullOrWhiteSpace(folderId))
@@ -90,9 +100,24 @@ public sealed class GoogleDriveShareService
         if (string.IsNullOrWhiteSpace(fileName))
             return Fail("resolved file name is empty.");
 
-        var credential = LoadCredential(_options.ServiceAccountJsonPath);
-        var accessToken = await GetAccessTokenAsync(credential, cancellationToken);
-        var uploadResult = await UploadFileAsync(credential, accessToken, request.FilePath, fileName, folderId, cancellationToken);
+        var identityMode = string.IsNullOrWhiteSpace(request.IdentityMode) ? "system_account" : request.IdentityMode.Trim().ToLowerInvariant();
+        string accessToken;
+        GoogleServiceAccountCredential? credential = null;
+        if (identityMode == "user_delegated")
+        {
+            if (string.IsNullOrWhiteSpace(request.Channel) || string.IsNullOrWhiteSpace(request.UserId))
+                return Fail("channel and user_id are required for user_delegated delivery.");
+            accessToken = await _oauthService.GetDelegatedAccessTokenAsync(request.Channel, request.UserId, cancellationToken);
+        }
+        else
+        {
+            if (!File.Exists(_options.ServiceAccountJsonPath))
+                return Fail("google drive service account json not found.");
+            credential = LoadCredential(_options.ServiceAccountJsonPath);
+            accessToken = await GetAccessTokenAsync(credential, cancellationToken);
+        }
+
+        var uploadResult = await UploadFileAsync(accessToken, request.FilePath, fileName, folderId, cancellationToken);
         if (!uploadResult.Success)
             return uploadResult;
 
@@ -137,7 +162,6 @@ public sealed class GoogleDriveShareService
     }
 
     private async Task<GoogleDriveShareResult> UploadFileAsync(
-        GoogleServiceAccountCredential credential,
         string accessToken,
         string filePath,
         string fileName,

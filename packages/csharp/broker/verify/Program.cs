@@ -964,17 +964,43 @@ try
         var googleDriveTempFile = Path.Combine(sandboxRoot, "drive-delivery-test.txt");
         File.WriteAllText(googleDriveTempFile, "drive delivery verify", Encoding.UTF8);
         var googleDriveClient = new HttpClient(new FakeGoogleDriveHandler());
+        var googleOAuthClientPath = Path.Combine(sandboxRoot, "google-oauth-client.json");
+        var googleOAuthClientJson = """
+        {
+          "installed": {
+            "client_id": "verify-client-id",
+            "project_id": "verify-project",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_secret": "verify-client-secret"
+          }
+        }
+        """;
+        File.WriteAllText(googleOAuthClientPath, googleOAuthClientJson, Encoding.UTF8);
+        var googleDriveOptions = new GoogleDriveDeliveryOptions
+        {
+            ServiceAccountJsonPath = googleCredentialPath,
+            OAuthClientJsonPath = googleOAuthClientPath,
+            DefaultFolderId = "folder_verify",
+            DefaultShareMode = "anyone_with_link",
+            DelegatedRedirectUri = "http://localhost:5361/api/v1/google-drive/oauth/callback"
+        };
+        using var googleOAuthDb = BrokerDb.UseSqlite($"Data Source={Path.Combine(sandboxRoot, "google-oauth.db")}");
+        var googleOAuthInitializer = new BrokerDbInitializer(googleOAuthDb);
+        googleOAuthInitializer.Initialize();
+        var googleOAuthService = new GoogleDriveOAuthService(
+            googleOAuthDb,
+            googleDriveOptions,
+            googleDriveClient,
+            NullLogger<GoogleDriveOAuthService>.Instance);
         var googleDriveService = new GoogleDriveShareService(
-            new GoogleDriveDeliveryOptions
-            {
-                ServiceAccountJsonPath = googleCredentialPath,
-                DefaultFolderId = "folder_verify",
-                DefaultShareMode = "anyone_with_link"
-            },
+            googleDriveOptions,
+            googleOAuthService,
             googleDriveClient,
             NullLogger<GoogleDriveShareService>.Instance);
         var googleDriveStatus = googleDriveService.GetStatus();
         AssertTrue(googleDriveStatus.Enabled, "google drive delivery status reports enabled when credential path and folder id are configured");
+        AssertTrue(googleDriveStatus.HasOAuthClientFile, "google drive delivery status reports oauth client when configured");
         var googleDriveShare = await googleDriveService.ShareFileAsync(new GoogleDriveShareRequest
         {
             FilePath = googleDriveTempFile
@@ -983,6 +1009,28 @@ try
         AssertTrue(googleDriveShare.FileId == "drive_file_verify", "google drive delivery preserves uploaded file id");
         AssertTrue(googleDriveShare.WebViewLink.Contains("drive.google.com", StringComparison.OrdinalIgnoreCase), "google drive delivery returns web view link");
         AssertTrue(googleDriveShare.DownloadLink.Contains("drive.google.com", StringComparison.OrdinalIgnoreCase), "google drive delivery returns download link");
+        var oauthStatus = googleOAuthService.GetStatus();
+        AssertTrue(oauthStatus.HasOAuthClientFile, "google oauth status reports client file when configured");
+        AssertTrue(oauthStatus.RedirectUri == "http://localhost:5361/api/v1/google-drive/oauth/callback", "google oauth status preserves redirect uri");
+        var oauthStart = googleOAuthService.StartAuthorization("line", "verify_user");
+        AssertTrue(oauthStart.AuthorizationUrl.Contains("verify-client-id", StringComparison.Ordinal), "google oauth start includes client id");
+        AssertTrue(oauthStart.AuthorizationUrl.Contains("drive.file", StringComparison.Ordinal), "google oauth start requests drive.file scope");
+        var oauthCallback = await googleOAuthService.CompleteAuthorizationAsync(
+            VerifyUrlHelpers.ExtractQueryParam(oauthStart.AuthorizationUrl, "state"),
+            "verify-auth-code",
+            null);
+        AssertTrue(oauthCallback.Success, $"google oauth callback succeeds with fake token exchange :: {oauthCallback.Message}");
+        AssertTrue(oauthCallback.GoogleEmail == "verify.user@example.com", "google oauth callback resolves google email");
+        var delegatedToken = await googleOAuthService.GetDelegatedAccessTokenAsync("line", "verify_user");
+        AssertTrue(delegatedToken == "verify_delegated_access_token", "google oauth service refreshes delegated access token");
+        var delegatedShare = await googleDriveService.ShareFileAsync(new GoogleDriveShareRequest
+        {
+            FilePath = googleDriveTempFile,
+            IdentityMode = "user_delegated",
+            Channel = "line",
+            UserId = "verify_user"
+        });
+        AssertTrue(delegatedShare.Success, $"google drive delivery uploads file through delegated oauth flow :: {delegatedShare.Message}");
     }
 
     var localAdminDbPath = Path.Combine(sandboxRoot, "local-admin.db");
@@ -1846,9 +1894,33 @@ file sealed class FakeGoogleDriveHandler : HttpMessageHandler
         if (request.RequestUri != null &&
             request.RequestUri.Host.Contains("oauth2.googleapis.com", StringComparison.OrdinalIgnoreCase))
         {
+            var formBody = request.Content == null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            if (formBody.Contains("authorization_code", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"access_token\":\"verify_oauth_access_token\",\"refresh_token\":\"verify_refresh_token\",\"scope\":\"https://www.googleapis.com/auth/drive.file\",\"token_type\":\"Bearer\",\"expires_in\":3600}",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"access_token\":\"verify_drive_token\",\"token_type\":\"Bearer\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"access_token\":\"verify_delegated_access_token\",\"token_type\":\"Bearer\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+            };
+        }
+
+        if (request.RequestUri != null &&
+            request.RequestUri.Host.Contains("www.googleapis.com", StringComparison.OrdinalIgnoreCase) &&
+            request.RequestUri.AbsoluteUri.Contains("/oauth2/v2/userinfo", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"email\":\"verify.user@example.com\"}", Encoding.UTF8, "application/json")
             };
         }
 
@@ -1878,6 +1950,23 @@ file sealed class FakeGoogleDriveHandler : HttpMessageHandler
         }
 
         throw new Exception($"Unexpected Google Drive request: {request.Method} {request.RequestUri}");
+    }
+}
+
+file static class VerifyUrlHelpers
+{
+    public static string ExtractQueryParam(string url, string name)
+    {
+        var uri = new Uri(url);
+        var query = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in query)
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 2 && string.Equals(pair[0], name, StringComparison.Ordinal))
+                return Uri.UnescapeDataString(pair[1]);
+        }
+
+        throw new Exception($"Query parameter not found: {name}");
     }
 }
 

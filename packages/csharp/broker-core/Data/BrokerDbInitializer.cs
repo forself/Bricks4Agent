@@ -45,6 +45,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<BrowserUserGrant>();
         _db.EnsureTable<BrowserSystemBinding>();
         _db.EnsureTable<AzureIisDeploymentTarget>();
+        _db.EnsureTable<GoogleDriveOAuthState>();
+        _db.EnsureTable<GoogleDriveDelegatedCredential>();
         _db.EnsureTable<LocalAdminCredential>();
         _db.EnsureTable<LocalAdminSession>();
         _db.EnsureTable<Revocation>();
@@ -139,6 +141,12 @@ public class BrokerDbInitializer
                       ON browser_user_grants(site_binding_id, status)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_browser_system_bindings_site
                       ON browser_system_bindings(site_binding_id, status)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_google_drive_oauth_state_token
+                      ON google_drive_oauth_states(state_token)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_google_drive_oauth_state_user
+                      ON google_drive_oauth_states(channel, user_id, oauth_state, expires_at)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_google_drive_credential_user
+                      ON google_drive_delegated_credentials(channel, user_id)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_azure_iis_targets_status
                       ON azure_iis_deployment_targets(status, provider)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_azure_iis_targets_host

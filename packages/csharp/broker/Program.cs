@@ -183,6 +183,11 @@ builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentPreviewService>(
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentSecretResolver, Broker.Services.AzureIisDeploymentSecretResolver>();
 builder.Services.AddSingleton<Broker.Services.IProcessRunner, Broker.Services.ProcessRunner>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentExecutionService>();
+builder.Services.AddHttpClient<Broker.Services.GoogleDriveOAuthService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-GoogleDriveOAuth/1.0");
+});
 builder.Services.AddHttpClient<Broker.Services.GoogleDriveShareService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
@@ -784,6 +789,7 @@ ContextEndpoints.Map(api);
 PlanEndpoints.Map(api);
 RuntimeEndpoints.Map(api);
 HighLevelEndpoints.Map(api);
+GoogleDriveOAuthEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
 if (poolEnabled)
