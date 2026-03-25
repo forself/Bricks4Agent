@@ -28,6 +28,7 @@ projects/
 
 # Secrets — never commit API keys or credentials
 Api.txt
+test-ad998-6cabc8537e96.json
 *.key
 .env
 .env.*
