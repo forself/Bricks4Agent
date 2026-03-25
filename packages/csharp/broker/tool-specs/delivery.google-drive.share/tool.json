@@ -1,0 +1,58 @@
+{
+  "tool_id": "delivery.google-drive.share",
+  "display_name": "Google Drive Share Delivery",
+  "summary": "Upload a generated file to a broker-configured Google Drive folder and return a governed share link.",
+  "kind": "delivery",
+  "status": "beta",
+  "version": "2026-03-25",
+  "tags": ["delivery", "google-drive", "artifact", "share", "file"],
+  "capability_template": {
+    "action_type": "write",
+    "resource_type": "delivery",
+    "risk_level": "medium",
+    "approval_policy": "auto",
+    "ttl_seconds": 1800,
+    "audit_level": "full",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "delivery.google-drive.share",
+      "route": "delivery_google_drive_share",
+      "purpose": "Broker-mediated upload of a local artifact to Google Drive with a controlled share link."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "file_path": { "type": "string" },
+      "file_name": { "type": "string" },
+      "folder_id": { "type": "string" },
+      "share_mode": { "type": "string", "enum": ["restricted", "anyone_with_link"] }
+    },
+    "required": ["file_path"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "file_id": { "type": "string" },
+      "file_name": { "type": "string" },
+      "folder_id": { "type": "string" },
+      "web_view_link": { "type": "string" },
+      "download_link": { "type": "string" },
+      "share_mode": { "type": "string" }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["broker_local_files", "google_drive_api"]
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "requires_service_account": true,
+    "default_share_mode": "anyone_with_link"
+  },
+  "response_contract": {
+    "must_identify_file": true,
+    "must_identify_share_link": true
+  }
+}

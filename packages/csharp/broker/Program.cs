@@ -168,6 +168,9 @@ builder.Services.AddSingleton(highLevelExecutionModelPolicy);
 var deploymentSecretOptions = builder.Configuration.GetSection("DeploymentSecrets").Get<Broker.Services.AzureIisDeploymentSecretResolverOptions>()
     ?? new Broker.Services.AzureIisDeploymentSecretResolverOptions();
 builder.Services.AddSingleton(deploymentSecretOptions);
+var googleDriveDeliveryOptions = builder.Configuration.GetSection("GoogleDriveDelivery").Get<Broker.Services.GoogleDriveDeliveryOptions>()
+    ?? new Broker.Services.GoogleDriveDeliveryOptions();
+builder.Services.AddSingleton(googleDriveDeliveryOptions);
 var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry").Get<Broker.Services.ToolSpecRegistryOptions>()
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
@@ -180,6 +183,11 @@ builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentPreviewService>(
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentSecretResolver, Broker.Services.AzureIisDeploymentSecretResolver>();
 builder.Services.AddSingleton<Broker.Services.IProcessRunner, Broker.Services.ProcessRunner>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentExecutionService>();
+builder.Services.AddHttpClient<Broker.Services.GoogleDriveShareService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-GoogleDriveDelivery/1.0");
+});
 builder.Services.AddHttpClient<Broker.Services.BrowserExecutionPreviewService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -245,7 +253,8 @@ if (poolEnabled)
                 sp.GetRequiredService<BrokerDb>(),
                 sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
                 sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
-                sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>());
+                sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
+                sp.GetRequiredService<Broker.Services.GoogleDriveShareService>());
             var poolDispatcher = new PoolDispatcher(
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
@@ -329,7 +338,8 @@ else
             sp.GetRequiredService<BrokerDb>(),
             sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
             sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
-            sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>()));
+            sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
+            sp.GetRequiredService<Broker.Services.GoogleDriveShareService>()));
     builder.Services.AddSingleton<IContainerManager>(sp => new NoOpContainerManager());
 }
 

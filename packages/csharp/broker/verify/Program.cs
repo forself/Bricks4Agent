@@ -9,8 +9,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Security.Cryptography;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 
 static void AssertTrue(bool condition, string message)
 {
@@ -942,6 +944,45 @@ try
         AssertTrue(actualExecution.Success && actualExecution.Result != null, "deployment execution service completes with resolved secret and fake runner");
         AssertTrue(actualExecution.Result!.Stage == "deployed", "deployment execution service marks deployed stage");
         AssertTrue(executeProcessRunner.Invocations.Count == 2 && executeProcessRunner.Invocations[1].FileName == "powershell", "deployment execution invokes remote powershell after publish");
+
+        var googleCredentialPath = Path.Combine(sandboxRoot, "google-service-account.json");
+        using (var rsa = RSA.Create(2048))
+        {
+            var serviceAccountJson = JsonSerializer.Serialize(new
+            {
+                type = "service_account",
+                project_id = "verify-project",
+                private_key_id = "verify-key",
+                private_key = rsa.ExportPkcs8PrivateKeyPem(),
+                client_email = "verify@test.invalid",
+                client_id = "1234567890",
+                token_uri = "https://oauth2.googleapis.com/token"
+            });
+            File.WriteAllText(googleCredentialPath, serviceAccountJson, Encoding.UTF8);
+        }
+
+        var googleDriveTempFile = Path.Combine(sandboxRoot, "drive-delivery-test.txt");
+        File.WriteAllText(googleDriveTempFile, "drive delivery verify", Encoding.UTF8);
+        var googleDriveClient = new HttpClient(new FakeGoogleDriveHandler());
+        var googleDriveService = new GoogleDriveShareService(
+            new GoogleDriveDeliveryOptions
+            {
+                ServiceAccountJsonPath = googleCredentialPath,
+                DefaultFolderId = "folder_verify",
+                DefaultShareMode = "anyone_with_link"
+            },
+            googleDriveClient,
+            NullLogger<GoogleDriveShareService>.Instance);
+        var googleDriveStatus = googleDriveService.GetStatus();
+        AssertTrue(googleDriveStatus.Enabled, "google drive delivery status reports enabled when credential path and folder id are configured");
+        var googleDriveShare = await googleDriveService.ShareFileAsync(new GoogleDriveShareRequest
+        {
+            FilePath = googleDriveTempFile
+        });
+        AssertTrue(googleDriveShare.Success, $"google drive delivery uploads file through service account flow :: {googleDriveShare.Message}");
+        AssertTrue(googleDriveShare.FileId == "drive_file_verify", "google drive delivery preserves uploaded file id");
+        AssertTrue(googleDriveShare.WebViewLink.Contains("drive.google.com", StringComparison.OrdinalIgnoreCase), "google drive delivery returns web view link");
+        AssertTrue(googleDriveShare.DownloadLink.Contains("drive.google.com", StringComparison.OrdinalIgnoreCase), "google drive delivery returns download link");
     }
 
     var localAdminDbPath = Path.Combine(sandboxRoot, "local-admin.db");
@@ -1795,6 +1836,48 @@ file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
         {
             Content = new StringContent(html)
         });
+    }
+}
+
+file sealed class FakeGoogleDriveHandler : HttpMessageHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri != null &&
+            request.RequestUri.Host.Contains("oauth2.googleapis.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"access_token\":\"verify_drive_token\",\"token_type\":\"Bearer\",\"expires_in\":3600}", Encoding.UTF8, "application/json")
+            };
+        }
+
+        if (request.RequestUri != null &&
+            request.RequestUri.AbsoluteUri.Contains("/upload/drive/v3/files", StringComparison.OrdinalIgnoreCase))
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            if (!body.Contains("drive delivery verify", StringComparison.Ordinal))
+                throw new Exception("Expected multipart upload body to include test file content.");
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"id\":\"drive_file_verify\",\"name\":\"drive-delivery-test.txt\",\"mimeType\":\"text/plain\",\"webViewLink\":\"https://drive.google.com/file/d/drive_file_verify/view\",\"webContentLink\":\"https://drive.google.com/uc?id=drive_file_verify&export=download\"}",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        }
+
+        if (request.RequestUri != null &&
+            request.RequestUri.AbsoluteUri.Contains("/drive/v3/files/drive_file_verify/permissions", StringComparison.OrdinalIgnoreCase))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"id\":\"perm_verify\"}", Encoding.UTF8, "application/json")
+            };
+        }
+
+        throw new Exception($"Unexpected Google Drive request: {request.Method} {request.RequestUri}");
     }
 }
 

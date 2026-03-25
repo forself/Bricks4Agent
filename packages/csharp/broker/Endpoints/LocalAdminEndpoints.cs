@@ -430,6 +430,34 @@ public static class LocalAdminEndpoints
                 : Results.Ok(ApiResponseHelper.Success(new { request = result.Request, result = result.Result }));
         });
 
+        localAdmin.MapGet("/delivery/google-drive/status", (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveShareService service) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            return Results.Ok(ApiResponseHelper.Success(service.GetStatus()));
+        });
+
+        localAdmin.MapPost("/delivery/google-drive/share", async (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveShareService service, CancellationToken cancellationToken) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "file_path", out var filePath, out var error))
+                return error!;
+
+            var result = await service.ShareFileAsync(new GoogleDriveShareRequest
+            {
+                FilePath = filePath,
+                FileName = GetString(body, "file_name", string.Empty),
+                FolderId = GetString(body, "folder_id", string.Empty),
+                ShareMode = GetString(body, "share_mode", string.Empty)
+            }, cancellationToken);
+
+            return result.Success
+                ? Results.Ok(ApiResponseHelper.Success(result))
+                : Results.BadRequest(ApiResponseHelper.Error(result.Message));
+        });
+
         localAdmin.MapGet("/tool-specs", (HttpContext ctx, LocalAdminAuthService auth, IToolSpecRegistry registry) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))

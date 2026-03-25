@@ -32,6 +32,7 @@ public class InProcessDispatcher : IExecutionDispatcher
     private readonly EmbeddingService? _embeddingService;
     private readonly RagPipelineService? _ragPipeline;
     private readonly AzureIisDeploymentExecutionService? _azureIisDeploymentExecutionService;
+    private readonly GoogleDriveShareService? _googleDriveShareService;
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     static InProcessDispatcher()
@@ -47,7 +48,8 @@ public class InProcessDispatcher : IExecutionDispatcher
         BrokerDb? db = null,
         EmbeddingService? embeddingService = null,
         RagPipelineService? ragPipeline = null,
-        AzureIisDeploymentExecutionService? azureIisDeploymentExecutionService = null)
+        AzureIisDeploymentExecutionService? azureIisDeploymentExecutionService = null,
+        GoogleDriveShareService? googleDriveShareService = null)
     {
         _logger = logger;
         _sandboxRoot = sandboxRoot ?? Path.GetFullPath(".");
@@ -57,6 +59,7 @@ public class InProcessDispatcher : IExecutionDispatcher
         _embeddingService = embeddingService;
         _ragPipeline = ragPipeline;
         _azureIisDeploymentExecutionService = azureIisDeploymentExecutionService;
+        _googleDriveShareService = googleDriveShareService;
     }
 
     /// <inheritdoc />
@@ -102,6 +105,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "web_search" => ExecuteWebSearchAsync(request),
                 "web_fetch" => ExecuteWebFetchAsync(request),
                 "deploy_azure_vm_iis" => ExecuteAzureIisDeploymentAsync(request),
+                "delivery_google_drive_share" => ExecuteGoogleDriveShareAsync(request),
                 _ => Task.FromResult(ExecutionResult.Fail(request.RequestId,
                     $"Route '{request.Route}' not supported in InProcessDispatcher."))
             };
@@ -1749,6 +1753,35 @@ public class InProcessDispatcher : IExecutionDispatcher
             return ExecutionResult.Fail(request.RequestId, result.Result?.Message ?? result.Error ?? "deployment_failed");
 
         return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(result.Result));
+    }
+
+    private async Task<ExecutionResult> ExecuteGoogleDriveShareAsync(ApprovedRequest request)
+    {
+        if (_googleDriveShareService == null)
+            return ExecutionResult.Fail(request.RequestId, "GoogleDriveShareService not available.");
+
+        using var doc = JsonDocument.Parse(request.Payload);
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var filePath = TryGetString(args, "file_path", "path") ?? string.Empty;
+        var fileName = TryGetString(args, "file_name", "name") ?? string.Empty;
+        var folderId = TryGetString(args, "folder_id") ?? string.Empty;
+        var shareMode = TryGetString(args, "share_mode") ?? string.Empty;
+
+        var result = await _googleDriveShareService.ShareFileAsync(
+            new GoogleDriveShareRequest
+            {
+                FilePath = filePath,
+                FileName = fileName,
+                FolderId = folderId,
+                ShareMode = shareMode
+            });
+
+        return result.Success
+            ? ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(result))
+            : ExecutionResult.Fail(request.RequestId, result.Message);
     }
 
     private static JsonElement GetArgsElement(JsonElement root)
