@@ -29,6 +29,7 @@ projects/
 # Secrets — never commit API keys or credentials
 Api.txt
 test-ad998-6cabc8537e96.json
+client_secret_586440721354-4q0jdtj0step5nt50iuo8hg9k5sugl2b.apps.googleusercontent.com.json
 *.key
 .env
 .env.*

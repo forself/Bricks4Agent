@@ -437,6 +437,32 @@ public static class LocalAdminEndpoints
             return Results.Ok(ApiResponseHelper.Success(service.GetStatus()));
         });
 
+        localAdmin.MapGet("/delivery/google-drive/oauth/status", (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveOAuthService service) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            return Results.Ok(ApiResponseHelper.Success(service.GetStatus()));
+        });
+
+        localAdmin.MapGet("/delivery/google-drive/oauth/credentials", (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveOAuthService service) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            return Results.Ok(ApiResponseHelper.Success(new { items = service.ListCredentials() }));
+        });
+
+        localAdmin.MapPost("/delivery/google-drive/oauth/start", (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveOAuthService service) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "user_id", out var userId, out var error))
+                return error!;
+            var channel = GetString(body, "channel", "line");
+            var result = service.StartAuthorization(channel, userId);
+            return Results.Ok(ApiResponseHelper.Success(result));
+        });
+
         localAdmin.MapPost("/delivery/google-drive/share", async (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveShareService service, CancellationToken cancellationToken) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
@@ -450,7 +476,10 @@ public static class LocalAdminEndpoints
                 FilePath = filePath,
                 FileName = GetString(body, "file_name", string.Empty),
                 FolderId = GetString(body, "folder_id", string.Empty),
-                ShareMode = GetString(body, "share_mode", string.Empty)
+                ShareMode = GetString(body, "share_mode", string.Empty),
+                IdentityMode = GetString(body, "identity_mode", "system_account"),
+                Channel = GetString(body, "channel", "line"),
+                UserId = GetString(body, "user_id", string.Empty)
             }, cancellationToken);
 
             return result.Success

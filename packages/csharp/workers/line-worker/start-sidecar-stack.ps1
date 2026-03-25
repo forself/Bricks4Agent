@@ -24,6 +24,7 @@ $tunnelName = "line$WebhookPort"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
+$googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
 
 foreach ($dir in @($runRoot, $brokerOut, $workerOut, $logDir)) {
@@ -136,14 +137,26 @@ if (Test-Path $brokerProductionOverridePath) {
 }
 if (Test-Path $openAiApiKeyFile) {
     $openAiApiKey = (Get-Content -Encoding utf8 $openAiApiKeyFile -Raw).Trim()
-    if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
-        $productionOverride = @{
-            HighLevelLlm = @{
-                ApiKey = $openAiApiKey
-            }
-        } | ConvertTo-Json -Depth 5
-        [System.IO.File]::WriteAllText($brokerProductionOverridePath, $productionOverride, [System.Text.UTF8Encoding]::new($false))
+}
+$productionOverrideMap = @{}
+if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
+    $productionOverrideMap["HighLevelLlm"] = @{
+        ApiKey = $openAiApiKey
     }
+}
+if ($null -ne $googleOAuthClientFile) {
+    $googleDriveConfig = @{
+        OAuthClientJsonPath = $googleOAuthClientFile.FullName
+        DelegatedRedirectUri = "http://localhost:$BrokerPort/api/v1/google-drive/oauth/callback"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_FOLDER_ID)) {
+        $googleDriveConfig["DefaultFolderId"] = $env:B4A_GOOGLE_DRIVE_FOLDER_ID.Trim()
+    }
+    $productionOverrideMap["GoogleDriveDelivery"] = $googleDriveConfig
+}
+if ($productionOverrideMap.Count -gt 0) {
+    $productionOverride = $productionOverrideMap | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($brokerProductionOverridePath, $productionOverride, [System.Text.UTF8Encoding]::new($false))
 }
 $brokerProc = Start-Process `
     -FilePath (Join-Path $brokerOut "Broker.exe") `
