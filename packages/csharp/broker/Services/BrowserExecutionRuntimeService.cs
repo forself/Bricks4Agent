@@ -200,12 +200,46 @@ public sealed class BrowserExecutionRuntimeService
 
         try
         {
-            return JsonSerializer.Deserialize<BrowserExecutionEvidenceDetail>(entry.ContentRef);
+            using var document = JsonDocument.Parse(entry.ContentRef);
+            var root = document.RootElement;
+            return new BrowserExecutionEvidenceDetail
+            {
+                RequestId = ReadString(root, "request_id"),
+                ToolId = ReadString(root, "tool_id"),
+                PrincipalId = ReadString(root, "principal_id"),
+                TaskId = ReadOptionalString(root, "task_id"),
+                SessionId = ReadString(root, "session_id"),
+                FinalUrl = ReadString(root, "final_url"),
+                Title = ReadOptionalString(root, "title"),
+                ContentText = ReadOptionalString(root, "content_text"),
+                Structured = root.TryGetProperty("structured", out var structured)
+                    ? structured.Clone()
+                    : JsonDocument.Parse("{}").RootElement.Clone(),
+                FetchedAt = ReadDateTimeOffset(root, "fetched_at")
+            };
         }
         catch
         {
             return null;
         }
+    }
+
+    private static string ReadString(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static string? ReadOptionalString(JsonElement root, string name)
+        => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static DateTimeOffset ReadDateTimeOffset(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
+            return default;
+
+        return DateTimeOffset.TryParse(value.GetString(), out var parsed) ? parsed : default;
     }
 }
 

@@ -315,7 +315,8 @@ textarea{min-height:110px;resize:vertical}
         </div>
         <div class="json" id="browser-result-json">尚無結果</div>
         <h3>Recent Executions</h3>
-        <div class="json" id="browser-executions-json">尚無資料</div>
+        <div class="list" id="browser-executions-list"></div>
+        <div class="json" id="browser-execution-detail-json">尚未選取 execution</div>
       </div>
     </section>
 
@@ -393,7 +394,7 @@ const state = {
   selectedUser: null,
   system: null,
   registrationPolicy: "allow_all",
-  browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [], executions: [] },
+  browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [], executions: [], selectedExecution: null, selectedExecutionDocumentId: "" },
   deploymentTargets: [],
   toolSpecs: [],
   selectedToolId: "",
@@ -629,7 +630,37 @@ function renderBrowser() {
   byId("user-grants-json").textContent = prettyJson(state.browser.userGrants);
   byId("system-bindings-json").textContent = prettyJson(state.browser.systemBindings);
   byId("leases-json").textContent = prettyJson(state.browser.leases);
-  byId("browser-executions-json").textContent = prettyJson(state.browser.executions);
+  renderBrowserExecutions();
+}
+
+function renderBrowserExecutions() {
+  const list = byId("browser-executions-list");
+  const detail = byId("browser-execution-detail-json");
+  list.innerHTML = "";
+  const items = state.browser.executions || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="notice">尚無 execution 資料</div>';
+    detail.textContent = "尚未選取 execution";
+    return;
+  }
+
+  const selectedDocumentId = state.browser.selectedExecutionDocumentId || items[0].documentId;
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item" + (item.documentId === selectedDocumentId ? " active" : "");
+    const when = item.createdAt ? formatDateTime(item.createdAt) : "";
+    const title = item.title || item.finalUrl || item.documentId;
+    button.innerHTML = `
+      <div class="item-title">${escapeHtml(title)}</div>
+      <div class="small muted mono">${escapeHtml(item.documentId || "")}</div>
+      <div class="small muted">${escapeHtml(item.actionLevelReached || "-")} / ${escapeHtml(when)}</div>
+    `;
+    button.addEventListener("click", () => wrapAction(() => loadBrowserExecutionDetail(item.documentId))());
+    list.appendChild(button);
+  }
+
+  detail.textContent = prettyJson(state.browser.selectedExecution || items[0]);
 }
 
 function renderDeployment() {
@@ -754,7 +785,16 @@ async function loadBrowser() {
   state.browser.systemBindings = systemBindings.items || [];
   state.browser.leases = leases.items || [];
   state.browser.executions = executions.items || [];
+  state.browser.selectedExecution = null;
+  state.browser.selectedExecutionDocumentId = "";
   state.browserLoaded = true;
+  renderBrowser();
+}
+
+async function loadBrowserExecutionDetail(documentId) {
+  const result = await request(`/api/v1/local-admin/browser/executions/${encodeURIComponent(documentId)}`);
+  state.browser.selectedExecution = result.item || null;
+  state.browser.selectedExecutionDocumentId = documentId;
   renderBrowser();
 }
 
