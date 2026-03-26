@@ -3,7 +3,7 @@
   "display_name": "Browser Reference: Anonymous Read",
   "summary": "Reference spec for broker-governed anonymous browser retrieval.",
   "kind": "browser",
-  "status": "planned",
+  "status": "active",
   "version": "2026-03-22",
   "tags": ["browser", "reference", "anonymous", "read"],
   "capability_template": {
@@ -15,7 +15,13 @@
     "audit_level": "summary",
     "quota": { "max_calls": 30, "per_window_seconds": 3600 }
   },
-  "capability_bindings": [],
+  "capability_bindings": [
+    {
+      "capability_id": "browser.read",
+      "route": "browser_read",
+      "purpose": "Broker-governed anonymous public-web browser read."
+    }
+  ],
   "browser_profile": {
     "identity_mode": "anonymous",
     "credential_source": "none",

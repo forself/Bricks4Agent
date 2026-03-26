@@ -31,6 +31,7 @@ public class InProcessDispatcher : IExecutionDispatcher
     private readonly BrokerDb? _db;
     private readonly EmbeddingService? _embeddingService;
     private readonly RagPipelineService? _ragPipeline;
+    private readonly BrowserExecutionRuntimeService? _browserExecutionRuntimeService;
     private readonly AzureIisDeploymentExecutionService? _azureIisDeploymentExecutionService;
     private readonly GoogleDriveShareService? _googleDriveShareService;
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -48,6 +49,7 @@ public class InProcessDispatcher : IExecutionDispatcher
         BrokerDb? db = null,
         EmbeddingService? embeddingService = null,
         RagPipelineService? ragPipeline = null,
+        BrowserExecutionRuntimeService? browserExecutionRuntimeService = null,
         AzureIisDeploymentExecutionService? azureIisDeploymentExecutionService = null,
         GoogleDriveShareService? googleDriveShareService = null)
     {
@@ -58,6 +60,7 @@ public class InProcessDispatcher : IExecutionDispatcher
         _db = db;
         _embeddingService = embeddingService;
         _ragPipeline = ragPipeline;
+        _browserExecutionRuntimeService = browserExecutionRuntimeService;
         _azureIisDeploymentExecutionService = azureIisDeploymentExecutionService;
         _googleDriveShareService = googleDriveShareService;
     }
@@ -102,6 +105,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "travel_hsr_search" => ExecuteTravelHsrSearchAsync(request),
                 "travel_bus_search" => ExecuteTravelBusSearchAsync(request),
                 "travel_flight_search" => ExecuteTravelFlightSearchAsync(request),
+                "browser_read" => ExecuteBrowserReadAsync(request),
                 "web_search" => ExecuteWebSearchAsync(request),
                 "web_fetch" => ExecuteWebFetchAsync(request),
                 "deploy_azure_vm_iis" => ExecuteAzureIisDeploymentAsync(request),
@@ -1753,6 +1757,52 @@ public class InProcessDispatcher : IExecutionDispatcher
             return ExecutionResult.Fail(request.RequestId, result.Result?.Message ?? result.Error ?? "deployment_failed");
 
         return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(result.Result));
+    }
+
+    private async Task<ExecutionResult> ExecuteBrowserReadAsync(ApprovedRequest request)
+    {
+        if (_browserExecutionRuntimeService == null)
+            return ExecutionResult.Fail(request.RequestId, "BrowserExecutionRuntimeService not available.");
+
+        using var doc = JsonDocument.Parse(request.Payload);
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var startUrl = TryGetString(args, "url", "start_url") ?? string.Empty;
+        var intendedActionLevel = TryGetString(args, "action_level", "intended_action_level") ?? "read";
+        var toolId = TryGetString(args, "tool_id") ?? "browser.reference.anonymous.read";
+        var scopeJson = doc.RootElement.TryGetProperty("scope", out var scopeElement)
+            ? scopeElement.GetRawText()
+            : "{}";
+
+        var input = new BrowserExecutionRequestBuildInput
+        {
+            RequestId = request.RequestId,
+            CapabilityId = request.CapabilityId,
+            Route = request.Route,
+            PrincipalId = request.PrincipalId,
+            TaskId = request.TaskId,
+            SessionId = request.SessionId,
+            StartUrl = startUrl,
+            IntendedActionLevel = intendedActionLevel,
+            ArgumentsJson = args.GetRawText(),
+            ScopeJson = scopeJson,
+            SiteBindingId = TryGetString(args, "site_binding_id"),
+            UserGrantId = TryGetString(args, "user_grant_id"),
+            SystemBindingId = TryGetString(args, "system_binding_id"),
+            SessionLeaseId = TryGetString(args, "session_lease_id")
+        };
+
+        var result = await _browserExecutionRuntimeService.ExecuteAnonymousReadAsync(toolId, input);
+        if (!result.Success || result.Result == null)
+            return ExecutionResult.Fail(request.RequestId, result.Error ?? "browser_runtime_failed");
+
+        return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(new
+        {
+            tool_id = toolId,
+            result = result.Result
+        }));
     }
 
     private async Task<ExecutionResult> ExecuteGoogleDriveShareAsync(ApprovedRequest request)

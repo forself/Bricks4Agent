@@ -265,6 +265,7 @@ if (poolEnabled)
                 sp.GetRequiredService<BrokerDb>(),
                 sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
                 sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
+                sp.GetRequiredService<Broker.Services.BrowserExecutionRuntimeService>(),
                 sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
                 sp.GetRequiredService<Broker.Services.GoogleDriveShareService>());
             var poolDispatcher = new PoolDispatcher(
@@ -350,6 +351,7 @@ else
             sp.GetRequiredService<BrokerDb>(),
             sp.GetRequiredService<BrokerCore.Services.EmbeddingService>(),
             sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
+            sp.GetRequiredService<Broker.Services.BrowserExecutionRuntimeService>(),
             sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
             sp.GetRequiredService<Broker.Services.GoogleDriveShareService>()));
     builder.Services.AddSingleton<IContainerManager>(sp => new NoOpContainerManager());
