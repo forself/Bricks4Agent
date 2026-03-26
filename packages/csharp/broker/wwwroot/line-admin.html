@@ -314,6 +314,8 @@ textarea{min-height:110px;resize:vertical}
           <div class="field"><button class="button primary" id="execute-browser-request">Execute</button></div>
         </div>
         <div class="json" id="browser-result-json">尚無結果</div>
+        <h3>Recent Executions</h3>
+        <div class="json" id="browser-executions-json">尚無資料</div>
       </div>
     </section>
 
@@ -390,7 +392,7 @@ const state = {
   selectedUser: null,
   system: null,
   registrationPolicy: "allow_all",
-  browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [] },
+  browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [], executions: [] },
   deploymentTargets: [],
   toolSpecs: [],
   selectedToolId: "",
@@ -626,6 +628,7 @@ function renderBrowser() {
   byId("user-grants-json").textContent = prettyJson(state.browser.userGrants);
   byId("system-bindings-json").textContent = prettyJson(state.browser.systemBindings);
   byId("leases-json").textContent = prettyJson(state.browser.leases);
+  byId("browser-executions-json").textContent = prettyJson(state.browser.executions);
 }
 
 function renderDeployment() {
@@ -743,10 +746,13 @@ async function loadBrowser() {
   const systemBindings = await request("/api/v1/local-admin/browser/system-bindings");
   await sleep(75);
   const leases = await request("/api/v1/local-admin/browser/leases");
+  await sleep(75);
+  const executions = await request("/api/v1/local-admin/browser/executions");
   state.browser.siteBindings = siteBindings.items || [];
   state.browser.userGrants = userGrants.items || [];
   state.browser.systemBindings = systemBindings.items || [];
   state.browser.leases = leases.items || [];
+  state.browser.executions = executions.items || [];
   state.browserLoaded = true;
   renderBrowser();
 }

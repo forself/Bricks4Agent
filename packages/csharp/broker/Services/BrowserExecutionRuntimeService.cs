@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using BrokerCore.Contracts;
+using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
 
 namespace Broker.Services;
@@ -11,15 +13,18 @@ public sealed class BrowserExecutionRuntimeService
     private readonly HttpClient _httpClient;
     private readonly ISharedContextService _sharedContextService;
     private readonly BrowserBindingService _bindingService;
+    private readonly BrokerDb _db;
 
     public BrowserExecutionRuntimeService(
         IBrowserExecutionRequestBuilder builder,
         HttpClient httpClient,
+        BrokerDb db,
         ISharedContextService sharedContextService,
         BrowserBindingService bindingService)
     {
         _builder = builder;
         _httpClient = httpClient;
+        _db = db;
         _sharedContextService = sharedContextService;
         _bindingService = bindingService;
     }
@@ -131,6 +136,77 @@ public sealed class BrowserExecutionRuntimeService
 
         _bindingService.TouchSessionLease(sessionLeaseId);
     }
+
+    public IReadOnlyList<BrowserExecutionEvidenceSummary> ListRecentExecutions(int limit = 20, string? principalId = null)
+    {
+        if (limit <= 0)
+            limit = 20;
+
+        var sql = """
+            SELECT *
+              FROM shared_context_entries
+             WHERE document_id LIKE 'browser.execution.%'
+        """;
+        var args = new Dictionary<string, object?>
+        {
+            ["limit"] = limit
+        };
+
+        if (!string.IsNullOrWhiteSpace(principalId))
+        {
+            sql += " AND author_principal_id = @principalId";
+            args["principalId"] = principalId;
+        }
+
+        sql += " ORDER BY created_at DESC LIMIT @limit";
+        var entries = _db.Query<SharedContextEntry>(sql, args);
+        var summaries = new List<BrowserExecutionEvidenceSummary>();
+        foreach (var entry in entries)
+        {
+            var evidence = TryReadEvidenceEntry(entry);
+            if (evidence == null)
+                continue;
+
+            summaries.Add(new BrowserExecutionEvidenceSummary
+            {
+                DocumentId = entry.DocumentId,
+                RequestId = evidence.RequestId,
+                ToolId = evidence.ToolId,
+                PrincipalId = evidence.PrincipalId,
+                TaskId = evidence.TaskId,
+                FinalUrl = evidence.FinalUrl,
+                Title = evidence.Title,
+                FetchedAt = evidence.FetchedAt,
+                CreatedAt = entry.CreatedAt
+            });
+        }
+
+        return summaries;
+    }
+
+    public BrowserExecutionEvidenceDetail? ReadExecution(string documentId)
+    {
+        var entry = _db.Query<SharedContextEntry>(
+            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            new { docId = documentId }).FirstOrDefault();
+
+        return entry == null ? null : TryReadEvidenceEntry(entry);
+    }
+
+    private static BrowserExecutionEvidenceDetail? TryReadEvidenceEntry(SharedContextEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.ContentRef))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<BrowserExecutionEvidenceDetail>(entry.ContentRef);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 public sealed class BrowserRuntimeExecutionEnvelope
@@ -154,4 +230,31 @@ public sealed class BrowserRuntimeExecutionEnvelope
             Success = false,
             Error = error
         };
+}
+
+public sealed class BrowserExecutionEvidenceSummary
+{
+    public string DocumentId { get; set; } = string.Empty;
+    public string RequestId { get; set; } = string.Empty;
+    public string ToolId { get; set; } = string.Empty;
+    public string PrincipalId { get; set; } = string.Empty;
+    public string? TaskId { get; set; }
+    public string FinalUrl { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public DateTimeOffset FetchedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public sealed class BrowserExecutionEvidenceDetail
+{
+    public string RequestId { get; set; } = string.Empty;
+    public string ToolId { get; set; } = string.Empty;
+    public string PrincipalId { get; set; } = string.Empty;
+    public string? TaskId { get; set; }
+    public string SessionId { get; set; } = string.Empty;
+    public string FinalUrl { get; set; } = string.Empty;
+    public string? Title { get; set; }
+    public string? ContentText { get; set; }
+    public JsonElement Structured { get; set; }
+    public DateTimeOffset FetchedAt { get; set; }
 }

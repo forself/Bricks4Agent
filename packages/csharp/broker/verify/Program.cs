@@ -799,7 +799,7 @@ try
         {
             BaseAddress = new Uri("https://runtime.test/")
         };
-        var runtimeService = new BrowserExecutionRuntimeService(builder, runtimeHttpClient, sharedContextService, bindingService);
+        var runtimeService = new BrowserExecutionRuntimeService(builder, runtimeHttpClient, toolSpecDb, sharedContextService, bindingService);
         var runtimeResult = await runtimeService.ExecuteAnonymousReadAsync("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
         {
             RequestId = "req_browser_runtime_1",
@@ -817,6 +817,8 @@ try
         AssertTrue(runtimeResult.Result != null && runtimeResult.Result.EvidenceRef == "browser.execution.req_browser_runtime_1", "browser runtime service emits evidence reference");
         var runtimeEvidence = sharedContextService.ReadLatest("browser.execution.req_browser_runtime_1", "principal_1");
         AssertTrue(runtimeEvidence != null && runtimeEvidence.ContentType == "application/evidence", "browser runtime service persists browser evidence");
+        var runtimeExecutions = runtimeService.ListRecentExecutions();
+        AssertTrue(runtimeExecutions.Count > 0 && runtimeExecutions[0].DocumentId == "browser.execution.req_browser_runtime_1", "browser runtime service lists recent browser evidence");
         var touchedLease = bindingService.GetSessionLease(activeLease.SessionLeaseId);
         AssertTrue(touchedLease?.LastUsedAt != null, "browser runtime service touches active lease when used");
 
