@@ -70,7 +70,10 @@ public sealed class HighLevelDocumentArtifactService
             FolderId = string.Empty,
             ShareMode = string.Empty,
             SendLineNotification = false,
-            NotificationTitle = "文件已產生"
+            NotificationTitle = "文件已完成",
+            Source = "high_level_doc_gen",
+            RelatedTaskType = draft.TaskType,
+            RelatedDraftId = draft.DraftId
         }, cancellationToken);
 
         return new HighLevelDocumentArtifactResult
@@ -108,21 +111,21 @@ public sealed class HighLevelDocumentArtifactService
     {
         var outputRule = format switch
         {
-            "md" => "請直接輸出 Markdown 內容，不要加 code fence。",
-            "json" => "請直接輸出合法 JSON 內容，不要加 code fence，不要加額外說明。",
-            "html" => "請直接輸出完整可用的 HTML 內容，不要加 code fence。",
-            "csv" => "請直接輸出 UTF-8 CSV 內容，不要加 code fence。",
-            _ => "請直接輸出純文字內容，不要加 code fence。"
+            "md" => "請直接輸出 Markdown 內容，不要加入 code fence。",
+            "json" => "請直接輸出有效 JSON 內容，不要加入 code fence，也不要輸出額外說明。",
+            "html" => "請直接輸出完整的 HTML 內容，不要加入 code fence。",
+            "csv" => "請直接輸出 UTF-8 CSV 內容，不要加入 code fence。",
+            _ => "請直接輸出純文字內容，不要加入 code fence。"
         };
 
         return string.Join('\n', new[]
         {
-            "你正在為 LINE 使用者生成最終可交付文件。",
-            $"輸出格式: {format}",
+            "你是負責替 LINE 使用者生成可交付文件的助手。",
+            $"目標格式: {format}",
             outputRule,
-            "內容必須以使用者需求為主，不要解釋你正在做什麼。",
-            "若資訊不足，請給出最小但合理的初稿，不要回空白。",
-            "",
+            "內容應該整理成可直接交付的結果，不要再解釋你正在做什麼，也不要加前言或後記。",
+            "若使用者要求摘要或整理，請以最終文件的形式輸出。",
+            string.Empty,
             $"title: {draft.Title}",
             $"summary: {draft.Summary}",
             "user_request:",
@@ -258,7 +261,7 @@ public sealed class HighLevelDocumentArtifactService
     private static string InferFormat(string message)
     {
         var lower = (message ?? string.Empty).ToLowerInvariant();
-        if (lower.Contains(".md") || lower.Contains("markdown") || lower.Contains("md 檔") || lower.Contains("md檔"))
+        if (lower.Contains(".md") || lower.Contains("markdown") || lower.Contains("md 文件") || lower.Contains("md檔"))
             return "md";
         if (lower.Contains(".json") || lower.Contains("json"))
             return "json";
@@ -308,7 +311,8 @@ public sealed class HighLevelDocumentArtifactService
             "html" => $"<!DOCTYPE html><html lang=\"zh-TW\"><meta charset=\"UTF-8\"><title>{System.Net.WebUtility.HtmlEncode(draft.Title)}</title><body><h1>{System.Net.WebUtility.HtmlEncode(draft.Title)}</h1><p>{System.Net.WebUtility.HtmlEncode(draft.OriginalMessage)}</p></body></html>",
             "csv" => "field,value\n" +
                      $"title,\"{draft.Title.Replace("\"", "\"\"")}\"\n" +
-                     $"summary,\"{draft.Summary.Replace("\"", "\"\"")}\"\n",
+                     $"summary,\"{draft.Summary.Replace("\"", "\"\"")}\"\n" +
+                     $"user_request,\"{draft.OriginalMessage.Replace("\"", "\"\"")}\"\n",
             _ => $"{draft.Title}{Environment.NewLine}{Environment.NewLine}{draft.OriginalMessage}{Environment.NewLine}"
         };
 
