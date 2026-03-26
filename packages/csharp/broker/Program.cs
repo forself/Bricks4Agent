@@ -199,6 +199,11 @@ builder.Services.AddHttpClient<Broker.Services.BrowserExecutionPreviewService>(c
     client.Timeout = TimeSpan.FromSeconds(30);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserPreview/1.0");
 });
+builder.Services.AddHttpClient<Broker.Services.BrowserExecutionRuntimeService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserRuntime/1.0");
+});
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──

@@ -191,4 +191,15 @@ public sealed class BrowserBindingService
         _db.Update(existing);
         return existing;
     }
+
+    public BrowserSessionLease? TouchSessionLease(string sessionLeaseId)
+    {
+        var existing = _db.Get<BrowserSessionLease>(sessionLeaseId);
+        if (existing == null)
+            return null;
+
+        existing.LastUsedAt = DateTime.UtcNow;
+        _db.Update(existing);
+        return existing;
+    }
 }

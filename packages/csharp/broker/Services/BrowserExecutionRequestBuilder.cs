@@ -149,7 +149,8 @@ public sealed class BrowserExecutionRequestBuilder : IBrowserExecutionRequestBui
             if (lease.ExpiresAt < DateTime.UtcNow)
                 return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_expired");
 
-            if (!string.IsNullOrWhiteSpace(lease.SiteBindingId) &&
+            if (!string.IsNullOrWhiteSpace(input.SiteBindingId) &&
+                !string.IsNullOrWhiteSpace(lease.SiteBindingId) &&
                 !string.Equals(lease.SiteBindingId, input.SiteBindingId, StringComparison.Ordinal))
             {
                 return BrowserExecutionRequestBuildResult.Fail("browser_request_session_lease_site_mismatch");
