@@ -1,165 +1,123 @@
-# Bricks4Agent 目前架構與進度說明
+# Bricks4Agent Current Architecture And Progress
 
-更新日期：2026-03-26  
-文件性質：架構現況、進度盤點、理念分析、風險評論
+Date: 2026-03-26
+Status: current working report for the live system and main development direction
 
-## 1. 這份文件在說什麼
+## 1. Executive Summary
 
-這份文件的目的不是展示功能清單，而是把目前 `Bricks4Agent` 已經做成什麼、還沒做成什麼、設計理念是什麼、以及哪些地方其實只是暫時可用的 POC 狀態，講清楚。
+`Bricks4Agent` is no longer just an agent CLI or a page/code generator. The project has already moved into a control-plane direction:
 
-如果只看表面，這個專案現在已經有：
+- LINE ingress
+- broker-governed routing
+- high-level conversation and task planning
+- governed execution
+- per-user managed workspaces
+- artifact generation and delivery
+- browser-governed capability groundwork
+- Azure VM IIS deployment groundwork
 
-- LINE 對話入口
-- broker 控制核心
-- 受控工具與高階查詢
-- Browser 能力治理模型
-- Azure VM IIS 部署能力
-- Google Drive 交付能力
-- 本機管理後台
+That is the real shape of the system now.
 
-但如果看深一層，現況更準確的描述是：
+The honest summary is:
 
-- 高階入口與控制核心已經有骨架
-- 若干垂直能力已經打通
-- 系統開始具備受治理代理平台的輪廓
-- 但還沒有完全成為穩定、可長期運營的產品級控制平面
+- the system is already useful as a broker-mediated AI operations prototype
+- the architecture is becoming coherent
+- several core paths are genuinely live
+- but the whole platform is still uneven in maturity
 
-## 2. 核心理念
+This is not a finished platform. It is a serious POC with a growing amount of real infrastructure behind it.
 
-### 2.1 分工原則
+## 2. Core Architectural Position
 
-目前整體設計的核心不是「做一個很聰明的單一代理」，而是把角色拆開：
+The system is now built around three clearly different roles.
 
-1. 高階入口模型  
-   負責與人互動、理解需求、澄清問題、決定是否要查詢、是否要建立任務、是否要升級為可執行工作。
+### 2.1 High-level entry model
 
-2. 中介核心 / broker  
-   不負責聰明判斷，不負責替模型做主。它負責把行為收斂到可驗證、可記錄、可重現：
-   - 驗證語法
-   - 驗證狀態機
-   - 驗證 capability / scope
-   - 產生 execution intent
-   - 轉發到真正的工具與執行面
+This layer handles:
 
-3. 執行代理 / worker / tool  
-   負責執行已被核准的事情，不負責自行重新定義任務意圖。
+- user conversation
+- clarification
+- query rewriting
+- candidate intent formation
+- workflow confirmation
+- execution-model suggestion
 
-這個方向是對的。真正錯的做法是把所有理解、判斷、授權、執行都塞進同一個代理裡，那只會讓系統難以治理。
+This layer is allowed to interpret. It is not allowed to execute arbitrary side effects by itself.
 
-### 2.2 為什麼高階模型存在
+### 2.2 Broker / control plane
 
-高階模型存在的意義，不是把使用者原句原封不動丟給工具，再把結果原封不動貼回來。那樣它只是昂貴的轉接器。
+The broker is responsible for:
 
-高階模型的合理職責是：
+- parsing
+- workflow gating
+- trust and taint boundaries
+- memory projection
+- execution-intent promotion
+- capability and scope enforcement
+- artifact and delivery coordination
+- admin views and control surfaces
 
-- 判斷問題類型
-- 決定應該走哪一類工具或來源
-- 改寫查詢
-- 從工具結果中抽取重點
-- 把資料重新組織成可理解的回覆
-- 在不夠明確時要求澄清
+The broker should not behave like an autonomous planner. Its value is that it narrows behavior and makes it inspectable, repeatable, and governable.
 
-也就是說：
+### 2.3 Execution layer
 
-高階模型負責認知與規劃  
-中介核心負責約束與執行  
-工具負責取資料與做事
+This includes:
 
-這個邊界如果守不住，整個系統最後一定會再次退化成「一個會亂動世界的聊天機器人」。
+- governed agent runtime
+- worker processes
+- tool routes
+- deployment execution
+- browser execution groundwork
 
-### 2.3 對隨機性的態度
+This layer should consume structured intent, not raw conversation.
 
-這個專案目前最重要的理念之一，是壓低隨機性。
+## 3. Canonical Live Path
 
-正確做法不是相信模型會「大致上聰明」，而是要求：
-
-- 行為要可預測
-- 升格條件要可審查
-- 請求格式要明確
-- 執行路徑要可重現
-
-這也是為什麼後續加入：
-
-- command parser
-- workflow state machine
-- trust / taint gate
-- interaction log / interpretation / memory / execution intent 分層
-
-這些東西不是工程潔癖，而是防止系統被自然語言和外部資料拖進不可控狀態的必要代價。
-
-## 3. 目前架構總覽
-
-### 3.1 LINE 入口主路徑
-
-目前 canonical path 是：
+The current production-style path is:
 
 `LINE webhook -> line-worker -> broker /api/v1/high-level/line/process -> HighLevelCoordinator`
 
-重點：
+Current local canonical sidecar ports:
 
-- `line-worker` 只是 ingress bridge，不做高階決策
-- 真正的對話、澄清、分流、指令解析都在 broker 高階層
-- 對外主入口已經不再是 agent 直接吃 LINE
+- broker: `127.0.0.1:5361`
+- line-worker webhook: `127.0.0.1:5357`
 
-相關檔案：
+Public ingress is currently tunneled through ngrok.
 
-- [InboundDispatcher.cs](/d:/Bricks4Agent/packages/csharp/workers/line-worker/InboundDispatcher.cs)
-- [HighLevelEndpoints.cs](/d:/Bricks4Agent/packages/csharp/broker/Endpoints/HighLevelEndpoints.cs)
-- [HighLevelCoordinator.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelCoordinator.cs)
+Important clarification:
 
-### 3.2 Sidecar 拓樸
+- `--line-listen` on the agent side is now legacy/development-only
+- the real canonical LINE path is `line-worker -> broker high-level coordinator`
 
-目前本機 sidecar 是：
+## 4. High-level Model Layer
 
-- broker：`127.0.0.1:5361`
-- line-worker webhook：`127.0.0.1:5357`
-- public ingress：ngrok
+The LINE high-level responder is now configured to use:
 
-操作入口：
+- provider: `openai-compatible`
+- model: `gpt-5.4-mini`
 
-- [line-sidecar.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/line-sidecar.ps1)
-- [start-sidecar-stack.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/start-sidecar-stack.ps1)
-- [status-sidecar-stack.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/status-sidecar-stack.ps1)
-- [stop-sidecar-stack.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/stop-sidecar-stack.ps1)
+This high-level model is used for:
 
-這個設計的優點是：
+- conversation
+- clarification
+- mediated query synthesis
+- execution-model suggestion
 
-- 單指令操作
-- 多程序分工
-- 未來仍可拆到不同機器
+It is intentionally separate from execution/runtime model selection.
 
-這個設計的缺點是：
+Important principle:
 
-- 還依賴本機 ngrok 與本機 sidecar 存活
-- 不屬於正式生產部署拓樸
-- 現在仍偏向運維方便，不是正式雲端治理形態
+- the entry model may propose execution model usage
+- the broker validates and records it
+- the broker should not freely improvise model selection on its own
 
-## 4. 高階入口層
+## 5. High-level Parsing, Gating, and Memory
 
-### 4.1 目前使用的高階模型
+The high-level entry path already has explicit structure.
 
-目前 LINE 高階回應模型預設是：
+### 5.1 Command grammar
 
-- provider：`openai-compatible`
-- model：`gpt-5.4-mini`
-
-這層負責：
-
-- 一般對話
-- 查詢結果綜整
-- 需求澄清
-- execution model request 規劃
-
-不是 execution LLM，也不是 deployment/browser worker 本身的模型。
-
-相關檔案：
-
-- [LineChatGateway.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/LineChatGateway.cs)
-- [appsettings.json](/d:/Bricks4Agent/packages/csharp/broker/appsettings.json)
-
-### 4.2 指令語法與 workflow gate
-
-高階入口不是直接看自然語言就執行，而是先進入明確語法：
+Supported explicit forms include:
 
 - `?help` / `?h`
 - `?search` / `?s`
@@ -170,395 +128,288 @@
 - `?profile` / `?p`
 - `/name` / `/n`
 - `/id` / `/i`
-- `#專案名稱`
+- `#projectName`
 - `confirm`
 - `cancel`
 
-然後再經過 workflow state machine。
+This grammar exists to narrow what can become executable intent.
 
-這層的價值在於：
+### 5.2 Workflow state machine
 
-- 明確命令才有明確行為
-- 一般對話不會直接升格成執行
-- command 與 data 的邊界開始出現
+The coordinator does not accept everything everywhere. Core workflow states are explicitly gated, especially around:
 
-相關檔案：
+- production start
+- project-name capture
+- confirmation
+- cancellation
 
-- [HighLevelCommandParser.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelCommandParser.cs)
-- [HighLevelWorkflowStateMachine.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelWorkflowStateMachine.cs)
+### 5.3 Trust / taint boundary
 
-### 4.3 信任與污染邊界
+The current high-level path distinguishes between:
 
-目前高階入口已經開始防 prompt injection 類問題，至少做到：
+- raw user input
+- transformed/decoded input
+- retrieved external content
 
-- 區分 raw user input、external content、decoded/transformed content
-- 不讓 transformed content 直接升格成 command
-- command path 受 source / taint gate 限制
+Only trusted command-shaped user input should be allowed to affect workflow directly. This is still early, but the direction is correct.
 
-這只是起點，不是終點。現況仍然沒有做到完整的：
+### 5.4 Memory split
 
-- nested instruction grammar
-- transform-triggered escalation 全面封堵
-- 外部搜尋與 RAG 回填的全鏈路污染治理
-
-所以這一塊現在是「方向正確」，不是「已經安全」。
-
-相關檔案：
-
-- [HighLevelInputTrustPolicy.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelInputTrustPolicy.cs)
-
-### 4.4 記錄、記憶、執行意圖分層
-
-目前高階層已開始把不同資料責任拆開：
+The system now distinguishes between:
 
 - raw interaction log
 - interpretation record
 - memory projection
 - execution intent
 
-這個方向正確，因為：
+This is one of the most important structural improvements in the project.
 
-- log 應保存真相
-- memory 應保存未來可調用狀態
-- execution 應保存可執行意圖
+The right mental model is:
 
-但要說得不討好一點：  
-現在這套分層還不是成熟的 memory architecture，比較像是從混在一起的流程中硬拉出邊界。它已經比以前好很多，但離穩定可長期維護的狀態仍有距離。
+- log stores raw truth
+- memory stores reusable state
+- execution intent stores approved, structured action
 
-相關檔案：
+## 6. User Model and Managed Paths
 
-- [HighLevelInteractionRecorder.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelInteractionRecorder.cs)
-- [HighLevelInterpretationStore.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelInterpretationStore.cs)
-- [HighLevelMemoryStore.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelMemoryStore.cs)
-- [HighLevelExecutionIntentStore.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelExecutionIntentStore.cs)
-- [HighLevelExecutionPromotionGate.cs](/d:/Bricks4Agent/packages/csharp/broker/Services/HighLevelExecutionPromotionGate.cs)
+Users in the LINE high-level layer are keyed by:
 
-## 5. 使用者與工作區模型
+- `channel`
+- `userId`
 
-### 5.1 LINE 使用者
+There is now support for:
 
-目前 LINE 使用者是以：
+- preferred display name
+- preferred alphanumeric ID
+- per-user permissions
+- registration policy
+- synthetic/test-user labeling
 
-- `channel + userId`
-
-自動建立高階 profile。  
-並支援：
-
-- 顯示稱呼
-- 英數字 ID
-- per-user 高階權限
-- 註冊狀態
-- 測試帳戶 / 真實 LINE 使用者標記
-
-### 5.2 Managed Workspace
-
-目前使用者專屬工作區根目錄是絕對路徑：
-
-`%LOCALAPPDATA%\Bricks4Agent\managed-workspaces`
-
-目錄模型：
+Managed workspace root is configured as an absolute path, not a relative path. The current model is:
 
 - `{AccessRoot}/{channel}/{userId}/conversations`
 - `{AccessRoot}/{channel}/{userId}/documents`
 - `{AccessRoot}/{channel}/{userId}/projects/{projectName}`
 
-這是目前做得對的一塊。至少「產物放哪裡」這個常被忽略的問題，已經不再是模糊地帶。
+This matters because capability path scope is meaningless until file placement is formalized.
 
-但這塊還沒完全成熟，因為：
+## 7. Admin Console
 
-- retention policy 還沒定
-- 清理策略還沒定
-- documents / projects / future artifacts 的生命周期還沒統一
+There is now a working local admin console:
 
-## 6. 查詢能力現況
+- `http://127.0.0.1:5361/line-admin.html`
 
-### 6.1 查詢不再只是貼搜尋結果
+Current behavior:
 
-目前顯式查詢會走 broker mediated retrieval，再由高階模型綜整回覆。這比以前只貼網址好。
+- localhost-only access
+- local admin login
+- initial password fallback if no password exists
+- forced first password change
+- logout support
 
-已支援：
+The console already includes:
 
-- `?search`
+- LINE user list
+- conversation views
+- registration policy and review
+- per-user permission toggles
+- browser-related records
+- deployment target views
+- tool-spec views
+- artifact and workflow visibility
+
+This is already useful.
+
+What it is not yet:
+
+- a hardened multi-user production admin console
+- a complete long-term admin product
+
+## 8. Query and Tool Mediation
+
+### 8.1 General mediated search
+
+General search is no longer just raw search-result listing.
+
+The current path:
+
+- broker-mediated search tool
+- then high-level synthesis over top results
+
+This is the right direction. A high-level model that only forwards raw search results would not justify its existence.
+
+### 8.2 Transport tools
+
+Transport queries are split by mode:
+
 - `?rail`
 - `?hsr`
 - `?bus`
 - `?flight`
 
-### 6.2 交通工具查詢
+This is important. Rail and HSR were previously collapsed too loosely.
 
-目前交通查詢已拆開：
+### 8.3 Relation-aware routing
 
-- `?rail`：台鐵
-- `?hsr` / `?thsr`：高鐵
-- `?bus`：公車 / 客運類
-- `?flight`：航班
+A Wikipedia-first broker-mediated relation query path now exists for queries such as:
 
-這一步是必要修正。先前把高鐵和台鐵混成一個 `rail`，本質上就是工具設計偷懶，不是可接受的抽象化。
+- administrative divisions
+- nearby administrative areas
+- core subject relation lookups
 
-### 6.3 不討好的評論
+The current implementation is meaningfully better than raw search forwarding, but still not mature.
 
-查詢這條路目前的問題很明顯：
+The system now does something more honest:
 
-- 還太依賴搜尋引擎
-- relation-aware query routing 只是起步
-- 高階模型雖然已開始綜整結果，但很多時候仍只是「整理過的結果列表」
-- 對需要關係推理的問題，例如行政區、鄰接關係、主詞歧義，品質仍不穩
+- uses Wikipedia-first evidence
+- extracts candidate relation terms
+- avoids confidently inventing neighboring-area answers when evidence is weak
 
-所以現況不能說成「查詢能力已成熟」。  
-更準確的是：
+This is better than confident nonsense, but still not equal to a real geographic relation engine.
 
-- 已從純搜尋結果貼文，進步到有來源路由與綜整
-- 但離真正可靠的知識型助理還差很多
+## 9. Artifact Generation and Delivery
 
-## 7. Browser 能力治理
+The system now supports document-style artifact generation in user-specific directories.
 
-### 7.1 身份來源分層
+That includes:
 
-目前 browser 能力已經不是單一模糊概念，而是先以身份來源切分：
+- writing files into user documents paths
+- artifact records
+- admin visibility of artifacts
+
+Google Drive delivery is also now wired in through delegated OAuth.
+
+The current working delivery path is:
+
+- generate file into user workspace
+- upload to delegated Google Drive
+- create share link
+- queue notification for LINE delivery
+
+This is already a real delivery chain, not a mock.
+
+Current limitation:
+
+- the final LINE send still depends on the target being a real LINE user ID
+- test identities can complete upload and link generation, but not final real LINE delivery
+
+## 10. Browser-Governed Capability Model
+
+The browser-governance foundation is now significantly more mature than it was before.
+
+The system already distinguishes browser identity modes:
 
 - `anonymous`
 - `system_account`
 - `user_delegated`
 
-這個切法是對的，而且應該維持。因為 browser 自動化最先要分清楚的不是功能，而是「用誰的身份在做事」。
+It also has broker-side models for:
 
-### 7.2 目前已落地的內容
+- site bindings
+- user grants
+- system bindings
+- session leases
+- browser execution requests/results
 
-已完成：
+This is good architectural progress.
 
-- browser tool spec registry
-- request builder
-- site binding / lease / user grant / system binding 資料模型
-- validation
-- preview path
+What is still missing:
 
-已經不是空設計稿。
+- a full browser worker runtime for serious authenticated automation
+- vault/credential lifecycle completion
+- submission-grade action approval
+- DOM/action policy enforcement at production quality
 
-### 7.3 還沒做完的內容
+So the browser model is structurally real, but execution maturity is still partial.
 
-還沒完成：
+## 11. Deployment
 
-- 真正可長駐的 browser worker runtime
-- delegated authenticated browser actions
-- DOM/action policy engine
-- user delegated consent lifecycle
-- credential vault / secret hardening
+The broker now has Azure VM IIS deployment groundwork, including child-application deployment mode.
 
-這代表 browser 目前是：
+That means the system can move toward:
 
-- 治理模型比執行模型完整
+- publish
+- package
+- remote deploy
+- IIS site or child-application update
 
-這並不糟，但要誠實承認：  
-現在比較強的是 policy 與 contract，不是 end-to-end browser automation。
+This is strategically important because it proves the project is not just about generating artifacts, but also about governed delivery into real runtime environments.
 
-## 8. Azure VM IIS 部署
+What remains incomplete:
 
-### 8.1 已完成
+- stronger health-check automation
+- better end-to-end deployment verification
+- more polished operator flow
 
-目前已具備 broker-governed Azure VM IIS deployment：
+## 12. Hard Critique
 
-- deployment target registry
-- request builder
-- preview
-- execute
-- WinRM / PowerShell remoting
-- `site_root`
-- `iis_application`
+This section is intentionally not flattering.
 
-且已補 child application 模式：
+### 12.1 What is genuinely strong
 
-- `deployment_mode = iis_application`
-- `application_path`
-- `health_check_path`
+- The project is no longer just feature sprawl. A real control-plane shape is emerging.
+- The split between conversation, governance, execution, and delivery is increasingly coherent.
+- The project already contains several working end-to-end paths, not just design notes.
+- The system is becoming unusually strong in one area most prototypes neglect: governed transition from language to executable structure.
 
-### 8.2 還缺什麼
+### 12.2 What is still weak
 
-還缺：
+- Maturity is uneven. Some parts are real; some parts are still half-policy, half-implementation.
+- Search and relation reasoning are improving, but still not reliable enough to claim deep knowledge competence.
+- The admin console is useful, but it is still fundamentally a localhost-side operator console, not a hardened admin product.
+- Browser governance is more complete on paper and broker records than in live authenticated execution.
+- The system still carries historical layering residue. Old paths and newer canonical paths coexist more than they should.
 
-- 真實 Azure VM live deployment 實測
-- path-base 自動化
-- release / rollback
-- deploy 後 health check 一致化
+### 12.3 What would be dishonest to claim
 
-所以現在這條路線屬於：
+It would be dishonest to claim that the project is already:
 
-- 技術上已可執行
-- 產品上仍未完整閉環
+- production-stable
+- fully containerized end-to-end
+- fully hardened against prompt injection
+- browser-automation complete
+- search-quality complete
+- deployment-operations complete
 
-## 9. Google Drive 交付
+It is not there yet.
 
-### 9.1 service account 路線的結論
+### 12.4 What would also be dishonest to deny
 
-這條路已經被實測證明：
+It would also be dishonest to call this “just another toy agent repo”.
 
-- 對個人 Google 帳號的 My Drive，不適合用 service account 當主要交付方式
-- 問題不是程式寫錯，而是 Google 的 quota / ownership 模型就是如此
+At this point, the repo already contains:
 
-這個結論很重要，因為它避免了後續在錯路上浪費更多時間。
+- live ingress
+- governance
+- structured state promotion
+- delivery
+- admin operations
+- execution constraints
+- deployment direction
 
-### 9.2 OAuth delegated 路線
+That combination is materially stronger than a typical single-agent demo.
 
-目前已打通：
+## 13. Recommended Near-Term Priorities
 
-- Google OAuth delegated authorization
-- refresh token 入庫
-- access token refresh
-- delegated upload 到使用者個人 Google Drive
-- 產生分享連結
+The highest-value remaining work is:
 
-### 9.3 Artifact delivery
+1. Continue improving mediated query quality
+   - especially relation queries and source-aware synthesis
+2. Harden sidecar/operator reliability
+   - restart, publish, state visibility, failure reporting
+3. Finish the delegated artifact delivery UX
+   - especially real-user LINE delivery and admin affordances
+4. Strengthen browser runtime execution
+   - not just registry and records
+5. Improve deployment verification
+   - health checks, rollback posture, operator clarity
 
-目前已能：
+## 14. Bottom Line
 
-1. 在使用者 `documents_root` 內產生 UTF-8 檔案
-2. 上傳到 delegated Google Drive
-3. 產生分享連結
-4. 建立 LINE 通知 payload
+The current project is best described as:
 
-這條線已經不是設計，而是實際可跑。
+**a broker-centered governed AI operations prototype moving toward a real control plane**
 
-### 9.4 不討好的評論
+That is the honest macro-level description.
 
-這條線現在最大的問題不是 Drive，而是「最後一公里」：
-
-- 若使用者不是有效 LINE `U...` id，通知就送不出去
-- 目前 live 成功驗證的是 synthetic user 的交付，不是真實 LINE 使用者的完整到達
-
-所以這條能力現在應該描述成：
-
-- 交付鏈已技術上打通
-- 真實使用者端的完整交付還需要用真實 LINE 帳戶做最後驗證
-
-## 10. 統一後台
-
-### 10.1 入口
-
-目前本機統一後台入口：
-
-`http://127.0.0.1:5361/line-admin.html`
-
-### 10.2 已整合內容
-
-目前這個後台已整合：
-
-- LINE 使用者列表
-- 註冊政策
-- 使用者審核
-- per-user 高階權限
-- Browser bindings / grants / leases
-- Deployment targets
-- Tool specs
-- Google Drive OAuth / delegated credential / artifact delivery
-
-這已經不只是示意頁，而是真正可操作。
-
-### 10.3 安全現況
-
-目前：
-
-- 僅允許 localhost
-- 有本機 admin login
-- 若資料庫沒有密碼資料，初始密碼為 `admin`
-- 首次登入要求改密碼
-
-但這仍是本機管理後台，不是正式遠端多管理員控制台。
-
-## 11. 測試與驗證現況
-
-目前重要 build / verify 路徑有持續驗證：
-
-- `dotnet build packages/csharp/broker/Broker.csproj -c Release --disable-build-servers -nodeReuse:false`
-- `dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj`
-
-live 驗證已覆蓋：
-
-- LINE webhook ingress
-- sidecar broker / line-worker
-- 高階對話
-- production draft / confirm
-- Google Drive delegated callback
-- delegated upload
-- 後台 UI smoke
-
-### 不討好的評價
-
-測試比過去完整很多，但還是不夠漂亮。
-
-現在的驗證特色是：
-
-- 核心路線有 build 與 verify
-- 很多關鍵功能有 live smoke
-- 但仍偏向「把重要主線跑通」
-
-還不是那種：
-
-- 具有大規模 regression grid
-- 有清楚 fixture 管理
-- 各子系統獨立可重放
-
-所以現在的測試水平應該評為：
-
-- 已脫離純 smoke
-- 但還沒有進入成熟產品的完整測試工程
-
-## 12. 總體評價
-
-### 12.1 做對的地方
-
-目前這個專案真正做對的地方有幾個：
-
-- 沒把整個系統做成單一萬能代理
-- 開始把高階理解、控制核心、執行面分層
-- 已重視 capability / scope / workflow gate
-- 已把使用者工作區、檔案交付、後台管理這些實務問題拉進來
-- 對 browser、deployment、delivery 這些高風險能力，開始採用治理優先，而不是「先能動再說」
-
-### 12.2 還在自欺的地方
-
-也有幾個地方不能粉飾：
-
-1. 很多東西已「可用」，但還沒有「穩定」
-   可用和穩定不是同義詞。現在不少能力處在可用但脆弱的狀態。
-
-2. browser 治理模型比 runtime 完整
-   這是現實，不是羞恥。但若長期停在這裡，會變成設計文件先進、產品能力滯後。
-
-3. query 綜整已進步，但還不是強知識系統
-   目前還不足以宣稱已具備高品質知識助理能力。
-
-4. deployment 能力還沒經過真實 Azure VM 長鏈驗證
-   現在只能說具備部署引擎，不該說已是穩定部署產品。
-
-5. Google Drive 交付已技術打通，但還沒完成真實 LINE 使用者閉環
-
-### 12.3 總結
-
-這個系統現在最準確的定位不是：
-
-- 已完成的智能代理平台
-
-而是：
-
-- 已具備明確方向、核心控制面開始成形、數條關鍵能力已打通的受治理代理平台原型
-
-這個評價不討喜，但比較接近真相。
-
-## 13. 下一步建議
-
-1. 用真實 LINE 使用者完成 Google Drive delegated artifact delivery 閉環  
-2. 補 deployment live Azure VM 驗證與 health check  
-3. 補 browser runtime skeleton，先做匿名 / read-only / public-open  
-4. 繼續把 relation-aware query routing 往主詞-關係抽取推進  
-5. 開始整理由多個 POC 路徑累積出的後台與資料模型債務
-
-## 14. 參考文件
-
-- [HighLevelModelRoutingAndMemory.md](/d:/Bricks4Agent/docs/designs/HighLevelModelRoutingAndMemory.md)
-- [HighLevelMemoryAndLoggingModel.md](/d:/Bricks4Agent/docs/designs/HighLevelMemoryAndLoggingModel.md)
-- [ToolSpecRegistry.md](/d:/Bricks4Agent/docs/designs/ToolSpecRegistry.md)
-- [BrowserCapabilityIdentityModel.md](/d:/Bricks4Agent/docs/designs/BrowserCapabilityIdentityModel.md)
-- [BrowserBindingAndLeaseModel.md](/d:/Bricks4Agent/docs/designs/BrowserBindingAndLeaseModel.md)
-- [BrowserRuntimeContract.md](/d:/Bricks4Agent/docs/designs/BrowserRuntimeContract.md)
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
-- [GoogleDriveDelivery.md](/d:/Bricks4Agent/docs/designs/GoogleDriveDelivery.md)
-- [SystemTestReport-2026-03-22.md](/d:/Bricks4Agent/docs/reports/SystemTestReport-2026-03-22.md)
+It is already beyond a toy. It is not yet a complete platform. The most important thing now is not to pretend it is finished, but also not to underestimate how much real structure is already there.
