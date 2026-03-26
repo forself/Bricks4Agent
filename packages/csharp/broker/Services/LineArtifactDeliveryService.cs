@@ -123,7 +123,7 @@ public sealed class LineArtifactDeliveryService
         {
             notification = _workspaceService.QueueLineNotification(
                 request.UserId,
-                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
+                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "文件已完成" : request.NotificationTitle.Trim(),
                 BuildNotificationBody(fileName, filePath, driveResult));
         }
 
@@ -195,7 +195,7 @@ public sealed class LineArtifactDeliveryService
     {
         var lines = new List<string>
         {
-            $"檔案：{fileName}",
+            $"文件：{fileName}",
             $"本機路徑：{filePath}"
         };
 
