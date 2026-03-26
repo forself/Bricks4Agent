@@ -124,7 +124,7 @@ public sealed class HighLevelDocumentArtifactService
             $"目標格式: {format}",
             outputRule,
             "內容應該整理成可直接交付的結果，不要再解釋你正在做什麼，也不要加前言或後記。",
-            "若使用者要求摘要或整理，請以最終文件的形式輸出。",
+            "若使用者要求摘要、整理、說明或初稿，請直接輸出最終文件內容。",
             string.Empty,
             $"title: {draft.Title}",
             $"summary: {draft.Summary}",
