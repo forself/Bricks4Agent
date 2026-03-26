@@ -43,6 +43,7 @@ packages/.claude/
 
 # Issue tracking reports (local only)
 ISSUES/
+docs/0326/
 
 # SQLite databases
 *.db
