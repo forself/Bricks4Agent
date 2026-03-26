@@ -102,6 +102,14 @@ textarea{min-height:110px;resize:vertical}
           </div>
         </div>
         <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h3>交付檔案</h3>
+            <button class="button" id="refresh-artifacts">重新載入檔案</button>
+          </div>
+          <div class="list" id="artifact-list"></div>
+          <div id="artifact-detail-json" class="json">尚未選擇檔案。</div>
+        </div>
+        <div class="panel">
           <h3>註冊政策</h3>
           <div class="stack">
             <select id="registration-policy">
@@ -417,6 +425,7 @@ const state = {
   messages: [],
   selectedUserId: "",
   selectedUser: null,
+  artifacts: { items: [], selectedDocumentId: "", selectedItem: null },
   system: null,
   registrationPolicy: "allow_all",
   workflow: { tasks: [], plans: [], executionIntents: [], handoffs: [], selectedIntent: null, selectedIntentDocumentId: "", selectedHandoff: null, selectedHandoffDocumentId: "" },
@@ -595,6 +604,7 @@ function renderSelectedUser() {
     byId("selected-user-meta").textContent = "請先從左側選擇使用者。";
     byId("selected-user-json").textContent = "尚無資料";
     syncPermissionForm();
+    renderArtifacts();
     return;
   }
   const meta = [
@@ -610,6 +620,7 @@ function renderSelectedUser() {
   byId("selected-user-json").textContent = prettyJson(user);
   syncPermissionForm();
   renderDrivePanel();
+  renderArtifacts();
 }
 
 function renderDrivePanel() {
@@ -631,6 +642,43 @@ function renderDrivePanel() {
     userId: state.selectedUserId,
     credential: credential || null
   });
+}
+
+function renderArtifacts() {
+  const list = byId("artifact-list");
+  const detail = byId("artifact-detail-json");
+  if (!list || !detail) return;
+
+  list.innerHTML = "";
+  const items = state.artifacts.items || [];
+  if (!state.selectedUserId) {
+    list.innerHTML = '<div class="item muted">請先選擇使用者。</div>';
+    detail.textContent = "尚未選擇檔案。";
+    return;
+  }
+  if (!items.length) {
+    list.innerHTML = '<div class="item muted">尚無交付檔案。</div>';
+    detail.textContent = "尚未選擇檔案。";
+    return;
+  }
+
+  const selectedDocumentId = state.artifacts.selectedDocumentId || items[0].documentId;
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item" + (item.documentId === selectedDocumentId ? " active" : "");
+    const when = item.createdAt ? formatDateTime(item.createdAt) : "";
+    const deliveryMode = item.deliveryMode || (item.uploadedToGoogleDrive ? "google_drive" : "local_only");
+    button.innerHTML = `
+      <div class="item-title">${escapeHtml(item.fileName || item.documentId)}</div>
+      <div class="small muted mono">${escapeHtml(deliveryMode)} / ${escapeHtml(when)}</div>
+      <div class="small">${escapeHtml(item.source || "")}</div>
+    `;
+    button.addEventListener("click", () => wrapAction(() => loadArtifactDetail(item.documentId))());
+    list.appendChild(button);
+  }
+
+  detail.textContent = prettyJson(state.artifacts.selectedItem || items[0]);
 }
 
 function renderMessages() {
@@ -854,6 +902,11 @@ async function loadUsers() {
   state.users = result.users || [];
   if (state.selectedUserId) {
     state.selectedUser = state.users.find((u) => u.userId === state.selectedUserId) || null;
+    if (!state.selectedUser) {
+      state.artifacts.items = [];
+      state.artifacts.selectedDocumentId = "";
+      state.artifacts.selectedItem = null;
+    }
   }
   renderUsers();
   renderSelectedUser();
@@ -923,6 +976,29 @@ async function loadDriveAdmin() {
     byId("artifact-folder-id").value = status.defaultFolderId;
   }
   renderDrivePanel();
+}
+
+async function loadArtifacts(userId) {
+  if (!userId) {
+    state.artifacts.items = [];
+    state.artifacts.selectedDocumentId = "";
+    state.artifacts.selectedItem = null;
+    renderArtifacts();
+    return;
+  }
+
+  const result = await request(`/api/v1/local-admin/line/users/${encodeURIComponent(userId)}/artifacts`);
+  state.artifacts.items = result.items || [];
+  state.artifacts.selectedDocumentId = "";
+  state.artifacts.selectedItem = null;
+  renderArtifacts();
+}
+
+async function loadArtifactDetail(documentId) {
+  const result = await request(`/api/v1/local-admin/line/artifacts/${encodeURIComponent(documentId)}`);
+  state.artifacts.selectedItem = result.item || null;
+  state.artifacts.selectedDocumentId = documentId;
+  renderArtifacts();
 }
 
 async function loadBrowser() {
@@ -1002,6 +1078,7 @@ async function selectUser(userId) {
   renderUsers();
   renderConversations();
   renderSelectedUser();
+  await loadArtifacts(userId);
   await loadMessages(userId);
 }
 
@@ -1033,6 +1110,8 @@ async function refreshAll() {
     await loadToolSpecs();
   }
   if (state.selectedUserId) {
+    await sleep(120);
+    await loadArtifacts(state.selectedUserId);
     await sleep(120);
     await loadMessages(state.selectedUserId);
   }
@@ -1132,6 +1211,7 @@ async function deliverArtifact() {
   });
   byId("artifact-result-json").textContent = prettyJson(result);
   await loadDriveAdmin();
+  await loadArtifacts(state.selectedUserId);
   setNotice("檔案已建立並送交交付流程。");
 }
 
@@ -1411,6 +1491,7 @@ function bindEvents() {
   byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
   byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
   byId("refresh-drive").addEventListener("click", wrapAction(loadDriveAdmin));
+  byId("refresh-artifacts").addEventListener("click", wrapAction(() => loadArtifacts(state.selectedUserId)));
   byId("start-drive-oauth").addEventListener("click", wrapAction(startDriveOAuth));
   byId("deliver-artifact").addEventListener("click", wrapAction(deliverArtifact));
   byId("send-message").addEventListener("click", wrapAction(sendMessage));

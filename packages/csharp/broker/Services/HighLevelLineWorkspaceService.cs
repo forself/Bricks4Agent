@@ -54,6 +54,77 @@ public sealed class HighLevelLineWorkspaceService
         return notification;
     }
 
+    public HighLevelLineArtifactRecord RecordArtifact(HighLevelLineArtifactRecord artifact)
+    {
+        if (string.IsNullOrWhiteSpace(artifact.ArtifactId))
+            artifact.ArtifactId = BrokerCore.IdGen.New("artifact");
+        if (artifact.CreatedAt == default)
+            artifact.CreatedAt = DateTimeOffset.UtcNow;
+        if (string.IsNullOrWhiteSpace(artifact.Channel))
+            artifact.Channel = "line";
+        artifact.DocumentId = BuildLineArtifactDocumentId(artifact.UserId, artifact.ArtifactId);
+
+        UpsertDocument(
+            artifact.DocumentId,
+            JsonSerializer.Serialize(artifact),
+            "application/json",
+            "global");
+
+        return artifact;
+    }
+
+    public IReadOnlyList<HighLevelLineArtifactRecord> ListArtifacts(string userId, int limit = 50)
+    {
+        var entries = _db.Query<SharedContextEntry>(
+            """
+            SELECT * FROM shared_context_entries
+            WHERE document_id LIKE @prefix
+            ORDER BY created_at DESC
+            LIMIT @lim
+            """,
+            new
+            {
+                prefix = $"hlm.artifact.line.{userId}.%",
+                lim = Math.Max(1, limit)
+            });
+
+        return entries
+            .Select(entry =>
+            {
+                try
+                {
+                    var item = JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
+                    if (item != null && string.IsNullOrWhiteSpace(item.DocumentId))
+                        item.DocumentId = entry.DocumentId;
+                    return item;
+                }
+                catch { return null; }
+            })
+            .Where(item => item != null)
+            .Cast<HighLevelLineArtifactRecord>()
+            .OrderByDescending(item => item.CreatedAt)
+            .ToList();
+    }
+
+    public HighLevelLineArtifactRecord? ReadArtifact(string documentId)
+    {
+        var entry = _db.Query<SharedContextEntry>(
+            "SELECT * FROM shared_context_entries WHERE document_id = @documentId ORDER BY version DESC LIMIT 1",
+            new { documentId }).FirstOrDefault();
+
+        if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
+            return null;
+
+        try
+        {
+            var item = JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
+            if (item != null && string.IsNullOrWhiteSpace(item.DocumentId))
+                item.DocumentId = documentId;
+            return item;
+        }
+        catch { return null; }
+    }
+
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
     {
         var entry = _db.Query<SharedContextEntry>(
@@ -189,4 +260,7 @@ public sealed class HighLevelLineWorkspaceService
 
     private static string BuildLineNotificationDocumentId(string notificationId)
         => $"hlm.notify.line.{notificationId}";
+
+    private static string BuildLineArtifactDocumentId(string userId, string artifactId)
+        => $"hlm.artifact.line.{userId}.{artifactId}";
 }
