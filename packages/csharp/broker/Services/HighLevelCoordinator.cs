@@ -516,6 +516,22 @@ public class HighLevelCoordinator
     public HighLevelTaskDraft? GetLineDraft(string userId)
         => LoadTaskDraft("line", userId);
 
+    public HighLevelManagedPaths? GetLineManagedPaths(string userId, bool ensureExists = true)
+    {
+        var profile = LoadUserProfile("line", userId);
+        if (profile == null)
+            return null;
+
+        var managedPaths = BuildManagedPaths("line", userId, profile, null);
+        if (ensureExists)
+            EnsureManagedWorkspaceLayout(managedPaths);
+
+        return managedPaths;
+    }
+
+    public HighLevelLineNotification QueueLineNotification(string userId, string title, string body)
+        => EnqueueLineNotification(userId, title, body);
+
     public IReadOnlyList<HighLevelLineUserSummary> ListLineUsers()
     {
         var entries = _db.Query<SharedContextEntry>(
