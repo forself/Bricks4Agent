@@ -453,6 +453,7 @@ public static class LocalAdminEndpoints
                 AppPoolName = appPoolName,
                 PhysicalPath = physicalPath,
                 HealthCheckPath = GetString(body, "health_check_path", string.Empty),
+                HealthCheckBaseUrl = GetString(body, "health_check_base_url", string.Empty),
                 SecretRef = secretRef,
                 Status = GetString(body, "status", "active"),
                 MetadataJson = GetRawJson(body, "metadata_json", "{}")
@@ -641,6 +642,9 @@ public static class LocalAdminEndpoints
     private static AzureIisDeploymentBuildInput BuildDeploymentInput(JsonElement body, string targetId, string projectPath)
         => new()
         {
+            RequestId = body.TryGetProperty("request_id", out var requestIdProp)
+                ? requestIdProp.GetString() ?? BrokerCore.IdGen.New("dreq")
+                : BrokerCore.IdGen.New("dreq"),
             CapabilityId = "deploy.azure-vm-iis",
             Route = "deploy_azure_vm_iis",
             PrincipalId = "prn_dashboard",

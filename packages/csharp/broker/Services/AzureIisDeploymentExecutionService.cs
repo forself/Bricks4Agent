@@ -9,15 +9,18 @@ public sealed class AzureIisDeploymentExecutionService
     private readonly IAzureIisDeploymentRequestBuilder _builder;
     private readonly IAzureIisDeploymentSecretResolver _secretResolver;
     private readonly IProcessRunner _processRunner;
+    private readonly AzureIisDeploymentHealthCheckService _healthChecks;
 
     public AzureIisDeploymentExecutionService(
         IAzureIisDeploymentRequestBuilder builder,
         IAzureIisDeploymentSecretResolver secretResolver,
-        IProcessRunner processRunner)
+        IProcessRunner processRunner,
+        AzureIisDeploymentHealthCheckService healthChecks)
     {
         _builder = builder;
         _secretResolver = secretResolver;
         _processRunner = processRunner;
+        _healthChecks = healthChecks;
     }
 
     public async Task<AzureIisDeploymentExecutionEnvelope> ExecuteAsync(
@@ -108,6 +111,20 @@ public sealed class AzureIisDeploymentExecutionService
                 AzureIisDeploymentResult.Fail(request.RequestId, request.TargetId, "remote_deploy", deployRun.StandardError));
         }
 
+        var healthCheck = await _healthChecks.CheckAsync(request, cancellationToken);
+        if (healthCheck.Attempted && !healthCheck.Success)
+        {
+            return AzureIisDeploymentExecutionEnvelope.Fail(
+                "deployment_health_check_failed",
+                AzureIisDeploymentResult.Fail(
+                    request.RequestId,
+                    request.TargetId,
+                    "health_check",
+                    string.IsNullOrWhiteSpace(healthCheck.Error)
+                        ? $"Health check failed: {healthCheck.Url} returned {(healthCheck.StatusCode?.ToString() ?? "unknown")}."
+                        : $"Health check failed: {healthCheck.Error}"));
+        }
+
         return AzureIisDeploymentExecutionEnvelope.Ok(
             request,
             AzureIisDeploymentResult.Ok(
@@ -124,7 +141,16 @@ public sealed class AzureIisDeploymentExecutionService
                     publish_stdout = publishRun.StandardOutput,
                     publish_stderr = publishRun.StandardError,
                     deploy_stdout = deployRun.StandardOutput,
-                    deploy_stderr = deployRun.StandardError
+                    deploy_stderr = deployRun.StandardError,
+                    health_check = new
+                    {
+                        attempted = healthCheck.Attempted,
+                        success = healthCheck.Success,
+                        url = healthCheck.Url,
+                        status_code = healthCheck.StatusCode,
+                        body_snippet = healthCheck.BodySnippet,
+                        error = healthCheck.Error
+                    }
                 })));
     }
 }

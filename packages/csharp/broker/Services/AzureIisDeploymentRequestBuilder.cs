@@ -98,6 +98,7 @@ public sealed class AzureIisDeploymentRequestBuilder : IAzureIisDeploymentReques
             AppPoolName = target.AppPoolName,
             PhysicalPath = target.PhysicalPath,
             HealthCheckPath = NormalizeHealthCheckPath(target.HealthCheckPath),
+            HealthCheckBaseUrl = target.HealthCheckBaseUrl?.Trim() ?? string.Empty,
             SecretRef = target.SecretRef,
             ProjectPath = normalizedProjectPath,
             ProjectFile = projectFile,

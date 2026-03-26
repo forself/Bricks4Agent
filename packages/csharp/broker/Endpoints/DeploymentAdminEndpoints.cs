@@ -61,6 +61,7 @@ public static class DeploymentAdminEndpoints
                 AppPoolName = values["app_pool_name"],
                 PhysicalPath = values["physical_path"],
                 HealthCheckPath = body.TryGetProperty("health_check_path", out var healthPathProp) ? healthPathProp.GetString() ?? string.Empty : string.Empty,
+                HealthCheckBaseUrl = body.TryGetProperty("health_check_base_url", out var healthBaseProp) ? healthBaseProp.GetString() ?? string.Empty : string.Empty,
                 SecretRef = values["secret_ref"],
                 Status = body.TryGetProperty("status", out var statusProp) ? statusProp.GetString() ?? "active" : "active",
                 MetadataJson = body.TryGetProperty("metadata_json", out var metadataProp) ? metadataProp.GetRawText() : "{}"

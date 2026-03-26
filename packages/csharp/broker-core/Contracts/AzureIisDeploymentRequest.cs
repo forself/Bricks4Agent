@@ -21,6 +21,7 @@ public sealed class AzureIisDeploymentRequest
     public string AppPoolName { get; set; } = string.Empty;
     public string PhysicalPath { get; set; } = string.Empty;
     public string HealthCheckPath { get; set; } = string.Empty;
+    public string HealthCheckBaseUrl { get; set; } = string.Empty;
     public string SecretRef { get; set; } = string.Empty;
     public string ProjectPath { get; set; } = string.Empty;
     public string ProjectFile { get; set; } = string.Empty;
