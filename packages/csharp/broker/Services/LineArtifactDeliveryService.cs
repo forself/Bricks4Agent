@@ -37,16 +37,16 @@ public sealed class LineArtifactDeliveryService
         "txt", "md", "json", "html", "csv"
     };
 
-    private readonly HighLevelCoordinator _coordinator;
+    private readonly HighLevelLineWorkspaceService _workspaceService;
     private readonly GoogleDriveShareService _googleDriveShareService;
     private readonly ILogger<LineArtifactDeliveryService> _logger;
 
     public LineArtifactDeliveryService(
-        HighLevelCoordinator coordinator,
+        HighLevelLineWorkspaceService workspaceService,
         GoogleDriveShareService googleDriveShareService,
         ILogger<LineArtifactDeliveryService> logger)
     {
-        _coordinator = coordinator;
+        _workspaceService = workspaceService;
         _googleDriveShareService = googleDriveShareService;
         _logger = logger;
     }
@@ -58,11 +58,11 @@ public sealed class LineArtifactDeliveryService
         if (string.IsNullOrWhiteSpace(request.UserId))
             return Fail("user_id is required.");
 
-        var profile = _coordinator.GetLineUserProfile(request.UserId);
+        var profile = _workspaceService.GetUserProfile(request.UserId);
         if (profile == null)
             return Fail("LINE user profile not found.");
 
-        var managedPaths = _coordinator.GetLineManagedPaths(request.UserId, ensureExists: true);
+        var managedPaths = _workspaceService.GetManagedPaths(request.UserId, ensureExists: true);
         if (managedPaths == null)
             return Fail("managed paths not found.");
 
@@ -116,7 +116,7 @@ public sealed class LineArtifactDeliveryService
         HighLevelLineNotification? notification = null;
         if (request.SendLineNotification)
         {
-            notification = _coordinator.QueueLineNotification(
+            notification = _workspaceService.QueueLineNotification(
                 request.UserId,
                 string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
                 BuildNotificationBody(fileName, filePath, driveResult));
