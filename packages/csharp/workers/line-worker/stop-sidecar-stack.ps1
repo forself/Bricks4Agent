@@ -29,7 +29,17 @@ function Stop-RecordedProcess {
 
     try {
         Stop-Process -Id ([int]$procId) -Force -ErrorAction Stop
-        Write-Host "$Label stopped: PID $procId" -ForegroundColor Green
+        $deadline = (Get-Date).AddSeconds(20)
+        do {
+            Start-Sleep -Milliseconds 250
+            $stillRunning = Get-Process -Id ([int]$procId) -ErrorAction SilentlyContinue
+        } while ($stillRunning -and (Get-Date) -lt $deadline)
+
+        if ($stillRunning) {
+            Write-Warning ("{0} PID {1} still appears to be running after stop request." -f $Label, $procId)
+        } else {
+            Write-Host "$Label stopped: PID $procId" -ForegroundColor Green
+        }
     } catch {
         Write-Warning ("Failed to stop {0} PID {1}: {2}" -f $Label, $procId, $_.Exception.Message)
     }

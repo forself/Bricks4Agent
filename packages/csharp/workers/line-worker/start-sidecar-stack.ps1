@@ -31,6 +31,26 @@ foreach ($dir in @($runRoot, $brokerOut, $workerOut, $logDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 
+function Clear-PublishOutputDirectory {
+    param(
+        [string]$Path,
+        [string]$Label
+    )
+
+    if (-not (Test-Path $Path)) {
+        New-Item -ItemType Directory -Force -Path $Path | Out-Null
+        return
+    }
+
+    Get-ChildItem -Force -LiteralPath $Path | ForEach-Object {
+        try {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop
+        } catch {
+            throw "Failed to clear $Label output path '$Path' because '$($_.FullName)' is still locked or inaccessible. $_"
+        }
+    }
+}
+
 if (-not (Test-Path $configPath)) {
     throw "Missing config: $configPath"
 }
@@ -112,6 +132,9 @@ Stop-RecordedProcess -PidFile $brokerPidFile
 Stop-RecordedProcess -PidFile $workerPidFile
 
 if (-not $SkipBuild) {
+    Clear-PublishOutputDirectory -Path $brokerOut -Label "broker"
+    Clear-PublishOutputDirectory -Path $workerOut -Label "line-worker"
+
     Write-Host "Publishing broker..." -ForegroundColor Yellow
     dotnet publish (Join-Path $repoRoot "packages\csharp\broker\Broker.csproj") `
         -c Release `
