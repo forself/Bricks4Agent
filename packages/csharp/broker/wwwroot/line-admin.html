@@ -356,6 +356,9 @@ textarea{min-height:110px;resize:vertical}
           <div class="field full"><button class="button primary" id="execute-deployment">Execute</button></div>
         </div>
         <div class="json" id="deployment-result-json">尚無結果</div>
+        <h3>Recent Deployments</h3>
+        <div class="list" id="deployment-executions-list"></div>
+        <div class="json" id="deployment-execution-detail-json">尚未選取 deployment execution</div>
       </div>
     </section>
 
@@ -396,6 +399,9 @@ const state = {
   registrationPolicy: "allow_all",
   browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [], executions: [], selectedExecution: null, selectedExecutionDocumentId: "" },
   deploymentTargets: [],
+  deploymentExecutions: [],
+  selectedDeploymentExecution: null,
+  selectedDeploymentExecutionDocumentId: "",
   toolSpecs: [],
   selectedToolId: "",
   selectedTool: null,
@@ -665,6 +671,36 @@ function renderBrowserExecutions() {
 
 function renderDeployment() {
   byId("deployment-targets-json").textContent = prettyJson(state.deploymentTargets);
+  renderDeploymentExecutions();
+}
+
+function renderDeploymentExecutions() {
+  const list = byId("deployment-executions-list");
+  const detail = byId("deployment-execution-detail-json");
+  list.innerHTML = "";
+  const items = state.deploymentExecutions || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="notice">尚無 deployment execution</div>';
+    detail.textContent = "尚未選取 deployment execution";
+    return;
+  }
+
+  const selectedDocumentId = state.selectedDeploymentExecutionDocumentId || items[0].documentId;
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item" + (item.documentId === selectedDocumentId ? " active" : "");
+    const when = item.createdAt ? formatDateTime(item.createdAt) : "";
+    button.innerHTML = `
+      <div class="item-title">${escapeHtml(item.targetId || item.documentId)}</div>
+      <div class="small muted mono">${escapeHtml(item.stage || "-")} / ${escapeHtml(when)}</div>
+      <div class="small">${escapeHtml(item.message || "")}</div>
+    `;
+    button.addEventListener("click", () => wrapAction(() => loadDeploymentExecutionDetail(item.documentId))());
+    list.appendChild(button);
+  }
+
+  detail.textContent = prettyJson(state.selectedDeploymentExecution || items[0]);
 }
 
 function renderToolList() {
@@ -800,8 +836,20 @@ async function loadBrowserExecutionDetail(documentId) {
 
 async function loadDeploymentTargets() {
   const result = await request("/api/v1/local-admin/deployment/targets");
+  await sleep(75);
+  const executions = await request("/api/v1/local-admin/deployment/executions");
   state.deploymentTargets = result.items || [];
+  state.deploymentExecutions = executions.items || [];
+  state.selectedDeploymentExecution = null;
+  state.selectedDeploymentExecutionDocumentId = "";
   state.deploymentLoaded = true;
+  renderDeployment();
+}
+
+async function loadDeploymentExecutionDetail(documentId) {
+  const result = await request(`/api/v1/local-admin/deployment/executions/${encodeURIComponent(documentId)}`);
+  state.selectedDeploymentExecution = result.item || null;
+  state.selectedDeploymentExecutionDocumentId = documentId;
   renderDeployment();
 }
 
@@ -1123,6 +1171,7 @@ async function executeDeployment() {
     })
   });
   byId("deployment-result-json").textContent = prettyJson(result);
+  await loadDeploymentTargets();
   setNotice("Deployment execute 已完成。");
 }
 

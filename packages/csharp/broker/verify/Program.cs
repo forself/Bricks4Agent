@@ -1011,7 +1011,9 @@ try
             deploymentBuilder,
             new FakeAzureIisDeploymentSecretResolver(),
             fakeProcessRunner,
-            deploymentHealthChecks);
+            deploymentHealthChecks,
+            sharedContextService,
+            toolSpecDb);
         var dryRunExecution = await executionService.ExecuteAsync(
             "deploy.azure-vm-iis",
             new AzureIisDeploymentBuildInput
@@ -1036,7 +1038,9 @@ try
             deploymentBuilder,
             new FakeAzureIisDeploymentSecretResolver(),
             executeProcessRunner,
-            deploymentHealthChecks);
+            deploymentHealthChecks,
+            sharedContextService,
+            toolSpecDb);
         var actualExecution = await actualExecutionService.ExecuteAsync(
             "deploy.azure-vm-iis",
             new AzureIisDeploymentBuildInput
@@ -1055,6 +1059,11 @@ try
         AssertTrue(actualExecution.Result!.Stage == "deployed", "deployment execution service marks deployed stage");
         AssertTrue(executeProcessRunner.Invocations.Count == 2 && executeProcessRunner.Invocations[1].FileName == "powershell", "deployment execution invokes remote powershell after publish");
         AssertTrue(actualExecution.Result!.DetailsJson.Contains("\"success\":true", StringComparison.OrdinalIgnoreCase), "deployment execution records successful health check");
+        var recentDeployments = actualExecutionService.ListRecentExecutions();
+        AssertTrue(recentDeployments.Count > 0 && recentDeployments[0].DocumentId == "deployment.execution.dreq_exec_live", "deployment execution service lists recent deployment evidence");
+        var deploymentEvidence = actualExecutionService.ReadExecution("deployment.execution.dreq_exec_live");
+        AssertTrue(deploymentEvidence != null && deploymentEvidence.TargetId == deploymentTarget.TargetId, "deployment execution service reads deployment evidence detail");
+        AssertTrue(deploymentEvidence != null && deploymentEvidence.HealthCheckUrl == "https://deploy.example.com/health", "deployment execution evidence preserves health check url");
 
         var googleCredentialPath = Path.Combine(sandboxRoot, "google-service-account.json");
         using (var rsa = RSA.Create(2048))

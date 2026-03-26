@@ -501,6 +501,32 @@ public static class LocalAdminEndpoints
                 : Results.Ok(ApiResponseHelper.Success(new { request = result.Request, result = result.Result }));
         });
 
+        localAdmin.MapGet("/deployment/executions", (HttpContext ctx, LocalAdminAuthService auth, AzureIisDeploymentExecutionService executionService) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var targetId = ctx.Request.Query["target_id"].ToString();
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var limit = int.TryParse(limitValue, out var parsedLimit) ? parsedLimit : 20;
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                items = executionService.ListRecentExecutions(limit, string.IsNullOrWhiteSpace(targetId) ? null : targetId)
+            }));
+        });
+
+        localAdmin.MapGet("/deployment/executions/{documentId}", (HttpContext ctx, LocalAdminAuthService auth, AzureIisDeploymentExecutionService executionService, string documentId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var decoded = Uri.UnescapeDataString(documentId);
+            var item = executionService.ReadExecution(decoded);
+            return item == null
+                ? Results.NotFound(ApiResponseHelper.Error("Deployment execution evidence not found.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
         localAdmin.MapGet("/delivery/google-drive/status", (HttpContext ctx, LocalAdminAuthService auth, GoogleDriveShareService service) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
