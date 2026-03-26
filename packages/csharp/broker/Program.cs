@@ -185,6 +185,7 @@ builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentPreviewService>(
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentSecretResolver, Broker.Services.AzureIisDeploymentSecretResolver>();
 builder.Services.AddSingleton<Broker.Services.IProcessRunner, Broker.Services.ProcessRunner>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentExecutionService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelWorkflowAdminService>();
 builder.Services.AddHttpClient<Broker.Services.GoogleDriveOAuthService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
