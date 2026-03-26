@@ -1315,6 +1315,62 @@ try
                 CacheEnabled = false
             }),
             NullLogger<LineChatGateway>.Instance);
+        var coordinatorGoogleOAuthClientPath = Path.Combine(sandboxRoot, "coordinator-google-oauth-client.json");
+        File.WriteAllText(
+            coordinatorGoogleOAuthClientPath,
+            """
+            {
+              "installed": {
+                "client_id": "verify-client-id",
+                "project_id": "verify-project",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_secret": "verify-client-secret"
+              }
+            }
+            """,
+            Encoding.UTF8);
+        var coordinatorGoogleDriveClient = new HttpClient(new FakeGoogleDriveHandler());
+        var coordinatorGoogleDriveOptions = new GoogleDriveDeliveryOptions
+        {
+            OAuthClientJsonPath = coordinatorGoogleOAuthClientPath,
+            DefaultFolderId = "folder_verify",
+            DefaultShareMode = "anyone_with_link",
+            DelegatedRedirectUri = "http://localhost:5361/api/v1/google-drive/oauth/callback"
+        };
+        var coordinatorGoogleOAuthService = new GoogleDriveOAuthService(
+            coordinatorDb,
+            coordinatorGoogleDriveOptions,
+            coordinatorGoogleDriveClient,
+            NullLogger<GoogleDriveOAuthService>.Instance);
+        var coordinatorGoogleDriveService = new GoogleDriveShareService(
+            coordinatorGoogleDriveOptions,
+            coordinatorGoogleOAuthService,
+            coordinatorGoogleDriveClient,
+            NullLogger<GoogleDriveShareService>.Instance);
+        var coordinatorWorkspaceService = new HighLevelLineWorkspaceService(
+            coordinatorDb,
+            new HighLevelCoordinatorOptions
+            {
+                AccessRoot = Path.Combine(sandboxRoot, "managed"),
+                CommandGuideReminderMinutes = 60
+            });
+        var coordinatorArtifactDeliveryService = new LineArtifactDeliveryService(
+            coordinatorWorkspaceService,
+            coordinatorGoogleDriveService,
+            NullLogger<LineArtifactDeliveryService>.Instance);
+        var coordinatorDocumentArtifactService = new HighLevelDocumentArtifactService(
+            new HighLevelLlmOptions
+            {
+                Provider = "ollama",
+                BaseUrl = "http://localhost:11434",
+                DefaultModel = "verify"
+            },
+            coordinatorGoogleDriveService,
+            coordinatorGoogleOAuthService,
+            coordinatorArtifactDeliveryService,
+            new FakeHttpClientFactory(),
+            NullLogger<HighLevelDocumentArtifactService>.Instance);
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1339,6 +1395,7 @@ try
                 CommandGuideReminderMinutes = 60
             },
             new FakeHighLevelExecutionModelPlanner(),
+            coordinatorDocumentArtifactService,
             new BrowserBindingService(coordinatorDb),
             NullLogger<HighLevelCoordinator>.Instance);
 
@@ -1407,6 +1464,21 @@ try
         var latestHandoffDoc = workflowSnapshot.Handoffs.First().DocumentId;
         var latestHandoff = workflowAdmin.ReadHandoff(latestHandoffDoc);
         AssertTrue(latestHandoff != null && latestHandoff.TaskType == "code_gen", "workflow admin service reads handoff detail");
+
+        var docDraft = await coordinator.ProcessLineMessageAsync("line-doc-user", "/請整理成 markdown 文件，摘要目前進度");
+        var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
+        AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
+        AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
+        var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
+        AssertTrue(docConfirmed.CreatedTask != null && docConfirmed.CreatedTask.TaskType == "doc_gen", "confirm creates broker task for doc_gen draft");
+        AssertTrue(docConfirmed.Reply.Contains("文件已生成", StringComparison.Ordinal), "doc_gen confirm reply includes artifact delivery summary");
+        var docManagedPaths = coordinator.GetLineManagedPaths("line-doc-user");
+        AssertTrue(docManagedPaths != null, "doc_gen user managed paths can be resolved");
+        var docDocumentsRoot = docManagedPaths is null ? throw new Exception("doc_gen managed paths unexpectedly null") : docManagedPaths.DocumentsRoot;
+        var generatedDocFiles = Directory.GetFiles(docDocumentsRoot, "*.md", SearchOption.TopDirectoryOnly);
+        AssertTrue(generatedDocFiles.Length > 0, "doc_gen confirm writes a markdown artifact into user documents root");
+        var generatedDocContent = File.ReadAllText(generatedDocFiles[0], Encoding.UTF8);
+        AssertTrue(generatedDocContent.Contains("verify-reply", StringComparison.Ordinal), "doc_gen artifact preserves generated UTF-8 content");
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");

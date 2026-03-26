@@ -31,6 +31,7 @@ public class HighLevelCoordinator
     private readonly HighLevelExecutionIntentStore _executionIntentStore;
     private readonly HighLevelExecutionPromotionGate _executionPromotionGate;
     private readonly IHighLevelExecutionModelPlanner _executionModelPlanner;
+    private readonly HighLevelDocumentArtifactService _documentArtifactService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
@@ -45,6 +46,7 @@ public class HighLevelCoordinator
         HighLevelRelationQueryService relationQueryService,
         HighLevelCoordinatorOptions options,
         IHighLevelExecutionModelPlanner executionModelPlanner,
+        HighLevelDocumentArtifactService documentArtifactService,
         BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
     {
@@ -65,6 +67,7 @@ public class HighLevelCoordinator
         _executionIntentStore = new HighLevelExecutionIntentStore(_db);
         _executionPromotionGate = new HighLevelExecutionPromotionGate();
         _executionModelPlanner = executionModelPlanner;
+        _documentArtifactService = documentArtifactService;
         _browserBindingService = browserBindingService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
@@ -937,7 +940,7 @@ public class HighLevelCoordinator
 
         EnsureManagedWorkspaceLayout(draft.ManagedPaths);
 
-        var memory = _memoryStore.ReadLatest(channel, userId);
+        var memory = _memoryStore.ReadLatest(channel, userId) ?? BuildFallbackMemoryState(channel, userId, profile, draft);
         var promotion = _executionPromotionGate.Evaluate(memory, draft);
         if (!promotion.Allowed)
         {
@@ -983,6 +986,12 @@ public class HighLevelCoordinator
             "High-level coordinator created task {TaskId} and plan {PlanId} for {Channel}:{UserId}",
             task.TaskId, plan.PlanId, channel, userId);
 
+        HighLevelDocumentArtifactResult? artifactResult = null;
+        if (string.Equals(draft.TaskType, "doc_gen", StringComparison.OrdinalIgnoreCase))
+        {
+            artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
+        }
+
         var reply = string.Join('\n', new[]
         {
             "\u5df2\u78ba\u8a8d\u70ba production \u4efb\u52d9\u3002",
@@ -996,6 +1005,7 @@ public class HighLevelCoordinator
             $"title: {draft.Title}",
             string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
             string.IsNullOrWhiteSpace(draft.ManagedPaths?.ProjectRoot) ? null : $"project_root: {draft.ManagedPaths.ProjectRoot}",
+            artifactResult == null ? null : BuildArtifactReply(artifactResult),
             "",
             "\u5df2\u5efa\u7acb task / plan\uff0c\u4e26\u7522\u751f handoff \u8207 task tree skeleton \u4f9b\u4e0b\u6e38\u6a5f\u5236\u7e7c\u7e8c\u7cbe\u5316\u3002"
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
@@ -1008,6 +1018,82 @@ public class HighLevelCoordinator
             CreatedPlan = plan,
             Handoff = handoff
         }, profile);
+    }
+
+    private static string BuildArtifactReply(HighLevelDocumentArtifactResult artifactResult)
+    {
+        if (artifactResult.Delivery == null)
+            return artifactResult.Success
+                ? "文件已生成。"
+                : $"文件生成失敗：{artifactResult.Message}";
+
+        var lines = new List<string>();
+        if (artifactResult.Success)
+        {
+            lines.Add("文件已生成。");
+            lines.Add($"artifact_file: {artifactResult.FileName}");
+            lines.Add($"artifact_path: {artifactResult.Delivery.FilePath}");
+            if (artifactResult.Delivery.GoogleDrive?.Success == true)
+            {
+                lines.Add("artifact_delivery: google_drive");
+                if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.WebViewLink))
+                    lines.Add($"artifact_view_link: {artifactResult.Delivery.GoogleDrive.WebViewLink}");
+                if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
+                    lines.Add($"artifact_download_link: {artifactResult.Delivery.GoogleDrive.DownloadLink}");
+            }
+            else
+            {
+                lines.Add("artifact_delivery: local_only");
+            }
+        }
+        else
+        {
+            lines.Add($"文件生成失敗：{artifactResult.Message}");
+            if (!string.IsNullOrWhiteSpace(artifactResult.FileName))
+                lines.Add($"artifact_file: {artifactResult.FileName}");
+            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.FilePath))
+                lines.Add($"artifact_path: {artifactResult.Delivery.FilePath}");
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static HighLevelMemoryState BuildFallbackMemoryState(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft draft)
+    {
+        return new HighLevelMemoryState
+        {
+            Channel = channel,
+            UserId = userId,
+            PreferredDisplayName = profile.PreferredDisplayName,
+            PreferredUserCode = profile.PreferredUserCode,
+            CurrentGoal = draft.OriginalMessage.Trim(),
+            CurrentGoalCommitLevel = HighLevelMemoryCommitLevel.Candidate.ToString(),
+            CurrentGoalSource = HighLevelMemorySource.User.ToString(),
+            CurrentGoalCommitReason = "fallback projection from production draft",
+            LastRouteMode = HighLevelRouteMode.Production.ToString(),
+            WorkflowState = draft.RequiresProjectName && string.IsNullOrWhiteSpace(draft.ProjectName)
+                ? HighLevelWorkflowState.AwaitingProjectName.ToString()
+                : HighLevelWorkflowState.AwaitingConfirmation.ToString(),
+            WorkflowAction = HighLevelWorkflowAction.ConfirmDraft.ToString(),
+            PendingDraftId = draft.DraftId,
+            PendingProjectName = draft.RequiresProjectName && string.IsNullOrWhiteSpace(draft.ProjectName),
+            ProjectName = draft.ProjectName,
+            ProjectNameCommitLevel = string.IsNullOrWhiteSpace(draft.ProjectName)
+                ? string.Empty
+                : HighLevelMemoryCommitLevel.Confirmed.ToString(),
+            ProjectNameSource = string.IsNullOrWhiteSpace(draft.ProjectName)
+                ? string.Empty
+                : HighLevelMemorySource.ConfirmedUser.ToString(),
+            ProjectNameCommitReason = string.IsNullOrWhiteSpace(draft.ProjectName)
+                ? string.Empty
+                : "fallback projection from persisted draft",
+            LastTaskType = draft.TaskType,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
     }
 
     private HighLevelRouteDecision Classify(HighLevelParsedInput parsed)
