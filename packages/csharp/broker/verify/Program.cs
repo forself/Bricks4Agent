@@ -268,10 +268,16 @@ try
           "display_name": "Browser Reference",
           "summary": "reference",
           "kind": "browser",
-          "status": "planned",
+          "status": "active",
           "version": "2026-03-22",
           "tags": ["browser"],
-          "capability_bindings": [],
+          "capability_bindings": [
+            {
+              "capability_id": "browser.read",
+              "route": "browser_read",
+              "purpose": "Broker-governed anonymous public browser read"
+            }
+          ],
           "browser_profile": {
             "identity_mode": "anonymous",
             "credential_source": "none",
@@ -311,7 +317,7 @@ try
         """);
     File.WriteAllText(
         Path.Combine(specRoot, "browser.reference.anonymous.read", "TOOL.md"),
-        "# Reference");
+        "# Reference\n\nStatus: active");
     Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.system-account.read"));
     File.WriteAllText(
         Path.Combine(specRoot, "browser.reference.system-account.read", "tool.json"),
@@ -821,6 +827,33 @@ try
         AssertTrue(runtimeExecutions.Count > 0 && runtimeExecutions[0].DocumentId == "browser.execution.req_browser_runtime_1", "browser runtime service lists recent browser evidence");
         var touchedLease = bindingService.GetSessionLease(activeLease.SessionLeaseId);
         AssertTrue(touchedLease?.LastUsedAt != null, "browser runtime service touches active lease when used");
+        var browserDispatcher = new InProcessDispatcher(
+            NullLogger<InProcessDispatcher>.Instance,
+            sandboxRoot,
+            browserExecutionRuntimeService: runtimeService,
+            db: toolSpecDb);
+        var browserDispatch = await browserDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_browser_dispatch_1",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            Payload = """
+                      {
+                        "route": "browser_read",
+                        "args": {
+                          "url": "https://example.com",
+                          "tool_id": "browser.reference.anonymous.read",
+                          "action_level": "read"
+                        },
+                        "scope": {}
+                      }
+                      """
+        });
+        AssertTrue(browserDispatch.Success, "in-process dispatcher executes browser.read route");
+        AssertTrue(browserDispatch.ResultPayload != null && browserDispatch.ResultPayload.Contains("browser.execution.req_browser_dispatch_1", StringComparison.Ordinal), "in-process dispatcher returns browser runtime evidence payload");
 
         var deploymentTargetService = new AzureIisDeploymentTargetService(toolSpecDb);
         var deploymentTarget = deploymentTargetService.UpsertTarget(new AzureIisDeploymentTarget
