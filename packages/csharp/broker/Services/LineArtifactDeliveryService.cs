@@ -196,12 +196,12 @@ public sealed class LineArtifactDeliveryService
         var lines = new List<string>
         {
             $"檔案：{fileName}",
-            $"已建立於：{filePath}"
+            $"本機路徑：{filePath}"
         };
 
         if (driveResult?.Success == true)
         {
-            lines.Add("");
+            lines.Add(string.Empty);
             lines.Add("Google Drive 連結：");
             if (!string.IsNullOrWhiteSpace(driveResult.WebViewLink))
                 lines.Add(driveResult.WebViewLink);
