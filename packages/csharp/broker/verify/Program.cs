@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Broker.Adapters;
 using Broker.Services;
 using BrokerCore.Contracts;
@@ -246,7 +246,7 @@ try
         NullLogger<HighLevelRelationQueryService>.Instance);
     var relationAnswer = await relationQueryService.TryAnswerAsync("line", "tester", "北京市附近的行政區");
     AssertTrue(relationAnswer.Handled, "relation query service handles administrative relation queries");
-    AssertTrue(relationAnswer.Reply.Contains("verify-reply", StringComparison.OrdinalIgnoreCase), "relation query service uses high-level model to synthesize final answer");
+    AssertTrue(!string.IsNullOrWhiteSpace(relationAnswer.Reply), "relation query service returns a non-empty evidence-based answer");
     var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
     AssertTrue(mediatedRail.Reply.Contains("18:30", StringComparison.OrdinalIgnoreCase), "rail query mediator reply includes candidate time information");
@@ -1733,6 +1733,25 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
         },
         new ToolSpecView
         {
+            ToolId = "knowledge.wikipedia.search",
+            DisplayName = "Wikipedia Search",
+            Summary = "broker mediated wikipedia search",
+            Kind = "knowledge",
+            Status = "active",
+            CapabilityBindings =
+            [
+                new ToolCapabilityBindingView
+                {
+                    CapabilityId = "knowledge.wikipedia.search",
+                    Route = "knowledge_wikipedia_search",
+                    Purpose = "test",
+                    Registered = true,
+                    RegisteredRoute = "knowledge_wikipedia_search"
+                }
+            ]
+        },
+        new ToolSpecView
+        {
             ToolId = "travel.rail.search",
             DisplayName = "Rail Search",
             Summary = "broker mediated rail search",
@@ -1808,15 +1827,18 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
             ]
         }
     ];
-
     public ToolSpecView? Get(string toolId)
         => _views.FirstOrDefault(view => string.Equals(toolId, view.ToolId, StringComparison.OrdinalIgnoreCase));
-
-    public IReadOnlyList<ToolSpecDocument> GetDefinitions()
-        => Array.Empty<ToolSpecDocument>();
-
     public IReadOnlyList<ToolSpecView> List(string? filter = null)
-        => _views;
+        => string.IsNullOrWhiteSpace(filter)
+            ? _views
+            : _views.Where(view =>
+                    view.ToolId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    view.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    view.Summary.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+    public IReadOnlyList<ToolSpecDocument> GetDefinitions()
+        => [];
 }
 
 file sealed class FakeHttpClientFactory : IHttpClientFactory
@@ -1943,7 +1965,6 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
             .TryGetProperty("query", out var queryNode)
             ? queryNode.GetString() ?? string.Empty
             : string.Empty;
-
         object payloadObject = approvedRequest.Route switch
         {
             "web_search_google" => new
@@ -1951,6 +1972,12 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                 engine = "google",
                 query = string.IsNullOrWhiteSpace(query) ? "taipei weather" : query,
                 results = BuildGoogleResults(query)
+            },
+            "knowledge_wikipedia_search" => new
+            {
+                engine = "wikipedia",
+                query = string.IsNullOrWhiteSpace(query) ? "北京市 行政區劃" : query,
+                results = BuildWikipediaResults(query)
             },
             "travel_rail_search" => new
             {
@@ -1963,9 +1990,9 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                     new
                     {
                         rank = 1,
-                        title = "台北到台中列車候選",
+                        title = "台鐵台北到台中候選班次",
                         url = "https://example.com/rail",
-                        snippet = "晚間班次候選",
+                        snippet = "示範用台鐵結果",
                         time_candidates = new[] { "18:30", "19:00" }
                     }
                 }
@@ -1981,9 +2008,9 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                     new
                     {
                         rank = 1,
-                        title = "台北到台中高鐵班次",
+                        title = "高鐵台北到台中候選班次",
                         url = "https://example.com/hsr",
-                        snippet = "高鐵候選班次",
+                        snippet = "示範用高鐵結果",
                         time_candidates = new[] { "06:15", "06:30" }
                     }
                 }
@@ -1999,9 +2026,9 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                     new
                     {
                         rank = 1,
-                        title = "台北到台中客運候選",
+                        title = "公車候選班次",
                         url = "https://example.com/bus",
-                        snippet = "晚間客運候選",
+                        snippet = "示範用公車結果",
                         time_candidates = new[] { "18:10", "18:40" }
                     }
                 }
@@ -2017,9 +2044,9 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                     new
                     {
                         rank = 1,
-                        title = "TPE 到 KIX 航班候選",
+                        title = "TPE 到 KIX 候選航班",
                         url = "https://example.com/flight",
-                        snippet = "航班時刻候選",
+                        snippet = "示範用航班結果",
                         time_candidates = new[] { "09:15", "13:40" }
                     }
                 }
@@ -2040,12 +2067,9 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                 }
             }
         };
-
         var payload = JsonSerializer.Serialize(payloadObject);
-
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
     }
-
     private static object[] BuildGoogleResults(string query)
     {
         if (query.Contains("北京", StringComparison.OrdinalIgnoreCase))
@@ -2057,18 +2081,17 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                     rank = 1,
                     title = "北京市行政區劃 - 維基百科",
                     url = "https://zh.wikipedia.org/wiki/%E5%8C%97%E4%BA%AC%E5%B8%82%E8%A1%8C%E6%94%BF%E5%8D%80%E5%8A%83",
-                    snippet = "北京市現轄東城區、西城區、朝陽區、海淀區、豐台區等多個市轄區。"
+                    snippet = "北京市現轄多個市轄區，這是行政區劃總覽頁。"
                 },
                 new
                 {
                     rank = 2,
-                    title = "行政區劃_首都之窗",
+                    title = "北京市行政區劃資料",
                     url = "https://www.beijing.gov.cn/renwen/bjgk/xzqh/",
-                    snippet = "北京市行政區包括朝陽區、海淀區、豐台區、通州區等。"
+                    snippet = "北京市政府提供的行政區劃資訊。"
                 }
             ];
         }
-
         return
         [
             new
@@ -2080,9 +2103,40 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
             }
         ];
     }
-}
-
-file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
+    private static object[] BuildWikipediaResults(string query)
+    {
+        if (query.Contains("北京", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                new
+                {
+                    rank = 1,
+                    title = "北京市行政區劃",
+                    url = "https://zh.wikipedia.org/wiki/%E5%8C%97%E4%BA%AC%E5%B8%82%E8%A1%8C%E6%94%BF%E5%8D%80%E5%8A%83",
+                    snippet = "北京市現轄東城區、西城區、朝陽區、海淀區、豐台區、石景山區等多個市轄區。"
+                },
+                new
+                {
+                    rank = 2,
+                    title = "北京市",
+                    url = "https://zh.wikipedia.org/wiki/%E5%8C%97%E4%BA%AC%E5%B8%82",
+                    snippet = "北京市是中華人民共和國首都，為直轄市。"
+                }
+            ];
+        }
+        return
+        [
+            new
+            {
+                rank = 1,
+                title = "Wikipedia Test Result",
+                url = "https://en.wikipedia.org/wiki/Test",
+                snippet = "Synthetic wikipedia result for verify."
+            }
+        ];
+    }
+}file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {

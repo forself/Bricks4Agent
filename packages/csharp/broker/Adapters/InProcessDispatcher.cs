@@ -101,6 +101,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "rag_import_web" => ExecuteRagImportWebAsync(request),
                 "web_search_google" => ExecuteWebSearchGoogleAsync(request),
                 "web_search_duckduckgo" => ExecuteWebSearchDuckDuckGoAsync(request),
+                "knowledge_wikipedia_search" => ExecuteWikipediaSearchAsync(request),
                 "travel_rail_search" => ExecuteTravelRailSearchAsync(request),
                 "travel_hsr_search" => ExecuteTravelHsrSearchAsync(request),
                 "travel_bus_search" => ExecuteTravelBusSearchAsync(request),
@@ -1307,6 +1308,31 @@ public class InProcessDispatcher : IExecutionDispatcher
         }
     }
 
+    private async Task<ExecutionResult> ExecuteWikipediaSearchAsync(ApprovedRequest request)
+    {
+        using var doc = JsonDocument.Parse(request.Payload);
+        var args = GetArgsElement(doc.RootElement);
+        var query = TryGetString(args, "query") ?? "";
+        var locale = TryGetString(args, "locale") ?? "zh-TW";
+        var limit = TryGetInt(args, "limit") ?? 5;
+        limit = Math.Clamp(limit, 1, 10);
+
+        if (string.IsNullOrWhiteSpace(query))
+            return ExecutionResult.Fail(request.RequestId, "query is required.");
+
+        try
+        {
+            var results = await SearchWikipediaAsync(query, limit, locale);
+            return ExecutionResult.Ok(
+                request.RequestId,
+                JsonSerializer.Serialize(new { engine = "wikipedia", query, results, total = results.Count }));
+        }
+        catch (Exception ex)
+        {
+            return ExecutionResult.Fail(request.RequestId, $"Wikipedia search failed: {ex.Message}");
+        }
+    }
+
     private async Task<ExecutionResult> ExecuteWebFetchAsync(ApprovedRequest request)
     {
         using var doc = JsonDocument.Parse(request.Payload);
@@ -1482,6 +1508,138 @@ public class InProcessDispatcher : IExecutionDispatcher
         var html = await response.Content.ReadAsStringAsync();
         return ParseGoogleResults(html, limit);
     }
+
+    private static async Task<List<object>> SearchWikipediaAsync(string query, int limit, string locale)
+    {
+        foreach (var language in ResolveWikipediaLanguages(locale))
+        {
+            var results = await SearchWikipediaLanguageAsync(query, limit, language);
+            if (results.Count > 0)
+                return results;
+        }
+
+        return new List<object>();
+    }
+
+    private static async Task<List<object>> SearchWikipediaLanguageAsync(string query, int limit, string language)
+    {
+        var searchUrl =
+            $"https://{language}.wikipedia.org/w/api.php?action=query&list=search&srsearch={Uri.EscapeDataString(query)}&utf8=1&format=json&srlimit={limit}";
+        using var response = await _httpClient.GetAsync(searchUrl);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("query", out var queryNode) ||
+            !queryNode.TryGetProperty("search", out var searchNode) ||
+            searchNode.ValueKind != JsonValueKind.Array)
+        {
+            return new List<object>();
+        }
+
+        var pages = new List<(long PageId, string Title, string Snippet)>();
+        foreach (var item in searchNode.EnumerateArray())
+        {
+            if (!item.TryGetProperty("pageid", out var pageIdNode) ||
+                !pageIdNode.TryGetInt64(out var pageId))
+            {
+                continue;
+            }
+
+            var title = item.TryGetProperty("title", out var titleNode)
+                ? titleNode.GetString() ?? string.Empty
+                : string.Empty;
+            if (string.IsNullOrWhiteSpace(title))
+                continue;
+
+            var snippet = item.TryGetProperty("snippet", out var snippetNode)
+                ? HtmlToText(snippetNode.GetString() ?? string.Empty)
+                : string.Empty;
+
+            pages.Add((pageId, title, snippet));
+        }
+
+        if (pages.Count == 0)
+            return new List<object>();
+
+        var extracts = await FetchWikipediaExtractsAsync(language, pages.Select(page => page.PageId));
+        var results = new List<object>();
+
+        foreach (var page in pages.Take(limit))
+        {
+            var snippet = extracts.TryGetValue(page.PageId, out var extract) && !string.IsNullOrWhiteSpace(extract)
+                ? ShortenText(extract, 900)
+                : page.Snippet;
+            var pageTitle = page.Title.Replace(' ', '_');
+            results.Add(new
+            {
+                rank = results.Count + 1,
+                title = page.Title,
+                url = $"https://{language}.wikipedia.org/wiki/{Uri.EscapeDataString(pageTitle)}",
+                snippet
+            });
+        }
+
+        return results;
+    }
+
+    private static async Task<Dictionary<long, string>> FetchWikipediaExtractsAsync(string language, IEnumerable<long> pageIds)
+    {
+        var pageIdList = pageIds.Distinct().ToArray();
+        if (pageIdList.Length == 0)
+            return new Dictionary<long, string>();
+
+        var extractUrl =
+            $"https://{language}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&format=json&pageids={string.Join("|", pageIdList)}";
+        using var response = await _httpClient.GetAsync(extractUrl);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("query", out var queryNode) ||
+            !queryNode.TryGetProperty("pages", out var pagesNode) ||
+            pagesNode.ValueKind != JsonValueKind.Object)
+        {
+            return new Dictionary<long, string>();
+        }
+
+        var extracts = new Dictionary<long, string>();
+        foreach (var property in pagesNode.EnumerateObject())
+        {
+            if (!long.TryParse(property.Name, out var pageId))
+                continue;
+
+            var extract = property.Value.TryGetProperty("extract", out var extractNode)
+                ? NormalizeWikipediaExtract(extractNode.GetString() ?? string.Empty)
+                : string.Empty;
+            if (!string.IsNullOrWhiteSpace(extract))
+                extracts[pageId] = extract;
+        }
+
+        return extracts;
+    }
+
+    private static IEnumerable<string> ResolveWikipediaLanguages(string locale)
+    {
+        if (!string.IsNullOrWhiteSpace(locale) &&
+            locale.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "zh";
+            yield return "en";
+            yield break;
+        }
+
+        yield return "en";
+        yield return "zh";
+    }
+
+    private static string NormalizeWikipediaExtract(string text)
+        => Regex.Replace(text ?? string.Empty, @"\s+", " ").Trim();
+
+    private static string ShortenText(string text, int maxLength)
+        => string.IsNullOrWhiteSpace(text) || text.Length <= maxLength
+            ? text
+            : text[..maxLength].TrimEnd() + "…";
 
     private static List<object> ParseDuckDuckGoLite(string html, int limit)
     {

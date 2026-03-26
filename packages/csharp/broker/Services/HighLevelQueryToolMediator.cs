@@ -8,6 +8,7 @@ public sealed class HighLevelQueryToolMediator
 {
     private const string GoogleToolId = "web.search.google";
     private const string DuckDuckGoToolId = "web.search.duckduckgo";
+    private const string WikipediaToolId = "knowledge.wikipedia.search";
     private const string RailToolId = "travel.rail.search";
     private const string HsrToolId = "travel.hsr.search";
     private const string BusToolId = "travel.bus.search";
@@ -33,44 +34,74 @@ public sealed class HighLevelQueryToolMediator
         string query,
         CancellationToken cancellationToken = default)
     {
+        _ = channel;
+        _ = userId;
         _ = cancellationToken;
 
         if (string.IsNullOrWhiteSpace(query))
         {
             return HighLevelQueryToolResult.Fail(
-                "\u8acb\u4f7f\u7528 ?search \u95dc\u9375\u5b57\uff0c\u4f8b\u5982 ?search \u53f0\u5317\u4eca\u5929\u5929\u6c23\u3002",
+                "請提供 ?search 的查詢內容，例如：?search 中央氣象署官網",
                 "search_query_missing");
         }
 
-        var primaryResult = await SearchWebWithToolAsync(GoogleToolId, query);
-        if (primaryResult.Success)
-            return primaryResult;
+        var googleResult = await SearchWebWithToolAsync(GoogleToolId, query);
+        if (googleResult.Success)
+            return googleResult;
 
         _logger.LogWarning(
             "High-level Google web search failed with {Error}; falling back to DuckDuckGo.",
-            primaryResult.Error ?? "unknown_error");
+            googleResult.Error ?? "unknown_error");
 
         var fallbackResult = await SearchWebWithToolAsync(DuckDuckGoToolId, query);
-        if (fallbackResult.Success)
+        if (!fallbackResult.Success)
         {
-            if (!string.IsNullOrWhiteSpace(primaryResult.Error))
-            {
-                fallbackResult.Reply = string.Join('\n', new[]
-                {
-                    "Google 搜尋目前不可用，已改用 DuckDuckGo 作為備援。",
-                    string.Empty,
-                    fallbackResult.Reply
-                });
-            }
-
-            return fallbackResult;
+            return HighLevelQueryToolResult.Fail(
+                !string.IsNullOrWhiteSpace(googleResult.Error)
+                    ? $"受控搜尋失敗：{googleResult.Error}"
+                    : "受控搜尋失敗，請稍後再試。",
+                googleResult.Error ?? "tool_spec_unavailable");
         }
 
-        return HighLevelQueryToolResult.Fail(
-            !string.IsNullOrWhiteSpace(primaryResult.Error)
-                ? $"搜尋失敗：{primaryResult.Error}"
-                : "目前沒有可用的 web search 工具。",
-            primaryResult.Error ?? "tool_spec_unavailable");
+        if (!string.IsNullOrWhiteSpace(googleResult.Error))
+        {
+            fallbackResult.Reply = string.Join('\n', new[]
+            {
+                "Google 搜尋目前失敗，已改用 DuckDuckGo 備援。",
+                string.Empty,
+                fallbackResult.Reply
+            });
+        }
+
+        return fallbackResult;
+    }
+
+    public Task<HighLevelQueryToolResult> SearchWikipediaAsync(
+        string channel,
+        string userId,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        _ = channel;
+        _ = userId;
+        _ = cancellationToken;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Task.FromResult(HighLevelQueryToolResult.Fail(
+                "請提供 Wikipedia 查詢內容，例如：?search 北京市 行政區劃",
+                "wikipedia_query_missing"));
+        }
+
+        return SearchReadOnlyToolAsync(
+            WikipediaToolId,
+            query,
+            locale: "zh-TW",
+            limit: 5,
+            safeMode: null,
+            unavailableMessage: "目前無法使用 Wikipedia 查詢工具。",
+            bindingUnavailableMessage: "目前無法使用 broker-mediated Wikipedia 查詢路徑。",
+            dispatchFailurePrefix: "Wikipedia 查詢失敗：");
     }
 
     public Task<HighLevelQueryToolResult> SearchRailAsync(
@@ -101,29 +132,56 @@ public sealed class HighLevelQueryToolMediator
         CancellationToken cancellationToken = default)
         => SearchTransportAsync(channel, userId, FlightToolId, query, cancellationToken);
 
-    private async Task<HighLevelQueryToolResult> SearchWebWithToolAsync(string toolId, string query)
+    private Task<HighLevelQueryToolResult> SearchWebWithToolAsync(string toolId, string query)
+        => SearchReadOnlyToolAsync(
+            toolId,
+            query,
+            locale: "zh-TW",
+            limit: 5,
+            safeMode: "moderate",
+            unavailableMessage: "目前無法使用受控搜尋工具。",
+            bindingUnavailableMessage: "目前無法使用 broker-mediated web search route。",
+            dispatchFailurePrefix: "搜尋失敗：");
+
+    private async Task<HighLevelQueryToolResult> SearchReadOnlyToolAsync(
+        string toolId,
+        string query,
+        string locale,
+        int limit,
+        string? safeMode,
+        string unavailableMessage,
+        string bindingUnavailableMessage,
+        string dispatchFailurePrefix)
     {
         var spec = _toolSpecRegistry.Get(toolId);
         if (spec == null || !string.Equals(spec.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
             return HighLevelQueryToolResult.Fail(
-                "目前沒有可用的 web search 工具。",
+                unavailableMessage,
                 "tool_spec_unavailable");
         }
 
-        var binding = spec.CapabilityBindings.FirstOrDefault(binding =>
-            string.Equals(binding.CapabilityId, toolId, StringComparison.OrdinalIgnoreCase));
+        var binding = spec.CapabilityBindings.FirstOrDefault(candidate =>
+            string.Equals(candidate.CapabilityId, toolId, StringComparison.OrdinalIgnoreCase));
         if (binding == null || !binding.Registered || string.IsNullOrWhiteSpace(binding.Route))
         {
             return HighLevelQueryToolResult.Fail(
-                "\u76ee\u524d\u6c92\u6709\u53ef\u7528\u7684 broker-mediated web search route\u3002",
+                bindingUnavailableMessage,
                 "tool_binding_unavailable");
         }
 
-        var requestId = $"hlq_{Guid.NewGuid():N}"[..18];
+        var args = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["query"] = query,
+            ["locale"] = locale,
+            ["limit"] = limit
+        };
+        if (!string.IsNullOrWhiteSpace(safeMode))
+            args["safe_mode"] = safeMode;
+
         var approvedRequest = new ApprovedRequest
         {
-            RequestId = requestId,
+            RequestId = $"hlq_{Guid.NewGuid():N}"[..18],
             CapabilityId = binding.CapabilityId,
             Route = binding.Route,
             PrincipalId = "system:high-level-coordinator",
@@ -133,13 +191,7 @@ public sealed class HighLevelQueryToolMediator
             Payload = JsonSerializer.Serialize(new
             {
                 route = binding.Route,
-                args = new
-                {
-                    query,
-                    locale = "zh-TW",
-                    limit = 5,
-                    safe_mode = "moderate"
-                }
+                args
             })
         };
 
@@ -147,9 +199,9 @@ public sealed class HighLevelQueryToolMediator
         if (!executionResult.Success || string.IsNullOrWhiteSpace(executionResult.ResultPayload))
         {
             var error = executionResult.ErrorMessage ?? "tool_dispatch_failed";
-            _logger.LogWarning("High-level web search failed: {Error}", error);
+            _logger.LogWarning("High-level read-only tool {ToolId} failed: {Error}", toolId, error);
             return HighLevelQueryToolResult.Fail(
-                $"\u641c\u5c0b\u5931\u6557\uff1a{error}",
+                $"{dispatchFailurePrefix}{error}",
                 "tool_dispatch_failed");
         }
 
@@ -187,11 +239,10 @@ public sealed class HighLevelQueryToolMediator
                 }
             }
 
-            var reply = BuildSearchReply(engine, returnedQuery, items);
             return new HighLevelQueryToolResult
             {
                 Success = true,
-                Reply = reply,
+                Reply = BuildSearchReply(engine, returnedQuery, items),
                 ToolId = toolId,
                 Engine = engine,
                 Results = items
@@ -199,40 +250,11 @@ public sealed class HighLevelQueryToolMediator
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse high-level query tool result");
+            _logger.LogError(ex, "Failed to parse high-level query tool result for {ToolId}", toolId);
             return HighLevelQueryToolResult.Fail(
-                "\u641c\u5c0b\u5de5\u5177\u7684\u56de\u50b3\u7d50\u679c\u7121\u6cd5\u89e3\u6790\u3002",
+                "查詢工具回傳格式無法解析。",
                 "tool_result_parse_failed");
         }
-    }
-
-    private static string BuildSearchReply(string engine, string query, IReadOnlyList<HighLevelQuerySearchResult> results)
-    {
-        if (results.Count == 0)
-        {
-            return string.Join('\n', new[]
-            {
-                $"\u5df2\u4f7f\u7528 {engine} \u641c\u5c0b\uff1a{query}",
-                "\u76ee\u524d\u6c92\u6709\u627e\u5230\u660e\u78ba\u7d50\u679c\u3002"
-            });
-        }
-
-        var lines = new List<string>
-        {
-            $"\u5df2\u4f7f\u7528 {engine} \u641c\u5c0b\uff1a{query}",
-            ""
-        };
-
-        foreach (var result in results)
-        {
-            lines.Add($"{result.Rank}. {result.Title}");
-            lines.Add(result.Url);
-            if (!string.IsNullOrWhiteSpace(result.Snippet))
-                lines.Add(result.Snippet);
-            lines.Add(string.Empty);
-        }
-
-        return string.Join('\n', lines.Where(line => line != null));
     }
 
     private async Task<HighLevelQueryToolResult> SearchTransportAsync(
@@ -240,7 +262,7 @@ public sealed class HighLevelQueryToolMediator
         string userId,
         string toolId,
         string query,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         _ = channel;
         _ = userId;
@@ -248,16 +270,8 @@ public sealed class HighLevelQueryToolMediator
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            var exampleCommand = toolId switch
-            {
-                HsrToolId => "?hsr 台北 台中 今天 18:00",
-                RailToolId => "?rail 台北 台中 今天 18:00",
-                BusToolId => "?bus 台北 台中 今天 18:00",
-                FlightToolId => "?flight TPE KIX tomorrow",
-                _ => "?search 關鍵字"
-            };
             return HighLevelQueryToolResult.Fail(
-                $"請在查詢指令後提供條件，例如 {exampleCommand}。",
+                "請提供交通查詢內容，例如：?rail 台北 台中 今天 18:00",
                 "transport_query_missing");
         }
 
@@ -265,7 +279,7 @@ public sealed class HighLevelQueryToolMediator
         if (spec == null || !string.Equals(spec.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
             return HighLevelQueryToolResult.Fail(
-                "目前沒有可用的交通查詢工具。",
+                "目前無法使用這個交通查詢工具。",
                 "transport_tool_unavailable");
         }
 
@@ -274,14 +288,13 @@ public sealed class HighLevelQueryToolMediator
         if (binding == null || !binding.Registered || string.IsNullOrWhiteSpace(binding.Route))
         {
             return HighLevelQueryToolResult.Fail(
-                "目前沒有可用的 broker-mediated 交通查詢 route。",
+                "目前無法使用 broker-mediated 交通查詢 route。",
                 "transport_binding_unavailable");
         }
 
-        var requestId = $"hlt_{Guid.NewGuid():N}"[..18];
         var approvedRequest = new ApprovedRequest
         {
-            RequestId = requestId,
+            RequestId = $"hlt_{Guid.NewGuid():N}"[..18],
             CapabilityId = binding.CapabilityId,
             Route = binding.Route,
             PrincipalId = "system:high-level-coordinator",
@@ -328,8 +341,11 @@ public sealed class HighLevelQueryToolMediator
                 {
                     var timeCandidates = item.TryGetProperty("time_candidates", out var timeNode) &&
                                          timeNode.ValueKind == JsonValueKind.Array
-                        ? string.Join("、", timeNode.EnumerateArray().Select(element => element.GetString()).Where(text => !string.IsNullOrWhiteSpace(text)))
+                        ? string.Join("、", timeNode.EnumerateArray()
+                            .Select(element => element.GetString())
+                            .Where(text => !string.IsNullOrWhiteSpace(text)))
                         : string.Empty;
+
                     var snippet = item.TryGetProperty("snippet", out var snippetNode)
                         ? snippetNode.GetString() ?? string.Empty
                         : string.Empty;
@@ -361,14 +377,15 @@ public sealed class HighLevelQueryToolMediator
                 : string.Empty;
             var sources = doc.RootElement.TryGetProperty("sources_used", out var sourcesNode) &&
                           sourcesNode.ValueKind == JsonValueKind.Array
-                ? string.Join("、", sourcesNode.EnumerateArray().Select(node => node.GetString()).Where(text => !string.IsNullOrWhiteSpace(text)))
+                ? string.Join("、", sourcesNode.EnumerateArray()
+                    .Select(node => node.GetString())
+                    .Where(text => !string.IsNullOrWhiteSpace(text)))
                 : string.Empty;
 
-            var reply = BuildTransportReply(mode, returnedQuery, items, sources, retrievedAt);
             return new HighLevelQueryToolResult
             {
                 Success = true,
-                Reply = reply,
+                Reply = BuildTransportReply(mode, returnedQuery, items, sources, retrievedAt),
                 ToolId = toolId,
                 Engine = mode,
                 Results = items
@@ -378,9 +395,39 @@ public sealed class HighLevelQueryToolMediator
         {
             _logger.LogError(ex, "Failed to parse high-level transport result for {ToolId}", toolId);
             return HighLevelQueryToolResult.Fail(
-                "交通查詢工具的回傳結果無法解析。",
+                "交通查詢結果無法解析。",
                 "transport_result_parse_failed");
         }
+    }
+
+    private static string BuildSearchReply(
+        string engine,
+        string query,
+        IReadOnlyList<HighLevelQuerySearchResult> results)
+    {
+        var lines = new List<string>
+        {
+            $"已使用 {engine} 搜尋：{query}",
+            string.Empty
+        };
+
+        if (results.Count == 0)
+        {
+            lines.Add("目前沒有取得可用結果，建議換一組更明確的關鍵詞再試一次。");
+            return string.Join('\n', lines);
+        }
+
+        foreach (var result in results)
+        {
+            lines.Add($"{result.Rank}. {result.Title}");
+            if (!string.IsNullOrWhiteSpace(result.Snippet))
+                lines.Add(result.Snippet);
+            if (!string.IsNullOrWhiteSpace(result.Url))
+                lines.Add(result.Url);
+            lines.Add(string.Empty);
+        }
+
+        return string.Join('\n', lines.Where(line => line != null));
     }
 
     private static string BuildTransportReply(
@@ -397,7 +444,6 @@ public sealed class HighLevelQueryToolMediator
 
         if (!string.IsNullOrWhiteSpace(retrievedAt))
             lines.Add($"查詢時間：{retrievedAt}");
-
         if (!string.IsNullOrWhiteSpace(sources))
             lines.Add($"來源：{sources}");
 
@@ -405,7 +451,7 @@ public sealed class HighLevelQueryToolMediator
 
         if (results.Count == 0)
         {
-            lines.Add("目前沒有取得明確班次候選。可改用更完整條件，例如起訖地、日期與時間。");
+            lines.Add("目前沒有取得可用班次結果，建議換一組更完整的起訖站與時間條件。");
             return string.Join('\n', lines);
         }
 
