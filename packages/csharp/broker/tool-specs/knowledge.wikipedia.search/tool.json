@@ -1,0 +1,66 @@
+{
+  "tool_id": "knowledge.wikipedia.search",
+  "display_name": "Wikipedia Search",
+  "summary": "Search Wikipedia through a broker-mediated route for relation and knowledge lookups.",
+  "kind": "knowledge",
+  "status": "active",
+  "version": "2026-03-26",
+  "tags": ["wikipedia", "knowledge", "relation", "high-level"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "knowledge",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 30, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "knowledge.wikipedia.search",
+      "route": "knowledge_wikipedia_search",
+      "purpose": "Broker-mediated Wikipedia search for high-level relation and knowledge queries."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string" },
+      "locale": { "type": "string" },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 10 }
+    },
+    "required": ["query"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "engine": { "type": "string" },
+      "query": { "type": "string" },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rank": { "type": "integer" },
+            "title": { "type": "string" },
+            "url": { "type": "string" },
+            "snippet": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["wikipedia.org"]
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "cache_ttl_seconds": 600,
+    "default_limit": 5
+  },
+  "response_contract": {
+    "must_include_engine": true,
+    "must_return_ranked_results": true,
+    "result_wording": "Return ranked Wikipedia results with URLs and concise extracts."
+  }
+}
