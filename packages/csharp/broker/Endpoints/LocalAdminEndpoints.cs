@@ -387,6 +387,32 @@ public static class LocalAdminEndpoints
                 }));
         });
 
+        localAdmin.MapGet("/browser/executions", (HttpContext ctx, LocalAdminAuthService auth, BrowserExecutionRuntimeService runtimeService) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var principalId = ctx.Request.Query["principal_id"].ToString();
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var limit = int.TryParse(limitValue, out var parsedLimit) ? parsedLimit : 20;
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                items = runtimeService.ListRecentExecutions(limit, string.IsNullOrWhiteSpace(principalId) ? null : principalId)
+            }));
+        });
+
+        localAdmin.MapGet("/browser/executions/{documentId}", (HttpContext ctx, LocalAdminAuthService auth, BrowserExecutionRuntimeService runtimeService, string documentId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var decoded = Uri.UnescapeDataString(documentId);
+            var item = runtimeService.ReadExecution(decoded);
+            return item == null
+                ? Results.NotFound(ApiResponseHelper.Error("Browser execution evidence not found.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
         localAdmin.MapGet("/deployment/targets", (HttpContext ctx, LocalAdminAuthService auth, AzureIisDeploymentTargetService service) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
