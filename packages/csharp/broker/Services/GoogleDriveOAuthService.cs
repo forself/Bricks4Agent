@@ -121,7 +121,7 @@ public sealed class GoogleDriveOAuthService
             RedirectUri = redirectUri,
             StateToken = stateToken,
             OAuthState = "pending",
-            ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+            ExpiresAt = DateTime.UtcNow.AddMinutes(60)
         };
         _db.Insert(state);
 
@@ -173,10 +173,20 @@ public sealed class GoogleDriveOAuthService
 
         var client = LoadOAuthClient(_options.OAuthClientJsonPath);
         var tokenResponse = await ExchangeAuthorizationCodeAsync(client, state.RedirectUri, code, cancellationToken);
+        if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            return Fail("google_oauth_missing_access_token");
         if (string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
             return Fail("google_oauth_missing_refresh_token");
 
-        var googleEmail = await ResolveGoogleEmailAsync(tokenResponse.AccessToken, cancellationToken);
+        var googleEmail = string.Empty;
+        try
+        {
+            googleEmail = await ResolveGoogleEmailAsync(tokenResponse.AccessToken, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Google Drive OAuth completed token exchange but userinfo lookup failed for {Channel}/{UserId}", state.Channel, state.UserId);
+        }
         var existing = GetCredential(state.Channel, state.UserId);
         if (existing == null)
         {

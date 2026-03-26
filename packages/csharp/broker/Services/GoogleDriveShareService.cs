@@ -14,7 +14,7 @@ public sealed class GoogleDriveDeliveryOptions
     public string DefaultFolderId { get; set; } = string.Empty;
     public string DefaultShareMode { get; set; } = "anyone_with_link";
     public string DefaultPermissionRole { get; set; } = "reader";
-    public string DelegatedRedirectUri { get; set; } = "http://localhost:5361/api/v1/google-drive/oauth/callback";
+    public string DelegatedRedirectUri { get; set; } = "http://127.0.0.1:5361/api/v1/google-drive/oauth/callback";
 }
 
 public sealed class GoogleDriveShareRequest
