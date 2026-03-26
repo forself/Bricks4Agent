@@ -1397,6 +1397,16 @@ try
         AssertTrue(requestedModelNode.GetProperty("alias").GetString() == "execution-strong", "runtime descriptor preserves planner-requested model alias");
         AssertTrue(runtimeDescriptorDoc.RootElement.TryGetProperty("llm", out var llmNode), "runtime descriptor includes forwarded llm overrides");
         AssertTrue(llmNode.GetProperty("default_model").GetString() == "verify-strong-model", "runtime descriptor forwards validated execution model");
+        var workflowAdmin = new HighLevelWorkflowAdminService(coordinatorDb);
+        var workflowSnapshot = workflowAdmin.GetSnapshot();
+        AssertTrue(workflowSnapshot.ExecutionIntents.Count > 0, "workflow admin service lists recent execution intents");
+        AssertTrue(workflowSnapshot.Handoffs.Count > 0, "workflow admin service lists recent handoffs");
+        var latestIntentDoc = workflowSnapshot.ExecutionIntents.First(item => item.UserId == "line-user-a").DocumentId;
+        var latestIntent = workflowAdmin.ReadExecutionIntent(latestIntentDoc);
+        AssertTrue(latestIntent != null && latestIntent.TaskType == "code_gen", "workflow admin service reads execution intent detail");
+        var latestHandoffDoc = workflowSnapshot.Handoffs.First().DocumentId;
+        var latestHandoff = workflowAdmin.ReadHandoff(latestHandoffDoc);
+        AssertTrue(latestHandoff != null && latestHandoff.TaskType == "code_gen", "workflow admin service reads handoff detail");
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");

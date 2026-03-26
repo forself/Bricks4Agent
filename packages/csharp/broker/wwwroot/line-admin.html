@@ -79,6 +79,7 @@ textarea{min-height:110px;resize:vertical}
     </div>
     <nav class="nav">
       <button data-tab="line" class="active">LINE 與使用者</button>
+      <button data-tab="workflow">Workflow</button>
       <button data-tab="browser">Browser 綁定</button>
       <button data-tab="deployment">Deployment</button>
       <button data-tab="tools">Tool Specs</button>
@@ -231,6 +232,27 @@ textarea{min-height:110px;resize:vertical}
             <button class="button primary" id="send-message">送出訊息</button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section id="tab-workflow" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>Tasks / Plans</h2>
+          <button class="button" id="refresh-workflow">重新整理</button>
+        </div>
+        <h3>Recent Tasks</h3>
+        <div class="json" id="workflow-tasks-json">尚未載入 tasks</div>
+        <h3>Recent Plans</h3>
+        <div class="json" id="workflow-plans-json">尚未載入 plans</div>
+      </div>
+      <div class="panel stack">
+        <h2>Execution Intents</h2>
+        <div class="list" id="workflow-intents-list"></div>
+        <div class="json" id="workflow-intent-detail-json">尚未選取 execution intent</div>
+        <h2>Handoffs</h2>
+        <div class="list" id="workflow-handoffs-list"></div>
+        <div class="json" id="workflow-handoff-detail-json">尚未選取 handoff</div>
       </div>
     </section>
 
@@ -397,6 +419,7 @@ const state = {
   selectedUser: null,
   system: null,
   registrationPolicy: "allow_all",
+  workflow: { tasks: [], plans: [], executionIntents: [], handoffs: [], selectedIntent: null, selectedIntentDocumentId: "", selectedHandoff: null, selectedHandoffDocumentId: "" },
   browser: { siteBindings: [], userGrants: [], systemBindings: [], leases: [], executions: [], selectedExecution: null, selectedExecutionDocumentId: "" },
   deploymentTargets: [],
   deploymentExecutions: [],
@@ -407,6 +430,7 @@ const state = {
   selectedTool: null,
   drive: { status: null, oauthStatus: null, credentials: [] },
   browserLoaded: false,
+  workflowLoaded: false,
   deploymentLoaded: false,
   toolsLoaded: false,
   authStatus: null
@@ -631,6 +655,69 @@ function renderMessages() {
   container.scrollTop = container.scrollHeight;
 }
 
+function renderWorkflow() {
+  byId("workflow-tasks-json").textContent = prettyJson(state.workflow.tasks);
+  byId("workflow-plans-json").textContent = prettyJson(state.workflow.plans);
+  renderWorkflowExecutionIntents();
+  renderWorkflowHandoffs();
+}
+
+function renderWorkflowExecutionIntents() {
+  const list = byId("workflow-intents-list");
+  const detail = byId("workflow-intent-detail-json");
+  list.innerHTML = "";
+  const items = state.workflow.executionIntents || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="notice">尚無 execution intents</div>';
+    detail.textContent = "尚未選取 execution intent";
+    return;
+  }
+
+  const selectedDocumentId = state.workflow.selectedIntentDocumentId || items[0].documentId;
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item" + (item.documentId === selectedDocumentId ? " active" : "");
+    button.innerHTML = `
+      <div class="item-title">${escapeHtml(item.userId || item.documentId)}</div>
+      <div class="small muted mono">${escapeHtml(item.taskType || "-")} / ${escapeHtml(item.stage || "-")}</div>
+      <div class="small">${escapeHtml(item.goal || "")}</div>
+    `;
+    button.addEventListener("click", () => wrapAction(() => loadWorkflowExecutionIntentDetail(item.documentId))());
+    list.appendChild(button);
+  }
+
+  detail.textContent = prettyJson(state.workflow.selectedIntent || items[0]);
+}
+
+function renderWorkflowHandoffs() {
+  const list = byId("workflow-handoffs-list");
+  const detail = byId("workflow-handoff-detail-json");
+  list.innerHTML = "";
+  const items = state.workflow.handoffs || [];
+  if (!items.length) {
+    list.innerHTML = '<div class="notice">尚無 handoffs</div>';
+    detail.textContent = "尚未選取 handoff";
+    return;
+  }
+
+  const selectedDocumentId = state.workflow.selectedHandoffDocumentId || items[0].documentId;
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item" + (item.documentId === selectedDocumentId ? " active" : "");
+    button.innerHTML = `
+      <div class="item-title">${escapeHtml(item.taskId || item.documentId)}</div>
+      <div class="small muted mono">${escapeHtml(item.taskType || "-")} / ${escapeHtml(item.planId || "-")}</div>
+      <div class="small">${escapeHtml(item.goal || "")}</div>
+    `;
+    button.addEventListener("click", () => wrapAction(() => loadWorkflowHandoffDetail(item.documentId))());
+    list.appendChild(button);
+  }
+
+  detail.textContent = prettyJson(state.workflow.selectedHandoff || items[0]);
+}
+
 function renderBrowser() {
   byId("site-bindings-json").textContent = prettyJson(state.browser.siteBindings);
   byId("user-grants-json").textContent = prettyJson(state.browser.userGrants);
@@ -739,6 +826,10 @@ async function showTab(tab) {
   for (const section of document.querySelectorAll("main > section")) {
     section.classList.toggle("hidden", section.id !== `tab-${tab}`);
   }
+  if (tab === "workflow" && !state.workflowLoaded) {
+    await loadWorkflow();
+    state.workflowLoaded = true;
+  }
   if (tab === "browser" && !state.browserLoaded) {
     await loadBrowser();
     state.browserLoaded = true;
@@ -789,6 +880,34 @@ async function loadRegistrationPolicy() {
   const result = await request("/api/v1/local-admin/line/registration-policy");
   state.registrationPolicy = result.policy || "allow_all";
   byId("registration-policy").value = state.registrationPolicy;
+}
+
+async function loadWorkflow() {
+  const result = await request("/api/v1/local-admin/workflow/summary");
+  state.workflow.tasks = result.tasks || [];
+  state.workflow.plans = result.plans || [];
+  state.workflow.executionIntents = result.executionIntents || [];
+  state.workflow.handoffs = result.handoffs || [];
+  state.workflow.selectedIntent = null;
+  state.workflow.selectedIntentDocumentId = "";
+  state.workflow.selectedHandoff = null;
+  state.workflow.selectedHandoffDocumentId = "";
+  state.workflowLoaded = true;
+  renderWorkflow();
+}
+
+async function loadWorkflowExecutionIntentDetail(documentId) {
+  const result = await request(`/api/v1/local-admin/workflow/execution-intents/${encodeURIComponent(documentId)}`);
+  state.workflow.selectedIntent = result.item || null;
+  state.workflow.selectedIntentDocumentId = documentId;
+  renderWorkflow();
+}
+
+async function loadWorkflowHandoffDetail(documentId) {
+  const result = await request(`/api/v1/local-admin/workflow/handoffs/${encodeURIComponent(documentId)}`);
+  state.workflow.selectedHandoff = result.item || null;
+  state.workflow.selectedHandoffDocumentId = documentId;
+  renderWorkflow();
 }
 
 async function loadDriveAdmin() {
@@ -898,6 +1017,10 @@ async function refreshAll() {
   await sleep(120);
   await loadDriveAdmin();
   await sleep(120);
+  if (state.workflowLoaded) {
+    await loadWorkflow();
+    await sleep(120);
+  }
   if (state.browserLoaded) {
     await loadBrowser();
     await sleep(120);
@@ -1280,6 +1403,7 @@ function bindEvents() {
   byId("refresh-all").addEventListener("click", wrapAction(refreshAll));
   byId("logout-admin").addEventListener("click", wrapAction(logoutAdmin));
   byId("auto-refresh-toggle").addEventListener("click", toggleAutoRefresh);
+  byId("refresh-workflow").addEventListener("click", wrapAction(loadWorkflow));
   byId("refresh-users").addEventListener("click", wrapAction(loadUsers));
   byId("refresh-conversations").addEventListener("click", wrapAction(loadConversations));
   byId("save-registration-policy").addEventListener("click", wrapAction(saveRegistrationPolicy));

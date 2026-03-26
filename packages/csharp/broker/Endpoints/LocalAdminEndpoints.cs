@@ -102,6 +102,38 @@ public static class LocalAdminEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { total = users.Count, users }));
         });
 
+        localAdmin.MapGet("/workflow/summary", (HttpContext ctx, LocalAdminAuthService auth, HighLevelWorkflowAdminService workflow) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var limit = int.TryParse(limitValue, out var parsedLimit) ? parsedLimit : 20;
+            return Results.Ok(ApiResponseHelper.Success(workflow.GetSnapshot(limit)));
+        });
+
+        localAdmin.MapGet("/workflow/execution-intents/{documentId}", (HttpContext ctx, LocalAdminAuthService auth, HighLevelWorkflowAdminService workflow, string documentId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var item = workflow.ReadExecutionIntent(Uri.UnescapeDataString(documentId));
+            return item == null
+                ? Results.NotFound(ApiResponseHelper.Error("Execution intent not found.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
+        localAdmin.MapGet("/workflow/handoffs/{documentId}", (HttpContext ctx, LocalAdminAuthService auth, HighLevelWorkflowAdminService workflow, string documentId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var item = workflow.ReadHandoff(Uri.UnescapeDataString(documentId));
+            return item == null
+                ? Results.NotFound(ApiResponseHelper.Error("Handoff not found.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
         localAdmin.MapGet("/line/conversations", (HttpContext ctx, LocalAdminAuthService auth, LineChatGateway gateway) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
