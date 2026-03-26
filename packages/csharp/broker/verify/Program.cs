@@ -1479,6 +1479,11 @@ try
         AssertTrue(generatedDocFiles.Length > 0, "doc_gen confirm writes a markdown artifact into user documents root");
         var generatedDocContent = File.ReadAllText(generatedDocFiles[0], Encoding.UTF8);
         AssertTrue(generatedDocContent.Contains("verify-reply", StringComparison.Ordinal), "doc_gen artifact preserves generated UTF-8 content");
+        var recordedArtifacts = coordinatorWorkspaceService.ListArtifacts("line-doc-user");
+        AssertTrue(recordedArtifacts.Count > 0, "doc_gen confirm records artifact metadata");
+        AssertTrue(recordedArtifacts[0].DeliveryMode == "local_only", "doc_gen artifact record preserves local delivery mode");
+        var recordedArtifact = coordinatorWorkspaceService.ReadArtifact($"hlm.artifact.line.line-doc-user.{recordedArtifacts[0].ArtifactId}");
+        AssertTrue(recordedArtifact != null && recordedArtifact.FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase), "artifact detail can be read by document id");
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");

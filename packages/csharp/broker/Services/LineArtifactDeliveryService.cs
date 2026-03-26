@@ -15,6 +15,10 @@ public sealed class LineArtifactDeliveryRequest
     public string ShareMode { get; set; } = "anyone_with_link";
     public bool SendLineNotification { get; set; } = true;
     public string NotificationTitle { get; set; } = string.Empty;
+    public string Source { get; set; } = "local_admin";
+    public string RelatedTaskType { get; set; } = string.Empty;
+    public string RelatedDraftId { get; set; } = string.Empty;
+    public string RelatedTaskId { get; set; } = string.Empty;
 }
 
 public sealed class LineArtifactDeliveryResult
@@ -28,6 +32,7 @@ public sealed class LineArtifactDeliveryResult
     public bool UploadedToGoogleDrive { get; set; }
     public GoogleDriveShareResult? GoogleDrive { get; set; }
     public HighLevelLineNotification? Notification { get; set; }
+    public HighLevelLineArtifactRecord? Artifact { get; set; }
 }
 
 public sealed class LineArtifactDeliveryService
@@ -122,6 +127,28 @@ public sealed class LineArtifactDeliveryService
                 BuildNotificationBody(fileName, filePath, driveResult));
         }
 
+        var artifact = _workspaceService.RecordArtifact(new HighLevelLineArtifactRecord
+        {
+            Channel = "line",
+            UserId = request.UserId,
+            Source = string.IsNullOrWhiteSpace(request.Source) ? "local_admin" : request.Source.Trim(),
+            RelatedTaskType = request.RelatedTaskType?.Trim() ?? string.Empty,
+            RelatedDraftId = request.RelatedDraftId?.Trim() ?? string.Empty,
+            RelatedTaskId = request.RelatedTaskId?.Trim() ?? string.Empty,
+            Success = true,
+            Message = "ok",
+            DeliveryMode = driveResult?.Success == true ? "google_drive" : "local_only",
+            FileName = fileName,
+            Format = format,
+            FilePath = filePath,
+            DocumentsRoot = managedPaths.DocumentsRoot,
+            UploadedToGoogleDrive = driveResult?.Success == true,
+            GoogleDriveFileId = driveResult?.FileId ?? string.Empty,
+            GoogleDriveWebViewLink = driveResult?.WebViewLink ?? string.Empty,
+            GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
+            NotificationId = notification?.NotificationId ?? string.Empty
+        });
+
         return new LineArtifactDeliveryResult
         {
             Success = true,
@@ -132,7 +159,8 @@ public sealed class LineArtifactDeliveryService
             FileName = fileName,
             UploadedToGoogleDrive = driveResult?.Success == true,
             GoogleDrive = driveResult,
-            Notification = notification
+            Notification = notification,
+            Artifact = artifact
         };
     }
 

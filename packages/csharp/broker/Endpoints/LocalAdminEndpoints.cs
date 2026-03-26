@@ -644,6 +644,28 @@ public static class LocalAdminEndpoints
                 : Results.BadRequest(ApiResponseHelper.Error(result.Message));
         });
 
+        localAdmin.MapGet("/line/users/{userId}/artifacts", (HttpContext ctx, LocalAdminAuthService auth, HighLevelLineWorkspaceService workspaceService, string userId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var limit = int.TryParse(limitValue, out var parsedLimit) ? parsedLimit : 50;
+            var items = workspaceService.ListArtifacts(userId, limit);
+            return Results.Ok(ApiResponseHelper.Success(new { user_id = userId, total = items.Count, items }));
+        });
+
+        localAdmin.MapGet("/line/artifacts/{documentId}", (HttpContext ctx, LocalAdminAuthService auth, HighLevelLineWorkspaceService workspaceService, string documentId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var item = workspaceService.ReadArtifact(Uri.UnescapeDataString(documentId));
+            return item == null
+                ? Results.NotFound(ApiResponseHelper.Error("Artifact not found.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
         localAdmin.MapGet("/tool-specs", (HttpContext ctx, LocalAdminAuthService auth, IToolSpecRegistry registry) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
