@@ -176,6 +176,7 @@ var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry
 builder.Services.AddSingleton(toolSpecRegistryOptions);
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
+builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();

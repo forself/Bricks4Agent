@@ -487,6 +487,34 @@ public static class LocalAdminEndpoints
                 : Results.BadRequest(ApiResponseHelper.Error(result.Message));
         });
 
+        localAdmin.MapPost("/line/users/artifacts/deliver", async (HttpContext ctx, LocalAdminAuthService auth, LineArtifactDeliveryService service, CancellationToken cancellationToken) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "user_id", out var userId, out var error))
+                return error!;
+
+            var result = await service.GenerateAndDeliverAsync(new LineArtifactDeliveryRequest
+            {
+                UserId = userId,
+                FileName = GetString(body, "file_name", string.Empty),
+                Format = GetString(body, "format", string.Empty),
+                Content = GetString(body, "content", string.Empty),
+                UploadToGoogleDrive = GetBool(body, "upload_to_google_drive", true),
+                IdentityMode = GetString(body, "identity_mode", "user_delegated"),
+                FolderId = GetString(body, "folder_id", string.Empty),
+                ShareMode = GetString(body, "share_mode", "anyone_with_link"),
+                SendLineNotification = GetBool(body, "send_line_notification", true),
+                NotificationTitle = GetString(body, "notification_title", string.Empty)
+            }, cancellationToken);
+
+            return result.Success
+                ? Results.Ok(ApiResponseHelper.Success(result))
+                : Results.BadRequest(ApiResponseHelper.Error(result.Message));
+        });
+
         localAdmin.MapGet("/tool-specs", (HttpContext ctx, LocalAdminAuthService auth, IToolSpecRegistry registry) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))

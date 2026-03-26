@@ -156,6 +156,71 @@ textarea{min-height:110px;resize:vertical}
           </div>
         </div>
         <div class="panel">
+          <div class="row" style="justify-content:space-between">
+            <h3>Google Drive 交付</h3>
+            <button class="button" id="refresh-drive">重新整理 Drive</button>
+          </div>
+          <div class="stack">
+            <div id="drive-status-json" class="json">尚未載入 Drive 狀態。</div>
+            <div id="drive-selected-credential-json" class="json">尚未選取使用者。</div>
+            <div class="row">
+              <button class="button warn" id="start-drive-oauth">開始 Google 授權</button>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="artifact-file-name">檔名</label>
+                <input id="artifact-file-name" value="line-artifact.txt">
+              </div>
+              <div class="field">
+                <label for="artifact-format">格式</label>
+                <select id="artifact-format">
+                  <option value="txt">txt</option>
+                  <option value="md">md</option>
+                  <option value="json">json</option>
+                  <option value="html">html</option>
+                  <option value="csv">csv</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="artifact-folder-id">Drive Folder ID</label>
+                <input id="artifact-folder-id">
+              </div>
+              <div class="field">
+                <label for="artifact-share-mode">分享模式</label>
+                <select id="artifact-share-mode">
+                  <option value="anyone_with_link">anyone_with_link</option>
+                  <option value="restricted">restricted</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="artifact-identity-mode">Drive 身分</label>
+                <select id="artifact-identity-mode">
+                  <option value="user_delegated">user_delegated</option>
+                  <option value="system_account">system_account</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="artifact-notification-title">通知標題</label>
+                <input id="artifact-notification-title" value="檔案已完成">
+              </div>
+              <div class="field full">
+                <label for="artifact-content">內容</label>
+                <textarea id="artifact-content" placeholder="輸入要寫入檔案的內容"></textarea>
+              </div>
+              <div class="field">
+                <label><input type="checkbox" id="artifact-upload" checked> 上傳到 Google Drive</label>
+              </div>
+              <div class="field">
+                <label><input type="checkbox" id="artifact-notify" checked> 完成後通知 LINE 使用者</label>
+              </div>
+              <div class="field full">
+                <button class="button primary" id="deliver-artifact">產生並交付檔案</button>
+              </div>
+            </div>
+            <div id="artifact-result-json" class="json">尚未產生交付結果。</div>
+          </div>
+        </div>
+        <div class="panel">
           <h3>對話紀錄</h3>
           <div id="messages" class="messages"></div>
           <div class="field full" style="margin-top:12px">
@@ -308,6 +373,7 @@ const state = {
   toolSpecs: [],
   selectedToolId: "",
   selectedTool: null,
+  drive: { status: null, oauthStatus: null, credentials: [] },
   browserLoaded: false,
   deploymentLoaded: false,
   toolsLoaded: false,
@@ -487,6 +553,28 @@ function renderSelectedUser() {
   byId("selected-user-meta").textContent = meta.join(" | ");
   byId("selected-user-json").textContent = prettyJson(user);
   syncPermissionForm();
+  renderDrivePanel();
+}
+
+function renderDrivePanel() {
+  byId("drive-status-json").textContent = prettyJson({
+    share: state.drive.status,
+    oauth: state.drive.oauthStatus
+  });
+
+  if (!state.selectedUserId) {
+    byId("drive-selected-credential-json").textContent = "尚未選取使用者。";
+    return;
+  }
+
+  const credential = (state.drive.credentials || []).find(
+    (item) => item.channel === "line" && item.userId === state.selectedUserId
+  );
+
+  byId("drive-selected-credential-json").textContent = prettyJson({
+    userId: state.selectedUserId,
+    credential: credential || null
+  });
 }
 
 function renderMessages() {
@@ -610,6 +698,21 @@ async function loadRegistrationPolicy() {
   byId("registration-policy").value = state.registrationPolicy;
 }
 
+async function loadDriveAdmin() {
+  const status = await request("/api/v1/local-admin/delivery/google-drive/status");
+  await sleep(75);
+  const oauthStatus = await request("/api/v1/local-admin/delivery/google-drive/oauth/status");
+  await sleep(75);
+  const credentials = await request("/api/v1/local-admin/delivery/google-drive/oauth/credentials");
+  state.drive.status = status;
+  state.drive.oauthStatus = oauthStatus;
+  state.drive.credentials = credentials.items || [];
+  if (!byId("artifact-folder-id").value && status.defaultFolderId) {
+    byId("artifact-folder-id").value = status.defaultFolderId;
+  }
+  renderDrivePanel();
+}
+
 async function loadBrowser() {
   const siteBindings = await request("/api/v1/local-admin/browser/site-bindings");
   await sleep(75);
@@ -675,6 +778,8 @@ async function refreshAll() {
   await loadConversations();
   await sleep(120);
   await loadRegistrationPolicy();
+  await sleep(120);
+  await loadDriveAdmin();
   await sleep(120);
   if (state.browserLoaded) {
     await loadBrowser();
@@ -753,6 +858,41 @@ async function clearConversation() {
   await loadConversations();
   await loadMessages(state.selectedUserId);
   setNotice("對話已清除。");
+}
+
+async function startDriveOAuth() {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  const result = await request("/api/v1/local-admin/delivery/google-drive/oauth/start", {
+    method: "POST",
+    body: JSON.stringify({
+      channel: "line",
+      user_id: state.selectedUserId
+    })
+  });
+  window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
+  setNotice("已開啟 Google 授權視窗。完成授權後請重新整理 Drive 狀態。");
+}
+
+async function deliverArtifact() {
+  if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  const result = await request("/api/v1/local-admin/line/users/artifacts/deliver", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: state.selectedUserId,
+      file_name: byId("artifact-file-name").value.trim(),
+      format: byId("artifact-format").value,
+      content: byId("artifact-content").value,
+      upload_to_google_drive: byId("artifact-upload").checked,
+      identity_mode: byId("artifact-identity-mode").value,
+      folder_id: byId("artifact-folder-id").value.trim(),
+      share_mode: byId("artifact-share-mode").value,
+      send_line_notification: byId("artifact-notify").checked,
+      notification_title: byId("artifact-notification-title").value.trim()
+    })
+  });
+  byId("artifact-result-json").textContent = prettyJson(result);
+  await loadDriveAdmin();
+  setNotice("檔案已建立並送交交付流程。");
 }
 
 async function saveSiteBinding() {
@@ -989,6 +1129,9 @@ function bindEvents() {
   byId("approve-user").addEventListener("click", wrapAction(() => reviewRegistration("approve")));
   byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
   byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
+  byId("refresh-drive").addEventListener("click", wrapAction(loadDriveAdmin));
+  byId("start-drive-oauth").addEventListener("click", wrapAction(startDriveOAuth));
+  byId("deliver-artifact").addEventListener("click", wrapAction(deliverArtifact));
   byId("send-message").addEventListener("click", wrapAction(sendMessage));
   byId("clear-conversation").addEventListener("click", wrapAction(clearConversation));
   byId("refresh-browser").addEventListener("click", wrapAction(loadBrowser));
