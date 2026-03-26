@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <Compile Remove="verify\**\*.cs" />
+    <Content Remove="verify\**\*" />
     <EmbeddedResource Remove="verify\**\*" />
     <None Remove="verify\**\*" />
   </ItemGroup>
