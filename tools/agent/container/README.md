@@ -1,29 +1,46 @@
 # Governed Agent Podman Stack
 
-This directory contains a self-contained development stack for the governed agent flow:
+This directory contains a narrow Podman stack for the governed agent execution path, not the whole Bricks4Agent system.
 
-- `mock-ollama`: deterministic upstream LLM stub
+Included services:
+
+- `mock-ollama`: deterministic Ollama-style upstream stub
 - `mock-openai`: deterministic OpenAI-compatible upstream stub
-- `broker`: control plane, scoped-session issuer, capability/scope policy, and LLM reverse proxy
-- `agent`: governed agent container that can only talk to the broker
+- `broker`: scoped-session issuer, capability/scope policy engine, and LLM proxy
+- `agent`: governed agent container that only talks to the broker
+- `file-worker` and `line-worker`: optional worker containers in the default stack
 
-## What This Proves
+## Scope
 
-The stack is intentionally narrow. It verifies that:
+This stack proves the broker-mediated agent path. It does not prove the full production system.
+
+What it proves:
 
 - the agent container does not need a direct provider API key
 - runtime spec and model traffic are fetched through the broker
-- the broker forwards LLM traffic to an upstream service
-- the agent can only operate with the broker-issued session, role, capability, and scope
+- the broker forwards model traffic to an upstream service
+- the agent only operates with the broker-issued session, role, capability, and scope
 - the broker can issue task-specific runtime defaults and capability grants from `runtime_descriptor`
+- worker containers can connect to the broker function pool in local container development
+
+What it does not prove:
+
+- the canonical LINE ingress path
+- the local admin console at `line-admin.html`
+- Google Drive delivery
+- Azure VM IIS deployment
+- browser-governed execution
+- the full high-level conversation/query/production routing flow
+
+Those parts currently live in the Windows sidecar path under [`packages/csharp/workers/line-worker/README.md`](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md) and the broker runtime itself.
 
 ## Stack Variants
 
-- `compose.yml`: mock Ollama protocol stack
+- `compose.yml`: mock Ollama protocol stack with broker, governed agent, file worker, and LINE worker
 - `compose.openai-compatible.yml`: mock OpenAI-compatible stack
-- `compose.ollama-host.yml`: broker + agent against a host-side Ollama server
+- `compose.ollama-host.yml`: broker + governed agent against a host-side Ollama server
 
-## Build And Run
+## Canonical Local Use
 
 From the repo root:
 
@@ -46,22 +63,40 @@ set STACK_MODEL=qwen3-coder:30b
 podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
-To stop and remove the stack:
+To stop and remove a stack:
 
 ```bash
 podman compose -f tools/agent/container/compose.yml down -v
 ```
 
+## Port Notes
+
+Default exposed broker ports:
+
+- `compose.yml`: `5000`
+- `compose.openai-compatible.yml`: `5361`
+- `compose.ollama-host.yml`: `5002`
+
+The `5361` default in `compose.openai-compatible.yml` collides with the Windows LINE sidecar broker default. If the sidecar is running, override the compose broker port before starting:
+
+```bash
+set BROKER_PORT=5601
+podman compose -f tools/agent/container/compose.openai-compatible.yml up --build --abort-on-container-exit --exit-code-from agent
+```
+
+The default LINE worker container webhook port in `compose.yml` is `19090`. That is a worker-container development port, not the canonical Windows sidecar ingress port `5357`.
+
 ## Default Development Identity
 
-The compose stack seeds a development principal and task into the broker:
+The compose stacks seed development principals and tasks into the broker. The default stack uses:
 
 - `principal_id`: `prn_podman_dev`
 - `task_id`: `task_podman_dev`
 - `role_id`: `role_reader`
 
-The ECDH keypair, broker token secret, and master key embedded in the compose file are development-only values.
-Do not reuse them outside local testing.
+The other compose files seed their own development principal/task pairs.
+
+The ECDH keypair, broker token secret, and master key embedded in the compose files are development-only values. Do not reuse them outside local testing.
 
 Each compose file also seeds a `runtime_descriptor` onto the task. That descriptor is the task architecture hook used by the broker to issue:
 
@@ -90,16 +125,29 @@ Supported overrides:
 - `BROKER_PRINCIPAL_ID`
 - `BROKER_TASK_ID`
 - `BROKER_ROLE_ID`
+- `BROKER_TASK_TYPE`
 - `OPENAI_API_KEY`
 - `OPENAI_API_FORMAT`
 - `OLLAMA_BASE_URL`
+- `LINE_CHANNEL_ACCESS_TOKEN`
+- `LINE_CHANNEL_SECRET`
+- `LINE_DEFAULT_RECIPIENT_ID`
+- `LINE_ALLOWED_USER_IDS`
+- `LINE_WEBHOOK_PORT`
 - `AGENT_RUN`
 - `AGENT_VERBOSE`
+- `AGENT_LINE_LISTEN`
+- `AGENT_LINE_POLL_INTERVAL`
 
 ## Switching To A Real Upstream
 
 The broker is already wired to use the upstream through `LlmProxy__BaseUrl`.
-For a real provider, replace the `mock-ollama` service and point `LlmProxy__BaseUrl` to the actual upstream.
+
+For a real provider:
+
+- replace `mock-ollama` or `mock-openai`
+- point `LlmProxy__BaseUrl` to the actual upstream
+- provide the required provider key through environment variables
 
 The governed agent container does not change. It still only knows about:
 
@@ -109,7 +157,7 @@ The governed agent container does not change. It still only knows about:
 - `BROKER_TASK_ID`
 - `BROKER_ROLE_ID`
 
-## LINE Integration Boundary
+## Relationship To The Current LINE Architecture
 
 The canonical LINE production path is:
 
@@ -118,5 +166,22 @@ The canonical LINE production path is:
 - the broker decides `conversation`, `query`, or `production`
 - only confirmed production work becomes task/plan/handoff state
 
-The agent's `--line-listen` mode is kept only as a legacy development path.
-It is not the primary production integration model.
+That production path is currently exercised through the Windows sidecar scripts, not through this Podman stack. The agent's `--line-listen` mode is kept only as a legacy development path. It is not the primary production integration model.
+
+## Practical Reading
+
+Use this Podman stack when you want to verify:
+
+- governed agent bootstrap
+- broker-issued runtime descriptors
+- capability/scope-gated execution
+- upstream model proxying
+- worker container attachment
+
+Do not read a passing Podman run here as proof that:
+
+- the admin console is healthy
+- LINE is reachable from the public internet
+- deployment targets are configured
+- Google Drive delegated delivery is working
+- browser-governed tools are production-ready

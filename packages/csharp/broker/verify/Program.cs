@@ -595,6 +595,18 @@ try
         });
         AssertTrue(builtAnonymous.Success, "browser request builder builds anonymous browser request from registry metadata");
         AssertTrue(builtAnonymous.Request!.IdentityMode == "anonymous", "browser request builder projects identity mode into runtime contract");
+        var builtAnonymousWithoutBinding = builder.TryBuild("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_built_1b",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "read"
+        });
+        AssertTrue(builtAnonymousWithoutBinding.Success, "browser request builder allows anonymous public-open reads without registered site binding");
 
         var builtTooPowerful = builder.TryBuild("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
         {
@@ -774,6 +786,39 @@ try
         });
         AssertTrue(previewResult.Success, "browser preview service fetches anonymous public content");
         AssertTrue(previewResult.Result != null && previewResult.Result.Title == "Example Preview", "browser preview service extracts page title");
+
+        var auditService = new AuditService(toolSpecDb);
+        var sharedContextService = new SharedContextService(toolSpecDb, auditService);
+        var activeLease = bindingService.IssueSessionLease(
+            toolId: "browser.reference.anonymous.read",
+            principalId: "principal_1",
+            identityMode: "anonymous",
+            expiresAt: DateTime.UtcNow.AddMinutes(15),
+            siteBindingId: "site_binding_public");
+        var runtimeHttpClient = new HttpClient(new FakeBrowserPreviewHandler())
+        {
+            BaseAddress = new Uri("https://runtime.test/")
+        };
+        var runtimeService = new BrowserExecutionRuntimeService(builder, runtimeHttpClient, sharedContextService, bindingService);
+        var runtimeResult = await runtimeService.ExecuteAnonymousReadAsync("browser.reference.anonymous.read", new BrowserExecutionRequestBuildInput
+        {
+            RequestId = "req_browser_runtime_1",
+            CapabilityId = "browser.read",
+            Route = "browser_read",
+            PrincipalId = "principal_1",
+            TaskId = "task_1",
+            SessionId = "session_1",
+            StartUrl = "https://example.com",
+            IntendedActionLevel = "navigate",
+            SiteBindingId = "site_binding_public",
+            SessionLeaseId = activeLease.SessionLeaseId
+        });
+        AssertTrue(runtimeResult.Success, "browser runtime service executes anonymous public read");
+        AssertTrue(runtimeResult.Result != null && runtimeResult.Result.EvidenceRef == "browser.execution.req_browser_runtime_1", "browser runtime service emits evidence reference");
+        var runtimeEvidence = sharedContextService.ReadLatest("browser.execution.req_browser_runtime_1", "principal_1");
+        AssertTrue(runtimeEvidence != null && runtimeEvidence.ContentType == "application/evidence", "browser runtime service persists browser evidence");
+        var touchedLease = bindingService.GetSessionLease(activeLease.SessionLeaseId);
+        AssertTrue(touchedLease?.LastUsedAt != null, "browser runtime service touches active lease when used");
 
         var deploymentTargetService = new AzureIisDeploymentTargetService(toolSpecDb);
         var deploymentTarget = deploymentTargetService.UpsertTarget(new AzureIisDeploymentTarget

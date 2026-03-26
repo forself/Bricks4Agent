@@ -293,6 +293,28 @@ textarea{min-height:110px;resize:vertical}
           <div class="field"><button class="button danger" id="revoke-lease">撤銷 Lease</button></div>
         </div>
       </div>
+      <div class="panel stack">
+        <h2>Browser Build / Execute</h2>
+        <div class="form-grid">
+          <div class="field"><label>Tool ID</label><input id="browser-tool-id" value="browser.reference.anonymous.read"></div>
+          <div class="field"><label>Capability ID</label><input id="browser-capability-id" value="browser.read"></div>
+          <div class="field"><label>Route</label><input id="browser-route" value="browser_read"></div>
+          <div class="field"><label>Principal ID</label><input id="browser-principal-id" value="prn_dashboard"></div>
+          <div class="field"><label>Task ID</label><input id="browser-task-id" value="task_dashboard"></div>
+          <div class="field"><label>Session ID</label><input id="browser-session-id" value="local_admin"></div>
+          <div class="field"><label>Start URL</label><input id="browser-start-url" value="https://example.com"></div>
+          <div class="field"><label>Action Level</label><select id="browser-action-level"><option value="read">read</option><option value="navigate">navigate</option></select></div>
+          <div class="field"><label>Site Binding ID</label><input id="browser-site-binding-id" placeholder="匿名 public_open 可留空"></div>
+          <div class="field"><label>User Grant ID</label><input id="browser-user-grant-id"></div>
+          <div class="field"><label>System Binding ID</label><input id="browser-system-binding-id"></div>
+          <div class="field"><label>Session Lease ID</label><input id="browser-session-lease-id"></div>
+          <div class="field full"><label>Arguments JSON</label><textarea id="browser-arguments-json">{}</textarea></div>
+          <div class="field full"><label>Scope JSON</label><textarea id="browser-scope-json">{}</textarea></div>
+          <div class="field"><button class="button warn" id="build-browser-request">Build</button></div>
+          <div class="field"><button class="button primary" id="execute-browser-request">Execute</button></div>
+        </div>
+        <div class="json" id="browser-result-json">尚無結果</div>
+      </div>
     </section>
 
     <section id="tab-deployment" class="grid two hidden">
@@ -969,6 +991,44 @@ async function revokeLease() {
   setNotice("Session Lease 已撤銷。");
 }
 
+function buildBrowserRequestPayload() {
+  return {
+    tool_id: byId("browser-tool-id").value.trim(),
+    capability_id: byId("browser-capability-id").value.trim(),
+    route: byId("browser-route").value.trim(),
+    principal_id: byId("browser-principal-id").value.trim(),
+    task_id: byId("browser-task-id").value.trim(),
+    session_id: byId("browser-session-id").value.trim(),
+    start_url: byId("browser-start-url").value.trim(),
+    intended_action_level: byId("browser-action-level").value,
+    site_binding_id: byId("browser-site-binding-id").value.trim() || null,
+    user_grant_id: byId("browser-user-grant-id").value.trim() || null,
+    system_binding_id: byId("browser-system-binding-id").value.trim() || null,
+    session_lease_id: byId("browser-session-lease-id").value.trim() || null,
+    arguments_json: parseJsonField(byId("browser-arguments-json").value),
+    scope_json: parseJsonField(byId("browser-scope-json").value)
+  };
+}
+
+async function buildBrowserRequest() {
+  const result = await request("/api/v1/local-admin/browser/requests/build", {
+    method: "POST",
+    body: JSON.stringify(buildBrowserRequestPayload())
+  });
+  byId("browser-result-json").textContent = prettyJson(result);
+  setNotice("Browser request build 已完成。");
+}
+
+async function executeBrowserRequest() {
+  const result = await request("/api/v1/local-admin/browser/execute", {
+    method: "POST",
+    body: JSON.stringify(buildBrowserRequestPayload())
+  });
+  byId("browser-result-json").textContent = prettyJson(result);
+  await loadBrowser();
+  setNotice("Browser execute 已完成。");
+}
+
 async function saveDeploymentTarget() {
   await request("/api/v1/local-admin/deployment/targets", {
     method: "POST",
@@ -1140,6 +1200,8 @@ function bindEvents() {
   byId("save-system-binding").addEventListener("click", wrapAction(saveSystemBinding));
   byId("issue-lease").addEventListener("click", wrapAction(issueLease));
   byId("revoke-lease").addEventListener("click", wrapAction(revokeLease));
+  byId("build-browser-request").addEventListener("click", wrapAction(buildBrowserRequest));
+  byId("execute-browser-request").addEventListener("click", wrapAction(executeBrowserRequest));
   byId("refresh-deployment").addEventListener("click", wrapAction(loadDeploymentTargets));
   byId("save-deployment-target").addEventListener("click", wrapAction(saveDeploymentTarget));
   byId("preview-deployment").addEventListener("click", wrapAction(previewDeployment));

@@ -343,6 +343,50 @@ public static class LocalAdminEndpoints
                 : Results.Ok(ApiResponseHelper.Success(new { item = lease }));
         });
 
+        localAdmin.MapPost("/browser/requests/build", (HttpContext ctx, LocalAdminAuthService auth, IBrowserExecutionRequestBuilder builder) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                    new[] { "tool_id", "capability_id", "route", "principal_id", "task_id", "session_id", "start_url", "intended_action_level" },
+                    out var values,
+                    out var error))
+            {
+                return error!;
+            }
+
+            var input = BuildBrowserRequestBuildInput(body, values);
+            var result = builder.TryBuild(values["tool_id"], input);
+            return !result.Success
+                ? Results.BadRequest(ApiResponseHelper.Error(result.Error ?? "browser_request_build_failed"))
+                : Results.Ok(ApiResponseHelper.Success(new { request = result.Request }));
+        });
+
+        localAdmin.MapPost("/browser/execute", async (HttpContext ctx, LocalAdminAuthService auth, BrowserExecutionRuntimeService runtimeService, CancellationToken cancellationToken) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequiredFields(body,
+                    new[] { "tool_id", "capability_id", "route", "principal_id", "task_id", "session_id", "start_url", "intended_action_level" },
+                    out var values,
+                    out var error))
+            {
+                return error!;
+            }
+
+            var input = BuildBrowserRequestBuildInput(body, values);
+            var result = await runtimeService.ExecuteAnonymousReadAsync(values["tool_id"], input, cancellationToken);
+            return !result.Success
+                ? Results.BadRequest(ApiResponseHelper.Error(result.Error ?? "browser_execution_failed"))
+                : Results.Ok(ApiResponseHelper.Success(new
+                {
+                    request = result.Request,
+                    result = result.Result
+                }));
+        });
+
         localAdmin.MapGet("/deployment/targets", (HttpContext ctx, LocalAdminAuthService auth, AzureIisDeploymentTargetService service) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
@@ -578,5 +622,26 @@ public static class LocalAdminEndpoints
             SessionId = "local_admin",
             TargetId = targetId,
             ProjectPath = projectPath
+        };
+
+    private static BrowserExecutionRequestBuildInput BuildBrowserRequestBuildInput(JsonElement body, IReadOnlyDictionary<string, string> values)
+        => new()
+        {
+            RequestId = body.TryGetProperty("request_id", out var requestIdProp)
+                ? requestIdProp.GetString() ?? BrokerCore.IdGen.New("breq")
+                : BrokerCore.IdGen.New("breq"),
+            CapabilityId = values["capability_id"],
+            Route = values["route"],
+            PrincipalId = values["principal_id"],
+            TaskId = values["task_id"],
+            SessionId = values["session_id"],
+            StartUrl = values["start_url"],
+            IntendedActionLevel = values["intended_action_level"],
+            ArgumentsJson = body.TryGetProperty("arguments_json", out var argsProp) ? argsProp.GetRawText() : "{}",
+            ScopeJson = body.TryGetProperty("scope_json", out var scopeProp) ? scopeProp.GetRawText() : "{}",
+            SiteBindingId = GetOptionalString(body, "site_binding_id"),
+            UserGrantId = GetOptionalString(body, "user_grant_id"),
+            SystemBindingId = GetOptionalString(body, "system_binding_id"),
+            SessionLeaseId = GetOptionalString(body, "session_lease_id")
         };
 }
