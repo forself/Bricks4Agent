@@ -147,7 +147,7 @@ if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
 if ($null -ne $googleOAuthClientFile) {
     $googleDriveConfig = @{
         OAuthClientJsonPath = $googleOAuthClientFile.FullName
-        DelegatedRedirectUri = "http://localhost:$BrokerPort/api/v1/google-drive/oauth/callback"
+        DelegatedRedirectUri = "http://127.0.0.1:$BrokerPort/api/v1/google-drive/oauth/callback"
     }
     if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_FOLDER_ID)) {
         $googleDriveConfig["DefaultFolderId"] = $env:B4A_GOOGLE_DRIVE_FOLDER_ID.Trim()
