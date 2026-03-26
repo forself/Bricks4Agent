@@ -61,6 +61,7 @@ public sealed class AzureIisDeploymentTargetService
         existing.AppPoolName = target.AppPoolName;
         existing.PhysicalPath = target.PhysicalPath;
         existing.HealthCheckPath = target.HealthCheckPath ?? string.Empty;
+        existing.HealthCheckBaseUrl = target.HealthCheckBaseUrl ?? string.Empty;
         existing.SecretRef = target.SecretRef;
         existing.Status = target.Status;
         existing.MetadataJson = string.IsNullOrWhiteSpace(target.MetadataJson) ? "{}" : target.MetadataJson;
@@ -84,6 +85,7 @@ public sealed class AzureIisDeploymentTargetService
         target.DeploymentMode = deploymentMode;
         target.ApplicationPath = NormalizeApplicationPath(target.ApplicationPath);
         target.HealthCheckPath = NormalizeOptionalPath(target.HealthCheckPath);
+        target.HealthCheckBaseUrl = NormalizeOptionalAbsoluteUrl(target.HealthCheckBaseUrl);
 
         if (deploymentMode == "iis_application" && string.IsNullOrWhiteSpace(target.ApplicationPath))
         {
@@ -143,5 +145,23 @@ public sealed class AzureIisDeploymentTargetService
         return normalized.StartsWith('/')
             ? normalized
             : "/" + normalized;
+    }
+
+    private static string NormalizeOptionalAbsoluteUrl(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var trimmed = value.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+            throw new InvalidOperationException("health_check_base_url must be an absolute URL.");
+
+        if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("health_check_base_url must use http or https.");
+        }
+
+        return uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
     }
 }

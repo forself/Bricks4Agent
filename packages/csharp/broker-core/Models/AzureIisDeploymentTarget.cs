@@ -55,6 +55,10 @@ public class AzureIisDeploymentTarget
     [MaxLength(300)]
     public string HealthCheckPath { get; set; } = string.Empty;
 
+    [Column("health_check_base_url")]
+    [MaxLength(500)]
+    public string HealthCheckBaseUrl { get; set; } = string.Empty;
+
     [Column("secret_ref")]
     [MaxLength(200)]
     public string SecretRef { get; set; } = string.Empty;

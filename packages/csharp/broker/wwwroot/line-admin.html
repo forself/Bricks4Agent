@@ -338,6 +338,7 @@ textarea{min-height:110px;resize:vertical}
           <div class="field"><label>App Pool Name</label><input id="deploy-app-pool-name"></div>
           <div class="field"><label>Physical Path</label><input id="deploy-physical-path"></div>
           <div class="field"><label>Health Check Path</label><input id="deploy-health-path"></div>
+          <div class="field"><label>Health Check Base URL</label><input id="deploy-health-base-url" placeholder="https://example.com"></div>
           <div class="field"><label>Secret Ref</label><input id="deploy-secret-ref"></div>
           <div class="field"><label>Status</label><input id="deploy-status" value="active"></div>
           <div class="field full"><label>Metadata JSON</label><textarea id="deploy-metadata-json">{}</textarea></div>
@@ -1050,6 +1051,7 @@ async function saveDeploymentTarget() {
       app_pool_name: byId("deploy-app-pool-name").value.trim(),
       physical_path: byId("deploy-physical-path").value.trim(),
       health_check_path: byId("deploy-health-path").value.trim(),
+      health_check_base_url: byId("deploy-health-base-url").value.trim(),
       secret_ref: byId("deploy-secret-ref").value.trim(),
       status: byId("deploy-status").value.trim(),
       metadata_json: parseJsonField(byId("deploy-metadata-json").value)

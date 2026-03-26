@@ -181,6 +181,7 @@ public class BrokerDbInitializer
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN deployment_mode TEXT DEFAULT 'site_root'");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN application_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_path TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_base_url TEXT DEFAULT ''");
     }
 
     /// <summary>

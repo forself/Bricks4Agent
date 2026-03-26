@@ -6,10 +6,12 @@ namespace Broker.Services;
 public sealed class AzureIisDeploymentPreviewService
 {
     private readonly IAzureIisDeploymentRequestBuilder _builder;
+    private readonly AzureIisDeploymentHealthCheckService _healthChecks;
 
-    public AzureIisDeploymentPreviewService(IAzureIisDeploymentRequestBuilder builder)
+    public AzureIisDeploymentPreviewService(IAzureIisDeploymentRequestBuilder builder, AzureIisDeploymentHealthCheckService healthChecks)
     {
         _builder = builder;
+        _healthChecks = healthChecks;
     }
 
     public AzureIisDeploymentPreviewResult Preview(string toolId, AzureIisDeploymentBuildInput input)
@@ -42,7 +44,9 @@ public sealed class AzureIisDeploymentPreviewService
                     request.ApplicationPath,
                     request.AppPoolName,
                     request.PhysicalPath,
-                    request.HealthCheckPath
+                    request.HealthCheckPath,
+                    request.HealthCheckBaseUrl,
+                    health_check_url = _healthChecks.BuildHealthCheckUrl(request)
                 }
             }));
 

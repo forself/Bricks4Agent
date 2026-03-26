@@ -834,6 +834,8 @@ try
             SiteName = "Default Web Site",
             AppPoolName = "DefaultAppPool",
             PhysicalPath = @"C:\inetpub\wwwroot\TestApp",
+            HealthCheckPath = "/health",
+            HealthCheckBaseUrl = "https://deploy.example.com",
             SecretRef = "vault://deploy/test",
             Status = "active"
         });
@@ -852,7 +854,8 @@ try
             ApplicationPath = "/apps/verify",
             AppPoolName = "VerifyChildPool",
             PhysicalPath = @"C:\inetpub\apps\verify",
-            HealthCheckPath = "/apps/verify/health",
+            HealthCheckPath = "/health",
+            HealthCheckBaseUrl = "https://subapp.example.com",
             SecretRef = "vault://deploy/test",
             Status = "active"
         });
@@ -897,7 +900,30 @@ try
         AssertTrue(deploymentBuild.Success && deploymentBuild.Request != null, "deployment builder resolves target and project file");
         AssertTrue(deploymentBuild.Request!.ProjectFile.EndsWith("Broker.Verify.csproj", StringComparison.OrdinalIgnoreCase), "deployment builder resolves the unique project file from directory");
 
-        var deploymentPreviewService = new AzureIisDeploymentPreviewService(deploymentBuilder);
+        var deploymentHealthChecks = new AzureIisDeploymentHealthCheckService(new HttpClient(new FakeHttpMessageHandler((request, cancellationToken) =>
+        {
+            if (request.RequestUri?.AbsoluteUri == "https://deploy.example.com/health")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("healthy", Encoding.UTF8, "text/plain")
+                });
+            }
+
+            if (request.RequestUri?.AbsoluteUri == "https://subapp.example.com/apps/verify/health")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("subapp healthy", Encoding.UTF8, "text/plain")
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("missing", Encoding.UTF8, "text/plain")
+            });
+        })));
+        var deploymentPreviewService = new AzureIisDeploymentPreviewService(deploymentBuilder, deploymentHealthChecks);
         var deploymentPreview = deploymentPreviewService.Preview("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
         {
             RequestId = "dreq_preview",
@@ -912,6 +938,7 @@ try
         AssertTrue(deploymentPreview.Success && deploymentPreview.Result != null, "deployment preview builds dry-run deployment result");
         AssertTrue(deploymentPreview.Result!.ScriptPreview.Contains("New-PSSession", StringComparison.Ordinal), "deployment preview renders winrm powershell script");
         AssertTrue(deploymentPreview.Result!.DetailsJson.Contains("dotnet publish", StringComparison.Ordinal), "deployment preview includes dotnet publish command");
+        AssertTrue(deploymentPreview.Result!.DetailsJson.Contains("https://deploy.example.com/health", StringComparison.Ordinal), "deployment preview includes computed health check url");
 
         var deploymentSubAppBuild = deploymentBuilder.TryBuild("deploy.azure-vm-iis", new AzureIisDeploymentBuildInput
         {
@@ -944,12 +971,14 @@ try
         AssertTrue(deploymentSubAppPreview.Result!.DetailsJson.Contains("\"DeploymentMode\":\"iis_application\"", StringComparison.OrdinalIgnoreCase) ||
                    deploymentSubAppPreview.Result!.DetailsJson.Contains("\"deploymentmode\":\"iis_application\"", StringComparison.OrdinalIgnoreCase),
             "deployment preview details include child-application mode");
+        AssertTrue(deploymentSubAppPreview.Result!.DetailsJson.Contains("https://subapp.example.com/apps/verify/health", StringComparison.Ordinal), "deployment preview includes child-application health check url");
 
         var fakeProcessRunner = new FakeProcessRunner();
         var executionService = new AzureIisDeploymentExecutionService(
             deploymentBuilder,
             new FakeAzureIisDeploymentSecretResolver(),
-            fakeProcessRunner);
+            fakeProcessRunner,
+            deploymentHealthChecks);
         var dryRunExecution = await executionService.ExecuteAsync(
             "deploy.azure-vm-iis",
             new AzureIisDeploymentBuildInput
@@ -973,7 +1002,8 @@ try
         var actualExecutionService = new AzureIisDeploymentExecutionService(
             deploymentBuilder,
             new FakeAzureIisDeploymentSecretResolver(),
-            executeProcessRunner);
+            executeProcessRunner,
+            deploymentHealthChecks);
         var actualExecution = await actualExecutionService.ExecuteAsync(
             "deploy.azure-vm-iis",
             new AzureIisDeploymentBuildInput
@@ -991,6 +1021,7 @@ try
         AssertTrue(actualExecution.Success && actualExecution.Result != null, "deployment execution service completes with resolved secret and fake runner");
         AssertTrue(actualExecution.Result!.Stage == "deployed", "deployment execution service marks deployed stage");
         AssertTrue(executeProcessRunner.Invocations.Count == 2 && executeProcessRunner.Invocations[1].FileName == "powershell", "deployment execution invokes remote powershell after publish");
+        AssertTrue(actualExecution.Result!.DetailsJson.Contains("\"success\":true", StringComparison.OrdinalIgnoreCase), "deployment execution records successful health check");
 
         var googleCredentialPath = Path.Combine(sandboxRoot, "google-service-account.json");
         using (var rsa = RSA.Create(2048))
@@ -2059,4 +2090,17 @@ file sealed class FakeProcessRunner : IProcessRunner
             StandardError = string.Empty
         });
     }
+}
+
+file sealed class FakeHttpMessageHandler : HttpMessageHandler
+{
+    private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _handler;
+
+    public FakeHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler)
+    {
+        _handler = handler;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => _handler(request, cancellationToken);
 }
