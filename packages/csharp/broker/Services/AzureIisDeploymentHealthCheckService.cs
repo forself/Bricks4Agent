@@ -47,35 +47,53 @@ public sealed class AzureIisDeploymentHealthCheckService
         return builder.Uri.ToString();
     }
 
-    public async Task<AzureIisDeploymentHealthCheckResult> CheckAsync(AzureIisDeploymentRequest request, CancellationToken cancellationToken = default)
+    public async Task<AzureIisDeploymentHealthCheckResult> CheckAsync(
+        AzureIisDeploymentRequest request,
+        int maxRetries = 3,
+        int retryDelayMs = 3000,
+        CancellationToken cancellationToken = default)
     {
         var url = BuildHealthCheckUrl(request);
         if (string.IsNullOrWhiteSpace(url))
             return AzureIisDeploymentHealthCheckResult.Skipped();
 
-        try
+        AzureIisDeploymentHealthCheckResult? lastResult = null;
+        for (var attempt = 0; attempt < maxRetries; attempt++)
         {
-            using var response = await _httpClient.GetAsync(url, cancellationToken);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            return new AzureIisDeploymentHealthCheckResult
+            if (attempt > 0)
+                await Task.Delay(retryDelayMs, cancellationToken);
+
+            try
             {
-                Attempted = true,
-                Success = response.IsSuccessStatusCode,
-                Url = url,
-                StatusCode = (int)response.StatusCode,
-                BodySnippet = TakeSnippet(body)
-            };
-        }
-        catch (Exception ex)
-        {
-            return new AzureIisDeploymentHealthCheckResult
+                using var response = await _httpClient.GetAsync(url, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                lastResult = new AzureIisDeploymentHealthCheckResult
+                {
+                    Attempted = true,
+                    Success = response.IsSuccessStatusCode,
+                    Url = url,
+                    StatusCode = (int)response.StatusCode,
+                    BodySnippet = TakeSnippet(body),
+                    AttemptCount = attempt + 1
+                };
+
+                if (lastResult.Success)
+                    return lastResult;
+            }
+            catch (Exception ex)
             {
-                Attempted = true,
-                Success = false,
-                Url = url,
-                Error = ex.Message
-            };
+                lastResult = new AzureIisDeploymentHealthCheckResult
+                {
+                    Attempted = true,
+                    Success = false,
+                    Url = url,
+                    Error = ex.Message,
+                    AttemptCount = attempt + 1
+                };
+            }
         }
+
+        return lastResult ?? AzureIisDeploymentHealthCheckResult.Skipped();
     }
 
     private static string NormalizePath(string? path)
@@ -126,6 +144,7 @@ public sealed class AzureIisDeploymentHealthCheckResult
     public int? StatusCode { get; set; }
     public string BodySnippet { get; set; } = string.Empty;
     public string Error { get; set; } = string.Empty;
+    public int AttemptCount { get; set; }
 
     public static AzureIisDeploymentHealthCheckResult Skipped()
         => new()

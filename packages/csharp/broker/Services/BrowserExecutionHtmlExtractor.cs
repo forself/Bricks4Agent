@@ -6,7 +6,10 @@ namespace Broker.Services;
 internal static class BrowserExecutionHtmlExtractor
 {
     private static readonly Regex TitleRegex = new(@"<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex MetaDescriptionRegex = new(@"<meta\s+[^>]*name\s*=\s*[""']description[""'][^>]*content\s*=\s*[""']([^""']*)[""'][^>]*/?>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex MetaDescriptionAltRegex = new(@"<meta\s+[^>]*content\s*=\s*[""']([^""']*)[""'][^>]*name\s*=\s*[""']description[""'][^>]*/?>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex ScriptStyleRegex = new(@"<(script|style)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex NavHeaderFooterRegex = new(@"<(nav|header|footer)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex TagRegex = new(@"<[^>]+>", RegexOptions.Compiled);
     private static readonly Regex SpaceRegex = new(@"\s+", RegexOptions.Compiled);
 
@@ -16,10 +19,19 @@ internal static class BrowserExecutionHtmlExtractor
         return match.Success ? WebUtility.HtmlDecode(match.Groups[1].Value).Trim() : string.Empty;
     }
 
+    public static string ExtractDescription(string html)
+    {
+        var match = MetaDescriptionRegex.Match(html);
+        if (!match.Success)
+            match = MetaDescriptionAltRegex.Match(html);
+        return match.Success ? WebUtility.HtmlDecode(match.Groups[1].Value).Trim() : string.Empty;
+    }
+
     public static string ExtractText(string html, int maxLength = 4000)
     {
         var withoutScripts = ScriptStyleRegex.Replace(html, " ");
-        var withoutTags = TagRegex.Replace(withoutScripts, " ");
+        var withoutNavigation = NavHeaderFooterRegex.Replace(withoutScripts, " ");
+        var withoutTags = TagRegex.Replace(withoutNavigation, " ");
         var normalized = SpaceRegex.Replace(WebUtility.HtmlDecode(withoutTags), " ").Trim();
         return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
     }
