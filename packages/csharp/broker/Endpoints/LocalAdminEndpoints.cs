@@ -666,6 +666,47 @@ public static class LocalAdminEndpoints
                 : Results.Ok(ApiResponseHelper.Success(new { item }));
         });
 
+        // --- Artifact delivery management ---
+
+        localAdmin.MapGet("/line/artifacts", (HttpContext ctx, LocalAdminAuthService auth, HighLevelLineWorkspaceService workspaceService) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var status = ctx.Request.Query["status"].ToString();
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var offsetValue = ctx.Request.Query["offset"].ToString();
+            var limit = int.TryParse(limitValue, out var pl) ? pl : 50;
+            var offset = int.TryParse(offsetValue, out var po) ? po : 0;
+
+            var items = workspaceService.ListAllArtifacts(
+                string.IsNullOrWhiteSpace(status) ? null : status, limit, offset);
+
+            return Results.Ok(ApiResponseHelper.Success(new { total = items.Count, items }));
+        });
+
+        localAdmin.MapPost("/line/artifacts/{artifactId}/retry-drive", async (HttpContext ctx, LocalAdminAuthService auth, LineArtifactDeliveryService service, string artifactId, CancellationToken cancellationToken) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var result = await service.RetryDriveUploadAsync(artifactId, cancellationToken);
+            return result.Success
+                ? Results.Ok(ApiResponseHelper.Success(result))
+                : Results.BadRequest(ApiResponseHelper.Error(result.Message));
+        });
+
+        localAdmin.MapPost("/line/notifications/{notificationId}/retry", (HttpContext ctx, LocalAdminAuthService auth, HighLevelLineWorkspaceService workspaceService, string notificationId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var ok = workspaceService.ResetNotificationToPending(notificationId);
+            return ok
+                ? Results.Ok(ApiResponseHelper.Success(new { notification_id = notificationId, status = "pending" }))
+                : Results.NotFound(ApiResponseHelper.Error("Notification not found or could not be reset.", 404));
+        });
+
         localAdmin.MapGet("/tool-specs", (HttpContext ctx, LocalAdminAuthService auth, IToolSpecRegistry registry) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))

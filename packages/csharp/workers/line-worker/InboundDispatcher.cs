@@ -23,6 +23,7 @@ public class InboundDispatcher
     private readonly HashSet<string> _allowedUserIds;
     private readonly Dictionary<string, PendingApproval> _pendingApprovals = new();
     private readonly object _approvalLock = new();
+    private readonly TimeSpan _notificationPollInterval;
     private DateTime _lastNotificationPollAt = DateTime.MinValue;
 
     public InboundDispatcher(
@@ -30,12 +31,14 @@ public class InboundDispatcher
         LineApiClient lineApi,
         string allowedUserIdsCsv,
         string brokerApiUrl,
-        ILogger logger)
+        ILogger logger,
+        TimeSpan? notificationPollInterval = null)
     {
         _receiver = receiver;
         _lineApi = lineApi;
         _logger = logger;
         _brokerApiUrl = brokerApiUrl.TrimEnd('/');
+        _notificationPollInterval = notificationPollInterval ?? TimeSpan.FromSeconds(5);
         _httpClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(120)
@@ -63,7 +66,7 @@ public class InboundDispatcher
                     await Task.Delay(200, ct);
                 }
 
-                if (DateTime.UtcNow - _lastNotificationPollAt >= TimeSpan.FromSeconds(5))
+                if (DateTime.UtcNow - _lastNotificationPollAt >= _notificationPollInterval)
                 {
                     _lastNotificationPollAt = DateTime.UtcNow;
                     await DispatchPendingNotifications(ct);
@@ -395,15 +398,36 @@ public class InboundDispatcher
 
     private async Task CompleteNotification(string notificationId, string status, string? error, CancellationToken ct)
     {
-        var requestBody = JsonSerializer.Serialize(new
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            notification_id = notificationId,
-            status,
-            error
-        });
-        using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/complete", content, ct);
-        _ = response;
+            try
+            {
+                var requestBody = JsonSerializer.Serialize(new
+                {
+                    notification_id = notificationId,
+                    status,
+                    error
+                });
+                using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+                using var response = await _httpClient.PostAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/complete", content, ct);
+
+                if (response.IsSuccessStatusCode)
+                    return;
+
+                _logger.LogWarning(
+                    "CompleteNotification failed for {NotificationId}: HTTP {StatusCode} (attempt {Attempt})",
+                    notificationId, (int)response.StatusCode, attempt + 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "CompleteNotification exception for {NotificationId} (attempt {Attempt})",
+                    notificationId, attempt + 1);
+            }
+
+            if (attempt == 0)
+                await Task.Delay(2000, ct);
+        }
     }
 }
 

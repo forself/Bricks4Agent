@@ -743,7 +743,42 @@ public class HighLevelCoordinator
             JsonSerializer.Serialize(notification),
             "application/json",
             "global");
+
+        UpdateArtifactNotificationStatus(notificationId, notification.DeliveryStatus);
+
         return notification;
+    }
+
+    private void UpdateArtifactNotificationStatus(string notificationId, string notificationStatus)
+    {
+        try
+        {
+            var entries = _db.Query<SharedContextEntry>(
+                """
+                SELECT * FROM shared_context_entries
+                WHERE document_id LIKE 'hlm.artifact.line.%'
+                  AND content_ref LIKE @pattern
+                ORDER BY version DESC
+                """,
+                new { pattern = $"%\"{notificationId}\"%"  });
+
+            foreach (var entry in entries)
+            {
+                var artifact = System.Text.Json.JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
+                if (artifact == null || artifact.NotificationId != notificationId)
+                    continue;
+
+                artifact.OverallStatus = notificationStatus == "sent" ? "completed" : artifact.OverallStatus;
+                entry.ContentRef = System.Text.Json.JsonSerializer.Serialize(artifact);
+                entry.Version += 1;
+                _db.Update(entry);
+                break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update artifact notification status for {NotificationId}", notificationId);
+        }
     }
 
     private bool TryHandleRegistrationGate(
@@ -992,22 +1027,14 @@ public class HighLevelCoordinator
             artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
         }
 
+        _logger.LogInformation(
+            "High-level confirmed: intent={IntentId} task={TaskId} plan={PlanId} type={TaskType}",
+            executionIntent.IntentId, task.TaskId, plan.PlanId, task.TaskType);
+
         var reply = string.Join('\n', new[]
         {
-            "\u5df2\u78ba\u8a8d\u70ba production \u4efb\u52d9\u3002",
-            $"execution_intent_id: {executionIntent.IntentId}",
-            $"task_id: {task.TaskId}",
-            $"plan_id: {plan.PlanId}",
-            $"task_type: {task.TaskType}",
-            executionIntent.RequestedExecutionModel == null
-                ? null
-                : $"requested_execution_model: {executionIntent.RequestedExecutionModel.Alias} -> {executionIntent.RequestedExecutionModel.Model}",
-            $"title: {draft.Title}",
-            string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
-            string.IsNullOrWhiteSpace(draft.ManagedPaths?.ProjectRoot) ? null : $"project_root: {draft.ManagedPaths.ProjectRoot}",
-            artifactResult == null ? null : BuildArtifactReply(artifactResult),
-            "",
-            "\u5df2\u5efa\u7acb task / plan\uff0c\u4e26\u7522\u751f handoff \u8207 task tree skeleton \u4f9b\u4e0b\u6e38\u6a5f\u5236\u7e7c\u7e8c\u7cbe\u5316\u3002"
+            $"已確認任務：{draft.Title}",
+            artifactResult == null ? null : BuildArtifactReply(artifactResult)
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
 
         return (new HighLevelProcessResult
@@ -1020,42 +1047,22 @@ public class HighLevelCoordinator
         }, profile);
     }
 
-    private static string BuildArtifactReply(HighLevelDocumentArtifactResult artifactResult)
+    internal static string BuildArtifactReply(HighLevelDocumentArtifactResult artifactResult)
     {
         if (artifactResult.Delivery == null)
             return artifactResult.Success
-                ? "文件已生成。"
+                ? "文件已生成，稍後將透過此對話發送下載連結。"
                 : $"文件生成失敗：{artifactResult.Message}";
 
-        var lines = new List<string>();
         if (artifactResult.Success)
         {
-            lines.Add("文件已生成。");
-            lines.Add($"artifact_file: {artifactResult.FileName}");
-            lines.Add($"artifact_path: {artifactResult.Delivery.FilePath}");
             if (artifactResult.Delivery.GoogleDrive?.Success == true)
-            {
-                lines.Add("artifact_delivery: google_drive");
-                if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.WebViewLink))
-                    lines.Add($"artifact_view_link: {artifactResult.Delivery.GoogleDrive.WebViewLink}");
-                if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
-                    lines.Add($"artifact_download_link: {artifactResult.Delivery.GoogleDrive.DownloadLink}");
-            }
-            else
-            {
-                lines.Add("artifact_delivery: local_only");
-            }
-        }
-        else
-        {
-            lines.Add($"文件生成失敗：{artifactResult.Message}");
-            if (!string.IsNullOrWhiteSpace(artifactResult.FileName))
-                lines.Add($"artifact_file: {artifactResult.FileName}");
-            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.FilePath))
-                lines.Add($"artifact_path: {artifactResult.Delivery.FilePath}");
+                return $"文件「{artifactResult.FileName}」已生成並上傳至雲端，稍後將透過此對話發送下載連結。";
+
+            return $"文件「{artifactResult.FileName}」已生成，但雲端上傳未完成。管理員將協助提供下載連結。";
         }
 
-        return string.Join('\n', lines);
+        return $"文件生成失敗：{artifactResult.Message}";
     }
 
     private static HighLevelMemoryState BuildFallbackMemoryState(

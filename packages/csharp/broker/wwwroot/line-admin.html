@@ -82,6 +82,7 @@ textarea{min-height:110px;resize:vertical}
       <button data-tab="workflow">Workflow</button>
       <button data-tab="browser">Browser 綁定</button>
       <button data-tab="deployment">Deployment</button>
+      <button data-tab="delivery">交付記錄</button>
       <button data-tab="tools">Tool Specs</button>
     </nav>
     <div class="stack">
@@ -389,6 +390,24 @@ textarea{min-height:110px;resize:vertical}
         <h3>Recent Deployments</h3>
         <div class="list" id="deployment-executions-list"></div>
         <div class="json" id="deployment-execution-detail-json">尚未選取 deployment execution</div>
+      </div>
+    </section>
+
+    <section id="tab-delivery" class="hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>交付記錄</h2>
+          <div class="row">
+            <select id="delivery-status-filter" style="width:140px">
+              <option value="">全部狀態</option>
+              <option value="completed">completed</option>
+              <option value="partial">partial</option>
+              <option value="failed">failed</option>
+            </select>
+            <button class="button" id="refresh-delivery">重新整理</button>
+          </div>
+        </div>
+        <div id="delivery-list" class="list" style="max-height:600px"></div>
       </div>
     </section>
 
@@ -885,6 +904,9 @@ async function showTab(tab) {
   if (tab === "deployment" && !state.deploymentLoaded) {
     await loadDeploymentTargets();
     state.deploymentLoaded = true;
+  }
+  if (tab === "delivery") {
+    await loadDeliveryHistory();
   }
   if (tab === "tools" && !state.toolsLoaded) {
     await loadToolSpecs();
@@ -1474,6 +1496,65 @@ function wrapAction(fn) {
   };
 }
 
+// --- Delivery History ---
+
+async function loadDeliveryHistory() {
+  const status = byId("delivery-status-filter")?.value || "";
+  const qs = status ? `?status=${encodeURIComponent(status)}&limit=100` : "?limit=100";
+  const data = await request(`/api/v1/local-admin/line/artifacts${qs}`);
+  renderDeliveryList(data?.items || []);
+}
+
+function renderDeliveryList(items) {
+  const list = byId("delivery-list");
+  if (!items.length) {
+    list.innerHTML = '<div class="item muted">尚無交付記錄。</div>';
+    return;
+  }
+  list.innerHTML = items.map(item => {
+    const statusColor = item.overallStatus === "completed" ? "ok"
+      : item.overallStatus === "partial" ? "warn" : "danger";
+    const driveIcon = item.uploadedToGoogleDrive ? "ok" : "danger";
+    const ts = item.createdAt ? new Date(item.createdAt).toLocaleString("zh-TW") : "";
+    return `<div class="item">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="item-title">${escapeHtml(item.fileName || "unknown")}</div>
+          <div class="small muted">${escapeHtml(item.userId || "")} | ${ts}</div>
+        </div>
+        <div class="row">
+          <span class="tag ${statusColor}">${escapeHtml(item.overallStatus || "unknown")}</span>
+          <span class="tag ${driveIcon}">${item.uploadedToGoogleDrive ? "Drive" : "Local"}</span>
+        </div>
+      </div>
+      ${item.overallStatus === "partial" ? `<div class="row" style="margin-top:8px">
+        <button class="button primary" onclick="wrapAction(()=>retryDriveUpload('${esc(item.artifactId)}'))()">重試 Drive 上傳</button>
+      </div>` : ""}
+      ${item.driveError ? `<div class="small error" style="margin-top:4px">Drive 錯誤：${escapeHtml(item.driveError)}</div>` : ""}
+      ${item.googleDriveWebViewLink ? `<div class="small" style="margin-top:4px"><a href="${escapeHtml(item.googleDriveWebViewLink)}" target="_blank">Drive 預覽</a></div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+async function retryDriveUpload(artifactId) {
+  try {
+    await request(`/api/v1/local-admin/line/artifacts/${encodeURIComponent(artifactId)}/retry-drive`, { method: "POST" });
+    setNotice("Drive 上傳重試成功，已重新發送通知。");
+  } catch (e) {
+    setNotice("Drive 上傳重試失敗：" + e.message);
+  }
+  await loadDeliveryHistory();
+}
+
+async function retryNotification(notificationId) {
+  try {
+    await request(`/api/v1/local-admin/line/notifications/${encodeURIComponent(notificationId)}/retry`, { method: "POST" });
+    setNotice("通知已重設為待發送。");
+  } catch (e) {
+    setNotice("通知重試失敗：" + e.message);
+  }
+}
+
 function bindEvents() {
   for (const button of document.querySelectorAll("[data-tab]")) {
     button.addEventListener("click", wrapAction(() => showTab(button.dataset.tab)));
@@ -1510,6 +1591,8 @@ function bindEvents() {
   byId("execute-deployment").addEventListener("click", wrapAction(executeDeployment));
   byId("refresh-tools").addEventListener("click", wrapAction(loadToolSpecs));
   byId("apply-tool-filter").addEventListener("click", wrapAction(loadToolSpecs));
+  byId("refresh-delivery").addEventListener("click", wrapAction(loadDeliveryHistory));
+  byId("delivery-status-filter").addEventListener("change", wrapAction(loadDeliveryHistory));
 }
 
 async function start() {

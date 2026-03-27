@@ -107,7 +107,15 @@ public sealed class GoogleDriveShareService
         {
             if (string.IsNullOrWhiteSpace(request.Channel) || string.IsNullOrWhiteSpace(request.UserId))
                 return Fail("channel and user_id are required for user_delegated delivery.");
-            accessToken = await _oauthService.GetDelegatedAccessTokenAsync(request.Channel, request.UserId, cancellationToken);
+            try
+            {
+                accessToken = await _oauthService.GetDelegatedAccessTokenAsync(request.Channel, request.UserId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "OAuth token refresh failed for {Channel}:{UserId}", request.Channel, request.UserId);
+                return Fail($"oauth_token_refresh_failed: {ex.Message}");
+            }
         }
         else
         {
