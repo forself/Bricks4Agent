@@ -6,13 +6,36 @@ Provide a broker-governed delivery path that uploads a generated artifact to Goo
 
 ## First implementation
 
-- identity mode: `system_account`
-- credential source: Google service account JSON
+- identity modes:
+  - `shared_delegated`
+  - `user_delegated`
+  - `system_account`
+- credential sources:
+  - a single broker-owned delegated OAuth credential for one Google account
+  - per-user delegated OAuth credentials
+  - Google service account JSON
 - delivery pattern:
   1. generate file under the user's managed workspace
   2. upload file to a broker-configured Drive folder
   3. create a share link
   4. send the share link back through LINE or another broker-mediated channel
+
+## Current preferred live mode
+
+For the current local LINE sidecar, the preferred default is:
+
+- `shared_delegated`
+
+That means:
+
+- broker stores one delegated OAuth credential for the operator's Google account
+- all LINE users can have their generated artifacts uploaded into that one Google Drive
+- broker metadata still records which LINE user owns the artifact
+- Google Drive itself does not need to know each LINE user identity
+
+This is the correct mode when all generated files should go into one Google Drive account.
+
+Use `user_delegated` only when each end user should upload into their own Drive.
 
 ## Important operational constraint
 
@@ -44,9 +67,31 @@ even when authentication is otherwise valid.
 - optional:
   - `GoogleDriveDelivery:DefaultShareMode`
   - `GoogleDriveDelivery:DefaultPermissionRole`
+  - `GoogleDriveDelivery:DefaultIdentityMode`
+  - `GoogleDriveDelivery:SharedDelegatedChannel`
+  - `GoogleDriveDelivery:SharedDelegatedUserId`
+
+## Current operator reality
+
+There is currently no end-user frontend for artifact browsing or downloading.
+
+What exists today:
+
+- local admin console
+- LINE notification links
+- broker-managed artifact records
+
+What should exist later as a frontend feature:
+
+- an authenticated public-facing artifact download API
+- user-facing artifact history and download page
+- broker-governed access checks before file delivery
+
+This is intentionally recorded here as a missing frontend capability, not as a completed feature.
 
 ## Next steps
 
 - add shared-drive-oriented target metadata to the admin console
 - add artifact registry integration so generated files can be tracked and re-delivered
 - support broker-governed notification back to the user after upload
+- add authenticated frontend download API for direct external service scenarios

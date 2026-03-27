@@ -1,0 +1,108 @@
+Near-Term Priorities Review
+Generated: 2026-03-27 Asia/Taipei
+
+Scope
+- Full review of the 5 near-term priorities listed in CurrentArchitectureAndProgress-2026-03-26.md Section 13.
+- Each priority was verified against actual code, not documentation alone.
+
+Results
+
+1. Mediated Query Quality
+   Status: DONE (all 8 items already implemented in code)
+
+   Verified items:
+   - A1: Transport dispatch deduplication -> unified via TransportModes dictionary + HandleTransportQueryAsync (HighLevelCoordinator.cs:17-23, 336-342, 955-1020)
+   - A2: Transport query input hint -> query.Length < 4 returns example format (HighLevelCoordinator.cs:967-978)
+   - B1: CJK term length limit -> hasAdminSuffix ? 10 : 8 (HighLevelRelationQueryService.cs:799-803)
+   - B2: Evidence scoring for neighbor vs admin list -> isNeighborQuery ? 2 : 5 (HighLevelRelationQueryService.cs:609-610)
+   - B3: Deterministic reply grading (0/1/2+ candidates) -> three-level separation (HighLevelRelationQueryService.cs:726-740)
+   - B4: Neighbor query LLM synthesis threshold -> strongEvidenceCount >= 3 && nearbyTerms >= 3 (HighLevelRelationQueryService.cs:781-782)
+   - C1: Query synthesis logging -> log before and after synthesis (HighLevelCoordinator.cs:304-318, 992-1006)
+   - C2: Empty result friendly reply -> three-point suggestion (HighLevelQueryToolMediator.cs:416-420)
+
+   No code changes needed.
+
+2. Sidecar/Operator Reliability
+   Status: DONE (already comprehensive)
+
+   Verified infrastructure:
+   - Unified entrypoint: line-sidecar.ps1 with up/status/verify/verify-broker/down/restart actions
+   - Graceful shutdown: 20-second timeout with 250ms polling (stop-sidecar-stack.ps1:32-43)
+   - Publish output cleanup: Clear-PublishOutputDirectory prevents lock conflicts (start-sidecar-stack.ps1:34-52)
+   - Worker auto-reconnect: 5-second reconnect interval, AutoReconnect=true (WorkerHost.cs:48-115)
+   - Heartbeat monitoring: 5-second heartbeat, 30-second timeout, WORKER_HEARTBEAT_LOST observation event (WorkerHealthMonitor.cs:68-145)
+   - PID tracking: broker.pid and line-worker.pid in .run/line-sidecar/
+   - Status visibility: status-sidecar-stack.ps1 shows process table, tunnel, webhook state
+   - InboundDispatcher retry: 2 attempts with 2-second delay on broker request failure (InboundDispatcher.cs:401-430)
+
+   Remaining gap (not blocking):
+   - No watchdog/supervisor daemon for broker process auto-restart on crash
+   - Operator must manually run line-sidecar.ps1 restart
+
+   No code changes needed for current scope.
+
+3. Artifact Delivery UX
+   Status: DONE (implemented in this session)
+
+   Changes made:
+   - Enabled LINE notification for doc_gen flow (SendLineNotification = true)
+   - Improved notification message format (user-facing, removed server paths)
+   - Improved confirmation reply format (removed technical IDs)
+   - Added partial success on Drive upload failure (artifact still recorded)
+   - Added OverallStatus field to LineArtifactDeliveryResult and HighLevelLineArtifactRecord
+   - Added DriveError field to HighLevelLineArtifactRecord
+   - Added OAuth token refresh exception handling in GoogleDriveShareService
+   - Added RetryDriveUploadAsync method to LineArtifactDeliveryService
+   - Added ReadArtifactById method to HighLevelLineWorkspaceService
+   - Added ListAllArtifacts method to HighLevelLineWorkspaceService
+   - Added ResetNotificationToPending method to HighLevelLineWorkspaceService
+   - Added admin retry/resend/list endpoints to LocalAdminEndpoints
+   - Added delivery history dashboard panel to line-admin.html
+   - Added notification completion callback retry in InboundDispatcher
+   - Added configurable notification poll interval via LINE_NOTIFICATION_POLL_INTERVAL_MS
+
+   Committed as: feat: improve artifact delivery UX with notifications, retry, and admin dashboard
+
+4. Browser Runtime Execution
+   Status: NOT DONE (large scope, requires Playwright integration)
+
+   Current state:
+   - Governance layer COMPLETE: 4 models (BrowserSessionLease, BrowserSiteBinding, BrowserSystemBinding, BrowserUserGrant), full request builder with 4-policy validation, admin API, admin console panel
+   - Execution layer MINIMAL: only anonymous HTTP GET + regex HTML text extraction (BrowserExecutionRuntimeService.cs)
+   - No headless browser, no JavaScript execution, no DOM interaction
+   - system_account and user_delegated identity modes are "planned" status in tool specs
+   - Tool specs declare runtime_required: "browser_worker" but no browser-worker process exists
+
+   What would be needed:
+   - Playwright .NET integration in a new browser-worker project
+   - Session management (cookie persistence, credential injection)
+   - DOM/action policy enforcement at runtime
+   - Human confirmation workflow for authenticated actions
+   - Evidence capture (screenshots, DOM snapshots)
+
+   This is the only remaining priority that requires substantial new implementation.
+
+5. Deployment Verification
+   Status: DONE (already has retry and evidence)
+
+   Verified infrastructure:
+   - Health check with retry: maxRetries=3, retryDelayMs=3000 (AzureIisDeploymentHealthCheckService.cs:52-53)
+   - Body snippet capture: 240-char limit (AzureIisDeploymentHealthCheckService.cs:127-136)
+   - Attempt count tracking: AttemptCount field in result (AzureIisDeploymentHealthCheckService.cs:77)
+   - Evidence recording: stored in SharedContextEntry with full stdout/stderr (AzureIisDeploymentExecutionService.cs:236-266)
+   - Deployment history: list/detail endpoints via admin console (LocalAdminEndpoints.cs:536-560)
+   - 5-stage execution: publish -> package -> script gen -> remote deploy -> health check
+
+   No code changes needed.
+
+Summary
+- 4 of 5 priorities confirmed done or already implemented
+- 1 priority (Browser Runtime) requires large-scope new work (Playwright integration)
+- Build verified: dotnet build packages/csharp/ControlPlane.slnx -> 0 errors 0 warnings
+
+Discovery During Review
+- InboundDispatcher (line-worker) intercepts all /xxx messages as local slash commands before they reach the broker
+- Broker expects / prefix for Production tasks but never receives them
+- This is a routing conflict: line-worker handles /help, /clear, /status locally and returns "未知指令" for all others
+- Users must avoid / prefix or use full-width ／ to trigger production (doc_gen) flow via broker
+- This conflict is a pre-existing design issue, not introduced by this session's changes

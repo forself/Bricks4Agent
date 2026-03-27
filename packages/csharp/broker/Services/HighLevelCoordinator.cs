@@ -402,10 +402,20 @@ public class HighLevelCoordinator
         var chat = await _lineChatGateway.ChatAsync(userId, chatInput, cancellationToken);
         var replyBody = chat.Reply;
         if (decision.Mode == HighLevelRouteMode.Query && string.IsNullOrWhiteSpace(replyBody))
+            replyBody = "目前沒有取得穩定答案。";
+
+        var followUpMessages = new List<string>();
+        if (decision.Mode == HighLevelRouteMode.Query && string.IsNullOrWhiteSpace(chat.Reply))
         {
-            replyBody = string.IsNullOrWhiteSpace(parsed.Body)
-                ? "目前沒有取得穩定答案。若要進行受控網路搜尋，請輸入 ?search 關鍵字。"
-                : $"目前沒有取得穩定答案。若要進行受控網路搜尋，請輸入 ?search {parsed.Body}";
+            replyBody = "目前沒有取得穩定答案。";
+            if (!string.IsNullOrWhiteSpace(parsed.Body))
+            {
+                followUpMessages.Add($"?search {parsed.Body}");
+            }
+            else
+            {
+                followUpMessages.Add("?search 關鍵字");
+            }
         }
 
         var chatReply = PrepareReplySafe(profile, trimmed, replyBody);
@@ -414,6 +424,7 @@ public class HighLevelCoordinator
         {
             Mode = decision.Mode,
             Reply = chatReply,
+            FollowUpMessages = followUpMessages.Count > 0 ? followUpMessages : null,
             Error = string.IsNullOrWhiteSpace(chat.Reply) && decision.Mode == HighLevelRouteMode.Query
                 ? "query_reply_empty"
                 : chat.Error,

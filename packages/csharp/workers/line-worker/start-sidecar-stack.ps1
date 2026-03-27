@@ -61,6 +61,10 @@ if (-not (Test-Path $configPath)) {
 
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 $channelAccessToken = $config.Line.ChannelAccessToken
+$googleDriveSettings = $null
+if ($config.PSObject.Properties.Name -contains "GoogleDriveDelivery") {
+    $googleDriveSettings = $config.GoogleDriveDelivery
+}
 
 function Stop-RecordedProcess {
     param([string]$PidFile)
@@ -312,8 +316,38 @@ if ($null -ne $googleOAuthClientFile) {
         OAuthClientJsonPath = $googleOAuthClientFile.FullName
         DelegatedRedirectUri = "http://127.0.0.1:$BrokerPort/api/v1/google-drive/oauth/callback"
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_FOLDER_ID)) {
-        $googleDriveConfig["DefaultFolderId"] = $env:B4A_GOOGLE_DRIVE_FOLDER_ID.Trim()
+    $sharedDriveOwnerUserId = if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_SHARED_USER_ID)) {
+        $env:B4A_GOOGLE_DRIVE_SHARED_USER_ID.Trim()
+    } elseif (-not [string]::IsNullOrWhiteSpace($config.Line.DefaultRecipientId)) {
+        $config.Line.DefaultRecipientId.Trim()
+    } else {
+        ""
+    }
+    $defaultIdentityMode = if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_IDENTITY_MODE)) {
+        $env:B4A_GOOGLE_DRIVE_IDENTITY_MODE.Trim()
+    } elseif (-not [string]::IsNullOrWhiteSpace($sharedDriveOwnerUserId)) {
+        "shared_delegated"
+    } else {
+        "user_delegated"
+    }
+    $googleDriveConfig["DefaultIdentityMode"] = $defaultIdentityMode
+    $googleDriveConfig["SharedDelegatedChannel"] = if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_SHARED_CHANNEL)) {
+        $env:B4A_GOOGLE_DRIVE_SHARED_CHANNEL.Trim()
+    } else {
+        "line"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($sharedDriveOwnerUserId)) {
+        $googleDriveConfig["SharedDelegatedUserId"] = $sharedDriveOwnerUserId
+    }
+    $defaultFolderId = if (-not [string]::IsNullOrWhiteSpace($env:B4A_GOOGLE_DRIVE_FOLDER_ID)) {
+        $env:B4A_GOOGLE_DRIVE_FOLDER_ID.Trim()
+    } elseif ($googleDriveSettings -and -not [string]::IsNullOrWhiteSpace($googleDriveSettings.DefaultFolderId)) {
+        $googleDriveSettings.DefaultFolderId.Trim()
+    } else {
+        $null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($defaultFolderId)) {
+        $googleDriveConfig["DefaultFolderId"] = $defaultFolderId
     }
     $productionOverrideMap["GoogleDriveDelivery"] = $googleDriveConfig
 }

@@ -206,6 +206,7 @@ textarea{min-height:110px;resize:vertical}
               <div class="field">
                 <label for="artifact-identity-mode">Drive 身分</label>
                 <select id="artifact-identity-mode">
+                  <option value="shared_delegated">shared_delegated</option>
                   <option value="user_delegated">user_delegated</option>
                   <option value="system_account">system_account</option>
                 </select>
@@ -672,13 +673,25 @@ function renderDrivePanel() {
     return;
   }
 
-  const credential = (state.drive.credentials || []).find(
+  const selectedIdentityMode = byId("artifact-identity-mode").value || state.drive.status?.defaultIdentityMode || "shared_delegated";
+  const sharedCredential = (state.drive.credentials || []).find(
+    (item) => item.channel === state.drive.status?.sharedDelegatedChannel && item.userId === state.drive.status?.sharedDelegatedUserId
+  );
+  const selectedCredential = (state.drive.credentials || []).find(
     (item) => item.channel === "line" && item.userId === state.selectedUserId
   );
 
   byId("drive-selected-credential-json").textContent = prettyJson({
     userId: state.selectedUserId,
-    credential: credential || null
+    selectedIdentityMode,
+    sharedOwner: state.drive.status?.sharedDelegatedUserId
+      ? {
+          channel: state.drive.status.sharedDelegatedChannel,
+          userId: state.drive.status.sharedDelegatedUserId,
+          credential: sharedCredential || null
+        }
+      : null,
+    selectedUserCredential: selectedCredential || null
   });
 }
 
@@ -1019,6 +1032,9 @@ async function loadDriveAdmin() {
   if (!byId("artifact-folder-id").value && status.defaultFolderId) {
     byId("artifact-folder-id").value = status.defaultFolderId;
   }
+  if (status.defaultIdentityMode) {
+    byId("artifact-identity-mode").value = status.defaultIdentityMode;
+  }
   renderDrivePanel();
 }
 
@@ -1225,15 +1241,24 @@ async function clearConversation() {
 
 async function startDriveOAuth() {
   if (!state.selectedUserId) throw new Error("請先選擇使用者。");
+  const selectedIdentityMode = byId("artifact-identity-mode").value || state.drive.status?.defaultIdentityMode || "shared_delegated";
+  const targetUserId = selectedIdentityMode === "shared_delegated"
+    ? (state.drive.status?.sharedDelegatedUserId || state.selectedUserId)
+    : state.selectedUserId;
+  const targetChannel = selectedIdentityMode === "shared_delegated"
+    ? (state.drive.status?.sharedDelegatedChannel || "line")
+    : "line";
   const result = await request("/api/v1/local-admin/delivery/google-drive/oauth/start", {
     method: "POST",
     body: JSON.stringify({
-      channel: "line",
-      user_id: state.selectedUserId
+      channel: targetChannel,
+      user_id: targetUserId
     })
   });
   window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
-  setNotice("已開啟 Google 授權視窗。完成授權後請重新整理 Drive 狀態。");
+  setNotice(selectedIdentityMode === "shared_delegated"
+    ? "已開啟共用 Google Drive 擁有者的授權視窗。完成授權後請重新整理 Drive 狀態。"
+    : "已開啟 Google 授權視窗。完成授權後請重新整理 Drive 狀態。");
 }
 
 async function deliverArtifact() {
@@ -1625,6 +1650,7 @@ function bindEvents() {
   byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
   byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
   byId("refresh-drive").addEventListener("click", wrapAction(loadDriveAdmin));
+  byId("artifact-identity-mode").addEventListener("change", renderDrivePanel);
   byId("refresh-artifacts").addEventListener("click", wrapAction(() => loadArtifacts(state.selectedUserId)));
   byId("start-drive-oauth").addEventListener("click", wrapAction(startDriveOAuth));
   byId("deliver-artifact").addEventListener("click", wrapAction(deliverArtifact));

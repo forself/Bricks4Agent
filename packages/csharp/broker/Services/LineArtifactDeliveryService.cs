@@ -10,7 +10,7 @@ public sealed class LineArtifactDeliveryRequest
     public string Format { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public bool UploadToGoogleDrive { get; set; } = true;
-    public string IdentityMode { get; set; } = "user_delegated";
+    public string IdentityMode { get; set; } = string.Empty;
     public string FolderId { get; set; } = string.Empty;
     public string ShareMode { get; set; } = "anyone_with_link";
     public bool SendLineNotification { get; set; } = true;
@@ -84,6 +84,10 @@ public sealed class LineArtifactDeliveryService
         Directory.CreateDirectory(managedPaths.DocumentsRoot);
         await File.WriteAllTextAsync(filePath, request.Content ?? string.Empty, new UTF8Encoding(false), cancellationToken);
 
+        var resolvedIdentityMode = _googleDriveShareService.ResolveIdentityMode(request.IdentityMode);
+        var resolvedShareMode = _googleDriveShareService.ResolveShareMode(request.ShareMode);
+        var credentialBinding = _googleDriveShareService.ResolveCredentialBinding(resolvedIdentityMode, "line", request.UserId);
+
         GoogleDriveShareResult? driveResult = null;
         if (request.UploadToGoogleDrive)
         {
@@ -92,8 +96,8 @@ public sealed class LineArtifactDeliveryService
                 FilePath = filePath,
                 FileName = fileName,
                 FolderId = request.FolderId,
-                ShareMode = request.ShareMode,
-                IdentityMode = request.IdentityMode,
+                ShareMode = resolvedShareMode,
+                IdentityMode = resolvedIdentityMode,
                 Channel = "line",
                 UserId = request.UserId
             }, cancellationToken);
@@ -115,7 +119,7 @@ public sealed class LineArtifactDeliveryService
         {
             notification = _workspaceService.QueueLineNotification(
                 request.UserId,
-                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "文件已完成" : request.NotificationTitle.Trim(),
+                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
                 BuildNotificationBody(fileName, filePath, driveResult));
         }
 
@@ -135,6 +139,10 @@ public sealed class LineArtifactDeliveryService
             FilePath = filePath,
             DocumentsRoot = managedPaths.DocumentsRoot,
             UploadedToGoogleDrive = driveOk,
+            DriveIdentityMode = resolvedIdentityMode,
+            DriveCredentialChannel = credentialBinding.Channel,
+            DriveCredentialUserId = credentialBinding.UserId,
+            DriveShareMode = resolvedShareMode,
             GoogleDriveFileId = driveResult?.FileId ?? string.Empty,
             GoogleDriveWebViewLink = driveResult?.WebViewLink ?? string.Empty,
             GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
@@ -192,32 +200,32 @@ public sealed class LineArtifactDeliveryService
 
         if (driveResult?.Success == true)
         {
-            lines.Add("您的文件已準備完成");
+            lines.Add("檔案已完成並上傳到 Google Drive。");
             lines.Add(string.Empty);
-            lines.Add($"文件名稱：{fileName}");
+            lines.Add($"檔名：{fileName}");
 
             if (!string.IsNullOrWhiteSpace(driveResult.DownloadLink))
             {
                 lines.Add(string.Empty);
-                lines.Add("點擊下載：");
+                lines.Add("下載連結：");
                 lines.Add(driveResult.DownloadLink);
             }
 
             if (!string.IsNullOrWhiteSpace(driveResult.WebViewLink))
             {
                 lines.Add(string.Empty);
-                lines.Add("線上預覽：");
+                lines.Add("預覽連結：");
                 lines.Add(driveResult.WebViewLink);
             }
         }
         else
         {
-            lines.Add("您的文件已準備完成");
+            lines.Add("檔案已完成，但雲端上傳未完成。");
             lines.Add(string.Empty);
-            lines.Add($"文件名稱：{fileName}");
+            lines.Add($"檔名：{fileName}");
             lines.Add(string.Empty);
-            lines.Add("檔案已儲存，但雲端上傳未完成。");
-            lines.Add("管理員將協助提供下載連結。");
+            lines.Add("目前先保留在本機管理工作區。");
+            lines.Add($"本機路徑：{filePath}");
         }
 
         return string.Join(Environment.NewLine, lines);
@@ -242,8 +250,8 @@ public sealed class LineArtifactDeliveryService
             FilePath = artifact.FilePath,
             FileName = artifact.FileName,
             FolderId = string.Empty,
-            ShareMode = "anyone_with_link",
-            IdentityMode = "user_delegated",
+            ShareMode = string.IsNullOrWhiteSpace(artifact.DriveShareMode) ? "anyone_with_link" : artifact.DriveShareMode,
+            IdentityMode = artifact.DriveIdentityMode,
             Channel = artifact.Channel,
             UserId = artifact.UserId
         }, cancellationToken);
@@ -275,7 +283,7 @@ public sealed class LineArtifactDeliveryService
 
         var notification = _workspaceService.QueueLineNotification(
             artifact.UserId,
-            "文件已完成",
+            "檔案已完成",
             BuildNotificationBody(artifact.FileName, artifact.FilePath, driveResult));
 
         artifact.NotificationId = notification.NotificationId;

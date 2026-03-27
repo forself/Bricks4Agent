@@ -20,7 +20,6 @@ public sealed class HighLevelDocumentArtifactService
 {
     private readonly HighLevelLlmOptions _highLevelLlmOptions;
     private readonly GoogleDriveShareService _googleDriveShareService;
-    private readonly GoogleDriveOAuthService _googleDriveOAuthService;
     private readonly LineArtifactDeliveryService _artifactDeliveryService;
     private readonly HttpClient _httpClient;
     private readonly ILogger<HighLevelDocumentArtifactService> _logger;
@@ -35,7 +34,6 @@ public sealed class HighLevelDocumentArtifactService
     {
         _highLevelLlmOptions = highLevelLlmOptions;
         _googleDriveShareService = googleDriveShareService;
-        _googleDriveOAuthService = googleDriveOAuthService;
         _artifactDeliveryService = artifactDeliveryService;
         _httpClient = httpClientFactory.CreateClient("high-level-llm");
         _logger = logger;
@@ -55,9 +53,8 @@ public sealed class HighLevelDocumentArtifactService
         if (string.IsNullOrWhiteSpace(content))
             content = BuildFallbackContent(draft, format);
 
-        var driveStatus = _googleDriveShareService.GetStatus();
-        var delegatedCredential = _googleDriveOAuthService.GetCredential(draft.Channel, draft.UserId);
-        var uploadToGoogleDrive = driveStatus.Enabled && delegatedCredential != null;
+        var identityMode = _googleDriveShareService.ResolveIdentityMode(null);
+        var uploadToGoogleDrive = _googleDriveShareService.CanUpload(identityMode, draft.Channel, draft.UserId);
 
         var delivery = await _artifactDeliveryService.GenerateAndDeliverAsync(new LineArtifactDeliveryRequest
         {
@@ -66,11 +63,11 @@ public sealed class HighLevelDocumentArtifactService
             Format = format,
             Content = content,
             UploadToGoogleDrive = uploadToGoogleDrive,
-            IdentityMode = "user_delegated",
+            IdentityMode = identityMode,
             FolderId = string.Empty,
             ShareMode = string.Empty,
             SendLineNotification = true,
-            NotificationTitle = "文件已完成",
+            NotificationTitle = "檔案已完成",
             Source = "high_level_doc_gen",
             RelatedTaskType = draft.TaskType,
             RelatedDraftId = draft.DraftId
@@ -111,20 +108,20 @@ public sealed class HighLevelDocumentArtifactService
     {
         var outputRule = format switch
         {
-            "md" => "請直接輸出 Markdown 內容，不要加入 code fence。",
-            "json" => "請直接輸出有效 JSON 內容，不要加入 code fence，也不要輸出額外說明。",
-            "html" => "請直接輸出完整的 HTML 內容，不要加入 code fence。",
-            "csv" => "請直接輸出 UTF-8 CSV 內容，不要加入 code fence。",
-            _ => "請直接輸出純文字內容，不要加入 code fence。"
+            "md" => "請輸出完整的 Markdown 文件，不要加上 code fence。",
+            "json" => "請輸出完整且有效的 JSON 文件，不要加上 code fence，也不要補充說明文字。",
+            "html" => "請輸出完整的 HTML 文件，不要加上 code fence。",
+            "csv" => "請輸出 UTF-8 CSV 內容，不要加上 code fence。",
+            _ => "請輸出可直接儲存為文字檔的完整內容，不要加上 code fence。"
         };
 
         return string.Join('\n', new[]
         {
-            "你是負責替 LINE 使用者生成可交付文件的助手。",
-            $"目標格式: {format}",
+            "你是一個透過 LINE 接收需求、負責生成可交付文件的高階助理。",
+            $"輸出格式：{format}",
             outputRule,
-            "內容應該整理成可直接交付的結果，不要再解釋你正在做什麼，也不要加前言或後記。",
-            "若使用者要求摘要、整理、說明或初稿，請直接輸出最終文件內容。",
+            "請根據使用者要求產生可直接交付的文件內容，避免多餘解釋，保持內容完整且可直接存檔。",
+            "若需求不足，請仍先產出一份合理的初稿。",
             string.Empty,
             $"title: {draft.Title}",
             $"summary: {draft.Summary}",
@@ -261,7 +258,7 @@ public sealed class HighLevelDocumentArtifactService
     private static string InferFormat(string message)
     {
         var lower = (message ?? string.Empty).ToLowerInvariant();
-        if (lower.Contains(".md") || lower.Contains("markdown") || lower.Contains("md 文件") || lower.Contains("md檔"))
+        if (lower.Contains(".md") || lower.Contains("markdown"))
             return "md";
         if (lower.Contains(".json") || lower.Contains("json"))
             return "json";

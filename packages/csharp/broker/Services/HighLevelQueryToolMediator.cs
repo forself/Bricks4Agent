@@ -179,6 +179,8 @@ public sealed class HighLevelQueryToolMediator
         if (!string.IsNullOrWhiteSpace(safeMode))
             args["safe_mode"] = safeMode;
 
+        // EXC-HLQM-BYPASS: 暫時例外，Phase 2 將消除此 bypass
+        ApprovedRequest.WarnIfBypass();
         var approvedRequest = new ApprovedRequest
         {
             RequestId = $"hlq_{Guid.NewGuid():N}"[..18],

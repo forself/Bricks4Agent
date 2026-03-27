@@ -4,6 +4,7 @@ using BrokerCore.Services;
 using Broker.Adapters;
 using Broker.Endpoints;
 using Broker.Middleware;
+using Broker.Services;
 using FunctionPool.Container;
 using FunctionPool.Dispatch;
 using FunctionPool.Health;
@@ -440,6 +441,11 @@ startupLogger.LogInformation(
     "Tool spec registry: root={Root}",
     toolSpecRegistryOptions.Root);
 
+builder.Services.AddSingleton<IToolSpecStatusChecker>(sp =>
+    new Broker.Services.ToolSpecStatusChecker(
+        sp.GetRequiredService<IToolSpecRegistry>(),
+        sp.GetRequiredService<ILogger<Broker.Services.ToolSpecStatusChecker>>()));
+
 builder.Services.AddSingleton<IBrokerService>(sp =>
     new BrokerService(
         sp.GetRequiredService<BrokerDb>(),
@@ -449,7 +455,8 @@ builder.Services.AddSingleton<IBrokerService>(sp =>
         sp.GetRequiredService<ISessionService>(),
         sp.GetRequiredService<IRevocationService>(),
         sp.GetRequiredService<ITaskRouter>(),
-        sp.GetRequiredService<IExecutionDispatcher>()));
+        sp.GetRequiredService<IExecutionDispatcher>(),
+        sp.GetRequiredService<IToolSpecStatusChecker>()));
 
 builder.Services.AddSingleton<IPlanEngine>(sp =>
     new PlanEngine(

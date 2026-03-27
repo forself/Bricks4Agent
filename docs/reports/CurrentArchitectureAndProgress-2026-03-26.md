@@ -277,7 +277,11 @@ That includes:
 - artifact records
 - admin visibility of artifacts
 
-Google Drive delivery is also now wired in through delegated OAuth.
+Google Drive delivery is also now wired in through selectable identity modes:
+
+- shared delegated owner
+- per-user delegated OAuth
+- service-account / Shared Drive path
 
 The current working delivery path is:
 
@@ -292,6 +296,8 @@ Current limitation:
 
 - the final LINE send still depends on the target being a real LINE user ID
 - test identities can complete upload and link generation, but not final real LINE delivery
+- there is still no end-user frontend for artifact browsing or authenticated download
+- if this system later serves users directly, a broker-governed frontend download API should exist
 
 ## 10. Browser-Governed Capability Model
 
