@@ -1,12 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Handlers.Delivery;
 
-public sealed class DeliveryGoogleDriveShareHandler : IRouteHandler
+public sealed class DeliveryGoogleDriveShareHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "delivery_google_drive_share";
 

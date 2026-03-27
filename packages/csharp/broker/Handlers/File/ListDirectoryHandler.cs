@@ -1,11 +1,10 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.File;
 
-public sealed class ListDirectoryHandler : IRouteHandler
+public sealed class ListDirectoryHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly ILogger<ListDirectoryHandler> _logger;
     private readonly string _sandboxRoot;

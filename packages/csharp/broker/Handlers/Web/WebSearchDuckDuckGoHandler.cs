@@ -1,11 +1,10 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Web;
 
-public sealed class WebSearchDuckDuckGoHandler : IRouteHandler
+public sealed class WebSearchDuckDuckGoHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "web_search_duckduckgo";
 

@@ -1,11 +1,10 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.File;
 
-public sealed class SearchFilesHandler : IRouteHandler
+public sealed class SearchFilesHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly ILogger<SearchFilesHandler> _logger;
     private readonly string _sandboxRoot;

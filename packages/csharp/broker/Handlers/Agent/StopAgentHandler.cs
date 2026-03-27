@@ -1,11 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
+using BrokerCore.Services;
 
 namespace Broker.Handlers.Agent;
 
-public sealed class StopAgentHandler : IRouteHandler
+public sealed class StopAgentHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly AgentSpawnService _agentSpawnService;
 

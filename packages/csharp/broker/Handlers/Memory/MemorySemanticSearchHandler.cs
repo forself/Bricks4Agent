@@ -2,12 +2,12 @@ using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
-using BrokerCore.Services;
 using Broker.Helpers;
+using BrokerCore.Services;
 
 namespace Broker.Handlers.Memory;
 
-public sealed class MemorySemanticSearchHandler : IRouteHandler
+public sealed class MemorySemanticSearchHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly BrokerDb _db;
     private readonly EmbeddingService _embeddingService;

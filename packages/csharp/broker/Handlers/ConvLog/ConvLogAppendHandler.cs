@@ -2,12 +2,11 @@ using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.ConvLog;
 
-public sealed class ConvLogAppendHandler : IRouteHandler
+public sealed class ConvLogAppendHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly BrokerDb _db;
 

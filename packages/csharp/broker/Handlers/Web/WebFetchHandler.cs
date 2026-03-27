@@ -1,12 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Web;
 
-public sealed class WebFetchHandler : IRouteHandler
+public sealed class WebFetchHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "web_fetch";
 

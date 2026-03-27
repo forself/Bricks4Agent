@@ -1,12 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Memory;
 
-public sealed class MemoryFulltextSearchHandler : IRouteHandler
+public sealed class MemoryFulltextSearchHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly ILogger<MemoryFulltextSearchHandler> _logger;
     private readonly BrokerDb _db;

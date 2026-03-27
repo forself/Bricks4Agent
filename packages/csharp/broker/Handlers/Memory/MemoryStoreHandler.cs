@@ -2,12 +2,12 @@ using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
 using BrokerCore.Models;
-using BrokerCore.Services;
 using Broker.Helpers;
+using BrokerCore.Services;
 
 namespace Broker.Handlers.Memory;
 
-public sealed class MemoryStoreHandler : IRouteHandler
+public sealed class MemoryStoreHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly ILogger<MemoryStoreHandler> _logger;
     private readonly BrokerDb _db;
