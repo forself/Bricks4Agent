@@ -28,6 +28,7 @@ public static class HighLevelEndpoints
             {
                 mode = result.Mode.ToString().ToLowerInvariant(),
                 reply = result.Reply,
+                follow_up_messages = result.FollowUpMessages,
                 error = result.Error,
                 decision_reason = result.DecisionReason,
                 history_count = result.HistoryCount,

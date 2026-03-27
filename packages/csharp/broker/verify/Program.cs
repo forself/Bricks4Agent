@@ -1469,6 +1469,7 @@ try
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
         AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
+        AssertTrue(docDraft.FollowUpMessages != null && docDraft.FollowUpMessages.Contains("confirm"), "doc_gen draft exposes confirm as a follow-up message");
         var createDocDraft = await coordinator.ProcessLineMessageAsync("line-doc-user-create", "/create 產生一份 markdown 文件，摘要目前進度");
         AssertTrue(createDocDraft.Draft != null && createDocDraft.Draft.TaskType == "doc_gen", "create production alias still resolves to doc_gen draft");
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
@@ -1506,10 +1507,10 @@ try
         AssertTrue(firstConversation.Reply.Contains("目前擁有的權限：", StringComparison.Ordinal), "first interaction guide shows current permission summary");
 
         var querySuggestion = await coordinator.ProcessLineMessageAsync("line-user-d", "?中央氣象署官網");
-        AssertTrue(querySuggestion.Reply.Contains("?search", StringComparison.Ordinal), "generic high-level query prompts controlled search when lookup is likely");
+        AssertTrue(querySuggestion.FollowUpMessages != null && querySuggestion.FollowUpMessages.Any(item => item.Contains("?search", StringComparison.Ordinal)), "generic high-level query prompts controlled search as a follow-up command");
 
         var railSuggestion = await coordinator.ProcessLineMessageAsync("line-user-e", "台北到台中最晚高鐵班次");
-        AssertTrue(railSuggestion.Reply.Contains("?hsr", StringComparison.Ordinal), "lookup-style transport conversation prompts controlled hsr search");
+        AssertTrue(railSuggestion.FollowUpMessages != null && railSuggestion.FollowUpMessages.Any(item => item.Contains("?hsr", StringComparison.Ordinal)), "lookup-style transport conversation prompts controlled hsr search as a follow-up command");
 
         var explicitSearchReply = await coordinator.ProcessLineMessageAsync("line-user-f", "?search 中央氣象署官網");
         AssertTrue(explicitSearchReply.Reply.Contains("verify-reply", StringComparison.OrdinalIgnoreCase), "explicit search uses high-level model to synthesize broker search results");
