@@ -10,6 +10,7 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
 $runRoot = Join-Path $repoRoot ".run\line-sidecar"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
+$ngrokPidFile = Join-Path $runRoot "ngrok.pid"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $tunnelName = "line$WebhookPort"
 
@@ -47,6 +48,7 @@ function Get-RecordedProcessStatus {
 $rows = @(
     Get-RecordedProcessStatus -PidFile $brokerPidFile -Label "broker"
     Get-RecordedProcessStatus -PidFile $workerPidFile -Label "line-worker"
+    Get-RecordedProcessStatus -PidFile $ngrokPidFile -Label "ngrok"
 )
 $rows | Format-Table -AutoSize
 

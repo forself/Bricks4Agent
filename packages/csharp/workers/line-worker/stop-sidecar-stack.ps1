@@ -10,6 +10,7 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
 $runRoot = Join-Path $repoRoot ".run\line-sidecar"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
+$ngrokPidFile = Join-Path $runRoot "ngrok.pid"
 $tunnelName = "line$WebhookPort"
 
 function Stop-RecordedProcess {
@@ -47,6 +48,35 @@ function Stop-RecordedProcess {
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
 }
 
+function Stop-ProcessByExecutablePath {
+    param([string]$ExecutablePath, [string]$Label)
+
+    if (-not (Test-Path $ExecutablePath)) {
+        return
+    }
+
+    $normalized = [System.IO.Path]::GetFullPath($ExecutablePath)
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            $_.Path -and ([System.IO.Path]::GetFullPath($_.Path) -ieq $normalized)
+        } catch {
+            $false
+        }
+    } | ForEach-Object {
+        try {
+            Stop-Process -Id $_.Id -Force -ErrorAction Stop
+            $deadline = (Get-Date).AddSeconds(20)
+            do {
+                Start-Sleep -Milliseconds 250
+                $stillRunning = Get-Process -Id $_.Id -ErrorAction SilentlyContinue
+            } while ($stillRunning -and (Get-Date) -lt $deadline)
+            Write-Host "$Label stopped by executable path: PID $($_.Id)" -ForegroundColor Green
+        } catch {
+            Write-Warning ("Failed to stop {0} PID {1} by executable path: {2}" -f $Label, $_.Id, $_.Exception.Message)
+        }
+    }
+}
+
 function Remove-NgrokTunnel {
     param([string]$Name)
 
@@ -60,4 +90,7 @@ function Remove-NgrokTunnel {
 
 Stop-RecordedProcess -PidFile $workerPidFile -Label "line-worker"
 Stop-RecordedProcess -PidFile $brokerPidFile -Label "broker"
+Stop-RecordedProcess -PidFile $ngrokPidFile -Label "ngrok"
+Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $runRoot "line-worker\\LineWorker.exe") -Label "line-worker"
+Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $runRoot "broker\\Broker.exe") -Label "broker"
 Remove-NgrokTunnel -Name $tunnelName

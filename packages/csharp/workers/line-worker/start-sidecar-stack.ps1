@@ -20,12 +20,16 @@ $workerLog = Join-Path $logDir "line-worker.out.log"
 $workerErrLog = Join-Path $logDir "line-worker.err.log"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
+$ngrokPidFile = Join-Path $runRoot "ngrok.pid"
 $tunnelName = "line$WebhookPort"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
 $googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
+$ngrokConfigPath = Join-Path $env:LOCALAPPDATA "ngrok\ngrok.yml"
+$ngrokOutLog = Join-Path $logDir "ngrok.out.log"
+$ngrokErrLog = Join-Path $logDir "ngrok.err.log"
 
 foreach ($dir in @($runRoot, $brokerOut, $workerOut, $logDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -80,6 +84,34 @@ function Stop-RecordedProcess {
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
 }
 
+function Stop-ProcessByExecutablePath {
+    param(
+        [string]$ExecutablePath,
+        [string]$Label
+    )
+
+    $normalized = [System.IO.Path]::GetFullPath($ExecutablePath)
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        try {
+            $_.Path -and ([System.IO.Path]::GetFullPath($_.Path) -ieq $normalized)
+        } catch {
+            $false
+        }
+    } | ForEach-Object {
+        try {
+            Stop-Process -Id $_.Id -Force -ErrorAction Stop
+            $deadline = (Get-Date).AddSeconds(20)
+            do {
+                Start-Sleep -Milliseconds 250
+                $stillRunning = Get-Process -Id $_.Id -ErrorAction SilentlyContinue
+            } while ($stillRunning -and (Get-Date) -lt $deadline)
+            Write-Host "$Label stopped by executable path: PID $($_.Id)" -ForegroundColor Green
+        } catch {
+            Write-Warning ("Failed to stop {0} PID {1} by executable path: {2}" -f $Label, $_.Id, $_.Exception.Message)
+        }
+    }
+}
+
 function Invoke-NgrokApi {
     param(
         [string]$Method,
@@ -93,6 +125,110 @@ function Invoke-NgrokApi {
     }
 
     return Invoke-RestMethod -Method $Method -Uri $uri -ContentType "application/json" -Body ($Body | ConvertTo-Json -Compress)
+}
+
+function Test-NgrokAdminApi {
+    try {
+        Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:4040/api/tunnels" | Out-Null
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Wait-HttpStatusCode {
+    param(
+        [string]$Uri,
+        [int[]]$AcceptStatusCodes,
+        [int]$TimeoutSeconds,
+        [string]$Label,
+        [string]$Method = "GET",
+        [string]$Body = ""
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            if ($Method -eq "POST") {
+                $response = Invoke-WebRequest -Uri $Uri -Method Post -Body $Body -ContentType "application/json" -UseBasicParsing -TimeoutSec 5
+            } else {
+                $response = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 5
+            }
+            if ($AcceptStatusCodes -contains [int]$response.StatusCode) {
+                return
+            }
+        } catch {
+            if ($_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode.value__
+                if ($AcceptStatusCodes -contains $statusCode) {
+                    return
+                }
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    throw "$Label did not become ready within $TimeoutSeconds seconds at $Uri."
+}
+
+function Wait-NgrokTunnelReady {
+    param(
+        [string]$Name,
+        [int]$TimeoutSeconds
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            $tunnel = Invoke-NgrokApi -Method Get -Path "/api/tunnels/$Name"
+            if ($tunnel -and $tunnel.public_url) {
+                return $tunnel
+            }
+        } catch {
+        }
+
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    throw "ngrok tunnel '$Name' did not become available within $TimeoutSeconds seconds."
+}
+
+function Start-NgrokAgentIfNeeded {
+    if (Test-NgrokAdminApi) {
+        return
+    }
+
+    $ngrokCommand = Get-Command ngrok -ErrorAction SilentlyContinue
+    if (-not $ngrokCommand) {
+        throw "ngrok is not installed or not available on PATH. The sidecar requires ngrok because it creates tunnels through the local ngrok admin API on 127.0.0.1:4040."
+    }
+
+    if (-not (Test-Path $ngrokConfigPath)) {
+        throw "Missing ngrok config: $ngrokConfigPath. Run 'ngrok config add-authtoken <token>' or create a working ngrok config before starting the sidecar."
+    }
+
+    foreach ($logPath in @($ngrokOutLog, $ngrokErrLog)) {
+        if (Test-Path $logPath) { Remove-Item $logPath -Force }
+    }
+
+    $ngrokProc = Start-Process `
+        -FilePath $ngrokCommand.Source `
+        -ArgumentList @("start", "--none", "--config", $ngrokConfigPath) `
+        -RedirectStandardOutput $ngrokOutLog `
+        -RedirectStandardError $ngrokErrLog `
+        -PassThru
+    $ngrokProc.Id | Out-File -FilePath $ngrokPidFile -Encoding ascii -NoNewline
+
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        Start-Sleep -Milliseconds 500
+        if (Test-NgrokAdminApi) {
+            return
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    throw "ngrok started but the admin API on 127.0.0.1:4040 did not become available within 15 seconds. Check $ngrokOutLog and $ngrokErrLog."
 }
 
 function Update-LineWebhook {
@@ -130,6 +266,8 @@ function Remove-NgrokTunnelIfPresent {
 
 Stop-RecordedProcess -PidFile $brokerPidFile
 Stop-RecordedProcess -PidFile $workerPidFile
+Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $brokerOut "Broker.exe") -Label "broker"
+Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $workerOut "LineWorker.exe") -Label "line-worker"
 
 if (-not $SkipBuild) {
     Clear-PublishOutputDirectory -Path $brokerOut -Label "broker"
@@ -153,6 +291,8 @@ if (-not $SkipBuild) {
 foreach ($logPath in @($brokerLog, $brokerErrLog, $workerLog, $workerErrLog)) {
     if (Test-Path $logPath) { Remove-Item $logPath -Force }
 }
+
+Start-NgrokAgentIfNeeded
 
 $env:ASPNETCORE_URLS = "http://127.0.0.1:$BrokerPort"
 if (Test-Path $brokerProductionOverridePath) {
@@ -190,7 +330,7 @@ $brokerProc = Start-Process `
 Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
 $brokerProc.Id | Out-File -FilePath $brokerPidFile -Encoding ascii -NoNewline
 
-Start-Sleep -Seconds 3
+Wait-HttpStatusCode -Uri "http://127.0.0.1:$BrokerPort/api/v1/local-admin/status" -AcceptStatusCodes @(200) -TimeoutSeconds 60 -Label "Broker"
 
 $env:WORKER_Broker__ApiUrl = "http://localhost:$BrokerPort"
 $env:WORKER_Line__WebhookPort = "$WebhookPort"
@@ -206,7 +346,7 @@ Remove-Item Env:WORKER_Line__WebhookPort -ErrorAction SilentlyContinue
 Remove-Item Env:WORKER_Line__WebhookHost -ErrorAction SilentlyContinue
 $workerProc.Id | Out-File -FilePath $workerPidFile -Encoding ascii -NoNewline
 
-Start-Sleep -Seconds 3
+Wait-HttpStatusCode -Uri "http://127.0.0.1:$WebhookPort/webhook/line/" -AcceptStatusCodes @(400, 401, 403, 405) -TimeoutSeconds 60 -Label "LINE worker webhook" -Method "POST" -Body "{}"
 
 Remove-NgrokTunnelIfPresent -Name $tunnelName
 $tunnel = Invoke-NgrokApi -Method Post -Path "/api/tunnels" -Body @{
@@ -215,6 +355,7 @@ $tunnel = Invoke-NgrokApi -Method Post -Path "/api/tunnels" -Body @{
     proto = "http"
     inspect = $true
 }
+$tunnel = Wait-NgrokTunnelReady -Name $tunnelName -TimeoutSeconds 10
 
 $publicUrl = $tunnel.public_url
 if (-not $SkipWebhookUpdate) {
