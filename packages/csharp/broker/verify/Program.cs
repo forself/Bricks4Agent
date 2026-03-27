@@ -1469,9 +1469,11 @@ try
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
         AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
+        var createDocDraft = await coordinator.ProcessLineMessageAsync("line-doc-user-create", "/create 產生一份 markdown 文件，摘要目前進度");
+        AssertTrue(createDocDraft.Draft != null && createDocDraft.Draft.TaskType == "doc_gen", "create production alias still resolves to doc_gen draft");
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
         AssertTrue(docConfirmed.CreatedTask != null && docConfirmed.CreatedTask.TaskType == "doc_gen", "confirm creates broker task for doc_gen draft");
-        AssertTrue(docConfirmed.Reply.Contains("文件已生成", StringComparison.Ordinal), "doc_gen confirm reply includes artifact delivery summary");
+        AssertTrue(docConfirmed.Reply.Contains("已生成", StringComparison.Ordinal), "doc_gen confirm reply includes artifact delivery summary");
         var docManagedPaths = coordinator.GetLineManagedPaths("line-doc-user");
         AssertTrue(docManagedPaths != null, "doc_gen user managed paths can be resolved");
         var docDocumentsRoot = docManagedPaths is null ? throw new Exception("doc_gen managed paths unexpectedly null") : docManagedPaths.DocumentsRoot;
