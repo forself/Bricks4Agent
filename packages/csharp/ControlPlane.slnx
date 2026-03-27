@@ -37,4 +37,7 @@
   <Folder Name="/workers/file-worker/">
     <Project Path="workers/file-worker/FileWorker.csproj" />
   </Folder>
+  <Folder Name="/workers/browser-worker/">
+    <Project Path="workers/browser-worker/BrowserWorker.csproj" />
+  </Folder>
 </Solution>
