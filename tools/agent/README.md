@@ -1,36 +1,42 @@
 # AI Agent CLI
 
-`tools/agent` 是 Bricks4Agent 的本地代理與生成入口，支援三種模式：
+`tools/agent` is the local agent runtime and generation entrypoint for Bricks4Agent.
 
-- 本地模式：Agent 直接連 Ollama 或 OpenAI-compatible provider。
-- Pipeline 模式：Agent 驅動 CRUD / `project.json` 生成流程。
-- Governed 模式：Agent 只向 broker 發送 `POST + JSON` 請求；工具執行與 LLM 對話都由 broker 轉發與裁決。
+It currently supports three distinct modes:
 
-## 需求
+- local provider mode: the agent talks directly to an upstream LLM provider
+- generation / pipeline mode: the agent drives CRUD and `project.json` generation helpers
+- governed mode: the agent talks to a broker over JSON contracts and does not directly own execution authority
+
+This README describes the CLI itself. It does not describe the canonical LINE ingress path. The production-style LINE route is now:
+
+`LINE webhook -> ngrok public URL -> line-worker -> broker high-level coordinator`
+
+`--line-listen` is kept only as a legacy development path.
+
+## Requirements
 
 - Node.js 18+
-- 本地模式可搭配 Ollama
-- 雲端模式可用 OpenAI-compatible API provider
-- Governed 模式需搭配 broker
+- Ollama if you want fully local provider mode
+- an API key for OpenAI-compatible mode
+- a broker if you want governed mode
 
-## Provider
+## Provider Aliases
 
-支援的 provider alias：
+| Provider | Notes |
+| --- | --- |
+| `ollama` | Local Ollama, default host `http://localhost:11434` |
+| `openai` | OpenAI / OpenAI-compatible Responses API |
+| `gemini` | Gemini OpenAI-compatible endpoint |
+| `deepseek` | DeepSeek OpenAI-compatible endpoint |
+| `groq` | Groq OpenAI-compatible endpoint |
+| `mistral` | Mistral OpenAI-compatible endpoint |
 
-| Provider | 說明 |
-|---|---|
-| `ollama` | 本地 Ollama，預設 `http://localhost:11434` |
-| `openai` | OpenAI，預設使用 Responses API |
-| `gemini` | Gemini 的 OpenAI-compatible endpoint |
-| `deepseek` | DeepSeek 的 OpenAI-compatible endpoint |
-| `groq` | Groq 的 OpenAI-compatible endpoint |
-| `mistral` | Mistral 的 OpenAI-compatible endpoint |
+If `--provider` is omitted, the CLI prefers an API-key-backed provider when a key is present; otherwise it falls back to `ollama`.
 
-若未指定 `--provider`，CLI 會優先看 API key；有 key 時預設用 `openai`，否則用 `ollama`。
+## Quick Start
 
-## 快速開始
-
-### 本地 Ollama
+### Local Ollama
 
 ```bash
 ollama serve
@@ -38,26 +44,28 @@ ollama pull llama3.1
 node tools/agent/agent.js
 ```
 
-### 雲端 provider
+### OpenAI-compatible / cloud mode
 
 ```bash
-node tools/agent/agent.js --provider openai --api-key sk-xxx --model gpt-5
+node tools/agent/agent.js --provider openai --api-key sk-xxx --model gpt-5.4-mini
 node tools/agent/agent.js --provider gemini --api-key AIza... --model gemini-2.0-flash
 ```
 
-### 單次執行
+### One-shot run
 
 ```bash
-node tools/agent/agent.js --run "閱讀 AGENT.md 並摘要限制"
+node tools/agent/agent.js --run "Read AGENT.md and summarize the constraints"
 ```
 
-### 列出模型
+### List models
 
 ```bash
 node tools/agent/agent.js --list-models
 ```
 
-### 生成 `project.json`
+## Generation / Pipeline Mode
+
+### Generate `project.json`
 
 ```bash
 node tools/agent/agent.js --generate --project-path projects/PhotoDiary
@@ -71,16 +79,30 @@ node tools/agent/agent.js --generate --project-path projects/PhotoDiary --valida
 node tools/agent/agent.js --pipeline crud --entity Product --fields "[{\"name\":\"Name\",\"type\":\"string\"},{\"name\":\"Price\",\"type\":\"decimal\"}]"
 ```
 
-## Governed 模式
+## Governed Mode
 
-Governed 模式不是只有「工具經 broker」，而是：
+Governed mode means more than "tools go through the broker".
 
-- 工具請求走 broker
-- LLM health / models / chat 也走 broker
-- agent 不應直接持有 provider API key 作為正式執行路徑
-- broker 依 session / role / grant / capability / scope / policy 決定是否允許
+In governed mode:
 
-### 啟動
+- tool requests go through the broker
+- LLM health / model listing / chat also go through the broker
+- the agent should not treat direct provider API keys as the canonical execution path
+- the broker decides whether a request is allowed by session, role, grant, capability, scope, and policy
+
+### Important note about broker ports
+
+The CLI code still defaults generic governed examples to `http://localhost:5000` when `BROKER_URL` is omitted. That is the generic broker default used by the agent runtime itself.
+
+If you are targeting the current Windows LINE sidecar broker, use:
+
+- `http://127.0.0.1:5361`
+
+Do not assume the sidecar path and the generic agent default are the same thing.
+
+### Start governed mode
+
+Generic broker example:
 
 ```bash
 node tools/agent/agent.js \
@@ -90,23 +112,36 @@ node tools/agent/agent.js \
   --principal-id prn_xxx \
   --task-id task_xxx \
   --role-id role_reader \
-  --run "讀取 README.md"
+  --run "Read README.md"
 ```
 
-也可用環境變數：
+Current Windows sidecar broker example:
 
 ```bash
-set BROKER_URL=http://localhost:5000
-set BROKER_PUB_KEY=MFkwEwYH...
-set BROKER_PRINCIPAL_ID=prn_xxx
-set BROKER_TASK_ID=task_xxx
-set BROKER_ROLE_ID=role_reader
+node tools/agent/agent.js \
+  --governed \
+  --broker-url http://127.0.0.1:5361 \
+  --broker-pub-key <base64> \
+  --principal-id prn_xxx \
+  --task-id task_xxx \
+  --role-id role_reader \
+  --run "Inspect the repo"
+```
+
+Environment-variable form:
+
+```powershell
+$env:BROKER_URL='http://127.0.0.1:5361'
+$env:BROKER_PUB_KEY='MFkwEwYH...'
+$env:BROKER_PRINCIPAL_ID='prn_xxx'
+$env:BROKER_TASK_ID='task_xxx'
+$env:BROKER_ROLE_ID='role_reader'
 node tools/agent/agent.js --governed
 ```
 
-### Broker 契約
+### Broker contract
 
-Governed agent 只能透過 broker 的 `POST` 路由提出請求：
+Governed agent requests are broker-mediated JSON POST calls such as:
 
 - `POST /api/v1/sessions/register`
 - `POST /api/v1/execution-requests/submit`
@@ -119,40 +154,49 @@ Governed agent 只能透過 broker 的 `POST` 路由提出請求：
 - `POST /api/v1/llm/models`
 - `POST /api/v1/llm/chat`
 
-Governed prompt 會注入：
+Governed prompt context includes:
 
-- 當前 session 資訊
-- 目前 granted capability 清單
+- current session information
+- granted capabilities
 - `scope.paths` / `scope.routes`
-- broker URL 與完整路由
-- 每個 POST 路由的標準 JSON body 格式
-- LLM runtime spec，例如 default model / override policy / tool-calling 能力
+- broker URL and POST route contracts
+- runtime spec such as default model, override policy, and tool-calling allowance
 
-### 功能層與範圍層
+### Capability layer and scope layer
 
-- 功能層：`capability_id`
-- 範圍層：`scope.routes`、`scope.paths`
+- capability layer: `capability_id`
+- scope layer: `scope.routes`, `scope.paths`
 
-也就是說，不是只有「能不能讀檔」，而是「能不能以某個 capability 對某些 route / path 發請求」。
+This means the question is not only "may this agent read a file", but "may this capability act on these routes and paths".
 
-### Governed 模式的重要行為
+### Governed-mode behavior
 
-- `--provider`、`--api-key`、`--host` 在 governed 模式下會被忽略
-- `--list-models` 在 governed 模式下會改走 broker `/api/v1/llm/models`
-- AgentLoop 會把 governed executor 當成 provider 使用
-- LLM 連線是 broker-mediated，不是 agent 直連 upstream provider
+- `--provider`, `--api-key`, and `--host` are ignored in governed mode
+- `--list-models` goes through broker `/api/v1/llm/models`
+- `AgentLoop` uses the governed executor as its effective provider
+- LLM traffic is broker-mediated rather than agent-direct
 
-## Podman 容器
+## Legacy Direct LINE Listener
 
-最小 governed agent 容器定義在 `tools/agent/Containerfile`。
+`--line-listen` still exists, but it is not the canonical production path.
 
-### 建置
+Use it only for development experiments where you explicitly want the agent process to poll LINE directly. The repo's current production-style ingress path is the worker-side bridge under:
+
+- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+
+## Podman Container
+
+The minimal governed agent container is defined in:
+
+- `tools/agent/Containerfile`
+
+### Build
 
 ```bash
 podman build -f tools/agent/Containerfile -t bricks4agent-agent:dev .
 ```
 
-### 執行
+### Run
 
 ```bash
 podman run --rm -it \
@@ -163,19 +207,23 @@ podman run --rm -it \
   -e BROKER_TASK_ID=task_xxx \
   -e BROKER_ROLE_ID=role_reader \
   -e AGENT_MODEL=llama3.1 \
-  -e AGENT_RUN="讀取 README.md 並摘要重點" \
+  -e AGENT_RUN="Read README.md and summarize key points" \
   bricks4agent-agent:dev
 ```
 
-容器入口只接受 governed 路徑：
+The container entrypoint accepts only the governed path:
 
-- 必須提供 `BROKER_URL`、`BROKER_PUB_KEY`、`BROKER_PRINCIPAL_ID`、`BROKER_TASK_ID`
-- 不接受 direct provider API key 作為正式執行模式
-- 預設 workspace 掛載點是 `/workspace`
-- 預設會加上 `--governed` 與 broker/session 參數
-- `AGENT_RUN` 有值時跑單次任務；沒有時會進 REPL
+- `BROKER_URL`, `BROKER_PUB_KEY`, `BROKER_PRINCIPAL_ID`, and `BROKER_TASK_ID` are required
+- direct provider API keys are not the intended formal execution path
+- `/workspace` is the default mounted workspace
+- the entrypoint adds `--governed` and broker/session parameters automatically
+- `AGENT_RUN` executes one task; otherwise the container enters REPL
 
-## 驗證
+See also:
+
+- [tools/agent/container/README.md](/d:/Bricks4Agent/tools/agent/container/README.md)
+
+## Verification
 
 ```bash
 npm run validate:agent-governed
@@ -183,56 +231,57 @@ npm run validate:broker-scope
 npm run validate:broker-llm-proxy
 ```
 
-目前驗證覆蓋：
+These checks cover:
 
-- governed prompt 是否包含 broker route 與標準 POST JSON contract
-- governed agent 初始化是否不再觸碰本地 direct provider
-- broker-mediated `health/models/chat` 是否可被 agent 使用
-- live broker + fake upstream LLM 是否真的能完成 governed session 與 chat
-- tool visibility 是否依 grant 過濾
-- 未授權 capability 是否會在本地 governed executor 直接拒絕
-- broker policy 是否同時驗證 capability 與 `scope.paths/scope.routes`
+- governed prompt route and JSON-contract injection
+- governed initialization avoiding direct provider use
+- broker-mediated `health/models/chat`
+- live broker + fake upstream LLM session flow
+- grant-filtered tool visibility
+- local rejection of unauthorized capability usage
+- broker validation of both capability and `scope.paths/scope.routes`
 
-## 主要參數
+## Main Parameters
 
-| 參數 | 短參數 | 說明 |
-|---|---|---|
-| `--run "<prompt>"` | `-r` | 單次執行 |
-| `--model <name>` | `-m` | 模型名稱 |
-| `--provider <type>` | `-P` | 本地模式 provider |
-| `--api-key <key>` | `-k` | 本地模式 API key |
-| `--host <url>` | `-H` | 覆蓋 provider base URL |
-| `--list-models` |  | 列出模型 |
-| `--no-stream` |  | 關閉串流輸出 |
-| `--force-react` |  | 強制 ReAct XML |
-| `--force-native` |  | 強制 native tool calling |
-| `--max-iterations <n>` |  | 最大迭代數 |
-| `--generate` | `-g` | 執行 `project.json` 生成 |
-| `--pipeline <type>` |  | 執行指定 pipeline |
-| `--project-path <path>` |  | 目標專案路徑 |
-| `--dry-run` |  | 只驗證不寫檔 |
-| `--validate` |  | 只驗證 pipeline |
-| `--force` |  | 覆蓋既有生成內容 |
-| `--governed` |  | 啟用 broker 受控模式 |
-| `--broker-url <url>` |  | broker URL |
-| `--broker-pub-key <base64>` |  | broker public key |
-| `--principal-id <id>` |  | principal id |
-| `--task-id <id>` |  | task id |
-| `--role-id <id>` |  | role id |
+| Parameter | Short | Meaning |
+| --- | --- | --- |
+| `--run "<prompt>"` | `-r` | One-shot run |
+| `--model <name>` | `-m` | Model name |
+| `--provider <type>` | `-P` | Local-provider mode provider |
+| `--api-key <key>` | `-k` | Local-provider mode API key |
+| `--host <url>` | `-H` | Override provider base URL |
+| `--list-models` |  | List models |
+| `--no-stream` |  | Disable streaming |
+| `--force-react` |  | Force ReAct XML |
+| `--force-native` |  | Force native tool-calling |
+| `--max-iterations <n>` |  | Max iterations |
+| `--generate` | `-g` | Run `project.json` generation |
+| `--pipeline <type>` |  | Run a named pipeline |
+| `--project-path <path>` |  | Target project path |
+| `--dry-run` |  | Validate without writing |
+| `--validate` |  | Validate only |
+| `--force` |  | Overwrite generated output |
+| `--governed` |  | Enable broker-governed mode |
+| `--broker-url <url>` |  | Broker base URL |
+| `--broker-pub-key <base64>` |  | Broker public key |
+| `--principal-id <id>` |  | Principal id |
+| `--task-id <id>` |  | Task id |
+| `--role-id <id>` |  | Role id |
+| `--line-listen` |  | Legacy development-only LINE listener |
 
-## REPL 命令
+## REPL Commands
 
-| 命令 | 說明 |
-|---|---|
-| `/help` | 顯示說明 |
-| `/model <name>` | 切換模型 |
-| `/models` | 列出模型 |
-| `/clear` | 清除歷史 |
-| `/history` | 顯示歷史 |
-| `/tools` | 顯示目前可用工具 |
-| `/exit` | 離開 |
+| Command | Meaning |
+| --- | --- |
+| `/help` | Show help |
+| `/model <name>` | Switch model |
+| `/models` | List models |
+| `/clear` | Clear history |
+| `/history` | Show history |
+| `/tools` | Show available tools |
+| `/exit` | Exit |
 
-## 目錄
+## Layout
 
 ```text
 tools/agent/

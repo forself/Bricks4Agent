@@ -1,19 +1,23 @@
 # SPA Template CLI
 
-這個目錄包含 Bricks4Agent SPA 範本的 CLI 腳本：
+This directory contains the CLI scripts used to generate projects from the SPA template.
+
+Current scripts include:
 
 - `spa-cli.js`
 - `create-project.js`
 - `generate-page.js`
 - `generate-api.js`
 
-## Important Note
+## Scope
 
-這份文件描述的是目前支援的 CLI 介面。
+This CLI helps scaffold SPA-style projects from the template.
+
+It does not describe the broker control plane, the LINE sidecar, or the production-style governed runtime.
 
 ## Commands
 
-### Create a Project
+### Create a project
 
 ```bash
 node spa-cli.js new
@@ -21,7 +25,7 @@ node spa-cli.js new --name my-app --output ./projects
 node spa-cli.js new --config project.json
 ```
 
-### Generate a Page
+### Generate a page
 
 ```bash
 node spa-cli.js page ProductList
@@ -36,7 +40,7 @@ node spa-cli.js api Product
 node spa-cli.js api Order --fields "CustomerId:int,Total:decimal,Status:string"
 ```
 
-Supported field type aliases include:
+Supported field aliases include:
 
 - `string`
 - `int`, `integer`
@@ -47,30 +51,36 @@ Supported field type aliases include:
 - `datetime`, `date`
 - `guid`
 
-### Generate a Feature
+### Generate a feature
 
 ```bash
 node spa-cli.js feature Product
 node spa-cli.js feature Order --fields "CustomerId:int,Total:decimal,Status:string"
 ```
 
-## Example Workflow
+## Example workflow
 
 ```bash
-cd Bricks4Agent/templates/spa/scripts
+cd templates/spa/scripts
 node spa-cli.js new --name my-shop
 node spa-cli.js feature Product --fields "Name:string,Price:decimal,Stock:int"
 ```
 
-產生後仍需手動整合：
+## Important limitation
 
-1. `backend/Data/AppDbContext.cs` (AppDb 建表 SQL)
-2. `backend/Program.cs`
-3. `frontend/pages/routes.js`
+Generated output still needs manual integration.
 
-## Config File
+Typical follow-up work includes:
 
-`project-config.example.json` 提供非互動式建專案的範例設定。
+1. update backend schema/bootstrap in `backend/Data/AppDbContext.cs`
+2. update backend routing in `backend/Program.cs`
+3. update frontend routing in `frontend/pages/routes.js`
+
+This CLI is a scaffold helper, not a full end-to-end product compiler.
+
+## Config file
+
+`project-config.example.json` provides a non-interactive project-creation example.
 
 ```bash
 cp project-config.example.json my-project.json

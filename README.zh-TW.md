@@ -1,77 +1,77 @@
 # Bricks4Agent
 
-中文版本：
+English version：
 
-- [README.zh-TW.md](/d:/Bricks4Agent/README.zh-TW.md)
+- [README.md](/d:/Bricks4Agent/README.md)
 
-## Position
+## 專案定位
 
-`Bricks4Agent` is a broker-mediated AI operations prototype evolving toward a control plane.
+`Bricks4Agent` 是一個正在往控制面發展的 broker-mediated AI operations prototype。
 
-It is no longer accurately described as only:
+它現在已經不能準確地只被描述成：
 
-- an AI coding CLI
-- a page generator
-- a UI component library
+- AI coding CLI
+- page generator
+- UI component library
 
-Those subsystems still exist, but the current live system already includes:
+這些子系統仍然存在，但目前 live 系統已經包含：
 
 - LINE ingress
 - broker-governed high-level routing
-- structured intent, memory, and promotion gates
+- 結構化 intent、memory、promotion gate
 - governed execution
-- per-user managed workspaces
-- artifact generation and delivery
-- browser-governance groundwork
+- 每位使用者的 managed workspace
+- artifact generation 與 delivery
+- browser governance groundwork
 - Azure VM IIS deployment groundwork
-- local admin console
+- 本機 admin console
 
-## Current Canonical Live Path
+## 目前 canonical live 路徑
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
-Current local canonical sidecar ports:
+目前本機 canonical sidecar 埠號：
 
-- broker: `127.0.0.1:5361`
-- line-worker webhook: `127.0.0.1:5357`
+- broker：`127.0.0.1:5361`
+- line-worker webhook：`127.0.0.1:5357`
 
-Important clarification:
+重要說明：
 
-- `agent --line-listen` is legacy/development-only
-- the canonical LINE path is `line-worker -> broker high-level coordinator`
+- `agent --line-listen` 已是 legacy/development-only
+- 目前正式 LINE 路徑是 `line-worker -> broker high-level coordinator`
 
-## Main Areas
+## 主要區域
 
-### Broker and control plane
+### Broker 與控制面
 
 - [broker](/d:/Bricks4Agent/packages/csharp/broker)
 - [broker-core](/d:/Bricks4Agent/packages/csharp/broker-core)
 
-### LINE ingress and operator path
+### LINE ingress 與操作路徑
 
 - [line-worker](/d:/Bricks4Agent/packages/csharp/workers/line-worker)
 
-### Agent runtime and governed execution
+### Agent runtime 與 governed execution
 
 - [tools/agent](/d:/Bricks4Agent/tools/agent)
 - [tools/agent/container](/d:/Bricks4Agent/tools/agent/container)
 
-### UI library and generation
+### UI library 與 generation
 
 - [ui_components](/d:/Bricks4Agent/packages/javascript/browser/ui_components)
 - [page-generator](/d:/Bricks4Agent/packages/javascript/browser/page-generator)
 - [templates/spa](/d:/Bricks4Agent/templates/spa)
 - [tools/spa-generator](/d:/Bricks4Agent/tools/spa-generator)
 
-### Documents and design notes
+### 文件與設計說明
 
 - [docs/reports](/d:/Bricks4Agent/docs/reports)
 - [docs/designs](/d:/Bricks4Agent/docs/designs)
 - [docs/manuals](/d:/Bricks4Agent/docs/manuals)
 
-## Module Entry Points
+## 模組入口文件
 
-Primary module and subsystem entry documents:
+主要模組與子系統的入口文件：
 
 - [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
 - [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
@@ -86,33 +86,33 @@ Primary module and subsystem entry documents:
 - [packages/csharp/reporting/ExampleHost/README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.md)
 - [packages/csharp/database/BaseOrm/README.md](/d:/Bricks4Agent/packages/csharp/database/BaseOrm/README.md)
 
-## Sample Projects
+## 子專案與範例專案
 
-Representative sample/generated project entry points:
+代表性的 sample / generated project 入口：
 
 - [projects/ShopBricks-Gen/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/README.md)
 - [projects/ShopBricks-Gen/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/scripts/README.md)
 - [projects/ShopBricks/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks/scripts/README.md)
 
-## Current High-Level Model
+## 目前高階模型
 
-The LINE high-level responder is currently configured to use:
+LINE 高階回應層目前設定為：
 
-- provider: `openai-compatible`
-- model: `gpt-5.4-mini`
+- provider：`openai-compatible`
+- model：`gpt-5.4-mini`
 
-This high-level model handles:
+這一層負責：
 
-- conversation
-- clarification
-- mediated query synthesis
+- 對話
+- 需求澄清
+- broker-mediated query synthesis
 - execution-model suggestion
 
-It is separate from downstream execution-model requests.
+它和下游 execution-model request 是分開的。
 
-## Current High-Level Interaction Grammar
+## 目前高階互動語法
 
-Representative commands include:
+代表性指令包括：
 
 - `?help` / `?h`
 - `?search` / `?s`
@@ -127,69 +127,70 @@ Representative commands include:
 - `confirm`
 - `cancel`
 
-## Quick Start
+## 快速開始
 
-### Canonical local sidecar path
+### Canonical 本機 sidecar 路徑
 
-Use:
+請看：
 
 - [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
 - [docs/manuals/line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
 - [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
 
-Canonical startup command:
+canonical 啟動命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
 ```
 
-Canonical status command:
+canonical 狀態命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
 ```
 
-Canonical verification command:
+canonical 驗證命令：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message "hello"
 ```
 
-### Local admin console
+### 本機 admin console
 
 - `http://127.0.0.1:5361/line-admin.html`
 
-If no admin credential exists in the local DB, the initial password is `admin` and the first login requires a password change.
+若本機 DB 裡還沒有 admin credential，初始密碼是 `admin`，第一次登入必須修改。
 
-## Current Strengths
+## 目前的優點
 
-- coherent control-plane direction
-- real live LINE ingress path
-- explicit command grammar and workflow gating
-- growing separation between raw log, interpretation, memory, and execution intent
-- practical integrations for delivery and deployment
+- 控制面方向已經明確
+- 有真實可用的 LINE live ingress path
+- 有明確 command grammar 與 workflow gating
+- raw log / interpretation / memory / execution intent 的分層已建立
+- delivery 與 deployment 不再只是概念稿
 
-## Current Limits
+## 目前的限制
 
-- maturity is uneven across subsystems
-- broker remains a necessary central node and must be kept narrow and disciplined
-- browser governance is still groundwork, not a finished browser automation platform
-- deployment and delivery paths are real, but not yet fully generalized platform primitives
+- 各子系統成熟度仍不平均
+- broker 是不可迴避節點，必須持續維持窄核心與清楚邊界
+- browser governance 還在 groundwork 階段，不是完整 browser automation platform
+- deployment 與 delivery 雖已能用，但還未完全抽象成通用平台原語
 
-## Recommended Reading Order
+## 建議閱讀順序
 
 1. [docs/reports/CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
-2. [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+2. [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
 3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-4. subsystem-specific documents in `docs/designs`
+4. `docs/designs` 內的子系統文件
 
-## Documentation
+## 文件入口
 
-### Current system and architecture
+### 現況與架構
 
 - [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
 
-### Manuals
+### 手冊
 
 - [User Guide](/d:/Bricks4Agent/docs/manuals/user-guide.md)
 - [Engineer Guide](/d:/Bricks4Agent/docs/manuals/engineer-guide.md)
@@ -197,7 +198,7 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 - [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
 - [LINE Sidecar 操作手冊](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
 
-### Design notes
+### 設計說明
 
 - [HighLevelModelRoutingAndMemory.md](/d:/Bricks4Agent/docs/designs/HighLevelModelRoutingAndMemory.md)
 - [HighLevelMemoryAndLoggingModel.md](/d:/Bricks4Agent/docs/designs/HighLevelMemoryAndLoggingModel.md)
