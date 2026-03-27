@@ -165,11 +165,24 @@ public class InboundDispatcher
 
             using var doc = JsonDocument.Parse(responseBody);
             string? reply = null;
+            var followUpMessages = new List<string>();
             if (doc.RootElement.TryGetProperty("data", out var data) &&
                 data.ValueKind == JsonValueKind.Object &&
                 data.TryGetProperty("reply", out var nestedReply))
             {
                 reply = nestedReply.GetString();
+                if (data.TryGetProperty("follow_up_messages", out var followUps) &&
+                    followUps.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in followUps.EnumerateArray())
+                    {
+                        var followUpText = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(followUpText))
+                        {
+                            followUpMessages.Add(followUpText.Trim());
+                        }
+                    }
+                }
             }
             else if (doc.RootElement.TryGetProperty("reply", out var directReply))
             {
@@ -186,13 +199,26 @@ public class InboundDispatcher
                 reply = reply[..4900] + "\n\n... (內容已截斷)";
             }
 
-            var (success, error) = await _lineApi.PushTextMessageAsync(userId, reply, ct);
+            var messages = new List<object>
+            {
+                new { type = "text", text = reply }
+            };
+            foreach (var followUp in followUpMessages.Where(item => !string.IsNullOrWhiteSpace(item)).Take(4))
+            {
+                var bounded = followUp.Length > 4900 ? followUp[..4900] : followUp;
+                messages.Add(new { type = "text", text = bounded });
+            }
+
+            var (success, error) = messages.Count == 1
+                ? await _lineApi.PushTextMessageAsync(userId, reply, ct)
+                : await _lineApi.PushMessagesAsync(userId, messages.ToArray(), ct);
             if (success)
             {
                 _logger.LogInformation(
-                    "Reply sent to {User}: {Reply}",
+                    "Reply sent to {User}: {Reply} (followUps={FollowUpCount})",
                     userId[..Math.Min(8, userId.Length)],
-                    reply.Length > 80 ? reply[..80] + "..." : reply);
+                    reply.Length > 80 ? reply[..80] + "..." : reply,
+                    followUpMessages.Count);
             }
             else
             {

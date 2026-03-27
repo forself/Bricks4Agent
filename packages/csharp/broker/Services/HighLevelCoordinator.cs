@@ -176,12 +176,13 @@ public class HighLevelCoordinator
 
                 if (workflow.Action == HighLevelWorkflowAction.RequestProjectNameFirst)
                 {
-                    var reply = PrepareReplySafe(profile, trimmed, BuildProjectNameRequestReply(draft));
+                    var reply = PrepareReplyWithoutGuide(profile, BuildCompactProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
+                        FollowUpMessages = BuildProjectNameFollowUpMessages(draft),
                         Draft = draft,
                         DecisionReason = "project name required before confirmation"
                     });
@@ -193,13 +194,14 @@ public class HighLevelCoordinator
                 {
                     SaveTaskDraft(channel, userId, draft);
                     profile.PendingDraftId = draft.DraftId;
-                    var reply = PrepareReplySafe(profile, trimmed, BuildDraftConfirmationReply(draft));
+                    var reply = PrepareReplyWithoutGuide(profile, BuildCompactDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
+                        FollowUpMessages = BuildDraftFollowUpMessages(draft),
                         Draft = draft,
                         DecisionReason = "project name captured"
                     });
@@ -209,12 +211,13 @@ public class HighLevelCoordinator
                 {
                     draft.ProjectNameValidationError = projectNameError;
                     SaveTaskDraft(channel, userId, draft);
-                    var projectNameReply = PrepareReplySafe(profile, trimmed, BuildProjectNameRequestReply(draft));
+                    var projectNameReply = PrepareReplyWithoutGuide(profile, BuildCompactProjectNameRequestReply(draft));
                     SaveUserProfile(channel, userId, profile);
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = projectNameReply,
+                        FollowUpMessages = BuildProjectNameFollowUpMessages(draft),
                         Draft = draft,
                         DecisionReason = workflow.Reason
                     });
@@ -249,12 +252,13 @@ public class HighLevelCoordinator
 
             if (workflow.Action == HighLevelWorkflowAction.RemindPendingDraft)
             {
-                var pendingReply = PrepareReplySafe(profile, trimmed, BuildPendingDraftReminder(draft));
+                var pendingReply = PrepareReplyWithoutGuide(profile, BuildCompactPendingDraftReminder(draft));
                 SaveUserProfile(channel, userId, profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = pendingReply,
+                    FollowUpMessages = BuildDraftFollowUpMessages(draft),
                     Draft = draft,
                     DecisionReason = workflow.Reason
                 });
@@ -277,18 +281,20 @@ public class HighLevelCoordinator
             SaveTaskDraft(channel, userId, nextDraft);
 
             profile.PendingDraftId = nextDraft.DraftId;
-            var reply = PrepareReplySafe(
+            var reply = PrepareReplyWithoutGuide(
                 profile,
-                trimmed,
                 nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
-                    ? BuildProjectNameRequestReply(nextDraft)
-                    : BuildDraftConfirmationReply(nextDraft));
+                    ? BuildCompactProjectNameRequestReply(nextDraft)
+                    : BuildCompactDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = reply,
+                FollowUpMessages = nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
+                    ? BuildProjectNameFollowUpMessages(nextDraft)
+                    : BuildDraftFollowUpMessages(nextDraft),
                 Draft = nextDraft,
                 DecisionReason = decision.Reason
             });
@@ -377,12 +383,13 @@ public class HighLevelCoordinator
                 return deniedResult;
             }
 
-            var suggestedReply = PrepareReplySafe(profile, trimmed, BuildControlledSearchSuggestion(parsed));
+            var suggestedReply = PrepareReplyWithoutGuide(profile, BuildControlledSearchSuggestionReply(parsed));
             SaveUserProfile(channel, userId, profile);
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
             {
                 Mode = decision.Mode,
                 Reply = suggestedReply,
+                FollowUpMessages = BuildControlledSearchFollowUpMessages(parsed),
                 DecisionReason = decision.Mode == HighLevelRouteMode.Query
                     ? "lookup-style query was redirected to explicit controlled search guidance"
                     : "lookup-style conversation was redirected to explicit controlled search guidance"
@@ -1246,6 +1253,85 @@ public class HighLevelCoordinator
             "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u6216 cancel\u3002"
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
+
+    private static string BuildCompactDraftConfirmationReply(HighLevelTaskDraft draft)
+    {
+        return string.Join('\n', new[]
+        {
+            "已建立 production draft。",
+            $"task_type: {draft.TaskType}",
+            $"summary: {draft.Summary}",
+            string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
+            "下一步請直接回覆下方指令。"
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static string BuildCompactPendingDraftReminder(HighLevelTaskDraft draft)
+    {
+        return string.Join('\n', new[]
+        {
+            "目前仍有一個待確認的 production draft。",
+            $"task_type: {draft.TaskType}",
+            $"summary: {draft.Summary}",
+            string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
+            "下一步請直接回覆下方指令。"
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static string BuildCompactProjectNameRequestReply(HighLevelTaskDraft draft)
+    {
+        return string.Join('\n', new[]
+        {
+            "這是一個需要專案名稱的 production 請求。",
+            $"task_type: {draft.TaskType}",
+            string.IsNullOrWhiteSpace(draft.ProjectNameValidationError)
+                ? "請以 # 開頭提供專案名稱。"
+                : draft.ProjectNameValidationError,
+            "下一步請直接回覆下方指令。"
+        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static List<string> BuildDraftFollowUpMessages(HighLevelTaskDraft draft)
+        => new()
+        {
+            "confirm",
+            "cancel"
+        };
+
+    private static List<string> BuildProjectNameFollowUpMessages(HighLevelTaskDraft draft)
+        => new()
+        {
+            "#MySite",
+            "cancel"
+        };
+
+    private static string BuildControlledSearchSuggestionReply(HighLevelParsedInput parsed)
+    {
+        var target = parsed.Kind == HighLevelInputKind.Query && !string.IsNullOrWhiteSpace(parsed.Body)
+            ? parsed.Body
+            : parsed.Raw;
+        var normalized = Normalize(target);
+
+        if (ContainsAny(normalized, new[] { "擃", "hsr", "thsr" }))
+            return "這題較適合做高鐵查詢。";
+
+        if (ContainsAny(normalized, new[] { "?怨?", "?圈", "rail", "train" }))
+            return "這題較適合做火車查詢。";
+
+        if (ContainsAny(normalized, new[] { "?祈?", "摰ａ?", "bus" }))
+            return "這題較適合做公車查詢。";
+
+        if (ContainsAny(normalized, new[] { "?芰", "璈巨", "flight", "flights" }))
+            return "這題較適合做航班查詢。";
+
+        return "這題較適合做受控搜尋。";
+    }
+
+    private List<string> BuildControlledSearchFollowUpMessages(HighLevelParsedInput parsed)
+        => new()
+        {
+            BuildControlledSearchSuggestion(parsed)
+        };
 
     private string BuildProfileReply(HighLevelUserProfile profile, HighLevelTaskDraft? draft)
     {
@@ -2164,6 +2250,15 @@ public class HighLevelCoordinator
         });
     }
 
+    private static string PrepareReplyWithoutGuide(HighLevelUserProfile profile, string reply)
+    {
+        profile.LastInteractionAt = DateTimeOffset.UtcNow;
+
+        return string.IsNullOrWhiteSpace(profile.PreferredDisplayName)
+            ? reply
+            : $"{profile.PreferredDisplayName}：\n{reply}";
+    }
+
     private string BuildHelpReplySafe(HighLevelUserProfile profile, HighLevelTaskDraft? draft)
     {
         if (draft?.RequiresProjectName == true && string.IsNullOrWhiteSpace(draft.ProjectName))
@@ -2749,6 +2844,7 @@ public class HighLevelProcessResult
 {
     public HighLevelRouteMode Mode { get; set; }
     public string Reply { get; set; } = string.Empty;
+    public List<string>? FollowUpMessages { get; set; }
     public string? Error { get; set; }
     public string? DecisionReason { get; set; }
     public int HistoryCount { get; set; }
