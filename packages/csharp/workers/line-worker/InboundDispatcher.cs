@@ -10,7 +10,7 @@ namespace LineWorker;
 /// Responsibilities:
 /// - handle approval replies
 /// - forward normal messages to the broker high-level coordinator
-/// - route slash commands
+/// - route local slash commands
 /// - accept future audio/STT expansion
 /// </summary>
 public class InboundDispatcher
@@ -159,7 +159,7 @@ public class InboundDispatcher
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError("Broker returned {Status}: {Body}", response.StatusCode, responseBody);
-                await _lineApi.PushTextMessageAsync(userId, "目前無法將訊息交給中介核心處理，請稍後再試。", ct);
+                await _lineApi.PushTextMessageAsync(userId, "抱歉，AI 服務暫時無法回應，請稍後再試。", ct);
                 return;
             }
 
@@ -178,12 +178,12 @@ public class InboundDispatcher
 
             if (string.IsNullOrWhiteSpace(reply))
             {
-                reply = "中介核心已收到請求，但沒有可回傳的訊息。";
+                reply = "系統目前沒有產生可回覆內容，請稍後再試。";
             }
 
             if (reply.Length > 4900)
             {
-                reply = reply[..4900] + "\n\n... (訊息已截斷)";
+                reply = reply[..4900] + "\n\n... (內容已截斷)";
             }
 
             var (success, error) = await _lineApi.PushTextMessageAsync(userId, reply, ct);
@@ -202,12 +202,12 @@ public class InboundDispatcher
         catch (TaskCanceledException)
         {
             _logger.LogWarning("Request to Broker timed out for user {User}", userId);
-            await _lineApi.PushTextMessageAsync(userId, "目前處理逾時，請稍後再試。", ct);
+            await _lineApi.PushTextMessageAsync(userId, "目前請求逾時，請稍後再試。", ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error forwarding message for user {User}", userId);
-            await _lineApi.PushTextMessageAsync(userId, "處理訊息時發生錯誤，請稍後再試。", ct);
+            await _lineApi.PushTextMessageAsync(userId, "系統發生未預期錯誤，請稍後再試。", ct);
         }
     }
 
@@ -221,7 +221,18 @@ public class InboundDispatcher
             case "/help":
                 await _lineApi.PushTextMessageAsync(
                     message.UserId,
-                    "可用指令：\n/help - 顯示說明\n/clear - 清除對話記錄\n/status - 查看系統狀態",
+                    string.Join('\n', new[]
+                    {
+                        "可用的本地指令：",
+                        "/help - 查看這份說明",
+                        "/clear - 清除目前對話記憶",
+                        "/status - 查看 sidecar 與 broker 狀態",
+                        "",
+                        "其他以 / 開頭的內容會直接交給 broker 高階流程。",
+                        "例如：",
+                        "/create 產生一份 markdown 文件，摘要目前進度",
+                        "/請整理成 markdown 文件，摘要目前進度"
+                    }),
                     ct);
                 break;
 
@@ -229,12 +240,12 @@ public class InboundDispatcher
                 try
                 {
                     await _httpClient.DeleteAsync($"{_brokerApiUrl}/dev/conversations/{message.UserId}", ct);
-                    await _lineApi.PushTextMessageAsync(message.UserId, "對話記錄已清除。", ct);
+                    await _lineApi.PushTextMessageAsync(message.UserId, "目前對話記憶已清除。", ct);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to clear conversation");
-                    await _lineApi.PushTextMessageAsync(message.UserId, "清除對話記錄失敗，請稍後再試。", ct);
+                    await _lineApi.PushTextMessageAsync(message.UserId, "清除對話記憶失敗，請稍後再試。", ct);
                 }
                 break;
 
@@ -252,7 +263,7 @@ public class InboundDispatcher
                         message.UserId,
                         $"系統狀態：{(status == "ok" ? "正常" : "異常")}\n" +
                         $"LLM：{(llmOk ? "可用" : "不可用")} ({model})\n" +
-                        $"對話數：{convs}",
+                        $"活動對話：{convs}",
                         ct);
                 }
                 catch (Exception ex)
@@ -263,10 +274,7 @@ public class InboundDispatcher
                 break;
 
             default:
-                await _lineApi.PushTextMessageAsync(
-                    message.UserId,
-                    $"未知指令：{cmd}\n請輸入 /help 查看可用指令。",
-                    ct);
+                await ForwardToBrokerAndReply(message.UserId, command, ct);
                 break;
         }
     }
