@@ -10,7 +10,7 @@ namespace BrowserWorker.Handlers;
 /// </summary>
 public sealed class BrowserReadHandler : ICapabilityHandler
 {
-    public string CapabilityId => "browser_read";
+    public string CapabilityId => "browser.read";
 
     private readonly PlaywrightBrowserService _browserService;
     private readonly ILogger<BrowserReadHandler> _logger;
