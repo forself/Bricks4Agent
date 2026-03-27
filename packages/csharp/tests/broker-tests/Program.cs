@@ -197,6 +197,12 @@ passed += qPassed;
 failed += qFailed;
 
 Console.WriteLine();
+
+var (bdPassed, bdFailed) = Broker.Tests.BrowserAndDeployTests.Run();
+passed += bdPassed;
+failed += bdFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

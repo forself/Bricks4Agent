@@ -83,6 +83,7 @@ textarea{min-height:110px;resize:vertical}
       <button data-tab="browser">Browser 綁定</button>
       <button data-tab="deployment">Deployment</button>
       <button data-tab="delivery">交付記錄</button>
+      <button data-tab="alerts">系統警示</button>
       <button data-tab="tools">Tool Specs</button>
     </nav>
     <div class="stack">
@@ -390,6 +391,24 @@ textarea{min-height:110px;resize:vertical}
         <h3>Recent Deployments</h3>
         <div class="list" id="deployment-executions-list"></div>
         <div class="json" id="deployment-execution-detail-json">尚未選取 deployment execution</div>
+      </div>
+    </section>
+
+    <section id="tab-alerts" class="hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>系統警示</h2>
+          <div class="row">
+            <select id="alerts-hours" style="width:120px">
+              <option value="1">最近 1 小時</option>
+              <option value="6">最近 6 小時</option>
+              <option value="24" selected>最近 24 小時</option>
+              <option value="168">最近 7 天</option>
+            </select>
+            <button class="button" id="refresh-alerts">重新整理</button>
+          </div>
+        </div>
+        <div id="alerts-list" class="list" style="max-height:600px"></div>
       </div>
     </section>
 
@@ -904,6 +923,9 @@ async function showTab(tab) {
   if (tab === "deployment" && !state.deploymentLoaded) {
     await loadDeploymentTargets();
     state.deploymentLoaded = true;
+  }
+  if (tab === "alerts") {
+    await loadAlerts();
   }
   if (tab === "delivery") {
     await loadDeliveryHistory();
@@ -1496,6 +1518,37 @@ function wrapAction(fn) {
   };
 }
 
+// --- Alerts ---
+
+async function loadAlerts() {
+  const hours = byId("alerts-hours")?.value || "24";
+  const data = await request(`/api/v1/local-admin/alerts?hours=${hours}&limit=100`);
+  renderAlertsList(data?.items || []);
+}
+
+function renderAlertsList(items) {
+  const list = byId("alerts-list");
+  if (!items.length) {
+    list.innerHTML = '<div class="item muted">指定時間範圍內無警示。</div>';
+    return;
+  }
+  list.innerHTML = items.map(item => {
+    const sevColor = item.severity >= 3 ? "danger" : item.severity >= 2 ? "warn" : "muted";
+    const sevLabel = item.severity >= 3 ? "Error" : item.severity >= 2 ? "Warning" : "Info";
+    const ts = item.observedAt ? new Date(item.observedAt).toLocaleString("zh-TW") : "";
+    return `<div class="item">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="item-title">${escapeHtml(item.eventType || "unknown")}</div>
+          <div class="small muted">${ts}${item.workerId ? " | worker: " + escapeHtml(item.workerId) : ""}</div>
+        </div>
+        <span class="tag ${sevColor}">${sevLabel}</span>
+      </div>
+      ${item.details ? `<div class="small mono" style="margin-top:4px;max-height:80px;overflow:auto">${escapeHtml(item.details)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
 // --- Delivery History ---
 
 async function loadDeliveryHistory() {
@@ -1591,6 +1644,8 @@ function bindEvents() {
   byId("execute-deployment").addEventListener("click", wrapAction(executeDeployment));
   byId("refresh-tools").addEventListener("click", wrapAction(loadToolSpecs));
   byId("apply-tool-filter").addEventListener("click", wrapAction(loadToolSpecs));
+  byId("refresh-alerts").addEventListener("click", wrapAction(loadAlerts));
+  byId("alerts-hours").addEventListener("change", wrapAction(loadAlerts));
   byId("refresh-delivery").addEventListener("click", wrapAction(loadDeliveryHistory));
   byId("delivery-status-filter").addEventListener("change", wrapAction(loadDeliveryHistory));
 }

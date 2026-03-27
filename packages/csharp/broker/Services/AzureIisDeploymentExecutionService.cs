@@ -123,7 +123,7 @@ public sealed class AzureIisDeploymentExecutionService
                 AzureIisDeploymentResult.Fail(request.RequestId, request.TargetId, "remote_deploy", deployRun.StandardError));
         }
 
-        var healthCheck = await _healthChecks.CheckAsync(request, cancellationToken);
+        var healthCheck = await _healthChecks.CheckAsync(request, cancellationToken: cancellationToken);
         if (healthCheck.Attempted && !healthCheck.Success)
         {
             return FailWithEvidence(

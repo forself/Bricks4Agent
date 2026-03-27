@@ -2,6 +2,7 @@ using System.Text.Json;
 using Broker.Helpers;
 using Broker.Services;
 using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
 
 namespace Broker.Endpoints;
@@ -664,6 +665,22 @@ public static class LocalAdminEndpoints
             return item == null
                 ? Results.NotFound(ApiResponseHelper.Error("Artifact not found.", 404))
                 : Results.Ok(ApiResponseHelper.Success(new { item }));
+        });
+
+        // --- Observation alerts ---
+
+        localAdmin.MapGet("/alerts", (HttpContext ctx, LocalAdminAuthService auth, IObservationService observationService) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var hoursBack = int.TryParse(ctx.Request.Query["hours"].ToString(), out var h) ? h : 24;
+            var limitValue = ctx.Request.Query["limit"].ToString();
+            var limit = int.TryParse(limitValue, out var pl) ? pl : 50;
+
+            var since = DateTime.UtcNow.AddHours(-hoursBack);
+            var alerts = observationService.GetAlerts(since, ObservationSeverity.Warning, limit);
+            return Results.Ok(ApiResponseHelper.Success(new { since, total = alerts.Count, items = alerts }));
         });
 
         // --- Artifact delivery management ---

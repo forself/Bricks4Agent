@@ -65,6 +65,7 @@ public sealed class BrowserExecutionRuntimeService
         var html = await response.Content.ReadAsStringAsync(cancellationToken);
         var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? request.StartUrl;
         var title = BrowserExecutionHtmlExtractor.ExtractTitle(html);
+        var description = BrowserExecutionHtmlExtractor.ExtractDescription(html);
         var text = BrowserExecutionHtmlExtractor.ExtractText(html);
         var contentLength = html.Length;
         var fetchedAt = DateTimeOffset.UtcNow;
@@ -74,7 +75,8 @@ public sealed class BrowserExecutionRuntimeService
             mode = "runtime_fetch",
             fetched_at = fetchedAt,
             status_code = (int)response.StatusCode,
-            content_length = contentLength
+            content_length = contentLength,
+            description
         });
 
         var evidenceRef = WriteEvidence(request, title, text, finalUrl, structuredDataJson, fetchedAt);
