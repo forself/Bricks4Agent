@@ -1,0 +1,57 @@
+Browser Worker Implementation and Routing Fix Verification
+Generated: 2026-03-28 Asia/Taipei
+
+Scope
+- Implement browser-worker with Playwright headless browser runtime
+- Verify browser-worker to broker function pool integration path
+- Verify / prefix routing conflict status
+
+Browser Worker (NEW)
+Location: packages/csharp/workers/browser-worker/
+
+Components:
+1. PlaywrightBrowserService.cs
+   - Manages Chromium lifecycle via Microsoft.Playwright 1.49.0
+   - SemaphoreSlim for concurrent page limiting (default: 3)
+   - JavaScript-based content extraction (removes script/style/nav/header/footer/noscript/svg)
+   - Optional screenshot capture
+   - Configurable: headless mode, timeouts, user agent, max content length
+
+2. Handlers/BrowserReadHandler.cs
+   - ICapabilityHandler with CapabilityId = "browser.read"
+   - Accepts URL from payload args.url or args.start_url
+   - Returns structured JSON: status_code, final_url, title, description, content_text, fetched_at
+
+3. Program.cs
+   - Reads config from appsettings.json + env vars (WORKER_*)
+   - Pre-initializes Playwright on startup
+   - Registers with broker function pool via WorkerSdk
+
+4. verify/Program.cs
+   - Integration tests: 5/5 passing
+   - Tests: example.com fetch, content extraction, 404 handling, redirect following, meta description
+
+Function Pool Integration Path (VERIFIED)
+- Tool spec: browser.reference.anonymous.read/tool.json
+  - status: "active"
+  - capability_bindings: [{ capability_id: "browser.read", route: "browser_read" }]
+- ToolSpecCapabilitySyncService syncs to capabilities table on broker startup (confirmed: inserted=10)
+- PoolDispatcher.GetAvailableWorker() matches by capability_id
+- WorkerHost sends capabilities from ICapabilityHandler.CapabilityId values during WORKER_REGISTER
+- BrowserReadHandler.CapabilityId = "browser.read" matches tool spec binding
+
+Dispatch modes:
+- FunctionPool:Enabled=false → InProcessDispatcher (browser_read NOT in CanHandle, so fails)
+- FunctionPool:Enabled=true, StrictMode=false → FallbackDispatcher (pool first, no in-process fallback for browser)
+- FunctionPool:Enabled=true, StrictMode=true → StrictPoolDispatcher (pool only, 503 if no worker)
+
+/ Prefix Routing Conflict (ALREADY FIXED)
+- Fixed in commit a4ba96c: "fix: forward line slash commands to broker"
+- InboundDispatcher.HandleCommand default case now calls ForwardToBrokerAndReply (line 308-309)
+- Broker ProductionPrefixes: ["/", "／"] (HighLevelCoordinatorOptions line 2778)
+- Broker parses /xxx as Production mode, InferTaskType checks keywords for doc_gen/code_gen/etc
+- "未知指令" was likely from pre-fix version; no such string exists in current codebase
+
+Build Status
+- dotnet build packages/csharp/ControlPlane.slnx → 0 errors 0 warnings
+- Browser-worker verify tests: 5/5 passing
