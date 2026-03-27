@@ -400,7 +400,7 @@ public sealed class HighLevelQueryToolMediator
         }
     }
 
-    private static string BuildSearchReply(
+    internal static string BuildSearchReply(
         string engine,
         string query,
         IReadOnlyList<HighLevelQuerySearchResult> results)
@@ -413,7 +413,10 @@ public sealed class HighLevelQueryToolMediator
 
         if (results.Count == 0)
         {
-            lines.Add("目前沒有取得可用結果，建議換一組更明確的關鍵詞再試一次。");
+            lines.Add("目前沒有取得可用結果。你可以嘗試：");
+            lines.Add("1. 用更具體的關鍵詞");
+            lines.Add("2. 加入時間或地點限定");
+            lines.Add("3. 用英文搜尋");
             return string.Join('\n', lines);
         }
 
@@ -430,7 +433,7 @@ public sealed class HighLevelQueryToolMediator
         return string.Join('\n', lines.Where(line => line != null));
     }
 
-    private static string BuildTransportReply(
+    internal static string BuildTransportReply(
         string mode,
         string query,
         IReadOnlyList<HighLevelQuerySearchResult> results,
@@ -451,7 +454,9 @@ public sealed class HighLevelQueryToolMediator
 
         if (results.Count == 0)
         {
-            lines.Add("目前沒有取得可用班次結果，建議換一組更完整的起訖站與時間條件。");
+            lines.Add("目前沒有取得可用班次結果。");
+            lines.Add("建議提供更完整的查詢條件，例如：");
+            lines.Add("?rail 台北 台中 今天 18:00");
             return string.Join('\n', lines);
         }
 

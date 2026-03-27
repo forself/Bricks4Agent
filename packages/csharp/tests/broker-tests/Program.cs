@@ -188,6 +188,15 @@ var failed = 0;
 }
 
 // ---------- Summary (Unit Tests) ----------
+Console.WriteLine($"=== Artifact Delivery Unit Results: {passed} passed, {failed} failed ===");
+Console.WriteLine();
+
+// ---------- Query Quality Tests ----------
+var (qPassed, qFailed) = Broker.Tests.QueryTests.Run();
+passed += qPassed;
+failed += qFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

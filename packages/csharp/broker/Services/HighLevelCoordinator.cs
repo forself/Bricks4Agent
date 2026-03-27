@@ -14,6 +14,14 @@ public class HighLevelCoordinator
     private static readonly Regex PreferredUserCodePattern = new("^[A-Za-z0-9]{3,32}$", RegexOptions.CultureInvariant);
     private static readonly Regex LineUserIdPattern = new("^U[a-fA-F0-9]{32}$", RegexOptions.CultureInvariant);
 
+    private static readonly Dictionary<string, (string mode, string synthesisLabel)> TransportModes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["rail"] = ("rail", "rail_search"),
+        ["hsr"] = ("hsr", "hsr_search"),
+        ["bus"] = ("bus", "bus_search"),
+        ["flight"] = ("flight", "flight_search")
+    };
+
     private readonly BrokerDb _db;
     private readonly IBrokerService _brokerService;
     private readonly IPlanService _planService;
@@ -293,6 +301,10 @@ public class HighLevelCoordinator
             var searchReplyBody = searchResult.Reply;
             if (searchResult.Success && searchResult.Results.Count > 0)
             {
+                _logger.LogInformation(
+                    "Query synthesis: mode=web_search query={Query} resultCount={Count}",
+                    parsed.QueryArgument, searchResult.Results.Count);
+
                 var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
                     userId,
                     "web_search",
@@ -300,7 +312,12 @@ public class HighLevelCoordinator
                     searchResult.Results,
                     cancellationToken);
                 if (!string.IsNullOrWhiteSpace(synthesized))
+                {
+                    _logger.LogInformation(
+                        "Query synthesis completed: mode=web_search synthesizedLength={Length}",
+                        synthesized.Length);
                     searchReplyBody = synthesized;
+                }
             }
 
             var searchReply = PrepareReplySafe(profile, trimmed, searchReplyBody);
@@ -317,123 +334,11 @@ public class HighLevelCoordinator
         }
 
         if (decision.Mode == HighLevelRouteMode.Query &&
-            string.Equals(parsed.QueryCommand, "rail", StringComparison.OrdinalIgnoreCase))
+            TransportModes.TryGetValue(parsed.QueryCommand ?? "", out var transportMode))
         {
-            var transportResult = await _queryToolMediator.SearchRailAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReplyBody = transportResult.Reply;
-            if (transportResult.Success && transportResult.Results.Count > 0)
-            {
-                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
-                    userId,
-                    "rail_search",
-                    parsed.QueryArgument,
-                    transportResult.Results,
-                    cancellationToken);
-                if (!string.IsNullOrWhiteSpace(synthesized))
-                    transportReplyBody = synthesized;
-            }
-
-            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
-            SaveUserProfile(channel, userId, profile);
-            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
-            {
-                Mode = HighLevelRouteMode.Query,
-                Reply = transportReply,
-                Error = transportResult.Error,
-                DecisionReason = transportResult.Success
-                    ? "explicit rail query subcommand mediated by broker tool"
-                    : "explicit rail query subcommand failed during broker tool mediation"
-            });
-        }
-
-        if (decision.Mode == HighLevelRouteMode.Query &&
-            string.Equals(parsed.QueryCommand, "hsr", StringComparison.OrdinalIgnoreCase))
-        {
-            var transportResult = await _queryToolMediator.SearchHsrAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReplyBody = transportResult.Reply;
-            if (transportResult.Success && transportResult.Results.Count > 0)
-            {
-                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
-                    userId,
-                    "hsr_search",
-                    parsed.QueryArgument,
-                    transportResult.Results,
-                    cancellationToken);
-                if (!string.IsNullOrWhiteSpace(synthesized))
-                    transportReplyBody = synthesized;
-            }
-
-            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
-            SaveUserProfile(channel, userId, profile);
-            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
-            {
-                Mode = HighLevelRouteMode.Query,
-                Reply = transportReply,
-                Error = transportResult.Error,
-                DecisionReason = transportResult.Success
-                    ? "explicit hsr query subcommand mediated by broker tool"
-                    : "explicit hsr query subcommand failed during broker tool mediation"
-            });
-        }
-
-        if (decision.Mode == HighLevelRouteMode.Query &&
-            string.Equals(parsed.QueryCommand, "bus", StringComparison.OrdinalIgnoreCase))
-        {
-            var transportResult = await _queryToolMediator.SearchBusAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReplyBody = transportResult.Reply;
-            if (transportResult.Success && transportResult.Results.Count > 0)
-            {
-                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
-                    userId,
-                    "bus_search",
-                    parsed.QueryArgument,
-                    transportResult.Results,
-                    cancellationToken);
-                if (!string.IsNullOrWhiteSpace(synthesized))
-                    transportReplyBody = synthesized;
-            }
-
-            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
-            SaveUserProfile(channel, userId, profile);
-            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
-            {
-                Mode = HighLevelRouteMode.Query,
-                Reply = transportReply,
-                Error = transportResult.Error,
-                DecisionReason = transportResult.Success
-                    ? "explicit bus query subcommand mediated by broker tool"
-                    : "explicit bus query subcommand failed during broker tool mediation"
-            });
-        }
-
-        if (decision.Mode == HighLevelRouteMode.Query &&
-            string.Equals(parsed.QueryCommand, "flight", StringComparison.OrdinalIgnoreCase))
-        {
-            var transportResult = await _queryToolMediator.SearchFlightAsync(channel, userId, parsed.QueryArgument, cancellationToken);
-            var transportReplyBody = transportResult.Reply;
-            if (transportResult.Success && transportResult.Results.Count > 0)
-            {
-                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
-                    userId,
-                    "flight_search",
-                    parsed.QueryArgument,
-                    transportResult.Results,
-                    cancellationToken);
-                if (!string.IsNullOrWhiteSpace(synthesized))
-                    transportReplyBody = synthesized;
-            }
-
-            var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
-            SaveUserProfile(channel, userId, profile);
-            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
-            {
-                Mode = HighLevelRouteMode.Query,
-                Reply = transportReply,
-                Error = transportResult.Error,
-                DecisionReason = transportResult.Success
-                    ? "explicit flight query subcommand mediated by broker tool"
-                    : "explicit flight query subcommand failed during broker tool mediation"
-              });
+            return await HandleTransportQueryAsync(
+                channel, userId, parsed, profile, trimmed, envelope, trustedParse, workflow,
+                transportMode, cancellationToken);
         }
 
         if (decision.Mode == HighLevelRouteMode.Query &&
@@ -1045,6 +950,75 @@ public class HighLevelCoordinator
             CreatedPlan = plan,
             Handoff = handoff
         }, profile);
+    }
+
+    private async Task<HighLevelProcessResult> HandleTransportQueryAsync(
+        string channel, string userId,
+        HighLevelParsedInput parsed,
+        HighLevelUserProfile profile,
+        string trimmed,
+        HighLevelInputEnvelope envelope,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        (string mode, string synthesisLabel) transport,
+        CancellationToken cancellationToken)
+    {
+        var query = parsed.QueryArgument;
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 4)
+        {
+            var hint = $"請提供更完整的查詢條件。\n範例：?{transport.mode} 台北 台中 今天 18:00";
+            var hintReply = PrepareReplySafe(profile, trimmed, hint);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = hintReply,
+                DecisionReason = $"transport query too short for {transport.mode}, returned usage hint"
+            });
+        }
+
+        var transportResult = transport.mode switch
+        {
+            "rail" => await _queryToolMediator.SearchRailAsync(channel, userId, query, cancellationToken),
+            "hsr" => await _queryToolMediator.SearchHsrAsync(channel, userId, query, cancellationToken),
+            "bus" => await _queryToolMediator.SearchBusAsync(channel, userId, query, cancellationToken),
+            "flight" => await _queryToolMediator.SearchFlightAsync(channel, userId, query, cancellationToken),
+            _ => await _queryToolMediator.SearchRailAsync(channel, userId, query, cancellationToken)
+        };
+
+        var transportReplyBody = transportResult.Reply;
+        if (transportResult.Success && transportResult.Results.Count > 0)
+        {
+            _logger.LogInformation(
+                "Query synthesis: mode={Mode} query={Query} resultCount={Count}",
+                transport.synthesisLabel, query, transportResult.Results.Count);
+
+            var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                userId,
+                transport.synthesisLabel,
+                query,
+                transportResult.Results,
+                cancellationToken);
+            if (!string.IsNullOrWhiteSpace(synthesized))
+            {
+                _logger.LogInformation(
+                    "Query synthesis completed: mode={Mode} synthesizedLength={Length}",
+                    transport.synthesisLabel, synthesized.Length);
+                transportReplyBody = synthesized;
+            }
+        }
+
+        var transportReply = PrepareReplySafe(profile, trimmed, transportReplyBody);
+        SaveUserProfile(channel, userId, profile);
+        return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Query,
+            Reply = transportReply,
+            Error = transportResult.Error,
+            DecisionReason = transportResult.Success
+                ? $"explicit {transport.mode} query subcommand mediated by broker tool"
+                : $"explicit {transport.mode} query subcommand failed during broker tool mediation"
+        });
     }
 
     internal static string BuildArtifactReply(HighLevelDocumentArtifactResult artifactResult)
