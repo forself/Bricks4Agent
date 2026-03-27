@@ -1,22 +1,22 @@
-# LINE Sidecar 操作手冊
+# LINE Sidecar 執行手冊
 
-日期：2026-03-26  
-範圍：目前本機 Windows sidecar 的 LINE live ingress 路徑  
-對象：操作人員 / 開發者  
+日期：2026-03-26
+範圍：目前本機 Windows sidecar 與 LINE live ingress 路徑
+對象：操作人員 / 開發者
 
-## 用途
+## 目的
 
-這份手冊說明目前 live 本機路徑的啟動、驗證、日常操作與基本排障方式：
+這份手冊說明目前本機 live 路徑的啟動、驗證、操作與排障方式：
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
-這是目前本機操作上的 canonical 路徑。
+這是目前本機的 canonical operator path。
 
-這份手冊不涵蓋：
+本文件不涵蓋：
 
-- 舊的 `agent --line-listen` 路徑
+- legacy `agent --line-listen` 路徑
 - 純容器化的完整操作
-- 正式多主機部署流程
+- 多機正式部署
 
 ## 目前 canonical 埠號
 
@@ -28,18 +28,21 @@
 
 這台機器至少要有：
 
-- Windows PowerShell 5.1 或更新版本
-- 可發佈並執行 broker / line-worker 的 .NET SDK 或 runtime
-- 已安裝並完成登入驗證的 `ngrok`
-- LINE worker 本機設定內的有效 LINE 憑證
+- Windows PowerShell 5.1 以上
+- 可 publish / 執行 broker 與 line-worker 的 .NET SDK/runtime
+- 已安裝且已登入的 `ngrok`
+- 已填好 LINE 憑證的本機 worker 設定
 
-目前要讓 live 行為較完整，通常還需要：
+目前若要有最佳 live 行為，通常還需要：
 
-- repo 根目錄的 `Api.txt`，供高階模型使用 OpenAI-compatible API key
-- repo 根目錄的 `client_secret_*.json`，供 Google Drive OAuth 使用
-- `%LOCALAPPDATA%\ngrok\ngrok.yml` 的有效 ngrok 設定
+- repo 根目錄的 `Api.txt`
+  - 給高階模型用的 OpenAI-compatible API key
+- repo 根目錄的 `client_secret_*.json`
+  - 給 Google Drive OAuth 使用
+- `%LOCALAPPDATA%\ngrok\ngrok.yml`
+  - 可用的 ngrok 設定
 
-## 本機專用檔案與輸入
+## 本機檔案與輸入
 
 ### 1. LINE worker 設定
 
@@ -47,9 +50,9 @@
 
 - [appsettings.json](/d:/Bricks4Agent/packages/csharp/workers/line-worker/appsettings.json)
 
-這是本機專用檔案，不進 git。
+這是本機檔案，不應提交到 git。
 
-至少要有正確值：
+至少要有可用值：
 
 - `Line.ChannelAccessToken`
 - `Line.ChannelSecret`
@@ -61,25 +64,39 @@
 
 - `D:\Bricks4Agent\Api.txt`
 
-目前 sidecar 行為：
+目前 sidecar 會：
 
-- `start-sidecar-stack.ps1` 會讀這個檔案
-- 並把 key 注入 broker 的 `HighLevelLlm.ApiKey`
+- 讀取這個檔案
+- 將內容注入 broker 的 `HighLevelLlm.ApiKey`
 
 ### 3. Google Drive OAuth client
 
-檔名模式：
+檔案樣式：
 
 - `D:\Bricks4Agent\client_secret_*.json`
 
-目前 sidecar 行為：
+目前 sidecar 會：
 
-- 會選第一個符合的檔案
-- delegated redirect URI 會設為 `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
+- 使用第一個符合的 client JSON
+- 將 delegated redirect URI 設為：
+  - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
-## Canonical 操作命令
+Google Drive 交付模式現在可設定為：
 
-本機正常操作應統一透過：
+- `shared_delegated`
+- `user_delegated`
+- `system_account`
+
+若沒有額外 override，且 `Line.DefaultRecipientId` 有值，sidecar 目前會預設：
+
+- `DefaultIdentityMode = shared_delegated`
+- `SharedDelegatedUserId = Line.DefaultRecipientId`
+
+也就是預設用單一 Google 帳號作為共用雲端交付者。
+
+## Canonical 操作指令
+
+正常本機操作應一律走：
 
 - [line-sidecar.ps1](/d:/Bricks4Agent/packages/csharp/workers/line-worker/line-sidecar.ps1)
 
@@ -89,9 +106,8 @@
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
 ```
 
-這是唯一正常的啟動命令。
-
-不應再要求操作人員先手動啟動 broker、line-worker 或 ngrok。
+這是唯一正常的啟動方式。
+不要另外先手動開 broker、line-worker 或 ngrok。
 
 ### 查看狀態
 
@@ -99,7 +115,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
 ```
 
-### 重新啟動
+### 重啟
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
@@ -117,7 +133,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify-broker -UserId test-user -MessageBase64Utf8 <base64-utf8>
 ```
 
-### 驗證帶簽章的 LINE webhook
+### 驗證簽章後的 LINE webhook
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -MessageBase64Utf8 <base64-utf8>
@@ -125,51 +141,52 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 ## `up` 實際會做什麼
 
-目前啟動流程會依序做這些事：
+目前啟動流程會：
 
 1. 建立 `.run/line-sidecar`
-2. 將 broker publish 到 `.run/line-sidecar/broker`
-3. 將 line-worker publish 到 `.run/line-sidecar/line-worker`
+2. publish broker 到 `.run/line-sidecar/broker`
+3. publish line-worker 到 `.run/line-sidecar/line-worker`
 4. 注入本機 production override：
    - high-level API key
    - Google Drive OAuth 設定
-5. 啟動 broker 於 `127.0.0.1:5361`
-6. 啟動 line-worker 於 `*:5357`
+   - Google Drive 預設身分模式與 shared delegated owner
+5. 啟動 broker 到 `127.0.0.1:5361`
+6. 啟動 line-worker 到 `*:5357`
 7. 重建 ngrok tunnel `line5357`
 8. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
-9. 等待 broker 與本機 webhook 實際可連線後，才算啟動成功
-10. 確認具名 ngrok tunnel 真的存在後，才算啟動成功
+9. 等到 broker 與本機 webhook 真正 ready
+10. 確認命名的 ngrok tunnel 確實存在
 
-重要說明：
+重要補充：
 
-- 如果本機 `127.0.0.1:4040` 的 ngrok admin API 尚未存在
-- 腳本現在會自動用以下方式拉起 ngrok agent：
+- 若 `127.0.0.1:4040` 的 ngrok admin API 尚未存在
+- 腳本現在會自動啟動本機 ngrok agent：
   - `ngrok start --none --config %LOCALAPPDATA%\ngrok\ngrok.yml`
 
-也就是說，啟動文件現在的標準是：
+也就是說，現在文件的標準是：
 
-- `up` 不能成功，就要能在文件裡找到對應原因
-- 不能再假設使用者自己知道要怎麼先把 ngrok 撐起來
+- 如果 `up` 失敗，文件必須能解釋原因
+- 不能再假設操作者自己猜到要怎麼先手動開 ngrok
 
-第一次啟動可能會比較久，因為 broker 可能需要先做本機 RAG seed 才會變成 ready。
+第一次啟動可能比較慢，因為 broker 可能需要 seed 一部分本機資料後才會 ready。
 
-## 啟動成功後應看到的訊號
+## 啟動成功的判準
 
-執行 `up` 後，至少應看到：
+`up` 成功後，應該同時看到：
 
-- `status` 顯示 broker PID 與 line-worker PID 都在執行
-- `status` 顯示 ngrok PID 在執行
+- `status` 顯示 broker PID 與 line-worker PID 都在跑
+- `status` 顯示 ngrok PID 在跑
 - `status` 顯示 ngrok public URL
 - `status` 顯示 LINE webhook endpoint 且 `active = True`
-- 後台頁面可開啟：
+- 後台可開：
   - `http://127.0.0.1:5361/line-admin.html`
-- 本機 broker 可回應：
+- broker API 可回：
   - `http://127.0.0.1:5361/api/v1/local-admin/status`
-- 本機 webhook 驗證可成功：
+- 本機 webhook 驗證成功：
   - `verify` 回 `Webhook status: 200`
-- 公開 webhook 也應該已可路由，前提是具名 ngrok tunnel 已存在
+- public webhook 也能通
 
-如果 `up` 執行完後，這些條件沒有成立，就應視為啟動失敗。
+如果 `up` 回傳成功但上述條件不成立，應視為啟動失敗。
 
 ## 後台
 
@@ -179,54 +196,73 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 目前行為：
 
-- 只限 localhost
+- 僅限 localhost
 - 需要 local admin login
-- 若資料庫中還沒有 admin 密碼，初始密碼為 `admin`
-- 第一次登入必須修改密碼
+- 若 DB 尚未有管理密碼，初始密碼是 `admin`
+- 第一次登入必須改密碼
 
-目前後台已整合：
+目前後台已包含：
 
-- LINE 使用者列表與標籤
+- LINE 使用者與對話
 - 註冊政策
-- 每位使用者權限
+- 每位使用者高階權限
 - browser records
 - deployment targets
 - tool specs
 - Google Drive OAuth 與 delivery 操作
 
+## 目前 Google Drive 交付模式
+
+broker 現在支援三種 Google Drive 身分：
+
+- `shared_delegated`
+  - 單一 Google 帳號授權一次
+  - 所有 LINE 使用者的檔案都上傳到同一個 Drive
+  - broker 仍會記錄檔案屬於哪位 LINE 使用者
+- `user_delegated`
+  - 每位 LINE 使用者各自授權自己的 Google Drive
+- `system_account`
+  - service account 路徑，較適合 Shared Drive
+
+目前本機 sidecar 預期的預設模式是：
+
+- `shared_delegated`
+
+這對「全部都上傳到同一個 Google Drive」的場景才是正確設計。
+
 ## 目前高階模型
 
-目前 live LINE 路徑使用的高階回應模型：
+現在 live LINE 路徑的高階回應模型是：
 
 - provider：`openai-compatible`
 - model：`gpt-5.4-mini`
 
-這與下游 task 的 execution-model request 分開。
+這和 downstream execution-model request 是分開的。
 
-## 基本 live 使用方式
+## 基本 live 用法
 
 ### 一般對話
 
-直接在 LINE 輸入：
+直接在 LINE 傳：
 
 - `hello`
-- `please help me clarify my requirements`
+- `請幫我釐清需求`
 
 ### 說明與個人資訊
 
 - `?help`
 - `?profile`
 
-### 受控查詢
+### 受控搜尋
 
-- `?search Central Weather Administration official site`
-- `?s Central Weather Administration official site`
+- `?search 中央氣象署官網`
+- `?s 中央氣象署官網`
 
 ### 交通查詢
 
-- `?rail Taipei Taichung today 18:00`
-- `?hsr Taipei Taichung today 18:00`
-- `?bus Taipei Taichung today 18:00`
+- `?rail 台北 台中 今天 18:00`
+- `?hsr 台北 台中 今天 18:00`
+- `?bus 台北 台中 今天 18:00`
 - `?flight TPE KIX tomorrow`
 
 ### Production 流程
@@ -235,174 +271,172 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - `#MyProject`
 - `confirm`
 
-## 使用者與工作目錄行為
+## 使用者與工作區
 
-每位高階 LINE 使用者都會在 broker 管理的 access root 下面取得自己的路徑：
+每位高階 LINE 使用者都會在 broker 的 absolute access root 下擁有：
 
 - `conversations`
 - `documents`
 - `projects`
 
-目前 live sidecar 常見位置：
+目前 live sidecar 常見路徑：
 
 - `.run/line-sidecar/broker/managed-workspaces`
 
-正式 broker 設定可以改用其他絕對路徑。
+正式 broker 設定可改成別的 absolute access root。
 
 ## UTF-8 驗證原則
 
-UTF-8 是硬性需求。
+UTF-8 是基本要求，不可退回 ASCII。
 
-要做可靠的多語系驗證時，請優先用：
+若要做可靠的多語系驗證，請優先使用：
 
-- `verify-high-level-process.ps1` 搭配 `-MessageFile`
-- `verify-live-webhook.ps1` 搭配 `-MessageFile`
+- `verify-high-level-process.ps1 -MessageFile`
+- `verify-live-webhook.ps1 -MessageFile`
 - 或 `-MessageBase64Utf8`
 
-如果終端編碼不穩，不要信任直接在 shell 內輸入的文字。
+不要完全相信 shell 直接打中文時的終端顯示。
+若 shell 顯示亂碼，不代表檔案不是 UTF-8。
 
-中文與其他多語系測試，建議優先使用 UTF-8 檔案，而不是直接打字。
+## 基本排障
 
-## 基本異常排除
-
-### 1. LINE 完全沒有回應
+### 1. LINE 完全沒回應
 
 先檢查：
 
 - `line-sidecar.ps1 status`
 - ngrok tunnel 是否存在
 - LINE webhook endpoint 是否 active
-- line-worker PID 是否還在
+- line-worker PID 是否存在
 
 常見原因：
 
 - ngrok tunnel 掉了
 - webhook endpoint 沒更新
-- line-worker 停掉
+- line-worker 停了
 - ngrok agent 根本沒起來
 
-處理：
+修正：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 restart
 ```
 
-### 2. 公開 webhook 回 `404` 或 ngrok 錯誤
+### 2. public webhook 回 `404` 或 ngrok 錯誤
 
 症狀：
 
-- 公開 webhook URL 回 `404`
-- 回應含 `ERR_NGROK_3200` 等錯誤
+- public webhook URL 回 `404`
+- 回應出現 `ERR_NGROK_3200`
 
 原因：
 
-- tunnel 已離線或變成 stale
+- tunnel 離線或 stale
 
-處理：
+修正：
 
 - 先跑 `status`
 - 再跑 `restart`
 
-如果 tunnel 還是起不來：
+若還是不行：
 
-- 檢查 `.run/line-sidecar/logs/ngrok.out.log`
-- 檢查 `.run/line-sidecar/logs/ngrok.err.log`
-- 確認 `%LOCALAPPDATA%\ngrok\ngrok.yml` 存在且 authtoken 有效
+- 看 `.run/line-sidecar/logs/ngrok.out.log`
+- 看 `.run/line-sidecar/logs/ngrok.err.log`
+- 確認 `%LOCALAPPDATA%\ngrok\ngrok.yml` 存在且含有效 authtoken
 
 ### 3. broker 有起來，但 LINE 說 AI 服務暫時無法回應
 
 常見原因：
 
-- `Api.txt` 不存在或不可讀
+- `Api.txt` 不存在或無法讀
 - 上游 API key 無效
-- 高階模型 upstream 回 `401` 或 `400`
-- sidecar publish output 是舊的
+- high-level 模型 upstream 回 `401` 或 `400`
+- sidecar publish output 吃到舊檔
 
 檢查：
 
 - `.run/line-sidecar/logs/broker.out.log`
 - `.run/line-sidecar/logs/broker.err.log`
 
-處理：
+修正：
 
-- 確認 `Api.txt` 存在且內容有效
-- 重新啟動 sidecar
+- 確認 `Api.txt` 內是有效 key
+- 重啟 sidecar
 
 ### 4. Google Drive OAuth 出現 `invalid_state` 或 `state_expired`
 
 原因：
 
-- 重用了舊授權網址
-- state 已被消耗或逾時
+- 舊授權網址重用
+- state 已被使用或逾時
 
-處理：
+修正：
 
 - 回到後台重新發起 OAuth
-- 立刻使用新網址
+- 立即使用新的授權網址
 
 ### 5. Google Drive OAuth callback 回 `500`
 
 常見原因：
 
-- OAuth callback 相關程式變更後，sidecar broker 沒重啟
-- publish output 是舊的
-- `client_secret_*.json` 缺失或無效
+- sidecar broker 未在 callback 邏輯調整後重啟
+- publish output stale
+- `client_secret_*.json` 不存在或內容錯誤
 
-處理：
+修正：
 
-- 確認 repo 根目錄有正確的 `client_secret_*.json`
+- 確認 repo 根目錄有可用的 `client_secret_*.json`
 - 執行 `line-sidecar.ps1 restart`
 
 ### 6. Google Drive upload 失敗並出現 `storageQuotaExceeded`
 
-如果你走的是 service account 路徑：
+如果你走的是 `system_account`：
 
-- 個人 My Drive 資料夾不夠
-- service account 上傳需要 Shared Drive 或 delegated-user flow
+- 個人 My Drive 不夠
+- service account 上傳通常要 Shared Drive 或改走 delegated-user flow
 
-目前個人 Google 帳號的建議路徑：
+目前個人 Google 帳號最適合的路徑是：
 
 - delegated OAuth user Drive
 
-### 7. Drive 上傳成功了，但 LINE 沒收到交付通知
-
-原因：
-
-- 目前操作的是 synthetic/test 帳戶，不是真實 LINE `U...` 使用者
-- notification queue 有建立，但 LINE 無法投遞到假 recipient
-
-檢查：
-
-- 後台的 user label
-- 該使用者是否標成 `真實 LINE`
-
-### 8. 後台打得開，但無法登入
-
-目前規則：
-
-- 第一次啟動且資料庫沒有 credential 時，密碼是 `admin`
-- 第一次成功登入後，必須修改密碼
-
-如果這是已使用過的 live sidecar，密碼可能早已被改過。
-
-若不知道密碼，應從本機 broker DB / admin 層做重設，不要硬猜。
-
-### 9. sidecar restart 因 publish output 被鎖住而失敗
+### 7. Drive 成功但 LINE 沒收到通知
 
 常見原因：
 
-- 舊的 broker 或 worker 程序仍握住檔案
+- 你用的是測試帳戶，不是真實 LINE `U...` 使用者
+- notification queue 有建，但 LINE 對假 recipient 無法送達
 
-目前已做的緩解：
+檢查：
 
-- restart 會等待程序退出
-- republish 前會先清空輸出目錄
+- 後台使用者標籤
+- 目前選中的 user 是否標成「真實 LINE」
 
-若還是失敗：
+### 8. 後台可開但登入失敗
+
+規則：
+
+- 若 DB 尚未建立管理密碼，初始密碼是 `admin`
+- 第一次登入必須改密碼
+
+若是已運作過的 live sidecar，密碼可能早就被改過。
+這時應在本機 broker DB / admin 層處理，不要猜。
+
+### 9. sidecar restart 因 publish output 被鎖而失敗
+
+常見原因：
+
+- 舊 broker 或 line-worker 程序仍持有檔案
+
+目前 restart 已有：
+
+- 等程序停止
+- republish 前清空輸出目錄
+
+若仍失敗：
 
 - 先 `down`
-- 確認 broker 與 worker 程序真的已經消失
-- 再重新 `up`
+- 確認 broker / worker 程序真的都不在了
+- 再 `up`
 
 ## Log 與工作目錄
 
@@ -410,7 +444,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 - `D:\Bricks4Agent\.run\line-sidecar`
 
-重要 log：
+主要 log：
 
 - `.run/line-sidecar/logs/broker.out.log`
 - `.run/line-sidecar/logs/broker.err.log`
@@ -419,13 +453,27 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - `.run/line-sidecar/logs/ngrok.out.log`
 - `.run/line-sidecar/logs/ngrok.err.log`
 
-## 這份手冊目前還沒涵蓋的內容
+## 目前尚未完成的前台能力
 
-- 正式多主機部署下的 broker / line-worker 操作
-- 強化過的遠端 admin auth
-- browser worker runtime 的日常操作
-- 完整 Azure IIS deployment 操作
-- 完整 disaster recovery 流程
+目前還沒有使用者前台可讓終端使用者：
+
+- 查看自己的交付檔案歷史
+- 直接登入後下載 artifact
+- 透過 broker 授權規則取得安全下載
+
+現在已有的是：
+
+- 本機 admin 後台
+- LINE 對話中的交付連結
+- broker 內部 artifact records
+
+未來如果系統直接對外服務，應補上：
+
+- 經驗證的前台下載 API
+- 使用者自己的 artifact 清單頁
+- broker 控制的下載授權檢查
+
+這是「前台應有功能」，目前尚未實作。
 
 ## 相關文件
 

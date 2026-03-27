@@ -76,6 +76,12 @@ Current sidecar behavior:
 
 - the first matching file is used
 - delegated redirect URI is set to `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
+- Google Drive delivery mode is configurable:
+  - `shared_delegated`
+  - `user_delegated`
+  - `system_account`
+- if no override is provided and `Line.DefaultRecipientId` exists, sidecar now defaults to `shared_delegated`
+- the shared delegated owner defaults to `Line.DefaultRecipientId`
 
 ## Canonical Operator Commands
 
@@ -133,6 +139,7 @@ The start path currently performs these actions:
 4. Injects local production overrides for:
    - high-level API key
    - Google Drive OAuth settings
+   - Google Drive default identity mode and shared delegated owner
 5. Starts broker on `127.0.0.1:5361`
 6. Starts line-worker on `*:5357`
 7. Recreates ngrok tunnel `line5357`
@@ -193,6 +200,25 @@ This console currently includes:
 - deployment targets
 - tool specs
 - Google Drive OAuth and delivery actions
+
+## Current Google Drive Delivery Modes
+
+The broker now supports three delivery identities:
+
+- `shared_delegated`
+  - one Google account is authorized once
+  - all LINE users upload into that same Drive
+  - broker records still preserve which LINE user owns each artifact
+- `user_delegated`
+  - each LINE user authorizes their own Google Drive
+- `system_account`
+  - Google service account path, typically for Shared Drive scenarios
+
+For the current local sidecar, the intended default is:
+
+- `shared_delegated`
+
+This matches the case where one operator-owned Google Drive is used for all uploaded artifacts.
 
 ## Current High-Level Model
 
@@ -426,6 +452,24 @@ Key logs:
 - browser worker runtime operation
 - full Azure IIS deployment operations
 - complete disaster recovery procedures
+
+## Missing Frontend Capability
+
+There is currently no end-user frontend for artifact browsing or downloading.
+
+What exists today:
+
+- local admin console
+- LINE messages containing delivery links
+- broker-managed artifact records
+
+What should exist later as a frontend feature:
+
+- an authenticated artifact download API
+- user-facing artifact history
+- governed download authorization checks
+
+This is a recorded future frontend requirement, not a completed feature.
 
 ## Related Documents
 

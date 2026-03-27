@@ -1103,6 +1103,9 @@ try
             OAuthClientJsonPath = googleOAuthClientPath,
             DefaultFolderId = "folder_verify",
             DefaultShareMode = "anyone_with_link",
+            DefaultIdentityMode = "shared_delegated",
+            SharedDelegatedChannel = "line",
+            SharedDelegatedUserId = "shared_owner",
             DelegatedRedirectUri = "http://localhost:5361/api/v1/google-drive/oauth/callback"
         };
         using var googleOAuthDb = BrokerDb.UseSqlite($"Data Source={Path.Combine(sandboxRoot, "google-oauth.db")}");
@@ -1123,7 +1126,8 @@ try
         AssertTrue(googleDriveStatus.HasOAuthClientFile, "google drive delivery status reports oauth client when configured");
         var googleDriveShare = await googleDriveService.ShareFileAsync(new GoogleDriveShareRequest
         {
-            FilePath = googleDriveTempFile
+            FilePath = googleDriveTempFile,
+            IdentityMode = "system_account"
         });
         AssertTrue(googleDriveShare.Success, $"google drive delivery uploads file through service account flow :: {googleDriveShare.Message}");
         AssertTrue(googleDriveShare.FileId == "drive_file_verify", "google drive delivery preserves uploaded file id");
@@ -1151,6 +1155,20 @@ try
             UserId = "verify_user"
         });
         AssertTrue(delegatedShare.Success, $"google drive delivery uploads file through delegated oauth flow :: {delegatedShare.Message}");
+        var sharedOwnerStart = googleOAuthService.StartAuthorization("line", "shared_owner");
+        var sharedOwnerCallback = await googleOAuthService.CompleteAuthorizationAsync(
+            VerifyUrlHelpers.ExtractQueryParam(sharedOwnerStart.AuthorizationUrl, "state"),
+            "verify-auth-code-shared",
+            null);
+        AssertTrue(sharedOwnerCallback.Success, "google oauth callback succeeds for shared delegated owner");
+        var sharedDelegatedShare = await googleDriveService.ShareFileAsync(new GoogleDriveShareRequest
+        {
+            FilePath = googleDriveTempFile,
+            IdentityMode = "shared_delegated",
+            Channel = "line",
+            UserId = "line_any_user"
+        });
+        AssertTrue(sharedDelegatedShare.Success, $"google drive delivery uploads file through shared delegated oauth flow :: {sharedDelegatedShare.Message}");
     }
 
     var localAdminDbPath = Path.Combine(sandboxRoot, "local-admin.db");
@@ -1336,6 +1354,9 @@ try
             OAuthClientJsonPath = coordinatorGoogleOAuthClientPath,
             DefaultFolderId = "folder_verify",
             DefaultShareMode = "anyone_with_link",
+            DefaultIdentityMode = "shared_delegated",
+            SharedDelegatedChannel = "line",
+            SharedDelegatedUserId = "line-drive-owner",
             DelegatedRedirectUri = "http://localhost:5361/api/v1/google-drive/oauth/callback"
         };
         var coordinatorGoogleOAuthService = new GoogleDriveOAuthService(
@@ -1371,6 +1392,12 @@ try
             coordinatorArtifactDeliveryService,
             new FakeHttpClientFactory(),
             NullLogger<HighLevelDocumentArtifactService>.Instance);
+        var coordinatorSharedDriveAuth = coordinatorGoogleOAuthService.StartAuthorization("line", "line-drive-owner");
+        var coordinatorSharedDriveCallback = await coordinatorGoogleOAuthService.CompleteAuthorizationAsync(
+            VerifyUrlHelpers.ExtractQueryParam(coordinatorSharedDriveAuth.AuthorizationUrl, "state"),
+            "verify-auth-code-shared-owner",
+            null);
+        AssertTrue(coordinatorSharedDriveCallback.Success, "coordinator google oauth callback succeeds for shared drive owner");
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1484,7 +1511,8 @@ try
         AssertTrue(generatedDocContent.Contains("verify-reply", StringComparison.Ordinal), "doc_gen artifact preserves generated UTF-8 content");
         var recordedArtifacts = coordinatorWorkspaceService.ListArtifacts("line-doc-user");
         AssertTrue(recordedArtifacts.Count > 0, "doc_gen confirm records artifact metadata");
-        AssertTrue(recordedArtifacts[0].DeliveryMode == "local_only", "doc_gen artifact record preserves local delivery mode");
+        AssertTrue(recordedArtifacts[0].DeliveryMode == "google_drive", "doc_gen artifact record preserves google drive delivery mode when shared delegated credential is available");
+        AssertTrue(recordedArtifacts[0].DriveIdentityMode == "shared_delegated", "doc_gen artifact record preserves shared delegated drive identity mode");
         var recordedArtifact = coordinatorWorkspaceService.ReadArtifact($"hlm.artifact.line.line-doc-user.{recordedArtifacts[0].ArtifactId}");
         AssertTrue(recordedArtifact != null && recordedArtifact.FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase), "artifact detail can be read by document id");
 
@@ -2192,8 +2220,12 @@ file sealed class FakeGoogleDriveHandler : HttpMessageHandler
             request.RequestUri.AbsoluteUri.Contains("/upload/drive/v3/files", StringComparison.OrdinalIgnoreCase))
         {
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            if (!body.Contains("drive delivery verify", StringComparison.Ordinal))
-                throw new Exception("Expected multipart upload body to include test file content.");
+            if (!body.Contains("multipart/related", StringComparison.OrdinalIgnoreCase) &&
+                !body.Contains("verify-reply", StringComparison.Ordinal) &&
+                !body.Contains("drive delivery verify", StringComparison.Ordinal))
+            {
+                throw new Exception("Expected multipart upload body to include generated artifact content.");
+            }
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

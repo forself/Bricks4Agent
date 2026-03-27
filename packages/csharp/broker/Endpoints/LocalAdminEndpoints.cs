@@ -607,7 +607,7 @@ public static class LocalAdminEndpoints
                 FileName = GetString(body, "file_name", string.Empty),
                 FolderId = GetString(body, "folder_id", string.Empty),
                 ShareMode = GetString(body, "share_mode", string.Empty),
-                IdentityMode = GetString(body, "identity_mode", "system_account"),
+                IdentityMode = GetString(body, "identity_mode", string.Empty),
                 Channel = GetString(body, "channel", "line"),
                 UserId = GetString(body, "user_id", string.Empty)
             }, cancellationToken);
@@ -633,7 +633,7 @@ public static class LocalAdminEndpoints
                 Format = GetString(body, "format", string.Empty),
                 Content = GetString(body, "content", string.Empty),
                 UploadToGoogleDrive = GetBool(body, "upload_to_google_drive", true),
-                IdentityMode = GetString(body, "identity_mode", "user_delegated"),
+                IdentityMode = GetString(body, "identity_mode", string.Empty),
                 FolderId = GetString(body, "folder_id", string.Empty),
                 ShareMode = GetString(body, "share_mode", "anyone_with_link"),
                 SendLineNotification = GetBool(body, "send_line_notification", true),

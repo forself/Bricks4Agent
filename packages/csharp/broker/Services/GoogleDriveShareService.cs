@@ -14,6 +14,9 @@ public sealed class GoogleDriveDeliveryOptions
     public string DefaultFolderId { get; set; } = string.Empty;
     public string DefaultShareMode { get; set; } = "anyone_with_link";
     public string DefaultPermissionRole { get; set; } = "reader";
+    public string DefaultIdentityMode { get; set; } = "shared_delegated";
+    public string SharedDelegatedChannel { get; set; } = "line";
+    public string SharedDelegatedUserId { get; set; } = string.Empty;
     public string DelegatedRedirectUri { get; set; } = "http://127.0.0.1:5361/api/v1/google-drive/oauth/callback";
 }
 
@@ -23,7 +26,7 @@ public sealed class GoogleDriveShareRequest
     public string FileName { get; set; } = string.Empty;
     public string FolderId { get; set; } = string.Empty;
     public string ShareMode { get; set; } = string.Empty;
-    public string IdentityMode { get; set; } = "system_account";
+    public string IdentityMode { get; set; } = string.Empty;
     public string Channel { get; set; } = "line";
     public string UserId { get; set; } = string.Empty;
 }
@@ -34,6 +37,9 @@ public sealed class GoogleDriveShareStatus
     public bool HasCredentialFile { get; set; }
     public bool HasOAuthClientFile { get; set; }
     public bool HasDefaultFolderId { get; set; }
+    public string DefaultIdentityMode { get; set; } = string.Empty;
+    public string SharedDelegatedChannel { get; set; } = string.Empty;
+    public string SharedDelegatedUserId { get; set; } = string.Empty;
     public string ServiceAccountJsonPath { get; set; } = string.Empty;
     public string OAuthClientJsonPath { get; set; } = string.Empty;
     public string DefaultFolderId { get; set; } = string.Empty;
@@ -68,10 +74,80 @@ public sealed class GoogleDriveShareService
             HasCredentialFile = File.Exists(_options.ServiceAccountJsonPath),
             HasOAuthClientFile = File.Exists(_options.OAuthClientJsonPath),
             HasDefaultFolderId = !string.IsNullOrWhiteSpace(_options.DefaultFolderId),
+            DefaultIdentityMode = ResolveIdentityMode(null),
+            SharedDelegatedChannel = _options.SharedDelegatedChannel,
+            SharedDelegatedUserId = _options.SharedDelegatedUserId,
             ServiceAccountJsonPath = _options.ServiceAccountJsonPath,
             OAuthClientJsonPath = _options.OAuthClientJsonPath,
             DefaultFolderId = _options.DefaultFolderId
         };
+
+    public string ResolveIdentityMode(string? requestedIdentityMode)
+    {
+        var identityMode = string.IsNullOrWhiteSpace(requestedIdentityMode)
+            ? _options.DefaultIdentityMode
+            : requestedIdentityMode.Trim();
+        identityMode = string.IsNullOrWhiteSpace(identityMode) ? "shared_delegated" : identityMode.Trim().ToLowerInvariant();
+
+        return identityMode switch
+        {
+            "system_account" => "system_account",
+            "user_delegated" => "user_delegated",
+            "shared_delegated" => "shared_delegated",
+            _ => throw new InvalidOperationException($"unsupported google drive identity mode: {identityMode}")
+        };
+    }
+
+    public string ResolveShareMode(string? requestedShareMode)
+    {
+        var shareMode = string.IsNullOrWhiteSpace(requestedShareMode)
+            ? _options.DefaultShareMode
+            : requestedShareMode.Trim();
+        shareMode = string.IsNullOrWhiteSpace(shareMode) ? "anyone_with_link" : shareMode.Trim().ToLowerInvariant();
+
+        return shareMode switch
+        {
+            "anyone_with_link" => "anyone_with_link",
+            "restricted" => "restricted",
+            _ => throw new InvalidOperationException($"unsupported google drive share mode: {shareMode}")
+        };
+    }
+
+    public (string IdentityMode, string Channel, string UserId) ResolveCredentialBinding(
+        string? requestedIdentityMode,
+        string channel,
+        string userId)
+    {
+        var identityMode = ResolveIdentityMode(requestedIdentityMode);
+        return identityMode switch
+        {
+            "system_account" => ("system_account", string.Empty, string.Empty),
+            "user_delegated" => ("user_delegated", channel, userId),
+            "shared_delegated" => ("shared_delegated", _options.SharedDelegatedChannel.Trim(), _options.SharedDelegatedUserId.Trim()),
+            _ => throw new InvalidOperationException($"unsupported google drive identity mode: {identityMode}")
+        };
+    }
+
+    public bool CanUpload(string? requestedIdentityMode, string channel, string userId)
+    {
+        if (string.IsNullOrWhiteSpace(_options.DefaultFolderId))
+            return false;
+
+        var binding = ResolveCredentialBinding(requestedIdentityMode, channel, userId);
+        return binding.IdentityMode switch
+        {
+            "system_account" => File.Exists(_options.ServiceAccountJsonPath),
+            "user_delegated" => File.Exists(_options.OAuthClientJsonPath)
+                                && !string.IsNullOrWhiteSpace(binding.Channel)
+                                && !string.IsNullOrWhiteSpace(binding.UserId)
+                                && _oauthService.GetCredential(binding.Channel, binding.UserId) != null,
+            "shared_delegated" => File.Exists(_options.OAuthClientJsonPath)
+                                  && !string.IsNullOrWhiteSpace(binding.Channel)
+                                  && !string.IsNullOrWhiteSpace(binding.UserId)
+                                  && _oauthService.GetCredential(binding.Channel, binding.UserId) != null,
+            _ => false
+        };
+    }
 
     public async Task<GoogleDriveShareResult> ShareFileAsync(
         GoogleDriveShareRequest request,
@@ -87,12 +163,7 @@ public sealed class GoogleDriveShareService
         if (string.IsNullOrWhiteSpace(folderId))
             return Fail("google drive folder id is required.");
 
-        var shareMode = string.IsNullOrWhiteSpace(request.ShareMode) ? _options.DefaultShareMode : request.ShareMode.Trim();
-        if (!string.Equals(shareMode, "anyone_with_link", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(shareMode, "restricted", StringComparison.OrdinalIgnoreCase))
-        {
-            return Fail("share_mode must be anyone_with_link or restricted.");
-        }
+        var shareMode = ResolveShareMode(request.ShareMode);
 
         var fileName = string.IsNullOrWhiteSpace(request.FileName)
             ? Path.GetFileName(request.FilePath)
@@ -100,20 +171,25 @@ public sealed class GoogleDriveShareService
         if (string.IsNullOrWhiteSpace(fileName))
             return Fail("resolved file name is empty.");
 
-        var identityMode = string.IsNullOrWhiteSpace(request.IdentityMode) ? "system_account" : request.IdentityMode.Trim().ToLowerInvariant();
+        var binding = ResolveCredentialBinding(request.IdentityMode, request.Channel, request.UserId);
+        var identityMode = binding.IdentityMode;
         string accessToken;
         GoogleServiceAccountCredential? credential = null;
-        if (identityMode == "user_delegated")
+        if (identityMode == "user_delegated" || identityMode == "shared_delegated")
         {
-            if (string.IsNullOrWhiteSpace(request.Channel) || string.IsNullOrWhiteSpace(request.UserId))
-                return Fail("channel and user_id are required for user_delegated delivery.");
+            if (string.IsNullOrWhiteSpace(binding.Channel) || string.IsNullOrWhiteSpace(binding.UserId))
+            {
+                return identityMode == "shared_delegated"
+                    ? Fail("shared delegated google drive delivery is not configured.")
+                    : Fail("channel and user_id are required for user_delegated delivery.");
+            }
             try
             {
-                accessToken = await _oauthService.GetDelegatedAccessTokenAsync(request.Channel, request.UserId, cancellationToken);
+                accessToken = await _oauthService.GetDelegatedAccessTokenAsync(binding.Channel, binding.UserId, cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "OAuth token refresh failed for {Channel}:{UserId}", request.Channel, request.UserId);
+                _logger.LogWarning(ex, "OAuth token refresh failed for {Channel}:{UserId}", binding.Channel, binding.UserId);
                 return Fail($"oauth_token_refresh_failed: {ex.Message}");
             }
         }

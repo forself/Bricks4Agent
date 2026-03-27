@@ -18,6 +18,10 @@ public sealed class HighLevelLineArtifactRecord
     public string FilePath { get; set; } = string.Empty;
     public string DocumentsRoot { get; set; } = string.Empty;
     public bool UploadedToGoogleDrive { get; set; }
+    public string DriveIdentityMode { get; set; } = string.Empty;
+    public string DriveCredentialChannel { get; set; } = string.Empty;
+    public string DriveCredentialUserId { get; set; } = string.Empty;
+    public string DriveShareMode { get; set; } = string.Empty;
     public string GoogleDriveFileId { get; set; } = string.Empty;
     public string GoogleDriveWebViewLink { get; set; } = string.Empty;
     public string GoogleDriveDownloadLink { get; set; } = string.Empty;

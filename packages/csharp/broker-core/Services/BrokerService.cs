@@ -36,6 +36,7 @@ public class BrokerService : IBrokerService
     private readonly IRevocationService _revocationService;
     private readonly ITaskRouter _taskRouter;
     private readonly IExecutionDispatcher _executionDispatcher;
+    private readonly IToolSpecStatusChecker? _toolSpecStatusChecker;
 
     public BrokerService(
         BrokerDb db,
@@ -45,7 +46,8 @@ public class BrokerService : IBrokerService
         ISessionService sessionService,
         IRevocationService revocationService,
         ITaskRouter taskRouter,
-        IExecutionDispatcher executionDispatcher)
+        IExecutionDispatcher executionDispatcher,
+        IToolSpecStatusChecker? toolSpecStatusChecker = null)
     {
         _db = db;
         _policyEngine = policyEngine;
@@ -55,6 +57,7 @@ public class BrokerService : IBrokerService
         _revocationService = revocationService;
         _taskRouter = taskRouter;
         _executionDispatcher = executionDispatcher;
+        _toolSpecStatusChecker = toolSpecStatusChecker;
     }
 
     /// <inheritdoc />
@@ -198,6 +201,17 @@ public class BrokerService : IBrokerService
         {
             return UpdateRequestState(request, ExecutionState.Denied,
                 Models.PolicyDecision.Deny, $"Capability '{capabilityId}' not found in catalog.");
+        }
+
+        // ── Step 7b: 檢查 tool spec status ──
+        if (_toolSpecStatusChecker != null)
+        {
+            var (specAllowed, specReason) = _toolSpecStatusChecker.CheckStatus(capabilityId);
+            if (!specAllowed)
+            {
+                return UpdateRequestState(request, ExecutionState.Denied,
+                    Models.PolicyDecision.Deny, specReason ?? "Blocked by tool spec status check.");
+            }
         }
 
         request.ExecutionState = ExecutionState.Validated;

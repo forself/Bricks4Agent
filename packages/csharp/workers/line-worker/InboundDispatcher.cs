@@ -199,19 +199,25 @@ public class InboundDispatcher
                 reply = reply[..4900] + "\n\n... (內容已截斷)";
             }
 
-            var messages = new List<object>
-            {
-                new { type = "text", text = reply }
-            };
+            var allMessages = new List<string> { reply };
             foreach (var followUp in followUpMessages.Where(item => !string.IsNullOrWhiteSpace(item)).Take(4))
             {
                 var bounded = followUp.Length > 4900 ? followUp[..4900] : followUp;
-                messages.Add(new { type = "text", text = bounded });
+                allMessages.Add(bounded);
             }
 
-            var (success, error) = messages.Count == 1
-                ? await _lineApi.PushTextMessageAsync(userId, reply, ct)
-                : await _lineApi.PushMessagesAsync(userId, messages.ToArray(), ct);
+            var success = true;
+            string? error = null;
+            foreach (var outgoing in allMessages)
+            {
+                var (sent, sendError) = await _lineApi.PushTextMessageAsync(userId, outgoing, ct);
+                if (!sent)
+                {
+                    success = false;
+                    error = sendError;
+                    break;
+                }
+            }
             if (success)
             {
                 _logger.LogInformation(
