@@ -1,5 +1,9 @@
 # LINE Worker
 
+中文版本:
+
+- [README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
+
 Canonical live path:
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`

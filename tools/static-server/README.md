@@ -1,35 +1,51 @@
 # Static Server (C#)
 
-極簡靜態檔案伺服器，使用純 .NET HttpListener 實作，無需額外依賴。
+Minimal static file server implemented with plain .NET `HttpListener`.
 
-## 功能特色
+## What it is for
 
-- 零依賴 - 僅使用 .NET 內建函式庫
-- SPA 支援 - 自動 fallback 到 index.html
-- CORS 支援 - 開發環境跨域請求
-- 安全標頭 - X-Content-Type-Options, X-Frame-Options
-- 目錄遍歷防護
+Use this helper when you need a lightweight local server for:
 
-## 使用方式
+- SPA frontend files
+- static demo pages
+- generated frontend smoke testing
 
-### 方式一：直接執行
+It is a small local utility, not a production web host and not a replacement for the broker or the LINE sidecar.
+
+## Current behavior
+
+Based on [StaticServer.cs](/d:/Bricks4Agent/tools/static-server/StaticServer.cs), the server currently:
+
+- listens on `http://localhost:<port>/`
+- also listens on `http://127.0.0.1:<port>/`
+- serves static files from a local root directory
+- falls back to `index.html` for SPA-style routes
+- adds permissive development CORS headers
+- adds `X-Content-Type-Options` and `X-Frame-Options`
+- rejects non-`GET` / non-`HEAD` methods except `OPTIONS`
+
+## Quick Start
+
+### Run directly
 
 ```bash
 cd tools/static-server
 dotnet run ../spa-generator/frontend 3000
 ```
 
-### 方式二：編譯為執行檔
+### Publish
 
 ```bash
-# 編譯
 dotnet publish -c Release -o ./dist
+```
 
-# 執行
+Run the published executable:
+
+```bash
 ./dist/serve ./frontend 3000
 ```
 
-### 方式三：編譯為獨立執行檔 (不需安裝 .NET)
+### Self-contained publish
 
 ```bash
 # Windows
@@ -42,53 +58,36 @@ dotnet publish -c Release -r linux-x64 --self-contained -p:PublishSingleFile=tru
 dotnet publish -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -o ./dist
 ```
 
-## 參數
+## Arguments
 
+```text
+serve [directory] [port]
 ```
-serve [目錄] [埠號]
-```
 
-| 參數 | 預設值 | 說明 |
-|------|--------|------|
-| 目錄 | `.` | 靜態檔案根目錄 |
-| 埠號 | `3000` | HTTP 監聽埠號 |
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| directory | `.` | Static root |
+| port | `3000` | HTTP port |
 
-## 範例
+## Examples
 
 ```bash
-# 預設：當前目錄、埠號 3000
+# current directory on port 3000
 serve
 
-# 指定目錄
+# custom directory
 serve ./public
 
-# 指定目錄和埠號
+# custom directory and port
 serve ./frontend 8080
 ```
 
-## MIME 類型支援
+## Limits
 
-| 副檔名 | MIME 類型 |
-|--------|-----------|
-| .html | text/html |
-| .css | text/css |
-| .js | application/javascript |
-| .json | application/json |
-| .png | image/png |
-| .jpg, .jpeg | image/jpeg |
-| .gif | image/gif |
-| .svg | image/svg+xml |
-| .ico | image/x-icon |
-| .woff, .woff2 | font/woff, font/woff2 |
-| .ttf | font/ttf |
-| .pdf | application/pdf |
-| 其他 | application/octet-stream |
+- no hot reload
+- no TLS termination
+- no auth
+- no compression pipeline
+- no production-grade caching policy
 
-## 與其他方案比較
-
-| 方案 | 需求 | 優點 | 缺點 |
-|------|------|------|------|
-| **Static Server (C#)** | .NET 8 | 無依賴、可編譯為單檔 | 需要 .NET |
-| npx serve | Node.js | 方便、功能豐富 | 需要 Node.js |
-| python -m http.server | Python | 內建 | 無 SPA 支援 |
-| Live Server (VS Code) | VS Code | 熱重載 | 需要 IDE |
+If you need a local static helper, this is enough. If you need a real edge or production serving layer, use something else.
