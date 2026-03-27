@@ -27,9 +27,10 @@ Current verified query boundary:
 Recommended sidecar flow:
 
 1. Copy `appsettings.sidecar.example.json` to local `appsettings.json` and fill in real LINE credentials.
-2. Run `line-sidecar.ps1 up`.
-3. Run `line-sidecar.ps1 verify` to send a signed synthetic webhook event.
-4. Use `line-sidecar.ps1 status`, `line-sidecar.ps1 restart`, and `line-sidecar.ps1 down` for runtime control.
+2. Ensure `%LOCALAPPDATA%\\ngrok\\ngrok.yml` exists and contains a valid ngrok authtoken.
+3. Run `line-sidecar.ps1 up`.
+4. Run `line-sidecar.ps1 verify` to send a signed synthetic webhook event.
+5. Use `line-sidecar.ps1 status`, `line-sidecar.ps1 restart`, and `line-sidecar.ps1 down` for runtime control.
 
 Unified one-command entrypoint:
 
@@ -42,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
 ```
 
-The unified script is only an operator entrypoint. It still starts separate broker, line-worker, and ngrok processes.
+The unified script is the canonical operator entrypoint. It still starts separate broker, line-worker, and ngrok processes, but it now auto-starts the local ngrok agent if the admin API on `127.0.0.1:4040` is not already running.
 
 Default sidecar ports:
 
