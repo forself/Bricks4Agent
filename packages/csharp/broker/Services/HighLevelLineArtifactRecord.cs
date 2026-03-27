@@ -22,5 +22,7 @@ public sealed class HighLevelLineArtifactRecord
     public string GoogleDriveWebViewLink { get; set; } = string.Empty;
     public string GoogleDriveDownloadLink { get; set; } = string.Empty;
     public string NotificationId { get; set; } = string.Empty;
+    public string DriveError { get; set; } = string.Empty;
+    public string OverallStatus { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
 }

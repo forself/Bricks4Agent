@@ -45,7 +45,9 @@ using var lineApi = new LineApiClient(channelAccessToken, channelSecret);
 var brokerApiUrl = config.GetValue<string>("Broker:ApiUrl") ?? "http://localhost:5000";
 
 using var webhookReceiver = new WebhookReceiver(webhookPort, webhookHost, lineApi, audioTempPath, webhookLogger);
-var inboundDispatcher = new InboundDispatcher(webhookReceiver, lineApi, allowedUserIds, brokerApiUrl, dispatcherLogger);
+var notificationPollMs = config.GetValue("Line:NotificationPollIntervalMs", 5000);
+var notificationPollInterval = TimeSpan.FromMilliseconds(Math.Max(1000, notificationPollMs));
+var inboundDispatcher = new InboundDispatcher(webhookReceiver, lineApi, allowedUserIds, brokerApiUrl, dispatcherLogger, notificationPollInterval);
 
 var options = new WorkerHostOptions
 {

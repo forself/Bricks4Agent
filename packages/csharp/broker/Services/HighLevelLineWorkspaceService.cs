@@ -125,6 +125,91 @@ public sealed class HighLevelLineWorkspaceService
         catch { return null; }
     }
 
+    public HighLevelLineArtifactRecord? ReadArtifactById(string artifactId)
+    {
+        var entries = _db.Query<SharedContextEntry>(
+            """
+            SELECT * FROM shared_context_entries
+            WHERE document_id LIKE @prefix
+            ORDER BY version DESC
+            LIMIT 1
+            """,
+            new { prefix = $"hlm.artifact.line.%.{artifactId}" });
+
+        var entry = entries.FirstOrDefault();
+        if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
+            return null;
+
+        try
+        {
+            var item = JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
+            if (item != null && string.IsNullOrWhiteSpace(item.DocumentId))
+                item.DocumentId = entry.DocumentId;
+            return item;
+        }
+        catch { return null; }
+    }
+
+    public IReadOnlyList<HighLevelLineArtifactRecord> ListAllArtifacts(string? statusFilter, int limit = 50, int offset = 0)
+    {
+        var entries = _db.Query<SharedContextEntry>(
+            """
+            SELECT * FROM shared_context_entries
+            WHERE document_id LIKE 'hlm.artifact.line.%'
+            ORDER BY created_at DESC
+            LIMIT @lim OFFSET @off
+            """,
+            new { lim = Math.Max(1, limit), off = Math.Max(0, offset) });
+
+        var items = entries
+            .Select(entry =>
+            {
+                try
+                {
+                    var item = JsonSerializer.Deserialize<HighLevelLineArtifactRecord>(entry.ContentRef);
+                    if (item != null && string.IsNullOrWhiteSpace(item.DocumentId))
+                        item.DocumentId = entry.DocumentId;
+                    return item;
+                }
+                catch { return null; }
+            })
+            .Where(item => item != null)
+            .Cast<HighLevelLineArtifactRecord>();
+
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+            items = items.Where(i => string.Equals(i.OverallStatus, statusFilter, StringComparison.OrdinalIgnoreCase));
+
+        return items.OrderByDescending(i => i.CreatedAt).ToList();
+    }
+
+    public bool ResetNotificationToPending(string notificationId)
+    {
+        var docId = BuildLineNotificationDocumentId(notificationId);
+        var entry = _db.Query<SharedContextEntry>(
+            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            new { docId }).FirstOrDefault();
+
+        if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
+            return false;
+
+        try
+        {
+            var notification = JsonSerializer.Deserialize<HighLevelLineNotification>(entry.ContentRef);
+            if (notification == null)
+                return false;
+
+            notification.DeliveryStatus = "pending";
+            notification.CompletedAt = null;
+            notification.Error = null;
+
+            entry.ContentRef = JsonSerializer.Serialize(notification);
+            entry.Version += 1;
+            _db.Update(entry);
+            return true;
+        }
+        catch { return false; }
+    }
+
     private HighLevelUserProfile? LoadUserProfile(string channel, string userId)
     {
         var entry = _db.Query<SharedContextEntry>(

@@ -69,7 +69,7 @@ public sealed class HighLevelDocumentArtifactService
             IdentityMode = "user_delegated",
             FolderId = string.Empty,
             ShareMode = string.Empty,
-            SendLineNotification = false,
+            SendLineNotification = true,
             NotificationTitle = "文件已完成",
             Source = "high_level_doc_gen",
             RelatedTaskType = draft.TaskType,

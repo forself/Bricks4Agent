@@ -4,6 +4,11 @@ Canonical live path:
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
+Operator runbook:
+
+- [line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
+- [line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
+
 The worker is only the ingress bridge.
 User-facing dialogue, routing, confirmation, and query/production decisions belong to the broker high-level layer, which is configured separately from execution/runtime LLM settings through `HighLevelLlm`.
 

@@ -25,6 +25,7 @@ public sealed class LineArtifactDeliveryResult
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string OverallStatus { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public string DocumentsRoot { get; set; } = string.Empty;
     public string FilePath { get; set; } = string.Empty;
@@ -103,20 +104,11 @@ public sealed class LineArtifactDeliveryService
                     "Artifact created for LINE user {UserId} but Google Drive upload failed: {Message}",
                     request.UserId,
                     driveResult.Message);
-
-                return new LineArtifactDeliveryResult
-                {
-                    Success = false,
-                    Message = driveResult.Message,
-                    UserId = request.UserId,
-                    DocumentsRoot = managedPaths.DocumentsRoot,
-                    FilePath = filePath,
-                    FileName = fileName,
-                    UploadedToGoogleDrive = false,
-                    GoogleDrive = driveResult
-                };
             }
         }
+
+        var driveOk = driveResult?.Success == true;
+        var overallStatus = driveOk || !request.UploadToGoogleDrive ? "completed" : "partial";
 
         HighLevelLineNotification? notification = null;
         if (request.SendLineNotification)
@@ -136,28 +128,31 @@ public sealed class LineArtifactDeliveryService
             RelatedDraftId = request.RelatedDraftId?.Trim() ?? string.Empty,
             RelatedTaskId = request.RelatedTaskId?.Trim() ?? string.Empty,
             Success = true,
-            Message = "ok",
-            DeliveryMode = driveResult?.Success == true ? "google_drive" : "local_only",
+            Message = driveOk ? "ok" : (driveResult?.Message ?? "drive_not_requested"),
+            DeliveryMode = driveOk ? "google_drive" : "local_only",
             FileName = fileName,
             Format = format,
             FilePath = filePath,
             DocumentsRoot = managedPaths.DocumentsRoot,
-            UploadedToGoogleDrive = driveResult?.Success == true,
+            UploadedToGoogleDrive = driveOk,
             GoogleDriveFileId = driveResult?.FileId ?? string.Empty,
             GoogleDriveWebViewLink = driveResult?.WebViewLink ?? string.Empty,
             GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
+            DriveError = driveOk ? string.Empty : (driveResult?.Message ?? string.Empty),
+            OverallStatus = overallStatus,
             NotificationId = notification?.NotificationId ?? string.Empty
         });
 
         return new LineArtifactDeliveryResult
         {
             Success = true,
-            Message = "ok",
+            Message = driveOk ? "ok" : "file_created_drive_failed",
+            OverallStatus = overallStatus,
             UserId = request.UserId,
             DocumentsRoot = managedPaths.DocumentsRoot,
             FilePath = filePath,
             FileName = fileName,
-            UploadedToGoogleDrive = driveResult?.Success == true,
+            UploadedToGoogleDrive = driveOk,
             GoogleDrive = driveResult,
             Notification = notification,
             Artifact = artifact
@@ -188,28 +183,117 @@ public sealed class LineArtifactDeliveryService
         return trimmed;
     }
 
-    private static string BuildNotificationBody(
+    internal static string BuildNotificationBody(
         string fileName,
         string filePath,
         GoogleDriveShareResult? driveResult)
     {
-        var lines = new List<string>
-        {
-            $"文件：{fileName}",
-            $"本機路徑：{filePath}"
-        };
+        var lines = new List<string>();
 
         if (driveResult?.Success == true)
         {
+            lines.Add("您的文件已準備完成");
             lines.Add(string.Empty);
-            lines.Add("Google Drive 連結：");
-            if (!string.IsNullOrWhiteSpace(driveResult.WebViewLink))
-                lines.Add(driveResult.WebViewLink);
+            lines.Add($"文件名稱：{fileName}");
+
             if (!string.IsNullOrWhiteSpace(driveResult.DownloadLink))
+            {
+                lines.Add(string.Empty);
+                lines.Add("點擊下載：");
                 lines.Add(driveResult.DownloadLink);
+            }
+
+            if (!string.IsNullOrWhiteSpace(driveResult.WebViewLink))
+            {
+                lines.Add(string.Empty);
+                lines.Add("線上預覽：");
+                lines.Add(driveResult.WebViewLink);
+            }
+        }
+        else
+        {
+            lines.Add("您的文件已準備完成");
+            lines.Add(string.Empty);
+            lines.Add($"文件名稱：{fileName}");
+            lines.Add(string.Empty);
+            lines.Add("檔案已儲存，但雲端上傳未完成。");
+            lines.Add("管理員將協助提供下載連結。");
         }
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    public async Task<LineArtifactDeliveryResult> RetryDriveUploadAsync(
+        string artifactId,
+        CancellationToken cancellationToken = default)
+    {
+        var artifact = _workspaceService.ReadArtifactById(artifactId);
+        if (artifact == null)
+            return Fail("artifact not found.");
+
+        if (artifact.OverallStatus != "partial")
+            return Fail($"artifact status is '{artifact.OverallStatus}', not 'partial'. Nothing to retry.");
+
+        if (string.IsNullOrWhiteSpace(artifact.FilePath) || !File.Exists(artifact.FilePath))
+            return Fail("local file no longer exists.");
+
+        var driveResult = await _googleDriveShareService.ShareFileAsync(new GoogleDriveShareRequest
+        {
+            FilePath = artifact.FilePath,
+            FileName = artifact.FileName,
+            FolderId = string.Empty,
+            ShareMode = "anyone_with_link",
+            IdentityMode = "user_delegated",
+            Channel = artifact.Channel,
+            UserId = artifact.UserId
+        }, cancellationToken);
+
+        if (!driveResult.Success)
+        {
+            artifact.DriveError = driveResult.Message;
+            _workspaceService.RecordArtifact(artifact);
+
+            return new LineArtifactDeliveryResult
+            {
+                Success = false,
+                Message = driveResult.Message,
+                OverallStatus = "partial",
+                UserId = artifact.UserId,
+                FilePath = artifact.FilePath,
+                FileName = artifact.FileName,
+                GoogleDrive = driveResult
+            };
+        }
+
+        artifact.UploadedToGoogleDrive = true;
+        artifact.GoogleDriveFileId = driveResult.FileId;
+        artifact.GoogleDriveWebViewLink = driveResult.WebViewLink;
+        artifact.GoogleDriveDownloadLink = driveResult.DownloadLink;
+        artifact.DriveError = string.Empty;
+        artifact.DeliveryMode = "google_drive";
+        artifact.OverallStatus = "completed";
+
+        var notification = _workspaceService.QueueLineNotification(
+            artifact.UserId,
+            "文件已完成",
+            BuildNotificationBody(artifact.FileName, artifact.FilePath, driveResult));
+
+        artifact.NotificationId = notification.NotificationId;
+        _workspaceService.RecordArtifact(artifact);
+
+        return new LineArtifactDeliveryResult
+        {
+            Success = true,
+            Message = "ok",
+            OverallStatus = "completed",
+            UserId = artifact.UserId,
+            FilePath = artifact.FilePath,
+            FileName = artifact.FileName,
+            UploadedToGoogleDrive = true,
+            GoogleDrive = driveResult,
+            Notification = notification,
+            Artifact = artifact
+        };
     }
 
     private static LineArtifactDeliveryResult Fail(string message)
