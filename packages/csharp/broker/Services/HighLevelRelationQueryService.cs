@@ -190,7 +190,7 @@ public sealed class HighLevelRelationQueryService
             if (!wikipediaResult.Success)
                 continue;
 
-            AddEvidence(evidence, plan.Subject, plannedQuery, wikipediaResult.Results);
+            AddEvidence(evidence, plan.Subject, plan.RelationType, plannedQuery, wikipediaResult.Results);
         }
 
         if (CountStrongEvidence(evidence) < 2)
@@ -201,7 +201,7 @@ public sealed class HighLevelRelationQueryService
                 if (!searchResult.Success)
                     continue;
 
-                AddEvidence(evidence, plan.Subject, plannedQuery, searchResult.Results);
+                AddEvidence(evidence, plan.Subject, plan.RelationType, plannedQuery, searchResult.Results);
             }
         }
 
@@ -244,6 +244,7 @@ public sealed class HighLevelRelationQueryService
     private static void AddEvidence(
         ICollection<HighLevelRelationEvidenceItem> evidence,
         string subject,
+        string relationType,
         string plannedQuery,
         IReadOnlyList<HighLevelQuerySearchResult> results)
     {
@@ -252,7 +253,7 @@ public sealed class HighLevelRelationQueryService
             if (string.IsNullOrWhiteSpace(result.Url) || string.IsNullOrWhiteSpace(result.Title))
                 continue;
 
-            var score = ScoreAdministrativeEvidence(subject, result);
+            var score = ScoreAdministrativeEvidence(subject, relationType, result);
             if (score <= 0)
                 continue;
 
@@ -574,11 +575,12 @@ public sealed class HighLevelRelationQueryService
             : null;
     }
 
-    private static int ScoreAdministrativeEvidence(string subject, HighLevelQuerySearchResult result)
+    private static int ScoreAdministrativeEvidence(string subject, string relationType, HighLevelQuerySearchResult result)
     {
         var merged = $"{result.Title}\n{result.Snippet}";
         var score = 0;
         var hasStrongSubjectAssociation = HasStrongSubjectAssociation(subject, result);
+        var isNeighborQuery = string.Equals(relationType, "administrative_neighbor_relation", StringComparison.OrdinalIgnoreCase);
 
         if (hasStrongSubjectAssociation)
             score += 4;
@@ -602,11 +604,10 @@ public sealed class HighLevelRelationQueryService
         if (result.Title.Contains(subject, StringComparison.OrdinalIgnoreCase))
             score += 3;
 
-        if (merged.Contains("list of administrative divisions", StringComparison.OrdinalIgnoreCase) ||
-            merged.Contains("行政區劃", StringComparison.OrdinalIgnoreCase))
-        {
-            score += 5;
-        }
+        var isAdminListPage = merged.Contains("list of administrative divisions", StringComparison.OrdinalIgnoreCase) ||
+                              merged.Contains("行政區劃", StringComparison.OrdinalIgnoreCase);
+        if (isAdminListPage)
+            score += isNeighborQuery ? 2 : 5;
 
         if (!hasStrongSubjectAssociation && !LooksLikeAdministrativeListPage(subject, result))
             score -= 4;
@@ -727,10 +728,15 @@ public sealed class HighLevelRelationQueryService
                 lines.Add($"目前我已找到和「{plan.Subject}」附近或相鄰行政區有關的候選名稱。");
                 lines.Add(string.Join("、", confidentNearbyTerms));
             }
+            else if (confidentNearbyTerms.Length == 1)
+            {
+                lines.Add($"找到一個可能和「{plan.Subject}」相鄰的行政區：{confidentNearbyTerms[0]}，但無法確認完整鄰接名單。");
+                lines.Add("建議查看下列來源確認。");
+            }
             else
             {
-                lines.Add($"目前我已找到和「{plan.Subject}」附近或相鄰行政區有關的來源，但證據還不足以穩定確認一組可信的相鄰行政區名單。");
-                lines.Add("較適合直接查看下列來源，再由人確認地理鄰接關係。");
+                lines.Add($"未找到足夠證據確認和「{plan.Subject}」相鄰的行政區。");
+                lines.Add("建議直接查看下列來源。");
             }
         }
         else
@@ -773,12 +779,12 @@ public sealed class HighLevelRelationQueryService
             return false;
 
         if (plan.RelationType == "administrative_neighbor_relation")
-            return false;
+            return strongEvidenceCount >= 3 && nearbyTerms.Count >= 3;
 
         return candidateTerms.Count >= 2;
     }
 
-    private static bool IsReasonableAdministrativeTerm(string value)
+    internal static bool IsReasonableAdministrativeTerm(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return false;
@@ -788,8 +794,14 @@ public sealed class HighLevelRelationQueryService
             return false;
 
         var isMostlyCjk = trimmed.All(ch => ch >= 0x2E80 && ch <= 0x9FFF);
-        if (isMostlyCjk && trimmed.Length > 5)
-            return false;
+        if (isMostlyCjk)
+        {
+            var hasAdminSuffix = AdministrativeNameSuffixes.Any(s =>
+                s.Length == 1 && trimmed.EndsWith(s, StringComparison.Ordinal));
+            var maxLen = hasAdminSuffix ? 10 : 8;
+            if (trimmed.Length > maxLen)
+                return false;
+        }
 
         if (trimmed.Any(ch => char.IsWhiteSpace(ch)) && trimmed.Length > 40)
             return false;
