@@ -1,12 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Handlers.Browser;
 
-public sealed class BrowserReadHandler : IRouteHandler
+public sealed class BrowserReadHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "browser_read";
 

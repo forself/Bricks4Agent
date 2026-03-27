@@ -1,12 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Memory;
 
-public sealed class MemoryDeleteHandler : IRouteHandler
+public sealed class MemoryDeleteHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly BrokerDb _db;
 

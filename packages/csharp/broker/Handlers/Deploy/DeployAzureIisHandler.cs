@@ -1,12 +1,11 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Handlers.Deploy;
 
-public sealed class DeployAzureIisHandler : IRouteHandler
+public sealed class DeployAzureIisHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "deploy_azure_vm_iis";
 

@@ -1,13 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 using Broker.Services;
 
 namespace Broker.Handlers.Web;
 
-public sealed class WebSearchGoogleHandler : IRouteHandler
+public sealed class WebSearchGoogleHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "web_search_google";
 

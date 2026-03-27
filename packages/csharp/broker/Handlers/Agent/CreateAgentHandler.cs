@@ -1,12 +1,12 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Models;
-using BrokerCore.Services;
 using Broker.Helpers;
+using BrokerCore.Services;
 
 namespace Broker.Handlers.Agent;
 
-public sealed class CreateAgentHandler : IRouteHandler
+public sealed class CreateAgentHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly AgentSpawnService _agentSpawnService;
 

@@ -1,11 +1,10 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Web;
 
-public sealed class WikipediaSearchHandler : IRouteHandler
+public sealed class WikipediaSearchHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "knowledge_wikipedia_search";
 

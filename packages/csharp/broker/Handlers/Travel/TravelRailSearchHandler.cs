@@ -1,11 +1,10 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
-using BrokerCore.Services;
 using Broker.Helpers;
 
 namespace Broker.Handlers.Travel;
 
-public sealed class TravelRailSearchHandler : IRouteHandler
+public sealed class TravelRailSearchHandler : BrokerCore.Services.IRouteHandler
 {
     public string Route => "travel_rail_search";
 

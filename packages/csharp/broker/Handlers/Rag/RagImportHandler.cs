@@ -1,12 +1,12 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
-using BrokerCore.Services;
 using Broker.Helpers;
+using BrokerCore.Services;
 
 namespace Broker.Handlers.Rag;
 
-public sealed class RagImportHandler : IRouteHandler
+public sealed class RagImportHandler : BrokerCore.Services.IRouteHandler
 {
     private readonly ILogger<RagImportHandler> _logger;
     private readonly BrokerDb _db;
