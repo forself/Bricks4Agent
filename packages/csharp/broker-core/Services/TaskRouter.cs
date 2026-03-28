@@ -20,6 +20,7 @@ public class TaskRouter : ITaskRouter
         ["task_management"] = RiskLevel.Low,
         ["architecture"] = RiskLevel.Low,
         ["code_gen"] = RiskLevel.Medium,
+        ["system_scaffold"] = RiskLevel.Medium,
         ["doc_gen"] = RiskLevel.Medium,
         ["code_modify"] = RiskLevel.High,
         ["deployment"] = RiskLevel.Critical,
@@ -36,6 +37,7 @@ public class TaskRouter : ITaskRouter
         ["task_management"] = "role_pm",
         ["architecture"] = "role_sa",
         ["code_gen"] = "role_executor",
+        ["system_scaffold"] = "role_executor",
         ["doc_gen"] = "role_executor",
         ["audit"] = "role_auditor",
         ["admin"] = "role_admin"

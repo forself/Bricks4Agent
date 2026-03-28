@@ -1380,6 +1380,9 @@ try
             coordinatorWorkspaceService,
             coordinatorGoogleDriveService,
             NullLogger<LineArtifactDeliveryService>.Instance);
+        var coordinatorScaffoldSpecStore = new HighLevelSystemScaffoldSpecStore(coordinatorDb);
+        var coordinatorScaffoldIterationStore = new HighLevelSystemScaffoldIterationStore(coordinatorDb);
+        var coordinatorScaffoldProgressStore = new HighLevelSystemScaffoldProgressStore(coordinatorDb);
         var coordinatorDocumentArtifactService = new HighLevelDocumentArtifactService(
             new HighLevelLlmOptions
             {
@@ -1403,6 +1406,13 @@ try
             coordinatorArtifactDeliveryService,
             new FakeHttpClientFactory(),
             NullLogger<HighLevelCodeArtifactService>.Instance);
+        var coordinatorSystemScaffoldService = new HighLevelSystemScaffoldService(
+            coordinatorWorkspaceService,
+            coordinatorArtifactDeliveryService,
+            coordinatorScaffoldSpecStore,
+            coordinatorScaffoldIterationStore,
+            coordinatorScaffoldProgressStore,
+            NullLogger<HighLevelSystemScaffoldService>.Instance);
         var coordinatorSharedDriveAuth = coordinatorGoogleOAuthService.StartAuthorization("line", "line-drive-owner");
         var coordinatorSharedDriveCallback = await coordinatorGoogleOAuthService.CompleteAuthorizationAsync(
             VerifyUrlHelpers.ExtractQueryParam(coordinatorSharedDriveAuth.AuthorizationUrl, "state"),
@@ -1435,6 +1445,7 @@ try
             new FakeHighLevelExecutionModelPlanner(),
             coordinatorDocumentArtifactService,
             coordinatorCodeArtifactService,
+            coordinatorSystemScaffoldService,
             new BrowserBindingService(coordinatorDb),
             NullLogger<HighLevelCoordinator>.Instance);
 
@@ -1545,6 +1556,29 @@ try
         AssertTrue(recordedArtifacts[0].DriveIdentityMode == "shared_delegated", "doc_gen artifact record preserves shared delegated drive identity mode");
         var recordedArtifact = coordinatorWorkspaceService.ReadArtifact($"hlm.artifact.line.line-doc-user.{recordedArtifacts[0].ArtifactId}");
         AssertTrue(recordedArtifact != null && recordedArtifact.FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase), "artifact detail can be read by document id");
+
+        var scaffoldDraft = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "/建立 完整系統雛形 #scaffoldproj");
+        AssertTrue(scaffoldDraft.Draft != null && scaffoldDraft.Draft.TaskType == "system_scaffold", "system scaffold command creates system_scaffold draft");
+        AssertTrue(scaffoldDraft.Draft!.ProjectName == "scaffoldproj", "system scaffold draft captures inline project name");
+        AssertTrue(scaffoldDraft.Reply.Contains("scaffold_family:", StringComparison.Ordinal), "system scaffold draft reply includes structured scaffold summary");
+        AssertTrue(scaffoldDraft.FollowUpMessages != null && scaffoldDraft.FollowUpMessages.Contains("confirm"), "system scaffold draft exposes confirm follow-up");
+
+        var scaffoldRefined = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "需要登入、SQLite 與 Azure IIS 佈署");
+        AssertTrue(scaffoldRefined.Draft != null && scaffoldRefined.Draft.TaskType == "system_scaffold", "system scaffold refinement keeps the pending scaffold draft");
+        AssertTrue(scaffoldRefined.Reply.Contains("auth: required", StringComparison.Ordinal), "system scaffold refinement updates auth requirement");
+        AssertTrue(scaffoldRefined.Reply.Contains("database: sqlite", StringComparison.Ordinal), "system scaffold refinement updates database requirement");
+
+        var scaffoldConfirmed = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "confirm");
+        AssertTrue(scaffoldConfirmed.CreatedTask != null && scaffoldConfirmed.CreatedTask.TaskType == "system_scaffold", "confirm creates broker task for system scaffold draft");
+        AssertTrue(scaffoldConfirmed.Reply.Contains("已生成並封裝系統雛形", StringComparison.Ordinal), "system scaffold confirm reply reports packaged scaffold generation");
+        var scaffoldPaths = coordinator.GetLineManagedPaths("line-scaffold-user");
+        AssertTrue(scaffoldPaths != null, "system scaffold managed paths can be resolved");
+        var scaffoldProjectRoot = scaffoldPaths is null ? throw new Exception("system scaffold managed paths unexpectedly null") : Path.Combine(scaffoldPaths.ProjectsRoot, "scaffoldproj");
+        AssertTrue(File.Exists(Path.Combine(scaffoldProjectRoot, "frontend", "index.html")), "system scaffold writes frontend scaffold files");
+        AssertTrue(File.Exists(Path.Combine(scaffoldProjectRoot, "docs", "requirements-analysis.md")), "system scaffold writes requirements analysis document");
+        var scaffoldArtifacts = coordinatorWorkspaceService.ListArtifacts("line-scaffold-user");
+        AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
+        AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
@@ -2343,8 +2377,10 @@ file sealed class FakeGoogleDriveHandler : HttpMessageHandler
         if (request.RequestUri != null &&
             request.RequestUri.AbsoluteUri.Contains("/upload/drive/v3/files", StringComparison.OrdinalIgnoreCase))
         {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            if (!body.Contains("multipart/related", StringComparison.OrdinalIgnoreCase) &&
+            var bytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            var body = Encoding.UTF8.GetString(bytes);
+            var isMultipart = request.Content.Headers.ContentType?.MediaType?.Contains("multipart", StringComparison.OrdinalIgnoreCase) == true;
+            if ((!isMultipart || bytes.Length == 0) &&
                 !body.Contains("verify-reply", StringComparison.Ordinal) &&
                 !body.Contains("drive delivery verify", StringComparison.Ordinal) &&
                 !body.Contains("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase) &&

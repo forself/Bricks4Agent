@@ -187,8 +187,12 @@ builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services
 builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldProgressStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
