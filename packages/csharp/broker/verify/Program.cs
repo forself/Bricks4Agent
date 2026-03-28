@@ -1685,6 +1685,70 @@ try
     });
     AssertTrue(!routeMismatchResult.Success, "dispatcher denies mismatched payload route");
 
+    // ── TDX Station Extraction Tests ──
+    Console.WriteLine("\n=== TDX Station Extraction ===");
+
+    var (s1o, s1d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("台北 台中");
+    AssertTrue(s1o == "台北" && s1d == "台中", $"ExtractStations(\"台北 台中\") → \"{s1o}\",\"{s1d}\"");
+
+    var (s2o, s2d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("台北到高雄");
+    AssertTrue(s2o == "台北" && s2d == "高雄", $"ExtractStations(\"台北到高雄\") → \"{s2o}\",\"{s2d}\"");
+
+    var (s3o, s3d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("從板橋至台南 18:00");
+    AssertTrue(s3o == "板橋" && s3d == "台南", $"ExtractStations(\"從板橋至台南 18:00\") → \"{s3o}\",\"{s3d}\"");
+
+    var (s4o, s4d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("南港→左營");
+    AssertTrue(s4o == "南港" && s4d == "左營", $"ExtractStations(\"南港→左營\") → \"{s4o}\",\"{s4d}\"");
+
+    var (s5o, s5d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("台中");
+    AssertTrue(s5o == null || s5d == null, $"ExtractStations(\"台中\") returns null (single station)");
+
+    // ── TDX API Live Test (if configured) ──
+    Console.WriteLine("\n=== TDX API Live Test ===");
+    var tdxOpts = new Broker.Services.TdxOptions
+    {
+        ClientId = "n1126447-f30c7858-663c-480a",
+        ClientSecret = "7fd9d753-6d6a-4148-8a9a-89d72c959985"
+    };
+    var tdxService = new Broker.Services.TdxApiService(
+        tdxOpts,
+        new HttpClient { Timeout = TimeSpan.FromSeconds(30) },
+        NullLogger<Broker.Services.TdxApiService>.Instance);
+
+    if (tdxService.IsConfigured)
+    {
+        var token = await tdxService.GetAccessTokenAsync();
+        AssertTrue(!string.IsNullOrWhiteSpace(token), "TDX token obtained successfully");
+
+        var logger = NullLogger.Instance;
+        var traResult = await Broker.Handlers.Travel.TdxTravelHelper.QueryTraTimetableAsync(
+            tdxService, "台北 台中", logger, CancellationToken.None);
+        AssertTrue(traResult != null, "TDX TRA query '台北 台中' returned result");
+
+        if (traResult != null)
+        {
+            var traJson = JsonSerializer.Serialize(traResult);
+            AssertTrue(traJson.Contains("train_count"), "TRA result contains train_count");
+            AssertTrue(traJson.Contains("departure_time"), "TRA result contains departure_time");
+            Console.WriteLine($"  TRA result preview: {traJson[..Math.Min(200, traJson.Length)]}...");
+        }
+
+        var hsrResult = await Broker.Handlers.Travel.TdxTravelHelper.QueryThsrTimetableAsync(
+            tdxService, "台北 左營", logger, CancellationToken.None);
+        AssertTrue(hsrResult != null, "TDX THSR query '台北 左營' returned result");
+
+        if (hsrResult != null)
+        {
+            var hsrJson = JsonSerializer.Serialize(hsrResult);
+            AssertTrue(hsrJson.Contains("train_count"), "THSR result contains train_count");
+            Console.WriteLine($"  THSR result preview: {hsrJson[..Math.Min(200, hsrJson.Length)]}...");
+        }
+    }
+    else
+    {
+        Console.WriteLine("  SKIP: TDX not configured");
+    }
+
     Console.WriteLine("Broker verify passed.");
 }
 finally

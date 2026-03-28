@@ -175,7 +175,11 @@ builder.Services.AddSingleton(googleDriveDeliveryOptions);
 var tdxOptions = builder.Configuration.GetSection("Tdx").Get<Broker.Services.TdxOptions>()
     ?? new Broker.Services.TdxOptions();
 builder.Services.AddSingleton(tdxOptions);
-builder.Services.AddHttpClient<Broker.Services.TdxApiService>();
+builder.Services.AddSingleton(sp =>
+    new Broker.Services.TdxApiService(
+        sp.GetRequiredService<Broker.Services.TdxOptions>(),
+        new HttpClient { Timeout = TimeSpan.FromSeconds(30) },
+        sp.GetRequiredService<ILogger<Broker.Services.TdxApiService>>()));
 var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry").Get<Broker.Services.ToolSpecRegistryOptions>()
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
@@ -275,7 +279,8 @@ if (poolEnabled)
                 sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
                 sp.GetRequiredService<Broker.Services.BrowserExecutionRuntimeService>(),
                 sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
-                sp.GetRequiredService<Broker.Services.GoogleDriveShareService>());
+                sp.GetRequiredService<Broker.Services.GoogleDriveShareService>(),
+                sp.GetRequiredService<Broker.Services.TdxApiService>());
             var poolDispatcher = new PoolDispatcher(
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
@@ -361,7 +366,8 @@ else
             sp.GetRequiredService<BrokerCore.Services.RagPipelineService>(),
             sp.GetRequiredService<Broker.Services.BrowserExecutionRuntimeService>(),
             sp.GetRequiredService<Broker.Services.AzureIisDeploymentExecutionService>(),
-            sp.GetRequiredService<Broker.Services.GoogleDriveShareService>()));
+            sp.GetRequiredService<Broker.Services.GoogleDriveShareService>(),
+            sp.GetRequiredService<Broker.Services.TdxApiService>()));
     builder.Services.AddSingleton<IContainerManager>(sp => new NoOpContainerManager());
 }
 

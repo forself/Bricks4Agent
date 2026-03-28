@@ -5,45 +5,49 @@ namespace Broker.Handlers.Travel;
 
 /// <summary>
 /// TDX API 整合的交通查詢輔助工具。
-/// 解析使用者查詢中的站名，呼叫 TDX API，格式化結構化結果。
+/// 解析使用者查詢中的站名，呼叫 TDX API，從全日班次中做客戶端 OD 過濾。
+///
+/// TDX API 注意事項：
+/// - TRA v2 不支援 OD 端點，需用 $filter + 客戶端過濾
+/// - THSR v2 DailyTimetable/Today 回傳全日班次，需客戶端過濾起訖站
+/// - 站名使用 StationID（非 StationName）做 API 查詢
 /// </summary>
-internal static class TdxTravelHelper
+public static class TdxTravelHelper
 {
-    // ── 台鐵站名對照表（常用站名 → TDX StationName） ──
-    private static readonly Dictionary<string, string> TraStationMap = new(StringComparer.OrdinalIgnoreCase)
+    // ── 台鐵站名 → StationID 對照表（常用站） ──
+    private static readonly Dictionary<string, string> TraStationIdMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["基隆"] = "基隆", ["汐止"] = "汐止", ["南港"] = "南港", ["松山"] = "松山",
-        ["台北"] = "臺北", ["臺北"] = "臺北", ["萬華"] = "萬華", ["板橋"] = "板橋",
-        ["樹林"] = "樹林", ["桃園"] = "桃園", ["中壢"] = "中壢", ["新竹"] = "新竹",
-        ["竹南"] = "竹南", ["苗栗"] = "苗栗", ["豐原"] = "豐原",
-        ["台中"] = "臺中", ["臺中"] = "臺中", ["彰化"] = "彰化",
-        ["員林"] = "員林", ["田中"] = "田中", ["斗六"] = "斗六",
-        ["嘉義"] = "嘉義", ["新營"] = "新營",
-        ["台南"] = "臺南", ["臺南"] = "臺南",
-        ["高雄"] = "高雄", ["左營"] = "新左營",
-        ["新左營"] = "新左營", ["鳳山"] = "鳳山",
-        ["屏東"] = "屏東", ["潮州"] = "潮州",
-        ["宜蘭"] = "宜蘭", ["羅東"] = "羅東", ["蘇澳"] = "蘇澳新",
-        ["花蓮"] = "花蓮", ["台東"] = "臺東", ["臺東"] = "臺東",
-        ["瑞芳"] = "瑞芳", ["七堵"] = "七堵", ["鶯歌"] = "鶯歌",
-        ["新烏日"] = "新烏日", ["大甲"] = "大甲", ["沙鹿"] = "沙鹿"
+        ["基隆"] = "0900", ["七堵"] = "0930", ["汐止"] = "0950", ["南港"] = "0980",
+        ["松山"] = "0990", ["台北"] = "1000", ["臺北"] = "1000",
+        ["萬華"] = "1010", ["板橋"] = "1020", ["樹林"] = "1030",
+        ["鶯歌"] = "1040", ["桃園"] = "1060", ["中壢"] = "1070",
+        ["新竹"] = "1210", ["竹南"] = "1250", ["苗栗"] = "1310",
+        ["豐原"] = "3280", ["台中"] = "3300", ["臺中"] = "3300",
+        ["新烏日"] = "3320", ["彰化"] = "3360", ["員林"] = "3390",
+        ["田中"] = "3410", ["斗六"] = "3500", ["嘉義"] = "4050",
+        ["新營"] = "4110", ["台南"] = "4220", ["臺南"] = "4220",
+        ["新左營"] = "4340", ["左營"] = "4350",
+        ["高雄"] = "4400", ["鳳山"] = "4420",
+        ["屏東"] = "5000", ["潮州"] = "5050",
+        ["宜蘭"] = "7090", ["羅東"] = "7110",
+        ["花蓮"] = "7100", ["台東"] = "6000", ["臺東"] = "6000",
+        ["瑞芳"] = "0940", ["大甲"] = "2210", ["沙鹿"] = "2240"
     };
 
-    // ── 高鐵站名對照表 ──
-    private static readonly Dictionary<string, string> ThsrStationMap = new(StringComparer.OrdinalIgnoreCase)
+    // ── 高鐵站名 → StationID 對照表 ──
+    private static readonly Dictionary<string, string> ThsrStationIdMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["南港"] = "南港", ["台北"] = "台北", ["臺北"] = "台北",
-        ["板橋"] = "板橋", ["桃園"] = "桃園", ["新竹"] = "新竹",
-        ["苗栗"] = "苗栗", ["台中"] = "台中", ["臺中"] = "台中",
-        ["彰化"] = "彰化", ["雲林"] = "雲林", ["嘉義"] = "嘉義",
-        ["台南"] = "台南", ["臺南"] = "台南",
-        ["左營"] = "左營", ["高雄"] = "左營"
+        ["南港"] = "0990", ["台北"] = "1000", ["臺北"] = "1000",
+        ["板橋"] = "1010", ["桃園"] = "1020", ["新竹"] = "1030",
+        ["苗栗"] = "1035", ["台中"] = "1040", ["臺中"] = "1040",
+        ["彰化"] = "1043", ["雲林"] = "1047", ["嘉義"] = "1050",
+        ["台南"] = "1060", ["臺南"] = "1060",
+        ["左營"] = "1070", ["高雄"] = "1070"
     };
 
     /// <summary>從使用者查詢中提取起訖站</summary>
     public static (string? origin, string? destination) ExtractStations(string query)
     {
-        // 常見格式: "台北 台中", "台北到台中", "從台北到台中", "台北→台中"
         var cleaned = query
             .Replace("到", " ")
             .Replace("→", " ")
@@ -61,31 +65,36 @@ internal static class TdxTravelHelper
         return (parts[0], parts[1]);
     }
 
-    /// <summary>查詢台鐵時刻表</summary>
+    /// <summary>查詢台鐵時刻表（TDX v2 + 客戶端 OD 過濾）</summary>
     public static async Task<object?> QueryTraTimetableAsync(
         TdxApiService tdx, string query, ILogger logger, CancellationToken ct)
     {
         var (origin, destination) = ExtractStations(query);
+        logger.LogInformation("TDX TRA: ExtractStations(\"{Query}\") → origin=\"{O}\" dest=\"{D}\"",
+            query, origin ?? "(null)", destination ?? "(null)");
+
         if (origin == null || destination == null)
             return null;
 
-        var originStation = TraStationMap.GetValueOrDefault(origin);
-        var destStation = TraStationMap.GetValueOrDefault(destination);
+        var originId = TraStationIdMap.GetValueOrDefault(origin);
+        var destId = TraStationIdMap.GetValueOrDefault(destination);
+        logger.LogInformation("TDX TRA: mapped \"{O}\"→{OID} \"{D}\"→{DID}",
+            origin, originId ?? "(null)", destination, destId ?? "(null)");
 
-        if (originStation == null || destStation == null)
+        if (originId == null || destId == null)
+            return null;
+
+        var doc = await tdx.GetTraDailyTimetableByStationAsync(originId, ct);
+        if (doc == null)
         {
-            logger.LogDebug("TDX TRA: station not found for {Origin}→{Dest}", origin, destination);
+            logger.LogWarning("TDX TRA API returned null");
             return null;
         }
 
-        var doc = await tdx.GetTraDailyTimetableAsync(originStation, destStation, ct);
-        if (doc == null)
-            return null;
-
-        return FormatTraTimetable(doc, originStation, destStation);
+        return FilterAndFormatTraTimetable(doc, originId, destId, origin, destination, logger);
     }
 
-    /// <summary>查詢高鐵時刻表</summary>
+    /// <summary>查詢高鐵時刻表（TDX v2 全日班次 + 客戶端 OD 過濾）</summary>
     public static async Task<object?> QueryThsrTimetableAsync(
         TdxApiService tdx, string query, ILogger logger, CancellationToken ct)
     {
@@ -93,119 +102,165 @@ internal static class TdxTravelHelper
         if (origin == null || destination == null)
             return null;
 
-        var originStation = ThsrStationMap.GetValueOrDefault(origin);
-        var destStation = ThsrStationMap.GetValueOrDefault(destination);
+        var originId = ThsrStationIdMap.GetValueOrDefault(origin);
+        var destId = ThsrStationIdMap.GetValueOrDefault(destination);
 
-        if (originStation == null || destStation == null)
+        if (originId == null || destId == null)
         {
-            logger.LogDebug("TDX THSR: station not found for {Origin}→{Dest}", origin, destination);
+            logger.LogInformation("TDX THSR: station not found for {Origin}→{Dest}", origin, destination);
             return null;
         }
 
-        var doc = await tdx.GetThsrDailyTimetableAsync(originStation, destStation, ct);
+        var doc = await tdx.GetThsrDailyTimetableAsync(ct);
         if (doc == null)
             return null;
 
-        return FormatThsrTimetable(doc, originStation, destStation);
+        return FilterAndFormatThsrTimetable(doc, originId, destId, origin, destination);
     }
 
-    /// <summary>格式化台鐵時刻表結果</summary>
-    private static object FormatTraTimetable(JsonDocument doc, string origin, string dest)
+    /// <summary>從全日台鐵班次中過濾出指定起訖站的班次</summary>
+    private static object? FilterAndFormatTraTimetable(
+        JsonDocument doc, string originId, string destId,
+        string originName, string destName, ILogger logger)
     {
         var trains = new List<object>();
 
         foreach (var item in doc.RootElement.EnumerateArray())
         {
-            if (!item.TryGetProperty("DailyTrainInfo", out var trainInfo))
+            if (!item.TryGetProperty("StopTimes", out var stopTimes) || stopTimes.ValueKind != JsonValueKind.Array)
                 continue;
 
-            var trainNo = TryGetNestedString(trainInfo, "TrainNo") ?? "";
-            var trainTypeName = "";
-            if (trainInfo.TryGetProperty("TrainTypeName", out var typeName) &&
-                typeName.TryGetProperty("Zh_tw", out var zhName))
+            int originSeq = -1, destSeq = -1;
+            string originDep = "", destArr = "";
+
+            foreach (var stop in stopTimes.EnumerateArray())
             {
-                trainTypeName = zhName.GetString() ?? "";
+                var stationId = stop.TryGetProperty("StationID", out var sidNode) ? sidNode.GetString() ?? "" : "";
+                var seq = stop.TryGetProperty("StopSequence", out var seqNode) && seqNode.TryGetInt32(out var s) ? s : -1;
+
+                if (stationId == originId && originSeq < 0)
+                {
+                    originSeq = seq;
+                    originDep = stop.TryGetProperty("DepartureTime", out var depNode) ? depNode.GetString() ?? "" : "";
+                }
+                else if (stationId == destId && originSeq >= 0) // 訖站必須在起站之後
+                {
+                    destSeq = seq;
+                    destArr = stop.TryGetProperty("ArrivalTime", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                    break;
+                }
             }
 
-            var departureTime = "";
-            var arrivalTime = "";
-
-            if (item.TryGetProperty("OriginStopTime", out var originStop))
-                departureTime = TryGetNestedString(originStop, "DepartureTime") ?? "";
-
-            if (item.TryGetProperty("DestinationStopTime", out var destStop))
-                arrivalTime = TryGetNestedString(destStop, "ArrivalTime") ?? "";
-
-            if (string.IsNullOrWhiteSpace(departureTime))
+            if (originSeq < 0 || destSeq < 0 || originSeq >= destSeq)
                 continue;
+
+            if (string.IsNullOrWhiteSpace(originDep))
+                continue;
+
+            var trainInfo = item.TryGetProperty("DailyTrainInfo", out var infoNode) ? infoNode : default;
+            var trainNo = trainInfo.ValueKind == JsonValueKind.Object
+                ? (trainInfo.TryGetProperty("TrainNo", out var noNode) ? noNode.GetString() ?? "" : "")
+                : "";
+            var trainTypeName = "";
+            if (trainInfo.ValueKind == JsonValueKind.Object &&
+                trainInfo.TryGetProperty("TrainTypeName", out var typeNameNode) &&
+                typeNameNode.TryGetProperty("Zh_tw", out var zhNode))
+            {
+                trainTypeName = zhNode.GetString() ?? "";
+                // 清理括號內容：「自強(3000)(EMU3000 型電車組)」→「自強」
+                var parenIdx = trainTypeName.IndexOf('(');
+                if (parenIdx > 0)
+                    trainTypeName = trainTypeName[..parenIdx].Trim();
+            }
 
             trains.Add(new
             {
                 train_no = trainNo,
                 train_type = trainTypeName,
-                departure_time = departureTime,
-                arrival_time = arrivalTime
+                departure_time = originDep,
+                arrival_time = destArr
             });
         }
+
+        logger.LogInformation("TDX TRA: filtered {Count} trains for {O}→{D}", trains.Count, originName, destName);
+
+        if (trains.Count == 0)
+            return null;
 
         return new
         {
             source = "TDX 台鐵時刻表 API",
-            origin,
-            destination = dest,
+            origin = originName,
+            destination = destName,
             date = DateTime.Today.ToString("yyyy-MM-dd"),
             train_count = trains.Count,
             trains = trains.Take(20).ToList()
         };
     }
 
-    /// <summary>格式化高鐵時刻表結果</summary>
-    private static object FormatThsrTimetable(JsonDocument doc, string origin, string dest)
+    /// <summary>從全日高鐵班次中過濾出指定起訖站的班次</summary>
+    private static object? FilterAndFormatThsrTimetable(
+        JsonDocument doc, string originId, string destId,
+        string originName, string destName)
     {
         var trains = new List<object>();
 
         foreach (var item in doc.RootElement.EnumerateArray())
         {
-            if (!item.TryGetProperty("DailyTrainInfo", out var trainInfo))
+            if (!item.TryGetProperty("StopTimes", out var stopTimes) || stopTimes.ValueKind != JsonValueKind.Array)
                 continue;
 
-            var trainNo = TryGetNestedString(trainInfo, "TrainNo") ?? "";
+            int originSeq = -1, destSeq = -1;
+            string originDep = "", destArr = "";
 
-            var departureTime = "";
-            var arrivalTime = "";
+            foreach (var stop in stopTimes.EnumerateArray())
+            {
+                var stationId = stop.TryGetProperty("StationID", out var sidNode) ? sidNode.GetString() ?? "" : "";
+                var seq = stop.TryGetProperty("StopSequence", out var seqNode) && seqNode.TryGetInt32(out var s) ? s : -1;
 
-            if (item.TryGetProperty("OriginStopTime", out var originStop))
-                departureTime = TryGetNestedString(originStop, "DepartureTime") ?? "";
+                if (stationId == originId && originSeq < 0)
+                {
+                    originSeq = seq;
+                    originDep = stop.TryGetProperty("DepartureTime", out var depNode) ? depNode.GetString() ?? "" : "";
+                }
+                else if (stationId == destId && originSeq >= 0)
+                {
+                    destSeq = seq;
+                    destArr = stop.TryGetProperty("ArrivalTime", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                    break;
+                }
+            }
 
-            if (item.TryGetProperty("DestinationStopTime", out var destStop))
-                arrivalTime = TryGetNestedString(destStop, "ArrivalTime") ?? "";
-
-            if (string.IsNullOrWhiteSpace(departureTime))
+            if (originSeq < 0 || destSeq < 0 || originSeq >= destSeq)
                 continue;
+
+            if (string.IsNullOrWhiteSpace(originDep))
+                continue;
+
+            var trainInfo = item.TryGetProperty("DailyTrainInfo", out var infoNode) ? infoNode : default;
+            var trainNo = trainInfo.ValueKind == JsonValueKind.Object
+                ? (trainInfo.TryGetProperty("TrainNo", out var noNode) ? noNode.GetString() ?? "" : "")
+                : "";
 
             trains.Add(new
             {
                 train_no = trainNo,
-                departure_time = departureTime,
-                arrival_time = arrivalTime
+                departure_time = originDep,
+                arrival_time = destArr
             });
         }
+
+        if (trains.Count == 0)
+            return null;
 
         return new
         {
             source = "TDX 高鐵時刻表 API",
-            origin,
-            destination = dest,
+            origin = originName,
+            destination = destName,
             date = DateTime.Today.ToString("yyyy-MM-dd"),
             train_count = trains.Count,
             trains = trains.Take(20).ToList()
         };
-    }
-
-    private static string? TryGetNestedString(JsonElement element, string name)
-    {
-        return element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
     }
 }
