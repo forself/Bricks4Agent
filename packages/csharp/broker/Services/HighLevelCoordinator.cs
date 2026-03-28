@@ -1411,8 +1411,8 @@ public class HighLevelCoordinator
             "\u9810\u8a08 phases:",
             string.Join('\n', draft.ProposedPhases.Select((phase, index) => $"{index + 1}. {phase.Title} ({phase.Kind})")),
             "",
-            "\u82e5\u78ba\u8a8d\u8981\u5efa\u7acb task / plan\uff0c\u8acb\u56de\u8986\u300c\u78ba\u8a8d\u300d\u6216 confirm\u3002",
-            "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u6216 cancel\u3002"
+            "\u82e5\u78ba\u8a8d\u8981\u5efa\u7acb task / plan\uff0c\u8acb\u56de\u8986\u300c\u78ba\u8a8d\u300d\u3001confirm \u6216 y\u3002",
+            "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u3001cancel \u6216 n\u3002"
         }.Skip(10).Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
@@ -1426,7 +1426,7 @@ public class HighLevelCoordinator
             $"summary: {draft.Summary}",
             string.IsNullOrWhiteSpace(draft.ProjectName) ? null : $"project_name: {draft.ProjectName}",
             "",
-            "\u8acb\u5148\u56de\u8986\u300c\u78ba\u8a8d\u300d / confirm \u6216\u300c\u53d6\u6d88\u300d / cancel\uff0c\u518d\u7e7c\u7e8c\u4e0b\u4e00\u500b\u751f\u7522\u4efb\u52d9\u3002"
+            "\u8acb\u5148\u56de\u8986\u300c\u78ba\u8a8d\u300d / confirm / y \u6216\u300c\u53d6\u6d88\u300d / cancel / n\uff0c\u518d\u7e7c\u7e8c\u4e0b\u4e00\u500b\u751f\u7522\u4efb\u52d9\u3002"
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
@@ -1444,7 +1444,7 @@ public class HighLevelCoordinator
                 ? "\u8acb\u4ee5 # \u958b\u982d\u63d0\u4f9b\u5c08\u6848\u540d\u7a31\uff0c\u4f8b\u5982\uff1a#MySite\u3002"
                 : draft.ProjectNameValidationError,
             "\u5c08\u6848\u540d\u7a31\u6703\u5728\u4f60\u7684 user_root/projects \u4e0b\u5efa\u7acb\u5c08\u5c6c\u76ee\u9304\uff0c\u540c\u540d\u5c08\u6848\u4e0d\u6703\u91cd\u8907\u5efa\u7acb\u3002",
-            "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u6216 cancel\u3002"
+            "\u82e5\u8981\u53d6\u6d88\uff0c\u8acb\u56de\u8986\u300c\u53d6\u6d88\u300d\u3001cancel \u6216 n\u3002"
         }.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
@@ -1488,15 +1488,15 @@ public class HighLevelCoordinator
     private static List<string> BuildDraftFollowUpMessages(HighLevelTaskDraft draft)
         => new()
         {
-            "confirm",
-            "cancel"
+            "y",
+            "n"
         };
 
     private static List<string> BuildProjectNameFollowUpMessages(HighLevelTaskDraft draft)
         => new()
         {
             "#MySite",
-            "cancel"
+            "n"
         };
 
     private static string BuildControlledSearchSuggestionReply(HighLevelParsedInput parsed)

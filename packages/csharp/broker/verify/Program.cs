@@ -126,7 +126,9 @@ try
     AssertTrue(idAliasParsed.ProductionCommand == "id" && idAliasParsed.ProductionArgument == "bricks001", "parser extracts alphanumeric-id alias command");
     AssertTrue(parser.Parse("#MySite").Kind == HighLevelInputKind.ProjectName, "parser recognizes project-name prefix");
     AssertTrue(parser.Parse("confirm").Kind == HighLevelInputKind.Confirm, "parser recognizes confirm token");
+    AssertTrue(parser.Parse("y").Kind == HighLevelInputKind.Confirm, "parser recognizes short confirm token");
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
+    AssertTrue(parser.Parse("n").Kind == HighLevelInputKind.Cancel, "parser recognizes short cancel token");
     AssertTrue(parser.Parse("hello world").Kind == HighLevelInputKind.Conversation, "parser keeps bare text as conversation");
 
     var trustedUserCommand = trustPolicy.Apply(
@@ -170,8 +172,8 @@ try
         workflowMachine.Evaluate(awaitingProjectDraft, parser.Parse("#MySite")).Action == HighLevelWorkflowAction.CaptureProjectName,
         "workflow accepts project-name command only in awaiting-project-name state");
     AssertTrue(
-        workflowMachine.Evaluate(awaitingProjectDraft, parser.Parse("confirm")).Action == HighLevelWorkflowAction.RequestProjectNameFirst,
-        "workflow blocks confirmation before project name is captured");
+        workflowMachine.Evaluate(awaitingProjectDraft, parser.Parse("y")).Action == HighLevelWorkflowAction.RequestProjectNameFirst,
+        "workflow blocks short confirmation before project name is captured");
 
     var pendingDraft = new HighLevelTaskDraft
     {
@@ -179,8 +181,8 @@ try
         ProjectName = "MySite"
     };
     AssertTrue(
-        workflowMachine.Evaluate(pendingDraft, parser.Parse("confirm")).Action == HighLevelWorkflowAction.ConfirmDraft,
-        "workflow accepts confirm after draft requirements are satisfied");
+        workflowMachine.Evaluate(pendingDraft, parser.Parse("y")).Action == HighLevelWorkflowAction.ConfirmDraft,
+        "workflow accepts short confirm after draft requirements are satisfied");
     AssertTrue(
         workflowMachine.Evaluate(null, parser.Parse("/build website")).Action == HighLevelWorkflowAction.StartProduction,
         "workflow starts production only from explicit production command");
@@ -1518,7 +1520,7 @@ try
         var inlineProjectDraft = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "/建立 單頁基礎計算機網頁 #proj1");
         AssertTrue(inlineProjectDraft.Draft != null && inlineProjectDraft.Draft.TaskType == "code_gen", "inline project-name website command still resolves to code_gen draft");
         AssertTrue(inlineProjectDraft.Draft!.ProjectName == "proj1", "inline project-name token is captured into the draft");
-        AssertTrue(inlineProjectDraft.FollowUpMessages != null && inlineProjectDraft.FollowUpMessages.Contains("confirm"), "inline project-name draft exposes confirm follow-up");
+        AssertTrue(inlineProjectDraft.FollowUpMessages != null && inlineProjectDraft.FollowUpMessages.Contains("y"), "inline project-name draft exposes short confirm follow-up");
         var inlineProjectRoot = inlineProjectDraft.Draft.ManagedPaths.ProjectRoot;
         var inlineProjectConfirmed = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "confirm");
         AssertTrue(inlineProjectConfirmed.CreatedTask != null && inlineProjectConfirmed.CreatedTask.TaskType == "code_gen", "confirm creates broker task for inline project-name code_gen draft");
@@ -1536,7 +1538,7 @@ try
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
         AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
-        AssertTrue(docDraft.FollowUpMessages != null && docDraft.FollowUpMessages.Contains("confirm"), "doc_gen draft exposes confirm as a follow-up message");
+        AssertTrue(docDraft.FollowUpMessages != null && docDraft.FollowUpMessages.Contains("y"), "doc_gen draft exposes short confirm as a follow-up message");
         var createDocDraft = await coordinator.ProcessLineMessageAsync("line-doc-user-create", "/create 產生一份 markdown 文件，摘要目前進度");
         AssertTrue(createDocDraft.Draft != null && createDocDraft.Draft.TaskType == "doc_gen", "create production alias still resolves to doc_gen draft");
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
@@ -1562,7 +1564,7 @@ try
         AssertTrue(scaffoldDraft.Draft!.ProjectName == "scaffoldproj", "system scaffold draft captures inline project name");
         AssertTrue(scaffoldDraft.Reply.Contains("scaffold_family:", StringComparison.Ordinal), "system scaffold draft reply includes structured scaffold summary");
         AssertTrue(scaffoldDraft.Reply.Contains("ui_components: custom_component_library", StringComparison.Ordinal), "system scaffold draft defaults to custom component library");
-        AssertTrue(scaffoldDraft.FollowUpMessages != null && scaffoldDraft.FollowUpMessages.Contains("confirm"), "system scaffold draft exposes confirm follow-up");
+        AssertTrue(scaffoldDraft.FollowUpMessages != null && scaffoldDraft.FollowUpMessages.Contains("y"), "system scaffold draft exposes short confirm follow-up");
 
         var scaffoldRefined = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "需要登入、SQLite 與 Azure IIS 佈署");
         AssertTrue(scaffoldRefined.Draft != null && scaffoldRefined.Draft.TaskType == "system_scaffold", "system scaffold refinement keeps the pending scaffold draft");
