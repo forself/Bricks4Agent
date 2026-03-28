@@ -133,8 +133,8 @@ public sealed class HighLevelSystemScaffoldService
     public List<string> BuildDraftFollowUpMessages()
         => new()
         {
-            "confirm",
-            "cancel"
+            "y",
+            "n"
         };
 
     public async Task<HighLevelSystemScaffoldResult> GenerateAndDeliverAsync(
