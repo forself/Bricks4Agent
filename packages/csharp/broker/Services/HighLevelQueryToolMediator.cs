@@ -335,6 +335,32 @@ public sealed class HighLevelQueryToolMediator
                 ? queryNode.GetString() ?? query
                 : query;
 
+            // TDX 結構化結果（優先路徑）
+            if (doc.RootElement.TryGetProperty("tdx", out var tdxNode) &&
+                tdxNode.ValueKind == JsonValueKind.Object)
+            {
+                var tdxItems = ParseTdxTimetableResult(tdxNode);
+                var tdxSources = doc.RootElement.TryGetProperty("sources_used", out var tdxSourcesNode) &&
+                                 tdxSourcesNode.ValueKind == JsonValueKind.Array
+                    ? string.Join("、", tdxSourcesNode.EnumerateArray()
+                        .Select(node => node.GetString())
+                        .Where(text => !string.IsNullOrWhiteSpace(text)))
+                    : "TDX";
+                var tdxRetrievedAt = doc.RootElement.TryGetProperty("retrieved_at", out var tdxRetrievedAtNode)
+                    ? tdxRetrievedAtNode.GetString() ?? string.Empty
+                    : string.Empty;
+
+                return new HighLevelQueryToolResult
+                {
+                    Success = true,
+                    Reply = BuildTdxTimetableReply(mode, returnedQuery, tdxNode, tdxSources, tdxRetrievedAt),
+                    ToolId = toolId,
+                    Engine = mode,
+                    Results = tdxItems
+                };
+            }
+
+            // Fallback: 網頁搜尋結果
             var items = new List<HighLevelQuerySearchResult>();
             if (doc.RootElement.TryGetProperty("results", out var resultsNode) &&
                 resultsNode.ValueKind == JsonValueKind.Array)
@@ -473,6 +499,96 @@ public sealed class HighLevelQueryToolMediator
         }
 
         return string.Join('\n', lines.Where(line => line != null));
+    }
+
+    /// <summary>解析 TDX 結構化時刻表結果為 HighLevelQuerySearchResult 列表</summary>
+    private static List<HighLevelQuerySearchResult> ParseTdxTimetableResult(JsonElement tdxNode)
+    {
+        var items = new List<HighLevelQuerySearchResult>();
+
+        if (!tdxNode.TryGetProperty("trains", out var trainsNode) || trainsNode.ValueKind != JsonValueKind.Array)
+            return items;
+
+        var rank = 1;
+        foreach (var train in trainsNode.EnumerateArray())
+        {
+            var trainNo = train.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
+            var trainType = train.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
+            var departure = train.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+            var arrival = train.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+
+            var title = string.IsNullOrWhiteSpace(trainType)
+                ? $"車次 {trainNo}"
+                : $"{trainType} {trainNo}";
+
+            items.Add(new HighLevelQuerySearchResult
+            {
+                Rank = rank++,
+                Title = title,
+                Snippet = $"{departure} 發車 → {arrival} 到達"
+            });
+        }
+
+        return items;
+    }
+
+    /// <summary>為 TDX 結構化時刻表結果建立人類可讀的回覆</summary>
+    internal static string BuildTdxTimetableReply(
+        string mode,
+        string query,
+        JsonElement tdxNode,
+        string sources,
+        string retrievedAt)
+    {
+        var origin = tdxNode.TryGetProperty("origin", out var origNode) ? origNode.GetString() ?? "" : "";
+        var destination = tdxNode.TryGetProperty("destination", out var destNode) ? destNode.GetString() ?? "" : "";
+        var date = tdxNode.TryGetProperty("date", out var dateNode) ? dateNode.GetString() ?? "" : "";
+        var trainCount = tdxNode.TryGetProperty("train_count", out var countNode) && countNode.TryGetInt32(out var count) ? count : 0;
+
+        var modeLabel = mode switch
+        {
+            "rail" => "台鐵",
+            "hsr" => "高鐵",
+            _ => mode
+        };
+
+        var lines = new List<string>
+        {
+            $"{modeLabel}時刻表：{origin} → {destination}（{date}）",
+            $"共 {trainCount} 班，來源：{sources}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(retrievedAt))
+            lines.Add($"查詢時間：{retrievedAt}");
+
+        lines.Add(string.Empty);
+
+        if (!tdxNode.TryGetProperty("trains", out var trainsNode) || trainsNode.ValueKind != JsonValueKind.Array)
+        {
+            lines.Add("無班次資料。");
+            return string.Join('\n', lines);
+        }
+
+        var displayed = 0;
+        foreach (var train in trainsNode.EnumerateArray())
+        {
+            if (displayed >= 15) // 最多顯示 15 班
+            {
+                lines.Add($"...（還有 {trainCount - displayed} 班）");
+                break;
+            }
+
+            var trainNo = train.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
+            var trainType = train.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
+            var departure = train.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+            var arrival = train.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+
+            var typePrefix = string.IsNullOrWhiteSpace(trainType) ? "" : $"[{trainType}] ";
+            lines.Add($"  {typePrefix}{trainNo}  {departure} → {arrival}");
+            displayed++;
+        }
+
+        return string.Join('\n', lines);
     }
 }
 

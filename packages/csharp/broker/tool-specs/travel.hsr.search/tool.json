@@ -1,11 +1,11 @@
 {
   "tool_id": "travel.hsr.search",
-  "display_name": "THSR Search",
-  "summary": "Find candidate Taiwan High Speed Rail schedules through broker-approved THSR sources.",
+  "display_name": "高鐵時刻表查詢",
+  "summary": "查詢台灣高速鐵路（THSR）今日時刻表。優先使用 TDX 運輸資料流通服務 API 取得結構化班次資料，無法取得時 fallback 至網頁搜尋。",
   "kind": "travel",
   "status": "active",
-  "version": "2026-03-23",
-  "tags": ["travel", "hsr", "thsr", "high-speed-rail", "search", "high-level"],
+  "version": "2026-03-28",
+  "tags": ["travel", "hsr", "thsr", "high-speed-rail", "tdx", "timetable", "high-level"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "travel",
@@ -19,39 +19,80 @@
     {
       "capability_id": "travel.hsr.search",
       "route": "travel_hsr_search",
-      "purpose": "Broker-mediated Taiwan High Speed Rail lookup."
+      "purpose": "Broker-mediated Taiwan High Speed Rail timetable lookup via TDX API."
     }
   ],
   "input_schema": {
     "type": "object",
     "properties": {
-      "query": { "type": "string" },
-      "locale": { "type": "string" },
-      "limit": { "type": "integer", "minimum": 1, "maximum": 5 }
+      "query": {
+        "type": "string",
+        "description": "自然語言查詢字串，應包含起站與訖站，可選時間。系統會自動從中提取站名。支援的分隔方式：空格、到、至、去、→。範例：「台北 左營」「板橋到台中」「南港至台南 09:00」。高鐵站名：南港、台北/臺北、板橋、桃園、新竹、苗栗、台中/臺中、彰化、雲林、嘉義、台南/臺南、左營（高雄自動對應左營）。"
+      },
+      "locale": {
+        "type": "string",
+        "description": "語系，預設 zh-TW",
+        "default": "zh-TW"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "fallback 搜尋結果數量上限（TDX 模式不適用）",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 5
+      }
     },
     "required": ["query"]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "mode": { "type": "string" },
+      "mode": { "type": "string", "enum": ["hsr"] },
       "query": { "type": "string" },
-      "retrieved_at": { "type": "string" },
-      "results": { "type": "array" },
+      "retrieved_at": { "type": "string", "format": "date-time" },
+      "tdx": {
+        "type": "object",
+        "description": "TDX API 結構化結果（優先路徑成功時存在）",
+        "properties": {
+          "source": { "type": "string" },
+          "origin": { "type": "string" },
+          "destination": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "train_count": { "type": "integer" },
+          "trains": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "train_no": { "type": "string" },
+                "departure_time": { "type": "string", "description": "HH:mm 格式" },
+                "arrival_time": { "type": "string", "description": "HH:mm 格式" }
+              }
+            }
+          }
+        }
+      },
+      "results": {
+        "type": "array",
+        "description": "fallback 網頁搜尋結果（TDX 路徑失敗時使用）"
+      },
       "sources_used": { "type": "array", "items": { "type": "string" } }
     }
   },
   "source_policy": {
-    "allowed_sources": ["duckduckgo", "thsrc.com.tw"]
+    "allowed_sources": ["tdx", "duckduckgo", "thsrc.com.tw"],
+    "preferred_source": "tdx"
   },
   "execution_rules": {
     "mediation_required": true,
     "requires_source_policy": true,
-    "default_limit": 5
+    "default_limit": 5,
+    "tdx_priority": true,
+    "tdx_fallback_to_web_search": true
   },
   "response_contract": {
     "must_identify_sources": true,
     "must_identify_retrieval_time": true,
-    "result_wording": "Return candidate Taiwan High Speed Rail options with detected departure or arrival time candidates."
+    "result_wording": "回傳高鐵時刻表結果。TDX 路徑成功時回傳結構化班次（車次、發車時間、到達時間）；fallback 時回傳網頁搜尋候選結果。AI 代理合成回覆時應以結構化班次為主，用自然語言整理成用戶可讀的時刻表格式。"
   }
 }
