@@ -118,12 +118,13 @@ public sealed class TdxApiService
 
     // ── 台鐵 API ──
 
-    /// <summary>台鐵今日時刻表（經過指定起站的所有班次，由客戶端做 OD 過濾）</summary>
+    /// <summary>台鐵指定日期時刻表（經過指定起站的所有班次，由客戶端做 OD 過濾）</summary>
     public Task<JsonDocument?> GetTraDailyTimetableByStationAsync(
-        string originStationId, CancellationToken ct = default)
+        string originStationId, DateOnly? date = null, CancellationToken ct = default)
     {
+        var datePart = date.HasValue ? $"TrainDate/{date.Value:yyyy-MM-dd}" : "Today";
         var filter = Uri.EscapeDataString($"StopTimes/any(s:s/StationID eq '{originStationId}')");
-        var path = $"v2/Rail/TRA/DailyTimetable/Today?$filter={filter}&$format=JSON";
+        var path = $"v2/Rail/TRA/DailyTimetable/{datePart}?$filter={filter}&$format=JSON";
         return GetAsync(path, ct);
     }
 
@@ -137,10 +138,11 @@ public sealed class TdxApiService
 
     // ── 高鐵 API ──
 
-    /// <summary>高鐵今日全部班次時刻表</summary>
-    public Task<JsonDocument?> GetThsrDailyTimetableAsync(CancellationToken ct = default)
+    /// <summary>高鐵指定日期全部班次時刻表</summary>
+    public Task<JsonDocument?> GetThsrDailyTimetableAsync(DateOnly? date = null, CancellationToken ct = default)
     {
-        return GetAsync("v2/Rail/THSR/DailyTimetable/Today?$format=JSON", ct);
+        var datePart = date.HasValue ? $"TrainDate/{date.Value:yyyy-MM-dd}" : "Today";
+        return GetAsync($"v2/Rail/THSR/DailyTimetable/{datePart}?$format=JSON", ct);
     }
 
     /// <summary>高鐵車站列表</summary>
