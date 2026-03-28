@@ -98,6 +98,7 @@ public sealed class HighLevelSystemScaffoldService
             $"backend: {spec.BackendStack}",
             $"database: {spec.DatabaseStack}",
             $"auth: {spec.AuthMode}",
+            $"ui_components: {spec.UiComponentStrategy}",
             $"package_format: {spec.PackageFormat}",
             $"iteration: {spec.IterationNumber}",
             "目前已完成需求初步分析。你可以直接補充需求，或回覆下方指令。"
@@ -236,6 +237,7 @@ public sealed class HighLevelSystemScaffoldService
             UserId = draft.UserId,
             DraftId = draft.DraftId,
             ProjectName = draft.ProjectName ?? string.Empty,
+            UiComponentStrategy = "custom_component_library",
             PackageFormat = "zip",
             IterationNumber = 1
         };
@@ -319,11 +321,17 @@ public sealed class HighLevelSystemScaffoldService
         spec.Assumptions.Clear();
         spec.OpenQuestions.Clear();
 
+        if (string.IsNullOrWhiteSpace(spec.UiComponentStrategy))
+            spec.UiComponentStrategy = "custom_component_library";
+
         if (string.IsNullOrWhiteSpace(spec.ProjectName))
             AddDistinct(spec.OpenQuestions, "尚未提供專案名稱。");
 
         if (string.Equals(spec.FrontendStack, "vanilla_html", StringComparison.OrdinalIgnoreCase))
             AddDistinct(spec.Assumptions, "前端預設採用單檔或簡潔的 HTML/CSS/JavaScript 雛形。");
+
+        if (string.Equals(spec.UiComponentStrategy, "custom_component_library", StringComparison.OrdinalIgnoreCase))
+            AddDistinct(spec.Assumptions, "前端元件原則上採用自訂元件庫，不預設引入第三方通用 UI 套件。");
 
         if (string.Equals(spec.BackendStack, "aspnet_core_api", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(spec.DatabaseStack, "sqlite", StringComparison.OrdinalIgnoreCase))
@@ -420,6 +428,7 @@ public sealed class HighLevelSystemScaffoldService
             "",
             $"Project: {spec.ProjectName}",
             $"Frontend: {spec.FrontendStack}",
+            $"UI Components: {spec.UiComponentStrategy}",
             $"Backend: {spec.BackendStack}",
             $"Database: {spec.DatabaseStack}",
             $"Auth: {spec.AuthMode}",
@@ -431,6 +440,10 @@ public sealed class HighLevelSystemScaffoldService
             "- frontend/: client-facing scaffold",
             "- backend/: API or service placeholder when backend is enabled",
             "- tests/: smoke and iteration guidance",
+            "",
+            "## UI Component Principle",
+            "- Prefer the project's custom component library by default.",
+            "- Do not assume a third-party generic UI kit unless the user explicitly asks for one.",
             "",
             "## Iteration Rule",
             "- requirement analysis",
@@ -480,7 +493,8 @@ public sealed class HighLevelSystemScaffoldService
             updated_at = DateTimeOffset.UtcNow,
             confirmed_requirements = spec.ConfirmedRequirements,
             assumptions = spec.Assumptions,
-            open_questions = spec.OpenQuestions
+            open_questions = spec.OpenQuestions,
+            ui_component_strategy = spec.UiComponentStrategy
         };
         File.WriteAllText(
             Path.Combine(docsRoot, "iteration-state.json"),
@@ -556,6 +570,7 @@ public sealed class HighLevelSystemScaffoldService
             "## Scaffold Summary",
             $"- Family: {spec.ScaffoldFamily}",
             $"- Frontend: {spec.FrontendStack}",
+            $"- UI Components: {spec.UiComponentStrategy}",
             $"- Backend: {spec.BackendStack}",
             $"- Database: {spec.DatabaseStack}",
             $"- Auth: {spec.AuthMode}",
@@ -601,6 +616,7 @@ public sealed class HighLevelSystemScaffoldService
             "    <div class=\"card\">",
             $"      <h2>{EscapeJs(spec.ProjectName)} scaffold</h2>",
             $"      <p>Frontend: {EscapeJs(spec.FrontendStack)}</p>",
+            $"      <p>UI Components: {EscapeJs(spec.UiComponentStrategy)}</p>",
             $"      <p>Backend: {EscapeJs(spec.BackendStack)}</p>",
             $"      <p>Database: {EscapeJs(spec.DatabaseStack)}</p>",
             "    </div>`;",
@@ -843,6 +859,7 @@ public sealed class HighLevelSystemScaffoldSpec
     public string LatestUserInput { get; set; } = string.Empty;
     public string ScaffoldFamily { get; set; } = string.Empty;
     public string FrontendStack { get; set; } = string.Empty;
+    public string UiComponentStrategy { get; set; } = string.Empty;
     public string BackendStack { get; set; } = string.Empty;
     public string DatabaseStack { get; set; } = string.Empty;
     public string AuthMode { get; set; } = string.Empty;
