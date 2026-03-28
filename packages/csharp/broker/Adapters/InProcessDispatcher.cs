@@ -1441,12 +1441,17 @@ public class InProcessDispatcher : IExecutionDispatcher
             sourceLabel: "DuckDuckGo / public transport web",
             queryDecorator: query => $"{query} 公車 OR 客運 時刻表 班次");
 
-    private Task<ExecutionResult> ExecuteTravelFlightSearchAsync(ApprovedRequest request)
-        => ExecuteTravelSearchAsync(
-            request,
+    private async Task<ExecutionResult> ExecuteTravelFlightSearchAsync(ApprovedRequest request)
+    {
+        var tdxResult = await TryTdxTravelAsync(request, "flight",
+            (tdx, q, ct) => Broker.Handlers.Travel.TdxTravelHelper.QueryFlightAsync(tdx, q, _logger, ct));
+        if (tdxResult != null) return tdxResult;
+
+        return await ExecuteTravelSearchAsync(request,
             mode: "flight",
             sourceLabel: "DuckDuckGo / public travel web",
             queryDecorator: query => $"{query} 航班 班次 時刻表");
+    }
 
     private async Task<ExecutionResult> ExecuteTravelSearchAsync(
         ApprovedRequest request,
