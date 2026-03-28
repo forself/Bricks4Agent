@@ -41,6 +41,7 @@ public class HighLevelCoordinator
     private readonly IHighLevelExecutionModelPlanner _executionModelPlanner;
     private readonly HighLevelDocumentArtifactService _documentArtifactService;
     private readonly HighLevelCodeArtifactService _codeArtifactService;
+    private readonly HighLevelSystemScaffoldService _systemScaffoldService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
@@ -57,6 +58,7 @@ public class HighLevelCoordinator
         IHighLevelExecutionModelPlanner executionModelPlanner,
         HighLevelDocumentArtifactService documentArtifactService,
         HighLevelCodeArtifactService codeArtifactService,
+        HighLevelSystemScaffoldService systemScaffoldService,
         BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
     {
@@ -79,6 +81,7 @@ public class HighLevelCoordinator
         _executionModelPlanner = executionModelPlanner;
         _documentArtifactService = documentArtifactService;
         _codeArtifactService = codeArtifactService;
+        _systemScaffoldService = systemScaffoldService;
         _browserBindingService = browserBindingService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
@@ -197,14 +200,20 @@ public class HighLevelCoordinator
                 {
                     SaveTaskDraft(channel, userId, draft);
                     UpdatePendingDraftSnapshot(profile, draft);
-                    var reply = PrepareReplyWithoutGuide(profile, BuildCompactDraftConfirmationReply(draft));
+                    var reply = PrepareReplyWithoutGuide(
+                        profile,
+                        string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                            ? _systemScaffoldService.BuildDraftReply(draft)
+                            : BuildCompactDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
                     return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                     {
                         Mode = HighLevelRouteMode.Production,
                         Reply = reply,
-                        FollowUpMessages = BuildDraftFollowUpMessages(draft),
+                        FollowUpMessages = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                            ? _systemScaffoldService.BuildDraftFollowUpMessages()
+                            : BuildDraftFollowUpMessages(draft),
                         Draft = draft,
                         DecisionReason = "project name captured"
                     });
@@ -225,6 +234,30 @@ public class HighLevelCoordinator
                         DecisionReason = workflow.Reason
                     });
                 }
+            }
+
+            if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase) &&
+                workflow.Action != HighLevelWorkflowAction.ConfirmDraft &&
+                workflow.Action != HighLevelWorkflowAction.CancelDraft &&
+                parsed.Kind != HighLevelInputKind.Query &&
+                parsed.Kind != HighLevelInputKind.Help &&
+                parsed.Kind != HighLevelInputKind.ProjectName &&
+                !string.IsNullOrWhiteSpace(trimmed))
+            {
+                _systemScaffoldService.ApplyRequirementRefinement(draft, trimmed);
+                SaveTaskDraft(channel, userId, draft);
+                UpdatePendingDraftSnapshot(profile, draft);
+                var reply = PrepareReplyWithoutGuide(profile, _systemScaffoldService.BuildDraftReply(draft));
+                SaveUserProfile(channel, userId, profile);
+
+                return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = reply,
+                    FollowUpMessages = _systemScaffoldService.BuildDraftFollowUpMessages(),
+                    Draft = draft,
+                    DecisionReason = "system scaffold requirements refined"
+                });
             }
 
             if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
@@ -256,12 +289,16 @@ public class HighLevelCoordinator
             if (workflow.Action == HighLevelWorkflowAction.RemindPendingDraft)
             {
                 var pendingReply = PrepareReplyWithoutGuide(profile, BuildCompactPendingDraftReminder(draft));
+                if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
+                    pendingReply = PrepareReplyWithoutGuide(profile, _systemScaffoldService.BuildDraftReply(draft));
                 SaveUserProfile(channel, userId, profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
                 {
                     Mode = HighLevelRouteMode.Production,
                     Reply = pendingReply,
-                    FollowUpMessages = BuildDraftFollowUpMessages(draft),
+                    FollowUpMessages = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                        ? _systemScaffoldService.BuildDraftFollowUpMessages()
+                        : BuildDraftFollowUpMessages(draft),
                     Draft = draft,
                     DecisionReason = workflow.Reason
                 });
@@ -287,7 +324,9 @@ public class HighLevelCoordinator
                 profile,
                 nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
                     ? BuildCompactProjectNameRequestReply(nextDraft)
-                    : BuildCompactDraftConfirmationReply(nextDraft));
+                    : string.Equals(nextDraft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                        ? _systemScaffoldService.BuildDraftReply(nextDraft)
+                        : BuildCompactDraftConfirmationReply(nextDraft));
             SaveUserProfile(channel, userId, profile);
 
             return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
@@ -296,7 +335,9 @@ public class HighLevelCoordinator
                 Reply = reply,
                 FollowUpMessages = nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
                     ? BuildProjectNameFollowUpMessages(nextDraft)
-                    : BuildDraftFollowUpMessages(nextDraft),
+                    : string.Equals(nextDraft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                        ? _systemScaffoldService.BuildDraftFollowUpMessages()
+                        : BuildDraftFollowUpMessages(nextDraft),
                 Draft = nextDraft,
                 DecisionReason = decision.Reason
             });
@@ -948,6 +989,7 @@ public class HighLevelCoordinator
 
         HighLevelDocumentArtifactResult? artifactResult = null;
         HighLevelCodeArtifactResult? codeArtifactResult = null;
+        HighLevelSystemScaffoldResult? scaffoldArtifactResult = null;
         if (string.Equals(draft.TaskType, "doc_gen", StringComparison.OrdinalIgnoreCase))
         {
             artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
@@ -955,6 +997,10 @@ public class HighLevelCoordinator
         else if (string.Equals(draft.TaskType, "code_gen", StringComparison.OrdinalIgnoreCase))
         {
             codeArtifactResult = await _codeArtifactService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
+        }
+        else if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
+        {
+            scaffoldArtifactResult = await _systemScaffoldService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -973,6 +1019,10 @@ public class HighLevelCoordinator
         {
             replyLines.Add(BuildCodeArtifactReply(codeArtifactResult));
         }
+        else if (scaffoldArtifactResult != null)
+        {
+            replyLines.Add(BuildSystemScaffoldReply(scaffoldArtifactResult));
+        }
         else
         {
             replyLines.Add("目前已建立 task / plan / handoff。");
@@ -984,6 +1034,7 @@ public class HighLevelCoordinator
         {
             Mode = HighLevelRouteMode.Production,
             Reply = reply,
+            FollowUpMessages = scaffoldArtifactResult?.ProgressMessages,
             CreatedTask = task,
             CreatedPlan = plan,
             Handoff = handoff
@@ -1103,6 +1154,32 @@ public class HighLevelCoordinator
         return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
+    internal static string BuildSystemScaffoldReply(HighLevelSystemScaffoldResult artifactResult)
+    {
+        if (!artifactResult.Success)
+            return $"系統雛形生成失敗：{artifactResult.Message}";
+
+        var lines = new List<string>
+        {
+            "已生成並封裝系統雛形。",
+            $"project_root: {artifactResult.ProjectRoot}",
+            $"package_file: {artifactResult.PackageFilePath}"
+        };
+
+        if (artifactResult.Delivery?.GoogleDrive?.Success == true)
+        {
+            lines.Add("雲端交付已完成。");
+            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.DownloadLink);
+        }
+        else if (artifactResult.Delivery != null)
+        {
+            lines.Add("雲端上傳未完成，但封裝檔已建立。");
+        }
+
+        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
     private static HighLevelMemoryState BuildFallbackMemoryState(
         string channel,
         string userId,
@@ -1210,6 +1287,7 @@ public class HighLevelCoordinator
 
     private string InferTaskType(string normalized)
     {
+        if (ContainsAny(normalized, _options.SystemScaffoldKeywords)) return "system_scaffold";
         if (ContainsAny(normalized, _options.CodeModifyKeywords)) return "code_modify";
         if (ContainsAny(normalized, _options.DocKeywords)) return "doc_gen";
         if (ContainsAny(normalized, _options.CodeGenKeywords)) return "code_gen";
@@ -1229,12 +1307,13 @@ public class HighLevelCoordinator
 
         var title = decision.TaskType switch
         {
+            "system_scaffold" => $"Generate system scaffold from {channel} request",
             "code_modify" => $"Modify artifact from {channel} request",
             "doc_gen" => $"Generate document from {channel} request",
             "code_gen" => $"Generate deliverable from {channel} request",
             _ => $"Production task from {channel} request"
         };
-        var requiresProjectName = decision.TaskType == "code_gen";
+        var requiresProjectName = decision.TaskType is "code_gen" or "system_scaffold";
         var inlineProjectName = requiresProjectName ? TryExtractInlineProjectName(message) : null;
         var inlineProjectFolderName = string.IsNullOrWhiteSpace(inlineProjectName)
             ? null
@@ -1260,6 +1339,9 @@ public class HighLevelCoordinator
             ExpiresAt = DateTime.UtcNow.AddMinutes(Math.Max(1, _options.DraftTtlMinutes))
         };
 
+        if (decision.TaskType == "system_scaffold")
+            _systemScaffoldService.InitializeDraft(draft);
+
         UpdateDraftDescriptors(draft);
         return draft;
     }
@@ -1274,6 +1356,19 @@ public class HighLevelCoordinator
                 new() { PhaseId = "collect", Title = "Collect sources", Kind = "context_collection" },
                 new() { PhaseId = "draft", Title = "Draft deliverable", Kind = "artifact_creation" },
                 new() { PhaseId = "review", Title = "Review and handoff", Kind = "verification" }
+            };
+        }
+
+        if (taskType == "system_scaffold")
+        {
+            return new List<HighLevelTaskPhase>
+            {
+                new() { PhaseId = "requirements", Title = "Analyze requirements", Kind = "requirements_analysis" },
+                new() { PhaseId = "design", Title = "Plan design", Kind = "design_planning" },
+                new() { PhaseId = "implement", Title = "Generate scaffold", Kind = "artifact_creation" },
+                new() { PhaseId = "test", Title = "Run basic verification", Kind = "verification" },
+                new() { PhaseId = "package", Title = "Package scaffold", Kind = "packaging" },
+                new() { PhaseId = "deliver", Title = "Deliver artifact", Kind = "delivery" }
             };
         }
 
@@ -1787,13 +1882,22 @@ public class HighLevelCoordinator
             conversation_document = BuildConversationDocumentId(draft.UserId),
             user_profile_document = BuildProfileDocumentId(draft.Channel, draft.UserId),
             draft_document = BuildDraftDocumentId(draft.Channel, draft.UserId),
+            scaffold_spec_document = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? HighLevelSystemScaffoldSpecStore.BuildDocumentId(draft.Channel, draft.UserId)
+                : null,
+            scaffold_iteration_document = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? HighLevelSystemScaffoldIterationStore.BuildDocumentId(draft.Channel, draft.UserId)
+                : null,
             managed_paths = draft.ManagedPaths,
             project = new
             {
                 required = draft.RequiresProjectName,
                 name = draft.ProjectName,
                 folder_name = draft.ProjectFolderName
-            }
+            },
+            scaffold = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? draft.ScaffoldSpec
+                : null
         });
     }
 
@@ -1838,6 +1942,12 @@ public class HighLevelCoordinator
             execution_intent_id = executionIntent.IntentId,
             execution_stage = executionIntent.Stage,
             promotion_reason = executionIntent.PromotionReason,
+            scaffold_spec_document = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? HighLevelSystemScaffoldSpecStore.BuildDocumentId(draft.Channel, draft.UserId)
+                : null,
+            scaffold_iteration_document = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? HighLevelSystemScaffoldIterationStore.BuildDocumentId(draft.Channel, draft.UserId)
+                : null,
             requested_execution_model = executionIntent.RequestedExecutionModel,
             llm = executionIntent.RequestedExecutionModel == null
                 ? null
@@ -1852,7 +1962,10 @@ public class HighLevelCoordinator
                 required = draft.RequiresProjectName,
                 name = draft.ProjectName,
                 folder_name = draft.ProjectFolderName
-            }
+            },
+            scaffold = string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase)
+                ? draft.ScaffoldSpec
+                : null
         });
     }
 
@@ -1951,6 +2064,10 @@ public class HighLevelCoordinator
         {
             draft.Title = $"Generate project {projectName} from {draft.Channel} request";
         }
+        else if (draft.TaskType == "system_scaffold")
+        {
+            draft.Title = $"Generate system scaffold {projectName} from {draft.Channel} request";
+        }
 
         draft.Description = string.Join('\n', new[]
         {
@@ -1963,6 +2080,8 @@ public class HighLevelCoordinator
         });
 
         UpdateDraftDescriptors(draft);
+        if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
+            _systemScaffoldService.RefreshDraftState(draft, "requirements_analysis", "updated", "已記錄系統雛形專案名稱。");
         return true;
     }
 
@@ -3022,6 +3141,17 @@ public class HighLevelCoordinatorOptions
         "prototype"
     };
 
+    public string[] SystemScaffoldKeywords { get; set; } = new[]
+    {
+        "\u7cfb\u7d71\u96db\u5f62",
+        "\u5b8c\u6574\u7cfb\u7d71",
+        "\u5b8c\u6574\u7db2\u7ad9",
+        "system scaffold",
+        "full system",
+        "project skeleton",
+        "scaffold"
+    };
+
     public string[] DocKeywords { get; set; } = new[]
     {
         "\u6587\u4ef6",
@@ -3204,6 +3334,7 @@ public class HighLevelTaskDraft
     public string? ProjectName { get; set; }
     public string? ProjectFolderName { get; set; }
     public string? ProjectNameValidationError { get; set; }
+    public HighLevelSystemScaffoldSpec? ScaffoldSpec { get; set; }
     public HighLevelManagedPaths ManagedPaths { get; set; } = new();
     public string ScopeDescriptor { get; set; } = "{}";
     public string RuntimeDescriptor { get; set; } = "{}";

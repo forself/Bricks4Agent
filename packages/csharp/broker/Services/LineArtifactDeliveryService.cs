@@ -21,6 +21,23 @@ public sealed class LineArtifactDeliveryRequest
     public string RelatedTaskId { get; set; } = string.Empty;
 }
 
+public sealed class LineExistingArtifactDeliveryRequest
+{
+    public string UserId { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public bool UploadToGoogleDrive { get; set; } = true;
+    public string IdentityMode { get; set; } = string.Empty;
+    public string FolderId { get; set; } = string.Empty;
+    public string ShareMode { get; set; } = "anyone_with_link";
+    public bool SendLineNotification { get; set; } = true;
+    public string NotificationTitle { get; set; } = string.Empty;
+    public string Source { get; set; } = "local_admin";
+    public string RelatedTaskType { get; set; } = string.Empty;
+    public string RelatedDraftId { get; set; } = string.Empty;
+    public string RelatedTaskId { get; set; } = string.Empty;
+}
+
 public sealed class LineArtifactDeliveryResult
 {
     public bool Success { get; set; }
@@ -56,6 +73,9 @@ public sealed class LineArtifactDeliveryService
         _googleDriveShareService = googleDriveShareService;
         _logger = logger;
     }
+
+    public bool CanUploadToGoogleDrive(string userId, string? identityMode)
+        => _googleDriveShareService.CanUpload(identityMode, "line", userId);
 
     public async Task<LineArtifactDeliveryResult> GenerateAndDeliverAsync(
         LineArtifactDeliveryRequest request,
@@ -159,6 +179,103 @@ public sealed class LineArtifactDeliveryService
             UserId = request.UserId,
             DocumentsRoot = managedPaths.DocumentsRoot,
             FilePath = filePath,
+            FileName = fileName,
+            UploadedToGoogleDrive = driveOk,
+            GoogleDrive = driveResult,
+            Notification = notification,
+            Artifact = artifact
+        };
+    }
+
+    public async Task<LineArtifactDeliveryResult> DeliverExistingFileAsync(
+        LineExistingArtifactDeliveryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserId))
+            return Fail("user_id is required.");
+
+        if (string.IsNullOrWhiteSpace(request.FilePath) || !Path.IsPathRooted(request.FilePath))
+            return Fail("file_path must be an absolute path.");
+
+        if (!File.Exists(request.FilePath))
+            return Fail("file_path not found.");
+
+        var profile = _workspaceService.GetUserProfile(request.UserId);
+        if (profile == null)
+            return Fail("LINE user profile not found.");
+
+        var managedPaths = _workspaceService.GetManagedPaths(request.UserId, ensureExists: true);
+        if (managedPaths == null)
+            return Fail("managed paths not found.");
+
+        var fileName = ResolveFileName(request.FileName, Path.GetExtension(request.FilePath).TrimStart('.'));
+        var resolvedIdentityMode = _googleDriveShareService.ResolveIdentityMode(request.IdentityMode);
+        var resolvedShareMode = _googleDriveShareService.ResolveShareMode(request.ShareMode);
+        var credentialBinding = _googleDriveShareService.ResolveCredentialBinding(resolvedIdentityMode, "line", request.UserId);
+
+        GoogleDriveShareResult? driveResult = null;
+        if (request.UploadToGoogleDrive)
+        {
+            driveResult = await _googleDriveShareService.ShareFileAsync(new GoogleDriveShareRequest
+            {
+                FilePath = request.FilePath,
+                FileName = fileName,
+                FolderId = request.FolderId,
+                ShareMode = resolvedShareMode,
+                IdentityMode = resolvedIdentityMode,
+                Channel = "line",
+                UserId = request.UserId
+            }, cancellationToken);
+        }
+
+        var driveOk = driveResult?.Success == true;
+        var overallStatus = driveOk || !request.UploadToGoogleDrive ? "completed" : "partial";
+
+        HighLevelLineNotification? notification = null;
+        if (request.SendLineNotification)
+        {
+            notification = _workspaceService.QueueLineNotification(
+                request.UserId,
+                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
+                BuildNotificationBody(fileName, request.FilePath, driveResult));
+        }
+
+        var artifact = _workspaceService.RecordArtifact(new HighLevelLineArtifactRecord
+        {
+            Channel = "line",
+            UserId = request.UserId,
+            Source = string.IsNullOrWhiteSpace(request.Source) ? "local_admin" : request.Source.Trim(),
+            RelatedTaskType = request.RelatedTaskType?.Trim() ?? string.Empty,
+            RelatedDraftId = request.RelatedDraftId?.Trim() ?? string.Empty,
+            RelatedTaskId = request.RelatedTaskId?.Trim() ?? string.Empty,
+            Success = true,
+            Message = driveOk ? "ok" : (driveResult?.Message ?? "drive_not_requested"),
+            DeliveryMode = driveOk ? "google_drive" : "local_only",
+            FileName = fileName,
+            Format = ResolveFormat(Path.GetExtension(fileName).TrimStart('.'), fileName),
+            FilePath = request.FilePath,
+            DocumentsRoot = managedPaths.DocumentsRoot,
+            UploadedToGoogleDrive = driveOk,
+            DriveIdentityMode = resolvedIdentityMode,
+            DriveCredentialChannel = credentialBinding.Channel,
+            DriveCredentialUserId = credentialBinding.UserId,
+            DriveShareMode = resolvedShareMode,
+            GoogleDriveFileId = driveResult?.FileId ?? string.Empty,
+            GoogleDriveWebViewLink = driveResult?.WebViewLink ?? string.Empty,
+            GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
+            DriveError = driveOk ? string.Empty : (driveResult?.Message ?? string.Empty),
+            OverallStatus = overallStatus,
+            NotificationId = notification?.NotificationId ?? string.Empty
+        });
+
+        return new LineArtifactDeliveryResult
+        {
+            Success = true,
+            Message = driveOk ? "ok" : "file_exists_drive_failed",
+            OverallStatus = overallStatus,
+            UserId = request.UserId,
+            DocumentsRoot = managedPaths.DocumentsRoot,
+            FilePath = request.FilePath,
             FileName = fileName,
             UploadedToGoogleDrive = driveOk,
             GoogleDrive = driveResult,
