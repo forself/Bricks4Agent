@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Broker.Services;
 
 namespace Broker.Handlers.Travel;
@@ -86,6 +88,111 @@ public static class TdxTravelHelper
             : ExtractStationsFromMap(query, ThsrStationIdMap);
     }
 
+    /// <summary>
+    /// 從自然語言中提取日期。
+    /// 支援：今天、明天、後天、大後天、下週一~日、MM/DD、M月D日、yyyy-MM-dd。
+    /// 回傳 null 表示未指定日期（預設使用今天）。
+    /// </summary>
+    public static DateOnly? ExtractDate(string query)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+
+        if (query.Contains("後天") && !query.Contains("大後天"))
+            return today.AddDays(2);
+        if (query.Contains("大後天"))
+            return today.AddDays(3);
+        if (query.Contains("明天") || query.Contains("明日"))
+            return today.AddDays(1);
+        if (query.Contains("今天") || query.Contains("今日"))
+            return today;
+
+        // 下週X
+        var weekdayMatch = Regex.Match(query, @"下週(一|二|三|四|五|六|日|天)");
+        if (weekdayMatch.Success)
+        {
+            var targetDay = weekdayMatch.Groups[1].Value switch
+            {
+                "一" => DayOfWeek.Monday, "二" => DayOfWeek.Tuesday,
+                "三" => DayOfWeek.Wednesday, "四" => DayOfWeek.Thursday,
+                "五" => DayOfWeek.Friday, "六" => DayOfWeek.Saturday,
+                _ => DayOfWeek.Sunday
+            };
+            var daysUntilNextWeek = ((int)targetDay - (int)today.DayOfWeek + 7) % 7;
+            if (daysUntilNextWeek == 0) daysUntilNextWeek = 7;
+            return today.AddDays(daysUntilNextWeek);
+        }
+
+        // yyyy-MM-dd
+        var isoMatch = Regex.Match(query, @"(\d{4})-(\d{1,2})-(\d{1,2})");
+        if (isoMatch.Success && DateOnly.TryParse(isoMatch.Value, out var isoDate))
+            return isoDate;
+
+        // M月D日 or M/D
+        var mdMatch = Regex.Match(query, @"(\d{1,2})[月/](\d{1,2})日?");
+        if (mdMatch.Success &&
+            int.TryParse(mdMatch.Groups[1].Value, out var m) &&
+            int.TryParse(mdMatch.Groups[2].Value, out var d) &&
+            m >= 1 && m <= 12 && d >= 1 && d <= 31)
+        {
+            var year = today.Year;
+            if (m < today.Month || (m == today.Month && d < today.Day))
+                year++; // 過了就算明年
+            try { return new DateOnly(year, m, d); }
+            catch { /* invalid date */ }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 從自然語言中提取時間範圍。
+    /// 支援：早上/上午(06-12)、中午(11-13)、下午(12-18)、晚上(18-24)、特定時間 HH:mm。
+    /// 回傳 (startHour, endHour)，null 表示不限時段。
+    /// </summary>
+    public static (int startHour, int endHour)? ExtractTimeRange(string query)
+    {
+        // 特定時間 HH:mm — 前後 2 小時範圍
+        var timeMatch = Regex.Match(query, @"(\d{1,2})[：:](\d{2})");
+        if (timeMatch.Success &&
+            int.TryParse(timeMatch.Groups[1].Value, out var h) &&
+            int.TryParse(timeMatch.Groups[2].Value, out var min) &&
+            h >= 0 && h <= 23)
+        {
+            return (Math.Max(0, h - 1), Math.Min(24, h + 2));
+        }
+
+        // 特定小時：下午3點、早上8點
+        var hourMatch = Regex.Match(query, @"(\d{1,2})\s*點");
+        if (hourMatch.Success && int.TryParse(hourMatch.Groups[1].Value, out var hr))
+        {
+            // 調整 AM/PM
+            if (hr <= 12 && (query.Contains("下午") || query.Contains("晚上")))
+                hr += 12;
+            if (hr > 24) hr = 24;
+            return (Math.Max(0, hr - 1), Math.Min(24, hr + 2));
+        }
+
+        if (query.Contains("早上") || query.Contains("上午") || query.Contains("清晨"))
+            return (5, 12);
+        if (query.Contains("中午"))
+            return (11, 14);
+        if (query.Contains("下午"))
+            return (12, 18);
+        if (query.Contains("晚上") || query.Contains("傍晚") || query.Contains("夜間"))
+            return (17, 24);
+        if (query.Contains("凌晨"))
+            return (0, 6);
+
+        // 「第一班」「首班」
+        if (query.Contains("第一班") || query.Contains("首班") || query.Contains("最早"))
+            return (0, 8);
+        // 「末班」「最後一班」
+        if (query.Contains("末班") || query.Contains("最後一班") || query.Contains("最晚"))
+            return (20, 24);
+
+        return null;
+    }
+
     /// <summary>用台鐵站名表提取</summary>
     public static (string? origin, string? destination) ExtractTraStations(string query)
         => ExtractStationsFromMap(query, TraStationIdMap);
@@ -149,14 +256,19 @@ public static class TdxTravelHelper
         if (originId == null || destId == null)
             return null;
 
-        var doc = await tdx.GetTraDailyTimetableByStationAsync(originId, ct);
+        var date = ExtractDate(query);
+        var timeRange = ExtractTimeRange(query);
+        logger.LogInformation("TDX TRA: date={Date} timeRange={TimeRange}",
+            date?.ToString("yyyy-MM-dd") ?? "today", timeRange?.ToString() ?? "all-day");
+
+        var doc = await tdx.GetTraDailyTimetableByStationAsync(originId, date, ct);
         if (doc == null)
         {
             logger.LogWarning("TDX TRA API returned null");
             return null;
         }
 
-        return FilterAndFormatTraTimetable(doc, originId, destId, origin, destination, logger);
+        return FilterAndFormatTraTimetable(doc, originId, destId, origin, destination, date, timeRange, logger);
     }
 
     /// <summary>查詢高鐵時刻表（TDX v2 全日班次 + 客戶端 OD 過濾）</summary>
@@ -173,17 +285,22 @@ public static class TdxTravelHelper
         if (originId == null || destId == null)
             return null;
 
-        var doc = await tdx.GetThsrDailyTimetableAsync(ct);
+        var date = ExtractDate(query);
+        var timeRange = ExtractTimeRange(query);
+
+        var doc = await tdx.GetThsrDailyTimetableAsync(date, ct);
         if (doc == null)
             return null;
 
-        return FilterAndFormatThsrTimetable(doc, originId, destId, origin, destination);
+        return FilterAndFormatThsrTimetable(doc, originId, destId, origin, destination, date, timeRange);
     }
 
     /// <summary>從全日台鐵班次中過濾出指定起訖站的班次</summary>
     private static object? FilterAndFormatTraTimetable(
         JsonDocument doc, string originId, string destId,
-        string originName, string destName, ILogger logger)
+        string originName, string destName,
+        DateOnly? date, (int startHour, int endHour)? timeRange,
+        ILogger logger)
     {
         var trains = new List<object>();
 
@@ -219,6 +336,13 @@ public static class TdxTravelHelper
             if (string.IsNullOrWhiteSpace(originDep))
                 continue;
 
+            // 時間範圍過濾
+            if (timeRange.HasValue && TryParseHour(originDep, out var depHour))
+            {
+                if (depHour < timeRange.Value.startHour || depHour >= timeRange.Value.endHour)
+                    continue;
+            }
+
             var trainInfo = item.TryGetProperty("DailyTrainInfo", out var infoNode) ? infoNode : default;
             var trainNo = trainInfo.ValueKind == JsonValueKind.Object
                 ? (trainInfo.TryGetProperty("TrainNo", out var noNode) ? noNode.GetString() ?? "" : "")
@@ -249,12 +373,16 @@ public static class TdxTravelHelper
         if (trains.Count == 0)
             return null;
 
+        var displayDate = date?.ToString("yyyy-MM-dd") ?? DateTime.Today.ToString("yyyy-MM-dd");
+        var timeNote = timeRange.HasValue ? $" {timeRange.Value.startHour}:00-{timeRange.Value.endHour}:00" : "";
+
         return new
         {
             source = "TDX 台鐵時刻表 API",
             origin = originName,
             destination = destName,
-            date = DateTime.Today.ToString("yyyy-MM-dd"),
+            date = displayDate,
+            time_filter = timeNote.Trim(),
             train_count = trains.Count,
             trains = trains.Take(20).ToList()
         };
@@ -263,7 +391,8 @@ public static class TdxTravelHelper
     /// <summary>從全日高鐵班次中過濾出指定起訖站的班次</summary>
     private static object? FilterAndFormatThsrTimetable(
         JsonDocument doc, string originId, string destId,
-        string originName, string destName)
+        string originName, string destName,
+        DateOnly? date, (int startHour, int endHour)? timeRange)
     {
         var trains = new List<object>();
 
@@ -299,6 +428,12 @@ public static class TdxTravelHelper
             if (string.IsNullOrWhiteSpace(originDep))
                 continue;
 
+            if (timeRange.HasValue && TryParseHour(originDep, out var thsrDepHour))
+            {
+                if (thsrDepHour < timeRange.Value.startHour || thsrDepHour >= timeRange.Value.endHour)
+                    continue;
+            }
+
             var trainInfo = item.TryGetProperty("DailyTrainInfo", out var infoNode) ? infoNode : default;
             var trainNo = trainInfo.ValueKind == JsonValueKind.Object
                 ? (trainInfo.TryGetProperty("TrainNo", out var noNode) ? noNode.GetString() ?? "" : "")
@@ -315,15 +450,35 @@ public static class TdxTravelHelper
         if (trains.Count == 0)
             return null;
 
+        var displayDate = date?.ToString("yyyy-MM-dd") ?? DateTime.Today.ToString("yyyy-MM-dd");
+        var timeNote = timeRange.HasValue ? $" {timeRange.Value.startHour}:00-{timeRange.Value.endHour}:00" : "";
+
         return new
         {
             source = "TDX 高鐵時刻表 API",
             origin = originName,
             destination = destName,
-            date = DateTime.Today.ToString("yyyy-MM-dd"),
+            date = displayDate,
+            time_filter = timeNote.Trim(),
             train_count = trains.Count,
             trains = trains.Take(20).ToList()
         };
+    }
+
+    // ── 時間解析工具 ──
+
+    private static bool TryParseHour(string timeStr, out int hour)
+    {
+        hour = -1;
+        if (string.IsNullOrWhiteSpace(timeStr) || timeStr.Length < 2)
+            return false;
+        // HH:mm format
+        var colonIdx = timeStr.IndexOf(':');
+        if (colonIdx < 0) colonIdx = timeStr.IndexOf('：');
+        if (colonIdx > 0)
+            return int.TryParse(timeStr[..colonIdx], out hour);
+        // Try first 2 chars
+        return int.TryParse(timeStr[..2], out hour);
     }
 
     // ── 航班查詢 ──
