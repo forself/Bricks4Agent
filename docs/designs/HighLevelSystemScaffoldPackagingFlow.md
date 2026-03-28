@@ -219,6 +219,11 @@ As the system matures, the spec can expand to include:
 - containerization preference
 - Azure/IIS target preference
 
+Default principle:
+
+- prefer the project's custom component library,
+- do not assume a generic third-party UI kit unless the user explicitly asks for one.
+
 ### 6.3 Completion rule
 
 The interview should end only when:

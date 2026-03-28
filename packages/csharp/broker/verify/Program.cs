@@ -1561,6 +1561,7 @@ try
         AssertTrue(scaffoldDraft.Draft != null && scaffoldDraft.Draft.TaskType == "system_scaffold", "system scaffold command creates system_scaffold draft");
         AssertTrue(scaffoldDraft.Draft!.ProjectName == "scaffoldproj", "system scaffold draft captures inline project name");
         AssertTrue(scaffoldDraft.Reply.Contains("scaffold_family:", StringComparison.Ordinal), "system scaffold draft reply includes structured scaffold summary");
+        AssertTrue(scaffoldDraft.Reply.Contains("ui_components: custom_component_library", StringComparison.Ordinal), "system scaffold draft defaults to custom component library");
         AssertTrue(scaffoldDraft.FollowUpMessages != null && scaffoldDraft.FollowUpMessages.Contains("confirm"), "system scaffold draft exposes confirm follow-up");
 
         var scaffoldRefined = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "需要登入、SQLite 與 Azure IIS 佈署");
@@ -1576,6 +1577,8 @@ try
         var scaffoldProjectRoot = scaffoldPaths is null ? throw new Exception("system scaffold managed paths unexpectedly null") : Path.Combine(scaffoldPaths.ProjectsRoot, "scaffoldproj");
         AssertTrue(File.Exists(Path.Combine(scaffoldProjectRoot, "frontend", "index.html")), "system scaffold writes frontend scaffold files");
         AssertTrue(File.Exists(Path.Combine(scaffoldProjectRoot, "docs", "requirements-analysis.md")), "system scaffold writes requirements analysis document");
+        var scaffoldDesignPlan = File.ReadAllText(Path.Combine(scaffoldProjectRoot, "docs", "design-plan.md"), Encoding.UTF8);
+        AssertTrue(scaffoldDesignPlan.Contains("UI Components: custom_component_library", StringComparison.Ordinal), "system scaffold design plan records custom component library strategy");
         var scaffoldArtifacts = coordinatorWorkspaceService.ListArtifacts("line-scaffold-user");
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
