@@ -1703,6 +1703,21 @@ try
     var (s5o, s5d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractStations("台中");
     AssertTrue(s5o == null || s5d == null, $"ExtractStations(\"台中\") returns null (single station)");
 
+    // 自然語言站名提取測試
+    Console.WriteLine("\n=== TDX Natural Language Station Extraction ===");
+
+    var (s6o, s6d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractTraStations("明天 早上 板橋 往 高雄 自強號 第一班");
+    AssertTrue(s6o == "板橋" && s6d == "高雄", $"NL: \"明天 早上 板橋 往 高雄 自強號 第一班\" → \"{s6o}\",\"{s6d}\"");
+
+    var (s7o, s7d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractThsrStations("我想搭高鐵從台北去台南下午三點");
+    AssertTrue(s7o == "台北" && s7d == "台南", $"NL: \"我想搭高鐵從台北去台南下午三點\" → \"{s7o}\",\"{s7d}\"");
+
+    var (s8o, s8d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractTraStations("新左營到花蓮的火車");
+    AssertTrue(s8o == "新左營" && s8d == "花蓮", $"NL: \"新左營到花蓮的火車\" → \"{s8o}\",\"{s8d}\"");
+
+    var (s9o, s9d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractTraStations("台北車站出發到台中火車站");
+    AssertTrue(s9o == "台北" && s9d == "台中", $"NL: \"台北車站出發到台中火車站\" → \"{s9o}\",\"{s9d}\"");
+
     // ── TDX API Live Test (if configured) ──
     Console.WriteLine("\n=== TDX API Live Test ===");
     var tdxOpts = new Broker.Services.TdxOptions

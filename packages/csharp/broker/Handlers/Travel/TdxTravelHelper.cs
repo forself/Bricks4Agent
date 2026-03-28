@@ -45,32 +45,70 @@ public static class TdxTravelHelper
         ["左營"] = "1070", ["高雄"] = "1070"
     };
 
-    /// <summary>從使用者查詢中提取起訖站</summary>
+    /// <summary>
+    /// 從自然語言查詢中提取起訖站。
+    /// 掃描查詢字串，找出所有匹配已知站名的詞，按出現順序取第一個為起站、第二個為訖站。
+    /// 支援：「明天早上板橋往高雄自強號」「從台北到台中 18:00」「南港→左營」等自然語言格式。
+    /// </summary>
     public static (string? origin, string? destination) ExtractStations(string query)
     {
-        var cleaned = query
-            .Replace("到", " ")
-            .Replace("→", " ")
-            .Replace("➜", " ")
-            .Replace("->", " ")
-            .Replace("至", " ")
-            .Replace("從", "")
-            .Replace("去", " ")
-            .Trim();
+        return ExtractStationsFromMap(query, TraStationIdMap) is var tra && tra.origin != null
+            ? tra
+            : ExtractStationsFromMap(query, ThsrStationIdMap);
+    }
 
-        var parts = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length < 2)
+    /// <summary>用台鐵站名表提取</summary>
+    public static (string? origin, string? destination) ExtractTraStations(string query)
+        => ExtractStationsFromMap(query, TraStationIdMap);
+
+    /// <summary>用高鐵站名表提取</summary>
+    public static (string? origin, string? destination) ExtractThsrStations(string query)
+        => ExtractStationsFromMap(query, ThsrStationIdMap);
+
+    private static (string? origin, string? destination) ExtractStationsFromMap(
+        string query, Dictionary<string, string> stationMap)
+    {
+        // 按站名長度降序排列，優先匹配較長的站名（如「新左營」優先於「左營」）
+        var sortedNames = stationMap.Keys.OrderByDescending(k => k.Length).ToList();
+
+        var found = new List<(int position, string name)>();
+        var searchText = query;
+
+        foreach (var stationName in sortedNames)
+        {
+            var idx = searchText.IndexOf(stationName, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+
+            // 檢查是否已經有同位置的更長匹配
+            if (found.Any(f => idx >= f.position && idx < f.position + f.name.Length))
+                continue;
+
+            found.Add((idx, stationName));
+        }
+
+        // 按出現位置排序，第一個是起站，第二個是訖站
+        found.Sort((a, b) => a.position.CompareTo(b.position));
+
+        // 需要至少兩個不同的站
+        var distinctStations = found
+            .Select(f => f.name)
+            .Where(name => stationMap.ContainsKey(name))
+            .Select(name => (name, id: stationMap[name]))
+            .DistinctBy(x => x.id)  // 同一站的不同寫法（台北/臺北）只算一次
+            .ToList();
+
+        if (distinctStations.Count < 2)
             return (null, null);
 
-        return (parts[0], parts[1]);
+        return (distinctStations[0].name, distinctStations[1].name);
     }
 
     /// <summary>查詢台鐵時刻表（TDX v2 + 客戶端 OD 過濾）</summary>
     public static async Task<object?> QueryTraTimetableAsync(
         TdxApiService tdx, string query, ILogger logger, CancellationToken ct)
     {
-        var (origin, destination) = ExtractStations(query);
-        logger.LogInformation("TDX TRA: ExtractStations(\"{Query}\") → origin=\"{O}\" dest=\"{D}\"",
+        var (origin, destination) = ExtractTraStations(query);
+        logger.LogInformation("TDX TRA: ExtractTraStations(\"{Query}\") → origin=\"{O}\" dest=\"{D}\"",
             query, origin ?? "(null)", destination ?? "(null)");
 
         if (origin == null || destination == null)
@@ -78,8 +116,6 @@ public static class TdxTravelHelper
 
         var originId = TraStationIdMap.GetValueOrDefault(origin);
         var destId = TraStationIdMap.GetValueOrDefault(destination);
-        logger.LogInformation("TDX TRA: mapped \"{O}\"→{OID} \"{D}\"→{DID}",
-            origin, originId ?? "(null)", destination, destId ?? "(null)");
 
         if (originId == null || destId == null)
             return null;
@@ -98,7 +134,7 @@ public static class TdxTravelHelper
     public static async Task<object?> QueryThsrTimetableAsync(
         TdxApiService tdx, string query, ILogger logger, CancellationToken ct)
     {
-        var (origin, destination) = ExtractStations(query);
+        var (origin, destination) = ExtractThsrStations(query);
         if (origin == null || destination == null)
             return null;
 
@@ -106,10 +142,7 @@ public static class TdxTravelHelper
         var destId = ThsrStationIdMap.GetValueOrDefault(destination);
 
         if (originId == null || destId == null)
-        {
-            logger.LogInformation("TDX THSR: station not found for {Origin}→{Dest}", origin, destination);
             return null;
-        }
 
         var doc = await tdx.GetThsrDailyTimetableAsync(ct);
         if (doc == null)
