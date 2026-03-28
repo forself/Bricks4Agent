@@ -172,6 +172,10 @@ builder.Services.AddSingleton(deploymentSecretOptions);
 var googleDriveDeliveryOptions = builder.Configuration.GetSection("GoogleDriveDelivery").Get<Broker.Services.GoogleDriveDeliveryOptions>()
     ?? new Broker.Services.GoogleDriveDeliveryOptions();
 builder.Services.AddSingleton(googleDriveDeliveryOptions);
+var tdxOptions = builder.Configuration.GetSection("Tdx").Get<Broker.Services.TdxOptions>()
+    ?? new Broker.Services.TdxOptions();
+builder.Services.AddSingleton(tdxOptions);
+builder.Services.AddHttpClient<Broker.Services.TdxApiService>();
 var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry").Get<Broker.Services.ToolSpecRegistryOptions>()
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
