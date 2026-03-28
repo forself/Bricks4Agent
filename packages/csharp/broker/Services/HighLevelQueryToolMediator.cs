@@ -506,26 +506,49 @@ public sealed class HighLevelQueryToolMediator
     {
         var items = new List<HighLevelQuerySearchResult>();
 
-        if (!tdxNode.TryGetProperty("trains", out var trainsNode) || trainsNode.ValueKind != JsonValueKind.Array)
+        // 支援 trains（台鐵/高鐵）和 flights（航班）兩種格式
+        var listNode = tdxNode.TryGetProperty("trains", out var trainsNode) && trainsNode.ValueKind == JsonValueKind.Array
+            ? trainsNode
+            : tdxNode.TryGetProperty("flights", out var flightsNode) && flightsNode.ValueKind == JsonValueKind.Array
+                ? flightsNode
+                : default;
+
+        if (listNode.ValueKind != JsonValueKind.Array)
             return items;
 
+        var isFlight = tdxNode.TryGetProperty("flights", out _);
         var rank = 1;
-        foreach (var train in trainsNode.EnumerateArray())
-        {
-            var trainNo = train.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
-            var trainType = train.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
-            var departure = train.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-            var arrival = train.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
 
-            var title = string.IsNullOrWhiteSpace(trainType)
-                ? $"車次 {trainNo}"
-                : $"{trainType} {trainNo}";
+        foreach (var entry in listNode.EnumerateArray())
+        {
+            string title, snippet;
+
+            if (isFlight)
+            {
+                var flightNo = entry.TryGetProperty("flight_no", out var fnNode) ? fnNode.GetString() ?? "" : "";
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                var status = entry.TryGetProperty("status", out var stNode) ? stNode.GetString() ?? "" : "";
+                title = $"航班 {flightNo}";
+                snippet = string.IsNullOrWhiteSpace(status)
+                    ? $"{departure} 起飛 → {arrival} 抵達"
+                    : $"{departure} 起飛 → {arrival} 抵達（{status}）";
+            }
+            else
+            {
+                var trainNo = entry.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
+                var trainType = entry.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                title = string.IsNullOrWhiteSpace(trainType) ? $"車次 {trainNo}" : $"{trainType} {trainNo}";
+                snippet = $"{departure} 發車 → {arrival} 到達";
+            }
 
             items.Add(new HighLevelQuerySearchResult
             {
                 Rank = rank++,
                 Title = title,
-                Snippet = $"{departure} 發車 → {arrival} 到達"
+                Snippet = snippet
             });
         }
 
@@ -545,17 +568,24 @@ public sealed class HighLevelQueryToolMediator
         var date = tdxNode.TryGetProperty("date", out var dateNode) ? dateNode.GetString() ?? "" : "";
         var trainCount = tdxNode.TryGetProperty("train_count", out var countNode) && countNode.TryGetInt32(out var count) ? count : 0;
 
+        var isFlight = tdxNode.TryGetProperty("flights", out _);
+        var itemCount = isFlight
+            ? (tdxNode.TryGetProperty("flight_count", out var fcNode) && fcNode.TryGetInt32(out var fc) ? fc : 0)
+            : trainCount;
+
         var modeLabel = mode switch
         {
             "rail" => "台鐵",
             "hsr" => "高鐵",
+            "flight" => "航班",
             _ => mode
         };
 
+        var unitLabel = isFlight ? "班航班" : "班";
         var lines = new List<string>
         {
-            $"{modeLabel}時刻表：{origin} → {destination}（{date}）",
-            $"共 {trainCount} 班，來源：{sources}"
+            $"{modeLabel}查詢：{origin} → {destination}（{date}）",
+            $"共 {itemCount} {unitLabel}，來源：{sources}"
         };
 
         if (!string.IsNullOrWhiteSpace(retrievedAt))
@@ -563,28 +593,46 @@ public sealed class HighLevelQueryToolMediator
 
         lines.Add(string.Empty);
 
-        if (!tdxNode.TryGetProperty("trains", out var trainsNode) || trainsNode.ValueKind != JsonValueKind.Array)
+        // 支援 trains 和 flights 兩種陣列
+        var listNode = tdxNode.TryGetProperty("trains", out var trainsNode2) && trainsNode2.ValueKind == JsonValueKind.Array
+            ? trainsNode2
+            : tdxNode.TryGetProperty("flights", out var flightsNode2) && flightsNode2.ValueKind == JsonValueKind.Array
+                ? flightsNode2
+                : default;
+
+        if (listNode.ValueKind != JsonValueKind.Array)
         {
             lines.Add("無班次資料。");
             return string.Join('\n', lines);
         }
 
         var displayed = 0;
-        foreach (var train in trainsNode.EnumerateArray())
+        foreach (var entry in listNode.EnumerateArray())
         {
-            if (displayed >= 15) // 最多顯示 15 班
+            if (displayed >= 15)
             {
-                lines.Add($"...（還有 {trainCount - displayed} 班）");
+                lines.Add($"...（還有 {itemCount - displayed} 班）");
                 break;
             }
 
-            var trainNo = train.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
-            var trainType = train.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
-            var departure = train.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-            var arrival = train.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
-
-            var typePrefix = string.IsNullOrWhiteSpace(trainType) ? "" : $"[{trainType}] ";
-            lines.Add($"  {typePrefix}{trainNo}  {departure} → {arrival}");
+            if (isFlight)
+            {
+                var flightNo = entry.TryGetProperty("flight_no", out var fnNode) ? fnNode.GetString() ?? "" : "";
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                var status = entry.TryGetProperty("status", out var stNode) ? stNode.GetString() ?? "" : "";
+                var statusSuffix = string.IsNullOrWhiteSpace(status) ? "" : $"  ({status})";
+                lines.Add($"  {flightNo}  {departure} → {arrival}{statusSuffix}");
+            }
+            else
+            {
+                var trainNo = entry.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
+                var trainType = entry.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                var typePrefix = string.IsNullOrWhiteSpace(trainType) ? "" : $"[{trainType}] ";
+                lines.Add($"  {typePrefix}{trainNo}  {departure} → {arrival}");
+            }
             displayed++;
         }
 

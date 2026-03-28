@@ -1758,6 +1758,21 @@ try
             AssertTrue(hsrJson.Contains("train_count"), "THSR result contains train_count");
             Console.WriteLine($"  THSR result preview: {hsrJson[..Math.Min(200, hsrJson.Length)]}...");
         }
+
+        // 航班測試
+        var (fa1o, fa1d) = Broker.Handlers.Travel.TdxTravelHelper.ExtractAirports("松山飛澎湖的班機");
+        AssertTrue(fa1o == "松山" && fa1d == "澎湖", $"ExtractAirports(\"松山飛澎湖的班機\") → \"{fa1o}\",\"{fa1d}\"");
+
+        var flightResult = await Broker.Handlers.Travel.TdxTravelHelper.QueryFlightAsync(
+            tdxService, "松山 金門", logger, CancellationToken.None);
+        AssertTrue(flightResult != null, "TDX Flight query '松山 金門' returned result");
+
+        if (flightResult != null)
+        {
+            var flightJson = JsonSerializer.Serialize(flightResult);
+            AssertTrue(flightJson.Contains("flight_count"), "Flight result contains flight_count");
+            Console.WriteLine($"  Flight result preview: {flightJson[..Math.Min(250, flightJson.Length)]}...");
+        }
     }
     else
     {

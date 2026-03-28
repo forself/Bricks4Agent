@@ -167,9 +167,16 @@ public sealed class TdxApiService
 
     // ── 航空 API ──
 
-    /// <summary>國內航班即時資訊</summary>
-    public Task<JsonDocument?> GetDomesticFlightsAsync(CancellationToken ct = default)
-        => GetAsync("v2/Air/FIDS/Flight?$format=JSON", ct);
+    /// <summary>國內航班即時資訊（可選依起飛機場過濾）</summary>
+    public Task<JsonDocument?> GetDomesticFlightsAsync(string? departureAirportId = null, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(departureAirportId))
+        {
+            var filter = Uri.EscapeDataString($"DepartureAirportID eq '{departureAirportId}'");
+            return GetAsync($"v2/Air/FIDS/Flight?$filter={filter}&$orderby=ScheduleDepartureTime&$format=JSON", ct);
+        }
+        return GetAsync("v2/Air/FIDS/Flight?$orderby=ScheduleDepartureTime&$format=JSON", ct);
+    }
 }
 
 public sealed class TdxOptions

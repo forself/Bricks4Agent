@@ -45,6 +45,35 @@ public static class TdxTravelHelper
         ["左營"] = "1070", ["高雄"] = "1070"
     };
 
+    // ── 機場名稱 → IATA Code 對照表 ──
+    private static readonly Dictionary<string, string> AirportCodeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["松山"] = "TSA", ["台北松山"] = "TSA", ["臺北松山"] = "TSA",
+        ["桃園"] = "TPE", ["桃園機場"] = "TPE", ["台北桃園"] = "TPE",
+        ["高雄"] = "KHH", ["小港"] = "KHH", ["高雄小港"] = "KHH", ["高雄國際"] = "KHH",
+        ["台中"] = "RMQ", ["臺中"] = "RMQ", ["清泉崗"] = "RMQ", ["台中清泉崗"] = "RMQ",
+        ["台南"] = "TNN", ["臺南"] = "TNN",
+        ["嘉義"] = "CYI",
+        ["花蓮"] = "HUN",
+        ["台東"] = "TTT", ["臺東"] = "TTT",
+        ["澎湖"] = "MZG", ["馬公"] = "MZG",
+        ["金門"] = "KNH", ["尚義"] = "KNH",
+        ["馬祖"] = "LZN", ["南竿"] = "LZN", ["北竿"] = "MFK",
+        ["綠島"] = "GNI",
+        ["蘭嶼"] = "KYD",
+        ["七美"] = "CMJ"
+    };
+
+    // 機場代碼 → 顯示名稱
+    private static readonly Dictionary<string, string> AirportDisplayName = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["TSA"] = "松山", ["TPE"] = "桃園", ["KHH"] = "高雄",
+        ["RMQ"] = "台中", ["TNN"] = "台南", ["CYI"] = "嘉義",
+        ["HUN"] = "花蓮", ["TTT"] = "台東", ["MZG"] = "澎湖",
+        ["KNH"] = "金門", ["LZN"] = "南竿", ["MFK"] = "北竿",
+        ["GNI"] = "綠島", ["KYD"] = "蘭嶼", ["CMJ"] = "七美"
+    };
+
     /// <summary>
     /// 從自然語言查詢中提取起訖站。
     /// 掃描查詢字串，找出所有匹配已知站名的詞，按出現順序取第一個為起站、第二個為訖站。
@@ -294,6 +323,90 @@ public static class TdxTravelHelper
             date = DateTime.Today.ToString("yyyy-MM-dd"),
             train_count = trains.Count,
             trains = trains.Take(20).ToList()
+        };
+    }
+
+    // ── 航班查詢 ──
+
+    /// <summary>用機場名稱表提取起訖機場</summary>
+    public static (string? origin, string? destination) ExtractAirports(string query)
+        => ExtractStationsFromMap(query, AirportCodeMap);
+
+    /// <summary>查詢航班（TDX FIDS + 客戶端 OD 過濾）</summary>
+    public static async Task<object?> QueryFlightAsync(
+        TdxApiService tdx, string query, ILogger logger, CancellationToken ct)
+    {
+        var (originName, destName) = ExtractAirports(query);
+        logger.LogInformation("TDX Flight: ExtractAirports(\"{Query}\") → origin=\"{O}\" dest=\"{D}\"",
+            query, originName ?? "(null)", destName ?? "(null)");
+
+        if (originName == null || destName == null)
+            return null;
+
+        var originCode = AirportCodeMap.GetValueOrDefault(originName);
+        var destCode = AirportCodeMap.GetValueOrDefault(destName);
+
+        if (originCode == null || destCode == null)
+            return null;
+
+        var doc = await tdx.GetDomesticFlightsAsync(originCode, ct);
+        if (doc == null)
+            return null;
+
+        return FilterAndFormatFlights(doc, originCode, destCode, originName, destName, logger);
+    }
+
+    private static object? FilterAndFormatFlights(
+        JsonDocument doc, string originCode, string destCode,
+        string originName, string destName, ILogger logger)
+    {
+        var flights = new List<object>();
+
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            var depAirport = item.TryGetProperty("DepartureAirportID", out var depNode) ? depNode.GetString() ?? "" : "";
+            var arrAirport = item.TryGetProperty("ArrivalAirportID", out var arrNode) ? arrNode.GetString() ?? "" : "";
+
+            if (!string.Equals(depAirport, originCode, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(arrAirport, destCode, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var flightNo = item.TryGetProperty("FlightNumber", out var fnNode) ? fnNode.GetString() ?? "" : "";
+            var airlineId = item.TryGetProperty("AirlineID", out var alNode) ? alNode.GetString() ?? "" : "";
+            var depTime = item.TryGetProperty("ScheduleDepartureTime", out var depTimeNode) ? depTimeNode.GetString() ?? "" : "";
+            var arrTime = item.TryGetProperty("ScheduleArrivalTime", out var arrTimeNode) ? arrTimeNode.GetString() ?? "" : "";
+            var depRemark = item.TryGetProperty("DepartureRemark", out var depRemarkNode) ? depRemarkNode.GetString() ?? "" : "";
+
+            // 擷取時間部分 (HH:mm)
+            var depTimeShort = depTime.Length >= 16 ? depTime[11..16] : depTime;
+            var arrTimeShort = arrTime.Length >= 16 ? arrTime[11..16] : arrTime;
+
+            flights.Add(new
+            {
+                flight_no = $"{airlineId}{flightNo}",
+                airline = airlineId,
+                departure_time = depTimeShort,
+                arrival_time = arrTimeShort,
+                status = depRemark
+            });
+        }
+
+        logger.LogInformation("TDX Flight: filtered {Count} flights for {O}→{D}", flights.Count, originName, destName);
+
+        if (flights.Count == 0)
+            return null;
+
+        var originDisplay = AirportDisplayName.GetValueOrDefault(originCode, originName);
+        var destDisplay = AirportDisplayName.GetValueOrDefault(destCode, destName);
+
+        return new
+        {
+            source = "TDX 航班即時資訊 API (FIDS)",
+            origin = $"{originDisplay}({originCode})",
+            destination = $"{destDisplay}({destCode})",
+            date = DateTime.Today.ToString("yyyy-MM-dd"),
+            flight_count = flights.Count,
+            flights = flights.Take(20).ToList()
         };
     }
 }
