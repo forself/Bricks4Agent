@@ -1392,6 +1392,17 @@ try
             coordinatorArtifactDeliveryService,
             new FakeHttpClientFactory(),
             NullLogger<HighLevelDocumentArtifactService>.Instance);
+        var coordinatorCodeArtifactService = new HighLevelCodeArtifactService(
+            new HighLevelLlmOptions
+            {
+                Provider = "ollama",
+                BaseUrl = "http://localhost:11434",
+                DefaultModel = "verify"
+            },
+            coordinatorGoogleDriveService,
+            coordinatorArtifactDeliveryService,
+            new FakeHttpClientFactory(),
+            NullLogger<HighLevelCodeArtifactService>.Instance);
         var coordinatorSharedDriveAuth = coordinatorGoogleOAuthService.StartAuthorization("line", "line-drive-owner");
         var coordinatorSharedDriveCallback = await coordinatorGoogleOAuthService.CompleteAuthorizationAsync(
             VerifyUrlHelpers.ExtractQueryParam(coordinatorSharedDriveAuth.AuthorizationUrl, "state"),
@@ -1423,6 +1434,7 @@ try
             },
             new FakeHighLevelExecutionModelPlanner(),
             coordinatorDocumentArtifactService,
+            coordinatorCodeArtifactService,
             new BrowserBindingService(coordinatorDb),
             NullLogger<HighLevelCoordinator>.Instance);
 
@@ -1492,6 +1504,23 @@ try
         var latestHandoff = workflowAdmin.ReadHandoff(latestHandoffDoc);
         AssertTrue(latestHandoff != null && latestHandoff.TaskType == "code_gen", "workflow admin service reads handoff detail");
 
+        var inlineProjectDraft = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "/建立 單頁基礎計算機網頁 #proj1");
+        AssertTrue(inlineProjectDraft.Draft != null && inlineProjectDraft.Draft.TaskType == "code_gen", "inline project-name website command still resolves to code_gen draft");
+        AssertTrue(inlineProjectDraft.Draft!.ProjectName == "proj1", "inline project-name token is captured into the draft");
+        AssertTrue(inlineProjectDraft.FollowUpMessages != null && inlineProjectDraft.FollowUpMessages.Contains("confirm"), "inline project-name draft exposes confirm follow-up");
+        var inlineProjectRoot = inlineProjectDraft.Draft.ManagedPaths.ProjectRoot;
+        var inlineProjectConfirmed = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "confirm");
+        AssertTrue(inlineProjectConfirmed.CreatedTask != null && inlineProjectConfirmed.CreatedTask.TaskType == "code_gen", "confirm creates broker task for inline project-name code_gen draft");
+        AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectConfirmed.Reply), "code_gen confirm reply is not empty");
+        AssertTrue(inlineProjectConfirmed.Reply.Contains("已生成網站原型", StringComparison.Ordinal), "code_gen confirm reply reports generated website prototype");
+        AssertTrue(!inlineProjectConfirmed.Reply.Contains("目前擁有的權限", StringComparison.Ordinal), "code_gen confirm reply no longer appends the full command guide");
+        AssertTrue(!string.IsNullOrWhiteSpace(inlineProjectRoot), "code_gen draft captures project root");
+        AssertTrue(File.Exists(Path.Combine(inlineProjectRoot, "index.html")), "code_gen confirm writes index.html into project root");
+        var generatedSiteContent = File.ReadAllText(Path.Combine(inlineProjectRoot, "index.html"), Encoding.UTF8);
+        AssertTrue(generatedSiteContent.Contains("verify", StringComparison.OrdinalIgnoreCase) || generatedSiteContent.Contains("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase), "code_gen project root contains generated HTML content");
+        var codeArtifacts = coordinatorWorkspaceService.ListArtifacts("line-inline-project-user");
+        AssertTrue(codeArtifacts.Any(item => item.RelatedTaskType == "code_gen"), "code_gen confirm records artifact metadata");
+
         var docDraft = await coordinator.ProcessLineMessageAsync("line-doc-user", "/請整理成 markdown 文件，摘要目前進度");
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
@@ -1502,6 +1531,7 @@ try
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
         AssertTrue(docConfirmed.CreatedTask != null && docConfirmed.CreatedTask.TaskType == "doc_gen", "confirm creates broker task for doc_gen draft");
         AssertTrue(docConfirmed.Reply.Contains("已生成", StringComparison.Ordinal), "doc_gen confirm reply includes artifact delivery summary");
+        AssertTrue(!docConfirmed.Reply.Contains("目前擁有的權限", StringComparison.Ordinal), "doc_gen confirm reply no longer appends the full command guide");
         var docManagedPaths = coordinator.GetLineManagedPaths("line-doc-user");
         AssertTrue(docManagedPaths != null, "doc_gen user managed paths can be resolved");
         var docDocumentsRoot = docManagedPaths is null ? throw new Exception("doc_gen managed paths unexpectedly null") : docManagedPaths.DocumentsRoot;
@@ -2316,7 +2346,9 @@ file sealed class FakeGoogleDriveHandler : HttpMessageHandler
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
             if (!body.Contains("multipart/related", StringComparison.OrdinalIgnoreCase) &&
                 !body.Contains("verify-reply", StringComparison.Ordinal) &&
-                !body.Contains("drive delivery verify", StringComparison.Ordinal))
+                !body.Contains("drive delivery verify", StringComparison.Ordinal) &&
+                !body.Contains("<!DOCTYPE html>", StringComparison.OrdinalIgnoreCase) &&
+                !body.Contains("Generated Web Prototype", StringComparison.OrdinalIgnoreCase))
             {
                 throw new Exception("Expected multipart upload body to include generated artifact content.");
             }
