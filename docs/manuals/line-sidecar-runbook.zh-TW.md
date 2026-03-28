@@ -24,6 +24,17 @@
 - line-worker webhook：`127.0.0.1:5357`
 - ngrok tunnel 名稱：`line5357`
 
+## Sidecar 狀態持久化
+
+- sidecar 的執行狀態現在會保存在：
+  - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- 這個資料庫目前會保存 broker 擁有的本機狀態，例如：
+  - 本機後台管理員密碼
+  - shared context 與高階使用者 profile
+  - Google Drive delegated OAuth 憑證
+- `line-sidecar.ps1 restart` 現在應該保留這些狀態，不再因為 publish 目錄重建而一起被清掉。
+- 如果 Google Drive 授權是在這次持久化修正之前建立，且後來已消失，請在目前這個 sidecar 實例上重新授權一次。
+
 ## 前置條件
 
 這台機器至少要有：
@@ -229,6 +240,39 @@ broker 現在支援三種 Google Drive 身分：
 - `shared_delegated`
 
 這對「全部都上傳到同一個 Google Drive」的場景才是正確設計。
+
+## 下載功能需要的設定
+
+目前 live 下載功能主要依賴 Google Drive 交付。也就是說，若要讓 LINE 使用者在生成文件或網站原型後真的拿到可下載連結，至少要有：
+
+1. 可用的高階模型 API
+- `D:\Bricks4Agent\Api.txt`
+- 這決定文件或網站原型能否先被生成
+
+2. 可用的 Google OAuth client JSON
+- `D:\Bricks4Agent\client_secret_*.json`
+- callback URI 必須對應：
+  - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
+
+3. 正確的 Google Drive 交付模式
+- 若你的需求是「所有 LINE 使用者都上傳到同一個 Google Drive」：
+  - 應使用 `shared_delegated`
+- 若改成 `user_delegated`，就會變成每位使用者各自授權自己的 Drive
+
+4. 有效的 Drive 授權憑證已保存在目前 sidecar DB
+- sidecar 現在使用的持久化 DB 是：
+  - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- 若 `google_drive_delegated_credentials` 沒資料，交付結果只會落到本機，不會有雲端下載連結
+
+5. LINE sidecar 已重啟到最新版本
+- 目前的檔案交付、shared delegated owner、持久化 DB 都依賴最新 sidecar publish
+
+目前尚未完成的另一條下載路徑：
+- broker 自有的前台下載 API
+- 前台下載頁
+- broker 控制的下載授權檢查
+
+這些屬於「前台應有功能」，目前仍未完成；所以現在要讓使用者下載，主要還是靠 Google Drive 連結。
 
 ## 目前高階模型
 

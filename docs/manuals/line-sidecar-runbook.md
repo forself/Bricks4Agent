@@ -24,6 +24,17 @@ It does not describe:
 - line-worker webhook: `127.0.0.1:5357`
 - ngrok tunnel name: `line5357`
 
+## Sidecar State Persistence
+
+- Sidecar runtime state now persists at:
+  - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- This database stores broker-owned local state such as:
+  - local admin credentials
+  - shared context and high-level profiles
+  - Google Drive delegated OAuth credentials
+- `line-sidecar.ps1 restart` should preserve that state.
+- If a Google Drive authorization was created before this persistence fix and later disappeared, re-authorize once on the current sidecar instance.
+
 ## Prerequisites
 
 You need these available on the machine:
@@ -219,6 +230,39 @@ For the current local sidecar, the intended default is:
 - `shared_delegated`
 
 This matches the case where one operator-owned Google Drive is used for all uploaded artifacts.
+
+## Settings Required For Downloads
+
+At the moment, live download delivery mainly depends on Google Drive. If you want a LINE user to actually receive a downloadable link after a document or website artifact is generated, you need all of the following:
+
+1. A working high-level model API
+- `D:\Bricks4Agent\Api.txt`
+- This is required before the broker can generate the artifact itself
+
+2. A working Google OAuth client JSON
+- `D:\Bricks4Agent\client_secret_*.json`
+- The callback URI must match:
+  - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
+
+3. The correct Google Drive delivery mode
+- If the requirement is "all LINE users upload into the same Google Drive":
+  - use `shared_delegated`
+- If you switch to `user_delegated`, each LINE user must authorize their own Drive
+
+4. A valid Drive credential stored in the current sidecar DB
+- The persistent sidecar DB is now:
+  - `D:\Bricks4Agent\.run\line-sidecar\data\broker.db`
+- If `google_drive_delegated_credentials` is empty, artifacts can still be generated locally, but cloud download links will not be available
+
+5. The sidecar must be running the latest published build
+- Current artifact delivery, shared delegated owner support, and persistent runtime DB all depend on the latest sidecar publish
+
+There is still one download path that is not finished yet:
+- a broker-owned public/front-end download API
+- a front-end download page
+- broker-controlled download authorization checks
+
+Those are "front-end should-have features" and are still pending. Right now, Google Drive links are the main usable delivery path.
 
 ## Current High-Level Model
 

@@ -40,6 +40,7 @@ public class HighLevelCoordinator
     private readonly HighLevelExecutionPromotionGate _executionPromotionGate;
     private readonly IHighLevelExecutionModelPlanner _executionModelPlanner;
     private readonly HighLevelDocumentArtifactService _documentArtifactService;
+    private readonly HighLevelCodeArtifactService _codeArtifactService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
@@ -55,6 +56,7 @@ public class HighLevelCoordinator
         HighLevelCoordinatorOptions options,
         IHighLevelExecutionModelPlanner executionModelPlanner,
         HighLevelDocumentArtifactService documentArtifactService,
+        HighLevelCodeArtifactService codeArtifactService,
         BrowserBindingService browserBindingService,
         ILogger<HighLevelCoordinator> logger)
     {
@@ -76,6 +78,7 @@ public class HighLevelCoordinator
         _executionPromotionGate = new HighLevelExecutionPromotionGate();
         _executionModelPlanner = executionModelPlanner;
         _documentArtifactService = documentArtifactService;
+        _codeArtifactService = codeArtifactService;
         _browserBindingService = browserBindingService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
@@ -112,13 +115,13 @@ public class HighLevelCoordinator
             Channel = channel,
             UserId = userId
         };
-        var draft = LoadTaskDraft(channel, userId);
+        var draft = ResolvePendingDraft(channel, userId, profile);
 
         if (draft != null && IsExpired(draft))
         {
             DeleteDocument(BuildDraftDocumentId(channel, userId));
             draft = null;
-            profile.PendingDraftId = null;
+            ClearPendingDraftSnapshot(profile);
         }
 
         workflow = _workflowStateMachine.Evaluate(draft, parsed);
@@ -159,7 +162,7 @@ public class HighLevelCoordinator
                 if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
                 {
                     DeleteDocument(BuildDraftDocumentId(channel, userId));
-                    profile.PendingDraftId = null;
+                    ClearPendingDraftSnapshot(profile);
                     profile.LastDecision = HighLevelRouteMode.Production.ToString();
                     profile.LastUpdatedAt = DateTime.UtcNow;
                     IncrementDecisionCount(profile, HighLevelRouteMode.Production);
@@ -193,7 +196,7 @@ public class HighLevelCoordinator
                     TryAssignProjectName(draft, parsed.Body, out projectNameError))
                 {
                     SaveTaskDraft(channel, userId, draft);
-                    profile.PendingDraftId = draft.DraftId;
+                    UpdatePendingDraftSnapshot(profile, draft);
                     var reply = PrepareReplyWithoutGuide(profile, BuildCompactDraftConfirmationReply(draft));
                     SaveUserProfile(channel, userId, profile);
 
@@ -227,7 +230,7 @@ public class HighLevelCoordinator
             if (workflow.Action == HighLevelWorkflowAction.ConfirmDraft)
             {
                 var confirmed = await ConfirmDraft(channel, userId, profile, draft, cancellationToken);
-                confirmed.Result.Reply = PrepareReplySafe(confirmed.Profile, trimmed, confirmed.Result.Reply);
+                confirmed.Result.Reply = PrepareReplyWithoutGuide(confirmed.Profile, confirmed.Result.Reply);
                 SaveUserProfile(channel, userId, confirmed.Profile);
                 return FinalizeResult(channel, userId, envelope, trustedParse, workflow, confirmed.Result);
             }
@@ -235,7 +238,7 @@ public class HighLevelCoordinator
             if (workflow.Action == HighLevelWorkflowAction.CancelDraft)
             {
                 DeleteDocument(BuildDraftDocumentId(channel, userId));
-                profile.PendingDraftId = null;
+                ClearPendingDraftSnapshot(profile);
                 profile.LastDecision = HighLevelRouteMode.Production.ToString();
                 profile.LastUpdatedAt = DateTime.UtcNow;
                 IncrementDecisionCount(profile, HighLevelRouteMode.Production);
@@ -279,8 +282,7 @@ public class HighLevelCoordinator
         {
             var nextDraft = CreateDraft(channel, userId, profile, trimmed, decision);
             SaveTaskDraft(channel, userId, nextDraft);
-
-            profile.PendingDraftId = nextDraft.DraftId;
+            UpdatePendingDraftSnapshot(profile, nextDraft);
             var reply = PrepareReplyWithoutGuide(
                 profile,
                 nextDraft.RequiresProjectName && string.IsNullOrWhiteSpace(nextDraft.ProjectName)
@@ -599,7 +601,7 @@ public class HighLevelCoordinator
         if (rejected)
         {
             DeleteDocument(BuildDraftDocumentId("line", userId));
-            profile.PendingDraftId = null;
+            ClearPendingDraftSnapshot(profile);
             SaveUserProfile("line", userId, profile);
         }
 
@@ -898,7 +900,7 @@ public class HighLevelCoordinator
 
         EnsureManagedWorkspaceLayout(draft.ManagedPaths);
 
-        var memory = _memoryStore.ReadLatest(channel, userId) ?? BuildFallbackMemoryState(channel, userId, profile, draft);
+        var memory = ResolvePromotableMemory(channel, userId, profile, draft);
         var promotion = _executionPromotionGate.Evaluate(memory, draft);
         if (!promotion.Allowed)
         {
@@ -934,7 +936,7 @@ public class HighLevelCoordinator
 
         DeleteDocument(BuildDraftDocumentId(channel, userId));
 
-        profile.PendingDraftId = null;
+        ClearPendingDraftSnapshot(profile);
         profile.LastTaskId = task.TaskId;
         profile.LastPlanId = plan.PlanId;
         profile.LastDecision = HighLevelRouteMode.Production.ToString();
@@ -945,20 +947,38 @@ public class HighLevelCoordinator
             task.TaskId, plan.PlanId, channel, userId);
 
         HighLevelDocumentArtifactResult? artifactResult = null;
+        HighLevelCodeArtifactResult? codeArtifactResult = null;
         if (string.Equals(draft.TaskType, "doc_gen", StringComparison.OrdinalIgnoreCase))
         {
             artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
+        }
+        else if (string.Equals(draft.TaskType, "code_gen", StringComparison.OrdinalIgnoreCase))
+        {
+            codeArtifactResult = await _codeArtifactService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
         }
 
         _logger.LogInformation(
             "High-level confirmed: intent={IntentId} task={TaskId} plan={PlanId} type={TaskType}",
             executionIntent.IntentId, task.TaskId, plan.PlanId, task.TaskType);
 
-        var reply = string.Join('\n', new[]
+        var replyLines = new List<string>
         {
-            $"已確認任務：{draft.Title}",
-            artifactResult == null ? null : BuildArtifactReply(artifactResult)
-        }.Where(line => !string.IsNullOrWhiteSpace(line)));
+            $"已確認任務：{draft.Title}"
+        };
+        if (artifactResult != null)
+        {
+            replyLines.Add(BuildArtifactReply(artifactResult));
+        }
+        else if (codeArtifactResult != null)
+        {
+            replyLines.Add(BuildCodeArtifactReply(codeArtifactResult));
+        }
+        else
+        {
+            replyLines.Add("目前已建立 task / plan / handoff。");
+            replyLines.Add("這條 production 路徑尚未自動啟動下游執行代理，因此還不會直接產出網站。");
+        }
+        var reply = string.Join('\n', replyLines.Where(line => !string.IsNullOrWhiteSpace(line)));
 
         return (new HighLevelProcessResult
         {
@@ -1057,6 +1077,32 @@ public class HighLevelCoordinator
         return $"文件生成失敗：{artifactResult.Message}";
     }
 
+    internal static string BuildCodeArtifactReply(HighLevelCodeArtifactResult artifactResult)
+    {
+        if (!artifactResult.Success)
+            return $"網站原型生成失敗：{artifactResult.Message}";
+
+        var lines = new List<string>
+        {
+            "已生成網站原型。",
+            $"project_root: {artifactResult.ProjectRoot}",
+            $"entry_file: {artifactResult.EntryFilePath}"
+        };
+
+        if (artifactResult.Delivery?.GoogleDrive?.Success == true)
+        {
+            lines.Add("雲端交付已完成。");
+            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.DownloadLink);
+        }
+        else if (artifactResult.Delivery != null)
+        {
+            lines.Add("雲端上傳未完成，但本機專案檔已建立。");
+        }
+
+        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
     private static HighLevelMemoryState BuildFallbackMemoryState(
         string channel,
         string userId,
@@ -1093,6 +1139,42 @@ public class HighLevelCoordinator
             LastTaskType = draft.TaskType,
             UpdatedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    private HighLevelMemoryState ResolvePromotableMemory(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        HighLevelTaskDraft draft)
+    {
+        var latestMemory = _memoryStore.ReadLatest(channel, userId);
+        if (latestMemory == null)
+        {
+            return BuildFallbackMemoryState(channel, userId, profile, draft);
+        }
+
+        var matchesDraft =
+            string.Equals(latestMemory.PendingDraftId, draft.DraftId, StringComparison.Ordinal) &&
+            string.Equals(latestMemory.LastTaskType, draft.TaskType, StringComparison.OrdinalIgnoreCase);
+
+        var eligibleForPromotion =
+            string.Equals(latestMemory.LastRouteMode, HighLevelRouteMode.Production.ToString(), StringComparison.OrdinalIgnoreCase) &&
+            (!draft.RequiresProjectName || string.Equals(latestMemory.ProjectName, draft.ProjectName, StringComparison.Ordinal));
+
+        if (matchesDraft && eligibleForPromotion)
+        {
+            return latestMemory;
+        }
+
+        _logger.LogInformation(
+            "Promotion memory fallback: channel={Channel} user={UserId} draft={DraftId} route={Route} pendingDraft={PendingDraft}",
+            channel,
+            userId,
+            draft.DraftId,
+            latestMemory.LastRouteMode,
+            latestMemory.PendingDraftId);
+
+        return BuildFallbackMemoryState(channel, userId, profile, draft);
     }
 
     private HighLevelRouteDecision Classify(HighLevelParsedInput parsed)
@@ -1153,7 +1235,11 @@ public class HighLevelCoordinator
             _ => $"Production task from {channel} request"
         };
         var requiresProjectName = decision.TaskType == "code_gen";
-        var managedPaths = BuildManagedPaths(channel, userId, profile, null);
+        var inlineProjectName = requiresProjectName ? TryExtractInlineProjectName(message) : null;
+        var inlineProjectFolderName = string.IsNullOrWhiteSpace(inlineProjectName)
+            ? null
+            : SanitizePathSegment(inlineProjectName, "project");
+        var managedPaths = BuildManagedPaths(channel, userId, profile, inlineProjectFolderName);
 
         var draft = new HighLevelTaskDraft
         {
@@ -1167,6 +1253,8 @@ public class HighLevelCoordinator
             Description = $"Origin: {channel}:{userId}\n\nUser request:\n{message}",
             ManagedPaths = managedPaths,
             RequiresProjectName = requiresProjectName,
+            ProjectName = inlineProjectName,
+            ProjectFolderName = inlineProjectFolderName,
             ProposedPhases = BuildProposedPhases(decision.TaskType),
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(Math.Max(1, _options.DraftTtlMinutes))
@@ -1923,6 +2011,22 @@ public class HighLevelCoordinator
         return null;
     }
 
+    private static string? TryExtractInlineProjectName(string message)
+    {
+        var trimmed = message.Trim();
+        var directHashMatch = Regex.Match(trimmed, @"(?:^|\s)[#＃](?<name>[^\s#＃]+)\s*$", RegexOptions.CultureInvariant);
+        if (directHashMatch.Success)
+        {
+            var candidate = NormalizeProjectNameInput(directHashMatch.Groups["name"].Value);
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return TryExtractProjectNameHint(message);
+    }
+
     private static string NormalizeProjectNameInput(string rawInput)
     {
         var candidate = rawInput.Trim();
@@ -2006,6 +2110,50 @@ public class HighLevelCoordinator
     private HighLevelUserCodeReservation? LoadUserCodeReservation(string channel, string userCode)
         => LoadLatestJson<HighLevelUserCodeReservation>(BuildUserCodeDocumentId(channel, userCode));
 
+    private HighLevelTaskDraft? ResolvePendingDraft(string channel, string userId, HighLevelUserProfile profile)
+    {
+        var persisted = LoadTaskDraft(channel, userId);
+        if (persisted != null)
+        {
+            return persisted;
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.PendingDraftId) ||
+            string.IsNullOrWhiteSpace(profile.PendingDraftTaskType) ||
+            string.IsNullOrWhiteSpace(profile.PendingDraftOriginalMessage))
+        {
+            return null;
+        }
+
+        var draft = new HighLevelTaskDraft
+        {
+            DraftId = profile.PendingDraftId,
+            Channel = channel,
+            UserId = userId,
+            OriginalMessage = profile.PendingDraftOriginalMessage,
+            Summary = profile.PendingDraftSummary ?? profile.PendingDraftOriginalMessage,
+            TaskType = profile.PendingDraftTaskType,
+            Title = profile.PendingDraftTitle ?? "Production task from line request",
+            Description = profile.PendingDraftDescription ?? $"Origin: {channel}:{userId}\n\nUser request:\n{profile.PendingDraftOriginalMessage}",
+            RequiresProjectName = profile.PendingDraftRequiresProjectName,
+            ProjectName = profile.PendingDraftProjectName,
+            ProjectFolderName = profile.PendingDraftProjectFolderName,
+            ManagedPaths = BuildManagedPaths(channel, userId, profile, profile.PendingDraftProjectFolderName),
+            ProposedPhases = BuildProposedPhases(profile.PendingDraftTaskType),
+            CreatedAt = profile.PendingDraftCreatedAt ?? DateTime.UtcNow,
+            ExpiresAt = profile.PendingDraftExpiresAt ?? DateTime.UtcNow.AddMinutes(Math.Max(1, _options.DraftTtlMinutes))
+        };
+        UpdateDraftDescriptors(draft);
+
+        _logger.LogInformation(
+            "Rehydrated pending draft from profile snapshot: channel={Channel} user={UserId} draft={DraftId}",
+            channel,
+            userId,
+            draft.DraftId);
+
+        return draft;
+    }
+
     private void SaveUserProfile(string channel, string userId, HighLevelUserProfile profile)
     {
         profile.Channel = channel;
@@ -2023,6 +2171,36 @@ public class HighLevelCoordinator
     {
         profile.Permissions ??= HighLevelUserPermissions.CreateDefault();
         return profile.Permissions;
+    }
+
+    private static void UpdatePendingDraftSnapshot(HighLevelUserProfile profile, HighLevelTaskDraft draft)
+    {
+        profile.PendingDraftId = draft.DraftId;
+        profile.PendingDraftOriginalMessage = draft.OriginalMessage;
+        profile.PendingDraftSummary = draft.Summary;
+        profile.PendingDraftTaskType = draft.TaskType;
+        profile.PendingDraftTitle = draft.Title;
+        profile.PendingDraftDescription = draft.Description;
+        profile.PendingDraftRequiresProjectName = draft.RequiresProjectName;
+        profile.PendingDraftProjectName = draft.ProjectName;
+        profile.PendingDraftProjectFolderName = draft.ProjectFolderName;
+        profile.PendingDraftCreatedAt = draft.CreatedAt;
+        profile.PendingDraftExpiresAt = draft.ExpiresAt;
+    }
+
+    private static void ClearPendingDraftSnapshot(HighLevelUserProfile profile)
+    {
+        profile.PendingDraftId = null;
+        profile.PendingDraftOriginalMessage = null;
+        profile.PendingDraftSummary = null;
+        profile.PendingDraftTaskType = null;
+        profile.PendingDraftTitle = null;
+        profile.PendingDraftDescription = null;
+        profile.PendingDraftProjectName = null;
+        profile.PendingDraftProjectFolderName = null;
+        profile.PendingDraftRequiresProjectName = false;
+        profile.PendingDraftCreatedAt = null;
+        profile.PendingDraftExpiresAt = null;
     }
 
     private void SaveUserCodeReservation(string channel, string userId, string userCode)
@@ -2068,21 +2246,26 @@ public class HighLevelCoordinator
 
     private T? LoadLatestJson<T>(string documentId)
     {
-        var latest = _db.Query<SharedContextEntry>(
-            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
-            new { docId = documentId }).FirstOrDefault();
+        var json = _db.Scalar<string>(
+            "SELECT content_ref FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            new { docId = documentId });
 
-        if (latest == null || string.IsNullOrWhiteSpace(latest.ContentRef))
+        if (string.IsNullOrWhiteSpace(json))
         {
             return default;
         }
 
         try
         {
-            return JsonSerializer.Deserialize<T>(latest.ContentRef);
+            return JsonSerializer.Deserialize<T>(json);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(
+                ex,
+                "Failed to deserialize high-level document {DocumentId} as {TypeName}",
+                documentId,
+                typeof(T).Name);
             return default;
         }
     }
@@ -2898,6 +3081,16 @@ public class HighLevelUserProfile
     public string? LastTaskId { get; set; }
     public string? LastPlanId { get; set; }
     public string? PendingDraftId { get; set; }
+    public string? PendingDraftOriginalMessage { get; set; }
+    public string? PendingDraftSummary { get; set; }
+    public string? PendingDraftTaskType { get; set; }
+    public string? PendingDraftTitle { get; set; }
+    public string? PendingDraftDescription { get; set; }
+    public bool PendingDraftRequiresProjectName { get; set; }
+    public string? PendingDraftProjectName { get; set; }
+    public string? PendingDraftProjectFolderName { get; set; }
+    public DateTime? PendingDraftCreatedAt { get; set; }
+    public DateTime? PendingDraftExpiresAt { get; set; }
     public Dictionary<string, int> DecisionCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
 }

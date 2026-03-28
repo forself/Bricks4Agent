@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
 $runRoot = Join-Path $repoRoot ".run\line-sidecar"
+$dataRoot = Join-Path $runRoot "data"
 $brokerOut = Join-Path $runRoot "broker"
 $workerOut = Join-Path $runRoot "line-worker"
 $logDir = Join-Path $runRoot "logs"
@@ -27,12 +28,40 @@ $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
 $googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
+$brokerRuntimeDbPath = Join-Path $dataRoot "broker.db"
 $ngrokConfigPath = Join-Path $env:LOCALAPPDATA "ngrok\ngrok.yml"
 $ngrokOutLog = Join-Path $logDir "ngrok.out.log"
 $ngrokErrLog = Join-Path $logDir "ngrok.err.log"
 
-foreach ($dir in @($runRoot, $brokerOut, $workerOut, $logDir)) {
+foreach ($dir in @($runRoot, $dataRoot, $brokerOut, $workerOut, $logDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
+}
+
+function Initialize-BrokerRuntimeDatabase {
+    param(
+        [string]$LegacyBrokerOutputPath,
+        [string]$RuntimeDbPath
+    )
+
+    $runtimeDir = Split-Path -Parent $RuntimeDbPath
+    New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+
+    if (Test-Path $RuntimeDbPath) {
+        return
+    }
+
+    $legacyDbPath = Join-Path $LegacyBrokerOutputPath "broker.db"
+    if (-not (Test-Path $legacyDbPath)) {
+        return
+    }
+
+    Copy-Item -LiteralPath $legacyDbPath -Destination $RuntimeDbPath -Force
+    foreach ($suffix in @("-wal", "-shm")) {
+        $legacySidecarPath = "$legacyDbPath$suffix"
+        if (Test-Path $legacySidecarPath) {
+            Copy-Item -LiteralPath $legacySidecarPath -Destination "$RuntimeDbPath$suffix" -Force
+        }
+    }
 }
 
 function Clear-PublishOutputDirectory {
@@ -272,6 +301,7 @@ Stop-RecordedProcess -PidFile $brokerPidFile
 Stop-RecordedProcess -PidFile $workerPidFile
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $brokerOut "Broker.exe") -Label "broker"
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $workerOut "LineWorker.exe") -Label "line-worker"
+Initialize-BrokerRuntimeDatabase -LegacyBrokerOutputPath $brokerOut -RuntimeDbPath $brokerRuntimeDbPath
 
 if (-not $SkipBuild) {
     Clear-PublishOutputDirectory -Path $brokerOut -Label "broker"
@@ -305,7 +335,11 @@ if (Test-Path $brokerProductionOverridePath) {
 if (Test-Path $openAiApiKeyFile) {
     $openAiApiKey = (Get-Content -Encoding utf8 $openAiApiKeyFile -Raw).Trim()
 }
-$productionOverrideMap = @{}
+$productionOverrideMap = @{
+    Database = @{
+        Path = $brokerRuntimeDbPath
+    }
+}
 if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
         ApiKey = $openAiApiKey

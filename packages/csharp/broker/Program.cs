@@ -188,6 +188,7 @@ builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
@@ -477,6 +478,8 @@ builder.Services.AddSingleton<IPlanEngine>(sp =>
         sp.GetRequiredService<IObservationService>()));
 
 var app = builder.Build();
+
+app.Logger.LogInformation("Broker database path: {DbPath}", dbPath);
 
 app.Use(async (context, next) =>
 {
