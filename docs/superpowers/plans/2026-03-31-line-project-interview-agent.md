@@ -10,6 +10,41 @@
 
 ---
 
+## Design Rationale
+
+### Why a state machine
+
+The interview workflow is a protocol, not a free chat. A state machine is the correct control model because it constrains admissible commands, makes approval checkpoints explicit, and prevents accidental transitions from ambiguous natural language. In formal terms, this reduces control-flow entropy and keeps task progression deterministic even when semantic interpretation remains probabilistic.
+
+### Why a per-version DAG
+
+The generated JSON/PDF pair is not just a transcript artifact. It is a derived product whose provenance must remain auditable. A directed acyclic graph is appropriate because each review version is a one-way compilation from confirmed assertions to canonical project definition to rendered artifacts. Revision creates a new graph instead of mutating the old one, which preserves lineage and avoids hidden circular dependencies.
+
+### Why confirmed restatements instead of free-form memory
+
+Long-horizon agent memory fails mainly because compression introduces drift. The design therefore treats memory as a set of confirmed restatements rather than a rolling summary. This follows a verification-first epistemic model: unconfirmed interpretation remains provisional, while only explicit user-confirmed statements are promoted to canonical truth.
+
+### Why template-first narrowing
+
+The system should not solve an open-world synthesis problem if the implementation substrate is already bounded by an existing component library and runtime. Template-first narrowing reduces hypothesis space early, improves consistency, and lowers the cost of downstream implementation planning. In software architecture terms, this moves the system from unconstrained generation to guided configuration over a known capability surface.
+
+### Why document-first JSON-defined programs
+
+The canonical machine-readable output should be a document that defines the program, not ad hoc handwritten code assembled directly from chat. This aligns with model-driven engineering: the interview produces a structured intermediate representation, and the existing page-generator/runtime acts as the execution substrate. The benefit is separation of concerns between intent capture, structural definition, and executable rendering.
+
+### Why bilingual planning artifacts
+
+This feature touches both implementation and design review. Maintaining English and Traditional Chinese planning artifacts improves review accessibility while keeping execution precise. The English plan remains the source of exact code snippets and shell commands; the Chinese companion preserves the same task structure and rationale to support architectural discussion and review.
+
+## Language Versions
+
+- English source plan: `docs/superpowers/plans/2026-03-31-line-project-interview-agent.md`
+- Traditional Chinese companion: `docs/superpowers/plans/2026-03-31-line-project-interview-agent.zh-TW.md`
+
+The English plan is the canonical execution document for exact code blocks and commands. The Chinese companion must stay structurally aligned with it.
+
+---
+
 ## File Map
 
 ### Create
