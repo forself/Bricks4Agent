@@ -188,6 +188,15 @@ The model remains responsible for:
 
 ## Session And State Model
 
+The correct control model for this feature is not a single abstraction.
+Version one should use:
+
+- a session-level state machine for task progression and command handling
+- a per-version directed acyclic graph (DAG) for requirement compilation and artifact derivation
+
+The state machine controls allowed transitions.
+The DAG controls dependency truth for a specific document version.
+
 Each `/proj` invocation creates a dedicated session bound to:
 
 - `task_id`
@@ -218,23 +227,115 @@ The task state should track:
 
 Recommended phases:
 
-1. `collect_project_name`
-2. `classify_project_scale`
-3. `select_template_family`
-4. `collect_template_requirements`
-5. `gap_review`
-6. `draft_workflow_design`
-7. `await_user_review`
-8. `revise_workflow_design`
-9. `confirmed`
-10. `cancelled`
+1. `idle`
+2. `collect_project_name`
+3. `classify_project_scale`
+4. `narrow_template_family`
+5. `confirm_template_family`
+6. `collect_template_requirements`
+7. `resolve_conflicts`
+8. `compile_project_definition`
+9. `render_review_artifacts`
+10. `await_user_review`
+11. `revise_requested`
+12. `confirmed`
+13. `cancelled`
+14. `failed`
 
 State transition rules:
 
-- the session starts in `collect_project_name`
+- the session starts in `idle` and enters `collect_project_name` on `/proj`
 - it cannot leave that phase until the name is valid and unique
-- it cannot enter `draft_workflow_design` while any required assertion bundle is unresolved or conflicted
+- it cannot enter `compile_project_definition` while any required assertion bundle is unresolved or conflicted
+- it cannot enter `render_review_artifacts` without a successful canonical project-instance JSON build
 - it cannot enter `confirmed` without a generated document version and explicit `/ok`
+- `/revise` from `await_user_review` must move the session to `revise_requested`, then back to the appropriate collection phase
+- `/cancel` may transition any active non-terminal phase to `cancelled`
+
+### State-machine responsibilities
+
+The session state machine owns:
+
+- command admissibility
+- phase progression
+- review gating
+- retry and failure handling
+- cancellation
+- revision entry
+
+It does not define truth derivation for the generated artifacts.
+That belongs to the per-version DAG.
+
+## Per-Version DAG Model
+
+Each generated review version `vN` should have its own directed acyclic graph.
+The graph represents how confirmed information for that version produces its JSON and PDF artifacts.
+
+This graph must remain acyclic.
+Revision does not mutate the old graph into a loop.
+Revision creates a new graph for the next version.
+
+### DAG purpose
+
+The DAG exists to make these relationships explicit:
+
+- which assertions are confirmed
+- which derived choices depend on them
+- which outputs were rendered from which canonical inputs
+
+### Recommended DAG nodes
+
+At minimum, a version DAG should contain nodes equivalent to:
+
+- `raw_user_messages`
+- `interpreted_candidates`
+- `restatement_options`
+- `user_selection_or_correction`
+- `confirmed_assertions`
+- `project_scale`
+- `template_family_candidates`
+- `selected_template_family`
+- `selected_modules`
+- `style_profile`
+- `constraints`
+- `project_instance_definition_json`
+- `workflow_design_view_model`
+- `workflow_design_pdf`
+- `artifact_bundle`
+- `delivery_links`
+
+### Recommended DAG edges
+
+The main dependency shape should be:
+
+`raw_user_messages -> interpreted_candidates -> restatement_options -> user_selection_or_correction -> confirmed_assertions`
+
+`confirmed_assertions -> project_scale`
+
+`confirmed_assertions -> template_family_candidates -> selected_template_family`
+
+`confirmed_assertions -> selected_modules`
+
+`confirmed_assertions -> style_profile`
+
+`confirmed_assertions -> constraints`
+
+`project_scale + selected_template_family + selected_modules + style_profile + constraints -> project_instance_definition_json`
+
+`project_instance_definition_json -> workflow_design_view_model -> workflow_design_pdf`
+
+`workflow_design_pdf + project_instance_definition_json -> artifact_bundle -> delivery_links`
+
+### Revision rule
+
+If the user sends `/revise`:
+
+- the previous version graph remains immutable
+- revision requests produce new candidate assertions
+- newly confirmed assertions produce a new canonical project-instance JSON
+- the system builds a fresh DAG for `vN+1`
+
+This makes version history auditable and prevents hidden mutation of past outputs.
 
 ## Requirement Memory Model
 
@@ -308,6 +409,8 @@ Tracks generated outputs:
 - current JSON artifact id
 - review history
 - approval status
+- current DAG id or digest
+- prior version references
 
 ## Restatement And Confirmation Protocol
 
@@ -633,16 +736,18 @@ Therefore the design should use a controlled verification model instead of prete
 ### Canonical source
 
 The canonical source of truth is the structured JSON.
+More precisely, it is the canonical project-instance JSON derived from confirmed assertions inside a specific version DAG.
 
 ### Render pipeline
 
 Recommended pipeline:
 
 1. confirmed assertion state
-2. canonical project-instance JSON
-3. deterministic document view-model
-4. deterministic intermediate markdown or HTML
-5. PDF render
+2. version DAG build
+3. canonical project-instance JSON
+4. deterministic document view-model
+5. deterministic intermediate markdown or HTML
+6. PDF render
 
 ### Verification strategy
 
@@ -655,6 +760,7 @@ Version one should enforce consistency using three checks:
    - generate a digest from canonical project-instance JSON
    - embed the digest, task id, and version in the rendered document metadata or appendix
    - record the same digest in artifact state
+   - record the source DAG id or digest alongside the artifact pair
 
 3. **section coverage check**
    - before rendering PDF, validate that the intermediate document contains all required sections:
@@ -720,12 +826,14 @@ Recommended new document families:
 - `hlm.project-interview.state.{channel}.{userId}`
 - `hlm.project-interview.requirements.{channel}.{userId}`
 - `hlm.project-interview.review.{channel}.{userId}`
+- `hlm.project-interview.version-graph.{channel}.{userId}.{version}`
 
 Suggested artifact linkage:
 
 - PDF and JSON outputs should be recorded through existing artifact recording and delivery services
 - the current task state should point to the latest artifact ids and version number
 - the task state should also point to the selected scale, template family, and DSL path
+- each version should preserve its own DAG metadata and upstream assertion references
 
 This keeps the new feature aligned with the broker’s existing task/document model instead of introducing a parallel storage system.
 
