@@ -1005,3 +1005,6 @@ class RagFtsResult
     [BaseOrm.Column("rank")]
     public double Rank { get; set; }
 }
+
+// Marker class for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

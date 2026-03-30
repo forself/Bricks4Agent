@@ -25,6 +25,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "puppeteer": "^24.36.0"
+    "jsdom": "^29.0.1",
+    "puppeteer": "^24.36.0",
+    "vitest": "^4.1.2"
   }
 }
