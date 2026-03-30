@@ -50,8 +50,10 @@ Version one covers:
 - `/proj` explicit task entry
 - project interview session creation
 - project-name uniqueness validation
-- task-scoped working memory
-- structured requirement slots
+- task-scoped assertion memory
+- project scale classification
+- template-family selection
+- JSON-defined program generation
 - gap and conflict detection
 - workflow design document generation
 - versioned PDF output for the user
@@ -161,8 +163,9 @@ Recommended components:
 
 - command/parser extension for `/proj`
 - `project_interview` task draft and state handling inside `HighLevelCoordinator`
-- structured requirement state store
+- assertion-state store
 - interview progression service
+- template-library selection service
 - workflow design document generator
 - PDF render service
 - artifact delivery through existing `LineArtifactDeliveryService`
@@ -200,6 +203,11 @@ The task state should track:
 - `current_question_id`
 - `project_name`
 - `project_folder_name`
+- `project_scale`
+- `candidate_template_families`
+- `selected_template_family`
+- `selected_modules`
+- `selected_style_profile`
 - `document_version`
 - `review_state`
 - `latest_pdf_artifact_id`
@@ -211,24 +219,28 @@ The task state should track:
 Recommended phases:
 
 1. `collect_project_name`
-2. `collect_requirements`
-3. `gap_review`
-4. `draft_workflow_design`
-5. `await_user_review`
-6. `revise_workflow_design`
-7. `confirmed`
-8. `cancelled`
+2. `classify_project_scale`
+3. `select_template_family`
+4. `collect_template_requirements`
+5. `gap_review`
+6. `draft_workflow_design`
+7. `await_user_review`
+8. `revise_workflow_design`
+9. `confirmed`
+10. `cancelled`
 
 State transition rules:
 
 - the session starts in `collect_project_name`
 - it cannot leave that phase until the name is valid and unique
-- it cannot enter `draft_workflow_design` while any required slot is `missing` or `conflicted`
+- it cannot enter `draft_workflow_design` while any required assertion bundle is unresolved or conflicted
 - it cannot enter `confirmed` without a generated document version and explicit `/ok`
 
 ## Requirement Memory Model
 
 Task-scoped memory should be split into four layers.
+The key rule is that memory is not a free-form summary.
+The canonical state is built from confirmed restatements and assertions.
 
 ### 1. Conversation log
 
@@ -242,17 +254,23 @@ Short-lived operational state:
 
 - current phase
 - current question
+- current restatement bundle
 - unresolved ambiguities
 - recent user answer
 - pending follow-up reason
 
-### 3. Structured requirements
+### 3. Assertion registry
 
 This is the canonical requirement state.
 
-Each field should carry:
+The smallest memory unit is an assertion.
+Users do not interact with naked assertions directly.
+The system groups assertions into explicit restatement options for confirmation.
 
-- `value`
+Each assertion should carry:
+
+- `assertion_id`
+- `statement`
 - `status`
 - `evidence`
 - `updated_at`
@@ -260,11 +278,27 @@ Each field should carry:
 Allowed statuses:
 
 - `missing`
-- `partial`
-- `filled`
+- `candidate`
+- `confirmed`
+- `rejected`
+- `superseded`
 - `conflicted`
 
-### 4. Design artifact state
+### 4. Structured project definition
+
+This is the canonical machine-readable task output derived from confirmed assertions.
+
+It should contain:
+
+- project scale
+- selected template family
+- selected modules
+- style profile
+- constraint set
+- generated JSON-defined program
+- workflow-design render metadata
+
+### 5. Design artifact state
 
 Tracks generated outputs:
 
@@ -275,22 +309,58 @@ Tracks generated outputs:
 - review history
 - approval status
 
+## Restatement And Confirmation Protocol
+
+Version one should not rely on long free-form conversational carryover.
+It should reduce semantic scope every turn.
+
+### Core rule
+
+Every meaningful requirement update must pass through:
+
+1. user input
+2. system interpretation
+3. explicit restatement
+4. user confirmation or correction
+5. assertion-state update
+
+### User-facing interaction unit
+
+The internal truth unit is an assertion.
+The user-facing interaction unit is an explicit statement composed from one or more assertions.
+
+Each question round should prefer:
+
+- 1 to 3 explicit statement options
+- 1 conservative escape option such as:
+  - "none of these is precise"
+  - "closest to A, but I need to revise it"
+
+### Hard rule
+
+Unconfirmed interpretation must not be promoted to canonical memory.
+It may remain in working memory as a pending interpretation only.
+
 ## Required Requirement Schema
 
 Version one should define a fixed required schema.
+This schema is populated from confirmed assertions, not direct free-form slot filling.
 
 Minimum required fields:
 
 - `project_name`
+- `project_scale`
+- `template_family`
 - `project_goal`
 - `target_users`
-- `project_type`
-- `core_features`
-- `user_flows`
+- `enabled_modules`
+- `disabled_modules`
+- `core_user_flows`
 - `data_entities`
-- `auth_requirements`
+- `auth_profile`
 - `external_integrations`
 - `deployment_target`
+- `style_profile`
 - `non_functional_requirements`
 - `acceptance_criteria`
 - `constraints`
@@ -298,10 +368,88 @@ Minimum required fields:
 
 These fields must be complete enough to support:
 
+- template selection,
 - architecture summary,
 - implementation plan outline,
 - task-flow decomposition,
 - downstream implementation gating.
+
+## Project Scale Classification
+
+The interview must classify project scale before deep requirement expansion.
+
+Version one should support:
+
+- `tool_page`
+  - single-purpose page or simple utility
+  - uses lightweight UI composition DSL
+- `mini_app`
+  - small multi-page application with basic data flow
+  - uses compact structure DSL
+- `structured_app`
+  - multi-module, multi-flow application
+  - uses full workflow/structure DSL
+
+This classification limits both interview scope and the allowed template space.
+
+## Template Library Strategy
+
+Templates should be treated as large reusable components above the existing component library.
+
+They must not be raw hand-authored project code first.
+Version one should define templates primarily as JSON-defined programs that compile onto existing runtime and component mechanisms.
+
+Each template family should declare:
+
+- interaction structure
+- supported project scales
+- required sections/pages
+- optional modules
+- unsupported patterns
+- allowed style controls
+- required component-library capabilities
+- DSL path
+
+Recommended initial template families:
+
+- `content_showcase`
+- `form_collection`
+- `member_portal`
+- `list_search`
+- `crud_admin`
+- `dashboard`
+- `multi_step_flow`
+- `transaction_flow`
+
+## JSON-Defined Program Model
+
+The canonical project definition should be document-first.
+
+Version one should prefer three JSON layers:
+
+1. `template_definition`
+   - structure skeleton
+   - route graph
+   - page/section composition
+   - module attachment points
+2. `module_definition`
+   - auth
+   - search/filter
+   - CRUD detail
+   - workflow steps
+   - dashboard widgets
+3. `project_instance_definition`
+   - selected template
+   - enabled modules
+   - style selections
+   - project-specific configuration
+
+Existing runtime mechanisms remain the execution substrate:
+
+- `packages/javascript/browser/page-generator`
+- `packages/javascript/browser/ui_components`
+- `templates/spa/frontend/runtime/page-generator`
+- `templates/spa/frontend/core`
 
 ## Project Name Rules
 
@@ -327,50 +475,54 @@ This check should reuse the existing managed-workspace isolation rules already p
 ### Default flow when the user does not interrupt
 
 The interview should use a fixed skeleton with dynamic follow-up.
+The sequence should be template-first rather than fully open-ended.
 
 Recommended base sequence:
 
 1. project name
-2. project goal
-3. target users
-4. system type
-5. core features
-6. user flows
-7. data and persistence
-8. auth and permissions
-9. external integrations
-10. deployment target
-11. non-functional requirements
-12. acceptance criteria
-13. constraints and out-of-scope
+2. project scale classification
+3. candidate template family narrowing
+4. primary template family selection
+5. project goal and target users
+6. enabled and disabled modules
+7. key user flows
+8. data and persistence
+9. auth and permissions
+10. external integrations
+11. deployment target
+12. style profile
+13. non-functional requirements
+14. acceptance criteria
+15. constraints and out-of-scope
 
 ### One-question rule
 
 Version one should ask one primary question at a time.
 
 This keeps the LINE interaction manageable and improves extraction quality.
+Each question should prefer explicit statement options over broad free-form prompts.
 
 ### Dynamic follow-up rule
 
 After every user answer, the system must do three things:
 
-1. update structured requirement slots
-2. detect `missing`, `partial`, or `conflicted` fields
+1. update pending interpretations
+2. restate them as explicit statement options when needed
 3. choose the next most important question
 
 Priority order:
 
 1. resolve `conflicted`
-2. fill `missing`
-3. clarify `partial`
+2. confirm candidate assertions
+3. fill `missing`
 4. continue the default skeleton
 
 ### Handling user interruptions
 
 If the user interrupts with additional requirement detail:
 
-- map it into the appropriate slots
-- mark affected dependent fields for re-check
+- map it into pending assertions
+- mark affected template/module choices for re-check
 - continue from the highest-priority unresolved field
 
 If the user asks a side question:
@@ -382,34 +534,36 @@ If the user requests revision after document generation:
 
 - enter `revise_workflow_design`
 - capture the revision request
-- update slots and affected sections
+- update affected assertions, template selections, and document sections
 - regenerate the next version
 
 ## Gap And Conflict Detection
 
-The model may propose slot updates, but the broker must also run deterministic validation.
+The model may propose interpretations, but the broker must also run deterministic validation.
 
 ### Gap examples
 
-- `auth_requirements = required` but no login or role model specified
-- deployment target declared but runtime stack unspecified
-- core features given but no acceptance criteria
+- a template family is selected but no enabled modules are chosen
+- auth is required but no login or role model is confirmed
+- deployment target is declared but no compatible DSL path is selected
+- core features are given but no acceptance criteria are confirmed
 
 ### Conflict examples
 
-- `project_type = frontend_only` with backend-only deployment target
-- `deployment_target = windows service` with SPA-only scope
-- `auth_requirements = none` while role-based access control is requested
+- `project_scale = tool_page` with a structured multi-role workflow
+- `template_family = content_showcase` with required CRUD admin behavior
+- `deployment_target = windows service` with a SPA-only template path
+- `auth_profile = none` while role-based access control is required
 
 ### Hard rule
 
 The session must not generate a reviewable workflow design document until:
 
+- no required assertion bundle is unresolved
 - no required field is `missing`
 - no required field is `conflicted`
 
-`partial` fields may only be allowed into draft generation if a deterministic policy explicitly permits them.
-Version one should be conservative and require all required fields to be `filled`.
+Version one should be conservative and require all required fields to be backed by confirmed assertions.
 
 ## Workflow Design Output
 
@@ -418,12 +572,16 @@ The workflow design output is the mandatory checkpoint artifact for this task.
 It should include:
 
 - project overview
+- project scale classification
+- selected template family and why it fits
+- selected modules and excluded modules
 - normalized requirements summary
 - architecture proposal
 - component/module breakdown
 - data model summary
 - external integration summary
 - deployment target summary
+- DSL path summary
 - implementation phases
 - detailed task flow table
 - testing strategy with TDD expectation
@@ -449,6 +607,7 @@ The broker must also generate:
 - `workflow-design.vN.json`
 
 This JSON is the canonical machine-readable task output for downstream automation.
+It should be the derived project-instance definition, not just a slot dump.
 
 ### Versioning
 
@@ -479,20 +638,21 @@ The canonical source of truth is the structured JSON.
 
 Recommended pipeline:
 
-1. JSON requirement state
-2. deterministic document view-model
-3. deterministic intermediate markdown or HTML
-4. PDF render
+1. confirmed assertion state
+2. canonical project-instance JSON
+3. deterministic document view-model
+4. deterministic intermediate markdown or HTML
+5. PDF render
 
 ### Verification strategy
 
 Version one should enforce consistency using three checks:
 
 1. **schema completeness check**
-   - JSON must pass required-field validation before render
+   - project-instance JSON must pass required-field validation before render
 
 2. **render manifest check**
-   - generate a digest from canonical JSON
+   - generate a digest from canonical project-instance JSON
    - embed the digest, task id, and version in the rendered document metadata or appendix
    - record the same digest in artifact state
 
@@ -565,6 +725,7 @@ Suggested artifact linkage:
 
 - PDF and JSON outputs should be recorded through existing artifact recording and delivery services
 - the current task state should point to the latest artifact ids and version number
+- the task state should also point to the selected scale, template family, and DSL path
 
 This keeps the new feature aligned with the broker’s existing task/document model instead of introducing a parallel storage system.
 
@@ -575,7 +736,9 @@ The interview model prompt must explicitly enforce:
 - task-scoped memory only
 - no user-history reuse
 - one primary question at a time
-- requirement extraction into slots
+- explicit restatement before canonical write
+- requirement extraction into assertions and confirmed bundles
+- template-first narrowing
 - no implementation promises
 - no approval inference without `/ok`
 - no skipped gaps or unresolved contradictions
@@ -603,7 +766,7 @@ That requirement belongs in the generated workflow design output even though ver
 ### Render failure
 
 - mark the artifact generation step as failed
-- retain the structured requirement state
+- retain the assertion state and canonical project-instance JSON inputs
 - allow regeneration after retry
 
 ### Delivery failure
@@ -620,10 +783,10 @@ Minimum test coverage should include:
 1. `/proj` routes into `project_interview`
 2. normal chat does not enter `project_interview`
 3. project name uniqueness gate blocks duplicates
-4. required-field validator correctly marks `missing`, `partial`, and `conflicted`
-5. default interview flow advances question by question
-6. user interruption updates the correct slots
-7. document generation is blocked while required slots are incomplete
+4. project scale classification selects the correct DSL path
+5. template-family narrowing returns bounded candidate sets
+6. restatement confirmation promotes assertions only after explicit user confirmation
+7. document generation is blocked while required assertions or fields are incomplete
 8. document generation creates versioned JSON state
 9. document generation creates versioned PDF artifact metadata
 10. `/ok` only confirms when a reviewable document version exists
@@ -663,7 +826,8 @@ This feature should be shipped in two stages.
 Build only the dedicated interview-and-review workflow:
 
 - `/proj`
-- requirement slots
+- assertion-based interview state
+- scale/template/DSL selection
 - document generation
 - PDF/JSON delivery
 - explicit review gate
@@ -680,13 +844,13 @@ The feature is complete for version one when:
 
 - a LINE user can enter `/proj`
 - the broker starts a task-scoped interview session
-- the session collects all required requirement fields
+- the session classifies project scale and selects a template family
+- the session collects all required requirement fields through confirmed restatements
 - duplicate project names are blocked up front
 - the system detects requirement gaps and conflicts before document generation
 - the broker generates a versioned workflow design PDF
-- the broker generates a matching versioned JSON artifact
+- the broker generates a matching versioned project-definition JSON artifact
 - both artifacts are recorded and delivered to the user
 - the user can explicitly respond with `/ok`, `/revise`, or `/cancel`
 - no long-term user memory is reused
 - the flow does not silently transition into implementation
-
