@@ -635,7 +635,7 @@ If the user asks a side question:
 
 If the user requests revision after document generation:
 
-- enter `revise_workflow_design`
+- enter `revise_requested`
 - capture the revision request
 - update affected assertions, template selections, and document sections
 - regenerate the next version
