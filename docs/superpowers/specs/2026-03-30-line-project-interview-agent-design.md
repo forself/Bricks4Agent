@@ -3,6 +3,43 @@
 Date: 2026-03-30
 Status: design draft for review
 
+## Design Rationale
+
+### Why this is a protocolized interview system
+
+The target problem is not ordinary chat assistance. It is a requirement-elicitation protocol that must converge toward executable design artifacts under uncertainty. A protocolized design is necessary because open-ended conversation maximizes semantic flexibility but also maximizes ambiguity, drift, and accidental state mutation.
+
+### Why the workflow uses a state machine
+
+The interview has explicit gates, privileged commands, and terminal states. A state machine is the correct control abstraction because it constrains command admissibility and phase progression regardless of model variability. In theoretical terms, it separates stochastic interpretation from deterministic control flow.
+
+### Why the design uses confirmed restatements and assertions
+
+Free-form conversational memory is lossy because every summary compresses meaning and compounds drift across turns. The design therefore treats canonical memory as a set of confirmed restatements and assertions instead of a rolling summary. This is a verification-first model of truth: unconfirmed interpretation remains provisional, while explicit user confirmation is required before promotion into canonical state.
+
+### Why the design uses a per-version DAG
+
+The review artifacts are compiled outputs, not merely chat transcripts. A per-version DAG captures provenance: which confirmed assertions led to which canonical JSON, which in turn led to which PDF and delivery artifacts. Revision creates a new graph rather than mutating the prior one, preserving lineage and avoiding hidden cycles.
+
+### Why the design is template-first
+
+The downstream implementation surface is already bounded by an existing component library, page generator, and runtime. Template-first narrowing reduces the hypothesis space early and changes the problem from unconstrained generation into constrained configuration over a known capability surface. This improves consistency, reviewability, and downstream implementation reliability.
+
+### Why the program is JSON-defined
+
+The design favors a document-first `JSON-defined program` because the interview output should be structural truth, not ad hoc handwritten code assembled directly from chat. This follows model-driven engineering principles: the interview creates a structured intermediate representation, and the existing runtime executes it.
+
+### Why the spec should exist in English and Traditional Chinese
+
+This feature requires both precise implementation handoff and deep architectural discussion. Maintaining English and Traditional Chinese spec artifacts improves review accessibility while preserving exact technical meaning. The English spec remains the canonical source for exact naming when conflicts arise, but both versions must stay aligned.
+
+## Language Versions
+
+- English source spec: `docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.md`
+- Traditional Chinese companion: `docs/superpowers/specs/2026-03-30-line-project-interview-agent-design.zh-TW.md`
+
+The English spec is the canonical source for exact type and file naming. The Traditional Chinese companion must preserve the same architecture, constraints, and review checkpoints.
+
 ## Goal
 
 Add a dedicated LINE task-mode agent that starts from `/proj`, conducts a task-scoped requirements interview for a software project, detects missing or conflicting requirements, and produces a downloadable workflow design document for user review.
