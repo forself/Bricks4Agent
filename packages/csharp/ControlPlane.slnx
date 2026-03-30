@@ -30,6 +30,10 @@
   <Folder Name="/security/">
     <Project Path="security/RateLimiting/RateLimiting.csproj" />
   </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/unit/">
+    <Project Path="tests/unit/Unit.Tests.csproj" />
+  </Folder>
   <Folder Name="/worker-sdk/">
     <Project Path="worker-sdk/WorkerSdk.csproj" />
   </Folder>
