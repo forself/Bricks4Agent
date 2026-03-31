@@ -150,6 +150,30 @@ try
     AssertTrue(classifiedInterview.CurrentPhase == ProjectInterviewPhase.ClassifyProjectScale, "accepted project name advances to scale classification");
     var cancelledInterview = projectInterviewMachine.ApplyCommand(classifiedInterview, ProjectInterviewCommand.Cancel);
     AssertTrue(cancelledInterview.CurrentPhase == ProjectInterviewPhase.Cancelled, "project interview cancel reaches terminal cancelled state");
+    var restatementService = new ProjectInterviewRestatementService();
+    var restatementOptions = restatementService.BuildOptions(
+        new[]
+        {
+            "This is a small internal admin tool with login.",
+            "This is a customer-facing portal with member accounts."
+        },
+        "None of these is precise.");
+    AssertTrue(restatementOptions.Count == 3, "restatement adds conservative escape option");
+    AssertTrue(restatementOptions[^1].IsConservativeEscape, "restatement marks the conservative escape option");
+    var emptyTaskDocument = ProjectInterviewTaskDocument.CreateEmpty("line", "U123");
+    var promotedTaskDocument = emptyTaskDocument.PromoteConfirmedOption(restatementOptions[0], "user selected A");
+    AssertTrue(promotedTaskDocument.Assertions.Count(a => a.Status == AssertionStatus.Confirmed) == 1, "explicit confirmation promotes assertions into confirmed state");
+    var projectInterviewDbPath = Path.Combine(sandboxRoot, "project-interview-state.db");
+    using (var stateDb = BrokerDb.UseSqlite($"Data Source={projectInterviewDbPath}"))
+    {
+        var stateDbInitializer = new BrokerDbInitializer(stateDb);
+        stateDbInitializer.Initialize();
+        var stateService = new ProjectInterviewStateService(stateDb);
+        await stateService.SaveTaskDocumentAsync(promotedTaskDocument, CancellationToken.None);
+        var reloadedTaskDocument = await stateService.LoadTaskDocumentAsync("line", "U123", CancellationToken.None);
+        AssertTrue(reloadedTaskDocument.Assertions.Count == 1, "project interview state service round-trips persisted assertions");
+        AssertTrue(reloadedTaskDocument.Assertions[0].Statement == "This is a small internal admin tool with login.", "project interview state service preserves assertion statement");
+    }
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
@@ -1441,6 +1465,9 @@ try
             "verify-auth-code-shared-owner",
             null);
         AssertTrue(coordinatorSharedDriveCallback.Success, "coordinator google oauth callback succeeds for shared drive owner");
+        var coordinatorProjectInterviewStateMachine = new ProjectInterviewStateMachine();
+        var coordinatorProjectInterviewStateService = new ProjectInterviewStateService(coordinatorDb);
+        var coordinatorProjectInterviewRestatementService = new ProjectInterviewRestatementService();
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1469,6 +1496,9 @@ try
             coordinatorCodeArtifactService,
             coordinatorSystemScaffoldService,
             new BrowserBindingService(coordinatorDb),
+            coordinatorProjectInterviewStateMachine,
+            coordinatorProjectInterviewStateService,
+            coordinatorProjectInterviewRestatementService,
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
