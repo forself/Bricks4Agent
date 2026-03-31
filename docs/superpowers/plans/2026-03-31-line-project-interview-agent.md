@@ -4,6 +4,18 @@
 
 **Goal:** Add a dedicated `/proj` LINE workflow that runs a task-scoped project interview, narrows the request through project scale and template-family selection, compiles confirmed assertions into versioned JSON/PDF review artifacts, and waits for explicit `/ok`, `/revise`, or `/cancel`.
 
+## Current Status
+
+This plan has already been executed for the phase-1 interview/review scope and is kept as the historical implementation plan.
+
+Current `main` status:
+
+- `/proj`, `#ProjectName`, scope narrowing, structure-direction narrowing, and review artifact generation are live
+- `/ok`, `/revise`, and `/cancel` are live
+- prompts are bilingual and written for general LINE users
+- internal scale/template identifiers remain broker-internal and are not shown in user-facing copy
+- deeper requirement collection and autonomous implementation handoff remain future work
+
 **Architecture:** Extend the broker high-level path with a dedicated `project_interview` state machine and per-version DAG model. Keep truth in broker-owned persisted assertion and version-graph documents, use the LLM only to propose interpretations and restatement options, and compile confirmed assertions into a canonical project-instance JSON that drives PDF review generation and artifact delivery. Template selection is driven by a JSON catalog layered above the existing browser page-generator and UI component runtime.
 
 **Tech Stack:** C# /.NET 8 minimal API broker, existing `HighLevelCoordinator` and artifact services, broker verify program, integration tests under `packages/csharp/tests`, JSON template catalog under `packages/javascript/browser`, existing SPA runtime and page-generator

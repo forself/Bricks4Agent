@@ -14,10 +14,10 @@
 |------|------|
 | 測試框架 | 無（自建 Assert 函式，Console.WriteLine 輸出） |
 | 單元/自驗證 | `broker-tests` + `broker/verify` 並存，已覆蓋 query/browser helper、artifact delivery、signed download、JSON redaction、middleware bypass |
-| 整合測試 | 7 步線性流程，需手動啟動 Broker |
-| E2E | e2e-bridge 互動式控制台（手動） |
-| 前端測試 | 無 |
-| UI 測試 | 無 |
+| 整合測試 | xUnit + WebApplicationFactory，當前已驗證 10 個 broker integration scenarios |
+| E2E | e2e-bridge 互動式控制台 + Playwright admin smoke |
+| 前端測試 | Vitest 已上線，當前 91 個 browser tests |
+| UI 測試 | Playwright admin smoke 已存在，仍屬輕量 smoke 等級 |
 | 使用者行為模擬 | 無 |
 | CI/CD 整合 | 無（測試專案未加入 ControlPlane.slnx） |
 
@@ -33,12 +33,12 @@
 - `WorkerRegistry`（Round-Robin、併發安全）
 - `ContainerManager`（Docker/Podman 容器管理）
 
-**已由 `broker/verify` 覆蓋，但尚未遷移到正式測試框架的元件：**
+**已由 `broker/verify` 覆蓋，且部分已由正式整合測試補上 smoke coverage 的元件：**
 - `LineArtifactDeliveryService`（Drive 遞送 + Broker 簽名下載 fallback）
 - `SidecarPublicUrlResolver`（Artifact 公開 URL 解析）
 - `BrokerArtifactDownloadOptions`（簽名下載端點設定）
 - `BrokerArtifactDownloadService`（簽名產生、驗證、路徑硬化）
-- `ArtifactDownloadEndpoints`（public signed download endpoint）
+- `ArtifactDownloadEndpoints`（public signed download endpoint；整合測試已有端點行為覆蓋）
 
 **Worker 層零覆蓋：**
 - LINE Worker 5 個 Capability Handler

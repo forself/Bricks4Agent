@@ -1,11 +1,11 @@
 # LINE 專案訪談代理設計
 
 Date: 2026-03-30  
-Status: partially implemented in `feature/project-interview-agent`
+Status: 已在 `main` 落地第一階段訪談/審核範圍
 
 ## Implementation Snapshot
 
-目前這個 branch 已實作：
+目前 `main` 已實作：
 
 - `/proj`、`/ok`、`/revise`、`/cancel` 明確命令入口
 - broker-owned project interview state machine
@@ -17,8 +17,10 @@ Status: partially implemented in `feature/project-interview-agent`
 - per-version DAG persistence
 - `workflow-design.vN.json` / `workflow-design.vN.pdf` versioned artifact generation
 - `/revise` 會建立新 review version，同時保留舊 DAG
+- `/proj` 目前的 LINE prompts 已是中英雙語
+- 對外文案不再直接暴露 `tool_page`、`mini_app`、`structured_app`、`template family` 這類內部術語
 
-目前仍屬最小可用實作，尚未完整展開：
+目前仍刻意留在第一階段，尚未展開的部分：
 
 - 更深的 template-specific requirement collection
 - 更豐富的 assertion bundle 與 module/style interview

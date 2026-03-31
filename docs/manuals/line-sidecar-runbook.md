@@ -233,7 +233,12 @@ This matches the case where one operator-owned Google Drive is used for all uplo
 
 ## Settings Required For Downloads
 
-At the moment, live download delivery mainly depends on Google Drive. If you want a LINE user to actually receive a downloadable link after a document or website artifact is generated, you need all of the following:
+Live delivery currently has two download paths:
+
+- Google Drive remains the primary user-facing delivery path
+- broker-owned signed download links are now the fallback path when Google Drive upload fails and the sidecar has a public URL
+
+If you want a LINE user to actually receive a downloadable link after a document or website artifact is generated, you still need all of the following:
 
 1. A working high-level model API
 - `D:\Bricks4Agent\Api.txt`
@@ -257,12 +262,13 @@ At the moment, live download delivery mainly depends on Google Drive. If you wan
 5. The sidecar must be running the latest published build
 - Current artifact delivery, shared delegated owner support, and persistent runtime DB all depend on the latest sidecar publish
 
-There is still one download path that is not finished yet:
-- a broker-owned public/front-end download API
-- a front-end download page
-- broker-controlled download authorization checks
+Current behavior:
 
-Those are "front-end should-have features" and are still pending. Right now, Google Drive links are the main usable delivery path.
+- if Google Drive upload succeeds, the LINE reply uses the Drive link
+- if Google Drive upload fails and the sidecar public URL is available, the broker returns a short-lived signed download link
+- if both paths are unavailable, delivery degrades to a no-link notification
+
+There is still no dedicated end-user download page. The current fallback is a direct signed broker download endpoint.
 
 ## Current High-Level Model
 
@@ -281,6 +287,27 @@ Send plain text in LINE:
 
 - `hello`
 - `please help me clarify my requirements`
+
+### Project interview
+
+The current explicit project-interview entry is:
+
+- `/proj`
+
+Current happy-path sequence:
+
+1. send `/proj`
+2. reply with `#ProjectName`
+3. choose the closest project scope by number
+4. choose the closest site-structure direction by number
+5. review the generated PDF/JSON artifacts
+6. answer with `/ok`, `/revise`, or `/cancel`
+
+Important notes:
+
+- prompts are bilingual
+- the copy is intentionally written for general LINE users
+- internal identifiers such as `tool_page`, `mini_app`, `structured_app`, and `template family` are not shown to the user
 
 ### Help and profile
 

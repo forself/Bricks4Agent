@@ -4,6 +4,18 @@
 
 **目標：** 新增一條專用的 `/proj` LINE 工作流程，執行任務範圍內的專案需求訪談，先經由 `project scale` 與 `template family` 逐步收斂，再將已確認的 assertions 編譯為版本化的 JSON/PDF 檢核產物，並等待使用者以 `/ok`、`/revise`、`/cancel` 明確表態。
 
+## 目前狀態
+
+這份計劃的主要任務已在第一階段訪談/審核範圍內完成，文件本身保留作為歷史實作計劃。
+
+目前 `main` 的狀態：
+
+- `/proj`、`#專案名稱`、規模收斂、網站結構方向收斂、review artifact generation 已可用
+- `/ok`、`/revise`、`/cancel` 已可用
+- LINE 對外 prompts 已是中英文且偏一般使用者文案
+- 內部 scale/template 識別字仍只留在 broker 內部，不直接暴露給使用者
+- 更深一層的需求訪談與自動實作交接仍是後續工作
+
 **架構：** 在既有 broker high-level 路徑上擴充一個獨立的 `project_interview` 狀態機與每版本一張的 DAG。真相由 broker 擁有並持久化在 assertion documents 與 version-graph documents 中；LLM 只負責提出 interpretation 與 restatement options。已確認 assertions 會被編譯成 canonical `project-instance JSON`，再驅動 PDF review 文件與 artifact delivery。模板選擇則由既有 browser page-generator / component runtime 之上的 JSON catalog 驅動。
 
 **技術棧：** C# /.NET 8 minimal API broker、既有 `HighLevelCoordinator` 與 artifact services、broker verify、`packages/csharp/tests` 下的 integration tests、`packages/javascript/browser` 下的 JSON template catalog、現有 SPA runtime/page-generator

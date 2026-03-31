@@ -243,7 +243,12 @@ broker 現在支援三種 Google Drive 身分：
 
 ## 下載功能需要的設定
 
-目前 live 下載功能主要依賴 Google Drive 交付。也就是說，若要讓 LINE 使用者在生成文件或網站原型後真的拿到可下載連結，至少要有：
+目前 live 交付已經有兩條下載路徑：
+
+- Google Drive 仍是主要的使用者下載路徑
+- 若 Google Drive 上傳失敗，且 sidecar 具有 public URL，broker 會改送短效簽名下載連結
+
+也就是說，若要讓 LINE 使用者在生成文件或網站原型後真的拿到可下載連結，至少要有：
 
 1. 可用的高階模型 API
 - `D:\Bricks4Agent\Api.txt`
@@ -267,12 +272,13 @@ broker 現在支援三種 Google Drive 身分：
 5. LINE sidecar 已重啟到最新版本
 - 目前的檔案交付、shared delegated owner、持久化 DB 都依賴最新 sidecar publish
 
-目前尚未完成的另一條下載路徑：
-- broker 自有的前台下載 API
-- 前台下載頁
-- broker 控制的下載授權檢查
+目前行為：
 
-這些屬於「前台應有功能」，目前仍未完成；所以現在要讓使用者下載，主要還是靠 Google Drive 連結。
+- 若 Google Drive 上傳成功，LINE 回覆會優先使用 Drive 連結
+- 若 Google Drive 上傳失敗，且目前 sidecar public URL 可用，broker 會改送短效簽名下載連結
+- 若兩條路徑都不可用，才會退化成無連結通知
+
+目前仍沒有專門的終端使用者下載頁；fallback 仍是 broker 直接提供的簽名下載端點。
 
 ## 目前高階模型
 
@@ -291,6 +297,27 @@ broker 現在支援三種 Google Drive 身分：
 
 - `hello`
 - `請幫我釐清需求`
+
+### 專案訪談
+
+目前專案訪談的明確入口是：
+
+- `/proj`
+
+目前的基本 happy path：
+
+1. 傳 `/proj`
+2. 用 `#專案名稱` 回覆
+3. 以編號選最接近的專案規模
+4. 以編號選最接近的網站結構方向
+5. 檢視系統產出的 PDF/JSON review artifacts
+6. 用 `/ok`、`/revise`、`/cancel` 表態
+
+補充：
+
+- prompts 目前是中英文雙語
+- 文案刻意偏一般 LINE 使用者，不是工程術語
+- `tool_page`、`mini_app`、`structured_app`、`template family` 這類內部識別字不直接顯示給使用者
 
 ### 說明與個人資訊
 

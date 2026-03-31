@@ -1,11 +1,11 @@
 # LINE Project Interview Agent Design
 
 Date: 2026-03-30
-Status: partially implemented in `feature/project-interview-agent`
+Status: implemented on `main` for the phase-1 interview/review scope
 
 ## Implementation Snapshot
 
-Implemented in the current branch:
+Implemented on `main`:
 
 - explicit `/proj`, `/ok`, `/revise`, `/cancel` command parsing
 - broker-owned project interview state machine
@@ -17,8 +17,10 @@ Implemented in the current branch:
 - per-version DAG persistence
 - versioned `workflow-design.vN.json` and `workflow-design.vN.pdf` generation
 - minimal `/revise` path that regenerates a new review version while preserving prior DAGs
+- bilingual LINE prompts for the active `/proj` flow
+- user-facing copy that hides internal scale/template identifiers such as `tool_page`, `mini_app`, `structured_app`, and `template family`
 
-Not yet fully implemented:
+Still intentionally out of scope:
 
 - deeper template-specific requirement collection
 - richer assertion bundles beyond the current scale/template path
