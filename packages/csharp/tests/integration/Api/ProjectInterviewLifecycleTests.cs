@@ -44,4 +44,37 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
         message.Should().Contain("請先用 #專案名稱 回覆");
         message.Should().Contain("Reply with #ProjectName first");
     }
+
+    [Fact]
+    public async Task ProjectInterview_ProjectScalePrompt_HidesInternalScaleTerms()
+    {
+        const string userId = "line-project-scale-friendly";
+        var projectName = $"#FriendlyScale{Guid.NewGuid():N}";
+
+        await _fixture.SendHighLevelLineTextAsync("/proj", userId);
+        using var scalePrompt = await _fixture.SendHighLevelLineTextAsync(projectName, userId);
+        var message = scalePrompt.RootElement.GetProperty("data").GetProperty("reply").GetString();
+
+        message.Should().Contain("請選一個最接近的規模");
+        message.Should().Contain("Choose the closest scope");
+        message.Should().NotContain("tool_page");
+        message.Should().NotContain("mini_app");
+        message.Should().NotContain("structured_app");
+    }
+
+    [Fact]
+    public async Task ProjectInterview_TemplatePrompt_HidesInternalTemplateTerms()
+    {
+        const string userId = "line-project-template-friendly";
+        var projectName = $"#FriendlyTemplate{Guid.NewGuid():N}";
+
+        await _fixture.SendHighLevelLineTextAsync("/proj", userId);
+        await _fixture.SendHighLevelLineTextAsync(projectName, userId);
+        using var templatePrompt = await _fixture.SendHighLevelLineTextAsync("2", userId);
+        var message = templatePrompt.RootElement.GetProperty("data").GetProperty("reply").GetString();
+
+        message.Should().Contain("網站結構方向");
+        message.Should().Contain("site structure direction");
+        message.Should().NotContain("template family");
+    }
 }

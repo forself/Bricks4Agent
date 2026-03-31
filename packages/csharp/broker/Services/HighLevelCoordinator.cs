@@ -767,9 +767,9 @@ public class HighLevelCoordinator
             Mode = HighLevelRouteMode.Production,
             Reply = PrepareReplyWithoutGuide(
                 profile,
-                BilingualProjectInterviewMessage(
-                    $"已保留專案名稱 '{projectName}'。接下來請選一個系統規模選項：\n{RenderRestatementOptions(updated.PendingOptions)}",
-                    $"Project name reserved as '{projectName}'. Next, tell me the scale of the system by choosing one option:\n{RenderRestatementOptions(updated.PendingOptions)}")),
+                    BilingualProjectInterviewMessage(
+                    $"已保留專案名稱 '{projectName}'。接下來請選一個最接近的規模：\n{RenderRestatementOptions(updated.PendingOptions)}",
+                    $"Project name reserved as '{projectName}'. Next, Choose the closest scope:\n{RenderRestatementOptions(updated.PendingOptions)}")),
             DecisionReason = "project interview project name accepted"
         };
     }
@@ -822,8 +822,8 @@ public class HighLevelCoordinator
                 Reply = PrepareReplyWithoutGuide(
                     profile,
                     BilingualProjectInterviewMessage(
-                        $"已確認專案規模為 '{projectScale}'。接下來請選最接近的模板家族：\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}",
-                        $"Project scale confirmed as '{projectScale}'. Choose the closest template family next:\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}")),
+                        $"已確認專案規模。接下來請選最接近的網站結構方向：\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}",
+                        $"Project scope confirmed. Choose the closest site structure direction next:\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}")),
                 DecisionReason = "project interview scale confirmed and template families narrowed"
             };
         }
@@ -943,17 +943,17 @@ public class HighLevelCoordinator
         {
             new RestatementOption(
                 "opt-1",
-                "A. 這是一個單一用途的小工具或頁面，使用輕量 tool_page 路徑。 / This is a small single-purpose tool or page. Use the lightweight tool_page path.",
+                "A. 這比較像單一用途的小工具或單頁功能。 / This is closer to a single-purpose tool or focused page.",
                 new[] { "project_scale=tool_page" },
                 false),
             new RestatementOption(
                 "opt-2",
-                "B. 這是一個有少數核心頁面的輕型應用，使用 mini_app 路徑。 / This is a small application with a few core pages. Use the mini_app path.",
+                "B. 這比較像有幾個主要頁面的輕量網站或小型系統。 / This is closer to a lightweight site or small app with a few core pages.",
                 new[] { "project_scale=mini_app" },
                 false),
             new RestatementOption(
                 "opt-3",
-                "C. 這是一個多模組或多角色系統，使用 structured_app 路徑。 / This is a multi-module or multi-role system. Use the structured_app path.",
+                "C. 這比較像多模組、多角色或流程較完整的系統。 / This is closer to a multi-module or multi-role system with fuller workflows.",
                 new[] { "project_scale=structured_app" },
                 false),
             _projectInterviewRestatementService.BuildOptions(Array.Empty<string>(), "D. 以上都不夠精確，我想重述規模。 / None of these is precise; I want to restate the scale.")[0]
