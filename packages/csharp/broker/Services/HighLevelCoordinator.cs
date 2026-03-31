@@ -567,7 +567,9 @@ public class HighLevelCoordinator
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
-                        "Project interview started. Reply with #ProjectName first so I can reserve a unique folder name."),
+                        BilingualProjectInterviewMessage(
+                            "專案訪談已開始。請先用 #專案名稱 回覆，讓我保留唯一的專案資料夾名稱。",
+                            "Project interview started. Reply with #ProjectName first so I can reserve a unique folder name.")),
                     DecisionReason = "project interview session started"
                 };
             }
@@ -605,7 +607,9 @@ public class HighLevelCoordinator
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
-                        $"Revision draft v{refreshedCompileResult.Version} is ready for review."),
+                        BilingualProjectInterviewMessage(
+                            $"修訂版本 v{refreshedCompileResult.Version} 已可審查。",
+                            $"Revision draft v{refreshedCompileResult.Version} is ready for review.")),
                     DecisionReason = "project interview revise created a new review version"
                 };
             }
@@ -616,10 +620,18 @@ public class HighLevelCoordinator
 
             var reply = command switch
             {
-                ProjectInterviewCommand.Approve => "The current workflow design has been confirmed.",
-                ProjectInterviewCommand.Revise => "Revision requested. Continue by describing what to adjust in the current design.",
-                ProjectInterviewCommand.Cancel => "The current project interview task has been cancelled.",
-                _ => "Project interview command accepted."
+                ProjectInterviewCommand.Approve => BilingualProjectInterviewMessage(
+                    "目前的工作流程設計已確認。",
+                    "The current workflow design has been confirmed."),
+                ProjectInterviewCommand.Revise => BilingualProjectInterviewMessage(
+                    "已要求修訂。請接著描述你要調整目前設計的哪一部分。",
+                    "Revision requested. Continue by describing what to adjust in the current design."),
+                ProjectInterviewCommand.Cancel => BilingualProjectInterviewMessage(
+                    "目前的專案訪談任務已取消。",
+                    "The current project interview task has been cancelled."),
+                _ => BilingualProjectInterviewMessage(
+                    "已接受專案訪談指令。",
+                    "Project interview command accepted.")
             };
 
             return new HighLevelProcessResult
@@ -634,7 +646,11 @@ public class HighLevelCoordinator
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
-                Reply = PrepareReplyWithoutGuide(profile, "That command is not valid in the current /proj phase."),
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    BilingualProjectInterviewMessage(
+                        "這個指令不適用於目前的 /proj 階段。",
+                        "That command is not valid in the current /proj phase.")),
                 Error = "project_interview_command_not_allowed",
                 DecisionReason = ex.Message
             };
@@ -671,7 +687,9 @@ public class HighLevelCoordinator
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
-                        $"The /proj workflow is waiting at phase '{document.SessionState.CurrentPhase}'."),
+                        BilingualProjectInterviewMessage(
+                            $"目前 /proj 流程正在等待階段 '{document.SessionState.CurrentPhase}'。",
+                            $"The /proj workflow is waiting at phase '{document.SessionState.CurrentPhase}'.")),
                     DecisionReason = $"project interview phase {document.SessionState.CurrentPhase} awaiting later implementation"
                 };
         }
@@ -692,7 +710,9 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    "Reply with #ProjectName first. I will not infer the project name from free-form requirements."),
+                    BilingualProjectInterviewMessage(
+                        "請先用 #專案名稱 回覆。我不會從自由描述需求中自動推斷專案名稱。",
+                        "Reply with #ProjectName first. I will not infer the project name from free-form requirements.")),
                 DecisionReason = "project interview requires explicit project-name confirmation"
             };
         }
@@ -703,7 +723,11 @@ public class HighLevelCoordinator
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
-                Reply = PrepareReplyWithoutGuide(profile, "The project name is not valid. Try letters or numbers after #."),
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    BilingualProjectInterviewMessage(
+                        "專案名稱無效。請在 # 後面使用英數字元。",
+                        "The project name is not valid. Try letters or numbers after #.")),
                 Error = "invalid_project_name",
                 DecisionReason = "project interview project name invalid"
             };
@@ -726,7 +750,9 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    $"The project folder name '{folderName}' already exists. Choose another #ProjectName."),
+                    BilingualProjectInterviewMessage(
+                        $"專案資料夾名稱 '{folderName}' 已存在。請換一個 #專案名稱。",
+                        $"The project folder name '{folderName}' already exists. Choose another #ProjectName.")),
                 Error = "duplicate_project_folder",
                 DecisionReason = "project interview project folder collision"
             };
@@ -741,7 +767,9 @@ public class HighLevelCoordinator
             Mode = HighLevelRouteMode.Production,
             Reply = PrepareReplyWithoutGuide(
                 profile,
-                $"Project name reserved as '{projectName}'. Next, tell me the scale of the system by choosing one option:\n{RenderRestatementOptions(updated.PendingOptions)}"),
+                BilingualProjectInterviewMessage(
+                    $"已保留專案名稱 '{projectName}'。接下來請選一個系統規模選項：\n{RenderRestatementOptions(updated.PendingOptions)}",
+                    $"Project name reserved as '{projectName}'. Next, tell me the scale of the system by choosing one option:\n{RenderRestatementOptions(updated.PendingOptions)}")),
             DecisionReason = "project interview project name accepted"
         };
     }
@@ -765,7 +793,9 @@ public class HighLevelCoordinator
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
-                        "Understood. Restate the project scale in one sentence and I will offer a narrower set of explicit options."),
+                        BilingualProjectInterviewMessage(
+                            "了解。請用一句話重述專案規模，我會再提供更窄的明確選項。",
+                            "Understood. Restate the project scale in one sentence and I will offer a narrower set of explicit options.")),
                     DecisionReason = "project interview conservative scale option selected"
                 };
             }
@@ -791,7 +821,9 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    $"Project scale confirmed as '{projectScale}'. Choose the closest template family next:\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}"),
+                    BilingualProjectInterviewMessage(
+                        $"已確認專案規模為 '{projectScale}'。接下來請選最接近的模板家族：\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}",
+                        $"Project scale confirmed as '{projectScale}'. Choose the closest template family next:\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}")),
                 DecisionReason = "project interview scale confirmed and template families narrowed"
             };
         }
@@ -803,7 +835,9 @@ public class HighLevelCoordinator
             Mode = HighLevelRouteMode.Production,
             Reply = PrepareReplyWithoutGuide(
                 profile,
-                $"I have not promoted any requirement yet. Choose one explicit option first:\n{RenderRestatementOptions(refreshed.PendingOptions)}"),
+                BilingualProjectInterviewMessage(
+                    $"我還沒有提升任何需求。請先選一個明確選項：\n{RenderRestatementOptions(refreshed.PendingOptions)}",
+                    $"I have not promoted any requirement yet. Choose one explicit option first:\n{RenderRestatementOptions(refreshed.PendingOptions)}")),
             DecisionReason = "project interview awaiting explicit scale confirmation"
         };
     }
@@ -827,7 +861,9 @@ public class HighLevelCoordinator
                     Mode = HighLevelRouteMode.Production,
                     Reply = PrepareReplyWithoutGuide(
                         profile,
-                        "Understood. Describe the target template family more precisely and I will narrow again."),
+                        BilingualProjectInterviewMessage(
+                            "了解。請更精確地描述目標模板家族，我會重新收斂。",
+                            "Understood. Describe the target template family more precisely and I will narrow again.")),
                     DecisionReason = "project interview conservative template option selected"
                 };
             }
@@ -865,7 +901,9 @@ public class HighLevelCoordinator
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    $"Template family confirmed. Review artifacts for v{compileResult.Version} are ready. Use /ok to approve or /revise to regenerate."),
+                    BilingualProjectInterviewMessage(
+                        $"模板家族已確認。v{compileResult.Version} 的審查文件已準備完成。用 /ok 確認，或用 /revise 重新產生。",
+                        $"Template family confirmed. Review artifacts for v{compileResult.Version} are ready. Use /ok to approve or /revise to regenerate.")),
                 DecisionReason = "project interview template family confirmed and review artifacts rendered"
             };
         }
@@ -875,7 +913,9 @@ public class HighLevelCoordinator
             Mode = HighLevelRouteMode.Production,
             Reply = PrepareReplyWithoutGuide(
                 profile,
-                $"Choose one explicit template option first:\n{RenderRestatementOptions(document.PendingOptions)}"),
+                BilingualProjectInterviewMessage(
+                    $"請先選一個明確的模板選項：\n{RenderRestatementOptions(document.PendingOptions)}",
+                    $"Choose one explicit template option first:\n{RenderRestatementOptions(document.PendingOptions)}")),
             DecisionReason = "project interview awaiting explicit template-family confirmation"
         };
     }
@@ -903,20 +943,20 @@ public class HighLevelCoordinator
         {
             new RestatementOption(
                 "opt-1",
-                "A. This is a small single-purpose tool or page. Use the lightweight tool_page path.",
+                "A. 這是一個單一用途的小工具或頁面，使用輕量 tool_page 路徑。 / This is a small single-purpose tool or page. Use the lightweight tool_page path.",
                 new[] { "project_scale=tool_page" },
                 false),
             new RestatementOption(
                 "opt-2",
-                "B. This is a small application with a few core pages. Use the mini_app path.",
+                "B. 這是一個有少數核心頁面的輕型應用，使用 mini_app 路徑。 / This is a small application with a few core pages. Use the mini_app path.",
                 new[] { "project_scale=mini_app" },
                 false),
             new RestatementOption(
                 "opt-3",
-                "C. This is a multi-module or multi-role system. Use the structured_app path.",
+                "C. 這是一個多模組或多角色系統，使用 structured_app 路徑。 / This is a multi-module or multi-role system. Use the structured_app path.",
                 new[] { "project_scale=structured_app" },
                 false),
-            _projectInterviewRestatementService.BuildOptions(Array.Empty<string>(), "D. None of these is precise; I want to restate the scale.")[0]
+            _projectInterviewRestatementService.BuildOptions(Array.Empty<string>(), "D. 以上都不夠精確，我想重述規模。 / None of these is precise; I want to restate the scale.")[0]
         };
 
     private IReadOnlyList<RestatementOption> BuildTemplateFamilyOptions(IReadOnlyList<ProjectInterviewTemplateCandidate> candidates)
@@ -928,20 +968,41 @@ public class HighLevelCoordinator
             var label = (char)('A' + index);
             options.Add(new RestatementOption(
                 $"template-{index + 1}",
-                $"{label}. {candidate.Title}: {candidate.Summary}",
+                $"{label}. {RenderTemplateCandidateText(candidate)}",
                 new[] { $"template_family={candidate.TemplateId}" },
                 false));
         }
 
         options.Add(_projectInterviewRestatementService.BuildOptions(
             Array.Empty<string>(),
-            $"{(char)('A' + candidates.Count)}. None of these is precise; I want to restate the template direction.")[0]);
+            $"{(char)('A' + candidates.Count)}. 以上都不夠精確，我想重述模板方向。 / None of these is precise; I want to restate the template direction.")[0]);
 
         return options;
     }
 
     private static string RenderRestatementOptions(IReadOnlyList<RestatementOption> options)
         => string.Join('\n', options.Select((option, index) => $"{index + 1}. {option.Text}"));
+
+    private static string BilingualProjectInterviewMessage(string zhTw, string en)
+        => $"{zhTw}\n{en}";
+
+    private static string RenderTemplateCandidateText(ProjectInterviewTemplateCandidate candidate)
+    {
+        var zhTw = candidate.TemplateId switch
+        {
+            "content_showcase" => "內容展示型：適合以內容、品牌與版面呈現為主的網站。",
+            "form_collection" => "表單收集型：適合收集名單、回饋或申請資料。",
+            "member_portal" => "會員入口型：適合登入後使用的個人或內部入口。",
+            "list_search" => "清單搜尋型：適合列表、搜尋、篩選與瀏覽。",
+            "crud_admin" => "CRUD 管理型：適合後台資料建立、編輯、刪除與管理。",
+            "dashboard" => "儀表板型：適合指標、摘要卡片與監控畫面。",
+            "multi_step_flow" => "多步驟流程型：適合精靈式或階段式操作流程。",
+            "transaction_flow" => "交易流程型：適合下單、結帳或交易步驟。",
+            _ => $"{candidate.Title}：{candidate.Summary}"
+        };
+
+        return $"{zhTw} / {candidate.Title}: {candidate.Summary}";
+    }
 
     private static bool TryResolveRestatementSelection(
         string trimmed,
