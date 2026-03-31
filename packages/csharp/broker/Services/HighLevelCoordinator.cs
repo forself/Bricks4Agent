@@ -46,6 +46,7 @@ public class HighLevelCoordinator
     private readonly ProjectInterviewStateMachine _projectInterviewStateMachine;
     private readonly ProjectInterviewStateService _projectInterviewStateService;
     private readonly ProjectInterviewRestatementService _projectInterviewRestatementService;
+    private readonly ProjectInterviewTemplateCatalogService _projectInterviewTemplateCatalogService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -66,6 +67,7 @@ public class HighLevelCoordinator
         ProjectInterviewStateMachine projectInterviewStateMachine,
         ProjectInterviewStateService projectInterviewStateService,
         ProjectInterviewRestatementService projectInterviewRestatementService,
+        ProjectInterviewTemplateCatalogService projectInterviewTemplateCatalogService,
         ILogger<HighLevelCoordinator> logger)
     {
         _db = db;
@@ -92,6 +94,7 @@ public class HighLevelCoordinator
         _projectInterviewStateMachine = projectInterviewStateMachine;
         _projectInterviewStateService = projectInterviewStateService;
         _projectInterviewRestatementService = projectInterviewRestatementService;
+        _projectInterviewTemplateCatalogService = projectInterviewTemplateCatalogService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -609,6 +612,9 @@ public class HighLevelCoordinator
             case ProjectInterviewPhase.ClassifyProjectScale:
                 return await HandleProjectInterviewScaleAsync(channel, userId, trimmed, profile, document, cancellationToken);
 
+            case ProjectInterviewPhase.NarrowTemplateFamily:
+                return await HandleProjectInterviewTemplateFamilyAsync(channel, userId, trimmed, profile, document, cancellationToken);
+
             default:
                 return new HighLevelProcessResult
                 {
@@ -714,15 +720,29 @@ public class HighLevelCoordinator
                 };
             }
 
+            var confirmedScaleState = _projectInterviewStateMachine.Advance(
+                document.SessionState,
+                ProjectInterviewAdvanceReason.ProjectScaleConfirmed);
+            var projectScale = ExtractProjectScale(selected);
+            var candidateTemplateFamilies = _projectInterviewTemplateCatalogService.NarrowByScale(projectScale);
+            if (candidateTemplateFamilies.Count == 0)
+            {
+                throw new InvalidOperationException($"No template family supports project scale '{projectScale}'.");
+            }
+
             var promoted = document.PromoteConfirmedOption(selected, $"user selected {selected.OptionId}");
-            await _projectInterviewStateService.SaveTaskDocumentAsync(promoted, cancellationToken);
+            var narrowedDocument = promoted
+                .WithSessionState(confirmedScaleState)
+                .WithPendingOptions(BuildTemplateFamilyOptions(candidateTemplateFamilies.Take(3).ToArray()));
+
+            await _projectInterviewStateService.SaveTaskDocumentAsync(narrowedDocument, cancellationToken);
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    "Project scale confirmed. Template-family narrowing is the next step."),
-                DecisionReason = "project interview scale confirmed"
+                    $"Project scale confirmed as '{projectScale}'. Choose the closest template family next:\n{RenderRestatementOptions(narrowedDocument.PendingOptions)}"),
+                DecisionReason = "project interview scale confirmed and template families narrowed"
             };
         }
 
@@ -735,6 +755,59 @@ public class HighLevelCoordinator
                 profile,
                 $"I have not promoted any requirement yet. Choose one explicit option first:\n{RenderRestatementOptions(refreshed.PendingOptions)}"),
             DecisionReason = "project interview awaiting explicit scale confirmation"
+        };
+    }
+
+    private async Task<HighLevelProcessResult> HandleProjectInterviewTemplateFamilyAsync(
+        string channel,
+        string userId,
+        string trimmed,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (TryResolveRestatementSelection(trimmed, document.PendingOptions, out var selected))
+        {
+            if (selected.IsConservativeEscape)
+            {
+                var conservativeReset = document.ClearPendingOptions();
+                await _projectInterviewStateService.SaveTaskDocumentAsync(conservativeReset, cancellationToken);
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        "Understood. Describe the target template family more precisely and I will narrow again."),
+                    DecisionReason = "project interview conservative template option selected"
+                };
+            }
+
+            var confirmedTemplateState = _projectInterviewStateMachine.Advance(
+                document.SessionState,
+                ProjectInterviewAdvanceReason.TemplateFamilyNarrowed);
+            var promoted = document
+                .PromoteConfirmedOption(selected, $"user selected {selected.OptionId}")
+                .WithSessionState(confirmedTemplateState);
+
+            await _projectInterviewStateService.SaveTaskDocumentAsync(promoted, cancellationToken);
+
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    "Template family confirmed. The next stage is detailed requirement collection on top of this template."),
+                DecisionReason = "project interview template family confirmed"
+            };
+        }
+
+        return new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Production,
+            Reply = PrepareReplyWithoutGuide(
+                profile,
+                $"Choose one explicit template option first:\n{RenderRestatementOptions(document.PendingOptions)}"),
+            DecisionReason = "project interview awaiting explicit template-family confirmation"
         };
     }
 
@@ -777,6 +850,27 @@ public class HighLevelCoordinator
             _projectInterviewRestatementService.BuildOptions(Array.Empty<string>(), "D. None of these is precise; I want to restate the scale.")[0]
         };
 
+    private IReadOnlyList<RestatementOption> BuildTemplateFamilyOptions(IReadOnlyList<ProjectInterviewTemplateCandidate> candidates)
+    {
+        var options = new List<RestatementOption>(candidates.Count + 1);
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            var label = (char)('A' + index);
+            options.Add(new RestatementOption(
+                $"template-{index + 1}",
+                $"{label}. {candidate.Title}: {candidate.Summary}",
+                new[] { $"template_family={candidate.TemplateId}" },
+                false));
+        }
+
+        options.Add(_projectInterviewRestatementService.BuildOptions(
+            Array.Empty<string>(),
+            $"{(char)('A' + candidates.Count)}. None of these is precise; I want to restate the template direction.")[0]);
+
+        return options;
+    }
+
     private static string RenderRestatementOptions(IReadOnlyList<RestatementOption> options)
         => string.Join('\n', options.Select((option, index) => $"{index + 1}. {option.Text}"));
 
@@ -817,6 +911,15 @@ public class HighLevelCoordinator
         var slug = Regex.Replace(projectName.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-");
         slug = slug.Trim('-');
         return slug;
+    }
+
+    private static string ExtractProjectScale(RestatementOption selected)
+    {
+        var assertion = selected.AssertionStatements.FirstOrDefault(statement => statement.StartsWith("project_scale=", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(assertion))
+            throw new InvalidOperationException("Selected restatement option does not include a project scale assertion.");
+
+        return assertion["project_scale=".Length..];
     }
 
     public HighLevelUserProfile? GetLineUserProfile(string userId)

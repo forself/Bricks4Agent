@@ -1,0 +1,10 @@
+{
+  "template_id": "list_search",
+  "title": "List and Search",
+  "summary": "A browse-and-filter experience with searchable lists, result states, and item detail views.",
+  "supported_project_scales": ["tool_page", "mini_app"],
+  "required_sections": ["search_bar", "filter_panel", "result_list"],
+  "optional_modules": ["saved_filters", "detail_drawer", "map_panel", "export_actions"],
+  "supported_styles": ["clean_product", "dense_utility", "bright_catalog"],
+  "supported_component_sets": ["core", "data_display"]
+}
