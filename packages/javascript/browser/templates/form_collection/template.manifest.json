@@ -1,0 +1,10 @@
+{
+  "template_id": "form_collection",
+  "title": "Form Collection",
+  "summary": "A focused form-first flow for intake, lead capture, registration, and structured submissions.",
+  "supported_project_scales": ["tool_page", "mini_app"],
+  "required_sections": ["hero", "form_panel", "success_state"],
+  "optional_modules": ["draft_save", "file_upload", "validation_summary", "review_step"],
+  "supported_styles": ["clean_enterprise", "friendly_service", "minimal_conversion"],
+  "supported_component_sets": ["core", "forms"]
+}

@@ -7,6 +7,7 @@ using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Cryptography;
@@ -130,6 +131,144 @@ try
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
     AssertTrue(parser.Parse("n").Kind == HighLevelInputKind.Cancel, "parser recognizes short cancel token");
     AssertTrue(parser.Parse("hello world").Kind == HighLevelInputKind.Conversation, "parser keeps bare text as conversation");
+    var projectInterviewParsed = parser.ParseProjectInterviewCommand("/proj");
+    AssertTrue(projectInterviewParsed.IsProjectInterview && projectInterviewParsed.Command == ProjectInterviewCommand.StartProjectInterview, "parser recognizes /proj project interview command");
+    var projectInterviewApproveParsed = parser.ParseProjectInterviewCommand("/ok");
+    AssertTrue(projectInterviewApproveParsed.IsProjectInterview && projectInterviewApproveParsed.Command == ProjectInterviewCommand.Approve, "parser recognizes /ok project interview command");
+
+    var projectInterviewMachine = new ProjectInterviewStateMachine();
+    var idleInterview = ProjectInterviewSessionState.CreateNew("line", "U123");
+    AssertTrue(idleInterview.CurrentPhase == ProjectInterviewPhase.Idle, "project interview session starts idle");
+    var startedInterview = projectInterviewMachine.ApplyCommand(idleInterview, ProjectInterviewCommand.StartProjectInterview);
+    AssertTrue(startedInterview.CurrentPhase == ProjectInterviewPhase.CollectProjectName, "project interview start enters project-name collection");
+    var namedInterview = startedInterview with
+    {
+        ProjectName = "Alpha Portal",
+        ProjectFolderName = "alpha-portal",
+        HasUniqueProjectFolder = true
+    };
+    var classifiedInterview = projectInterviewMachine.Advance(namedInterview, ProjectInterviewAdvanceReason.ProjectNameAccepted);
+    AssertTrue(classifiedInterview.CurrentPhase == ProjectInterviewPhase.ClassifyProjectScale, "accepted project name advances to scale classification");
+    var cancelledInterview = projectInterviewMachine.ApplyCommand(classifiedInterview, ProjectInterviewCommand.Cancel);
+    AssertTrue(cancelledInterview.CurrentPhase == ProjectInterviewPhase.Cancelled, "project interview cancel reaches terminal cancelled state");
+    var restatementService = new ProjectInterviewRestatementService();
+    var restatementOptions = restatementService.BuildOptions(
+        new[]
+        {
+            "This is a small internal admin tool with login.",
+            "This is a customer-facing portal with member accounts."
+        },
+        "None of these is precise.");
+    AssertTrue(restatementOptions.Count == 3, "restatement adds conservative escape option");
+    AssertTrue(restatementOptions[^1].IsConservativeEscape, "restatement marks the conservative escape option");
+    var emptyTaskDocument = ProjectInterviewTaskDocument.CreateEmpty("line", "U123");
+    var promotedTaskDocument = emptyTaskDocument.PromoteConfirmedOption(restatementOptions[0], "user selected A");
+    AssertTrue(promotedTaskDocument.Assertions.Count(a => a.Status == AssertionStatus.Confirmed) == 1, "explicit confirmation promotes assertions into confirmed state");
+    var projectInterviewDbPath = Path.Combine(sandboxRoot, "project-interview-state.db");
+    using (var stateDb = BrokerDb.UseSqlite($"Data Source={projectInterviewDbPath}"))
+    {
+        var stateDbInitializer = new BrokerDbInitializer(stateDb);
+        stateDbInitializer.Initialize();
+        var stateService = new ProjectInterviewStateService(stateDb);
+        await stateService.SaveTaskDocumentAsync(promotedTaskDocument, CancellationToken.None);
+        var reloadedTaskDocument = await stateService.LoadTaskDocumentAsync("line", "U123", CancellationToken.None);
+        AssertTrue(reloadedTaskDocument.Assertions.Count == 1, "project interview state service round-trips persisted assertions");
+        AssertTrue(reloadedTaskDocument.Assertions[0].Statement == "This is a small internal admin tool with login.", "project interview state service preserves assertion statement");
+    }
+    var templateCatalogRoot = Path.Combine(sandboxRoot, "project-interview-templates");
+    Directory.CreateDirectory(Path.Combine(templateCatalogRoot, "member_portal"));
+    Directory.CreateDirectory(Path.Combine(templateCatalogRoot, "dashboard"));
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "catalog.json"),
+        """
+        {
+          "families": [
+            {
+              "template_id": "member_portal",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "manifest_path": "./member_portal/template.manifest.json"
+            },
+            {
+              "template_id": "dashboard",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "manifest_path": "./dashboard/template.manifest.json"
+            }
+          ]
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "member_portal", "template.manifest.json"),
+        """
+        {
+          "template_id": "member_portal",
+          "title": "Member Portal",
+          "summary": "Protected portal with login and member areas.",
+          "supported_project_scales": ["mini_app", "structured_app"],
+          "required_sections": ["auth_gate"],
+          "optional_modules": ["profile"],
+          "supported_styles": ["clean_enterprise"],
+          "supported_component_sets": ["core"]
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "dashboard", "template.manifest.json"),
+        """
+        {
+          "template_id": "dashboard",
+          "title": "Dashboard",
+          "summary": "Operational KPI and activity surface.",
+          "supported_project_scales": ["mini_app", "structured_app"],
+          "required_sections": ["dashboard_shell"],
+          "optional_modules": ["alerts"],
+          "supported_styles": ["clean_enterprise"],
+          "supported_component_sets": ["core"]
+        }
+        """);
+    var templateCatalogConfig = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ProjectInterview:TemplateCatalogPath"] = Path.Combine(templateCatalogRoot, "catalog.json")
+        })
+        .Build();
+    var templateCatalogService = new ProjectInterviewTemplateCatalogService(
+        templateCatalogConfig,
+        new FakeWebHostEnvironment(sandboxRoot));
+    var miniAppFamilies = templateCatalogService.NarrowByScale("mini_app");
+    AssertTrue(miniAppFamilies.Count == 2, "template catalog narrows families by project scale");
+    AssertTrue(miniAppFamilies.Any(item => item.TemplateId == "member_portal"), "template catalog includes member_portal for mini_app");
+    AssertTrue(miniAppFamilies.All(item => item.SupportedProjectScales.Contains("mini_app", StringComparer.OrdinalIgnoreCase)), "template catalog only returns families that support the requested scale");
+    var compiler = new ProjectInterviewProjectDefinitionCompiler();
+    var compileResult = compiler.Compile(
+        version: 1,
+        confirmedAssertions: new[]
+        {
+            "project_scale=mini_app",
+            "template_family=member_portal",
+            "enabled_module=auth",
+            "enabled_module=dashboard",
+            "style_profile=clean-enterprise"
+        });
+    AssertTrue(compileResult.Version == 1, "compiler stamps version");
+    AssertTrue(compileResult.ProjectDefinition.TemplateFamily == "member_portal", "compiler projects selected template");
+    AssertTrue(compileResult.Dag.Nodes.Any(node => node.NodeType == "project_instance_definition_json"), "dag contains canonical json node");
+    var workflow = new ProjectInterviewWorkflowDesignService();
+    var viewModel = workflow.BuildViewModel(
+        taskId: "task-1",
+        version: 2,
+        projectDefinition: new ProjectInstanceDefinition("mini_app", "member_portal", new[] { "auth" }, "clean-enterprise"));
+    AssertTrue(viewModel.Version == 2, "view model carries version");
+    AssertTrue(viewModel.TemplateFamily == "member_portal", "view model carries template family");
+    var pdfRenderer = new ProjectInterviewPdfRenderService();
+    var pdf = pdfRenderer.Render(viewModel, "ABC123");
+    AssertTrue(pdf.FileName == "workflow-design.v2.pdf", "pdf renderer stamps versioned filename");
+    AssertTrue(pdf.MetadataDigest == "ABC123", "pdf renderer preserves metadata digest");
+    var deliveryMessage = LineArtifactDeliveryService.BuildNotificationBody(
+        "workflow-design.v2.pdf",
+        @"D:\Bricks4Agent\packages\csharp\broker\review\workflow-design.v2.pdf",
+        null);
+    AssertTrue(!deliveryMessage.Contains(@"D:\", StringComparison.Ordinal), "user-facing review output does not expose internal windows paths");
+    AssertTrue(!deliveryMessage.Contains("/packages/csharp/", StringComparison.Ordinal), "user-facing review output does not expose repo paths");
+    AssertTrue(deliveryMessage.Contains("workflow-design.v2.pdf", StringComparison.Ordinal), "user-facing review output references versioned artifact");
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
@@ -1421,6 +1560,49 @@ try
             "verify-auth-code-shared-owner",
             null);
         AssertTrue(coordinatorSharedDriveCallback.Success, "coordinator google oauth callback succeeds for shared drive owner");
+        var coordinatorTemplateCatalogRoot = Path.Combine(sandboxRoot, "coordinator-template-catalog");
+        Directory.CreateDirectory(Path.Combine(coordinatorTemplateCatalogRoot, "member_portal"));
+        File.WriteAllText(
+            Path.Combine(coordinatorTemplateCatalogRoot, "catalog.json"),
+            """
+            {
+              "families": [
+                {
+                  "template_id": "member_portal",
+                  "supported_project_scales": ["mini_app", "structured_app"],
+                  "manifest_path": "./member_portal/template.manifest.json"
+                }
+              ]
+            }
+            """);
+        File.WriteAllText(
+            Path.Combine(coordinatorTemplateCatalogRoot, "member_portal", "template.manifest.json"),
+            """
+            {
+              "template_id": "member_portal",
+              "title": "Member Portal",
+              "summary": "Protected portal with login and member content.",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "required_sections": ["auth_gate"],
+              "optional_modules": ["profile"],
+              "supported_styles": ["clean_enterprise"],
+              "supported_component_sets": ["core"]
+            }
+            """);
+        var coordinatorProjectInterviewStateMachine = new ProjectInterviewStateMachine();
+        var coordinatorProjectInterviewStateService = new ProjectInterviewStateService(coordinatorDb);
+        var coordinatorProjectInterviewRestatementService = new ProjectInterviewRestatementService();
+        var coordinatorProjectInterviewTemplateCatalogService = new ProjectInterviewTemplateCatalogService(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ProjectInterview:TemplateCatalogPath"] = Path.Combine(coordinatorTemplateCatalogRoot, "catalog.json")
+                })
+                .Build(),
+            new FakeWebHostEnvironment(sandboxRoot));
+        var coordinatorProjectInterviewCompiler = new ProjectInterviewProjectDefinitionCompiler();
+        var coordinatorProjectInterviewWorkflowDesignService = new ProjectInterviewWorkflowDesignService();
+        var coordinatorProjectInterviewPdfRenderService = new ProjectInterviewPdfRenderService();
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1448,7 +1630,15 @@ try
             coordinatorDocumentArtifactService,
             coordinatorCodeArtifactService,
             coordinatorSystemScaffoldService,
+            coordinatorArtifactDeliveryService,
             new BrowserBindingService(coordinatorDb),
+            coordinatorProjectInterviewStateMachine,
+            coordinatorProjectInterviewStateService,
+            coordinatorProjectInterviewRestatementService,
+            coordinatorProjectInterviewTemplateCatalogService,
+            coordinatorProjectInterviewCompiler,
+            coordinatorProjectInterviewWorkflowDesignService,
+            coordinatorProjectInterviewPdfRenderService,
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
