@@ -159,6 +159,19 @@ public sealed class HighLevelCommandParser
         return Create(HighLevelInputKind.Conversation, rawMessage!, trimmed, string.Empty, trimmed, normalized);
     }
 
+    public HighLevelProjectInterviewCommand ParseProjectInterviewCommand(string? rawMessage)
+    {
+        var normalized = Normalize(rawMessage ?? string.Empty);
+        return normalized switch
+        {
+            "/proj" or "\uFF0Fproj" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.StartProjectInterview),
+            "/ok" or "\uFF0Fok" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Approve),
+            "/revise" or "\uFF0Frevise" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Revise),
+            "/cancel" or "\uFF0Fcancel" => new HighLevelProjectInterviewCommand(true, ProjectInterviewCommand.Cancel),
+            _ => new HighLevelProjectInterviewCommand(false, null)
+        };
+    }
+
     public bool IsHelpCommand(string message)
         => message.Trim() is "?help" or "?Help" or "?h" or "?H" or "\uFF1Fhelp" or "\uFF1FHelp" or "\uFF1Fh" or "\uFF1FH";
 

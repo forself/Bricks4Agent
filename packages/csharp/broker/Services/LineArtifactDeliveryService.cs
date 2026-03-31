@@ -308,12 +308,24 @@ public sealed class LineArtifactDeliveryService
         return trimmed;
     }
 
-    internal static string BuildNotificationBody(
+    public static string BuildNotificationBody(
         string fileName,
         string filePath,
         GoogleDriveShareResult? driveResult)
     {
         var lines = new List<string>();
+
+        if (driveResult?.Success != true)
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "Artifact created, but a downloadable link is not available yet.",
+                string.Empty,
+                $"File: {fileName}",
+                string.Empty,
+                "The broker kept the artifact internally without exposing internal paths."
+            });
+        }
 
         if (driveResult?.Success == true)
         {

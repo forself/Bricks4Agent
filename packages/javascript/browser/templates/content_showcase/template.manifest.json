@@ -1,0 +1,10 @@
+{
+  "template_id": "content_showcase",
+  "title": "Content Showcase",
+  "summary": "A content-led site with strong narrative sections, editorial layout, and curated landing pages.",
+  "supported_project_scales": ["tool_page", "mini_app"],
+  "required_sections": ["hero", "section_stack", "footer"],
+  "optional_modules": ["faq", "testimonials", "feature_grid", "contact_cta"],
+  "supported_styles": ["clean_editorial", "bold_campaign", "warm_storytelling"],
+  "supported_component_sets": ["core"]
+}

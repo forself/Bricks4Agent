@@ -1,0 +1,44 @@
+{
+  "families": [
+    {
+      "template_id": "content_showcase",
+      "supported_project_scales": ["tool_page", "mini_app"],
+      "manifest_path": "./content_showcase/template.manifest.json"
+    },
+    {
+      "template_id": "form_collection",
+      "supported_project_scales": ["tool_page", "mini_app"],
+      "manifest_path": "./form_collection/template.manifest.json"
+    },
+    {
+      "template_id": "member_portal",
+      "supported_project_scales": ["mini_app", "structured_app"],
+      "manifest_path": "./member_portal/template.manifest.json"
+    },
+    {
+      "template_id": "list_search",
+      "supported_project_scales": ["tool_page", "mini_app"],
+      "manifest_path": "./list_search/template.manifest.json"
+    },
+    {
+      "template_id": "crud_admin",
+      "supported_project_scales": ["mini_app", "structured_app"],
+      "manifest_path": "./crud_admin/template.manifest.json"
+    },
+    {
+      "template_id": "dashboard",
+      "supported_project_scales": ["mini_app", "structured_app"],
+      "manifest_path": "./dashboard/template.manifest.json"
+    },
+    {
+      "template_id": "multi_step_flow",
+      "supported_project_scales": ["mini_app", "structured_app"],
+      "manifest_path": "./multi_step_flow/template.manifest.json"
+    },
+    {
+      "template_id": "transaction_flow",
+      "supported_project_scales": ["mini_app", "structured_app"],
+      "manifest_path": "./transaction_flow/template.manifest.json"
+    }
+  ]
+}
