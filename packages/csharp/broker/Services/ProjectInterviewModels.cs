@@ -51,3 +51,75 @@ public sealed record ProjectInterviewSessionState(
 }
 
 public sealed record HighLevelProjectInterviewCommand(bool IsProjectInterview, ProjectInterviewCommand? Command);
+
+public enum AssertionStatus
+{
+    Candidate = 0,
+    Confirmed = 1,
+    Rejected = 2,
+    Superseded = 3,
+    Conflicted = 4
+}
+
+public sealed record ProjectInterviewAssertion(
+    string AssertionId,
+    string Statement,
+    AssertionStatus Status,
+    string Evidence,
+    DateTimeOffset UpdatedAt);
+
+public sealed record RestatementOption(
+    string OptionId,
+    string Text,
+    IReadOnlyList<string> AssertionStatements,
+    bool IsConservativeEscape);
+
+public sealed record ProjectInterviewTaskDocument(
+    string Channel,
+    string UserId,
+    ProjectInterviewSessionState SessionState,
+    IReadOnlyList<ProjectInterviewAssertion> Assertions,
+    IReadOnlyList<RestatementOption> PendingOptions)
+{
+    public static ProjectInterviewTaskDocument CreateEmpty(string channel, string userId) =>
+        new(
+            channel,
+            userId,
+            ProjectInterviewSessionState.CreateNew(channel, userId),
+            Array.Empty<ProjectInterviewAssertion>(),
+            Array.Empty<RestatementOption>());
+
+    public bool IsActiveSession =>
+        SessionState.CurrentPhase is not ProjectInterviewPhase.Idle
+        and not ProjectInterviewPhase.Confirmed
+        and not ProjectInterviewPhase.Cancelled
+        and not ProjectInterviewPhase.Failed;
+
+    public ProjectInterviewTaskDocument WithSessionState(ProjectInterviewSessionState sessionState) =>
+        this with { SessionState = sessionState };
+
+    public ProjectInterviewTaskDocument WithPendingOptions(IReadOnlyList<RestatementOption> pendingOptions) =>
+        this with { PendingOptions = pendingOptions };
+
+    public ProjectInterviewTaskDocument ClearPendingOptions() =>
+        this with { PendingOptions = Array.Empty<RestatementOption>() };
+
+    public ProjectInterviewTaskDocument PromoteConfirmedOption(RestatementOption option, string evidence)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var promotedAssertions = option.AssertionStatements
+            .Select(statement => new ProjectInterviewAssertion(
+                Guid.NewGuid().ToString("N"),
+                statement,
+                AssertionStatus.Confirmed,
+                evidence,
+                timestamp))
+            .ToArray();
+
+        return this with
+        {
+            Assertions = Assertions.Concat(promotedAssertions).ToArray(),
+            PendingOptions = Array.Empty<RestatementOption>()
+        };
+    }
+}

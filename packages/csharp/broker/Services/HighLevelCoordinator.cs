@@ -43,6 +43,9 @@ public class HighLevelCoordinator
     private readonly HighLevelCodeArtifactService _codeArtifactService;
     private readonly HighLevelSystemScaffoldService _systemScaffoldService;
     private readonly BrowserBindingService _browserBindingService;
+    private readonly ProjectInterviewStateMachine _projectInterviewStateMachine;
+    private readonly ProjectInterviewStateService _projectInterviewStateService;
+    private readonly ProjectInterviewRestatementService _projectInterviewRestatementService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -60,6 +63,9 @@ public class HighLevelCoordinator
         HighLevelCodeArtifactService codeArtifactService,
         HighLevelSystemScaffoldService systemScaffoldService,
         BrowserBindingService browserBindingService,
+        ProjectInterviewStateMachine projectInterviewStateMachine,
+        ProjectInterviewStateService projectInterviewStateService,
+        ProjectInterviewRestatementService projectInterviewRestatementService,
         ILogger<HighLevelCoordinator> logger)
     {
         _db = db;
@@ -83,6 +89,9 @@ public class HighLevelCoordinator
         _codeArtifactService = codeArtifactService;
         _systemScaffoldService = systemScaffoldService;
         _browserBindingService = browserBindingService;
+        _projectInterviewStateMachine = projectInterviewStateMachine;
+        _projectInterviewStateService = projectInterviewStateService;
+        _projectInterviewRestatementService = projectInterviewRestatementService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -156,6 +165,38 @@ public class HighLevelCoordinator
                 DecisionReason = "matched help query",
                 Draft = draft
             });
+        }
+
+        var projectInterviewCommand = _commandParser.ParseProjectInterviewCommand(trimmed);
+        var projectInterviewDocument = await _projectInterviewStateService.LoadTaskDocumentAsync(channel, userId, cancellationToken);
+
+        if (projectInterviewCommand.IsProjectInterview && projectInterviewCommand.Command is { } command)
+        {
+            var interviewResult = await HandleProjectInterviewCommandAsync(
+                channel,
+                userId,
+                trimmed,
+                profile,
+                projectInterviewDocument,
+                command,
+                cancellationToken);
+
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, interviewResult);
+        }
+
+        if (projectInterviewDocument.IsActiveSession)
+        {
+            var interviewTurnResult = await HandleProjectInterviewTurnAsync(
+                channel,
+                userId,
+                trimmed,
+                profile,
+                projectInterviewDocument,
+                cancellationToken);
+
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, interviewTurnResult);
         }
 
         if (draft != null)
@@ -477,6 +518,305 @@ public class HighLevelCoordinator
             RagSnippets = chat.RagSnippets,
             HistoryCount = chat.HistoryCount
         });
+    }
+
+    private async Task<HighLevelProcessResult> HandleProjectInterviewCommandAsync(
+        string channel,
+        string userId,
+        string message,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        ProjectInterviewCommand command,
+        CancellationToken cancellationToken)
+    {
+        profile.LastDecision = HighLevelRouteMode.Production.ToString();
+        profile.LastUpdatedAt = DateTime.UtcNow;
+        IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+
+        try
+        {
+            if (command == ProjectInterviewCommand.StartProjectInterview)
+            {
+                var sessionState = _projectInterviewStateMachine.ApplyCommand(
+                    ProjectInterviewSessionState.CreateNew(channel, userId),
+                    ProjectInterviewCommand.StartProjectInterview);
+
+                var updated = ProjectInterviewTaskDocument.CreateEmpty(channel, userId)
+                    .WithSessionState(sessionState)
+                    .ClearPendingOptions();
+
+                await _projectInterviewStateService.SaveTaskDocumentAsync(updated, cancellationToken);
+
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        "Project interview started. Reply with #ProjectName first so I can reserve a unique folder name."),
+                    DecisionReason = "project interview session started"
+                };
+            }
+
+            var nextState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
+            var updatedDocument = document.WithSessionState(nextState).ClearPendingOptions();
+            await _projectInterviewStateService.SaveTaskDocumentAsync(updatedDocument, cancellationToken);
+
+            var reply = command switch
+            {
+                ProjectInterviewCommand.Approve => "The current workflow design has been confirmed.",
+                ProjectInterviewCommand.Revise => "Revision requested. Continue by describing what to adjust in the current design.",
+                ProjectInterviewCommand.Cancel => "The current project interview task has been cancelled.",
+                _ => "Project interview command accepted."
+            };
+
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(profile, reply),
+                DecisionReason = $"project interview command {command}"
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(profile, "That command is not valid in the current /proj phase."),
+                Error = "project_interview_command_not_allowed",
+                DecisionReason = ex.Message
+            };
+        }
+    }
+
+    private async Task<HighLevelProcessResult> HandleProjectInterviewTurnAsync(
+        string channel,
+        string userId,
+        string message,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        profile.LastDecision = HighLevelRouteMode.Production.ToString();
+        profile.LastUpdatedAt = DateTime.UtcNow;
+        IncrementDecisionCount(profile, HighLevelRouteMode.Production);
+
+        var trimmed = message.Trim();
+        switch (document.SessionState.CurrentPhase)
+        {
+            case ProjectInterviewPhase.CollectProjectName:
+                return await HandleProjectInterviewProjectNameAsync(channel, userId, trimmed, profile, document, cancellationToken);
+
+            case ProjectInterviewPhase.ClassifyProjectScale:
+                return await HandleProjectInterviewScaleAsync(channel, userId, trimmed, profile, document, cancellationToken);
+
+            default:
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        $"The /proj workflow is waiting at phase '{document.SessionState.CurrentPhase}'."),
+                    DecisionReason = $"project interview phase {document.SessionState.CurrentPhase} awaiting later implementation"
+                };
+        }
+    }
+
+    private async Task<HighLevelProcessResult> HandleProjectInterviewProjectNameAsync(
+        string channel,
+        string userId,
+        string trimmed,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (!TryExtractProjectInterviewName(trimmed, out var projectName))
+        {
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    "Reply with #ProjectName first. I will not infer the project name from free-form requirements."),
+                DecisionReason = "project interview requires explicit project-name confirmation"
+            };
+        }
+
+        var folderName = SlugifyProjectFolderName(projectName);
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(profile, "The project name is not valid. Try letters or numbers after #."),
+                Error = "invalid_project_name",
+                DecisionReason = "project interview project name invalid"
+            };
+        }
+
+        var projectRoot = BuildProjectInterviewProjectRoot(folderName);
+        var sessionState = document.SessionState with
+        {
+            ProjectName = projectName,
+            ProjectFolderName = folderName,
+            HasUniqueProjectFolder = !Directory.Exists(projectRoot)
+        };
+
+        if (!sessionState.HasUniqueProjectFolder)
+        {
+            var collision = document.WithSessionState(sessionState);
+            await _projectInterviewStateService.SaveTaskDocumentAsync(collision, cancellationToken);
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    $"The project folder name '{folderName}' already exists. Choose another #ProjectName."),
+                Error = "duplicate_project_folder",
+                DecisionReason = "project interview project folder collision"
+            };
+        }
+
+        var advancedState = _projectInterviewStateMachine.Advance(sessionState, ProjectInterviewAdvanceReason.ProjectNameAccepted);
+        var updated = document.WithSessionState(advancedState).WithPendingOptions(BuildProjectScaleOptions());
+        await _projectInterviewStateService.SaveTaskDocumentAsync(updated, cancellationToken);
+
+        return new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Production,
+            Reply = PrepareReplyWithoutGuide(
+                profile,
+                $"Project name reserved as '{projectName}'. Next, tell me the scale of the system by choosing one option:\n{RenderRestatementOptions(updated.PendingOptions)}"),
+            DecisionReason = "project interview project name accepted"
+        };
+    }
+
+    private async Task<HighLevelProcessResult> HandleProjectInterviewScaleAsync(
+        string channel,
+        string userId,
+        string trimmed,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (TryResolveRestatementSelection(trimmed, document.PendingOptions, out var selected))
+        {
+            if (selected.IsConservativeEscape)
+            {
+                var conservativeReset = document.ClearPendingOptions();
+                await _projectInterviewStateService.SaveTaskDocumentAsync(conservativeReset, cancellationToken);
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        "Understood. Restate the project scale in one sentence and I will offer a narrower set of explicit options."),
+                    DecisionReason = "project interview conservative scale option selected"
+                };
+            }
+
+            var promoted = document.PromoteConfirmedOption(selected, $"user selected {selected.OptionId}");
+            await _projectInterviewStateService.SaveTaskDocumentAsync(promoted, cancellationToken);
+            return new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Production,
+                Reply = PrepareReplyWithoutGuide(
+                    profile,
+                    "Project scale confirmed. Template-family narrowing is the next step."),
+                DecisionReason = "project interview scale confirmed"
+            };
+        }
+
+        var refreshed = document.WithPendingOptions(BuildProjectScaleOptions());
+        await _projectInterviewStateService.SaveTaskDocumentAsync(refreshed, cancellationToken);
+        return new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Production,
+            Reply = PrepareReplyWithoutGuide(
+                profile,
+                $"I have not promoted any requirement yet. Choose one explicit option first:\n{RenderRestatementOptions(refreshed.PendingOptions)}"),
+            DecisionReason = "project interview awaiting explicit scale confirmation"
+        };
+    }
+
+    private static bool TryExtractProjectInterviewName(string trimmed, out string projectName)
+    {
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            projectName = string.Empty;
+            return false;
+        }
+
+        if (trimmed[0] is '#' or '＃')
+        {
+            projectName = trimmed[1..].Trim();
+            return !string.IsNullOrWhiteSpace(projectName);
+        }
+
+        projectName = string.Empty;
+        return false;
+    }
+
+    private IReadOnlyList<RestatementOption> BuildProjectScaleOptions()
+        => new[]
+        {
+            new RestatementOption(
+                "opt-1",
+                "A. This is a small single-purpose tool or page. Use the lightweight tool_page path.",
+                new[] { "project_scale=tool_page" },
+                false),
+            new RestatementOption(
+                "opt-2",
+                "B. This is a small application with a few core pages. Use the mini_app path.",
+                new[] { "project_scale=mini_app" },
+                false),
+            new RestatementOption(
+                "opt-3",
+                "C. This is a multi-module or multi-role system. Use the structured_app path.",
+                new[] { "project_scale=structured_app" },
+                false),
+            _projectInterviewRestatementService.BuildOptions(Array.Empty<string>(), "D. None of these is precise; I want to restate the scale.")[0]
+        };
+
+    private static string RenderRestatementOptions(IReadOnlyList<RestatementOption> options)
+        => string.Join('\n', options.Select((option, index) => $"{index + 1}. {option.Text}"));
+
+    private static bool TryResolveRestatementSelection(
+        string trimmed,
+        IReadOnlyList<RestatementOption> options,
+        out RestatementOption selected)
+    {
+        if (!string.IsNullOrWhiteSpace(trimmed))
+        {
+            var normalized = trimmed.Trim().ToLowerInvariant();
+            for (var index = 0; index < options.Count; index++)
+            {
+                var option = options[index];
+                if (normalized == (index + 1).ToString() ||
+                    normalized == option.OptionId.ToLowerInvariant() ||
+                    normalized == option.Text[..1].ToLowerInvariant())
+                {
+                    selected = option;
+                    return true;
+                }
+            }
+        }
+
+        selected = default!;
+        return false;
+    }
+
+    private string BuildProjectInterviewProjectRoot(string folderName)
+    {
+        var projectsRoot = Path.Combine(_accessRoot, "projects");
+        Directory.CreateDirectory(projectsRoot);
+        return Path.Combine(projectsRoot, folderName);
+    }
+
+    private static string SlugifyProjectFolderName(string projectName)
+    {
+        var slug = Regex.Replace(projectName.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-");
+        slug = slug.Trim('-');
+        return slug;
     }
 
     public HighLevelUserProfile? GetLineUserProfile(string userId)
