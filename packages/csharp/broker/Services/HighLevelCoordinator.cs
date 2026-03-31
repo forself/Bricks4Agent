@@ -42,12 +42,15 @@ public class HighLevelCoordinator
     private readonly HighLevelDocumentArtifactService _documentArtifactService;
     private readonly HighLevelCodeArtifactService _codeArtifactService;
     private readonly HighLevelSystemScaffoldService _systemScaffoldService;
+    private readonly LineArtifactDeliveryService _lineArtifactDeliveryService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ProjectInterviewStateMachine _projectInterviewStateMachine;
     private readonly ProjectInterviewStateService _projectInterviewStateService;
     private readonly ProjectInterviewRestatementService _projectInterviewRestatementService;
     private readonly ProjectInterviewTemplateCatalogService _projectInterviewTemplateCatalogService;
     private readonly ProjectInterviewProjectDefinitionCompiler _projectInterviewProjectDefinitionCompiler;
+    private readonly ProjectInterviewWorkflowDesignService _projectInterviewWorkflowDesignService;
+    private readonly ProjectInterviewPdfRenderService _projectInterviewPdfRenderService;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -64,12 +67,15 @@ public class HighLevelCoordinator
         HighLevelDocumentArtifactService documentArtifactService,
         HighLevelCodeArtifactService codeArtifactService,
         HighLevelSystemScaffoldService systemScaffoldService,
+        LineArtifactDeliveryService lineArtifactDeliveryService,
         BrowserBindingService browserBindingService,
         ProjectInterviewStateMachine projectInterviewStateMachine,
         ProjectInterviewStateService projectInterviewStateService,
         ProjectInterviewRestatementService projectInterviewRestatementService,
         ProjectInterviewTemplateCatalogService projectInterviewTemplateCatalogService,
         ProjectInterviewProjectDefinitionCompiler projectInterviewProjectDefinitionCompiler,
+        ProjectInterviewWorkflowDesignService projectInterviewWorkflowDesignService,
+        ProjectInterviewPdfRenderService projectInterviewPdfRenderService,
         ILogger<HighLevelCoordinator> logger)
     {
         _db = db;
@@ -92,12 +98,15 @@ public class HighLevelCoordinator
         _documentArtifactService = documentArtifactService;
         _codeArtifactService = codeArtifactService;
         _systemScaffoldService = systemScaffoldService;
+        _lineArtifactDeliveryService = lineArtifactDeliveryService;
         _browserBindingService = browserBindingService;
         _projectInterviewStateMachine = projectInterviewStateMachine;
         _projectInterviewStateService = projectInterviewStateService;
         _projectInterviewRestatementService = projectInterviewRestatementService;
         _projectInterviewTemplateCatalogService = projectInterviewTemplateCatalogService;
         _projectInterviewProjectDefinitionCompiler = projectInterviewProjectDefinitionCompiler;
+        _projectInterviewWorkflowDesignService = projectInterviewWorkflowDesignService;
+        _projectInterviewPdfRenderService = projectInterviewPdfRenderService;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -563,6 +572,44 @@ public class HighLevelCoordinator
                 };
             }
 
+            if (command == ProjectInterviewCommand.Revise &&
+                document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
+                document.CurrentProjectDefinition != null)
+            {
+                var revisedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
+                var refreshedDocument = document.WithSessionState(revisedState);
+                var refreshedCompileResult = _projectInterviewProjectDefinitionCompiler.Compile(
+                    document.CurrentVersion + 1,
+                    BuildCompileAssertions(refreshedDocument.Assertions));
+                var refreshedCompiled = refreshedDocument.WithCompiledDefinition(
+                    refreshedCompileResult.Version,
+                    refreshedCompileResult.ProjectDefinition);
+                var renderedRevision = await RenderProjectInterviewReviewAsync(
+                    channel,
+                    userId,
+                    profile,
+                    refreshedCompiled,
+                    refreshedCompileResult,
+                    cancellationToken);
+
+                await _projectInterviewStateService.SaveVersionDagAsync(
+                    channel,
+                    userId,
+                    refreshedCompileResult.Version,
+                    refreshedCompileResult.Dag,
+                    cancellationToken);
+                await _projectInterviewStateService.SaveTaskDocumentAsync(renderedRevision, cancellationToken);
+
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(
+                        profile,
+                        $"Revision draft v{refreshedCompileResult.Version} is ready for review."),
+                    DecisionReason = "project interview revise created a new review version"
+                };
+            }
+
             var nextState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
             var updatedDocument = document.WithSessionState(nextState).ClearPendingOptions();
             await _projectInterviewStateService.SaveTaskDocumentAsync(updatedDocument, cancellationToken);
@@ -802,17 +849,24 @@ public class HighLevelCoordinator
             var compiledDocument = promoted
                 .WithSessionState(compiledState)
                 .WithCompiledDefinition(compileResult.Version, compileResult.ProjectDefinition);
+            var reviewedDocument = await RenderProjectInterviewReviewAsync(
+                channel,
+                userId,
+                profile,
+                compiledDocument,
+                compileResult,
+                cancellationToken);
 
             await _projectInterviewStateService.SaveVersionDagAsync(channel, userId, compileResult.Version, compileResult.Dag, cancellationToken);
-            await _projectInterviewStateService.SaveTaskDocumentAsync(compiledDocument, cancellationToken);
+            await _projectInterviewStateService.SaveTaskDocumentAsync(reviewedDocument, cancellationToken);
 
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    $"Template family confirmed and version v{compileResult.Version} has been compiled into a canonical project definition."),
-                DecisionReason = "project interview template family confirmed and canonical definition compiled"
+                    $"Template family confirmed. Review artifacts for v{compileResult.Version} are ready. Use /ok to approve or /revise to regenerate."),
+                DecisionReason = "project interview template family confirmed and review artifacts rendered"
             };
         }
 
@@ -926,6 +980,56 @@ public class HighLevelCoordinator
         var slug = Regex.Replace(projectName.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-");
         slug = slug.Trim('-');
         return slug;
+    }
+
+    private async Task<ProjectInterviewTaskDocument> RenderProjectInterviewReviewAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        ProjectInterviewCompileResult compileResult,
+        CancellationToken cancellationToken)
+    {
+        var taskId = $"project-interview:{channel}:{userId}";
+        var viewModel = _projectInterviewWorkflowDesignService.BuildViewModel(
+            taskId,
+            compileResult.Version,
+            compileResult.ProjectDefinition);
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(compileResult.ProjectDefinition, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        var jsonDigest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(jsonBytes));
+        var pdf = _projectInterviewPdfRenderService.Render(viewModel, jsonDigest);
+        var projectFolder = document.SessionState.ProjectFolderName ?? "project";
+        var reviewRoot = Path.Combine(BuildProjectInterviewProjectRoot(projectFolder), "review");
+        Directory.CreateDirectory(reviewRoot);
+
+        var jsonPath = Path.Combine(reviewRoot, $"workflow-design.v{compileResult.Version}.json");
+        await File.WriteAllBytesAsync(jsonPath, jsonBytes, cancellationToken);
+
+        var pdfPath = Path.Combine(reviewRoot, pdf.FileName);
+        await File.WriteAllBytesAsync(pdfPath, pdf.Bytes, cancellationToken);
+
+        var uploadToGoogleDrive = _lineArtifactDeliveryService.CanUploadToGoogleDrive(profile.UserId, "shared_delegated");
+        await _lineArtifactDeliveryService.DeliverExistingFileAsync(new LineExistingArtifactDeliveryRequest
+        {
+            UserId = profile.UserId,
+            FilePath = pdfPath,
+            FileName = pdf.FileName,
+            UploadToGoogleDrive = uploadToGoogleDrive,
+            IdentityMode = "shared_delegated",
+            SendLineNotification = uploadToGoogleDrive,
+            NotificationTitle = $"Workflow Design v{compileResult.Version}",
+            Source = "project_interview_review",
+            RelatedTaskType = "project_interview",
+            RelatedTaskId = taskId
+        }, cancellationToken);
+
+        return document.WithSessionState(document.SessionState with
+        {
+            CurrentPhase = ProjectInterviewPhase.AwaitUserReview
+        });
     }
 
     private static IReadOnlyList<string> BuildCompileAssertions(IReadOnlyList<ProjectInterviewAssertion> assertions)
