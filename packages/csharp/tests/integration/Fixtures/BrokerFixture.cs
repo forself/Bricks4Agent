@@ -86,14 +86,14 @@ public class BrokerFixture : IAsyncLifetime
         return await service.LoadTaskDocumentAsync(channel, userId, CancellationToken.None);
     }
 
-    public async Task CompleteProjectInterviewToReviewAsync(string? userId = null)
+    public async Task<JsonDocument> CompleteProjectInterviewToReviewAsync(string? userId = null)
     {
         var resolvedUserId = userId ?? DefaultLineUserId;
         var uniqueProjectName = "#AlphaPortal" + Guid.NewGuid().ToString("N");
         await SendHighLevelLineTextAsync("/proj", resolvedUserId);
         await SendHighLevelLineTextAsync(uniqueProjectName, resolvedUserId);
         await SendHighLevelLineTextAsync("2", resolvedUserId);
-        await SendHighLevelLineTextAsync("3", resolvedUserId);
+        return await SendHighLevelLineTextAsync("3", resolvedUserId);
     }
 
     public Task<ProjectInterviewTaskDocument> ReadProjectInterviewReviewAsync(string channel, string userId)
