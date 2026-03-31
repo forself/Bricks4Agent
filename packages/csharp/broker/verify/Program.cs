@@ -251,6 +251,24 @@ try
     AssertTrue(compileResult.Version == 1, "compiler stamps version");
     AssertTrue(compileResult.ProjectDefinition.TemplateFamily == "member_portal", "compiler projects selected template");
     AssertTrue(compileResult.Dag.Nodes.Any(node => node.NodeType == "project_instance_definition_json"), "dag contains canonical json node");
+    var workflow = new ProjectInterviewWorkflowDesignService();
+    var viewModel = workflow.BuildViewModel(
+        taskId: "task-1",
+        version: 2,
+        projectDefinition: new ProjectInstanceDefinition("mini_app", "member_portal", new[] { "auth" }, "clean-enterprise"));
+    AssertTrue(viewModel.Version == 2, "view model carries version");
+    AssertTrue(viewModel.TemplateFamily == "member_portal", "view model carries template family");
+    var pdfRenderer = new ProjectInterviewPdfRenderService();
+    var pdf = pdfRenderer.Render(viewModel, "ABC123");
+    AssertTrue(pdf.FileName == "workflow-design.v2.pdf", "pdf renderer stamps versioned filename");
+    AssertTrue(pdf.MetadataDigest == "ABC123", "pdf renderer preserves metadata digest");
+    var deliveryMessage = LineArtifactDeliveryService.BuildNotificationBody(
+        "workflow-design.v2.pdf",
+        @"D:\Bricks4Agent\packages\csharp\broker\review\workflow-design.v2.pdf",
+        null);
+    AssertTrue(!deliveryMessage.Contains(@"D:\", StringComparison.Ordinal), "user-facing review output does not expose internal windows paths");
+    AssertTrue(!deliveryMessage.Contains("/packages/csharp/", StringComparison.Ordinal), "user-facing review output does not expose repo paths");
+    AssertTrue(deliveryMessage.Contains("workflow-design.v2.pdf", StringComparison.Ordinal), "user-facing review output references versioned artifact");
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
@@ -1583,6 +1601,8 @@ try
                 .Build(),
             new FakeWebHostEnvironment(sandboxRoot));
         var coordinatorProjectInterviewCompiler = new ProjectInterviewProjectDefinitionCompiler();
+        var coordinatorProjectInterviewWorkflowDesignService = new ProjectInterviewWorkflowDesignService();
+        var coordinatorProjectInterviewPdfRenderService = new ProjectInterviewPdfRenderService();
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1610,12 +1630,15 @@ try
             coordinatorDocumentArtifactService,
             coordinatorCodeArtifactService,
             coordinatorSystemScaffoldService,
+            coordinatorArtifactDeliveryService,
             new BrowserBindingService(coordinatorDb),
             coordinatorProjectInterviewStateMachine,
             coordinatorProjectInterviewStateService,
             coordinatorProjectInterviewRestatementService,
             coordinatorProjectInterviewTemplateCatalogService,
             coordinatorProjectInterviewCompiler,
+            coordinatorProjectInterviewWorkflowDesignService,
+            coordinatorProjectInterviewPdfRenderService,
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");

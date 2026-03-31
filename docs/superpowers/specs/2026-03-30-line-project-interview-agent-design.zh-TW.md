@@ -1,7 +1,28 @@
 # LINE 專案訪談代理設計
 
 Date: 2026-03-30  
-Status: design draft for review
+Status: partially implemented in `feature/project-interview-agent`
+
+## Implementation Snapshot
+
+目前這個 branch 已實作：
+
+- `/proj`、`/ok`、`/revise`、`/cancel` 明確命令入口
+- broker-owned project interview state machine
+- task-scoped assertion persistence
+- explicit restatement option gating
+- project scale classification
+- template family catalog 與 narrowing
+- canonical project definition compilation
+- per-version DAG persistence
+- `workflow-design.vN.json` / `workflow-design.vN.pdf` versioned artifact generation
+- `/revise` 會建立新 review version，同時保留舊 DAG
+
+目前仍屬最小可用實作，尚未完整展開：
+
+- 更深的 template-specific requirement collection
+- 更豐富的 assertion bundle 與 module/style interview
+- 從 review-approved artifacts 自動進入後續 project construction 的完整執行階段
 
 ## 學理設計理由
 

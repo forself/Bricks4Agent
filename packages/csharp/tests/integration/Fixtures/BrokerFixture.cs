@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Broker.Services;
+using BrokerCore.Models;
 using Xunit;
 
 namespace Integration.Tests.Fixtures;
@@ -83,6 +84,34 @@ public class BrokerFixture : IAsyncLifetime
         using var scope = Factory.Services.CreateScope();
         var service = new ProjectInterviewStateService(scope.ServiceProvider.GetRequiredService<BrokerCore.Data.BrokerDb>());
         return await service.LoadTaskDocumentAsync(channel, userId, CancellationToken.None);
+    }
+
+    public async Task CompleteProjectInterviewToReviewAsync(string? userId = null)
+    {
+        var resolvedUserId = userId ?? DefaultLineUserId;
+        var uniqueProjectName = "#AlphaPortal" + Guid.NewGuid().ToString("N");
+        await SendHighLevelLineTextAsync("/proj", resolvedUserId);
+        await SendHighLevelLineTextAsync(uniqueProjectName, resolvedUserId);
+        await SendHighLevelLineTextAsync("2", resolvedUserId);
+        await SendHighLevelLineTextAsync("3", resolvedUserId);
+    }
+
+    public Task<ProjectInterviewTaskDocument> ReadProjectInterviewReviewAsync(string channel, string userId)
+        => ReadProjectInterviewRequirementsAsync(channel, userId);
+
+    public Task<ProjectInterviewVersionDag?> ReadProjectInterviewVersionDagAsync(string channel, string userId, int version)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BrokerCore.Data.BrokerDb>();
+        var entry = db.Query<SharedContextEntry>(
+            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            new { docId = ProjectInterviewStateService.BuildVersionDagDocumentId(channel, userId, version) })
+            .FirstOrDefault();
+
+        if (entry == null || string.IsNullOrWhiteSpace(entry.ContentRef))
+            return Task.FromResult<ProjectInterviewVersionDag?>(null);
+
+        return Task.FromResult(JsonSerializer.Deserialize<ProjectInterviewVersionDag>(entry.ContentRef));
     }
 
     public async Task DisposeAsync()

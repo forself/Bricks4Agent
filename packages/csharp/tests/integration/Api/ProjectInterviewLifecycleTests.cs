@@ -16,11 +16,13 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
     [Fact]
     public async Task ProjectInterview_DoesNotPromoteAssertionsWithoutExplicitConfirmation()
     {
-        await _fixture.SendHighLevelLineTextAsync("/proj");
-        await _fixture.SendHighLevelLineTextAsync("#AlphaPortal");
-        await _fixture.SendHighLevelLineTextAsync("I want an internal admin tool with login.");
+        const string userId = "line-project-lifecycle";
+        var projectName = $"#AlphaPortalLifecycle{Guid.NewGuid():N}";
+        await _fixture.SendHighLevelLineTextAsync("/proj", userId);
+        await _fixture.SendHighLevelLineTextAsync(projectName, userId);
+        await _fixture.SendHighLevelLineTextAsync("I want an internal admin tool with login.", userId);
 
-        var state = await _fixture.ReadProjectInterviewRequirementsAsync("line", _fixture.DefaultLineUserId);
+        var state = await _fixture.ReadProjectInterviewRequirementsAsync("line", userId);
 
         state.Assertions.Should().NotContain(assertion => assertion.Status == Broker.Services.AssertionStatus.Confirmed);
         state.PendingOptions.Should().NotBeEmpty();
