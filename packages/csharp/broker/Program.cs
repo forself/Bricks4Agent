@@ -189,6 +189,7 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewRestatementService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateMachine>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewTemplateCatalogService>();
+builder.Services.AddSingleton<Broker.Services.ProjectInterviewProjectDefinitionCompiler>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();

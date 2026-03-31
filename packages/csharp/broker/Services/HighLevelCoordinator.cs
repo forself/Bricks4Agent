@@ -47,6 +47,7 @@ public class HighLevelCoordinator
     private readonly ProjectInterviewStateService _projectInterviewStateService;
     private readonly ProjectInterviewRestatementService _projectInterviewRestatementService;
     private readonly ProjectInterviewTemplateCatalogService _projectInterviewTemplateCatalogService;
+    private readonly ProjectInterviewProjectDefinitionCompiler _projectInterviewProjectDefinitionCompiler;
     private readonly ILogger<HighLevelCoordinator> _logger;
     private readonly string _accessRoot;
 
@@ -68,6 +69,7 @@ public class HighLevelCoordinator
         ProjectInterviewStateService projectInterviewStateService,
         ProjectInterviewRestatementService projectInterviewRestatementService,
         ProjectInterviewTemplateCatalogService projectInterviewTemplateCatalogService,
+        ProjectInterviewProjectDefinitionCompiler projectInterviewProjectDefinitionCompiler,
         ILogger<HighLevelCoordinator> logger)
     {
         _db = db;
@@ -95,6 +97,7 @@ public class HighLevelCoordinator
         _projectInterviewStateService = projectInterviewStateService;
         _projectInterviewRestatementService = projectInterviewRestatementService;
         _projectInterviewTemplateCatalogService = projectInterviewTemplateCatalogService;
+        _projectInterviewProjectDefinitionCompiler = projectInterviewProjectDefinitionCompiler;
         _logger = logger;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
@@ -788,16 +791,28 @@ public class HighLevelCoordinator
             var promoted = document
                 .PromoteConfirmedOption(selected, $"user selected {selected.OptionId}")
                 .WithSessionState(confirmedTemplateState);
+            var compileAssertions = BuildCompileAssertions(promoted.Assertions);
+            var compileResult = _projectInterviewProjectDefinitionCompiler.Compile(
+                promoted.CurrentVersion + 1,
+                compileAssertions);
+            var compiledState = confirmedTemplateState with
+            {
+                CurrentPhase = ProjectInterviewPhase.CompileProjectDefinition
+            };
+            var compiledDocument = promoted
+                .WithSessionState(compiledState)
+                .WithCompiledDefinition(compileResult.Version, compileResult.ProjectDefinition);
 
-            await _projectInterviewStateService.SaveTaskDocumentAsync(promoted, cancellationToken);
+            await _projectInterviewStateService.SaveVersionDagAsync(channel, userId, compileResult.Version, compileResult.Dag, cancellationToken);
+            await _projectInterviewStateService.SaveTaskDocumentAsync(compiledDocument, cancellationToken);
 
             return new HighLevelProcessResult
             {
                 Mode = HighLevelRouteMode.Production,
                 Reply = PrepareReplyWithoutGuide(
                     profile,
-                    "Template family confirmed. The next stage is detailed requirement collection on top of this template."),
-                DecisionReason = "project interview template family confirmed"
+                    $"Template family confirmed and version v{compileResult.Version} has been compiled into a canonical project definition."),
+                DecisionReason = "project interview template family confirmed and canonical definition compiled"
             };
         }
 
@@ -911,6 +926,22 @@ public class HighLevelCoordinator
         var slug = Regex.Replace(projectName.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-");
         slug = slug.Trim('-');
         return slug;
+    }
+
+    private static IReadOnlyList<string> BuildCompileAssertions(IReadOnlyList<ProjectInterviewAssertion> assertions)
+    {
+        var confirmed = assertions
+            .Where(assertion => assertion.Status == AssertionStatus.Confirmed)
+            .Select(assertion => assertion.Statement)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!confirmed.Any(item => item.StartsWith("style_profile=", StringComparison.Ordinal)))
+        {
+            confirmed.Add("style_profile=clean-enterprise");
+        }
+
+        return confirmed;
     }
 
     private static string ExtractProjectScale(RestatementOption selected)
