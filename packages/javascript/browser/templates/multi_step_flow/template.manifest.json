@@ -1,0 +1,10 @@
+{
+  "template_id": "multi_step_flow",
+  "title": "Multi-step Flow",
+  "summary": "A guided wizard with staged validation, checkpoints, and progress-aware completion states.",
+  "supported_project_scales": ["mini_app", "structured_app"],
+  "required_sections": ["step_nav", "step_content", "completion_state"],
+  "optional_modules": ["draft_resume", "eligibility_gate", "review_step", "support_sidebar"],
+  "supported_styles": ["clean_service", "calm_guided", "modern_assistant"],
+  "supported_component_sets": ["core", "forms"]
+}

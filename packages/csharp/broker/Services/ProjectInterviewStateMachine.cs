@@ -21,6 +21,14 @@ public sealed class ProjectInterviewStateMachine
         {
             (ProjectInterviewPhase.CollectProjectName, ProjectInterviewAdvanceReason.ProjectNameAccepted) when state.HasUniqueProjectFolder
                 => state with { CurrentPhase = ProjectInterviewPhase.ClassifyProjectScale },
+            (ProjectInterviewPhase.ClassifyProjectScale, ProjectInterviewAdvanceReason.ProjectScaleConfirmed)
+                => state with { CurrentPhase = ProjectInterviewPhase.NarrowTemplateFamily },
+            (ProjectInterviewPhase.NarrowTemplateFamily, ProjectInterviewAdvanceReason.TemplateFamilyNarrowed)
+                => state with { CurrentPhase = ProjectInterviewPhase.ConfirmTemplateFamily },
+            (ProjectInterviewPhase.ConfirmTemplateFamily, ProjectInterviewAdvanceReason.TemplateFamilyConfirmed)
+                => state with { CurrentPhase = ProjectInterviewPhase.CollectTemplateRequirements },
+            (ProjectInterviewPhase.ReviseRequested, ProjectInterviewAdvanceReason.RevisionCaptured)
+                => state with { CurrentPhase = ProjectInterviewPhase.CollectTemplateRequirements },
             _ => throw new InvalidOperationException($"Advance {reason} not allowed from {state.CurrentPhase}.")
         };
 }

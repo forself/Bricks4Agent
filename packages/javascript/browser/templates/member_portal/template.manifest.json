@@ -1,0 +1,10 @@
+{
+  "template_id": "member_portal",
+  "title": "Member Portal",
+  "summary": "A protected portal with login, member navigation, account pages, and personalized content areas.",
+  "supported_project_scales": ["mini_app", "structured_app"],
+  "required_sections": ["auth_gate", "member_shell", "content_area"],
+  "optional_modules": ["profile", "notifications", "saved_items", "billing_overview"],
+  "supported_styles": ["clean_enterprise", "modern_product", "warm_professional"],
+  "supported_component_sets": ["core", "forms", "data_display"]
+}

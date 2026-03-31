@@ -7,6 +7,7 @@ using BrokerCore.Models;
 using BrokerCore.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Cryptography;
@@ -174,6 +175,68 @@ try
         AssertTrue(reloadedTaskDocument.Assertions.Count == 1, "project interview state service round-trips persisted assertions");
         AssertTrue(reloadedTaskDocument.Assertions[0].Statement == "This is a small internal admin tool with login.", "project interview state service preserves assertion statement");
     }
+    var templateCatalogRoot = Path.Combine(sandboxRoot, "project-interview-templates");
+    Directory.CreateDirectory(Path.Combine(templateCatalogRoot, "member_portal"));
+    Directory.CreateDirectory(Path.Combine(templateCatalogRoot, "dashboard"));
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "catalog.json"),
+        """
+        {
+          "families": [
+            {
+              "template_id": "member_portal",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "manifest_path": "./member_portal/template.manifest.json"
+            },
+            {
+              "template_id": "dashboard",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "manifest_path": "./dashboard/template.manifest.json"
+            }
+          ]
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "member_portal", "template.manifest.json"),
+        """
+        {
+          "template_id": "member_portal",
+          "title": "Member Portal",
+          "summary": "Protected portal with login and member areas.",
+          "supported_project_scales": ["mini_app", "structured_app"],
+          "required_sections": ["auth_gate"],
+          "optional_modules": ["profile"],
+          "supported_styles": ["clean_enterprise"],
+          "supported_component_sets": ["core"]
+        }
+        """);
+    File.WriteAllText(
+        Path.Combine(templateCatalogRoot, "dashboard", "template.manifest.json"),
+        """
+        {
+          "template_id": "dashboard",
+          "title": "Dashboard",
+          "summary": "Operational KPI and activity surface.",
+          "supported_project_scales": ["mini_app", "structured_app"],
+          "required_sections": ["dashboard_shell"],
+          "optional_modules": ["alerts"],
+          "supported_styles": ["clean_enterprise"],
+          "supported_component_sets": ["core"]
+        }
+        """);
+    var templateCatalogConfig = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ProjectInterview:TemplateCatalogPath"] = Path.Combine(templateCatalogRoot, "catalog.json")
+        })
+        .Build();
+    var templateCatalogService = new ProjectInterviewTemplateCatalogService(
+        templateCatalogConfig,
+        new FakeWebHostEnvironment(sandboxRoot));
+    var miniAppFamilies = templateCatalogService.NarrowByScale("mini_app");
+    AssertTrue(miniAppFamilies.Count == 2, "template catalog narrows families by project scale");
+    AssertTrue(miniAppFamilies.Any(item => item.TemplateId == "member_portal"), "template catalog includes member_portal for mini_app");
+    AssertTrue(miniAppFamilies.All(item => item.SupportedProjectScales.Contains("mini_app", StringComparer.OrdinalIgnoreCase)), "template catalog only returns families that support the requested scale");
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
@@ -1465,9 +1528,46 @@ try
             "verify-auth-code-shared-owner",
             null);
         AssertTrue(coordinatorSharedDriveCallback.Success, "coordinator google oauth callback succeeds for shared drive owner");
+        var coordinatorTemplateCatalogRoot = Path.Combine(sandboxRoot, "coordinator-template-catalog");
+        Directory.CreateDirectory(Path.Combine(coordinatorTemplateCatalogRoot, "member_portal"));
+        File.WriteAllText(
+            Path.Combine(coordinatorTemplateCatalogRoot, "catalog.json"),
+            """
+            {
+              "families": [
+                {
+                  "template_id": "member_portal",
+                  "supported_project_scales": ["mini_app", "structured_app"],
+                  "manifest_path": "./member_portal/template.manifest.json"
+                }
+              ]
+            }
+            """);
+        File.WriteAllText(
+            Path.Combine(coordinatorTemplateCatalogRoot, "member_portal", "template.manifest.json"),
+            """
+            {
+              "template_id": "member_portal",
+              "title": "Member Portal",
+              "summary": "Protected portal with login and member content.",
+              "supported_project_scales": ["mini_app", "structured_app"],
+              "required_sections": ["auth_gate"],
+              "optional_modules": ["profile"],
+              "supported_styles": ["clean_enterprise"],
+              "supported_component_sets": ["core"]
+            }
+            """);
         var coordinatorProjectInterviewStateMachine = new ProjectInterviewStateMachine();
         var coordinatorProjectInterviewStateService = new ProjectInterviewStateService(coordinatorDb);
         var coordinatorProjectInterviewRestatementService = new ProjectInterviewRestatementService();
+        var coordinatorProjectInterviewTemplateCatalogService = new ProjectInterviewTemplateCatalogService(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ProjectInterview:TemplateCatalogPath"] = Path.Combine(coordinatorTemplateCatalogRoot, "catalog.json")
+                })
+                .Build(),
+            new FakeWebHostEnvironment(sandboxRoot));
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1499,6 +1599,7 @@ try
             coordinatorProjectInterviewStateMachine,
             coordinatorProjectInterviewStateService,
             coordinatorProjectInterviewRestatementService,
+            coordinatorProjectInterviewTemplateCatalogService,
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
