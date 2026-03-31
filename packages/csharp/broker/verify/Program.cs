@@ -130,6 +130,26 @@ try
     AssertTrue(parser.Parse("cancel").Kind == HighLevelInputKind.Cancel, "parser recognizes cancel token");
     AssertTrue(parser.Parse("n").Kind == HighLevelInputKind.Cancel, "parser recognizes short cancel token");
     AssertTrue(parser.Parse("hello world").Kind == HighLevelInputKind.Conversation, "parser keeps bare text as conversation");
+    var projectInterviewParsed = parser.ParseProjectInterviewCommand("/proj");
+    AssertTrue(projectInterviewParsed.IsProjectInterview && projectInterviewParsed.Command == ProjectInterviewCommand.StartProjectInterview, "parser recognizes /proj project interview command");
+    var projectInterviewApproveParsed = parser.ParseProjectInterviewCommand("/ok");
+    AssertTrue(projectInterviewApproveParsed.IsProjectInterview && projectInterviewApproveParsed.Command == ProjectInterviewCommand.Approve, "parser recognizes /ok project interview command");
+
+    var projectInterviewMachine = new ProjectInterviewStateMachine();
+    var idleInterview = ProjectInterviewSessionState.CreateNew("line", "U123");
+    AssertTrue(idleInterview.CurrentPhase == ProjectInterviewPhase.Idle, "project interview session starts idle");
+    var startedInterview = projectInterviewMachine.ApplyCommand(idleInterview, ProjectInterviewCommand.StartProjectInterview);
+    AssertTrue(startedInterview.CurrentPhase == ProjectInterviewPhase.CollectProjectName, "project interview start enters project-name collection");
+    var namedInterview = startedInterview with
+    {
+        ProjectName = "Alpha Portal",
+        ProjectFolderName = "alpha-portal",
+        HasUniqueProjectFolder = true
+    };
+    var classifiedInterview = projectInterviewMachine.Advance(namedInterview, ProjectInterviewAdvanceReason.ProjectNameAccepted);
+    AssertTrue(classifiedInterview.CurrentPhase == ProjectInterviewPhase.ClassifyProjectScale, "accepted project name advances to scale classification");
+    var cancelledInterview = projectInterviewMachine.ApplyCommand(classifiedInterview, ProjectInterviewCommand.Cancel);
+    AssertTrue(cancelledInterview.CurrentPhase == ProjectInterviewPhase.Cancelled, "project interview cancel reaches terminal cancelled state");
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
