@@ -63,6 +63,36 @@ public sealed class ProjectInterviewStateService
         return Task.CompletedTask;
     }
 
+    public Task SaveVersionDagAsync(string channel, string userId, int version, ProjectInterviewVersionDag dag, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var documentId = BuildVersionDagDocumentId(channel, userId, version);
+        var latest = _db.Query<SharedContextEntry>(
+            "SELECT * FROM shared_context_entries WHERE document_id = @docId ORDER BY version DESC LIMIT 1",
+            new { docId = documentId }).FirstOrDefault();
+
+        _db.Insert(new SharedContextEntry
+        {
+            EntryId = IdGen.New("ctx"),
+            DocumentId = documentId,
+            Version = (latest?.Version ?? 0) + 1,
+            ParentVersion = latest?.Version,
+            Key = documentId,
+            ContentRef = JsonSerializer.Serialize(dag),
+            ContentType = "application/json",
+            Acl = "{\"read\":[\"*\"],\"write\":[\"system:project-interview\"]}",
+            AuthorPrincipalId = SystemPrincipalId,
+            TaskId = "global",
+            Tags = "[\"high-level\",\"project-interview\",\"version-dag\"]",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        return Task.CompletedTask;
+    }
+
     public static string BuildTaskDocumentId(string channel, string userId)
         => $"hlm.project-interview.requirements.{channel}.{userId}";
+
+    public static string BuildVersionDagDocumentId(string channel, string userId, int version)
+        => $"hlm.project-interview.version-graph.{channel}.{userId}.{version}";
 }

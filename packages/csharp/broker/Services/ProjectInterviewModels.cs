@@ -74,12 +74,26 @@ public sealed record RestatementOption(
     IReadOnlyList<string> AssertionStatements,
     bool IsConservativeEscape);
 
+public sealed record VersionDagNode(string NodeId, string NodeType, string PayloadDigest);
+
+public sealed record VersionDagEdge(string FromNodeId, string ToNodeId);
+
+public sealed record ProjectInterviewVersionDag(int Version, IReadOnlyList<VersionDagNode> Nodes, IReadOnlyList<VersionDagEdge> Edges);
+
+public sealed record ProjectInstanceDefinition(
+    string ProjectScale,
+    string TemplateFamily,
+    IReadOnlyList<string> EnabledModules,
+    string StyleProfile);
+
 public sealed record ProjectInterviewTaskDocument(
     string Channel,
     string UserId,
     ProjectInterviewSessionState SessionState,
     IReadOnlyList<ProjectInterviewAssertion> Assertions,
-    IReadOnlyList<RestatementOption> PendingOptions)
+    IReadOnlyList<RestatementOption> PendingOptions,
+    int CurrentVersion,
+    ProjectInstanceDefinition? CurrentProjectDefinition)
 {
     public static ProjectInterviewTaskDocument CreateEmpty(string channel, string userId) =>
         new(
@@ -87,7 +101,9 @@ public sealed record ProjectInterviewTaskDocument(
             userId,
             ProjectInterviewSessionState.CreateNew(channel, userId),
             Array.Empty<ProjectInterviewAssertion>(),
-            Array.Empty<RestatementOption>());
+            Array.Empty<RestatementOption>(),
+            0,
+            null);
 
     public bool IsActiveSession =>
         SessionState.CurrentPhase is not ProjectInterviewPhase.Idle
@@ -103,6 +119,13 @@ public sealed record ProjectInterviewTaskDocument(
 
     public ProjectInterviewTaskDocument ClearPendingOptions() =>
         this with { PendingOptions = Array.Empty<RestatementOption>() };
+
+    public ProjectInterviewTaskDocument WithCompiledDefinition(int version, ProjectInstanceDefinition projectDefinition) =>
+        this with
+        {
+            CurrentVersion = version,
+            CurrentProjectDefinition = projectDefinition
+        };
 
     public ProjectInterviewTaskDocument PromoteConfirmedOption(RestatementOption option, string evidence)
     {

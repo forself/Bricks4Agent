@@ -237,6 +237,20 @@ try
     AssertTrue(miniAppFamilies.Count == 2, "template catalog narrows families by project scale");
     AssertTrue(miniAppFamilies.Any(item => item.TemplateId == "member_portal"), "template catalog includes member_portal for mini_app");
     AssertTrue(miniAppFamilies.All(item => item.SupportedProjectScales.Contains("mini_app", StringComparer.OrdinalIgnoreCase)), "template catalog only returns families that support the requested scale");
+    var compiler = new ProjectInterviewProjectDefinitionCompiler();
+    var compileResult = compiler.Compile(
+        version: 1,
+        confirmedAssertions: new[]
+        {
+            "project_scale=mini_app",
+            "template_family=member_portal",
+            "enabled_module=auth",
+            "enabled_module=dashboard",
+            "style_profile=clean-enterprise"
+        });
+    AssertTrue(compileResult.Version == 1, "compiler stamps version");
+    AssertTrue(compileResult.ProjectDefinition.TemplateFamily == "member_portal", "compiler projects selected template");
+    AssertTrue(compileResult.Dag.Nodes.Any(node => node.NodeType == "project_instance_definition_json"), "dag contains canonical json node");
 
     var trustedUserCommand = trustPolicy.Apply(
         new HighLevelInputEnvelope
@@ -1568,6 +1582,7 @@ try
                 })
                 .Build(),
             new FakeWebHostEnvironment(sandboxRoot));
+        var coordinatorProjectInterviewCompiler = new ProjectInterviewProjectDefinitionCompiler();
 
         var coordinator = new HighLevelCoordinator(
             coordinatorDb,
@@ -1600,6 +1615,7 @@ try
             coordinatorProjectInterviewStateService,
             coordinatorProjectInterviewRestatementService,
             coordinatorProjectInterviewTemplateCatalogService,
+            coordinatorProjectInterviewCompiler,
             NullLogger<HighLevelCoordinator>.Instance);
 
         var setName = await coordinator.ProcessLineMessageAsync("line-user-a", "/name 小布");
