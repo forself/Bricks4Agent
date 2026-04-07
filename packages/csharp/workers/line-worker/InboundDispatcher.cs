@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using BrokerCore.Services;
 using Microsoft.Extensions.Logging;
 
 namespace LineWorker;
@@ -25,6 +26,10 @@ public class InboundDispatcher
     private readonly object _approvalLock = new();
     private readonly TimeSpan _notificationPollInterval;
     private DateTime _lastNotificationPollAt = DateTime.MinValue;
+    private readonly string _workerType;
+    private readonly string _workerKeyId;
+    private readonly string _workerSharedSecret;
+    private readonly WorkerIdentityAuthService? _workerAuthService;
 
     public InboundDispatcher(
         WebhookReceiver receiver,
@@ -32,7 +37,10 @@ public class InboundDispatcher
         string allowedUserIdsCsv,
         string brokerApiUrl,
         ILogger logger,
-        TimeSpan? notificationPollInterval = null)
+        TimeSpan? notificationPollInterval = null,
+        string workerType = "line-worker",
+        string workerKeyId = "",
+        string workerSharedSecret = "")
     {
         _receiver = receiver;
         _lineApi = lineApi;
@@ -47,6 +55,13 @@ public class InboundDispatcher
             (allowedUserIdsCsv ?? "")
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
+        _workerType = workerType;
+        _workerKeyId = workerKeyId;
+        _workerSharedSecret = workerSharedSecret;
+        if (!string.IsNullOrWhiteSpace(_workerKeyId) && !string.IsNullOrWhiteSpace(_workerSharedSecret))
+        {
+            _workerAuthService = new WorkerIdentityAuthService(new WorkerIdentityAuthOptions(), new WorkerAuthNonceStore());
+        }
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -151,9 +166,8 @@ public class InboundDispatcher
         try
         {
             var requestBody = JsonSerializer.Serialize(new { user_id = userId, message = text });
-            using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-
-            using var response = await _httpClient.PostAsync($"{_brokerApiUrl}/api/v1/high-level/line/process", content, ct);
+            using var request = CreateSignedRequest(HttpMethod.Post, "/api/v1/high-level/line/process", requestBody);
+            using var response = await _httpClient.SendAsync(request, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
 
             if (!response.IsSuccessStatusCode)
@@ -391,7 +405,8 @@ public class InboundDispatcher
     {
         try
         {
-            using var response = await _httpClient.GetAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/pending?limit=10", ct);
+            using var request = CreateSignedRequest(HttpMethod.Get, "/api/v1/high-level/line/notifications/pending?limit=10");
+            using var response = await _httpClient.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
             {
                 return;
@@ -448,8 +463,8 @@ public class InboundDispatcher
                     status,
                     error
                 });
-                using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                using var response = await _httpClient.PostAsync($"{_brokerApiUrl}/api/v1/high-level/line/notifications/complete", content, ct);
+                using var request = CreateSignedRequest(HttpMethod.Post, "/api/v1/high-level/line/notifications/complete", requestBody);
+                using var response = await _httpClient.SendAsync(request, ct);
 
                 if (response.IsSuccessStatusCode)
                     return;
@@ -468,6 +483,40 @@ public class InboundDispatcher
             if (attempt == 0)
                 await Task.Delay(2000, ct);
         }
+    }
+
+    private HttpRequestMessage CreateSignedRequest(HttpMethod method, string pathAndQuery, string body = "")
+    {
+        var request = new HttpRequestMessage(method, $"{_brokerApiUrl}{pathAndQuery}");
+        if (method != HttpMethod.Get)
+        {
+            request.Content = new StringContent(body ?? string.Empty, Encoding.UTF8, "application/json");
+        }
+
+        if (_workerAuthService == null)
+        {
+            return request;
+        }
+
+        var pathOnly = pathAndQuery.Split('?', 2)[0];
+        var timestamp = DateTimeOffset.UtcNow;
+        var nonce = Guid.NewGuid().ToString("N");
+        var signature = _workerAuthService.SignHttp(
+            _workerType,
+            _workerKeyId,
+            _workerSharedSecret,
+            method.Method,
+            pathOnly,
+            body ?? string.Empty,
+            timestamp,
+            nonce);
+
+        request.Headers.Add(WorkerIdentityHeaders.WorkerType, _workerType);
+        request.Headers.Add(WorkerIdentityHeaders.KeyId, _workerKeyId);
+        request.Headers.Add(WorkerIdentityHeaders.Timestamp, timestamp.ToString("O"));
+        request.Headers.Add(WorkerIdentityHeaders.Nonce, nonce);
+        request.Headers.Add(WorkerIdentityHeaders.Signature, signature);
+        return request;
     }
 }
 

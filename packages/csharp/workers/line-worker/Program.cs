@@ -1,4 +1,5 @@
 using System.Text;
+using BrokerCore.Services;
 using LineWorker;
 using LineWorker.Handlers;
 using Microsoft.Extensions.Configuration;
@@ -43,11 +44,29 @@ if (string.IsNullOrEmpty(channelAccessToken) || string.IsNullOrEmpty(channelSecr
 using var lineApi = new LineApiClient(channelAccessToken, channelSecret);
 
 var brokerApiUrl = config.GetValue<string>("Broker:ApiUrl") ?? "http://localhost:5000";
+var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType")
+    ?? config.GetValue<string>("Broker:WorkerAuth:WorkerType")
+    ?? "line-worker";
+var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId")
+    ?? config.GetValue<string>("Broker:WorkerAuth:KeyId")
+    ?? "";
+var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret")
+    ?? config.GetValue<string>("Broker:WorkerAuth:SharedSecret")
+    ?? "";
 
 using var webhookReceiver = new WebhookReceiver(webhookPort, webhookHost, lineApi, audioTempPath, webhookLogger);
 var notificationPollMs = config.GetValue("Line:NotificationPollIntervalMs", 5000);
 var notificationPollInterval = TimeSpan.FromMilliseconds(Math.Max(1000, notificationPollMs));
-var inboundDispatcher = new InboundDispatcher(webhookReceiver, lineApi, allowedUserIds, brokerApiUrl, dispatcherLogger, notificationPollInterval);
+var inboundDispatcher = new InboundDispatcher(
+    webhookReceiver,
+    lineApi,
+    allowedUserIds,
+    brokerApiUrl,
+    dispatcherLogger,
+    notificationPollInterval,
+    workerAuthType,
+    workerAuthKeyId,
+    workerAuthSharedSecret);
 
 var options = new WorkerHostOptions
 {
@@ -55,7 +74,10 @@ var options = new WorkerHostOptions
     BrokerPort = config.GetValue("Worker:BrokerPort", 7000),
     WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"line-wkr-{Guid.NewGuid():N}"[..20],
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 4),
-    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5)
+    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
+    WorkerType = workerAuthType,
+    WorkerAuthKeyId = workerAuthKeyId,
+    WorkerAuthSharedSecret = workerAuthSharedSecret
 };
 
 var host = new WorkerHost(options, logger);

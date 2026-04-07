@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using BrokerCore.Services;
 using FunctionPool.Models;
 using FunctionPool.Registry;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public class PoolListener : IAsyncDisposable
 {
     private readonly PoolConfig _config;
     private readonly IWorkerRegistry _registry;
+    private readonly WorkerIdentityAuthService _workerIdentityAuth;
     private readonly ILogger<PoolListener> _logger;
     private readonly ILoggerFactory _loggerFactory;
 
@@ -35,10 +37,12 @@ public class PoolListener : IAsyncDisposable
     public PoolListener(
         PoolConfig config,
         IWorkerRegistry registry,
+        WorkerIdentityAuthService workerIdentityAuth,
         ILoggerFactory loggerFactory)
     {
         _config = config;
         _registry = registry;
+        _workerIdentityAuth = workerIdentityAuth;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<PoolListener>();
     }
@@ -125,7 +129,7 @@ public class PoolListener : IAsyncDisposable
                 var connection = new WorkerConnection(tcpClient, connLogger);
 
                 var sessionLogger = _loggerFactory.CreateLogger<WorkerSession>();
-                var session = new WorkerSession(connection, _registry, sessionLogger);
+                var session = new WorkerSession(connection, _registry, _workerIdentityAuth, sessionLogger);
                 _sessions[session.Id] = session;
 
                 _logger.LogDebug("Worker connected from {Ep}, session={Id}",

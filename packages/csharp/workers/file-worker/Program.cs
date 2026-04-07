@@ -19,6 +19,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 });
 
 var logger = loggerFactory.CreateLogger<WorkerHost>();
+var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "file-worker";
+var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? "";
+var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? "";
 
 // ── Worker 配置 ──
 var sandboxRoot = config.GetValue<string>("Worker:SandboxRoot") ?? ".";
@@ -28,7 +31,10 @@ var options = new WorkerHostOptions
     BrokerPort = config.GetValue("Worker:BrokerPort", 7000),
     WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"file-wkr-{Guid.NewGuid():N}"[..20],
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 4),
-    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5)
+    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
+    WorkerType = workerAuthType,
+    WorkerAuthKeyId = workerAuthKeyId,
+    WorkerAuthSharedSecret = workerAuthSharedSecret
 };
 
 // ── 建立 WorkerHost ──
