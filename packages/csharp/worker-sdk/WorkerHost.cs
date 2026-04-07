@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using System.Text.Json;
+using BrokerCore.Services;
 using CacheProtocol;
 using Microsoft.Extensions.Logging;
 
@@ -26,6 +27,8 @@ public class WorkerHost
     private readonly WorkerHostOptions _options;
     private readonly ILogger<WorkerHost> _logger;
     private readonly Dictionary<string, ICapabilityHandler> _handlers = new();
+    private readonly WorkerIdentityAuthService _workerIdentityAuthService =
+        new(new WorkerIdentityAuthOptions(), new WorkerAuthNonceStore());
 
     private TcpClient? _tcpClient;
     private NetworkStream? _stream;
@@ -134,11 +137,33 @@ public class WorkerHost
     /// <summary>發送 WORKER_REGISTER 並等待 ACK</summary>
     private async Task RegisterAsync(CancellationToken ct)
     {
+        var timestamp = DateTimeOffset.UtcNow;
+        var nonce = Guid.NewGuid().ToString("N");
+        var capabilities = _handlers.Keys.ToList();
+        var maxConcurrent = _options.MaxConcurrent;
+        var signature = string.IsNullOrWhiteSpace(_options.WorkerAuthKeyId) ||
+            string.IsNullOrWhiteSpace(_options.WorkerAuthSharedSecret)
+            ? string.Empty
+            : _workerIdentityAuthService.SignWorkerRegister(
+                _options.WorkerType,
+                _options.WorkerAuthKeyId,
+                _options.WorkerAuthSharedSecret,
+                _options.WorkerId,
+                capabilities,
+                maxConcurrent,
+                timestamp,
+                nonce);
+
         var registerMsg = new
         {
             worker_id = _options.WorkerId,
-            capabilities = _handlers.Keys.ToList(),
-            max_concurrent = _options.MaxConcurrent
+            worker_type = _options.WorkerType,
+            capabilities,
+            max_concurrent = maxConcurrent,
+            key_id = _options.WorkerAuthKeyId,
+            timestamp = timestamp.ToString("O"),
+            nonce,
+            signature
         };
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(registerMsg, JsonOptions);

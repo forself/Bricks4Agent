@@ -20,6 +20,9 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 });
 
 var logger = loggerFactory.CreateLogger<WorkerHost>();
+var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "browser-worker";
+var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? "";
+var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? "";
 
 // ── Browser 配置 ──
 var browserOptions = new BrowserWorkerOptions
@@ -44,7 +47,10 @@ var workerOptions = new WorkerHostOptions
     BrokerPort = config.GetValue("Worker:BrokerPort", 7000),
     WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"browser-wkr-{Guid.NewGuid():N}"[..24],
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 2),
-    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5)
+    HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
+    WorkerType = workerAuthType,
+    WorkerAuthKeyId = workerAuthKeyId,
+    WorkerAuthSharedSecret = workerAuthSharedSecret
 };
 
 // ── 建立 WorkerHost ──

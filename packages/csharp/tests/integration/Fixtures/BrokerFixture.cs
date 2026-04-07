@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Broker.Services;
+using BrokerCore.Services;
 using BrokerCore.Models;
 using Xunit;
 
@@ -23,8 +24,15 @@ namespace Integration.Tests.Fixtures;
 /// </summary>
 public class BrokerFixture : IAsyncLifetime
 {
+    private const string LineWorkerType = "line-worker";
+    private const string LineWorkerKeyId = "line-v1";
+    private const string LineWorkerSecret = "line-secret";
+    private const string FileWorkerType = "file-worker";
+    private const string FileWorkerKeyId = "file-v1";
+    private const string FileWorkerSecret = "file-secret";
     private readonly string _tempDbPath;
     private readonly string _tempAccessRoot;
+    private readonly WorkerIdentityAuthOptions _workerAuthOptions;
 
     public WebApplicationFactory<Program> Factory { get; }
     public HttpClient Client { get; private set; } = null!;
@@ -35,6 +43,7 @@ public class BrokerFixture : IAsyncLifetime
         // Each test run gets its own isolated SQLite file
         _tempDbPath = Path.Combine(Path.GetTempPath(), $"broker_integration_{Guid.NewGuid():N}.db");
         _tempAccessRoot = Path.Combine(Path.GetTempPath(), $"broker_integration_access_{Guid.NewGuid():N}");
+        _workerAuthOptions = BuildWorkerAuthOptions();
 
         Factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -55,6 +64,20 @@ public class BrokerFixture : IAsyncLifetime
                         ["LineChatGateway:Enabled"] = "false",
                         ["HighLevelLlm:Enabled"] = "false",
                         ["LlmProxy:Enabled"] = "false",
+                        ["WorkerAuth:Enforce"] = "true",
+                        ["WorkerAuth:ClockSkewSeconds"] = _workerAuthOptions.ClockSkewSeconds.ToString(),
+                        ["WorkerAuth:Credentials:0:WorkerType"] = LineWorkerType,
+                        ["WorkerAuth:Credentials:0:KeyId"] = LineWorkerKeyId,
+                        ["WorkerAuth:Credentials:0:SharedSecret"] = LineWorkerSecret,
+                        ["WorkerAuth:Credentials:0:Status"] = "active",
+                        ["WorkerAuth:Credentials:1:WorkerType"] = FileWorkerType,
+                        ["WorkerAuth:Credentials:1:KeyId"] = FileWorkerKeyId,
+                        ["WorkerAuth:Credentials:1:SharedSecret"] = FileWorkerSecret,
+                        ["WorkerAuth:Credentials:1:Status"] = "active",
+                        ["WorkerAuth:HttpRoutes:0:WorkerType"] = LineWorkerType,
+                        ["WorkerAuth:HttpRoutes:0:Paths:0"] = "/api/v1/high-level/line/process",
+                        ["WorkerAuth:HttpRoutes:0:Paths:1"] = "/api/v1/high-level/line/notifications/pending",
+                        ["WorkerAuth:HttpRoutes:0:Paths:2"] = "/api/v1/high-level/line/notifications/complete",
                     });
                 });
             });
@@ -67,16 +90,101 @@ public class BrokerFixture : IAsyncLifetime
     }
 
     public async Task<JsonDocument> SendHighLevelLineTextAsync(string message, string? userId = null)
+        => await SendHighLevelLineTextAsWorkerAsync(LineWorkerType, LineWorkerKeyId, LineWorkerSecret, message, userId);
+
+    public async Task<HttpResponseMessage> SendHighLevelLineTextUnsignedAsync(string message, string? userId = null)
     {
-        var response = await Client.PostAsJsonAsync("/api/v1/high-level/line/process", new
+        return await Client.PostAsJsonAsync("/api/v1/high-level/line/process", new
         {
             user_id = userId ?? DefaultLineUserId,
             message
         });
+    }
+
+    public async Task<JsonDocument> SendHighLevelLineTextAsWorkerAsync(
+        string workerType,
+        string keyId,
+        string sharedSecret,
+        string message,
+        string? userId = null)
+    {
+        var response = await SendHighLevelLineTextAsWorkerRawAsync(workerType, keyId, sharedSecret, message, userId);
 
         response.EnsureSuccessStatusCode();
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
+
+    public Task<HttpResponseMessage> SendHighLevelLineTextAsWorkerRawAsync(
+        string workerType,
+        string keyId,
+        string sharedSecret,
+        string message,
+        string? userId = null)
+    {
+        var payload = new
+        {
+            user_id = userId ?? DefaultLineUserId,
+            message
+        };
+        return PostSignedAsync("/api/v1/high-level/line/process", payload, workerType, keyId, sharedSecret);
+    }
+
+    public Task<HttpResponseMessage> GetPendingNotificationsAsync()
+        => GetSignedAsync("/api/v1/high-level/line/notifications/pending?limit=10", LineWorkerType, LineWorkerKeyId, LineWorkerSecret);
+
+    private async Task<HttpResponseMessage> PostSignedAsync<TBody>(string path, TBody payload, string workerType, string keyId, string sharedSecret)
+    {
+        var json = JsonSerializer.Serialize(payload);
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        };
+        AddWorkerHeaders(request, HttpMethod.Post.Method, path, json, workerType, keyId, sharedSecret);
+        return await Client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> GetSignedAsync(string pathAndQuery, string workerType, string keyId, string sharedSecret)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, pathAndQuery);
+        AddWorkerHeaders(request, HttpMethod.Get.Method, pathAndQuery.Split('?')[0], string.Empty, workerType, keyId, sharedSecret);
+        return await Client.SendAsync(request);
+    }
+
+    private void AddWorkerHeaders(HttpRequestMessage request, string method, string path, string body, string workerType, string keyId, string sharedSecret)
+    {
+        var service = new WorkerIdentityAuthService(_workerAuthOptions, new WorkerAuthNonceStore());
+        var timestamp = DateTimeOffset.UtcNow;
+        var nonce = Guid.NewGuid().ToString("N");
+        var signature = service.SignHttp(workerType, keyId, sharedSecret, method, path, body, timestamp, nonce);
+        request.Headers.Add("X-B4A-Worker-Type", workerType);
+        request.Headers.Add("X-B4A-Key-Id", keyId);
+        request.Headers.Add("X-B4A-Timestamp", timestamp.ToString("O"));
+        request.Headers.Add("X-B4A-Nonce", nonce);
+        request.Headers.Add("X-B4A-Signature", signature);
+    }
+
+    private static WorkerIdentityAuthOptions BuildWorkerAuthOptions() => new()
+    {
+        ClockSkewSeconds = 300,
+        Credentials =
+        [
+            new WorkerCredentialRecord { WorkerType = LineWorkerType, KeyId = LineWorkerKeyId, SharedSecret = LineWorkerSecret, Status = "active" },
+            new WorkerCredentialRecord { WorkerType = FileWorkerType, KeyId = FileWorkerKeyId, SharedSecret = FileWorkerSecret, Status = "active" }
+        ],
+        HttpRoutes =
+        [
+            new WorkerRouteRule
+            {
+                WorkerType = LineWorkerType,
+                Paths =
+                [
+                    "/api/v1/high-level/line/process",
+                    "/api/v1/high-level/line/notifications/pending",
+                    "/api/v1/high-level/line/notifications/complete"
+                ]
+            }
+        ]
+    };
 
     public async Task<ProjectInterviewTaskDocument> ReadProjectInterviewRequirementsAsync(string channel, string userId)
     {

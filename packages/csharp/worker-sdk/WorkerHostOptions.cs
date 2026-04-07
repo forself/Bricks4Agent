@@ -28,4 +28,10 @@ public class WorkerHostOptions
 
     /// <summary>是否自動重連</summary>
     public bool AutoReconnect { get; set; } = true;
+
+    public string WorkerType { get; set; } = "generic-worker";
+
+    public string WorkerAuthKeyId { get; set; } = string.Empty;
+
+    public string WorkerAuthSharedSecret { get; set; } = string.Empty;
 }

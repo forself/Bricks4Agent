@@ -8,6 +8,9 @@ Canonical live path:
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
+The broker path above remains plain JSON, but it is no longer a trust bypass.
+`line-worker` must sign broker HTTP requests with the shared worker credential configured under `Worker.Auth`.
+
 Operator runbook:
 
 - [line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
@@ -31,10 +34,11 @@ Current verified query boundary:
 Recommended sidecar flow:
 
 1. Copy `appsettings.sidecar.example.json` to local `appsettings.json` and fill in real LINE credentials.
-2. Ensure `%LOCALAPPDATA%\\ngrok\\ngrok.yml` exists and contains a valid ngrok authtoken.
-3. Run `line-sidecar.ps1 up`.
-4. Run `line-sidecar.ps1 verify` to send a signed synthetic webhook event.
-5. Use `line-sidecar.ps1 status`, `line-sidecar.ps1 restart`, and `line-sidecar.ps1 down` for runtime control.
+2. Fill in `Worker.Auth.WorkerType`, `Worker.Auth.KeyId`, and `Worker.Auth.SharedSecret`.
+3. Ensure `%LOCALAPPDATA%\\ngrok\\ngrok.yml` exists and contains a valid ngrok authtoken.
+4. Run `line-sidecar.ps1 up`.
+5. Run `line-sidecar.ps1 verify` to send a signed synthetic webhook event.
+6. Use `line-sidecar.ps1 status`, `line-sidecar.ps1 restart`, and `line-sidecar.ps1 down` for runtime control.
 
 Unified one-command entrypoint:
 
