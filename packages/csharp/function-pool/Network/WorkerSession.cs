@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BrokerCore.Services;
 using CacheProtocol;
 using FunctionPool.Models;
 using FunctionPool.Registry;
@@ -26,6 +27,7 @@ public class WorkerSession : IAsyncDisposable
 
     private readonly WorkerConnection _connection;
     private readonly IWorkerRegistry _registry;
+    private readonly WorkerIdentityAuthService _workerIdentityAuth;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
 
@@ -39,10 +41,12 @@ public class WorkerSession : IAsyncDisposable
     public WorkerSession(
         WorkerConnection connection,
         IWorkerRegistry registry,
+        WorkerIdentityAuthService workerIdentityAuth,
         ILogger logger)
     {
         _connection = connection;
         _registry = registry;
+        _workerIdentityAuth = workerIdentityAuth;
         _logger = logger;
     }
 
@@ -130,6 +134,37 @@ public class WorkerSession : IAsyncDisposable
             if (registerMsg == null || string.IsNullOrEmpty(registerMsg.WorkerId))
             {
                 await SendRegisterAckAsync(false, "", "Invalid register message", ct);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(registerMsg.WorkerType) ||
+                string.IsNullOrWhiteSpace(registerMsg.KeyId) ||
+                string.IsNullOrWhiteSpace(registerMsg.Timestamp) ||
+                string.IsNullOrWhiteSpace(registerMsg.Nonce) ||
+                string.IsNullOrWhiteSpace(registerMsg.Signature))
+            {
+                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Missing worker authentication fields", ct);
+                return;
+            }
+            if (!DateTimeOffset.TryParse(registerMsg.Timestamp, out var timestamp))
+            {
+                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Invalid worker authentication timestamp", ct);
+                return;
+            }
+
+            var authDecision = _workerIdentityAuth.ValidateWorkerRegister(new WorkerRegisterAuthRequest
+            {
+                WorkerType = registerMsg.WorkerType,
+                KeyId = registerMsg.KeyId,
+                WorkerId = registerMsg.WorkerId,
+                Capabilities = registerMsg.Capabilities ?? new List<string>(),
+                MaxConcurrent = registerMsg.MaxConcurrent > 0 ? registerMsg.MaxConcurrent : 4,
+                Timestamp = timestamp,
+                Nonce = registerMsg.Nonce,
+                Signature = registerMsg.Signature
+            });
+            if (!authDecision.IsAuthorized)
+            {
+                await SendRegisterAckAsync(false, registerMsg.WorkerId, authDecision.Reason, ct);
                 return;
             }
 
@@ -258,7 +293,12 @@ public class WorkerSession : IAsyncDisposable
 internal class WorkerRegisterMessage
 {
     public string WorkerId { get; set; } = string.Empty;
+    public string WorkerType { get; set; } = string.Empty;
     public List<string>? Capabilities { get; set; }
     public int MaxConcurrent { get; set; } = 4;
+    public string KeyId { get; set; } = string.Empty;
+    public string Timestamp { get; set; } = string.Empty;
+    public string Nonce { get; set; } = string.Empty;
+    public string Signature { get; set; } = string.Empty;
     public Dictionary<string, string>? Metadata { get; set; }
 }

@@ -183,6 +183,11 @@ builder.Services.AddSingleton(sp =>
 var toolSpecRegistryOptions = builder.Configuration.GetSection("ToolSpecRegistry").Get<Broker.Services.ToolSpecRegistryOptions>()
     ?? new Broker.Services.ToolSpecRegistryOptions();
 builder.Services.AddSingleton(toolSpecRegistryOptions);
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("WorkerAuth").Get<WorkerIdentityAuthOptions>()
+    ?? new WorkerIdentityAuthOptions());
+builder.Services.AddSingleton<WorkerAuthNonceStore>();
+builder.Services.AddSingleton<WorkerIdentityAuthService>();
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateService>();
@@ -515,9 +520,11 @@ app.UseBodySizeLimit(maxBodyBytes);
 // [2] IpRateLimiter（限流）— TODO: Phase 5
 // [3] EncryptionMiddleware（信封解密/加密）
 app.UseEnvelopeEncryption();
-// [4] BrokerAuthMiddleware（Token 驗證）
+// [4] WorkerIdentityAuthMiddleware（worker caller 驗證）
+app.UseWorkerIdentityAuth();
+// [5] BrokerAuthMiddleware（Token 驗證）
 app.UseBrokerAuth();
-// [5] AuditMiddleware（稽核記錄）
+// [6] AuditMiddleware（稽核記錄）
 app.UseBrokerAudit();
 
 // ── Dashboard（靜態 HTML，由 UseStaticFiles 提供） ──

@@ -10,6 +10,8 @@
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
+這條 broker 路徑仍然使用 plain JSON，但現在已改成 authenticated worker path，不再是單純 trusted bypass。
+
 這是目前本機的 canonical operator path。
 
 本文件不涵蓋：
