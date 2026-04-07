@@ -10,6 +10,8 @@ This runbook describes how to start, verify, operate, and troubleshoot the curre
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
+The broker path above remains plain JSON, but it is now an authenticated worker path rather than a blind trust bypass.
+
 This is the current canonical local operator path.
 
 It does not describe:
@@ -65,6 +67,9 @@ At minimum, it must contain working values for:
 - `Line.ChannelAccessToken`
 - `Line.ChannelSecret`
 - `Line.DefaultRecipientId`
+- `Worker.Auth.WorkerType`
+- `Worker.Auth.KeyId`
+- `Worker.Auth.SharedSecret`
 
 ### 2. High-level model API key
 

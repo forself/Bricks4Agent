@@ -8,6 +8,12 @@ Canonical live path：
 
 `LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
 
+## Worker 驗證
+
+- broker 的 `/api/v1/high-level/line/process` 現在是 plain JSON，但不再是 trusted bypass。
+- `line-worker` 必須使用 `Worker.Auth.WorkerType`、`Worker.Auth.KeyId`、`Worker.Auth.SharedSecret` 對 broker HTTP 請求簽章。
+- `verify-high-level-process.ps1` 會優先讀取本機 `appsettings.json` 的 `Worker.Auth` 設定，自動附上簽章標頭。
+
 完整操作手冊：
 
 - [line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
