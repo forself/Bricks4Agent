@@ -1,0 +1,19 @@
+{
+  "name": "transport.query",
+  "description": "Unified transport query capability with follow-up and range-answer support.",
+  "version": "1.0.0",
+  "execution": {
+    "route": "transport_query",
+    "registeredRoute": "transport_query"
+  },
+  "input_schema": {
+    "type": "object",
+    "required": ["transport_mode", "user_query"],
+    "properties": {
+      "transport_mode": { "type": "string" },
+      "user_query": { "type": "string" },
+      "locale": { "type": "string" },
+      "channel": { "type": "string" }
+    }
+  }
+}
