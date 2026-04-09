@@ -22,6 +22,10 @@ function stableStringify(value) {
     return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+function normalizeLineEndings(text) {
+    return text.replaceAll('\r\n', '\n');
+}
+
 function ensureManifestFiles(introspection) {
     const expectedManifestPaths = new Set();
 
@@ -81,7 +85,7 @@ function verifyGeneratedFile(relativePath, value) {
             throw new Error(`Missing generated metadata file: ${relativePath}`);
         }
 
-        const actual = fs.readFileSync(absolutePath, 'utf8');
+        const actual = normalizeLineEndings(fs.readFileSync(absolutePath, 'utf8'));
         if (actual !== expected) {
             throw new Error(`Generated metadata file is out of date: ${relativePath}`);
         }
