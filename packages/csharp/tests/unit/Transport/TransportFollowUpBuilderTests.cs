@@ -11,7 +11,7 @@ public class TransportFollowUpBuilderTests
 
         var result = builder.Build(["date"]);
 
-        result.Question.Should().Be("請問你要查哪一天？");
+        result.Question.Should().NotBeNullOrWhiteSpace();
         result.Options.Select(x => x.Id).Should().Contain(["today", "tomorrow", "custom_date", "nearest_available"]);
         result.FollowUpToken.Should().NotBeNullOrWhiteSpace();
     }

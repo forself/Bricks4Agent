@@ -10,7 +10,7 @@ public sealed class TransportFollowUpBuilder
         {
             return new TransportFollowUp
             {
-                Question = "請問你要查哪一天？",
+                Question = "請問你要查哪一天的交通資訊？",
                 FollowUpToken = Guid.NewGuid().ToString("N"),
                 Options =
                 [
@@ -22,13 +22,29 @@ public sealed class TransportFollowUpBuilder
             };
         }
 
+        if (missingFields.Contains("city"))
+        {
+            return new TransportFollowUp
+            {
+                Question = "請問你要查哪個城市的公車？",
+                FollowUpToken = Guid.NewGuid().ToString("N"),
+                Options =
+                [
+                    new TransportFollowUpOption { Id = "taipei", Label = "臺北市" },
+                    new TransportFollowUpOption { Id = "new_taipei", Label = "新北市" },
+                    new TransportFollowUpOption { Id = "taoyuan", Label = "桃園市" },
+                    new TransportFollowUpOption { Id = "other_city", Label = "其他，我重新描述" }
+                ]
+            };
+        }
+
         return new TransportFollowUp
         {
-            Question = "目前資訊不足，請補充查詢條件。",
+            Question = "我還缺少必要資訊，請補充查詢條件。",
             FollowUpToken = Guid.NewGuid().ToString("N"),
             Options =
             [
-                new TransportFollowUpOption { Id = "restatement", Label = "我重新描述" }
+                new TransportFollowUpOption { Id = "restatement", Label = "重新描述需求" }
             ]
         };
     }
