@@ -1,11 +1,11 @@
 {
   "tool_id": "travel.bus.search",
-  "display_name": "Bus Search",
-  "summary": "Find candidate bus schedules through broker-approved sources and return candidate departure times.",
+  "display_name": "公車到站查詢",
+  "summary": "透過 TDX 公車預估到站 API 查詢指定城市與路線的即時到站資訊，不使用其他網站或搜尋引擎作為備援來源。",
   "kind": "travel",
   "status": "active",
-  "version": "2026-03-22",
-  "tags": ["travel", "bus", "schedule", "high-level"],
+  "version": "2026-04-08",
+  "tags": ["travel", "bus", "eta", "tdx", "high-level"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "travel",
@@ -19,39 +19,75 @@
     {
       "capability_id": "travel.bus.search",
       "route": "travel_bus_search",
-      "purpose": "Broker-mediated bus lookup."
+      "purpose": "Broker-mediated city bus ETA lookup via TDX API."
     }
   ],
   "input_schema": {
     "type": "object",
     "properties": {
-      "query": { "type": "string" },
-      "locale": { "type": "string" },
-      "limit": { "type": "integer", "minimum": 1, "maximum": 5 }
+      "query": {
+        "type": "string",
+        "description": "以自然語言提供城市與路線，例如：臺北市 307。"
+      },
+      "locale": {
+        "type": "string",
+        "default": "zh-TW"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 5
+      }
     },
     "required": ["query"]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "mode": { "type": "string" },
+      "mode": { "type": "string", "enum": ["bus"] },
       "query": { "type": "string" },
-      "retrieved_at": { "type": "string" },
-      "results": { "type": "array" },
+      "retrieved_at": { "type": "string", "format": "date-time" },
+      "tdx": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string" },
+          "origin": { "type": "string" },
+          "destination": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "bus_count": { "type": "integer" },
+          "buses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "route_name": { "type": "string" },
+                "stop_name": { "type": "string" },
+                "estimate_minutes": { "type": ["integer", "null"] },
+                "stop_status": { "type": ["integer", "null"] },
+                "direction": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
       "sources_used": { "type": "array", "items": { "type": "string" } }
     }
   },
   "source_policy": {
-    "allowed_sources": ["duckduckgo", "public_transport_web"]
+    "allowed_sources": ["tdx"],
+    "required_source": "tdx"
   },
   "execution_rules": {
     "mediation_required": true,
     "requires_source_policy": true,
-    "default_limit": 5
+    "default_limit": 5,
+    "tdx_only": true,
+    "web_fallback_allowed": false
   },
   "response_contract": {
     "must_identify_sources": true,
     "must_identify_retrieval_time": true,
-    "result_wording": "Return candidate bus options with any detected departure times."
+    "result_wording": "回傳 TDX 公車預估到站結果；若 TDX 無資料，必須明確標示為無可用結果，不得以搜尋引擎或其他網站補值。"
   }
 }

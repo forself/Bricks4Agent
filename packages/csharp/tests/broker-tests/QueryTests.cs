@@ -17,6 +17,7 @@ public static class QueryTests
 
         TestIsReasonableAdministrativeTerm();
         TestBuildTransportReplyEmpty();
+        TestBuildTdxTransportReplyEmpty();
         TestBuildSearchReplyEmpty();
 
         Console.WriteLine();
@@ -65,6 +66,36 @@ public static class QueryTests
         AssertContains("transport-empty-no-results", reply, "沒有取得可用班次結果");
         AssertContains("transport-empty-has-example", reply, "?rail");
         AssertContains("transport-empty-has-format", reply, "台北 台中");
+
+        Console.WriteLine($"  Reply preview: {reply[..Math.Min(100, reply.Length)]}...");
+        Console.WriteLine();
+    }
+
+    private static void TestBuildTdxTransportReplyEmpty()
+    {
+        Console.WriteLine("--- BuildTdxTimetableReply (empty buses) ---");
+
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            """
+            {
+              "origin": "臺北市",
+              "destination": "307",
+              "date": "2026-04-08",
+              "bus_count": 0,
+              "buses": []
+            }
+            """);
+
+        var reply = HighLevelQueryToolMediator.BuildTdxTimetableReply(
+            "bus",
+            "臺北市 307",
+            doc.RootElement,
+            "TDX 公車預估到站 API",
+            "2026-04-08T10:00:00+08:00");
+
+        AssertContains("tdx-empty-bus-source", reply, "TDX 公車預估到站 API");
+        AssertContains("tdx-empty-bus-no-results", reply, "目前沒有取得可用結果");
+        AssertContains("tdx-empty-bus-query", reply, "臺北市");
 
         Console.WriteLine($"  Reply preview: {reply[..Math.Min(100, reply.Length)]}...");
         Console.WriteLine();

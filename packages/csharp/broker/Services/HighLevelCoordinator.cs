@@ -1692,7 +1692,8 @@ public class HighLevelCoordinator
         CancellationToken cancellationToken)
     {
         var query = parsed.QueryArgument;
-        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 4)
+        var minimumQueryLength = transport.mode == "bus" ? 2 : 4;
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < minimumQueryLength)
         {
             var hint = $"請提供更完整的查詢條件。\n範例：?{transport.mode} 台北 台中 今天 18:00";
             var hintReply = PrepareReplySafe(profile, trimmed, hint);

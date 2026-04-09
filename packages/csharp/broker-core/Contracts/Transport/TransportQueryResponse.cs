@@ -12,12 +12,21 @@ public enum TransportResultType
 public sealed class TransportQueryResponse
 {
     [JsonPropertyName("resultType")]
-    public string ResultType => ResultTypeValue switch
+    public string ResultType
     {
-        TransportResultType.FinalAnswer => "final_answer",
-        TransportResultType.NeedFollowUp => "need_follow_up",
-        _ => "range_answer"
-    };
+        get => ResultTypeValue switch
+        {
+            TransportResultType.FinalAnswer => "final_answer",
+            TransportResultType.NeedFollowUp => "need_follow_up",
+            _ => "range_answer"
+        };
+        set => ResultTypeValue = value switch
+        {
+            "need_follow_up" => TransportResultType.NeedFollowUp,
+            "range_answer" => TransportResultType.RangeAnswer,
+            _ => TransportResultType.FinalAnswer
+        };
+    }
 
     [JsonIgnore]
     public TransportResultType ResultTypeValue { get; set; }

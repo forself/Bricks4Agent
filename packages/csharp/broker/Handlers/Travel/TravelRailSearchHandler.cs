@@ -22,39 +22,23 @@ public sealed class TravelRailSearchHandler : BrokerCore.Services.IRouteHandler
     {
         using var doc = JsonDocument.Parse(request.Payload);
         var args = PayloadHelper.GetArgsElement(doc.RootElement);
-        var query = PayloadHelper.TryGetString(args, "query") ?? "";
+        var query = PayloadHelper.TryGetString(args, "query") ?? string.Empty;
+        const string sourceLabel = "TDX 台鐵時刻表 API";
 
-        // 優先嘗試 TDX API
         if (_tdxApiService is { IsConfigured: true } && !string.IsNullOrWhiteSpace(query))
         {
             try
             {
                 var tdxResult = await TdxTravelHelper.QueryTraTimetableAsync(_tdxApiService, query, _logger, ct);
                 if (tdxResult != null)
-                {
-                    _logger.LogInformation("TDX TRA timetable query succeeded for: {Query}", query);
-                    return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(new
-                    {
-                        mode = "rail",
-                        query,
-                        retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                        tdx = tdxResult,
-                        sources_used = new[] { "TDX 台鐵時刻表 API" }
-                    }));
-                }
+                    return TravelTdxResponseHelper.CreateSuccess(request.RequestId, "rail", query, tdxResult, sourceLabel);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "TDX TRA query failed, falling back to web search");
+                _logger.LogWarning(ex, "TDX-only rail query failed");
             }
         }
 
-        // Fallback: 原有的 DuckDuckGo 搜尋
-        return await TravelSearchHelper.ExecuteTravelSearchAsync(
-            request,
-            mode: "rail",
-            sourceLabel: "DuckDuckGo / railway.gov.tw",
-            queryDecorator: q => $"{q} site:railway.gov.tw 火車 台鐵 時刻表 班次",
-            _logger);
+        return TravelTdxResponseHelper.CreateEmpty(request.RequestId, "rail", query, sourceLabel);
     }
 }

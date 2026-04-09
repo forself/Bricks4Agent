@@ -22,7 +22,8 @@ public sealed class TravelHsrSearchHandler : BrokerCore.Services.IRouteHandler
     {
         using var doc = JsonDocument.Parse(request.Payload);
         var args = PayloadHelper.GetArgsElement(doc.RootElement);
-        var query = PayloadHelper.TryGetString(args, "query") ?? "";
+        var query = PayloadHelper.TryGetString(args, "query") ?? string.Empty;
+        const string sourceLabel = "TDX 高鐵時刻表 API";
 
         if (_tdxApiService is { IsConfigured: true } && !string.IsNullOrWhiteSpace(query))
         {
@@ -30,29 +31,14 @@ public sealed class TravelHsrSearchHandler : BrokerCore.Services.IRouteHandler
             {
                 var tdxResult = await TdxTravelHelper.QueryThsrTimetableAsync(_tdxApiService, query, _logger, ct);
                 if (tdxResult != null)
-                {
-                    _logger.LogInformation("TDX THSR timetable query succeeded for: {Query}", query);
-                    return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(new
-                    {
-                        mode = "hsr",
-                        query,
-                        retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                        tdx = tdxResult,
-                        sources_used = new[] { "TDX 高鐵時刻表 API" }
-                    }));
-                }
+                    return TravelTdxResponseHelper.CreateSuccess(request.RequestId, "hsr", query, tdxResult, sourceLabel);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "TDX THSR query failed, falling back to web search");
+                _logger.LogWarning(ex, "TDX-only hsr query failed");
             }
         }
 
-        return await TravelSearchHelper.ExecuteTravelSearchAsync(
-            request,
-            mode: "hsr",
-            sourceLabel: "DuckDuckGo / thsrc.com.tw",
-            queryDecorator: q => $"{q} site:thsrc.com.tw 高鐵 時刻表 班次",
-            _logger);
+        return TravelTdxResponseHelper.CreateEmpty(request.RequestId, "hsr", query, sourceLabel);
     }
 }
