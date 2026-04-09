@@ -63,7 +63,7 @@ public static class QueryTests
         var reply = HighLevelQueryToolMediator.BuildTransportReply(
             "rail", "台北 台中", Array.Empty<HighLevelQuerySearchResult>(), "", "");
 
-        AssertContains("transport-empty-no-results", reply, "沒有取得可用班次結果");
+        AssertContains("transport-empty-no-results", reply, "\u6c92\u6709\u627e\u5230\u4efb\u4f55\u53ef\u7528\u7d50\u679c");
         AssertContains("transport-empty-has-example", reply, "?rail");
         AssertContains("transport-empty-has-format", reply, "台北 台中");
 
@@ -108,8 +108,8 @@ public static class QueryTests
         var reply = HighLevelQueryToolMediator.BuildSearchReply(
             "duckduckgo", "test query", Array.Empty<HighLevelQuerySearchResult>());
 
-        AssertContains("search-empty-no-results", reply, "沒有取得可用結果");
-        AssertContains("search-empty-tip-keywords", reply, "具體的關鍵詞");
+        AssertContains("search-empty-no-results", reply, "\u6c92\u6709\u627e\u5230\u4efb\u4f55\u53ef\u7528\u7d50\u679c");
+        AssertContains("search-empty-tip-keywords", reply, "\u8abf\u6574\u95dc\u9375\u8a5e");
         AssertContains("search-empty-tip-english", reply, "英文搜尋");
 
         Console.WriteLine($"  Reply preview: {reply[..Math.Min(100, reply.Length)]}...");
