@@ -18,6 +18,16 @@ public sealed class TransportQuerySufficiencyAnalyzer
 {
     public TransportQueryVerdict Analyze(string mode, string userQuery, IDictionary<string, string?> context)
     {
+        var normalizedQuery = new Dictionary<string, object?>
+        {
+            ["transport_mode"] = mode,
+            ["origin"] = Get(context, "origin"),
+            ["destination"] = Get(context, "destination"),
+            ["date"] = Get(context, "date"),
+            ["time_range"] = Get(context, "time_range"),
+            ["city"] = Get(context, "city"),
+            ["route"] = Get(context, "route")
+        };
         var missing = new List<string>();
 
         if (mode is "rail" or "hsr" or "flight" or "ship")
@@ -44,7 +54,8 @@ public sealed class TransportQuerySufficiencyAnalyzer
             return new TransportQueryVerdict
             {
                 State = TransportQueryState.Insufficient,
-                MissingFields = missing
+                MissingFields = missing,
+                NormalizedQuery = normalizedQuery
             };
         }
 
@@ -58,16 +69,7 @@ public sealed class TransportQuerySufficiencyAnalyzer
         {
             State = partialMissing.Count > 0 ? TransportQueryState.PartiallySufficient : TransportQueryState.Sufficient,
             MissingFields = partialMissing,
-            NormalizedQuery = new Dictionary<string, object?>
-            {
-                ["transport_mode"] = mode,
-                ["origin"] = Get(context, "origin"),
-                ["destination"] = Get(context, "destination"),
-                ["date"] = Get(context, "date"),
-                ["time_range"] = Get(context, "time_range"),
-                ["city"] = Get(context, "city"),
-                ["route"] = Get(context, "route")
-            }
+            NormalizedQuery = normalizedQuery
         };
     }
 
