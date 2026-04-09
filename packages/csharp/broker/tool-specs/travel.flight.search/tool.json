@@ -1,11 +1,11 @@
 {
   "tool_id": "travel.flight.search",
-  "display_name": "Flight Search",
-  "summary": "Find candidate flights through broker-approved flight sources.",
+  "display_name": "國內航班查詢",
+  "summary": "透過 TDX 航班即時資訊 API（FIDS）查詢國內航班，不使用搜尋引擎或旅遊網站作為備援來源。",
   "kind": "travel",
   "status": "active",
-  "version": "2026-03-22",
-  "tags": ["travel", "flight", "search", "high-level"],
+  "version": "2026-04-08",
+  "tags": ["travel", "flight", "air", "tdx", "fids", "high-level"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "travel",
@@ -19,39 +19,75 @@
     {
       "capability_id": "travel.flight.search",
       "route": "travel_flight_search",
-      "purpose": "Broker-mediated flight lookup."
+      "purpose": "Broker-mediated domestic flight lookup via TDX API."
     }
   ],
   "input_schema": {
     "type": "object",
     "properties": {
-      "query": { "type": "string" },
-      "locale": { "type": "string" },
-      "limit": { "type": "integer", "minimum": 1, "maximum": 5 }
+      "query": {
+        "type": "string",
+        "description": "以自然語言提供起訖機場，例如：松山 金門。"
+      },
+      "locale": {
+        "type": "string",
+        "default": "zh-TW"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 5
+      }
     },
     "required": ["query"]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "mode": { "type": "string" },
+      "mode": { "type": "string", "enum": ["flight"] },
       "query": { "type": "string" },
-      "retrieved_at": { "type": "string" },
-      "results": { "type": "array" },
+      "retrieved_at": { "type": "string", "format": "date-time" },
+      "tdx": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string" },
+          "origin": { "type": "string" },
+          "destination": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "flight_count": { "type": "integer" },
+          "flights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "flight_no": { "type": "string" },
+                "airline": { "type": "string" },
+                "departure_time": { "type": "string" },
+                "arrival_time": { "type": "string" },
+                "status": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
       "sources_used": { "type": "array", "items": { "type": "string" } }
     }
   },
   "source_policy": {
-    "allowed_sources": ["duckduckgo", "public_travel_web"]
+    "allowed_sources": ["tdx"],
+    "required_source": "tdx"
   },
   "execution_rules": {
     "mediation_required": true,
     "requires_source_policy": true,
-    "default_limit": 5
+    "default_limit": 5,
+    "tdx_only": true,
+    "web_fallback_allowed": false
   },
   "response_contract": {
     "must_identify_sources": true,
     "must_identify_retrieval_time": true,
-    "result_wording": "Present flight schedule options as candidates, not final booking advice."
+    "result_wording": "回傳 TDX 航班即時資訊結果；若 TDX 無資料，必須明確標示為無可用結果，不得改用搜尋引擎或旅遊網站。"
   }
 }

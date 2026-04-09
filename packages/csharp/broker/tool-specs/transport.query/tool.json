@@ -1,0 +1,59 @@
+{
+  "tool_id": "transport.query",
+  "display_name": "交通查詢",
+  "summary": "統一的交通查詢能力。由 broker 派工給 transport worker，支援追問、範圍回答與最終答案。",
+  "kind": "transport",
+  "status": "active",
+  "version": "2026-04-09",
+  "tags": ["transport", "tdx", "worker", "follow-up", "range-answer"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "transport",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 900,
+    "audit_level": "summary",
+    "quota": { "max_calls": 30, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "transport.query",
+      "route": "transport_query",
+      "purpose": "Unified transport query capability dispatched to transport workers or compatibility fallback."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "required": ["transport_mode", "user_query"],
+    "properties": {
+      "transport_mode": { "type": "string", "enum": ["auto", "rail", "hsr", "bus", "flight", "ship", "bike"] },
+      "user_query": { "type": "string" },
+      "locale": { "type": "string", "default": "zh-TW" },
+      "channel": { "type": "string", "default": "line" },
+      "context": { "type": "object" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "resultType": { "type": "string", "enum": ["final_answer", "need_follow_up", "range_answer"] },
+      "answer": { "type": "string" },
+      "normalizedQuery": { "type": "object" },
+      "missingFields": { "type": "array", "items": { "type": "string" } },
+      "followUp": { "type": "object" },
+      "rangeContext": { "type": "object" },
+      "records": { "type": "array" },
+      "evidence": { "type": "array" },
+      "providerMetadata": { "type": "object" }
+    }
+  },
+  "execution_rules": {
+    "worker_owned": true,
+    "compatibility_fallback_allowed": true
+  },
+  "response_contract": {
+    "must_support_follow_up": true,
+    "must_support_range_answer": true,
+    "must_identify_sources": true
+  }
+}

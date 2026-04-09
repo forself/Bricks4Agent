@@ -21,11 +21,11 @@ var failed = 0;
 
     var body = LineArtifactDeliveryService.BuildNotificationBody("report.md", "/path/report.md", driveResult);
 
-    AssertContains("Test1-title", body, "您的文件已準備完成");
-    AssertContains("Test1-filename", body, "文件名稱：report.md");
-    AssertContains("Test1-download-label", body, "點擊下載：");
+    AssertContains("Test1-title", body, "\u6a94\u6848\u5df2\u5b8c\u6210\u4e26\u4e0a\u50b3\u5230 Google Drive\u3002");
+    AssertContains("Test1-filename", body, "\u6a94\u540d\uff1areport.md");
+    AssertContains("Test1-download-label", body, "\u4e0b\u8f09\u9023\u7d50\uff1a");
     AssertContains("Test1-download-link", body, "https://drive.google.com/uc?export=download&id=ABC123");
-    AssertContains("Test1-preview-label", body, "線上預覽：");
+    AssertContains("Test1-preview-label", body, "\u9810\u89bd\u9023\u7d50\uff1a");
     AssertContains("Test1-preview-link", body, "https://drive.google.com/file/d/ABC123/view");
     AssertNotContains("Test1-no-local-path", body, "本機路徑");
     AssertNotContains("Test1-no-raw-path", body, "/path/report.md");
@@ -42,10 +42,10 @@ var failed = 0;
 {
     var body = LineArtifactDeliveryService.BuildNotificationBody("data.csv", "/path/data.csv", null);
 
-    AssertContains("Test2-title", body, "您的文件已準備完成");
-    AssertContains("Test2-filename", body, "文件名稱：data.csv");
-    AssertContains("Test2-fallback", body, "雲端上傳未完成");
-    AssertContains("Test2-admin-help", body, "管理員將協助");
+    AssertContains("Test2-title", body, "Artifact created, but a downloadable link is not available yet.");
+    AssertContains("Test2-filename", body, "File: data.csv");
+    AssertContains("Test2-fallback", body, "downloadable link is not available yet");
+    AssertContains("Test2-admin-help", body, "without exposing internal paths");
     AssertNotContains("Test2-no-local-path", body, "本機路徑");
     AssertNotContains("Test2-no-drive-link", body, "drive.google.com");
 
@@ -68,9 +68,9 @@ var failed = 0;
 
     var body = LineArtifactDeliveryService.BuildNotificationBody("notes.txt", "/p/notes.txt", driveResult);
 
-    AssertContains("Test3-title", body, "您的文件已準備完成");
-    AssertContains("Test3-preview", body, "線上預覽：");
-    AssertNotContains("Test3-no-download-section", body, "點擊下載：");
+    AssertContains("Test3-title", body, "\u6a94\u6848\u5df2\u5b8c\u6210\u4e26\u4e0a\u50b3\u5230 Google Drive\u3002");
+    AssertContains("Test3-preview", body, "\u9810\u89bd\u9023\u7d50\uff1a");
+    AssertNotContains("Test3-no-download-section", body, "\u4e0b\u8f09\u9023\u7d50\uff1a");
 
     Console.WriteLine($"  Test 3 body output:");
     Console.WriteLine("  ---");
@@ -90,8 +90,8 @@ var failed = 0;
 
     var body = LineArtifactDeliveryService.BuildNotificationBody("big.json", "/p/big.json", driveResult);
 
-    AssertContains("Test4-title", body, "您的文件已準備完成");
-    AssertContains("Test4-fallback", body, "雲端上傳未完成");
+    AssertContains("Test4-title", body, "Artifact created, but a downloadable link is not available yet.");
+    AssertContains("Test4-fallback", body, "downloadable link is not available yet");
     AssertNotContains("Test4-no-drive-link", body, "drive.google.com");
 
     Console.WriteLine($"  Test 4 body output:");

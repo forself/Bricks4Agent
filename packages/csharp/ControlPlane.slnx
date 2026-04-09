@@ -47,4 +47,7 @@
   <Folder Name="/workers/browser-worker/">
     <Project Path="workers/browser-worker/BrowserWorker.csproj" />
   </Folder>
+  <Folder Name="/workers/transport-tdx-worker/">
+    <Project Path="workers/transport-tdx-worker/TransportTdxWorker.csproj" />
+  </Folder>
 </Solution>
