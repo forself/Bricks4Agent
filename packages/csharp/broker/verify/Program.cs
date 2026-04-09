@@ -391,13 +391,18 @@ try
     var mediatedRail = await mediator.SearchRailAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedRail.Success, "query tool mediator executes explicit rail query through broker-owned transport tool");
     AssertTrue(mediatedRail.Reply.Contains("18:30", StringComparison.OrdinalIgnoreCase), "rail query mediator reply includes candidate time information");
+    AssertTrue(mediatedRail.Reply.Contains("TDX", StringComparison.OrdinalIgnoreCase), "rail query mediator reply cites TDX as the source");
     var mediatedHsr = await mediator.SearchHsrAsync("line", "tester", "台北 台中 今天 18:00");
     AssertTrue(mediatedHsr.Success, "query tool mediator executes explicit hsr query through broker-owned transport tool");
     AssertTrue(mediatedHsr.Reply.Contains("06:15", StringComparison.OrdinalIgnoreCase), "hsr query mediator reply includes candidate time information");
-    var mediatedBus = await mediator.SearchBusAsync("line", "tester", "台北 台中 今天 18:00");
+    AssertTrue(mediatedHsr.Reply.Contains("TDX", StringComparison.OrdinalIgnoreCase), "hsr query mediator reply cites TDX as the source");
+    var mediatedBus = await mediator.SearchBusAsync("line", "tester", "臺北市 307");
     AssertTrue(mediatedBus.Success, "query tool mediator executes explicit bus query through broker-owned transport tool");
-    var mediatedFlight = await mediator.SearchFlightAsync("line", "tester", "TPE KIX tomorrow");
+    AssertTrue(mediatedBus.Reply.Contains("TDX", StringComparison.OrdinalIgnoreCase), "bus query mediator reply cites TDX as the source");
+    AssertTrue(mediatedBus.Reply.Contains("4", StringComparison.OrdinalIgnoreCase), "bus query mediator reply includes ETA information");
+    var mediatedFlight = await mediator.SearchFlightAsync("line", "tester", "松山 金門");
     AssertTrue(mediatedFlight.Success, "query tool mediator executes explicit flight query through broker-owned transport tool");
+    AssertTrue(mediatedFlight.Reply.Contains("TDX", StringComparison.OrdinalIgnoreCase), "flight query mediator reply cites TDX as the source");
 
     var specRoot = Path.Combine(sandboxRoot, "tool-specs");
     Directory.CreateDirectory(Path.Combine(specRoot, "browser.reference.anonymous.read"));
@@ -2136,80 +2141,23 @@ file sealed class FakeToolSpecRegistry : IToolSpecRegistry
         },
         new ToolSpecView
         {
-            ToolId = "travel.rail.search",
-            DisplayName = "Rail Search",
-            Summary = "broker mediated rail search",
+            ToolId = "transport.query",
+            DisplayName = "Transport Query",
+            Summary = "broker mediated transport query",
             Kind = "travel",
             Status = "active",
             CapabilityBindings =
             [
                 new ToolCapabilityBindingView
                 {
-                    CapabilityId = "travel.rail.search",
-                    Route = "travel_rail_search",
+                    CapabilityId = "transport.query",
+                    Route = "transport_query",
                     Purpose = "test",
                     Registered = true,
-                    RegisteredRoute = "travel_rail_search"
+                    RegisteredRoute = "transport_query"
                 }
             ]
         },
-        new ToolSpecView
-        {
-            ToolId = "travel.hsr.search",
-            DisplayName = "HSR Search",
-            Summary = "broker mediated hsr search",
-            Kind = "travel",
-            Status = "active",
-            CapabilityBindings =
-            [
-                new ToolCapabilityBindingView
-                {
-                    CapabilityId = "travel.hsr.search",
-                    Route = "travel_hsr_search",
-                    Purpose = "test",
-                    Registered = true,
-                    RegisteredRoute = "travel_hsr_search"
-                }
-            ]
-        },
-        new ToolSpecView
-        {
-            ToolId = "travel.bus.search",
-            DisplayName = "Bus Search",
-            Summary = "broker mediated bus search",
-            Kind = "travel",
-            Status = "active",
-            CapabilityBindings =
-            [
-                new ToolCapabilityBindingView
-                {
-                    CapabilityId = "travel.bus.search",
-                    Route = "travel_bus_search",
-                    Purpose = "test",
-                    Registered = true,
-                    RegisteredRoute = "travel_bus_search"
-                }
-            ]
-        },
-        new ToolSpecView
-        {
-            ToolId = "travel.flight.search",
-            DisplayName = "Flight Search",
-            Summary = "broker mediated flight search",
-            Kind = "travel",
-            Status = "active",
-            CapabilityBindings =
-            [
-                new ToolCapabilityBindingView
-                {
-                    CapabilityId = "travel.flight.search",
-                    Route = "travel_flight_search",
-                    Purpose = "test",
-                    Registered = true,
-                    RegisteredRoute = "travel_flight_search"
-                }
-            ]
-        }
     ];
     public ToolSpecView? Get(string toolId)
         => _views.FirstOrDefault(view => string.Equals(toolId, view.ToolId, StringComparison.OrdinalIgnoreCase));
@@ -2344,11 +2292,15 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
     public Task<ExecutionResult> DispatchAsync(ApprovedRequest approvedRequest)
     {
         using var payloadDoc = JsonDocument.Parse(approvedRequest.Payload);
-        var query = payloadDoc.RootElement
-            .GetProperty("args")
-            .TryGetProperty("query", out var queryNode)
+        var args = payloadDoc.RootElement.GetProperty("args");
+        var query = args.TryGetProperty("query", out var queryNode)
             ? queryNode.GetString() ?? string.Empty
-            : string.Empty;
+            : args.TryGetProperty("user_query", out var userQueryNode)
+                ? userQueryNode.GetString() ?? string.Empty
+                : string.Empty;
+        var transportMode = args.TryGetProperty("transport_mode", out var modeNode)
+            ? modeNode.GetString() ?? "auto"
+            : "auto";
         object payloadObject = approvedRequest.Route switch
         {
             "web_search_google" => new
@@ -2363,78 +2315,7 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
                 query = string.IsNullOrWhiteSpace(query) ? "北京市 行政區劃" : query,
                 results = BuildWikipediaResults(query)
             },
-            "travel_rail_search" => new
-            {
-                mode = "rail",
-                query = "台北 台中 今天 18:00",
-                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                sources_used = new[] { "DuckDuckGo / railway.gov.tw" },
-                results = new[]
-                {
-                    new
-                    {
-                        rank = 1,
-                        title = "台鐵台北到台中候選班次",
-                        url = "https://example.com/rail",
-                        snippet = "示範用台鐵結果",
-                        time_candidates = new[] { "18:30", "19:00" }
-                    }
-                }
-            },
-            "travel_hsr_search" => new
-            {
-                mode = "hsr",
-                query = "台北 台中 今天 18:00",
-                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                sources_used = new[] { "DuckDuckGo / thsrc.com.tw" },
-                results = new[]
-                {
-                    new
-                    {
-                        rank = 1,
-                        title = "高鐵台北到台中候選班次",
-                        url = "https://example.com/hsr",
-                        snippet = "示範用高鐵結果",
-                        time_candidates = new[] { "06:15", "06:30" }
-                    }
-                }
-            },
-            "travel_bus_search" => new
-            {
-                mode = "bus",
-                query = "台北 台中 今天 18:00",
-                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                sources_used = new[] { "DuckDuckGo / public transport web" },
-                results = new[]
-                {
-                    new
-                    {
-                        rank = 1,
-                        title = "公車候選班次",
-                        url = "https://example.com/bus",
-                        snippet = "示範用公車結果",
-                        time_candidates = new[] { "18:10", "18:40" }
-                    }
-                }
-            },
-            "travel_flight_search" => new
-            {
-                mode = "flight",
-                query = "TPE KIX tomorrow",
-                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                sources_used = new[] { "DuckDuckGo / public travel web" },
-                results = new[]
-                {
-                    new
-                    {
-                        rank = 1,
-                        title = "TPE 到 KIX 候選航班",
-                        url = "https://example.com/flight",
-                        snippet = "示範用航班結果",
-                        time_candidates = new[] { "09:15", "13:40" }
-                    }
-                }
-            },
+            "transport_query" => BuildTransportPayload(transportMode, query),
             _ => new
             {
                 engine = "duckduckgo",
@@ -2453,6 +2334,128 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
         };
         var payload = JsonSerializer.Serialize(payloadObject);
         return Task.FromResult(ExecutionResult.Ok(approvedRequest.RequestId, payload));
+    }
+
+    private static object BuildTransportPayload(string mode, string query)
+    {
+        switch (mode)
+        {
+            case "rail":
+                return new
+                {
+                    resultType = "final_answer",
+                    answer = "台鐵查詢：台北 → 台中（2026-04-08）\n共 1 筆，來源：TDX 台鐵時刻表 API\n查詢時間：2026-04-08T10:00:00+08:00\n\n  自強 181  18:30 發車 / 20:12 抵達",
+                    normalizedQuery = new
+                    {
+                        transport_mode = "rail",
+                        origin = "台北",
+                        destination = "台中",
+                        date = "2026-04-08"
+                    },
+                    missingFields = Array.Empty<string>(),
+                    records = new[]
+                    {
+                        new { title = "自強 181", snippet = "18:30 發車 / 20:12 抵達" }
+                    },
+                    evidence = new[]
+                    {
+                        new { source = "TDX", kind = "transport.provider" }
+                    },
+                    providerMetadata = new { provider = "tdx", mode = "rail" }
+                };
+            case "hsr":
+                return new
+                {
+                    resultType = "final_answer",
+                    answer = "高鐵查詢：台北 → 台中（2026-04-08）\n共 1 筆，來源：TDX 高鐵時刻表 API\n查詢時間：2026-04-08T10:00:00+08:00\n\n  車次 0615  06:15 發車 / 07:02 抵達",
+                    normalizedQuery = new
+                    {
+                        transport_mode = "hsr",
+                        origin = "台北",
+                        destination = "台中",
+                        date = "2026-04-08"
+                    },
+                    missingFields = Array.Empty<string>(),
+                    records = new[]
+                    {
+                        new { title = "車次 0615", snippet = "06:15 發車 / 07:02 抵達" }
+                    },
+                    evidence = new[]
+                    {
+                        new { source = "TDX", kind = "transport.provider" }
+                    },
+                    providerMetadata = new { provider = "tdx", mode = "hsr" }
+                };
+            case "bus":
+                return new
+                {
+                    resultType = "final_answer",
+                    answer = "公車查詢：臺北市 → 307（2026-04-08）\n共 1 筆，來源：TDX 公車預估到站 API\n查詢時間：2026-04-08T10:00:00+08:00\n\n  公車 307  捷運忠孝復興站 / 約 4 分鐘",
+                    normalizedQuery = new
+                    {
+                        transport_mode = "bus",
+                        city = "臺北市",
+                        route = "307"
+                    },
+                    missingFields = Array.Empty<string>(),
+                    records = new[]
+                    {
+                        new { title = "公車 307", snippet = "捷運忠孝復興站 / 約 4 分鐘" }
+                    },
+                    evidence = new[]
+                    {
+                        new { source = "TDX", kind = "transport.provider" }
+                    },
+                    providerMetadata = new { provider = "tdx", mode = "bus" }
+                };
+            case "flight":
+                return new
+                {
+                    resultType = "range_answer",
+                    answer = "目前先依較寬條件整理可用結果。\n如果你要指定日期或時段，我可以再縮小範圍。\n\n航班查詢：松山 → 金門（2026-04-08）\n共 1 筆，來源：TDX 航班即時資訊 API (FIDS)\n查詢時間：2026-04-08T10:00:00+08:00\n\n  航班 AE1271  09:15 起飛 / 10:20 抵達（準時）",
+                    normalizedQuery = new
+                    {
+                        transport_mode = "flight",
+                        origin = "松山",
+                        destination = "金門"
+                    },
+                    missingFields = new[] { "date" },
+                    rangeContext = new
+                    {
+                        assumptions = new[] { "date=today" },
+                        scope_note = "目前先用今天可查到的航班。"
+                    },
+                    records = Array.Empty<object>(),
+                    evidence = new[]
+                    {
+                        new { source = "TDX", kind = "transport.provider" }
+                    },
+                    providerMetadata = new { provider = "tdx", mode = "flight" }
+                };
+            default:
+                return new
+                {
+                    resultType = "need_follow_up",
+                    answer = "我還需要補充幾項資訊，才能繼續查詢。",
+                    normalizedQuery = new { transport_mode = mode, user_query = query },
+                    missingFields = new[] { "origin", "destination" },
+                    followUp = new
+                    {
+                        question = "請再告訴我起點與終點。",
+                        followUpToken = "verify-follow-up",
+                        options = new[]
+                        {
+                            new { id = "restatement", label = "我重新描述" }
+                        }
+                    },
+                    records = Array.Empty<object>(),
+                    evidence = new[]
+                    {
+                        new { source = "TDX", kind = "transport.provider" }
+                    },
+                    providerMetadata = new { provider = "tdx", mode = mode }
+                };
+        }
     }
     private static object[] BuildGoogleResults(string query)
     {

@@ -2,11 +2,13 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Text;
 using BrokerCore.Contracts;
+using BrokerCore.Contracts.Transport;
 using BrokerCore.Models;
 using BrokerCore.Services;
 using BrokerCore.Data;
 using Broker.Services;
 using Broker.Scripts;
+using Broker.Handlers.Travel;
 
 namespace Broker.Adapters;
 
@@ -105,6 +107,7 @@ public class InProcessDispatcher : IExecutionDispatcher
                 "web_search_google" => ExecuteWebSearchGoogleAsync(request),
                 "web_search_duckduckgo" => ExecuteWebSearchDuckDuckGoAsync(request),
                 "knowledge_wikipedia_search" => ExecuteWikipediaSearchAsync(request),
+                "transport_query" => ExecuteTransportQueryAsync(request),
                 "travel_rail_search" => ExecuteTravelRailSearchAsync(request),
                 "travel_hsr_search" => ExecuteTravelHsrSearchAsync(request),
                 "travel_bus_search" => ExecuteTravelBusSearchAsync(request),
@@ -1375,31 +1378,43 @@ public class InProcessDispatcher : IExecutionDispatcher
 
     private async Task<ExecutionResult> ExecuteTravelRailSearchAsync(ApprovedRequest request)
     {
-        var tdxResult = await TryTdxTravelAsync(request, "rail",
+        return await ExecuteTdxOnlyTravelSearchAsync(
+            request,
+            "rail",
+            "TDX 台鐵時刻表 API",
             (tdx, q, ct) => Broker.Handlers.Travel.TdxTravelHelper.QueryTraTimetableAsync(tdx, q, _logger, ct));
-        if (tdxResult != null) return tdxResult;
-
-        return await ExecuteTravelSearchAsync(request,
-            mode: "rail",
-            sourceLabel: "DuckDuckGo / railway.gov.tw",
-            queryDecorator: query => $"{query} site:railway.gov.tw 火車 台鐵 時刻表 班次");
     }
 
     private async Task<ExecutionResult> ExecuteTravelHsrSearchAsync(ApprovedRequest request)
     {
-        var tdxResult = await TryTdxTravelAsync(request, "hsr",
+        return await ExecuteTdxOnlyTravelSearchAsync(
+            request,
+            "hsr",
+            "TDX 高鐵時刻表 API",
             (tdx, q, ct) => Broker.Handlers.Travel.TdxTravelHelper.QueryThsrTimetableAsync(tdx, q, _logger, ct));
-        if (tdxResult != null) return tdxResult;
+    }
 
-        return await ExecuteTravelSearchAsync(request,
-            mode: "hsr",
-            sourceLabel: "DuckDuckGo / thsrc.com.tw",
-            queryDecorator: query => $"{query} site:thsrc.com.tw 高鐵 時刻表 班次");
+    private async Task<ExecutionResult> ExecuteTdxOnlyTravelSearchAsync(
+        ApprovedRequest request,
+        string mode,
+        string sourceLabel,
+        Func<TdxApiService, string, CancellationToken, Task<object?>> tdxQuery)
+    {
+        var tdxResult = await TryTdxTravelAsync(request, mode, sourceLabel, tdxQuery);
+        if (tdxResult != null)
+            return tdxResult;
+
+        using var doc = JsonDocument.Parse(request.Payload);
+        var args = doc.RootElement.TryGetProperty("args", out var argsNode) ? argsNode : doc.RootElement;
+        var query = args.TryGetProperty("query", out var queryNode) ? queryNode.GetString() ?? string.Empty : string.Empty;
+        _logger.LogWarning("TDX-only {Mode} query returned no result for: {Query}", mode, query);
+        return Broker.Handlers.Travel.TravelTdxResponseHelper.CreateEmpty(request.RequestId, mode, query, sourceLabel);
     }
 
     private async Task<ExecutionResult?> TryTdxTravelAsync(
         ApprovedRequest request,
         string mode,
+        string sourceLabel,
         Func<TdxApiService, string, CancellationToken, Task<object?>> tdxQuery)
     {
         if (_tdxApiService is not { IsConfigured: true })
@@ -1418,39 +1433,29 @@ public class InProcessDispatcher : IExecutionDispatcher
                 return null;
 
             _logger.LogInformation("TDX {Mode} timetable query succeeded for: {Query}", mode, query);
-            return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(new
-            {
-                mode,
-                query,
-                retrieved_at = DateTimeOffset.UtcNow.ToString("O"),
-                tdx = result,
-                sources_used = new[] { $"TDX {(mode == "rail" ? "台鐵" : "高鐵")}時刻表 API" }
-            }));
+            return Broker.Handlers.Travel.TravelTdxResponseHelper.CreateSuccess(request.RequestId, mode, query, result, sourceLabel);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "TDX {Mode} query failed, falling back to web search", mode);
+            _logger.LogWarning(ex, "TDX-only {Mode} query failed", mode);
             return null;
         }
     }
 
     private Task<ExecutionResult> ExecuteTravelBusSearchAsync(ApprovedRequest request)
-        => ExecuteTravelSearchAsync(
+        => ExecuteTdxOnlyTravelSearchAsync(
             request,
             mode: "bus",
-            sourceLabel: "DuckDuckGo / public transport web",
-            queryDecorator: query => $"{query} 公車 OR 客運 時刻表 班次");
+            sourceLabel: "TDX 公車預估到站 API",
+            tdxQuery: (tdx, q, ct) => Broker.Handlers.Travel.TdxBusTravelHelper.QueryBusAsync(tdx, q, _logger, ct));
 
     private async Task<ExecutionResult> ExecuteTravelFlightSearchAsync(ApprovedRequest request)
     {
-        var tdxResult = await TryTdxTravelAsync(request, "flight",
+        return await ExecuteTdxOnlyTravelSearchAsync(
+            request,
+            "flight",
+            "TDX 航班即時資訊 API (FIDS)",
             (tdx, q, ct) => Broker.Handlers.Travel.TdxTravelHelper.QueryFlightAsync(tdx, q, _logger, ct));
-        if (tdxResult != null) return tdxResult;
-
-        return await ExecuteTravelSearchAsync(request,
-            mode: "flight",
-            sourceLabel: "DuckDuckGo / public travel web",
-            queryDecorator: query => $"{query} 航班 班次 時刻表");
     }
 
     private async Task<ExecutionResult> ExecuteTravelSearchAsync(
@@ -1926,10 +1931,45 @@ public class InProcessDispatcher : IExecutionDispatcher
             or "memory_store" or "memory_retrieve" or "memory_delete"
             or "memory_semantic_search" or "memory_fulltext_search" or "rag_retrieve"
             or "rag_import" or "rag_import_web"
+            or "transport_query"
             or "web_search" or "web_search_google" or "web_search_duckduckgo" or "web_fetch"
             or "deploy_azure_vm_iis" => true,
         _ => false
     };
+
+    private async Task<ExecutionResult> ExecuteTransportQueryAsync(ApprovedRequest request)
+    {
+        using var doc = JsonDocument.Parse(request.Payload);
+        if (!IsPayloadRouteValid(doc.RootElement, request.Route))
+            return ExecutionResult.Fail(request.RequestId, "Payload route does not match approved route.");
+
+        var args = GetArgsElement(doc.RootElement);
+        var transportMode = TryGetString(args, "transport_mode") ?? "auto";
+        var userQuery = TryGetString(args, "user_query", "query") ?? string.Empty;
+        var context = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        if (args.TryGetProperty("context", out var contextNode) && contextNode.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in contextNode.EnumerateObject())
+            {
+                context[property.Name] = property.Value.ValueKind == JsonValueKind.String
+                    ? property.Value.GetString()
+                    : property.Value.ValueKind == JsonValueKind.Null
+                        ? null
+                        : property.Value.GetRawText();
+            }
+        }
+
+        var response = await TransportQueryCompatibilityService.ExecuteAsync(
+            transportMode,
+            userQuery,
+            context,
+            _tdxApiService,
+            _logger,
+            CancellationToken.None);
+
+        return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(response));
+    }
 
     private async Task<ExecutionResult> ExecuteAzureIisDeploymentAsync(ApprovedRequest request)
     {

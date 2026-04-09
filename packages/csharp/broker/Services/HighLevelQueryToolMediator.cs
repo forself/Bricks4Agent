@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BrokerCore.Contracts;
+using BrokerCore.Contracts.Transport;
 using BrokerCore.Services;
 
 namespace Broker.Services;
@@ -9,10 +10,7 @@ public sealed class HighLevelQueryToolMediator
     private const string GoogleToolId = "web.search.google";
     private const string DuckDuckGoToolId = "web.search.duckduckgo";
     private const string WikipediaToolId = "knowledge.wikipedia.search";
-    private const string RailToolId = "travel.rail.search";
-    private const string HsrToolId = "travel.hsr.search";
-    private const string BusToolId = "travel.bus.search";
-    private const string FlightToolId = "travel.flight.search";
+    private const string TransportToolId = "transport.query";
 
     private readonly IToolSpecRegistry _toolSpecRegistry;
     private readonly IExecutionDispatcher _dispatcher;
@@ -41,7 +39,7 @@ public sealed class HighLevelQueryToolMediator
         if (string.IsNullOrWhiteSpace(query))
         {
             return HighLevelQueryToolResult.Fail(
-                "請提供 ?search 的查詢內容，例如：?search 中央氣象署官網",
+                "請在 search 後面提供要查詢的關鍵字，例如：search 台北天氣",
                 "search_query_missing");
         }
 
@@ -58,8 +56,8 @@ public sealed class HighLevelQueryToolMediator
         {
             return HighLevelQueryToolResult.Fail(
                 !string.IsNullOrWhiteSpace(googleResult.Error)
-                    ? $"受控搜尋失敗：{googleResult.Error}"
-                    : "受控搜尋失敗，請稍後再試。",
+                    ? $"網路搜尋失敗：{googleResult.Error}"
+                    : "網路搜尋失敗，請稍後再試。",
                 googleResult.Error ?? "tool_spec_unavailable");
         }
 
@@ -67,7 +65,7 @@ public sealed class HighLevelQueryToolMediator
         {
             fallbackResult.Reply = string.Join('\n', new[]
             {
-                "Google 搜尋目前失敗，已改用 DuckDuckGo 備援。",
+                "Google 搜尋暫時失敗，已改用 DuckDuckGo。",
                 string.Empty,
                 fallbackResult.Reply
             });
@@ -89,7 +87,7 @@ public sealed class HighLevelQueryToolMediator
         if (string.IsNullOrWhiteSpace(query))
         {
             return Task.FromResult(HighLevelQueryToolResult.Fail(
-                "請提供 Wikipedia 查詢內容，例如：?search 北京市 行政區劃",
+                "請在 Wikipedia 查詢後面提供關鍵字。",
                 "wikipedia_query_missing"));
         }
 
@@ -99,7 +97,7 @@ public sealed class HighLevelQueryToolMediator
             locale: "zh-TW",
             limit: 5,
             safeMode: null,
-            unavailableMessage: "目前無法使用 Wikipedia 查詢工具。",
+            unavailableMessage: "目前無法使用 Wikipedia 查詢。",
             bindingUnavailableMessage: "目前無法使用 broker-mediated Wikipedia 查詢路徑。",
             dispatchFailurePrefix: "Wikipedia 查詢失敗：");
     }
@@ -109,28 +107,28 @@ public sealed class HighLevelQueryToolMediator
         string userId,
         string query,
         CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, RailToolId, query, cancellationToken);
+        => SearchTransportAsync(channel, userId, "rail", query, cancellationToken);
 
     public Task<HighLevelQueryToolResult> SearchHsrAsync(
         string channel,
         string userId,
         string query,
         CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, HsrToolId, query, cancellationToken);
+        => SearchTransportAsync(channel, userId, "hsr", query, cancellationToken);
 
     public Task<HighLevelQueryToolResult> SearchBusAsync(
         string channel,
         string userId,
         string query,
         CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, BusToolId, query, cancellationToken);
+        => SearchTransportAsync(channel, userId, "bus", query, cancellationToken);
 
     public Task<HighLevelQueryToolResult> SearchFlightAsync(
         string channel,
         string userId,
         string query,
         CancellationToken cancellationToken = default)
-        => SearchTransportAsync(channel, userId, FlightToolId, query, cancellationToken);
+        => SearchTransportAsync(channel, userId, "flight", query, cancellationToken);
 
     private Task<HighLevelQueryToolResult> SearchWebWithToolAsync(string toolId, string query)
         => SearchReadOnlyToolAsync(
@@ -139,9 +137,9 @@ public sealed class HighLevelQueryToolMediator
             locale: "zh-TW",
             limit: 5,
             safeMode: "moderate",
-            unavailableMessage: "目前無法使用受控搜尋工具。",
+            unavailableMessage: "目前無法使用網路搜尋。",
             bindingUnavailableMessage: "目前無法使用 broker-mediated web search route。",
-            dispatchFailurePrefix: "搜尋失敗：");
+            dispatchFailurePrefix: "網路搜尋失敗：");
 
     private async Task<HighLevelQueryToolResult> SearchReadOnlyToolAsync(
         string toolId,
@@ -156,18 +154,14 @@ public sealed class HighLevelQueryToolMediator
         var spec = _toolSpecRegistry.Get(toolId);
         if (spec == null || !string.Equals(spec.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
-            return HighLevelQueryToolResult.Fail(
-                unavailableMessage,
-                "tool_spec_unavailable");
+            return HighLevelQueryToolResult.Fail(unavailableMessage, "tool_spec_unavailable");
         }
 
         var binding = spec.CapabilityBindings.FirstOrDefault(candidate =>
             string.Equals(candidate.CapabilityId, toolId, StringComparison.OrdinalIgnoreCase));
         if (binding == null || !binding.Registered || string.IsNullOrWhiteSpace(binding.Route))
         {
-            return HighLevelQueryToolResult.Fail(
-                bindingUnavailableMessage,
-                "tool_binding_unavailable");
+            return HighLevelQueryToolResult.Fail(bindingUnavailableMessage, "tool_binding_unavailable");
         }
 
         var args = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
@@ -179,7 +173,6 @@ public sealed class HighLevelQueryToolMediator
         if (!string.IsNullOrWhiteSpace(safeMode))
             args["safe_mode"] = safeMode;
 
-        // EXC-HLQM-BYPASS: 暫時例外，Phase 2 將消除此 bypass
         ApprovedRequest.WarnIfBypass();
         var approvedRequest = new ApprovedRequest
         {
@@ -202,9 +195,7 @@ public sealed class HighLevelQueryToolMediator
         {
             var error = executionResult.ErrorMessage ?? "tool_dispatch_failed";
             _logger.LogWarning("High-level read-only tool {ToolId} failed: {Error}", toolId, error);
-            return HighLevelQueryToolResult.Fail(
-                $"{dispatchFailurePrefix}{error}",
-                "tool_dispatch_failed");
+            return HighLevelQueryToolResult.Fail($"{dispatchFailurePrefix}{error}", "tool_dispatch_failed");
         }
 
         try
@@ -253,44 +244,39 @@ public sealed class HighLevelQueryToolMediator
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to parse high-level query tool result for {ToolId}", toolId);
-            return HighLevelQueryToolResult.Fail(
-                "查詢工具回傳格式無法解析。",
-                "tool_result_parse_failed");
+            return HighLevelQueryToolResult.Fail("查詢結果解析失敗。", "tool_result_parse_failed");
         }
     }
 
     private async Task<HighLevelQueryToolResult> SearchTransportAsync(
         string channel,
         string userId,
-        string toolId,
+        string transportMode,
         string query,
         CancellationToken cancellationToken = default)
     {
-        _ = channel;
         _ = userId;
         _ = cancellationToken;
 
         if (string.IsNullOrWhiteSpace(query))
         {
             return HighLevelQueryToolResult.Fail(
-                "請提供交通查詢內容，例如：?rail 台北 台中 今天 18:00",
+                "請提供更完整的查詢條件，例如：?rail 板橋 高雄 明天上午",
                 "transport_query_missing");
         }
 
-        var spec = _toolSpecRegistry.Get(toolId);
+        var spec = _toolSpecRegistry.Get(TransportToolId);
         if (spec == null || !string.Equals(spec.Status, "active", StringComparison.OrdinalIgnoreCase))
         {
-            return HighLevelQueryToolResult.Fail(
-                "目前無法使用這個交通查詢工具。",
-                "transport_tool_unavailable");
+            return HighLevelQueryToolResult.Fail("目前無法使用交通查詢。", "transport_tool_unavailable");
         }
 
         var binding = spec.CapabilityBindings.FirstOrDefault(candidate =>
-            string.Equals(candidate.CapabilityId, toolId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(candidate.CapabilityId, TransportToolId, StringComparison.OrdinalIgnoreCase));
         if (binding == null || !binding.Registered || string.IsNullOrWhiteSpace(binding.Route))
         {
             return HighLevelQueryToolResult.Fail(
-                "目前無法使用 broker-mediated 交通查詢 route。",
+                "目前無法使用 broker-mediated 交通查詢路徑。",
                 "transport_binding_unavailable");
         }
 
@@ -308,9 +294,10 @@ public sealed class HighLevelQueryToolMediator
                 route = binding.Route,
                 args = new
                 {
-                    query,
+                    transport_mode = transportMode,
+                    user_query = query,
                     locale = "zh-TW",
-                    limit = 5
+                    channel
                 }
             })
         };
@@ -319,113 +306,71 @@ public sealed class HighLevelQueryToolMediator
         if (!executionResult.Success || string.IsNullOrWhiteSpace(executionResult.ResultPayload))
         {
             var error = executionResult.ErrorMessage ?? "transport_tool_dispatch_failed";
-            _logger.LogWarning("High-level transport search failed for {ToolId}: {Error}", toolId, error);
-            return HighLevelQueryToolResult.Fail(
-                $"交通查詢失敗：{error}",
-                "transport_tool_dispatch_failed");
+            _logger.LogWarning("High-level transport search failed for {Mode}: {Error}", transportMode, error);
+            return HighLevelQueryToolResult.Fail($"交通查詢失敗：{error}", "transport_tool_dispatch_failed");
         }
 
         try
         {
-            using var doc = JsonDocument.Parse(executionResult.ResultPayload);
-            var mode = doc.RootElement.TryGetProperty("mode", out var modeNode)
-                ? modeNode.GetString() ?? toolId
-                : toolId;
-            var returnedQuery = doc.RootElement.TryGetProperty("query", out var queryNode)
-                ? queryNode.GetString() ?? query
-                : query;
+            var transportResponse = JsonSerializer.Deserialize<TransportQueryResponse>(executionResult.ResultPayload);
+            if (transportResponse == null)
+                throw new InvalidOperationException("transport response deserialized to null");
 
-            // TDX 結構化結果（優先路徑）
-            if (doc.RootElement.TryGetProperty("tdx", out var tdxNode) &&
-                tdxNode.ValueKind == JsonValueKind.Object)
-            {
-                var tdxItems = ParseTdxTimetableResult(tdxNode);
-                var tdxSources = doc.RootElement.TryGetProperty("sources_used", out var tdxSourcesNode) &&
-                                 tdxSourcesNode.ValueKind == JsonValueKind.Array
-                    ? string.Join("、", tdxSourcesNode.EnumerateArray()
-                        .Select(node => node.GetString())
-                        .Where(text => !string.IsNullOrWhiteSpace(text)))
-                    : "TDX";
-                var tdxRetrievedAt = doc.RootElement.TryGetProperty("retrieved_at", out var tdxRetrievedAtNode)
-                    ? tdxRetrievedAtNode.GetString() ?? string.Empty
-                    : string.Empty;
-
-                return new HighLevelQueryToolResult
-                {
-                    Success = true,
-                    Reply = BuildTdxTimetableReply(mode, returnedQuery, tdxNode, tdxSources, tdxRetrievedAt),
-                    ToolId = toolId,
-                    Engine = mode,
-                    Results = tdxItems
-                };
-            }
-
-            // Fallback: 網頁搜尋結果
             var items = new List<HighLevelQuerySearchResult>();
-            if (doc.RootElement.TryGetProperty("results", out var resultsNode) &&
-                resultsNode.ValueKind == JsonValueKind.Array)
+            if (transportResponse.ResultTypeValue == TransportResultType.FinalAnswer)
             {
-                foreach (var item in resultsNode.EnumerateArray())
+                var rank = 1;
+                foreach (var record in transportResponse.Records)
                 {
-                    var timeCandidates = item.TryGetProperty("time_candidates", out var timeNode) &&
-                                         timeNode.ValueKind == JsonValueKind.Array
-                        ? string.Join("、", timeNode.EnumerateArray()
-                            .Select(element => element.GetString())
-                            .Where(text => !string.IsNullOrWhiteSpace(text)))
-                        : string.Empty;
-
-                    var snippet = item.TryGetProperty("snippet", out var snippetNode)
-                        ? snippetNode.GetString() ?? string.Empty
-                        : string.Empty;
-                    if (!string.IsNullOrWhiteSpace(timeCandidates))
-                    {
-                        snippet = string.IsNullOrWhiteSpace(snippet)
-                            ? $"候選時間：{timeCandidates}"
-                            : $"{snippet}\n候選時間：{timeCandidates}";
-                    }
-
                     items.Add(new HighLevelQuerySearchResult
                     {
-                        Rank = item.TryGetProperty("rank", out var rankNode) && rankNode.TryGetInt32(out var rank)
-                            ? rank
-                            : items.Count + 1,
-                        Title = item.TryGetProperty("title", out var titleNode)
-                            ? titleNode.GetString() ?? string.Empty
-                            : string.Empty,
-                        Url = item.TryGetProperty("url", out var urlNode)
-                            ? urlNode.GetString() ?? string.Empty
-                            : string.Empty,
-                        Snippet = snippet
+                        Rank = rank++,
+                        Title = record.GetValueOrDefault("title")?.ToString() ?? string.Empty,
+                        Snippet = record.GetValueOrDefault("snippet")?.ToString() ?? string.Empty
                     });
                 }
             }
 
-            var retrievedAt = doc.RootElement.TryGetProperty("retrieved_at", out var retrievedAtNode)
-                ? retrievedAtNode.GetString() ?? string.Empty
-                : string.Empty;
-            var sources = doc.RootElement.TryGetProperty("sources_used", out var sourcesNode) &&
-                          sourcesNode.ValueKind == JsonValueKind.Array
-                ? string.Join("、", sourcesNode.EnumerateArray()
-                    .Select(node => node.GetString())
-                    .Where(text => !string.IsNullOrWhiteSpace(text)))
-                : string.Empty;
-
             return new HighLevelQueryToolResult
             {
                 Success = true,
-                Reply = BuildTransportReply(mode, returnedQuery, items, sources, retrievedAt),
-                ToolId = toolId,
-                Engine = mode,
+                Reply = BuildTransportContractReply(transportResponse),
+                ToolId = TransportToolId,
+                Engine = transportMode,
                 Results = items
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse high-level transport result for {ToolId}", toolId);
-            return HighLevelQueryToolResult.Fail(
-                "交通查詢結果無法解析。",
-                "transport_result_parse_failed");
+            _logger.LogError(ex, "Failed to parse high-level transport result for {Mode}", transportMode);
+            return HighLevelQueryToolResult.Fail("交通查詢結果解析失敗。", "transport_result_parse_failed");
         }
+    }
+
+    internal static string BuildTransportContractReply(TransportQueryResponse response)
+    {
+        if (!string.IsNullOrWhiteSpace(response.Answer))
+        {
+            var lines = new List<string> { response.Answer };
+            if (response.ResultTypeValue == TransportResultType.NeedFollowUp && response.FollowUp != null)
+            {
+                lines.Add(string.Empty);
+                lines.Add(response.FollowUp.Question);
+                foreach (var option in response.FollowUp.Options)
+                {
+                    lines.Add($"- {option.Label}");
+                }
+            }
+
+            return string.Join('\n', lines);
+        }
+
+        return response.ResultTypeValue switch
+        {
+            TransportResultType.NeedFollowUp => "我還需要補充幾項資訊，才能繼續查詢。",
+            TransportResultType.RangeAnswer => "目前先依較寬條件整理結果。",
+            _ => "目前沒有取得可用結果。"
+        };
     }
 
     internal static string BuildSearchReply(
@@ -435,16 +380,16 @@ public sealed class HighLevelQueryToolMediator
     {
         var lines = new List<string>
         {
-            $"已使用 {engine} 搜尋：{query}",
+            $"搜尋來源：{engine} / {query}",
             string.Empty
         };
 
         if (results.Count == 0)
         {
-            lines.Add("目前沒有取得可用結果。你可以嘗試：");
-            lines.Add("1. 用更具體的關鍵詞");
-            lines.Add("2. 加入時間或地點限定");
-            lines.Add("3. 用英文搜尋");
+            lines.Add("沒有找到任何可用結果。");
+            lines.Add("1. 調整關鍵詞");
+            lines.Add("2. 補充更具體的地點、時間或名詞");
+            lines.Add("3. 試試英文搜尋");
             return string.Join('\n', lines);
         }
 
@@ -470,7 +415,7 @@ public sealed class HighLevelQueryToolMediator
     {
         var lines = new List<string>
         {
-            $"已使用 {mode} 交通查詢：{query}"
+            $"交通查詢：{mode} / {query}"
         };
 
         if (!string.IsNullOrWhiteSpace(retrievedAt))
@@ -482,8 +427,8 @@ public sealed class HighLevelQueryToolMediator
 
         if (results.Count == 0)
         {
-            lines.Add("目前沒有取得可用班次結果。");
-            lines.Add("建議提供更完整的查詢條件，例如：");
+            lines.Add("沒有找到任何可用結果。");
+            lines.Add("你可以改用更完整的查詢條件，例如：");
             lines.Add("?rail 台北 台中 今天 18:00");
             return string.Join('\n', lines);
         }
@@ -501,47 +446,67 @@ public sealed class HighLevelQueryToolMediator
         return string.Join('\n', lines.Where(line => line != null));
     }
 
-    /// <summary>解析 TDX 結構化時刻表結果為 HighLevelQuerySearchResult 列表</summary>
     private static List<HighLevelQuerySearchResult> ParseTdxTimetableResult(JsonElement tdxNode)
     {
         var items = new List<HighLevelQuerySearchResult>();
 
-        // 支援 trains（台鐵/高鐵）和 flights（航班）兩種格式
         var listNode = tdxNode.TryGetProperty("trains", out var trainsNode) && trainsNode.ValueKind == JsonValueKind.Array
             ? trainsNode
             : tdxNode.TryGetProperty("flights", out var flightsNode) && flightsNode.ValueKind == JsonValueKind.Array
                 ? flightsNode
-                : default;
+                : tdxNode.TryGetProperty("buses", out var busesNode) && busesNode.ValueKind == JsonValueKind.Array
+                    ? busesNode
+                    : default;
 
         if (listNode.ValueKind != JsonValueKind.Array)
             return items;
 
         var isFlight = tdxNode.TryGetProperty("flights", out _);
+        var isBus = tdxNode.TryGetProperty("buses", out _);
         var rank = 1;
 
         foreach (var entry in listNode.EnumerateArray())
         {
-            string title, snippet;
+            string title;
+            string snippet;
 
             if (isFlight)
             {
-                var flightNo = entry.TryGetProperty("flight_no", out var fnNode) ? fnNode.GetString() ?? "" : "";
-                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
-                var status = entry.TryGetProperty("status", out var stNode) ? stNode.GetString() ?? "" : "";
+                var flightNo = entry.TryGetProperty("flight_no", out var fnNode) ? fnNode.GetString() ?? string.Empty : string.Empty;
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? string.Empty : string.Empty;
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? string.Empty : string.Empty;
+                var status = entry.TryGetProperty("status", out var stNode) ? stNode.GetString() ?? string.Empty : string.Empty;
                 title = $"航班 {flightNo}";
                 snippet = string.IsNullOrWhiteSpace(status)
-                    ? $"{departure} 起飛 → {arrival} 抵達"
-                    : $"{departure} 起飛 → {arrival} 抵達（{status}）";
+                    ? $"{departure} 起飛 / {arrival} 抵達"
+                    : $"{departure} 起飛 / {arrival} 抵達（{status}）";
+            }
+            else if (isBus)
+            {
+                var routeName = entry.TryGetProperty("route_name", out var routeNode) ? routeNode.GetString() ?? string.Empty : string.Empty;
+                var stopName = entry.TryGetProperty("stop_name", out var stopNode) ? stopNode.GetString() ?? string.Empty : string.Empty;
+                var direction = entry.TryGetProperty("direction", out var directionNode) ? directionNode.GetString() ?? string.Empty : string.Empty;
+                var estimateMinutes = entry.TryGetProperty("estimate_minutes", out var etaNode) && etaNode.TryGetInt32(out var eta)
+                    ? eta
+                    : -1;
+                var stopStatus = entry.TryGetProperty("stop_status", out var statusNode) && statusNode.TryGetInt32(out var busStatus)
+                    ? busStatus
+                    : -1;
+                title = string.IsNullOrWhiteSpace(routeName) ? "公車" : $"公車 {routeName}";
+                snippet = estimateMinutes >= 0
+                    ? $"{stopName} / 約 {estimateMinutes} 分鐘"
+                    : $"{stopName} / {FormatBusStopStatus(stopStatus)}";
+                if (!string.IsNullOrWhiteSpace(direction))
+                    snippet = $"{snippet}（{direction}）";
             }
             else
             {
-                var trainNo = entry.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
-                var trainType = entry.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
-                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
+                var trainNo = entry.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? string.Empty : string.Empty;
+                var trainType = entry.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
+                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? string.Empty : string.Empty;
+                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? string.Empty : string.Empty;
                 title = string.IsNullOrWhiteSpace(trainType) ? $"車次 {trainNo}" : $"{trainType} {trainNo}";
-                snippet = $"{departure} 發車 → {arrival} 到達";
+                snippet = $"{departure} 發車 / {arrival} 抵達";
             }
 
             items.Add(new HighLevelQuerySearchResult
@@ -555,7 +520,6 @@ public sealed class HighLevelQueryToolMediator
         return items;
     }
 
-    /// <summary>為 TDX 結構化時刻表結果建立人類可讀的回覆</summary>
     internal static string BuildTdxTimetableReply(
         string mode,
         string query,
@@ -563,29 +527,34 @@ public sealed class HighLevelQueryToolMediator
         string sources,
         string retrievedAt)
     {
-        var origin = tdxNode.TryGetProperty("origin", out var origNode) ? origNode.GetString() ?? "" : "";
-        var destination = tdxNode.TryGetProperty("destination", out var destNode) ? destNode.GetString() ?? "" : "";
-        var date = tdxNode.TryGetProperty("date", out var dateNode) ? dateNode.GetString() ?? "" : "";
+        var origin = tdxNode.TryGetProperty("origin", out var origNode) ? origNode.GetString() ?? string.Empty : string.Empty;
+        var destination = tdxNode.TryGetProperty("destination", out var destNode) ? destNode.GetString() ?? string.Empty : string.Empty;
+        var date = tdxNode.TryGetProperty("date", out var dateNode) ? dateNode.GetString() ?? string.Empty : string.Empty;
         var trainCount = tdxNode.TryGetProperty("train_count", out var countNode) && countNode.TryGetInt32(out var count) ? count : 0;
 
         var isFlight = tdxNode.TryGetProperty("flights", out _);
+        var isBus = tdxNode.TryGetProperty("buses", out _);
         var itemCount = isFlight
-            ? (tdxNode.TryGetProperty("flight_count", out var fcNode) && fcNode.TryGetInt32(out var fc) ? fc : 0)
-            : trainCount;
+            ? (tdxNode.TryGetProperty("flight_count", out var flightCountNode) && flightCountNode.TryGetInt32(out var fc) ? fc : 0)
+            : isBus
+                ? (tdxNode.TryGetProperty("bus_count", out var busCountNode) && busCountNode.TryGetInt32(out var bc) ? bc : 0)
+                : trainCount;
 
         var modeLabel = mode switch
         {
             "rail" => "台鐵",
             "hsr" => "高鐵",
+            "bus" => "公車",
             "flight" => "航班",
             _ => mode
         };
 
-        var unitLabel = isFlight ? "班航班" : "班";
         var lines = new List<string>
         {
-            $"{modeLabel}查詢：{origin} → {destination}（{date}）",
-            $"共 {itemCount} {unitLabel}，來源：{sources}"
+            !string.IsNullOrWhiteSpace(origin) || !string.IsNullOrWhiteSpace(destination)
+                ? $"{modeLabel}查詢：{origin} → {destination}（{date}）"
+                : $"{modeLabel}查詢：{query}",
+            $"共 {itemCount} 筆，來源：{sources}"
         };
 
         if (!string.IsNullOrWhiteSpace(retrievedAt))
@@ -593,51 +562,34 @@ public sealed class HighLevelQueryToolMediator
 
         lines.Add(string.Empty);
 
-        // 支援 trains 和 flights 兩種陣列
-        var listNode = tdxNode.TryGetProperty("trains", out var trainsNode2) && trainsNode2.ValueKind == JsonValueKind.Array
-            ? trainsNode2
-            : tdxNode.TryGetProperty("flights", out var flightsNode2) && flightsNode2.ValueKind == JsonValueKind.Array
-                ? flightsNode2
-                : default;
-
-        if (listNode.ValueKind != JsonValueKind.Array)
+        var items = ParseTdxTimetableResult(tdxNode);
+        if (items.Count == 0)
         {
-            lines.Add("無班次資料。");
+            lines.Add("目前沒有取得可用結果。");
             return string.Join('\n', lines);
         }
 
-        var displayed = 0;
-        foreach (var entry in listNode.EnumerateArray())
+        foreach (var item in items.Take(15))
         {
-            if (displayed >= 15)
-            {
-                lines.Add($"...（還有 {itemCount - displayed} 班）");
-                break;
-            }
-
-            if (isFlight)
-            {
-                var flightNo = entry.TryGetProperty("flight_no", out var fnNode) ? fnNode.GetString() ?? "" : "";
-                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
-                var status = entry.TryGetProperty("status", out var stNode) ? stNode.GetString() ?? "" : "";
-                var statusSuffix = string.IsNullOrWhiteSpace(status) ? "" : $"  ({status})";
-                lines.Add($"  {flightNo}  {departure} → {arrival}{statusSuffix}");
-            }
-            else
-            {
-                var trainNo = entry.TryGetProperty("train_no", out var noNode) ? noNode.GetString() ?? "" : "";
-                var trainType = entry.TryGetProperty("train_type", out var typeNode) ? typeNode.GetString() ?? "" : "";
-                var departure = entry.TryGetProperty("departure_time", out var depNode) ? depNode.GetString() ?? "" : "";
-                var arrival = entry.TryGetProperty("arrival_time", out var arrNode) ? arrNode.GetString() ?? "" : "";
-                var typePrefix = string.IsNullOrWhiteSpace(trainType) ? "" : $"[{trainType}] ";
-                lines.Add($"  {typePrefix}{trainNo}  {departure} → {arrival}");
-            }
-            displayed++;
+            lines.Add($"  {item.Title}  {item.Snippet}");
         }
+
+        if (itemCount > 15)
+            lines.Add($"...（還有 {itemCount - 15} 筆）");
 
         return string.Join('\n', lines);
     }
+
+    private static string FormatBusStopStatus(int stopStatus)
+        => stopStatus switch
+        {
+            0 => "正常進站",
+            1 => "尚未發車",
+            2 => "交管不停靠",
+            3 => "末班已過",
+            4 => "今日未營運",
+            _ => "狀態未知"
+        };
 }
 
 public sealed class HighLevelQueryToolResult
