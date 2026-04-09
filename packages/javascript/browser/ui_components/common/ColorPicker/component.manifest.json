@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "component_id": "common.color_picker",
+  "registry_name": "ColorPicker",
+  "display_name": "ColorPicker",
+  "category": "common",
+  "kind": "atomic",
+  "source_path": "ui_components/common/ColorPicker/ColorPicker.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "color"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "setReadonly",
+      "setRequired",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "readonly",
+      "required"
+    ]
+  }
+}

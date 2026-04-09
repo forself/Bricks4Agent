@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "component_id": "common.button_group",
+  "registry_name": "ButtonGroup",
+  "display_name": "ButtonGroup",
+  "category": "common",
+  "kind": "composite",
+  "source_path": "ui_components/common/ButtonGroup/ButtonGroup.js",
+  "docs_path": "ui_components/common/ButtonGroup/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": true,
+    "usage_mode": "definition_explicit",
+    "supported_field_types": [],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "display",
+    "requires_form_field_wrapper": false,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": [
+      "clear"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "theme"
+    ]
+  }
+}

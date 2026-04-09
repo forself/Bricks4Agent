@@ -4,6 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "metadata:build": "node ./ui_components/metadata/build-metadata.mjs",
+    "metadata:check": "node ./ui_components/metadata/build-metadata.mjs --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

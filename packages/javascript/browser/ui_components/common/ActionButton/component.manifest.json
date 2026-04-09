@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "component_id": "common.action_button",
+  "registry_name": "ActionButton",
+  "display_name": "ActionButton",
+  "category": "common",
+  "kind": "composite",
+  "source_path": "ui_components/common/ActionButton/ActionButton.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "action",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "click"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "loading",
+      "size",
+      "variant"
+    ]
+  }
+}

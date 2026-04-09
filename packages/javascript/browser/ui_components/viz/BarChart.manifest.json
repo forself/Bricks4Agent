@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "component_id": "viz.bar_chart",
+  "registry_name": "BarChart",
+  "display_name": "BarChart",
+  "category": "viz",
+  "kind": "visualizer",
+  "source_path": "ui_components/viz/BarChart.js",
+  "docs_path": "ui_components/viz/README_MapEditor.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "visualizer",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

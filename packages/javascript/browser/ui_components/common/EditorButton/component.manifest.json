@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "component_id": "common.editor_button",
+  "registry_name": "EditorButton",
+  "display_name": "EditorButton",
+  "category": "common",
+  "kind": "atomic",
+  "source_path": "ui_components/common/EditorButton/EditorButton.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": true,
+    "usage_mode": "definition_explicit",
+    "supported_field_types": [],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "action",
+    "requires_form_field_wrapper": false,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "click"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "size",
+      "theme",
+      "variant"
+    ]
+  }
+}

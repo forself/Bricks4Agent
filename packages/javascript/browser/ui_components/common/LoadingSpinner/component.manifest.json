@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "component_id": "common.loading_spinner",
+  "registry_name": "LoadingSpinner",
+  "display_name": "LoadingSpinner",
+  "category": "common",
+  "kind": "atomic",
+  "source_path": "ui_components/common/LoadingSpinner/LoadingSpinner.js",
+  "docs_path": "ui_components/common/LoadingSpinner/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "feedback",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "size",
+      "variant"
+    ]
+  }
+}

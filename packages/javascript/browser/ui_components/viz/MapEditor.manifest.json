@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "component_id": "viz.map_editor",
+  "registry_name": "MapEditor",
+  "display_name": "MapEditor",
+  "category": "viz",
+  "kind": "visualizer",
+  "source_path": "ui_components/viz/MapEditor.js",
+  "docs_path": "ui_components/viz/README_MapEditor.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "visualizer",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "change",
+      "click"
+    ],
+    "target_actions": [
+      "clear"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

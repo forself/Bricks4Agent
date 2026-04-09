@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "component_id": "form.search_form",
+  "registry_name": "SearchForm",
+  "display_name": "SearchForm",
+  "category": "form",
+  "kind": "composite",
+  "source_path": "ui_components/form/SearchForm/SearchForm.js",
+  "docs_path": "ui_components/form/SearchForm/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "search",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "clear",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

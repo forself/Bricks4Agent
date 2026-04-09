@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "component_id": "editor.web_text_editor",
+  "registry_name": "WebTextEditor",
+  "display_name": "WebTextEditor",
+  "category": "editor",
+  "kind": "composite",
+  "source_path": "ui_components/editor/WebTextEditor/WebTextEditor.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "richtext"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "editor",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change",
+      "click"
+    ],
+    "target_actions": [
+      "clear",
+      "setReadonly",
+      "setRequired",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "height"
+    ]
+  }
+}

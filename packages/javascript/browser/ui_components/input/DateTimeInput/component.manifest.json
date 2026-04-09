@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "component_id": "input.date_time_input",
+  "registry_name": "DateTimeInput",
+  "display_name": "DateTimeInput",
+  "category": "input",
+  "kind": "composite",
+  "source_path": "ui_components/input/DateTimeInput/DateTimeInput.js",
+  "docs_path": "ui_components/input/DateTimeInput/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "datetime"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "clear",
+      "setReadonly",
+      "setRequired",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "readonly",
+      "required"
+    ]
+  }
+}

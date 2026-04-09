@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.info_panel",
+  "registry_name": "InfoPanel",
+  "display_name": "InfoPanel",
+  "category": "layout",
+  "kind": "container",
+  "source_path": "ui_components/layout/InfoPanel/InfoPanel.js",
+  "docs_path": "ui_components/layout/InfoPanel/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "container",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

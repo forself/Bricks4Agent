@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "component_id": "viz.osm_map_editor",
+  "registry_name": "OSMMapEditor",
+  "display_name": "OSMMapEditor",
+  "category": "viz",
+  "kind": "visualizer",
+  "source_path": "ui_components/viz/OSMMapEditor/OSMMapEditor.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "visualizer",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "click"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

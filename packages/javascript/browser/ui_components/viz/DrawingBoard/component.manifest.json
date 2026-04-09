@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "component_id": "viz.drawing_board",
+  "registry_name": "DrawingBoard",
+  "display_name": "DrawingBoard",
+  "category": "viz",
+  "kind": "visualizer",
+  "source_path": "ui_components/viz/DrawingBoard/DrawingBoard.js",
+  "docs_path": "ui_components/viz/DrawingBoard/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "canvas"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list",
+      "dashboard"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "visualizer",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "click"
+    ],
+    "target_actions": [
+      "clear",
+      "setReadonly",
+      "setRequired"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

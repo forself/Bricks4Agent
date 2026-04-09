@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "field_type_support": {
+    "text": {
+      "default_component": "TextInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "email": {
+      "default_component": "TextInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "password": {
+      "default_component": "TextInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "number": {
+      "default_component": "NumberInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "textarea": {
+      "default_component": null,
+      "alternative_components": [],
+      "status": "wrapped"
+    },
+    "date": {
+      "default_component": "DatePicker",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "time": {
+      "default_component": "TimePicker",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "select": {
+      "default_component": "Dropdown",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "multiselect": {
+      "default_component": "MultiSelectDropdown",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "checkbox": {
+      "default_component": "Checkbox",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "toggle": {
+      "default_component": "ToggleSwitch",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "radio": {
+      "default_component": "Radio",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "color": {
+      "default_component": "ColorPicker",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "image": {
+      "default_component": "ImageViewer",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "file": {
+      "default_component": "BatchUploader",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "hidden": {
+      "default_component": null,
+      "alternative_components": [],
+      "status": "wrapped"
+    },
+    "datetime": {
+      "default_component": "DateTimeInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "richtext": {
+      "default_component": "WebTextEditor",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "canvas": {
+      "default_component": "DrawingBoard",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "geolocation": {
+      "default_component": "GeolocationService",
+      "alternative_components": [],
+      "status": "out_of_catalog"
+    },
+    "weather": {
+      "default_component": "WeatherService",
+      "alternative_components": [],
+      "status": "out_of_catalog"
+    },
+    "address": {
+      "default_component": "AddressInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "addresslist": {
+      "default_component": "AddressListInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "chained": {
+      "default_component": "ChainedInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "list": {
+      "default_component": "ListInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "personinfo": {
+      "default_component": "PersonInfoList",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "phonelist": {
+      "default_component": "PhoneListInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "socialmedia": {
+      "default_component": "SocialMediaList",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "organization": {
+      "default_component": "OrganizationInput",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "student": {
+      "default_component": "StudentInput",
+      "alternative_components": [],
+      "status": "supported"
+    }
+  },
+  "page_type_support": {
+    "form": {
+      "status": "supported"
+    },
+    "detail": {
+      "status": "supported"
+    },
+    "list": {
+      "status": "supported"
+    },
+    "dashboard": {
+      "status": "partial"
+    }
+  },
+  "trigger_support": {
+    "clear": {
+      "component_roles": [
+        "container",
+        "display",
+        "editor",
+        "input",
+        "navigation",
+        "search",
+        "visualizer"
+      ],
+      "usage_modes": [
+        "definition_explicit",
+        "field_direct",
+        "manual_only",
+        "runtime_only"
+      ]
+    },
+    "setValue": {
+      "component_roles": [
+        "editor",
+        "feedback",
+        "input",
+        "search"
+      ],
+      "usage_modes": [
+        "field_direct",
+        "manual_only"
+      ]
+    },
+    "show": {
+      "component_roles": [],
+      "usage_modes": []
+    },
+    "hide": {
+      "component_roles": [],
+      "usage_modes": []
+    },
+    "setReadonly": {
+      "component_roles": [
+        "display",
+        "editor",
+        "input",
+        "visualizer"
+      ],
+      "usage_modes": [
+        "field_direct",
+        "manual_only"
+      ]
+    },
+    "setRequired": {
+      "component_roles": [
+        "display",
+        "editor",
+        "input",
+        "visualizer"
+      ],
+      "usage_modes": [
+        "field_direct",
+        "manual_only"
+      ]
+    },
+    "reload": {
+      "component_roles": [],
+      "usage_modes": []
+    },
+    "reloadOptions": {
+      "component_roles": [
+        "input",
+        "navigation"
+      ],
+      "usage_modes": [
+        "field_direct",
+        "manual_only"
+      ]
+    }
+  },
+  "manual_only_components": [
+    "ActionButton",
+    "AuthButton",
+    "Avatar",
+    "Badge",
+    "BarChart",
+    "BaseChart",
+    "Breadcrumb",
+    "CanvasMap",
+    "ConnectionCard",
+    "DataTable",
+    "Divider",
+    "DocumentWall",
+    "DownloadButton",
+    "FeatureCard",
+    "FeedCard",
+    "FlameChart",
+    "FormField",
+    "FormRow",
+    "FunctionMenu",
+    "HierarchyChart",
+    "InfoPanel",
+    "LeafletMap",
+    "LineChart",
+    "LoadingSpinner",
+    "MapEditor",
+    "MapEditorV2",
+    "Notification",
+    "OSMMapEditor",
+    "OrgChart",
+    "Pagination",
+    "PhotoCard",
+    "PhotoWall",
+    "PieChart",
+    "Progress",
+    "RelationChart",
+    "RoseChart",
+    "SankeyChart",
+    "SearchForm",
+    "SideMenu",
+    "SimpleDialog",
+    "SortButton",
+    "StatCard",
+    "SunburstChart",
+    "TabContainer",
+    "Tag",
+    "Timeline",
+    "TimelineChart",
+    "Tooltip",
+    "TreeList",
+    "UploadButton",
+    "WorkflowPanel"
+  ],
+  "runtime_only_components": [
+    "PanelManager"
+  ]
+}

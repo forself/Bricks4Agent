@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "component_id": "social.avatar",
+  "registry_name": "Avatar",
+  "display_name": "Avatar",
+  "category": "social",
+  "kind": "atomic",
+  "source_path": "ui_components/social/Avatar/Avatar.js",
+  "docs_path": "ui_components/social/Avatar/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "display",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "click"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "size"
+    ]
+  }
+}

@@ -1,0 +1,6588 @@
+{
+  "schema_version": 1,
+  "component_count": 80,
+  "components": [
+    {
+      "schema_version": 1,
+      "component_id": "common.action_button",
+      "registry_name": "ActionButton",
+      "display_name": "ActionButton",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ActionButton/ActionButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading",
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.auth_button",
+      "registry_name": "AuthButton",
+      "display_name": "AuthButton",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/AuthButton/AuthButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.badge",
+      "registry_name": "Badge",
+      "display_name": "Badge",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Badge/Badge.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.basic_button",
+      "registry_name": "BasicButton",
+      "display_name": "BasicButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/BasicButton/BasicButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading",
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.breadcrumb",
+      "registry_name": "Breadcrumb",
+      "display_name": "Breadcrumb",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Breadcrumb/Breadcrumb.js",
+      "docs_path": "ui_components/common/Breadcrumb/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "reloadOptions"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.button_group",
+      "registry_name": "ButtonGroup",
+      "display_name": "ButtonGroup",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ButtonGroup/ButtonGroup.js",
+      "docs_path": "ui_components/common/ButtonGroup/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "theme"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.color_picker",
+      "registry_name": "ColorPicker",
+      "display_name": "ColorPicker",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/ColorPicker/ColorPicker.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "color"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.divider",
+      "registry_name": "Divider",
+      "display_name": "Divider",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Divider/Divider.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.download_button",
+      "registry_name": "DownloadButton",
+      "display_name": "DownloadButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/DownloadButton/DownloadButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.editor_button",
+      "registry_name": "EditorButton",
+      "display_name": "EditorButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/EditorButton/EditorButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "size",
+          "theme",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.feature_card",
+      "registry_name": "FeatureCard",
+      "display_name": "FeatureCard",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/FeatureCard/FeatureCard.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.image_viewer",
+      "registry_name": "ImageViewer",
+      "display_name": "ImageViewer",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/ImageViewer/ImageViewer.js",
+      "docs_path": "ui_components/common/ImageViewer/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "image"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.loading_spinner",
+      "registry_name": "LoadingSpinner",
+      "display_name": "LoadingSpinner",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/LoadingSpinner/LoadingSpinner.js",
+      "docs_path": "ui_components/common/LoadingSpinner/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.notification",
+      "registry_name": "Notification",
+      "display_name": "Notification",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Notification/Notification.js",
+      "docs_path": "ui_components/common/Notification/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.pagination",
+      "registry_name": "Pagination",
+      "display_name": "Pagination",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Pagination/Pagination.js",
+      "docs_path": "ui_components/common/Pagination/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "pageSize"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.photo_card",
+      "registry_name": "PhotoCard",
+      "display_name": "PhotoCard",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/PhotoCard/PhotoCard.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.progress",
+      "registry_name": "Progress",
+      "display_name": "Progress",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Progress/Progress.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.simple_dialog",
+      "registry_name": "SimpleDialog",
+      "display_name": "SimpleDialog",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Dialog/SimpleDialog.js",
+      "docs_path": "ui_components/common/Dialog/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.sort_button",
+      "registry_name": "SortButton",
+      "display_name": "SortButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/SortButton/SortButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.tag",
+      "registry_name": "Tag",
+      "display_name": "Tag",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Tag/Tag.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.tooltip",
+      "registry_name": "Tooltip",
+      "display_name": "Tooltip",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Tooltip/Tooltip.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.tree_list",
+      "registry_name": "TreeList",
+      "display_name": "TreeList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/TreeList/TreeList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "theme",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.upload_button",
+      "registry_name": "UploadButton",
+      "display_name": "UploadButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/UploadButton/UploadButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "editor.web_text_editor",
+      "registry_name": "WebTextEditor",
+      "display_name": "WebTextEditor",
+      "category": "editor",
+      "kind": "composite",
+      "source_path": "ui_components/editor/WebTextEditor/WebTextEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "richtext"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "editor",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.batch_uploader",
+      "registry_name": "BatchUploader",
+      "display_name": "BatchUploader",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/BatchUploader/BatchUploader.js",
+      "docs_path": "ui_components/form/BatchUploader/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "file"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "complete"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.checkbox",
+      "registry_name": "Checkbox",
+      "display_name": "Checkbox",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Checkbox/Checkbox.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "checkbox"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.date_picker",
+      "registry_name": "DatePicker",
+      "display_name": "DatePicker",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/DatePicker/DatePicker.js",
+      "docs_path": "ui_components/form/DatePicker/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "date"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.dropdown",
+      "registry_name": "Dropdown",
+      "display_name": "Dropdown",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Dropdown/Dropdown.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "select"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "variant",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.form_field",
+      "registry_name": "FormField",
+      "display_name": "FormField",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/FormField/FormField.js",
+      "docs_path": "ui_components/form/FormField/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "hint",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.multi_select_dropdown",
+      "registry_name": "MultiSelectDropdown",
+      "display_name": "MultiSelectDropdown",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/MultiSelectDropdown/MultiSelectDropdown.js",
+      "docs_path": "ui_components/form/MultiSelectDropdown/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "multiselect"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.number_input",
+      "registry_name": "NumberInput",
+      "display_name": "NumberInput",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/NumberInput/NumberInput.js",
+      "docs_path": "ui_components/form/NumberInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "number"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.radio",
+      "registry_name": "Radio",
+      "display_name": "Radio",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Radio/Radio.js",
+      "docs_path": "ui_components/form/Radio/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "radio"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.search_form",
+      "registry_name": "SearchForm",
+      "display_name": "SearchForm",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/SearchForm/SearchForm.js",
+      "docs_path": "ui_components/form/SearchForm/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "search",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.text_input",
+      "registry_name": "TextInput",
+      "display_name": "TextInput",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TextInput/TextInput.js",
+      "docs_path": "ui_components/form/TextInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "email",
+          "password",
+          "text"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "blur",
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "hint",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.time_picker",
+      "registry_name": "TimePicker",
+      "display_name": "TimePicker",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TimePicker/TimePicker.js",
+      "docs_path": "ui_components/form/TimePicker/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "time"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.toggle_switch",
+      "registry_name": "ToggleSwitch",
+      "display_name": "ToggleSwitch",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/ToggleSwitch/ToggleSwitch.js",
+      "docs_path": "ui_components/form/ToggleSwitch/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "toggle"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.address_input",
+      "registry_name": "AddressInput",
+      "display_name": "AddressInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/AddressInput/AddressInput.js",
+      "docs_path": "ui_components/input/AddressInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "address"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.address_list_input",
+      "registry_name": "AddressListInput",
+      "display_name": "AddressListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/AddressListInput/AddressListInput.js",
+      "docs_path": "ui_components/input/AddressListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "addresslist"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.chained_input",
+      "registry_name": "ChainedInput",
+      "display_name": "ChainedInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/ChainedInput/ChainedInput.js",
+      "docs_path": "ui_components/input/ChainedInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "chained"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "layout",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.date_time_input",
+      "registry_name": "DateTimeInput",
+      "display_name": "DateTimeInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/DateTimeInput/DateTimeInput.js",
+      "docs_path": "ui_components/input/DateTimeInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "datetime"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.list_input",
+      "registry_name": "ListInput",
+      "display_name": "ListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/ListInput/ListInput.js",
+      "docs_path": "ui_components/input/ListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "list"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.organization_input",
+      "registry_name": "OrganizationInput",
+      "display_name": "OrganizationInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/OrganizationInput/OrganizationInput.js",
+      "docs_path": "ui_components/input/OrganizationInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "organization"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.person_info_list",
+      "registry_name": "PersonInfoList",
+      "display_name": "PersonInfoList",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/PersonInfoList/PersonInfoList.js",
+      "docs_path": "ui_components/input/PersonInfoList/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "personinfo"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.phone_list_input",
+      "registry_name": "PhoneListInput",
+      "display_name": "PhoneListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/PhoneListInput/PhoneListInput.js",
+      "docs_path": "ui_components/input/PhoneListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "phonelist"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.social_media_list",
+      "registry_name": "SocialMediaList",
+      "display_name": "SocialMediaList",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/SocialMediaList/SocialMediaList.js",
+      "docs_path": "ui_components/input/SocialMediaList/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "socialmedia"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "input.student_input",
+      "registry_name": "StudentInput",
+      "display_name": "StudentInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/StudentInput/StudentInput.js",
+      "docs_path": "ui_components/input/StudentInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "student"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.data_table",
+      "registry_name": "DataTable",
+      "display_name": "DataTable",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/DataTable/DataTable.js",
+      "docs_path": "ui_components/layout/DataTable/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "data_view",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.document_wall",
+      "registry_name": "DocumentWall",
+      "display_name": "DocumentWall",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/DocumentWall/DocumentWall.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.form_row",
+      "registry_name": "FormRow",
+      "display_name": "FormRow",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FormRow/FormRow.js",
+      "docs_path": "ui_components/layout/FormRow/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.function_menu",
+      "registry_name": "FunctionMenu",
+      "display_name": "FunctionMenu",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FunctionMenu/FunctionMenu.js",
+      "docs_path": "ui_components/layout/FunctionMenu/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.info_panel",
+      "registry_name": "InfoPanel",
+      "display_name": "InfoPanel",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/InfoPanel/InfoPanel.js",
+      "docs_path": "ui_components/layout/InfoPanel/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.panel_manager",
+      "registry_name": "PanelManager",
+      "display_name": "PanelManager",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/Panel/PanelManager.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "runtime_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.photo_wall",
+      "registry_name": "PhotoWall",
+      "display_name": "PhotoWall",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/PhotoWall/PhotoWall.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.side_menu",
+      "registry_name": "SideMenu",
+      "display_name": "SideMenu",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/SideMenu/SideMenu.js",
+      "docs_path": "ui_components/layout/SideMenu/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear",
+          "reloadOptions"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.tab_container",
+      "registry_name": "TabContainer",
+      "display_name": "TabContainer",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/TabContainer/TabContainer.js",
+      "docs_path": "ui_components/layout/TabContainer/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "layout.workflow_panel",
+      "registry_name": "WorkflowPanel",
+      "display_name": "WorkflowPanel",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/WorkflowPanel/WorkflowPanel.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "workflow",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "social.avatar",
+      "registry_name": "Avatar",
+      "display_name": "Avatar",
+      "category": "social",
+      "kind": "atomic",
+      "source_path": "ui_components/social/Avatar/Avatar.js",
+      "docs_path": "ui_components/social/Avatar/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "social.connection_card",
+      "registry_name": "ConnectionCard",
+      "display_name": "ConnectionCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/ConnectionCard/ConnectionCard.js",
+      "docs_path": "ui_components/social/ConnectionCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "social.feed_card",
+      "registry_name": "FeedCard",
+      "display_name": "FeedCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/FeedCard/FeedCard.js",
+      "docs_path": "ui_components/social/FeedCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "social.stat_card",
+      "registry_name": "StatCard",
+      "display_name": "StatCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/StatCard/StatCard.js",
+      "docs_path": "ui_components/social/StatCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "social.timeline",
+      "registry_name": "Timeline",
+      "display_name": "Timeline",
+      "category": "social",
+      "kind": "container",
+      "source_path": "ui_components/social/Timeline/Timeline.js",
+      "docs_path": "ui_components/social/Timeline/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.bar_chart",
+      "registry_name": "BarChart",
+      "display_name": "BarChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/BarChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.base_chart",
+      "registry_name": "BaseChart",
+      "display_name": "BaseChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/BaseChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.canvas_map",
+      "registry_name": "CanvasMap",
+      "display_name": "CanvasMap",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/CanvasMap.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.drawing_board",
+      "registry_name": "DrawingBoard",
+      "display_name": "DrawingBoard",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/DrawingBoard/DrawingBoard.js",
+      "docs_path": "ui_components/viz/DrawingBoard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "canvas"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.flame_chart",
+      "registry_name": "FlameChart",
+      "display_name": "FlameChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/FlameChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.hierarchy_chart",
+      "registry_name": "HierarchyChart",
+      "display_name": "HierarchyChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/HierarchyChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.leaflet_map",
+      "registry_name": "LeafletMap",
+      "display_name": "LeafletMap",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/LeafletMap.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.line_chart",
+      "registry_name": "LineChart",
+      "display_name": "LineChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/LineChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.map_editor",
+      "registry_name": "MapEditor",
+      "display_name": "MapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/MapEditor.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.map_editor_v2",
+      "registry_name": "MapEditorV2",
+      "display_name": "MapEditorV2",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/MapEditorV2.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.org_chart",
+      "registry_name": "OrgChart",
+      "display_name": "OrgChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/OrgChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.osm_map_editor",
+      "registry_name": "OSMMapEditor",
+      "display_name": "OSMMapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/OSMMapEditor/OSMMapEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.pie_chart",
+      "registry_name": "PieChart",
+      "display_name": "PieChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/PieChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.relation_chart",
+      "registry_name": "RelationChart",
+      "display_name": "RelationChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/RelationChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.rose_chart",
+      "registry_name": "RoseChart",
+      "display_name": "RoseChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/RoseChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.sankey_chart",
+      "registry_name": "SankeyChart",
+      "display_name": "SankeyChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/SankeyChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.sunburst_chart",
+      "registry_name": "SunburstChart",
+      "display_name": "SunburstChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/SunburstChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.timeline_chart",
+      "registry_name": "TimelineChart",
+      "display_name": "TimelineChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/TimelineChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.web_painter",
+      "registry_name": "WebPainter",
+      "display_name": "WebPainter",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/WebPainter/WebPainter.js",
+      "docs_path": "ui_components/viz/WebPainter/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    }
+  ],
+  "by_registry_name": {
+    "ActionButton": {
+      "schema_version": 1,
+      "component_id": "common.action_button",
+      "registry_name": "ActionButton",
+      "display_name": "ActionButton",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ActionButton/ActionButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading",
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "AuthButton": {
+      "schema_version": 1,
+      "component_id": "common.auth_button",
+      "registry_name": "AuthButton",
+      "display_name": "AuthButton",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/AuthButton/AuthButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "Badge": {
+      "schema_version": 1,
+      "component_id": "common.badge",
+      "registry_name": "Badge",
+      "display_name": "Badge",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Badge/Badge.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "BasicButton": {
+      "schema_version": 1,
+      "component_id": "common.basic_button",
+      "registry_name": "BasicButton",
+      "display_name": "BasicButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/BasicButton/BasicButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading",
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "Breadcrumb": {
+      "schema_version": 1,
+      "component_id": "common.breadcrumb",
+      "registry_name": "Breadcrumb",
+      "display_name": "Breadcrumb",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Breadcrumb/Breadcrumb.js",
+      "docs_path": "ui_components/common/Breadcrumb/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "reloadOptions"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "ButtonGroup": {
+      "schema_version": 1,
+      "component_id": "common.button_group",
+      "registry_name": "ButtonGroup",
+      "display_name": "ButtonGroup",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ButtonGroup/ButtonGroup.js",
+      "docs_path": "ui_components/common/ButtonGroup/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "theme"
+        ]
+      }
+    },
+    "ColorPicker": {
+      "schema_version": 1,
+      "component_id": "common.color_picker",
+      "registry_name": "ColorPicker",
+      "display_name": "ColorPicker",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/ColorPicker/ColorPicker.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "color"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "Divider": {
+      "schema_version": 1,
+      "component_id": "common.divider",
+      "registry_name": "Divider",
+      "display_name": "Divider",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Divider/Divider.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "DownloadButton": {
+      "schema_version": 1,
+      "component_id": "common.download_button",
+      "registry_name": "DownloadButton",
+      "display_name": "DownloadButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/DownloadButton/DownloadButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    "EditorButton": {
+      "schema_version": 1,
+      "component_id": "common.editor_button",
+      "registry_name": "EditorButton",
+      "display_name": "EditorButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/EditorButton/EditorButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "size",
+          "theme",
+          "variant"
+        ]
+      }
+    },
+    "FeatureCard": {
+      "schema_version": 1,
+      "component_id": "common.feature_card",
+      "registry_name": "FeatureCard",
+      "display_name": "FeatureCard",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/FeatureCard/FeatureCard.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "ImageViewer": {
+      "schema_version": 1,
+      "component_id": "common.image_viewer",
+      "registry_name": "ImageViewer",
+      "display_name": "ImageViewer",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/ImageViewer/ImageViewer.js",
+      "docs_path": "ui_components/common/ImageViewer/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "image"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "LoadingSpinner": {
+      "schema_version": 1,
+      "component_id": "common.loading_spinner",
+      "registry_name": "LoadingSpinner",
+      "display_name": "LoadingSpinner",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/LoadingSpinner/LoadingSpinner.js",
+      "docs_path": "ui_components/common/LoadingSpinner/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "Notification": {
+      "schema_version": 1,
+      "component_id": "common.notification",
+      "registry_name": "Notification",
+      "display_name": "Notification",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Notification/Notification.js",
+      "docs_path": "ui_components/common/Notification/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "Pagination": {
+      "schema_version": 1,
+      "component_id": "common.pagination",
+      "registry_name": "Pagination",
+      "display_name": "Pagination",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Pagination/Pagination.js",
+      "docs_path": "ui_components/common/Pagination/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "pageSize"
+        ]
+      }
+    },
+    "PhotoCard": {
+      "schema_version": 1,
+      "component_id": "common.photo_card",
+      "registry_name": "PhotoCard",
+      "display_name": "PhotoCard",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/PhotoCard/PhotoCard.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "width"
+        ]
+      }
+    },
+    "Progress": {
+      "schema_version": 1,
+      "component_id": "common.progress",
+      "registry_name": "Progress",
+      "display_name": "Progress",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Progress/Progress.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "SimpleDialog": {
+      "schema_version": 1,
+      "component_id": "common.simple_dialog",
+      "registry_name": "SimpleDialog",
+      "display_name": "SimpleDialog",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Dialog/SimpleDialog.js",
+      "docs_path": "ui_components/common/Dialog/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "SortButton": {
+      "schema_version": 1,
+      "component_id": "common.sort_button",
+      "registry_name": "SortButton",
+      "display_name": "SortButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/SortButton/SortButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    "Tag": {
+      "schema_version": 1,
+      "component_id": "common.tag",
+      "registry_name": "Tag",
+      "display_name": "Tag",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Tag/Tag.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size",
+          "variant"
+        ]
+      }
+    },
+    "Tooltip": {
+      "schema_version": 1,
+      "component_id": "common.tooltip",
+      "registry_name": "Tooltip",
+      "display_name": "Tooltip",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Tooltip/Tooltip.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "TreeList": {
+      "schema_version": 1,
+      "component_id": "common.tree_list",
+      "registry_name": "TreeList",
+      "display_name": "TreeList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/TreeList/TreeList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "theme",
+          "width"
+        ]
+      }
+    },
+    "UploadButton": {
+      "schema_version": 1,
+      "component_id": "common.upload_button",
+      "registry_name": "UploadButton",
+      "display_name": "UploadButton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/UploadButton/UploadButton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "action",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    "WebTextEditor": {
+      "schema_version": 1,
+      "component_id": "editor.web_text_editor",
+      "registry_name": "WebTextEditor",
+      "display_name": "WebTextEditor",
+      "category": "editor",
+      "kind": "composite",
+      "source_path": "ui_components/editor/WebTextEditor/WebTextEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "richtext"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "editor",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height"
+        ]
+      }
+    },
+    "BatchUploader": {
+      "schema_version": 1,
+      "component_id": "form.batch_uploader",
+      "registry_name": "BatchUploader",
+      "display_name": "BatchUploader",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/BatchUploader/BatchUploader.js",
+      "docs_path": "ui_components/form/BatchUploader/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "file"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "complete"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "Checkbox": {
+      "schema_version": 1,
+      "component_id": "form.checkbox",
+      "registry_name": "Checkbox",
+      "display_name": "Checkbox",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Checkbox/Checkbox.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "checkbox"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    "DatePicker": {
+      "schema_version": 1,
+      "component_id": "form.date_picker",
+      "registry_name": "DatePicker",
+      "display_name": "DatePicker",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/DatePicker/DatePicker.js",
+      "docs_path": "ui_components/form/DatePicker/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "date"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    "Dropdown": {
+      "schema_version": 1,
+      "component_id": "form.dropdown",
+      "registry_name": "Dropdown",
+      "display_name": "Dropdown",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Dropdown/Dropdown.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "select"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "variant",
+          "width"
+        ]
+      }
+    },
+    "FormField": {
+      "schema_version": 1,
+      "component_id": "form.form_field",
+      "registry_name": "FormField",
+      "display_name": "FormField",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/FormField/FormField.js",
+      "docs_path": "ui_components/form/FormField/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "hint",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "MultiSelectDropdown": {
+      "schema_version": 1,
+      "component_id": "form.multi_select_dropdown",
+      "registry_name": "MultiSelectDropdown",
+      "display_name": "MultiSelectDropdown",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/MultiSelectDropdown/MultiSelectDropdown.js",
+      "docs_path": "ui_components/form/MultiSelectDropdown/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "multiselect"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    "NumberInput": {
+      "schema_version": 1,
+      "component_id": "form.number_input",
+      "registry_name": "NumberInput",
+      "display_name": "NumberInput",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/NumberInput/NumberInput.js",
+      "docs_path": "ui_components/form/NumberInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "number"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    "Radio": {
+      "schema_version": 1,
+      "component_id": "form.radio",
+      "registry_name": "Radio",
+      "display_name": "Radio",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Radio/Radio.js",
+      "docs_path": "ui_components/form/Radio/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "radio"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    "SearchForm": {
+      "schema_version": 1,
+      "component_id": "form.search_form",
+      "registry_name": "SearchForm",
+      "display_name": "SearchForm",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/SearchForm/SearchForm.js",
+      "docs_path": "ui_components/form/SearchForm/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "search",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "TextInput": {
+      "schema_version": 1,
+      "component_id": "form.text_input",
+      "registry_name": "TextInput",
+      "display_name": "TextInput",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TextInput/TextInput.js",
+      "docs_path": "ui_components/form/TextInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "email",
+          "password",
+          "text"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "blur",
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "error",
+          "hint",
+          "readonly",
+          "required",
+          "size",
+          "width"
+        ]
+      }
+    },
+    "TimePicker": {
+      "schema_version": 1,
+      "component_id": "form.time_picker",
+      "registry_name": "TimePicker",
+      "display_name": "TimePicker",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TimePicker/TimePicker.js",
+      "docs_path": "ui_components/form/TimePicker/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "time"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    "ToggleSwitch": {
+      "schema_version": 1,
+      "component_id": "form.toggle_switch",
+      "registry_name": "ToggleSwitch",
+      "display_name": "ToggleSwitch",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/ToggleSwitch/ToggleSwitch.js",
+      "docs_path": "ui_components/form/ToggleSwitch/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "toggle"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "size"
+        ]
+      }
+    },
+    "AddressInput": {
+      "schema_version": 1,
+      "component_id": "input.address_input",
+      "registry_name": "AddressInput",
+      "display_name": "AddressInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/AddressInput/AddressInput.js",
+      "docs_path": "ui_components/input/AddressInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "address"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "AddressListInput": {
+      "schema_version": 1,
+      "component_id": "input.address_list_input",
+      "registry_name": "AddressListInput",
+      "display_name": "AddressListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/AddressListInput/AddressListInput.js",
+      "docs_path": "ui_components/input/AddressListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "addresslist"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "ChainedInput": {
+      "schema_version": 1,
+      "component_id": "input.chained_input",
+      "registry_name": "ChainedInput",
+      "display_name": "ChainedInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/ChainedInput/ChainedInput.js",
+      "docs_path": "ui_components/input/ChainedInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "chained"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "reloadOptions",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "layout",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "DateTimeInput": {
+      "schema_version": 1,
+      "component_id": "input.date_time_input",
+      "registry_name": "DateTimeInput",
+      "display_name": "DateTimeInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/DateTimeInput/DateTimeInput.js",
+      "docs_path": "ui_components/input/DateTimeInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "datetime"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "ListInput": {
+      "schema_version": 1,
+      "component_id": "input.list_input",
+      "registry_name": "ListInput",
+      "display_name": "ListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/ListInput/ListInput.js",
+      "docs_path": "ui_components/input/ListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "list"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "OrganizationInput": {
+      "schema_version": 1,
+      "component_id": "input.organization_input",
+      "registry_name": "OrganizationInput",
+      "display_name": "OrganizationInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/OrganizationInput/OrganizationInput.js",
+      "docs_path": "ui_components/input/OrganizationInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "organization"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "PersonInfoList": {
+      "schema_version": 1,
+      "component_id": "input.person_info_list",
+      "registry_name": "PersonInfoList",
+      "display_name": "PersonInfoList",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/PersonInfoList/PersonInfoList.js",
+      "docs_path": "ui_components/input/PersonInfoList/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "personinfo"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "PhoneListInput": {
+      "schema_version": 1,
+      "component_id": "input.phone_list_input",
+      "registry_name": "PhoneListInput",
+      "display_name": "PhoneListInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/PhoneListInput/PhoneListInput.js",
+      "docs_path": "ui_components/input/PhoneListInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "phonelist"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "SocialMediaList": {
+      "schema_version": 1,
+      "component_id": "input.social_media_list",
+      "registry_name": "SocialMediaList",
+      "display_name": "SocialMediaList",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/SocialMediaList/SocialMediaList.js",
+      "docs_path": "ui_components/input/SocialMediaList/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "socialmedia"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "StudentInput": {
+      "schema_version": 1,
+      "component_id": "input.student_input",
+      "registry_name": "StudentInput",
+      "display_name": "StudentInput",
+      "category": "input",
+      "kind": "composite",
+      "source_path": "ui_components/input/StudentInput/StudentInput.js",
+      "docs_path": "ui_components/input/StudentInput/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "student"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "DataTable": {
+      "schema_version": 1,
+      "component_id": "layout.data_table",
+      "registry_name": "DataTable",
+      "display_name": "DataTable",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/DataTable/DataTable.js",
+      "docs_path": "ui_components/layout/DataTable/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "data_view",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "DocumentWall": {
+      "schema_version": 1,
+      "component_id": "layout.document_wall",
+      "registry_name": "DocumentWall",
+      "display_name": "DocumentWall",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/DocumentWall/DocumentWall.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "FormRow": {
+      "schema_version": 1,
+      "component_id": "layout.form_row",
+      "registry_name": "FormRow",
+      "display_name": "FormRow",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FormRow/FormRow.js",
+      "docs_path": "ui_components/layout/FormRow/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "FunctionMenu": {
+      "schema_version": 1,
+      "component_id": "layout.function_menu",
+      "registry_name": "FunctionMenu",
+      "display_name": "FunctionMenu",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FunctionMenu/FunctionMenu.js",
+      "docs_path": "ui_components/layout/FunctionMenu/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "InfoPanel": {
+      "schema_version": 1,
+      "component_id": "layout.info_panel",
+      "registry_name": "InfoPanel",
+      "display_name": "InfoPanel",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/InfoPanel/InfoPanel.js",
+      "docs_path": "ui_components/layout/InfoPanel/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "PanelManager": {
+      "schema_version": 1,
+      "component_id": "layout.panel_manager",
+      "registry_name": "PanelManager",
+      "display_name": "PanelManager",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/Panel/PanelManager.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "runtime_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "PhotoWall": {
+      "schema_version": 1,
+      "component_id": "layout.photo_wall",
+      "registry_name": "PhotoWall",
+      "display_name": "PhotoWall",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/PhotoWall/PhotoWall.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "SideMenu": {
+      "schema_version": 1,
+      "component_id": "layout.side_menu",
+      "registry_name": "SideMenu",
+      "display_name": "SideMenu",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/SideMenu/SideMenu.js",
+      "docs_path": "ui_components/layout/SideMenu/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear",
+          "reloadOptions"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "width"
+        ]
+      }
+    },
+    "TabContainer": {
+      "schema_version": 1,
+      "component_id": "layout.tab_container",
+      "registry_name": "TabContainer",
+      "display_name": "TabContainer",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/TabContainer/TabContainer.js",
+      "docs_path": "ui_components/layout/TabContainer/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "WorkflowPanel": {
+      "schema_version": 1,
+      "component_id": "layout.workflow_panel",
+      "registry_name": "WorkflowPanel",
+      "display_name": "WorkflowPanel",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/WorkflowPanel/WorkflowPanel.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "workflow",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "Avatar": {
+      "schema_version": 1,
+      "component_id": "social.avatar",
+      "registry_name": "Avatar",
+      "display_name": "Avatar",
+      "category": "social",
+      "kind": "atomic",
+      "source_path": "ui_components/social/Avatar/Avatar.js",
+      "docs_path": "ui_components/social/Avatar/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    "ConnectionCard": {
+      "schema_version": 1,
+      "component_id": "social.connection_card",
+      "registry_name": "ConnectionCard",
+      "display_name": "ConnectionCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/ConnectionCard/ConnectionCard.js",
+      "docs_path": "ui_components/social/ConnectionCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "FeedCard": {
+      "schema_version": 1,
+      "component_id": "social.feed_card",
+      "registry_name": "FeedCard",
+      "display_name": "FeedCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/FeedCard/FeedCard.js",
+      "docs_path": "ui_components/social/FeedCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "StatCard": {
+      "schema_version": 1,
+      "component_id": "social.stat_card",
+      "registry_name": "StatCard",
+      "display_name": "StatCard",
+      "category": "social",
+      "kind": "composite",
+      "source_path": "ui_components/social/StatCard/StatCard.js",
+      "docs_path": "ui_components/social/StatCard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "Timeline": {
+      "schema_version": 1,
+      "component_id": "social.timeline",
+      "registry_name": "Timeline",
+      "display_name": "Timeline",
+      "category": "social",
+      "kind": "container",
+      "source_path": "ui_components/social/Timeline/Timeline.js",
+      "docs_path": "ui_components/social/Timeline/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "BarChart": {
+      "schema_version": 1,
+      "component_id": "viz.bar_chart",
+      "registry_name": "BarChart",
+      "display_name": "BarChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/BarChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "BaseChart": {
+      "schema_version": 1,
+      "component_id": "viz.base_chart",
+      "registry_name": "BaseChart",
+      "display_name": "BaseChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/BaseChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
+    "CanvasMap": {
+      "schema_version": 1,
+      "component_id": "viz.canvas_map",
+      "registry_name": "CanvasMap",
+      "display_name": "CanvasMap",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/CanvasMap.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
+    "DrawingBoard": {
+      "schema_version": 1,
+      "component_id": "viz.drawing_board",
+      "registry_name": "DrawingBoard",
+      "display_name": "DrawingBoard",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/DrawingBoard/DrawingBoard.js",
+      "docs_path": "ui_components/viz/DrawingBoard/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "canvas"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "FlameChart": {
+      "schema_version": 1,
+      "component_id": "viz.flame_chart",
+      "registry_name": "FlameChart",
+      "display_name": "FlameChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/FlameChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "HierarchyChart": {
+      "schema_version": 1,
+      "component_id": "viz.hierarchy_chart",
+      "registry_name": "HierarchyChart",
+      "display_name": "HierarchyChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/HierarchyChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "LeafletMap": {
+      "schema_version": 1,
+      "component_id": "viz.leaflet_map",
+      "registry_name": "LeafletMap",
+      "display_name": "LeafletMap",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/LeafletMap.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "LineChart": {
+      "schema_version": 1,
+      "component_id": "viz.line_chart",
+      "registry_name": "LineChart",
+      "display_name": "LineChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/LineChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "MapEditor": {
+      "schema_version": 1,
+      "component_id": "viz.map_editor",
+      "registry_name": "MapEditor",
+      "display_name": "MapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/MapEditor.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "MapEditorV2": {
+      "schema_version": 1,
+      "component_id": "viz.map_editor_v2",
+      "registry_name": "MapEditorV2",
+      "display_name": "MapEditorV2",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/MapEditorV2.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "OrgChart": {
+      "schema_version": 1,
+      "component_id": "viz.org_chart",
+      "registry_name": "OrgChart",
+      "display_name": "OrgChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/OrgChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "OSMMapEditor": {
+      "schema_version": 1,
+      "component_id": "viz.osm_map_editor",
+      "registry_name": "OSMMapEditor",
+      "display_name": "OSMMapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/OSMMapEditor/OSMMapEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "PieChart": {
+      "schema_version": 1,
+      "component_id": "viz.pie_chart",
+      "registry_name": "PieChart",
+      "display_name": "PieChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/PieChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "RelationChart": {
+      "schema_version": 1,
+      "component_id": "viz.relation_chart",
+      "registry_name": "RelationChart",
+      "display_name": "RelationChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/RelationChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "RoseChart": {
+      "schema_version": 1,
+      "component_id": "viz.rose_chart",
+      "registry_name": "RoseChart",
+      "display_name": "RoseChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/RoseChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "SankeyChart": {
+      "schema_version": 1,
+      "component_id": "viz.sankey_chart",
+      "registry_name": "SankeyChart",
+      "display_name": "SankeyChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/SankeyChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "SunburstChart": {
+      "schema_version": 1,
+      "component_id": "viz.sunburst_chart",
+      "registry_name": "SunburstChart",
+      "display_name": "SunburstChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/SunburstChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "TimelineChart": {
+      "schema_version": 1,
+      "component_id": "viz.timeline_chart",
+      "registry_name": "TimelineChart",
+      "display_name": "TimelineChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/TimelineChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "WebPainter": {
+      "schema_version": 1,
+      "component_id": "viz.web_painter",
+      "registry_name": "WebPainter",
+      "display_name": "WebPainter",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/WebPainter/WebPainter.js",
+      "docs_path": "ui_components/viz/WebPainter/README.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    }
+  },
+  "by_category": {
+    "common": [
+      "ActionButton",
+      "AuthButton",
+      "Badge",
+      "BasicButton",
+      "Breadcrumb",
+      "ButtonGroup",
+      "ColorPicker",
+      "Divider",
+      "DownloadButton",
+      "EditorButton",
+      "FeatureCard",
+      "ImageViewer",
+      "LoadingSpinner",
+      "Notification",
+      "Pagination",
+      "PhotoCard",
+      "Progress",
+      "SimpleDialog",
+      "SortButton",
+      "Tag",
+      "Tooltip",
+      "TreeList",
+      "UploadButton"
+    ],
+    "editor": [
+      "WebTextEditor"
+    ],
+    "form": [
+      "BatchUploader",
+      "Checkbox",
+      "DatePicker",
+      "Dropdown",
+      "FormField",
+      "MultiSelectDropdown",
+      "NumberInput",
+      "Radio",
+      "SearchForm",
+      "TextInput",
+      "TimePicker",
+      "ToggleSwitch"
+    ],
+    "input": [
+      "AddressInput",
+      "AddressListInput",
+      "ChainedInput",
+      "DateTimeInput",
+      "ListInput",
+      "OrganizationInput",
+      "PersonInfoList",
+      "PhoneListInput",
+      "SocialMediaList",
+      "StudentInput"
+    ],
+    "layout": [
+      "DataTable",
+      "DocumentWall",
+      "FormRow",
+      "FunctionMenu",
+      "InfoPanel",
+      "PanelManager",
+      "PhotoWall",
+      "SideMenu",
+      "TabContainer",
+      "WorkflowPanel"
+    ],
+    "social": [
+      "Avatar",
+      "ConnectionCard",
+      "FeedCard",
+      "StatCard",
+      "Timeline"
+    ],
+    "viz": [
+      "BarChart",
+      "BaseChart",
+      "CanvasMap",
+      "DrawingBoard",
+      "FlameChart",
+      "HierarchyChart",
+      "LeafletMap",
+      "LineChart",
+      "MapEditor",
+      "MapEditorV2",
+      "OSMMapEditor",
+      "OrgChart",
+      "PieChart",
+      "RelationChart",
+      "RoseChart",
+      "SankeyChart",
+      "SunburstChart",
+      "TimelineChart",
+      "WebPainter"
+    ]
+  },
+  "by_kind": {
+    "composite": [
+      "ActionButton",
+      "AddressInput",
+      "AddressListInput",
+      "AuthButton",
+      "BatchUploader",
+      "Breadcrumb",
+      "ButtonGroup",
+      "ChainedInput",
+      "ConnectionCard",
+      "DateTimeInput",
+      "FeedCard",
+      "ListInput",
+      "OrganizationInput",
+      "Pagination",
+      "PersonInfoList",
+      "PhoneListInput",
+      "SearchForm",
+      "SocialMediaList",
+      "StatCard",
+      "StudentInput",
+      "TreeList",
+      "WebTextEditor"
+    ],
+    "atomic": [
+      "Avatar",
+      "Badge",
+      "BasicButton",
+      "Checkbox",
+      "ColorPicker",
+      "DatePicker",
+      "Divider",
+      "DownloadButton",
+      "Dropdown",
+      "EditorButton",
+      "FeatureCard",
+      "FormField",
+      "ImageViewer",
+      "LoadingSpinner",
+      "MultiSelectDropdown",
+      "Notification",
+      "NumberInput",
+      "PhotoCard",
+      "Progress",
+      "Radio",
+      "SimpleDialog",
+      "SortButton",
+      "Tag",
+      "TextInput",
+      "TimePicker",
+      "ToggleSwitch",
+      "Tooltip",
+      "UploadButton"
+    ],
+    "container": [
+      "DataTable",
+      "DocumentWall",
+      "FormRow",
+      "FunctionMenu",
+      "InfoPanel",
+      "PanelManager",
+      "PhotoWall",
+      "SideMenu",
+      "TabContainer",
+      "Timeline",
+      "WorkflowPanel"
+    ],
+    "visualizer": [
+      "BarChart",
+      "BaseChart",
+      "CanvasMap",
+      "DrawingBoard",
+      "FlameChart",
+      "HierarchyChart",
+      "LeafletMap",
+      "LineChart",
+      "MapEditor",
+      "MapEditorV2",
+      "OSMMapEditor",
+      "OrgChart",
+      "PieChart",
+      "RelationChart",
+      "RoseChart",
+      "SankeyChart",
+      "SunburstChart",
+      "TimelineChart",
+      "WebPainter"
+    ]
+  },
+  "by_maturity": {
+    "beta": [
+      "ActionButton",
+      "AuthButton",
+      "Badge",
+      "BasicButton",
+      "Checkbox",
+      "ColorPicker",
+      "Divider",
+      "DocumentWall",
+      "DownloadButton",
+      "Dropdown",
+      "EditorButton",
+      "FeatureCard",
+      "OSMMapEditor",
+      "PanelManager",
+      "PhotoCard",
+      "PhotoWall",
+      "Progress",
+      "SortButton",
+      "Tag",
+      "Tooltip",
+      "TreeList",
+      "UploadButton",
+      "WebTextEditor",
+      "WorkflowPanel"
+    ],
+    "stable": [
+      "AddressInput",
+      "AddressListInput",
+      "Avatar",
+      "BarChart",
+      "BaseChart",
+      "BatchUploader",
+      "Breadcrumb",
+      "ButtonGroup",
+      "CanvasMap",
+      "ChainedInput",
+      "ConnectionCard",
+      "DataTable",
+      "DatePicker",
+      "DateTimeInput",
+      "DrawingBoard",
+      "FeedCard",
+      "FlameChart",
+      "FormField",
+      "FormRow",
+      "FunctionMenu",
+      "HierarchyChart",
+      "ImageViewer",
+      "InfoPanel",
+      "LeafletMap",
+      "LineChart",
+      "ListInput",
+      "LoadingSpinner",
+      "MapEditor",
+      "MapEditorV2",
+      "MultiSelectDropdown",
+      "Notification",
+      "NumberInput",
+      "OrgChart",
+      "OrganizationInput",
+      "Pagination",
+      "PersonInfoList",
+      "PhoneListInput",
+      "PieChart",
+      "Radio",
+      "RelationChart",
+      "RoseChart",
+      "SankeyChart",
+      "SearchForm",
+      "SideMenu",
+      "SimpleDialog",
+      "SocialMediaList",
+      "StatCard",
+      "StudentInput",
+      "SunburstChart",
+      "TabContainer",
+      "TextInput",
+      "TimePicker",
+      "Timeline",
+      "TimelineChart",
+      "ToggleSwitch",
+      "WebPainter"
+    ]
+  },
+  "by_usage_mode": {
+    "manual_only": [
+      "ActionButton",
+      "AuthButton",
+      "Avatar",
+      "Badge",
+      "BarChart",
+      "BaseChart",
+      "Breadcrumb",
+      "CanvasMap",
+      "ConnectionCard",
+      "DataTable",
+      "Divider",
+      "DocumentWall",
+      "DownloadButton",
+      "FeatureCard",
+      "FeedCard",
+      "FlameChart",
+      "FormField",
+      "FormRow",
+      "FunctionMenu",
+      "HierarchyChart",
+      "InfoPanel",
+      "LeafletMap",
+      "LineChart",
+      "LoadingSpinner",
+      "MapEditor",
+      "MapEditorV2",
+      "Notification",
+      "OSMMapEditor",
+      "OrgChart",
+      "Pagination",
+      "PhotoCard",
+      "PhotoWall",
+      "PieChart",
+      "Progress",
+      "RelationChart",
+      "RoseChart",
+      "SankeyChart",
+      "SearchForm",
+      "SideMenu",
+      "SimpleDialog",
+      "SortButton",
+      "StatCard",
+      "SunburstChart",
+      "TabContainer",
+      "Tag",
+      "Timeline",
+      "TimelineChart",
+      "Tooltip",
+      "TreeList",
+      "UploadButton",
+      "WorkflowPanel"
+    ],
+    "definition_explicit": [
+      "BasicButton",
+      "ButtonGroup",
+      "EditorButton",
+      "WebPainter"
+    ],
+    "field_direct": [
+      "AddressInput",
+      "AddressListInput",
+      "BatchUploader",
+      "ChainedInput",
+      "Checkbox",
+      "ColorPicker",
+      "DatePicker",
+      "DateTimeInput",
+      "DrawingBoard",
+      "Dropdown",
+      "ImageViewer",
+      "ListInput",
+      "MultiSelectDropdown",
+      "NumberInput",
+      "OrganizationInput",
+      "PersonInfoList",
+      "PhoneListInput",
+      "Radio",
+      "SocialMediaList",
+      "StudentInput",
+      "TextInput",
+      "TimePicker",
+      "ToggleSwitch",
+      "WebTextEditor"
+    ],
+    "runtime_only": [
+      "PanelManager"
+    ]
+  }
+}

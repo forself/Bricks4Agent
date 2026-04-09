@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "component_id": "form.form_field",
+  "registry_name": "FormField",
+  "display_name": "FormField",
+  "category": "form",
+  "kind": "atomic",
+  "source_path": "ui_components/form/FormField/FormField.js",
+  "docs_path": "ui_components/form/FormField/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": [
+      "setReadonly",
+      "setRequired"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "error",
+      "hint",
+      "readonly",
+      "required"
+    ]
+  }
+}

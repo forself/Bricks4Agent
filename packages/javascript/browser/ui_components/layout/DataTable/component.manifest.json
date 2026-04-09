@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.data_table",
+  "registry_name": "DataTable",
+  "display_name": "DataTable",
+  "category": "layout",
+  "kind": "container",
+  "source_path": "ui_components/layout/DataTable/DataTable.js",
+  "docs_path": "ui_components/layout/DataTable/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "data_view",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

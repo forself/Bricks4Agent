@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "component_id": "common.notification",
+  "registry_name": "Notification",
+  "display_name": "Notification",
+  "category": "common",
+  "kind": "atomic",
+  "source_path": "ui_components/common/Notification/Notification.js",
+  "docs_path": "ui_components/common/Notification/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "feedback",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": []
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

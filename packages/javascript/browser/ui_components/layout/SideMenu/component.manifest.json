@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.side_menu",
+  "registry_name": "SideMenu",
+  "display_name": "SideMenu",
+  "category": "layout",
+  "kind": "container",
+  "source_path": "ui_components/layout/SideMenu/SideMenu.js",
+  "docs_path": "ui_components/layout/SideMenu/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "navigation",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [],
+    "target_actions": [
+      "clear",
+      "reloadOptions"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "width"
+    ]
+  }
+}

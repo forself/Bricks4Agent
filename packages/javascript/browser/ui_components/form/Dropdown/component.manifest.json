@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "component_id": "form.dropdown",
+  "registry_name": "Dropdown",
+  "display_name": "Dropdown",
+  "category": "form",
+  "kind": "atomic",
+  "source_path": "ui_components/form/Dropdown/Dropdown.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "select"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "clear",
+      "reloadOptions",
+      "setReadonly",
+      "setRequired",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "readonly",
+      "required",
+      "size",
+      "variant",
+      "width"
+    ]
+  }
+}

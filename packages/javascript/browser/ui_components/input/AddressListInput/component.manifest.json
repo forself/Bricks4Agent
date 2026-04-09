@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "component_id": "input.address_list_input",
+  "registry_name": "AddressListInput",
+  "display_name": "AddressListInput",
+  "category": "input",
+  "kind": "composite",
+  "source_path": "ui_components/input/AddressListInput/AddressListInput.js",
+  "docs_path": "ui_components/input/AddressListInput/README.md",
+  "maturity": "stable",
+  "generator": {
+    "usable": true,
+    "usage_mode": "field_direct",
+    "supported_field_types": [
+      "addresslist"
+    ],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "input",
+    "requires_form_field_wrapper": true,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "change"
+    ],
+    "target_actions": [
+      "setReadonly",
+      "setRequired"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "disabled",
+      "readonly",
+      "required"
+    ]
+  }
+}
