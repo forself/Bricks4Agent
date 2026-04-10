@@ -77,19 +77,24 @@ export class BasePage {
      * @param {HTMLElement} container - 容器元素
      */
     async mount(container) {
+        const mountElement = document.createElement('div');
         try {
             // 建立頁面元素
-            this.element = document.createElement('div');
-            this.element.className = this._getPageClassName();
+            this.element = mountElement;
+            mountElement.className = this._getPageClassName();
 
             // 執行初始化
             await this.onInit();
 
+            if (this.element !== mountElement) {
+                return;
+            }
+
             // 渲染內容
-            this.element.innerHTML = this.template();
+            mountElement.innerHTML = this.template();
 
             // 加入容器
-            container.appendChild(this.element);
+            container.appendChild(mountElement);
 
             // 標記已掛載
             this._mounted = true;
@@ -102,6 +107,9 @@ export class BasePage {
 
         } catch (error) {
             console.error(`[${this.constructor.name}] 掛載失敗:`, error);
+            if (this.element !== mountElement) {
+                return;
+            }
             this._renderError(container, error);
         }
     }

@@ -681,4 +681,11 @@ canonical source 應為：
 - 前端 list/shell/action 還需要補 deterministic materializer
 - 現有 runtime 仍偏 form-oriented
 
+## Implementation Status
+
+- `architecture.json` 已作為 proof app 的 bootstrap 入口，前端在啟動時會先載入 architecture 與 frontend definition。
+- `frontend-definition.json` 已接入 proof app 的 shell、導航、route bootstrap 與 shared resources。
+- `backend-definition.json` 已接入 backend startup，會被 materialize 後註冊進 DI，並參與 seed/bootstrap 基線。
+- 目前 proof 已驗證前後端定義檔可支撐小型會員商務網站，但 frontend `route + surfaces` 仍是 proof 導向的最小 materialization，尚未覆蓋完整通用頁型。
+
 但即使如此，這套 JSON contract 已比目前單純 `PageDefinition` 更接近真實網站開發需求。

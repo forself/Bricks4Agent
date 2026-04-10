@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "app": {
+    "title": "Bricks Commerce",
+    "subtitle": "Frontend definition bootstrap",
+    "shell": "default"
+  },
+  "auth": {
+    "token_storage": "local_storage",
+    "login_route": "/login",
+    "logout_action": "auth.logout",
+    "roles": ["guest", "member", "admin"]
+  },
+  "navigation": {
+    "items": [
+      { "path": "/", "label": "Home", "visibility": ["guest", "member", "admin"] },
+      { "path": "/products", "label": "Products", "visibility": ["member", "admin"] },
+      { "path": "/orders", "label": "Orders", "visibility": ["member", "admin"] },
+      { "path": "/admin/products", "label": "Admin Products", "visibility": ["admin"] },
+      { "path": "/register", "label": "Register", "visibility": ["guest"] },
+      { "path": "/login", "label": "Login", "visibility": ["guest"] }
+    ]
+  },
+  "shared_resources": {
+    "enums": {
+      "status_options": [
+        { "value": "active", "label": "Active" },
+        { "value": "inactive", "label": "Inactive" }
+      ]
+    },
+    "messages": {
+      "home_subtitle": "Browse products, place orders, and manage the storefront from a definition-backed shell."
+    }
+  },
+  "routes": [
+    {
+      "path": "/",
+      "page_id": "home",
+      "page_kind": "content_page",
+      "title": "Home",
+      "access": {
+        "requiresAuth": false,
+        "requiresAdmin": false
+      },
+      "surfaces": [
+        {
+          "surface_id": "home-message",
+          "surface_kind": "message_panel",
+          "title": "Welcome"
+        }
+      ]
+    },
+    {
+      "path": "/login",
+      "page_id": "login",
+      "page_kind": "auth_form_page",
+      "title": "Login",
+      "access": {
+        "requiresAuth": false,
+        "requiresAdmin": false
+      },
+      "surfaces": [
+        {
+          "surface_id": "login-form",
+          "surface_kind": "embedded_action_form",
+          "action": "auth.login"
+        }
+      ]
+    },
+    {
+      "path": "/register",
+      "page_id": "register",
+      "page_kind": "auth_form_page",
+      "title": "Register",
+      "access": {
+        "requiresAuth": false,
+        "requiresAdmin": false
+      },
+      "surfaces": [
+        {
+          "surface_id": "register-form",
+          "surface_kind": "embedded_action_form",
+          "action": "auth.register"
+        }
+      ]
+    },
+    {
+      "path": "/products",
+      "page_id": "products",
+      "page_kind": "resource_list_page",
+      "title": "Products",
+      "access": {
+        "requiresAuth": true,
+        "requiresAdmin": false
+      },
+      "data_sources": {
+        "primary_list": {
+          "method": "GET",
+          "endpoint": "/shop/products"
+        }
+      },
+      "state": {
+        "selected_item_key": "selectedProductId"
+      },
+      "surfaces": [
+        { "surface_id": "products-feedback", "surface_kind": "message_panel" },
+        {
+          "surface_id": "products-search",
+          "surface_kind": "search_form",
+          "fields": [
+            { "name": "keyword", "field_type": "text", "label": "Keyword" },
+            { "name": "categoryId", "field_type": "select", "label": "Category" },
+            { "name": "status", "field_type": "select", "label": "Status" }
+          ]
+        },
+        {
+          "surface_id": "products-table",
+          "surface_kind": "data_table",
+          "source": "primary_list",
+          "columns": [
+            { "key": "name", "label": "Name" },
+            { "key": "categoryName", "label": "Category" },
+            { "key": "price", "label": "Price" },
+            { "key": "stock", "label": "Stock" }
+          ],
+          "row_actions": [
+            { "action": "buy", "label": "Buy" }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/orders",
+      "page_id": "orders",
+      "page_kind": "resource_list_page",
+      "title": "Orders",
+      "access": {
+        "requiresAuth": true,
+        "requiresAdmin": false
+      },
+      "data_sources": {
+        "primary_list": {
+          "method": "GET",
+          "endpoint": "/shop/orders"
+        }
+      },
+      "surfaces": [
+        {
+          "surface_id": "orders-table",
+          "surface_kind": "data_table",
+          "source": "primary_list",
+          "columns": [],
+          "row_actions": []
+        }
+      ]
+    },
+    {
+      "path": "/admin/products",
+      "page_id": "admin_products",
+      "page_kind": "resource_list_page",
+      "title": "Admin Products",
+      "access": {
+        "requiresAuth": true,
+        "requiresAdmin": true
+      },
+      "surfaces": [
+        { "surface_id": "admin-feedback", "surface_kind": "message_panel" },
+        {
+          "surface_id": "admin-search",
+          "surface_kind": "search_form",
+          "fields": [
+            { "name": "keyword", "field_type": "text", "label": "Keyword" },
+            { "name": "categoryId", "field_type": "select", "label": "Category" },
+            { "name": "status", "field_type": "select", "label": "Status" }
+          ]
+        },
+        {
+          "surface_id": "admin-table",
+          "surface_kind": "data_table",
+          "source": "admin_products",
+          "columns": [
+            { "key": "name", "label": "Name" },
+            { "key": "categoryName", "label": "Category" },
+            { "key": "price", "label": "Price" },
+            { "key": "stock", "label": "Stock" }
+          ],
+          "row_actions": [
+            { "action": "edit", "label": "Edit" },
+            { "action": "delete", "label": "Delete" }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "/admin/products/create",
+      "page_id": "admin_product_create",
+      "page_kind": "auth_form_page",
+      "title": "Create Product",
+      "access": {
+        "requiresAuth": true,
+        "requiresAdmin": true
+      },
+      "surfaces": [
+        {
+          "surface_id": "admin-product-create-form",
+          "surface_kind": "embedded_action_form",
+          "action": "admin.products.create"
+        }
+      ]
+    },
+    {
+      "path": "/admin/products/:id/edit",
+      "page_id": "admin_product_edit",
+      "page_kind": "auth_form_page",
+      "title": "Edit Product",
+      "access": {
+        "requiresAuth": true,
+        "requiresAdmin": true
+      },
+      "surfaces": [
+        {
+          "surface_id": "admin-product-edit-form",
+          "surface_kind": "embedded_action_form",
+          "action": "admin.products.update"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "tier": "N2",
+  "template": "base_n2_commerce",
+  "persistence": {
+    "enabled": true,
+    "orm": "BaseOrm",
+    "database": "sqlite"
+  },
+  "security": {
+    "auth_required": true,
+    "auth_mode": "local_jwt",
+    "role_model": [
+      "member",
+      "admin"
+    ]
+  },
+  "entities": [
+    "User",
+    "Category",
+    "Product",
+    "Order",
+    "OrderItem"
+  ],
+  "modules": [
+    "authentication",
+    "commerce"
+  ],
+  "seed": {
+    "admin_account": true,
+    "sample_products": true,
+    "sample_categories": true
+  }
+}

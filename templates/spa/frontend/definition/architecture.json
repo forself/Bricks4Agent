@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "project": {
+    "id": "spa-commerce-proof",
+    "name": "Bricks Commerce",
+    "mode": "frontend_backend_bundle"
+  },
+  "frontend": {
+    "enabled": true,
+    "definition_file": "frontend-definition.json"
+  },
+  "backend": {
+    "enabled": true,
+    "definition_file": "../../backend/definition/backend-definition.json"
+  },
+  "docs": {
+    "deployment": true,
+    "implementation_plan": true
+  }
+}
