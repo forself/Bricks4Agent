@@ -1,103 +1,57 @@
-/**
- * Register - Register 頁面
- *
- * @module RegisterPage
- */
-
 import { BasePage } from '../core/BasePage.js';
 
 export class RegisterPage extends BasePage {
     async onInit() {
         this._data = {
-            items: [],
-            loading: true,
-            error: null
+            name: '',
+            email: '',
+            password: '',
+            confirmPassword: '',
+            error: '',
+            success: '',
+            loading: false
         };
-
-        await this._loadData();
-    }
-
-    async _loadData() {
-        try {
-            this._data.loading = true;
-
-            // TODO: 替換為實際 API 呼叫
-            // const items = await this.api.get('/register');
-            // this._data.items = items;
-
-            // 模擬資料
-            await new Promise(resolve => setTimeout(resolve, 300));
-            this._data.items = [
-                { id: 1, name: '範例項目 1' },
-                { id: 2, name: '範例項目 2' },
-                { id: 3, name: '範例項目 3' }
-            ];
-
-        } catch (error) {
-            console.error('[RegisterPage] 載入資料失敗:', error);
-            this._data.error = error.message;
-            this.showMessage('載入失敗', 'error');
-        } finally {
-            this._data.loading = false;
-        }
     }
 
     template() {
-        const { items, loading, error } = this._data;
-
-        if (loading) {
-            return `
-                <div class="register-page">
-                    <div class="loading-state">
-                        <div class="loading-spinner"></div>
-                        <p>載入中...</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        if (error) {
-            return `
-                <div class="register-page">
-                    <div class="error-state">
-                        <h2>載入失敗</h2>
-                        <p>${this.esc(error)}</p>
-                        <button class="btn btn-primary" id="btn-retry">重試</button>
-                    </div>
-                </div>
-            `;
-        }
+        const { name, email, error, success, loading } = this._data;
 
         return `
-            <div class="register-page">
-                <header class="page-header">
-                    <h1>Register</h1>
-                    <p class="page-subtitle">Register 頁面</p>
-                </header>
+            <div class="login-page">
+                <div class="login-container">
+                    <div class="login-card">
+                        <div class="login-header">
+                            <div class="login-logo">B</div>
+                            <h1>註冊</h1>
+                            <p>建立會員帳號後，即可完成商品購買與訂單查詢。</p>
+                        </div>
 
-                <div class="page-content">
-                    <div class="list-container">
-                        ${items.length === 0 ? `
-                            <div class="empty-state">
-                                <p>目前沒有資料</p>
+                        ${error ? `<div class="login-error">${this.esc(error)}</div>` : ''}
+                        ${success ? `<div class="login-success">${this.esc(success)}</div>` : ''}
+
+                        <form id="register-form" class="login-form">
+                            <div class="form-group">
+                                <label for="name">姓名</label>
+                                <input id="name" name="name" type="text" value="${this.escAttr(name)}" class="form-input" required autocomplete="name">
                             </div>
-                        ` : `
-                            <ul class="item-list">
-                                ${items.map(item => `
-                                    <li class="item" data-id="${this.escAttr(item.id)}">
-                                        <span class="item-name">${this.esc(item.name)}</span>
-                                        <div class="item-actions">
-                                            <button class="btn btn-sm btn-edit" data-id="${this.escAttr(item.id)}">
-                                                編輯
-                                            </button>
-                                            <button class="btn btn-sm btn-danger btn-delete" data-id="${this.escAttr(item.id)}">
-                                                刪除
-                                            </button>
-                                        </div>
-                                    </li>
-                                `).join('')}
-                            </ul>
-                        `}
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input id="email" name="email" type="email" value="${this.escAttr(email)}" class="form-input" required autocomplete="email">
+                            </div>
+                            <div class="form-group">
+                                <label for="password">密碼</label>
+                                <input id="password" name="password" type="password" class="form-input" required autocomplete="new-password">
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmPassword">確認密碼</label>
+                                <input id="confirmPassword" name="confirmPassword" type="password" class="form-input" required autocomplete="new-password">
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-block" ${loading ? 'disabled' : ''}>${loading ? '建立帳號中...' : '建立帳號'}</button>
+                        </form>
+
+                        <div class="login-footer">
+                            <p>已經有帳號？<a href="#/login">前往登入</a></p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -106,35 +60,75 @@ export class RegisterPage extends BasePage {
 
     events() {
         return {
-            'click #btn-retry': 'onRetry',
-            'click .btn-edit': 'onEdit',
-            'click .btn-delete': 'onDelete'
+            'submit #register-form': 'onSubmit',
+            'input #name': 'onNameInput',
+            'input #email': 'onEmailInput',
+            'input #password': 'onPasswordInput',
+            'input #confirmPassword': 'onConfirmPasswordInput'
         };
     }
 
-    onRetry() {
-        this._loadData();
+    onNameInput(event) {
+        this._data.name = event.target.value;
+        this._clearFeedback();
     }
 
-    onEdit(event, target) {
-        const id = target.dataset.id;
-        this.navigate(`/register/${id}/edit`);
+    onEmailInput(event) {
+        this._data.email = event.target.value;
+        this._clearFeedback();
     }
 
-    async onDelete(event, target) {
-        const id = target.dataset.id;
-        const item = this._data.items.find(i => i.id === parseInt(id));
+    onPasswordInput(event) {
+        this._data.password = event.target.value;
+        this._clearFeedback();
+    }
 
-        if (!confirm(`確定要刪除「${item?.name}」嗎？`)) {
+    onConfirmPasswordInput(event) {
+        this._data.confirmPassword = event.target.value;
+        this._clearFeedback();
+    }
+
+    _clearFeedback() {
+        this._data.error = '';
+        this._data.success = '';
+    }
+
+    async onSubmit(event) {
+        event.preventDefault();
+
+        if (!this._data.name.trim() || !this._data.email.trim() || !this._data.password) {
+            this._data.error = '請完整填寫註冊資料。';
+            this._scheduleUpdate();
             return;
         }
 
+        if (this._data.password !== this._data.confirmPassword) {
+            this._data.error = '兩次輸入的密碼不一致。';
+            this._scheduleUpdate();
+            return;
+        }
+
+        this._data.loading = true;
+        this._clearFeedback();
+        this._scheduleUpdate();
+
         try {
-            // await this.api.delete(`/register/${id}`);
-            this._data.items = this._data.items.filter(i => i.id !== parseInt(id));
-            this.showMessage('已刪除', 'success');
+            const result = await this.api.post('/auth/register', {
+                name: this._data.name.trim(),
+                email: this._data.email.trim(),
+                password: this._data.password
+            });
+
+            this._data.success = result.message || '註冊成功';
+            this._data.password = '';
+            this._data.confirmPassword = '';
+            this._scheduleUpdate();
         } catch (error) {
-            this.showMessage('刪除失敗', 'error');
+            this._data.error = error.message || '註冊失敗。';
+            this._scheduleUpdate();
+        } finally {
+            this._data.loading = false;
+            this._scheduleUpdate();
         }
     }
 }

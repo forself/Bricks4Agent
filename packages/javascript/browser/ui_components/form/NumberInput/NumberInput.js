@@ -134,8 +134,9 @@ export class NumberInput {
 
         input.addEventListener('focus', () => this.send('FOCUS'));
         input.addEventListener('blur', () => {
+            const nextValue = input.value;
             this.send('BLUR');
-            this._validateAndUpdate(input.value);
+            this._validateAndUpdate(nextValue);
         });
         input.addEventListener('keydown', (event) => {
             if (this.snapshot().availability === 'disabled') return;

@@ -401,7 +401,9 @@ export class Dropdown {
 
             if (!isDisabled) {
                 option.addEventListener('mouseenter', () => {
-                    this.send('SET_HIGHLIGHT', { index });
+                    if (!isSelected) {
+                        option.style.background = 'var(--cl-bg-secondary)';
+                    }
                 });
                 option.addEventListener('mouseleave', () => {
                     if (!isSelected) {

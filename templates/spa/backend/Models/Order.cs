@@ -1,10 +1,11 @@
+using BaseOrm;
+
 namespace SpaApi.Models;
 
-/// <summary>
-/// Order 資料模型
-/// </summary>
+[Table("Orders")]
 public class Order
 {
+    [Key]
     public int Id { get; set; }
     public int UserId { get; set; }
     public string OrderNumber { get; set; } = "";
@@ -12,14 +13,10 @@ public class Order
     public string Status { get; set; } = "";
     public string ShippingAddress { get; set; } = "";
     public string Note { get; set; } = "";
-
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
 
-/// <summary>
-/// Order 建立請求
-/// </summary>
 public record CreateOrderRequest(
     int UserId,
     string OrderNumber,
@@ -28,9 +25,6 @@ public record CreateOrderRequest(
     string ShippingAddress,
     string Note);
 
-/// <summary>
-/// Order 更新請求
-/// </summary>
 public record UpdateOrderRequest(
     int? UserId,
     string? OrderNumber,
@@ -39,9 +33,6 @@ public record UpdateOrderRequest(
     string? ShippingAddress,
     string? Note);
 
-/// <summary>
-/// Order 回應
-/// </summary>
 public record OrderResponse(
     int Id,
     int UserId,
@@ -50,5 +41,11 @@ public record OrderResponse(
     string Status,
     string ShippingAddress,
     string Note,
+    DateTime CreatedAt,
+    IReadOnlyList<OrderItemSummary> Items);
 
-    DateTime CreatedAt);
+public record CreateShopOrderRequest(
+    int ProductId,
+    int Quantity,
+    string ShippingAddress,
+    string Note);

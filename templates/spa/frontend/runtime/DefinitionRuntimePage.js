@@ -7,6 +7,7 @@ const SUPPORTED_RUNTIME_MODES = new Set(['form', 'detail', 'list']);
 export class DefinitionRuntimePage extends BasePage {
     constructor(options = {}) {
         super(options);
+        this.options = options;
         this._renderer = null;
         this._runtimeState = null;
     }
@@ -135,6 +136,10 @@ export class DefinitionRuntimePage extends BasePage {
     }
 
     _resolveDefinition() {
+        if (this.options?.definitionOverride) {
+            return this.options.definitionOverride;
+        }
+
         const definition = this.constructor.definition;
         if (!definition || typeof definition !== 'object') {
             throw new Error(`${this.constructor.name} must declare a static definition object`);

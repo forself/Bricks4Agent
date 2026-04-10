@@ -1,47 +1,64 @@
+using SpaApi.Generated;
 using SpaApi.Models;
 
 namespace SpaApi.Data;
 
-/**
- * 資料庫初始化器
- * 負責在應用程式啟動時建立種子資料
- */
 public static class DbInitializer
 {
-    /// <summary>
-    /// 初始化資料庫並建立種子資料
-    /// </summary>
-    public static void Initialize(AppDb db, IConfiguration configuration)
+    public static void Initialize(
+        AppDb db,
+        IConfiguration configuration,
+        DefinitionBackendModel? backendDefinition = null)
     {
-        // 確保資料表已建立
         db.EnsureCreated();
+        var definition = backendDefinition ?? new DefinitionBackendModel(
+            Tier: "N2",
+            Template: "base_n2_commerce",
+            Orm: "BaseOrm",
+            Database: "sqlite",
+            AuthenticationEnabled: true,
+            RequireAdminSeed: true,
+            SeedSampleProducts: true,
+            SeedSampleCategories: true,
+            SecurityBaseline: "authentication",
+            Entities: ["User", "Category", "Product", "Order", "OrderItem"],
+            Modules: ["authentication", "commerce"]);
 
-        // 如果已有使用者，跳過種子資料
-        if (db.GetUserCount() > 0)
+        SeedAdminUser(db, configuration, definition);
+        SeedCommerceCatalog(db, definition);
+    }
+
+    private static void SeedAdminUser(
+        AppDb db,
+        IConfiguration configuration,
+        DefinitionBackendModel definition)
+    {
+        if (!definition.RequireAdminSeed)
         {
             return;
         }
 
-        // 從設定讀取初始管理員資訊
+        if (db.GetUserByEmail(configuration["SeedData:AdminEmail"] ?? "admin@example.com") != null)
+        {
+            return;
+        }
+
         var adminEmail = configuration["SeedData:AdminEmail"] ?? "admin@example.com";
         var adminPassword = configuration["SeedData:AdminPassword"];
         var adminName = configuration["SeedData:AdminName"] ?? "Admin";
 
-        // 如果密碼未設定，開發環境生成隨機密碼
         if (string.IsNullOrEmpty(adminPassword))
         {
             adminPassword = $"Dev_{Guid.NewGuid():N}"[..20];
-            Console.WriteLine($"[DbInitializer] 未設定 SeedData:AdminPassword，已生成開發用密碼: {adminPassword}");
+            Console.WriteLine($"[DbInitializer] generated development admin password: {adminPassword}");
         }
 
-        // 驗證密碼強度
         if (adminPassword.Length < 8)
         {
             throw new InvalidOperationException(
-                "初始管理員密碼長度必須至少 8 個字元。請透過環境變數或 appsettings.json 設定 SeedData:AdminPassword");
+                "SeedData:AdminPassword must be at least 8 characters.");
         }
 
-        // 建立管理員帳號
         var adminUser = new User
         {
             Name = adminName,
@@ -53,8 +70,96 @@ public static class DbInitializer
         };
 
         db.CreateUser(adminUser);
+    }
 
-        Console.WriteLine($"[DbInitializer] 已建立初始管理員帳號: {adminEmail}");
-        Console.WriteLine("[DbInitializer] 警告: 請在首次登入後立即更改預設密碼!");
+    private static void SeedCommerceCatalog(AppDb db, DefinitionBackendModel definition)
+    {
+        if (!definition.Modules.Contains("commerce", StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!definition.SeedSampleProducts && !definition.SeedSampleCategories)
+        {
+            return;
+        }
+
+        var digitalGoodsCategoryId = EnsureCategory(
+            db,
+            name: "Digital Goods",
+            sortOrder: 1,
+            icon: "package",
+            enabled: definition.SeedSampleCategories || definition.SeedSampleProducts);
+        var memberServicesCategoryId = EnsureCategory(
+            db,
+            name: "Member Services",
+            sortOrder: 2,
+            icon: "users",
+            enabled: definition.SeedSampleCategories || definition.SeedSampleProducts);
+
+        if (!definition.SeedSampleProducts)
+        {
+            return;
+        }
+
+        if (db.GetProductCount() > 0)
+        {
+            return;
+        }
+
+        db.CreateProduct(new Product
+        {
+            Name = "Starter Membership",
+            Description = "Starter member plan for proof commerce flow.",
+            Price = 499m,
+            Stock = 100,
+            CategoryId = memberServicesCategoryId,
+            Images = "",
+            Status = "active",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        db.CreateProduct(new Product
+        {
+            Name = "Commerce Toolkit",
+            Description = "Digital toolkit seeded for template proof.",
+            Price = 1280m,
+            Stock = 50,
+            CategoryId = digitalGoodsCategoryId,
+            Images = "",
+            Status = "active",
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
+    private static int EnsureCategory(
+        AppDb db,
+        string name,
+        int sortOrder,
+        string icon,
+        bool enabled)
+    {
+        var existing = db.GetCategoryByName(name);
+        if (existing != null)
+        {
+            return existing.Id;
+        }
+
+        if (!enabled)
+        {
+            throw new InvalidOperationException($"Required category '{name}' was not found for seeded commerce products.");
+        }
+
+        var id = db.CreateCategory(new Category
+        {
+            Name = name,
+            ParentId = 0,
+            SortOrder = sortOrder,
+            Icon = icon,
+            Status = "active",
+            CreatedAt = DateTime.UtcNow
+        });
+
+        return (int)id;
     }
 }
