@@ -40,6 +40,7 @@ client_secret_586440721354-4q0jdtj0step5nt50iuo8hg9k5sugl2b.apps.googleuserconte
 # Claude worktree metadata
 .claude/
 packages/.claude/
+.worktrees/
 
 # Issue tracking reports (local only)
 ISSUES/
