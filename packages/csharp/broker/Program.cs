@@ -6,6 +6,7 @@ using Broker.Endpoints;
 using Broker.Middleware;
 using Broker.Services;
 using FunctionPool.Container;
+using FunctionPool.Diagnostics;
 using FunctionPool.Dispatch;
 using FunctionPool.Health;
 using FunctionPool.Models;
@@ -365,6 +366,24 @@ if (poolEnabled)
         builder.Services.AddSingleton<IContainerManager>(sp =>
             new NoOpContainerManager());
     }
+
+    builder.Services.AddSingleton<IDiagnosticsService>(sp =>
+        new DiagnosticsService(
+            sp.GetRequiredService<IContainerManager>(),
+            sp.GetRequiredService<IWorkerRegistry>(),
+            sp.GetRequiredService<ILogger<DiagnosticsService>>()));
+
+    // 排程診斷服務（每 N 分鐘自動掃描，結果存 SQLite）
+    var diagIntervalMin2 = builder.Configuration.GetValue("FunctionPool:ScheduledDiagnostics:IntervalMinutes", 15);
+    var diagRetDays2     = builder.Configuration.GetValue("FunctionPool:ScheduledDiagnostics:RetentionDays", 7);
+    var diagArcDays2     = builder.Configuration.GetValue("FunctionPool:ScheduledDiagnostics:ArchiveRetentionDays", 90);
+    var diagDbPath2      = builder.Configuration.GetValue<string>("FunctionPool:ScheduledDiagnostics:DbPath")
+                           ?? Path.Combine(Path.GetDirectoryName(dbPath) ?? ".", "diagnostics.db");
+    builder.Services.AddSingleton<ScheduledDiagnosticsService>(sp =>
+        new ScheduledDiagnosticsService(
+            sp.GetRequiredService<IDiagnosticsService>(),
+            sp.GetRequiredService<ILogger<ScheduledDiagnosticsService>>(),
+            diagDbPath2, diagIntervalMin2, diagRetDays2, diagArcDays2));
 
     startupLogger.LogInformation(
         "Function pool enabled: port={Port}, strictMode={Strict}",
@@ -843,7 +862,11 @@ GoogleDriveOAuthEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
 if (poolEnabled)
+{
     WorkerEndpoints.Map(api);
+    DiagnosticsEndpoints.Map(api);
+    QuoteWorkerEndpoints.Map(api);
+}
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)
@@ -853,6 +876,10 @@ if (poolEnabled)
 
     var healthMonitor = app.Services.GetRequiredService<WorkerHealthMonitor>();
     healthMonitor.Start();
+
+    // ── 啟動排程診斷服務 ──
+    var scheduledDiag = app.Services.GetRequiredService<ScheduledDiagnosticsService>();
+    scheduledDiag.Start();
 
     // 優雅關閉
     // L-8 修復：Register 只接受 Action（非 Func<Task>），sync-over-async 在 shutdown hook 不可避免

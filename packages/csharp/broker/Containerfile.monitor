@@ -1,0 +1,40 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+
+WORKDIR /src
+COPY . .
+RUN dotnet publish packages/csharp/broker/Broker.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Install docker CLI so ContainerManager can spawn/stop/inspect worker containers
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN adduser --disabled-password --gecos "" --uid 10002 broker \
+    && mkdir -p /data \
+    && chown -R broker:broker /app /data
+
+# broker user needs access to docker socket (gid 0 = root group, socket is srw-rw----)
+# We add broker to the root group so it can read/write the socket
+RUN usermod -aG root broker
+
+USER broker
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:5000
+EXPOSE 5000
+EXPOSE 7000
+
+ENTRYPOINT ["dotnet", "Broker.dll"]

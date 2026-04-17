@@ -15,6 +15,15 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 .el-card{background:var(--s)!important;border:1px solid var(--bd)!important;color:var(--t)!important}
 .el-card__header{border-bottom:1px solid var(--bd)!important;padding:14px 18px!important}
 .el-table{--el-table-bg-color:var(--s);--el-table-tr-bg-color:var(--s);--el-table-header-bg-color:var(--s2);--el-table-border-color:var(--bd);--el-table-text-color:var(--t);--el-table-header-text-color:var(--td);--el-table-row-hover-bg-color:rgba(108,140,255,.06)}
+.el-table,.el-table__inner-wrapper,.el-table__body-wrapper,.el-table__header-wrapper{background:var(--s)!important}
+.el-table th.el-table__cell{background:var(--s2)!important;color:var(--td)!important;border-bottom:1px solid var(--bd)!important}
+.el-table td.el-table__cell{background:var(--s)!important;color:var(--t)!important;border-bottom:1px solid var(--bd)!important}
+.el-table__row:hover td.el-table__cell{background:rgba(108,140,255,.06)!important}
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell{background:var(--s2)!important}
+.el-table__empty-block{background:var(--s)!important}
+.el-table__empty-text{color:var(--td)!important}
+.el-table__border-left-patch,.el-table__border-bottom-patch{background:var(--bd)!important}
+.el-table--border::after,.el-table--border::before,.el-table__inner-wrapper::before{background:var(--bd)!important}
 .el-dialog{background:var(--s)!important;border:1px solid var(--bd)!important}
 .el-dialog__header{border-bottom:1px solid var(--bd)!important}.el-dialog__title{color:var(--t)!important}
 .el-input__wrapper,.el-select__wrapper{background:var(--s2)!important;box-shadow:0 0 0 1px var(--bd) inset!important;color:var(--t)!important}
@@ -84,7 +93,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <el-tab-pane :label="t('overview')" name="overview">
         <div class="stat-g">
           <div class="stat-c"><el-statistic :title="t('totalAgents')" :value="agents.length" /></div>
-          <div class="stat-c"><el-statistic :title="t('activeAgents')" :value="agents.filter(a=>a.state==='Active').length" /></div>
+          <div class="stat-c"><el-statistic :title="t('activeAgents')" :value="activeAgentCount" /></div>
           <div class="stat-c"><el-statistic :title="t('capabilities')" :value="caps.length" /></div>
           <div class="stat-c"><el-statistic :title="t('sessionSeq')" :value="session?.seq||0" /></div>
         </div>
@@ -106,8 +115,8 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </el-table-column>
             <el-table-column :label="t('capabilities')" min-width="220">
               <template #default="{row}">
-                <el-tag v-for="c in (row.capabilities||[]).slice(0,3)" :key="c" size="small" style="margin:2px" type="info">{{c}}</el-tag>
-                <el-tag v-if="(row.capabilities||[]).length>3" size="small" style="margin:2px">+{{row.capabilities.length-3}}</el-tag>
+                <el-tag v-for="c in capSlice(row.capabilities)" :key="c" size="small" style="margin:2px" type="info">{{c}}</el-tag>
+                <el-tag v-if="capExtra(row.capabilities)" size="small" style="margin:2px">+{{capExtra(row.capabilities)}}</el-tag>
               </template>
             </el-table-column>
             <el-table-column :label="t('created')" width="170">
@@ -182,6 +191,275 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </el-table>
         </el-card>
       </el-tab-pane>
+      <!-- ── Diagnostics ── -->
+      <el-tab-pane :label="t('diagnostics')" name="diagnostics">
+        <!-- Controls -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <el-button type="primary" size="small" @click="runScan" :loading="scanning">
+            {{scanning?t('scanning'):t('scanNow')}}
+          </el-button>
+          <el-switch v-model="autoScan" @change="onAutoScanChange" size="small"/>
+          <span style="font-size:13px;color:var(--td)">{{t('autoScan')}}</span>
+          <el-select v-model="scanInterval" size="small" style="width:80px" :disabled="!autoScan">
+            <el-option :value="10000" label="10s"/><el-option :value="30000" label="30s"/><el-option :value="60000" label="60s"/>
+          </el-select>
+          <span v-if="diagReport" style="font-size:12px;color:var(--td);margin-left:auto">
+            {{t('lastScan')}}: {{fmtDate(diagReport.scanned_at)}}
+          </span>
+        </div>
+        <!-- Health banner -->
+        <div v-if="diagReport" style="margin-bottom:16px">
+          <el-alert
+            :title="diagReport.healthy ? t('healthy') : t('unhealthy')"
+            :type="diagAlertType(diagReport)"
+            :description="diagReport.runtime_available ? t('runtimeOk') : t('runtimeDown')"
+            show-icon :closable="false"/>
+        </div>
+        <!-- Summary stats -->
+        <div v-if="diagReport" class="stat-g" style="margin-bottom:16px">
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('critical')}}</div>
+            <div :style="diagNumStyle(diagReport.critical_count)">{{diagReport.critical_count}}</div>
+          </div>
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('error')}}</div>
+            <div :style="diagNumStyle(diagReport.error_count)">{{diagReport.error_count}}</div>
+          </div>
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('warning')}}</div>
+            <div :style="diagNumStyle(diagReport.warning_count, true)">{{diagReport.warning_count}}</div>
+          </div>
+          <div class="stat-c"><el-statistic :title="t('runningContainers')" :value="diagReport.running_containers"/></div>
+          <div class="stat-c"><el-statistic :title="t('readyWorkers')" :value="diagReport.ready_workers"/></div>
+        </div>
+        <!-- Issue table -->
+        <el-card>
+          <el-skeleton v-if="scanning&&!diagReport" :rows="5" animated/>
+          <el-empty v-if="diagReport&&diagReport.issues.length===0" :description="t('noIssues')"/>
+          <el-table v-if="diagReport&&diagReport.issues.length>0" :data="diagReport.issues" stripe>
+            <el-table-column :label="t('state')" width="100">
+              <template #default="{row}">
+                <el-tag :type="sevType(row.severity)" size="small">{{t(row.severity)||row.severity}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="category" :label="t('category')" width="120"/>
+            <el-table-column prop="entity_id" :label="t('entity')" width="140">
+              <template #default="{row}"><code style="font-size:11px">{{row.entity_id}}</code></template>
+            </el-table-column>
+            <el-table-column prop="message" :label="t('description')" min-width="300">
+              <template #default="{row}"><span style="font-size:12px;line-height:1.5">{{row.message}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="160">
+              <template #default="{row}">{{fmtDate(row.detected_at)}}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!scanning&&!diagReport" :description="t('scanNow')"/>
+        </el-card>
+
+        <!-- 排程診斷歷史 -->
+        <el-card style="margin-top:16px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('schedHistory')}}</span>
+              <span v-if="diagSpace" style="font-size:11px;color:var(--td);margin-left:auto">
+                {{t('activeDb')}}: {{diagSpace.active_db_size_kb}}KB ({{diagSpace.active_run_count}}) |
+                {{t('archiveDb')}}: {{diagSpace.archive_db_size_kb}}KB ({{diagSpace.archive_run_count}}) |
+                {{t('retDays')}}: {{diagSpace.retention_days}}d / {{diagSpace.archive_retention_days}}d
+              </span>
+            </div>
+          </template>
+          <div v-show="schedRuns.length===0"><el-empty :description="t('noHistory')"/></div>
+          <div v-show="schedRuns.length>0"><el-table :data="schedRuns" stripe>
+            <el-table-column prop="run_id" label="Run ID" width="180">
+              <template #default="{row}"><code style="font-size:11px">{{row.run_id}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('state')" width="80">
+              <template #default="{row}">
+                <el-tag :type="row.healthy?'success':'danger'" size="small">{{row.healthy?'OK':'FAIL'}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="160">
+              <template #default="{row}">{{fmtDate(row.scanned_at)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('runningContainers')" width="80" align="center" prop="running_containers"/>
+            <el-table-column :label="t('readyWorkers')" width="80" align="center" prop="ready_workers"/>
+            <el-table-column :label="t('critical')" width="60" align="center">
+              <template #default="{row}">
+                <span v-show="row.critical_count>0" style="color:#f56c6c;font-weight:600">{{row.critical_count}}</span>
+                <span v-show="row.critical_count===0">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('error')" width="60" align="center">
+              <template #default="{row}">
+                <span v-show="row.error_count>0" style="color:#f56c6c;font-weight:600">{{row.error_count}}</span>
+                <span v-show="row.error_count===0">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('warning')" width="60" align="center">
+              <template #default="{row}">
+                <span v-show="row.warning_count>0" style="color:#e6a23c">{{row.warning_count}}</span>
+                <span v-show="row.warning_count===0">0</span>
+              </template>
+            </el-table-column>
+          </el-table></div>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── Containers ── -->
+      <el-tab-pane :label="t('containers')" name="containers">
+        <div class="stat-g">
+          <div class="stat-c"><el-statistic :title="t('totalContainers')" :value="containers.length" /></div>
+          <div class="stat-c"><el-statistic :title="t('runningContainers')" :value="runningCount" /></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <el-button size="small" @click="refreshContainers" :loading="containerRefreshing">{{t('refresh')}}</el-button>
+          <el-switch v-model="autoRefresh" @change="onAutoRefreshChange" size="small" />
+          <span style="font-size:13px;color:var(--td)">{{t('autoRefresh')}}</span>
+          <el-select v-model="autoRefreshInterval" size="small" style="width:80px" :disabled="!autoRefresh">
+            <el-option :value="3000" label="3s"/><el-option :value="5000" label="5s"/><el-option :value="10000" label="10s"/>
+          </el-select>
+        </div>
+        <div style="margin-bottom:16px">
+          <el-button type="primary" @click="openSpawn">+ {{t('spawnWorker')}}</el-button>
+        </div>
+        <el-card>
+          <el-table :data="mergedContainers" stripe :empty-text="t('noContainers')">
+            <el-table-column prop="container_id" label="ID" width="130">
+              <template #default="{row}"><code style="font-size:11px">{{row.container_id}}</code></template>
+            </el-table-column>
+            <el-table-column prop="worker_type" :label="t('workerType')" width="120"/>
+            <el-table-column prop="state" :label="t('state')" width="90">
+              <template #default="{row}">
+                <el-tag :type="ctStateType(row.state)" size="small">{{row.state}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('cpu')" width="80">
+              <template #default="{row}">
+                <span v-show="row.stats">{{row.stats?row.stats.cpu_percent.toFixed(1)+'%':''}}</span>
+                <span v-show="!row.stats" style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('memory')" width="150">
+              <template #default="{row}">
+                <span v-show="row.stats" style="font-size:12px">{{row.stats?fmtBytes(row.stats.memory_usage_bytes)+' / '+fmtBytes(row.stats.memory_limit_bytes):''}}</span>
+                <span v-show="!row.stats" style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('memPercent')" width="75">
+              <template #default="{row}">
+                <span v-show="row.stats">{{row.stats?row.stats.memory_percent.toFixed(1)+'%':''}}</span>
+                <span v-show="!row.stats" style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('network')" min-width="160">
+              <template #default="{row}">
+                <span v-show="row.stats" style="font-size:12px">{{row.stats?'↓'+fmtBytes(row.stats.network_input_bytes)+' ↑'+fmtBytes(row.stats.network_output_bytes):''}}</span>
+                <span v-show="!row.stats" style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('spawned')" width="160">
+              <template #default="{row}">{{fmtDate(row.spawned_at)}}</template>
+            </el-table-column>
+            <el-table-column width="140" align="right">
+              <template #default="{row}">
+                <el-button size="small" text @click="viewLogs(row.container_id)">{{t('logs')}}</el-button>
+                <el-button v-if="canStop(row.state)" type="danger" size="small" text @click="stopContainer(row.container_id)">{{t('stop')}}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── 金融報價 ── -->
+      <el-tab-pane :label="t('quotes')" name="quotes">
+        <!-- 控制列 -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <el-button type="primary" @click="quoteFetchNow" :loading="quoteFetching">
+            {{quoteFetching?t('fetching'):t('fetchNow')}}
+          </el-button>
+          <el-switch v-model="quoteAutoRefresh" @change="onQuoteAutoRefreshChange" size="small"/>
+          <span style="font-size:13px;color:var(--td)">{{t('autoRefresh')}}</span>
+          <el-select v-model="quoteRefreshInterval" size="small" style="width:80px" :disabled="!quoteAutoRefresh">
+            <el-option :value="10000" label="10s"/><el-option :value="30000" label="30s"/><el-option :value="60000" label="60s"/>
+          </el-select>
+          <el-button size="small" @click="loadQuotes" :loading="quoteLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
+        </div>
+
+        <!-- 最新報價 -->
+        <el-card style="margin-bottom:16px">
+          <template #header><span style="font-weight:600">{{t('prices')}}</span></template>
+          <div v-show="quotePrices.length===0"><el-empty :description="t('noQuotes')"/></div>
+          <div v-show="quotePrices.length>0"><el-table :data="quotePrices" stripe>
+            <el-table-column :label="t('workerType')" width="70">
+              <template #default="{row}">
+                <el-tag :type="row.type==='crypto'?'warning':'info'" size="small">{{t(row.type)}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="symbol" label="Symbol" width="90">
+              <template #default="{row}"><strong>{{row.symbol}}</strong></template>
+            </el-table-column>
+            <el-table-column prop="name" :label="t('displayName')" min-width="140">
+              <template #default="{row}"><span style="font-size:12px;color:var(--td)">{{row.name}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('prices')" width="130" align="right">
+              <template #default="{row}">
+                <span style="font-weight:600">{{fmtPrice(row.price)}} {{row.currency}}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('changePercent')" width="100" align="right">
+              <template #default="{row}">
+                <span :style="row.change_percent>=0?'color:#67c23a':'color:#f56c6c'">
+                  {{row.change_percent>=0?'+':''}}{{row.change_percent.toFixed(2)}}%
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('marketCap')" width="120" align="right">
+              <template #default="{row}">
+                <span style="font-size:12px">{{fmtLargeNum(row.market_cap)}}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('lastFetch')" width="160">
+              <template #default="{row}">{{fmtDate(row.fetched_at)}}</template>
+            </el-table-column>
+          </el-table></div>
+        </el-card>
+
+        <!-- 作業歷程 -->
+        <el-card>
+          <template #header><span style="font-weight:600">{{t('jobHistory')}}</span></template>
+          <div v-show="quoteJobs.length===0"><el-empty :description="t('noJobs')"/></div>
+          <div v-show="quoteJobs.length>0"><el-table :data="quoteJobs" stripe>
+            <el-table-column prop="job_id" :label="t('jobId')" width="130">
+              <template #default="{row}"><code style="font-size:11px">{{row.job_id}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('jobStatus')" width="100">
+              <template #default="{row}">
+                <el-tag :type="jobStatusType(row.status)" size="small">{{t(row.status)||row.status}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="160">
+              <template #default="{row}">{{fmtDate(row.created_at)}}</template>
+            </el-table-column>
+            <el-table-column prop="duration_sec" :label="t('duration')" width="80" align="right"/>
+            <el-table-column prop="fetched_count" :label="t('symbols')" width="70" align="center"/>
+            <el-table-column :label="t('errors')" width="70" align="center">
+              <template #default="{row}">
+                <span v-show="row.error_count>0" style="color:#f56c6c;font-weight:600">{{row.error_count}}</span>
+                <span v-show="row.error_count===0">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('jobErrors')" min-width="200">
+              <template #default="{row}">
+                <div v-if="row.fatal_error" style="color:#f56c6c;font-size:12px">{{row.fatal_error}}</div>
+                <div v-if="row.errors&&row.errors.length>0">
+                  <div v-for="e in row.errors.slice(0,3)" :key="e" style="font-size:11px;color:var(--td)">{{e}}</div>
+                  <div v-if="row.errors.length>3" style="font-size:11px;color:var(--td)">+{{row.errors.length-3}} more</div>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table></div>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </div>
@@ -226,9 +504,52 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
   </template>
 </el-dialog>
 
+<!-- ── Container Logs Dialog ── -->
+<el-dialog v-model="logsVisible" :title="t('logs') + ': ' + logsContainerId" width="820px" :close-on-click-modal="false">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+    <span style="font-size:13px;color:var(--td)">Tail:</span>
+    <el-input-number v-model="tailLines" :min="10" :max="500" :step="10" size="small" style="width:130px"/>
+    <el-button size="small" @click="fetchLogs" :loading="logsLoading">{{t('refresh')}}</el-button>
+  </div>
+  <el-skeleton v-show="logsLoading" :rows="6" animated/>
+  <pre v-show="!logsLoading" style="background:var(--s2);padding:12px;border-radius:6px;font-size:12px;line-height:1.6;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--t);margin:0">{{currentLogs||'(no output)'}}</pre>
+</el-dialog>
+
+<!-- ── Spawn Worker Dialog ── -->
+<el-dialog v-model="spawnVisible" :title="t('spawnWorker')" width="480px" :close-on-click-modal="false">
+  <el-form label-position="top">
+    <el-form-item :label="t('workerTypeLabel')">
+      <el-input v-model="spawnForm.workerType" placeholder="e.g. line-worker" />
+    </el-form-item>
+    <el-form-item :label="t('workerIdOpt')">
+      <el-input v-model="spawnForm.workerId" placeholder="(auto-generated if blank)" />
+    </el-form-item>
+  </el-form>
+  <template #footer>
+    <el-button @click="spawnVisible=false">{{t('cancel')}}</el-button>
+    <el-button type="primary" @click="doSpawn" :loading="spawning" :disabled="!spawnForm.workerType">{{t('spawnWorker')}}</el-button>
+  </template>
+</el-dialog>
+
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
+<div id="err-overlay" style="display:none;position:fixed;inset:0;background:#1a0000;color:#ff8888;padding:24px;z-index:99999;overflow:auto;font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all"></div>
+<script>
+function showErr(msg){
+  var el=document.getElementById('err-overlay');
+  if(el){el.style.display='block';el.textContent=msg}
+}
+window.addEventListener('error',function(e){
+  if(e.message&&e.message.indexOf('ResizeObserver')>=0)return;
+  showErr('ERROR: '+e.message+'\n\n'+(e.error&&e.error.stack?e.error.stack:''));
+});
+window.addEventListener('unhandledrejection',function(e){
+  var msg=e.reason&&e.reason.stack?e.reason.stack:String(e.reason);
+  if(msg.indexOf('ResizeObserver')>=0)return;
+  showErr('PROMISE ERROR: '+msg);
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/element-plus@2.9.1/dist/index.full.min.js"></script>
 <script>
 'use strict';
@@ -305,6 +626,29 @@ const I18N={
     category:'分類',riskLevel:'風險等級',policy:'策略',description:'說明',route:'路由',
     ttGeneral:'通用',ttCodeGen:'程式碼生成',ttReview:'審查',
     confirmStop:'確定要停止代理 "{id}" 嗎？',confirmTitle:'確認',
+    containers:'容器監控',totalContainers:'容器總數',runningContainers:'執行中',
+    workerType:'類型',spawned:'啟動時間',logs:'日誌',spawnWorker:'啟動容器',
+    cpu:'CPU',memory:'記憶體',memPercent:'記憶體%',network:'網路 I/O',
+    autoRefresh:'自動刷新',noContainers:'尚無容器',
+    confirmStopCt:'確定要停止容器 "{id}" 嗎？',
+    workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
+    diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
+    healthy:'系統健康',unhealthy:'發現問題',runtimeOk:'容器執行環境正常',runtimeDown:'容器執行環境異常',
+    critical:'嚴重',error:'錯誤',warning:'警告',info:'資訊',
+    category:'類別',entity:'實體',noIssues:'未偵測到問題',lastScan:'上次掃描',
+    autoScan:'自動掃描',scanInterval:'掃描間隔',readyWorkers:'就緒 Workers',
+    schedHistory:'排程診斷歷史',noHistory:'尚無排程紀錄',
+    dbSpace:'資料庫空間',activeDb:'即時 DB',archiveDb:'歷史 DB',
+    retDays:'保留天數',runCount:'紀錄數',
+    quotes:'金融報價',fetchNow:'立即抓取',fetching:'抓取中...',
+    prices:'最新報價',jobHistory:'作業歷程',
+    noQuotes:'尚無報價資料（quote-worker 尚未連線或未完成首次抓取）',
+    noJobs:'尚無作業歷程',
+    jobId:'Job ID',jobStatus:'狀態',duration:'耗時(s)',symbols:'商品數',errors:'錯誤數',
+    jobErrors:'錯誤詳情',quoteWorkerDown:'quote-worker 未連線',
+    crypto:'加密貨幣',stock:'股票',change24h:'24h 漲跌',changePercent:'漲跌%',
+    marketCap:'市值',volume:'成交量',lastFetch:'最後更新',
+    pending:'待執行',running:'執行中',success:'成功',failed:'失敗',partial:'部分成功',
   },
   en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
@@ -316,6 +660,29 @@ const I18N={
     category:'Category',riskLevel:'Risk Level',policy:'Policy',description:'Description',route:'Route',
     ttGeneral:'General',ttCodeGen:'Code Gen',ttReview:'Review',
     confirmStop:'Stop agent "{id}"?',confirmTitle:'Confirm',
+    containers:'Containers',totalContainers:'Total Containers',runningContainers:'Running',
+    workerType:'Type',spawned:'Spawned At',logs:'Logs',spawnWorker:'Spawn Worker',
+    cpu:'CPU',memory:'Memory',memPercent:'Mem%',network:'Network I/O',
+    autoRefresh:'Auto Refresh',noContainers:'No containers',
+    confirmStopCt:'Stop container "{id}"?',
+    workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
+    diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
+    healthy:'System Healthy',unhealthy:'Issues Detected',runtimeOk:'Runtime OK',runtimeDown:'Runtime Down',
+    critical:'Critical',error:'Error',warning:'Warning',info:'Info',
+    category:'Category',entity:'Entity',noIssues:'No issues detected',lastScan:'Last scan',
+    autoScan:'Auto Scan',scanInterval:'Interval',readyWorkers:'Ready Workers',
+    schedHistory:'Scheduled Scan History',noHistory:'No scheduled scans yet',
+    dbSpace:'DB Space',activeDb:'Active DB',archiveDb:'Archive DB',
+    retDays:'Retention',runCount:'Records',
+    quotes:'Market Quotes',fetchNow:'Fetch Now',fetching:'Fetching...',
+    prices:'Latest Prices',jobHistory:'Job History',
+    noQuotes:'No quote data (quote-worker not connected or first fetch pending)',
+    noJobs:'No job history',
+    jobId:'Job ID',jobStatus:'Status',duration:'Duration(s)',symbols:'Symbols',errors:'Errors',
+    jobErrors:'Error Details',quoteWorkerDown:'quote-worker offline',
+    crypto:'Crypto',stock:'Stock',change24h:'24h Change',changePercent:'Change%',
+    marketCap:'Market Cap',volume:'Volume',lastFetch:'Last Updated',
+    pending:'Pending',running:'Running',success:'Success',failed:'Failed',partial:'Partial',
   }
 };
 
@@ -343,8 +710,13 @@ const app=createApp({
     const createVisible=ref(false);const creating=ref(false);
     const createForm=reactive({name:'',taskType:'analysis',selected:new Set()});
 
+    const activeAgentCount=computed(()=>agents.value.filter(function(a){return a.state==='Active'}).length);
+
     const taskTypeMap={zh:{analysis:'通用',code_gen:'程式碼生成',review:'審查'},en:{analysis:'General',code_gen:'Code Gen',review:'Review'}};
     const formatTaskType=(tt)=>taskTypeMap[lang.value]?.[tt]||tt;
+
+    function capSlice(arr){return(arr||[]).slice(0,3)}
+    function capExtra(arr){var n=(arr||[]).length;return n>3?n-3:0}
 
     async function doLogin(){
       loginLoading.value=true;loginError.value='';
@@ -365,7 +737,7 @@ const app=createApp({
     }
 
     async function doLogout(){
-      if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
+      stopAutoRefresh();stopAutoScan();stopQuoteAutoRefresh();if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
     }
 
     async function api(path,body={}){
@@ -378,8 +750,13 @@ const app=createApp({
       try{const r=await api('/api/v1/agents/capabilities/defaults');defaultCaps.value=r.data?.capability_ids||[]}catch{defaultCaps.value=[]}
     }
 
-    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps()]);refreshing.value=false}
-    function onTabChange(){}
+    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers()]);refreshing.value=false}
+    function onTabChange(tab){
+      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopQuoteAutoRefresh()}
+      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopQuoteAutoRefresh()}
+      else if(tab==='quotes'){loadQuotes();if(quoteAutoRefresh.value)startQuoteAutoRefresh();stopAutoRefresh();stopAutoScan()}
+      else{stopAutoRefresh();stopAutoScan();stopQuoteAutoRefresh()}
+    }
 
     function riskType(r){const s=(r||'').toLowerCase();if(s==='low')return'success';if(s==='medium')return'warning';if(s==='high'||s==='critical')return'danger';return'info'}
 
@@ -416,14 +793,224 @@ const app=createApp({
 
     function fmtDate(d){if(!d)return'';try{return new Date(d).toLocaleString()}catch{return d}}
 
+    // ── Diagnostics ──────────────────────────────────────────────
+    const diagReport=ref(null);
+    const scanning=ref(false);
+    const autoScan=ref(false);
+    const scanInterval=ref(30000);
+    let autoScanTimer=null;
+
+    async function runScan(){
+      scanning.value=true;
+      try{
+        const r=await getPlain('/api/v1/diagnostics/scan');
+        diagReport.value=r.data||null;
+      }catch(e){ElementPlus.ElMessage.error(`Scan failed: ${e.message}`)}
+      scanning.value=false;
+    }
+
+    function startAutoScan(){stopAutoScan();autoScanTimer=setInterval(()=>runScan(),scanInterval.value)}
+    function stopAutoScan(){if(autoScanTimer){clearInterval(autoScanTimer);autoScanTimer=null}}
+    function onAutoScanChange(){if(autoScan.value)startAutoScan();else stopAutoScan()}
+
+    const schedRuns=ref([]);
+    const diagSpace=ref(null);
+
+    async function loadSchedHistory(){
+      try{
+        var [hr,sp]=await Promise.all([
+          getPlain('/api/v1/diagnostics/history'),
+          getPlain('/api/v1/diagnostics/space')
+        ]);
+        schedRuns.value=hr.success&&hr.data?hr.data.runs||[]:[];
+        diagSpace.value=sp.success?sp.data:null;
+      }catch(e){console.error('sched history:',e)}
+    }
+
+    function sevType(s){
+      if(s==='critical')return'danger';if(s==='error')return'danger';
+      if(s==='warning')return'warning';return'info';
+    }
+    function diagAlertType(r){return r.healthy?'success':r.critical_count>0?'error':'warning'}
+    function diagNumStyle(n,warn){
+      if(n>0)return warn?'color:#e6a23c;font-size:28px;font-weight:700':'color:#f56c6c;font-size:28px;font-weight:700';
+      return'font-size:28px;font-weight:700';
+    }
+    function canStop(state){return state!=='stopped'&&state!=='failed'}
+
+    // ── Quote Worker ──────────────────────────────────────────────
+    const quotePrices=ref([]);
+    const quoteJobs=ref([]);
+    const quoteLoading=ref(false);
+    const quoteFetching=ref(false);
+    const quoteAutoRefresh=ref(false);
+    const quoteRefreshInterval=ref(30000);
+    let quoteAutoTimer=null;
+
+    async function loadQuotes(){
+      quoteLoading.value=true;
+      try{
+        var pr=await getPlain('/api/v1/workers/quote/prices');
+        var jr=await getPlain('/api/v1/workers/quote/history');
+        console.log('prices resp:',JSON.stringify(pr).substring(0,200));
+        console.log('history resp:',JSON.stringify(jr).substring(0,200));
+        if(pr.success&&pr.data&&pr.data.quotes){quotePrices.value=pr.data.quotes}
+        else{quotePrices.value=[];if(pr.message)ElementPlus.ElMessage.warning('Prices: '+pr.message)}
+        if(jr.success&&jr.data&&jr.data.jobs){quoteJobs.value=jr.data.jobs}
+        else{quoteJobs.value=[];if(jr.message)ElementPlus.ElMessage.warning('History: '+jr.message)}
+      }catch(e){ElementPlus.ElMessage.error('Quote load failed: '+e.message);console.error('loadQuotes error:',e)}
+      quoteLoading.value=false;
+    }
+
+    async function quoteFetchNow(){
+      quoteFetching.value=true;
+      try{
+        const r=await getPlain('/api/v1/workers/quote/fetch');
+        if(r.success)ElementPlus.ElMessage.success(r.data&&r.data.message?r.data.message:'Fetch triggered');
+        else ElementPlus.ElMessage.warning(r.message||'quote-worker not connected');
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      quoteFetching.value=false;
+      setTimeout(function(){loadQuotes()},3000);
+    }
+
+    function startQuoteAutoRefresh(){stopQuoteAutoRefresh();quoteAutoTimer=setInterval(()=>loadQuotes(),quoteRefreshInterval.value)}
+    function stopQuoteAutoRefresh(){if(quoteAutoTimer){clearInterval(quoteAutoTimer);quoteAutoTimer=null}}
+    function onQuoteAutoRefreshChange(){if(quoteAutoRefresh.value)startQuoteAutoRefresh();else stopQuoteAutoRefresh()}
+
+    function jobStatusType(s){
+      if(s==='success')return'success';if(s==='failed')return'danger';
+      if(s==='running')return'warning';if(s==='partial')return'warning';return'info';
+    }
+    function fmtPrice(n){
+      if(!n&&n!==0)return'—';
+      if(n>=1)return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      return n.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:8});
+    }
+    function fmtLargeNum(n){
+      if(!n)return'—';
+      if(n>=1e12)return(n/1e12).toFixed(2)+'T';
+      if(n>=1e9)return(n/1e9).toFixed(2)+'B';
+      if(n>=1e6)return(n/1e6).toFixed(2)+'M';
+      return n.toLocaleString();
+    }
+
+    // ── Container monitoring ──────────────────────────────────────
+    const containers=ref([]);
+    const containerStats=ref({});
+    const containerRefreshing=ref(false);
+    const autoRefresh=ref(false);
+    const autoRefreshInterval=ref(5000);
+    let autoRefreshTimer=null;
+
+    const logsVisible=ref(false);const logsLoading=ref(false);
+    const logsContainerId=ref('');const currentLogs=ref('');const tailLines=ref(50);
+
+    const spawnVisible=ref(false);const spawning=ref(false);
+    const spawnForm=reactive({workerType:'',workerId:''});
+
+    // GET /api/v1/workers/containers and /stats use plain fetch (no encrypted envelope)
+    async function getPlain(path){
+      const headers=session?.scopedToken?{'Authorization':`Bearer ${session.scopedToken}`}:{};
+      const resp=await fetch(brokerUrl+path,{headers});
+      return await resp.json();
+    }
+    async function postPlain(path,body){
+      const headers={'Content-Type':'application/json'};
+      if(session?.scopedToken)headers['Authorization']='Bearer '+session.scopedToken;
+      const resp=await fetch(brokerUrl+path,{method:'POST',headers,body:JSON.stringify(body||{})});
+      return await resp.json();
+    }
+
+    async function loadContainers(){
+      try{const r=await getPlain('/api/v1/workers/containers');containers.value=Array.isArray(r.data)?r.data:[]}
+      catch{containers.value=[]}
+    }
+    async function loadStats(){
+      try{
+        const r=await getPlain('/api/v1/workers/stats');
+        const arr=Array.isArray(r.data)?r.data:[];
+        containerStats.value=Object.fromEntries(arr.map(s=>[s.container_id,s]));
+      }catch{containerStats.value={}}
+    }
+    async function refreshContainers(){
+      containerRefreshing.value=true;
+      await Promise.all([loadContainers(),loadStats()]);
+      containerRefreshing.value=false;
+    }
+
+    const mergedContainers=computed(()=>containers.value.map(c=>({...c,stats:containerStats.value[c.container_id]||null})));
+    const runningCount=computed(()=>containers.value.filter(function(c){return c.state==='running'}).length);
+
+    function ctStateType(state){
+      if(state==='running')return'success';
+      if(state==='starting'||state==='stopping')return'warning';
+      if(state==='failed')return'danger';
+      return'info';
+    }
+
+    function fmtBytes(b){
+      if(!b)return'0 B';
+      if(b<1024)return`${b} B`;
+      if(b<1048576)return`${(b/1024).toFixed(1)} KB`;
+      if(b<1073741824)return`${(b/1048576).toFixed(1)} MB`;
+      return`${(b/1073741824).toFixed(2)} GB`;
+    }
+
+    async function viewLogs(containerId){
+      logsContainerId.value=containerId;logsVisible.value=true;
+      await fetchLogs();
+    }
+    async function fetchLogs(){
+      logsLoading.value=true;
+      try{
+        const r=await api('/api/v1/workers/logs',{container_id:logsContainerId.value,tail:tailLines.value});
+        currentLogs.value=r.data?.logs||r.data?.data?.logs||'';
+      }catch(e){currentLogs.value=`Error: ${e.message}`}
+      logsLoading.value=false;
+    }
+
+    async function stopContainer(containerId){
+      try{
+        await ElementPlus.ElMessageBox.confirm(t('confirmStopCt').replace('{id}',containerId),t('confirmTitle'),{type:'warning'});
+        await api('/api/v1/workers/stop',{container_id:containerId});
+        await refreshContainers();
+        ElementPlus.ElMessage.success('OK');
+      }catch{}
+    }
+
+    function openSpawn(){spawnForm.workerType='';spawnForm.workerId='';spawnVisible.value=true}
+    async function doSpawn(){
+      spawning.value=true;
+      try{
+        const body={worker_type:spawnForm.workerType};
+        if(spawnForm.workerId)body.worker_id=spawnForm.workerId;
+        const r=await api('/api/v1/workers/spawn',body);
+        if(r.success){spawnVisible.value=false;await refreshContainers();ElementPlus.ElMessage.success(lang.value==='zh'?`容器已啟動: ${r.data?.container_id}`:`Container spawned: ${r.data?.container_id}`)}
+        else ElementPlus.ElMessage.error(r.message||'Failed');
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      spawning.value=false;
+    }
+
+    function startAutoRefresh(){stopAutoRefresh();autoRefreshTimer=setInterval(()=>refreshContainers(),autoRefreshInterval.value)}
+    function stopAutoRefresh(){if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}}
+    function onAutoRefreshChange(){if(autoRefresh.value)startAutoRefresh();else stopAutoRefresh()}
+
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
-      activeTab,refreshing,agents,caps,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,
+      activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
+      diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagNumStyle,
+      schedRuns,diagSpace,loadSchedHistory,
+      containers,containerStats,containerRefreshing,mergedContainers,runningCount,ctStateType,fmtBytes,canStop,
+      autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
+      logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
+      spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
+      quotePrices,quoteJobs,quoteLoading,quoteFetching,quoteAutoRefresh,quoteRefreshInterval,
+      loadQuotes,quoteFetchNow,onQuoteAutoRefreshChange,jobStatusType,fmtPrice,fmtLargeNum,
       session:computed(()=>session)};
   }
 });
 app.use(ElementPlus);
-app.mount('#app');
+try{app.mount('#app')}catch(e){showErr('MOUNT ERROR: '+e.message+'\n'+(e.stack||''))}
 </script>
 </body>
 </html>

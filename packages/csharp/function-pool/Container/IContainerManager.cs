@@ -29,4 +29,11 @@ public interface IContainerManager
 
     /// <summary>Check if the container runtime is available</summary>
     Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Get real-time resource usage stats for all currently running managed containers.
+    /// Calls <c>docker stats --no-stream</c> and parses the output.
+    /// Returns an empty list when no containers are running or the runtime is unavailable.
+    /// </summary>
+    Task<List<ContainerStats>> GetStatsAsync(CancellationToken ct = default);
 }

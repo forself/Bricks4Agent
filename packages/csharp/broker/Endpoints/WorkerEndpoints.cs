@@ -129,6 +129,26 @@ public static class WorkerEndpoints
             }));
         });
 
+        // ── GET /api/v1/workers/stats — Real-time container resource stats ──
+        workers.MapGet("/stats", async (IContainerManager containerMgr, CancellationToken ct) =>
+        {
+            var stats = await containerMgr.GetStatsAsync(ct);
+            return Results.Ok(ApiResponseHelper.Success(stats.Select(s => new
+            {
+                container_id        = s.ContainerId,
+                container_name      = s.ContainerName,
+                cpu_percent         = s.CpuPercent,
+                memory_usage_bytes  = s.MemoryUsageBytes,
+                memory_limit_bytes  = s.MemoryLimitBytes,
+                memory_percent      = s.MemoryPercent,
+                network_input_bytes = s.NetworkInputBytes,
+                network_output_bytes = s.NetworkOutputBytes,
+                block_read_bytes    = s.BlockReadBytes,
+                block_write_bytes   = s.BlockWriteBytes,
+                collected_at        = s.CollectedAt
+            })));
+        });
+
         // ── GET /api/v1/workers/health — Pool health summary ──
         workers.MapGet("/health", async (
             IWorkerRegistry registry,

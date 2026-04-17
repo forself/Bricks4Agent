@@ -136,16 +136,15 @@ public class WorkerSession : IAsyncDisposable
                 await SendRegisterAckAsync(false, "", "Invalid register message", ct);
                 return;
             }
-            if (string.IsNullOrWhiteSpace(registerMsg.WorkerType) ||
-                string.IsNullOrWhiteSpace(registerMsg.KeyId) ||
-                string.IsNullOrWhiteSpace(registerMsg.Timestamp) ||
-                string.IsNullOrWhiteSpace(registerMsg.Nonce) ||
-                string.IsNullOrWhiteSpace(registerMsg.Signature))
-            {
-                await SendRegisterAckAsync(false, registerMsg.WorkerId, "Missing worker authentication fields", ct);
-                return;
-            }
-            if (!DateTimeOffset.TryParse(registerMsg.Timestamp, out var timestamp))
+            // Auth field validation — defer to ValidateWorkerRegister which respects Enforce flag
+            var hasAuthFields = !string.IsNullOrWhiteSpace(registerMsg.WorkerType) &&
+                                !string.IsNullOrWhiteSpace(registerMsg.KeyId) &&
+                                !string.IsNullOrWhiteSpace(registerMsg.Timestamp) &&
+                                !string.IsNullOrWhiteSpace(registerMsg.Nonce) &&
+                                !string.IsNullOrWhiteSpace(registerMsg.Signature);
+
+            DateTimeOffset timestamp = DateTimeOffset.UtcNow;
+            if (hasAuthFields && !DateTimeOffset.TryParse(registerMsg.Timestamp, out timestamp))
             {
                 await SendRegisterAckAsync(false, registerMsg.WorkerId, "Invalid worker authentication timestamp", ct);
                 return;
@@ -153,14 +152,14 @@ public class WorkerSession : IAsyncDisposable
 
             var authDecision = _workerIdentityAuth.ValidateWorkerRegister(new WorkerRegisterAuthRequest
             {
-                WorkerType = registerMsg.WorkerType,
-                KeyId = registerMsg.KeyId,
+                WorkerType = registerMsg.WorkerType ?? "",
+                KeyId = hasAuthFields ? registerMsg.KeyId! : "",
                 WorkerId = registerMsg.WorkerId,
                 Capabilities = registerMsg.Capabilities ?? new List<string>(),
                 MaxConcurrent = registerMsg.MaxConcurrent > 0 ? registerMsg.MaxConcurrent : 4,
                 Timestamp = timestamp,
-                Nonce = registerMsg.Nonce,
-                Signature = registerMsg.Signature
+                Nonce = hasAuthFields ? registerMsg.Nonce! : Guid.NewGuid().ToString("N"),
+                Signature = hasAuthFields ? registerMsg.Signature! : ""
             });
             if (!authDecision.IsAuthorized)
             {

@@ -1,0 +1,98 @@
+# Dashboard Integration Test Stack
+#
+# Prerequisites:  .\scripts\build-images.ps1
+# Start:          docker compose -f tools/compose.dashboard-test.yml up -d
+# Dashboard:      http://localhost:5000  (login with default values)
+# Spawn worker:   容器監控 tab → 啟動容器 → worker_type: file-worker
+# Stop:           docker compose -f tools/compose.dashboard-test.yml down -v
+
+name: b4a-dashboard-test
+
+services:
+  broker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/broker/Containerfile.monitor
+    image: bricks4agent-broker-monitor:latest
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:5000"
+      Database__Path: "/data/broker.db"
+
+      # Dev-only keys
+      Broker__ScopedToken__Secret: "THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B"
+      Broker__Encryption__MasterKeyBase64: "REDACTED_MASTER_KEY"
+      Broker__Encryption__EcdhPrivateKeyBase64: "REDACTED_ECDH_KEY"
+
+      # LLM — Gemini via OpenAI-compatible endpoint
+      LlmProxy__Enabled: "true"
+      LlmProxy__Provider: "openai-compatible"
+      LlmProxy__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
+      LlmProxy__ApiKey: "REDACTED_GOOGLE_API_KEY"
+      LlmProxy__DefaultModel: "gemini-2.0-flash"
+      LlmProxy__AllowModelOverride: "false"
+      LlmProxy__SupportsToolCalling: "true"
+      LlmProxy__TimeoutSeconds: "60"
+
+      HighLevelLlm__Enabled: "true"
+      HighLevelLlm__Provider: "openai-compatible"
+      HighLevelLlm__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
+      HighLevelLlm__ApiKey: "REDACTED_GOOGLE_API_KEY"
+      HighLevelLlm__DefaultModel: "gemini-2.0-flash"
+      HighLevelLlm__ApiFormat: "chat"
+      HighLevelLlm__TimeoutSeconds: "60"
+
+      Embedding__Enabled: "false"
+
+      # Dev seed — matches dashboard login defaults (no need to change login form)
+      DevelopmentSeed__Enabled: "true"
+      DevelopmentSeed__PrincipalId: "prn_dashboard"
+      DevelopmentSeed__DisplayName: "Dashboard Test Principal"
+      DevelopmentSeed__ActorType: "Human"
+      DevelopmentSeed__TaskId: "task_dashboard"
+      DevelopmentSeed__TaskType: "analysis"
+      DevelopmentSeed__AssignedRoleId: "role_admin"
+      DevelopmentSeed__RuntimeDescriptor: "{}"
+
+      # Function Pool
+      FunctionPool__Enabled: "true"
+      FunctionPool__ListenPort: "7000"
+      FunctionPool__BindAddress: "0.0.0.0"
+      FunctionPool__StrictMode: "false"
+      FunctionPool__DispatchTimeoutSeconds: "30"
+      FunctionPool__MaxWorkers: "20"
+      FunctionPool__HeartbeatTimeoutSeconds: "30"
+
+      # Container Manager — broker spawns workers via Docker socket
+      FunctionPool__ContainerManager__Enabled: "true"
+      FunctionPool__ContainerManager__Runtime: "docker"
+      FunctionPool__ContainerManager__NetworkName: "bricks4agent_worker-net"
+      FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
+      FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
+      FunctionPool__ContainerManager__MaxContainersPerType: "3"
+
+      # file-worker image
+      FunctionPool__ContainerManager__WorkerImages__file-worker__Image: "bricks4agent-file-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__file-worker__MemoryLimit: "256m"
+      FunctionPool__ContainerManager__WorkerImages__file-worker__CpuLimit: "0.5"
+      FunctionPool__ContainerManager__WorkerImages__file-worker__Volumes__0: "/tmp/b4a-workspace:/workspace"
+      # quote-worker image — 金融報價自動抓取
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__Image: "bricks4agent-quote-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__MemoryLimit: "256m"
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__CpuLimit: "0.5"
+
+    ports:
+      - "5000:5000"
+    volumes:
+      - broker-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - worker-net
+    restart: unless-stopped
+
+networks:
+  worker-net:
+    name: bricks4agent_worker-net
+    driver: bridge
+
+volumes:
+  broker-data:
