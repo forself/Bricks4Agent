@@ -19,15 +19,15 @@ services:
       Database__Path: "/data/broker.db"
 
       # Dev-only keys
-      Broker__ScopedToken__Secret: "THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B"
-      Broker__Encryption__MasterKeyBase64: "REDACTED_MASTER_KEY"
-      Broker__Encryption__EcdhPrivateKeyBase64: "REDACTED_ECDH_KEY"
+      Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
+      Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
+      Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
 
       # LLM — Gemini via OpenAI-compatible endpoint
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "openai-compatible"
       LlmProxy__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
-      LlmProxy__ApiKey: "REDACTED_GOOGLE_API_KEY"
+      LlmProxy__ApiKey: "${GOOGLE_API_KEY}"
       LlmProxy__DefaultModel: "gemini-2.0-flash"
       LlmProxy__AllowModelOverride: "false"
       LlmProxy__SupportsToolCalling: "true"
@@ -36,7 +36,7 @@ services:
       HighLevelLlm__Enabled: "true"
       HighLevelLlm__Provider: "openai-compatible"
       HighLevelLlm__BaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai"
-      HighLevelLlm__ApiKey: "REDACTED_GOOGLE_API_KEY"
+      HighLevelLlm__ApiKey: "${GOOGLE_API_KEY}"
       HighLevelLlm__DefaultModel: "gemini-2.0-flash"
       HighLevelLlm__ApiFormat: "chat"
       HighLevelLlm__TimeoutSeconds: "60"
