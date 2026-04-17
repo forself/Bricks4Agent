@@ -26,8 +26,9 @@ var options = new WorkerHostOptions
 {
     BrokerHost               = config.GetValue<string>("Worker:BrokerHost") ?? "localhost",
     BrokerPort               = config.GetValue("Worker:BrokerPort", 7000),
-    WorkerId                 = config.GetValue<string>("Worker:WorkerId")
-                               ?? $"strategy-wkr-{Guid.NewGuid():N}"[..20],
+    WorkerId                 = string.IsNullOrEmpty(config.GetValue<string>("Worker:WorkerId"))
+                               ? $"strategy-wkr-{Guid.NewGuid():N}"[..20]
+                               : config.GetValue<string>("Worker:WorkerId")!,
     MaxConcurrent            = config.GetValue("Worker:MaxConcurrent", 4),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
     WorkerType               = "strategy-worker",

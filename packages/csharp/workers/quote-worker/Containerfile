@@ -11,7 +11,8 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 RUN adduser --disabled-password --gecos "" --uid 10004 quoteworker \
-    && chown -R quoteworker:quoteworker /app
+    && mkdir -p /data \
+    && chown -R quoteworker:quoteworker /app /data
 
 USER quoteworker
 

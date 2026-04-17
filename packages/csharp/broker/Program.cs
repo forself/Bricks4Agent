@@ -236,6 +236,8 @@ builder.Services.AddHttpClient<Broker.Services.BrowserExecutionRuntimeService>(c
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserRuntime/1.0");
 });
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
+builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -870,6 +872,7 @@ if (poolEnabled)
     TradingEndpoints.Map(api);
     StrategyEndpoints.Map(api);
     RiskEndpoints.Map(api);
+    AutoTraderEndpoints.Map(api);
 }
 
 // ── Phase 3: 啟動功能池 TCP Listener ──

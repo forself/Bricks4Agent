@@ -2,6 +2,7 @@ using System.Text.Json;
 using WorkerSdk;
 using StrategyWorker.Engine;
 using StrategyWorker.Models;
+using static StrategyWorker.Engine.BacktestEngine;
 
 namespace StrategyWorker.Handlers;
 
@@ -30,6 +31,7 @@ public class StrategySignalHandler : ICapabilityHandler
         var result = route switch
         {
             "evaluate" => Evaluate(payload),
+            "backtest" => Backtest(payload),
             "list"     => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -101,6 +103,70 @@ public class StrategySignalHandler : ICapabilityHandler
             interval   = signal.Interval,
             timestamp  = signal.Timestamp,
             indicators = signal.Indicators,
+        });
+        return (true, json, null);
+    }
+
+    private (bool, string?, string?) Backtest(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var doc = JsonDocument.Parse(payload).RootElement;
+        var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
+
+        if (!_strategies.TryGetValue(strategyName, out var strategy))
+            return (false, null, $"Unknown strategy: {strategyName}");
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+        {
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open  = b.TryGetProperty("open",  out var o) ? o.GetDecimal() : 0,
+                High  = b.TryGetProperty("high",  out var h) ? h.GetDecimal() : 0,
+                Low   = b.TryGetProperty("low",   out var l) ? l.GetDecimal() : 0,
+                Close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
+                Volume = b.TryGetProperty("volume", out var v) ? v.GetDecimal() : 0,
+            });
+        }
+
+        var config = new StrategyConfig
+        {
+            Name     = strategyName,
+            Symbol   = doc.TryGetProperty("symbol",   out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange",  out var exg) ? exg.GetString() ?? "" : "",
+            SmaFast  = doc.TryGetProperty("sma_fast",  out var sf)  ? sf.GetInt32()  : 10,
+            SmaSlow  = doc.TryGetProperty("sma_slow",  out var ss)  ? ss.GetInt32()  : 30,
+            RsiPeriod = doc.TryGetProperty("rsi_period", out var rp) ? rp.GetInt32() : 14,
+        };
+
+        var initialCash = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
+        var commission  = doc.TryGetProperty("commission",   out var cm) ? cm.GetDecimal() : 0.001m;
+
+        var result = BacktestEngine.Run(strategy, bars, config, initialCash, commission);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            strategy = result.Strategy, symbol = result.Symbol,
+            initial_cash = result.InitialCash, final_value = result.FinalValue,
+            total_return = result.TotalReturn, total_return_pct = result.TotalReturnPct,
+            total_trades = result.TotalTrades, win_trades = result.WinTrades, lose_trades = result.LoseTrades,
+            win_rate = result.WinRate, max_drawdown = result.MaxDrawdown, max_drawdown_pct = result.MaxDrawdownPct,
+            sharpe_ratio = result.SharpeRatio, avg_win = result.AvgWin, avg_loss = result.AvgLoss,
+            profit_factor = result.ProfitFactor,
+            start_date = result.StartDate, end_date = result.EndDate, total_bars = result.TotalBars,
+            trades = result.Trades.Select(t => new
+            {
+                side = t.Side, entry_date = t.EntryDate, entry_price = t.EntryPrice,
+                exit_date = t.ExitDate, exit_price = t.ExitPrice, quantity = t.Quantity,
+                pnl = t.Pnl, pnl_pct = t.PnlPct, hold_bars = t.HoldBars,
+            }),
+            equity_curve = result.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
         });
         return (true, json, null);
     }

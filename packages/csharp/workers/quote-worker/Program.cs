@@ -31,8 +31,9 @@ var options = new WorkerHostOptions
 {
     BrokerHost               = config.GetValue<string>("Worker:BrokerHost") ?? "localhost",
     BrokerPort               = config.GetValue("Worker:BrokerPort", 7000),
-    WorkerId                 = config.GetValue<string>("Worker:WorkerId")
-                               ?? $"quote-wkr-{Guid.NewGuid():N}"[..20],
+    WorkerId                 = string.IsNullOrEmpty(config.GetValue<string>("Worker:WorkerId"))
+                               ? $"quote-wkr-{Guid.NewGuid():N}"[..20]
+                               : config.GetValue<string>("Worker:WorkerId")!,
     MaxConcurrent            = config.GetValue("Worker:MaxConcurrent", 4),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
     WorkerType               = "quote-worker",
@@ -80,6 +81,11 @@ _ = jobQueue.RunAsync(cts.Token);
 var persistLogger = loggerFactory.CreateLogger("SnapshotPersistence");
 _ = SnapshotPersistenceLoop.RunAsync(jobQueue, quoteDb, persistLogger, ct: cts.Token);
 
+// ── 啟動時自動抓取歷史 K 線（增量，不重複）──────────────────────────
+var startupLogger = loggerFactory.CreateLogger<StartupHistoryFetcher>();
+var startupFetcher = new StartupHistoryFetcher(histFetcher, quoteDb, startupLogger, stockSymbols, cryptoIds);
+_ = startupFetcher.RunOnceAsync(cts.Token);
+
 // ── 建立 WorkerHost 並註冊能力 ────────────────────────────────────────
 var host = new WorkerHost(options, logger);
 host.RegisterHandler(new QuoteHistoryHandler(jobQueue));
@@ -87,6 +93,7 @@ host.RegisterHandler(new QuotePricesHandler(jobQueue));
 host.RegisterHandler(new QuoteFetchNowHandler(jobQueue));
 host.RegisterHandler(new QuoteOhlcvHandler(quoteDb, histFetcher));
 host.RegisterHandler(new QuoteIndicatorHandler(quoteDb));
+host.RegisterHandler(new QuoteBatchFetchHandler(startupFetcher));
 
 logger.LogInformation(
     "QuoteWorker starting: broker={Host}:{Port}, fetchInterval={Interval}min, crypto=[{Crypto}], stocks=[{Stocks}]",

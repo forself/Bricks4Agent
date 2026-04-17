@@ -66,17 +66,48 @@ tr:hover { background: rgba(88,166,255,0.04); }
 .btn-sell { background: var(--red); color: #fff; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
-.signal-box { padding: 16px; border-radius: 8px; margin-top: 12px; }
+.signal-box { padding: 20px; border-radius: 8px; margin-top: 16px; }
 .signal-box.buy { border: 2px solid var(--green); background: rgba(63,185,80,0.06); }
 .signal-box.sell { border: 2px solid var(--red); background: rgba(248,81,73,0.06); }
 .signal-box.hold { border: 2px solid var(--border); background: rgba(139,148,158,0.06); }
-.signal-action { font-size: 24px; font-weight: 700; text-transform: uppercase; }
+.signal-action { font-size: 36px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
 .signal-confidence { font-size: 14px; color: var(--text2); margin-top: 4px; }
-.signal-reason { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
+.signal-header { display: flex; align-items: center; gap: 20px; }
+.signal-header .signal-price { font-size: 28px; font-weight: 700; margin-left: auto; }
+.signal-header .signal-symbol { font-size: 16px; color: var(--text2); }
+.signal-strategies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+@media (max-width: 900px) { .signal-strategies { grid-template-columns: 1fr; } }
+.signal-strat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.signal-strat-card .strat-name { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.signal-strat-card .strat-action { font-size: 18px; font-weight: 700; }
+.signal-strat-card .strat-detail { font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.4; }
+.signal-indicators { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+.signal-ind { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; min-width: 100px; text-align: center; }
+.signal-ind .ind-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.signal-ind .ind-value { font-size: 20px; font-weight: 700; margin-top: 2px; }
+.signal-ind .ind-value.warn { color: var(--yellow); }
+.signal-ind .ind-value.danger { color: var(--red); }
+.signal-ind .ind-value.safe { color: var(--green); }
 
 .log { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; color: var(--text2); white-space: pre-wrap; }
 .refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .refresh-bar .time { font-size: 12px; color: var(--text2); }
+
+/* Symbol Picker */
+.sym-picker { position: relative; }
+.sym-picker input { width: 160px; }
+.sym-dropdown { position: absolute; top: 100%; left: 0; width: 280px; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; z-index: 100; display: none; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.sym-dropdown.open { display: block; }
+.sym-section { padding: 6px 12px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+.sym-item { display: flex; align-items: center; padding: 8px 12px; cursor: pointer; gap: 10px; border-bottom: 1px solid rgba(48,54,61,0.5); }
+.sym-item:hover { background: rgba(88,166,255,0.08); }
+.sym-item .sym-ticker { font-weight: 700; font-size: 14px; min-width: 60px; }
+.sym-item .sym-name { font-size: 12px; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sym-item .sym-price { font-size: 13px; font-weight: 600; text-align: right; min-width: 70px; }
+.sym-item .sym-change { font-size: 11px; text-align: right; min-width: 55px; }
+.sym-item .sym-type-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.sym-type-tag.stock { background: rgba(88,166,255,0.15); color: var(--accent); }
+.sym-type-tag.crypto { background: rgba(210,153,34,0.15); color: var(--yellow); }
 </style>
 </head>
 <body>
@@ -99,6 +130,8 @@ tr:hover { background: rgba(88,166,255,0.04); }
   <div class="tab" onclick="switchTab('trade')">下單</div>
   <div class="tab" onclick="switchTab('orders')">訂單</div>
   <div class="tab" onclick="switchTab('risk')">風控</div>
+  <div class="tab" onclick="switchTab('auto')">自動交易</div>
+  <div class="tab" onclick="switchTab('chart')">K 線圖</div>
 </div>
 
 <div class="content">
@@ -127,6 +160,8 @@ tr:hover { background: rgba(88,166,255,0.04); }
     <div class="refresh-bar">
       <button class="btn btn-primary btn-sm" onclick="fetchQuotes()">重新整理</button>
       <button class="btn btn-primary btn-sm" onclick="triggerFetch()">立即抓取報價</button>
+      <button class="btn btn-buy btn-sm" onclick="batchFetchAll()" id="batch-fetch-btn">一鍵抓取所有歷史 K 線</button>
+      <span id="batch-fetch-status" style="font-size:12px;color:var(--text2)"></span>
     </div>
     <div class="card">
       <h3>即時報價</h3>
@@ -142,9 +177,10 @@ tr:hover { background: rgba(88,166,255,0.04); }
     <div class="card">
       <h3>產生訊號</h3>
       <div class="form-row">
-        <div class="form-group">
+        <div class="form-group sym-picker">
           <label>Symbol</label>
-          <input id="sig-symbol" value="AAPL" placeholder="AAPL, BTC…">
+          <input id="sig-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'sig')" oninput="filterSymPicker(this,'sig')">
+          <div class="sym-dropdown" id="sig-sym-dropdown"></div>
         </div>
         <div class="form-group">
           <label>Exchange</label>
@@ -175,7 +211,7 @@ tr:hover { background: rgba(88,166,255,0.04); }
           <div class="form-group"><label>Exchange</label>
             <select id="ord-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
           </div>
-          <div class="form-group"><label>Symbol</label><input id="ord-symbol" value="AAPL"></div>
+          <div class="form-group sym-picker"><label>Symbol</label><input id="ord-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'ord')" oninput="filterSymPicker(this,'ord')"><div class="sym-dropdown" id="ord-sym-dropdown"></div></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>方向</label>
@@ -229,19 +265,230 @@ tr:hover { background: rgba(88,166,255,0.04); }
     </div>
   </div>
 
+  <!-- ── 自動交易 ──────────────────────────────────────────────── -->
+  <div class="panel" id="panel-auto">
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>自動交易控制</h3>
+        <div class="form-row" style="align-items:center">
+          <div style="font-size:16px;font-weight:600" id="auto-status-text">狀態: 載入中…</div>
+          <button class="btn btn-buy btn-sm" id="auto-toggle-btn" onclick="toggleAutoTrader()">啟用</button>
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <div class="form-group"><label>間隔（秒）</label><input id="auto-interval" type="number" value="300" min="60" step="60"></div>
+          <button class="btn btn-primary btn-sm" onclick="setAutoInterval()">設定</button>
+        </div>
+        <h3 style="margin-top:16px">新增監控</h3>
+        <div class="form-row">
+          <div class="form-group sym-picker"><label>Symbol</label><input id="auto-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
+          <div class="form-group"><label>Exchange</label>
+            <select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
+          </div>
+          <div class="form-group"><label>策略</label>
+            <select id="auto-strategy">
+              <option value="composite">Composite</option><option value="sma_cross">SMA</option>
+              <option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option>
+            </select>
+          </div>
+          <div class="form-group"><label>數量</label><input id="auto-qty" type="number" value="1" min="0.001" step="any"></div>
+          <button class="btn btn-primary" onclick="addAutoWatch()">新增</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>監控清單</h3>
+        <table>
+          <thead><tr><th>Symbol</th><th>Exchange</th><th>策略</th><th>數量</th><th>最新訊號</th><th>信心度</th><th>最後檢查</th><th></th></tr></thead>
+          <tbody id="auto-watch-table"><tr><td colspan="8" style="color:var(--text2)">無監控項目</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="refresh-bar">
+        <h3 style="margin:0">交易日誌</h3>
+        <button class="btn btn-primary btn-sm" onclick="fetchAutoLogs()">重新整理</button>
+      </div>
+      <div id="auto-logs" class="log" style="max-height:300px">等待日誌…</div>
+    </div>
+  </div>
+
+  <!-- ── K 線圖 ────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-chart">
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group sym-picker"><label>Symbol</label><input id="chart-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'chart')" oninput="filterSymPicker(this,'chart')"><div class="sym-dropdown" id="chart-sym-dropdown"></div></div>
+        <div class="form-group"><label>Interval</label>
+          <select id="chart-interval"></select>
+        </div>
+        <div class="form-group"><label>Bar 數</label><input id="chart-limit" type="number" value="120" min="30" max="500"></div>
+        <button class="btn btn-primary" onclick="loadChart()">載入</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
+      <div id="chart-container" style="height:500px;width:100%"></div>
+    </div>
+  </div>
+
 </div>
 
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 const API = '';  // 同 origin
 
+// ── 商品清單（從報價自動載入 + 預設熱門標的）────────────────────
+const defaultSymbols = [
+  // 美股
+  { symbol: 'AAPL',  name: 'Apple Inc.',          type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'MSFT',  name: 'Microsoft Corp.',     type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'TSLA',  name: 'Tesla Inc.',           type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'NVDA',  name: 'NVIDIA Corp.',         type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'AMZN',  name: 'Amazon.com Inc.',      type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.',        type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'META',  name: 'Meta Platforms Inc.',   type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'AMD',   name: 'Advanced Micro Devices', type: 'stock', exchange: 'alpaca' },
+  { symbol: 'NFLX',  name: 'Netflix Inc.',         type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'SPY',   name: 'S&P 500 ETF',          type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'QQQ',   name: 'Nasdaq 100 ETF',       type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'PLTR',  name: 'Palantir Technologies', type: 'stock', exchange: 'alpaca' },
+  { symbol: 'COIN',  name: 'Coinbase Global',      type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'INTC',  name: 'Intel Corp.',           type: 'stock',  exchange: 'alpaca' },
+  { symbol: 'DIS',   name: 'Walt Disney Co.',       type: 'stock',  exchange: 'alpaca' },
+  // 加密貨幣
+  { symbol: 'BTC',   name: 'Bitcoin',              type: 'crypto', exchange: 'binance' },
+  { symbol: 'ETH',   name: 'Ethereum',             type: 'crypto', exchange: 'binance' },
+  { symbol: 'SOL',   name: 'Solana',               type: 'crypto', exchange: 'binance' },
+  { symbol: 'DOGE',  name: 'Dogecoin',             type: 'crypto', exchange: 'binance' },
+  { symbol: 'BNB',   name: 'Binance Coin',         type: 'crypto', exchange: 'binance' },
+  { symbol: 'XRP',   name: 'Ripple',               type: 'crypto', exchange: 'binance' },
+  { symbol: 'ADA',   name: 'Cardano',              type: 'crypto', exchange: 'binance' },
+  { symbol: 'AVAX',  name: 'Avalanche',            type: 'crypto', exchange: 'binance' },
+  { symbol: 'LINK',  name: 'Chainlink',            type: 'crypto', exchange: 'binance' },
+  { symbol: 'DOT',   name: 'Polkadot',             type: 'crypto', exchange: 'binance' },
+  { symbol: 'MATIC', name: 'Polygon',              type: 'crypto', exchange: 'binance' },
+  { symbol: 'UNI',   name: 'Uniswap',              type: 'crypto', exchange: 'binance' },
+];
+
+let liveQuotes = {};  // symbol -> { price, change_percent }
+
+async function loadLiveQuotes() {
+  const r = await api('/api/v1/workers/quote/prices');
+  if (r?.data?.quotes) {
+    r.data.quotes.forEach(q => {
+      liveQuotes[q.symbol] = { price: q.price, change_percent: q.change_percent, type: q.type };
+    });
+  }
+}
+
+function getAllSymbols() {
+  // 合併預設清單 + 即時報價中的 symbol
+  const map = new Map();
+  defaultSymbols.forEach(s => map.set(s.symbol, s));
+  Object.entries(liveQuotes).forEach(([sym, q]) => {
+    if (!map.has(sym)) {
+      map.set(sym, { symbol: sym, name: sym, type: q.type || 'stock', exchange: q.type === 'crypto' ? 'binance' : 'alpaca' });
+    }
+  });
+  return Array.from(map.values());
+}
+
+function renderSymDropdown(dropdownId, filter = '') {
+  const dd = document.getElementById(dropdownId);
+  const all = getAllSymbols();
+  const q = filter.toUpperCase();
+  const filtered = q ? all.filter(s => s.symbol.includes(q) || s.name.toUpperCase().includes(q)) : all;
+
+  const stocks = filtered.filter(s => s.type === 'stock');
+  const crypto = filtered.filter(s => s.type === 'crypto');
+
+  let html = '';
+  if (stocks.length > 0) {
+    html += '<div class="sym-section">美股 US Stocks</div>';
+    html += stocks.map(s => symItemHtml(s, dropdownId)).join('');
+  }
+  if (crypto.length > 0) {
+    html += '<div class="sym-section">加密貨幣 Crypto</div>';
+    html += crypto.map(s => symItemHtml(s, dropdownId)).join('');
+  }
+  if (filtered.length === 0) {
+    html = '<div style="padding:12px;color:var(--text2);text-align:center">無符合結果</div>';
+  }
+  dd.innerHTML = html;
+}
+
+function symItemHtml(s, dropdownId) {
+  const q = liveQuotes[s.symbol];
+  const price = q ? '$' + Number(q.price).toFixed(2) : '';
+  const chg = q ? Number(q.change_percent).toFixed(2) + '%' : '';
+  const chgCls = q ? (q.change_percent > 0 ? 'positive' : q.change_percent < 0 ? 'negative' : '') : '';
+  const prefix = dropdownId.replace('-sym-dropdown', '');
+  return `<div class="sym-item" onclick="selectSymbol('${prefix}','${s.symbol}','${s.exchange}','${s.type}')">
+    <span class="sym-type-tag ${s.type}">${s.type === 'stock' ? 'US' : '幣'}</span>
+    <span class="sym-ticker">${s.symbol}</span>
+    <span class="sym-name">${s.name}</span>
+    <span class="sym-price">${price}</span>
+    <span class="sym-change ${chgCls}">${chg}</span>
+  </div>`;
+}
+
+function openSymPicker(input, prefix) {
+  const dd = document.getElementById(prefix + '-sym-dropdown');
+  renderSymDropdown(prefix + '-sym-dropdown', input.value);
+  dd.classList.add('open');
+}
+
+function filterSymPicker(input, prefix) {
+  renderSymDropdown(prefix + '-sym-dropdown', input.value);
+}
+
+function selectSymbol(prefix, symbol, exchange, type) {
+  document.getElementById(prefix + '-symbol').value = symbol;
+
+  // 自動設定 exchange
+  const exSel = document.getElementById(prefix + '-exchange');
+  if (exSel) exSel.value = exchange;
+
+  // 如果是 chart tab，更新可用的 interval
+  if (prefix === 'chart') updateChartIntervals(type);
+
+  // 關閉下拉
+  document.getElementById(prefix + '-sym-dropdown').classList.remove('open');
+}
+
+// 點擊外部關閉下拉
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.sym-picker')) {
+    document.querySelectorAll('.sym-dropdown').forEach(d => d.classList.remove('open'));
+  }
+});
+
+// ── Chart interval 自動偵測 ─────────────────────────────────────
+function updateChartIntervals(type) {
+  const sel = document.getElementById('chart-interval');
+  const current = sel.value;
+  sel.innerHTML = '';
+
+  if (type === 'crypto') {
+    [['1m','1 分鐘'],['5m','5 分鐘'],['15m','15 分鐘'],['30m','30 分鐘'],
+     ['1h','1 小時'],['4h','4 小時'],['1d','日線'],['1w','週線']].forEach(([v,t]) => {
+      sel.innerHTML += `<option value="${v}" ${v===current?'selected':''}>${t}</option>`;
+    });
+  } else {
+    sel.innerHTML = '<option value="1d" selected>日線</option>';
+  }
+}
+
+// 初始化 chart intervals
+updateChartIntervals('stock');
+
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', t.textContent.includes({overview:'總覽',quotes:'報價',strategy:'策略',trade:'下單',orders:'訂單',risk:'風控'}[name])));
+  const labels = {overview:'總覽',quotes:'報價',strategy:'策略',trade:'下單',orders:'訂單',risk:'風控',auto:'自動交易',chart:'K 線圖'};
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.includes(labels[name])));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'overview') loadOverview();
   if (name === 'quotes') fetchQuotes();
   if (name === 'orders') fetchOrders();
   if (name === 'risk') fetchRules();
+  if (name === 'auto') fetchAutoStatus();
 }
 
 async function api(path, opts) {
@@ -330,6 +577,30 @@ async function triggerFetch() {
   setTimeout(fetchQuotes, 3000);
 }
 
+async function batchFetchAll() {
+  const btn = document.getElementById('batch-fetch-btn');
+  const status = document.getElementById('batch-fetch-status');
+  btn.disabled = true;
+  btn.textContent = '抓取中…';
+  status.textContent = '正在抓取所有 symbol 的歷史 K 線，可能需要 1~2 分鐘…';
+
+  const r = await api('/api/v1/workers/quote/ohlcv/fetch-all');
+  if (r && r.data) {
+    const d = r.data;
+    if (d.status === 'already_fetching') {
+      status.textContent = '正在抓取中，請稍候…';
+    } else {
+      status.textContent = `完成！共 ${d.total_bars} 根 K 線` + (d.error_count > 0 ? `，${d.error_count} 個錯誤` : '');
+      status.style.color = d.error_count > 0 ? 'var(--yellow)' : 'var(--green)';
+    }
+  } else {
+    status.textContent = '抓取失敗: ' + (r?.error || 'unknown');
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.textContent = '一鍵抓取所有歷史 K 線';
+}
+
 // ── 策略 ────────────────────────────────────────────────────────
 async function runStrategy() {
   const symbol   = document.getElementById('sig-symbol').value;
@@ -355,14 +626,68 @@ async function runStrategy() {
 
   if (r && r.data) {
     const s = r.data;
+    const ind = s.indicators || {};
     const cls = s.action === 'buy' ? 'buy' : s.action === 'sell' ? 'sell' : 'hold';
+    const price = ind['sma_cross.price'] || ind['rsi_oversold.price'] || ind['macd_divergence.price'] || ind['price'] || 0;
+
+    // 解析各策略結果
+    let stratCards = '';
+    const isLlm = s.strategy === 'llm';
+    if (isLlm) {
+      // LLM 策略：顯示 AI 分析理由
+      const reason = (s.reason || '').replace(/^\[LLM\]\s*/, '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
+      stratCards = `<div class="signal-strat-card" style="grid-column:1/-1">
+        <div class="strat-name">AI Analysis (Gemini)</div>
+        <div class="strat-detail" style="font-size:13px;line-height:1.6;white-space:pre-wrap">${reason}</div>
+      </div>`;
+    } else {
+      const parts = (s.reason || '').split(' | ');
+      stratCards = parts.map(p => {
+        const m = p.match(/\[(\w+)\]\s*(\w+)\((\d+)\s*%\):\s*(.*)/);
+        if (!m) return '';
+        const [, name, action, conf, detail] = m;
+        const aCls = action === 'buy' ? 'buy' : action === 'sell' ? 'sell' : 'hold';
+        const labels = { sma_cross: 'SMA Cross', rsi_oversold: 'RSI', macd_divergence: 'MACD', llm: 'LLM AI' };
+        return `<div class="signal-strat-card">
+          <div class="strat-name">${labels[name] || name}</div>
+          <div class="strat-action" style="color:var(--${aCls})">${action.toUpperCase()} <span style="font-size:12px;color:var(--text2)">${conf}%</span></div>
+          <div class="strat-detail">${detail}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // 關鍵指標卡片
+    const rsi = ind['rsi_oversold.rsi'];
+    const macdHist = ind['macd_divergence.histogram'];
+    const smaFast = ind['sma_cross.sma_10'];
+    const smaSlow = ind['sma_cross.sma_30'];
+
+    const rsiCls = rsi > 70 ? 'danger' : rsi < 30 ? 'safe' : '';
+    const macdCls = macdHist > 0 ? 'safe' : macdHist < 0 ? 'danger' : '';
+    const smaTrend = smaFast > smaSlow ? 'safe' : smaFast < smaSlow ? 'danger' : '';
+
+    const indCards = `
+      ${price ? `<div class="signal-ind"><div class="ind-label">Current Price</div><div class="ind-value">$${Number(price).toFixed(2)}</div></div>` : ''}
+      ${rsi != null ? `<div class="signal-ind"><div class="ind-label">RSI (14)</div><div class="ind-value ${rsiCls}">${Number(rsi).toFixed(1)}</div></div>` : ''}
+      ${macdHist != null ? `<div class="signal-ind"><div class="ind-label">MACD Hist</div><div class="ind-value ${macdCls}">${Number(macdHist).toFixed(4)}</div></div>` : ''}
+      ${smaFast != null ? `<div class="signal-ind"><div class="ind-label">SMA 10</div><div class="ind-value ${smaTrend}">${Number(smaFast).toFixed(2)}</div></div>` : ''}
+      ${smaSlow != null ? `<div class="signal-ind"><div class="ind-label">SMA 30</div><div class="ind-value">${Number(smaSlow).toFixed(2)}</div></div>` : ''}
+    `;
+
     resultEl.innerHTML = `
       <div class="signal-box ${cls}">
-        <div class="signal-action" style="color:var(--${cls})">${s.action}</div>
-        <div class="signal-confidence">信心度: ${(s.confidence * 100).toFixed(0)}% | 策略: ${s.strategy}</div>
-        <div class="signal-reason">${s.reason}</div>
-        ${s.indicators ? '<div style="margin-top:8px;font-size:12px;color:var(--text2)">' +
-          Object.entries(s.indicators).map(([k,v]) => k + '=' + Number(v).toFixed(2)).join(' | ') + '</div>' : ''}
+        <div class="signal-header">
+          <div>
+            <div class="signal-action" style="color:var(--${cls})">${s.action}</div>
+            <div class="signal-confidence">${{composite:'Composite Signal',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI Analysis'}[s.strategy]||s.strategy} | Confidence: ${(s.confidence * 100).toFixed(0)}%</div>
+          </div>
+          <div style="text-align:right">
+            <div class="signal-price">${price ? '$' + Number(price).toFixed(2) : ''}</div>
+            <div class="signal-symbol">${s.symbol} · ${s.exchange}</div>
+          </div>
+        </div>
+        <div class="signal-indicators">${indCards}</div>
+        <div class="signal-strategies">${stratCards}</div>
       </div>`;
   } else {
     resultEl.innerHTML = '<div style="color:var(--red);padding:12px">策略分析失敗: ' + (r?.error || 'unknown') + '</div>';
@@ -489,10 +814,174 @@ async function fetchRules() {
   }
 }
 
+// ── 自動交易 ────────────────────────────────────────────────────
+async function fetchAutoStatus() {
+  const r = await api('/api/v1/auto-trader/status');
+  if (!r || !r.data) return;
+  const d = r.data;
+  const statusEl = document.getElementById('auto-status-text');
+  const btn = document.getElementById('auto-toggle-btn');
+  statusEl.textContent = d.enabled ? '狀態: 運行中' : '狀態: 已停止';
+  statusEl.style.color = d.enabled ? 'var(--green)' : 'var(--text2)';
+  btn.textContent = d.enabled ? '停止' : '啟用';
+  btn.className = d.enabled ? 'btn btn-sell btn-sm' : 'btn btn-buy btn-sm';
+  document.getElementById('auto-interval').value = d.interval_seconds;
+
+  const tbody = document.getElementById('auto-watch-table');
+  if (d.watch_list && d.watch_list.length > 0) {
+    tbody.innerHTML = d.watch_list.map(w => {
+      const sigCls = w.last_signal === 'buy' ? 'buy' : w.last_signal === 'sell' ? 'sell' : 'hold';
+      return `<tr>
+        <td><strong>${w.symbol}</strong></td>
+        <td>${w.exchange}</td>
+        <td>${w.strategy}</td>
+        <td>${w.quantity}</td>
+        <td><span class="badge ${sigCls}">${w.last_signal || '—'}</span></td>
+        <td>${w.last_confidence ? (w.last_confidence * 100).toFixed(0) + '%' : '—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${w.last_check ? timeStr(w.last_check) : '—'}</td>
+        <td><button class="btn btn-sell btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">移除</button></td>
+      </tr>`;
+    }).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">無監控項目</td></tr>';
+  }
+  fetchAutoLogs();
+}
+
+async function toggleAutoTrader() {
+  const r = await api('/api/v1/auto-trader/status');
+  const enabled = r?.data?.enabled;
+  await api('/api/v1/auto-trader/' + (enabled ? 'disable' : 'enable'), { method: 'POST' });
+  fetchAutoStatus();
+}
+
+async function setAutoInterval() {
+  const seconds = parseInt(document.getElementById('auto-interval').value) || 300;
+  await api('/api/v1/auto-trader/interval', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ seconds })
+  });
+  fetchAutoStatus();
+}
+
+async function addAutoWatch() {
+  const body = {
+    symbol: document.getElementById('auto-symbol').value,
+    exchange: document.getElementById('auto-exchange').value,
+    strategy: document.getElementById('auto-strategy').value,
+    quantity: parseFloat(document.getElementById('auto-qty').value) || 1,
+  };
+  await api('/api/v1/auto-trader/watch', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  fetchAutoStatus();
+}
+
+async function removeAutoWatch(symbol, exchange) {
+  await api(`/api/v1/auto-trader/watch?symbol=${symbol}&exchange=${exchange}`, { method: 'DELETE' });
+  fetchAutoStatus();
+}
+
+async function fetchAutoLogs() {
+  const r = await api('/api/v1/auto-trader/logs?limit=100');
+  const el = document.getElementById('auto-logs');
+  if (r?.data?.logs && r.data.logs.length > 0) {
+    el.textContent = r.data.logs.map(l => {
+      const t = new Date(l.time).toLocaleTimeString('zh-TW');
+      const actionColor = l.action === 'buy' ? '\u2191' : l.action === 'sell' ? '\u2193' : '\u2022';
+      return `[${t}] ${actionColor} ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;
+    }).join('\n');
+    el.scrollTop = 0;
+  } else {
+    el.textContent = '尚無日誌';
+  }
+}
+
+// ── K 線圖 ──────────────────────────────────────────────────────
+let chartInstance = null;
+let candleSeries = null;
+let volumeSeries = null;
+let smaLine = null;
+
+async function loadChart() {
+  const symbol   = document.getElementById('chart-symbol').value;
+  const interval = document.getElementById('chart-interval').value;
+  const limit    = parseInt(document.getElementById('chart-limit').value) || 120;
+
+  // 自動偵測 asset type 並更新可用 intervals
+  const sym = getAllSymbols().find(s => s.symbol === symbol.toUpperCase());
+  updateChartIntervals(sym?.type || (symbol.length <= 5 && /^[A-Z]+$/.test(symbol.toUpperCase()) ? 'stock' : 'crypto'));
+
+  const r = await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+  if (!r?.data?.bars || r.data.bars.length === 0) {
+    alert('No data. 請先在報價 tab 抓取歷史 K 線。');
+    return;
+  }
+
+  const container = document.getElementById('chart-container');
+  container.innerHTML = '';
+
+  chartInstance = LightweightCharts.createChart(container, {
+    width: container.clientWidth,
+    height: 500,
+    layout: { background: { color: '#161b22' }, textColor: '#e6edf3' },
+    grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    timeScale: { borderColor: '#30363d', timeVisible: true },
+    rightPriceScale: { borderColor: '#30363d' },
+  });
+
+  candleSeries = chartInstance.addCandlestickSeries({
+    upColor: '#3fb950', downColor: '#f85149', borderDownColor: '#f85149', borderUpColor: '#3fb950',
+    wickDownColor: '#f85149', wickUpColor: '#3fb950',
+  });
+
+  volumeSeries = chartInstance.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    priceScaleId: 'volume',
+  });
+  chartInstance.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+  const candleData = r.data.bars.map(b => ({
+    time: Math.floor(new Date(b.open_time).getTime() / 1000),
+    open: b.open, high: b.high, low: b.low, close: b.close,
+  }));
+
+  const volumeData = r.data.bars.map(b => ({
+    time: Math.floor(new Date(b.open_time).getTime() / 1000),
+    value: b.volume,
+    color: b.close >= b.open ? 'rgba(63,185,80,0.3)' : 'rgba(248,81,73,0.3)',
+  }));
+
+  candleSeries.setData(candleData);
+  volumeSeries.setData(volumeData);
+
+  // SMA 20 overlay
+  if (candleData.length >= 20) {
+    smaLine = chartInstance.addLineSeries({ color: '#58a6ff', lineWidth: 1, priceLineVisible: false });
+    const smaData = [];
+    for (let i = 19; i < candleData.length; i++) {
+      let sum = 0;
+      for (let j = i - 19; j <= i; j++) sum += candleData[j].close;
+      smaData.push({ time: candleData[i].time, value: sum / 20 });
+    }
+    smaLine.setData(smaData);
+  }
+
+  chartInstance.timeScale().fitContent();
+
+  window.addEventListener('resize', () => {
+    if (chartInstance) chartInstance.resize(container.clientWidth, 500);
+  });
+}
+
 // ── 初始化 ──────────────────────────────────────────────────────
 checkWorkers();
 loadOverview();
+loadLiveQuotes();
 setInterval(checkWorkers, 30000);
+setInterval(loadLiveQuotes, 60000);
 </script>
 </body>
 </html>

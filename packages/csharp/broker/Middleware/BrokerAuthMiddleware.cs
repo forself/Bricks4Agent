@@ -42,7 +42,11 @@ public class BrokerAuthMiddleware
     private static bool IsTrustedInternalPlainJsonPath(string path)
     {
         return path.StartsWith("/api/v1/tool-specs/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/local-admin/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/local-admin/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/trading/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(

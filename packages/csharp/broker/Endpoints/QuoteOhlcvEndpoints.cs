@@ -84,6 +84,30 @@ public static class QuoteOhlcvEndpoints
             return ToResponse(result);
         });
 
+        // ── 批次抓取歷史 ────────────────────────────────────────────────
+
+        ohlcv.MapGet("/fetch-all", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.batch_fetch"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.batch_fetch", "fetch_all"));
+            return ToResponse(result);
+        });
+
+        ohlcv.MapGet("/fetch-status", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.batch_fetch"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.batch_fetch", "status"));
+            return ToResponse(result);
+        });
+
         // ── 技術指標 ────────────────────────────────────────────────────
 
         MapIndicator(indicator, "sma",  new[] { "period" });

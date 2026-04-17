@@ -62,7 +62,7 @@ services:
       FunctionPool__MaxWorkers: "20"
       FunctionPool__HeartbeatTimeoutSeconds: "30"
     ports:
-      - "5000:5000"
+      - "5100:5000"
     volumes:
       - broker-data:/data
     networks:

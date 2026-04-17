@@ -75,7 +75,7 @@ public class LlmStrategy : IStrategy
             - RSI: {rsiResult.Action} (confidence: {rsiResult.Confidence:P0}) — {rsiResult.Reason}
             - MACD: {macdResult.Action} (confidence: {macdResult.Confidence:P0}) — {macdResult.Reason}
 
-            Based on the above data, respond with EXACTLY this JSON format (no other text):
+            Respond ONLY with this exact JSON, no markdown, no code blocks, no extra text:
             {jsonFormat}
             """;
 
@@ -87,24 +87,51 @@ public class LlmStrategy : IStrategy
             max_tokens  = 200,
         });
 
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
+        string json;
+        if (_baseUrl.Contains("generativelanguage.googleapis.com"))
         {
-            Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
-        };
+            // Gemini 原生 API
+            var geminiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
+            var geminiBody = JsonSerializer.Serialize(new
+            {
+                contents = new[] { new { parts = new[] { new { text = prompt } } } },
+                generationConfig = new { temperature = 0.1, maxOutputTokens = 1024, responseMimeType = "application/json", thinkingConfig = new { thinkingBudget = 0 } }
+            });
+            var geminiResp = await _http.PostAsync(geminiUrl,
+                new StringContent(geminiBody, Encoding.UTF8, "application/json"), ct);
+            geminiResp.EnsureSuccessStatusCode();
+            json = await geminiResp.Content.ReadAsStringAsync(ct);
+            var geminiDoc = JsonDocument.Parse(json);
+            var content_raw = geminiDoc.RootElement
+                .GetProperty("candidates")[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString() ?? "";
+            _logger.LogInformation("Gemini raw response: {Raw}", content_raw);
+            json = content_raw;
+        }
+        else
+        {
+            // OpenAI-compatible API
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
+            {
+                Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+            };
+            if (!string.IsNullOrEmpty(_apiKey))
+                request.Headers.Add("Authorization", $"Bearer {_apiKey}");
+            var resp = await _http.SendAsync(request, ct);
+            resp.EnsureSuccessStatusCode();
+            var respJson = await resp.Content.ReadAsStringAsync(ct);
+            var doc = JsonDocument.Parse(respJson);
+            json = doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "";
+        }
 
-        if (!string.IsNullOrEmpty(_apiKey))
-            request.Headers.Add("Authorization", $"Bearer {_apiKey}");
-
-        var resp = await _http.SendAsync(request, ct);
-        resp.EnsureSuccessStatusCode();
-
-        var json = await resp.Content.ReadAsStringAsync(ct);
-        var doc = JsonDocument.Parse(json);
-        var content = doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
+        var content = json;
 
         // 嘗試從回應中解析 JSON
         var action     = "hold";
