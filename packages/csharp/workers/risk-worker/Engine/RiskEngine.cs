@@ -1,0 +1,221 @@
+using RiskWorker.Models;
+
+namespace RiskWorker.Engine;
+
+/// <summary>
+/// 風控引擎 — 在下單前檢查一系列規則，決定是否放行。
+///
+/// 規則類型：
+/// - max_position:     單一標的最大持倉市值
+/// - max_portfolio_pct: 單一標的佔投組最大比例
+/// - max_order_size:   單筆訂單最大金額
+/// - max_daily_loss:   當日最大虧損金額
+/// - max_drawdown_pct: 最大回撤百分比（從歷史峰值算）
+/// - max_daily_trades: 當日最大交易次數
+/// </summary>
+public class RiskEngine
+{
+    private readonly List<RiskRule> _rules;
+
+    public RiskEngine(List<RiskRule> rules)
+    {
+        _rules = rules;
+    }
+
+    /// <summary>
+    /// 檢查一筆預計下單是否通過風控。
+    /// </summary>
+    public RiskCheckResult Check(
+        string symbol,
+        string exchange,
+        string side,
+        decimal quantity,
+        decimal estimatedPrice,
+        PortfolioSnapshot portfolio)
+    {
+        var violations = new List<RiskViolation>();
+        var orderValue = quantity * estimatedPrice;
+
+        foreach (var rule in _rules.Where(r => r.Enabled))
+        {
+            // 檢查規則是否適用於此 symbol/exchange
+            if (rule.Symbol != null && !rule.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (rule.Exchange != null && !rule.Exchange.Equals(exchange, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var violation = rule.Type switch
+            {
+                "max_position"      => CheckMaxPosition(rule, symbol, orderValue, side, portfolio),
+                "max_portfolio_pct" => CheckMaxPortfolioPct(rule, symbol, orderValue, side, portfolio),
+                "max_order_size"    => CheckMaxOrderSize(rule, orderValue),
+                "max_daily_loss"    => CheckMaxDailyLoss(rule, portfolio),
+                "max_drawdown_pct"  => CheckMaxDrawdown(rule, portfolio),
+                "max_daily_trades"  => CheckMaxDailyTrades(rule, portfolio),
+                _ => null
+            };
+
+            if (violation != null)
+                violations.Add(violation);
+        }
+
+        if (violations.Count == 0)
+        {
+            return new RiskCheckResult
+            {
+                Passed      = true,
+                OrderAction = "allow",
+            };
+        }
+
+        // 嘗試 reduce：看 max_position / max_order_size 能否縮小數量
+        decimal? adjustedQty = TryReduce(symbol, side, quantity, estimatedPrice, portfolio);
+
+        return new RiskCheckResult
+        {
+            Passed      = false,
+            OrderAction = adjustedQty.HasValue && adjustedQty.Value > 0 ? "reduce" : "reject",
+            AdjustedQty = adjustedQty,
+            Violations  = violations,
+        };
+    }
+
+    // ── 各規則檢查 ──────────────────────────────────────────────────
+
+    private RiskViolation? CheckMaxPosition(RiskRule rule, string symbol, decimal orderValue, string side, PortfolioSnapshot portfolio)
+    {
+        if (side == "sell") return null; // 賣出不會增加曝險
+
+        var existing = portfolio.Positions
+            .Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+            .Sum(p => p.MarketValue);
+
+        var projected = existing + orderValue;
+        if (projected <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Position in {symbol} would be ${projected:N0}, exceeds limit ${rule.Threshold:N0}",
+            Current  = projected,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxPortfolioPct(RiskRule rule, string symbol, decimal orderValue, string side, PortfolioSnapshot portfolio)
+    {
+        if (side == "sell" || portfolio.PortfolioValue <= 0) return null;
+
+        var existing = portfolio.Positions
+            .Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+            .Sum(p => p.MarketValue);
+
+        var projectedPct = (existing + orderValue) / portfolio.PortfolioValue * 100;
+        if (projectedPct <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"{symbol} would be {projectedPct:F1}% of portfolio, exceeds {rule.Threshold}% limit",
+            Current  = Math.Round(projectedPct, 1),
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxOrderSize(RiskRule rule, decimal orderValue)
+    {
+        if (orderValue <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Order size ${orderValue:N0} exceeds limit ${rule.Threshold:N0}",
+            Current  = orderValue,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxDailyLoss(RiskRule rule, PortfolioSnapshot portfolio)
+    {
+        var dailyLoss = Math.Abs(Math.Min(0, portfolio.DayPnl));
+        if (dailyLoss <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Daily loss ${dailyLoss:N0} exceeds limit ${rule.Threshold:N0}. Trading halted.",
+            Current  = dailyLoss,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxDrawdown(RiskRule rule, PortfolioSnapshot portfolio)
+    {
+        if (portfolio.PeakValue <= 0) return null;
+
+        var drawdownPct = (portfolio.PeakValue - portfolio.PortfolioValue) / portfolio.PeakValue * 100;
+        if (drawdownPct <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Drawdown {drawdownPct:F1}% exceeds limit {rule.Threshold}%. Trading halted.",
+            Current  = Math.Round(drawdownPct, 1),
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxDailyTrades(RiskRule rule, PortfolioSnapshot portfolio)
+    {
+        if (portfolio.DailyTradeCount < (int)rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Daily trade count {portfolio.DailyTradeCount} reached limit {(int)rule.Threshold}",
+            Current  = portfolio.DailyTradeCount,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    // ── 嘗試縮小訂單 ────────────────────────────────────────────────
+
+    private decimal? TryReduce(string symbol, string side, decimal quantity, decimal price, PortfolioSnapshot portfolio)
+    {
+        if (side == "sell") return null;
+
+        // 找 max_position 規則的最小可用額度
+        var positionRule = _rules.FirstOrDefault(r =>
+            r.Enabled && r.Type == "max_position" &&
+            (r.Symbol == null || r.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)));
+
+        if (positionRule == null || price <= 0) return null;
+
+        var existing = portfolio.Positions
+            .Where(p => p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+            .Sum(p => p.MarketValue);
+
+        var available = positionRule.Threshold - existing;
+        if (available <= 0) return null;
+
+        var maxQty = available / price;
+        return maxQty >= 1 ? Math.Floor(maxQty) : null; // 至少要能買 1 單位
+    }
+
+    /// <summary>預設風控規則集。</summary>
+    public static List<RiskRule> DefaultRules() => new()
+    {
+        new() { RuleId = "r1", Name = "Max Position Size",       Type = "max_position",      Threshold = 10_000 },
+        new() { RuleId = "r2", Name = "Max Portfolio Allocation", Type = "max_portfolio_pct", Threshold = 25 },
+        new() { RuleId = "r3", Name = "Max Single Order",        Type = "max_order_size",    Threshold = 5_000 },
+        new() { RuleId = "r4", Name = "Max Daily Loss",          Type = "max_daily_loss",    Threshold = 1_000 },
+        new() { RuleId = "r5", Name = "Max Drawdown",            Type = "max_drawdown_pct",  Threshold = 10 },
+        new() { RuleId = "r6", Name = "Max Daily Trades",        Type = "max_daily_trades",  Threshold = 20 },
+    };
+}

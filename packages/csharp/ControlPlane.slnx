@@ -50,4 +50,16 @@
   <Folder Name="/workers/transport-tdx-worker/">
     <Project Path="workers/transport-tdx-worker/TransportTdxWorker.csproj" />
   </Folder>
+  <Folder Name="/workers/quote-worker/">
+    <Project Path="workers/quote-worker/QuoteWorker.csproj" />
+  </Folder>
+  <Folder Name="/workers/trading-worker/">
+    <Project Path="workers/trading-worker/TradingWorker.csproj" />
+  </Folder>
+  <Folder Name="/workers/strategy-worker/">
+    <Project Path="workers/strategy-worker/StrategyWorker.csproj" />
+  </Folder>
+  <Folder Name="/workers/risk-worker/">
+    <Project Path="workers/risk-worker/RiskWorker.csproj" />
+  </Folder>
 </Solution>

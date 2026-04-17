@@ -866,6 +866,10 @@ if (poolEnabled)
     WorkerEndpoints.Map(api);
     DiagnosticsEndpoints.Map(api);
     QuoteWorkerEndpoints.Map(api);
+    QuoteOhlcvEndpoints.Map(api);
+    TradingEndpoints.Map(api);
+    StrategyEndpoints.Map(api);
+    RiskEndpoints.Map(api);
 }
 
 // ── Phase 3: 啟動功能池 TCP Listener ──

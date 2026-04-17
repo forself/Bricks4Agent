@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging;
 using WorkerSdk;
 using QuoteWorker.Fetcher;
 using QuoteWorker.Handlers;
+using QuoteWorker.History;
 using QuoteWorker.Queue;
+using QuoteWorker.Storage;
 
 // ── 設定 ──────────────────────────────────────────────────────────────
 var config = new ConfigurationBuilder()
@@ -55,6 +57,13 @@ httpClient.DefaultRequestHeaders.Add(
 var fetcher  = new QuoteFetcher(httpClient, httpLogger, cryptoIds, stockSymbols);
 var jobQueue = new QuoteJobQueue(fetcher, fetchLogger, fetchIntervalMinutes);
 
+// ── 持久化 & 歷史 K 線 ───────────────────────────────────────────────
+var dbPath       = config.GetValue("Worker:Quote:DbPath", "quote.db")!;
+var dbLogger     = loggerFactory.CreateLogger<QuoteDbStorage>();
+var histLogger   = loggerFactory.CreateLogger<HistoricalDataFetcher>();
+var quoteDb      = new QuoteDbStorage(dbPath, dbLogger);
+var histFetcher  = new HistoricalDataFetcher(httpClient, quoteDb, histLogger);
+
 // ── 取消 Token ────────────────────────────────────────────────────────
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -67,11 +76,17 @@ Console.CancelKeyPress += (_, e) =>
 // ── 啟動背景抓取迴圈 ──────────────────────────────────────────────────
 _ = jobQueue.RunAsync(cts.Token);
 
+// ── 啟動報價持久化迴圈（每次 fetch 後自動存入 SQLite）─────────────────
+var persistLogger = loggerFactory.CreateLogger("SnapshotPersistence");
+_ = SnapshotPersistenceLoop.RunAsync(jobQueue, quoteDb, persistLogger, ct: cts.Token);
+
 // ── 建立 WorkerHost 並註冊能力 ────────────────────────────────────────
 var host = new WorkerHost(options, logger);
 host.RegisterHandler(new QuoteHistoryHandler(jobQueue));
 host.RegisterHandler(new QuotePricesHandler(jobQueue));
 host.RegisterHandler(new QuoteFetchNowHandler(jobQueue));
+host.RegisterHandler(new QuoteOhlcvHandler(quoteDb, histFetcher));
+host.RegisterHandler(new QuoteIndicatorHandler(quoteDb));
 
 logger.LogInformation(
     "QuoteWorker starting: broker={Host}:{Port}, fetchInterval={Interval}min, crypto=[{Crypto}], stocks=[{Stocks}]",

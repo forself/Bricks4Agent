@@ -1,0 +1,175 @@
+# Quantitative Trading Stack
+#
+# 使用方式:
+#   1. cp tools/.env.trading.example tools/.env.trading
+#   2. 填入 API keys
+#   3. docker compose -f tools/compose.trading.yml --env-file tools/.env.trading up -d --build
+#
+# Dashboard:  http://localhost:5000
+# 停止:       docker compose -f tools/compose.trading.yml down
+
+name: b4a-trading
+
+services:
+  # ── Broker（控制中心 + API 閘道）────────────────────────────────────
+  broker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/broker/Containerfile.monitor
+    image: b4a-broker:latest
+    container_name: b4a-broker
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:5000"
+      Database__Path: "/data/broker.db"
+
+      Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
+      Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
+      Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
+
+      # LLM（策略分析用，選填）
+      LlmProxy__Enabled: "${LLM_ENABLED:-false}"
+      LlmProxy__Provider: "openai-compatible"
+      LlmProxy__BaseUrl: "${LLM_BASE_URL:-}"
+      LlmProxy__ApiKey: "${LLM_API_KEY:-}"
+      LlmProxy__DefaultModel: "${LLM_MODEL:-gemini-2.0-flash}"
+      LlmProxy__SupportsToolCalling: "true"
+      LlmProxy__TimeoutSeconds: "60"
+
+      HighLevelLlm__Enabled: "${LLM_ENABLED:-false}"
+      HighLevelLlm__Provider: "openai-compatible"
+      HighLevelLlm__BaseUrl: "${LLM_BASE_URL:-}"
+      HighLevelLlm__ApiKey: "${LLM_API_KEY:-}"
+      HighLevelLlm__DefaultModel: "${LLM_MODEL:-gemini-2.0-flash}"
+      HighLevelLlm__ApiFormat: "chat"
+      HighLevelLlm__TimeoutSeconds: "60"
+
+      Embedding__Enabled: "false"
+
+      DevelopmentSeed__Enabled: "true"
+      DevelopmentSeed__PrincipalId: "prn_trading"
+      DevelopmentSeed__DisplayName: "Trading System"
+      DevelopmentSeed__ActorType: "Human"
+      DevelopmentSeed__TaskId: "task_trading"
+      DevelopmentSeed__TaskType: "trading"
+      DevelopmentSeed__AssignedRoleId: "role_admin"
+      DevelopmentSeed__RuntimeDescriptor: "{}"
+
+      FunctionPool__Enabled: "true"
+      FunctionPool__ListenPort: "7000"
+      FunctionPool__BindAddress: "0.0.0.0"
+      FunctionPool__StrictMode: "false"
+      FunctionPool__DispatchTimeoutSeconds: "30"
+      FunctionPool__MaxWorkers: "20"
+      FunctionPool__HeartbeatTimeoutSeconds: "30"
+    ports:
+      - "5000:5000"
+    volumes:
+      - broker-data:/data
+    networks:
+      - trading-net
+    restart: unless-stopped
+
+  # ── Quote Worker（報價 + K 線 + 技術指標）────────────────────────────
+  quote-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/quote-worker/Containerfile
+    image: b4a-quote-worker:latest
+    container_name: b4a-quote-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Quote__FetchIntervalMinutes: "${QUOTE_FETCH_INTERVAL:-5}"
+      WORKER_Worker__Quote__CryptoIds: "${QUOTE_CRYPTO_IDS:-bitcoin,ethereum,solana,dogecoin}"
+      WORKER_Worker__Quote__StockSymbols: "${QUOTE_STOCK_SYMBOLS:-AAPL,MSFT,TSLA,NVDA}"
+      WORKER_Worker__Quote__DbPath: "/data/quote.db"
+    volumes:
+      - quote-data:/data
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
+  # ── Strategy Worker（策略引擎）──────────────────────────────────────
+  strategy-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/strategy-worker/Containerfile
+    image: b4a-strategy-worker:latest
+    container_name: b4a-strategy-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Strategy__Llm__Enabled: "${LLM_ENABLED:-false}"
+      WORKER_Worker__Strategy__Llm__BaseUrl: "${LLM_BASE_URL:-}"
+      WORKER_Worker__Strategy__Llm__ApiKey: "${LLM_API_KEY:-}"
+      WORKER_Worker__Strategy__Llm__Model: "${LLM_MODEL:-gemini-2.0-flash}"
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
+  # ── Risk Worker（風控）──────────────────────────────────────────────
+  risk-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/risk-worker/Containerfile
+    image: b4a-risk-worker:latest
+    container_name: b4a-risk-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Risk__MaxPositionSize: "${RISK_MAX_POSITION:-10000}"
+      WORKER_Worker__Risk__MaxPortfolioPct: "${RISK_MAX_PORTFOLIO_PCT:-25}"
+      WORKER_Worker__Risk__MaxOrderSize: "${RISK_MAX_ORDER_SIZE:-5000}"
+      WORKER_Worker__Risk__MaxDailyLoss: "${RISK_MAX_DAILY_LOSS:-1000}"
+      WORKER_Worker__Risk__MaxDrawdownPct: "${RISK_MAX_DRAWDOWN:-10}"
+      WORKER_Worker__Risk__MaxDailyTrades: "${RISK_MAX_DAILY_TRADES:-20}"
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
+  # ── Trading Worker（下單）───────────────────────────────────────────
+  trading-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/trading-worker/Containerfile
+    image: b4a-trading-worker:latest
+    container_name: b4a-trading-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Trading__DbPath: "/data/trading.db"
+
+      # Alpaca（美股）
+      WORKER_Worker__Trading__Alpaca__Enabled: "${ALPACA_ENABLED:-false}"
+      WORKER_Worker__Trading__Alpaca__ApiKey: "${ALPACA_API_KEY:-}"
+      WORKER_Worker__Trading__Alpaca__ApiSecret: "${ALPACA_API_SECRET:-}"
+      WORKER_Worker__Trading__Alpaca__IsPaper: "${ALPACA_IS_PAPER:-true}"
+
+      # Binance（加密貨幣）
+      WORKER_Worker__Trading__Binance__Enabled: "${BINANCE_ENABLED:-false}"
+      WORKER_Worker__Trading__Binance__ApiKey: "${BINANCE_API_KEY:-}"
+      WORKER_Worker__Trading__Binance__ApiSecret: "${BINANCE_API_SECRET:-}"
+      WORKER_Worker__Trading__Binance__IsTestnet: "${BINANCE_IS_TESTNET:-true}"
+    volumes:
+      - trading-data:/data
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
+networks:
+  trading-net:
+    name: b4a-trading-net
+    driver: bridge
+
+volumes:
+  broker-data:
+  quote-data:
+  trading-data:

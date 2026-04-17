@@ -5,9 +5,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>QuoteWorker</RootNamespace>
+    <RootNamespace>TradingWorker</RootNamespace>
     <Version>1.0.0</Version>
-    <Description>金融報價 Worker — 自動抓取股票/加密貨幣報價，使用內部 job queue 批次處理</Description>
+    <Description>交易 Worker — Alpaca（美股）+ Binance（加密貨幣）訂單管理</Description>
   </PropertyGroup>
 
   <ItemGroup>

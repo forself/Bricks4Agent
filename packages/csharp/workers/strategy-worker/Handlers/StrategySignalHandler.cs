@@ -1,0 +1,124 @@
+using System.Text.Json;
+using WorkerSdk;
+using StrategyWorker.Engine;
+using StrategyWorker.Models;
+
+namespace StrategyWorker.Handlers;
+
+/// <summary>
+/// strategy.signal — 產生交易訊號。
+///
+/// Routes:
+///   evaluate — 用指定策略分析 K 線資料（參數：strategy, bars, config）
+///   list     — 列出可用策略
+///
+/// bars 格式：[{open_time, open, high, low, close, volume}, ...]
+/// </summary>
+public class StrategySignalHandler : ICapabilityHandler
+{
+    private readonly Dictionary<string, IStrategy> _strategies;
+    public string CapabilityId => "strategy.signal";
+
+    public StrategySignalHandler(Dictionary<string, IStrategy> strategies)
+    {
+        _strategies = strategies;
+    }
+
+    public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
+        string requestId, string route, string payload, string scope, CancellationToken ct)
+    {
+        var result = route switch
+        {
+            "evaluate" => Evaluate(payload),
+            "list"     => ListStrategies(),
+            _ => (false, (string?)null, $"Unknown route: {route}")
+        };
+        return Task.FromResult(result);
+    }
+
+    private (bool, string?, string?) Evaluate(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        // 解析策略名稱
+        var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
+
+        if (!_strategies.TryGetValue(strategyName, out var strategy))
+            return (false, null, $"Unknown strategy: {strategyName}. Available: {string.Join(", ", _strategies.Keys)}");
+
+        // 解析 K 線資料
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing or invalid 'bars' array");
+
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+        {
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open     = b.TryGetProperty("open",  out var o)  ? o.GetDecimal()  : 0,
+                High     = b.TryGetProperty("high",  out var h)  ? h.GetDecimal()  : 0,
+                Low      = b.TryGetProperty("low",   out var l)  ? l.GetDecimal()  : 0,
+                Close    = b.TryGetProperty("close", out var c)  ? c.GetDecimal()  : 0,
+                Volume   = b.TryGetProperty("volume", out var v) ? v.GetDecimal()  : 0,
+            });
+        }
+
+        if (bars.Count < 2)
+            return (false, null, "Need at least 2 bars");
+
+        // 解析設定
+        var config = new StrategyConfig
+        {
+            Name     = strategyName,
+            Symbol   = doc.TryGetProperty("symbol",   out var sym)  ? sym.GetString() ?? ""   : "",
+            Exchange = doc.TryGetProperty("exchange",  out var exg)  ? exg.GetString() ?? ""   : "",
+            Interval = doc.TryGetProperty("interval",  out var iv)   ? iv.GetString() ?? "1d"  : "1d",
+            SmaFast  = doc.TryGetProperty("sma_fast",  out var sf)   ? sf.GetInt32()           : 10,
+            SmaSlow  = doc.TryGetProperty("sma_slow",  out var ss)   ? ss.GetInt32()           : 30,
+            RsiPeriod     = doc.TryGetProperty("rsi_period",     out var rp) ? rp.GetInt32() : 14,
+            RsiOversold   = doc.TryGetProperty("rsi_oversold",   out var ro) ? ro.GetDecimal() : 30,
+            RsiOverbought = doc.TryGetProperty("rsi_overbought", out var rb) ? rb.GetDecimal() : 70,
+            MacdFast   = doc.TryGetProperty("macd_fast",   out var mf) ? mf.GetInt32() : 12,
+            MacdSlow   = doc.TryGetProperty("macd_slow",   out var ms) ? ms.GetInt32() : 26,
+            MacdSignal = doc.TryGetProperty("macd_signal", out var mg) ? mg.GetInt32() : 9,
+        };
+
+        var signal = strategy.Evaluate(bars, config);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            signal_id  = signal.SignalId,
+            strategy   = signal.Strategy,
+            symbol     = signal.Symbol,
+            exchange   = signal.Exchange,
+            action     = signal.Action,
+            confidence = signal.Confidence,
+            reason     = signal.Reason,
+            interval   = signal.Interval,
+            timestamp  = signal.Timestamp,
+            indicators = signal.Indicators,
+        });
+        return (true, json, null);
+    }
+
+    private (bool, string?, string?) ListStrategies()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            strategies = _strategies.Keys.ToList(),
+            descriptions = new Dictionary<string, string>
+            {
+                ["sma_cross"]       = "SMA Golden/Death Cross — 快慢均線交叉",
+                ["rsi_oversold"]    = "RSI Oversold/Overbought — 超買超賣",
+                ["macd_divergence"] = "MACD Crossover — MACD 與 Signal 交叉",
+                ["composite"]      = "Composite — 加權投票（SMA + RSI + MACD）",
+                ["llm"]            = "LLM — AI 模型分析市場資料產生訊號",
+            }
+        });
+        return (true, json, null);
+    }
+}

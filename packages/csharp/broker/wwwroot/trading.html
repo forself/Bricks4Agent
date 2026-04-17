@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B4A Trading Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #d29922;
+  --buy: #3fb950; --sell: #f85149; --hold: #8b949e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+.header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .status { font-size: 12px; color: var(--text2); margin-left: auto; }
+.header .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.dot.on { background: var(--green); }
+.dot.off { background: var(--red); }
+
+.tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; gap: 0; }
+.tab { padding: 10px 20px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; font-size: 14px; transition: all 0.2s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.content { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+.grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.card h3 { font-size: 14px; color: var(--text2); margin-bottom: 12px; font-weight: 500; }
+.card .value { font-size: 28px; font-weight: 700; }
+.card .sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px 12px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+tr:hover { background: rgba(88,166,255,0.04); }
+
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.badge.buy, .badge.filled { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge.sell, .badge.rejected { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge.hold, .badge.submitted { background: rgba(139,148,158,0.15); color: var(--text2); }
+.badge.pending { background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-end; flex-wrap: wrap; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 12px; color: var(--text2); }
+.form-group input, .form-group select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+
+.btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-buy { background: var(--green); color: #fff; }
+.btn-sell { background: var(--red); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+.signal-box { padding: 16px; border-radius: 8px; margin-top: 12px; }
+.signal-box.buy { border: 2px solid var(--green); background: rgba(63,185,80,0.06); }
+.signal-box.sell { border: 2px solid var(--red); background: rgba(248,81,73,0.06); }
+.signal-box.hold { border: 2px solid var(--border); background: rgba(139,148,158,0.06); }
+.signal-action { font-size: 24px; font-weight: 700; text-transform: uppercase; }
+.signal-confidence { font-size: 14px; color: var(--text2); margin-top: 4px; }
+.signal-reason { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
+
+.log { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; color: var(--text2); white-space: pre-wrap; }
+.refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.refresh-bar .time { font-size: 12px; color: var(--text2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>B4A Trading Dashboard</h1>
+  <div class="status">
+    <span class="dot" id="dot-quote"></span>Quote
+    <span class="dot" id="dot-strategy" style="margin-left:12px"></span>Strategy
+    <span class="dot" id="dot-risk" style="margin-left:12px"></span>Risk
+    <span class="dot" id="dot-trading" style="margin-left:12px"></span>Trading
+    <span style="margin-left:16px" id="last-update"></span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">總覽</div>
+  <div class="tab" onclick="switchTab('quotes')">報價</div>
+  <div class="tab" onclick="switchTab('strategy')">策略訊號</div>
+  <div class="tab" onclick="switchTab('trade')">下單</div>
+  <div class="tab" onclick="switchTab('orders')">訂單</div>
+  <div class="tab" onclick="switchTab('risk')">風控</div>
+</div>
+
+<div class="content">
+
+  <!-- ── 總覽 ──────────────────────────────────────────────────── -->
+  <div class="panel active" id="panel-overview">
+    <div class="grid grid-4" id="account-cards">
+      <div class="card"><h3>帳戶餘額</h3><div class="value" id="ov-cash">—</div><div class="sub" id="ov-exchange"></div></div>
+      <div class="card"><h3>投資組合價值</h3><div class="value" id="ov-portfolio">—</div></div>
+      <div class="card"><h3>購買力</h3><div class="value" id="ov-buying-power">—</div></div>
+      <div class="card"><h3>當日損益</h3><div class="value" id="ov-day-pnl">—</div></div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="card">
+        <h3>持倉</h3>
+        <table>
+          <thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th></tr></thead>
+          <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 報價 ──────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-quotes">
+    <div class="refresh-bar">
+      <button class="btn btn-primary btn-sm" onclick="fetchQuotes()">重新整理</button>
+      <button class="btn btn-primary btn-sm" onclick="triggerFetch()">立即抓取報價</button>
+    </div>
+    <div class="card">
+      <h3>即時報價</h3>
+      <table>
+        <thead><tr><th>Symbol</th><th>名稱</th><th>類型</th><th>價格</th><th>漲跌</th><th>漲跌%</th><th>市值</th><th>更新時間</th></tr></thead>
+        <tbody id="quote-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 策略訊號 ──────────────────────────────────────────────── -->
+  <div class="panel" id="panel-strategy">
+    <div class="card">
+      <h3>產生訊號</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Symbol</label>
+          <input id="sig-symbol" value="AAPL" placeholder="AAPL, BTC…">
+        </div>
+        <div class="form-group">
+          <label>Exchange</label>
+          <select id="sig-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
+        </div>
+        <div class="form-group">
+          <label>策略</label>
+          <select id="sig-strategy">
+            <option value="composite">Composite（複合）</option>
+            <option value="sma_cross">SMA Cross</option>
+            <option value="rsi_oversold">RSI</option>
+            <option value="macd_divergence">MACD</option>
+            <option value="llm">LLM（AI）</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="runStrategy()">分析</button>
+      </div>
+      <div id="signal-result"></div>
+    </div>
+  </div>
+
+  <!-- ── 下單 ──────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-trade">
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>下單</h3>
+        <div class="form-row">
+          <div class="form-group"><label>Exchange</label>
+            <select id="ord-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
+          </div>
+          <div class="form-group"><label>Symbol</label><input id="ord-symbol" value="AAPL"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>方向</label>
+            <select id="ord-side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
+          </div>
+          <div class="form-group"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any"></div>
+          <div class="form-group"><label>類型</label>
+            <select id="ord-type"><option value="market">Market</option><option value="limit">Limit</option></select>
+          </div>
+          <div class="form-group"><label>限價</label><input id="ord-limit" type="number" step="any" placeholder="僅 limit 單"></div>
+        </div>
+        <div class="form-row" style="gap:8px">
+          <button class="btn btn-buy" onclick="placeOrder('buy')">Buy</button>
+          <button class="btn btn-sell" onclick="placeOrder('sell')">Sell</button>
+          <button class="btn btn-primary btn-sm" onclick="riskCheckBeforeOrder()" style="margin-left:auto">風控預檢</button>
+        </div>
+        <div id="order-result" class="log" style="margin-top:12px;display:none"></div>
+      </div>
+      <div class="card">
+        <h3>帳戶資訊</h3>
+        <div id="trade-account" style="color:var(--text2)">選擇 exchange 後自動載入</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 訂單 ──────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-orders">
+    <div class="refresh-bar">
+      <button class="btn btn-primary btn-sm" onclick="fetchOrders()">重新整理</button>
+    </div>
+    <div class="card">
+      <h3>訂單紀錄</h3>
+      <table>
+        <thead><tr><th>OrderID</th><th>Symbol</th><th>Exchange</th><th>方向</th><th>數量</th><th>成交價</th><th>狀態</th><th>時間</th></tr></thead>
+        <tbody id="order-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 風控 ──────────────────────────────────────────────────── -->
+  <div class="panel" id="panel-risk">
+    <div class="refresh-bar">
+      <button class="btn btn-primary btn-sm" onclick="fetchRules()">重新整理</button>
+    </div>
+    <div class="card">
+      <h3>風控規則</h3>
+      <table>
+        <thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
+        <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = '';  // 同 origin
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', t.textContent.includes({overview:'總覽',quotes:'報價',strategy:'策略',trade:'下單',orders:'訂單',risk:'風控'}[name])));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'overview') loadOverview();
+  if (name === 'quotes') fetchQuotes();
+  if (name === 'orders') fetchOrders();
+  if (name === 'risk') fetchRules();
+}
+
+async function api(path, opts) {
+  try {
+    const r = await fetch(API + path, opts);
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function fmt(n, d=2) { return n != null ? Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d}) : '—'; }
+function fmtUsd(n) { return n != null ? '$' + fmt(n) : '—'; }
+function pnlClass(n) { return n > 0 ? 'positive' : n < 0 ? 'negative' : ''; }
+function timeStr(t) { return t ? new Date(t).toLocaleString('zh-TW') : '—'; }
+
+// ── Worker 狀態 ────────────────────────────────────────────────
+async function checkWorkers() {
+  const checks = [
+    { id: 'dot-quote',    path: '/api/v1/workers/quote/prices' },
+    { id: 'dot-strategy', path: '/api/v1/strategy/list' },
+    { id: 'dot-risk',     path: '/api/v1/risk/rules' },
+    { id: 'dot-trading',  path: '/api/v1/trading/exchanges' },
+  ];
+  for (const c of checks) {
+    const r = await api(c.path);
+    const on = r && r.ok !== false && !r.error;
+    document.getElementById(c.id).className = 'dot ' + (on ? 'on' : 'off');
+  }
+  document.getElementById('last-update').textContent = new Date().toLocaleTimeString('zh-TW');
+}
+
+// ── 總覽 ────────────────────────────────────────────────────────
+async function loadOverview() {
+  const exchange = 'alpaca';
+  const acc = await api('/api/v1/trading/account?exchange=' + exchange);
+  if (acc && acc.data) {
+    const d = acc.data;
+    document.getElementById('ov-cash').textContent = fmtUsd(d.cash);
+    document.getElementById('ov-portfolio').textContent = fmtUsd(d.portfolio_value);
+    document.getElementById('ov-buying-power').textContent = fmtUsd(d.buying_power);
+    const pnlEl = document.getElementById('ov-day-pnl');
+    pnlEl.textContent = fmtUsd(d.day_pnl);
+    pnlEl.className = 'value ' + pnlClass(d.day_pnl);
+    document.getElementById('ov-exchange').textContent = exchange + (d.is_paper ? ' (Paper)' : ' (Live)');
+  }
+
+  const pos = await api('/api/v1/trading/positions?exchange=' + exchange);
+  const tbody = document.getElementById('ov-positions');
+  if (pos && pos.data && pos.data.positions && pos.data.positions.length > 0) {
+    tbody.innerHTML = pos.data.positions.map(p => `<tr>
+      <td><strong>${p.symbol}</strong></td>
+      <td>${fmt(p.quantity, 4)}</td>
+      <td>${fmtUsd(p.avg_entry_price)}</td>
+      <td>${fmtUsd(p.current_price)}</td>
+      <td>${fmtUsd(p.market_value)}</td>
+      <td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td>
+    </tr>`).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text2)">無持倉</td></tr>';
+  }
+}
+
+// ── 報價 ────────────────────────────────────────────────────────
+async function fetchQuotes() {
+  const r = await api('/api/v1/workers/quote/prices');
+  const tbody = document.getElementById('quote-table');
+  if (r && r.data && r.data.quotes) {
+    tbody.innerHTML = r.data.quotes.map(q => `<tr>
+      <td><strong>${q.symbol}</strong></td>
+      <td>${q.name}</td>
+      <td><span class="badge ${q.type}">${q.type}</span></td>
+      <td>${fmtUsd(q.price)}</td>
+      <td class="${pnlClass(q.change)}">${fmt(q.change)}</td>
+      <td class="${pnlClass(q.change_percent)}">${fmt(q.change_percent)}%</td>
+      <td>${q.market_cap > 0 ? '$' + (q.market_cap/1e9).toFixed(1) + 'B' : '—'}</td>
+      <td style="color:var(--text2)">${timeStr(q.fetched_at)}</td>
+    </tr>`).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">quote-worker 未連線</td></tr>';
+  }
+}
+
+async function triggerFetch() {
+  await api('/api/v1/workers/quote/fetch');
+  setTimeout(fetchQuotes, 3000);
+}
+
+// ── 策略 ────────────────────────────────────────────────────────
+async function runStrategy() {
+  const symbol   = document.getElementById('sig-symbol').value;
+  const exchange = document.getElementById('sig-exchange').value;
+  const strategy = document.getElementById('sig-strategy').value;
+  const resultEl = document.getElementById('signal-result');
+
+  resultEl.innerHTML = '<div style="color:var(--text2);padding:12px">載入 K 線資料中…</div>';
+
+  // 先抓 K 線
+  const barsResp = await api('/api/v1/workers/quote/ohlcv?symbol=' + symbol + '&limit=100');
+  if (!barsResp || !barsResp.data || !barsResp.data.bars || barsResp.data.bars.length < 2) {
+    resultEl.innerHTML = '<div style="color:var(--red);padding:12px">K 線資料不足。請先抓取歷史資料（報價 tab → 抓取）。</div>';
+    return;
+  }
+
+  resultEl.innerHTML = '<div style="color:var(--text2);padding:12px">分析中…</div>';
+
+  const body = { strategy, symbol, exchange, interval: '1d', bars: barsResp.data.bars };
+  const r = await api('/api/v1/strategy/signal', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+
+  if (r && r.data) {
+    const s = r.data;
+    const cls = s.action === 'buy' ? 'buy' : s.action === 'sell' ? 'sell' : 'hold';
+    resultEl.innerHTML = `
+      <div class="signal-box ${cls}">
+        <div class="signal-action" style="color:var(--${cls})">${s.action}</div>
+        <div class="signal-confidence">信心度: ${(s.confidence * 100).toFixed(0)}% | 策略: ${s.strategy}</div>
+        <div class="signal-reason">${s.reason}</div>
+        ${s.indicators ? '<div style="margin-top:8px;font-size:12px;color:var(--text2)">' +
+          Object.entries(s.indicators).map(([k,v]) => k + '=' + Number(v).toFixed(2)).join(' | ') + '</div>' : ''}
+      </div>`;
+  } else {
+    resultEl.innerHTML = '<div style="color:var(--red);padding:12px">策略分析失敗: ' + (r?.error || 'unknown') + '</div>';
+  }
+}
+
+// ── 下單 ────────────────────────────────────────────────────────
+async function placeOrder(forceSide) {
+  const exchange = document.getElementById('ord-exchange').value;
+  const symbol   = document.getElementById('ord-symbol').value;
+  const side     = forceSide || document.getElementById('ord-side').value;
+  const qty      = parseFloat(document.getElementById('ord-qty').value);
+  const type     = document.getElementById('ord-type').value;
+  const limit    = parseFloat(document.getElementById('ord-limit').value);
+
+  const body = { exchange, symbol, side, quantity: qty, order_type: type };
+  if (type === 'limit' && !isNaN(limit)) body.limit_price = limit;
+
+  const resultEl = document.getElementById('order-result');
+  resultEl.style.display = 'block';
+  resultEl.textContent = '下單中…';
+
+  const r = await api('/api/v1/trading/order', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+
+  if (r && r.data) {
+    const d = r.data;
+    resultEl.textContent = `✓ 訂單已送出\nOrder ID: ${d.order_id}\nExternal: ${d.external_id}\nStatus: ${d.status}\nSymbol: ${d.symbol} ${d.side} ${d.quantity}`;
+  } else {
+    resultEl.textContent = '✗ 下單失敗: ' + (r?.error || JSON.stringify(r));
+  }
+}
+
+async function riskCheckBeforeOrder() {
+  const exchange = document.getElementById('ord-exchange').value;
+  const symbol   = document.getElementById('ord-symbol').value;
+  const side     = document.getElementById('ord-side').value;
+  const qty      = parseFloat(document.getElementById('ord-qty').value);
+
+  const resultEl = document.getElementById('order-result');
+  resultEl.style.display = 'block';
+  resultEl.textContent = '風控預檢中…';
+
+  // 取得帳戶資訊做為 portfolio snapshot
+  const acc = await api('/api/v1/trading/account?exchange=' + exchange);
+  const pos = await api('/api/v1/trading/positions?exchange=' + exchange);
+
+  const portfolio = {
+    cash: acc?.data?.cash || 0,
+    portfolio_value: acc?.data?.portfolio_value || 0,
+    day_pnl: acc?.data?.day_pnl || 0,
+    peak_value: acc?.data?.portfolio_value || 0,
+    daily_trade_count: 0,
+    positions: (pos?.data?.positions || []).map(p => ({
+      symbol: p.symbol, exchange, quantity: p.quantity,
+      market_value: p.market_value, unrealized_pnl: p.unrealized_pnl
+    }))
+  };
+
+  // 估計價格
+  const quotes = await api('/api/v1/workers/quote/prices');
+  let price = 100;
+  if (quotes?.data?.quotes) {
+    const q = quotes.data.quotes.find(q => q.symbol === symbol || q.symbol === symbol.toUpperCase());
+    if (q) price = q.price;
+  }
+
+  const body = { symbol, exchange, side, quantity: qty, price, portfolio };
+  const r = await api('/api/v1/risk/check', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+
+  if (r && r.data) {
+    const d = r.data;
+    if (d.passed) {
+      resultEl.textContent = '✓ 風控通過 — 可以下單';
+    } else {
+      const violations = (d.violations || []).map(v => `  [${v.rule_name}] ${v.message}`).join('\n');
+      resultEl.textContent = `✗ 風控未通過 — ${d.order_action}\n${violations}` +
+        (d.adjusted_qty ? `\n建議調整數量: ${d.adjusted_qty}` : '');
+    }
+  } else {
+    resultEl.textContent = '✗ 風控檢查失敗: ' + (r?.error || 'risk-worker not connected');
+  }
+}
+
+// ── 訂單 ────────────────────────────────────────────────────────
+async function fetchOrders() {
+  const r = await api('/api/v1/trading/orders?limit=50');
+  const tbody = document.getElementById('order-table');
+  if (r && r.data && r.data.orders && r.data.orders.length > 0) {
+    tbody.innerHTML = r.data.orders.map(o => `<tr>
+      <td style="font-family:monospace;font-size:11px">${o.order_id}</td>
+      <td><strong>${o.symbol}</strong></td>
+      <td>${o.exchange}</td>
+      <td><span class="badge ${o.side}">${o.side}</span></td>
+      <td>${fmt(o.quantity, 4)}</td>
+      <td>${o.filled_price ? fmtUsd(o.filled_price) : '—'}</td>
+      <td><span class="badge ${o.status}">${o.status}</span></td>
+      <td style="color:var(--text2);font-size:11px">${timeStr(o.created_at)}</td>
+    </tr>`).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">無訂單紀錄</td></tr>';
+  }
+}
+
+// ── 風控 ────────────────────────────────────────────────────────
+async function fetchRules() {
+  const r = await api('/api/v1/risk/rules');
+  const tbody = document.getElementById('risk-table');
+  if (r && r.data && r.data.rules) {
+    tbody.innerHTML = r.data.rules.map(rule => `<tr>
+      <td style="font-family:monospace">${rule.rule_id}</td>
+      <td>${rule.name}</td>
+      <td><span class="badge hold">${rule.type}</span></td>
+      <td>${rule.type.includes('pct') ? rule.threshold + '%' :
+            rule.type.includes('trades') ? rule.threshold :
+            fmtUsd(rule.threshold)}</td>
+      <td>${rule.enabled ? '<span class="badge buy">ON</span>' : '<span class="badge rejected">OFF</span>'}</td>
+    </tr>`).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text2)">risk-worker 未連線</td></tr>';
+  }
+}
+
+// ── 初始化 ──────────────────────────────────────────────────────
+checkWorkers();
+loadOverview();
+setInterval(checkWorkers, 30000);
+</script>
+</body>
+</html>
