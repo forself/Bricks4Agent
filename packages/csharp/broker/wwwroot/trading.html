@@ -176,7 +176,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <div class="stat"><div class="stat-label">當日損益</div><div class="stat-value" id="ov-day-pnl">—</div></div>
   </div>
   <div class="card"><h3>持倉</h3>
-    <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th></tr></thead>
+    <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th><th></th></tr></thead>
     <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody></table>
   </div>
 </div>
@@ -203,6 +203,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="fg"><select id="chart-interval"></select></div>
       <div class="fg"><input id="chart-limit" type="number" value="120" min="30" max="500" style="width:60px"></div>
       <button class="btn btn-y btn-sm" onclick="loadChart()">載入</button>
+      <button class="btn btn-o btn-sm" onclick="loadChartWithMarkers()">載入+買賣標記</button>
     </div>
   </div>
   <div style="margin-top:2px;border:1px solid var(--border);border-radius:4px;overflow:hidden">
@@ -225,8 +226,21 @@ tr:hover { background:rgba(240,185,11,0.02); }
           <option value="llm">LLM (AI)</option>
         </select></div>
       <button class="btn btn-y" onclick="runStrategy()">分析</button>
+      <button class="btn btn-o btn-sm" onclick="document.getElementById('strat-params').style.display=document.getElementById('strat-params').style.display==='none'?'flex':'none'">參數</button>
+      <button class="btn btn-o btn-sm" onclick="runStrategyComparison()">比較所有策略</button>
+    </div>
+    <div class="form-row" id="strat-params" style="display:none;background:var(--bg3);padding:8px 10px;border-radius:4px">
+      <div class="fg"><label>SMA Fast</label><input id="sp-sma-fast" type="number" value="10" style="width:50px"></div>
+      <div class="fg"><label>SMA Slow</label><input id="sp-sma-slow" type="number" value="30" style="width:50px"></div>
+      <div class="fg"><label>RSI Period</label><input id="sp-rsi-period" type="number" value="14" style="width:50px"></div>
+      <div class="fg"><label>RSI 超賣</label><input id="sp-rsi-os" type="number" value="30" style="width:50px"></div>
+      <div class="fg"><label>RSI 超買</label><input id="sp-rsi-ob" type="number" value="70" style="width:50px"></div>
+      <div class="fg"><label>MACD Fast</label><input id="sp-macd-f" type="number" value="12" style="width:50px"></div>
+      <div class="fg"><label>MACD Slow</label><input id="sp-macd-s" type="number" value="26" style="width:50px"></div>
+      <div class="fg"><label>MACD Signal</label><input id="sp-macd-sg" type="number" value="9" style="width:50px"></div>
     </div>
     <div id="signal-result"></div>
+    <div id="comparison-result" style="margin-top:12px"></div>
   </div>
 </div>
 
@@ -246,6 +260,8 @@ tr:hover { background:rgba(240,185,11,0.02); }
         <div class="fg" style="flex:1"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any"></div></div>
       <div class="form-row"><div class="fg" style="flex:1"><label>限價（Limit 單）</label><input id="ord-limit" type="number" step="any" placeholder="—"></div>
         <div class="fg"><label>&nbsp;</label><button class="btn btn-o btn-sm" onclick="riskCheckBeforeOrder()">風控預檢</button></div></div>
+      <div class="form-row"><div class="fg" style="flex:1"><label>止盈 TP</label><input id="ord-tp" type="number" step="any" placeholder="—"></div>
+        <div class="fg" style="flex:1"><label>止損 SL</label><input id="ord-sl" type="number" step="any" placeholder="—"></div></div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-g" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('buy')">買入 Buy</button>
         <button class="btn btn-r" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('sell')">賣出 Sell</button>
@@ -319,10 +335,30 @@ tr:hover { background:rgba(240,185,11,0.02); }
 
 <!-- 風控 -->
 <div class="panel" id="panel-risk">
-  <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchRules()">重新整理</button></div>
-  <div class="card"><h3>風控規則</h3>
-    <table><thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
-    <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  <div class="g g2">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">風控規則</h3><button class="btn btn-o btn-sm" onclick="fetchRules()">重新整理</button></div>
+      <table><thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
+      <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+    </div>
+    <div class="card">
+      <h3>價格告警</h3>
+      <div class="form-row">
+        <div class="fg sym-picker"><label>Symbol</label><input id="alert-symbol" value="BTC" placeholder="搜尋…" style="width:80px" onfocus="openSymPicker(this,'alert')" oninput="filterSymPicker(this,'alert')"><div class="sym-dropdown" id="alert-sym-dropdown"></div></div>
+        <div class="fg"><label>條件</label><select id="alert-condition"><option value="above">高於</option><option value="below">低於</option></select></div>
+        <div class="fg"><label>目標價</label><input id="alert-target" type="number" step="any" style="width:90px"></div>
+        <div class="fg"><label>備註</label><input id="alert-note" style="width:80px" placeholder="選填"></div>
+        <button class="btn btn-y btn-sm" onclick="addAlert()">新增</button>
+      </div>
+      <table><thead><tr><th>Symbol</th><th>條件</th><th>目標</th><th>備註</th><th></th></tr></thead>
+      <tbody id="alert-table"><tr><td colspan="5" style="color:var(--text2)">無告警</td></tr></tbody></table>
+      <h3 style="margin-top:12px">已觸發</h3>
+      <div id="alert-triggered" style="font-size:11px;color:var(--text2)">無</div>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <a class="btn btn-o btn-sm" href="/api/v1/export/orders" download>匯出訂單 CSV</a>
+    <a class="btn btn-o btn-sm" href="/api/v1/export/trades?exchange=alpaca" download>匯出成交 CSV</a>
   </div>
 </div>
 
@@ -410,7 +446,7 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk')fetchRules();if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();}
+if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();}
 
 // ── API helper ──────────────────────────────────────────────────
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
@@ -429,8 +465,8 @@ if(acc?.data){const d=acc.data;document.getElementById('ov-cash').textContent=fm
 document.getElementById('ov-buying-power').textContent=fmtUsd(d.buying_power);const pnl=document.getElementById('ov-day-pnl');pnl.textContent=fmtUsd(d.day_pnl);pnl.className='stat-value '+pnlClass(d.day_pnl);
 document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (Live)');}
 const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
-if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td></tr>`).join('');
-else tb.innerHTML='<tr><td colspan="6" style="color:var(--text2)">無持倉</td></tr>';}
+if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','alpaca',${p.quantity})">平倉</button></td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';}
 
 // ── Quotes ──────────────────────────────────────────────────────
 async function fetchQuotes(){const r=await api('/api/v1/workers/quote/prices');const tb=document.getElementById('quote-table');
@@ -446,7 +482,7 @@ async function runStrategy(){const symbol=document.getElementById('sig-symbol').
 const el=document.getElementById('signal-result');el.innerHTML='<div style="color:var(--text2);padding:12px">分析中…</div>';
 const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+symbol+'&limit=100');
 if(!bars?.data?.bars||bars.data.bars.length<2){el.innerHTML='<div style="color:var(--red);padding:8px">K 線不足，請先在市場 tab 抓取歷史</div>';return;}
-const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,interval:'1d',bars:bars.data.bars})});
+const params=getCustomParams();const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,interval:'1d',bars:bars.data.bars,...params})});
 if(!r?.data){el.innerHTML='<div style="color:var(--red);padding:8px">分析失敗: '+(r?.error||'unknown')+'</div>';return;}
 const s=r.data,ind=s.indicators||{},cls=s.action==='buy'?'buy':s.action==='sell'?'sell':'hold';
 const price=ind['sma_cross.price']||ind['rsi_oversold.price']||ind['macd_divergence.price']||ind['price']||0;
@@ -466,7 +502,10 @@ async function placeOrder(side){const ex=document.getElementById('ord-exchange')
 const body={exchange:ex,symbol:sym,side,quantity:qty,order_type:type};if(type==='limit'&&!isNaN(lim))body.limit_price=lim;
 const el=document.getElementById('order-result');el.style.display='block';el.textContent='下單中…';
 const r=await api('/api/v1/trading/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-if(r?.data)el.textContent=`Order: ${r.data.order_id}\nStatus: ${r.data.status}\n${r.data.side} ${r.data.quantity} ${r.data.symbol}`;else el.textContent='失敗: '+(r?.error||JSON.stringify(r));}
+if(r?.data){el.textContent=`Order: ${r.data.order_id}\nStatus: ${r.data.status}\n${r.data.side} ${r.data.quantity} ${r.data.symbol}`;
+const tp=parseFloat(document.getElementById('ord-tp').value),sl=parseFloat(document.getElementById('ord-sl').value);
+if((tp>0||sl>0)&&side==='buy')placeTPSL(ex,sym,qty,tp,sl).then(()=>el.textContent+='\nTP/SL orders placed');}
+else el.textContent='失敗: '+(r?.error||JSON.stringify(r));}
 
 async function riskCheckBeforeOrder(){const ex=document.getElementById('ord-exchange').value,sym=document.getElementById('ord-symbol').value,side=document.getElementById('ord-side')?.value||'buy',qty=parseFloat(document.getElementById('ord-qty').value);
 const el=document.getElementById('order-result');el.style.display='block';el.textContent='風控預檢…';
@@ -552,6 +591,119 @@ function connectWs(){const proto=location.protocol==='https:'?'wss:':'ws:';const
 ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.quotes){d.quotes.forEach(q=>{liveQuotes[q.symbol]={price:q.price,change_percent:q.change_percent,type:q.type}});updateTicker();
 if(document.getElementById('panel-quotes').classList.contains('active')){const tb=document.getElementById('quote-table');tb.innerHTML=d.quotes.map(q=>`<tr><td><strong>${q.symbol}</strong></td><td>${q.name}</td><td><span class="badge ${q.type}">${q.type}</span></td><td>${fmtUsd(q.price)}</td><td class="${pnlClass(q.change)}">${fmt(q.change)}</td><td class="${pnlClass(q.change_percent)}">${fmt(q.change_percent)}%</td><td>${q.market_cap>0?'$'+(q.market_cap/1e9).toFixed(1)+'B':'—'}</td><td style="color:var(--text2)">${timeStr(q.fetched_at)}</td></tr>`).join('');}}}catch{}};
 ws.onclose=()=>setTimeout(connectWs,5000);}
+
+// ── Close position ──────────────────────────────────────────────
+async function closePosition(symbol, exchange, qty) {
+  if (!confirm(`確定平倉 ${qty} ${symbol}？`)) return;
+  const r = await api('/api/v1/trading/order', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ exchange, symbol, side: 'sell', quantity: qty, order_type: 'market' })});
+  if (r?.data) { alert(`平倉成功: ${r.data.status}`); loadOverview(); } else alert('平倉失敗: ' + (r?.error || 'unknown'));
+}
+
+// ── Alerts ──────────────────────────────────────────────────────
+async function addAlert() {
+  const symbol = document.getElementById('alert-symbol').value, condition = document.getElementById('alert-condition').value;
+  const target = parseFloat(document.getElementById('alert-target').value), note = document.getElementById('alert-note').value;
+  if (!symbol || !target) return;
+  await api('/api/v1/alerts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ symbol, condition, target, note })});
+  fetchAlerts();
+}
+async function removeAlert(id) { await api(`/api/v1/alerts/${id}`, { method: 'DELETE' }); fetchAlerts(); }
+async function fetchAlerts() {
+  const r = await api('/api/v1/alerts');
+  if (!r?.data) return;
+  const tb = document.getElementById('alert-table');
+  if (r.data.alerts?.length > 0) tb.innerHTML = r.data.alerts.map(a => `<tr><td><strong>${a.symbol}</strong></td><td>${a.condition === 'above' ? '高於' : '低於'}</td><td>${fmtUsd(a.target)}</td><td style="color:var(--text2)">${a.note || '—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAlert('${a.id}')">X</button></td></tr>`).join('');
+  else tb.innerHTML = '<tr><td colspan="5" style="color:var(--text2)">無告警</td></tr>';
+  const trig = document.getElementById('alert-triggered');
+  if (r.data.triggered?.length > 0) trig.innerHTML = r.data.triggered.map(t => `<div style="padding:4px 0;color:var(--accent)">⚡ ${t.symbol} ${t.condition==='above'?'↑':'↓'} $${t.target} (now $${Number(t.current).toFixed(2)}) — ${timeStr(t.triggeredAt)}</div>`).join('');
+  else trig.textContent = '無';
+}
+
+// ── TP/SL ───────────────────────────────────────────────────────
+// TP/SL 在下單後自動設定限價單（簡易實作）
+async function placeTPSL(exchange, symbol, qty, tp, sl) {
+  if (tp && tp > 0) {
+    await api('/api/v1/trading/order', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ exchange, symbol, side: 'sell', quantity: qty, order_type: 'limit', limit_price: tp, time_in_force: 'gtc' })});
+  }
+  if (sl && sl > 0) {
+    await api('/api/v1/trading/order', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ exchange, symbol, side: 'sell', quantity: qty, order_type: 'stop', stop_price: sl, time_in_force: 'gtc' })});
+  }
+}
+
+// ── Strategy custom params ──────────────────────────────────────
+function getCustomParams() {
+  return {
+    sma_fast: parseInt(document.getElementById('sp-sma-fast').value) || 10,
+    sma_slow: parseInt(document.getElementById('sp-sma-slow').value) || 30,
+    rsi_period: parseInt(document.getElementById('sp-rsi-period').value) || 14,
+    rsi_oversold: parseInt(document.getElementById('sp-rsi-os').value) || 30,
+    rsi_overbought: parseInt(document.getElementById('sp-rsi-ob').value) || 70,
+    macd_fast: parseInt(document.getElementById('sp-macd-f').value) || 12,
+    macd_slow: parseInt(document.getElementById('sp-macd-s').value) || 26,
+    macd_signal: parseInt(document.getElementById('sp-macd-sg').value) || 9,
+  };
+}
+
+// ── Strategy comparison ─────────────────────────────────────────
+async function runStrategyComparison() {
+  const symbol = document.getElementById('sig-symbol').value, exchange = document.getElementById('sig-exchange').value;
+  const el = document.getElementById('comparison-result');
+  el.innerHTML = '<div style="color:var(--text2);padding:8px">比較中…</div>';
+  const bars = await api('/api/v1/workers/quote/ohlcv?symbol=' + symbol + '&limit=100');
+  if (!bars?.data?.bars || bars.data.bars.length < 30) { el.innerHTML = '<div style="color:var(--red);padding:8px">K 線不足</div>'; return; }
+  const strategies = ['composite', 'multi_timeframe', 'sma_cross', 'rsi_oversold', 'macd_divergence'];
+  const params = getCustomParams();
+  const results = [];
+  for (const s of strategies) {
+    const r = await api('/api/v1/strategy/signal', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ strategy: s, symbol, exchange, interval: '1d', bars: bars.data.bars, ...params })});
+    if (r?.data) results.push(r.data);
+  }
+  if (results.length === 0) { el.innerHTML = '<div style="color:var(--red);padding:8px">比較失敗</div>'; return; }
+  const labels = { composite: 'Composite', multi_timeframe: 'Multi-TF', sma_cross: 'SMA Cross', rsi_oversold: 'RSI', macd_divergence: 'MACD' };
+  el.innerHTML = '<h3 style="margin-bottom:8px">策略比較 — ' + symbol + '</h3><div class="g" style="grid-template-columns:repeat('+results.length+',1fr);gap:8px">' +
+    results.map(r => {
+      const cls = r.action === 'buy' ? 'buy' : r.action === 'sell' ? 'sell' : 'hold';
+      return `<div class="sig-box ${cls}" style="padding:12px"><div class="sig-action" style="font-size:22px;color:var(--${cls==='buy'?'green':cls==='sell'?'red':'text2'})">${r.action}</div><div style="font-size:11px;color:var(--text2)">${labels[r.strategy] || r.strategy}</div><div style="font-size:16px;font-weight:700;margin-top:4px">${(r.confidence * 100).toFixed(0)}%</div></div>`;
+    }).join('') + '</div>';
+}
+
+// ── Chart markers ───────────────────────────────────────────────
+async function loadChartWithMarkers() {
+  await loadChart();
+  if (!chartInstance) return;
+  const symbol = document.getElementById('chart-symbol').value;
+  // 嘗試抓最近的回測交易做 markers
+  const bars = await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&limit=365`);
+  if (!bars?.data?.bars) return;
+  const bt = await api('/api/v1/strategy/backtest', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ strategy: 'composite', symbol, exchange: 'alpaca', bars: bars.data.bars, initial_cash: 100000, commission: 0.001 })});
+  if (!bt?.data?.trades?.length) return;
+  const markers = [];
+  bt.data.trades.forEach(t => {
+    markers.push({ time: Math.floor(new Date(t.entry_date).getTime() / 1000), position: 'belowBar', color: '#0ecb81', shape: 'arrowUp', text: 'B' });
+    markers.push({ time: Math.floor(new Date(t.exit_date).getTime() / 1000), position: 'aboveBar', color: '#f6465d', shape: 'arrowDown', text: 'S' });
+  });
+  markers.sort((a, b) => a.time - b.time);
+  // lightweight-charts candleSeries is the first series added
+  try { chartInstance.series && chartInstance.series()[0]?.setMarkers(markers); } catch {}
+}
+
+// ── Alert polling ───────────────────────────────────────────────
+setInterval(async () => {
+  const r = await api('/api/v1/alerts');
+  if (r?.data?.triggered?.length > 0) {
+    const latest = r.data.triggered[0];
+    if (latest.triggeredAt && new Date(latest.triggeredAt) > new Date(Date.now() - 15000)) {
+      // 15 秒內觸發的告警 — 彈通知
+      if (Notification.permission === 'granted') new Notification(`⚡ ${latest.symbol} ${latest.condition === 'above' ? '↑' : '↓'} $${latest.target}`, { body: `Current: $${Number(latest.current).toFixed(2)}` });
+      else if (Notification.permission !== 'denied') Notification.requestPermission();
+    }
+  }
+}, 10000);
 
 // ── Init ────────────────────────────────────────────────────────
 checkWorkers();loadOverview();loadLiveQuotes();connectWs();

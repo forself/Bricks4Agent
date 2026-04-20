@@ -238,6 +238,8 @@ builder.Services.AddHttpClient<Broker.Services.BrowserExecutionRuntimeService>(c
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
 builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
+builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -874,6 +876,8 @@ if (poolEnabled)
     StrategyEndpoints.Map(api);
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
+    AlertEndpoints.Map(api);
+    ExportEndpoints.Map(api);
 }
 QuoteWebSocketEndpoints.Map(app);
 
