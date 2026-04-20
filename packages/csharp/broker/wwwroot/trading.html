@@ -3,985 +3,559 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>B4A Trading Dashboard</title>
+<title>B4A Trading</title>
 <style>
 :root {
-  --bg: #0d1117; --surface: #161b22; --border: #30363d;
-  --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
-  --green: #3fb950; --red: #f85149; --yellow: #d29922;
-  --buy: #3fb950; --sell: #f85149; --hold: #8b949e;
+  --bg: #0b0e11; --bg2: #181a20; --bg3: #1e2329; --bg4: #2b3139;
+  --border: #2b3139; --text: #eaecef; --text2: #848e9c; --text3: #5e6673;
+  --accent: #f0b90b; --accent2: #c99d09;
+  --green: #0ecb81; --red: #f6465d; --greenBg: rgba(14,203,129,0.1); --redBg: rgba(246,70,93,0.1);
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
-.header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
-.header h1 { font-size: 18px; font-weight: 600; }
-.header .status { font-size: 12px; color: var(--text2); margin-left: auto; }
-.header .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-.dot.on { background: var(--green); }
-.dot.off { background: var(--red); }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
 
-.tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; gap: 0; }
-.tab { padding: 10px 20px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; font-size: 14px; transition: all 0.2s; }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* Header */
+.hdr { background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; height:48px; }
+.hdr .logo { font-size:16px; font-weight:700; color:var(--accent); margin-right:24px; letter-spacing:1px; }
+.hdr nav { display:flex; gap:4px; flex:1; }
+.hdr nav a { color:var(--text2); padding:6px 14px; border-radius:4px; cursor:pointer; font-size:13px; text-decoration:none; transition:.15s; }
+.hdr nav a:hover { color:var(--text); background:var(--bg3); }
+.hdr nav a.active { color:var(--accent); background:rgba(240,185,11,0.08); }
+.hdr .hdr-right { display:flex; align-items:center; gap:12px; }
+.hdr .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.dot.on { background:var(--green); } .dot.off { background:var(--red); }
+.hdr .status-group { display:flex; gap:10px; font-size:11px; color:var(--text2); }
+.hdr .status-group span { display:flex; align-items:center; gap:3px; }
 
-.content { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
-.panel { display: none; }
-.panel.active { display: block; }
+/* Ticker strip */
+.ticker { background:var(--bg2); border-bottom:1px solid var(--border); display:flex; overflow-x:auto; padding:0 20px; height:40px; gap:0; }
+.ticker::-webkit-scrollbar { display:none; }
+.ticker-item { display:flex; align-items:center; gap:8px; padding:0 16px; border-right:1px solid var(--border); white-space:nowrap; min-width:fit-content; cursor:pointer; transition:.15s; }
+.ticker-item:hover { background:var(--bg3); }
+.ticker-item .t-sym { font-weight:600; font-size:12px; }
+.ticker-item .t-price { font-size:12px; }
+.ticker-item .t-chg { font-size:11px; padding:1px 6px; border-radius:3px; font-weight:600; }
+.t-chg.up { background:var(--greenBg); color:var(--green); }
+.t-chg.down { background:var(--redBg); color:var(--red); }
 
-.grid { display: grid; gap: 16px; }
-.grid-2 { grid-template-columns: 1fr 1fr; }
-.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-.grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
-@media (max-width: 900px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+/* Content */
+.content { padding:16px 20px; }
+.panel { display:none; } .panel.active { display:block; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
-.card h3 { font-size: 14px; color: var(--text2); margin-bottom: 12px; font-weight: 500; }
-.card .value { font-size: 28px; font-weight: 700; }
-.card .sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+/* Cards */
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.card h3 { font-size:12px; color:var(--text2); margin-bottom:10px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; }
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; padding: 8px 12px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
-td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
-tr:hover { background: rgba(88,166,255,0.04); }
+/* Grid */
+.g { display:grid; gap:12px; }
+.g2 { grid-template-columns:1fr 1fr; } .g3 { grid-template-columns:1fr 1fr 1fr; } .g4 { grid-template-columns:1fr 1fr 1fr 1fr; }
+@media(max-width:1000px) { .g2,.g3,.g4 { grid-template-columns:1fr; } }
 
-.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.badge.buy, .badge.filled { background: rgba(63,185,80,0.15); color: var(--green); }
-.badge.sell, .badge.rejected { background: rgba(248,81,73,0.15); color: var(--red); }
-.badge.hold, .badge.submitted { background: rgba(139,148,158,0.15); color: var(--text2); }
-.badge.pending { background: rgba(210,153,34,0.15); color: var(--yellow); }
+/* Stat card */
+.stat { padding:12px 16px; background:var(--bg3); border-radius:4px; }
+.stat .stat-label { font-size:11px; color:var(--text2); margin-bottom:4px; }
+.stat .stat-value { font-size:22px; font-weight:700; }
 
-.positive { color: var(--green); }
-.negative { color: var(--red); }
+/* Table */
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { text-align:left; padding:8px 10px; color:var(--text3); font-weight:500; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; }
+td { padding:7px 10px; border-bottom:1px solid rgba(43,49,57,0.5); }
+tr:hover { background:rgba(240,185,11,0.02); }
 
-.form-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-end; flex-wrap: wrap; }
-.form-group { display: flex; flex-direction: column; gap: 4px; }
-.form-group label { font-size: 12px; color: var(--text2); }
-.form-group input, .form-group select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+/* Badges */
+.badge { padding:2px 6px; border-radius:2px; font-size:10px; font-weight:700; text-transform:uppercase; }
+.badge.buy,.badge.filled { background:var(--greenBg); color:var(--green); }
+.badge.sell,.badge.rejected { background:var(--redBg); color:var(--red); }
+.badge.hold,.badge.submitted,.badge.pending { background:rgba(132,142,156,0.1); color:var(--text2); }
+.badge.stock { background:rgba(240,185,11,0.1); color:var(--accent); }
+.badge.crypto { background:rgba(14,203,129,0.1); color:var(--green); }
+.up,.positive { color:var(--green); } .down,.negative { color:var(--red); }
 
-.btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { opacity: 0.9; }
-.btn-buy { background: var(--green); color: #fff; }
-.btn-sell { background: var(--red); color: #fff; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+/* Forms */
+.form-row { display:flex; gap:10px; margin-bottom:10px; align-items:flex-end; flex-wrap:wrap; }
+.fg { display:flex; flex-direction:column; gap:3px; }
+.fg label { font-size:11px; color:var(--text2); }
+.fg input,.fg select { background:var(--bg); border:1px solid var(--border); color:var(--text); padding:7px 10px; border-radius:4px; font-size:12px; outline:none; }
+.fg input:focus,.fg select:focus { border-color:var(--accent); }
 
-.signal-box { padding: 20px; border-radius: 8px; margin-top: 16px; }
-.signal-box.buy { border: 2px solid var(--green); background: rgba(63,185,80,0.06); }
-.signal-box.sell { border: 2px solid var(--red); background: rgba(248,81,73,0.06); }
-.signal-box.hold { border: 2px solid var(--border); background: rgba(139,148,158,0.06); }
-.signal-action { font-size: 36px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
-.signal-confidence { font-size: 14px; color: var(--text2); margin-top: 4px; }
-.signal-header { display: flex; align-items: center; gap: 20px; }
-.signal-header .signal-price { font-size: 28px; font-weight: 700; margin-left: auto; }
-.signal-header .signal-symbol { font-size: 16px; color: var(--text2); }
-.signal-strategies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
-@media (max-width: 900px) { .signal-strategies { grid-template-columns: 1fr; } }
-.signal-strat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
-.signal-strat-card .strat-name { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-.signal-strat-card .strat-action { font-size: 18px; font-weight: 700; }
-.signal-strat-card .strat-detail { font-size: 12px; color: var(--text2); margin-top: 4px; line-height: 1.4; }
-.signal-indicators { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
-.signal-ind { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; min-width: 100px; text-align: center; }
-.signal-ind .ind-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
-.signal-ind .ind-value { font-size: 20px; font-weight: 700; margin-top: 2px; }
-.signal-ind .ind-value.warn { color: var(--yellow); }
-.signal-ind .ind-value.danger { color: var(--red); }
-.signal-ind .ind-value.safe { color: var(--green); }
+/* Buttons */
+.btn { padding:8px 16px; border-radius:4px; border:none; cursor:pointer; font-size:12px; font-weight:700; transition:.15s; }
+.btn:hover { opacity:.85; }
+.btn-y { background:var(--accent); color:#0b0e11; }
+.btn-g { background:var(--green); color:#fff; }
+.btn-r { background:var(--red); color:#fff; }
+.btn-o { background:var(--bg4); color:var(--text); border:1px solid var(--border); }
+.btn-sm { padding:4px 10px; font-size:11px; }
 
-.log { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; color: var(--text2); white-space: pre-wrap; }
-.refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.refresh-bar .time { font-size: 12px; color: var(--text2); }
+/* Signal */
+.sig-box { padding:20px; border-radius:4px; margin-top:12px; }
+.sig-box.buy { border-left:4px solid var(--green); background:var(--greenBg); }
+.sig-box.sell { border-left:4px solid var(--red); background:var(--redBg); }
+.sig-box.hold { border-left:4px solid var(--text3); background:var(--bg3); }
+.sig-action { font-size:32px; font-weight:800; text-transform:uppercase; letter-spacing:2px; }
+.sig-sub { font-size:12px; color:var(--text2); margin-top:2px; }
+.sig-header { display:flex; align-items:center; gap:16px; }
+.sig-header .sig-price { font-size:24px; font-weight:700; margin-left:auto; }
+.sig-header .sig-sym { font-size:13px; color:var(--text2); }
+.sig-strategies { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+@media(max-width:900px) { .sig-strategies { grid-template-columns:1fr; } }
+.sig-card { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:10px 12px; }
+.sig-card .sc-name { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+.sig-card .sc-action { font-size:16px; font-weight:700; }
+.sig-card .sc-detail { font-size:11px; color:var(--text2); margin-top:3px; line-height:1.4; }
+.sig-inds { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+.sig-ind { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; min-width:80px; text-align:center; }
+.sig-ind .si-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; }
+.sig-ind .si-value { font-size:18px; font-weight:700; margin-top:2px; }
 
-/* Symbol Picker */
-.sym-picker { position: relative; }
-.sym-picker input { width: 160px; }
-.sym-dropdown { position: absolute; top: 100%; left: 0; width: 280px; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; z-index: 100; display: none; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
-.sym-dropdown.open { display: block; }
-.sym-section { padding: 6px 12px; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
-.sym-item { display: flex; align-items: center; padding: 8px 12px; cursor: pointer; gap: 10px; border-bottom: 1px solid rgba(48,54,61,0.5); }
-.sym-item:hover { background: rgba(88,166,255,0.08); }
-.sym-item .sym-ticker { font-weight: 700; font-size: 14px; min-width: 60px; }
-.sym-item .sym-name { font-size: 12px; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sym-item .sym-price { font-size: 13px; font-weight: 600; text-align: right; min-width: 70px; }
-.sym-item .sym-change { font-size: 11px; text-align: right; min-width: 55px; }
-.sym-item .sym-type-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
-.sym-type-tag.stock { background: rgba(88,166,255,0.15); color: var(--accent); }
-.sym-type-tag.crypto { background: rgba(210,153,34,0.15); color: var(--yellow); }
+/* Symbol picker */
+.sym-picker { position:relative; }
+.sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
+.sym-dropdown.open { display:block; }
+.sym-section { padding:5px 12px; font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; background:var(--bg); border-bottom:1px solid var(--border); position:sticky; top:0; }
+.sym-item { display:flex; align-items:center; padding:7px 12px; cursor:pointer; gap:8px; }
+.sym-item:hover { background:var(--bg3); }
+.sym-item .sym-ticker { font-weight:700; font-size:13px; min-width:55px; }
+.sym-item .sym-name { font-size:11px; color:var(--text2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sym-item .sym-price { font-size:12px; font-weight:600; min-width:65px; text-align:right; }
+.sym-item .sym-change { font-size:11px; min-width:50px; text-align:right; }
+
+/* Log */
+.log { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:10px; font-family:'Consolas',monospace; font-size:11px; max-height:200px; overflow-y:auto; color:var(--text2); white-space:pre-wrap; }
+
+/* Trade panel - Binance style */
+.trade-grid { display:grid; grid-template-columns:1fr 320px; gap:12px; }
+@media(max-width:900px) { .trade-grid { grid-template-columns:1fr; } }
+.order-form { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.order-form .buy-sell-tabs { display:flex; margin-bottom:12px; }
+.order-form .buy-sell-tabs .bs-tab { flex:1; padding:10px; text-align:center; font-weight:700; font-size:14px; cursor:pointer; border-radius:4px 4px 0 0; }
+.bs-tab.buy-tab { background:var(--green); color:#fff; }
+.bs-tab.sell-tab { background:var(--bg4); color:var(--text2); }
+.bs-tab.buy-tab.inactive { background:var(--bg4); color:var(--text2); }
+.bs-tab.sell-tab.active-sell { background:var(--red); color:#fff; }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>B4A Trading Dashboard</h1>
-  <div class="status">
-    <span class="dot" id="dot-quote"></span>Quote
-    <span class="dot" id="dot-strategy" style="margin-left:12px"></span>Strategy
-    <span class="dot" id="dot-risk" style="margin-left:12px"></span>Risk
-    <span class="dot" id="dot-trading" style="margin-left:12px"></span>Trading
-    <span style="margin-left:16px" id="last-update"></span>
+<!-- Header -->
+<div class="hdr">
+  <div class="logo">B4A TRADING</div>
+  <nav id="main-nav">
+    <a class="active" onclick="switchTab('overview')">總覽</a>
+    <a onclick="switchTab('quotes')">市場</a>
+    <a onclick="switchTab('chart')">圖表</a>
+    <a onclick="switchTab('strategy')">策略</a>
+    <a onclick="switchTab('trade')">交易</a>
+    <a onclick="switchTab('orders')">訂單</a>
+    <a onclick="switchTab('backtest')">回測</a>
+    <a onclick="switchTab('auto')">自動</a>
+    <a onclick="switchTab('risk')">風控</a>
+    <a onclick="switchTab('pnl')">資產</a>
+  </nav>
+  <div class="hdr-right">
+    <div class="status-group">
+      <span><i class="dot" id="dot-quote"></i>Quote</span>
+      <span><i class="dot" id="dot-strategy"></i>Strategy</span>
+      <span><i class="dot" id="dot-risk"></i>Risk</span>
+      <span><i class="dot" id="dot-trading"></i>Trading</span>
+    </div>
   </div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('overview')">總覽</div>
-  <div class="tab" onclick="switchTab('quotes')">報價</div>
-  <div class="tab" onclick="switchTab('strategy')">策略訊號</div>
-  <div class="tab" onclick="switchTab('trade')">下單</div>
-  <div class="tab" onclick="switchTab('orders')">訂單</div>
-  <div class="tab" onclick="switchTab('risk')">風控</div>
-  <div class="tab" onclick="switchTab('auto')">自動交易</div>
-  <div class="tab" onclick="switchTab('chart')">K 線圖</div>
-</div>
+<!-- Ticker strip -->
+<div class="ticker" id="ticker-strip"></div>
 
 <div class="content">
 
-  <!-- ── 總覽 ──────────────────────────────────────────────────── -->
-  <div class="panel active" id="panel-overview">
-    <div class="grid grid-4" id="account-cards">
-      <div class="card"><h3>帳戶餘額</h3><div class="value" id="ov-cash">—</div><div class="sub" id="ov-exchange"></div></div>
-      <div class="card"><h3>投資組合價值</h3><div class="value" id="ov-portfolio">—</div></div>
-      <div class="card"><h3>購買力</h3><div class="value" id="ov-buying-power">—</div></div>
-      <div class="card"><h3>當日損益</h3><div class="value" id="ov-day-pnl">—</div></div>
+<!-- 總覽 -->
+<div class="panel active" id="panel-overview">
+  <div class="g g4" style="margin-bottom:12px">
+    <div class="stat"><div class="stat-label">帳戶餘額</div><div class="stat-value" id="ov-cash">—</div><div style="font-size:11px;color:var(--text2);margin-top:2px" id="ov-exchange"></div></div>
+    <div class="stat"><div class="stat-label">投資組合價值</div><div class="stat-value" id="ov-portfolio">—</div></div>
+    <div class="stat"><div class="stat-label">購買力</div><div class="stat-value" id="ov-buying-power">—</div></div>
+    <div class="stat"><div class="stat-label">當日損益</div><div class="stat-value" id="ov-day-pnl">—</div></div>
+  </div>
+  <div class="card"><h3>持倉</h3>
+    <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th></tr></thead>
+    <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- 市場 -->
+<div class="panel" id="panel-quotes">
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn btn-o btn-sm" onclick="fetchQuotes()">重新整理</button>
+    <button class="btn btn-y btn-sm" onclick="triggerFetch()">抓取報價</button>
+    <button class="btn btn-g btn-sm" onclick="batchFetchAll()" id="batch-fetch-btn">抓取所有歷史 K 線</button>
+    <span id="batch-fetch-status" style="font-size:11px;color:var(--text2);line-height:28px"></span>
+  </div>
+  <div class="card"><h3>即時報價</h3>
+    <table><thead><tr><th>Symbol</th><th>名稱</th><th>類型</th><th>價格</th><th>漲跌</th><th>漲跌%</th><th>市值</th><th>更新時間</th></tr></thead>
+    <tbody id="quote-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- 圖表 -->
+<div class="panel" id="panel-chart">
+  <div class="card" style="padding:10px 16px">
+    <div class="form-row" style="margin:0;align-items:center">
+      <div class="fg sym-picker"><input id="chart-symbol" value="AAPL" style="width:120px" placeholder="搜尋…" onfocus="openSymPicker(this,'chart')" oninput="filterSymPicker(this,'chart')"><div class="sym-dropdown" id="chart-sym-dropdown"></div></div>
+      <div class="fg"><select id="chart-interval"></select></div>
+      <div class="fg"><input id="chart-limit" type="number" value="120" min="30" max="500" style="width:60px"></div>
+      <button class="btn btn-y btn-sm" onclick="loadChart()">載入</button>
     </div>
-    <div style="margin-top:16px">
-      <div class="card">
-        <h3>持倉</h3>
-        <table>
-          <thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th></tr></thead>
-          <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody>
-        </table>
+  </div>
+  <div style="margin-top:2px;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+    <div id="chart-container" style="height:520px;width:100%"></div>
+  </div>
+</div>
+
+<!-- 策略 -->
+<div class="panel" id="panel-strategy">
+  <div class="card">
+    <h3>策略分析</h3>
+    <div class="form-row">
+      <div class="fg sym-picker"><label>Symbol</label><input id="sig-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'sig')" oninput="filterSymPicker(this,'sig')"><div class="sym-dropdown" id="sig-sym-dropdown"></div></div>
+      <div class="fg"><label>Exchange</label><select id="sig-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
+      <div class="fg"><label>策略</label>
+        <select id="sig-strategy">
+          <option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option>
+          <option value="sma_cross">SMA Cross</option><option value="rsi_oversold">RSI</option>
+          <option value="macd_divergence">MACD</option><option value="news_sentiment">News</option>
+          <option value="llm">LLM (AI)</option>
+        </select></div>
+      <button class="btn btn-y" onclick="runStrategy()">分析</button>
+    </div>
+    <div id="signal-result"></div>
+  </div>
+</div>
+
+<!-- 交易 -->
+<div class="panel" id="panel-trade">
+  <div class="trade-grid">
+    <div class="card"><h3>帳戶</h3><div id="trade-account" style="color:var(--text2)">載入中…</div>
+      <div style="margin-top:12px"><h3>最近訂單</h3>
+        <table><thead><tr><th>Symbol</th><th>方向</th><th>數量</th><th>狀態</th><th>時間</th></tr></thead>
+        <tbody id="trade-recent-orders"><tr><td colspan="5" style="color:var(--text2)">—</td></tr></tbody></table>
       </div>
     </div>
-  </div>
-
-  <!-- ── 報價 ──────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-quotes">
-    <div class="refresh-bar">
-      <button class="btn btn-primary btn-sm" onclick="fetchQuotes()">重新整理</button>
-      <button class="btn btn-primary btn-sm" onclick="triggerFetch()">立即抓取報價</button>
-      <button class="btn btn-buy btn-sm" onclick="batchFetchAll()" id="batch-fetch-btn">一鍵抓取所有歷史 K 線</button>
-      <span id="batch-fetch-status" style="font-size:12px;color:var(--text2)"></span>
-    </div>
-    <div class="card">
-      <h3>即時報價</h3>
-      <table>
-        <thead><tr><th>Symbol</th><th>名稱</th><th>類型</th><th>價格</th><th>漲跌</th><th>漲跌%</th><th>市值</th><th>更新時間</th></tr></thead>
-        <tbody id="quote-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody>
-      </table>
+    <div class="order-form">
+      <div class="form-row"><div class="fg sym-picker" style="flex:1"><label>Symbol</label><input id="ord-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'ord')" oninput="filterSymPicker(this,'ord')"><div class="sym-dropdown" id="ord-sym-dropdown"></div></div>
+        <div class="fg"><label>Exchange</label><select id="ord-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
+      <div class="form-row"><div class="fg" style="flex:1"><label>類型</label><select id="ord-type"><option value="market">Market</option><option value="limit">Limit</option></select></div>
+        <div class="fg" style="flex:1"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any"></div></div>
+      <div class="form-row"><div class="fg" style="flex:1"><label>限價（Limit 單）</label><input id="ord-limit" type="number" step="any" placeholder="—"></div>
+        <div class="fg"><label>&nbsp;</label><button class="btn btn-o btn-sm" onclick="riskCheckBeforeOrder()">風控預檢</button></div></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-g" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('buy')">買入 Buy</button>
+        <button class="btn btn-r" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('sell')">賣出 Sell</button>
+      </div>
+      <div id="order-result" class="log" style="margin-top:10px;display:none"></div>
     </div>
   </div>
+</div>
 
-  <!-- ── 策略訊號 ──────────────────────────────────────────────── -->
-  <div class="panel" id="panel-strategy">
+<!-- 訂單 -->
+<div class="panel" id="panel-orders">
+  <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchOrders()">重新整理</button></div>
+  <div class="card"><h3>訂單紀錄</h3>
+    <table><thead><tr><th>OrderID</th><th>Symbol</th><th>Exchange</th><th>方向</th><th>數量</th><th>成交價</th><th>狀態</th><th>時間</th></tr></thead>
+    <tbody id="order-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- 回測 -->
+<div class="panel" id="panel-backtest">
+  <div class="g g2">
     <div class="card">
-      <h3>產生訊號</h3>
+      <h3>回測設定</h3>
+      <div class="form-row"><div class="fg sym-picker"><label>Symbol</label><input id="bt-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'bt')" oninput="filterSymPicker(this,'bt')"><div class="sym-dropdown" id="bt-sym-dropdown"></div></div>
+        <div class="fg"><label>Exchange</label><select id="bt-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
+      <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
+        <div class="fg"><label>初始資金</label><input id="bt-cash" type="number" value="100000" step="1000"></div>
+        <div class="fg"><label>手續費%</label><input id="bt-commission" type="number" value="0.1" step="0.01"></div>
+        <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="730"></div></div>
+      <button class="btn btn-y" onclick="runBacktest()">開始回測</button>
+      <div id="bt-status" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+    </div>
+    <div class="card" id="bt-summary-card" style="display:none"><h3>績效</h3><div class="g g3" id="bt-metrics" style="gap:6px"></div></div>
+  </div>
+  <div style="margin-top:12px;border:1px solid var(--border);border-radius:4px;overflow:hidden" id="bt-chart-card" style="display:none"><div id="bt-chart-container" style="height:300px;width:100%"></div></div>
+  <div class="card" style="margin-top:12px" id="bt-trades-card" style="display:none"><h3>交易明細</h3>
+    <table><thead><tr><th>#</th><th>方向</th><th>進場日</th><th>進場價</th><th>出場日</th><th>出場價</th><th>數量</th><th>損益</th><th>損益%</th><th>天數</th></tr></thead>
+    <tbody id="bt-trades-table"></tbody></table>
+  </div>
+</div>
+
+<!-- 自動交易 -->
+<div class="panel" id="panel-auto">
+  <div class="g g2">
+    <div class="card">
+      <h3>控制</h3>
+      <div class="form-row" style="align-items:center">
+        <div style="font-size:14px;font-weight:700" id="auto-status-text">—</div>
+        <button class="btn btn-g btn-sm" id="auto-toggle-btn" onclick="toggleAutoTrader()">啟用</button>
+        <div class="fg" style="margin-left:auto"><label>間隔(秒)</label><input id="auto-interval" type="number" value="300" min="60" step="60" style="width:70px"></div>
+        <button class="btn btn-o btn-sm" onclick="setAutoInterval()">設定</button>
+      </div>
+      <h3 style="margin-top:14px">新增監控</h3>
       <div class="form-row">
-        <div class="form-group sym-picker">
-          <label>Symbol</label>
-          <input id="sig-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'sig')" oninput="filterSymPicker(this,'sig')">
-          <div class="sym-dropdown" id="sig-sym-dropdown"></div>
-        </div>
-        <div class="form-group">
-          <label>Exchange</label>
-          <select id="sig-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
-        </div>
-        <div class="form-group">
-          <label>策略</label>
-          <select id="sig-strategy">
-            <option value="composite">Composite（複合）</option>
-            <option value="sma_cross">SMA Cross</option>
-            <option value="rsi_oversold">RSI</option>
-            <option value="macd_divergence">MACD</option>
-            <option value="llm">LLM（AI）</option>
-          </select>
-        </div>
-        <button class="btn btn-primary" onclick="runStrategy()">分析</button>
+        <div class="fg sym-picker"><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
+        <div class="fg"><select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
+        <div class="fg"><select id="auto-strategy"><option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
+        <div class="fg"><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:60px"></div>
+        <button class="btn btn-y btn-sm" onclick="addAutoWatch()">新增</button>
       </div>
-      <div id="signal-result"></div>
+    </div>
+    <div class="card"><h3>監控清單</h3>
+      <table><thead><tr><th>Symbol</th><th>Exchange</th><th>策略</th><th>數量</th><th>訊號</th><th>信心</th><th>檢查</th><th></th></tr></thead>
+      <tbody id="auto-watch-table"><tr><td colspan="8" style="color:var(--text2)">無</td></tr></tbody></table>
     </div>
   </div>
+  <div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">交易日誌</h3><button class="btn btn-o btn-sm" onclick="fetchAutoLogs()">重新整理</button></div>
+    <div id="auto-logs" class="log" style="max-height:250px">—</div>
+  </div>
+</div>
 
-  <!-- ── 下單 ──────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-trade">
-    <div class="grid grid-2">
-      <div class="card">
-        <h3>下單</h3>
-        <div class="form-row">
-          <div class="form-group"><label>Exchange</label>
-            <select id="ord-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
-          </div>
-          <div class="form-group sym-picker"><label>Symbol</label><input id="ord-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'ord')" oninput="filterSymPicker(this,'ord')"><div class="sym-dropdown" id="ord-sym-dropdown"></div></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>方向</label>
-            <select id="ord-side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
-          </div>
-          <div class="form-group"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any"></div>
-          <div class="form-group"><label>類型</label>
-            <select id="ord-type"><option value="market">Market</option><option value="limit">Limit</option></select>
-          </div>
-          <div class="form-group"><label>限價</label><input id="ord-limit" type="number" step="any" placeholder="僅 limit 單"></div>
-        </div>
-        <div class="form-row" style="gap:8px">
-          <button class="btn btn-buy" onclick="placeOrder('buy')">Buy</button>
-          <button class="btn btn-sell" onclick="placeOrder('sell')">Sell</button>
-          <button class="btn btn-primary btn-sm" onclick="riskCheckBeforeOrder()" style="margin-left:auto">風控預檢</button>
-        </div>
-        <div id="order-result" class="log" style="margin-top:12px;display:none"></div>
-      </div>
-      <div class="card">
-        <h3>帳戶資訊</h3>
-        <div id="trade-account" style="color:var(--text2)">選擇 exchange 後自動載入</div>
-      </div>
-    </div>
+<!-- 風控 -->
+<div class="panel" id="panel-risk">
+  <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchRules()">重新整理</button></div>
+  <div class="card"><h3>風控規則</h3>
+    <table><thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
+    <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
   </div>
+</div>
 
-  <!-- ── 訂單 ──────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-orders">
-    <div class="refresh-bar">
-      <button class="btn btn-primary btn-sm" onclick="fetchOrders()">重新整理</button>
+<!-- 資產 -->
+<div class="panel" id="panel-pnl">
+  <div class="form-row" style="margin-bottom:12px">
+    <div class="fg"><select id="pnl-exchange" onchange="loadPnlReport()"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
+    <button class="btn btn-o btn-sm" onclick="loadPnlReport()">重新整理</button>
+  </div>
+  <div class="g g4" style="margin-bottom:12px">
+    <div class="stat"><div class="stat-label">帳戶價值</div><div class="stat-value" id="pnl-portfolio">—</div></div>
+    <div class="stat"><div class="stat-label">現金</div><div class="stat-value" id="pnl-cash">—</div></div>
+    <div class="stat"><div class="stat-label">持倉市值</div><div class="stat-value" id="pnl-positions-value">—</div></div>
+    <div class="stat"><div class="stat-label">未實現損益</div><div class="stat-value" id="pnl-unrealized">—</div></div>
+  </div>
+  <div class="g g2">
+    <div class="card"><h3>持倉明細</h3>
+      <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>損益</th><th>%</th></tr></thead>
+      <tbody id="pnl-positions-table"><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody></table>
     </div>
-    <div class="card">
-      <h3>訂單紀錄</h3>
-      <table>
-        <thead><tr><th>OrderID</th><th>Symbol</th><th>Exchange</th><th>方向</th><th>數量</th><th>成交價</th><th>狀態</th><th>時間</th></tr></thead>
-        <tbody id="order-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody>
-      </table>
+    <div class="card"><h3>最近成交</h3>
+      <table><thead><tr><th>Symbol</th><th>方向</th><th>數量</th><th>價格</th><th>手續費</th><th>時間</th></tr></thead>
+      <tbody id="pnl-trades-table"><tr><td colspan="6" style="color:var(--text2)">—</td></tr></tbody></table>
     </div>
   </div>
-
-  <!-- ── 風控 ──────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-risk">
-    <div class="refresh-bar">
-      <button class="btn btn-primary btn-sm" onclick="fetchRules()">重新整理</button>
-    </div>
-    <div class="card">
-      <h3>風控規則</h3>
-      <table>
-        <thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
-        <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ── 自動交易 ──────────────────────────────────────────────── -->
-  <div class="panel" id="panel-auto">
-    <div class="grid grid-2">
-      <div class="card">
-        <h3>自動交易控制</h3>
-        <div class="form-row" style="align-items:center">
-          <div style="font-size:16px;font-weight:600" id="auto-status-text">狀態: 載入中…</div>
-          <button class="btn btn-buy btn-sm" id="auto-toggle-btn" onclick="toggleAutoTrader()">啟用</button>
-        </div>
-        <div class="form-row" style="margin-top:12px">
-          <div class="form-group"><label>間隔（秒）</label><input id="auto-interval" type="number" value="300" min="60" step="60"></div>
-          <button class="btn btn-primary btn-sm" onclick="setAutoInterval()">設定</button>
-        </div>
-        <h3 style="margin-top:16px">新增監控</h3>
-        <div class="form-row">
-          <div class="form-group sym-picker"><label>Symbol</label><input id="auto-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
-          <div class="form-group"><label>Exchange</label>
-            <select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select>
-          </div>
-          <div class="form-group"><label>策略</label>
-            <select id="auto-strategy">
-              <option value="composite">Composite</option><option value="sma_cross">SMA</option>
-              <option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option>
-            </select>
-          </div>
-          <div class="form-group"><label>數量</label><input id="auto-qty" type="number" value="1" min="0.001" step="any"></div>
-          <button class="btn btn-primary" onclick="addAutoWatch()">新增</button>
-        </div>
-      </div>
-      <div class="card">
-        <h3>監控清單</h3>
-        <table>
-          <thead><tr><th>Symbol</th><th>Exchange</th><th>策略</th><th>數量</th><th>最新訊號</th><th>信心度</th><th>最後檢查</th><th></th></tr></thead>
-          <tbody id="auto-watch-table"><tr><td colspan="8" style="color:var(--text2)">無監控項目</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div class="refresh-bar">
-        <h3 style="margin:0">交易日誌</h3>
-        <button class="btn btn-primary btn-sm" onclick="fetchAutoLogs()">重新整理</button>
-      </div>
-      <div id="auto-logs" class="log" style="max-height:300px">等待日誌…</div>
-    </div>
-  </div>
-
-  <!-- ── K 線圖 ────────────────────────────────────────────────── -->
-  <div class="panel" id="panel-chart">
-    <div class="card">
-      <div class="form-row">
-        <div class="form-group sym-picker"><label>Symbol</label><input id="chart-symbol" value="AAPL" placeholder="搜尋商品…" onfocus="openSymPicker(this,'chart')" oninput="filterSymPicker(this,'chart')"><div class="sym-dropdown" id="chart-sym-dropdown"></div></div>
-        <div class="form-group"><label>Interval</label>
-          <select id="chart-interval"></select>
-        </div>
-        <div class="form-group"><label>Bar 數</label><input id="chart-limit" type="number" value="120" min="30" max="500"></div>
-        <button class="btn btn-primary" onclick="loadChart()">載入</button>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px;padding:0;overflow:hidden">
-      <div id="chart-container" style="height:500px;width:100%"></div>
-    </div>
-  </div>
+</div>
 
 </div>
 
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-const API = '';  // 同 origin
+const API='';
 
-// ── 商品清單（從報價自動載入 + 預設熱門標的）────────────────────
-const defaultSymbols = [
-  // 美股
-  { symbol: 'AAPL',  name: 'Apple Inc.',          type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'MSFT',  name: 'Microsoft Corp.',     type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'TSLA',  name: 'Tesla Inc.',           type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'NVDA',  name: 'NVIDIA Corp.',         type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'AMZN',  name: 'Amazon.com Inc.',      type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.',        type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'META',  name: 'Meta Platforms Inc.',   type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'AMD',   name: 'Advanced Micro Devices', type: 'stock', exchange: 'alpaca' },
-  { symbol: 'NFLX',  name: 'Netflix Inc.',         type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'SPY',   name: 'S&P 500 ETF',          type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'QQQ',   name: 'Nasdaq 100 ETF',       type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'PLTR',  name: 'Palantir Technologies', type: 'stock', exchange: 'alpaca' },
-  { symbol: 'COIN',  name: 'Coinbase Global',      type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'INTC',  name: 'Intel Corp.',           type: 'stock',  exchange: 'alpaca' },
-  { symbol: 'DIS',   name: 'Walt Disney Co.',       type: 'stock',  exchange: 'alpaca' },
-  // 加密貨幣
-  { symbol: 'BTC',   name: 'Bitcoin',              type: 'crypto', exchange: 'binance' },
-  { symbol: 'ETH',   name: 'Ethereum',             type: 'crypto', exchange: 'binance' },
-  { symbol: 'SOL',   name: 'Solana',               type: 'crypto', exchange: 'binance' },
-  { symbol: 'DOGE',  name: 'Dogecoin',             type: 'crypto', exchange: 'binance' },
-  { symbol: 'BNB',   name: 'Binance Coin',         type: 'crypto', exchange: 'binance' },
-  { symbol: 'XRP',   name: 'Ripple',               type: 'crypto', exchange: 'binance' },
-  { symbol: 'ADA',   name: 'Cardano',              type: 'crypto', exchange: 'binance' },
-  { symbol: 'AVAX',  name: 'Avalanche',            type: 'crypto', exchange: 'binance' },
-  { symbol: 'LINK',  name: 'Chainlink',            type: 'crypto', exchange: 'binance' },
-  { symbol: 'DOT',   name: 'Polkadot',             type: 'crypto', exchange: 'binance' },
-  { symbol: 'MATIC', name: 'Polygon',              type: 'crypto', exchange: 'binance' },
-  { symbol: 'UNI',   name: 'Uniswap',              type: 'crypto', exchange: 'binance' },
+// ── 商品清單 ────────────────────────────────────────────────────
+const defaultSymbols=[
+  {symbol:'AAPL',name:'Apple',type:'stock',exchange:'alpaca'},{symbol:'MSFT',name:'Microsoft',type:'stock',exchange:'alpaca'},
+  {symbol:'TSLA',name:'Tesla',type:'stock',exchange:'alpaca'},{symbol:'NVDA',name:'NVIDIA',type:'stock',exchange:'alpaca'},
+  {symbol:'AMZN',name:'Amazon',type:'stock',exchange:'alpaca'},{symbol:'GOOGL',name:'Alphabet',type:'stock',exchange:'alpaca'},
+  {symbol:'META',name:'Meta',type:'stock',exchange:'alpaca'},{symbol:'AMD',name:'AMD',type:'stock',exchange:'alpaca'},
+  {symbol:'NFLX',name:'Netflix',type:'stock',exchange:'alpaca'},{symbol:'SPY',name:'S&P 500 ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'QQQ',name:'Nasdaq 100 ETF',type:'stock',exchange:'alpaca'},{symbol:'PLTR',name:'Palantir',type:'stock',exchange:'alpaca'},
+  {symbol:'COIN',name:'Coinbase',type:'stock',exchange:'alpaca'},{symbol:'INTC',name:'Intel',type:'stock',exchange:'alpaca'},
+  {symbol:'DIS',name:'Disney',type:'stock',exchange:'alpaca'},
+  {symbol:'BTC',name:'Bitcoin',type:'crypto',exchange:'binance'},{symbol:'ETH',name:'Ethereum',type:'crypto',exchange:'binance'},
+  {symbol:'SOL',name:'Solana',type:'crypto',exchange:'binance'},{symbol:'DOGE',name:'Dogecoin',type:'crypto',exchange:'binance'},
+  {symbol:'BNB',name:'BNB',type:'crypto',exchange:'binance'},{symbol:'XRP',name:'Ripple',type:'crypto',exchange:'binance'},
+  {symbol:'ADA',name:'Cardano',type:'crypto',exchange:'binance'},{symbol:'AVAX',name:'Avalanche',type:'crypto',exchange:'binance'},
+  {symbol:'LINK',name:'Chainlink',type:'crypto',exchange:'binance'},{symbol:'DOT',name:'Polkadot',type:'crypto',exchange:'binance'},
+  {symbol:'MATIC',name:'Polygon',type:'crypto',exchange:'binance'},{symbol:'UNI',name:'Uniswap',type:'crypto',exchange:'binance'},
 ];
+let liveQuotes={};
 
-let liveQuotes = {};  // symbol -> { price, change_percent }
+async function loadLiveQuotes(){const r=await api('/api/v1/workers/quote/prices');if(r?.data?.quotes)r.data.quotes.forEach(q=>{liveQuotes[q.symbol]={price:q.price,change_percent:q.change_percent,type:q.type}});updateTicker();}
+function getAllSymbols(){const m=new Map();defaultSymbols.forEach(s=>m.set(s.symbol,s));Object.entries(liveQuotes).forEach(([k,v])=>{if(!m.has(k))m.set(k,{symbol:k,name:k,type:v.type||'stock',exchange:v.type==='crypto'?'binance':'alpaca'})});return[...m.values()];}
 
-async function loadLiveQuotes() {
-  const r = await api('/api/v1/workers/quote/prices');
-  if (r?.data?.quotes) {
-    r.data.quotes.forEach(q => {
-      liveQuotes[q.symbol] = { price: q.price, change_percent: q.change_percent, type: q.type };
-    });
-  }
+// ── Ticker strip ────────────────────────────────────────────────
+function updateTicker(){const el=document.getElementById('ticker-strip');const items=getAllSymbols().filter(s=>liveQuotes[s.symbol]);
+el.innerHTML=items.map(s=>{const q=liveQuotes[s.symbol];const cls=q.change_percent>0?'up':'down';
+return`<div class="ticker-item" onclick="quickSelect('${s.symbol}','${s.exchange}','${s.type}')"><span class="t-sym">${s.symbol}</span><span class="t-price">$${Number(q.price).toFixed(2)}</span><span class="t-chg ${cls}">${q.change_percent>0?'+':''}${Number(q.change_percent).toFixed(2)}%</span></div>`;}).join('');}
+
+function quickSelect(sym,ex,type){
+  ['sig','ord','chart','bt','auto'].forEach(p=>{const el=document.getElementById(p+'-symbol');if(el)el.value=sym;const exEl=document.getElementById(p+'-exchange');if(exEl)exEl.value=ex;});
+  if(document.getElementById('panel-chart').classList.contains('active')){updateChartIntervals(type);loadChart();}
 }
 
-function getAllSymbols() {
-  // 合併預設清單 + 即時報價中的 symbol
-  const map = new Map();
-  defaultSymbols.forEach(s => map.set(s.symbol, s));
-  Object.entries(liveQuotes).forEach(([sym, q]) => {
-    if (!map.has(sym)) {
-      map.set(sym, { symbol: sym, name: sym, type: q.type || 'stock', exchange: q.type === 'crypto' ? 'binance' : 'alpaca' });
-    }
-  });
-  return Array.from(map.values());
-}
+// ── Symbol picker ───────────────────────────────────────────────
+function renderSymDropdown(id,filter=''){const dd=document.getElementById(id);const all=getAllSymbols();const q=filter.toUpperCase();const f=q?all.filter(s=>s.symbol.includes(q)||s.name.toUpperCase().includes(q)):all;
+const stocks=f.filter(s=>s.type==='stock'),crypto=f.filter(s=>s.type==='crypto');let h='';
+if(stocks.length)h+='<div class="sym-section">US Stocks</div>'+stocks.map(s=>symHtml(s,id)).join('');
+if(crypto.length)h+='<div class="sym-section">Crypto</div>'+crypto.map(s=>symHtml(s,id)).join('');
+if(!f.length)h='<div style="padding:10px;color:var(--text2);text-align:center">無結果</div>';dd.innerHTML=h;}
+function symHtml(s,ddId){const q=liveQuotes[s.symbol];const pr=q?'$'+Number(q.price).toFixed(2):'';const ch=q?Number(q.change_percent).toFixed(2)+'%':'';const cls=q?(q.change_percent>0?'up':'down'):'';
+const pfx=ddId.replace('-sym-dropdown','');return`<div class="sym-item" onclick="selectSymbol('${pfx}','${s.symbol}','${s.exchange}','${s.type}')"><span class="badge ${s.type}">${s.type==='stock'?'US':'Crypto'}</span><span class="sym-ticker">${s.symbol}</span><span class="sym-name">${s.name}</span><span class="sym-price">${pr}</span><span class="sym-change ${cls}">${ch}</span></div>`;}
+function openSymPicker(input,pfx){const dd=document.getElementById(pfx+'-sym-dropdown');renderSymDropdown(pfx+'-sym-dropdown',input.value);dd.classList.add('open');}
+function filterSymPicker(input,pfx){renderSymDropdown(pfx+'-sym-dropdown',input.value);}
+function selectSymbol(pfx,sym,ex,type){document.getElementById(pfx+'-symbol').value=sym;const exSel=document.getElementById(pfx+'-exchange');if(exSel)exSel.value=ex;if(pfx==='chart')updateChartIntervals(type);document.getElementById(pfx+'-sym-dropdown').classList.remove('open');}
+document.addEventListener('click',e=>{if(!e.target.closest('.sym-picker'))document.querySelectorAll('.sym-dropdown').forEach(d=>d.classList.remove('open'));});
 
-function renderSymDropdown(dropdownId, filter = '') {
-  const dd = document.getElementById(dropdownId);
-  const all = getAllSymbols();
-  const q = filter.toUpperCase();
-  const filtered = q ? all.filter(s => s.symbol.includes(q) || s.name.toUpperCase().includes(q)) : all;
-
-  const stocks = filtered.filter(s => s.type === 'stock');
-  const crypto = filtered.filter(s => s.type === 'crypto');
-
-  let html = '';
-  if (stocks.length > 0) {
-    html += '<div class="sym-section">美股 US Stocks</div>';
-    html += stocks.map(s => symItemHtml(s, dropdownId)).join('');
-  }
-  if (crypto.length > 0) {
-    html += '<div class="sym-section">加密貨幣 Crypto</div>';
-    html += crypto.map(s => symItemHtml(s, dropdownId)).join('');
-  }
-  if (filtered.length === 0) {
-    html = '<div style="padding:12px;color:var(--text2);text-align:center">無符合結果</div>';
-  }
-  dd.innerHTML = html;
-}
-
-function symItemHtml(s, dropdownId) {
-  const q = liveQuotes[s.symbol];
-  const price = q ? '$' + Number(q.price).toFixed(2) : '';
-  const chg = q ? Number(q.change_percent).toFixed(2) + '%' : '';
-  const chgCls = q ? (q.change_percent > 0 ? 'positive' : q.change_percent < 0 ? 'negative' : '') : '';
-  const prefix = dropdownId.replace('-sym-dropdown', '');
-  return `<div class="sym-item" onclick="selectSymbol('${prefix}','${s.symbol}','${s.exchange}','${s.type}')">
-    <span class="sym-type-tag ${s.type}">${s.type === 'stock' ? 'US' : '幣'}</span>
-    <span class="sym-ticker">${s.symbol}</span>
-    <span class="sym-name">${s.name}</span>
-    <span class="sym-price">${price}</span>
-    <span class="sym-change ${chgCls}">${chg}</span>
-  </div>`;
-}
-
-function openSymPicker(input, prefix) {
-  const dd = document.getElementById(prefix + '-sym-dropdown');
-  renderSymDropdown(prefix + '-sym-dropdown', input.value);
-  dd.classList.add('open');
-}
-
-function filterSymPicker(input, prefix) {
-  renderSymDropdown(prefix + '-sym-dropdown', input.value);
-}
-
-function selectSymbol(prefix, symbol, exchange, type) {
-  document.getElementById(prefix + '-symbol').value = symbol;
-
-  // 自動設定 exchange
-  const exSel = document.getElementById(prefix + '-exchange');
-  if (exSel) exSel.value = exchange;
-
-  // 如果是 chart tab，更新可用的 interval
-  if (prefix === 'chart') updateChartIntervals(type);
-
-  // 關閉下拉
-  document.getElementById(prefix + '-sym-dropdown').classList.remove('open');
-}
-
-// 點擊外部關閉下拉
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.sym-picker')) {
-    document.querySelectorAll('.sym-dropdown').forEach(d => d.classList.remove('open'));
-  }
-});
-
-// ── Chart interval 自動偵測 ─────────────────────────────────────
-function updateChartIntervals(type) {
-  const sel = document.getElementById('chart-interval');
-  const current = sel.value;
-  sel.innerHTML = '';
-
-  if (type === 'crypto') {
-    [['1m','1 分鐘'],['5m','5 分鐘'],['15m','15 分鐘'],['30m','30 分鐘'],
-     ['1h','1 小時'],['4h','4 小時'],['1d','日線'],['1w','週線']].forEach(([v,t]) => {
-      sel.innerHTML += `<option value="${v}" ${v===current?'selected':''}>${t}</option>`;
-    });
-  } else {
-    sel.innerHTML = '<option value="1d" selected>日線</option>';
-  }
-}
-
-// 初始化 chart intervals
+// ── Chart intervals ─────────────────────────────────────────────
+function updateChartIntervals(type){const sel=document.getElementById('chart-interval');const cur=sel.value;sel.innerHTML='';
+if(type==='crypto')[['1m','1m'],['5m','5m'],['15m','15m'],['30m','30m'],['1h','1H'],['4h','4H'],['1d','1D'],['1w','1W']].forEach(([v,t])=>sel.innerHTML+=`<option value="${v}" ${v===cur?'selected':''}>${t}</option>`);
+else sel.innerHTML='<option value="1d" selected>1D</option>';}
 updateChartIntervals('stock');
 
-function switchTab(name) {
-  const labels = {overview:'總覽',quotes:'報價',strategy:'策略',trade:'下單',orders:'訂單',risk:'風控',auto:'自動交易',chart:'K 線圖'};
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.includes(labels[name])));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel-' + name).classList.add('active');
-  if (name === 'overview') loadOverview();
-  if (name === 'quotes') fetchQuotes();
-  if (name === 'orders') fetchOrders();
-  if (name === 'risk') fetchRules();
-  if (name === 'auto') fetchAutoStatus();
-}
+// ── Tab switch ──────────────────────────────────────────────────
+function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl'];a.classList.toggle('active',tabs[i]===name);});
+document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
+if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk')fetchRules();if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();}
 
-async function api(path, opts) {
-  try {
-    const r = await fetch(API + path, opts);
-    return await r.json();
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
+// ── API helper ──────────────────────────────────────────────────
+async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
+function fmt(n,d=2){return n!=null?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';}
+function fmtUsd(n){return n!=null?'$'+fmt(n):'—';}
+function pnlClass(n){return n>0?'up':n<0?'down':'';}
+function timeStr(t){return t?new Date(t).toLocaleString('zh-TW'):'—';}
 
-function fmt(n, d=2) { return n != null ? Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d}) : '—'; }
-function fmtUsd(n) { return n != null ? '$' + fmt(n) : '—'; }
-function pnlClass(n) { return n > 0 ? 'positive' : n < 0 ? 'negative' : ''; }
-function timeStr(t) { return t ? new Date(t).toLocaleString('zh-TW') : '—'; }
+// ── Workers ─────────────────────────────────────────────────────
+async function checkWorkers(){const checks=[{id:'dot-quote',path:'/api/v1/workers/quote/prices'},{id:'dot-strategy',path:'/api/v1/strategy/list'},{id:'dot-risk',path:'/api/v1/risk/rules'},{id:'dot-trading',path:'/api/v1/trading/exchanges'}];
+for(const c of checks){const r=await api(c.path);document.getElementById(c.id).className='dot '+(r&&r.ok!==false&&!r.error?'on':'off');}}
 
-// ── Worker 狀態 ────────────────────────────────────────────────
-async function checkWorkers() {
-  const checks = [
-    { id: 'dot-quote',    path: '/api/v1/workers/quote/prices' },
-    { id: 'dot-strategy', path: '/api/v1/strategy/list' },
-    { id: 'dot-risk',     path: '/api/v1/risk/rules' },
-    { id: 'dot-trading',  path: '/api/v1/trading/exchanges' },
-  ];
-  for (const c of checks) {
-    const r = await api(c.path);
-    const on = r && r.ok !== false && !r.error;
-    document.getElementById(c.id).className = 'dot ' + (on ? 'on' : 'off');
-  }
-  document.getElementById('last-update').textContent = new Date().toLocaleTimeString('zh-TW');
-}
+// ── Overview ────────────────────────────────────────────────────
+async function loadOverview(){const ex='alpaca';const acc=await api('/api/v1/trading/account?exchange='+ex);
+if(acc?.data){const d=acc.data;document.getElementById('ov-cash').textContent=fmtUsd(d.cash);document.getElementById('ov-portfolio').textContent=fmtUsd(d.portfolio_value);
+document.getElementById('ov-buying-power').textContent=fmtUsd(d.buying_power);const pnl=document.getElementById('ov-day-pnl');pnl.textContent=fmtUsd(d.day_pnl);pnl.className='stat-value '+pnlClass(d.day_pnl);
+document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (Live)');}
+const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
+if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="6" style="color:var(--text2)">無持倉</td></tr>';}
 
-// ── 總覽 ────────────────────────────────────────────────────────
-async function loadOverview() {
-  const exchange = 'alpaca';
-  const acc = await api('/api/v1/trading/account?exchange=' + exchange);
-  if (acc && acc.data) {
-    const d = acc.data;
-    document.getElementById('ov-cash').textContent = fmtUsd(d.cash);
-    document.getElementById('ov-portfolio').textContent = fmtUsd(d.portfolio_value);
-    document.getElementById('ov-buying-power').textContent = fmtUsd(d.buying_power);
-    const pnlEl = document.getElementById('ov-day-pnl');
-    pnlEl.textContent = fmtUsd(d.day_pnl);
-    pnlEl.className = 'value ' + pnlClass(d.day_pnl);
-    document.getElementById('ov-exchange').textContent = exchange + (d.is_paper ? ' (Paper)' : ' (Live)');
-  }
+// ── Quotes ──────────────────────────────────────────────────────
+async function fetchQuotes(){const r=await api('/api/v1/workers/quote/prices');const tb=document.getElementById('quote-table');
+if(r?.data?.quotes)tb.innerHTML=r.data.quotes.map(q=>`<tr><td><strong>${q.symbol}</strong></td><td>${q.name}</td><td><span class="badge ${q.type}">${q.type}</span></td><td>${fmtUsd(q.price)}</td><td class="${pnlClass(q.change)}">${fmt(q.change)}</td><td class="${pnlClass(q.change_percent)}">${fmt(q.change_percent)}%</td><td>${q.market_cap>0?'$'+(q.market_cap/1e9).toFixed(1)+'B':'—'}</td><td style="color:var(--text2)">${timeStr(q.fetched_at)}</td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">未連線</td></tr>';}
+async function triggerFetch(){await api('/api/v1/workers/quote/fetch');setTimeout(fetchQuotes,3000);}
+async function batchFetchAll(){const b=document.getElementById('batch-fetch-btn'),st=document.getElementById('batch-fetch-status');b.disabled=true;b.textContent='抓取中…';st.textContent='抓取所有歷史 K 線…';
+const r=await api('/api/v1/workers/quote/ohlcv/fetch-all');if(r?.data){st.textContent=r.data.status==='already_fetching'?'進行中…':`完成 ${r.data.total_bars} bars`;st.style.color=r.data.error_count>0?'var(--red)':'var(--green)';}else{st.textContent='失敗';st.style.color='var(--red)';}
+b.disabled=false;b.textContent='抓取所有歷史 K 線';}
 
-  const pos = await api('/api/v1/trading/positions?exchange=' + exchange);
-  const tbody = document.getElementById('ov-positions');
-  if (pos && pos.data && pos.data.positions && pos.data.positions.length > 0) {
-    tbody.innerHTML = pos.data.positions.map(p => `<tr>
-      <td><strong>${p.symbol}</strong></td>
-      <td>${fmt(p.quantity, 4)}</td>
-      <td>${fmtUsd(p.avg_entry_price)}</td>
-      <td>${fmtUsd(p.current_price)}</td>
-      <td>${fmtUsd(p.market_value)}</td>
-      <td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td>
-    </tr>`).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text2)">無持倉</td></tr>';
-  }
-}
+// ── Strategy ────────────────────────────────────────────────────
+async function runStrategy(){const symbol=document.getElementById('sig-symbol').value,exchange=document.getElementById('sig-exchange').value,strategy=document.getElementById('sig-strategy').value;
+const el=document.getElementById('signal-result');el.innerHTML='<div style="color:var(--text2);padding:12px">分析中…</div>';
+const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+symbol+'&limit=100');
+if(!bars?.data?.bars||bars.data.bars.length<2){el.innerHTML='<div style="color:var(--red);padding:8px">K 線不足，請先在市場 tab 抓取歷史</div>';return;}
+const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,interval:'1d',bars:bars.data.bars})});
+if(!r?.data){el.innerHTML='<div style="color:var(--red);padding:8px">分析失敗: '+(r?.error||'unknown')+'</div>';return;}
+const s=r.data,ind=s.indicators||{},cls=s.action==='buy'?'buy':s.action==='sell'?'sell':'hold';
+const price=ind['sma_cross.price']||ind['rsi_oversold.price']||ind['macd_divergence.price']||ind['price']||0;
+const isLlm=s.strategy==='llm'||s.strategy==='news_sentiment';
+let stratCards='';
+if(isLlm){const reason=(s.reason||'').replace(/^\[LLM\]\s*/,'').replace(/^\[Sentiment:.*?\]\s*/,'').replace(/```json\s*/g,'').replace(/```/g,'').trim();
+stratCards=`<div class="sig-card" style="grid-column:1/-1"><div class="sc-name">${s.strategy==='news_sentiment'?'News Sentiment Analysis':'AI Analysis'}</div><div class="sc-detail" style="font-size:12px;line-height:1.5;white-space:pre-wrap">${reason||s.reason}</div></div>`;}
+else{const parts=(s.reason||'').split(' | ');stratCards=parts.map(p=>{const m=p.match(/\[(\w+)\]\s*(\w+)\((\d+)\s*%\):\s*(.*)/);if(!m)return'';const[,name,action,conf,detail]=m;const ac=action==='buy'?'buy':action==='sell'?'sell':'hold';
+const labels={sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI'};return`<div class="sig-card"><div class="sc-name">${labels[name]||name}</div><div class="sc-action" style="color:var(--${ac==='buy'?'green':ac==='sell'?'red':'text2'})">${action.toUpperCase()} <span style="font-size:11px;color:var(--text2)">${conf}%</span></div><div class="sc-detail">${detail}</div></div>`;}).join('');}
+const rsi=ind['rsi_oversold.rsi'],macdH=ind['macd_divergence.histogram'],smaF=ind['sma_cross.sma_10'],smaS=ind['sma_cross.sma_30'];
+const indCards=`${price?`<div class="sig-ind"><div class="si-label">Price</div><div class="si-value">$${Number(price).toFixed(2)}</div></div>`:''}${rsi!=null?`<div class="sig-ind"><div class="si-label">RSI</div><div class="si-value ${rsi>70?'down':rsi<30?'up':''}">${Number(rsi).toFixed(1)}</div></div>`:''}${macdH!=null?`<div class="sig-ind"><div class="si-label">MACD H</div><div class="si-value ${macdH>0?'up':'down'}">${Number(macdH).toFixed(4)}</div></div>`:''}${smaF!=null?`<div class="sig-ind"><div class="si-label">SMA10</div><div class="si-value ${smaF>smaS?'up':'down'}">${Number(smaF).toFixed(2)}</div></div>`:''}${smaS!=null?`<div class="sig-ind"><div class="si-label">SMA30</div><div class="si-value">${Number(smaS).toFixed(2)}</div></div>`:''}`;
+const stratLabel={composite:'Composite',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
+el.innerHTML=`<div class="sig-box ${cls}"><div class="sig-header"><div><div class="sig-action" style="color:var(--${cls==='buy'?'green':cls==='sell'?'red':'text2'})">${s.action}</div><div class="sig-sub">${stratLabel} | Confidence: ${(s.confidence*100).toFixed(0)}%</div></div><div style="text-align:right"><div class="sig-price">${price?'$'+Number(price).toFixed(2):''}</div><div class="sig-sym">${s.symbol} · ${s.exchange}</div></div></div><div class="sig-inds">${indCards}</div><div class="sig-strategies">${stratCards}</div></div>`;}
 
-// ── 報價 ────────────────────────────────────────────────────────
-async function fetchQuotes() {
-  const r = await api('/api/v1/workers/quote/prices');
-  const tbody = document.getElementById('quote-table');
-  if (r && r.data && r.data.quotes) {
-    tbody.innerHTML = r.data.quotes.map(q => `<tr>
-      <td><strong>${q.symbol}</strong></td>
-      <td>${q.name}</td>
-      <td><span class="badge ${q.type}">${q.type}</span></td>
-      <td>${fmtUsd(q.price)}</td>
-      <td class="${pnlClass(q.change)}">${fmt(q.change)}</td>
-      <td class="${pnlClass(q.change_percent)}">${fmt(q.change_percent)}%</td>
-      <td>${q.market_cap > 0 ? '$' + (q.market_cap/1e9).toFixed(1) + 'B' : '—'}</td>
-      <td style="color:var(--text2)">${timeStr(q.fetched_at)}</td>
-    </tr>`).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">quote-worker 未連線</td></tr>';
-  }
-}
+// ── Orders ──────────────────────────────────────────────────────
+async function placeOrder(side){const ex=document.getElementById('ord-exchange').value,sym=document.getElementById('ord-symbol').value,qty=parseFloat(document.getElementById('ord-qty').value),type=document.getElementById('ord-type').value,lim=parseFloat(document.getElementById('ord-limit').value);
+const body={exchange:ex,symbol:sym,side,quantity:qty,order_type:type};if(type==='limit'&&!isNaN(lim))body.limit_price=lim;
+const el=document.getElementById('order-result');el.style.display='block';el.textContent='下單中…';
+const r=await api('/api/v1/trading/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+if(r?.data)el.textContent=`Order: ${r.data.order_id}\nStatus: ${r.data.status}\n${r.data.side} ${r.data.quantity} ${r.data.symbol}`;else el.textContent='失敗: '+(r?.error||JSON.stringify(r));}
 
-async function triggerFetch() {
-  await api('/api/v1/workers/quote/fetch');
-  setTimeout(fetchQuotes, 3000);
-}
+async function riskCheckBeforeOrder(){const ex=document.getElementById('ord-exchange').value,sym=document.getElementById('ord-symbol').value,side=document.getElementById('ord-side')?.value||'buy',qty=parseFloat(document.getElementById('ord-qty').value);
+const el=document.getElementById('order-result');el.style.display='block';el.textContent='風控預檢…';
+const acc=await api('/api/v1/trading/account?exchange='+ex),pos=await api('/api/v1/trading/positions?exchange='+ex);
+const quotes=await api('/api/v1/workers/quote/prices');let price=100;if(quotes?.data?.quotes){const q=quotes.data.quotes.find(q=>q.symbol===sym||q.symbol===sym.toUpperCase());if(q)price=q.price;}
+const portfolio={cash:acc?.data?.cash||0,portfolio_value:acc?.data?.portfolio_value||0,day_pnl:acc?.data?.day_pnl||0,peak_value:acc?.data?.portfolio_value||0,daily_trade_count:0,positions:(pos?.data?.positions||[]).map(p=>({symbol:p.symbol,exchange:ex,quantity:p.quantity,market_value:p.market_value,unrealized_pnl:p.unrealized_pnl}))};
+const r=await api('/api/v1/risk/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,exchange:ex,side:'buy',quantity:qty,price,portfolio})});
+if(r?.data){if(r.data.passed)el.textContent='風控通過';else{const v=(r.data.violations||[]).map(v=>`  ${v.rule_name}: ${v.message}`).join('\n');el.textContent='風控未通過 — '+r.data.order_action+'\n'+v+(r.data.adjusted_qty?'\n建議數量: '+r.data.adjusted_qty:'');}}
+else el.textContent='風控失敗: '+(r?.error||'未連線');}
 
-async function batchFetchAll() {
-  const btn = document.getElementById('batch-fetch-btn');
-  const status = document.getElementById('batch-fetch-status');
-  btn.disabled = true;
-  btn.textContent = '抓取中…';
-  status.textContent = '正在抓取所有 symbol 的歷史 K 線，可能需要 1~2 分鐘…';
+async function fetchOrders(){const r=await api('/api/v1/trading/orders?limit=50');const tb=document.getElementById('order-table');
+if(r?.data?.orders?.length>0)tb.innerHTML=r.data.orders.map(o=>`<tr><td style="font-family:monospace;font-size:10px">${o.order_id}</td><td><strong>${o.symbol}</strong></td><td>${o.exchange}</td><td><span class="badge ${o.side}">${o.side}</span></td><td>${fmt(o.quantity,4)}</td><td>${o.filled_price?fmtUsd(o.filled_price):'—'}</td><td><span class="badge ${o.status}">${o.status}</span></td><td style="color:var(--text2);font-size:10px">${timeStr(o.created_at)}</td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">無訂單</td></tr>';}
 
-  const r = await api('/api/v1/workers/quote/ohlcv/fetch-all');
-  if (r && r.data) {
-    const d = r.data;
-    if (d.status === 'already_fetching') {
-      status.textContent = '正在抓取中，請稍候…';
-    } else {
-      status.textContent = `完成！共 ${d.total_bars} 根 K 線` + (d.error_count > 0 ? `，${d.error_count} 個錯誤` : '');
-      status.style.color = d.error_count > 0 ? 'var(--yellow)' : 'var(--green)';
-    }
-  } else {
-    status.textContent = '抓取失敗: ' + (r?.error || 'unknown');
-    status.style.color = 'var(--red)';
-  }
-  btn.disabled = false;
-  btn.textContent = '一鍵抓取所有歷史 K 線';
-}
+// ── Risk ────────────────────────────────────────────────────────
+async function fetchRules(){const r=await api('/api/v1/risk/rules');const tb=document.getElementById('risk-table');
+if(r?.data?.rules)tb.innerHTML=r.data.rules.map(rule=>`<tr><td style="font-family:monospace">${rule.rule_id}</td><td>${rule.name}</td><td><span class="badge hold">${rule.type}</span></td><td>${rule.type.includes('pct')?rule.threshold+'%':rule.type.includes('trades')?rule.threshold:fmtUsd(rule.threshold)}</td><td>${rule.enabled?'<span class="badge buy">ON</span>':'<span class="badge sell">OFF</span>'}</td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="5" style="color:var(--text2)">未連線</td></tr>';}
 
-// ── 策略 ────────────────────────────────────────────────────────
-async function runStrategy() {
-  const symbol   = document.getElementById('sig-symbol').value;
-  const exchange = document.getElementById('sig-exchange').value;
-  const strategy = document.getElementById('sig-strategy').value;
-  const resultEl = document.getElementById('signal-result');
+// ── Auto trader ─────────────────────────────────────────────────
+async function fetchAutoStatus(){const r=await api('/api/v1/auto-trader/status');if(!r?.data)return;const d=r.data;
+const st=document.getElementById('auto-status-text'),btn=document.getElementById('auto-toggle-btn');
+st.textContent=d.enabled?'運行中':'已停止';st.style.color=d.enabled?'var(--green)':'var(--text2)';btn.textContent=d.enabled?'停止':'啟用';btn.className=d.enabled?'btn btn-r btn-sm':'btn btn-g btn-sm';
+document.getElementById('auto-interval').value=d.interval_seconds;
+const tb=document.getElementById('auto-watch-table');
+if(d.watch_list?.length>0)tb.innerHTML=d.watch_list.map(w=>{const sc=w.last_signal==='buy'?'buy':w.last_signal==='sell'?'sell':'hold';
+return`<tr><td><strong>${w.symbol}</strong></td><td>${w.exchange}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
+else tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
+async function toggleAutoTrader(){const r=await api('/api/v1/auto-trader/status');await api('/api/v1/auto-trader/'+(r?.data?.enabled?'disable':'enable'),{method:'POST'});fetchAutoStatus();}
+async function setAutoInterval(){await api('/api/v1/auto-trader/interval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:parseInt(document.getElementById('auto-interval').value)||300})});fetchAutoStatus();}
+async function addAutoWatch(){await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('auto-symbol').value,exchange:document.getElementById('auto-exchange').value,strategy:document.getElementById('auto-strategy').value,quantity:parseFloat(document.getElementById('auto-qty').value)||1})});fetchAutoStatus();}
+async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
+async function fetchAutoLogs(){const r=await api('/api/v1/auto-trader/logs?limit=100');const el=document.getElementById('auto-logs');
+if(r?.data?.logs?.length>0)el.textContent=r.data.logs.map(l=>{const t=new Date(l.time).toLocaleTimeString('zh-TW');return`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;}).join('\n');else el.textContent='無日誌';}
 
-  resultEl.innerHTML = '<div style="color:var(--text2);padding:12px">載入 K 線資料中…</div>';
+// ── Chart ───────────────────────────────────────────────────────
+let chartInstance=null;
+async function loadChart(){const symbol=document.getElementById('chart-symbol').value,interval=document.getElementById('chart-interval').value,limit=parseInt(document.getElementById('chart-limit').value)||120;
+const sym=getAllSymbols().find(s=>s.symbol===symbol.toUpperCase());updateChartIntervals(sym?.type||'stock');
+const r=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${interval}&limit=${limit}`);if(!r?.data?.bars?.length){alert('No data');return;}
+const c=document.getElementById('chart-container');c.innerHTML='';
+chartInstance=LightweightCharts.createChart(c,{width:c.clientWidth,height:520,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},timeScale:{borderColor:'#2b3139',timeVisible:true},rightPriceScale:{borderColor:'#2b3139'}});
+const cs=chartInstance.addCandlestickSeries({upColor:'#0ecb81',downColor:'#f6465d',borderDownColor:'#f6465d',borderUpColor:'#0ecb81',wickDownColor:'#f6465d',wickUpColor:'#0ecb81'});
+const vs=chartInstance.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'vol'});chartInstance.priceScale('vol').applyOptions({scaleMargins:{top:.85,bottom:0}});
+const cd=r.data.bars.map(b=>({time:Math.floor(new Date(b.open_time).getTime()/1000),open:b.open,high:b.high,low:b.low,close:b.close}));
+const vd=r.data.bars.map(b=>({time:Math.floor(new Date(b.open_time).getTime()/1000),value:b.volume,color:b.close>=b.open?'rgba(14,203,129,.25)':'rgba(246,70,93,.25)'}));
+cs.setData(cd);vs.setData(vd);
+if(cd.length>=20){const sma=chartInstance.addLineSeries({color:'#f0b90b',lineWidth:1,priceLineVisible:false});const sd=[];for(let i=19;i<cd.length;i++){let s=0;for(let j=i-19;j<=i;j++)s+=cd[j].close;sd.push({time:cd[i].time,value:s/20});}sma.setData(sd);}
+chartInstance.timeScale().fitContent();window.addEventListener('resize',()=>{if(chartInstance)chartInstance.resize(c.clientWidth,520);});}
 
-  // 先抓 K 線
-  const barsResp = await api('/api/v1/workers/quote/ohlcv?symbol=' + symbol + '&limit=100');
-  if (!barsResp || !barsResp.data || !barsResp.data.bars || barsResp.data.bars.length < 2) {
-    resultEl.innerHTML = '<div style="color:var(--red);padding:12px">K 線資料不足。請先抓取歷史資料（報價 tab → 抓取）。</div>';
-    return;
-  }
+// ── Backtest ────────────────────────────────────────────────────
+let btChart=null;
+async function runBacktest(){const symbol=document.getElementById('bt-symbol').value,exchange=document.getElementById('bt-exchange').value,strategy=document.getElementById('bt-strategy').value,cash=parseFloat(document.getElementById('bt-cash').value)||100000,commission=(parseFloat(document.getElementById('bt-commission').value)||.1)/100,barLimit=parseInt(document.getElementById('bt-bars').value)||365;
+const st=document.getElementById('bt-status');st.textContent='載入 K 線…';
+const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&limit=${barLimit}`);if(!bars?.data?.bars||bars.data.bars.length<60){st.textContent='K 線不足';st.style.color='var(--red)';return;}
+st.textContent='回測中…';const r=await api('/api/v1/strategy/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,bars:bars.data.bars,initial_cash:cash,commission})});
+if(!r?.data){st.textContent='失敗';return;}st.textContent='';const d=r.data;
+const rc=d.total_return>=0?'up':'down';document.getElementById('bt-summary-card').style.display='block';
+document.getElementById('bt-metrics').innerHTML=`<div class="stat"><div class="stat-label">總報酬</div><div class="stat-value ${rc}">${fmtUsd(d.total_return)} (${d.total_return_pct}%)</div></div><div class="stat"><div class="stat-label">最終淨值</div><div class="stat-value">${fmtUsd(d.final_value)}</div></div><div class="stat"><div class="stat-label">交易次數</div><div class="stat-value">${d.total_trades}</div></div><div class="stat"><div class="stat-label">勝率</div><div class="stat-value">${d.win_rate}%</div></div><div class="stat"><div class="stat-label">Sharpe</div><div class="stat-value">${d.sharpe_ratio}</div></div><div class="stat"><div class="stat-label">最大回撤</div><div class="stat-value down">${d.max_drawdown_pct}%</div></div><div class="stat"><div class="stat-label">平均獲利</div><div class="stat-value up">${fmtUsd(d.avg_win)}</div></div><div class="stat"><div class="stat-label">平均虧損</div><div class="stat-value down">${fmtUsd(d.avg_loss)}</div></div><div class="stat"><div class="stat-label">Profit Factor</div><div class="stat-value">${d.profit_factor}</div></div>`;
+document.getElementById('bt-chart-card').style.display='block';const cc=document.getElementById('bt-chart-container');cc.innerHTML='';
+if(d.equity_curve?.length){btChart=LightweightCharts.createChart(cc,{width:cc.clientWidth,height:300,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},timeScale:{borderColor:'#2b3139'},rightPriceScale:{borderColor:'#2b3139'}});
+const es=btChart.addAreaSeries({topColor:'rgba(240,185,11,.3)',bottomColor:'rgba(240,185,11,.02)',lineColor:'#f0b90b',lineWidth:2});
+es.setData(d.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:e.value})));
+const bl=btChart.addLineSeries({color:'#5e6673',lineWidth:1,lineStyle:2,priceLineVisible:false});bl.setData(d.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:cash})));btChart.timeScale().fitContent();}
+document.getElementById('bt-trades-card').style.display='block';const tb=document.getElementById('bt-trades-table');
+if(d.trades?.length)tb.innerHTML=d.trades.map((t,i)=>`<tr><td>${i+1}</td><td><span class="badge buy">${t.side}</span></td><td style="font-size:10px">${timeStr(t.entry_date)}</td><td>${fmtUsd(t.entry_price)}</td><td style="font-size:10px">${timeStr(t.exit_date)}</td><td>${fmtUsd(t.exit_price)}</td><td>${fmt(t.quantity,2)}</td><td class="${t.pnl>=0?'up':'down'}">${fmtUsd(t.pnl)}</td><td class="${t.pnl_pct>=0?'up':'down'}">${t.pnl_pct}%</td><td>${t.hold_bars||'—'}</td></tr>`).join('');
+else tb.innerHTML='<tr><td colspan="10" style="color:var(--text2)">無交易</td></tr>';}
 
-  resultEl.innerHTML = '<div style="color:var(--text2);padding:12px">分析中…</div>';
+// ── P&L ─────────────────────────────────────────────────────────
+async function loadPnlReport(){const ex=document.getElementById('pnl-exchange').value;
+const acc=await api('/api/v1/trading/account?exchange='+ex);if(acc?.data){document.getElementById('pnl-portfolio').textContent=fmtUsd(acc.data.portfolio_value);document.getElementById('pnl-cash').textContent=fmtUsd(acc.data.cash);}
+const pos=await api('/api/v1/trading/positions?exchange='+ex);const pt=document.getElementById('pnl-positions-table');let tv=0,tu=0;
+if(pos?.data?.positions?.length>0)pt.innerHTML=pos.data.positions.map(p=>{tv+=p.market_value||0;tu+=p.unrealized_pnl||0;const pp=p.avg_entry_price>0?((p.current_price-p.avg_entry_price)/p.avg_entry_price*100).toFixed(2):'—';
+return`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td class="${pnlClass(p.unrealized_pnl)}">${pp}%</td></tr>`;}).join('');
+else pt.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
+document.getElementById('pnl-positions-value').textContent=fmtUsd(tv);const ue=document.getElementById('pnl-unrealized');ue.textContent=fmtUsd(tu);ue.className='stat-value '+pnlClass(tu);
+const trades=await api('/api/v1/trading/trades?exchange='+ex+'&limit=50');const tt=document.getElementById('pnl-trades-table');
+if(trades?.data?.trades?.length>0)tt.innerHTML=trades.data.trades.map(t=>`<tr><td><strong>${t.symbol}</strong></td><td><span class="badge ${t.side}">${t.side}</span></td><td>${fmt(t.quantity,4)}</td><td>${fmtUsd(t.price)}</td><td>${t.fee!=null?fmtUsd(t.fee):'—'}</td><td style="font-size:10px;color:var(--text2)">${timeStr(t.executed_at)}</td></tr>`).join('');
+else tt.innerHTML='<tr><td colspan="6" style="color:var(--text2)">無</td></tr>';}
 
-  const body = { strategy, symbol, exchange, interval: '1d', bars: barsResp.data.bars };
-  const r = await api('/api/v1/strategy/signal', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
+// ── WebSocket ───────────────────────────────────────────────────
+function connectWs(){const proto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(`${proto}//${location.host}/ws/quotes`);
+ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.quotes){d.quotes.forEach(q=>{liveQuotes[q.symbol]={price:q.price,change_percent:q.change_percent,type:q.type}});updateTicker();
+if(document.getElementById('panel-quotes').classList.contains('active')){const tb=document.getElementById('quote-table');tb.innerHTML=d.quotes.map(q=>`<tr><td><strong>${q.symbol}</strong></td><td>${q.name}</td><td><span class="badge ${q.type}">${q.type}</span></td><td>${fmtUsd(q.price)}</td><td class="${pnlClass(q.change)}">${fmt(q.change)}</td><td class="${pnlClass(q.change_percent)}">${fmt(q.change_percent)}%</td><td>${q.market_cap>0?'$'+(q.market_cap/1e9).toFixed(1)+'B':'—'}</td><td style="color:var(--text2)">${timeStr(q.fetched_at)}</td></tr>`).join('');}}}catch{}};
+ws.onclose=()=>setTimeout(connectWs,5000);}
 
-  if (r && r.data) {
-    const s = r.data;
-    const ind = s.indicators || {};
-    const cls = s.action === 'buy' ? 'buy' : s.action === 'sell' ? 'sell' : 'hold';
-    const price = ind['sma_cross.price'] || ind['rsi_oversold.price'] || ind['macd_divergence.price'] || ind['price'] || 0;
-
-    // 解析各策略結果
-    let stratCards = '';
-    const isLlm = s.strategy === 'llm';
-    if (isLlm) {
-      // LLM 策略：顯示 AI 分析理由
-      const reason = (s.reason || '').replace(/^\[LLM\]\s*/, '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
-      stratCards = `<div class="signal-strat-card" style="grid-column:1/-1">
-        <div class="strat-name">AI Analysis (Gemini)</div>
-        <div class="strat-detail" style="font-size:13px;line-height:1.6;white-space:pre-wrap">${reason}</div>
-      </div>`;
-    } else {
-      const parts = (s.reason || '').split(' | ');
-      stratCards = parts.map(p => {
-        const m = p.match(/\[(\w+)\]\s*(\w+)\((\d+)\s*%\):\s*(.*)/);
-        if (!m) return '';
-        const [, name, action, conf, detail] = m;
-        const aCls = action === 'buy' ? 'buy' : action === 'sell' ? 'sell' : 'hold';
-        const labels = { sma_cross: 'SMA Cross', rsi_oversold: 'RSI', macd_divergence: 'MACD', llm: 'LLM AI' };
-        return `<div class="signal-strat-card">
-          <div class="strat-name">${labels[name] || name}</div>
-          <div class="strat-action" style="color:var(--${aCls})">${action.toUpperCase()} <span style="font-size:12px;color:var(--text2)">${conf}%</span></div>
-          <div class="strat-detail">${detail}</div>
-        </div>`;
-      }).join('');
-    }
-
-    // 關鍵指標卡片
-    const rsi = ind['rsi_oversold.rsi'];
-    const macdHist = ind['macd_divergence.histogram'];
-    const smaFast = ind['sma_cross.sma_10'];
-    const smaSlow = ind['sma_cross.sma_30'];
-
-    const rsiCls = rsi > 70 ? 'danger' : rsi < 30 ? 'safe' : '';
-    const macdCls = macdHist > 0 ? 'safe' : macdHist < 0 ? 'danger' : '';
-    const smaTrend = smaFast > smaSlow ? 'safe' : smaFast < smaSlow ? 'danger' : '';
-
-    const indCards = `
-      ${price ? `<div class="signal-ind"><div class="ind-label">Current Price</div><div class="ind-value">$${Number(price).toFixed(2)}</div></div>` : ''}
-      ${rsi != null ? `<div class="signal-ind"><div class="ind-label">RSI (14)</div><div class="ind-value ${rsiCls}">${Number(rsi).toFixed(1)}</div></div>` : ''}
-      ${macdHist != null ? `<div class="signal-ind"><div class="ind-label">MACD Hist</div><div class="ind-value ${macdCls}">${Number(macdHist).toFixed(4)}</div></div>` : ''}
-      ${smaFast != null ? `<div class="signal-ind"><div class="ind-label">SMA 10</div><div class="ind-value ${smaTrend}">${Number(smaFast).toFixed(2)}</div></div>` : ''}
-      ${smaSlow != null ? `<div class="signal-ind"><div class="ind-label">SMA 30</div><div class="ind-value">${Number(smaSlow).toFixed(2)}</div></div>` : ''}
-    `;
-
-    resultEl.innerHTML = `
-      <div class="signal-box ${cls}">
-        <div class="signal-header">
-          <div>
-            <div class="signal-action" style="color:var(--${cls})">${s.action}</div>
-            <div class="signal-confidence">${{composite:'Composite Signal',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI Analysis'}[s.strategy]||s.strategy} | Confidence: ${(s.confidence * 100).toFixed(0)}%</div>
-          </div>
-          <div style="text-align:right">
-            <div class="signal-price">${price ? '$' + Number(price).toFixed(2) : ''}</div>
-            <div class="signal-symbol">${s.symbol} · ${s.exchange}</div>
-          </div>
-        </div>
-        <div class="signal-indicators">${indCards}</div>
-        <div class="signal-strategies">${stratCards}</div>
-      </div>`;
-  } else {
-    resultEl.innerHTML = '<div style="color:var(--red);padding:12px">策略分析失敗: ' + (r?.error || 'unknown') + '</div>';
-  }
-}
-
-// ── 下單 ────────────────────────────────────────────────────────
-async function placeOrder(forceSide) {
-  const exchange = document.getElementById('ord-exchange').value;
-  const symbol   = document.getElementById('ord-symbol').value;
-  const side     = forceSide || document.getElementById('ord-side').value;
-  const qty      = parseFloat(document.getElementById('ord-qty').value);
-  const type     = document.getElementById('ord-type').value;
-  const limit    = parseFloat(document.getElementById('ord-limit').value);
-
-  const body = { exchange, symbol, side, quantity: qty, order_type: type };
-  if (type === 'limit' && !isNaN(limit)) body.limit_price = limit;
-
-  const resultEl = document.getElementById('order-result');
-  resultEl.style.display = 'block';
-  resultEl.textContent = '下單中…';
-
-  const r = await api('/api/v1/trading/order', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-
-  if (r && r.data) {
-    const d = r.data;
-    resultEl.textContent = `✓ 訂單已送出\nOrder ID: ${d.order_id}\nExternal: ${d.external_id}\nStatus: ${d.status}\nSymbol: ${d.symbol} ${d.side} ${d.quantity}`;
-  } else {
-    resultEl.textContent = '✗ 下單失敗: ' + (r?.error || JSON.stringify(r));
-  }
-}
-
-async function riskCheckBeforeOrder() {
-  const exchange = document.getElementById('ord-exchange').value;
-  const symbol   = document.getElementById('ord-symbol').value;
-  const side     = document.getElementById('ord-side').value;
-  const qty      = parseFloat(document.getElementById('ord-qty').value);
-
-  const resultEl = document.getElementById('order-result');
-  resultEl.style.display = 'block';
-  resultEl.textContent = '風控預檢中…';
-
-  // 取得帳戶資訊做為 portfolio snapshot
-  const acc = await api('/api/v1/trading/account?exchange=' + exchange);
-  const pos = await api('/api/v1/trading/positions?exchange=' + exchange);
-
-  const portfolio = {
-    cash: acc?.data?.cash || 0,
-    portfolio_value: acc?.data?.portfolio_value || 0,
-    day_pnl: acc?.data?.day_pnl || 0,
-    peak_value: acc?.data?.portfolio_value || 0,
-    daily_trade_count: 0,
-    positions: (pos?.data?.positions || []).map(p => ({
-      symbol: p.symbol, exchange, quantity: p.quantity,
-      market_value: p.market_value, unrealized_pnl: p.unrealized_pnl
-    }))
-  };
-
-  // 估計價格
-  const quotes = await api('/api/v1/workers/quote/prices');
-  let price = 100;
-  if (quotes?.data?.quotes) {
-    const q = quotes.data.quotes.find(q => q.symbol === symbol || q.symbol === symbol.toUpperCase());
-    if (q) price = q.price;
-  }
-
-  const body = { symbol, exchange, side, quantity: qty, price, portfolio };
-  const r = await api('/api/v1/risk/check', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-
-  if (r && r.data) {
-    const d = r.data;
-    if (d.passed) {
-      resultEl.textContent = '✓ 風控通過 — 可以下單';
-    } else {
-      const violations = (d.violations || []).map(v => `  [${v.rule_name}] ${v.message}`).join('\n');
-      resultEl.textContent = `✗ 風控未通過 — ${d.order_action}\n${violations}` +
-        (d.adjusted_qty ? `\n建議調整數量: ${d.adjusted_qty}` : '');
-    }
-  } else {
-    resultEl.textContent = '✗ 風控檢查失敗: ' + (r?.error || 'risk-worker not connected');
-  }
-}
-
-// ── 訂單 ────────────────────────────────────────────────────────
-async function fetchOrders() {
-  const r = await api('/api/v1/trading/orders?limit=50');
-  const tbody = document.getElementById('order-table');
-  if (r && r.data && r.data.orders && r.data.orders.length > 0) {
-    tbody.innerHTML = r.data.orders.map(o => `<tr>
-      <td style="font-family:monospace;font-size:11px">${o.order_id}</td>
-      <td><strong>${o.symbol}</strong></td>
-      <td>${o.exchange}</td>
-      <td><span class="badge ${o.side}">${o.side}</span></td>
-      <td>${fmt(o.quantity, 4)}</td>
-      <td>${o.filled_price ? fmtUsd(o.filled_price) : '—'}</td>
-      <td><span class="badge ${o.status}">${o.status}</span></td>
-      <td style="color:var(--text2);font-size:11px">${timeStr(o.created_at)}</td>
-    </tr>`).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">無訂單紀錄</td></tr>';
-  }
-}
-
-// ── 風控 ────────────────────────────────────────────────────────
-async function fetchRules() {
-  const r = await api('/api/v1/risk/rules');
-  const tbody = document.getElementById('risk-table');
-  if (r && r.data && r.data.rules) {
-    tbody.innerHTML = r.data.rules.map(rule => `<tr>
-      <td style="font-family:monospace">${rule.rule_id}</td>
-      <td>${rule.name}</td>
-      <td><span class="badge hold">${rule.type}</span></td>
-      <td>${rule.type.includes('pct') ? rule.threshold + '%' :
-            rule.type.includes('trades') ? rule.threshold :
-            fmtUsd(rule.threshold)}</td>
-      <td>${rule.enabled ? '<span class="badge buy">ON</span>' : '<span class="badge rejected">OFF</span>'}</td>
-    </tr>`).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text2)">risk-worker 未連線</td></tr>';
-  }
-}
-
-// ── 自動交易 ────────────────────────────────────────────────────
-async function fetchAutoStatus() {
-  const r = await api('/api/v1/auto-trader/status');
-  if (!r || !r.data) return;
-  const d = r.data;
-  const statusEl = document.getElementById('auto-status-text');
-  const btn = document.getElementById('auto-toggle-btn');
-  statusEl.textContent = d.enabled ? '狀態: 運行中' : '狀態: 已停止';
-  statusEl.style.color = d.enabled ? 'var(--green)' : 'var(--text2)';
-  btn.textContent = d.enabled ? '停止' : '啟用';
-  btn.className = d.enabled ? 'btn btn-sell btn-sm' : 'btn btn-buy btn-sm';
-  document.getElementById('auto-interval').value = d.interval_seconds;
-
-  const tbody = document.getElementById('auto-watch-table');
-  if (d.watch_list && d.watch_list.length > 0) {
-    tbody.innerHTML = d.watch_list.map(w => {
-      const sigCls = w.last_signal === 'buy' ? 'buy' : w.last_signal === 'sell' ? 'sell' : 'hold';
-      return `<tr>
-        <td><strong>${w.symbol}</strong></td>
-        <td>${w.exchange}</td>
-        <td>${w.strategy}</td>
-        <td>${w.quantity}</td>
-        <td><span class="badge ${sigCls}">${w.last_signal || '—'}</span></td>
-        <td>${w.last_confidence ? (w.last_confidence * 100).toFixed(0) + '%' : '—'}</td>
-        <td style="font-size:11px;color:var(--text2)">${w.last_check ? timeStr(w.last_check) : '—'}</td>
-        <td><button class="btn btn-sell btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">移除</button></td>
-      </tr>`;
-    }).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text2)">無監控項目</td></tr>';
-  }
-  fetchAutoLogs();
-}
-
-async function toggleAutoTrader() {
-  const r = await api('/api/v1/auto-trader/status');
-  const enabled = r?.data?.enabled;
-  await api('/api/v1/auto-trader/' + (enabled ? 'disable' : 'enable'), { method: 'POST' });
-  fetchAutoStatus();
-}
-
-async function setAutoInterval() {
-  const seconds = parseInt(document.getElementById('auto-interval').value) || 300;
-  await api('/api/v1/auto-trader/interval', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ seconds })
-  });
-  fetchAutoStatus();
-}
-
-async function addAutoWatch() {
-  const body = {
-    symbol: document.getElementById('auto-symbol').value,
-    exchange: document.getElementById('auto-exchange').value,
-    strategy: document.getElementById('auto-strategy').value,
-    quantity: parseFloat(document.getElementById('auto-qty').value) || 1,
-  };
-  await api('/api/v1/auto-trader/watch', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
-  fetchAutoStatus();
-}
-
-async function removeAutoWatch(symbol, exchange) {
-  await api(`/api/v1/auto-trader/watch?symbol=${symbol}&exchange=${exchange}`, { method: 'DELETE' });
-  fetchAutoStatus();
-}
-
-async function fetchAutoLogs() {
-  const r = await api('/api/v1/auto-trader/logs?limit=100');
-  const el = document.getElementById('auto-logs');
-  if (r?.data?.logs && r.data.logs.length > 0) {
-    el.textContent = r.data.logs.map(l => {
-      const t = new Date(l.time).toLocaleTimeString('zh-TW');
-      const actionColor = l.action === 'buy' ? '\u2191' : l.action === 'sell' ? '\u2193' : '\u2022';
-      return `[${t}] ${actionColor} ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;
-    }).join('\n');
-    el.scrollTop = 0;
-  } else {
-    el.textContent = '尚無日誌';
-  }
-}
-
-// ── K 線圖 ──────────────────────────────────────────────────────
-let chartInstance = null;
-let candleSeries = null;
-let volumeSeries = null;
-let smaLine = null;
-
-async function loadChart() {
-  const symbol   = document.getElementById('chart-symbol').value;
-  const interval = document.getElementById('chart-interval').value;
-  const limit    = parseInt(document.getElementById('chart-limit').value) || 120;
-
-  // 自動偵測 asset type 並更新可用 intervals
-  const sym = getAllSymbols().find(s => s.symbol === symbol.toUpperCase());
-  updateChartIntervals(sym?.type || (symbol.length <= 5 && /^[A-Z]+$/.test(symbol.toUpperCase()) ? 'stock' : 'crypto'));
-
-  const r = await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${interval}&limit=${limit}`);
-  if (!r?.data?.bars || r.data.bars.length === 0) {
-    alert('No data. 請先在報價 tab 抓取歷史 K 線。');
-    return;
-  }
-
-  const container = document.getElementById('chart-container');
-  container.innerHTML = '';
-
-  chartInstance = LightweightCharts.createChart(container, {
-    width: container.clientWidth,
-    height: 500,
-    layout: { background: { color: '#161b22' }, textColor: '#e6edf3' },
-    grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
-    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    timeScale: { borderColor: '#30363d', timeVisible: true },
-    rightPriceScale: { borderColor: '#30363d' },
-  });
-
-  candleSeries = chartInstance.addCandlestickSeries({
-    upColor: '#3fb950', downColor: '#f85149', borderDownColor: '#f85149', borderUpColor: '#3fb950',
-    wickDownColor: '#f85149', wickUpColor: '#3fb950',
-  });
-
-  volumeSeries = chartInstance.addHistogramSeries({
-    priceFormat: { type: 'volume' },
-    priceScaleId: 'volume',
-  });
-  chartInstance.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-
-  const candleData = r.data.bars.map(b => ({
-    time: Math.floor(new Date(b.open_time).getTime() / 1000),
-    open: b.open, high: b.high, low: b.low, close: b.close,
-  }));
-
-  const volumeData = r.data.bars.map(b => ({
-    time: Math.floor(new Date(b.open_time).getTime() / 1000),
-    value: b.volume,
-    color: b.close >= b.open ? 'rgba(63,185,80,0.3)' : 'rgba(248,81,73,0.3)',
-  }));
-
-  candleSeries.setData(candleData);
-  volumeSeries.setData(volumeData);
-
-  // SMA 20 overlay
-  if (candleData.length >= 20) {
-    smaLine = chartInstance.addLineSeries({ color: '#58a6ff', lineWidth: 1, priceLineVisible: false });
-    const smaData = [];
-    for (let i = 19; i < candleData.length; i++) {
-      let sum = 0;
-      for (let j = i - 19; j <= i; j++) sum += candleData[j].close;
-      smaData.push({ time: candleData[i].time, value: sum / 20 });
-    }
-    smaLine.setData(smaData);
-  }
-
-  chartInstance.timeScale().fitContent();
-
-  window.addEventListener('resize', () => {
-    if (chartInstance) chartInstance.resize(container.clientWidth, 500);
-  });
-}
-
-// ── 初始化 ──────────────────────────────────────────────────────
-checkWorkers();
-loadOverview();
-loadLiveQuotes();
-setInterval(checkWorkers, 30000);
-setInterval(loadLiveQuotes, 60000);
+// ── Init ────────────────────────────────────────────────────────
+checkWorkers();loadOverview();loadLiveQuotes();connectWs();
+setInterval(checkWorkers,30000);setInterval(loadLiveQuotes,60000);
 </script>
 </body>
 </html>

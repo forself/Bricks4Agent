@@ -30,10 +30,14 @@ public class QuoteIndicatorHandler : ICapabilityHandler
 
         var result = route switch
         {
-            "sma"  => CalcSma(opts),
-            "ema"  => CalcEma(opts),
-            "rsi"  => CalcRsi(opts),
-            "macd" => CalcMacd(opts),
+            "sma"       => CalcSma(opts),
+            "ema"       => CalcEma(opts),
+            "rsi"       => CalcRsi(opts),
+            "macd"      => CalcMacd(opts),
+            "bbands"    => CalcBBands(opts),
+            "atr"       => CalcAtr(opts),
+            "stochastic" => CalcStochastic(opts),
+            "obv"       => CalcObv(opts),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
 
@@ -95,6 +99,50 @@ public class QuoteIndicatorHandler : ICapabilityHandler
             return (false, null, $"Not enough data: {bars.Count} bars, need at least {slow + signal}");
 
         var result = TechnicalIndicators.MACD(bars, fast, slow, signal);
+        return (true, SerializeResult(result), null);
+    }
+
+    private (bool, string?, string?) CalcBBands(JsonElement opts)
+    {
+        var (symbol, interval, limit, err) = ParseCommon(opts);
+        if (err != null) return (false, null, err);
+        var period = opts.TryGetProperty("period", out var p) ? p.GetInt32() : 20;
+        var bars = _db.GetBars(symbol!, interval, limit);
+        if (bars.Count < period) return (false, null, $"Not enough data: {bars.Count} bars, need {period}");
+        var result = TechnicalIndicators.BollingerBands(bars, period);
+        return (true, SerializeResult(result), null);
+    }
+
+    private (bool, string?, string?) CalcAtr(JsonElement opts)
+    {
+        var (symbol, interval, limit, err) = ParseCommon(opts);
+        if (err != null) return (false, null, err);
+        var period = opts.TryGetProperty("period", out var p) ? p.GetInt32() : 14;
+        var bars = _db.GetBars(symbol!, interval, limit);
+        if (bars.Count < period + 1) return (false, null, $"Not enough data: {bars.Count} bars, need {period + 1}");
+        var result = TechnicalIndicators.ATR(bars, period);
+        return (true, SerializeResult(result), null);
+    }
+
+    private (bool, string?, string?) CalcStochastic(JsonElement opts)
+    {
+        var (symbol, interval, limit, err) = ParseCommon(opts);
+        if (err != null) return (false, null, err);
+        var kPeriod = opts.TryGetProperty("k_period", out var kp) ? kp.GetInt32() : 14;
+        var dPeriod = opts.TryGetProperty("d_period", out var dp) ? dp.GetInt32() : 3;
+        var bars = _db.GetBars(symbol!, interval, limit);
+        if (bars.Count < kPeriod + dPeriod) return (false, null, $"Not enough data");
+        var result = TechnicalIndicators.Stochastic(bars, kPeriod, dPeriod);
+        return (true, SerializeResult(result), null);
+    }
+
+    private (bool, string?, string?) CalcObv(JsonElement opts)
+    {
+        var (symbol, interval, limit, err) = ParseCommon(opts);
+        if (err != null) return (false, null, err);
+        var bars = _db.GetBars(symbol!, interval, limit);
+        if (bars.Count < 2) return (false, null, "Not enough data");
+        var result = TechnicalIndicators.OBV(bars);
         return (true, SerializeResult(result), null);
     }
 

@@ -110,10 +110,14 @@ public static class QuoteOhlcvEndpoints
 
         // ── 技術指標 ────────────────────────────────────────────────────
 
-        MapIndicator(indicator, "sma",  new[] { "period" });
-        MapIndicator(indicator, "ema",  new[] { "period" });
-        MapIndicator(indicator, "rsi",  new[] { "period" });
-        MapIndicator(indicator, "macd", new[] { "fast", "slow", "signal" });
+        MapIndicator(indicator, "sma",        new[] { "period" });
+        MapIndicator(indicator, "ema",        new[] { "period" });
+        MapIndicator(indicator, "rsi",        new[] { "period" });
+        MapIndicator(indicator, "macd",       new[] { "fast", "slow", "signal" });
+        MapIndicator(indicator, "bbands",     new[] { "period" });
+        MapIndicator(indicator, "atr",        new[] { "period" });
+        MapIndicator(indicator, "stochastic", new[] { "k_period", "d_period" });
+        MapIndicator(indicator, "obv",        Array.Empty<string>());
     }
 
     private static void MapIndicator(RouteGroupBuilder group, string route, string[] extraParams)

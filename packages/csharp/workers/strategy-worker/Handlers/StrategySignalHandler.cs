@@ -182,7 +182,9 @@ public class StrategySignalHandler : ICapabilityHandler
                 ["rsi_oversold"]    = "RSI Oversold/Overbought — 超買超賣",
                 ["macd_divergence"] = "MACD Crossover — MACD 與 Signal 交叉",
                 ["composite"]      = "Composite — 加權投票（SMA + RSI + MACD）",
-                ["llm"]            = "LLM — AI 模型分析市場資料產生訊號",
+                ["llm"]             = "LLM — AI 模型分析市場資料產生訊號",
+                ["multi_timeframe"] = "Multi-Timeframe — 多時間框架交叉確認",
+                ["news_sentiment"]  = "News Sentiment — AI 分析財經新聞情緒",
             }
         });
         return (true, json, null);

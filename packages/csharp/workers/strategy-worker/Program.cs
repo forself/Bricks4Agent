@@ -43,6 +43,7 @@ var strategies = new Dictionary<string, IStrategy>
     ["rsi_oversold"]    = new RsiStrategy(),
     ["macd_divergence"] = new MacdStrategy(),
     ["composite"]       = CompositeStrategy.Default(),
+    ["multi_timeframe"] = new MultiTimeframeStrategy(),
 };
 
 // LLM 策略（選用）
@@ -58,6 +59,11 @@ if (config.GetValue("Worker:Strategy:Llm:Enabled", false))
         var llmHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         strategies["llm"] = new LlmStrategy(llmHttp, llmLogger, llmBaseUrl, llmApiKey, llmModel);
         logger.LogInformation("LLM strategy enabled: model={Model}", llmModel);
+
+        var newsLogger = loggerFactory.CreateLogger<NewsSentimentStrategy>();
+        var newsHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        strategies["news_sentiment"] = new NewsSentimentStrategy(newsHttp, newsLogger, llmApiKey, llmModel);
+        logger.LogInformation("News sentiment strategy enabled");
     }
 }
 

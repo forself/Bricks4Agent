@@ -177,6 +177,137 @@ public static class TechnicalIndicators
         };
     }
 
+    /// <summary>Bollinger Bands (returns middle band as Value, upper/lower via Signal/Histogram)</summary>
+    public static IndicatorResult BollingerBands(List<OhlcvBar> bars, int period = 20, decimal stdDev = 2m)
+    {
+        var series = new List<TimestampedValue>();
+        if (bars.Count < period) return EmptyResult(bars, "BBANDS", period);
+
+        decimal lastMiddle = 0, lastUpper = 0, lastLower = 0;
+        for (int i = period - 1; i < bars.Count; i++)
+        {
+            var sum = 0m;
+            for (int j = i - period + 1; j <= i; j++) sum += bars[j].Close;
+            var mean = sum / period;
+
+            var variance = 0m;
+            for (int j = i - period + 1; j <= i; j++) variance += (bars[j].Close - mean) * (bars[j].Close - mean);
+            var sd = (decimal)Math.Sqrt((double)(variance / period));
+
+            lastMiddle = mean;
+            lastUpper = mean + stdDev * sd;
+            lastLower = mean - stdDev * sd;
+            series.Add(new TimestampedValue { Time = bars[i].OpenTime, Value = Math.Round(mean, 4) });
+        }
+
+        return new IndicatorResult
+        {
+            Symbol = bars.FirstOrDefault()?.Symbol ?? "", Indicator = "BBANDS",
+            Interval = bars.FirstOrDefault()?.Interval ?? "1d", Period = period,
+            Timestamp = series.LastOrDefault()?.Time ?? DateTime.UtcNow,
+            Value = Math.Round(lastMiddle, 4), Signal = Math.Round(lastUpper, 4), Histogram = Math.Round(lastLower, 4),
+            Series = series,
+        };
+    }
+
+    /// <summary>Average True Range</summary>
+    public static IndicatorResult ATR(List<OhlcvBar> bars, int period = 14)
+    {
+        if (bars.Count < period + 1) return EmptyResult(bars, "ATR", period);
+
+        var trValues = new List<decimal>();
+        for (int i = 1; i < bars.Count; i++)
+        {
+            var hl = bars[i].High - bars[i].Low;
+            var hc = Math.Abs(bars[i].High - bars[i - 1].Close);
+            var lc = Math.Abs(bars[i].Low - bars[i - 1].Close);
+            trValues.Add(Math.Max(hl, Math.Max(hc, lc)));
+        }
+
+        var series = new List<TimestampedValue>();
+        var atr = trValues.Take(period).Average();
+        series.Add(new TimestampedValue { Time = bars[period].OpenTime, Value = Math.Round(atr, 4) });
+
+        for (int i = period; i < trValues.Count; i++)
+        {
+            atr = (atr * (period - 1) + trValues[i]) / period;
+            series.Add(new TimestampedValue { Time = bars[i + 1].OpenTime, Value = Math.Round(atr, 4) });
+        }
+
+        return new IndicatorResult
+        {
+            Symbol = bars.FirstOrDefault()?.Symbol ?? "", Indicator = "ATR",
+            Interval = bars.FirstOrDefault()?.Interval ?? "1d", Period = period,
+            Timestamp = series.LastOrDefault()?.Time ?? DateTime.UtcNow,
+            Value = series.LastOrDefault()?.Value ?? 0, Series = series,
+        };
+    }
+
+    /// <summary>Stochastic Oscillator (%K and %D)</summary>
+    public static IndicatorResult Stochastic(List<OhlcvBar> bars, int kPeriod = 14, int dPeriod = 3)
+    {
+        if (bars.Count < kPeriod + dPeriod) return EmptyResult(bars, "STOCH", kPeriod);
+
+        var kValues = new List<(DateTime Time, decimal Value)>();
+        for (int i = kPeriod - 1; i < bars.Count; i++)
+        {
+            var high = decimal.MinValue;
+            var low = decimal.MaxValue;
+            for (int j = i - kPeriod + 1; j <= i; j++)
+            {
+                if (bars[j].High > high) high = bars[j].High;
+                if (bars[j].Low < low) low = bars[j].Low;
+            }
+            var k = high - low > 0 ? (bars[i].Close - low) / (high - low) * 100 : 50;
+            kValues.Add((bars[i].OpenTime, Math.Round(k, 2)));
+        }
+
+        // %D = SMA of %K
+        var series = new List<TimestampedValue>();
+        decimal lastK = kValues.LastOrDefault().Value;
+        decimal lastD = 0;
+        for (int i = dPeriod - 1; i < kValues.Count; i++)
+        {
+            var sum = 0m;
+            for (int j = i - dPeriod + 1; j <= i; j++) sum += kValues[j].Value;
+            lastD = Math.Round(sum / dPeriod, 2);
+            series.Add(new TimestampedValue { Time = kValues[i].Time, Value = kValues[i].Value });
+        }
+
+        return new IndicatorResult
+        {
+            Symbol = bars.FirstOrDefault()?.Symbol ?? "", Indicator = "STOCH",
+            Interval = bars.FirstOrDefault()?.Interval ?? "1d", Period = kPeriod,
+            Timestamp = series.LastOrDefault()?.Time ?? DateTime.UtcNow,
+            Value = lastK, Signal = lastD, Series = series,
+        };
+    }
+
+    /// <summary>On-Balance Volume</summary>
+    public static IndicatorResult OBV(List<OhlcvBar> bars)
+    {
+        if (bars.Count < 2) return EmptyResult(bars, "OBV", 0);
+
+        var series = new List<TimestampedValue>();
+        decimal obv = 0;
+        series.Add(new TimestampedValue { Time = bars[0].OpenTime, Value = 0 });
+
+        for (int i = 1; i < bars.Count; i++)
+        {
+            if (bars[i].Close > bars[i - 1].Close) obv += bars[i].Volume;
+            else if (bars[i].Close < bars[i - 1].Close) obv -= bars[i].Volume;
+            series.Add(new TimestampedValue { Time = bars[i].OpenTime, Value = obv });
+        }
+
+        return new IndicatorResult
+        {
+            Symbol = bars.FirstOrDefault()?.Symbol ?? "", Indicator = "OBV",
+            Interval = bars.FirstOrDefault()?.Interval ?? "1d", Period = 0,
+            Timestamp = series.LastOrDefault()?.Time ?? DateTime.UtcNow,
+            Value = obv, Series = series,
+        };
+    }
+
     // ── 內部輔助 ─────────────────────────────────────────────────────
 
     private static List<decimal> CalcEmaValues(List<OhlcvBar> bars, int period)

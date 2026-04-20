@@ -531,6 +531,7 @@ app.Use(async (context, next) =>
 });
 
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
+app.UseWebSockets();
 app.UseStaticFiles();
 
 // ── Middleware 管線（順序關鍵） ──
@@ -874,6 +875,7 @@ if (poolEnabled)
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
 }
+QuoteWebSocketEndpoints.Map(app);
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)
