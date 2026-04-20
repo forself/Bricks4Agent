@@ -144,7 +144,7 @@ public class QuoteFetcher
             Change        = change,
             ChangePercent = Math.Round(changePct, 2),
             Currency      = currency,
-            Type          = "stock",
+            Type          = symbol.EndsWith(".TW", StringComparison.OrdinalIgnoreCase) ? "tw_stock" : "stock",
         };
     }
 }

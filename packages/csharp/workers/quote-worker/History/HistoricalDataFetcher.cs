@@ -82,7 +82,7 @@ public class HistoricalDataFetcher
             bars.Add(new OhlcvBar
             {
                 Symbol    = symbol,
-                Type      = "stock",
+                Type      = symbol.EndsWith(".TW", StringComparison.OrdinalIgnoreCase) ? "tw_stock" : "stock",
                 Interval  = interval,
                 OpenTime  = openTime,
                 CloseTime = openTime.Date.AddDays(1).AddSeconds(-1),

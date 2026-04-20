@@ -240,6 +240,7 @@ builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
 builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
+builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -878,6 +879,8 @@ if (poolEnabled)
     AutoTraderEndpoints.Map(api);
     AlertEndpoints.Map(api);
     ExportEndpoints.Map(api);
+    HealthCheckEndpoints.Map(api);
+    BacktestHistoryEndpoints.Map(api);
 }
 QuoteWebSocketEndpoints.Map(app);
 

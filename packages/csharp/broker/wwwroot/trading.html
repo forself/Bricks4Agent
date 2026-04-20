@@ -68,6 +68,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .badge.sell,.badge.rejected { background:var(--redBg); color:var(--red); }
 .badge.hold,.badge.submitted,.badge.pending { background:rgba(132,142,156,0.1); color:var(--text2); }
 .badge.stock { background:rgba(240,185,11,0.1); color:var(--accent); }
+.badge.tw_stock { background:rgba(246,70,93,0.1); color:var(--red); }
 .badge.crypto { background:rgba(14,203,129,0.1); color:var(--green); }
 .up,.positive { color:var(--green); } .down,.negative { color:var(--red); }
 
@@ -151,6 +152,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('auto')">自動</a>
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
+    <a onclick="switchTab('health')">健康</a>
   </nav>
   <div class="hdr-right">
     <div class="status-group">
@@ -169,6 +171,12 @@ tr:hover { background:rgba(240,185,11,0.02); }
 
 <!-- 總覽 -->
 <div class="panel active" id="panel-overview">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
+    <select id="ov-account-select" onchange="loadOverview()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px">
+      <option value="alpaca">Alpaca (美股)</option><option value="binance">Binance (加密貨幣)</option>
+    </select>
+    <span style="font-size:11px;color:var(--text2)">切換帳戶</span>
+  </div>
   <div class="g g4" style="margin-bottom:12px">
     <div class="stat"><div class="stat-label">帳戶餘額</div><div class="stat-value" id="ov-cash">—</div><div style="font-size:11px;color:var(--text2);margin-top:2px" id="ov-exchange"></div></div>
     <div class="stat"><div class="stat-label">投資組合價值</div><div class="stat-value" id="ov-portfolio">—</div></div>
@@ -292,6 +300,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
         <div class="fg"><label>手續費%</label><input id="bt-commission" type="number" value="0.1" step="0.01"></div>
         <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="730"></div></div>
       <button class="btn btn-y" onclick="runBacktest()">開始回測</button>
+      <button class="btn btn-o btn-sm" onclick="runOptimizer()">參數優化</button>
       <div id="bt-status" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
     </div>
     <div class="card" id="bt-summary-card" style="display:none"><h3>績效</h3><div class="g g3" id="bt-metrics" style="gap:6px"></div></div>
@@ -386,6 +395,16 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- 健康檢查 -->
+<div class="panel" id="panel-health">
+  <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchHealth()">重新整理</button></div>
+  <div class="g g4" style="margin-bottom:12px" id="health-summary"></div>
+  <div class="card"><h3>Worker 狀態</h3>
+    <table><thead><tr><th>Worker</th><th>Capability</th><th>狀態</th><th>延遲</th><th>錯誤</th></tr></thead>
+    <tbody id="health-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  </div>
+</div>
+
 </div>
 
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -394,20 +413,174 @@ const API='';
 
 // ── 商品清單 ────────────────────────────────────────────────────
 const defaultSymbols=[
-  {symbol:'AAPL',name:'Apple',type:'stock',exchange:'alpaca'},{symbol:'MSFT',name:'Microsoft',type:'stock',exchange:'alpaca'},
-  {symbol:'TSLA',name:'Tesla',type:'stock',exchange:'alpaca'},{symbol:'NVDA',name:'NVIDIA',type:'stock',exchange:'alpaca'},
-  {symbol:'AMZN',name:'Amazon',type:'stock',exchange:'alpaca'},{symbol:'GOOGL',name:'Alphabet',type:'stock',exchange:'alpaca'},
-  {symbol:'META',name:'Meta',type:'stock',exchange:'alpaca'},{symbol:'AMD',name:'AMD',type:'stock',exchange:'alpaca'},
-  {symbol:'NFLX',name:'Netflix',type:'stock',exchange:'alpaca'},{symbol:'SPY',name:'S&P 500 ETF',type:'stock',exchange:'alpaca'},
-  {symbol:'QQQ',name:'Nasdaq 100 ETF',type:'stock',exchange:'alpaca'},{symbol:'PLTR',name:'Palantir',type:'stock',exchange:'alpaca'},
-  {symbol:'COIN',name:'Coinbase',type:'stock',exchange:'alpaca'},{symbol:'INTC',name:'Intel',type:'stock',exchange:'alpaca'},
+  // ── 美股 50 支 ──
+  {symbol:'AAPL',name:'Apple',type:'stock',exchange:'alpaca'},
+  {symbol:'MSFT',name:'Microsoft',type:'stock',exchange:'alpaca'},
+  {symbol:'NVDA',name:'NVIDIA',type:'stock',exchange:'alpaca'},
+  {symbol:'AMZN',name:'Amazon',type:'stock',exchange:'alpaca'},
+  {symbol:'GOOGL',name:'Alphabet',type:'stock',exchange:'alpaca'},
+  {symbol:'META',name:'Meta Platforms',type:'stock',exchange:'alpaca'},
+  {symbol:'TSLA',name:'Tesla',type:'stock',exchange:'alpaca'},
+  {symbol:'AVGO',name:'Broadcom',type:'stock',exchange:'alpaca'},
+  {symbol:'BRK.B',name:'Berkshire Hathaway B',type:'stock',exchange:'alpaca'},
+  {symbol:'LLY',name:'Eli Lilly',type:'stock',exchange:'alpaca'},
+  {symbol:'JPM',name:'JPMorgan Chase',type:'stock',exchange:'alpaca'},
+  {symbol:'V',name:'Visa',type:'stock',exchange:'alpaca'},
+  {symbol:'UNH',name:'UnitedHealth',type:'stock',exchange:'alpaca'},
+  {symbol:'XOM',name:'Exxon Mobil',type:'stock',exchange:'alpaca'},
+  {symbol:'MA',name:'Mastercard',type:'stock',exchange:'alpaca'},
+  {symbol:'COST',name:'Costco',type:'stock',exchange:'alpaca'},
+  {symbol:'HD',name:'Home Depot',type:'stock',exchange:'alpaca'},
+  {symbol:'PG',name:'Procter & Gamble',type:'stock',exchange:'alpaca'},
+  {symbol:'JNJ',name:'Johnson & Johnson',type:'stock',exchange:'alpaca'},
+  {symbol:'ABBV',name:'AbbVie',type:'stock',exchange:'alpaca'},
+  {symbol:'CRM',name:'Salesforce',type:'stock',exchange:'alpaca'},
+  {symbol:'ORCL',name:'Oracle',type:'stock',exchange:'alpaca'},
+  {symbol:'NFLX',name:'Netflix',type:'stock',exchange:'alpaca'},
+  {symbol:'AMD',name:'AMD',type:'stock',exchange:'alpaca'},
+  {symbol:'ADBE',name:'Adobe',type:'stock',exchange:'alpaca'},
+  {symbol:'KO',name:'Coca-Cola',type:'stock',exchange:'alpaca'},
+  {symbol:'PEP',name:'PepsiCo',type:'stock',exchange:'alpaca'},
+  {symbol:'WMT',name:'Walmart',type:'stock',exchange:'alpaca'},
+  {symbol:'BAC',name:'Bank of America',type:'stock',exchange:'alpaca'},
+  {symbol:'MRK',name:'Merck',type:'stock',exchange:'alpaca'},
+  {symbol:'QCOM',name:'Qualcomm',type:'stock',exchange:'alpaca'},
+  {symbol:'INTC',name:'Intel',type:'stock',exchange:'alpaca'},
   {symbol:'DIS',name:'Disney',type:'stock',exchange:'alpaca'},
-  {symbol:'BTC',name:'Bitcoin',type:'crypto',exchange:'binance'},{symbol:'ETH',name:'Ethereum',type:'crypto',exchange:'binance'},
-  {symbol:'SOL',name:'Solana',type:'crypto',exchange:'binance'},{symbol:'DOGE',name:'Dogecoin',type:'crypto',exchange:'binance'},
-  {symbol:'BNB',name:'BNB',type:'crypto',exchange:'binance'},{symbol:'XRP',name:'Ripple',type:'crypto',exchange:'binance'},
-  {symbol:'ADA',name:'Cardano',type:'crypto',exchange:'binance'},{symbol:'AVAX',name:'Avalanche',type:'crypto',exchange:'binance'},
-  {symbol:'LINK',name:'Chainlink',type:'crypto',exchange:'binance'},{symbol:'DOT',name:'Polkadot',type:'crypto',exchange:'binance'},
-  {symbol:'MATIC',name:'Polygon',type:'crypto',exchange:'binance'},{symbol:'UNI',name:'Uniswap',type:'crypto',exchange:'binance'},
+  {symbol:'CSCO',name:'Cisco',type:'stock',exchange:'alpaca'},
+  {symbol:'MU',name:'Micron',type:'stock',exchange:'alpaca'},
+  {symbol:'ARM',name:'ARM Holdings',type:'stock',exchange:'alpaca'},
+  {symbol:'PLTR',name:'Palantir',type:'stock',exchange:'alpaca'},
+  {symbol:'BA',name:'Boeing',type:'stock',exchange:'alpaca'},
+  {symbol:'NKE',name:'Nike',type:'stock',exchange:'alpaca'},
+  {symbol:'GS',name:'Goldman Sachs',type:'stock',exchange:'alpaca'},
+  {symbol:'COIN',name:'Coinbase',type:'stock',exchange:'alpaca'},
+  {symbol:'MSTR',name:'MicroStrategy',type:'stock',exchange:'alpaca'},
+  {symbol:'UBER',name:'Uber',type:'stock',exchange:'alpaca'},
+  {symbol:'SQ',name:'Block (Square)',type:'stock',exchange:'alpaca'},
+  {symbol:'SNOW',name:'Snowflake',type:'stock',exchange:'alpaca'},
+  {symbol:'SHOP',name:'Shopify',type:'stock',exchange:'alpaca'},
+  {symbol:'PYPL',name:'PayPal',type:'stock',exchange:'alpaca'},
+  {symbol:'CRWD',name:'CrowdStrike',type:'stock',exchange:'alpaca'},
+  {symbol:'PANW',name:'Palo Alto Networks',type:'stock',exchange:'alpaca'},
+  {symbol:'ABNB',name:'Airbnb',type:'stock',exchange:'alpaca'},
+  // ── 4 大指數 ETF ──
+  {symbol:'SPY',name:'S&P 500 ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'QQQ',name:'Nasdaq 100 ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'DIA',name:'Dow Jones ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'IWM',name:'Russell 2000 ETF',type:'stock',exchange:'alpaca'},
+  // ── 熱門 ETF ──
+  {symbol:'ARKK',name:'ARK Innovation',type:'stock',exchange:'alpaca'},
+  {symbol:'SOXX',name:'Semiconductor ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'XLF',name:'Financial ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'XLE',name:'Energy ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'GLD',name:'Gold ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'TLT',name:'20Y Treasury ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'VTI',name:'Total Stock Market ETF',type:'stock',exchange:'alpaca'},
+  {symbol:'VOO',name:'Vanguard S&P 500 ETF',type:'stock',exchange:'alpaca'},
+  // ── 台股 50 支 ──
+  {symbol:'2330.TW',name:'台積電 TSMC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2317.TW',name:'鴻海 Foxconn',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2454.TW',name:'聯發科 MediaTek',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2308.TW',name:'台達電 Delta',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2382.TW',name:'廣達 Quanta',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2881.TW',name:'富邦金 Fubon FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2882.TW',name:'國泰金 Cathay FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2891.TW',name:'中信金 CTBC FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2886.TW',name:'兆豐金 Mega FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2884.TW',name:'玉山金 E.SUN FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2885.TW',name:'元大金 Yuanta FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2890.TW',name:'永豐金 SinoPac FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2892.TW',name:'第一金 First FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2880.TW',name:'華南金 Hua Nan FHC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3711.TW',name:'日月光投控 ASE',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2303.TW',name:'聯電 UMC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2301.TW',name:'光寶科 Lite-On',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2357.TW',name:'華碩 ASUS',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2395.TW',name:'研華 Advantech',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3008.TW',name:'大立光 Largan',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2912.TW',name:'統一超 7-Eleven',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'1301.TW',name:'台塑 Formosa Plastics',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'1303.TW',name:'南亞 Nan Ya Plastics',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'1326.TW',name:'台化 Formosa Chem',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2002.TW',name:'中鋼 CSC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2412.TW',name:'中華電 Chunghwa Telecom',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3045.TW',name:'台灣大 Taiwan Mobile',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'4904.TW',name:'遠傳 Far EasTone',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'1216.TW',name:'統一 Uni-President',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2207.TW',name:'和泰車 Hotai Motor',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2603.TW',name:'長榮 Evergreen Marine',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2609.TW',name:'陽明 Yang Ming Marine',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2615.TW',name:'萬海 Wan Hai Lines',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3037.TW',name:'欣興 Unimicron',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2345.TW',name:'智邦 Accton',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'6669.TW',name:'緯穎 Wiwynn',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3661.TW',name:'世芯-KY Alchip',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2379.TW',name:'瑞昱 Realtek',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'3034.TW',name:'聯詠 Novatek',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'5274.TW',name:'信驊 Aspeed',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2327.TW',name:'國巨 Yageo',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'1590.TW',name:'亞德客-KY AirTAC',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2105.TW',name:'正新 Cheng Shin Rubber',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'2474.TW',name:'可成 Catcher',type:'tw_stock',exchange:'alpaca'},
+  // ── 台股 ETF ──
+  {symbol:'0050.TW',name:'元大台灣50 ETF',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'0056.TW',name:'元大高股息 ETF',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'00878.TW',name:'國泰永續高股息 ETF',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'00940.TW',name:'元大台灣價值高息 ETF',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'006208.TW',name:'富邦台50 ETF',type:'tw_stock',exchange:'alpaca'},
+  {symbol:'00919.TW',name:'群益台灣精選高息 ETF',type:'tw_stock',exchange:'alpaca'},
+  // ── 加密貨幣 50 種 ──
+  {symbol:'BTC',name:'Bitcoin',type:'crypto',exchange:'binance'},
+  {symbol:'ETH',name:'Ethereum',type:'crypto',exchange:'binance'},
+  {symbol:'BNB',name:'BNB',type:'crypto',exchange:'binance'},
+  {symbol:'SOL',name:'Solana',type:'crypto',exchange:'binance'},
+  {symbol:'XRP',name:'Ripple',type:'crypto',exchange:'binance'},
+  {symbol:'DOGE',name:'Dogecoin',type:'crypto',exchange:'binance'},
+  {symbol:'ADA',name:'Cardano',type:'crypto',exchange:'binance'},
+  {symbol:'AVAX',name:'Avalanche',type:'crypto',exchange:'binance'},
+  {symbol:'DOT',name:'Polkadot',type:'crypto',exchange:'binance'},
+  {symbol:'LINK',name:'Chainlink',type:'crypto',exchange:'binance'},
+  {symbol:'MATIC',name:'Polygon',type:'crypto',exchange:'binance'},
+  {symbol:'UNI',name:'Uniswap',type:'crypto',exchange:'binance'},
+  {symbol:'NEAR',name:'NEAR Protocol',type:'crypto',exchange:'binance'},
+  {symbol:'ARB',name:'Arbitrum',type:'crypto',exchange:'binance'},
+  {symbol:'OP',name:'Optimism',type:'crypto',exchange:'binance'},
+  {symbol:'ATOM',name:'Cosmos',type:'crypto',exchange:'binance'},
+  {symbol:'FIL',name:'Filecoin',type:'crypto',exchange:'binance'},
+  {symbol:'APT',name:'Aptos',type:'crypto',exchange:'binance'},
+  {symbol:'SUI',name:'Sui',type:'crypto',exchange:'binance'},
+  {symbol:'PEPE',name:'Pepe',type:'crypto',exchange:'binance'},
+  {symbol:'SHIB',name:'Shiba Inu',type:'crypto',exchange:'binance'},
+  {symbol:'WIF',name:'dogwifhat',type:'crypto',exchange:'binance'},
+  {symbol:'INJ',name:'Injective',type:'crypto',exchange:'binance'},
+  {symbol:'TIA',name:'Celestia',type:'crypto',exchange:'binance'},
+  {symbol:'SEI',name:'Sei',type:'crypto',exchange:'binance'},
+  {symbol:'RENDER',name:'Render',type:'crypto',exchange:'binance'},
+  {symbol:'FET',name:'Fetch.ai',type:'crypto',exchange:'binance'},
+  {symbol:'IMX',name:'Immutable X',type:'crypto',exchange:'binance'},
+  {symbol:'ALGO',name:'Algorand',type:'crypto',exchange:'binance'},
+  {symbol:'GRT',name:'The Graph',type:'crypto',exchange:'binance'},
+  {symbol:'STX',name:'Stacks',type:'crypto',exchange:'binance'},
+  {symbol:'AAVE',name:'Aave',type:'crypto',exchange:'binance'},
+  {symbol:'MKR',name:'Maker',type:'crypto',exchange:'binance'},
+  {symbol:'SAND',name:'The Sandbox',type:'crypto',exchange:'binance'},
+  {symbol:'MANA',name:'Decentraland',type:'crypto',exchange:'binance'},
+  {symbol:'AXS',name:'Axie Infinity',type:'crypto',exchange:'binance'},
+  {symbol:'CRV',name:'Curve DAO',type:'crypto',exchange:'binance'},
+  {symbol:'LDO',name:'Lido DAO',type:'crypto',exchange:'binance'},
+  {symbol:'DYDX',name:'dYdX',type:'crypto',exchange:'binance'},
+  {symbol:'RUNE',name:'THORChain',type:'crypto',exchange:'binance'},
+  {symbol:'ENS',name:'Ethereum Name Service',type:'crypto',exchange:'binance'},
+  {symbol:'FLOW',name:'Flow',type:'crypto',exchange:'binance'},
+  {symbol:'CHZ',name:'Chiliz',type:'crypto',exchange:'binance'},
+  {symbol:'EOS',name:'EOS',type:'crypto',exchange:'binance'},
+  {symbol:'XLM',name:'Stellar',type:'crypto',exchange:'binance'},
+  {symbol:'VET',name:'VeChain',type:'crypto',exchange:'binance'},
+  {symbol:'THETA',name:'Theta',type:'crypto',exchange:'binance'},
+  {symbol:'FTM',name:'Fantom',type:'crypto',exchange:'binance'},
+  {symbol:'BONK',name:'Bonk',type:'crypto',exchange:'binance'},
+  {symbol:'FLOKI',name:'Floki',type:'crypto',exchange:'binance'},
 ];
 let liveQuotes={};
 
@@ -425,13 +598,14 @@ function quickSelect(sym,ex,type){
 }
 
 // ── Symbol picker ───────────────────────────────────────────────
-function renderSymDropdown(id,filter=''){const dd=document.getElementById(id);const all=getAllSymbols();const q=filter.toUpperCase();const f=q?all.filter(s=>s.symbol.includes(q)||s.name.toUpperCase().includes(q)):all;
-const stocks=f.filter(s=>s.type==='stock'),crypto=f.filter(s=>s.type==='crypto');let h='';
-if(stocks.length)h+='<div class="sym-section">US Stocks</div>'+stocks.map(s=>symHtml(s,id)).join('');
-if(crypto.length)h+='<div class="sym-section">Crypto</div>'+crypto.map(s=>symHtml(s,id)).join('');
+function renderSymDropdown(id,filter=''){const dd=document.getElementById(id);const all=getAllSymbols();const q=filter.toUpperCase();const f=q?all.filter(s=>s.symbol.toUpperCase().includes(q)||s.name.toUpperCase().includes(q)):all;
+const stocks=f.filter(s=>s.type==='stock'),tw=f.filter(s=>s.type==='tw_stock'),crypto=f.filter(s=>s.type==='crypto');let h='';
+if(stocks.length)h+='<div class="sym-section">美股 US Stocks</div>'+stocks.map(s=>symHtml(s,id)).join('');
+if(tw.length)h+='<div class="sym-section">台股 TWSE</div>'+tw.map(s=>symHtml(s,id)).join('');
+if(crypto.length)h+='<div class="sym-section">加密貨幣 Crypto</div>'+crypto.map(s=>symHtml(s,id)).join('');
 if(!f.length)h='<div style="padding:10px;color:var(--text2);text-align:center">無結果</div>';dd.innerHTML=h;}
 function symHtml(s,ddId){const q=liveQuotes[s.symbol];const pr=q?'$'+Number(q.price).toFixed(2):'';const ch=q?Number(q.change_percent).toFixed(2)+'%':'';const cls=q?(q.change_percent>0?'up':'down'):'';
-const pfx=ddId.replace('-sym-dropdown','');return`<div class="sym-item" onclick="selectSymbol('${pfx}','${s.symbol}','${s.exchange}','${s.type}')"><span class="badge ${s.type}">${s.type==='stock'?'US':'Crypto'}</span><span class="sym-ticker">${s.symbol}</span><span class="sym-name">${s.name}</span><span class="sym-price">${pr}</span><span class="sym-change ${cls}">${ch}</span></div>`;}
+const pfx=ddId.replace('-sym-dropdown','');return`<div class="sym-item" onclick="selectSymbol('${pfx}','${s.symbol}','${s.exchange}','${s.type}')"><span class="badge ${s.type}">${s.type==='stock'?'US':s.type==='tw_stock'?'TW':'Crypto'}</span><span class="sym-ticker">${s.symbol}</span><span class="sym-name">${s.name}</span><span class="sym-price">${pr}</span><span class="sym-change ${cls}">${ch}</span></div>`;}
 function openSymPicker(input,pfx){const dd=document.getElementById(pfx+'-sym-dropdown');renderSymDropdown(pfx+'-sym-dropdown',input.value);dd.classList.add('open');}
 function filterSymPicker(input,pfx){renderSymDropdown(pfx+'-sym-dropdown',input.value);}
 function selectSymbol(pfx,sym,ex,type){document.getElementById(pfx+'-symbol').value=sym;const exSel=document.getElementById(pfx+'-exchange');if(exSel)exSel.value=ex;if(pfx==='chart')updateChartIntervals(type);document.getElementById(pfx+'-sym-dropdown').classList.remove('open');}
@@ -440,13 +614,13 @@ document.addEventListener('click',e=>{if(!e.target.closest('.sym-picker'))docume
 // ── Chart intervals ─────────────────────────────────────────────
 function updateChartIntervals(type){const sel=document.getElementById('chart-interval');const cur=sel.value;sel.innerHTML='';
 if(type==='crypto')[['1m','1m'],['5m','5m'],['15m','15m'],['30m','30m'],['1h','1H'],['4h','4H'],['1d','1D'],['1w','1W']].forEach(([v,t])=>sel.innerHTML+=`<option value="${v}" ${v===cur?'selected':''}>${t}</option>`);
-else sel.innerHTML='<option value="1d" selected>1D</option>';}
+else sel.innerHTML='<option value="1d" selected>1D</option>'; // 美股+台股只有日線}
 updateChartIntervals('stock');
 
 // ── Tab switch ──────────────────────────────────────────────────
-function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl'];a.classList.toggle('active',tabs[i]===name);});
+function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();}
+if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
 
 // ── API helper ──────────────────────────────────────────────────
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
@@ -460,12 +634,12 @@ async function checkWorkers(){const checks=[{id:'dot-quote',path:'/api/v1/worker
 for(const c of checks){const r=await api(c.path);document.getElementById(c.id).className='dot '+(r&&r.ok!==false&&!r.error?'on':'off');}}
 
 // ── Overview ────────────────────────────────────────────────────
-async function loadOverview(){const ex='alpaca';const acc=await api('/api/v1/trading/account?exchange='+ex);
+async function loadOverview(){const ex=document.getElementById('ov-account-select')?.value||'alpaca';const acc=await api('/api/v1/trading/account?exchange='+ex);
 if(acc?.data){const d=acc.data;document.getElementById('ov-cash').textContent=fmtUsd(d.cash);document.getElementById('ov-portfolio').textContent=fmtUsd(d.portfolio_value);
 document.getElementById('ov-buying-power').textContent=fmtUsd(d.buying_power);const pnl=document.getElementById('ov-day-pnl');pnl.textContent=fmtUsd(d.day_pnl);pnl.className='stat-value '+pnlClass(d.day_pnl);
 document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (Live)');}
 const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
-if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','alpaca',${p.quantity})">平倉</button></td></tr>`).join('');
+if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','${ex}',${p.quantity})">平倉</button></td></tr>`).join('');
 else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';}
 
 // ── Quotes ──────────────────────────────────────────────────────
@@ -564,7 +738,7 @@ const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&l
 st.textContent='回測中…';const r=await api('/api/v1/strategy/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,bars:bars.data.bars,initial_cash:cash,commission})});
 if(!r?.data){st.textContent='失敗';return;}st.textContent='';const d=r.data;
 const rc=d.total_return>=0?'up':'down';document.getElementById('bt-summary-card').style.display='block';
-document.getElementById('bt-metrics').innerHTML=`<div class="stat"><div class="stat-label">總報酬</div><div class="stat-value ${rc}">${fmtUsd(d.total_return)} (${d.total_return_pct}%)</div></div><div class="stat"><div class="stat-label">最終淨值</div><div class="stat-value">${fmtUsd(d.final_value)}</div></div><div class="stat"><div class="stat-label">交易次數</div><div class="stat-value">${d.total_trades}</div></div><div class="stat"><div class="stat-label">勝率</div><div class="stat-value">${d.win_rate}%</div></div><div class="stat"><div class="stat-label">Sharpe</div><div class="stat-value">${d.sharpe_ratio}</div></div><div class="stat"><div class="stat-label">最大回撤</div><div class="stat-value down">${d.max_drawdown_pct}%</div></div><div class="stat"><div class="stat-label">平均獲利</div><div class="stat-value up">${fmtUsd(d.avg_win)}</div></div><div class="stat"><div class="stat-label">平均虧損</div><div class="stat-value down">${fmtUsd(d.avg_loss)}</div></div><div class="stat"><div class="stat-label">Profit Factor</div><div class="stat-value">${d.profit_factor}</div></div>`;
+window._lastBacktest=d;document.getElementById('bt-metrics').innerHTML=`<div class="stat"><div class="stat-label">總報酬</div><div class="stat-value ${rc}">${fmtUsd(d.total_return)} (${d.total_return_pct}%)</div></div><div class="stat"><div class="stat-label">最終淨值</div><div class="stat-value">${fmtUsd(d.final_value)}</div></div><div class="stat"><div class="stat-label">交易次數</div><div class="stat-value">${d.total_trades}</div></div><div class="stat"><div class="stat-label">勝率</div><div class="stat-value">${d.win_rate}%</div></div><div class="stat"><div class="stat-label">Sharpe</div><div class="stat-value">${d.sharpe_ratio}</div></div><div class="stat"><div class="stat-label">最大回撤</div><div class="stat-value down">${d.max_drawdown_pct}%</div></div><div class="stat"><div class="stat-label">平均獲利</div><div class="stat-value up">${fmtUsd(d.avg_win)}</div></div><div class="stat"><div class="stat-label">平均虧損</div><div class="stat-value down">${fmtUsd(d.avg_loss)}</div></div><div class="stat" style="cursor:pointer" onclick="if(window._lastBacktest)saveBacktest(window._lastBacktest)"><div class="stat-label">操作</div><div class="stat-value" style="font-size:14px;color:var(--accent)">💾 保存</div></div>`;
 document.getElementById('bt-chart-card').style.display='block';const cc=document.getElementById('bt-chart-container');cc.innerHTML='';
 if(d.equity_curve?.length){btChart=LightweightCharts.createChart(cc,{width:cc.clientWidth,height:300,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},timeScale:{borderColor:'#2b3139'},rightPriceScale:{borderColor:'#2b3139'}});
 const es=btChart.addAreaSeries({topColor:'rgba(240,185,11,.3)',bottomColor:'rgba(240,185,11,.02)',lineColor:'#f0b90b',lineWidth:2});
@@ -704,6 +878,30 @@ setInterval(async () => {
     }
   }
 }, 10000);
+
+// ── Health check ────────────────────────────────────────────────
+async function fetchHealth(){const r=await api('/api/v1/health/workers');if(!r?.data)return;const d=r.data;
+document.getElementById('health-summary').innerHTML=`<div class="stat"><div class="stat-label">Broker</div><div class="stat-value up">${d.broker_status}</div></div><div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${d.uptime_display}</div></div><div class="stat"><div class="stat-label">Workers</div><div class="stat-value">${d.worker_count}/4</div></div><div class="stat"><div class="stat-label">Avg Latency</div><div class="stat-value">${d.workers.filter(w=>w.latency_ms>0).length>0?Math.round(d.workers.filter(w=>w.latency_ms>0).reduce((a,w)=>a+w.latency_ms,0)/d.workers.filter(w=>w.latency_ms>0).length)+'ms':'—'}</div></div>`;
+const tb=document.getElementById('health-table');
+tb.innerHTML=d.workers.map(w=>{const sc=w.status==='healthy'?'up':w.status==='error'?'down':'';
+return`<tr><td><strong>${w.worker}</strong></td><td>${w.capability}</td><td class="${sc}" style="font-weight:700">${w.status}</td><td>${w.latency_ms>=0?w.latency_ms+'ms':'—'}</td><td style="color:var(--red);font-size:10px">${w.error||'—'}</td></tr>`;}).join('');}
+
+// ── Optimizer ───────────────────────────────────────────────────
+async function runOptimizer(){const symbol=document.getElementById('bt-symbol').value,strategy=document.getElementById('bt-strategy').value,barLimit=parseInt(document.getElementById('bt-bars').value)||365;
+const st=document.getElementById('bt-status');st.textContent='載入 K 線…';
+const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&limit=${barLimit}`);
+if(!bars?.data?.bars||bars.data.bars.length<60){st.textContent='K 線不足';return;}
+st.textContent=`優化中（${strategy}）…可能需要 10~30 秒`;
+const r=await api('/api/v1/strategy/optimize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,bars:bars.data.bars})});
+if(!r?.data){st.textContent='優化失敗: '+(r?.error||'unknown');return;}
+const d=r.data;st.textContent='';
+document.getElementById('bt-summary-card').style.display='block';
+document.getElementById('bt-metrics').innerHTML=`<div class="stat"><div class="stat-label">最佳 Sharpe</div><div class="stat-value">${d.best_sharpe}</div></div><div class="stat"><div class="stat-label">最佳報酬</div><div class="stat-value ${d.best_return>=0?'up':'down'}">${d.best_return}%</div></div><div class="stat"><div class="stat-label">最佳勝率</div><div class="stat-value">${d.best_win_rate}%</div></div><div class="stat"><div class="stat-label">測試組合數</div><div class="stat-value">${d.total_combinations}</div></div><div class="stat"><div class="stat-label">最佳參數</div><div class="stat-value" style="font-size:14px">${Object.entries(d.best_params).map(([k,v])=>k+'='+v).join(', ')}</div></div>`;
+document.getElementById('bt-trades-card').style.display='block';const tb=document.getElementById('bt-trades-table');
+tb.innerHTML='<tr><th>Rank</th><th>參數</th><th>報酬%</th><th>Sharpe</th><th>勝率</th><th>回撤%</th><th>交易數</th></tr>'+d.top_results.map((r,i)=>`<tr><td>${i+1}</td><td style="font-size:10px">${Object.entries(r.params).map(([k,v])=>k+'='+v).join(', ')}</td><td class="${r.total_return_pct>=0?'up':'down'}">${r.total_return_pct}%</td><td>${r.sharpe}</td><td>${r.win_rate}%</td><td class="down">${r.max_drawdown_pct}%</td><td>${r.trades}</td></tr>`).join('');}
+
+// ── Backtest save ───────────────────────────────────────────────
+async function saveBacktest(data){const r=await api('/api/v1/backtest-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r?.data)alert('回測已保存: '+r.data.id);}
 
 // ── Init ────────────────────────────────────────────────────────
 checkWorkers();loadOverview();loadLiveQuotes();connectWs();

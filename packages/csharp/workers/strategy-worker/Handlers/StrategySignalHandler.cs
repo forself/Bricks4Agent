@@ -32,6 +32,7 @@ public class StrategySignalHandler : ICapabilityHandler
         {
             "evaluate" => Evaluate(payload),
             "backtest" => Backtest(payload),
+            "optimize" => Optimize(payload),
             "list"     => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -167,6 +168,57 @@ public class StrategySignalHandler : ICapabilityHandler
                 pnl = t.Pnl, pnl_pct = t.PnlPct, hold_bars = t.HoldBars,
             }),
             equity_curve = result.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
+        });
+        return (true, json, null);
+    }
+
+    private (bool, string?, string?) Optimize(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+        var strategy = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "sma_cross" : "sma_cross";
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open = b.TryGetProperty("open", out var o) ? o.GetDecimal() : 0,
+                High = b.TryGetProperty("high", out var h) ? h.GetDecimal() : 0,
+                Low = b.TryGetProperty("low", out var l) ? l.GetDecimal() : 0,
+                Close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
+                Volume = b.TryGetProperty("volume", out var v) ? v.GetDecimal() : 0,
+            });
+
+        var config = new StrategyConfig
+        {
+            Symbol = doc.TryGetProperty("symbol", out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var exg) ? exg.GetString() ?? "" : "",
+        };
+        var cash = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
+
+        var result = strategy switch
+        {
+            "sma_cross" => ParameterOptimizer.OptimizeSma(bars, config, cash),
+            "rsi_oversold" => ParameterOptimizer.OptimizeRsi(bars, config, cash),
+            _ => null
+        };
+
+        if (result == null) return (false, null, $"Optimizer not available for: {strategy}. Use sma_cross or rsi_oversold.");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            result.Strategy, result.Symbol, total_combinations = result.TotalCombinations,
+            best_sharpe = result.BestSharpe, best_return = result.BestReturn, best_win_rate = result.BestWinRate,
+            best_params = result.BestParams,
+            top_results = result.TopResults.Select(r => new
+            {
+                r.Params, total_return_pct = r.TotalReturnPct, sharpe = r.Sharpe,
+                win_rate = r.WinRate, max_drawdown_pct = r.MaxDrawdownPct, trades = r.Trades,
+            }),
         });
         return (true, json, null);
     }

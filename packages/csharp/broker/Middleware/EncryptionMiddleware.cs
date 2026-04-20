@@ -51,7 +51,10 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/alerts/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/alerts/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/backtest-history/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/health/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/export/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

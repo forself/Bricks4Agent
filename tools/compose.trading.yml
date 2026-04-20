@@ -81,7 +81,7 @@ services:
       WORKER_Worker__BrokerPort: "7000"
       WORKER_Worker__Quote__FetchIntervalMinutes: "${QUOTE_FETCH_INTERVAL:-5}"
       WORKER_Worker__Quote__CryptoIds: "${QUOTE_CRYPTO_IDS:-bitcoin,ethereum,solana,dogecoin}"
-      WORKER_Worker__Quote__StockSymbols: "${QUOTE_STOCK_SYMBOLS:-AAPL,MSFT,TSLA,NVDA}"
+      WORKER_Worker__Quote__StockSymbols: "${QUOTE_STOCK_SYMBOLS:-AAPL,MSFT,TSLA,NVDA,2330.TW,2317.TW,2454.TW,0050.TW}"
       WORKER_Worker__Quote__DbPath: "/data/quote.db"
     volumes:
       - quote-data:/data
