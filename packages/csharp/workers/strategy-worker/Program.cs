@@ -46,6 +46,15 @@ var strategies = new Dictionary<string, IStrategy>
     ["multi_timeframe"] = new MultiTimeframeStrategy(),
 };
 
+// Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe）
+strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
+{
+    strategies["sma_cross"],
+    strategies["rsi_oversold"],
+    strategies["macd_divergence"],
+    strategies["multi_timeframe"],
+});
+
 // LLM 策略（選用）
 if (config.GetValue("Worker:Strategy:Llm:Enabled", false))
 {
