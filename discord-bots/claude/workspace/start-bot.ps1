@@ -11,8 +11,16 @@
 
 $ErrorActionPreference = "Stop"
 
-$botWorkspace = "C:\Users\USER\discord-bots\claude\workspace"
-$aiProject    = "C:\Users\USER\Desktop\AI_Project"
+# 路徑自動從腳本位置推導，repo 內外都能跑
+$botWorkspace = $PSScriptRoot
+$claudeRoot   = Split-Path -Parent $PSScriptRoot                     # .../discord-bots/claude
+$botsRoot     = Split-Path -Parent $claudeRoot                        # .../discord-bots
+$aiProjectGuess = Split-Path -Parent $botsRoot                        # .../AI_Project (if inside repo)
+if (Test-Path (Join-Path $aiProjectGuess "tools\compose.trading.yml")) {
+    $aiProject = $aiProjectGuess
+} else {
+    $aiProject = "C:\Users\USER\Desktop\AI_Project"
+}
 $composeFile  = Join-Path $aiProject "tools\compose.trading.yml"
 $envFile      = Join-Path $aiProject "tools\.env.trading"
 $brokerUrl    = "http://localhost:5100/api/v1/health/workers"
