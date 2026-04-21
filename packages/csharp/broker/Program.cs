@@ -241,6 +241,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Au
 builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
+builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -881,6 +882,7 @@ if (poolEnabled)
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);
+    PortfolioEndpoints.Map(api);
 }
 QuoteWebSocketEndpoints.Map(app);
 
