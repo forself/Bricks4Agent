@@ -21,13 +21,14 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 
 ## 一、今日新增總覽
 
-今天新增的功能分三大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**，只在 2 個 extension point 各加 1 行（Service 註冊 + Endpoint Map）。
+今天新增的功能分**四**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**，只在架構既有的 extension point 延伸（Service 註冊、Endpoint Map、Middleware allowlist）。
 
 | 主題 | 新增檔 | 動到的既有檔 | 對使用者是什麼 |
 |---|---|---|---|
 | **A. Discord Bot 容器化 + 沙箱** | `discord-bots/claude/` 整個目錄（Dockerfile、compose.sandboxed.yml、workspace/、workspace-docker/、start-bot.ps1、docker/README.md） | 無 | 用 Discord DM 下單、查報價、做策略分析的安全執行環境 |
 | **B. 投資組合績效儀表板** | `Services/PortfolioAnalyticsService.cs`、`Endpoints/PortfolioEndpoints.cs`、`wwwroot/portfolio.html` | `Program.cs`（+2 行） | 一眼看到績效指標（Sharpe、MaxDD、勝率、權益曲線）的 Web 儀表板 |
 | **C. Claude Code 權限規則** | `.claude/settings.json`（專案層） | `C:\Users\USER\.claude\settings.json`（使用者層，合併） | 開發時 AI 助手自動通過安全操作、改原始碼一定先徵詢 |
+| **D. Discord 通知推播** | `Services/DiscordNotificationService.cs`、`Endpoints/NotificationEndpoints.cs` | `Program.cs`（+4 行）、`Middleware/BrokerAuthMiddleware.cs`（+2 行）、`Middleware/EncryptionMiddleware.cs`（+2 行）、`compose.trading.yml`（+1 行）、`.env.trading.example`（+5 行） | 價格告警觸發、Auto-Trader 下單 / 錯誤時主動推到 Discord（不用守在電腦前） |
 
 ---
 
@@ -396,13 +397,158 @@ Claude Code 的權限解析順序：**deny > ask > allow > defaultMode**
 
 ---
 
-## 六、全局技術決策摘要（Trade-offs）
+## 六、主題 D — Discord 通知推播
+
+### 6.1 要解決的問題
+
+前面做完的 `PriceAlertService`（價格告警）和 `AutoTraderService`（自動交易）是**後台 hosted service**——它們偵測到事件只會寫進 log 和內部 history queue，使用者要知道「BTC 跌破門檻了」「Auto-trader 買了 1 股 AAPL」得**主動開瀏覽器刷 dashboard**才看得到。
+
+對一個要掛機跑的交易系統，這不合理。使用者需要的是**被主動通知**，不是被動查詢。
+
+**今天的目的**：加一個推播層，把 broker 側的關鍵事件自動送到 Discord，**不碰既有的 Alert / AutoTrader 服務**。
+
+### 6.2 關鍵設計：Observer Pattern / 零侵入
+
+最重要的設計決定是：**不在既有服務裡加 event hook**，而是**從外部觀察**它們的 public state。
+
+```csharp
+// DiscordNotificationService 的 constructor（節錄）
+public DiscordNotificationService(
+    PriceAlertService alerts,        // ← 既有 singleton，直接注入
+    AutoTraderService autoTrader,    // ← 既有 singleton，直接注入
+    IHttpClientFactory httpFactory,
+    IConfiguration config,
+    ILogger<DiscordNotificationService> logger)
+```
+
+然後在 BackgroundService 裡：
+
+```csharp
+foreach (var e in _alerts.History)           // ← 讀既有的 public 屬性
+{
+    var key = AlertKey(e);
+    if (_seenAlertKeys.Contains(key)) continue;
+    _seenAlertKeys.Add(key);
+    await SendEmbedAsync(...);
+}
+```
+
+**`PriceAlertService.cs` 和 `AutoTraderService.cs` 這兩個既有檔被改動的行數：零。**
+我不加 event / callback / IObservable 介面，我只是**從外面看著它們本來就暴露的 public 屬性**（`History`、`RecentLogs`）。
+
+這是軟體工程裡一個經典原則的實踐：**「好的系統不需要為了被觀察而改變自己」**。
+
+### 6.3 運作流程（以價格告警為例）
+
+```
+User 呼叫 POST /api/v1/alerts 建立「BTC 跌破 80000 就通知我」
+         ↓
+PriceAlertService（既有）收到，進入監控列表
+         ↓
+PriceAlertService 的 ExecuteAsync 每分鐘從 quote-worker 抓最新價
+         ↓
+偵測到 BTC 跌破 80000 → _history.Enqueue(new AlertEvent{...})
+         ↓  ↑ 既有的這行不用改
+         |
+         |   DiscordNotificationService 的 ExecuteAsync 每 15s 掃 _alerts.History
+         ↓
+發現有一筆 AlertKey 沒看過 → 格式化成 Discord embed
+         ↓
+POST 到 Discord webhook URL
+         ↓
+Discord 頻道收到訊息 🔴 價格告警觸發 · BTC
+```
+
+**關鍵認知**：圖中的「既有的這行不用改」是整個設計的核心。PriceAlertService 本來就有 `public IEnumerable<AlertEvent> History` 這個唯讀屬性（原設計是給 admin UI 顯示「最近 20 筆觸發」用的）——我只是**額外**接一個觀察者，它沒察覺自己多了一個讀者。
+
+### 6.4 為什麼選 Webhook 而非 bot
+
+Discord 有兩種 outbound 路徑：
+
+| 方式 | 適用 | 本案選擇 |
+|---|---|---|
+| **Bot（gateway connection）** | 需要即時雙向互動，要回應訊息 | 已由 `b4a-discord-bot` container 做（主題 A，**inbound**） |
+| **Webhook（HTTP POST）** | 單向通知，不需要理解回應 | **選這個**（**outbound**）|
+
+分工是：**bot 管 inbound**（使用者→系統）、**webhook 管 outbound**（系統→使用者）。這避免了兩種 disaster case：
+
+1. Bot 搶 webhook 的工作 → bot 要暫停回應當下的對話去推通知 → 體驗錯亂
+2. Webhook 搶 bot 的工作 → 使用者想用自然語言查帳戶 → webhook 做不到
+
+兩條路徑清楚解耦，各司其職。
+
+### 6.5 與既有檔案的關聯表
+
+| 我的新檔 | 既有檔 / 機制 | 關係 |
+|---|---|---|
+| `DiscordNotificationService.cs` | `PriceAlertService`（既有 singleton） | **讀**它的 `History` 屬性，**零修改** |
+| `DiscordNotificationService.cs` | `AutoTraderService`（既有 singleton） | **讀**它的 `RecentLogs` 屬性，**零修改** |
+| `DiscordNotificationService.cs` | `IHttpClientFactory`（ASP.NET 既有） | 用 named client `"discord-webhook"` 做 HTTP POST |
+| `DiscordNotificationService.cs` | `IConfiguration`（ASP.NET 既有） | 讀 `Notifications:Discord:WebhookUrl`，透過雙底線 env 映射 |
+| `NotificationEndpoints.cs` | `ApiResponseHelper`（既有 helper） | 使用既有 envelope 格式 |
+| `Program.cs`（+4 行） | 本身 | Singleton + HostedService + HttpClient factory + endpoint Map，同 `PriceAlertService` 先例 |
+| `Middleware/BrokerAuthMiddleware.cs`（+2 行） | 本身 | 加 `/portfolio/` + `/notifications/` 到 allowlist，**完全對齊** `/alerts/`、`/trading/` 等既有 entry |
+| `Middleware/EncryptionMiddleware.cs`（+2 行） | 本身 | 同上 |
+| `compose.trading.yml`（+1 行） | 本身 | 透過 `Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"` 把 env 傳進容器，模式與既有 `BROKER_MASTER_KEY_BASE64`、`ALPACA_API_KEY` 完全一致 |
+| `.env.trading.example`（+5 行） | 本身 | 文件化新 env var，使用者才知道要填什麼 |
+
+### 6.6 Middleware allowlist 的意義
+
+Broker 有兩道 middleware（`BrokerAuthMiddleware` 和 `EncryptionMiddleware`）保護所有 API。預設行為：**所有請求都要帶加密 session**。有些 endpoint（像本地 dashboard 用的 `/api/v1/trading/`）是「信任的明碼 JSON」，就列在 allowlist 裡放行。
+
+我加 `/api/v1/notifications/` 和 `/api/v1/portfolio/` 到 allowlist，**延續**的是這個既有模式——每個 endpoint group 加進系統時都會上 allowlist（像 `/api/v1/alerts/`、`/api/v1/backtest-history/` 都是）。
+
+這幾行動作不是「削弱安全」，而是「將新端點納入既有的信任分類」。
+
+### 6.7 Graceful Degradation（優雅降級）
+
+Discord webhook 是**選配**。使用者沒填 URL 時：
+
+```csharp
+public bool IsEnabled => !string.IsNullOrWhiteSpace(_webhookUrl);
+
+protected override async Task ExecuteAsync(CancellationToken ct)
+{
+    if (!IsEnabled)
+    {
+        _logger.LogInformation("Discord notifications DISABLED ...");
+        return;   // 直接結束 background loop
+    }
+    ...
+}
+```
+
+服務自己停用，broker 照常運作。`compose.trading.yml` 也用 `${DISCORD_WEBHOOK_URL:-}`（`:-` = 沒設定就空字串）保證 compose 永遠能 up。
+
+**這是為了報告時的健全性**：不管評審電腦有沒有 Discord webhook，你的系統都能 demo。
+
+### 6.8 報告可直接唸的說詞（主題 D）
+
+> 「系統已經有價格告警和自動交易，但它們是背景服務，事件只進 log。使用者要知道結果得守著 dashboard 刷——對掛機型交易系統來說不合理。
+>
+> 我加了 `DiscordNotificationService` 把關鍵事件主動推到 Discord。這裡**最重要的設計決定不是『功能做了什麼』，而是『怎麼做到不改既有服務』**。我沒有在 `PriceAlertService` 裡加 event callback，也沒加 observable pattern，我**只是把它們當 singleton 注入我的新服務，讀它們本來就是 public 的 `History` 和 `RecentLogs` 屬性**。既有的兩個服務被改動的程式碼是**零行**。
+>
+> Outbound 我用 Discord Webhook 而不是 bot，跟主題 A 的 inbound bot 做清楚的職責分工——bot 管雙向對話、webhook 管單向通知。兩條路徑不搶資源、不搶狀態。
+>
+> 而且這整個功能在沒設定 webhook URL 時會自動 disabled，broker 照常運作——我稱為 graceful degradation，讓系統健全性不綁在外部服務可用性上。」
+
+### 6.9 已知限制
+
+- **Polling 延遲 15s**：事件觸發到 Discord 收到最長 15 秒差。對交易告警可接受，對 HFT 不行。
+- **Discord 維運成本**：如果 webhook 被刪、頻道被關，broker 不會知道；只會寫 warning log
+- **重啟會漏事件**：容器重啟後 seenSet 清空，但我會先把現有 history 都塞進 seenSet，所以不會重發——**但如果剛好在容器重啟的那個 window 事件觸發，可能漏掉一次**。可接受但要誠實講
+
+---
+
+## 七、全局技術決策摘要（Trade-offs）
 
 這些是**評審可能會追問**的「為什麼不用 X」，預先準備答案：
 
 | 問題 | 我的選擇 | 為什麼 |
 |---|---|---|
-| 為什麼不改 `PriceAlertService` / `AutoTraderService` 直接 event hook 通知？ | 走 polling observer | 保持既有服務零改動；輪詢延遲 30s，對交易告警可接受（不是 HFT） |
+| 為什麼不改 `PriceAlertService` / `AutoTraderService` 直接 event hook 通知？ | 走 polling observer（每 15s） | 保持既有服務零改動；輪詢延遲 ≤15s，對交易告警可接受（不是 HFT），換取零侵入的架構乾淨度 |
+| 為什麼選 Webhook 不用 Bot 做 outbound？ | Webhook | Bot 適合雙向對話，Webhook 適合單向通知。讓主題 A 的 bot 專職 inbound、主題 D 的 webhook 專職 outbound，職責清楚不互搶資源 |
+| 為什麼不讓通知強制啟用？ | URL 為空則 graceful disabled | 讓外部服務（Discord）的可用性不綁系統啟動；評審電腦沒 webhook 也能 demo |
 | 為什麼不把 portfolio 做成 trading.html 的新 tab？ | 獨立 `portfolio.html` | 『不改既有 HTML』的約束；獨立頁也方便未來分享 |
 | 為什麼用 force-add 把 `.claude/settings.json` 推進 repo？（`.claude/` 本來被 gitignore） | 刻意繞過 | 專案層權限規則應該跟程式碼一起版控；個人 Claude 狀態繼續被既有 `.claude/` 規則擋住 |
 | 為什麼不把 Discord bot 部署到雲端？ | 先容器化本機跑 | 本次目標是**隔離**，不是**可用性**。上雲可以下個階段做 |
@@ -410,7 +556,7 @@ Claude Code 的權限解析順序：**deny > ask > allow > defaultMode**
 
 ---
 
-## 七、兩個主題組合的系統圖
+## 八、四個主題組合的系統圖
 
 把今天加的東西擺進既有系統：
 
@@ -450,6 +596,16 @@ Claude Code 的權限解析順序：**deny > ask > allow > defaultMode**
   │   │ uses: IExecutionDispatcher           │◄──── 既有介面  │
   │   └──────────────────────────────────────┘               │
   │                                                          │
+  │   ┌── [NEW] DiscordNotificationService ─┐                │
+  │   │ BackgroundService, 每 15s 輪詢       │                │
+  │   │ reads: PriceAlertService.History ───◄── 既有屬性      │
+  │   │        AutoTraderService.RecentLogs◄── 既有屬性       │
+  │   │ writes: HTTP POST → Discord webhook                   │
+  │   └──────────────┬───────────────────────┘                │
+  │                  │ (outbound only)                         │
+  │                  ▼                                         │
+  │          Discord Channel ◄── 使用者從 Discord App 看通知   │
+  │                                                          │
   │   [NEW] wwwroot/portfolio.html (獨立頁，不動 trading.html)│
   └─────────────────────┬───────────────────────────────────┘
                         │ Function Pool TCP (port 7000)
@@ -464,33 +620,38 @@ Claude Code 的權限解析順序：**deny > ask > allow > defaultMode**
                                       Alpaca / Binance REST
 ```
 
-**重點**：三個 `[NEW]` 方塊都是新加的，**但沒有任何一條箭頭斷掉既有連線**。新功能是**掛進去**，不是**插進去**。
+**重點**：四個 `[NEW]` 方塊都是新加的，**但沒有任何一條箭頭斷掉既有連線**。新功能是**掛進去**，不是**插進去**。
+
+注意 `DiscordNotificationService` 的兩條入箭頭標註「既有屬性」——這正是主題 D 的核心設計：**它讀取既有服務 public state，不改既有服務**。
 
 ---
 
-## 八、報告時的 5 分鐘濃縮版
+## 九、報告時的 5 分鐘濃縮版
 
 如果時間緊，照下面三段講就足夠：
 
 **開場（30 秒）**
-> 「我今天新增了三個功能：Discord 交易 bot 的沙箱化、投資組合績效儀表板、以及 Claude Code 的開發權限規則。這三個全部採用最小侵入原則——既有的 broker、worker、前端頁面完全沒改動邏輯，只在 Program.cs 加了 2 行做擴充點註冊。」
+> 「我今天新增了四個功能：Discord 交易 bot 的沙箱化、投資組合績效儀表板、Claude Code 的開發權限規則，以及 Discord 主動通知推播。這四個全部採用最小侵入原則——既有的 broker、worker、前端頁面完全沒改動邏輯，只在架構既有的擴充點（Service 註冊、Endpoint Map、Middleware allowlist）延伸。」
 
-**技術亮點（2 分鐘）**
+**技術亮點（2.5 分鐘）**
 > 「Discord bot 的設計有個新意：我用一份純文字 CLAUDE.md 當 persona，把通用的 AI 程式助手 prompt 成專用的交易 bot。這是用自然語言『program』一個 bot，不是傳統地寫 bot 程式。為了防止 prompt injection，我做了三層防護：persona 層寫入 owner 檢查、容器層限制檔案存取、網路層只開 broker 連線。
 >
-> 投資組合儀表板用的是 derived service 模式——完全不新建資料表，即時從既有交易紀錄重新計算 Sharpe、MaxDD、勝率等指標。實作上沿用既有的 `IExecutionDispatcher` 介面呼叫 trading-worker，跟既有 `BacktestHistoryService` 是同類服務。」
+> 投資組合儀表板用的是 derived service 模式——完全不新建資料表，即時從既有交易紀錄重新計算 Sharpe、MaxDD、勝率等指標。實作上沿用既有的 `IExecutionDispatcher` 介面呼叫 trading-worker，跟既有 `BacktestHistoryService` 是同類服務。
+>
+> Discord 通知推播實踐的是 **Observer Pattern** — `DiscordNotificationService` 注入既有的 `PriceAlertService` 和 `AutoTraderService`，**只讀取它們本來就公開的 `History` 和 `RecentLogs` 屬性**，兩個既有服務被改動的程式碼是零行。Outbound 我選 Discord Webhook 而非 bot，跟主題 A 的 inbound bot 做清楚的職責分工。」
 
 **收尾（30 秒）**
-> 「整個設計的核心理念是：既有架構**本身**就有清楚的擴充點（capability 註冊、IExecutionDispatcher、wwwroot 靜態頁）。好的新功能不是推倒重來，而是**找到這些擴充點**並順勢加上去。這讓新功能和原系統保持一致，也減少了維護成本。」
+> 「整個設計的核心理念是：既有架構**本身**就有清楚的擴充點（capability 註冊、IExecutionDispatcher、middleware allowlist、public state properties）。好的新功能不是推倒重來，而是**找到這些擴充點**並順勢加上去。這讓新功能和原系統保持一致，也減少了維護成本。」
 
 ---
 
-## 九、後續可做的方向
+## 十、後續可做的方向
 
 這些可以當報告尾聲的 future work：
 
-1. **Discord 主動推播**（下一個立即要做的）：broker 端新增 webhook 通知，alert 觸發、auto-trader 成交時主動通知 Discord
-2. **Walk-forward optimization**：現有 optimizer 是 brute-force in-sample，會過擬合；用 rolling window 做樣本內/外分離
-3. **Real Sharpe**：新增 broker 端 account equity snapshot 機制，算出相對本金的日收益率
-4. **Mark-to-market P&L**：未平倉浮動損益納入儀表板
-5. **多帳戶合併檢視**：Alpaca + Binance 績效合併在一張圖上
+1. **Walk-forward optimization**：現有 optimizer 是 brute-force in-sample，會過擬合；用 rolling window 做樣本內/外分離
+2. **Real Sharpe**：新增 broker 端 account equity snapshot 機制，算出相對本金的日收益率
+3. **Mark-to-market P&L**：未平倉浮動損益納入儀表板
+4. **多帳戶合併檢視**：Alpaca + Binance 績效合併在一張圖上
+5. **通知嚴重度分級**：Discord 推播加上 severity（info / warn / critical）並 @mention 重要事件
+6. **策略 Ensemble**：`VotingStrategy` / `WeightedEnsembleStrategy` 把現有 composite/sma/rsi/macd 訊號加權投票
