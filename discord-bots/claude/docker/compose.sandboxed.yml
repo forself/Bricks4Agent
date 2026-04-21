@@ -1,0 +1,61 @@
+# B4A Discord Bot — Sandboxed container
+#
+# 相較於 ../docker-compose.yml 的差異：
+#   1. 加入 b4a-trading-net（外部網路）→ bot 只能網路打到 broker，摸不到 host 其他東西
+#   2. 掛 ../workspace-docker 而非 ../workspace → persona URL = http://broker:5000
+#   3. 拿掉 host.docker.internal → 不給任何 host 存取路徑
+#   4. 額外加 security_opt / cap_drop 收緊
+#
+# 用法（前提：b4a-trading-net 已由 tools/compose.trading.yml 建立，並且 broker 在跑）：
+#   cd C:\Users\USER\discord-bots\claude\docker
+#   docker compose -f compose.sandboxed.yml --env-file ../.env up -d
+#
+# 查 log：
+#   docker compose -f compose.sandboxed.yml logs -f
+#
+# 停止：
+#   docker compose -f compose.sandboxed.yml down
+
+name: b4a-discord-bot
+
+services:
+  claude-bot:
+    image: claude-claude-bot:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: b4a-discord-bot
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+
+    volumes:
+      # Claude 設定 / 憑證 / 已裝 plugin — 需要 rw（plugin 會更新 approved pairings）
+      - ${USERPROFILE}/.claude:/home/claude-user/.claude
+      # 種子 .claude.json（entrypoint.sh 會複製到 $HOME）
+      - ${USERPROFILE}/.claude.json:/seed/.claude.json:ro
+      # persona 以及工作目錄 — 唯讀，用 workspace-docker 版本（URL 已改成 broker:5000）
+      - ../workspace-docker:/home/claude-user/workspace:ro
+
+    networks:
+      - b4a-trading-net
+
+    # Docker Desktop (Win/Mac) 預設就會解 host.docker.internal 到 host gateway，
+    # 蓋掉指回 loopback，斷掉容器→host port 這條路。
+    extra_hosts:
+      - "host.docker.internal:127.0.0.1"
+      - "gateway.docker.internal:127.0.0.1"
+
+    # 收緊：不給 bot 任何 host fs / 其他 port 的 escape 途徑
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  b4a-trading-net:
+    external: true
+    name: b4a-trading-net

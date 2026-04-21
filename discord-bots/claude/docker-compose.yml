@@ -1,0 +1,15 @@
+services:
+  claude-bot:
+    build: .
+    container_name: claude-bot
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${USERPROFILE}/.claude:/home/claude-user/.claude
+      - ${USERPROFILE}/.claude.json:/seed/.claude.json:ro
+      - ./workspace:/home/claude-user/workspace
