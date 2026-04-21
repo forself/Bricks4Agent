@@ -56,6 +56,18 @@ public static class StrategyEndpoints
             return ToResponse(result);
         });
 
+        strategy.MapPost("/walk-forward", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal"))
+                return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync(ct);
+            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "walk_forward", body));
+            return ToResponse(result);
+        });
+
         strategy.MapGet("/list", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             CancellationToken ct) =>

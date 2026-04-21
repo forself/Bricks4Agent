@@ -50,6 +50,22 @@ public static class PortfolioEndpoints
                 symbols = metrics.PerSymbol,
             }));
         });
+
+        p.MapGet("/benchmark", async (BenchmarkService svc, HttpRequest req) =>
+        {
+            var symbol = req.Query.TryGetValue("symbol", out var s) && !string.IsNullOrWhiteSpace(s)
+                ? s.ToString() : "SPY";
+            var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) && n > 0
+                ? Math.Min(n, 5000) : 500;
+            var capital = req.Query.TryGetValue("initial_capital", out var c) && decimal.TryParse(c, out var cd) && cd > 0
+                ? cd : 100_000m;
+
+            var result = await svc.GetAsync(symbol, limit, capital);
+            if (result == null)
+                return Results.Ok(ApiResponseHelper.Error($"Benchmark data unavailable for '{symbol}' (is quote-worker connected?)"));
+
+            return Results.Ok(ApiResponseHelper.Success(result));
+        });
     }
 
     private static (string exchange, int limit) ReadQuery(HttpRequest req)

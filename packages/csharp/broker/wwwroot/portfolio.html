@@ -148,6 +148,16 @@
     <option value="1000">1000</option>
     <option value="5000">5000</option>
   </select>
+  <label class="dim" style="font-size:12px;">基準</label>
+  <select id="benchmarkSymbol" title="需在 quote-worker 已抓過資料的 symbol">
+    <option value="AAPL" selected>AAPL（預設）</option>
+    <option value="MSFT">MSFT</option>
+    <option value="TSLA">TSLA</option>
+    <option value="NVDA">NVDA</option>
+    <option value="BTC">BTC</option>
+    <option value="ETH">ETH</option>
+    <option value="">（不顯示）</option>
+  </select>
   <button id="refresh">🔄 刷新</button>
   <span class="updated" id="updated">—</span>
 </header>
@@ -156,7 +166,10 @@
   <div class="kpi-grid" id="kpiGrid"></div>
 
   <div class="section">
-    <h2>權益曲線 <span class="hint">cumulative P&L over time</span></h2>
+    <h2>權益曲線 vs 基準 <span class="hint">
+      <span style="color:#0ecb81;">■</span> 策略 P&L
+      &nbsp;&nbsp;<span style="color:#2b6cb0;">■</span> 買入持有基準（$100k）
+    </span></h2>
     <div class="section-body">
       <div id="equityChart"></div>
       <div id="equityEmpty" class="empty" style="display:none;">尚無已平倉交易資料</div>
@@ -222,7 +235,7 @@ const fmt = {
 
 function cls(val) { return val > 0 ? 'pos' : val < 0 ? 'neg' : 'dim'; }
 
-let equityChart, equitySeries;
+let equityChart, equitySeries, benchmarkSeries;
 
 function initChart() {
   if (equityChart) return;
@@ -241,12 +254,43 @@ function initChart() {
     bottomColor: 'rgba(14, 203, 129, 0.0)',
     priceFormat: { type: 'custom', formatter: p => (p >= 0 ? '+' : '') + p.toFixed(2) },
   });
+  benchmarkSeries = equityChart.addLineSeries({
+    color: '#2b6cb0',
+    lineWidth: 2,
+    lineStyle: 2,  // dashed
+    priceFormat: { type: 'custom', formatter: p => (p >= 0 ? '+' : '') + p.toFixed(2) },
+    lastValueVisible: true,
+    title: 'Benchmark',
+  });
   new ResizeObserver(() => equityChart.applyOptions({ width: $('equityChart').clientWidth })).observe($('equityChart'));
 }
 
-function renderKPIs(m) {
+function renderBenchmark(curve) {
+  initChart();
+  if (!curve || curve.length === 0) {
+    benchmarkSeries.setData([]);
+    return;
+  }
+  // curve 是 [{at, pnl, equity, returnPct}, ...]；用 pnl 跟 portfolio 同尺度（$ 計價）
+  const data = curve.map(p => ({
+    time: Math.floor(new Date(p.at || p.At).getTime() / 1000),
+    value: Number(p.pnl ?? p.Pnl),
+  })).sort((a, b) => a.time - b.time);
+  const dedup = [];
+  for (const pt of data) {
+    if (dedup.length === 0 || dedup[dedup.length - 1].time !== pt.time) dedup.push(pt);
+    else dedup[dedup.length - 1] = pt;
+  }
+  benchmarkSeries.setData(dedup);
+}
+
+function renderKPIs(m, bench) {
+  const totalPnl = Number(m.totalPnl ?? m.total_pnl ?? 0);
+  const benchPnl = bench ? Number(bench.curve?.[bench.curve.length - 1]?.pnl ?? bench.Curve?.[bench.Curve.length - 1]?.Pnl ?? 0) : null;
+  const alpha = (bench !== null && benchPnl !== null) ? (totalPnl - benchPnl) : null;
+
   const k = [
-    { label: '總 P&L', value: fmt.money(m.totalPnl ?? m.total_pnl), cls: (m.totalPnl ?? m.total_pnl) >= 0 ? 'pos' : 'neg' },
+    { label: '總 P&L', value: fmt.money(totalPnl), cls: totalPnl >= 0 ? 'pos' : 'neg' },
     { label: '完成回合', value: fmt.num(m.roundTripCount ?? m.round_trip_count), sub: `總交易 ${fmt.num(m.tradeCount ?? m.trade_count)}` },
     { label: '勝率', value: fmt.pct((m.winRate ?? m.win_rate ?? 0) * 100), sub: `${m.winningTrades ?? m.winning_trades}W / ${m.losingTrades ?? m.losing_trades}L`, cls: (m.winRate ?? m.win_rate) >= 0.5 ? 'pos' : 'warn' },
     { label: '獲利因子', value: fmt.ratio(m.profitFactor ?? m.profit_factor), cls: (m.profitFactor ?? m.profit_factor) > 1 ? 'pos' : 'neg' },
@@ -257,6 +301,25 @@ function renderKPIs(m) {
     { label: '最大單筆獲利', value: fmt.money(m.largestWin ?? m.largest_win), cls: 'pos' },
     { label: '最大單筆虧損', value: fmt.money(m.largestLoss ?? m.largest_loss), cls: 'neg' },
   ];
+
+  if (bench) {
+    const benchRet = Number(bench.totalReturnPct ?? bench.TotalReturnPct ?? 0);
+    k.push({
+      label: `基準 (${bench.symbol ?? bench.Symbol})`,
+      value: fmt.pctSigned(benchRet),
+      sub: fmt.money(benchPnl),
+      cls: benchRet >= 0 ? 'pos' : 'neg',
+    });
+    if (alpha !== null) {
+      k.push({
+        label: 'Alpha（超額）',
+        value: fmt.money(alpha),
+        sub: alpha >= 0 ? '🏆 擊敗基準' : '不如直接買入持有',
+        cls: alpha >= 0 ? 'pos' : 'neg',
+      });
+    }
+  }
+
   $('kpiGrid').innerHTML = k.map(x => `
     <div class="kpi ${x.cls || ''}">
       <div class="label">${x.label}</div>
@@ -339,17 +402,28 @@ function renderRoundTrips(rows) {
 async function load() {
   const exchange = $('exchange').value;
   const limit = $('limit').value;
+  const benchSym = $('benchmarkSymbol').value;
   $('main').classList.add('loading');
   try {
-    const r = await fetch(`/api/v1/portfolio/metrics?exchange=${exchange}&limit=${limit}`);
-    const j = await r.json();
+    // 平行打兩個端點
+    const [metricsResp, benchResp] = await Promise.all([
+      fetch(`/api/v1/portfolio/metrics?exchange=${exchange}&limit=${limit}`),
+      benchSym ? fetch(`/api/v1/portfolio/benchmark?symbol=${benchSym}&limit=500`) : Promise.resolve(null),
+    ]);
+    const j = await metricsResp.json();
     if (!j.success) {
       alert('載入失敗: ' + (j.message || 'unknown'));
       return;
     }
     const m = j.data;
-    renderKPIs(m);
+    let bench = null;
+    if (benchResp) {
+      const bj = await benchResp.json();
+      if (bj.success) bench = bj.data;
+    }
+    renderKPIs(m, bench);
     renderEquity(m.equityCurve ?? m.EquityCurve);
+    renderBenchmark(bench ? (bench.curve ?? bench.Curve) : null);
     renderSymbols(m.perSymbol ?? m.PerSymbol);
     renderRoundTrips(m.recentRoundTrips ?? m.RecentRoundTrips);
     $('updated').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-TW');
@@ -363,6 +437,7 @@ async function load() {
 $('refresh').addEventListener('click', load);
 $('exchange').addEventListener('change', load);
 $('limit').addEventListener('change', load);
+$('benchmarkSymbol').addEventListener('change', load);
 
 load();
 setInterval(load, 30000); // 30 秒自動刷新

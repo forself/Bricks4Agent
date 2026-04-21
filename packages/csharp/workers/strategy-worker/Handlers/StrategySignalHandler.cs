@@ -30,10 +30,11 @@ public class StrategySignalHandler : ICapabilityHandler
     {
         var result = route switch
         {
-            "evaluate" => Evaluate(payload),
-            "backtest" => Backtest(payload),
-            "optimize" => Optimize(payload),
-            "list"     => ListStrategies(),
+            "evaluate"     => Evaluate(payload),
+            "backtest"     => Backtest(payload),
+            "optimize"     => Optimize(payload),
+            "walk_forward" => WalkForward(payload),
+            "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
         return Task.FromResult(result);
@@ -218,6 +219,79 @@ public class StrategySignalHandler : ICapabilityHandler
             {
                 r.Params, total_return_pct = r.TotalReturnPct, sharpe = r.Sharpe,
                 win_rate = r.WinRate, max_drawdown_pct = r.MaxDrawdownPct, trades = r.Trades,
+            }),
+        });
+        return (true, json, null);
+    }
+
+    private (bool, string?, string?) WalkForward(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+        var strategy = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "sma_cross" : "sma_cross";
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open  = b.TryGetProperty("open",  out var o) ? o.GetDecimal() : 0,
+                High  = b.TryGetProperty("high",  out var h) ? h.GetDecimal() : 0,
+                Low   = b.TryGetProperty("low",   out var l) ? l.GetDecimal() : 0,
+                Close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
+                Volume = b.TryGetProperty("volume", out var v) ? v.GetDecimal() : 0,
+            });
+
+        var config = new StrategyConfig
+        {
+            Symbol = doc.TryGetProperty("symbol", out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var exg) ? exg.GetString() ?? "" : "",
+        };
+        var cash = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
+        var trainBars = doc.TryGetProperty("train_bars", out var tb) ? tb.GetInt32() : 200;
+        var testBars  = doc.TryGetProperty("test_bars",  out var tt) ? tt.GetInt32() : 50;
+
+        var result = strategy switch
+        {
+            "sma_cross"    => WalkForwardOptimizer.RunSma(bars, config, trainBars, testBars, cash),
+            "rsi_oversold" => WalkForwardOptimizer.RunRsi(bars, config, trainBars, testBars, cash),
+            _ => null
+        };
+
+        if (result == null)
+            return (false, null, $"Walk-forward not available for: {strategy}. Use sma_cross or rsi_oversold.");
+
+        if (result.WindowCount == 0)
+            return (false, null, $"Not enough bars: {bars.Count} < {trainBars + testBars} (train + test)");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            result.Strategy, result.Symbol,
+            total_bars = result.TotalBars,
+            window_count = result.WindowCount,
+            initial_train_bars = result.InitialTrainBars,
+            test_bars = result.TestBars,
+            avg_in_sample_sharpe = result.AvgInSampleSharpe,
+            avg_out_of_sample_sharpe = result.AvgOutOfSampleSharpe,
+            degradation_ratio = result.DegradationRatio,
+            aggregate_oos_return_pct = result.AggregateOosReturnPct,
+            aggregate_oos_win_rate = result.AggregateOosWinRate,
+            windows = result.Windows.Select(w => new
+            {
+                index = w.Index,
+                train_range = new { from = w.TrainFrom, to = w.TrainTo, start = w.TrainStartDate },
+                test_range  = new { from = w.TestFrom, to = w.TestTo, start = w.TestStartDate, end = w.TestEndDate },
+                best_params = w.BestParams,
+                in_sample_sharpe = w.InSampleSharpe,
+                in_sample_return_pct = w.InSampleReturnPct,
+                out_of_sample_sharpe = w.OutOfSampleSharpe,
+                out_of_sample_return_pct = w.OutOfSampleReturnPct,
+                out_of_sample_win_rate = w.OutOfSampleWinRate,
+                out_of_sample_max_drawdown_pct = w.OutOfSampleMaxDrawdownPct,
+                out_of_sample_trades = w.OutOfSampleTrades,
             }),
         });
         return (true, json, null);
