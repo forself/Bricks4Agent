@@ -243,6 +243,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Pr
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
+builder.Services.AddSingleton<Broker.Services.StrategyComparisonService>();
 builder.Services.AddHttpClient("discord-webhook");
 builder.Services.AddSingleton<Broker.Services.DiscordNotificationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DiscordNotificationService>());

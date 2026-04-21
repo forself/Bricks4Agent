@@ -68,6 +68,25 @@ public static class StrategyEndpoints
             return ToResponse(result);
         });
 
+        strategy.MapGet("/compare", async (
+            Broker.Services.StrategyComparisonService svc, HttpRequest req) =>
+        {
+            var symbol = req.Query.TryGetValue("symbol", out var s) && !string.IsNullOrWhiteSpace(s)
+                ? s.ToString() : "AAPL";
+            var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) && n > 0
+                ? Math.Min(n, 5000) : 300;
+            var cash = req.Query.TryGetValue("initial_cash", out var c) && decimal.TryParse(c, out var cd) && cd > 0
+                ? cd : 100_000m;
+            var filter = req.Query.TryGetValue("strategies", out var fs) && !string.IsNullOrWhiteSpace(fs)
+                ? fs.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                : null;
+
+            var result = await svc.CompareAsync(symbol, limit, cash, filter);
+            if (result == null || !string.IsNullOrEmpty(result.Error))
+                return Results.Ok(ApiResponseHelper.Error(result?.Error ?? "comparison failed"));
+            return Results.Ok(ApiResponseHelper.Success(result));
+        });
+
         strategy.MapGet("/list", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             CancellationToken ct) =>
