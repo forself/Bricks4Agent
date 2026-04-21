@@ -45,6 +45,8 @@ services:
 
       Embedding__Enabled: "false"
 
+      Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
+
       DevelopmentSeed__Enabled: "true"
       DevelopmentSeed__PrincipalId: "prn_trading"
       DevelopmentSeed__DisplayName: "Trading System"
