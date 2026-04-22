@@ -44,6 +44,7 @@ var strategies = new Dictionary<string, IStrategy>
     ["macd_divergence"] = new MacdStrategy(),
     ["composite"]       = CompositeStrategy.Default(),
     ["multi_timeframe"] = new MultiTimeframeStrategy(),
+    ["fibonacci_retracement"] = new FibonacciStrategy(),
 };
 
 // Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe）
