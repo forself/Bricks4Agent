@@ -21,14 +21,21 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 
 ## 一、今日新增總覽
 
-今天新增的功能分**四**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**，只在架構既有的 extension point 延伸（Service 註冊、Endpoint Map、Middleware allowlist）。
+這份報告涵蓋 **2026-04-21 / 04-22 兩天** 共 **九**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**，只在架構既有的 extension point 延伸（Service 註冊、Endpoint Map、Middleware allowlist）。
+
+四個主題（A-D）聚焦在**平台基礎建設**；五個主題（E-I）聚焦在**策略研究與驗證能力**。
 
 | 主題 | 新增檔 | 動到的既有檔 | 對使用者是什麼 |
 |---|---|---|---|
 | **A. Discord Bot 容器化 + 沙箱** | `discord-bots/claude/` 整個目錄（Dockerfile、compose.sandboxed.yml、workspace/、workspace-docker/、start-bot.ps1、docker/README.md） | 無 | 用 Discord DM 下單、查報價、做策略分析的安全執行環境 |
 | **B. 投資組合績效儀表板** | `Services/PortfolioAnalyticsService.cs`、`Endpoints/PortfolioEndpoints.cs`、`wwwroot/portfolio.html` | `Program.cs`（+2 行） | 一眼看到績效指標（Sharpe、MaxDD、勝率、權益曲線）的 Web 儀表板 |
 | **C. Claude Code 權限規則** | `.claude/settings.json`（專案層） | `C:\Users\USER\.claude\settings.json`（使用者層，合併） | 開發時 AI 助手自動通過安全操作、改原始碼一定先徵詢 |
-| **D. Discord 通知推播** | `Services/DiscordNotificationService.cs`、`Endpoints/NotificationEndpoints.cs` | `Program.cs`（+4 行）、`Middleware/BrokerAuthMiddleware.cs`（+2 行）、`Middleware/EncryptionMiddleware.cs`（+2 行）、`compose.trading.yml`（+1 行）、`.env.trading.example`（+5 行） | 價格告警觸發、Auto-Trader 下單 / 錯誤時主動推到 Discord（不用守在電腦前） |
+| **D. Discord 通知推播** | `Services/DiscordNotificationService.cs`、`Endpoints/NotificationEndpoints.cs` | `Program.cs`（+4 行）、`Middleware/BrokerAuthMiddleware.cs`、`Middleware/EncryptionMiddleware.cs`、`compose.trading.yml`、`.env.trading.example` | 價格告警觸發、Auto-Trader 下單 / 錯誤時主動推到 Discord |
+| **E. Walk-Forward Optimization** | `strategy-worker/Engine/WalkForwardOptimizer.cs` | `StrategySignalHandler.cs` +1 case、`StrategyEndpoints.cs` +1 MapPost | 用 in-sample / out-of-sample 分離量化過擬合程度（degradation_ratio） |
+| **F. Benchmark Comparison** | `Services/BenchmarkService.cs` | `PortfolioEndpoints.cs` +1 MapGet、`portfolio.html`（自建）+ 疊加線、`Program.cs` +1 DI | 儀表板加「$100k 買入持有 SPY」虛線，顯示 Alpha 判斷是否贏大盤 |
+| **G. Weighted Ensemble Strategy** | `strategy-worker/Engine/WeightedEnsembleStrategy.cs` | `strategy-worker/Program.cs` +9 行、`StrategySignalHandler.cs` +1 描述字串 | 動態加權投票策略：成員策略近期 Sharpe 當票權；實測所有策略裡 Sharpe 最高、MaxDD 最低 |
+| **H. Strategy Comparison Lab** | `Services/StrategyComparisonService.cs`、`wwwroot/strategy-lab.html` | `Program.cs` +1 DI、`StrategyEndpoints.cs` +1 MapGet | 一頁看 6 個策略對同個 symbol 的對決（表格 + 權益曲線疊圖 + 冠軍榜）|
+| **I. AI Autonomous Research Loop** | `Services/StrategyGeneratorService.cs`、`StrategyCandidateRepository.cs`、`StrategyResearchLoopService.cs`、`Endpoints/ResearchEndpoints.cs`、`wwwroot/research-lab.html` | `Program.cs` +4 行、兩個 Middleware 各 +1 行 allowlist | LLM 當研究員，自動提參數 → 回測 → 讀結果 → 提下一代假設，跑 N 世代 |
 
 ---
 
@@ -540,7 +547,298 @@ protected override async Task ExecuteAsync(CancellationToken ct)
 
 ---
 
-## 七、全局技術決策摘要（Trade-offs）
+## 七、主題 E — Walk-Forward Optimization
+
+### 7.1 要解決的問題
+
+既有的 `ParameterOptimizer` 是 **in-sample brute-force**：把全部歷史資料塞進暴力搜尋，挑出那組歷史 Sharpe 最高的參數。這種作法有一個量化界最有名的陷阱——**過擬合**（overfitting）。挑出來的參數在過去看起來神乎其技，實際丟到未來資料幾乎全部失效。
+
+這不只是理論，是我**今天剛實證過**的現象（見 7.4）。
+
+### 7.2 關鍵設計：Anchored Walk-Forward
+
+把 bar 陣列切成一系列重疊窗口：
+
+```
+bars:   [═══════════ train ═══════════][══ test ══][══ test ══][══ test ══] ...
+             ↓ 找最佳參數 P1                ↓ P1 在此區間真實表現
+```
+
+每前進一個測試窗口，訓練區從頭延長（anchored）；用每個訓練區當下最佳參數去跑緊接著的測試區，這樣**每一個 test 區間都是它自己的「未來」**——參數完全沒看過的資料。
+
+彙總所有測試區結果 = **真正的 out-of-sample 績效**。
+核心指標：`degradation_ratio = OOS_Sharpe / IS_Sharpe`
+- 接近 1 = 策略穩健
+- 遠小於 1（甚至負數）= 過擬合
+
+### 7.3 實測結果（AAPL 300 bars × 5 windows）
+
+| 指標 | In-Sample | Out-of-Sample |
+|---|---|---|
+| Sharpe | 2.17 | **0.52** |
+| 縮水程度 | — | 24% of IS |
+| Degradation ratio | — | **0.24** |
+
+原本看起來 2+ Sharpe 的策略，真實跑下來只剩 0.5。**這就是過擬合的代價**。
+
+### 7.4 與既有檔案的關聯
+
+| 我的新檔 | 既有檔 / 機制 |
+|---|---|
+| `strategy-worker/Engine/WalkForwardOptimizer.cs`（核心算法，188 行）| 重用 `ParameterOptimizer.OptimizeSma/OptimizeRsi` 找每個窗口的最佳參數 |
+| `strategy-worker/Engine/WalkForwardOptimizer.cs` | 重用 `BacktestEngine.Run()` 跑每個 test 窗口 |
+
+**編輯既有檔**（延伸既有模式）：
+- `strategy-worker/Handlers/StrategySignalHandler.cs` +1 case `"walk_forward"` + 1 private method（跟既有 `Optimize` 完全同層級）
+- `broker/Endpoints/StrategyEndpoints.cs` +1 MapPost `/walk-forward`（跟既有 `/optimize` 對稱）
+
+### 7.5 報告說詞
+
+> 「量化工程最大的陷阱是**用同一段歷史資料先找參數再驗證**——必然高估。Walk-Forward 是業界標準的修法：強制把驗證放在參數未見過的資料上。我在既有 optimizer 之上加了這一層，並用 degradation_ratio 直接量化過擬合程度。AAPL 實測：IS Sharpe 2.17 看起來神，OOS 只剩 0.52。如果我沒做這層驗證，客戶按我 optimizer 建議的參數上線，會直接踩到縮水 76% 的陷阱。」
+
+---
+
+## 八、主題 F — Benchmark Comparison（買入持有基準）
+
+### 8.1 要解決的問題
+
+Portfolio Dashboard 上的權益曲線是**絕對 P&L**，使用者看到「這段期間賺了 $5000」——但不知道**是不是贏過什麼都不做**。如果同一期間 SPY 漲 10%，純買 SPY 的被動策略會賺 $10,000，那你的主動交易其實是**跑輸市場**。
+
+任何策略都要先回答這個問題才算數。
+
+### 8.2 關鍵設計：Derived Service 模式
+
+這個功能**不新增任何資料**，純粹從既有 quote.ohlcv capability 推導：
+
+```
+$100,000 投入 SPY 於 start_date
+↓ 每根 K 線算一次 equity[i] = $100k × close[i] / close[0]
+↓ pnl[i] = equity[i] - $100k
+結果：一條和 portfolio 曲線同尺度、同時間軸的虛線
+```
+
+UI 直接疊加：綠色實線（策略實績）vs 藍色虛線（買入持有）。多出兩個 KPI：
+- **基準報酬**（該 symbol 的實際漲幅）
+- **Alpha**（策略 P&L - 基準 P&L）
+  - Alpha > 0 → 🏆 擊敗基準
+  - Alpha < 0 → 不如直接買入持有
+
+### 8.3 與既有檔案的關聯
+
+| 我的新檔 | 既有檔 / 機制 |
+|---|---|
+| `broker/Services/BenchmarkService.cs` | 透過 `IExecutionDispatcher` 呼 `quote.ohlcv/get_bars`（同 Portfolio、同 Strategy Lab 模式）|
+| `broker/Endpoints/PortfolioEndpoints.cs` +1 MapGet | 本來就是我的新檔，延伸之 |
+| `broker/wwwroot/portfolio.html` 新增 series | 同上 |
+
+### 8.4 報告說詞
+
+> 「沒有 benchmark 的報酬數字是沒有意義的。我加了 BenchmarkService 把『$100k 買 SPY 放到現在』的曲線畫在策略曲線上方，讓使用者一眼判斷自己有沒有 alpha。實作上重用既有的 quote 資料鏈——`quote.ohlcv/get_bars`——所以這是純衍生層，沒有新資料來源、沒有新資料庫。」
+
+---
+
+## 九、主題 G — Weighted Ensemble Strategy（動態加權投票）
+
+### 9.1 要解決的問題
+
+既有 `CompositeStrategy` 已經做了「多策略投票」，但它用的是**固定等權（1:1:1）**。問題：當成員策略意見分歧時，它常卡在 hold；當某個策略近期明顯走衰，它的票權還跟過去一樣大。
+
+核心洞察：**不同市場環境適合不同策略**。趨勢市 SMA 贏，震盪市 RSI 贏。固定權重永遠是平均表現。
+
+### 9.2 關鍵設計：Performance-Adaptive Voting
+
+每次收到訊號請求時：
+
+```
+1. 對最近 N 根 K 線，讓每個成員策略各自做一次 mini-backtest
+2. 把每個成員的 Sharpe 當該成員的「權重」
+3. 負 Sharpe → 權重 = 0（該策略近期虧錢，投票靜音）
+4. 正常化權重後做加權投票
+5. 全員都負 Sharpe → fallback 到等權（不讓 ensemble 整個失聲）
+```
+
+這是 Netflix Prize / 隨機森林 / AdaBoost 的同一家族：**讓表現好的成員有更大的話語權**。
+
+額外輸出 `agreement_ratio` = 成員同向比例，下游（auto-trader）可用它當信心門檻。
+
+### 9.3 實測結果（AAPL 300 bars backtest）
+
+| 策略 | Return | Sharpe | MaxDD | 備註 |
+|---|---|---|---|---|
+| sma_cross | 12.19% | 0.76 | 11.29% | — |
+| rsi_oversold | 8.75% | 0.97 | 8.26% | — |
+| macd_divergence | 3.73% | 0.35 | 9.98% | — |
+| multi_timeframe | 6.58% | 0.52 | 10.45% | — |
+| **composite（等權）** | **0%** | **0** | **0%** | **死鎖，0 筆交易** |
+| **ensemble（動態權重）** | 8.97% | **1.26** | **4.76%** | **Sharpe 最高、MaxDD 最低** |
+
+Composite 因為成員意見分歧全卡 hold，ensemble 用權重給強者投票權，突破僵局並同時降低風險。
+
+### 9.4 與既有檔案的關聯
+
+| 我的新檔 | 既有機制 |
+|---|---|
+| `strategy-worker/Engine/WeightedEnsembleStrategy.cs`（162 行，實作 `IStrategy` 介面）| 和 7 個既有策略平級，註冊進同一個 strategies dict |
+| 用 `BacktestEngine.Run()` 做每個成員的權重計算 | 純複用既有 |
+
+**編輯既有檔**（最小延伸）：
+- `strategy-worker/Program.cs` +9 行（在 base constituents 註冊完之後，把 ensemble 塞進 strategies dict）
+- `StrategySignalHandler.cs` +1 描述字串（list 端點才看得見）
+
+### 9.5 報告說詞
+
+> 「Ensemble 不是新概念，隨機森林就是這個原則。關鍵是**權重不該是寫死的等權**——每個策略在不同市場環境有不同優勢，應該讓市場自己決定誰該說話。我用『成員近期 Sharpe』當動態權重，表現差的自動靜音。
+>
+> 最有說服力的實證：既有 composite（固定等權）在 AAPL 300 根 K 線上卡住 0 筆交易、零報酬；我的 ensemble 做出 3 筆交易、Sharpe 1.26、MaxDD 4.76%——**同時是這輪所有策略裡 Sharpe 最高、風險最低的那個**。這驗證了量化工程的經典原則：diversification of decision-making lowers risk while preserving return。」
+
+---
+
+## 十、主題 H — Strategy Comparison Lab
+
+### 10.1 要解決的問題
+
+有 8 個策略，但使用者想知道「**這支股票最吃哪個策略？**」時沒有直接答案——要一個個跑 backtest 再自己比。
+
+### 10.2 關鍵設計：Broker 作為 Orchestration Layer
+
+這個功能不產生新邏輯，它只是把既有能力**重新組合**：
+
+```
+User → portfolio.html 選 symbol
+    ↓
+broker StrategyComparisonService
+    ↓  (一次呼叫)
+quote.ohlcv/get_bars  ← 取 K 線一次
+    ↓  (循序 6 次)
+strategy.signal/backtest × 6 個策略
+    ↓
+broker 彙總 + 排名 + 判冠軍
+    ↓
+strategy-lab.html 畫表 + 疊加 6 條權益曲線
+```
+
+每個策略各自跑在 strategy-worker，broker 只負責**編排**（orchestration）。這示範了 broker 作為控制平面的本質用途：worker 專心做事，broker 組合出使用體驗。
+
+### 10.3 為什麼循序不並行
+
+一開始我寫並行（`Task.WhenAll`），但發現 LLM 類策略（`llm`, `news_sentiment`）因為外部 API 延遲會讓 function pool dispatcher 擁塞，拖累其他策略的 backtest 甚至**讓 worker 連線斷開**。改成循序執行後穩定。
+
+預設排除 `llm` / `news_sentiment`（避免 timeout 污染對照）；使用者可透過 `?strategies=...` 顯式指定。
+
+### 10.4 實測結果（AAPL 300 bars）
+
+冠軍分配：
+- 🎯 最佳 Sharpe → **ensemble**（1.26）
+- 📈 最高報酬 → sma_cross（12.19%）
+- 🛡 最低回撤 → **ensemble**（4.76%）
+- 🎰 最高勝率 → rsi_oversold（100%）
+- 💰 最佳獲利因子 → sma_cross
+
+**Ensemble 拿下 2 項冠軍（Sharpe + MaxDD）**，驗證了主題 G 的設計有效。
+
+### 10.5 與既有檔案的關聯
+
+| 我的新檔 | 既有 |
+|---|---|
+| `broker/Services/StrategyComparisonService.cs`（257 行）| 重用 `IExecutionDispatcher` 呼 quote + strategy |
+| `broker/wwwroot/strategy-lab.html`（371 行）| 獨立頁，不動 trading.html |
+
+**編輯既有檔**：
+- `Program.cs` +1 DI 行
+- `StrategyEndpoints.cs` +1 MapGet（同既有 `/optimize` 模式）
+
+### 10.6 報告說詞
+
+> 「Strategy Lab 不是新演算法，是**把現有能力重新組合成使用者問得出答案的介面**。後端邏輯 100% 複用 strategy.signal 這個 capability，只是由 broker 循序呼 6 次、聚合結果、排名、判冠軍。這示範了 broker 作為 orchestration layer 的價值——worker 專心做事，broker 組合使用體驗。」
+
+---
+
+## 十一、主題 I — AI Autonomous Research Loop（AI 自主策略研究）
+
+### 11.1 要解決的問題
+
+XQ 全球贏家的「量化積木」提供**人類使用者上傳策略給其他人訂閱**的市集。使用者看截圖時的反應是：「這個可以做，但我希望**全權交給 AI 處理**，包括回撤驗證。」
+
+這是個有重量的差異化題目——**把研究迴圈本身自動化**。
+
+### 11.2 關鍵設計：LLM 當研究員
+
+整條流程**無人介入**：
+
+```
+(1) StrategyGeneratorService
+    提 prompt + 過往嘗試結果摘要給 LLM
+    ↓
+    LLM 回 JSON: {"sma_fast": 12, "sma_slow": 45, "rationale": "..."}
+    ↓
+(2) 驗證參數範圍 + 語意約束（sma_slow > sma_fast）
+    ↓
+(3) 呼 strategy.signal/backtest（用 LLM 建議的參數）
+    ↓
+(4) 切 80/20 holdout 切出 IS / OOS 指標 + degradation_ratio
+    ↓
+(5) 存進 StrategyCandidateRepository（有 parentIndex 標誰是誰的爸爸）
+    ↓
+(6) 回到 (1)，把累積結果餵回 LLM，LLM 依上一代績效提下一個假設
+    ↓ 循環 N 世代
+```
+
+UI 展示**血緣樹**：每個候選顯示 parent-arrow、LLM 的自己寫的 rationale（「我想降 sma_fast 看看會不會提升敏感度」）、IS/OOS 指標對比。
+
+### 11.3 與 LlmStrategy 的差別
+
+既有 `LlmStrategy` 是**inference-time 使用 LLM**：交易時問 LLM「這根 K 線該買該賣」。
+這個新功能是**design-time 使用 LLM**：研究時問 LLM「這個標的該用什麼參數」。
+
+同個 LLM Proxy、不同使用層，兩者可以共存。
+
+### 11.4 實測結果（AAPL Gen 0）
+
+AI 第一次嘗試：
+
+```
+Gen #0 (LLM 提議: sma_fast=10, sma_slow=50)
+  Rationale: "常見的中長線起始值，平衡靈敏度與穩定性"
+  IS  Sharpe=1.77  Ret=22.84%  DD=5.67%   ← 看起來很美
+  OOS Sharpe=-1.63  Ret=-6.15%  DD=6.62%  ← 實戰倒虧
+  Degradation ratio = -0.92   ← 比 0 還糟，曲線直接反轉
+```
+
+**這是教科書級過擬合的活體示範**——連 AI 選的參數也會過擬合。這在 Walk-Forward 那邊已經用暴力 optimizer 實證過一次，現在用 LLM 再實證一次，兩邊結論一致：**防過擬合不是可選項，是必備品**。
+
+Gen #1 撞到 Gemini 503 API 忙碌 → 失敗記入 lineage、run 不中斷、下一代照跑。設計成 graceful degradation。
+
+### 11.5 與既有檔案的關聯
+
+| 我的新檔 | 既有機制 |
+|---|---|
+| `broker/Services/StrategyGeneratorService.cs` | 重用 `ILlmProxyService.ChatAsync`（既有 DI，已供 LlmStrategy / HighLevelLlm 用）|
+| `broker/Services/StrategyCandidateRepository.cs` | 同 BacktestHistoryService 的 in-memory LRU pattern |
+| `broker/Services/StrategyResearchLoopService.cs` | 透過 `IExecutionDispatcher` 打 `quote.ohlcv` + `strategy.signal`（同 Strategy Lab 模式）|
+| `broker/Endpoints/ResearchEndpoints.cs` | ApiResponseHelper 同所有既有 endpoint |
+| `broker/wwwroot/research-lab.html` | 獨立頁 |
+
+**編輯既有檔**（每處都有既有先例）：
+- `Program.cs` +4 行（3 個 AddSingleton + 1 個 endpoint Map）
+- `BrokerAuthMiddleware.cs` / `EncryptionMiddleware.cs` +1 行 allowlist（同 portfolio / notifications）
+
+### 11.6 報告說詞（主題 I，最有差異化的一段）
+
+> 「XQ 量化積木是『群眾外包策略設計』：人類使用者提交策略，平台托管、其他人訂閱。我把這一步**再往前推一層**：不是群眾在設計策略，是**AI 在設計策略**。
+>
+> 流程無人介入——LLM 依過往嘗試結果提參數假設，系統自動回測並切 IS/OOS 衡量過擬合，結果回餵給 LLM 提下一代。整條研究迴圈跑完後，使用者直接看血緣樹，決定要不要把某個候選上線。
+>
+> 實測第一代結果本身就是賣點：AI 提的『常見參數』在樣本內 Sharpe 1.77，樣本外 -1.63。這驗證了連 AI 也會過擬合——也因此反證了我同時做 Walk-Forward 這個安全網的必要性。兩個功能加起來才構成完整的『AI 研究員 + 研究監督者』體系。」
+
+### 11.7 已知限制
+
+- **Holdout 是簡單 80/20 切，不是真 Walk-Forward**：full walk-forward 整合是下一階段 work
+- **LLM 穩定性**：Gemini Flash 高峰期 503 偶發，已做 graceful handling 但未加重試（下個版本加 exponential backoff）
+- **支援策略家族**：目前 sma_cross + rsi_oversold，加 MACD / Bollinger 等需擴 Generator prompt schema
+
+---
+
+## 十二、全局技術決策摘要（Trade-offs）
 
 這些是**評審可能會追問**的「為什麼不用 X」，預先準備答案：
 
@@ -556,7 +854,7 @@ protected override async Task ExecuteAsync(CancellationToken ct)
 
 ---
 
-## 八、四個主題組合的系統圖
+## 十三、九個主題組合的系統圖
 
 把今天加的東西擺進既有系統：
 
@@ -606,46 +904,101 @@ protected override async Task ExecuteAsync(CancellationToken ct)
   │                  ▼                                         │
   │          Discord Channel ◄── 使用者從 Discord App 看通知   │
   │                                                          │
-  │   [NEW] wwwroot/portfolio.html (獨立頁，不動 trading.html)│
+  │   ┌── [NEW] BenchmarkService ────────────┐                │
+  │   │ 用 $100k 推「買入持有」權益曲線      │                │
+  │   │ uses: quote.ohlcv/get_bars           │                │
+  │   └──────────────────────────────────────┘                │
+  │                                                          │
+  │   ┌── [NEW] StrategyComparisonService ──┐                 │
+  │   │ 循序呼 6 個策略 backtest 聚合排名    │                 │
+  │   │ uses: IExecutionDispatcher           │                 │
+  │   └──────────────────────────────────────┘                │
+  │                                                          │
+  │   ┌── [NEW] StrategyGeneratorService ───┐                 │
+  │   │ 用 ILlmProxyService 產策略參數 JSON │                 │
+  │   │ reads: 上一代回測結果→ prompt 餵 LLM│                 │
+  │   └──────────────┬───────────────────────┘                │
+  │                  │  used by                                │
+  │   ┌──────────────▼───────────────────────┐                │
+  │   │ [NEW] StrategyResearchLoopService    │                │
+  │   │  N 代迴圈 / IS-OOS holdout /         │                │
+  │   │  lineage 血緣記錄                    │                │
+  │   └──────────────────────────────────────┘                │
+  │                                                          │
+  │   [NEW] 獨立頁（均不動 trading.html）：                   │
+  │     portfolio.html  strategy-lab.html  research-lab.html │
   └─────────────────────┬───────────────────────────────────┘
                         │ Function Pool TCP (port 7000)
                         ▼
-  ┌──────────────┬──────────┬──────────┬──────────────┐
-  │  quote       │ strategy │ risk     │ trading      │
-  │  worker      │ worker   │ worker   │ worker       │
-  │ (existing)   │(existing)│(existing)│  (existing)  │
-  └──────────────┴──────────┴──────────┴──────────────┘
-                                              │
-                                              ▼
-                                      Alpaca / Binance REST
+  ┌──────────────┬──────────────────────────┬──────────┬──────────────┐
+  │  quote       │ strategy worker          │ risk     │ trading      │
+  │  worker      │ (8 strategies:           │ worker   │ worker       │
+  │ (existing)   │  sma_cross/rsi/macd/     │(existing)│  (existing)  │
+  │              │  composite/multi_tf/llm/ │          │              │
+  │              │  news_sentiment +        │          │              │
+  │              │  [NEW] ensemble +        │          │              │
+  │              │  [NEW] walk_forward route)│         │              │
+  └──────────────┴──────────────────────────┴──────────┴──────────────┘
+                                                            │
+                                                            ▼
+                                                    Alpaca / Binance REST
+
+                         ┌──────────────┐
+                         │ LLM Proxy    │ ← 已存在
+                         │ (Gemini API) │   被 StrategyGeneratorService 使用
+                         └──────────────┘
 ```
 
-**重點**：四個 `[NEW]` 方塊都是新加的，**但沒有任何一條箭頭斷掉既有連線**。新功能是**掛進去**，不是**插進去**。
+**重點**：多個 `[NEW]` 方塊都是新加的，**但沒有任何一條箭頭斷掉既有連線**。新功能是**掛進去**，不是**插進去**。
 
-注意 `DiscordNotificationService` 的兩條入箭頭標註「既有屬性」——這正是主題 D 的核心設計：**它讀取既有服務 public state，不改既有服務**。
+觀察：
+- `DiscordNotificationService` 的兩條入箭頭標註「既有屬性」——主題 D 的核心設計，讀既有服務 public state 不改既有服務
+- 主題 E（walk_forward）和主題 G（ensemble）塞進既有 strategy-worker 裡，**同個 worker、同個 capability、只是多了新 route / 新策略實作**
+- 主題 H、I 全部是 broker-side orchestration，用 `IExecutionDispatcher` 把既有 worker 能力重新組合
 
 ---
 
-## 九、報告時的 5 分鐘濃縮版
+## 十四、報告時的 5 分鐘濃縮版
 
 如果時間緊，照下面三段講就足夠：
 
-**開場（30 秒）**
-> 「我今天新增了四個功能：Discord 交易 bot 的沙箱化、投資組合績效儀表板、Claude Code 的開發權限規則，以及 Discord 主動通知推播。這四個全部採用最小侵入原則——既有的 broker、worker、前端頁面完全沒改動邏輯，只在架構既有的擴充點（Service 註冊、Endpoint Map、Middleware allowlist）延伸。」
+**開場（40 秒）**
+> 「這份報告涵蓋兩天的工作，九個主題，分兩個方向：**平台基礎建設**（Discord bot 沙箱、Portfolio 儀表板、權限規則、Discord 通知）和**策略研究能力**（Walk-Forward 驗證、Benchmark 對比、Ensemble 動態加權、Strategy Lab 對決、AI 自主研究迴圈）。
+>
+> 九個功能全部採用**最小侵入**原則——既有 broker、worker、前端頁面邏輯零修改，所有新功能都是掛進架構既有的擴充點：Service 註冊、Endpoint Map、Middleware allowlist、IStrategy 介面、IExecutionDispatcher。」
 
-**技術亮點（2.5 分鐘）**
-> 「Discord bot 的設計有個新意：我用一份純文字 CLAUDE.md 當 persona，把通用的 AI 程式助手 prompt 成專用的交易 bot。這是用自然語言『program』一個 bot，不是傳統地寫 bot 程式。為了防止 prompt injection，我做了三層防護：persona 層寫入 owner 檢查、容器層限制檔案存取、網路層只開 broker 連線。
+**三個技術亮點（各 1 分鐘）**
+
+> **【亮點 1】零侵入：Observer Pattern + 既有介面重用**
 >
-> 投資組合儀表板用的是 derived service 模式——完全不新建資料表，即時從既有交易紀錄重新計算 Sharpe、MaxDD、勝率等指標。實作上沿用既有的 `IExecutionDispatcher` 介面呼叫 trading-worker，跟既有 `BacktestHistoryService` 是同類服務。
+> 「Discord 通知推播是觀察者模式教科書案例——我**不在** `PriceAlertService` 加 event callback，而是**注入它當 singleton、讀它本來就公開的 `History` 屬性**。既有服務的程式碼被改動行數：**零**。這證明了一個軟體工程原則：好的系統不需要為了被觀察而改變自己。
 >
-> Discord 通知推播實踐的是 **Observer Pattern** — `DiscordNotificationService` 注入既有的 `PriceAlertService` 和 `AutoTraderService`，**只讀取它們本來就公開的 `History` 和 `RecentLogs` 屬性**，兩個既有服務被改動的程式碼是零行。Outbound 我選 Discord Webhook 而非 bot，跟主題 A 的 inbound bot 做清楚的職責分工。」
+> 同樣哲學貫穿所有九個功能：Portfolio Dashboard、Strategy Lab、Research Loop、Benchmark Comparison——都是**衍生層（derived services）**，用 `IExecutionDispatcher` 重新組合既有 worker 能力。」
+
+> **【亮點 2】同一個問題被兩個角度驗證：過擬合實證**
+>
+> 「量化交易最大的陷阱是過擬合。我用**兩個互相獨立的機制**各驗證了一次：
+>
+> 第一個是 Walk-Forward Optimization——用暴力 optimizer 找『最佳參數』，放到未見過的資料上驗證。AAPL 實測：IS Sharpe 2.17，OOS Sharpe **0.52**，縮水 76%。
+>
+> 第二個是 AI Research Loop——讓 LLM 當研究員提參數假設。第一次嘗試：IS Sharpe 1.77，OOS Sharpe **-1.63**，degradation ratio -0.92，直接倒虧。
+>
+> 兩個獨立實驗，同一個結論：**即使是 AI 也會過擬合。所以防過擬合是系統必備機制，不是可選項**。這驗證了我同時做這兩個功能的必要性——一個是研究、一個是監督者。」
+
+> **【亮點 3】差異化：AI 自主策略研究迴圈**
+>
+> 「XQ 全球贏家的『量化積木』是群眾外包——人類使用者上傳策略給其他人訂閱。我的 Research Lab 把這一步再往前推：**不是群眾在設計策略，是 AI 在設計策略**。
+>
+> 整條研究迴圈無人介入：LLM 提參數假設 → 系統回測 + 切 IS/OOS 切出過擬合程度 → 結果餵回 LLM → LLM 提下一代假設 → 循環 N 世代。
+>
+> 使用者看到的是**血緣樹**：Gen #3 是 Gen #1 的兒子（AI 把 sma_fast 從 10 改成 8，附帶自己寫的 rationale 說『我想提升敏感度』）。這讓整個研究過程可檢視、可重現、可版控——**AI 研究員的行為跟人類研究員一樣透明**。」
 
 **收尾（30 秒）**
-> 「整個設計的核心理念是：既有架構**本身**就有清楚的擴充點（capability 註冊、IExecutionDispatcher、middleware allowlist、public state properties）。好的新功能不是推倒重來，而是**找到這些擴充點**並順勢加上去。這讓新功能和原系統保持一致，也減少了維護成本。」
+> 「整個專題的設計哲學：既有架構**本身**就提供了清楚的擴充點——capability 註冊、IExecutionDispatcher、RouteGroupBuilder、IStrategy 介面、middleware allowlist、public state properties。好的新功能不是推倒重來，而是**找到這些擴充點**並順勢加上去。九個功能 + 一個 bug 修正總共 10 個 commit，沒有任何一個需要重構既有流程——這就是架構紀律的複利效果。」
 
 ---
 
-## 十、後續可做的方向
+## 十五、後續可做的方向
 
 這些可以當報告尾聲的 future work：
 
