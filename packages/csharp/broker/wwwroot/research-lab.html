@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B4A Research Lab · AI 自主策略研究</title>
+<style>
+  :root {
+    --bg-0: #0b0e11;
+    --bg-1: #181a20;
+    --bg-2: #1e2026;
+    --border: #2b3139;
+    --text: #eaecef;
+    --text-dim: #848e9c;
+    --green: #0ecb81;
+    --red: #f6465d;
+    --yellow: #fcd535;
+    --blue: #2b6cb0;
+    --gold: #f0b90b;
+    --purple: #9b59b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg-0);
+    color: var(--text);
+    font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 24px;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  header .tag { color: var(--text-dim); font-size: 12px; }
+  header .spacer { flex: 1; }
+  header input, header select, header button {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; font-size: 13px;
+  }
+  header input { width: 90px; text-transform: uppercase; }
+  header button { cursor: pointer; }
+  header button:hover { background: var(--border); }
+  header button.primary {
+    background: var(--purple); color: #fff; border-color: var(--purple); font-weight: 600;
+  }
+  header button.primary:hover { filter: brightness(1.15); }
+  header button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  header .status { color: var(--text-dim); font-size: 12px; }
+
+  main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 1100px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  .section {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .section h2 {
+    margin: 0;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section h2 .hint { color: var(--text-dim); font-size: 11px; font-weight: normal; }
+  .section-body { padding: 14px; }
+
+  .run-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .run-item:hover { background: var(--bg-2); }
+  .run-item.active { background: rgba(155, 89, 182, 0.15); border-left: 3px solid var(--purple); }
+  .run-item .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .run-item .sym { font-weight: 600; font-size: 14px; }
+  .run-item .when { font-size: 11px; color: var(--text-dim); }
+  .run-item .meta {
+    display: flex; gap: 10px; font-size: 11px; color: var(--text-dim);
+    margin-top: 4px;
+  }
+  .run-item .best {
+    font-size: 12px; margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .run-item .best .label { color: var(--text-dim); }
+
+  .status-badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .status-running  { background: var(--yellow); color: #000; }
+  .status-completed { background: var(--green); color: #000; }
+  .status-failed   { background: var(--red); color: #fff; }
+
+  .candidate {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+  }
+  .candidate.best-one { border: 2px solid var(--gold); }
+  .candidate.failed { border-left: 3px solid var(--red); }
+  .cand-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 6px 6px 0 0;
+  }
+  .cand-title {
+    font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cand-body { padding: 10px 14px; }
+  .cand-row {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 12px; margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cand-row .k { color: var(--text-dim); }
+  .cand-rationale {
+    margin-top: 6px; padding: 8px 12px;
+    background: var(--bg-0); border-radius: 4px;
+    font-size: 12px; color: var(--text-dim); font-style: italic;
+    border-left: 2px solid var(--purple);
+  }
+  .param-chip {
+    display: inline-block;
+    background: var(--bg-1); color: var(--text);
+    font-size: 11px; padding: 2px 7px;
+    border-radius: 3px; margin-right: 4px;
+    font-family: monospace;
+  }
+
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .dim { color: var(--text-dim); }
+
+  .empty {
+    text-align: center; padding: 40px;
+    color: var(--text-dim);
+  }
+  .loading { opacity: 0.5; pointer-events: none; }
+
+  details summary {
+    cursor: pointer; padding: 4px 0;
+    color: var(--text-dim); font-size: 11px;
+  }
+  details pre {
+    background: var(--bg-0); padding: 8px 12px;
+    border-radius: 4px; font-size: 11px;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 200px; overflow: auto;
+  }
+
+  .arrow {
+    color: var(--purple); font-size: 16px; margin: 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 Research Lab</h1>
+  <span class="tag">B4A Trading · AI 自主策略研究</span>
+  <div class="spacer"></div>
+  <label class="dim" style="font-size:12px;">Symbol</label>
+  <input id="symbolInput" value="AAPL" />
+  <label class="dim" style="font-size:12px;">策略家族</label>
+  <select id="familySelect">
+    <option value="sma_cross">SMA Cross</option>
+    <option value="rsi_oversold">RSI Oversold</option>
+  </select>
+  <label class="dim" style="font-size:12px;">世代數</label>
+  <select id="generationsSelect">
+    <option value="2">2</option>
+    <option value="3" selected>3</option>
+    <option value="5">5</option>
+    <option value="8">8</option>
+  </select>
+  <button id="runBtn" class="primary">🧪 啟動 AI 研究</button>
+  <span id="statusText" class="status">就緒</span>
+</header>
+
+<main id="main">
+  <div class="two-col">
+    <!-- 左：歷史 runs 列表 -->
+    <div class="section" style="align-self:start;">
+      <h2>研究紀錄 <span class="hint">最新在上</span></h2>
+      <div id="runList" class="section-body" style="padding:0;">
+        <div class="empty">尚無紀錄</div>
+      </div>
+    </div>
+
+    <!-- 右：選定 run 的詳情（血緣） -->
+    <div class="section">
+      <h2 id="detailTitle">選一個 run 查看血緣</h2>
+      <div id="detailBody" class="section-body">
+        <div class="empty">點左側任一紀錄查看 AI 的研究歷程</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = {
+  pct: v => v == null ? '—' : Number(v).toFixed(2),
+  ratio: v => v == null ? '—' : Number(v).toFixed(2),
+  int: v => v == null ? '—' : Number(v).toString(),
+  time: v => { if (!v) return '—'; const d = new Date(v); return d.toLocaleString('zh-TW', { hour12: false }); },
+};
+const cls = v => v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
+
+let currentRunId = null;
+
+async function loadRuns() {
+  const r = await fetch('/api/v1/research/runs');
+  const j = await r.json();
+  if (!j.success) return;
+  const runs = j.data || [];
+  const box = $('runList');
+  if (runs.length === 0) { box.innerHTML = '<div class="empty">尚無紀錄</div>'; return; }
+  box.innerHTML = runs.map(r => `
+    <div class="run-item ${r.run_id === currentRunId ? 'active' : ''}" data-id="${r.run_id}">
+      <div class="top">
+        <span class="sym">${r.symbol}</span>
+        <span class="status-badge status-${r.status}">${r.status}</span>
+      </div>
+      <div class="meta">
+        <span>${r.family}</span>
+        <span>${r.candidate_count}/${r.target_generations} 代</span>
+        <span class="when">${fmt.time(r.started_at)}</span>
+      </div>
+      <div class="best">
+        <span class="label">最佳 OOS Sharpe:</span>
+        <strong class="${cls(r.best_sharpe)}">${fmt.ratio(r.best_sharpe)}</strong>
+        &nbsp;
+        <span class="label">Ret:</span>
+        <span class="${cls(r.best_return_pct)}">${fmt.pct(r.best_return_pct)}%</span>
+      </div>
+    </div>
+  `).join('');
+  box.querySelectorAll('.run-item').forEach(el => {
+    el.addEventListener('click', () => openRun(el.dataset.id));
+  });
+}
+
+async function openRun(runId) {
+  currentRunId = runId;
+  const r = await fetch(`/api/v1/research/runs/${runId}`);
+  const j = await r.json();
+  if (!j.success) { $('detailBody').innerHTML = `<div class="empty">Run 載入失敗: ${j.message}</div>`; return; }
+  const run = j.data;
+  renderRunDetail(run);
+  document.querySelectorAll('.run-item').forEach(el => el.classList.toggle('active', el.dataset.id === runId));
+}
+
+function renderRunDetail(run) {
+  $('detailTitle').innerHTML = `
+    <span>${run.symbol} · ${run.family}
+      <span class="status-badge status-${run.status}" style="margin-left:10px;">${run.status}</span>
+    </span>
+    <span class="hint">${run.runId}</span>`;
+
+  // 找出 fitness 最高的 candidate（best）
+  const successful = run.candidates.filter(c => c.backtestSuccess);
+  const best = successful.length > 0
+    ? successful.reduce((a, b) => a.outOfSampleSharpe > b.outOfSampleSharpe ? a : b)
+    : null;
+
+  if (run.candidates.length === 0) {
+    $('detailBody').innerHTML = '<div class="empty">此 run 還沒有候選（是否 LLM 或 worker 斷線？）</div>';
+    return;
+  }
+
+  const html = run.candidates.map(c => {
+    const isBest = best && c.index === best.index;
+    const parentInfo = c.parentIndex != null
+      ? `<span class="dim">Gen #${c.parentIndex}</span> <span class="arrow">→</span>`
+      : '<span class="dim" style="font-style:italic;">種子（無 parent）</span> <span class="arrow">→</span>';
+
+    const paramChips = Object.entries(c.parameters || {})
+      .map(([k, v]) => `<span class="param-chip">${k}=${v}</span>`).join('');
+
+    if (!c.backtestSuccess) {
+      return `
+        <div class="candidate failed">
+          <div class="cand-head">
+            <div class="cand-title">${parentInfo} <strong>Gen #${c.index}</strong></div>
+            <span class="neg" style="font-size:11px;">FAILED</span>
+          </div>
+          <div class="cand-body">
+            <div class="cand-row">${paramChips || '<span class="dim">無參數</span>'}</div>
+            <div class="cand-rationale neg" style="border-left-color:var(--red);">${c.backtestError || '未知錯誤'}</div>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div class="candidate ${isBest ? 'best-one' : ''}">
+        <div class="cand-head">
+          <div class="cand-title">
+            ${parentInfo} <strong>Gen #${c.index}</strong>
+            ${isBest ? '<span style="color:var(--gold);">🏆 best</span>' : ''}
+          </div>
+          <span class="dim" style="font-size:11px;">${c.llmModel || 'LLM'}</span>
+        </div>
+        <div class="cand-body">
+          <div class="cand-row">${paramChips}</div>
+          <div class="cand-row">
+            <div><span class="k">IS Sharpe:</span> <strong class="${cls(c.inSampleSharpe)}">${fmt.ratio(c.inSampleSharpe)}</strong></div>
+            <div><span class="k">IS Ret:</span> <span class="${cls(c.inSampleReturnPct)}">${fmt.pct(c.inSampleReturnPct)}%</span></div>
+            <div><span class="k">IS DD:</span> <span class="neg">${fmt.pct(c.inSampleMaxDrawdownPct)}%</span></div>
+            <div><span class="k">IS Trades:</span> ${fmt.int(c.inSampleTrades)}</div>
+          </div>
+          <div class="cand-row">
+            <div><span class="k">OOS Sharpe:</span> <strong class="${cls(c.outOfSampleSharpe)}">${fmt.ratio(c.outOfSampleSharpe)}</strong></div>
+            <div><span class="k">OOS Ret:</span> <span class="${cls(c.returnPct)}">${fmt.pct(c.returnPct)}%</span></div>
+            <div><span class="k">OOS DD:</span> <span class="neg">${fmt.pct(c.maxDrawdownPct)}%</span></div>
+            <div><span class="k">OOS Trades:</span> ${fmt.int(c.trades)}</div>
+            <div><span class="k">Degrad:</span> <strong class="${cls(c.degradationRatio)}">${fmt.ratio(c.degradationRatio)}</strong></div>
+          </div>
+          ${c.rationale ? `<div class="cand-rationale">💡 ${c.rationale}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  $('detailBody').innerHTML = html + (best
+    ? `<div style="margin-top:16px; padding:12px; background:rgba(240,185,11,0.1); border:1px solid var(--gold); border-radius:6px;">
+         <strong>🏆 此 run 最佳候選</strong>：Gen #${best.index}
+         <div style="margin-top:4px; font-size:12px;">
+           ${Object.entries(best.parameters).map(([k,v]) => `<span class="param-chip">${k}=${v}</span>`).join('')}
+           · OOS Sharpe <strong class="${cls(best.outOfSampleSharpe)}">${fmt.ratio(best.outOfSampleSharpe)}</strong>
+           · Degradation <strong class="${cls(best.degradationRatio)}">${fmt.ratio(best.degradationRatio)}</strong>
+           ${best.degradationRatio < 0.5 ? '<span class="neg">(低於 0.5 代表過擬合)</span>' : ''}
+         </div>
+       </div>`
+    : '');
+}
+
+async function startRun() {
+  const btn = $('runBtn');
+  btn.disabled = true;
+  $('statusText').textContent = '🧠 AI 研究中，請稍候（每代約 10-30 秒）…';
+  try {
+    const symbol = $('symbolInput').value.trim().toUpperCase() || 'AAPL';
+    const family = $('familySelect').value;
+    const generations = parseInt($('generationsSelect').value);
+    const r = await fetch('/api/v1/research/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, family, generations, data_limit: 300 }),
+    });
+    const j = await r.json();
+    if (!j.success) {
+      alert('啟動失敗: ' + (j.message || 'unknown'));
+      return;
+    }
+    currentRunId = j.data.runId;
+    $('statusText').textContent = `完成 · ${j.data.candidates.length} 個候選`;
+    await loadRuns();
+    await openRun(currentRunId);
+  } catch (e) {
+    alert('錯誤: ' + e.message);
+    $('statusText').textContent = '錯誤';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('runBtn').addEventListener('click', startRun);
+
+// 啟動時讀歷史
+loadRuns();
+// 每 10s 自動同步歷史列表（如果正在跑中）
+setInterval(loadRuns, 10000);
+</script>
+</body>
+</html>
