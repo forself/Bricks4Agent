@@ -310,6 +310,8 @@ public class StrategySignalHandler : ICapabilityHandler
                 ["composite"]      = "Composite — 固定等權投票（SMA + RSI + MACD）",
                 ["ensemble"]       = "Ensemble — 動態加權投票，權重 = 成員近期 Sharpe（適應市場變化）",
                 ["fibonacci_retracement"] = "Fibonacci Retracement — 在擺動高低點的 0.382-0.618 黃金區偵測順勢回撤進場",
+                ["bollinger_bands"] = "Bollinger Bands — 均值回歸：觸下軌買、觸上軌賣、squeeze 時觀望",
+                ["harmonic_pattern"] = "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 四種經典 5 點諧波形態",
                 ["llm"]             = "LLM — AI 模型分析市場資料產生訊號",
                 ["multi_timeframe"] = "Multi-Timeframe — 多時間框架交叉確認",
                 ["news_sentiment"]  = "News Sentiment — AI 分析財經新聞情緒",

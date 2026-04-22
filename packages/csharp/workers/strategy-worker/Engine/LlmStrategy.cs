@@ -17,6 +17,17 @@ public class LlmStrategy : IStrategy
     private readonly string _apiKey;
     private readonly string _model;
 
+    // ── Circuit breaker（防止 backtest 數百次 LLM 呼叫造成 worker 超時斷線）
+    // 連續失敗 >= _breakerThreshold 或單一 session 呼叫 > _breakerCallCap 後，
+    // 接下來的 Evaluate 全部 fallback 到 composite rule-based 訊號。
+    private int _consecutiveFailures = 0;
+    private int _callCount = 0;
+    private DateTime _breakerResetAt = DateTime.UtcNow;
+    private const int BreakerFailureThreshold = 3;
+    private const int BreakerCallCap = 50;               // 同一 minute 最多 50 次 LLM 呼叫
+    private const int BreakerCooldownSeconds = 60;       // cooldown 一分鐘
+    private static readonly TimeSpan PerCallTimeout = TimeSpan.FromSeconds(10);
+
     public string Name => "llm";
 
     public LlmStrategy(
@@ -35,17 +46,67 @@ public class LlmStrategy : IStrategy
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        // 同步包裝非同步呼叫（handler 合約為同步）
+        // Circuit breaker：若處於 cooldown，直接 fallback，不碰 LLM
+        if (IsBreakerOpen(out var breakerReason))
+        {
+            var fallback = ComputeCompositeFallback(bars, config);
+            fallback.Reason = $"[LLM breaker open: {breakerReason}] fallback → composite rule-based: {fallback.Reason}";
+            return fallback;
+        }
+
+        _callCount++;
+
+        // 同步包裝非同步呼叫（handler 合約為同步）。加 PerCallTimeout 限制單次等 LLM 的時間。
         try
         {
-            return EvaluateAsync(bars, config, CancellationToken.None).GetAwaiter().GetResult();
+            using var cts = new CancellationTokenSource(PerCallTimeout);
+            var result = EvaluateAsync(bars, config, cts.Token).GetAwaiter().GetResult();
+            _consecutiveFailures = 0;  // 成功清零
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM strategy failed, returning hold");
-            return HoldSignal(config, $"LLM error: {ex.Message}");
+            _consecutiveFailures++;
+            _logger.LogWarning(ex, "LLM strategy failed ({Consec}/{Thresh}), fallback to composite", _consecutiveFailures, BreakerFailureThreshold);
+            var fallback = ComputeCompositeFallback(bars, config);
+            fallback.Reason = $"[LLM error #{_consecutiveFailures}: {Truncate(ex.Message, 60)}] fallback → composite: {fallback.Reason}";
+            return fallback;
         }
     }
+
+    private bool IsBreakerOpen(out string reason)
+    {
+        // 如果過了 cooldown 視窗，重置計數
+        if ((DateTime.UtcNow - _breakerResetAt).TotalSeconds >= BreakerCooldownSeconds)
+        {
+            _breakerResetAt = DateTime.UtcNow;
+            _callCount = 0;
+            _consecutiveFailures = 0;
+        }
+
+        if (_consecutiveFailures >= BreakerFailureThreshold)
+        {
+            reason = $"{_consecutiveFailures} consecutive failures";
+            return true;
+        }
+        if (_callCount >= BreakerCallCap)
+        {
+            reason = $"call cap {BreakerCallCap}/min reached — probably in backtest loop";
+            return true;
+        }
+        reason = "";
+        return false;
+    }
+
+    private static Signal ComputeCompositeFallback(List<BarData> bars, StrategyConfig config)
+    {
+        // 用既有 rule-based 策略的等權投票當作 fallback（跟 CompositeStrategy 同邏輯）
+        var sig = CompositeStrategy.Default().Evaluate(bars, config);
+        sig.Strategy = "llm";  // 對外仍掛「llm」名，但 Reason 會說明 fallback
+        return sig;
+    }
+
+    private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 
     private async Task<Signal> EvaluateAsync(List<BarData> bars, StrategyConfig config, CancellationToken ct)
     {

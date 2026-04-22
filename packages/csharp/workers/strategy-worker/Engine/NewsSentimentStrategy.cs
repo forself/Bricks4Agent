@@ -34,16 +34,48 @@ public class NewsSentimentStrategy : IStrategy
         _model  = model;
     }
 
+    // Circuit breaker（同 LlmStrategy 的邏輯；防 backtest 迴圈拖垮 worker）
+    private int _consecutiveFailures = 0;
+    private int _callCount = 0;
+    private DateTime _breakerResetAt = DateTime.UtcNow;
+    private const int BreakerFailureThreshold = 3;
+    private const int BreakerCallCap = 30;  // News 更慢（RSS + LLM），更嚴格
+    private const int BreakerCooldownSeconds = 60;
+    private static readonly TimeSpan PerCallTimeout = TimeSpan.FromSeconds(15);
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
+        // Circuit breaker
+        if ((DateTime.UtcNow - _breakerResetAt).TotalSeconds >= BreakerCooldownSeconds)
+        {
+            _breakerResetAt = DateTime.UtcNow;
+            _callCount = 0;
+            _consecutiveFailures = 0;
+        }
+        if (_consecutiveFailures >= BreakerFailureThreshold || _callCount >= BreakerCallCap)
+        {
+            var fb = CompositeStrategy.Default().Evaluate(bars, config);
+            fb.Strategy = "news_sentiment";
+            fb.Reason = $"[news breaker open] fallback → composite: {fb.Reason}";
+            return fb;
+        }
+        _callCount++;
+
         try
         {
-            return EvaluateAsync(bars, config, CancellationToken.None).GetAwaiter().GetResult();
+            using var cts = new CancellationTokenSource(PerCallTimeout);
+            var result = EvaluateAsync(bars, config, cts.Token).GetAwaiter().GetResult();
+            _consecutiveFailures = 0;
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "News sentiment failed");
-            return HoldSignal(config, $"News sentiment error: {ex.Message}");
+            _consecutiveFailures++;
+            _logger.LogWarning(ex, "News sentiment failed ({Consec}/{Thresh})", _consecutiveFailures, BreakerFailureThreshold);
+            var fb = CompositeStrategy.Default().Evaluate(bars, config);
+            fb.Strategy = "news_sentiment";
+            fb.Reason = $"[news error: {(ex.Message.Length > 60 ? ex.Message[..60] + "…" : ex.Message)}] fallback → composite";
+            return fb;
         }
     }
 

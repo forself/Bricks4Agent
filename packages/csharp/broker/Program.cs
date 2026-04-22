@@ -247,6 +247,7 @@ builder.Services.AddSingleton<Broker.Services.StrategyComparisonService>();
 builder.Services.AddSingleton<Broker.Services.StrategyCandidateRepository>();
 builder.Services.AddSingleton<Broker.Services.StrategyGeneratorService>();
 builder.Services.AddSingleton<Broker.Services.StrategyResearchLoopService>();
+builder.Services.AddSingleton<Broker.Services.KellyPositionSizingService>();
 builder.Services.AddHttpClient("discord-webhook");
 builder.Services.AddSingleton<Broker.Services.DiscordNotificationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DiscordNotificationService>());
@@ -893,6 +894,7 @@ if (poolEnabled)
     PortfolioEndpoints.Map(api);
     NotificationEndpoints.Map(api);
     ResearchEndpoints.Map(api);
+    KellyEndpoints.Map(api);
 }
 QuoteWebSocketEndpoints.Map(app);
 

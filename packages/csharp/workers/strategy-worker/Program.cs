@@ -45,6 +45,8 @@ var strategies = new Dictionary<string, IStrategy>
     ["composite"]       = CompositeStrategy.Default(),
     ["multi_timeframe"] = new MultiTimeframeStrategy(),
     ["fibonacci_retracement"] = new FibonacciStrategy(),
+    ["bollinger_bands"] = new BollingerStrategy(),
+    ["harmonic_pattern"] = new HarmonicStrategy(),
 };
 
 // Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe）

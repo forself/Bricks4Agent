@@ -58,9 +58,13 @@ public class WorkerHost
         }
 
         _running = true;
+        int consecutiveFailures = 0;
+        var rng = new Random();
+        const int MaxBackoffSeconds = 60;
 
         while (_running && !ct.IsCancellationRequested)
         {
+            bool connectedThisAttempt = false;
             try
             {
                 // 1. 連線
@@ -71,6 +75,9 @@ public class WorkerHost
 
                 // 3. 啟動心跳
                 StartHeartbeat();
+
+                connectedThisAttempt = true;
+                consecutiveFailures = 0;  // 連上就重置 backoff
 
                 _logger.LogInformation(
                     "Worker {WorkerId} connected and registered. Capabilities: [{Caps}]",
@@ -93,15 +100,24 @@ public class WorkerHost
                 Disconnect();
             }
 
-            // 重連等待
+            // 連線曾成功但現在斷了 → 清計數當作「剛斷線」
+            // 從來沒連上就累加 failure（backoff 用）
+            if (!connectedThisAttempt) consecutiveFailures++;
+
+            // 重連等待：指數 backoff + jitter，從 base (5s) 開始、每次雙倍、最多 MaxBackoffSeconds
             if (_running && _options.AutoReconnect && !ct.IsCancellationRequested)
             {
+                var baseSeconds = _options.ReconnectIntervalSeconds;
+                var expSeconds = Math.Min(MaxBackoffSeconds, baseSeconds * Math.Pow(2, Math.Min(consecutiveFailures, 6)));
+                var jitter = rng.NextDouble();  // 0-1s
+                var waitSeconds = expSeconds + jitter;
+
                 _logger.LogInformation(
-                    "Reconnecting in {Interval}s...", _options.ReconnectIntervalSeconds);
+                    "Reconnecting in {Wait:F1}s (consecutive failures: {N})",
+                    waitSeconds, consecutiveFailures);
                 try
                 {
-                    await Task.Delay(
-                        TimeSpan.FromSeconds(_options.ReconnectIntervalSeconds), ct);
+                    await Task.Delay(TimeSpan.FromSeconds(waitSeconds), ct);
                 }
                 catch (OperationCanceledException)
                 {
