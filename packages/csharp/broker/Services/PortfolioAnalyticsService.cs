@@ -27,6 +27,12 @@ public class PortfolioAnalyticsService
         var curve = BuildEquityCurve(closed);
         var dailyReturns = ComputeDailyReturns(curve);
 
+        // Topic O：未平倉部位的 mark-to-market
+        var livePositions = await FetchLivePositionsAsync(exchange);
+        var totalUnrealizedPnl = livePositions.Sum(p => p.UnrealizedPnl);
+        var totalMarketValue   = livePositions.Sum(p => p.MarketValue);
+        var realizedPnl        = closed.Sum(t => t.Pnl);
+
         var winners = closed.Where(t => t.Pnl > 0).ToList();
         var losers = closed.Where(t => t.Pnl < 0).ToList();
 
@@ -39,7 +45,14 @@ public class PortfolioAnalyticsService
             WinningTrades = winners.Count,
             LosingTrades = losers.Count,
             WinRate = closed.Count == 0 ? 0m : Math.Round((decimal)winners.Count / closed.Count, 4),
-            TotalPnl = Math.Round(closed.Sum(t => t.Pnl), 4),
+
+            // 三種 P&L 口徑（一個 view 看全部）
+            RealizedPnl = Math.Round(realizedPnl, 4),
+            UnrealizedPnl = Math.Round(totalUnrealizedPnl, 4),
+            TotalEquity = Math.Round(totalMarketValue + realizedPnl, 4),
+            LivePositions = livePositions,
+
+            TotalPnl = Math.Round(realizedPnl + totalUnrealizedPnl, 4),  // 合計（已實現+未實現）
             GrossProfit = Math.Round(winners.Sum(t => t.Pnl), 4),
             GrossLoss = Math.Round(Math.Abs(losers.Sum(t => t.Pnl)), 4),
             ProfitFactor = ComputeProfitFactor(winners, losers),
@@ -87,6 +100,96 @@ public class PortfolioAnalyticsService
     }
 
     // ── 資料取得 ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 抓當前持倉、對每個 symbol 取最新報價、算 mark-to-market 浮動損益。
+    /// 任何一步失敗就回空列表——portfolio 頁仍能顯示已實現 P&L。
+    /// </summary>
+    private async Task<List<LivePosition>> FetchLivePositionsAsync(string exchange)
+    {
+        if (!_registry.HasAvailableWorker("trading.account"))
+            return new List<LivePosition>();
+
+        // 1. 拿持倉
+        var posPayload = JsonSerializer.Serialize(new { exchange });
+        var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.account", "get_positions", posPayload));
+        if (!posResult.Success || string.IsNullOrWhiteSpace(posResult.ResultPayload))
+            return new List<LivePosition>();
+
+        var rawPositions = new List<(string symbol, decimal qty, decimal avgEntry)>();
+        try
+        {
+            using var doc = JsonDocument.Parse(posResult.ResultPayload);
+            if (doc.RootElement.TryGetProperty("positions", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var p in arr.EnumerateArray())
+                {
+                    var symbol = GetStr(p, "symbol");
+                    if (string.IsNullOrEmpty(symbol)) continue;
+                    var qty = GetDec(p, "quantity", "qty");
+                    var avg = GetDec(p, "avg_entry_price", "avg_price", "cost_basis");
+                    if (qty != 0m && avg > 0m)
+                        rawPositions.Add((symbol, qty, avg));
+                }
+            }
+        }
+        catch { return new List<LivePosition>(); }
+
+        if (rawPositions.Count == 0) return new List<LivePosition>();
+
+        // 2. 對每個 symbol 拿最新報價（批次走 quote.prices）
+        var quotes = await FetchCurrentPricesAsync();
+
+        // 3. 算 mark-to-market
+        var result = new List<LivePosition>();
+        foreach (var (symbol, qty, avg) in rawPositions)
+        {
+            var current = quotes.TryGetValue(symbol, out var p) ? p : avg;  // 沒報價 fallback 到成本價（= 0 浮動損益）
+            var marketValue = qty * current;
+            var unrealized = qty * (current - avg);
+            var unrealizedPct = avg == 0m ? 0m : (current - avg) / avg * 100m;
+            result.Add(new LivePosition
+            {
+                Symbol = symbol,
+                Quantity = Math.Round(qty, 4),
+                AvgEntryPrice = Math.Round(avg, 4),
+                CurrentPrice = Math.Round(current, 4),
+                MarketValue = Math.Round(marketValue, 4),
+                UnrealizedPnl = Math.Round(unrealized, 4),
+                UnrealizedPnlPct = Math.Round(unrealizedPct, 4),
+            });
+        }
+        return result.OrderByDescending(p => Math.Abs(p.UnrealizedPnl)).ToList();
+    }
+
+    private async Task<Dictionary<string, decimal>> FetchCurrentPricesAsync()
+    {
+        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (!_registry.HasAvailableWorker("quote.prices")) return dict;
+
+        var result = await _dispatcher.DispatchAsync(BuildRequest("quote.prices", "get_prices"));
+        if (!result.Success || string.IsNullOrWhiteSpace(result.ResultPayload)) return dict;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(result.ResultPayload);
+            var root = doc.RootElement;
+            JsonElement quotes;
+            if (root.TryGetProperty("quotes", out var q1)) quotes = q1;
+            else if (root.TryGetProperty("data", out var d) && d.TryGetProperty("quotes", out var q2)) quotes = q2;
+            else return dict;
+
+            foreach (var q in quotes.EnumerateArray())
+            {
+                var sym = GetStr(q, "symbol");
+                var price = GetDec(q, "price", "last");
+                if (!string.IsNullOrEmpty(sym) && price > 0m)
+                    dict[sym] = price;
+            }
+        }
+        catch { }
+        return dict;
+    }
 
     private async Task<List<Trade>> FetchTradesAsync(string exchange, int limit)
     {
@@ -383,7 +486,14 @@ public class PortfolioMetrics
     public int WinningTrades { get; set; }
     public int LosingTrades { get; set; }
     public decimal WinRate { get; set; }
-    public decimal TotalPnl { get; set; }
+
+    // Topic O：三種 P&L 口徑
+    public decimal RealizedPnl { get; set; }         // 已平倉累積損益
+    public decimal UnrealizedPnl { get; set; }        // 持倉浮動損益 (mark-to-market)
+    public decimal TotalPnl { get; set; }             // 合計 = Realized + Unrealized
+    public decimal TotalEquity { get; set; }          // 持倉市值 + 已實現 P&L（近似 account equity）
+    public List<LivePosition> LivePositions { get; set; } = new();
+
     public decimal GrossProfit { get; set; }
     public decimal GrossLoss { get; set; }
     public decimal ProfitFactor { get; set; }
@@ -398,4 +508,15 @@ public class PortfolioMetrics
     public List<EquityPoint> EquityCurve { get; set; } = new();
     public List<SymbolStats> PerSymbol { get; set; } = new();
     public List<object> RecentRoundTrips { get; set; } = new();
+}
+
+public class LivePosition
+{
+    public string Symbol { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal AvgEntryPrice { get; set; }
+    public decimal CurrentPrice { get; set; }
+    public decimal MarketValue { get; set; }
+    public decimal UnrealizedPnl { get; set; }
+    public decimal UnrealizedPnlPct { get; set; }  // percentage
 }

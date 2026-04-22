@@ -21,12 +21,13 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 
 ## 一、今日新增總覽
 
-這份報告涵蓋 **2026-04-21 / 04-22 兩天** 共 **十四**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
+這份報告涵蓋 **2026-04-21 / 04-22 / 04-23 三天** 共 **十五**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
 
 - 主題 A-D：**平台基礎建設**（Discord / Portfolio / 權限 / 通知）
 - 主題 E-I：**策略研究與驗證能力**（Walk-Forward / Benchmark / Ensemble / Lab / AI Research）
 - 主題 J-M：**技術深化與穩健性**（經典 TA 指標擴充 / Kelly 倉位 / Circuit Breaker / Worker 重連）
 - 主題 N：**AI 研究 × Walk-Forward 合流**（主題 E 和 I 的 upgrade merger）
+- 主題 O：**Mark-to-Market 浮動損益**（主題 B 的完成度補強）
 
 | 主題 | 新增檔 | 動到的既有檔 | 對使用者是什麼 |
 |---|---|---|---|
@@ -44,6 +45,7 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 | **L. LLM Circuit Breaker** | — | `Engine/LlmStrategy.cs`、`Engine/NewsSentimentStrategy.cs` 加 breaker 機制 | Backtest 時 LLM 策略不再拖死 worker；連 3 次失敗 / 50 呼叫/分 自動 fallback 到 composite |
 | **M. Worker SDK 重連退避** | — | `worker-sdk/WorkerHost.cs` 重連邏輯 | 固定 5s 改成指數退避（2^n × 5，max 60s）+ 0-1s jitter，解 broker 重啟時的 thundering herd |
 | **N. AI Research × Walk-Forward 合流** | — | `StrategyCandidateRepository.cs` 加 Windows 欄位、`StrategyResearchLoopService.cs` 重寫評估函式、`research-lab.html` 加 per-window 展開表 | 把主題 I 的 80/20 holdout 升級成主題 E 的 rolling walk-forward；揭露 regime change（同參數在不同時期 Sharpe 差到正負翻轉）|
+| **O. Mark-to-Market 浮動損益** | — | `PortfolioAnalyticsService.cs` 新增 FetchLivePositions + FetchCurrentPrices、PortfolioMetrics +4 欄位 + LivePosition DTO、`portfolio.html` KPI 從 1 種 P&L 口徑擴充為 3 種 + 新「當前持倉」表 | 補完主題 B 已知限制：三種 P&L 口徑（Realized / Unrealized / Total Equity）+ 每筆持倉的 mark-to-market 浮動損益表 |
 
 ---
 
@@ -1224,7 +1226,114 @@ Walk-forward：每候選 5 次 backtest（5 個 window）。
 
 ---
 
-## 十七、全局技術決策摘要（Trade-offs）
+## 十七、主題 O — Unrealized P&L（Mark-to-Market 浮動損益）
+
+### 17.1 要解決的問題
+
+主題 B 的 Portfolio Dashboard 有個明確標注的「已知限制」：**只算已實現 P&L**（平倉後的累計損益）。
+
+對一個有未平倉部位的帳戶來說，這是嚴重的盲區：
+- 帳上寫「P&L = $0」
+- 實際上三張 AAPL 在 $250 買的、現價 $270，**帳面浮動獲利 $60/股 未顯示**
+
+真實量化系統必須區分三種口徑：
+
+| 口徑 | 定義 | 用途 |
+|---|---|---|
+| **Realized P&L** | 已平倉的累計損益 | 稅務、歷史成績 |
+| **Unrealized P&L** | 未平倉部位的 mark-to-market 浮動 | 當下風險 |
+| **Total Equity** | 持倉市值 + 現金 + 已實現 | 帳戶真實價值 |
+
+主題 O 把這三個口徑全部算出來。
+
+### 17.2 關鍵設計：多源整合的衍生層
+
+Unrealized P&L 需要**兩份資料**：
+1. **當前持倉**（from trading-worker 的 `trading.account/get_positions`）
+2. **最新報價**（from quote-worker 的 `quote.prices`）
+
+PortfolioAnalyticsService 原本只用 trading.account/get_trades 一條資料源。Topic O 把它**擴展成多源 aggregator**：
+
+```
+┌─ PortfolioAnalyticsService ─────────────────────┐
+│                                                 │
+│  existing:  trading.account/get_trades ─┐       │
+│                                         ▼       │
+│                            ┌──── 已實現 P&L      │
+│                            │                    │
+│  NEW:   trading.account/get_positions ─┐        │
+│         quote.prices ──────────────────┤        │
+│                                         ▼       │
+│                              mark-to-market 計算 │
+│                                         ▼       │
+│                            ┌──── 浮動 P&L        │
+│                            │                    │
+│                            ▼                    │
+│                     PortfolioMetrics（合併輸出）│
+└─────────────────────────────────────────────────┘
+```
+
+每個部位的計算：
+```
+unrealized_pnl    = quantity × (current_price - avg_entry_price)
+unrealized_pct    = (current_price / avg_entry_price - 1) × 100
+market_value      = quantity × current_price
+```
+
+### 17.3 多源失敗的 graceful degradation
+
+任何一步失敗（trading-worker 斷線、quote 資料缺該 symbol）都不讓整個 portfolio 端點崩掉：
+- 持倉拿不到 → `LivePositions = []`，Unrealized 顯示 0
+- 特定 symbol 沒報價 → 該部位 fallback 用成本價，unrealized = 0，其他部位正常顯示
+- quote-worker 整個斷線 → 全部 fallback 為 0
+
+Portfolio 頁永遠能顯示「至少已實現 P&L 資訊」，不會整頁白畫面。
+
+### 17.4 UI 變動
+
+KPI 卡片從 4 個核心指標擴充到 **4 個 P&L 口徑**（最左側）：
+
+| KPI | 數值 | 子標 |
+|---|---|---|
+| 總 P&L (實+未) | $0 | 已實現 + 浮動 |
+| 已實現 P&L | $0 | 平倉累計 |
+| 浮動 P&L | $0 | mark-to-market |
+| 持倉市值 | $0 | 總帳戶權益 |
+
+新增「**當前持倉**」表格（在主 equity chart 下方、各商品績效之上）：
+
+| Symbol | 數量 | 成本 | 現價 | 市值 | 浮動損益 | % |
+|---|---|---|---|---|---|---|
+
+按**絕對浮動損益**排序（最大虧損或最大獲利在上，一眼就抓重點）。
+
+### 17.5 與既有檔案的關聯
+
+| 既有檔編輯 | 變動 |
+|---|---|
+| `Services/PortfolioAnalyticsService.cs` | +2 新方法（FetchLivePositionsAsync、FetchCurrentPricesAsync）、GetMetricsAsync 整合三口徑 |
+| DTO: PortfolioMetrics | +4 欄位（RealizedPnl、UnrealizedPnl、TotalEquity、LivePositions）+ 新 `LivePosition` class |
+| `wwwroot/portfolio.html` | KPI 卡 4→4+3、新增 Live Positions 表 + render function |
+
+**無新增檔案**——純粹是既有 Portfolio 的**深化**。
+
+### 17.6 報告說詞
+
+> 「投資組合追蹤有個『初學者陷阱』：只算已實現損益。真實量化交易有三個口徑：已實現、未實現、總權益。我 Topic B 的 dashboard 原本只做第一個，Topic O 補完另外兩個。
+>
+> 技術上這是**多源整合**：一次從 trading-worker 拿持倉、從 quote-worker 拿現價、在 broker 側用 mark-to-market 公式算出浮動損益。每一步失敗都能 graceful degradation——quote-worker 斷線，已實現 P&L 仍能看。
+>
+> 這也演示了 broker 作為控制平面的本質：**它本身不存資料、不做業務，但能把多個資料源組合成使用者問得出答案的視圖**。Portfolio 背後是兩個 worker 的協調，對使用者是一個端點。」
+
+### 17.7 已知限制
+
+- **當前沒真實部位可驗證數字**：paper 帳戶 0 trades 時整張表為空。數學邏輯已寫好，真實成交時自動亮起
+- **Currency conversion 沒做**：Alpaca 是 USD、Binance 也是 USD，目前沒問題；若未來加台股帳戶（TWD）要加匯率換算
+- **Quote fetch 延遲**：quote-worker 每 5 分鐘拉一次報價，浮動 P&L 也是這個更新頻率。若要秒級更新需改成 WebSocket 訂閱（已知 `QuoteWebSocketEndpoints.cs` 存在，未來可接進來）
+
+---
+
+## 十八、全局技術決策摘要（Trade-offs）
 
 這些是**評審可能會追問**的「為什麼不用 X」，預先準備答案：
 
@@ -1240,7 +1349,7 @@ Walk-forward：每候選 5 次 backtest（5 個 window）。
 
 ---
 
-## 十八、十四個主題組合的系統圖
+## 十九、十五個主題組合的系統圖
 
 把今天加的東西擺進既有系統：
 
@@ -1344,7 +1453,7 @@ Walk-forward：每候選 5 次 backtest（5 個 window）。
 
 ---
 
-## 十九、報告時的 5 分鐘濃縮版
+## 二十、報告時的 5 分鐘濃縮版
 
 如果時間緊，照下面三段講就足夠：
 
@@ -1384,7 +1493,7 @@ Walk-forward：每候選 5 次 backtest（5 個 window）。
 
 ---
 
-## 二十、後續可做的方向
+## 二十一、後續可做的方向
 
 這些可以當報告尾聲的 future work：
 

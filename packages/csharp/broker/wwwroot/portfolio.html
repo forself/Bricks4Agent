@@ -176,9 +176,30 @@
     </div>
   </div>
 
+  <div class="section">
+    <h2>當前持倉 <span class="hint">mark-to-market · 按絕對浮動損益排序</span></h2>
+    <div class="section-body" style="padding:0;">
+      <table id="positionsTable">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th class="num">數量</th>
+            <th class="num">成本</th>
+            <th class="num">現價</th>
+            <th class="num">市值</th>
+            <th class="num">浮動損益</th>
+            <th class="num">%</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="positionsEmpty" class="empty" style="display:none;">目前無未平倉部位</div>
+    </div>
+  </div>
+
   <div class="two-col">
     <div class="section">
-      <h2>各商品績效 <span class="hint">Per-Symbol P&L</span></h2>
+      <h2>各商品績效 <span class="hint">Per-Symbol P&L（已實現）</span></h2>
       <div class="section-body">
         <table id="symbolTable">
           <thead>
@@ -285,12 +306,18 @@ function renderBenchmark(curve) {
 }
 
 function renderKPIs(m, bench) {
+  const realizedPnl = Number(m.realizedPnl ?? 0);
+  const unrealizedPnl = Number(m.unrealizedPnl ?? 0);
   const totalPnl = Number(m.totalPnl ?? m.total_pnl ?? 0);
+  const totalEquity = Number(m.totalEquity ?? 0);
   const benchPnl = bench ? Number(bench.curve?.[bench.curve.length - 1]?.pnl ?? bench.Curve?.[bench.Curve.length - 1]?.Pnl ?? 0) : null;
   const alpha = (bench !== null && benchPnl !== null) ? (totalPnl - benchPnl) : null;
 
   const k = [
-    { label: '總 P&L', value: fmt.money(totalPnl), cls: totalPnl >= 0 ? 'pos' : 'neg' },
+    { label: '總 P&L (實+未)', value: fmt.money(totalPnl), sub: '已實現 + 浮動', cls: totalPnl >= 0 ? 'pos' : 'neg' },
+    { label: '已實現 P&L', value: fmt.money(realizedPnl), sub: '平倉累計', cls: realizedPnl >= 0 ? 'pos' : 'neg' },
+    { label: '浮動 P&L', value: fmt.money(unrealizedPnl), sub: 'mark-to-market', cls: unrealizedPnl >= 0 ? 'pos' : 'neg' },
+    { label: '持倉市值', value: fmt.money(totalEquity), sub: '總帳戶權益' },
     { label: '完成回合', value: fmt.num(m.roundTripCount ?? m.round_trip_count), sub: `總交易 ${fmt.num(m.tradeCount ?? m.trade_count)}` },
     { label: '勝率', value: fmt.pct((m.winRate ?? m.win_rate ?? 0) * 100), sub: `${m.winningTrades ?? m.winning_trades}W / ${m.losingTrades ?? m.losing_trades}L`, cls: (m.winRate ?? m.win_rate) >= 0.5 ? 'pos' : 'warn' },
     { label: '獲利因子', value: fmt.ratio(m.profitFactor ?? m.profit_factor), cls: (m.profitFactor ?? m.profit_factor) > 1 ? 'pos' : 'neg' },
@@ -352,6 +379,31 @@ function renderEquity(curve) {
   }
   equitySeries.setData(dedup);
   equityChart.timeScale().fitContent();
+}
+
+function renderLivePositions(rows) {
+  const tbody = $('positionsTable').querySelector('tbody');
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '';
+    $('positionsEmpty').style.display = 'block';
+    return;
+  }
+  $('positionsEmpty').style.display = 'none';
+  tbody.innerHTML = rows.map(p => {
+    const pnl = Number(p.unrealizedPnl);
+    const pnlPct = Number(p.unrealizedPnlPct);
+    return `
+      <tr>
+        <td><strong>${p.symbol}</strong></td>
+        <td class="num">${fmt.num(p.quantity)}</td>
+        <td class="num dim">${fmt.num(p.avgEntryPrice)}</td>
+        <td class="num">${fmt.num(p.currentPrice)}</td>
+        <td class="num">${fmt.money(p.marketValue)}</td>
+        <td class="num ${cls(pnl)}">${fmt.money(pnl)}</td>
+        <td class="num ${cls(pnlPct)}">${fmt.pctSigned(pnlPct)}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderSymbols(rows) {
@@ -422,6 +474,7 @@ async function load() {
       if (bj.success) bench = bj.data;
     }
     renderKPIs(m, bench);
+    renderLivePositions(m.livePositions ?? m.LivePositions);
     renderEquity(m.equityCurve ?? m.EquityCurve);
     renderBenchmark(bench ? (bench.curve ?? bench.Curve) : null);
     renderSymbols(m.perSymbol ?? m.PerSymbol);
