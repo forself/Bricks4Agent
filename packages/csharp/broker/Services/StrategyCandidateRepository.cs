@@ -92,25 +92,50 @@ public class StrategyCandidate
     public string Rationale { get; set; } = "";
     public string LlmModel { get; set; } = "";
 
-    // 來自 Backtest + Walk-Forward
+    // 來自 Walk-Forward 評估
     public bool BacktestSuccess { get; set; }
     public string? BacktestError { get; set; }
 
-    // 單次回測指標（In-sample）
+    // 每個 rolling window 的結果（walk-forward 核心輸出）
+    public List<WalkForwardWindow> Windows { get; set; } = new();
+    public int WindowCount => Windows.Count;
+
+    // 聚合的 In-sample 指標（多個訓練窗口平均）
     public decimal InSampleSharpe { get; set; }
     public decimal InSampleReturnPct { get; set; }
     public decimal InSampleMaxDrawdownPct { get; set; }
     public decimal InSampleWinRate { get; set; }
     public int InSampleTrades { get; set; }
 
-    // Walk-Forward 指標（Out-of-sample；這是 fitness）
+    // 聚合的 Out-of-sample 指標（多個測試窗口平均 → 這是 fitness）
     public decimal OutOfSampleSharpe { get; set; }
-    public decimal ReturnPct { get; set; }           // 聚合 OOS 報酬
-    public decimal MaxDrawdownPct { get; set; }      // 聚合 OOS MaxDD
+    public decimal ReturnPct { get; set; }           // 複利串接 OOS 報酬
+    public decimal MaxDrawdownPct { get; set; }      // 所有 window 中最大 OOS MaxDD
     public decimal WinRate { get; set; }
     public int Trades { get; set; }
-    public decimal DegradationRatio { get; set; }    // OOS/IS Sharpe
+    public decimal DegradationRatio { get; set; }    // avg OOS / avg IS Sharpe
 
     // Fitness = OOS Sharpe 是主要目標，其他是輔助資訊
     public decimal Fitness => OutOfSampleSharpe;
+}
+
+/// <summary>
+/// 單一 walk-forward 窗口的指標。
+/// </summary>
+public class WalkForwardWindow
+{
+    public int Index { get; set; }
+    public int TrainFrom { get; set; }
+    public int TrainTo { get; set; }
+    public int TestFrom { get; set; }
+    public int TestTo { get; set; }
+    public DateTime TestStartDate { get; set; }
+    public DateTime TestEndDate { get; set; }
+
+    public decimal InSampleSharpe { get; set; }
+    public decimal InSampleReturnPct { get; set; }
+    public decimal OutOfSampleSharpe { get; set; }
+    public decimal OutOfSampleReturnPct { get; set; }
+    public decimal OutOfSampleMaxDrawdownPct { get; set; }
+    public int OutOfSampleTrades { get; set; }
 }

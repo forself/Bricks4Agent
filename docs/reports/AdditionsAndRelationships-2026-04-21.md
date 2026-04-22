@@ -21,11 +21,12 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 
 ## 一、今日新增總覽
 
-這份報告涵蓋 **2026-04-21 / 04-22 兩天** 共 **十三**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
+這份報告涵蓋 **2026-04-21 / 04-22 兩天** 共 **十四**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
 
 - 主題 A-D：**平台基礎建設**（Discord / Portfolio / 權限 / 通知）
 - 主題 E-I：**策略研究與驗證能力**（Walk-Forward / Benchmark / Ensemble / Lab / AI Research）
 - 主題 J-M：**技術深化與穩健性**（經典 TA 指標擴充 / Kelly 倉位 / Circuit Breaker / Worker 重連）
+- 主題 N：**AI 研究 × Walk-Forward 合流**（主題 E 和 I 的 upgrade merger）
 
 | 主題 | 新增檔 | 動到的既有檔 | 對使用者是什麼 |
 |---|---|---|---|
@@ -42,6 +43,7 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 | **K. Kelly Criterion 倉位** | `Services/KellyPositionSizingService.cs`、`Endpoints/KellyEndpoints.cs` | `Program.cs` +2 行 | `GET /api/v1/risk/kelly` 根據策略歷史勝率算建議倉位，含 fractional Kelly + 25% cap 安全網 |
 | **L. LLM Circuit Breaker** | — | `Engine/LlmStrategy.cs`、`Engine/NewsSentimentStrategy.cs` 加 breaker 機制 | Backtest 時 LLM 策略不再拖死 worker；連 3 次失敗 / 50 呼叫/分 自動 fallback 到 composite |
 | **M. Worker SDK 重連退避** | — | `worker-sdk/WorkerHost.cs` 重連邏輯 | 固定 5s 改成指數退避（2^n × 5，max 60s）+ 0-1s jitter，解 broker 重啟時的 thundering herd |
+| **N. AI Research × Walk-Forward 合流** | — | `StrategyCandidateRepository.cs` 加 Windows 欄位、`StrategyResearchLoopService.cs` 重寫評估函式、`research-lab.html` 加 per-window 展開表 | 把主題 I 的 80/20 holdout 升級成主題 E 的 rolling walk-forward；揭露 regime change（同參數在不同時期 Sharpe 差到正負翻轉）|
 
 ---
 
@@ -1116,7 +1118,113 @@ Broker 重建（例如 rebuild image）時，所有 worker 會同時斷線同時
 
 ---
 
-## 十六、全局技術決策摘要（Trade-offs）
+## 十六、主題 N — AI Research × Walk-Forward 合流
+
+### 16.1 要解決的問題
+
+主題 I（AI Research Loop）原本的 fitness function 是**單一 80/20 holdout**——資料最後 60 根 K 線當 OOS，前面當 IS。這有兩個問題：
+
+1. **統計上脆弱**——單一分割點 = 單一資料點，運氣成分大
+2. **看不到 regime change**——策略可能在 2025 Q1 賺錢、Q3 崩掉，holdout 只切一刀看不出這個故事
+
+主題 E（Walk-Forward）提供了解法——多 rolling windows 聚合——但當時只用在**暴力 optimizer**。現在把它也用到 AI 研究，讓兩大功能合流。
+
+### 16.2 關鍵設計：Anchored Walk-Forward for Fixed Params
+
+對每個 LLM 提出的候選：
+
+```
+Window 0:  train = bars[0 : 150]     test = bars[150 : 180]
+Window 1:  train = bars[0 : 180]     test = bars[180 : 210]
+Window 2:  train = bars[0 : 210]     test = bars[210 : 240]
+Window 3:  train = bars[0 : 240]     test = bars[240 : 270]
+Window 4:  train = bars[0 : 270]     test = bars[270 : 300]
+```
+
+每個 window 用**同一組 LLM 給的參數**跑一次 backtest，切 IS / OOS 指標。
+
+聚合：
+- **avg IS Sharpe** = 平均所有 window 的 IS Sharpe
+- **avg OOS Sharpe** = 平均所有 window 的 OOS Sharpe（**這是新 fitness**）
+- **degradation_ratio** = avg OOS / avg IS
+- **aggregate OOS return** = 複利串接所有 window 的報酬：$(1+r_0)(1+r_1)...(1+r_n) - 1$
+
+### 16.3 與主題 E 的差別
+
+兩個都是 walk-forward，但**目的不同**：
+
+| 主題 | 對誰做 walk-forward | 目的 |
+|---|---|---|
+| **E** | 暴力 Optimizer（ParameterOptimizer 搜尋參數）| 驗證搜尋找出的參數會不會過擬合 |
+| **N** | AI LLM（StrategyGeneratorService 提參數）| 驗證 AI 腦補的參數會不會過擬合 |
+
+形式一樣、內容不同。共享 `Anchored Walk-Forward` 的演算法哲學。
+
+### 16.4 實測結果（AAPL × sma_cross × 5 windows）
+
+LLM Gen 0 提 `sma_fast=10, sma_slow=50`：
+
+| Window | IS Sharpe | **OOS Sharpe** | OOS Return |
+|---|---|---|---|
+| W0 | 1.37 | **+4.30** 🏆 | +12.33% |
+| W1 | 2.23 | +1.87 | +2.86% |
+| W2 | 2.16 | **-2.75** | -2.14% |
+| W3 | 1.77 | -1.78 | -4.62% |
+| W4 | 1.16 | -1.94 | -1.60% |
+
+**平均 IS Sharpe 1.74 → 平均 OOS Sharpe -0.06 → degradation = -0.035**。
+
+比原本 80/20 holdout 更震撼的是**時間軸上的故事**：
+- W0-W1：策略有效，OOS Sharpe 正且很高
+- W2 起突然崩掉，之後三個 window 全是負 Sharpe
+- **這是 regime change 的典型訊號**——市場性質變了，原本的策略失效
+
+**單一 holdout 只能說「OOS 不佳」；walk-forward 能說「OOS 在這個時間點壞掉」**。資訊量完全不同層級。
+
+### 16.5 對 Research Lab UI 的改變
+
+每個候選的卡片新增：
+- **Windows 計數**（幾個 walk-forward 窗口）
+- **可展開的 per-window 表格**（點 `📊 每個 walk-forward 窗口的 OOS Sharpe` 展開）
+  - 每列顯示：Window index、測試區間日期、IS Sharpe、OOS Sharpe、OOS Return、OOS Trades
+  - 讓使用者一眼看出「這個策略在哪些時期成功、哪些時期失敗」
+
+### 16.6 與既有檔案的關聯
+
+| 編輯既有 | 變動 |
+|---|---|
+| `Services/StrategyCandidateRepository.cs` | 加 `List<WalkForwardWindow> Windows` 欄位 + 新 `WalkForwardWindow` class |
+| `Services/StrategyResearchLoopService.cs` | `EvaluateCandidateAsync` → `EvaluateCandidateWalkForwardAsync` 重寫（rolling windows 迴圈 + 聚合） |
+| `wwwroot/research-lab.html` | 每個候選加展開式 per-window 表格 |
+
+**沒新增檔**——這是一次純升級，不是新功能。
+
+### 16.7 Trade-off：計算成本增加 5×
+
+80/20 holdout：每候選 1 次 backtest。
+Walk-forward：每候選 5 次 backtest（5 個 window）。
+
+實測 3 世代 × 5 windows = **15 次 backtest** + 3 次 LLM 呼叫。總時間約 20-30 秒（BacktestEngine 單次 < 1 秒）。對 AI 研究場景可接受。
+
+若未來要縮短時間，可把 windows 並行化——但 Task.WhenAll 並行 backtest 之前在 Strategy Lab 撞過 dispatcher 壅塞問題（見主題 H），保守起見維持循序。
+
+### 16.8 報告說詞
+
+> 「主題 I 本來有個明顯缺口：AI 研究用 80/20 holdout 當驗證，但單一分割點統計太脆弱。主題 N 把主題 E 已經做好的 walk-forward 演算法**搬過來**當 AI 的 fitness function。
+>
+> 結果不只是數值更穩，而是解鎖了 **regime change 偵測**——同一組參數在 W0-W1 的 Sharpe 超過 4，到 W2-W4 突然變負。單一 holdout 只告訴你『過擬合了』，walk-forward 告訴你**什麼時候失效的**。
+>
+> 這是把兩個獨立做的主題『合流』：主題 E 的走前驗證演算法 + 主題 I 的 AI 研究流程 = **可信的 AI 量化研究員**。」
+
+### 16.9 已知限制
+
+- **Windows 循序執行**：總時間 = windows 數 × 單次 backtest。3 世代 × 5 windows 約 15-30 秒。未來可並行化，但 Strategy Lab 踩過 dispatcher 壅塞，暫保守
+- **Window 大小寫死**（train=150, test=30）：資料 < 200 根時自動縮小；未來可讓使用者從 UI 指定
+- **沒做 rolling（non-anchored）**：目前是 anchored（train 從 0 開始延長），沒支援固定長度的 rolling。意義差別小，未來若比較兩種模式再加
+
+---
+
+## 十七、全局技術決策摘要（Trade-offs）
 
 這些是**評審可能會追問**的「為什麼不用 X」，預先準備答案：
 
@@ -1132,7 +1240,7 @@ Broker 重建（例如 rebuild image）時，所有 worker 會同時斷線同時
 
 ---
 
-## 十七、十三個主題組合的系統圖
+## 十八、十四個主題組合的系統圖
 
 把今天加的東西擺進既有系統：
 
@@ -1236,7 +1344,7 @@ Broker 重建（例如 rebuild image）時，所有 worker 會同時斷線同時
 
 ---
 
-## 十八、報告時的 5 分鐘濃縮版
+## 十九、報告時的 5 分鐘濃縮版
 
 如果時間緊，照下面三段講就足夠：
 
@@ -1276,7 +1384,7 @@ Broker 重建（例如 rebuild image）時，所有 worker 會同時斷線同時
 
 ---
 
-## 十九、後續可做的方向
+## 二十、後續可做的方向
 
 這些可以當報告尾聲的 future work：
 

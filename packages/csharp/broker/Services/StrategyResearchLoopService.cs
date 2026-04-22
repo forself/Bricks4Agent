@@ -28,8 +28,10 @@ public class StrategyResearchLoopService
     private readonly IWorkerRegistry _registry;
     private readonly ILogger<StrategyResearchLoopService> _logger;
 
-    // 參數
-    private const int HoldoutBars = 60;     // 最後 N 根 K 線當 OOS；前面當 IS
+    // 參數 — 走 rolling walk-forward，不是單一 80/20 holdout
+    private const int TrainBars = 150;       // 初始訓練窗口大小
+    private const int TestBars = 30;         // 每個測試窗口大小
+    private const int MinWindowsRequired = 2; // 至少要切出 2 個 window 才算有效 walk-forward
     private const decimal InitialCash = 100_000m;
 
     public StrategyResearchLoopService(
@@ -97,32 +99,16 @@ public class StrategyResearchLoopService
                 continue;
             }
 
-            // 2. 在 broker 側做 80/20 holdout 回測
+            // 2. 用 rolling walk-forward 評估（多窗口，聚合 IS/OOS）
             try
             {
-                var (isMetrics, oosMetrics) = await EvaluateCandidateAsync(family, symbol, candidate.Parameters, barsJson, ct);
-
-                candidate.BacktestSuccess = true;
-                candidate.InSampleSharpe = isMetrics.Sharpe;
-                candidate.InSampleReturnPct = isMetrics.ReturnPct;
-                candidate.InSampleMaxDrawdownPct = isMetrics.MaxDrawdownPct;
-                candidate.InSampleWinRate = isMetrics.WinRate;
-                candidate.InSampleTrades = isMetrics.Trades;
-
-                candidate.OutOfSampleSharpe = oosMetrics.Sharpe;
-                candidate.ReturnPct = oosMetrics.ReturnPct;
-                candidate.MaxDrawdownPct = oosMetrics.MaxDrawdownPct;
-                candidate.WinRate = oosMetrics.WinRate;
-                candidate.Trades = oosMetrics.Trades;
-                candidate.DegradationRatio = isMetrics.Sharpe == 0m
-                    ? 0m
-                    : Math.Round(oosMetrics.Sharpe / isMetrics.Sharpe, 4);
+                await EvaluateCandidateWalkForwardAsync(candidate, family, symbol, barsJson, ct);
             }
             catch (Exception ex)
             {
                 candidate.BacktestSuccess = false;
                 candidate.BacktestError = ex.Message;
-                _logger.LogWarning(ex, "Gen {Gen} backtest failed", gen);
+                _logger.LogWarning(ex, "Gen {Gen} walk-forward eval failed", gen);
             }
 
             _repo.AddCandidate(run.RunId, candidate);
@@ -136,31 +122,117 @@ public class StrategyResearchLoopService
         return run;
     }
 
-    // ── 評估單個候選：80/20 holdout ─────────────────────────────────
+    // ── 評估單個候選：Rolling Walk-Forward（多窗口聚合）──────────────
+    //
+    // Anchored walk-forward：
+    //   Window 0:  train = bars[0 : TrainBars]              test = bars[TrainBars         : TrainBars + TestBars]
+    //   Window 1:  train = bars[0 : TrainBars + TestBars]    test = bars[TrainBars+TestBars : +2×TestBars]
+    //   ...
+    //
+    // 每個 window 對固定參數回測一次，切 IS / OOS 指標。
+    // 聚合 = 各 window OOS 平均做為 fitness（比單一 holdout 統計上更穩健）。
 
-    private async Task<(BacktestMetrics inSample, BacktestMetrics outOfSample)> EvaluateCandidateAsync(
-        string family, string symbol, Dictionary<string, int> parameters, string barsJson, CancellationToken ct)
+    private async Task EvaluateCandidateWalkForwardAsync(
+        StrategyCandidate candidate,
+        string family, string symbol, string barsJson, CancellationToken ct)
     {
         using var barsDoc = JsonDocument.Parse(barsJson);
         var allBars = barsDoc.RootElement.GetProperty("bars");
         var barCount = allBars.GetArrayLength();
-        if (barCount < HoldoutBars + 30)
-            throw new InvalidOperationException($"Bars too few: {barCount} (need >= {HoldoutBars + 30})");
 
-        // IS = 前 (total - HoldoutBars)；OOS = 最後 HoldoutBars 根但回測時 warmup 用所有前面的歷史
-        var splitIndex = barCount - HoldoutBars;
+        // 自適應窗口大小：如果 bars 不夠，縮短 TrainBars 和 TestBars
+        int trainBars = TrainBars;
+        int testBars = TestBars;
+        if (barCount < trainBars + testBars * MinWindowsRequired)
+        {
+            // 資料太少：縮小窗口
+            testBars = Math.Max(10, barCount / 10);
+            trainBars = Math.Max(50, (barCount - testBars * MinWindowsRequired));
+        }
+        if (barCount < trainBars + testBars)
+            throw new InvalidOperationException($"Bars too few: {barCount} (need >= {trainBars + testBars})");
 
-        // 用整段 bars 做一次完整回測 → 取 IS 指標（到 splitIndex 為止）和 OOS 指標（splitIndex 之後）
-        var fullResult = await RunBacktestAsync(family, symbol, allBars, parameters, ct);
-        if (fullResult == null)
-            throw new InvalidOperationException("full backtest failed");
+        var windows = new List<WalkForwardWindow>();
+        int windowIdx = 0;
 
-        var splitDate = ParseDate(allBars[splitIndex], "open_time");
+        for (int trainEnd = trainBars; trainEnd + testBars <= barCount; trainEnd += testBars)
+        {
+            // 這個 window 用整段歷史到 (trainEnd + testBars) 跑 backtest
+            var slicedBars = SliceBars(allBars, trainEnd + testBars);
 
-        var isMetrics = ExtractMetricsBefore(fullResult, splitDate);
-        var oosMetrics = ExtractMetricsAfter(fullResult, splitDate);
+            var bt = await RunBacktestAsync(family, symbol, slicedBars, candidate.Parameters, ct);
+            if (bt == null) { windowIdx++; continue; }
 
-        return (isMetrics, oosMetrics);
+            var splitDate = ParseDate(allBars[trainEnd], "open_time");
+            var isMetrics = ExtractWindowMetrics(bt, before: splitDate);
+            var oosMetrics = ExtractWindowMetrics(bt, after: splitDate);
+
+            windows.Add(new WalkForwardWindow
+            {
+                Index = windowIdx++,
+                TrainFrom = 0,
+                TrainTo = trainEnd,
+                TestFrom = trainEnd,
+                TestTo = trainEnd + testBars,
+                TestStartDate = splitDate,
+                TestEndDate = ParseDate(allBars[trainEnd + testBars - 1], "open_time"),
+                InSampleSharpe = isMetrics.Sharpe,
+                InSampleReturnPct = isMetrics.ReturnPct,
+                OutOfSampleSharpe = oosMetrics.Sharpe,
+                OutOfSampleReturnPct = oosMetrics.ReturnPct,
+                OutOfSampleMaxDrawdownPct = oosMetrics.MaxDrawdownPct,
+                OutOfSampleTrades = oosMetrics.Trades,
+            });
+
+            bt.Dispose();
+        }
+
+        if (windows.Count == 0)
+            throw new InvalidOperationException("No walk-forward windows could be evaluated");
+
+        candidate.Windows = windows;
+        candidate.BacktestSuccess = true;
+
+        // 聚合：平均 IS / OOS Sharpe（fitness）；複利串接 OOS 報酬
+        candidate.InSampleSharpe = Math.Round(windows.Average(w => w.InSampleSharpe), 4);
+        candidate.InSampleReturnPct = Math.Round(windows.Average(w => w.InSampleReturnPct), 4);
+        candidate.InSampleMaxDrawdownPct = 0m;  // 按 window 平均意義不大，留 0
+        candidate.InSampleWinRate = 0m;
+        candidate.InSampleTrades = windows.Sum(w => w.OutOfSampleTrades);  // 借用這欄記錄 OOS trade count summary
+
+        candidate.OutOfSampleSharpe = Math.Round(windows.Average(w => w.OutOfSampleSharpe), 4);
+
+        // 複利聚合報酬：(1 + r_1)(1 + r_2)...(1 + r_n) - 1
+        decimal cumulativeProduct = 1m;
+        foreach (var w in windows)
+            cumulativeProduct *= (1m + w.OutOfSampleReturnPct / 100m);
+        candidate.ReturnPct = Math.Round((cumulativeProduct - 1m) * 100m, 4);
+
+        // Max OOS drawdown across all windows
+        candidate.MaxDrawdownPct = windows.Max(w => w.OutOfSampleMaxDrawdownPct);
+        candidate.Trades = windows.Sum(w => w.OutOfSampleTrades);
+        candidate.WinRate = 0m;  // per-window winrate aggregation 意義不明確，留 0
+
+        candidate.DegradationRatio = candidate.InSampleSharpe == 0m
+            ? 0m
+            : Math.Round(candidate.OutOfSampleSharpe / candidate.InSampleSharpe, 4);
+    }
+
+    /// <summary>
+    /// 從原始 bars JSON 切出前 N 根，保持結構一致。
+    /// </summary>
+    private static JsonElement SliceBars(JsonElement bars, int count)
+    {
+        var slice = new List<JsonElement>();
+        int i = 0;
+        foreach (var b in bars.EnumerateArray())
+        {
+            if (i >= count) break;
+            slice.Add(b);
+            i++;
+        }
+        var json = "[" + string.Join(",", slice.Select(e => e.GetRawText())) + "]";
+        return JsonDocument.Parse(json).RootElement;
     }
 
     private async Task<JsonDocument?> RunBacktestAsync(

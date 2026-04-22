@@ -336,7 +336,35 @@ function renderRunDetail(run) {
             <div><span class="k">OOS DD:</span> <span class="neg">${fmt.pct(c.maxDrawdownPct)}%</span></div>
             <div><span class="k">OOS Trades:</span> ${fmt.int(c.trades)}</div>
             <div><span class="k">Degrad:</span> <strong class="${cls(c.degradationRatio)}">${fmt.ratio(c.degradationRatio)}</strong></div>
+            <div><span class="k">Windows:</span> <strong>${c.windowCount || (c.windows?.length ?? 0)}</strong></div>
           </div>
+          ${(c.windows && c.windows.length > 0) ? `
+            <details style="margin-top:8px;">
+              <summary>📊 每個 walk-forward 窗口的 OOS Sharpe（點開展開）</summary>
+              <table style="width:100%; font-size:11px; margin-top:6px;">
+                <thead><tr>
+                  <th style="text-align:left;">#</th>
+                  <th style="text-align:left;">測試區間</th>
+                  <th class="num">IS Sharpe</th>
+                  <th class="num">OOS Sharpe</th>
+                  <th class="num">OOS Ret%</th>
+                  <th class="num">Trades</th>
+                </tr></thead>
+                <tbody>
+                ${c.windows.map(w => `
+                  <tr>
+                    <td>W${w.index}</td>
+                    <td class="dim" style="font-size:10px;">${(w.testStartDate||'').slice(0,10)} ~ ${(w.testEndDate||'').slice(0,10)}</td>
+                    <td class="num ${cls(w.inSampleSharpe)}">${fmt.ratio(w.inSampleSharpe)}</td>
+                    <td class="num"><strong class="${cls(w.outOfSampleSharpe)}">${fmt.ratio(w.outOfSampleSharpe)}</strong></td>
+                    <td class="num ${cls(w.outOfSampleReturnPct)}">${fmt.pct(w.outOfSampleReturnPct)}</td>
+                    <td class="num">${w.outOfSampleTrades}</td>
+                  </tr>
+                `).join('')}
+                </tbody>
+              </table>
+            </details>
+          ` : ''}
           ${c.rationale ? `<div class="cand-rationale">💡 ${c.rationale}</div>` : ''}
         </div>
       </div>`;
