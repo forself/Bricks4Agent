@@ -48,11 +48,11 @@ services:
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
 
       DevelopmentSeed__Enabled: "true"
-      DevelopmentSeed__PrincipalId: "prn_trading"
-      DevelopmentSeed__DisplayName: "Trading System"
+      DevelopmentSeed__PrincipalId: "prn_dashboard"
+      DevelopmentSeed__DisplayName: "Dashboard Admin"
       DevelopmentSeed__ActorType: "Human"
-      DevelopmentSeed__TaskId: "task_trading"
-      DevelopmentSeed__TaskType: "trading"
+      DevelopmentSeed__TaskId: "task_dashboard"
+      DevelopmentSeed__TaskType: "admin"
       DevelopmentSeed__AssignedRoleId: "role_admin"
       DevelopmentSeed__RuntimeDescriptor: "{}"
 
