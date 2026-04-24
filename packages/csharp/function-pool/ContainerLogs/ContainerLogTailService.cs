@@ -233,18 +233,24 @@ public class ContainerLogTailService : IAsyncDisposable
             existCmd.Parameters.AddWithValue("$h", hash);
             if (Convert.ToInt32(existCmd.ExecuteScalar()) > 0) continue;
 
+            // 分類
+            var catEntry = ErrorCatalog.Classify(msg, level);
+            var clippedMsg = msg.Length > 4000 ? msg[..4000] : msg;
+
             var insCmd = conn.CreateCommand();
             insCmd.CommandText = @"
                 INSERT INTO container_log_entries
-                    (container_id, worker_type, ts, level, stderr, message, msg_hash)
-                VALUES ($cid, $wt, $ts, $lv, $se, $msg, $h)";
+                    (container_id, worker_type, ts, level, stderr, message, msg_hash, error_code, category)
+                VALUES ($cid, $wt, $ts, $lv, $se, $msg, $h, $code, $cat)";
             insCmd.Parameters.AddWithValue("$cid", containerId);
             insCmd.Parameters.AddWithValue("$wt", workerType ?? "");
             insCmd.Parameters.AddWithValue("$ts", ts.ToString("O"));
             insCmd.Parameters.AddWithValue("$lv", level);
             insCmd.Parameters.AddWithValue("$se", stderr ? 1 : 0);
-            insCmd.Parameters.AddWithValue("$msg", msg.Length > 4000 ? msg[..4000] : msg);
+            insCmd.Parameters.AddWithValue("$msg", clippedMsg);
             insCmd.Parameters.AddWithValue("$h", hash);
+            insCmd.Parameters.AddWithValue("$code", catEntry.Code);
+            insCmd.Parameters.AddWithValue("$cat", catEntry.Category);
             insCmd.ExecuteNonQuery();
         }
 
@@ -281,7 +287,7 @@ public class ContainerLogTailService : IAsyncDisposable
     // 查詢 API（給 endpoint 用）
     // ═══════════════════════════════════════════════════════════════
 
-    public List<ContainerLogEntryDto> Query(string? containerId, string? level, int limit = 200)
+    public List<ContainerLogEntryDto> Query(string? containerId, string? level, string? errorCode, int limit = 200)
     {
         using var conn = Open();
         var cmd = conn.CreateCommand();
@@ -289,16 +295,18 @@ public class ContainerLogTailService : IAsyncDisposable
         var clauses = new List<string>();
         if (!string.IsNullOrEmpty(containerId)) clauses.Add("container_id = $cid");
         if (!string.IsNullOrEmpty(level))        clauses.Add("level = $lv");
+        if (!string.IsNullOrEmpty(errorCode))    clauses.Add("error_code = $code");
         var where = clauses.Count > 0 ? "WHERE " + string.Join(" AND ", clauses) : "";
 
         cmd.CommandText = $@"
-            SELECT container_id, worker_type, ts, level, stderr, message
+            SELECT container_id, worker_type, ts, level, stderr, message, error_code, category
             FROM container_log_entries
             {where}
             ORDER BY ts DESC
             LIMIT $lim";
         if (!string.IsNullOrEmpty(containerId)) cmd.Parameters.AddWithValue("$cid", containerId);
         if (!string.IsNullOrEmpty(level))        cmd.Parameters.AddWithValue("$lv", level);
+        if (!string.IsNullOrEmpty(errorCode))    cmd.Parameters.AddWithValue("$code", errorCode);
         cmd.Parameters.AddWithValue("$lim", limit);
 
         var list = new List<ContainerLogEntryDto>();
@@ -312,6 +320,35 @@ public class ContainerLogTailService : IAsyncDisposable
                 Level       = r.GetString(3),
                 Stderr      = r.GetInt32(4) == 1,
                 Message     = r.GetString(5),
+                ErrorCode   = r.GetString(6),
+                Category    = r.GetString(7),
+            });
+        return list;
+    }
+
+    /// <summary>依 error_code 聚合計數（給儀表板頂部 chip 用）。</summary>
+    public List<ContainerLogCategorySummary> CategorySummary(string? containerId = null)
+    {
+        using var conn = Open();
+        var cmd = conn.CreateCommand();
+        var where = string.IsNullOrEmpty(containerId) ? "" : "WHERE container_id = $cid";
+        cmd.CommandText = $@"
+            SELECT error_code, category, level, COUNT(*)
+            FROM container_log_entries
+            {where}
+            GROUP BY error_code, category, level
+            ORDER BY COUNT(*) DESC";
+        if (!string.IsNullOrEmpty(containerId)) cmd.Parameters.AddWithValue("$cid", containerId);
+
+        var list = new List<ContainerLogCategorySummary>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new ContainerLogCategorySummary
+            {
+                ErrorCode = r.GetString(0),
+                Category  = r.GetString(1),
+                Level     = r.GetString(2),
+                Count     = r.GetInt32(3),
             });
         return list;
     }
@@ -366,9 +403,96 @@ public class ContainerLogTailService : IAsyncDisposable
             CREATE INDEX IF NOT EXISTS idx_cle_dedup ON container_log_entries(container_id, ts, msg_hash);";
         createCmd.ExecuteNonQuery();
 
+        // 後加的欄位（error_code / category），用 ALTER TABLE 動態補
+        AddColumnIfMissing(conn, "container_log_entries", "error_code", "TEXT NOT NULL DEFAULT 'ERR-999'");
+        AddColumnIfMissing(conn, "container_log_entries", "category",   "TEXT NOT NULL DEFAULT '未分類'");
+
+        var codeIdxCmd = conn.CreateCommand();
+        codeIdxCmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_cle_code ON container_log_entries(error_code)";
+        codeIdxCmd.ExecuteNonQuery();
+
         var walCmd = conn.CreateCommand();
         walCmd.CommandText = "PRAGMA journal_mode=WAL";
         walCmd.ExecuteNonQuery();
+
+        // 把還沒分類的舊資料重跑一次分類
+        ReclassifyUnclassified(conn);
+    }
+
+    private static void AddColumnIfMissing(SqliteConnection conn, string table, string col, string def)
+    {
+        var chk = conn.CreateCommand();
+        chk.CommandText = $"PRAGMA table_info({table})";
+        using var r = chk.ExecuteReader();
+        while (r.Read())
+        {
+            // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+            if (r.GetString(1).Equals(col, StringComparison.OrdinalIgnoreCase)) return;
+        }
+        r.Close();
+
+        var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {col} {def}";
+        alter.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 把舊資料（以 ERR-999/未分類 儲存的）重新跑 classifier 更新分類。
+    /// 只有在新部署後才會有大量命中；後續呼叫幾乎都是 0 rows。
+    /// </summary>
+    private void ReclassifyUnclassified(SqliteConnection conn)
+    {
+        try
+        {
+            var sel = conn.CreateCommand();
+            // 重跑所有以預設值（ERR-999 且 level=WARN 代表 ALTER TABLE 剛補欄位時的 default）
+            // 或內文可能能匹配到新 catalog 類別（即使當下是 ERR-999）的資料
+            sel.CommandText = @"
+                SELECT id, message, level FROM container_log_entries
+                WHERE error_code IN ('ERR-999','WRN-999','')
+                   OR (error_code='ERR-999' AND level='WARN')
+                LIMIT 2000";
+
+            var rows = new List<(long id, string msg, string level)>();
+            using (var r = sel.ExecuteReader())
+                while (r.Read()) rows.Add((r.GetInt64(0), r.GetString(1), r.GetString(2)));
+
+            if (rows.Count == 0) return;
+
+            using var tx = conn.BeginTransaction();
+            int updated = 0;
+            foreach (var (id, msg, level) in rows)
+            {
+                var entry = ErrorCatalog.Classify(msg, level);
+
+                // 對於無法分類的行，至少把 code 對齊 level（WARN→WRN-999、ERROR→ERR-999）
+                string targetCode = entry.Code;
+                string targetCat  = entry.Category;
+                if (targetCode == "ERR-999" && level == "WARN")
+                {
+                    targetCode = "WRN-999";
+                    targetCat = ErrorCatalog.DefaultWarn.Category;
+                }
+                else if (targetCode == "WRN-999" && level == "ERROR")
+                {
+                    targetCode = "ERR-999";
+                    targetCat = ErrorCatalog.DefaultError.Category;
+                }
+
+                var upd = conn.CreateCommand();
+                upd.CommandText = "UPDATE container_log_entries SET error_code=$c, category=$cat WHERE id=$id";
+                upd.Parameters.AddWithValue("$c", targetCode);
+                upd.Parameters.AddWithValue("$cat", targetCat);
+                upd.Parameters.AddWithValue("$id", id);
+                updated += upd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            _logger.LogInformation("Container log reclassify: scanned {N} rows", rows.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Reclassify failed (non-critical)");
+        }
     }
 
     private SqliteConnection Open()
@@ -400,6 +524,16 @@ public class ContainerLogEntryDto
     public string Level       { get; set; } = "";
     public bool   Stderr      { get; set; }
     public string Message     { get; set; } = "";
+    public string ErrorCode   { get; set; } = "ERR-999";
+    public string Category    { get; set; } = "未分類";
+}
+
+public class ContainerLogCategorySummary
+{
+    public string ErrorCode { get; set; } = "";
+    public string Category  { get; set; } = "";
+    public string Level     { get; set; } = "";
+    public int    Count     { get; set; }
 }
 
 public class ContainerLogSpaceInfo

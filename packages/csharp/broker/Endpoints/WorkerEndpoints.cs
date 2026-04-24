@@ -197,6 +197,8 @@ public static class WorkerEndpoints
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
                     entries = Array.Empty<object>(),
+                    summary = Array.Empty<object>(),
+                    catalog = Array.Empty<object>(),
                     space = (object?)null,
                     note = "ContainerLogTailService disabled (FunctionPool:ContainerLogTail:Enabled=false)",
                 }));
@@ -204,13 +206,26 @@ public static class WorkerEndpoints
             var q = ctx.Request.Query;
             var containerId = q["container_id"].ToString();
             var level = q["level"].ToString();
+            var errorCode = q["error_code"].ToString();
             var limit = int.TryParse(q["limit"].ToString(), out var l) ? Math.Min(Math.Max(l, 1), 1000) : 200;
 
             var entries = tail.Query(
                 string.IsNullOrEmpty(containerId) ? null : containerId,
                 string.IsNullOrEmpty(level) ? null : level,
+                string.IsNullOrEmpty(errorCode) ? null : errorCode,
                 limit);
+            var summary = tail.CategorySummary(
+                string.IsNullOrEmpty(containerId) ? null : containerId);
             var space = tail.GetSpaceInfo();
+
+            // 靜態目錄：給 UI 顯示所有已定義的錯誤分類（含 description）
+            var catalog = ErrorCatalog.AllKnown().Select(e => new
+            {
+                code = e.Code,
+                category = e.Category,
+                description = e.Description,
+                severity = e.Severity,
+            }).ToList();
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
@@ -222,7 +237,17 @@ public static class WorkerEndpoints
                     level = e.Level,
                     stderr = e.Stderr,
                     message = e.Message,
+                    error_code = e.ErrorCode,
+                    category = e.Category,
                 }),
+                summary = summary.Select(s => new
+                {
+                    error_code = s.ErrorCode,
+                    category = s.Category,
+                    level = s.Level,
+                    count = s.Count,
+                }),
+                catalog,
                 space = new
                 {
                     db_size_kb = space.DbSizeBytes / 1024,

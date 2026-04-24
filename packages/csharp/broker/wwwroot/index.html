@@ -514,44 +514,88 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
   <el-tabs v-model="logsTab" @tab-change="onLogsTabChange">
     <!-- 即時 docker logs -->
     <el-tab-pane :label="t('logsLive')" name="live">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <span style="font-size:13px;color:var(--td)">Tail:</span>
         <el-input-number v-model="tailLines" :min="10" :max="500" :step="10" size="small" style="width:130px"/>
-        <el-button size="small" @click="fetchLogs" :loading="logsLoading">{{t('refresh')}}</el-button>
+        <el-input v-model="logSearch" :placeholder="t('searchKeyword')" size="small" style="width:220px" clearable>
+          <template #prefix>🔍</template>
+        </el-input>
+        <el-checkbox v-model="logHighlightOnly" size="small" style="margin-left:4px">{{t('onlyMatches')}}</el-checkbox>
+        <el-button size="small" @click="fetchLogs" :loading="logsLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
       </div>
       <el-skeleton v-show="logsLoading" :rows="6" animated/>
-      <pre v-show="!logsLoading" style="background:var(--s2);padding:12px;border-radius:6px;font-size:12px;line-height:1.6;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--t);margin:0">{{currentLogs||'(no output)'}}</pre>
+      <pre v-show="!logsLoading" style="background:var(--s2);padding:12px;border-radius:6px;font-size:12px;line-height:1.6;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--t);margin:0" v-html="renderLiveLog(currentLogs,logSearch,logHighlightOnly)"></pre>
     </el-tab-pane>
 
-    <!-- 歷史錯誤（SQLite 持久化） -->
+    <!-- 歷史錯誤（SQLite 持久化 + 錯誤目錄分類） -->
     <el-tab-pane :label="t('logsHistory')" name="history">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <!-- 控制列：等級 / 限制 / 清除篩選 / 重新整理 -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <span style="font-size:13px;color:var(--td)">{{t('filter')}}：</span>
         <el-radio-group v-model="logHistoryLevel" size="small" @change="fetchLogHistory">
           <el-radio-button value="">{{t('filterAll')}}</el-radio-button>
           <el-radio-button value="ERROR">ERROR</el-radio-button>
           <el-radio-button value="WARN">WARN</el-radio-button>
         </el-radio-group>
-        <span style="font-size:12px;color:var(--td);margin-left:10px">Limit:</span>
+        <span style="font-size:12px;color:var(--td);margin-left:6px">Limit:</span>
         <el-select v-model="logHistoryLimit" size="small" style="width:90px" @change="fetchLogHistory">
           <el-option :value="50" label="50"/><el-option :value="200" label="200"/><el-option :value="500" label="500"/>
         </el-select>
+        <el-button v-if="logHistoryCodeFilter" size="small" @click="clearCodeFilter" type="warning" plain>✕ {{logHistoryCodeFilter}}</el-button>
         <el-button size="small" @click="fetchLogHistory" :loading="logHistoryLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
       </div>
+
+      <!-- 錯誤目錄 chips（點選 = 過濾該類） -->
+      <div v-if="logHistorySummary.length>0" style="margin-bottom:12px">
+        <div style="font-size:11px;color:var(--td);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">{{t('errorCatalog')}}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <div
+            v-for="s in logHistorySummary"
+            :key="s.error_code+s.level"
+            @click="toggleCodeFilter(s.error_code)"
+            :style="catalogChipStyle(s, logHistoryCodeFilter===s.error_code)"
+            style="padding:5px 10px;border-radius:14px;cursor:pointer;font-size:11px;display:inline-flex;align-items:center;gap:6px;transition:transform .1s"
+          >
+            <span style="font-family:monospace;font-weight:700">{{s.error_code}}</span>
+            <span>{{s.category}}</span>
+            <span style="background:rgba(255,255,255,.12);padding:1px 6px;border-radius:8px;font-variant-numeric:tabular-nums">{{s.count}}</span>
+          </div>
+        </div>
+      </div>
+
       <div v-if="logHistorySpace" style="font-size:11px;color:var(--td);margin-bottom:8px">
         DB: {{logHistorySpace.db_size_kb}} KB · {{logHistorySpace.entry_count}} {{t('entries')}} · {{t('retDays')}}: {{logHistorySpace.retention_days}}d
+        <span v-if="logHistoryCodeFilter" style="margin-left:8px">· {{t('filterBy')}}: {{logHistoryCodeFilter}}</span>
       </div>
       <div v-if="logHistoryNote" style="font-size:12px;color:#e6a23c;margin-bottom:8px">⚠ {{logHistoryNote}}</div>
-      <el-empty v-if="!logHistoryLoading&&logHistory.length===0" :description="t('noLogHistory')"/>
-      <div v-show="logHistory.length>0" style="max-height:460px;overflow:auto;background:var(--s2);border-radius:6px;padding:8px">
-        <div v-for="(e,i) in logHistory" :key="i" style="padding:6px 8px;margin-bottom:4px;background:var(--s);border-radius:4px;border-left:3px solid" :style="'border-left-color:'+(e.level==='ERROR'?'#f56c6c':'#e6a23c')">
-          <div style="display:flex;gap:10px;align-items:center;font-size:11px;margin-bottom:3px">
-            <el-tag :type="e.level==='ERROR'?'danger':'warning'" size="small">{{e.level}}</el-tag>
-            <span style="color:var(--td);font-family:monospace">{{fmtDate(e.ts)}}</span>
+
+      <!-- 空狀態（更具體的說明） -->
+      <div v-if="!logHistoryLoading&&logHistory.length===0" class="ct-empty" style="padding:32px 20px">
+        <div class="big">📭</div>
+        <div v-if="logsContainerState==='stopped'||logsContainerState==='failed'" style="font-size:13px">
+          {{t('noLogHistoryStopped')}}
+        </div>
+        <div v-else style="font-size:13px">{{t('noLogHistory')}}</div>
+      </div>
+
+      <!-- 錯誤列表 — 點展開看 raw message -->
+      <div v-show="logHistory.length>0" style="max-height:420px;overflow:auto;background:var(--s2);border-radius:6px;padding:8px">
+        <div
+          v-for="(e,i) in logHistory"
+          :key="i"
+          @click="toggleDetail(i)"
+          style="padding:8px 10px;margin-bottom:4px;background:var(--s);border-radius:4px;border-left:3px solid;cursor:pointer;transition:background .15s"
+          :style="'border-left-color:'+(e.level==='ERROR'?'#f56c6c':'#e6a23c')"
+          :class="{ 'ct-log-expanded': expandedLogs[i] }"
+        >
+          <div style="display:flex;gap:10px;align-items:center;font-size:12px">
+            <span style="font-family:monospace;font-weight:700;padding:1px 6px;border-radius:3px" :style="e.level==='ERROR'?'background:rgba(245,108,108,.15);color:#f56c6c':'background:rgba(230,162,60,.15);color:#e6a23c'">{{e.error_code}}</span>
+            <span style="font-weight:600">{{e.category}}</span>
             <span v-if="e.stderr" style="color:#e6a23c;font-size:10px">[stderr]</span>
-            <span style="color:var(--td);font-size:10px;margin-left:auto">{{e.worker_type}}</span>
+            <span style="color:var(--td);font-size:10px;margin-left:auto;font-family:monospace">{{e.worker_type}} · {{fmtDate(e.ts)}}</span>
+            <span style="color:var(--td);font-size:10px">{{expandedLogs[i]?'▼':'▶'}}</span>
           </div>
-          <div style="font-family:monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all">{{e.message}}</div>
+          <div v-if="expandedLogs[i]" style="margin-top:6px;padding:8px;background:var(--s2);border-radius:3px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--t)">{{e.message}}</div>
         </div>
       </div>
     </el-tab-pane>
@@ -710,6 +754,8 @@ const I18N={
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
     selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
     logsLive:'即時日誌',logsHistory:'歷史錯誤',noLogHistory:'此容器尚無錯誤紀錄（或採集服務未啟動）',entries:'筆紀錄',
+    noLogHistoryStopped:'此容器已停止執行 · 採集服務只追蹤執行中的容器，已經發生的錯誤歷史會保留到過期為止',
+    errorCatalog:'錯誤分類',filterBy:'已過濾',searchKeyword:'搜尋關鍵字...',onlyMatches:'只顯示符合行',
     diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
     healthy:'系統健康',unhealthy:'發現問題',runtimeOk:'容器執行環境正常',runtimeDown:'容器執行環境異常',
     critical:'嚴重',error:'錯誤',warning:'警告',info:'資訊',
@@ -749,6 +795,8 @@ const I18N={
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
+    noLogHistoryStopped:'This container is stopped · the tail service only tracks running containers. Previously-captured history is retained until expiration.',
+    errorCatalog:'Error Catalog',filterBy:'Filtered by',searchKeyword:'Search keyword...',onlyMatches:'Only matching lines',
     diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
     healthy:'System Healthy',unhealthy:'Issues Detected',runtimeOk:'Runtime OK',runtimeDown:'Runtime Down',
     critical:'Critical',error:'Error',warning:'Warning',info:'Info',
@@ -942,13 +990,20 @@ const app=createApp({
 
     const logsVisible=ref(false);const logsLoading=ref(false);
     const logsContainerId=ref('');const currentLogs=ref('');const tailLines=ref(50);
+    const logsContainerState=ref('running');
     const logsTab=ref('live');
+    const logSearch=ref('');
+    const logHighlightOnly=ref(false);
     const logHistory=ref([]);
     const logHistoryLoading=ref(false);
     const logHistoryLevel=ref('');
     const logHistoryLimit=ref(200);
     const logHistorySpace=ref(null);
     const logHistoryNote=ref('');
+    const logHistorySummary=ref([]);
+    const logHistoryCatalog=ref([]);
+    const logHistoryCodeFilter=ref('');
+    const expandedLogs=reactive({});
 
     const spawnVisible=ref(false);const spawning=ref(false);
     const spawnForm=reactive({workerType:'',workerId:''});
@@ -1067,8 +1122,13 @@ const app=createApp({
 
     async function viewLogs(containerId){
       logsContainerId.value=containerId;
+      const c=mergedContainers.value.find(x=>x.container_id===containerId);
+      logsContainerState.value=c?c.state:'running';
       logsTab.value='live';
       logHistory.value=[];
+      logHistorySummary.value=[];
+      logHistoryCodeFilter.value='';
+      Object.keys(expandedLogs).forEach(k=>{ delete expandedLogs[k]; });
       logsVisible.value=true;
       await fetchLogs();
     }
@@ -1087,12 +1147,16 @@ const app=createApp({
         const params=new URLSearchParams();
         params.set('container_id',logsContainerId.value);
         if(logHistoryLevel.value) params.set('level',logHistoryLevel.value);
+        if(logHistoryCodeFilter.value) params.set('error_code',logHistoryCodeFilter.value);
         params.set('limit',String(logHistoryLimit.value));
         const r=await getPlain('/api/v1/workers/log-history?'+params.toString());
         if(r.success&&r.data){
           logHistory.value=r.data.entries||[];
+          logHistorySummary.value=r.data.summary||[];
+          logHistoryCatalog.value=r.data.catalog||[];
           logHistorySpace.value=r.data.space||null;
           logHistoryNote.value=r.data.note||'';
+          Object.keys(expandedLogs).forEach(k=>{ delete expandedLogs[k]; });
         } else {
           logHistory.value=[]; logHistoryNote.value=r.message||'';
         }
@@ -1103,6 +1167,55 @@ const app=createApp({
     }
     function onLogsTabChange(tab){
       if(tab==='history') fetchLogHistory();
+    }
+    function toggleCodeFilter(code){
+      logHistoryCodeFilter.value = (logHistoryCodeFilter.value===code ? '' : code);
+      fetchLogHistory();
+    }
+    function clearCodeFilter(){ logHistoryCodeFilter.value=''; fetchLogHistory(); }
+    function toggleDetail(i){ expandedLogs[i] = !expandedLogs[i]; }
+
+    function catalogChipStyle(s, active){
+      const isErr=s.level==='ERROR';
+      if(active){
+        return isErr
+          ? 'background:#f56c6c;color:white;border:1px solid #f56c6c'
+          : 'background:#e6a23c;color:white;border:1px solid #e6a23c';
+      }
+      return isErr
+        ? 'background:rgba(245,108,108,.12);color:#f56c6c;border:1px solid rgba(245,108,108,.3)'
+        : 'background:rgba(230,162,60,.12);color:#e6a23c;border:1px solid rgba(230,162,60,.3)';
+    }
+
+    // 即時日誌：關鍵字高亮 / 只顯示匹配行
+    function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function renderLiveLog(text, keyword, onlyMatches){
+      if(!text) return '(no output)';
+      const lines=text.split(/\n/);
+      if(!keyword){
+        return escapeHtml(text) || '(no output)';
+      }
+      const kw=keyword.toLowerCase();
+      const matched=[], unmatched=[];
+      for(const ln of lines){
+        if(ln.toLowerCase().includes(kw)) matched.push(ln);
+        else unmatched.push(ln);
+      }
+      if(onlyMatches){
+        if(matched.length===0) return '<span style="color:var(--td)">(no lines match "'+escapeHtml(keyword)+'")</span>';
+        return matched.map(ln=>highlightLine(ln,keyword)).join('\n');
+      }
+      return lines.map(ln=>highlightLine(ln,keyword)).join('\n');
+    }
+    function highlightLine(line, keyword){
+      const esc=escapeHtml(line);
+      if(!keyword) return esc;
+      const kw=keyword.toLowerCase();
+      const idx=line.toLowerCase().indexOf(kw);
+      if(idx<0) return esc;
+      // 重新在 escaped 字串中找（safe 因為 keyword 也被 escape）
+      const escKw=escapeHtml(keyword);
+      return esc.replace(new RegExp(escKw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'), m=>`<mark style="background:#fcd535;color:#000">${m}</mark>`);
     }
 
     async function stopContainer(containerId){
@@ -1175,9 +1288,11 @@ const app=createApp({
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
       autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
-      logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
-      logsTab,logHistory,logHistoryLoading,logHistoryLevel,logHistoryLimit,logHistorySpace,logHistoryNote,
-      fetchLogHistory,onLogsTabChange,
+      logsVisible,logsLoading,logsContainerId,logsContainerState,currentLogs,tailLines,viewLogs,fetchLogs,
+      logsTab,logSearch,logHighlightOnly,renderLiveLog,
+      logHistory,logHistoryLoading,logHistoryLevel,logHistoryLimit,logHistorySpace,logHistoryNote,
+      logHistorySummary,logHistoryCatalog,logHistoryCodeFilter,expandedLogs,
+      fetchLogHistory,onLogsTabChange,toggleCodeFilter,clearCodeFilter,toggleDetail,catalogChipStyle,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
       availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
       session:computed(()=>session)};
