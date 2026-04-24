@@ -510,14 +510,52 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 </el-dialog>
 
 <!-- ── Container Logs Dialog ── -->
-<el-dialog v-model="logsVisible" :title="t('logs') + ': ' + logsContainerId" width="820px" :close-on-click-modal="false">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-    <span style="font-size:13px;color:var(--td)">Tail:</span>
-    <el-input-number v-model="tailLines" :min="10" :max="500" :step="10" size="small" style="width:130px"/>
-    <el-button size="small" @click="fetchLogs" :loading="logsLoading">{{t('refresh')}}</el-button>
-  </div>
-  <el-skeleton v-show="logsLoading" :rows="6" animated/>
-  <pre v-show="!logsLoading" style="background:var(--s2);padding:12px;border-radius:6px;font-size:12px;line-height:1.6;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--t);margin:0">{{currentLogs||'(no output)'}}</pre>
+<el-dialog v-model="logsVisible" :title="t('logs') + ': ' + logsContainerId" width="880px" :close-on-click-modal="false">
+  <el-tabs v-model="logsTab" @tab-change="onLogsTabChange">
+    <!-- 即時 docker logs -->
+    <el-tab-pane :label="t('logsLive')" name="live">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;color:var(--td)">Tail:</span>
+        <el-input-number v-model="tailLines" :min="10" :max="500" :step="10" size="small" style="width:130px"/>
+        <el-button size="small" @click="fetchLogs" :loading="logsLoading">{{t('refresh')}}</el-button>
+      </div>
+      <el-skeleton v-show="logsLoading" :rows="6" animated/>
+      <pre v-show="!logsLoading" style="background:var(--s2);padding:12px;border-radius:6px;font-size:12px;line-height:1.6;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--t);margin:0">{{currentLogs||'(no output)'}}</pre>
+    </el-tab-pane>
+
+    <!-- 歷史錯誤（SQLite 持久化） -->
+    <el-tab-pane :label="t('logsHistory')" name="history">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--td)">{{t('filter')}}：</span>
+        <el-radio-group v-model="logHistoryLevel" size="small" @change="fetchLogHistory">
+          <el-radio-button value="">{{t('filterAll')}}</el-radio-button>
+          <el-radio-button value="ERROR">ERROR</el-radio-button>
+          <el-radio-button value="WARN">WARN</el-radio-button>
+        </el-radio-group>
+        <span style="font-size:12px;color:var(--td);margin-left:10px">Limit:</span>
+        <el-select v-model="logHistoryLimit" size="small" style="width:90px" @change="fetchLogHistory">
+          <el-option :value="50" label="50"/><el-option :value="200" label="200"/><el-option :value="500" label="500"/>
+        </el-select>
+        <el-button size="small" @click="fetchLogHistory" :loading="logHistoryLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
+      </div>
+      <div v-if="logHistorySpace" style="font-size:11px;color:var(--td);margin-bottom:8px">
+        DB: {{logHistorySpace.db_size_kb}} KB · {{logHistorySpace.entry_count}} {{t('entries')}} · {{t('retDays')}}: {{logHistorySpace.retention_days}}d
+      </div>
+      <div v-if="logHistoryNote" style="font-size:12px;color:#e6a23c;margin-bottom:8px">⚠ {{logHistoryNote}}</div>
+      <el-empty v-if="!logHistoryLoading&&logHistory.length===0" :description="t('noLogHistory')"/>
+      <div v-show="logHistory.length>0" style="max-height:460px;overflow:auto;background:var(--s2);border-radius:6px;padding:8px">
+        <div v-for="(e,i) in logHistory" :key="i" style="padding:6px 8px;margin-bottom:4px;background:var(--s);border-radius:4px;border-left:3px solid" :style="'border-left-color:'+(e.level==='ERROR'?'#f56c6c':'#e6a23c')">
+          <div style="display:flex;gap:10px;align-items:center;font-size:11px;margin-bottom:3px">
+            <el-tag :type="e.level==='ERROR'?'danger':'warning'" size="small">{{e.level}}</el-tag>
+            <span style="color:var(--td);font-family:monospace">{{fmtDate(e.ts)}}</span>
+            <span v-if="e.stderr" style="color:#e6a23c;font-size:10px">[stderr]</span>
+            <span style="color:var(--td);font-size:10px;margin-left:auto">{{e.worker_type}}</span>
+          </div>
+          <div style="font-family:monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all">{{e.message}}</div>
+        </div>
+      </div>
+    </el-tab-pane>
+  </el-tabs>
 </el-dialog>
 
 <!-- ── Spawn Worker Dialog ── -->
@@ -671,6 +709,7 @@ const I18N={
     confirmStopCt:'確定要停止容器 "{id}" 嗎？',
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
     selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
+    logsLive:'即時日誌',logsHistory:'歷史錯誤',noLogHistory:'此容器尚無錯誤紀錄（或採集服務未啟動）',entries:'筆紀錄',
     diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
     healthy:'系統健康',unhealthy:'發現問題',runtimeOk:'容器執行環境正常',runtimeDown:'容器執行環境異常',
     critical:'嚴重',error:'錯誤',warning:'警告',info:'資訊',
@@ -709,6 +748,7 @@ const I18N={
     confirmStopCt:'Stop container "{id}"?',
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
+    logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
     diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
     healthy:'System Healthy',unhealthy:'Issues Detected',runtimeOk:'Runtime OK',runtimeDown:'Runtime Down',
     critical:'Critical',error:'Error',warning:'Warning',info:'Info',
@@ -902,6 +942,13 @@ const app=createApp({
 
     const logsVisible=ref(false);const logsLoading=ref(false);
     const logsContainerId=ref('');const currentLogs=ref('');const tailLines=ref(50);
+    const logsTab=ref('live');
+    const logHistory=ref([]);
+    const logHistoryLoading=ref(false);
+    const logHistoryLevel=ref('');
+    const logHistoryLimit=ref(200);
+    const logHistorySpace=ref(null);
+    const logHistoryNote=ref('');
 
     const spawnVisible=ref(false);const spawning=ref(false);
     const spawnForm=reactive({workerType:'',workerId:''});
@@ -1019,7 +1066,10 @@ const app=createApp({
     }
 
     async function viewLogs(containerId){
-      logsContainerId.value=containerId;logsVisible.value=true;
+      logsContainerId.value=containerId;
+      logsTab.value='live';
+      logHistory.value=[];
+      logsVisible.value=true;
       await fetchLogs();
     }
     async function fetchLogs(){
@@ -1029,6 +1079,30 @@ const app=createApp({
         currentLogs.value=r.data?.logs||r.data?.data?.logs||'';
       }catch(e){currentLogs.value=`Error: ${e.message}`}
       logsLoading.value=false;
+    }
+    async function fetchLogHistory(){
+      logHistoryLoading.value=true;
+      logHistoryNote.value='';
+      try{
+        const params=new URLSearchParams();
+        params.set('container_id',logsContainerId.value);
+        if(logHistoryLevel.value) params.set('level',logHistoryLevel.value);
+        params.set('limit',String(logHistoryLimit.value));
+        const r=await getPlain('/api/v1/workers/log-history?'+params.toString());
+        if(r.success&&r.data){
+          logHistory.value=r.data.entries||[];
+          logHistorySpace.value=r.data.space||null;
+          logHistoryNote.value=r.data.note||'';
+        } else {
+          logHistory.value=[]; logHistoryNote.value=r.message||'';
+        }
+      }catch(e){
+        logHistory.value=[]; logHistoryNote.value=e.message;
+      }
+      logHistoryLoading.value=false;
+    }
+    function onLogsTabChange(tab){
+      if(tab==='history') fetchLogHistory();
     }
 
     async function stopContainer(containerId){
@@ -1102,6 +1176,8 @@ const app=createApp({
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
       autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
       logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
+      logsTab,logHistory,logHistoryLoading,logHistoryLevel,logHistoryLimit,logHistorySpace,logHistoryNote,
+      fetchLogHistory,onLogsTabChange,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
       availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
       session:computed(()=>session)};

@@ -6,6 +6,7 @@ using Broker.Endpoints;
 using Broker.Middleware;
 using Broker.Services;
 using FunctionPool.Container;
+using FunctionPool.ContainerLogs;
 using FunctionPool.Diagnostics;
 using FunctionPool.Dispatch;
 using FunctionPool.Health;
@@ -399,6 +400,23 @@ if (poolEnabled)
             sp.GetRequiredService<IDiagnosticsService>(),
             sp.GetRequiredService<ILogger<ScheduledDiagnosticsService>>(),
             diagDbPath2, diagIntervalMin2, diagRetDays2, diagArcDays2));
+
+    // 容器日誌採集服務（每 N 秒掃 running 容器，Error/Warn 寫入獨立 SQLite）
+    var logTailEnabled = builder.Configuration.GetValue("FunctionPool:ContainerLogTail:Enabled",
+                                                         containerEnabled);
+    if (logTailEnabled && containerEnabled)
+    {
+        var logTailPoll    = builder.Configuration.GetValue("FunctionPool:ContainerLogTail:PollSeconds", 10);
+        var logTailRetDays = builder.Configuration.GetValue("FunctionPool:ContainerLogTail:RetentionDays", 7);
+        var logTailDbPath  = builder.Configuration.GetValue<string>("FunctionPool:ContainerLogTail:DbPath")
+                             ?? Path.Combine(Path.GetDirectoryName(dbPath) ?? ".", "container-logs.db");
+        builder.Services.AddSingleton<ContainerLogTailService>(sp =>
+            new ContainerLogTailService(
+                sp.GetRequiredService<IContainerManager>(),
+                sp.GetRequiredService<ContainerConfig>(),
+                sp.GetRequiredService<ILogger<ContainerLogTailService>>(),
+                logTailDbPath, logTailPoll, logTailRetDays));
+    }
 
     startupLogger.LogInformation(
         "Function pool enabled: port={Port}, strictMode={Strict}",
@@ -910,6 +928,10 @@ if (poolEnabled)
     // ── 啟動排程診斷服務 ──
     var scheduledDiag = app.Services.GetRequiredService<ScheduledDiagnosticsService>();
     scheduledDiag.Start();
+
+    // ── 啟動容器日誌採集（若註冊） ──
+    var logTail = app.Services.GetService<ContainerLogTailService>();
+    logTail?.Start();
 
     // 優雅關閉
     // L-8 修復：Register 只接受 Action（非 Func<Task>），sync-over-async 在 shutdown hook 不可避免

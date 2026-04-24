@@ -1,5 +1,6 @@
 using Broker.Helpers;
 using FunctionPool.Container;
+using FunctionPool.ContainerLogs;
 using FunctionPool.Registry;
 
 namespace Broker.Endpoints;
@@ -184,6 +185,50 @@ public static class WorkerEndpoints
             {
                 container_id = containerId,
                 logs
+            }));
+        });
+
+        // ── GET /api/v1/workers/log-history — Query persisted error log entries (SQLite) ──
+        workers.MapGet("/log-history", (IServiceProvider sp, HttpContext ctx) =>
+        {
+            var tail = sp.GetService<ContainerLogTailService>();
+            if (tail == null)
+            {
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    entries = Array.Empty<object>(),
+                    space = (object?)null,
+                    note = "ContainerLogTailService disabled (FunctionPool:ContainerLogTail:Enabled=false)",
+                }));
+            }
+            var q = ctx.Request.Query;
+            var containerId = q["container_id"].ToString();
+            var level = q["level"].ToString();
+            var limit = int.TryParse(q["limit"].ToString(), out var l) ? Math.Min(Math.Max(l, 1), 1000) : 200;
+
+            var entries = tail.Query(
+                string.IsNullOrEmpty(containerId) ? null : containerId,
+                string.IsNullOrEmpty(level) ? null : level,
+                limit);
+            var space = tail.GetSpaceInfo();
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                entries = entries.Select(e => new
+                {
+                    container_id = e.ContainerId,
+                    worker_type = e.WorkerType,
+                    ts = e.Ts,
+                    level = e.Level,
+                    stderr = e.Stderr,
+                    message = e.Message,
+                }),
+                space = new
+                {
+                    db_size_kb = space.DbSizeBytes / 1024,
+                    entry_count = space.EntryCount,
+                    retention_days = space.RetentionDays,
+                },
             }));
         });
 
