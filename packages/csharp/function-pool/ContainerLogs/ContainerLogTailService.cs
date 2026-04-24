@@ -41,6 +41,13 @@ public class ContainerLogTailService : IAsyncDisposable
         @"\b(WARN|WARNING|deprecated)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // 誤報守門 — 常見的「成功但內文包含 ERROR/FAIL 字樣」pattern：
+    //   "0 errors" / "no errors" / "without errors" / "no failures"
+    //   "successfully" / "success: " 也一律視為成功
+    private static readonly Regex FalsePositivePattern = new(
+        @"\b(0\s+errors?|no\s+errors?|without\s+errors?|0\s+failures?|no\s+failures?)\b|\bsuccessfully\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     // docker logs --timestamps 的行前綴格式: "2026-04-24T13:42:01.123Z "
     private static readonly Regex TimestampPrefix = new(
         @"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s+(.*)$",
@@ -70,6 +77,34 @@ public class ContainerLogTailService : IAsyncDisposable
         _retentionDays = retentionDays;
 
         InitDb();
+        PruneFalsePositivesOnStartup();
+    }
+
+    /// <summary>
+    /// 啟動時清掉歷史上被誤抓的 "0 errors" / "successfully" 等成功訊息。
+    /// 這是 regex 改良後的回補，避免舊資料留著讓 UI 看起來都是假紅條。
+    /// </summary>
+    private void PruneFalsePositivesOnStartup()
+    {
+        try
+        {
+            using var conn = Open();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                DELETE FROM container_log_entries
+                WHERE message LIKE '%0 error%' COLLATE NOCASE
+                   OR message LIKE '%no error%' COLLATE NOCASE
+                   OR message LIKE '%0 failure%' COLLATE NOCASE
+                   OR message LIKE '%no failure%' COLLATE NOCASE
+                   OR message LIKE '%successfully%' COLLATE NOCASE";
+            var pruned = cmd.ExecuteNonQuery();
+            if (pruned > 0)
+                _logger.LogInformation("Container log pruned {N} false-positive rows on startup", pruned);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "False-positive prune failed (non-critical)");
+        }
     }
 
     public void Start()
@@ -158,6 +193,9 @@ public class ContainerLogTailService : IAsyncDisposable
                 else if (isStderr) level = "ERROR";  // stderr 一律視為錯誤
 
                 if (level == null) continue;
+
+                // 守門：誤報模式（0 errors / successfully 等）直接丟掉
+                if (FalsePositivePattern.IsMatch(content)) continue;
                 if (!DateTime.TryParse(tsText, null, System.Globalization.DateTimeStyles.RoundtripKind, out var ts))
                     ts = DateTime.UtcNow;
 
