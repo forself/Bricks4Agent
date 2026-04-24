@@ -21,6 +21,9 @@ public interface IContainerManager
     /// <summary>Stop and remove a managed container</summary>
     Task StopWorkerAsync(string containerId, CancellationToken ct = default);
 
+    /// <summary>Start an existing (stopped/failed) container by ID. Does not re-spawn.</summary>
+    Task StartWorkerAsync(string containerId, CancellationToken ct = default);
+
     /// <summary>List all managed containers</summary>
     Task<List<ManagedContainer>> ListManagedAsync(CancellationToken ct = default);
 

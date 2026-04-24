@@ -157,6 +157,34 @@ public class ContainerManager : IContainerManager
             _logger.LogInformation("Worker container removed: {ContainerId}", containerId);
     }
 
+    public async Task StartWorkerAsync(string containerId, CancellationToken ct = default)
+    {
+        // 自動同步：讓非 broker 生成、目前停止的容器也能透過 UI 啟動
+        await SyncFromDockerAsync(ct);
+
+        if (_containers.TryGetValue(containerId, out var managed))
+            managed.State = ContainerState.Starting;
+
+        _logger.LogInformation("Starting existing container: {ContainerId}", containerId);
+
+        var (exitCode, _, stderr) = await RunCommandAsync(
+            _config.Runtime, $"start {containerId}", TimeSpan.FromSeconds(30), ct);
+
+        if (exitCode == 0)
+        {
+            if (_containers.TryGetValue(containerId, out var m))
+                m.State = ContainerState.Running;
+            _logger.LogInformation("Container started: {ContainerId}", containerId);
+        }
+        else
+        {
+            if (_containers.TryGetValue(containerId, out var m))
+                m.State = ContainerState.Failed;
+            _logger.LogError("Container start failed: {ContainerId} — {Stderr}", containerId, stderr);
+            throw new InvalidOperationException($"Failed to start {containerId}: {stderr}");
+        }
+    }
+
     public async Task<List<ManagedContainer>> ListManagedAsync(CancellationToken ct = default)
     {
         // 自動同步：從 Docker 掃描所有 b4a-* 容器，合併到記憶體追蹤

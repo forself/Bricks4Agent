@@ -72,6 +72,22 @@ services:
       FunctionPool__ContainerManager__NetworkName: "b4a-trading_trading-net"
       FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
       FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
+
+      # Spawn-enabled worker images — ContainerManager can start these
+      # on demand via POST /api/v1/workers/spawn (dashboard Spawn button).
+      # The dashboard's /available-types endpoint reads this list.
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__Image: "b4a-quote-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__MemoryLimit: "512m"
+      FunctionPool__ContainerManager__WorkerImages__quote-worker__CpuLimit: "0.5"
+      FunctionPool__ContainerManager__WorkerImages__trading-worker__Image: "b4a-trading-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__trading-worker__MemoryLimit: "512m"
+      FunctionPool__ContainerManager__WorkerImages__trading-worker__CpuLimit: "0.5"
+      FunctionPool__ContainerManager__WorkerImages__risk-worker__Image: "b4a-risk-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__risk-worker__MemoryLimit: "512m"
+      FunctionPool__ContainerManager__WorkerImages__risk-worker__CpuLimit: "0.5"
+      FunctionPool__ContainerManager__WorkerImages__strategy-worker__Image: "b4a-strategy-worker:latest"
+      FunctionPool__ContainerManager__WorkerImages__strategy-worker__MemoryLimit: "1g"
+      FunctionPool__ContainerManager__WorkerImages__strategy-worker__CpuLimit: "1.0"
     ports:
       - "5100:5000"
     volumes:

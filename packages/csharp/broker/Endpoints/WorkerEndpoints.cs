@@ -33,6 +33,40 @@ public static class WorkerEndpoints
             })));
         });
 
+        // ── GET /api/v1/workers/available-types — List worker types configured for spawn ──
+        workers.MapGet("/available-types", (IServiceProvider sp) =>
+        {
+            var containerConfig = sp.GetService<ContainerConfig>();
+            if (containerConfig == null)
+            {
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    runtime = (string?)null,
+                    network = (string?)null,
+                    max_per_type = 0,
+                    types = Array.Empty<object>(),
+                    note = "ContainerManager disabled (FunctionPool:ContainerManager:Enabled=false)",
+                }));
+            }
+            var types = containerConfig.WorkerImages
+                .Select(kv => new
+                {
+                    worker_type = kv.Key,
+                    image = kv.Value.Image,
+                    memory_limit = kv.Value.MemoryLimit,
+                    cpu_limit = kv.Value.CpuLimit,
+                })
+                .OrderBy(x => x.worker_type)
+                .ToList();
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                runtime = containerConfig.Runtime,
+                network = containerConfig.NetworkName,
+                max_per_type = containerConfig.MaxContainersPerType,
+                types,
+            }));
+        });
+
         // ── POST /api/v1/workers/spawn — Spawn a new worker container ──
         workers.MapPost("/spawn", async (
             HttpContext ctx,
@@ -88,6 +122,30 @@ public static class WorkerEndpoints
                 {
                     container_id = containerId,
                     status = "stopped"
+                }));
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        // ── POST /api/v1/workers/start — Start an existing (stopped/failed) container ──
+        workers.MapPost("/start", async (
+            HttpContext ctx,
+            IContainerManager containerMgr,
+            CancellationToken ct) =>
+        {
+            var body = RequestBodyHelper.GetBody(ctx);
+            var containerId = body.GetProperty("container_id").GetString()!;
+
+            try
+            {
+                await containerMgr.StartWorkerAsync(containerId, ct);
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    container_id = containerId,
+                    status = "running"
                 }));
             }
             catch (Exception ex)

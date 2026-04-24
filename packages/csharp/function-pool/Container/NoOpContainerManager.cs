@@ -20,6 +20,11 @@ public class NoOpContainerManager : IContainerManager
         throw new InvalidOperationException("Container management is not enabled.");
     }
 
+    public Task StartWorkerAsync(string containerId, CancellationToken ct = default)
+    {
+        throw new InvalidOperationException("Container management is not enabled.");
+    }
+
     public Task<List<ManagedContainer>> ListManagedAsync(CancellationToken ct = default)
         => Task.FromResult(new List<ManagedContainer>());
 

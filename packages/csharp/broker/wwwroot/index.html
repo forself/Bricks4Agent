@@ -150,250 +150,43 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
   </div>
   <div style="max-width:1400px;margin:0 auto;padding:20px">
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
-      <!-- ── Overview ── -->
-      <el-tab-pane :label="t('overview')" name="overview">
-        <div class="stat-g">
-          <div class="stat-c"><el-statistic :title="t('totalAgents')" :value="agents.length" /></div>
-          <div class="stat-c"><el-statistic :title="t('activeAgents')" :value="activeAgentCount" /></div>
-          <div class="stat-c"><el-statistic :title="t('capabilities')" :value="caps.length" /></div>
-          <div class="stat-c"><el-statistic :title="t('sessionSeq')" :value="session?.seq||0" /></div>
-        </div>
-        <el-card>
-          <template #header>
-            <div style="display:flex;align-items:center">
-              <span style="font-weight:600">{{t('agents')}}</span>
-              <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
-            </div>
-          </template>
-          <el-table :data="agents" stripe :empty-text="t('noAgents')">
-            <el-table-column prop="agentId" label="Agent ID" min-width="180"><template #default="{row}"><code>{{row.agentId}}</code></template></el-table-column>
-            <el-table-column prop="state" :label="t('state')" width="100">
-              <template #default="{row}"><el-tag :type="row.state==='Active'?'success':'info'" size="small">{{row.state}}</el-tag></template>
-            </el-table-column>
-            <el-table-column prop="roleId" :label="t('role')" width="130"/>
-            <el-table-column prop="taskType" :label="t('taskType')" width="130">
-              <template #default="{row}">{{formatTaskType(row.taskType)}}</template>
-            </el-table-column>
-            <el-table-column :label="t('capabilities')" min-width="220">
-              <template #default="{row}">
-                <el-tag v-for="c in capSlice(row.capabilities)" :key="c" size="small" style="margin:2px" type="info">{{c}}</el-tag>
-                <el-tag v-if="capExtra(row.capabilities)" size="small" style="margin:2px">+{{capExtra(row.capabilities)}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="170">
-              <template #default="{row}">{{fmtDate(row.createdAt)}}</template>
-            </el-table-column>
-            <el-table-column width="100" align="right">
-              <template #default="{row}">
-                <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-
-      <!-- ── Agents ── -->
-      <el-tab-pane :label="t('agents')" name="agents">
-        <el-card>
-          <template #header>
-            <div style="display:flex;align-items:center">
-              <span style="font-weight:600">{{t('allAgents')}}</span>
-              <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
-            </div>
-          </template>
-          <el-table :data="agents" stripe :empty-text="t('noAgents')">
-            <el-table-column prop="agentId" label="Agent ID" min-width="160"><template #default="{row}"><code>{{row.agentId}}</code></template></el-table-column>
-            <el-table-column prop="principalId" label="Principal" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.principalId}}</code></template></el-table-column>
-            <el-table-column prop="taskId" label="Task" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.taskId}}</code></template></el-table-column>
-            <el-table-column prop="state" :label="t('state')" width="100">
-              <template #default="{row}"><el-tag :type="row.state==='Active'?'success':'info'" size="small">{{row.state}}</el-tag></template>
-            </el-table-column>
-            <el-table-column prop="roleId" :label="t('role')" width="120"/>
-            <el-table-column prop="taskType" :label="t('taskType')" width="120">
-              <template #default="{row}">{{formatTaskType(row.taskType)}}</template>
-            </el-table-column>
-            <el-table-column :label="t('capabilities')" width="80" align="center">
-              <template #default="{row}"><el-tag round size="small">{{row.capabilityCount}}</el-tag></template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="170"><template #default="{row}">{{fmtDate(row.createdAt)}}</template></el-table-column>
-            <el-table-column width="80" align="right">
-              <template #default="{row}">
-                <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-
-      <!-- ── Capabilities ── -->
-      <el-tab-pane :label="t('capabilities')" name="caps">
-        <el-card>
-          <template #header>
-            <div style="display:flex;align-items:center">
-              <span style="font-weight:600">{{t('capList')}}</span>
-              <el-tag round size="small" style="margin-left:8px">{{caps.length}}</el-tag>
-            </div>
-          </template>
-          <el-table :data="caps" stripe :empty-text="t('noData')">
-            <el-table-column prop="capabilityId" label="ID" min-width="180"><template #default="{row}"><code>{{row.capabilityId}}</code></template></el-table-column>
-            <el-table-column prop="route" :label="t('route')" min-width="160"><template #default="{row}"><code>{{row.route}}</code></template></el-table-column>
-            <el-table-column :label="t('category')" width="130">
-              <template #default="{row}">{{localized(row.category)}}</template>
-            </el-table-column>
-            <el-table-column :label="t('riskLevel')" width="110">
-              <template #default="{row}">
-                <el-tag :type="riskType(row.riskLevel)" size="small">{{row.riskLevel}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="approvalPolicy" :label="t('policy')" width="120"/>
-            <el-table-column :label="t('description')" min-width="250">
-              <template #default="{row}"><span style="color:var(--td)">{{localized(row.description)}}</span></template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-      <!-- ── Diagnostics ── -->
-      <el-tab-pane :label="t('diagnostics')" name="diagnostics">
-        <!-- Controls -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <el-button type="primary" size="small" @click="runScan" :loading="scanning">
-            {{scanning?t('scanning'):t('scanNow')}}
-          </el-button>
-          <el-switch v-model="autoScan" @change="onAutoScanChange" size="small"/>
-          <span style="font-size:13px;color:var(--td)">{{t('autoScan')}}</span>
-          <el-select v-model="scanInterval" size="small" style="width:80px" :disabled="!autoScan">
-            <el-option :value="10000" label="10s"/><el-option :value="30000" label="30s"/><el-option :value="60000" label="60s"/>
-          </el-select>
-          <span v-if="diagReport" style="font-size:12px;color:var(--td);margin-left:auto">
-            {{t('lastScan')}}: {{fmtDate(diagReport.scanned_at)}}
-          </span>
-        </div>
-        <!-- Health banner -->
-        <div v-if="diagReport" style="margin-bottom:16px">
-          <el-alert
-            :title="diagReport.healthy ? t('healthy') : t('unhealthy')"
-            :type="diagAlertType(diagReport)"
-            :description="diagReport.runtime_available ? t('runtimeOk') : t('runtimeDown')"
-            show-icon :closable="false"/>
-        </div>
-        <!-- Summary stats -->
-        <div v-if="diagReport" class="stat-g" style="margin-bottom:16px">
-          <div class="stat-c">
-            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('critical')}}</div>
-            <div :style="diagNumStyle(diagReport.critical_count)">{{diagReport.critical_count}}</div>
-          </div>
-          <div class="stat-c">
-            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('error')}}</div>
-            <div :style="diagNumStyle(diagReport.error_count)">{{diagReport.error_count}}</div>
-          </div>
-          <div class="stat-c">
-            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('warning')}}</div>
-            <div :style="diagNumStyle(diagReport.warning_count, true)">{{diagReport.warning_count}}</div>
-          </div>
-          <div class="stat-c"><el-statistic :title="t('runningContainers')" :value="diagReport.running_containers"/></div>
-          <div class="stat-c"><el-statistic :title="t('readyWorkers')" :value="diagReport.ready_workers"/></div>
-        </div>
-        <!-- Issue table -->
-        <el-card>
-          <el-skeleton v-if="scanning&&!diagReport" :rows="5" animated/>
-          <el-empty v-if="diagReport&&diagReport.issues.length===0" :description="t('noIssues')"/>
-          <el-table v-if="diagReport&&diagReport.issues.length>0" :data="diagReport.issues" stripe>
-            <el-table-column :label="t('state')" width="100">
-              <template #default="{row}">
-                <el-tag :type="sevType(row.severity)" size="small">{{t(row.severity)||row.severity}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="category" :label="t('category')" width="120"/>
-            <el-table-column prop="entity_id" :label="t('entity')" width="140">
-              <template #default="{row}"><code style="font-size:11px">{{row.entity_id}}</code></template>
-            </el-table-column>
-            <el-table-column prop="message" :label="t('description')" min-width="300">
-              <template #default="{row}"><span style="font-size:12px;line-height:1.5">{{row.message}}</span></template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="160">
-              <template #default="{row}">{{fmtDate(row.detected_at)}}</template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-if="!scanning&&!diagReport" :description="t('scanNow')"/>
-        </el-card>
-
-        <!-- 排程診斷歷史 -->
-        <el-card style="margin-top:16px">
-          <template #header>
-            <div style="display:flex;align-items:center">
-              <span style="font-weight:600">{{t('schedHistory')}}</span>
-              <span v-if="diagSpace" style="font-size:11px;color:var(--td);margin-left:auto">
-                {{t('activeDb')}}: {{diagSpace.active_db_size_kb}}KB ({{diagSpace.active_run_count}}) |
-                {{t('archiveDb')}}: {{diagSpace.archive_db_size_kb}}KB ({{diagSpace.archive_run_count}}) |
-                {{t('retDays')}}: {{diagSpace.retention_days}}d / {{diagSpace.archive_retention_days}}d
-              </span>
-            </div>
-          </template>
-          <div v-show="schedRuns.length===0"><el-empty :description="t('noHistory')"/></div>
-          <div v-show="schedRuns.length>0"><el-table :data="schedRuns" stripe>
-            <el-table-column prop="run_id" label="Run ID" width="180">
-              <template #default="{row}"><code style="font-size:11px">{{row.run_id}}</code></template>
-            </el-table-column>
-            <el-table-column :label="t('state')" width="80">
-              <template #default="{row}">
-                <el-tag :type="row.healthy?'success':'danger'" size="small">{{row.healthy?'OK':'FAIL'}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="160">
-              <template #default="{row}">{{fmtDate(row.scanned_at)}}</template>
-            </el-table-column>
-            <el-table-column :label="t('runningContainers')" width="80" align="center" prop="running_containers"/>
-            <el-table-column :label="t('readyWorkers')" width="80" align="center" prop="ready_workers"/>
-            <el-table-column :label="t('critical')" width="60" align="center">
-              <template #default="{row}">
-                <span v-show="row.critical_count>0" style="color:#f56c6c;font-weight:600">{{row.critical_count}}</span>
-                <span v-show="row.critical_count===0">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('error')" width="60" align="center">
-              <template #default="{row}">
-                <span v-show="row.error_count>0" style="color:#f56c6c;font-weight:600">{{row.error_count}}</span>
-                <span v-show="row.error_count===0">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('warning')" width="60" align="center">
-              <template #default="{row}">
-                <span v-show="row.warning_count>0" style="color:#e6a23c">{{row.warning_count}}</span>
-                <span v-show="row.warning_count===0">0</span>
-              </template>
-            </el-table-column>
-          </el-table></div>
-        </el-card>
-      </el-tab-pane>
-
-      <!-- ── Containers（容器資源分析儀表板） ── -->
+      <!-- ── Containers（卡片式重設計） ── -->
       <el-tab-pane :label="t('containers')" name="containers">
-        <!-- KPI 快覽條：狀態 + 資源聚合 -->
+        <!-- 平台狀態（原 Overview 的四個統計，整合到這裡） -->
+        <div class="ct-summary" style="margin-bottom:10px">
+          <div class="ct-kpi" style="border-left-color:#909399">
+            <div class="lbl">{{t('totalAgents')}}</div>
+            <div class="val">{{agents.length}}</div>
+            <div class="sub">{{t('activeAgents')}}: {{activeAgentCount}}</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#909399">
+            <div class="lbl">{{t('capabilities')}}</div>
+            <div class="val">{{caps.length}}</div>
+            <div class="sub">{{t('capList')}}</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#909399">
+            <div class="lbl">{{t('sessionSeq')}}</div>
+            <div class="val">{{session?.seq||0}}</div>
+            <div class="sub">{{t('encrypted')}}</div>
+          </div>
+        </div>
+
+        <!-- 容器狀態 KPI 快覽條 -->
         <div class="ct-summary">
           <div class="ct-kpi total">
             <div class="lbl">{{t('totalContainers')}}</div>
             <div class="val">{{containers.length}}</div>
-            <div class="sub">{{runningCount}} {{t('running')}} · {{issueCount}} {{t('issue')}}</div>
+            <div class="sub">{{t('allContainers')}}</div>
           </div>
-          <div class="ct-kpi" :class="resourceAgg.totalCpu>200?'bad':(resourceAgg.totalCpu>100?'warn':'running')">
-            <div class="lbl">{{t('aggCpu')}}</div>
-            <div class="val" :style="resourceAgg.totalCpu>200?'color:#f56c6c':(resourceAgg.totalCpu>100?'color:#e6a23c':'color:#67c23a')">{{resourceAgg.totalCpu.toFixed(1)}}%</div>
-            <div class="sub">{{t('avgPerCt')}} {{resourceAgg.avgCpu.toFixed(1)}}%（{{resourceAgg.count}} {{t('withStats')}}）</div>
+          <div class="ct-kpi running">
+            <div class="lbl">{{t('runningContainers')}}</div>
+            <div class="val" style="color:#67c23a">{{runningCount}}</div>
+            <div class="sub">{{t('healthyStatus')}}</div>
           </div>
-          <div class="ct-kpi" :class="resourceAgg.totalMemPct>75?'bad':(resourceAgg.totalMemPct>50?'warn':'running')">
-            <div class="lbl">{{t('aggMem')}}</div>
-            <div class="val">{{fmtBytes(resourceAgg.totalMemUsed)}}</div>
-            <div class="sub">/ {{fmtBytes(resourceAgg.totalMemLimit)}}（{{resourceAgg.totalMemPct.toFixed(1)}}%）</div>
-          </div>
-          <div class="ct-kpi warn" v-if="resourceAgg.topCpu">
-            <div class="lbl">{{t('topCpu')}}</div>
-            <div class="val" style="font-size:18px;color:#e6a23c">{{resourceAgg.topCpu.stats.cpu_percent.toFixed(1)}}%</div>
-            <div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{resourceAgg.topCpu.worker_type}}</div>
-          </div>
-          <div class="ct-kpi warn" v-if="resourceAgg.topMem">
-            <div class="lbl">{{t('topMem')}}</div>
-            <div class="val" style="font-size:18px;color:#e6a23c">{{fmtBytes(resourceAgg.topMem.stats.memory_usage_bytes)}}</div>
-            <div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{resourceAgg.topMem.worker_type}} ({{resourceAgg.topMem.stats.memory_percent.toFixed(1)}}%)</div>
+          <div class="ct-kpi" :class="issueCount>0?'bad':'warn'">
+            <div class="lbl">{{t('issueContainers')}}</div>
+            <div class="val" :style="issueCount>0?'color:#f56c6c':'color:var(--t)'">{{issueCount}}</div>
+            <div class="sub">{{t('issueHint')}}</div>
           </div>
         </div>
 
@@ -477,9 +270,199 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             <div class="actions">
               <el-button size="small" @click="viewLogs(c.container_id)">📜 {{t('logs')}}</el-button>
               <el-button v-if="canStop(c.state)" type="danger" size="small" plain @click="stopContainer(c.container_id)">⏹ {{t('stop')}}</el-button>
+              <el-button v-if="canStart(c.state)" type="success" size="small" plain @click="startContainer(c.container_id)">▶ {{t('start')}}</el-button>
             </div>
           </div>
         </div>
+      </el-tab-pane>
+
+      <!-- ── Agents ── -->
+      <el-tab-pane :label="t('agents')" name="agents">
+        <el-card>
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('allAgents')}}</span>
+              <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="agents" stripe :empty-text="t('noAgents')">
+            <el-table-column prop="agentId" label="Agent ID" min-width="160"><template #default="{row}"><code>{{row.agentId}}</code></template></el-table-column>
+            <el-table-column prop="principalId" label="Principal" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.principalId}}</code></template></el-table-column>
+            <el-table-column prop="taskId" label="Task" min-width="140"><template #default="{row}"><code style="font-size:11px">{{row.taskId}}</code></template></el-table-column>
+            <el-table-column prop="state" :label="t('state')" width="100">
+              <template #default="{row}"><el-tag :type="row.state==='Active'?'success':'info'" size="small">{{row.state}}</el-tag></template>
+            </el-table-column>
+            <el-table-column prop="roleId" :label="t('role')" width="120"/>
+            <el-table-column prop="taskType" :label="t('taskType')" width="120">
+              <template #default="{row}">{{formatTaskType(row.taskType)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('capabilities')" width="80" align="center">
+              <template #default="{row}"><el-tag round size="small">{{row.capabilityCount}}</el-tag></template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="170"><template #default="{row}">{{fmtDate(row.createdAt)}}</template></el-table-column>
+            <el-table-column width="80" align="right">
+              <template #default="{row}">
+                <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── Capabilities ── -->
+      <el-tab-pane :label="t('capabilities')" name="caps">
+        <el-card>
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('capList')}}</span>
+              <el-tag round size="small" style="margin-left:8px">{{caps.length}}</el-tag>
+            </div>
+          </template>
+          <el-table :data="caps" stripe :empty-text="t('noData')">
+            <el-table-column prop="capabilityId" label="ID" min-width="180"><template #default="{row}"><code>{{row.capabilityId}}</code></template></el-table-column>
+            <el-table-column prop="route" :label="t('route')" min-width="160"><template #default="{row}"><code>{{row.route}}</code></template></el-table-column>
+            <el-table-column :label="t('category')" width="130">
+              <template #default="{row}">{{localized(row.category)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('riskLevel')" width="110">
+              <template #default="{row}">
+                <el-tag :type="riskType(row.riskLevel)" size="small">{{row.riskLevel}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="approvalPolicy" :label="t('policy')" width="120"/>
+            <el-table-column :label="t('description')" min-width="250">
+              <template #default="{row}"><span style="color:var(--td)">{{localized(row.description)}}</span></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+      <!-- ── Diagnostics ── -->
+      <el-tab-pane :label="t('diagnostics')" name="diagnostics">
+        <!-- Controls -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <el-button type="primary" size="small" @click="runScan" :loading="scanning">
+            {{scanning?t('scanning'):t('scanNow')}}
+          </el-button>
+          <el-switch v-model="autoScan" @change="onAutoScanChange" size="small"/>
+          <span style="font-size:13px;color:var(--td)">{{t('autoScan')}}</span>
+          <el-select v-model="scanInterval" size="small" style="width:80px" :disabled="!autoScan">
+            <el-option :value="10000" label="10s"/><el-option :value="30000" label="30s"/><el-option :value="60000" label="60s"/>
+          </el-select>
+          <span v-if="diagReport" style="font-size:12px;color:var(--td);margin-left:auto">
+            {{t('lastScan')}}: {{fmtDate(diagReport.scanned_at)}}
+          </span>
+        </div>
+        <!-- Health banner -->
+        <div v-if="diagReport" style="margin-bottom:16px">
+          <el-alert
+            :title="diagReport.healthy ? t('healthy') : t('unhealthy')"
+            :type="diagAlertType(diagReport)"
+            :description="diagSummaryText(diagReport)"
+            show-icon :closable="false"/>
+        </div>
+        <!-- Summary stats -->
+        <div v-if="diagReport" class="stat-g" style="margin-bottom:16px">
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('critical')}}</div>
+            <div :style="diagNumStyle(diagReport.critical_count)">{{diagReport.critical_count}}</div>
+          </div>
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('error')}}</div>
+            <div :style="diagNumStyle(diagReport.error_count)">{{diagReport.error_count}}</div>
+          </div>
+          <div class="stat-c">
+            <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('warning')}}</div>
+            <div :style="diagNumStyle(diagReport.warning_count, true)">{{diagReport.warning_count}}</div>
+          </div>
+          <div class="stat-c"><el-statistic :title="t('runningContainers')" :value="diagReport.running_containers"/></div>
+          <div class="stat-c"><el-statistic :title="t('readyWorkers')" :value="diagReport.ready_workers"/></div>
+        </div>
+        <!-- Issue table -->
+        <el-card>
+          <el-skeleton v-if="scanning&&!diagReport" :rows="5" animated/>
+          <el-empty v-if="diagReport&&diagReport.issues.length===0" :description="t('noIssues')"/>
+          <el-table v-if="diagReport&&diagReport.issues.length>0" :data="diagReport.issues" stripe>
+            <el-table-column :label="t('state')" width="100">
+              <template #default="{row}">
+                <el-tag :type="sevType(row.severity)" size="small">{{t(row.severity)||row.severity}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="category" :label="t('category')" width="120"/>
+            <el-table-column prop="entity_id" :label="t('entity')" width="140">
+              <template #default="{row}"><code style="font-size:11px">{{row.entity_id}}</code></template>
+            </el-table-column>
+            <el-table-column prop="message" :label="t('description')" min-width="300">
+              <template #default="{row}"><span style="font-size:12px;line-height:1.5">{{row.message}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="160">
+              <template #default="{row}">{{fmtDate(row.detected_at)}}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!scanning&&!diagReport" :description="t('scanNow')"/>
+        </el-card>
+
+        <!-- 排程診斷歷史 -->
+        <el-card style="margin-top:16px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('schedHistory')}}</span>
+              <span v-if="diagSpace" style="font-size:11px;color:var(--td);margin-left:auto">
+                {{t('activeDb')}}: {{diagSpace.active_db_size_kb}}KB ({{diagSpace.active_run_count}}) |
+                {{t('archiveDb')}}: {{diagSpace.archive_db_size_kb}}KB ({{diagSpace.archive_run_count}}) |
+                {{t('retDays')}}: {{diagSpace.retention_days}}d / {{diagSpace.archive_retention_days}}d
+              </span>
+            </div>
+          </template>
+          <div v-show="schedRuns.length===0"><el-empty :description="t('noHistory')"/></div>
+          <div v-show="schedRuns.length>0"><el-table :data="schedRuns" stripe>
+            <el-table-column prop="runId" label="Run ID" width="200">
+              <template #default="{row}"><code style="font-size:11px">{{row.runId}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('state')" width="80">
+              <template #default="{row}">
+                <el-tag :type="row.healthy?'success':'danger'" size="small">{{row.healthy?'OK':'FAIL'}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('created')" width="170">
+              <template #default="{row}">{{fmtDate(row.scannedAt)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('reason')" min-width="260">
+              <template #default="{row}">
+                <span v-if="row.healthy" style="color:#67c23a">✓ {{t('healthy')}}</span>
+                <span v-else style="font-size:12px">
+                  <span v-if="!row.runtimeAvailable" style="color:#f56c6c;font-weight:600">⚠ {{t('runtimeDown')}}</span>
+                  <span v-else>
+                    <span v-if="row.criticalCount>0" style="color:#f56c6c;font-weight:600">{{row.criticalCount}} {{t('critical')}}</span>
+                    <span v-if="row.criticalCount>0&&row.errorCount>0"> · </span>
+                    <span v-if="row.errorCount>0" style="color:#f56c6c">{{row.errorCount}} {{t('error')}}</span>
+                    <span v-if="(row.criticalCount>0||row.errorCount>0)&&row.warningCount>0"> · </span>
+                    <span v-if="row.warningCount>0" style="color:#e6a23c">{{row.warningCount}} {{t('warning')}}</span>
+                  </span>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('runningContainers')" width="110" align="center" prop="runningContainers"/>
+            <el-table-column :label="t('readyWorkers')" width="130" align="center" prop="readyWorkers"/>
+            <el-table-column :label="t('critical')" width="70" align="center">
+              <template #default="{row}">
+                <span v-show="row.criticalCount>0" style="color:#f56c6c;font-weight:600">{{row.criticalCount}}</span>
+                <span v-show="row.criticalCount===0">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('error')" width="70" align="center">
+              <template #default="{row}">
+                <span v-show="row.errorCount>0" style="color:#f56c6c;font-weight:600">{{row.errorCount}}</span>
+                <span v-show="row.errorCount===0">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('warning')" width="70" align="center">
+              <template #default="{row}">
+                <span v-show="row.warningCount>0" style="color:#e6a23c">{{row.warningCount}}</span>
+                <span v-show="row.warningCount===0">0</span>
+              </template>
+            </el-table-column>
+          </el-table></div>
+        </el-card>
       </el-tab-pane>
 
     </el-tabs>
@@ -538,13 +521,43 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 </el-dialog>
 
 <!-- ── Spawn Worker Dialog ── -->
-<el-dialog v-model="spawnVisible" :title="t('spawnWorker')" width="480px" :close-on-click-modal="false">
+<el-dialog v-model="spawnVisible" :title="t('spawnWorker')" width="540px" :close-on-click-modal="false">
   <el-form label-position="top">
     <el-form-item :label="t('workerTypeLabel')">
-      <el-input v-model="spawnForm.workerType" placeholder="e.g. line-worker" />
+      <el-select
+        v-if="availableTypes.length>0"
+        v-model="spawnForm.workerType"
+        style="width:100%"
+        :placeholder="t('selectType')"
+        :disabled="availableTypesLoading"
+      >
+        <el-option
+          v-for="t in availableTypes"
+          :key="t.worker_type"
+          :value="t.worker_type"
+          :label="t.worker_type + ' (' + t.image + ')'"
+        />
+      </el-select>
+      <div v-else-if="availableTypesLoading" style="color:var(--td);font-size:12px">{{t('loading')}}...</div>
+      <div v-else style="color:var(--td);font-size:12px">
+        {{availableTypesNote || t('noWorkerImages')}}<br>
+        <el-input v-model="spawnForm.workerType" placeholder="e.g. quote-worker" style="margin-top:6px"/>
+      </div>
+    </el-form-item>
+    <el-form-item v-if="selectedWorkerImage" style="margin-top:-8px">
+      <div style="font-size:11px;color:var(--td);line-height:1.6">
+        <div>Image: <code>{{selectedWorkerImage.image}}</code></div>
+        <div v-if="selectedWorkerImage.memory_limit">Memory limit: {{selectedWorkerImage.memory_limit}}</div>
+        <div v-if="selectedWorkerImage.cpu_limit">CPU limit: {{selectedWorkerImage.cpu_limit}}</div>
+      </div>
     </el-form-item>
     <el-form-item :label="t('workerIdOpt')">
       <el-input v-model="spawnForm.workerId" placeholder="(auto-generated if blank)" />
+    </el-form-item>
+    <el-form-item v-if="spawnRuntimeNote" style="margin-top:-8px">
+      <div style="font-size:11px;color:var(--td)">
+        Runtime: <code>{{spawnRuntimeNote.runtime}}</code> · Network: <code>{{spawnRuntimeNote.network}}</code> · Max/type: {{spawnRuntimeNote.max_per_type}}
+      </div>
     </el-form-item>
   </el-form>
   <template #footer>
@@ -641,7 +654,7 @@ const I18N={
   zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
     overview:'總覽',agents:'代理',capabilities:'能力',capList:'能力清單',allAgents:'所有代理',
     totalAgents:'代理總數',activeAgents:'活躍中',sessionSeq:'Session 序號',
-    state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',
+    state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',start:'啟動',
     createAgent:'建立代理',displayName:'顯示名稱',namePH:'例：檔案分析代理',
     selectCaps:'選擇能力',selDefaults:'預設（低權限）',selAll:'全選',selNone:'清除',
     cancel:'取消',create:'建立',noAgents:'尚無代理',noData:'無資料',
@@ -653,18 +666,17 @@ const I18N={
     cpu:'CPU',memory:'記憶體',memPercent:'記憶體%',network:'網路 I/O',
     autoRefresh:'自動刷新',noContainers:'尚無容器',noStats:'無即時統計',
     allContainers:'目前所有容器',healthyStatus:'執行中運作正常',issueContainers:'異常',issueHint:'停止 / 失敗需關注',
-    issue:'異常',aggCpu:'CPU 總使用',aggMem:'記憶體總用',avgPerCt:'平均',withStats:'台有統計',
-    topCpu:'最耗 CPU',topMem:'最耗記憶體',
     filter:'篩選',filterAll:'全部',filterRunning:'執行中',filterIssues:'異常',
     sort:'排序',sortDefault:'預設',sortCpu:'CPU 高→低',sortMem:'記憶體 高→低',sortName:'類型 A→Z',
     confirmStopCt:'確定要停止容器 "{id}" 嗎？',
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
+    selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
     diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
     healthy:'系統健康',unhealthy:'發現問題',runtimeOk:'容器執行環境正常',runtimeDown:'容器執行環境異常',
     critical:'嚴重',error:'錯誤',warning:'警告',info:'資訊',
     category:'類別',entity:'實體',noIssues:'未偵測到問題',lastScan:'上次掃描',
     autoScan:'自動掃描',scanInterval:'掃描間隔',readyWorkers:'就緒 Workers',
-    schedHistory:'排程診斷歷史',noHistory:'尚無排程紀錄',
+    schedHistory:'排程診斷歷史',noHistory:'尚無排程紀錄',reason:'原因 / 明細',
     dbSpace:'資料庫空間',activeDb:'即時 DB',archiveDb:'歷史 DB',
     retDays:'保留天數',runCount:'紀錄數',
     quotes:'金融報價',fetchNow:'立即抓取',fetching:'抓取中...',
@@ -680,7 +692,7 @@ const I18N={
   en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
     totalAgents:'Total Agents',activeAgents:'Active',sessionSeq:'Session Seq',
-    state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',
+    state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',start:'Start',
     createAgent:'Create Agent',displayName:'Display Name',namePH:'e.g., File Analysis Agent',
     selectCaps:'Select Capabilities',selDefaults:'Defaults (Low Risk)',selAll:'Select All',selNone:'Clear',
     cancel:'Cancel',create:'Create',noAgents:'No agents',noData:'No data',
@@ -692,18 +704,17 @@ const I18N={
     cpu:'CPU',memory:'Memory',memPercent:'Mem%',network:'Network I/O',
     autoRefresh:'Auto Refresh',noContainers:'No containers',noStats:'No live stats',
     allContainers:'All known containers',healthyStatus:'Running OK',issueContainers:'Issues',issueHint:'Stopped / failed · needs attention',
-    issue:'issues',aggCpu:'Aggregate CPU',aggMem:'Aggregate Memory',avgPerCt:'avg',withStats:'with stats',
-    topCpu:'Top CPU',topMem:'Top Memory',
     filter:'Filter',filterAll:'All',filterRunning:'Running',filterIssues:'Issues',
     sort:'Sort',sortDefault:'Default',sortCpu:'CPU high→low',sortMem:'Memory high→low',sortName:'Type A→Z',
     confirmStopCt:'Stop container "{id}"?',
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
+    selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
     healthy:'System Healthy',unhealthy:'Issues Detected',runtimeOk:'Runtime OK',runtimeDown:'Runtime Down',
     critical:'Critical',error:'Error',warning:'Warning',info:'Info',
     category:'Category',entity:'Entity',noIssues:'No issues detected',lastScan:'Last scan',
     autoScan:'Auto Scan',scanInterval:'Interval',readyWorkers:'Ready Workers',
-    schedHistory:'Scheduled Scan History',noHistory:'No scheduled scans yet',
+    schedHistory:'Scheduled Scan History',noHistory:'No scheduled scans yet',reason:'Reason',
     dbSpace:'DB Space',activeDb:'Active DB',archiveDb:'Archive DB',
     retDays:'Retention',runCount:'Records',
     quotes:'Market Quotes',fetchNow:'Fetch Now',fetching:'Fetching...',
@@ -863,11 +874,21 @@ const app=createApp({
       if(s==='warning')return'warning';return'info';
     }
     function diagAlertType(r){return r.healthy?'success':r.critical_count>0?'error':'warning'}
+    function diagSummaryText(r){
+      if(r.healthy) return r.runtime_available?t('runtimeOk'):t('runtimeDown');
+      const parts=[];
+      if(r.critical_count>0) parts.push(r.critical_count+' '+t('critical'));
+      if(r.error_count>0) parts.push(r.error_count+' '+t('error'));
+      if(r.warning_count>0) parts.push(r.warning_count+' '+t('warning'));
+      const runtimeNote=r.runtime_available?t('runtimeOk'):t('runtimeDown');
+      return parts.length?parts.join(' · ')+' ('+runtimeNote+')':runtimeNote;
+    }
     function diagNumStyle(n,warn){
       if(n>0)return warn?'color:#e6a23c;font-size:28px;font-weight:700':'color:#f56c6c;font-size:28px;font-weight:700';
       return'font-size:28px;font-weight:700';
     }
     function canStop(state){return state!=='stopped'&&state!=='failed'}
+    function canStart(state){return state==='stopped'||state==='failed'}
 
     // ── Container monitoring ──────────────────────────────────────
     const containers=ref([]);
@@ -884,6 +905,11 @@ const app=createApp({
 
     const spawnVisible=ref(false);const spawning=ref(false);
     const spawnForm=reactive({workerType:'',workerId:''});
+    const availableTypes=ref([]);
+    const availableTypesLoading=ref(false);
+    const availableTypesNote=ref('');
+    const spawnRuntimeNote=ref(null);
+    const selectedWorkerImage=computed(()=>availableTypes.value.find(t=>t.worker_type===spawnForm.workerType)||null);
 
     // GET /api/v1/workers/containers and /stats use plain fetch (no encrypted envelope)
     async function getPlain(path){
@@ -918,33 +944,6 @@ const app=createApp({
     const mergedContainers=computed(()=>containers.value.map(c=>({...c,stats:containerStats.value[c.container_id]||null})));
     const runningCount=computed(()=>containers.value.filter(function(c){return c.state==='running'}).length);
     const issueCount=computed(()=>containers.value.filter(c=>c.state==='failed'||c.state==='stopped').length);
-
-    // Aggregate resource consumption（跨所有有 stats 的容器）
-    const resourceAgg=computed(()=>{
-      const withStats=mergedContainers.value.filter(c=>c.stats);
-      if(withStats.length===0){
-        return{totalCpu:0,avgCpu:0,totalMemUsed:0,totalMemLimit:0,topCpu:null,topMem:null,count:0};
-      }
-      let totalCpu=0,totalMemUsed=0,totalMemLimit=0;
-      let topCpu=withStats[0],topMem=withStats[0];
-      for(const c of withStats){
-        totalCpu+=c.stats.cpu_percent||0;
-        totalMemUsed+=c.stats.memory_usage_bytes||0;
-        totalMemLimit+=c.stats.memory_limit_bytes||0;
-        if((c.stats.cpu_percent||0)>(topCpu.stats.cpu_percent||0))topCpu=c;
-        if((c.stats.memory_usage_bytes||0)>(topMem.stats.memory_usage_bytes||0))topMem=c;
-      }
-      return{
-        totalCpu:totalCpu,
-        avgCpu:totalCpu/withStats.length,
-        totalMemUsed:totalMemUsed,
-        totalMemLimit:totalMemLimit,
-        totalMemPct:totalMemLimit>0?(totalMemUsed/totalMemLimit*100):0,
-        topCpu:topCpu,
-        topMem:topMem,
-        count:withStats.length,
-      };
-    });
 
     const displayedContainers=computed(()=>{
       let list=mergedContainers.value.slice();
@@ -1041,7 +1040,43 @@ const app=createApp({
       }catch{}
     }
 
-    function openSpawn(){spawnForm.workerType='';spawnForm.workerId='';spawnVisible.value=true}
+    async function startContainer(containerId){
+      try{
+        const r=await api('/api/v1/workers/start',{container_id:containerId});
+        if(r.success){
+          ElementPlus.ElMessage.success(lang.value==='zh'?'容器已啟動':'Container started');
+          await refreshContainers();
+        } else {
+          ElementPlus.ElMessage.error(r.message||'start failed');
+        }
+      }catch(e){
+        ElementPlus.ElMessage.error(e.message||'start failed');
+      }
+    }
+
+    async function loadAvailableTypes(){
+      availableTypesLoading.value=true;
+      availableTypesNote.value='';
+      try{
+        const r=await getPlain('/api/v1/workers/available-types');
+        if(r.success&&r.data){
+          availableTypes.value=r.data.types||[];
+          availableTypesNote.value=r.data.note||'';
+          spawnRuntimeNote.value=r.data.runtime?{runtime:r.data.runtime,network:r.data.network,max_per_type:r.data.max_per_type}:null;
+        } else {
+          availableTypes.value=[];
+        }
+      }catch(e){
+        availableTypes.value=[];
+        availableTypesNote.value='載入失敗: '+e.message;
+      }
+      availableTypesLoading.value=false;
+    }
+    function openSpawn(){
+      spawnForm.workerType='';spawnForm.workerId='';
+      spawnVisible.value=true;
+      loadAvailableTypes();
+    }
     async function doSpawn(){
       spawning.value=true;
       try{
@@ -1061,13 +1096,14 @@ const app=createApp({
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
       activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
-      diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagNumStyle,
+      diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagSummaryText,diagNumStyle,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
-      resourceAgg,containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,
+      containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
       autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
       logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
+      availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
       session:computed(()=>session)};
   }
 });
