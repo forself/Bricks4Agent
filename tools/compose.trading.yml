@@ -63,10 +63,23 @@ services:
       FunctionPool__DispatchTimeoutSeconds: "30"
       FunctionPool__MaxWorkers: "20"
       FunctionPool__HeartbeatTimeoutSeconds: "30"
+
+      # ContainerManager: inspection-only mode so the dashboard's
+      # Containers tab can read `docker ps` / `docker stats` for the
+      # b4a-* containers spawned by compose.
+      FunctionPool__ContainerManager__Enabled: "true"
+      FunctionPool__ContainerManager__Runtime: "docker"
+      FunctionPool__ContainerManager__NetworkName: "b4a-trading_trading-net"
+      FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
+      FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
     ports:
       - "5100:5000"
     volumes:
       - broker-data:/data
+      # Docker socket mount so ContainerManager can query docker ps / stats for
+      # auto-discovering b4a-* containers spawned by compose (not by broker itself).
+      # Read-only is sufficient for inspection-only usage (ListManagedAsync + GetStatsAsync).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - trading-net
     restart: unless-stopped

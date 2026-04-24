@@ -366,24 +366,34 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </el-card>
       </el-tab-pane>
 
-      <!-- ── Containers（卡片式重設計） ── -->
+      <!-- ── Containers（容器資源分析儀表板） ── -->
       <el-tab-pane :label="t('containers')" name="containers">
-        <!-- KPI 快覽條 -->
+        <!-- KPI 快覽條：狀態 + 資源聚合 -->
         <div class="ct-summary">
           <div class="ct-kpi total">
             <div class="lbl">{{t('totalContainers')}}</div>
             <div class="val">{{containers.length}}</div>
-            <div class="sub">{{t('allContainers')}}</div>
+            <div class="sub">{{runningCount}} {{t('running')}} · {{issueCount}} {{t('issue')}}</div>
           </div>
-          <div class="ct-kpi running">
-            <div class="lbl">{{t('runningContainers')}}</div>
-            <div class="val" style="color:#67c23a">{{runningCount}}</div>
-            <div class="sub">{{t('healthyStatus')}}</div>
+          <div class="ct-kpi" :class="resourceAgg.totalCpu>200?'bad':(resourceAgg.totalCpu>100?'warn':'running')">
+            <div class="lbl">{{t('aggCpu')}}</div>
+            <div class="val" :style="resourceAgg.totalCpu>200?'color:#f56c6c':(resourceAgg.totalCpu>100?'color:#e6a23c':'color:#67c23a')">{{resourceAgg.totalCpu.toFixed(1)}}%</div>
+            <div class="sub">{{t('avgPerCt')}} {{resourceAgg.avgCpu.toFixed(1)}}%（{{resourceAgg.count}} {{t('withStats')}}）</div>
           </div>
-          <div class="ct-kpi" :class="issueCount>0?'bad':'warn'">
-            <div class="lbl">{{t('issueContainers')}}</div>
-            <div class="val" :style="issueCount>0?'color:#f56c6c':'color:var(--t)'">{{issueCount}}</div>
-            <div class="sub">{{t('issueHint')}}</div>
+          <div class="ct-kpi" :class="resourceAgg.totalMemPct>75?'bad':(resourceAgg.totalMemPct>50?'warn':'running')">
+            <div class="lbl">{{t('aggMem')}}</div>
+            <div class="val">{{fmtBytes(resourceAgg.totalMemUsed)}}</div>
+            <div class="sub">/ {{fmtBytes(resourceAgg.totalMemLimit)}}（{{resourceAgg.totalMemPct.toFixed(1)}}%）</div>
+          </div>
+          <div class="ct-kpi warn" v-if="resourceAgg.topCpu">
+            <div class="lbl">{{t('topCpu')}}</div>
+            <div class="val" style="font-size:18px;color:#e6a23c">{{resourceAgg.topCpu.stats.cpu_percent.toFixed(1)}}%</div>
+            <div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{resourceAgg.topCpu.worker_type}}</div>
+          </div>
+          <div class="ct-kpi warn" v-if="resourceAgg.topMem">
+            <div class="lbl">{{t('topMem')}}</div>
+            <div class="val" style="font-size:18px;color:#e6a23c">{{fmtBytes(resourceAgg.topMem.stats.memory_usage_bytes)}}</div>
+            <div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{resourceAgg.topMem.worker_type}} ({{resourceAgg.topMem.stats.memory_percent.toFixed(1)}}%)</div>
           </div>
         </div>
 
@@ -472,96 +482,6 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </div>
       </el-tab-pane>
 
-      <!-- ── 金融報價 ── -->
-      <el-tab-pane :label="t('quotes')" name="quotes">
-        <!-- 控制列 -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <el-button type="primary" @click="quoteFetchNow" :loading="quoteFetching">
-            {{quoteFetching?t('fetching'):t('fetchNow')}}
-          </el-button>
-          <el-switch v-model="quoteAutoRefresh" @change="onQuoteAutoRefreshChange" size="small"/>
-          <span style="font-size:13px;color:var(--td)">{{t('autoRefresh')}}</span>
-          <el-select v-model="quoteRefreshInterval" size="small" style="width:80px" :disabled="!quoteAutoRefresh">
-            <el-option :value="10000" label="10s"/><el-option :value="30000" label="30s"/><el-option :value="60000" label="60s"/>
-          </el-select>
-          <el-button size="small" @click="loadQuotes" :loading="quoteLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
-        </div>
-
-        <!-- 最新報價 -->
-        <el-card style="margin-bottom:16px">
-          <template #header><span style="font-weight:600">{{t('prices')}}</span></template>
-          <div v-show="quotePrices.length===0"><el-empty :description="t('noQuotes')"/></div>
-          <div v-show="quotePrices.length>0"><el-table :data="quotePrices" stripe>
-            <el-table-column :label="t('workerType')" width="70">
-              <template #default="{row}">
-                <el-tag :type="row.type==='crypto'?'warning':'info'" size="small">{{t(row.type)}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="symbol" label="Symbol" width="90">
-              <template #default="{row}"><strong>{{row.symbol}}</strong></template>
-            </el-table-column>
-            <el-table-column prop="name" :label="t('displayName')" min-width="140">
-              <template #default="{row}"><span style="font-size:12px;color:var(--td)">{{row.name}}</span></template>
-            </el-table-column>
-            <el-table-column :label="t('prices')" width="130" align="right">
-              <template #default="{row}">
-                <span style="font-weight:600">{{fmtPrice(row.price)}} {{row.currency}}</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('changePercent')" width="100" align="right">
-              <template #default="{row}">
-                <span :style="row.change_percent>=0?'color:#67c23a':'color:#f56c6c'">
-                  {{row.change_percent>=0?'+':''}}{{row.change_percent.toFixed(2)}}%
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('marketCap')" width="120" align="right">
-              <template #default="{row}">
-                <span style="font-size:12px">{{fmtLargeNum(row.market_cap)}}</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('lastFetch')" width="160">
-              <template #default="{row}">{{fmtDate(row.fetched_at)}}</template>
-            </el-table-column>
-          </el-table></div>
-        </el-card>
-
-        <!-- 作業歷程 -->
-        <el-card>
-          <template #header><span style="font-weight:600">{{t('jobHistory')}}</span></template>
-          <div v-show="quoteJobs.length===0"><el-empty :description="t('noJobs')"/></div>
-          <div v-show="quoteJobs.length>0"><el-table :data="quoteJobs" stripe>
-            <el-table-column prop="job_id" :label="t('jobId')" width="130">
-              <template #default="{row}"><code style="font-size:11px">{{row.job_id}}</code></template>
-            </el-table-column>
-            <el-table-column :label="t('jobStatus')" width="100">
-              <template #default="{row}">
-                <el-tag :type="jobStatusType(row.status)" size="small">{{t(row.status)||row.status}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="160">
-              <template #default="{row}">{{fmtDate(row.created_at)}}</template>
-            </el-table-column>
-            <el-table-column prop="duration_sec" :label="t('duration')" width="80" align="right"/>
-            <el-table-column prop="fetched_count" :label="t('symbols')" width="70" align="center"/>
-            <el-table-column :label="t('errors')" width="70" align="center">
-              <template #default="{row}">
-                <span v-show="row.error_count>0" style="color:#f56c6c;font-weight:600">{{row.error_count}}</span>
-                <span v-show="row.error_count===0">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('jobErrors')" min-width="200">
-              <template #default="{row}">
-                <div v-if="row.fatal_error" style="color:#f56c6c;font-size:12px">{{row.fatal_error}}</div>
-                <div v-if="row.errors&&row.errors.length>0">
-                  <div v-for="e in row.errors.slice(0,3)" :key="e" style="font-size:11px;color:var(--td)">{{e}}</div>
-                  <div v-if="row.errors.length>3" style="font-size:11px;color:var(--td)">+{{row.errors.length-3}} more</div>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table></div>
-        </el-card>
-      </el-tab-pane>
     </el-tabs>
   </div>
 </div>
@@ -733,6 +653,8 @@ const I18N={
     cpu:'CPU',memory:'記憶體',memPercent:'記憶體%',network:'網路 I/O',
     autoRefresh:'自動刷新',noContainers:'尚無容器',noStats:'無即時統計',
     allContainers:'目前所有容器',healthyStatus:'執行中運作正常',issueContainers:'異常',issueHint:'停止 / 失敗需關注',
+    issue:'異常',aggCpu:'CPU 總使用',aggMem:'記憶體總用',avgPerCt:'平均',withStats:'台有統計',
+    topCpu:'最耗 CPU',topMem:'最耗記憶體',
     filter:'篩選',filterAll:'全部',filterRunning:'執行中',filterIssues:'異常',
     sort:'排序',sortDefault:'預設',sortCpu:'CPU 高→低',sortMem:'記憶體 高→低',sortName:'類型 A→Z',
     confirmStopCt:'確定要停止容器 "{id}" 嗎？',
@@ -770,6 +692,8 @@ const I18N={
     cpu:'CPU',memory:'Memory',memPercent:'Mem%',network:'Network I/O',
     autoRefresh:'Auto Refresh',noContainers:'No containers',noStats:'No live stats',
     allContainers:'All known containers',healthyStatus:'Running OK',issueContainers:'Issues',issueHint:'Stopped / failed · needs attention',
+    issue:'issues',aggCpu:'Aggregate CPU',aggMem:'Aggregate Memory',avgPerCt:'avg',withStats:'with stats',
+    topCpu:'Top CPU',topMem:'Top Memory',
     filter:'Filter',filterAll:'All',filterRunning:'Running',filterIssues:'Issues',
     sort:'Sort',sortDefault:'Default',sortCpu:'CPU high→low',sortMem:'Memory high→low',sortName:'Type A→Z',
     confirmStopCt:'Stop container "{id}"?',
@@ -812,7 +736,7 @@ const app=createApp({
 
     let session=null;let brokerUrl='';let brokerPubKey='';
 
-    const activeTab=ref('overview');const refreshing=ref(false);
+    const activeTab=ref('containers');const refreshing=ref(false);
     const agents=ref([]);const caps=ref([]);const defaultCaps=ref([]);
 
     const createVisible=ref(false);const creating=ref(false);
@@ -845,7 +769,7 @@ const app=createApp({
     }
 
     async function doLogout(){
-      stopAutoRefresh();stopAutoScan();stopQuoteAutoRefresh();if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
+      stopAutoRefresh();stopAutoScan();if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
     }
 
     async function api(path,body={}){
@@ -860,10 +784,9 @@ const app=createApp({
 
     async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers()]);refreshing.value=false}
     function onTabChange(tab){
-      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopQuoteAutoRefresh()}
-      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopQuoteAutoRefresh()}
-      else if(tab==='quotes'){loadQuotes();if(quoteAutoRefresh.value)startQuoteAutoRefresh();stopAutoRefresh();stopAutoScan()}
-      else{stopAutoRefresh();stopAutoScan();stopQuoteAutoRefresh()}
+      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan()}
+      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh()}
+      else{stopAutoRefresh();stopAutoScan()}
     }
 
     function riskType(r){const s=(r||'').toLowerCase();if(s==='low')return'success';if(s==='medium')return'warning';if(s==='high'||s==='critical')return'danger';return'info'}
@@ -946,62 +869,6 @@ const app=createApp({
     }
     function canStop(state){return state!=='stopped'&&state!=='failed'}
 
-    // ── Quote Worker ──────────────────────────────────────────────
-    const quotePrices=ref([]);
-    const quoteJobs=ref([]);
-    const quoteLoading=ref(false);
-    const quoteFetching=ref(false);
-    const quoteAutoRefresh=ref(false);
-    const quoteRefreshInterval=ref(30000);
-    let quoteAutoTimer=null;
-
-    async function loadQuotes(){
-      quoteLoading.value=true;
-      try{
-        var pr=await getPlain('/api/v1/workers/quote/prices');
-        var jr=await getPlain('/api/v1/workers/quote/history');
-        console.log('prices resp:',JSON.stringify(pr).substring(0,200));
-        console.log('history resp:',JSON.stringify(jr).substring(0,200));
-        if(pr.success&&pr.data&&pr.data.quotes){quotePrices.value=pr.data.quotes}
-        else{quotePrices.value=[];if(pr.message)ElementPlus.ElMessage.warning('Prices: '+pr.message)}
-        if(jr.success&&jr.data&&jr.data.jobs){quoteJobs.value=jr.data.jobs}
-        else{quoteJobs.value=[];if(jr.message)ElementPlus.ElMessage.warning('History: '+jr.message)}
-      }catch(e){ElementPlus.ElMessage.error('Quote load failed: '+e.message);console.error('loadQuotes error:',e)}
-      quoteLoading.value=false;
-    }
-
-    async function quoteFetchNow(){
-      quoteFetching.value=true;
-      try{
-        const r=await getPlain('/api/v1/workers/quote/fetch');
-        if(r.success)ElementPlus.ElMessage.success(r.data&&r.data.message?r.data.message:'Fetch triggered');
-        else ElementPlus.ElMessage.warning(r.message||'quote-worker not connected');
-      }catch(e){ElementPlus.ElMessage.error(e.message)}
-      quoteFetching.value=false;
-      setTimeout(function(){loadQuotes()},3000);
-    }
-
-    function startQuoteAutoRefresh(){stopQuoteAutoRefresh();quoteAutoTimer=setInterval(()=>loadQuotes(),quoteRefreshInterval.value)}
-    function stopQuoteAutoRefresh(){if(quoteAutoTimer){clearInterval(quoteAutoTimer);quoteAutoTimer=null}}
-    function onQuoteAutoRefreshChange(){if(quoteAutoRefresh.value)startQuoteAutoRefresh();else stopQuoteAutoRefresh()}
-
-    function jobStatusType(s){
-      if(s==='success')return'success';if(s==='failed')return'danger';
-      if(s==='running')return'warning';if(s==='partial')return'warning';return'info';
-    }
-    function fmtPrice(n){
-      if(!n&&n!==0)return'—';
-      if(n>=1)return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-      return n.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:8});
-    }
-    function fmtLargeNum(n){
-      if(!n)return'—';
-      if(n>=1e12)return(n/1e12).toFixed(2)+'T';
-      if(n>=1e9)return(n/1e9).toFixed(2)+'B';
-      if(n>=1e6)return(n/1e6).toFixed(2)+'M';
-      return n.toLocaleString();
-    }
-
     // ── Container monitoring ──────────────────────────────────────
     const containers=ref([]);
     const containerStats=ref({});
@@ -1051,6 +918,33 @@ const app=createApp({
     const mergedContainers=computed(()=>containers.value.map(c=>({...c,stats:containerStats.value[c.container_id]||null})));
     const runningCount=computed(()=>containers.value.filter(function(c){return c.state==='running'}).length);
     const issueCount=computed(()=>containers.value.filter(c=>c.state==='failed'||c.state==='stopped').length);
+
+    // Aggregate resource consumption（跨所有有 stats 的容器）
+    const resourceAgg=computed(()=>{
+      const withStats=mergedContainers.value.filter(c=>c.stats);
+      if(withStats.length===0){
+        return{totalCpu:0,avgCpu:0,totalMemUsed:0,totalMemLimit:0,topCpu:null,topMem:null,count:0};
+      }
+      let totalCpu=0,totalMemUsed=0,totalMemLimit=0;
+      let topCpu=withStats[0],topMem=withStats[0];
+      for(const c of withStats){
+        totalCpu+=c.stats.cpu_percent||0;
+        totalMemUsed+=c.stats.memory_usage_bytes||0;
+        totalMemLimit+=c.stats.memory_limit_bytes||0;
+        if((c.stats.cpu_percent||0)>(topCpu.stats.cpu_percent||0))topCpu=c;
+        if((c.stats.memory_usage_bytes||0)>(topMem.stats.memory_usage_bytes||0))topMem=c;
+      }
+      return{
+        totalCpu:totalCpu,
+        avgCpu:totalCpu/withStats.length,
+        totalMemUsed:totalMemUsed,
+        totalMemLimit:totalMemLimit,
+        totalMemPct:totalMemLimit>0?(totalMemUsed/totalMemLimit*100):0,
+        topCpu:topCpu,
+        topMem:topMem,
+        count:withStats.length,
+      };
+    });
 
     const displayedContainers=computed(()=>{
       let list=mergedContainers.value.slice();
@@ -1170,12 +1064,10 @@ const app=createApp({
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagNumStyle,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
-      containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,
+      resourceAgg,containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,
       autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
       logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
-      quotePrices,quoteJobs,quoteLoading,quoteFetching,quoteAutoRefresh,quoteRefreshInterval,
-      loadQuotes,quoteFetchNow,onQuoteAutoRefreshChange,jobStatusType,fmtPrice,fmtLargeNum,
       session:computed(()=>session)};
   }
 });
