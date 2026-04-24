@@ -47,6 +47,67 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 .cap-item:hover{border-color:#409eff}.cap-item.sel{border-color:#409eff;background:rgba(64,158,255,.08)}
 .cap-item .cap-id{font-weight:600;font-size:13px}.cap-item .cap-desc{font-size:12px;color:var(--td);margin-top:4px}
 .crypto-info{font-size:11px;color:var(--td);margin-top:12px;padding:8px 10px;background:var(--s2);border-radius:6px;font-family:monospace;word-break:break-all;line-height:1.6}
+
+/* ── Container card grid (直覺化重設計) ─────────────────────── */
+.ct-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.ct-kpi{background:var(--s);border:1px solid var(--bd);border-left:4px solid var(--bd);border-radius:10px;padding:14px 18px;transition:transform .12s ease,border-color .12s ease}
+.ct-kpi:hover{transform:translateY(-1px)}
+.ct-kpi.total{border-left-color:#409eff}
+.ct-kpi.running{border-left-color:#67c23a}
+.ct-kpi.warn{border-left-color:#e6a23c}
+.ct-kpi.bad{border-left-color:#f56c6c}
+.ct-kpi .lbl{font-size:11px;color:var(--td);text-transform:uppercase;letter-spacing:.06em}
+.ct-kpi .val{font-size:26px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1}
+.ct-kpi .sub{font-size:11px;color:var(--td);margin-top:2px}
+
+.ct-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;background:var(--s);border:1px solid var(--bd);border-radius:10px}
+.ct-toolbar .spacer{flex:1}
+.ct-toolbar .label{font-size:12px;color:var(--td)}
+
+.ct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.ct-card{background:var(--s);border:1px solid var(--bd);border-radius:12px;padding:0;overflow:hidden;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease;display:flex;flex-direction:column}
+.ct-card:hover{transform:translateY(-2px);border-color:#409eff;box-shadow:0 8px 24px rgba(64,158,255,.12)}
+.ct-card.state-running{border-top:3px solid #67c23a}
+.ct-card.state-starting,.ct-card.state-stopping{border-top:3px solid #e6a23c}
+.ct-card.state-failed{border-top:3px solid #f56c6c}
+.ct-card.state-stopped{border-top:3px solid #909399}
+.ct-card .head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.ct-card .head .title{display:flex;align-items:center;gap:10px;min-width:0}
+.ct-card .head .icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.ct-card .head .icon.broker{background:rgba(64,158,255,.15);color:#409eff}
+.ct-card .head .icon.worker{background:rgba(103,194,58,.15);color:#67c23a}
+.ct-card .head .icon.bot{background:rgba(230,162,60,.15);color:#e6a23c}
+.ct-card .head .icon.unknown{background:rgba(144,147,153,.2);color:#909399}
+.ct-card .head .name{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-card .head .cid{font-family:monospace;font-size:10px;color:var(--td);margin-top:2px}
+
+.ct-state-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.ct-state-pill .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.ct-state-pill.running{background:rgba(103,194,58,.15);color:#67c23a}
+.ct-state-pill.running .dot{animation:pulse 1.6s ease-in-out infinite}
+.ct-state-pill.starting,.ct-state-pill.stopping{background:rgba(230,162,60,.15);color:#e6a23c}
+.ct-state-pill.failed{background:rgba(245,108,108,.15);color:#f56c6c}
+.ct-state-pill.stopped{background:rgba(144,147,153,.2);color:#909399}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.ct-card .stats{padding:8px 16px 4px}
+.ct-stat-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin:6px 0 2px}
+.ct-stat-row .lbl{color:var(--td);display:flex;align-items:center;gap:6px}
+.ct-stat-row .val{color:var(--t);font-variant-numeric:tabular-nums;font-weight:600}
+.ct-bar{height:6px;background:var(--s2);border-radius:999px;overflow:hidden;position:relative}
+.ct-bar .fill{height:100%;border-radius:999px;transition:width .4s ease,background .2s ease}
+.ct-bar .fill.low{background:linear-gradient(90deg,#67c23a,#7dd56f)}
+.ct-bar .fill.mid{background:linear-gradient(90deg,#e6a23c,#f0b95d)}
+.ct-bar .fill.high{background:linear-gradient(90deg,#f56c6c,#ff8888)}
+.ct-bar .fill.idle{background:var(--bd)}
+
+.ct-card .meta{display:flex;justify-content:space-between;padding:10px 16px 6px;font-size:11px;color:var(--td)}
+.ct-card .meta .net{font-variant-numeric:tabular-nums}
+.ct-card .actions{padding:10px 14px 14px;display:flex;gap:8px;border-top:1px solid var(--bd);margin-top:auto}
+.ct-card .actions .el-button{flex:1}
+
+.ct-empty{background:var(--s);border:1px dashed var(--bd);border-radius:12px;padding:60px 20px;text-align:center;color:var(--td)}
+.ct-empty .big{font-size:48px;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -305,69 +366,110 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </el-card>
       </el-tab-pane>
 
-      <!-- ── Containers ── -->
+      <!-- ── Containers（卡片式重設計） ── -->
       <el-tab-pane :label="t('containers')" name="containers">
-        <div class="stat-g">
-          <div class="stat-c"><el-statistic :title="t('totalContainers')" :value="containers.length" /></div>
-          <div class="stat-c"><el-statistic :title="t('runningContainers')" :value="runningCount" /></div>
+        <!-- KPI 快覽條 -->
+        <div class="ct-summary">
+          <div class="ct-kpi total">
+            <div class="lbl">{{t('totalContainers')}}</div>
+            <div class="val">{{containers.length}}</div>
+            <div class="sub">{{t('allContainers')}}</div>
+          </div>
+          <div class="ct-kpi running">
+            <div class="lbl">{{t('runningContainers')}}</div>
+            <div class="val" style="color:#67c23a">{{runningCount}}</div>
+            <div class="sub">{{t('healthyStatus')}}</div>
+          </div>
+          <div class="ct-kpi" :class="issueCount>0?'bad':'warn'">
+            <div class="lbl">{{t('issueContainers')}}</div>
+            <div class="val" :style="issueCount>0?'color:#f56c6c':'color:var(--t)'">{{issueCount}}</div>
+            <div class="sub">{{t('issueHint')}}</div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-          <el-button size="small" @click="refreshContainers" :loading="containerRefreshing">{{t('refresh')}}</el-button>
-          <el-switch v-model="autoRefresh" @change="onAutoRefreshChange" size="small" />
-          <span style="font-size:13px;color:var(--td)">{{t('autoRefresh')}}</span>
+
+        <!-- 工具列：篩選 / 排序 / 刷新 / Spawn -->
+        <div class="ct-toolbar">
+          <span class="label">{{t('filter')}}：</span>
+          <el-radio-group v-model="containerFilter" size="small">
+            <el-radio-button value="all">{{t('filterAll')}}</el-radio-button>
+            <el-radio-button value="running">{{t('filterRunning')}}</el-radio-button>
+            <el-radio-button value="issues">{{t('filterIssues')}}</el-radio-button>
+          </el-radio-group>
+
+          <span class="label" style="margin-left:10px">{{t('sort')}}：</span>
+          <el-select v-model="containerSort" size="small" style="width:120px">
+            <el-option value="default" :label="t('sortDefault')"/>
+            <el-option value="cpu" :label="t('sortCpu')"/>
+            <el-option value="memory" :label="t('sortMem')"/>
+            <el-option value="name" :label="t('sortName')"/>
+          </el-select>
+
+          <div class="spacer"></div>
+
+          <el-switch v-model="autoRefresh" @change="onAutoRefreshChange" size="small"/>
+          <span class="label">{{t('autoRefresh')}}</span>
           <el-select v-model="autoRefreshInterval" size="small" style="width:80px" :disabled="!autoRefresh">
             <el-option :value="3000" label="3s"/><el-option :value="5000" label="5s"/><el-option :value="10000" label="10s"/>
           </el-select>
+          <el-button size="small" @click="refreshContainers" :loading="containerRefreshing">{{t('refresh')}}</el-button>
+          <el-button type="primary" size="small" @click="openSpawn">+ {{t('spawnWorker')}}</el-button>
         </div>
-        <div style="margin-bottom:16px">
-          <el-button type="primary" @click="openSpawn">+ {{t('spawnWorker')}}</el-button>
+
+        <!-- 容器卡片網格 -->
+        <div v-if="displayedContainers.length===0" class="ct-empty">
+          <div class="big">🪐</div>
+          <div>{{t('noContainers')}}</div>
         </div>
-        <el-card>
-          <el-table :data="mergedContainers" stripe :empty-text="t('noContainers')">
-            <el-table-column prop="container_id" label="ID" width="130">
-              <template #default="{row}"><code style="font-size:11px">{{row.container_id}}</code></template>
-            </el-table-column>
-            <el-table-column prop="worker_type" :label="t('workerType')" width="120"/>
-            <el-table-column prop="state" :label="t('state')" width="90">
-              <template #default="{row}">
-                <el-tag :type="ctStateType(row.state)" size="small">{{row.state}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('cpu')" width="80">
-              <template #default="{row}">
-                <span v-show="row.stats">{{row.stats?row.stats.cpu_percent.toFixed(1)+'%':''}}</span>
-                <span v-show="!row.stats" style="color:var(--td)">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('memory')" width="150">
-              <template #default="{row}">
-                <span v-show="row.stats" style="font-size:12px">{{row.stats?fmtBytes(row.stats.memory_usage_bytes)+' / '+fmtBytes(row.stats.memory_limit_bytes):''}}</span>
-                <span v-show="!row.stats" style="color:var(--td)">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('memPercent')" width="75">
-              <template #default="{row}">
-                <span v-show="row.stats">{{row.stats?row.stats.memory_percent.toFixed(1)+'%':''}}</span>
-                <span v-show="!row.stats" style="color:var(--td)">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('network')" min-width="160">
-              <template #default="{row}">
-                <span v-show="row.stats" style="font-size:12px">{{row.stats?'↓'+fmtBytes(row.stats.network_input_bytes)+' ↑'+fmtBytes(row.stats.network_output_bytes):''}}</span>
-                <span v-show="!row.stats" style="color:var(--td)">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('spawned')" width="160">
-              <template #default="{row}">{{fmtDate(row.spawned_at)}}</template>
-            </el-table-column>
-            <el-table-column width="140" align="right">
-              <template #default="{row}">
-                <el-button size="small" text @click="viewLogs(row.container_id)">{{t('logs')}}</el-button>
-                <el-button v-if="canStop(row.state)" type="danger" size="small" text @click="stopContainer(row.container_id)">{{t('stop')}}</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
+        <div v-else class="ct-grid">
+          <div
+            v-for="c in displayedContainers"
+            :key="c.container_id"
+            class="ct-card"
+            :class="'state-'+c.state"
+          >
+            <div class="head">
+              <div class="title">
+                <div class="icon" :class="ctIconClass(c.worker_type)">{{ctIconGlyph(c.worker_type)}}</div>
+                <div style="min-width:0">
+                  <div class="name">{{c.worker_type||'—'}}</div>
+                  <div class="cid">{{c.container_id.slice(0,12)}}</div>
+                </div>
+              </div>
+              <div class="ct-state-pill" :class="c.state"><span class="dot"></span>{{c.state}}</div>
+            </div>
+
+            <div class="stats">
+              <div class="ct-stat-row">
+                <span class="lbl">CPU</span>
+                <span class="val" v-if="c.stats">{{c.stats.cpu_percent.toFixed(1)}}%</span>
+                <span class="val" style="color:var(--td)" v-else>—</span>
+              </div>
+              <div class="ct-bar">
+                <div class="fill" :class="ctBarClass(c.stats?c.stats.cpu_percent:null)" :style="'width:'+(c.stats?Math.min(c.stats.cpu_percent,100):0)+'%'"></div>
+              </div>
+
+              <div class="ct-stat-row">
+                <span class="lbl">{{t('memory')}}</span>
+                <span class="val" v-if="c.stats">{{fmtBytes(c.stats.memory_usage_bytes)}} / {{fmtBytes(c.stats.memory_limit_bytes)}} <span style="color:var(--td);font-weight:400">({{c.stats.memory_percent.toFixed(1)}}%)</span></span>
+                <span class="val" style="color:var(--td)" v-else>—</span>
+              </div>
+              <div class="ct-bar">
+                <div class="fill" :class="ctBarClass(c.stats?c.stats.memory_percent:null)" :style="'width:'+(c.stats?Math.min(c.stats.memory_percent,100):0)+'%'"></div>
+              </div>
+            </div>
+
+            <div class="meta">
+              <span class="net" v-if="c.stats">↓ {{fmtBytes(c.stats.network_input_bytes)}} · ↑ {{fmtBytes(c.stats.network_output_bytes)}}</span>
+              <span class="net" style="color:var(--td)" v-else>{{t('noStats')}}</span>
+              <span>⏱ {{ctUptime(c.spawned_at)}}</span>
+            </div>
+
+            <div class="actions">
+              <el-button size="small" @click="viewLogs(c.container_id)">📜 {{t('logs')}}</el-button>
+              <el-button v-if="canStop(c.state)" type="danger" size="small" plain @click="stopContainer(c.container_id)">⏹ {{t('stop')}}</el-button>
+            </div>
+          </div>
+        </div>
       </el-tab-pane>
 
       <!-- ── 金融報價 ── -->
@@ -629,7 +731,10 @@ const I18N={
     containers:'容器監控',totalContainers:'容器總數',runningContainers:'執行中',
     workerType:'類型',spawned:'啟動時間',logs:'日誌',spawnWorker:'啟動容器',
     cpu:'CPU',memory:'記憶體',memPercent:'記憶體%',network:'網路 I/O',
-    autoRefresh:'自動刷新',noContainers:'尚無容器',
+    autoRefresh:'自動刷新',noContainers:'尚無容器',noStats:'無即時統計',
+    allContainers:'目前所有容器',healthyStatus:'執行中運作正常',issueContainers:'異常',issueHint:'停止 / 失敗需關注',
+    filter:'篩選',filterAll:'全部',filterRunning:'執行中',filterIssues:'異常',
+    sort:'排序',sortDefault:'預設',sortCpu:'CPU 高→低',sortMem:'記憶體 高→低',sortName:'類型 A→Z',
     confirmStopCt:'確定要停止容器 "{id}" 嗎？',
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
     diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
@@ -663,7 +768,10 @@ const I18N={
     containers:'Containers',totalContainers:'Total Containers',runningContainers:'Running',
     workerType:'Type',spawned:'Spawned At',logs:'Logs',spawnWorker:'Spawn Worker',
     cpu:'CPU',memory:'Memory',memPercent:'Mem%',network:'Network I/O',
-    autoRefresh:'Auto Refresh',noContainers:'No containers',
+    autoRefresh:'Auto Refresh',noContainers:'No containers',noStats:'No live stats',
+    allContainers:'All known containers',healthyStatus:'Running OK',issueContainers:'Issues',issueHint:'Stopped / failed · needs attention',
+    filter:'Filter',filterAll:'All',filterRunning:'Running',filterIssues:'Issues',
+    sort:'Sort',sortDefault:'Default',sortCpu:'CPU high→low',sortMem:'Memory high→low',sortName:'Type A→Z',
     confirmStopCt:'Stop container "{id}"?',
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
     diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
@@ -901,6 +1009,8 @@ const app=createApp({
     const autoRefresh=ref(false);
     const autoRefreshInterval=ref(5000);
     let autoRefreshTimer=null;
+    const containerFilter=ref('all');      // all | running | issues
+    const containerSort=ref('default');    // default | cpu | memory | name
 
     const logsVisible=ref(false);const logsLoading=ref(false);
     const logsContainerId=ref('');const currentLogs=ref('');const tailLines=ref(50);
@@ -940,12 +1050,71 @@ const app=createApp({
 
     const mergedContainers=computed(()=>containers.value.map(c=>({...c,stats:containerStats.value[c.container_id]||null})));
     const runningCount=computed(()=>containers.value.filter(function(c){return c.state==='running'}).length);
+    const issueCount=computed(()=>containers.value.filter(c=>c.state==='failed'||c.state==='stopped').length);
+
+    const displayedContainers=computed(()=>{
+      let list=mergedContainers.value.slice();
+      if(containerFilter.value==='running') list=list.filter(c=>c.state==='running');
+      else if(containerFilter.value==='issues') list=list.filter(c=>c.state==='failed'||c.state==='stopped');
+      const stateRank={running:0,starting:1,stopping:2,failed:3,stopped:4};
+      if(containerSort.value==='cpu'){
+        list.sort((a,b)=>(b.stats?.cpu_percent||0)-(a.stats?.cpu_percent||0));
+      } else if(containerSort.value==='memory'){
+        list.sort((a,b)=>(b.stats?.memory_percent||0)-(a.stats?.memory_percent||0));
+      } else if(containerSort.value==='name'){
+        list.sort((a,b)=>(a.worker_type||'').localeCompare(b.worker_type||''));
+      } else {
+        list.sort((a,b)=>(stateRank[a.state]??9)-(stateRank[b.state]??9));
+      }
+      return list;
+    });
 
     function ctStateType(state){
       if(state==='running')return'success';
       if(state==='starting'||state==='stopping')return'warning';
       if(state==='failed')return'danger';
       return'info';
+    }
+
+    function ctIconClass(workerType){
+      const t=(workerType||'').toLowerCase();
+      if(t.includes('broker'))return'broker';
+      if(t.includes('bot')||t.includes('discord'))return'bot';
+      if(t.includes('worker')||t.includes('quote')||t.includes('trading')||t.includes('risk')||t.includes('strategy')||t.includes('line')||t.includes('browser')||t.includes('file'))return'worker';
+      return'unknown';
+    }
+    function ctIconGlyph(workerType){
+      const t=(workerType||'').toLowerCase();
+      if(t.includes('broker'))return'B';
+      if(t.includes('bot')||t.includes('discord'))return'D';
+      if(t.includes('quote'))return'Q';
+      if(t.includes('trading'))return'T';
+      if(t.includes('risk'))return'R';
+      if(t.includes('strategy'))return'S';
+      if(t.includes('line'))return'L';
+      if(t.includes('browser'))return'W';
+      if(t.includes('file'))return'F';
+      if(t.includes('worker'))return'W';
+      return'?';
+    }
+    function ctBarClass(pct){
+      if(pct==null)return'idle';
+      if(pct<40)return'low';
+      if(pct<75)return'mid';
+      return'high';
+    }
+    function ctUptime(spawnedAt){
+      if(!spawnedAt)return'—';
+      const ms=Date.now()-new Date(spawnedAt).getTime();
+      if(ms<0)return'—';
+      const s=Math.floor(ms/1000);
+      if(s<60)return s+'s';
+      const m=Math.floor(s/60);
+      if(m<60)return m+'m '+(s%60)+'s';
+      const h=Math.floor(m/60);
+      if(h<24)return h+'h '+(m%60)+'m';
+      const d=Math.floor(h/24);
+      return d+'d '+(h%24)+'h';
     }
 
     function fmtBytes(b){
@@ -1000,7 +1169,8 @@ const app=createApp({
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagNumStyle,
       schedRuns,diagSpace,loadSchedHistory,
-      containers,containerStats,containerRefreshing,mergedContainers,runningCount,ctStateType,fmtBytes,canStop,
+      containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
+      containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,
       autoRefresh,autoRefreshInterval,onAutoRefreshChange,refreshContainers,
       logsVisible,logsLoading,logsContainerId,currentLogs,tailLines,viewLogs,fetchLogs,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
