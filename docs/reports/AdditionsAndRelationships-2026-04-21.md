@@ -21,13 +21,14 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 
 ## 一、今日新增總覽
 
-這份報告涵蓋 **2026-04-21 / 04-22 / 04-23 三天** 共 **十五**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
+這份報告涵蓋 **2026-04-21 / 04-22 / 04-23 / 04-24 四天** 共 **十六**大主題，全部都走**最小侵入**路線——既有程式邏輯**完全沒改**或只延伸既有 extension point（Service 註冊、Endpoint Map、Middleware allowlist）。
 
 - 主題 A-D：**平台基礎建設**（Discord / Portfolio / 權限 / 通知）
 - 主題 E-I：**策略研究與驗證能力**（Walk-Forward / Benchmark / Ensemble / Lab / AI Research）
 - 主題 J-M：**技術深化與穩健性**（經典 TA 指標擴充 / Kelly 倉位 / Circuit Breaker / Worker 重連）
 - 主題 N：**AI 研究 × Walk-Forward 合流**（主題 E 和 I 的 upgrade merger）
 - 主題 O：**Mark-to-Market 浮動損益**（主題 B 的完成度補強）
+- 主題 P：**維加斯通道（Vegas Tunnel）**（主題 J 的經典 TA 擴充延伸：多層 EMA 趨勢跟隨流派）
 
 | 主題 | 新增檔 | 動到的既有檔 | 對使用者是什麼 |
 |---|---|---|---|
@@ -46,6 +47,7 @@ Status: 呈現給專題報告用的功能關聯與運作原理說明
 | **M. Worker SDK 重連退避** | — | `worker-sdk/WorkerHost.cs` 重連邏輯 | 固定 5s 改成指數退避（2^n × 5，max 60s）+ 0-1s jitter，解 broker 重啟時的 thundering herd |
 | **N. AI Research × Walk-Forward 合流** | — | `StrategyCandidateRepository.cs` 加 Windows 欄位、`StrategyResearchLoopService.cs` 重寫評估函式、`research-lab.html` 加 per-window 展開表 | 把主題 I 的 80/20 holdout 升級成主題 E 的 rolling walk-forward；揭露 regime change（同參數在不同時期 Sharpe 差到正負翻轉）|
 | **O. Mark-to-Market 浮動損益** | — | `PortfolioAnalyticsService.cs` 新增 FetchLivePositions + FetchCurrentPrices、PortfolioMetrics +4 欄位 + LivePosition DTO、`portfolio.html` KPI 從 1 種 P&L 口徑擴充為 3 種 + 新「當前持倉」表 | 補完主題 B 已知限制：三種 P&L 口徑（Realized / Unrealized / Total Equity）+ 每筆持倉的 mark-to-market 浮動損益表 |
+| **P. 維加斯通道（Vegas Tunnel）** | `Engine/Indicators/VegasTunnel.cs`、`Engine/VegasTunnelStrategy.cs` | `strategy-worker/Program.cs` +1 行、`StrategySignalHandler.cs` +1 行描述字串 | 在主題 J 經典 TA 指標家族再加一支流派完全不同的「多層 EMA 趨勢跟隨系統」：144/169/576/676 四條費波那契 EMA 疊成主通道與長通道，EMA12 當觸發線；與布林（均值回歸）、斐波那契（擺動回撤）、諧波（形態辨識）形成四種互補的交易哲學 |
 
 ---
 
@@ -1333,7 +1335,123 @@ KPI 卡片從 4 個核心指標擴充到 **4 個 P&L 口徑**（最左側）：
 
 ---
 
-## 十八、全局技術決策摘要（Trade-offs）
+## 十八、主題 P — 維加斯通道（Vegas Tunnel）
+
+### 18.1 要解決的問題
+
+主題 J 已經加了三個經典 TA 指標家族：Fibonacci（擺動回撤）、Bollinger（均值回歸）、Harmonic（形態辨識）。**但這三者都是「反轉型 / 區間型」思維**——預期價格會從極端位置回到中軸。
+
+對於**趨勢跟隨（trend following）** 這個同等重要的交易哲學，策略池裡還沒有代表。實務上趨勢跟隨與均值回歸在不同市場狀態下各自占優（大趨勢市場趨勢跟隨贏、盤整市場均值回歸贏），一個完整的策略家族不應該只偏一邊。
+
+**維加斯通道（Vegas Tunnel）** 是趨勢跟隨流派裡**最經典、最廣為人知**的系統之一：用四條費波那契數列週期的 EMA（144/169/576/676）疊出兩層通道，再用一條快 EMA（12）當觸發線。它的核心心法一句話：**先用長通道辨識大環境，再在主通道回檔時順勢進場**。
+
+### 18.2 關鍵設計：多層 EMA 趨勢過濾
+
+維加斯通道與前三個經典指標的**本質差異**：
+
+| 特性 | Fibonacci / Bollinger / Harmonic | Vegas Tunnel |
+|---|---|---|
+| **預設市場狀態** | 區間震盪 / 有支撐壓力 | 有大趨勢 |
+| **進場訊號方向** | 在極端位置**反向**進場 | 在回檔位置**順勢**進場 |
+| **最怕什麼市況** | 單邊強趨勢（會被一路打臉）| 盤整震盪（EMA 糾結無訊號）|
+| **指標核心工具** | SMA + σ / Swing + Fib 比例 / XABCD 形態 | 多條 EMA 疊加 |
+
+EMA（指數移動平均）相對 SMA 的差異：EMA 給最近價格更高權重，α = 2/(N+1)。這讓它對最近行情更敏感，但也更貼近實際持有成本——符合趨勢跟隨「不要遲到」的哲學。
+
+### 18.3 四層架構
+
+```
+  長通道 (Long Tunnel)  ← 大環境過濾
+  ├─ EMA 576           ← 2+ 年級的大方向
+  └─ EMA 676
+       │
+       │  長短通道相對位置決定 MacroTrend:
+       │    長通道在主通道下方 → 多頭（+1）
+       │    長通道在主通道上方 → 空頭（-1）
+       │    兩者糾結          → 盤整（0）
+       ▼
+  主通道 (Main Tunnel)  ← 中期交易區
+  ├─ EMA 144           ← 6-7 個月級的中期
+  └─ EMA 169
+       │
+       │  價格相對主通道位置決定 PriceZone:
+       │    收在通道上方 → +1
+       │    收在通道內   → 0（回檔區）
+       │    收在通道下方 → -1
+       ▼
+  觸發線 (Trigger Line) ← 進場 timing
+  └─ EMA 12            ← 快速反應動能轉變
+       │
+       │  與主通道中軸的交叉決定 TriggerCross:
+       │    從下穿到上 → +1（多頭觸發）
+       │    從上穿到下 → -1（空頭觸發）
+       │    未交叉    → 0
+       ▼
+  進場條件：MacroTrend 為多 + PriceZone 在回檔區 + TriggerCross 向上 → buy
+```
+
+### 18.4 為何選擇經典參數而非壓縮版本
+
+現代很多 TA 工具會把 Vegas 通道參數改小（例如 34/55/144/233），讓它在短 K 線資料也能用。**本策略刻意保留經典 144/169/576/676**，理由：
+
+1. **教育價值**：維加斯通道作者原文用的就是這組費波那契數，對齊經典讓報告裡有故事可講（「這是 1990 年代期權交易員發明的」）
+2. **誠實揭露資料需求**：676 根日線 ≈ 2.7 年，本系統抓 1 年資料會明顯不足 → 策略會回 hold + 明確說明，強迫使用者正視「資料不夠就是不夠」
+3. **Strategy Research Loop 會自己找出來**：Topic I 的 AI 自主研究迴圈可以對此策略做 walk-forward，若發現 Vegas Tunnel 在短資料環境確實差，這本身就是**可報告的實驗結果**，而不是偷偷把參數改小假裝能用
+
+### 18.5 進場信心度分層
+
+維加斯通道有多個信號強度等級：
+
+```csharp
+if (snap.PriceZone == 0 && snap.TriggerCross == 1)
+    → 最優訊號：通道內回檔 + 剛觸發 → 信心 0.65-0.9
+
+if (snap.PriceZone == 1 && snap.TriggerCross == 1)
+    → 次優訊號：已站回通道上方才觸發 → 信心 -0.1（較遲）
+
+if (snap.PriceZone == -1)
+    → 結構受損：多頭環境下竟跌破主通道 → 不進場，reason 提示「等待收回」
+```
+
+信心度函式 `ScoreBull` 拆成兩塊：
+- **widthBonus**：通道寬度越寬（波動明確）→ 加分 0~0.15
+- **supportBonus**：價格距離長通道（支撐區）越遠 → 加分 0~0.15
+
+這樣的設計讓策略不只有「進 / 不進」，還能傳遞進場品質。composite / ensemble 策略若引入 Vegas Tunnel，可以用 confidence 做加權。
+
+### 18.6 與既有檔案的關聯
+
+| 檔案 | 類型 | 角色 |
+|---|---|---|
+| `packages/csharp/workers/strategy-worker/Engine/Indicators/VegasTunnel.cs` | **新增** | 純計算：EMA 序列、通道快照、Macro/Zone/Trigger 狀態 |
+| `packages/csharp/workers/strategy-worker/Engine/VegasTunnelStrategy.cs` | **新增** | 策略層：消費 Snapshot + 產生 buy/sell/hold 訊號與信心分數 |
+| `packages/csharp/workers/strategy-worker/Program.cs` | **+1 行** | `["vegas_tunnel"] = new VegasTunnelStrategy()` 註冊到 DI 字典 |
+| `packages/csharp/workers/strategy-worker/Handlers/StrategySignalHandler.cs` | **+1 行** | `ListStrategies` 回應加描述字串 |
+| `packages/csharp/workers/strategy-worker/Engine/BacktestEngine.cs` | **零改動** | 既有 backtest 引擎自動吃 `IStrategy`，無需任何新增 |
+| `packages/csharp/broker/Services/StrategyComparisonService.cs` | **零改動** | Strategy Lab 會自動從 strategy list 看到 vegas_tunnel 並納入對決 |
+
+**核心觀察**：維加斯通道的加入是對 IStrategy 介面與 BacktestEngine 的又一次壓力測試。從 Topic J 三個經典指標 → Topic P 的第四個流派，**同一個介面、同一個註冊點、同一個回測流程**，驗證了架構擴充性的複利效果。
+
+### 18.7 報告說詞
+
+> 「主題 P 是對主題 J 的流派補強。主題 J 加了布林通道、斐波那契、諧波三個經典 TA，但三個都是**反轉型 / 區間型**——預期價格從極端位置回到中軸。一個完整的策略家族不能只偏一邊，於是補上趨勢跟隨流派的代表：**維加斯通道**。
+>
+> 維加斯通道用四條費波那契數列週期的 EMA——144 / 169 / 576 / 676——疊出兩層通道，再加一條 EMA 12 當觸發線。核心邏輯：長通道（576/676）辨識大趨勢，主通道（144/169）是交易區，EMA12 是進場 timing。**只有三個條件同時成立才進場**：大趨勢為多 + 價格回檔到主通道 + EMA12 從下穿上通道中軸。
+>
+> 實作上值得講的是**誠實揭露資料需求**。676 根日線約等於 2.7 年資料，本系統只抓 1 年回測資料 → 策略會明確回 hold + reason 『Not enough data (need ≥ 676 bars)』，強迫正視資料不夠就是不夠。不像某些開源工具會偷偷把參數改小假裝能用。
+>
+> 檔案上只加了兩個新檔（indicator + strategy），Program.cs 與 Handler 各 +1 行註冊——同樣的最小侵入模式，第四次驗證了 IStrategy 介面的擴充性。」
+
+### 18.8 已知限制
+
+- **經典參數對短資料不友善**：1 年日線資料（250 根）無法計算 EMA 676 → 目前策略會一直 hold。未來可加 compact 模式（34/55/144/233）作為 config 參數
+- **EMA 的滯後性**：EMA 144/169 對最新 40 根左右的價格反應較慢，在快速反轉行情會慢半拍
+- **沒做 shorting 倉位管理**：sell 訊號目前只是對稱輸出，實際做空須配合 risk-worker 的 margin / borrow 邏輯（本專題架構已允許，但 AutoTrader 端尚未接入）
+- **適合放進 ensemble**：維加斯通道在盤整市效果差、在趨勢市效果好，和 Bollinger（盤整市效果好）形成天然互補；未來可把它加進 `WeightedEnsembleStrategy` 的成員列表，用 Sharpe 動態加權
+
+---
+
+## 十九、全局技術決策摘要（Trade-offs）
 
 這些是**評審可能會追問**的「為什麼不用 X」，預先準備答案：
 
@@ -1349,7 +1467,7 @@ KPI 卡片從 4 個核心指標擴充到 **4 個 P&L 口徑**（最左側）：
 
 ---
 
-## 十九、十五個主題組合的系統圖
+## 二十、十六個主題組合的系統圖
 
 把今天加的東西擺進既有系統：
 
@@ -1453,7 +1571,7 @@ KPI 卡片從 4 個核心指標擴充到 **4 個 P&L 口徑**（最左側）：
 
 ---
 
-## 二十、報告時的 5 分鐘濃縮版
+## 二十一、報告時的 5 分鐘濃縮版
 
 如果時間緊，照下面三段講就足夠：
 
@@ -1493,7 +1611,7 @@ KPI 卡片從 4 個核心指標擴充到 **4 個 P&L 口徑**（最左側）：
 
 ---
 
-## 二十一、後續可做的方向
+## 二十二、後續可做的方向
 
 這些可以當報告尾聲的 future work：
 

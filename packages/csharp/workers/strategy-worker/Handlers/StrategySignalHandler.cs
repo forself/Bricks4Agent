@@ -312,6 +312,7 @@ public class StrategySignalHandler : ICapabilityHandler
                 ["fibonacci_retracement"] = "Fibonacci Retracement — 在擺動高低點的 0.382-0.618 黃金區偵測順勢回撤進場",
                 ["bollinger_bands"] = "Bollinger Bands — 均值回歸：觸下軌買、觸上軌賣、squeeze 時觀望",
                 ["harmonic_pattern"] = "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 四種經典 5 點諧波形態",
+                ["vegas_tunnel"]    = "Vegas Tunnel — 費波那契 EMA（144/169/576/676/12）多層通道趨勢跟隨 + 回檔進場",
                 ["llm"]             = "LLM — AI 模型分析市場資料產生訊號",
                 ["multi_timeframe"] = "Multi-Timeframe — 多時間框架交叉確認",
                 ["news_sentiment"]  = "News Sentiment — AI 分析財經新聞情緒",

@@ -47,6 +47,7 @@ var strategies = new Dictionary<string, IStrategy>
     ["fibonacci_retracement"] = new FibonacciStrategy(),
     ["bollinger_bands"] = new BollingerStrategy(),
     ["harmonic_pattern"] = new HarmonicStrategy(),
+    ["vegas_tunnel"] = new VegasTunnelStrategy(),
 };
 
 // Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe）
