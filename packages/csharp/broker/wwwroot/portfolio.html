@@ -3,182 +3,200 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>B4A 投資組合績效 · Portfolio Analytics</title>
+<title>B4A Portfolio · 投資組合績效儀表板</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-  :root {
-    --bg-0: #0b0e11;
-    --bg-1: #181a20;
-    --bg-2: #1e2026;
-    --border: #2b3139;
-    --text: #eaecef;
-    --text-dim: #848e9c;
-    --green: #0ecb81;
-    --red: #f6465d;
-    --yellow: #fcd535;
-    --blue: #2b6cb0;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
-    background: var(--bg-0);
-    color: var(--text);
-    font-size: 14px;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 24px;
-    background: var(--bg-1);
-    border-bottom: 1px solid var(--border);
-  }
-  header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-  header .tag { color: var(--text-dim); font-size: 12px; }
-  header .spacer { flex: 1; }
-  header select, header button {
-    background: var(--bg-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  header button:hover { background: var(--border); }
-  header .updated { color: var(--text-dim); font-size: 12px; }
+:root{
+  --bg:#0f1117;--panel:#171b26;--panel-2:#202635;--border:#30384b;
+  --text:#e7ebf5;--muted:#97a0b8;
+  --accent:#53a7ff;--accent-2:#4190e8;
+  --danger:#ff6b6b;--warn:#ffbf69;--ok:#56d39b;
+  --pos:#56d39b;--neg:#ff6b6b;
+  --chip-bg:#18253a;--chip-border:#2f5d96;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;font-size:14px}
+button,input,select,textarea{font:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.mono{font-family:Consolas,"Cascadia Mono","Courier New",monospace;font-variant-numeric:tabular-nums}
 
-  main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+/* shell 與 line-admin 一致 */
+.shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+.sidebar{background:#0b0e14;border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{font-size:20px;font-weight:700;letter-spacing:.3px}
+.brand .accent{color:var(--accent)}
+.subbrand{color:var(--muted);font-size:12px;margin-top:2px}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.nav{display:flex;flex-direction:column;gap:8px}
+.nav a,.nav button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;text-decoration:none;display:flex;align-items:center;gap:8px}
+.nav a:hover,.nav button:hover{border-color:var(--accent);background:#18253a}
 
-  .kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  .kpi {
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px 16px;
-  }
-  .kpi .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .kpi .value { font-size: 20px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
-  .kpi .sub { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
-  .kpi.pos .value { color: var(--green); }
-  .kpi.neg .value { color: var(--red); }
-  .kpi.warn .value { color: var(--yellow); }
+.button{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:10px 12px;cursor:pointer}
+.button.primary{background:#1a3558;border-color:#2f5d96}
+.button.primary:hover{background:#224478}
+.button.danger{background:#442126;border-color:#7b303a}
+.button.warn{background:#45351e;border-color:#7b5f2c}
+.button.ghost{background:transparent}
+.button:disabled{opacity:.5;cursor:not-allowed}
 
-  .section {
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 20px;
-  }
-  .section h2 {
-    margin: 0;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .section h2 .hint { color: var(--text-dim); font-size: 11px; font-weight: normal; }
-  .section-body { padding: 16px; }
+.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);font-size:12px}
+.tag.ok{color:var(--ok)}
+.tag.bad{color:var(--danger)}
+.tag.test{color:var(--warn);border-color:#7b5f2c;background:#45351e}
+.tag .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
 
-  #equityChart { height: 320px; }
+.stack{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead th {
-    text-align: left;
-    color: var(--text-dim);
-    font-weight: 500;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-  tbody tr:hover { background: var(--bg-2); }
-  tbody tr:last-child td { border-bottom: none; }
+input,select,textarea{width:100%;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--text);padding:9px 12px}
+select{cursor:pointer}
 
-  .pos { color: var(--green); }
-  .neg { color: var(--red); }
-  .dim { color: var(--text-dim); }
+.content{padding:20px 24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+.panel h2,.panel h3{margin:0 0 12px 0;font-size:16px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.panel h2 .hint,.panel h3 .hint{color:var(--muted);font-size:12px;font-weight:400}
 
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-  }
-  @media (max-width: 900px) {
-    .two-col { grid-template-columns: 1fr; }
-  }
+.grid{display:grid;gap:16px}
+.grid.two{grid-template-columns:1fr 1fr}
 
-  .empty {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--text-dim);
-  }
+/* KPI — 沿用 line-admin 的 panel 風，強化 big-number */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;transition:border-color .15s ease,transform .15s ease}
+.kpi:hover{border-color:var(--accent);transform:translateY(-1px)}
+.kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.kpi .value{font-size:22px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;letter-spacing:.2px}
+.kpi .sub{color:var(--muted);font-size:11px;margin-top:4px}
+.kpi.pos{border-color:rgba(86,211,155,.35)}
+.kpi.neg{border-color:rgba(255,107,107,.35)}
+.kpi.warn{border-color:rgba(255,191,105,.35)}
+.kpi.primary{border-color:var(--chip-border);background:linear-gradient(180deg,#18253a 0%,var(--panel) 100%)}
+.kpi.pos .value{color:var(--pos)}
+.kpi.neg .value{color:var(--neg)}
+.kpi.warn .value{color:var(--warn)}
 
-  .loading { opacity: 0.5; pointer-events: none; }
+/* chart */
+#equityChart{height:340px}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{text-align:left;color:var(--muted);font-weight:500;padding:10px 12px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+thead th.num,tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border)}
+tbody tr:hover{background:var(--panel-2)}
+tbody tr:last-child td{border-bottom:none}
+
+.pos{color:var(--pos)}
+.neg{color:var(--neg)}
+.dim{color:var(--muted)}
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.loading{opacity:.5;pointer-events:none;transition:opacity .2s}
+
+/* sidebar 小控制項 */
+.sidebar .field{display:flex;flex-direction:column;gap:6px}
+.sidebar label{font-size:12px;color:var(--muted)}
+
+/* 側邊摘要小卡 */
+.side-summary{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.side-summary .head{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.side-summary .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.side-summary .line{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.side-summary .line strong{color:var(--text)}
+
+@media (max-width:1180px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto}
+  .grid.two{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 
-<header>
-  <h1>📊 Portfolio Analytics</h1>
-  <span class="tag">B4A Trading</span>
-  <div class="spacer"></div>
-  <label class="dim" style="font-size:12px;">交易所</label>
-  <select id="exchange">
-    <option value="alpaca">Alpaca（美股）</option>
-    <option value="binance">Binance（加密）</option>
-  </select>
-  <label class="dim" style="font-size:12px;">成交數上限</label>
-  <select id="limit">
-    <option value="100">100</option>
-    <option value="500" selected>500</option>
-    <option value="1000">1000</option>
-    <option value="5000">5000</option>
-  </select>
-  <label class="dim" style="font-size:12px;">基準</label>
-  <select id="benchmarkSymbol" title="需在 quote-worker 已抓過資料的 symbol">
-    <option value="AAPL" selected>AAPL（預設）</option>
-    <option value="MSFT">MSFT</option>
-    <option value="TSLA">TSLA</option>
-    <option value="NVDA">NVDA</option>
-    <option value="BTC">BTC</option>
-    <option value="ETH">ETH</option>
-    <option value="">（不顯示）</option>
-  </select>
-  <button id="refresh">🔄 刷新</button>
-  <span class="updated" id="updated">—</span>
-</header>
+<div class="shell">
+  <aside class="sidebar">
+    <div>
+      <div class="brand">B4A <span class="accent">Portfolio</span></div>
+      <div class="subbrand">交易延伸容器 · Trading Analytics</div>
+    </div>
 
-<main id="main">
-  <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="stack">
+      <div class="tag ok" id="statusTag"><span class="dot"></span><span id="statusText">載入中</span></div>
+      <div class="small muted" id="updated">—</div>
+    </div>
 
-  <div class="section">
-    <h2>權益曲線 vs 基準 <span class="hint">
-      <span style="color:#0ecb81;">■</span> 策略 P&L
-      &nbsp;&nbsp;<span style="color:#2b6cb0;">■</span> 買入持有基準（$100k）
-    </span></h2>
-    <div class="section-body">
+    <div class="side-summary">
+      <div class="head">總權益 / Total Equity</div>
+      <div class="big mono" id="sideEquity">—</div>
+      <div class="line"><span>已實現</span><strong class="mono" id="sideRealized">—</strong></div>
+      <div class="line"><span>浮動</span><strong class="mono" id="sideUnrealized">—</strong></div>
+      <div class="line"><span>持倉</span><strong class="mono" id="sidePositions">—</strong></div>
+    </div>
+
+    <div class="stack">
+      <div class="field">
+        <label for="exchange">交易所</label>
+        <select id="exchange">
+          <option value="alpaca">Alpaca（美股）</option>
+          <option value="binance">Binance（加密）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="limit">成交數上限</label>
+        <select id="limit">
+          <option value="100">100</option>
+          <option value="500" selected>500</option>
+          <option value="1000">1000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="benchmarkSymbol">基準商品</label>
+        <select id="benchmarkSymbol" title="需在 quote-worker 已抓過資料的 symbol">
+          <option value="AAPL" selected>AAPL（預設）</option>
+          <option value="MSFT">MSFT</option>
+          <option value="TSLA">TSLA</option>
+          <option value="NVDA">NVDA</option>
+          <option value="BTC">BTC</option>
+          <option value="ETH">ETH</option>
+          <option value="">（不顯示）</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="stack">
+      <button class="button primary" id="refresh">🔄 立即刷新</button>
+      <button class="button ghost" id="autoRefreshToggle">自動刷新：開（30s）</button>
+    </div>
+
+    <nav class="nav">
+      <a href="/trading.html">← 交易主頁</a>
+      <a href="/strategy-lab.html">策略比較實驗</a>
+      <a href="/research-lab.html">AI 研究迴圈</a>
+      <a href="/line-admin.html">平台管理後台</a>
+    </nav>
+  </aside>
+
+  <main class="content" id="main">
+    <div class="panel">
+      <h2>績效總覽 <span class="hint">Key Performance Indicators</span></h2>
+      <div class="kpi-grid" id="kpiGrid"></div>
+    </div>
+
+    <div class="panel">
+      <h2>權益曲線 vs 基準
+        <span class="hint">
+          <span style="color:var(--pos);">■</span> 策略 P&L
+          &nbsp;&nbsp;<span style="color:var(--accent);">■</span> 買入持有基準（$100k）
+        </span>
+      </h2>
       <div id="equityChart"></div>
       <div id="equityEmpty" class="empty" style="display:none;">尚無已平倉交易資料</div>
     </div>
-  </div>
 
-  <div class="section">
-    <h2>當前持倉 <span class="hint">mark-to-market · 按絕對浮動損益排序</span></h2>
-    <div class="section-body" style="padding:0;">
+    <div class="panel">
+      <h2>當前持倉 <span class="hint">Mark-to-Market · 按絕對浮動損益排序</span></h2>
       <table id="positionsTable">
         <thead>
           <tr>
@@ -195,12 +213,10 @@
       </table>
       <div id="positionsEmpty" class="empty" style="display:none;">目前無未平倉部位</div>
     </div>
-  </div>
 
-  <div class="two-col">
-    <div class="section">
-      <h2>各商品績效 <span class="hint">Per-Symbol P&L（已實現）</span></h2>
-      <div class="section-body">
+    <div class="grid two">
+      <div class="panel">
+        <h3>各商品績效 <span class="hint">Per-Symbol P&L（已實現）</span></h3>
         <table id="symbolTable">
           <thead>
             <tr>
@@ -214,11 +230,9 @@
         </table>
         <div id="symbolEmpty" class="empty" style="display:none;">—</div>
       </div>
-    </div>
 
-    <div class="section">
-      <h2>近期平倉 <span class="hint">Recent Round-Trips (Top 20)</span></h2>
-      <div class="section-body">
+      <div class="panel">
+        <h3>近期平倉 <span class="hint">Recent Round-Trips (Top 20)</span></h3>
         <table id="rtTable">
           <thead>
             <tr>
@@ -234,16 +248,16 @@
         <div id="rtEmpty" class="empty" style="display:none;">—</div>
       </div>
     </div>
-  </div>
-</main>
+  </main>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 
-// 格式化工具
 const fmt = {
   num: v => v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }),
   money: v => v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2, signDisplay: 'always' }),
+  moneyAbs: v => v == null ? '—' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }),
   pct:  v => v == null ? '—' : (Number(v)).toFixed(2) + '%',
   pctSigned: v => v == null ? '—' : (Number(v) > 0 ? '+' : '') + Number(v).toFixed(2) + '%',
   ratio: v => v == null || v === 9999 ? (v === 9999 ? '∞' : '—') : Number(v).toFixed(2),
@@ -262,23 +276,23 @@ function initChart() {
   if (equityChart) return;
   equityChart = LightweightCharts.createChart($('equityChart'), {
     width: $('equityChart').clientWidth,
-    height: 320,
-    layout: { background: { type: 'solid', color: '#181a20' }, textColor: '#848e9c' },
-    grid: { vertLines: { color: '#2b3139' }, horzLines: { color: '#2b3139' } },
-    rightPriceScale: { borderColor: '#2b3139' },
-    timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: false },
+    height: 340,
+    layout: { background: { type: 'solid', color: '#171b26' }, textColor: '#97a0b8' },
+    grid: { vertLines: { color: '#30384b' }, horzLines: { color: '#30384b' } },
+    rightPriceScale: { borderColor: '#30384b' },
+    timeScale: { borderColor: '#30384b', timeVisible: true, secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
   });
   equitySeries = equityChart.addAreaSeries({
-    lineColor: '#0ecb81',
-    topColor: 'rgba(14, 203, 129, 0.4)',
-    bottomColor: 'rgba(14, 203, 129, 0.0)',
+    lineColor: '#56d39b',
+    topColor: 'rgba(86, 211, 155, 0.4)',
+    bottomColor: 'rgba(86, 211, 155, 0.0)',
     priceFormat: { type: 'custom', formatter: p => (p >= 0 ? '+' : '') + p.toFixed(2) },
   });
   benchmarkSeries = equityChart.addLineSeries({
-    color: '#2b6cb0',
+    color: '#53a7ff',
     lineWidth: 2,
-    lineStyle: 2,  // dashed
+    lineStyle: 2,
     priceFormat: { type: 'custom', formatter: p => (p >= 0 ? '+' : '') + p.toFixed(2) },
     lastValueVisible: true,
     title: 'Benchmark',
@@ -292,7 +306,6 @@ function renderBenchmark(curve) {
     benchmarkSeries.setData([]);
     return;
   }
-  // curve 是 [{at, pnl, equity, returnPct}, ...]；用 pnl 跟 portfolio 同尺度（$ 計價）
   const data = curve.map(p => ({
     time: Math.floor(new Date(p.at || p.At).getTime() / 1000),
     value: Number(p.pnl ?? p.Pnl),
@@ -305,6 +318,20 @@ function renderBenchmark(curve) {
   benchmarkSeries.setData(dedup);
 }
 
+function renderSideSummary(m) {
+  const realizedPnl = Number(m.realizedPnl ?? 0);
+  const unrealizedPnl = Number(m.unrealizedPnl ?? 0);
+  const totalEquity = Number(m.totalEquity ?? 0);
+  const positionsCount = (m.livePositions ?? m.LivePositions ?? []).length;
+  $('sideEquity').textContent = fmt.moneyAbs(totalEquity);
+  $('sideEquity').className = 'big mono ' + (totalEquity >= 0 ? 'pos' : 'neg');
+  $('sideRealized').textContent = fmt.money(realizedPnl);
+  $('sideRealized').className = 'mono ' + cls(realizedPnl);
+  $('sideUnrealized').textContent = fmt.money(unrealizedPnl);
+  $('sideUnrealized').className = 'mono ' + cls(unrealizedPnl);
+  $('sidePositions').textContent = positionsCount;
+}
+
 function renderKPIs(m, bench) {
   const realizedPnl = Number(m.realizedPnl ?? 0);
   const unrealizedPnl = Number(m.unrealizedPnl ?? 0);
@@ -314,15 +341,15 @@ function renderKPIs(m, bench) {
   const alpha = (bench !== null && benchPnl !== null) ? (totalPnl - benchPnl) : null;
 
   const k = [
-    { label: '總 P&L (實+未)', value: fmt.money(totalPnl), sub: '已實現 + 浮動', cls: totalPnl >= 0 ? 'pos' : 'neg' },
+    { label: '總 P&L (實+未)', value: fmt.money(totalPnl), sub: '已實現 + 浮動', cls: (totalPnl >= 0 ? 'pos' : 'neg') + ' primary' },
     { label: '已實現 P&L', value: fmt.money(realizedPnl), sub: '平倉累計', cls: realizedPnl >= 0 ? 'pos' : 'neg' },
-    { label: '浮動 P&L', value: fmt.money(unrealizedPnl), sub: 'mark-to-market', cls: unrealizedPnl >= 0 ? 'pos' : 'neg' },
-    { label: '持倉市值', value: fmt.money(totalEquity), sub: '總帳戶權益' },
+    { label: '浮動 P&L', value: fmt.money(unrealizedPnl), sub: 'Mark-to-Market', cls: unrealizedPnl >= 0 ? 'pos' : 'neg' },
+    { label: '總權益', value: fmt.moneyAbs(totalEquity), sub: '帳戶總值' },
     { label: '完成回合', value: fmt.num(m.roundTripCount ?? m.round_trip_count), sub: `總交易 ${fmt.num(m.tradeCount ?? m.trade_count)}` },
     { label: '勝率', value: fmt.pct((m.winRate ?? m.win_rate ?? 0) * 100), sub: `${m.winningTrades ?? m.winning_trades}W / ${m.losingTrades ?? m.losing_trades}L`, cls: (m.winRate ?? m.win_rate) >= 0.5 ? 'pos' : 'warn' },
     { label: '獲利因子', value: fmt.ratio(m.profitFactor ?? m.profit_factor), cls: (m.profitFactor ?? m.profit_factor) > 1 ? 'pos' : 'neg' },
-    { label: 'Sharpe', value: fmt.ratio(m.sharpeRatio ?? m.sharpe_ratio), sub: 'Ann.', cls: (m.sharpeRatio ?? m.sharpe_ratio) > 1 ? 'pos' : '' },
-    { label: 'Sortino', value: fmt.ratio(m.sortinoRatio ?? m.sortino_ratio), sub: 'Ann.', cls: (m.sortinoRatio ?? m.sortino_ratio) > 1 ? 'pos' : '' },
+    { label: 'Sharpe', value: fmt.ratio(m.sharpeRatio ?? m.sharpe_ratio), sub: '年化', cls: (m.sharpeRatio ?? m.sharpe_ratio) > 1 ? 'pos' : '' },
+    { label: 'Sortino', value: fmt.ratio(m.sortinoRatio ?? m.sortino_ratio), sub: '年化', cls: (m.sortinoRatio ?? m.sortino_ratio) > 1 ? 'pos' : '' },
     { label: 'Max Drawdown', value: fmt.pct(m.maxDrawdownPct ?? m.max_drawdown_pct), sub: fmt.money(-(m.maxDrawdown ?? m.max_drawdown ?? 0)), cls: 'neg' },
     { label: '平均獲利 / 虧損', value: fmt.money(m.avgWin ?? m.avg_win), sub: fmt.money(m.avgLoss ?? m.avg_loss) },
     { label: '最大單筆獲利', value: fmt.money(m.largestWin ?? m.largest_win), cls: 'pos' },
@@ -342,7 +369,7 @@ function renderKPIs(m, bench) {
         label: 'Alpha（超額）',
         value: fmt.money(alpha),
         sub: alpha >= 0 ? '🏆 擊敗基準' : '不如直接買入持有',
-        cls: alpha >= 0 ? 'pos' : 'neg',
+        cls: (alpha >= 0 ? 'pos' : 'neg') + ' primary',
       });
     }
   }
@@ -366,12 +393,10 @@ function renderEquity(curve) {
   }
   $('equityEmpty').style.display = 'none';
   $('equityChart').style.display = 'block';
-  // lightweight-charts 需要 time 為 unix 秒
   const data = curve.map(p => ({
     time: Math.floor(new Date(p.at || p.At).getTime() / 1000),
     value: Number(p.equity ?? p.Equity),
   })).sort((a, b) => a.time - b.time);
-  // 去重 time
   const dedup = [];
   for (const pt of data) {
     if (dedup.length === 0 || dedup[dedup.length - 1].time !== pt.time) dedup.push(pt);
@@ -451,19 +476,32 @@ function renderRoundTrips(rows) {
   }).join('');
 }
 
+let autoRefresh = true;
+let autoTimer = null;
+const AUTO_MS = 30000;
+
+function scheduleAuto(){
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  if (autoRefresh) autoTimer = setInterval(load, AUTO_MS);
+  $('autoRefreshToggle').textContent = autoRefresh ? '自動刷新：開（30s）' : '自動刷新：關';
+}
+
 async function load() {
   const exchange = $('exchange').value;
   const limit = $('limit').value;
   const benchSym = $('benchmarkSymbol').value;
   $('main').classList.add('loading');
+  $('statusTag').className = 'tag test';
+  $('statusText').textContent = '載入中';
   try {
-    // 平行打兩個端點
     const [metricsResp, benchResp] = await Promise.all([
       fetch(`/api/v1/portfolio/metrics?exchange=${exchange}&limit=${limit}`),
       benchSym ? fetch(`/api/v1/portfolio/benchmark?symbol=${benchSym}&limit=500`) : Promise.resolve(null),
     ]);
     const j = await metricsResp.json();
     if (!j.success) {
+      $('statusTag').className = 'tag bad';
+      $('statusText').textContent = '失敗';
       alert('載入失敗: ' + (j.message || 'unknown'));
       return;
     }
@@ -473,6 +511,7 @@ async function load() {
       const bj = await benchResp.json();
       if (bj.success) bench = bj.data;
     }
+    renderSideSummary(m);
     renderKPIs(m, bench);
     renderLivePositions(m.livePositions ?? m.LivePositions);
     renderEquity(m.equityCurve ?? m.EquityCurve);
@@ -480,7 +519,11 @@ async function load() {
     renderSymbols(m.perSymbol ?? m.PerSymbol);
     renderRoundTrips(m.recentRoundTrips ?? m.RecentRoundTrips);
     $('updated').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-TW');
+    $('statusTag').className = 'tag ok';
+    $('statusText').textContent = '連線正常';
   } catch (e) {
+    $('statusTag').className = 'tag bad';
+    $('statusText').textContent = '請求失敗';
     alert('請求失敗: ' + e.message);
   } finally {
     $('main').classList.remove('loading');
@@ -491,9 +534,10 @@ $('refresh').addEventListener('click', load);
 $('exchange').addEventListener('change', load);
 $('limit').addEventListener('change', load);
 $('benchmarkSymbol').addEventListener('change', load);
+$('autoRefreshToggle').addEventListener('click', () => { autoRefresh = !autoRefresh; scheduleAuto(); });
 
 load();
-setInterval(load, 30000); // 30 秒自動刷新
+scheduleAuto();
 </script>
 </body>
 </html>

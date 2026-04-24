@@ -1,8 +1,20 @@
-# 2026-04-21 新增功能報告
+# 交易延伸容器功能報告（Extension Layer）
 
-Date: 2026-04-21
+Date: 2026-04-21 → 2026-04-24
 作者: Anthony Lee（含 AI 協助）
-Status: 呈現給專題報告用的功能關聯與運作原理說明
+Status: 延伸容器功能說明
+
+---
+
+## ⚠️ 文件定位重要說明（2026-04-24 補充）
+
+**此份不是專題主軸文件**。專題主體是 **Bricks4Agent 平台本身**（broker-centered governed AI operations platform），相關架構、設計哲學、治理邏輯請看：
+
+> **`docs/reports/PlatformArchitecture-2026-04-24.md`** — 專題主軸文件
+
+以下 16 個主題（A-P）都是**個人基於平台擴充點延伸出來的交易相關容器功能**，可視為「平台可擴充性的示範案例」，而非專題評分核心。
+
+報告順序建議：**先講 `PlatformArchitecture-2026-04-24.md`（平台主軸）→ 最後用此份當延伸 demo（證明平台真的可擴充）**。
 
 ---
 
