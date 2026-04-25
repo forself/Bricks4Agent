@@ -31,6 +31,10 @@ services:
 
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      # 關閉 Claude Code 自動更新：rootless 容器無法寫 /usr/local/lib/node_modules
+      # （npm rename 會 EACCES exit -13），導致每 30 分鐘炸一次「Auto-update failed」雜訊；
+      # 容器版本由 image 控管即可，不需要 in-place upgrade。
+      - DISABLE_AUTOUPDATER=1
 
     volumes:
       # Claude 設定 / 憑證 / 已裝 plugin — 需要 rw（plugin 會更新 approved pairings）
