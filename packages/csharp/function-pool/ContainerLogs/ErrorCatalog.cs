@@ -182,4 +182,50 @@ public static class ErrorCatalog
         yield return DefaultError;
         yield return DefaultWarn;
     }
+
+    // ── 等級偵測（給即時日誌即時掃描用，不用插 DB）──────────────────────
+    private static readonly Regex ErrorTokens = new(
+        @"\b(ERROR|ERRORS|ERR|FATAL|CRITICAL|Exception|unhandled|panic|traceback|stack\s*trace|fail(ed|ure)?|denied|refused|timed\s*out|timeout|crashed|aborted)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex WarnTokens = new(
+        @"\b(WARN|WARNING|deprecated)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex FalsePositive = new(
+        @"\b(0\s+errors?|no\s+errors?|without\s+errors?|0\s+failures?|no\s+failures?)\b|\bsuccessfully\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// 判斷一行 log 屬於 ERROR / WARN / INFO。INFO 表示沒有任何錯誤關鍵字（不是錯誤）。
+    /// </summary>
+    public static string DetectSeverity(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return "INFO";
+        if (FalsePositive.IsMatch(line)) return "INFO";   // "0 errors" 等成功訊息排除
+        if (ErrorTokens.IsMatch(line)) return "ERROR";
+        if (WarnTokens.IsMatch(line)) return "WARN";
+        return "INFO";
+    }
+
+    // ── ANSI escape / 控制碼清理（給 docker logs TUI 輸出整理用）──────
+    private static readonly Regex AnsiCsiSequence = new(
+        @"\x1b\[[\?0-9;]*[A-Za-z]",
+        RegexOptions.Compiled);
+
+    private static readonly Regex AnsiOtherEscape = new(
+        @"\x1b[^\[]|\x1b$",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// 清掉 ANSI 色碼、游標控制碼、Bracketed Paste Mode 等 TUI 雜訊，
+    /// 讓 docker logs 變成可讀的純文字。
+    /// </summary>
+    public static string StripAnsi(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text ?? "";
+        var s = AnsiCsiSequence.Replace(text, "");
+        s = AnsiOtherEscape.Replace(s, "");
+        return s;
+    }
 }

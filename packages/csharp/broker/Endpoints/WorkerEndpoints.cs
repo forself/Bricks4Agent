@@ -179,12 +179,86 @@ public static class WorkerEndpoints
             var body = RequestBodyHelper.GetBody(ctx);
             var containerId = body.GetProperty("container_id").GetString()!;
             var tailLines = body.TryGetProperty("tail", out var t) ? t.GetInt32() : 50;
+            var summarize = body.TryGetProperty("summarize", out var sm) && sm.GetBoolean();
 
-            var logs = await containerMgr.GetLogsAsync(containerId, tailLines, ct);
+            var rawLogs = await containerMgr.GetLogsAsync(containerId, tailLines, ct);
+            var cleanLogs = ErrorCatalog.StripAnsi(rawLogs ?? "");
+
+            object? summary = null;
+            if (summarize)
+            {
+                var lines = cleanLogs.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+                // 用 (code, category) 做 key，聚合同類別的行
+                var groups = new Dictionary<string, (string category, string description, string severity, int count, string sample, string firstLineTs, string lastLineTs)>();
+
+                foreach (var rawLine in lines)
+                {
+                    var line = rawLine.Trim();
+                    if (line.Length == 0) continue;
+
+                    // docker logs --timestamps 開頭可能有時間，剝掉以方便看摘要
+                    string lineForClassify = line;
+                    string? lineTs = null;
+                    var spaceIdx = line.IndexOf(' ');
+                    if (spaceIdx > 10 && spaceIdx < 35)
+                    {
+                        var prefix = line[..spaceIdx];
+                        if (DateTime.TryParse(prefix, null, System.Globalization.DateTimeStyles.RoundtripKind, out _))
+                        {
+                            lineTs = prefix;
+                            lineForClassify = line[(spaceIdx + 1)..];
+                        }
+                    }
+
+                    var sev = ErrorCatalog.DetectSeverity(lineForClassify);
+                    string code, category, description, severity;
+                    if (sev == "INFO")
+                    {
+                        code = "INFO"; category = "一般訊息"; description = "正常輸出（非錯誤等級）"; severity = "INFO";
+                    }
+                    else
+                    {
+                        var entry = ErrorCatalog.Classify(lineForClassify, sev);
+                        code = entry.Code; category = entry.Category; description = entry.Description; severity = entry.Severity;
+                    }
+
+                    if (groups.TryGetValue(code, out var existing))
+                    {
+                        groups[code] = (existing.category, existing.description, existing.severity, existing.count + 1, existing.sample, existing.firstLineTs, lineTs ?? existing.lastLineTs);
+                    }
+                    else
+                    {
+                        var sample = lineForClassify.Length > 240 ? lineForClassify[..240] + "..." : lineForClassify;
+                        groups[code] = (category, description, severity, 1, sample, lineTs ?? "", lineTs ?? "");
+                    }
+                }
+
+                // ERROR > WARN > INFO 排序，再按 count desc
+                static int SevOrder(string s) => s switch { "ERROR" => 0, "WARN" => 1, _ => 2 };
+                summary = groups
+                    .Select(kv => new
+                    {
+                        code = kv.Key,
+                        category = kv.Value.category,
+                        description = kv.Value.description,
+                        severity = kv.Value.severity,
+                        count = kv.Value.count,
+                        sample = kv.Value.sample,
+                        first_ts = kv.Value.firstLineTs,
+                        last_ts = kv.Value.lastLineTs,
+                    })
+                    .OrderBy(g => SevOrder(g.severity))
+                    .ThenByDescending(g => g.count)
+                    .ToList();
+            }
+
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 container_id = containerId,
-                logs
+                logs = cleanLogs,
+                line_count = string.IsNullOrEmpty(cleanLogs) ? 0 : cleanLogs.Split('\n').Length,
+                summary,
             }));
         });
 
