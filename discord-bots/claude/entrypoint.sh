@@ -33,5 +33,15 @@ if [ -n "$DISCORD_BOT_TOKEN" ] && [ ! -f "$DISCORD_DIR/.env" ]; then
     echo "DISCORD_BOT_TOKEN=$DISCORD_BOT_TOKEN" > "$DISCORD_DIR/.env"
 fi
 
+# 確保 Claude Code native build 已安裝（npm-installed 版本在 2.1.107+ 會印
+# "switched from npm to native installer" 警告，且 --channels 模式下不會 spawn
+# MCP plugin server，導致 bot 看似在線實則沒連 Discord Gateway）。
+# native build 安裝到 ~/.local/bin/claude，PATH 加進來讓它優先生效。
+if [ ! -x "$HOME/.local/bin/claude" ]; then
+    echo "[entrypoint] installing Claude Code native build..."
+    claude install || echo "[entrypoint] claude install failed (continuing with npm version)"
+fi
+export PATH="$HOME/.local/bin:$PATH"
+
 cd /home/claude-user/workspace
 exec claude --channels plugin:discord@claude-plugins-official --dangerously-skip-permissions
