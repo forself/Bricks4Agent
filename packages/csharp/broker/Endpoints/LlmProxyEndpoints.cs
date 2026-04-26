@@ -1,4 +1,7 @@
+using System.Text.Json;
 using Broker.Helpers;
+using BrokerCore.Models;
+using BrokerCore.Data;
 using BrokerCore.Services;
 
 namespace Broker.Endpoints;
@@ -85,6 +88,60 @@ public static class LlmProxyEndpoints
                     error_brief = e.ErrorBrief,
                 }),
             }));
+        });
+
+        // POST /api/v1/llm-proxy/chat — Worker / 內部服務轉送 LLM 呼叫
+        //   走 trusted-internal allowlist（不需要 ECDH session），給 strategy-worker
+        //   等容器內服務透過 broker 集中呼叫 LLM，所有呼叫被 MeteredLlmProxyService
+        //   記到儀表板的 LLM Proxy 分頁。Body 是 OpenAI-compatible 格式：
+        //   { model, messages, temperature, max_tokens, tools }
+        //   可選欄位 task_id（broker 端會帶 BrokerTask 進 ChatAsync 給 runtime descriptor 用）
+        proxy.MapPost("/chat", async (HttpContext ctx, ILlmProxyService llm, BrokerDb db, CancellationToken ct) =>
+        {
+            if (!llm.IsEnabled)
+            {
+                return Results.Json(
+                    ApiResponseHelper.Error("LlmProxy is disabled (LlmProxy:Enabled=false)", 503),
+                    statusCode: 503);
+            }
+
+            JsonElement body;
+            string? optionalTaskId = null;
+            try
+            {
+                body = RequestBodyHelper.GetBody(ctx);
+                if (body.TryGetProperty("task_id", out var tid) && tid.ValueKind == JsonValueKind.String)
+                    optionalTaskId = tid.GetString();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error("Invalid request body: " + ex.Message));
+            }
+
+            BrokerTask? task = null;
+            if (!string.IsNullOrWhiteSpace(optionalTaskId))
+                task = db.Get<BrokerTask>(optionalTaskId);
+
+            try
+            {
+                var result = await llm.ChatAsync(body, task, ct);
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    content = result.Content,
+                    tool_calls = result.ToolCalls,
+                    thinking = result.Thinking,
+                    done = result.Done,
+                    model = result.Model,
+                    total_duration = result.TotalDuration,
+                    eval_count = result.EvalCount,
+                }));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(
+                    ApiResponseHelper.Error("LLM upstream error: " + ex.Message, 502),
+                    statusCode: 502);
+            }
         });
 
         // GET /api/v1/llm-proxy/healthcheck — 主動 ping 上游確認可用

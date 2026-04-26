@@ -7,14 +7,16 @@ namespace StrategyWorker.Engine;
 
 /// <summary>
 /// LLM 策略 — 將 K 線 + 技術指標摘要送給 LLM，請它判斷 buy/sell/hold。
-/// 透過 OpenAI-compatible API（可接 Gemini、Claude、本地 Ollama）。
+///
+/// 路由設計：所有 LLM 呼叫一律透過 broker 的 /api/v1/llm-proxy/chat 端點，
+/// 而非直接連 Gemini / OpenAI。這樣 broker 端的 MeteredLlmProxyService 才能
+/// 把每次呼叫記到儀表板的 LLM Proxy 分頁，符合「集中治理」設計原則。
 /// </summary>
 public class LlmStrategy : IStrategy
 {
     private readonly HttpClient _http;
     private readonly ILogger<LlmStrategy> _logger;
-    private readonly string _baseUrl;
-    private readonly string _apiKey;
+    private readonly string _brokerUrl;
     private readonly string _model;
 
     // ── Circuit breaker（防止 backtest 數百次 LLM 呼叫造成 worker 超時斷線）
@@ -33,15 +35,13 @@ public class LlmStrategy : IStrategy
     public LlmStrategy(
         HttpClient http,
         ILogger<LlmStrategy> logger,
-        string baseUrl,
-        string apiKey,
+        string brokerUrl,
         string model = "gemini-2.0-flash")
     {
-        _http    = http;
-        _logger  = logger;
-        _baseUrl = baseUrl.TrimEnd('/');
-        _apiKey  = apiKey;
-        _model   = model;
+        _http      = http;
+        _logger    = logger;
+        _brokerUrl = brokerUrl.TrimEnd('/');
+        _model     = model;
     }
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
@@ -140,6 +140,7 @@ public class LlmStrategy : IStrategy
             {jsonFormat}
             """;
 
+        // 統一走 broker 的 /api/v1/llm-proxy/chat（OpenAI-compatible body shape）
         var requestBody = JsonSerializer.Serialize(new
         {
             model    = _model,
@@ -148,51 +149,20 @@ public class LlmStrategy : IStrategy
             max_tokens  = 200,
         });
 
-        string json;
-        if (_baseUrl.Contains("generativelanguage.googleapis.com"))
-        {
-            // Gemini 原生 API
-            var geminiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
-            var geminiBody = JsonSerializer.Serialize(new
-            {
-                contents = new[] { new { parts = new[] { new { text = prompt } } } },
-                generationConfig = new { temperature = 0.1, maxOutputTokens = 1024, responseMimeType = "application/json", thinkingConfig = new { thinkingBudget = 0 } }
-            });
-            var geminiResp = await _http.PostAsync(geminiUrl,
-                new StringContent(geminiBody, Encoding.UTF8, "application/json"), ct);
-            geminiResp.EnsureSuccessStatusCode();
-            json = await geminiResp.Content.ReadAsStringAsync(ct);
-            var geminiDoc = JsonDocument.Parse(json);
-            var content_raw = geminiDoc.RootElement
-                .GetProperty("candidates")[0]
-                .GetProperty("content")
-                .GetProperty("parts")[0]
-                .GetProperty("text")
-                .GetString() ?? "";
-            _logger.LogInformation("Gemini raw response: {Raw}", content_raw);
-            json = content_raw;
-        }
-        else
-        {
-            // OpenAI-compatible API
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
-            {
-                Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
-            };
-            if (!string.IsNullOrEmpty(_apiKey))
-                request.Headers.Add("Authorization", $"Bearer {_apiKey}");
-            var resp = await _http.SendAsync(request, ct);
-            resp.EnsureSuccessStatusCode();
-            var respJson = await resp.Content.ReadAsStringAsync(ct);
-            var doc = JsonDocument.Parse(respJson);
-            json = doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-        }
+        var resp = await _http.PostAsync(
+            $"{_brokerUrl}/api/v1/llm-proxy/chat",
+            new StringContent(requestBody, Encoding.UTF8, "application/json"),
+            ct);
+        resp.EnsureSuccessStatusCode();
+        var respJson = await resp.Content.ReadAsStringAsync(ct);
+        var doc = JsonDocument.Parse(respJson);
 
-        var content = json;
+        // broker wrapper: { success, data: { content, model, eval_count, ... } }
+        if (!doc.RootElement.TryGetProperty("data", out var dataEl))
+            throw new InvalidOperationException("broker response missing data: " + respJson);
+        var content = dataEl.TryGetProperty("content", out var contentProp)
+            ? (contentProp.GetString() ?? "")
+            : "";
 
         // 嘗試從回應中解析 JSON
         var action     = "hold";

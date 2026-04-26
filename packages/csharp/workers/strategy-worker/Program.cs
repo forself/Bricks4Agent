@@ -59,25 +59,28 @@ strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
     strategies["multi_timeframe"],
 });
 
-// LLM 策略（選用）
+// LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
+// 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
+// 記到儀表板的 LLM Proxy 分頁。
 if (config.GetValue("Worker:Strategy:Llm:Enabled", false))
 {
-    var llmBaseUrl = config.GetValue<string>("Worker:Strategy:Llm:BaseUrl") ?? "";
-    var llmApiKey  = config.GetValue<string>("Worker:Strategy:Llm:ApiKey") ?? "";
-    var llmModel   = config.GetValue("Worker:Strategy:Llm:Model", "gemini-2.0-flash")!;
+    // BrokerUrl 容器內預設 http://broker:5000；若舊 config 還有 BaseUrl，且看起來是 broker
+    // 路徑（含 5000）也接受作 fallback。
+    var llmBrokerUrl = config.GetValue<string>("Worker:Strategy:Llm:BrokerUrl")
+                       ?? config.GetValue<string>("Worker:Strategy:Llm:BaseUrl")
+                       ?? "http://broker:5000";
+    var llmModel = config.GetValue("Worker:Strategy:Llm:Model", "gemini-2.0-flash")!;
 
-    if (!string.IsNullOrEmpty(llmBaseUrl))
-    {
-        var llmLogger = loggerFactory.CreateLogger<LlmStrategy>();
-        var llmHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        strategies["llm"] = new LlmStrategy(llmHttp, llmLogger, llmBaseUrl, llmApiKey, llmModel);
-        logger.LogInformation("LLM strategy enabled: model={Model}", llmModel);
+    var llmLogger = loggerFactory.CreateLogger<LlmStrategy>();
+    var llmHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+    strategies["llm"] = new LlmStrategy(llmHttp, llmLogger, llmBrokerUrl, llmModel);
+    logger.LogInformation("LLM strategy enabled (via broker proxy): broker={Url} model={Model}",
+        llmBrokerUrl, llmModel);
 
-        var newsLogger = loggerFactory.CreateLogger<NewsSentimentStrategy>();
-        var newsHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        strategies["news_sentiment"] = new NewsSentimentStrategy(newsHttp, newsLogger, llmApiKey, llmModel);
-        logger.LogInformation("News sentiment strategy enabled");
-    }
+    var newsLogger = loggerFactory.CreateLogger<NewsSentimentStrategy>();
+    var newsHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+    strategies["news_sentiment"] = new NewsSentimentStrategy(newsHttp, newsLogger, llmBrokerUrl, llmModel);
+    logger.LogInformation("News sentiment strategy enabled (via broker proxy)");
 }
 
 logger.LogInformation("Available strategies: [{Strategies}]", string.Join(", ", strategies.Keys));

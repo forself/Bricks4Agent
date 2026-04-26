@@ -133,8 +133,9 @@ services:
       WORKER_Worker__BrokerHost: "broker"
       WORKER_Worker__BrokerPort: "7000"
       WORKER_Worker__Strategy__Llm__Enabled: "${LLM_ENABLED:-false}"
-      WORKER_Worker__Strategy__Llm__BaseUrl: "${LLM_BASE_URL:-}"
-      WORKER_Worker__Strategy__Llm__ApiKey: "${LLM_API_KEY:-}"
+      # 走 broker 的 /api/v1/llm-proxy/chat 集中代理（broker 端有 LLM_API_KEY 即可，
+      # worker 不再需要 API key、也不直連上游）
+      WORKER_Worker__Strategy__Llm__BrokerUrl: "http://broker:5000"
       WORKER_Worker__Strategy__Llm__Model: "${LLM_MODEL:-gemini-2.0-flash}"
     networks:
       - trading-net

@@ -17,7 +17,7 @@ public class NewsSentimentStrategy : IStrategy
 {
     private readonly HttpClient _http;
     private readonly ILogger<NewsSentimentStrategy> _logger;
-    private readonly string _apiKey;
+    private readonly string _brokerUrl;
     private readonly string _model;
 
     public string Name => "news_sentiment";
@@ -25,13 +25,13 @@ public class NewsSentimentStrategy : IStrategy
     public NewsSentimentStrategy(
         HttpClient http,
         ILogger<NewsSentimentStrategy> logger,
-        string geminiApiKey,
+        string brokerUrl,
         string model = "gemini-2.5-flash")
     {
-        _http   = http;
-        _logger = logger;
-        _apiKey = geminiApiKey;
-        _model  = model;
+        _http      = http;
+        _logger    = logger;
+        _brokerUrl = brokerUrl.TrimEnd('/');
+        _model     = model;
     }
 
     // Circuit breaker（同 LlmStrategy 的邏輯；防 backtest 迴圈拖垮 worker）
@@ -106,24 +106,28 @@ public class NewsSentimentStrategy : IStrategy
             {jsonFormat}
             """;
 
-        var geminiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
+        // 改走 broker /api/v1/llm-proxy/chat（OpenAI-compatible），讓 LLM Proxy 分頁能看到呼叫
         var body = JsonSerializer.Serialize(new
         {
-            contents = new[] { new { parts = new[] { new { text = prompt } } } },
-            generationConfig = new { temperature = 0.1, maxOutputTokens = 256, responseMimeType = "application/json", thinkingConfig = new { thinkingBudget = 0 } }
+            model    = _model,
+            messages = new[] { new { role = "user", content = prompt } },
+            temperature = 0.1,
+            max_tokens  = 256,
         });
 
-        var resp = await _http.PostAsync(geminiUrl, new StringContent(body, Encoding.UTF8, "application/json"), ct);
+        var resp = await _http.PostAsync(
+            $"{_brokerUrl}/api/v1/llm-proxy/chat",
+            new StringContent(body, Encoding.UTF8, "application/json"),
+            ct);
         resp.EnsureSuccessStatusCode();
 
         var respJson = await resp.Content.ReadAsStringAsync(ct);
         var doc = JsonDocument.Parse(respJson);
-        var content = doc.RootElement
-            .GetProperty("candidates")[0]
-            .GetProperty("content")
-            .GetProperty("parts")[0]
-            .GetProperty("text")
-            .GetString() ?? "";
+        if (!doc.RootElement.TryGetProperty("data", out var dataEl))
+            throw new InvalidOperationException("broker response missing data: " + respJson);
+        var content = dataEl.TryGetProperty("content", out var cprop)
+            ? (cprop.GetString() ?? "")
+            : "";
 
         // 解析 LLM JSON
         var action = "hold";
