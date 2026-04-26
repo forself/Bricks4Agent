@@ -561,6 +561,60 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </el-table>
         </el-card>
 
+        <!-- 趨勢長條圖（最近 4 小時，10 分鐘一格 × 24 格） -->
+        <el-card v-if="llmStatus" style="margin-top:14px">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">{{t('llmTrend')}}</span>
+              <span v-if="llmTrend" style="font-size:11px;color:var(--td)">
+                {{t('llmTrendWindow')}}: {{llmTrend.window_minutes}} {{t('minutes')}} ·
+                {{t('llmTrendTotal')}}: {{llmTrend.total_calls}} ·
+                {{t('llmTrendFail')}}: {{llmTrend.total_failures}}
+              </span>
+              <el-select v-model="llmTrendBucket" size="small" style="width:120px;margin-left:auto" @change="loadLlmTrend">
+                <el-option :value="10" :label="t('llmTrendBucket10')"/>
+                <el-option :value="30" :label="t('llmTrendBucket30')"/>
+                <el-option :value="60" :label="t('llmTrendBucket60')"/>
+              </el-select>
+              <el-button size="small" @click="loadLlmTrend" :loading="llmTrendLoading">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+
+          <div v-if="!llmTrend || llmTrend.total_calls===0" style="padding:30px;text-align:center;color:var(--td);font-size:13px">
+            📊 {{t('llmTrendEmpty')}}
+          </div>
+          <div v-else style="padding:6px 0">
+            <!-- 簡易堆疊長條：每格綠色=success、紅色=failure，高度按相對 max_calls -->
+            <div style="display:flex;align-items:flex-end;gap:2px;height:140px;padding:4px 0;border-bottom:1px solid var(--bd)">
+              <div
+                v-for="(b,i) in llmTrend.buckets"
+                :key="i"
+                :title="trendBucketTooltip(b)"
+                style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;cursor:default;min-width:6px"
+              >
+                <div v-if="b.failure_calls>0"
+                  :style="'height:'+ trendBarPct(b.failure_calls) +'%;background:#f56c6c;border-top-left-radius:2px;border-top-right-radius:2px'"></div>
+                <div v-if="b.success_calls>0"
+                  :style="'height:'+ trendBarPct(b.success_calls) +'%;background:#67c23a;'+ (b.failure_calls===0 ? 'border-top-left-radius:2px;border-top-right-radius:2px' : '')"></div>
+                <div v-if="b.total_calls===0"
+                  style="height:2px;background:var(--bd);opacity:.3"></div>
+              </div>
+            </div>
+            <!-- X 軸時間刻度（首/中/尾三點，避免擠）-->
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--td);font-family:monospace;padding:4px 0 0 0">
+              <span>{{trendAxisLabel(llmTrend.buckets[0])}}</span>
+              <span>{{trendAxisLabel(llmTrend.buckets[Math.floor(llmTrend.buckets.length/2)])}}</span>
+              <span>{{t('llmTrendNow')}}</span>
+            </div>
+            <!-- 圖例 -->
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--td);margin-top:8px;align-items:center">
+              <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#67c23a;border-radius:2px"></span>{{t('llmSuccess')}}</span>
+              <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;background:#f56c6c;border-radius:2px"></span>{{t('llmTrendFail')}}</span>
+              <span style="margin-left:auto">{{t('llmTrendHover')}}</span>
+            </div>
+          </div>
+        </el-card>
+
         <!-- 最近呼叫 -->
         <el-card v-if="llmStatus" style="margin-top:14px">
           <template #header>
@@ -931,6 +985,10 @@ const I18N={
     selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
     logsLive:'即時日誌',logsHistory:'歷史錯誤',noLogHistory:'此容器尚無錯誤紀錄（或採集服務未啟動）',entries:'筆紀錄',
     llmProxy:'LLM Proxy',llmStatus:'狀態',llmEnabled:'已啟用',llmDisabled:'未啟用',
+    llmTrend:'呼叫趨勢',llmTrendWindow:'視窗',llmTrendTotal:'呼叫',llmTrendFail:'失敗',
+    llmTrendBucket10:'10 分/格',llmTrendBucket30:'30 分/格',llmTrendBucket60:'60 分/格',
+    llmTrendEmpty:'視窗內沒有 LLM 呼叫紀錄',llmTrendNow:'現在',llmTrendHover:'滑鼠 hover 看每格細節',
+    minutes:'分鐘',
     llmDefaultModel:'預設模型',llmUpstreamHost:'上游 Host',llmHealthcheck:'健康檢查',
     llmUpstreamOk:'上游可達',llmUpstreamDown:'上游連不上',
     llmTotalCalls:'總呼叫數',llmSinceStart:'broker 啟動以來',llmSuccessRate:'成功率',
@@ -986,6 +1044,10 @@ const I18N={
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
     llmProxy:'LLM Proxy',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
+    llmTrend:'Call trend',llmTrendWindow:'Window',llmTrendTotal:'Calls',llmTrendFail:'Failures',
+    llmTrendBucket10:'10 min/bucket',llmTrendBucket30:'30 min/bucket',llmTrendBucket60:'60 min/bucket',
+    llmTrendEmpty:'No LLM calls in window',llmTrendNow:'Now',llmTrendHover:'Hover for bucket details',
+    minutes:'minutes',
     llmDefaultModel:'Default model',llmUpstreamHost:'Upstream host',llmHealthcheck:'Health check',
     llmUpstreamOk:'Upstream reachable',llmUpstreamDown:'Upstream unreachable',
     llmTotalCalls:'Total calls',llmSinceStart:'since broker start',llmSuccessRate:'Success rate',
@@ -1487,6 +1549,9 @@ const app=createApp({
     // ── LLM Proxy 代理觀測 ─────────────────────────────────────────
     const llmStatus=ref(null);
     const llmRecent=ref([]);
+    const llmTrend=ref(null);
+    const llmTrendBucket=ref(10);  // 分鐘 / 格
+    const llmTrendLoading=ref(false);
     const llmStatusLoading=ref(false);
     const llmRecentLoading=ref(false);
     const llmHealthLoading=ref(false);
@@ -1505,8 +1570,37 @@ const app=createApp({
         console.error('llm status load failed:',e);
       }
       llmStatusLoading.value=false;
-      // 順便把 recent 也拉一下
+      // 順便把 recent + trend 也拉一下
       loadLlmRecent();
+      loadLlmTrend();
+    }
+    async function loadLlmTrend(){
+      llmTrendLoading.value=true;
+      try{
+        const bucket=llmTrendBucket.value;
+        const r=await getPlain('/api/v1/llm-proxy/trend?bucket='+bucket+'&count=24');
+        llmTrend.value=r.success?r.data:null;
+      }catch{ llmTrend.value=null; }
+      llmTrendLoading.value=false;
+    }
+    function trendBarPct(callsInBucket){
+      if(!llmTrend.value || llmTrend.value.max_calls_in_any_bucket<=0) return 0;
+      const max=llmTrend.value.max_calls_in_any_bucket;
+      // 高度按比例，最大 100% 對到容器 height:140px
+      return Math.max(2, (callsInBucket / max) * 100);
+    }
+    function trendBucketTooltip(b){
+      const ts=new Date(b.bucket_start);
+      const hh=String(ts.getHours()).padStart(2,'0');
+      const mm=String(ts.getMinutes()).padStart(2,'0');
+      return hh+':'+mm+' — '+b.total_calls+' calls ('+b.success_calls+' ✓ / '+b.failure_calls+' ✗) · avg '+b.avg_latency_ms+'ms';
+    }
+    function trendAxisLabel(b){
+      if(!b) return '';
+      const ts=new Date(b.bucket_start);
+      const hh=String(ts.getHours()).padStart(2,'0');
+      const mm=String(ts.getMinutes()).padStart(2,'0');
+      return hh+':'+mm;
     }
     async function loadLlmRecent(){
       llmRecentLoading.value=true;
@@ -1562,9 +1656,10 @@ const app=createApp({
       fetchLogHistory,onLogsTabChange,toggleCodeFilter,clearCodeFilter,toggleDetail,catalogChipStyle,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
       availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
-      llmStatus,llmRecent,llmStatusLoading,llmRecentLoading,llmHealthLoading,llmHealthResult,
-      llmAutoRefresh,llmRefreshInterval,loadLlmStatus,loadLlmRecent,runLlmHealthCheck,onLlmAutoRefreshChange,
-      fmtNumberShort,fmtUptime,
+      llmStatus,llmRecent,llmTrend,llmTrendBucket,llmTrendLoading,llmStatusLoading,llmRecentLoading,llmHealthLoading,llmHealthResult,
+      llmAutoRefresh,llmRefreshInterval,loadLlmStatus,loadLlmRecent,loadLlmTrend,runLlmHealthCheck,onLlmAutoRefreshChange,
+      trendBarPct,trendBucketTooltip,trendAxisLabel,
+      fmtNumberShort,fmtUptime, Math,
       session:computed(()=>session)};
   }
 });

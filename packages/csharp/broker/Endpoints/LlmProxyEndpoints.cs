@@ -90,6 +90,40 @@ public static class LlmProxyEndpoints
             }));
         });
 
+        // GET /api/v1/llm-proxy/trend?bucket=10&count=24 — 時間 bucket 趨勢
+        //   給儀表板畫「最近 N 小時的成功/失敗筆數 + 延遲」長條趨勢圖。
+        //   bucket 範圍 1-60 分鐘、count 範圍 1-144；預設 10 分鐘 × 24 格 = 4 小時視窗。
+        proxy.MapGet("/trend", (LlmProxyMetrics metrics, HttpContext ctx) =>
+        {
+            var q = ctx.Request.Query;
+            var bucket = int.TryParse(q["bucket"].ToString(), out var b) ? b : 10;
+            var count  = int.TryParse(q["count"].ToString(),  out var c) ? c : 24;
+
+            var buckets = metrics.Trend(bucket, count);
+            var maxCalls = buckets.Max(x => (int?)x.TotalCalls) ?? 0;
+            var totalCallsInWindow = buckets.Sum(x => x.TotalCalls);
+            var totalFailInWindow  = buckets.Sum(x => x.FailureCalls);
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                bucket_minutes = bucket,
+                bucket_count = count,
+                window_minutes = bucket * count,
+                max_calls_in_any_bucket = maxCalls,
+                total_calls = totalCallsInWindow,
+                total_failures = totalFailInWindow,
+                buckets = buckets.Select(x => new
+                {
+                    bucket_start = x.BucketStart,
+                    total_calls = x.TotalCalls,
+                    success_calls = x.SuccessCalls,
+                    failure_calls = x.FailureCalls,
+                    avg_latency_ms = x.AvgLatencyMs,
+                    eval_tokens = x.EvalTokens,
+                }),
+            }));
+        });
+
         // POST /api/v1/llm-proxy/chat — Worker / 內部服務轉送 LLM 呼叫
         //   走 trusted-internal allowlist（不需要 ECDH session），給 strategy-worker
         //   等容器內服務透過 broker 集中呼叫 LLM，所有呼叫被 MeteredLlmProxyService

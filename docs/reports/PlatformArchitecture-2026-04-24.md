@@ -486,6 +486,151 @@ dotnet run --project packages/csharp/workers/browser-worker/BrowserWorker.csproj
 
 ---
 
+## 十四、平台治理層的觀測性補完（2026-04-25 ~ 04-26）
+
+前面 §三 ~ §八 描述的是**設計時的治理機制**（Trust/Taint、Memory Split、Capability 白名單、LLM Proxy 集中入口）。這節記錄一輪「**讓這些機制可被儀表板看見**」的工程，把抽象設計變成可驗證的實證。
+
+### 14.1 LLM Proxy 觀測性 + 量化策略路由對齊
+
+**問題**：§八 講「所有 LLM 呼叫透過 LlmProxyService 統一管理」，但實際上 `strategy-worker` 容器的 `LlmStrategy` 跟 `NewsSentimentStrategy` 是**自己拿 HttpClient 直連 Gemini**，繞過 broker。等於專題故事裡最常引用的「集中治理」這條，**worker 端是說一套做一套**。
+
+**修法**（commit `e300fd2`）：
+
+1. broker 加 `POST /api/v1/llm-proxy/chat` endpoint（trusted-internal allowlist），收 OpenAI-compatible body，內部走 `MeteredLlmProxyService → ILlmProxyService.ChatAsync`。
+2. `LlmStrategy` / `NewsSentimentStrategy` 建構子改成只吃 `brokerUrl + model`，**砍掉 `apiKey` 跟對 Gemini / OpenAI 的雙分支**。所有 LLM 呼叫單一路徑：POST broker `/llm-proxy/chat`、解 broker wrapper `data.content`。
+3. `compose.trading.yml` 對應改：strategy-worker 不再注入 `LLM_API_KEY`、只注入 `BrokerUrl=http://broker:5000`。**API key 只留在 broker 一份**。
+
+**觀測層裝飾器**（commit `f1458ab`）：
+
+- 新增 `LlmProxyMetrics`（`broker-core/Services/`）— 純記憶體 ring buffer 200 筆 + thread-safe counters + per-model 聚合
+- 新增 `MeteredLlmProxyService`（**decorator 模式**包住 `LlmProxyService`，`ChatAsync` 前後 `Stopwatch` + try/catch 紀錄）
+- DI rewire：原本 `AddHttpClient<ILlmProxyService, LlmProxyService>` 拆成兩步 — 內層 LlmProxyService 註冊不變，外層 ILlmProxyService 註冊為 MeteredLlmProxyService
+- **既有所有 ILlmProxyService 消費者（HighLevelCoordinator、StrategyGeneratorService、RuntimeEndpoints、…）一行不用改、自動拿到觀測能力**
+
+**為什麼用 decorator 不直接改 LlmProxyService**：單一職責 + 觀測層可以選擇性註冊（DI 開關）+ 不污染既有測試。這是 §五 Worker SDK 章節提的「介面驅動讓擴充免侵入」紀律的另一個應用點。
+
+**儀表板呈現**（新「LLM Proxy」分頁）：
+
+- 配置卡：provider / api_format / default_model / api_key_set + 長度（mask 不洩漏值）/ upstream host（只顯示 host 部分、不洩漏完整 URL）
+- KPI 卡：total_calls / success_rate (% with color thresholds 95/80) / avg_latency / total_eval_tokens
+- 依模型統計表：每個 model 的 calls / success ratio / avg_latency / tokens / last_call_ts
+- 最近呼叫表：時間 / OK-FAIL tag / model / task_id / latency / tokens / 截短錯誤訊息
+- 🩺 健康檢查按鈕：主動 ping 上游確認可達
+- **趨勢長條圖**：最近 24 個 bucket（預設 10 分鐘/格 = 4 小時視窗）的成功/失敗筆數堆疊柱狀圖，hover 看單格細節
+  - 後端：`LlmProxyMetrics.Trend(bucketMinutes, bucketCount)` 對 ring buffer 做時間 bucket 分組 + `GET /llm-proxy/trend`
+  - 前端：純 CSS flex 長條（不引第三方圖表庫）
+
+**驗證**：直接 POST `/api/v1/llm-proxy/chat` 帶 `gemini-2.5-flash` + 一句測試 prompt，5 秒內儀表板看到：
+
+```text
+total_calls=1 success=1 avg_latency=1369ms
+per_model: gemini-2.5-flash 1 call 1 token
+```
+
+### 14.2 容器錯誤日誌持久化（Container Logs SQLite）
+
+**問題**：原本看容器日誌只能即時 `docker logs --tail N`，**容器一停就消失**、無法 postmortem。
+
+**修法**（commit `9ce8152` + `225fedf`）：
+
+- `function-pool/ContainerLogs/ContainerLogTailService.cs` — `Timer` 每 10 秒對所有 running 容器跑 `docker logs --tail N --timestamps`
+- Regex 過濾 `ERROR / WARN / FATAL / Exception / failed / denied / refused / timeout / crashed` 的行；**stderr 行不論內容直接視為 ERROR**
+- ANSI escape 碼自動剝除（discord-bot 跑 Claude Code TUI 會噴一堆色碼/游標控制）
+- 寫入獨立 `/data/container-logs.db`（不污染 `broker.db` 跟 `diagnostics.db` 的 WAL）
+- `(container_id, ts, msg_hash)` 複合索引去重 — 容許重疊時間視窗讀、不會重複寫
+- **保留 7 天**自動清理（每 ~10 分鐘一次 retention sweep + VACUUM）
+- API：`GET /api/v1/workers/log-history?container_id=&level=&error_code=&limit=`
+
+**為什麼用 `--tail N` 不用 `--since {n}s`**：實測 Docker 29.x + WSL 對 `--since 60s` / `--since 5m` 等小視窗會回 0 行（`--since 1h` 才會），疑似 timezone / 解析 bug。改用 `--tail N` + msg_hash 去重雖然每次重讀部分行、但跨 docker CLI 版本穩。
+
+**Regex 守門**：`0 errors` / `no errors` / `successfully` 這類**包含錯誤關鍵字但本意是成功**的行被加入 `FalsePositivePattern` 排除（quote-worker 的 `[Job xxx] done: 8 ok, 0 errors, 2.2s` 是典型誤判源）。
+
+### 14.3 錯誤目錄分類（ErrorCatalog 13 類）
+
+**問題**：14.2 抓到的錯誤行只標 ERROR/WARN 等級不夠用。要回答「**哪類錯誤最常發生**」需要分類維度。
+
+**修法**（commit `25de5f9`）：
+
+- `function-pool/ContainerLogs/ErrorCatalog.cs` — 13 條規則的目錄
+- 每條 entry 是 `{Code, Category, Description, Severity, Pattern}`
+- **順序敏感**：先具體（LLM rate limit、SQLite locked）後通用（fail/error 通配）；命中第一條就停
+- 寫入時 classify、SQLite 多兩個欄位 `error_code` + `category`（`ALTER TABLE` 等冪檢查 `PRAGMA table_info` 後加）
+- 啟動時 `ReclassifyUnclassified()` 重跑舊資料的分類器
+
+13 類目錄概覽：
+
+| Code | 類別 | 觸發 pattern 摘要 |
+|---|---|---|
+| ERR-001 | Worker 連線中斷 | connection error/lost/closed, Reconnecting |
+| ERR-002 | 資料庫異常 | SqliteException, database is locked |
+| ERR-003 | LLM / 外部 API 限流 | rate limit, 429, quota |
+| ERR-004 | 認證 / 授權失敗 | 401, 403, unauthorized |
+| ERR-005 | Timeout / 逾時 | timeout, deadline exceeded |
+| ERR-006 | 資源找不到 | 404, FileNotFound |
+| ERR-007 | 資料解析錯誤 | JsonException, parse error |
+| ERR-008 | 設定 / 環境變數缺失 | missing env, required.*not provided |
+| ERR-009 | Null / 參照錯誤 | NullReferenceException, TypeError |
+| ERR-010 | 例外 / 未處理 | Traceback, panic, unhandled |
+| ERR-011 | 套件 / 更新失敗 | auto-update failed, npm install |
+| WRN-001 | 已棄用 API | deprecated, obsolete |
+| WRN-002 | 重試 / Backoff | retrying, backoff |
+
+加 `ERR-999 / WRN-999` 兩條 fallback。**新增類別只要 push 到 `Entries` list 前面**，broker 重啟時 reclassify 自動更新舊資料。
+
+**儀表板呈現**：每個容器卡的「日誌 → 歷史錯誤」分頁頂部 chip 列（紅 ERROR / 橘 WARN，點 chip 過濾），entry rows 預設收合只顯示 `[CODE] 分類` + 時間，點開看 raw message — 模擬 HTTP 狀態碼設計（`404 Not Found` 給人看、stack trace 點進去看）。
+
+**實證效果**：discord-bot 容器 18 筆 `Auto-update failed · Try claude doctor` 從 `ERR-999 未分類` 移到 `ERR-011 套件 / 更新失敗`；strategy/trading-worker 的 Reconnect 訊息歸到 `ERR-001 Worker 連線中斷`。儀表板從「45 行 ERROR」變成「ERR-001 × 45 / ERR-011 × 18 / WRN-999 × 45」三個分類聚合，**讓「最近主要在出什麼包」一眼看穿**。
+
+### 14.4 Agent Capability Scoping 活 demo
+
+**問題**：§三、§六、§十一講的 Capability 白名單 + Role-based scoping 是設計概念，過去沒有具體驗證。
+
+**驗證**（2026-04-26）：透過儀表板「+ 建立代理」建立一個名為 `Research Assistant` 的 agent：
+
+```text
+顯示名稱: Research Assistant
+任務類別: analysis
+能力: 點「預設（低權限）」→ 自動勾全部 Low risk capability
+```
+
+**broker 端 AgentSpawnService.CreateAgent 流程**：
+
+1. 建 `Principal { id=prn_agent_xxx, type=AI, status=Active }`
+2. 建 `BrokerTask { id=task_agent_xxx, type=analysis, scope=task_agent_xxx }`
+3. 為勾的每個 capability 建一筆 `CapabilityGrant { principal_id, task_id, capability_id, scope, quota }`
+4. 看選的能力**最高風險等級**自動配 role（Low → `role_reader`、Medium+ → `role_executor`）
+5. 寫 `RuntimeDescriptor`（之後 spawn 容器時用）
+
+**儀表板顯示的 agent**：
+
+```text
+Agent ID: agent_3273e7d4bba045ada3
+Principal: prn_agent_3273e7d4bba045ada3
+Task: task_agent_3273e7d4bba045ada3
+狀態: Active
+任務類別: 通用 (analysis)
+能力: 25
+角色: role_reader（自動推導）
+```
+
+**這證明了什麼**（給專題報告的關鍵句）：
+> 「我建了一個 Research Assistant agent、broker 自動配給它 `role_reader` + 25 條 read-only `capability_grants`。如果這個 agent 之後嘗試呼叫 `trading.order/submit`（白名單裡沒有），broker 的 `PolicyEngine` 會在 dispatch 階段直接拒絕、根本到不了 trading-worker。這就是平台 §三 講的 **AI 提議 → broker 驗證 → 執行層只執行結構化意圖** 治理模型的具體實現，不是設計圖上的箭頭、是真的擋得了的牆。」
+
+### 14.5 整輪工程的小結（給說詞用）
+
+這四個小節合起來把專題主軸文件的三個抽象主張**全部變成有 demo 證據的實證**：
+
+| §X 抽象主張 | §十四 哪一節提供實證 |
+|---|---|
+| §三 LLM 集中治理（LlmProxyService 統一入口）| 14.1（worker 路由對齊 + Metered decorator + 儀表板觀測）|
+| §三 Memory Split / 可檢視 / 可重現 | 14.2（容器錯誤持久化 7 天，事後可查）|
+| §三 治理 vs 觀測：可檢視 | 14.3（錯誤分類目錄讓「治理層的事故」可分類聚合）|
+| §六 Capability 白名單 + Role 自動推導 | 14.4（Research Assistant agent 活 demo）|
+
+**設計哲學的複利**：14.1 的 decorator 模式跟 §五 Worker SDK 的 ICapabilityHandler 是同一招——介面驅動讓擴充不侵入既有實作。14.2 的 SQLite + Timer + retention 跟 §九 提到的 ScheduledDiagnosticsService 是同一招——獨立 db + 背景服務 + 滾動清理。14.3 的目錄分類器跟 §四 的 capability 命名空間是同一招——具體先、通用後的命中順序。**讓系統好擴充的紀律會在不同層級重複出現**，這就是架構紀律的複利。
+
+---
+
 ## 附錄 A：packages/csharp/ 結構速查
 
 | 路徑 | 角色 |

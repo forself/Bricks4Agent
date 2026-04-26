@@ -106,6 +106,61 @@ public class LlmProxyMetrics
         }
     }
 
+    /// <summary>
+    /// 把 ring buffer 內的呼叫按時間 bucket 分組，給儀表板畫趨勢圖。
+    /// 預設 10 分鐘一格，向前回溯 N 格（N×10 分鐘 = 視窗長度）。
+    /// 即使該格沒任何呼叫也會回一筆 0 計數，方便前端畫連續長條。
+    /// </summary>
+    public List<LlmTrendBucket> Trend(int bucketMinutes = 10, int bucketCount = 24)
+    {
+        bucketMinutes = Math.Clamp(bucketMinutes, 1, 60);
+        bucketCount   = Math.Clamp(bucketCount, 1, 144);  // max 24h with 10m bucket
+
+        var bucketSpan = TimeSpan.FromMinutes(bucketMinutes);
+        var nowUtc     = DateTime.UtcNow;
+
+        // 把 now 對齊到 bucket 邊界（向下）
+        var nowTicks = nowUtc.Ticks;
+        var spanTicks = bucketSpan.Ticks;
+        var alignedNow = new DateTime((nowTicks / spanTicks) * spanTicks, DateTimeKind.Utc);
+
+        var buckets = new List<LlmTrendBucket>(bucketCount);
+        var bucketStarts = new DateTime[bucketCount];
+        for (int i = 0; i < bucketCount; i++)
+        {
+            // i=0 是最舊、i=bucketCount-1 是最新（含現在）
+            bucketStarts[i] = alignedNow - TimeSpan.FromMinutes((bucketCount - 1 - i) * bucketMinutes);
+            buckets.Add(new LlmTrendBucket
+            {
+                BucketStart = bucketStarts[i],
+                BucketMinutes = bucketMinutes,
+            });
+        }
+
+        var oldestVisible = bucketStarts[0];
+        var newestVisible = bucketStarts[^1] + bucketSpan;
+
+        List<LlmCallRecord> snapshot;
+        lock (_lock) { snapshot = _recent.ToList(); }
+
+        foreach (var r in snapshot)
+        {
+            if (r.Ts < oldestVisible || r.Ts >= newestVisible) continue;
+            int idx = (int)((r.Ts - oldestVisible).Ticks / spanTicks);
+            if (idx < 0 || idx >= bucketCount) continue;
+            var b = buckets[idx];
+            b.TotalCalls++;
+            if (r.Success) b.SuccessCalls++;
+            else b.FailureCalls++;
+            b.LatencySumMs += r.LatencyMs;
+            b.EvalTokens   += r.EvalTokens;
+        }
+        foreach (var b in buckets)
+            b.AvgLatencyMs = b.TotalCalls > 0 ? b.LatencySumMs / b.TotalCalls : 0;
+
+        return buckets;
+    }
+
     private class ModelStat
     {
         public long Calls;
@@ -148,4 +203,16 @@ public class ModelSummary
     public long     EvalTokens   { get; set; }
     public long     AvgLatencyMs { get; set; }
     public DateTime LastTs       { get; set; }
+}
+
+public class LlmTrendBucket
+{
+    public DateTime BucketStart   { get; set; }
+    public int      BucketMinutes { get; set; }
+    public int      TotalCalls    { get; set; }
+    public int      SuccessCalls  { get; set; }
+    public int      FailureCalls  { get; set; }
+    public long     LatencySumMs  { get; set; }
+    public long     AvgLatencyMs  { get; set; }
+    public long     EvalTokens    { get; set; }
 }
