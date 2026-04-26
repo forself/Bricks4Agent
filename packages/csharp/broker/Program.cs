@@ -569,6 +569,9 @@ app.Use(async (context, next) =>
 
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
 app.UseWebSockets();
+// UseDefaultFiles 必須在 UseStaticFiles 之前；它會把 / 請求 rewrite 成 /index.html
+// 讓使用者打 http://localhost:5100/ 直接看到 dashboard，不用記完整路徑
+app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // ── Middleware 管線（順序關鍵） ──
