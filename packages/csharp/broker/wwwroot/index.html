@@ -465,6 +465,147 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </el-card>
       </el-tab-pane>
 
+      <!-- ── LLM 代理（觀測 LlmProxyService） ── -->
+      <el-tab-pane :label="t('llmProxy')" name="llmproxy">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <el-button size="small" @click="loadLlmStatus" :loading="llmStatusLoading">{{t('refresh')}}</el-button>
+          <el-button size="small" type="primary" @click="runLlmHealthCheck" :loading="llmHealthLoading">🩺 {{t('llmHealthcheck')}}</el-button>
+          <el-switch v-model="llmAutoRefresh" @change="onLlmAutoRefreshChange" size="small"/>
+          <span style="font-size:12px;color:var(--td)">{{t('autoRefresh')}}</span>
+          <el-select v-model="llmRefreshInterval" size="small" style="width:90px" :disabled="!llmAutoRefresh">
+            <el-option :value="5000" label="5s"/><el-option :value="15000" label="15s"/><el-option :value="60000" label="60s"/>
+          </el-select>
+          <span v-if="llmStatus" style="font-size:11px;color:var(--td);margin-left:auto">
+            {{t('uptime')}}: {{fmtUptime(llmStatus.metrics.uptime_seconds)}}
+          </span>
+        </div>
+
+        <!-- Healthcheck banner -->
+        <div v-if="llmHealthResult" style="margin-bottom:14px">
+          <el-alert
+            :title="llmHealthResult.upstream_reachable ? t('llmUpstreamOk') : t('llmUpstreamDown')"
+            :type="llmHealthResult.upstream_reachable ? 'success' : (llmHealthResult.enabled === false ? 'info' : 'error')"
+            :description="llmHealthResult.note || llmHealthResult.error || ('Checked at ' + fmtDate(llmHealthResult.checked_at))"
+            show-icon :closable="true" @close="llmHealthResult=null"/>
+        </div>
+
+        <!-- 設定 + KPI 兩排卡 -->
+        <div v-if="llmStatus" class="ct-summary" style="margin-bottom:10px">
+          <div class="ct-kpi" :style="'border-left-color:'+(llmStatus.config.enabled?'#67c23a':'#909399')">
+            <div class="lbl">{{t('llmStatus')}}</div>
+            <div class="val" :style="'font-size:18px;color:'+(llmStatus.config.enabled?'#67c23a':'#909399')">
+              {{llmStatus.config.enabled ? t('llmEnabled') : t('llmDisabled')}}
+            </div>
+            <div class="sub">{{llmStatus.config.provider}} · {{llmStatus.config.api_format}}</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#409eff">
+            <div class="lbl">{{t('llmDefaultModel')}}</div>
+            <div class="val" style="font-size:14px;font-family:monospace">{{llmStatus.config.default_model || '—'}}</div>
+            <div class="sub">{{llmStatus.config.api_key_set ? '🔑 key set ('+llmStatus.config.api_key_length+' chars)' : '⚠ no api key'}}</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#909399">
+            <div class="lbl">{{t('llmUpstreamHost')}}</div>
+            <div class="val" style="font-size:13px;font-family:monospace">{{llmStatus.config.base_url_host || '—'}}</div>
+            <div class="sub">timeout {{llmStatus.config.timeout_seconds}}s · {{llmStatus.config.supports_tool_calling ? 'tools ✓' : 'no tools'}}</div>
+          </div>
+        </div>
+
+        <div v-if="llmStatus" class="ct-summary">
+          <div class="ct-kpi total">
+            <div class="lbl">{{t('llmTotalCalls')}}</div>
+            <div class="val">{{llmStatus.metrics.total_calls}}</div>
+            <div class="sub">{{t('llmSinceStart')}}</div>
+          </div>
+          <div class="ct-kpi" :class="llmStatus.metrics.success_rate_pct>=95?'running':(llmStatus.metrics.success_rate_pct>=80?'warn':'bad')">
+            <div class="lbl">{{t('llmSuccessRate')}}</div>
+            <div class="val" :style="'color:'+(llmStatus.metrics.success_rate_pct>=95?'#67c23a':(llmStatus.metrics.success_rate_pct>=80?'#e6a23c':'#f56c6c'))">{{llmStatus.metrics.success_rate_pct.toFixed(1)}}%</div>
+            <div class="sub">{{llmStatus.metrics.success_calls}} ✓ / {{llmStatus.metrics.failure_calls}} ✗</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#409eff">
+            <div class="lbl">{{t('llmAvgLatency')}}</div>
+            <div class="val">{{llmStatus.metrics.avg_latency_ms}} ms</div>
+            <div class="sub">{{t('llmAcrossAllCalls')}}</div>
+          </div>
+          <div class="ct-kpi warn">
+            <div class="lbl">{{t('llmTotalTokens')}}</div>
+            <div class="val">{{fmtNumberShort(llmStatus.metrics.total_eval_tokens)}}</div>
+            <div class="sub">{{t('llmEvalTokensOnly')}}</div>
+          </div>
+        </div>
+
+        <!-- per-model breakdown -->
+        <el-card v-if="llmStatus" style="margin-top:14px">
+          <template #header><span style="font-weight:600">{{t('llmPerModel')}}</span></template>
+          <el-empty v-if="llmStatus.metrics.per_model.length===0" :description="t('llmNoCalls')" :image-size="60"/>
+          <el-table v-else :data="llmStatus.metrics.per_model" stripe>
+            <el-table-column :label="t('llmModel')" min-width="180">
+              <template #default="{row}"><code style="font-size:12px">{{row.model}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('llmCalls')" width="90" align="right" prop="calls"/>
+            <el-table-column :label="t('llmSuccess')" width="100" align="right">
+              <template #default="{row}">
+                <span :style="'color:'+(row.calls>0&&row.success_calls===row.calls?'#67c23a':(row.success_calls/row.calls>=0.8?'#e6a23c':'#f56c6c'))">
+                  {{row.success_calls}}/{{row.calls}}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmAvgLatency')" width="120" align="right">
+              <template #default="{row}">{{row.avg_latency_ms}} ms</template>
+            </el-table-column>
+            <el-table-column :label="t('llmTokens')" width="120" align="right">
+              <template #default="{row}">{{fmtNumberShort(row.eval_tokens)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('llmLastCall')" width="170">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.last_ts)}}</span></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <!-- 最近呼叫 -->
+        <el-card v-if="llmStatus" style="margin-top:14px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('llmRecentCalls')}}</span>
+              <el-button size="small" @click="loadLlmRecent" :loading="llmRecentLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+          <el-empty v-if="llmRecent.length===0" :description="t('llmNoRecent')" :image-size="60"/>
+          <el-table v-else :data="llmRecent" stripe>
+            <el-table-column :label="t('time')" width="170">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.ts)}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('llmStatusCol')" width="80" align="center">
+              <template #default="{row}">
+                <el-tag :type="row.success?'success':'danger'" size="small">{{row.success?'OK':'FAIL'}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmModel')" min-width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.model||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('llmTask')" min-width="160">
+              <template #default="{row}">
+                <code style="font-size:11px;color:var(--td)">{{row.task_id||'—'}}</code>
+                <span v-if="row.task_type" style="font-size:10px;color:var(--td);margin-left:6px">[{{row.task_type}}]</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmAvgLatency')" width="100" align="right">
+              <template #default="{row}">{{row.latency_ms}} ms</template>
+            </el-table-column>
+            <el-table-column :label="t('llmTokens')" width="90" align="right" prop="eval_tokens"/>
+            <el-table-column :label="t('llmError')" min-width="200">
+              <template #default="{row}">
+                <span v-if="row.error_brief" style="font-size:11px;color:#f56c6c;font-family:monospace">{{row.error_brief}}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <div v-if="!llmStatus && !llmStatusLoading" class="ct-empty" style="margin-top:20px">
+          <div class="big">🔌</div>
+          <div>{{t('llmLoadFailed')}}</div>
+        </div>
+      </el-tab-pane>
+
     </el-tabs>
   </div>
 </div>
@@ -789,6 +930,18 @@ const I18N={
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
     selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
     logsLive:'即時日誌',logsHistory:'歷史錯誤',noLogHistory:'此容器尚無錯誤紀錄（或採集服務未啟動）',entries:'筆紀錄',
+    llmProxy:'LLM 代理',llmStatus:'狀態',llmEnabled:'已啟用',llmDisabled:'未啟用',
+    llmDefaultModel:'預設模型',llmUpstreamHost:'上游 Host',llmHealthcheck:'健康檢查',
+    llmUpstreamOk:'上游可達',llmUpstreamDown:'上游連不上',
+    llmTotalCalls:'總呼叫數',llmSinceStart:'broker 啟動以來',llmSuccessRate:'成功率',
+    llmAvgLatency:'平均延遲',llmAcrossAllCalls:'全部呼叫平均',
+    llmTotalTokens:'累計 token',llmEvalTokensOnly:'只統計 output（eval）',
+    llmPerModel:'依模型統計',llmModel:'模型',llmCalls:'呼叫',llmSuccess:'成功',
+    llmTokens:'tokens',llmLastCall:'最後呼叫',llmNoCalls:'尚無 LLM 呼叫紀錄',
+    llmRecentCalls:'最近呼叫（最多 200 筆 ring buffer）',llmNoRecent:'最近無呼叫',
+    llmStatusCol:'狀態',llmTask:'任務',llmError:'錯誤訊息（截短）',
+    llmLoadFailed:'無法載入 LLM 代理狀態（broker 未啟用 LlmProxy？）',
+    uptime:'運行時間',time:'時間',
     logViewMode:'顯示模式',logModeRaw:'原始',logModeSummary:'中文摘要',
     noSummary:'目前沒有可摘要的內容（容器無輸出或全部已被分類為一般訊息但 0 行）',
     noLogHistoryStopped:'此容器已停止執行 · 採集服務只追蹤執行中的容器，已經發生的錯誤歷史會保留到過期為止',
@@ -832,6 +985,18 @@ const I18N={
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
+    llmProxy:'LLM Proxy',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
+    llmDefaultModel:'Default model',llmUpstreamHost:'Upstream host',llmHealthcheck:'Health check',
+    llmUpstreamOk:'Upstream reachable',llmUpstreamDown:'Upstream unreachable',
+    llmTotalCalls:'Total calls',llmSinceStart:'since broker start',llmSuccessRate:'Success rate',
+    llmAvgLatency:'Avg latency',llmAcrossAllCalls:'across all calls',
+    llmTotalTokens:'Eval tokens',llmEvalTokensOnly:'output tokens only',
+    llmPerModel:'Per-model breakdown',llmModel:'Model',llmCalls:'Calls',llmSuccess:'Success',
+    llmTokens:'tokens',llmLastCall:'Last call',llmNoCalls:'No LLM calls yet',
+    llmRecentCalls:'Recent calls (ring buffer up to 200)',llmNoRecent:'No recent calls',
+    llmStatusCol:'Status',llmTask:'Task',llmError:'Error (truncated)',
+    llmLoadFailed:'Cannot load LLM proxy status (broker may not have LlmProxy enabled)',
+    uptime:'Uptime',time:'Time',
     logViewMode:'View',logModeRaw:'Raw',logModeSummary:'Summary',
     noSummary:'Nothing to summarize (container produced no output)',
     noLogHistoryStopped:'This container is stopped · the tail service only tracks running containers. Previously-captured history is retained until expiration.',
@@ -922,9 +1087,10 @@ const app=createApp({
 
     async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers()]);refreshing.value=false}
     function onTabChange(tab){
-      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan()}
-      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh()}
-      else{stopAutoRefresh();stopAutoScan()}
+      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh()}
+      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh()}
+      else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan()}
+      else{stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh()}
     }
 
     function riskType(r){const s=(r||'').toLowerCase();if(s==='low')return'success';if(s==='medium')return'warning';if(s==='high'||s==='critical')return'danger';return'info'}
@@ -1318,6 +1484,69 @@ const app=createApp({
     function stopAutoRefresh(){if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}}
     function onAutoRefreshChange(){if(autoRefresh.value)startAutoRefresh();else stopAutoRefresh()}
 
+    // ── LLM Proxy 代理觀測 ─────────────────────────────────────────
+    const llmStatus=ref(null);
+    const llmRecent=ref([]);
+    const llmStatusLoading=ref(false);
+    const llmRecentLoading=ref(false);
+    const llmHealthLoading=ref(false);
+    const llmHealthResult=ref(null);
+    const llmAutoRefresh=ref(false);
+    const llmRefreshInterval=ref(15000);
+    let llmAutoTimer=null;
+
+    async function loadLlmStatus(){
+      llmStatusLoading.value=true;
+      try{
+        const r=await getPlain('/api/v1/llm-proxy/status');
+        llmStatus.value=r.success?r.data:null;
+      }catch(e){
+        llmStatus.value=null;
+        console.error('llm status load failed:',e);
+      }
+      llmStatusLoading.value=false;
+      // 順便把 recent 也拉一下
+      loadLlmRecent();
+    }
+    async function loadLlmRecent(){
+      llmRecentLoading.value=true;
+      try{
+        const r=await getPlain('/api/v1/llm-proxy/recent?limit=50');
+        llmRecent.value=(r.success&&r.data?.entries)?r.data.entries:[];
+      }catch{ llmRecent.value=[]; }
+      llmRecentLoading.value=false;
+    }
+    async function runLlmHealthCheck(){
+      llmHealthLoading.value=true;
+      try{
+        const r=await getPlain('/api/v1/llm-proxy/healthcheck');
+        llmHealthResult.value=r.success?r.data:{enabled:true,upstream_reachable:false,error:r.message};
+      }catch(e){
+        llmHealthResult.value={enabled:true,upstream_reachable:false,error:e.message};
+      }
+      llmHealthLoading.value=false;
+    }
+    function startLlmAutoRefresh(){
+      stopLlmAutoRefresh();
+      llmAutoTimer=setInterval(()=>{ loadLlmStatus(); }, llmRefreshInterval.value);
+    }
+    function stopLlmAutoRefresh(){ if(llmAutoTimer){clearInterval(llmAutoTimer);llmAutoTimer=null;} }
+    function onLlmAutoRefreshChange(){ if(llmAutoRefresh.value) startLlmAutoRefresh(); else stopLlmAutoRefresh(); }
+
+    function fmtNumberShort(n){
+      if(n==null) return '—';
+      if(n>=1e9) return (n/1e9).toFixed(2)+'B';
+      if(n>=1e6) return (n/1e6).toFixed(2)+'M';
+      if(n>=1e3) return (n/1e3).toFixed(1)+'K';
+      return String(n);
+    }
+    function fmtUptime(sec){
+      if(!sec||sec<60) return (sec||0)+'s';
+      if(sec<3600) return Math.floor(sec/60)+'m '+(sec%60)+'s';
+      if(sec<86400) return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';
+      return Math.floor(sec/86400)+'d '+Math.floor((sec%86400)/3600)+'h';
+    }
+
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
       activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
@@ -1333,6 +1562,9 @@ const app=createApp({
       fetchLogHistory,onLogsTabChange,toggleCodeFilter,clearCodeFilter,toggleDetail,catalogChipStyle,
       spawnVisible,spawning,spawnForm,openSpawn,doSpawn,stopContainer,
       availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
+      llmStatus,llmRecent,llmStatusLoading,llmRecentLoading,llmHealthLoading,llmHealthResult,
+      llmAutoRefresh,llmRefreshInterval,loadLlmStatus,loadLlmRecent,runLlmHealthCheck,onLlmAutoRefreshChange,
+      fmtNumberShort,fmtUptime,
       session:computed(()=>session)};
   }
 });

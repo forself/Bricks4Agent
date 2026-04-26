@@ -161,7 +161,13 @@ builder.Services.AddSingleton<IPolicyEngine>(sp =>
 var llmProxyOptions = builder.Configuration.GetSection("LlmProxy").Get<LlmProxyOptions>()
     ?? new LlmProxyOptions();
 builder.Services.AddSingleton(llmProxyOptions);
-builder.Services.AddHttpClient<ILlmProxyService, LlmProxyService>();
+builder.Services.AddSingleton<LlmProxyMetrics>();
+// HttpClient + 內部 LlmProxyService 註冊在 keyed name "raw"，外面用 MeteredLlmProxyService 包起來
+builder.Services.AddHttpClient<LlmProxyService>();
+builder.Services.AddSingleton<ILlmProxyService>(sp =>
+    new MeteredLlmProxyService(
+        sp.GetRequiredService<LlmProxyService>(),
+        sp.GetRequiredService<LlmProxyMetrics>()));
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
@@ -895,6 +901,9 @@ HighLevelEndpoints.Map(api);
 GoogleDriveOAuthEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
+// LLM 代理觀測 endpoint（無論 pool 是否 enabled 都掛，因為這層跟 worker 無關）
+LlmProxyEndpoints.Map(api);
+
 if (poolEnabled)
 {
     WorkerEndpoints.Map(api);
