@@ -626,6 +626,22 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </template>
           <el-empty v-if="llmRecent.length===0" :description="t('llmNoRecent')" :image-size="60"/>
           <el-table v-else :data="llmRecent" stripe>
+            <el-table-column type="expand" width="42">
+              <template #default="{row}">
+                <div style="padding:6px 16px 10px 50px">
+                  <div v-if="!row.tool_calls || row.tool_calls.length===0" style="color:var(--m);font-size:12px">{{t('llmNoToolCalls')}}</div>
+                  <div v-else style="display:flex;flex-direction:column;gap:6px">
+                    <div style="font-size:11px;color:var(--m);margin-bottom:2px">{{t('llmToolCallsHeader')}} <el-tag round size="small">{{row.tool_calls.length}}</el-tag></div>
+                    <div v-for="(tc,i) in row.tool_calls" :key="i" style="background:var(--s2);border-radius:4px;padding:6px 10px;font-size:12px;border-left:3px solid #67c23a">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+                        <span style="font-family:monospace;font-weight:600;color:var(--t)">{{tc.name}}</span>
+                      </div>
+                      <pre style="margin:0;font-family:monospace;font-size:11px;color:var(--td);white-space:pre-wrap;word-break:break-all">{{tc.args_brief||'(no args)'}}</pre>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column :label="t('time')" width="170">
               <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.ts)}}</span></template>
             </el-table-column>
@@ -641,6 +657,12 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               <template #default="{row}">
                 <code style="font-size:11px;color:var(--td)">{{row.task_id||'—'}}</code>
                 <span v-if="row.task_type" style="font-size:10px;color:var(--td);margin-left:6px">[{{row.task_type}}]</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmTools')" width="80" align="center">
+              <template #default="{row}">
+                <el-tag v-if="row.tool_calls && row.tool_calls.length>0" type="success" size="small">🔧 {{row.tool_calls.length}}</el-tag>
+                <span v-else style="color:var(--m);font-size:11px">—</span>
               </template>
             </el-table-column>
             <el-table-column :label="t('llmAvgLatency')" width="100" align="right">
@@ -1056,6 +1078,7 @@ const I18N={
     llmTokens:'tokens',llmLastCall:'最後呼叫',llmNoCalls:'尚無 LLM 呼叫紀錄',
     llmRecentCalls:'最近呼叫（最多 200 筆 ring buffer）',llmNoRecent:'最近無呼叫',
     llmStatusCol:'狀態',llmTask:'任務',llmError:'錯誤訊息（截短）',
+    llmTools:'工具',llmToolCallsHeader:'此次回覆要求的 tool calls',llmNoToolCalls:'此次回覆沒有 tool calls（純文字輸出）',
     llmLoadFailed:'無法載入 LLM 代理狀態（broker 未啟用 LlmProxy？）',
     uptime:'運行時間',time:'時間',
     logViewMode:'顯示模式',logModeRaw:'原始',logModeSummary:'中文摘要',
@@ -1118,6 +1141,7 @@ const I18N={
     llmTokens:'tokens',llmLastCall:'Last call',llmNoCalls:'No LLM calls yet',
     llmRecentCalls:'Recent calls (ring buffer up to 200)',llmNoRecent:'No recent calls',
     llmStatusCol:'Status',llmTask:'Task',llmError:'Error (truncated)',
+    llmTools:'Tools',llmToolCallsHeader:'Tool calls requested in this response',llmNoToolCalls:'No tool calls in this response (text-only output)',
     llmLoadFailed:'Cannot load LLM proxy status (broker may not have LlmProxy enabled)',
     uptime:'Uptime',time:'Time',
     logViewMode:'View',logModeRaw:'Raw',logModeSummary:'Summary',

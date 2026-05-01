@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BrokerCore.Models;
 
 namespace BrokerCore.Services;
@@ -52,6 +53,7 @@ public class MeteredLlmProxyService : ILlmProxyService
             record.Success = true;
             record.LatencyMs = sw.ElapsedMilliseconds;
             record.EvalTokens = result.EvalCount;
+            record.ToolCalls = ExtractToolCallBriefs(result.ToolCalls);
             _metrics.Record(record);
             return result;
         }
@@ -68,5 +70,25 @@ public class MeteredLlmProxyService : ILlmProxyService
             _metrics.Record(record);
             throw;
         }
+    }
+
+    private static List<LlmToolCallBrief> ExtractToolCallBriefs(JsonArray? toolCalls)
+    {
+        var list = new List<LlmToolCallBrief>();
+        if (toolCalls == null) return list;
+        foreach (var tc in toolCalls)
+        {
+            var name = tc?["function"]?["name"]?.GetValue<string>() ?? "";
+            var args = tc?["function"]?["arguments"];
+            string argsBrief = "";
+            if (args != null)
+            {
+                // arguments 在 NormalizeToolCalls 後可能是 JsonObject 或字串：兩種都壓成緊湊 JSON 再截短
+                var raw = args is JsonValue v && v.TryGetValue<string>(out var s) ? s : args.ToJsonString();
+                argsBrief = raw.Length > 200 ? raw[..200] + "…" : raw;
+            }
+            list.Add(new LlmToolCallBrief { Name = name, ArgsBrief = argsBrief });
+        }
+        return list;
     }
 }

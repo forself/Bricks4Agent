@@ -86,6 +86,11 @@ public static class LlmProxyEndpoints
                     latency_ms = e.LatencyMs,
                     eval_tokens = e.EvalTokens,
                     error_brief = e.ErrorBrief,
+                    tool_calls = e.ToolCalls.Select(tc => new
+                    {
+                        name = tc.Name,
+                        args_brief = tc.ArgsBrief,
+                    }),
                 }),
             }));
         });

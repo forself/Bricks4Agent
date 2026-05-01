@@ -181,6 +181,15 @@ public class LlmCallRecord
     public long     LatencyMs   { get; set; }
     public int      EvalTokens  { get; set; }
     public string?  ErrorBrief  { get; set; }   // 截短的錯誤訊息，最多 240 字
+
+    // LLM 在這次回覆裡「要求」的 tool calls；不是執行結果（執行細節在 agent runtime 的 reply trace 裡）
+    public List<LlmToolCallBrief> ToolCalls { get; set; } = new();
+}
+
+public class LlmToolCallBrief
+{
+    public string Name      { get; set; } = "";
+    public string ArgsBrief { get; set; } = "";   // 截短的 arguments JSON，最多 200 字
 }
 
 public class LlmMetricsSnapshot
