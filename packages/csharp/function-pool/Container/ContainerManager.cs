@@ -207,6 +207,9 @@ public class ContainerManager : IContainerManager
 
             if (exitCode != 0 || string.IsNullOrWhiteSpace(stdout)) return;
 
+            // docker 這次回傳實際存在的 ID，掃完後用來剔除幽靈條目
+            var liveIds = new HashSet<string>();
+
             foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 var parts = line.Trim().Split('|');
@@ -214,6 +217,7 @@ public class ContainerManager : IContainerManager
 
                 var id = parts[0].Trim();
                 if (id.Length > 12) id = id[..12];
+                liveIds.Add(id);
 
                 // 已追蹤的跳過
                 if (_containers.ContainsKey(id)) continue;
@@ -250,6 +254,18 @@ public class ContainerManager : IContainerManager
 
                 _logger.LogInformation("Discovered existing container: {Id} ({Type}) state={State}",
                     id, workerType, state);
+            }
+
+            // 反方向同步：剔除已從 Docker 消失（被 docker rm）但記憶體還留著的幽靈條目。
+            // docker ps -a 失敗時上面已經 return 了，不會走到這 — 不會誤剔。
+            foreach (var trackedId in _containers.Keys.ToList())
+            {
+                if (liveIds.Contains(trackedId)) continue;
+                if (_containers.TryRemove(trackedId, out var ghost))
+                {
+                    _logger.LogInformation("Pruned ghost container: {Id} ({Type}) — no longer in docker ps -a",
+                        trackedId, ghost.WorkerType);
+                }
             }
         }
         catch (Exception ex)
