@@ -82,9 +82,11 @@ public static class SafeUrlPolicy
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
+            var bytes = address.GetAddressBytes();
             return address.IsIPv6LinkLocal ||
                 address.IsIPv6SiteLocal ||
-                address.IsIPv6Multicast;
+                address.IsIPv6Multicast ||
+                (bytes[0] & 0xfe) == 0xfc;
         }
 
         return false;
@@ -98,6 +100,7 @@ public static class SafeUrlPolicy
             bytes[0] == 127 ||
             (bytes[0] == 169 && bytes[1] == 254) ||
             (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-            (bytes[0] == 192 && bytes[1] == 168);
+            (bytes[0] == 192 && bytes[1] == 168) ||
+            (bytes[0] >= 224 && bytes[0] <= 239);
     }
 }
