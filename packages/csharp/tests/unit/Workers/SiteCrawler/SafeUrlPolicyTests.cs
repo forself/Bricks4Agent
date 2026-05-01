@@ -58,10 +58,13 @@ public class SafeUrlPolicyTests
 
     [Theory]
     [InlineData("https://localhost/admin")]
+    [InlineData("http://localhost./")]
     [InlineData("http://127.0.0.1/")]
+    [InlineData("http://127.0.0.1./")]
     [InlineData("http://[::1]/")]
     [InlineData("http://169.254.169.254/latest/meta-data")]
     [InlineData("http://10.0.0.1/")]
+    [InlineData("http://10.0.0.1./")]
     [InlineData("http://172.16.0.1/")]
     [InlineData("http://192.168.0.1/")]
     [InlineData("http://224.0.0.1/")]

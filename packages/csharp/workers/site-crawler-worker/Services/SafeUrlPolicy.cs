@@ -55,12 +55,13 @@ public static class SafeUrlPolicy
 
     private static bool IsBlockedHost(string host)
     {
-        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+        var canonicalHost = CanonicalizeHostForSafety(host);
+        if (string.Equals(canonicalHost, "localhost", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        if (!IPAddress.TryParse(host.Trim('[', ']'), out var address))
+        if (!IPAddress.TryParse(canonicalHost, out var address))
         {
             return false;
         }
@@ -91,6 +92,9 @@ public static class SafeUrlPolicy
 
         return false;
     }
+
+    private static string CanonicalizeHostForSafety(string host) =>
+        host.Trim().TrimEnd('.').Trim('[', ']');
 
     private static bool IsBlockedIPv4(IPAddress address)
     {
