@@ -23,6 +23,7 @@ public sealed class ExtractedPageResult
 public sealed class DeterministicSiteExtractor
 {
     private const int TextExcerptLimit = 1000;
+    private const int SectionBodyLimit = 2000;
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled, RegexTimeout);
     private static readonly Regex CssColorCustomPropertyRegex = new(
@@ -54,7 +55,7 @@ public sealed class DeterministicSiteExtractor
             Title = ExtractTitle(document),
             Links = ExtractLinks(document, pageUri),
             Forms = ExtractForms(document),
-            TextExcerpt = LimitText(CleanText(GetVisibleText(document.DocumentNode)), TextExcerptLimit),
+            TextExcerpt = LimitText(CleanText(GetVisibleText(document.DocumentNode, TextExcerptLimit + 1)), TextExcerptLimit),
             ThemeTokens = themeTokens,
             Model = model,
         };
@@ -127,10 +128,11 @@ public sealed class DeterministicSiteExtractor
 
         foreach (var fieldNode in SelectNodes(formNode, ".//input|.//textarea|.//select"))
         {
+            var id = CleanAttribute(fieldNode.GetAttributeValue("id", string.Empty));
             var name = CleanAttribute(fieldNode.GetAttributeValue("name", string.Empty));
             if (string.IsNullOrWhiteSpace(name))
             {
-                name = CleanAttribute(fieldNode.GetAttributeValue("id", string.Empty));
+                name = id;
             }
 
             if (string.IsNullOrWhiteSpace(name))
@@ -141,6 +143,7 @@ public sealed class DeterministicSiteExtractor
             fields.Add(new ExtractedFormField
             {
                 Name = name,
+                Id = id,
                 Type = NormalizeFieldType(fieldNode),
                 Label = FindFieldLabel(document, formNode, fieldNode),
                 Required = HasAttribute(fieldNode, "required"),
@@ -208,7 +211,7 @@ public sealed class DeterministicSiteExtractor
         var sections = new List<ExtractedSection>();
         foreach (var candidate in candidates)
         {
-            var body = CleanText(GetVisibleText(candidate));
+            var body = LimitText(CleanText(GetVisibleText(candidate, SectionBodyLimit + 1)), SectionBodyLimit);
             if (string.IsNullOrWhiteSpace(body))
             {
                 continue;
@@ -313,7 +316,8 @@ public sealed class DeterministicSiteExtractor
 
     private static bool IsBroadSemanticContainer(HtmlNode node)
     {
-        return node.Name.Equals("main", StringComparison.OrdinalIgnoreCase);
+        var name = node.Name.ToLowerInvariant();
+        return name is "main" or "section" or "article";
     }
 
     private static bool HasNonSemanticCandidateAncestor(
@@ -458,18 +462,23 @@ public sealed class DeterministicSiteExtractor
         return $"{tag}:nth-of-type({index})";
     }
 
-    private static string GetVisibleText(HtmlNode node)
+    private static string GetVisibleText(HtmlNode node, int maxCharacters)
     {
         var builder = new StringBuilder();
-        AppendVisibleText(node, builder);
+        AppendVisibleText(node, builder, maxCharacters);
         return builder.ToString();
     }
 
-    private static void AppendVisibleText(HtmlNode node, StringBuilder builder)
+    private static void AppendVisibleText(HtmlNode node, StringBuilder builder, int maxCharacters)
     {
+        if (builder.Length >= maxCharacters)
+        {
+            return;
+        }
+
         if (node.NodeType == HtmlNodeType.Text)
         {
-            builder.Append(node.InnerText);
+            AppendBounded(builder, node.InnerText, maxCharacters);
             builder.Append(' ');
             return;
         }
@@ -486,8 +495,23 @@ public sealed class DeterministicSiteExtractor
 
         foreach (var child in node.ChildNodes)
         {
-            AppendVisibleText(child, builder);
+            AppendVisibleText(child, builder, maxCharacters);
+            if (builder.Length >= maxCharacters)
+            {
+                break;
+            }
         }
+    }
+
+    private static void AppendBounded(StringBuilder builder, string value, int maxCharacters)
+    {
+        var remaining = maxCharacters - builder.Length;
+        if (remaining <= 0)
+        {
+            return;
+        }
+
+        builder.Append(value.Length <= remaining ? value : value[..remaining]);
     }
 
     private static bool IsInvisibleTextContainer(HtmlNode node)

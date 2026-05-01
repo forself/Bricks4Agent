@@ -169,6 +169,87 @@ public class DeterministicSiteExtractorTests
     }
 
     [Fact]
+    public void ExtractPage_PreservesFormFieldIdWhenNameIsPresent()
+    {
+        var html = """
+            <html>
+            <body>
+              <form>
+                <input name="email" id="email-field" type="email" required />
+              </form>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        var field = result.Forms.Should().ContainSingle().Subject.Fields.Should().ContainSingle().Subject;
+        field.Name.Should().Be("email");
+        field.Id.Should().Be("email-field");
+    }
+
+    [Fact]
+    public void ExtractPage_PrefersExplicitHeroDivInsideSectionWrapper()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="page">
+                <div class="hero">
+                  <h1>Build Faster</h1>
+                  <p>Create reliable agents.</p>
+                </div>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        var wrapper = result.Model.Sections.Should()
+            .ContainSingle(section => section.Tag == "section")
+            .Subject;
+        wrapper.Role.Should().Be("content");
+
+        var hero = result.Model.Sections.Should()
+            .ContainSingle(section => section.Role == "hero")
+            .Subject;
+        hero.Tag.Should().Be("div");
+        hero.SourceSelector.Should().Be("div.hero");
+        hero.Headline.Should().Be("Build Faster");
+    }
+
+    [Fact]
+    public void ExtractPage_BoundsPageTextExcerptAndSectionBody()
+    {
+        var longText = new string('x', 2500);
+        var html = $"""
+            <html>
+            <body>
+              <section>
+                <h1>Long Content</h1>
+                <p>{longText}</p>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        result.TextExcerpt.Length.Should().BeLessThanOrEqualTo(1000);
+        result.Model.Sections.Should().ContainSingle().Subject.Body.Length.Should().BeLessThanOrEqualTo(2000);
+    }
+
+    [Fact]
     public void ExtractPage_PreservesCaseSensitivePathLinksWhileDedupeIgnoresSchemeAndHostCase()
     {
         var html = """
