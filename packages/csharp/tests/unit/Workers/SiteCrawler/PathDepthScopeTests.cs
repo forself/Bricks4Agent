@@ -16,6 +16,26 @@ public class PathDepthScopeTests
         scope.Origin.Should().Be("https://example.com");
     }
 
+    [Fact]
+    public void Create_StripsUserInfoFromOriginAndComparesWithoutUserInfo()
+    {
+        var scope = PathDepthScope.Create(
+            new Uri("https://user:pass@example.com/docs/"),
+            new SiteCrawlScope
+            {
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            });
+
+        var result = scope.Evaluate(new Uri("https://example.com/docs/a"));
+
+        scope.Origin.Should().Be("https://example.com");
+        result.IsAllowed.Should().BeTrue();
+        result.Depth.Should().Be(1);
+        result.Reason.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("https://example.com/docs/", true, 0, "")]
     [InlineData("https://example.com/docs/a", true, 1, "")]
@@ -66,6 +86,27 @@ public class PathDepthScopeTests
         child.IsAllowed.Should().BeFalse();
         child.Depth.Should().Be(1);
         child.Reason.Should().Be("outside_path_depth");
+    }
+
+    [Theory]
+    [InlineData("https://example.com/docs%2fsecret")]
+    [InlineData("https://example.com/docs/%2e%2e/admin")]
+    public void Evaluate_RejectsUnsafeEncodedPathFormsAsOutsidePathPrefix(string targetUrl)
+    {
+        var scope = PathDepthScope.Create(
+            new Uri("https://example.com/docs/"),
+            new SiteCrawlScope
+            {
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            });
+
+        var result = scope.Evaluate(new Uri(targetUrl));
+
+        result.IsAllowed.Should().BeFalse();
+        result.Depth.Should().Be(-1);
+        result.Reason.Should().Be("outside_path_prefix");
     }
 
     [Fact]

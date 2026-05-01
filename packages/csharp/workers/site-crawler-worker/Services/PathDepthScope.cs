@@ -49,6 +49,11 @@ public sealed class PathDepthScope
         }
 
         var path = NormalizePath(uri.AbsolutePath);
+        if (ContainsUnsafeEncodedPathForm(path))
+        {
+            return PathDepthEvaluation.Deny("outside_path_prefix", -1);
+        }
+
         var isWithinPrefix = IsWithinPathPrefix(path);
         if (pathPrefixLock && !isWithinPrefix)
         {
@@ -64,17 +69,34 @@ public sealed class PathDepthScope
         return PathDepthEvaluation.Allow(depth);
     }
 
-    private static string NormalizeOrigin(Uri uri) => uri.GetLeftPart(UriPartial.Authority);
+    private static string NormalizeOrigin(Uri uri)
+    {
+        var host = uri.IdnHost.ToLowerInvariant();
+        if (uri.HostNameType == UriHostNameType.IPv6 && !host.StartsWith("[", StringComparison.Ordinal))
+        {
+            host = $"[{host.Trim('[', ']')}]";
+        }
+
+        var origin = $"{uri.Scheme.ToLowerInvariant()}://{host}";
+        return uri.IsDefaultPort ? origin : $"{origin}:{uri.Port}";
+    }
 
     private static string NormalizePath(string path)
     {
-        var normalizedPath = string.IsNullOrEmpty(path) ? "/" : Uri.UnescapeDataString(path);
+        var normalizedPath = string.IsNullOrEmpty(path) ? "/" : path;
         if (!normalizedPath.StartsWith("/", StringComparison.Ordinal))
         {
             normalizedPath = "/" + normalizedPath;
         }
 
         return normalizedPath;
+    }
+
+    private static bool ContainsUnsafeEncodedPathForm(string path)
+    {
+        return path.Contains("%2f", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("%5c", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("%2e", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string EnsureTrailingSlash(string path)
