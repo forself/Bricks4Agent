@@ -66,6 +66,13 @@ public static class SafeUrlPolicy
             return false;
         }
 
+        return IsBlockedIpAddress(address);
+    }
+
+    public static bool IsBlockedIpAddress(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
         if (address.AddressFamily == AddressFamily.InterNetwork)
         {
             return IsBlockedIPv4(address);

@@ -116,6 +116,73 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public async Task CrawlAsync_WhenFetchedHtmlExceedsTotalByteBudget_TruncatesWithoutAddingPage()
+    {
+        var oversizedHtml = $"""
+            <html>
+            <head><title>Large</title></head>
+            <body><section><h1>Large</h1><p>{new string('x', 128)}</p></section></body>
+            </html>
+            """;
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/docs/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/docs/"),
+                200,
+                "text/html",
+                oversizedHtml),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/docs/",
+            Scope = new SiteCrawlScope { MaxDepth = 0 },
+            Budgets = new SiteCrawlBudgets
+            {
+                MaxPages = 10,
+                MaxTotalBytes = 32,
+                WallClockTimeoutSeconds = 180,
+            },
+        }, CancellationToken.None);
+
+        fetcher.RequestedUrls.Should().ContainSingle().Which.Should().Be("https://example.com/docs/");
+        result.Limits.ByteLimitHit.Should().BeTrue();
+        result.Limits.Truncated.Should().BeTrue();
+        result.Pages.Should().BeEmpty();
+        result.ExtractedModel.Pages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WhenWallClockBudgetIsZero_TruncatesBeforeFetching()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/docs/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/docs/"),
+                200,
+                "text/html",
+                "<html><head><title>Root</title></head><body><section><h1>Root</h1></section></body></html>"),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/docs/",
+            Scope = new SiteCrawlScope { MaxDepth = 0 },
+            Budgets = new SiteCrawlBudgets
+            {
+                MaxPages = 10,
+                WallClockTimeoutSeconds = 0,
+            },
+        }, CancellationToken.None);
+
+        fetcher.RequestedUrls.Should().BeEmpty();
+        result.Limits.Truncated.Should().BeTrue();
+        result.Pages.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CrawlAsync_WhenStartUrlIsUnsafe_ThrowsWithPolicyReasonAndDoesNotFetch()
     {
         var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal));
@@ -131,6 +198,14 @@ public class SiteCrawlerServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*blocked_host*");
         fetcher.RequestedUrls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void HttpPageFetcher_DefaultConstructorCreatesProductionFetcher()
+    {
+        var fetcher = new HttpPageFetcher();
+
+        fetcher.Should().NotBeNull();
     }
 
     [Fact]
@@ -160,7 +235,9 @@ public class SiteCrawlerServiceTests
             response.Headers.Location = redirectTarget;
             return response;
         });
-        var fetcher = new HttpPageFetcher(new HttpClient(handler));
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")));
 
         var result = await fetcher.FetchAsync(new Uri("https://example.com/docs/"), CancellationToken.None);
 
@@ -171,6 +248,28 @@ public class SiteCrawlerServiceTests
         result.FinalUri.Should().Be(new Uri("https://example.com/docs/"));
         result.RedirectUri.Should().Be(redirectTarget);
         result.FailureReason.Should().Be("redirect_not_followed");
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("169.254.169.254")]
+    public async Task FetchAsync_WhenDnsResolvesToBlockedAddress_FailsBeforeSending(string resolvedAddress)
+    {
+        var handler = new FakeHttpMessageHandler((request, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = request,
+            Content = new StringContent("<html><body>Should not fetch</body></html>"),
+        });
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse(resolvedAddress)));
+
+        var result = await fetcher.FetchAsync(new Uri("https://public.example/docs/"), CancellationToken.None);
+
+        handler.Requests.Should().BeEmpty();
+        result.IsSuccess.Should().BeFalse();
+        result.Uri.Should().Be(new Uri("https://public.example/docs/"));
+        result.FailureReason.Should().Be("blocked_resolved_ip");
     }
 
     private sealed class FakePageFetcher : IPageFetcher
@@ -190,6 +289,21 @@ public class SiteCrawlerServiceTests
             return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
                 ? result
                 : PageFetchResult.Fail(uri, 404, "not_found"));
+        }
+    }
+
+    private sealed class FakeHostAddressResolver : IHostAddressResolver
+    {
+        private readonly IReadOnlyList<IPAddress> addresses;
+
+        public FakeHostAddressResolver(params IPAddress[] addresses)
+        {
+            this.addresses = addresses;
+        }
+
+        public Task<IReadOnlyList<IPAddress>> GetHostAddressesAsync(string host, CancellationToken ct)
+        {
+            return Task.FromResult(addresses);
         }
     }
 

@@ -1,8 +1,16 @@
+using System.Net;
+using System.Net.Sockets;
+
 namespace SiteCrawlerWorker.Services;
 
 public interface IPageFetcher
 {
     Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct);
+}
+
+public interface IHostAddressResolver
+{
+    Task<IReadOnlyList<IPAddress>> GetHostAddressesAsync(string host, CancellationToken ct);
 }
 
 public sealed record PageFetchResult(
@@ -93,21 +101,40 @@ public sealed record PageFetchResult(
 public sealed class HttpPageFetcher : IPageFetcher
 {
     private readonly HttpClient httpClient;
+    private readonly IHostAddressResolver hostAddressResolver;
 
-    public HttpPageFetcher(HttpClient httpClient)
+    public HttpPageFetcher()
+        : this(CreateNonRedirectingHttpClient(), SystemHostAddressResolver.Instance)
+    {
+    }
+
+    public HttpPageFetcher(HttpMessageHandler nonRedirectingHandler, IHostAddressResolver hostAddressResolver)
+        : this(new HttpClient(nonRedirectingHandler, disposeHandler: false), hostAddressResolver)
+    {
+    }
+
+    private HttpPageFetcher(HttpClient httpClient, IHostAddressResolver hostAddressResolver)
     {
         this.httpClient = httpClient;
+        this.hostAddressResolver = hostAddressResolver;
     }
 
     public async Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(uri);
 
+        var resolvedAddressFailure = await ValidateResolvedAddressesAsync(uri, ct);
+        if (resolvedAddressFailure is not null)
+        {
+            return PageFetchResult.Fail(uri, 0, resolvedAddressFailure);
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         var finalUri = response.RequestMessage?.RequestUri ?? uri;
         var statusCode = (int)response.StatusCode;
-        var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+        var contentType = response.Content?.Headers.ContentType?.ToString() ?? string.Empty;
+        var mediaType = response.Content?.Headers.ContentType?.MediaType ?? string.Empty;
 
         if (IsRedirect(statusCode) && response.Headers.Location is not null)
         {
@@ -116,23 +143,38 @@ public sealed class HttpPageFetcher : IPageFetcher
 
         if (!response.IsSuccessStatusCode)
         {
-            return PageFetchResult.Fail(uri, finalUri, statusCode, mediaType, $"http_status_{statusCode}");
+            return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, $"http_status_{statusCode}");
         }
 
         if (!mediaType.Contains("html", StringComparison.OrdinalIgnoreCase))
         {
-            return PageFetchResult.Fail(uri, finalUri, statusCode, mediaType, "non_html_content_type");
+            return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, "non_html_content_type");
         }
 
-        var html = await response.Content.ReadAsStringAsync(ct);
+        var html = response.Content is null ? string.Empty : await response.Content.ReadAsStringAsync(ct);
         return new PageFetchResult(
             true,
             uri,
             finalUri,
             statusCode,
-            mediaType,
+            contentType,
             html,
             string.Empty);
+    }
+
+    private async Task<string?> ValidateResolvedAddressesAsync(Uri uri, CancellationToken ct)
+    {
+        IReadOnlyList<IPAddress> addresses;
+        try
+        {
+            addresses = await hostAddressResolver.GetHostAddressesAsync(uri.IdnHost, ct);
+        }
+        catch (SocketException)
+        {
+            return "dns_resolution_failed";
+        }
+
+        return addresses.Any(SafeUrlPolicy.IsBlockedIpAddress) ? "blocked_resolved_ip" : null;
     }
 
     private static bool IsRedirect(int statusCode)
@@ -143,5 +185,23 @@ public sealed class HttpPageFetcher : IPageFetcher
     private static Uri ResolveRedirectUri(Uri baseUri, Uri location)
     {
         return location.IsAbsoluteUri ? location : new Uri(baseUri, location);
+    }
+
+    private static HttpClient CreateNonRedirectingHttpClient()
+    {
+        return new HttpClient(new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+        });
+    }
+
+    private sealed class SystemHostAddressResolver : IHostAddressResolver
+    {
+        public static readonly SystemHostAddressResolver Instance = new();
+
+        public async Task<IReadOnlyList<IPAddress>> GetHostAddressesAsync(string host, CancellationToken ct)
+        {
+            return await Dns.GetHostAddressesAsync(host, ct);
+        }
     }
 }

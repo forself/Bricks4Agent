@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using SiteCrawlerWorker.Models;
 
@@ -24,11 +26,6 @@ public sealed class SiteCrawlerService
         this.logger = logger;
     }
 
-    public SiteCrawlerService(HttpClient httpClient)
-        : this(new HttpPageFetcher(httpClient), new DeterministicSiteExtractor(), null)
-    {
-    }
-
     public async Task<SiteCrawlResult> CrawlAsync(SiteCrawlRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -45,6 +42,8 @@ public sealed class SiteCrawlerService
         var budgets = request.Budgets ?? new SiteCrawlBudgets();
         var scope = PathDepthScope.Create(startValidation.Uri, scopeOptions);
         var maxPages = Math.Max(0, budgets.MaxPages);
+        var maxTotalBytes = Math.Max(0, budgets.MaxTotalBytes);
+        var stopwatch = Stopwatch.StartNew();
 
         var result = new SiteCrawlResult
         {
@@ -58,6 +57,12 @@ public sealed class SiteCrawlerService
             },
         };
 
+        if (IsWallClockBudgetExpired(stopwatch, budgets.WallClockTimeoutSeconds))
+        {
+            result.Limits.Truncated = true;
+            return result;
+        }
+
         if (maxPages == 0)
         {
             result.Limits.PageLimitHit = true;
@@ -69,6 +74,7 @@ public sealed class SiteCrawlerService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var crawled = new HashSet<string>(StringComparer.Ordinal);
         var excluded = new HashSet<string>(StringComparer.Ordinal);
+        long totalBytes = 0;
 
         queue.Enqueue(new CrawlQueueItem(startValidation.Uri));
         seen.Add(BuildCrawlKey(startValidation.Uri));
@@ -80,6 +86,12 @@ public sealed class SiteCrawlerService
             if (result.Pages.Count >= maxPages)
             {
                 result.Limits.PageLimitHit = true;
+                result.Limits.Truncated = true;
+                break;
+            }
+
+            if (IsWallClockBudgetExpired(stopwatch, budgets.WallClockTimeoutSeconds))
+            {
                 result.Limits.Truncated = true;
                 break;
             }
@@ -117,6 +129,16 @@ public sealed class SiteCrawlerService
                 AddExcluded(result, excluded, finalValidation.Uri.ToString(), finalScope.Reason);
                 continue;
             }
+
+            var pageBytes = Encoding.UTF8.GetByteCount(fetch.Html);
+            if (totalBytes + pageBytes > maxTotalBytes)
+            {
+                result.Limits.ByteLimitHit = true;
+                result.Limits.Truncated = true;
+                break;
+            }
+
+            totalBytes += pageBytes;
 
             var finalKey = BuildCrawlKey(finalValidation.Uri);
             if (!string.Equals(finalKey, BuildCrawlKey(current.Uri), StringComparison.Ordinal))
@@ -156,6 +178,12 @@ public sealed class SiteCrawlerService
 
         PopulateRouteGraph(result, scope);
         return result;
+    }
+
+    private static bool IsWallClockBudgetExpired(Stopwatch stopwatch, int wallClockTimeoutSeconds)
+    {
+        return wallClockTimeoutSeconds <= 0 ||
+            stopwatch.Elapsed >= TimeSpan.FromSeconds(wallClockTimeoutSeconds);
     }
 
     private static void EnqueueCandidate(
