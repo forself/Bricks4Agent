@@ -616,18 +616,108 @@ Task: task_agent_3273e7d4bba045ada3
 **這證明了什麼**（給專題報告的關鍵句）：
 > 「我建了一個 Research Assistant agent、broker 自動配給它 `role_reader` + 25 條 read-only `capability_grants`。如果這個 agent 之後嘗試呼叫 `trading.order/submit`（白名單裡沒有），broker 的 `PolicyEngine` 會在 dispatch 階段直接拒絕、根本到不了 trading-worker。這就是平台 §三 講的 **AI 提議 → broker 驗證 → 執行層只執行結構化意圖** 治理模型的具體實現，不是設計圖上的箭頭、是真的擋得了的牆。」
 
-### 14.5 整輪工程的小結（給說詞用）
+### 14.5 Agent Runtime MVP-0：runnable 容器（2026-05-01）
 
-這四個小節合起來把專題主軸文件的三個抽象主張**全部變成有 demo 證據的實證**：
+**問題**：14.4 demo 把 Research Assistant 的「身份 + 政策」紀錄寫進 DB 了，但點儀表板上的「啟動容器」按鈕會 500 — 因為 `ContainerManager.WorkerImages` 沒設 `agent` 條目、`b4a-agent:latest` image 也根本不存在。**有政策層、沒有執行層**。
+
+**做法**：建立 `packages/csharp/workers/agent-worker/`（4 個新檔，純 HttpClient，不相依 WorkerSdk），建出 `b4a-agent:latest` image 並補進 compose 的 `WorkerImages` 設定。
+
+**容器啟動行為**：
+
+```text
+1. Broker spawn 時注入 env：BROKER_URL / BROKER_PRINCIPAL_ID / BROKER_TASK_ID / BROKER_ROLE_ID
+2. Agent 容器讀 env，向 broker 的 /api/v1/llm-proxy/chat 跑一輪自介 LLM call
+3. LLM 回覆印到 stdout（dashboard 容器分頁的「日誌」按鈕看得到）
+4. 進入心跳 idle 迴圈，dashboard 看得到容器 RUNNING
+```
+
+**順手修到的 bug**：`compose.trading.yml` 的 `NetworkName` 寫成 `b4a-trading_trading-net`（compose project 預設前綴格式），但檔尾 `networks.trading-net.name` 把實際網路名 override 成 `b4a-trading-net`。在沒人 spawn 過的時候（trading 堆疊都是 compose 自己起的）這個錯不會被觸發；MVP-0 第一次按 spawn 才暴露。
+
+**這層補完了什麼**：
+> 平台從「DB 裡有 agent 紀錄」進到「真的能 spawn 出帶有對應身份的容器」。Agent 容器的所有出站呼叫都透過 broker 走（LLM 走 LlmProxy、capability 之後會走 exec endpoint），這意味著**容器拿不到 LLM API key、也拿不到任何工具的直接通道**——它的能耐 = broker 願意幫它做的事，不多不少。這是 §三「政策授權邊界」的物理實現。
+
+### 14.6 Agent Runtime MVP-1：Inbox 任務派發（2026-05-01）
+
+**問題**：MVP-0 的 agent spawn 起來只能跑啟動時 hard-coded 的 prompt，**派一個新任務 = 重起容器**。實際上沒法用。
+
+**做法**：
+
+1. 新表 `agent_inbox_tasks`（schema 與 Phase 1 表並列；`pending → processing → done|failed` 狀態流）
+2. 新端點四個：
+   - `POST /api/v1/agents/inbox/push`（dashboard / 外部呼叫者下單）
+   - `GET  /api/v1/agents/inbox/pull?agent_id=X`（agent 容器拉一筆，原子地標 processing 防搶單）
+   - `POST /api/v1/agents/inbox/complete`（agent 回填結果 + token / latency）
+   - `GET  /api/v1/agents/inbox/list?agent_id=X`（dashboard 看歷史）
+3. Agent runtime 改成 5 秒 poll 迴圈
+4. Dashboard「代理」分頁加「派任務」按鈕、modal 含 prompt textarea + 任務歷史表格（5 秒輪詢看狀態變化）
+
+**搶單原子性**：`UPDATE ... SET status='processing' WHERE task_id=? AND status='pending'`，靠 SQLite 的 row-level update 保證若兩個 agent 同時 pull 同一筆、第二個會收到 `rowsAffected=0` 退回再試。
+
+**設計取捨**：`/agents/inbox/*` 與既有 `/llm-proxy/*` 一樣走 `IsTrustedInternalPlainJsonPath` allowlist，**不過 ECDH 加密**。理由是這條路徑只有 broker 內部網路（agent 容器、dashboard）能打到；token 走網路邊界控制就夠，不需要會話加密層。註解明確標 `[whitelist add]` 給未來看的人辨識（與「Benson 原作不動」紀律一致）。
+
+**這層補完了什麼**：
+> 平台有了**面向 LLM 的工作隊列**。任務的全生命週期（提交 / 取出 / 完成）都被記到 SQLite，每筆紀錄含 prompt、reply、模型、token、延遲、誰送的——一份「政策邊界內 LLM 在做什麼」的可審計流水帳，不靠日誌、不靠抓包、是 DB 第一公民。
+
+### 14.7 Agent Runtime MVP-2：LLM Tool Calling（2026-05-01）
+
+**問題**：14.4 給 Research Assistant 配了 25 條 `capability_grants`、MVP-1 讓它能收任務，但**它根本沒辦法用那 25 條能力**——LLM 拿到 prompt 只能憑空回答，不能查資料、不能寫記憶。
+
+**做法**：
+
+1. 新端點 `POST /api/v1/agents/exec`（capability gate + dispatch）
+   - 驗證 agent 的 `RuntimeDescriptor.capability_grants` 包含 requested `capability_id`，否則 403
+   - 構造 `ApprovedRequest` 直接送 `IExecutionDispatcher.DispatchAsync`（既有的 InProcessDispatcher，已實作 16 個 route：file / memory / web / rag / convlog 等）
+   - 故意 bypass `BrokerService` 的 16-step PEP pipeline——理由：grant 在 spawn 時已被 PEP 審核，每個工具呼叫再跑一次審批會卡死 agent 互動式行為。會觸發 `ApprovedRequest.WarnIfBypass` 的 DEBUG 警告，是預期內的權衡
+2. 新端點 `GET /api/v1/agents/exec/tools?agent_id=X`：把 grants 翻成 OpenAI function-calling spec 給 agent 餵 LLM
+3. Agent runtime 啟動時 `LoadToolsAsync()`，poll 任務時走 `ToolCallingLoopAsync`：
+
+```text
+LLM round 1: 看 prompt + tools list
+   ├── 若回 tool_calls → 走 /agents/exec → 結果加進 messages
+   └── 若回 final text → 結束
+LLM round 2: 看更新後 messages
+   ...（最多 4 輪 fail-safe）
+最後一輪不允許 tools → 強制 LLM 給文字答覆
+```
+
+**實證**（task #4 → #6 的兩分鐘間距、跨 task 記憶持久化）：
+
+```text
+[Task #4] prompt: 請幫我把「我的專題期末展示日是 2026-06-15」記下來，key 用 capstone_demo_date
+🔧 tool_call: memory_store({"value":"我的專題期末展示日是 2026-06-15","key":"capstone_demo_date"})
+   ← {"success":true,"capability_id":"memory.write","route":"memory_store",
+      "result":{"key":"capstone_demo_date","version":1,"stored":true,...}}
+✓ task #4 done (3260ms, 53 tokens, 1 tool calls)
+
+[Task #6] prompt: 請查一下你之前用 capstone_demo_date 這個 key 記下了什麼
+🔧 tool_call: memory_retrieve({"key":"capstone_demo_date"})
+   ← {"success":true,"capability_id":"memory.read","route":"memory_retrieve",
+      "result":{"key":"capstone_demo_date","value":"我的專題期末展示日是 2026-06-15","version":1,...}}
+✓ task #6 done (2591ms, 57 tokens, 1 tool calls)
+```
+
+LLM 沒有「假裝」記得（它做不到，會話無狀態），而是**實際呼叫 `memory_retrieve` 工具**才能答出值。這條路徑：LLM ↔ broker `/exec` ↔ InProcessDispatcher ↔ SharedContextEntry — 中間任何一步擋掉（grant 不對、route 沒實作、SQLite 寫失敗）任務就 fail。是真的接通的鏈，不是模擬。
+
+**16 個目前可用的工具**（dispatcher 已實作的）：file 4 個、memory 5 個、rag 1 個、web 4 個、conv-log 2 個。`agent.list` / `line.message.send` 等 9 個 dispatcher 還沒接，agent 端 `/agents/exec/tools` 自動過濾掉、不會把它們餵給 LLM（避免 LLM 呼叫不存在的工具）。
+
+**這層補完了什麼**：
+> 25 條 `capability_grants` 從「DB 裡的紀錄」變成「LLM 真的會去 invoke 並收到結果」。**14.4 的政策層 + 14.6 的隊列層 + 14.7 的執行層**合起來：使用者下任務 → broker 收單 → agent 透過 LLM tool calling 動用工具 → broker 驗證每次工具呼叫是否在 grants 內 → 派發給既有 dispatcher → 結果回流 LLM → 最終答覆寫回 inbox。整條鏈每一步都有 DB 紀錄、都被 §14.1 的 LlmProxy metrics 計入。**這就是「AI 提議 → broker 驗證 → 執行層只執行結構化意圖」這句話被完整實作後長什麼樣**。
+
+### 14.8 整輪工程的小結（給說詞用）
+
+七個小節合起來把專題主軸文件的抽象主張**全部變成有 demo 證據的實證**：
 
 | §X 抽象主張 | §十四 哪一節提供實證 |
 |---|---|
-| §三 LLM 集中治理（LlmProxyService 統一入口）| 14.1（worker 路由對齊 + Metered decorator + 儀表板觀測）|
-| §三 Memory Split / 可檢視 / 可重現 | 14.2（容器錯誤持久化 7 天，事後可查）|
-| §三 治理 vs 觀測：可檢視 | 14.3（錯誤分類目錄讓「治理層的事故」可分類聚合）|
-| §六 Capability 白名單 + Role 自動推導 | 14.4（Research Assistant agent 活 demo）|
+| §三 LLM 集中治理（LlmProxyService 統一入口） | 14.1（worker 路由對齊 + Metered decorator + 儀表板觀測） |
+| §三 Memory Split / 可檢視 / 可重現 | 14.2（容器錯誤持久化 7 天，事後可查） |
+| §三 治理 vs 觀測：可檢視 | 14.3（錯誤分類目錄讓「治理層的事故」可分類聚合） |
+| §六 Capability 白名單 + Role 自動推導 | 14.4（Research Assistant agent DB 紀錄） |
+| §三 政策授權邊界（容器拿不到 API key） | 14.5（agent runtime 容器只能透過 broker 出站） |
+| §三 可審計（每筆 LLM 呼叫都被記） | 14.6（Inbox 任務全生命週期持久化到 SQLite） |
+| §三 「AI 提議 → broker 驗證 → 結構化執行」三段式 | 14.7（LLM tool calling end-to-end 實測，含 capability gate 拒絕路徑） |
 
-**設計哲學的複利**：14.1 的 decorator 模式跟 §五 Worker SDK 的 ICapabilityHandler 是同一招——介面驅動讓擴充不侵入既有實作。14.2 的 SQLite + Timer + retention 跟 §九 提到的 ScheduledDiagnosticsService 是同一招——獨立 db + 背景服務 + 滾動清理。14.3 的目錄分類器跟 §四 的 capability 命名空間是同一招——具體先、通用後的命中順序。**讓系統好擴充的紀律會在不同層級重複出現**，這就是架構紀律的複利。
+**設計哲學的複利**：14.1 的 decorator 模式跟 §五 Worker SDK 的 `ICapabilityHandler` 是同一招——介面驅動讓擴充不侵入既有實作。14.2 的 SQLite + Timer + retention 跟 §九 提到的 ScheduledDiagnosticsService 是同一招——獨立 db + 背景服務 + 滾動清理。14.3 的目錄分類器跟 §四的 capability 命名空間是同一招——具體先、通用後的命中順序。14.6 的 inbox FIFO + atomic `UPDATE WHERE status='pending'` 跟 §八 ExecutionRequest 的 `(task_id, idempotency_key)` 唯一索引是同一招——靠 DB 約束做正確性、不寫應用層鎖。14.7 的 grants 驗證 → bypass PEP → 直接 dispatch 跟 §三 「政策資訊在預先審核完後就應該物化、不要每次重算」是同一招——授權狀態的快取化降低 hot-path 延遲。**讓系統好擴充的紀律會在不同層級重複出現**——這就是架構紀律的複利，也是讓「平台」這個詞不只是行銷口號的本質差異。
 
 ---
 
