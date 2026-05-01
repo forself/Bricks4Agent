@@ -203,6 +203,7 @@ public sealed class DeterministicSiteExtractor
             }
         }
 
+        var firstH1HeroCandidate = FindNearestCandidateContainingFirstH1(candidates, firstH1);
         var sections = new List<ExtractedSection>();
         foreach (var candidate in candidates)
         {
@@ -217,7 +218,7 @@ public sealed class DeterministicSiteExtractor
             {
                 Id = string.IsNullOrWhiteSpace(id) ? $"section-{sections.Count + 1}" : id,
                 Tag = candidate.Name.ToLowerInvariant(),
-                Role = InferSectionRole(candidate, firstH1),
+                Role = InferSectionRole(candidate, firstH1HeroCandidate),
                 Headline = ExtractHeadline(candidate),
                 Body = body,
                 SourceSelector = BuildSelector(candidate, candidate.Name, sections.Count + 1),
@@ -246,9 +247,30 @@ public sealed class DeterministicSiteExtractor
         }
     }
 
-    private static string InferSectionRole(HtmlNode node, HtmlNode? firstH1)
+    private static HtmlNode? FindNearestCandidateContainingFirstH1(
+        IReadOnlyCollection<HtmlNode> candidates,
+        HtmlNode? firstH1)
     {
-        if (HasHeroSignal(node) || (firstH1 is not null && IsAncestorOrSelf(node, firstH1)))
+        if (firstH1 is null)
+        {
+            return null;
+        }
+
+        var candidateSet = new HashSet<HtmlNode>(candidates);
+        for (var current = firstH1; current is not null; current = current.ParentNode)
+        {
+            if (candidateSet.Contains(current))
+            {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    private static string InferSectionRole(HtmlNode node, HtmlNode? firstH1HeroCandidate)
+    {
+        if (HasHeroSignal(node) || ReferenceEquals(node, firstH1HeroCandidate))
         {
             return "hero";
         }
@@ -260,12 +282,13 @@ public sealed class DeterministicSiteExtractor
     {
         var id = CleanAttribute(node.GetAttributeValue("id", string.Empty));
         var classes = CleanAttribute(node.GetAttributeValue("class", string.Empty));
-        var signature = $"{id} {classes}".ToLowerInvariant();
+        return HasHeroToken(id) || HasHeroToken(classes);
+    }
 
-        return signature.Contains("hero", StringComparison.Ordinal) ||
-            signature.Contains("masthead", StringComparison.Ordinal) ||
-            signature.Contains("jumbotron", StringComparison.Ordinal) ||
-            signature.Contains("intro", StringComparison.Ordinal);
+    private static bool HasHeroToken(string value)
+    {
+        return value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Any(token => token.Equals("hero", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ContainsHeading(HtmlNode node, string headingName)
@@ -422,19 +445,6 @@ public sealed class DeterministicSiteExtractor
         };
 
         return builder.Uri;
-    }
-
-    private static bool IsAncestorOrSelf(HtmlNode possibleAncestor, HtmlNode node)
-    {
-        for (var current = node; current is not null; current = current.ParentNode)
-        {
-            if (current == possibleAncestor)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static IEnumerable<HtmlNode> SelectNodes(HtmlNode node, string xpath)

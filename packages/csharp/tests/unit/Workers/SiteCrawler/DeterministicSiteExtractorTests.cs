@@ -79,4 +79,66 @@ public class DeterministicSiteExtractorTests
 
         result.Links.Should().ContainSingle().Which.Should().Be("https://example.com/docs/start");
     }
+
+    [Fact]
+    public void ExtractPage_WhenHeroSectionIsInsideMain_AssignsHeroOnlyToSection()
+    {
+        var html = """
+            <html>
+            <body>
+              <main>
+                <section class="hero">
+                  <h1>Build Faster</h1>
+                  <p>Create reliable agents.</p>
+                </section>
+              </main>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        var main = result.Model.Sections.Should()
+            .ContainSingle(section => section.Tag == "main")
+            .Subject;
+        main.Role.Should().Be("content");
+
+        var hero = result.Model.Sections.Should()
+            .ContainSingle(section => section.Role == "hero")
+            .Subject;
+        hero.Tag.Should().Be("section");
+        hero.Headline.Should().Be("Build Faster");
+    }
+
+    [Fact]
+    public void ExtractPage_DoesNotTreatBroadMarketingWordsAsHeroSignals()
+    {
+        var html = """
+            <html>
+            <body>
+              <section id="intro">
+                <h2>Intro</h2>
+                <p>Opening copy.</p>
+              </section>
+              <header class="masthead">
+                <p>Top navigation.</p>
+              </header>
+              <article class="jumbotron">
+                <h2>Feature</h2>
+                <p>Feature copy.</p>
+              </article>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        result.Model.Sections.Should().OnlyContain(section => section.Role == "content");
+    }
 }
