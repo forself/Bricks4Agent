@@ -161,6 +161,7 @@ public class AgentRuntime
         string lastModel = "";
         int totalTokens = 0;
         int toolCalls = 0;
+        var trace = new List<string>(); // 每筆工具呼叫的單行摘要，最後 append 到 reply 末尾
 
         for (int round = 0; round < maxRounds; round++)
         {
@@ -169,7 +170,7 @@ public class AgentRuntime
             totalTokens += eval;
 
             if (toolCallList == null || toolCallList.Count == 0)
-                return (content, lastModel, totalTokens, toolCalls);
+                return (AppendTrace(content, trace), lastModel, totalTokens, toolCalls);
 
             // 模型要呼叫工具 — 把 assistant turn (含 tool_calls) 加進 history，再一個一個跑
             messages.Add(new
@@ -189,18 +190,39 @@ public class AgentRuntime
                 toolCalls++;
                 _log.LogInformation("🔧 tool_call: {Name}({Args})", tc.Name, Truncate(tc.Arguments, 120));
 
+                var sw = Stopwatch.StartNew();
                 string toolResult;
+                bool ok = true;
+                string? errBrief = null;
                 try
                 {
                     toolResult = await ExecToolAsync(tc.Name, tc.Arguments);
+                    // exec endpoint 永遠回 200 + JSON；判斷 success 看 inner data.success
+                    try
+                    {
+                        using var d = JsonDocument.Parse(toolResult);
+                        if (d.RootElement.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.False)
+                        {
+                            ok = false;
+                            if (d.RootElement.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String)
+                                errBrief = e.GetString();
+                        }
+                    }
+                    catch { /* ok stays true if can't parse */ }
                 }
                 catch (Exception ex)
                 {
+                    ok = false;
+                    errBrief = ex.Message;
                     toolResult = JsonSerializer.Serialize(new { error = ex.Message });
                     _log.LogWarning("tool {Name} failed: {Msg}", tc.Name, ex.Message);
                 }
+                sw.Stop();
 
                 _log.LogInformation("   ← {Result}", Truncate(toolResult, 160));
+                trace.Add(ok
+                    ? $"  - `{tc.Name}({Truncate(tc.Arguments, 80)})` → ok ({sw.ElapsedMilliseconds}ms)"
+                    : $"  - `{tc.Name}({Truncate(tc.Arguments, 80)})` → **fail** {Truncate(errBrief ?? "?", 80)} ({sw.ElapsedMilliseconds}ms)");
 
                 messages.Add(new
                 {
@@ -216,7 +238,22 @@ public class AgentRuntime
         var (finalContent, _, finalModel, finalEval) = await CallLlmWithToolsAsync(messages, allowTools: false);
         totalTokens += finalEval;
         if (string.IsNullOrEmpty(lastModel)) lastModel = finalModel;
-        return (finalContent, lastModel, totalTokens, toolCalls);
+        return (AppendTrace(finalContent, trace), lastModel, totalTokens, toolCalls);
+    }
+
+    /// <summary>
+    /// 把工具呼叫摘要 append 到 reply 末尾。dashboard 派任務歷史會看到。
+    /// content 為空時不 append — 讓 PollAndProcessOnceAsync 的「Empty LLM reply」
+    /// 路徑能正確觸發 failed 狀態（避免「LLM 503 但有 trace 就誤判 done」）。
+    /// </summary>
+    private static string AppendTrace(string content, List<string> trace)
+    {
+        if (trace.Count == 0 || string.IsNullOrWhiteSpace(content)) return content;
+        var sb = new StringBuilder(content.TrimEnd());
+        sb.AppendLine().AppendLine().AppendLine("---");
+        sb.AppendLine($"🔧 工具呼叫（{trace.Count} 次）:");
+        foreach (var line in trace) sb.AppendLine(line);
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>呼叫 broker /agents/exec 執行被授予的工具。</summary>
