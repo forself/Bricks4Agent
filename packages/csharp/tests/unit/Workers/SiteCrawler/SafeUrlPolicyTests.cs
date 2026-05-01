@@ -64,6 +64,8 @@ public class SafeUrlPolicyTests
     [InlineData("http://10.0.0.1/")]
     [InlineData("http://172.16.0.1/")]
     [InlineData("http://192.168.0.1/")]
+    [InlineData("http://[::ffff:127.0.0.1]/")]
+    [InlineData("http://[::ffff:10.0.0.1]/")]
     public void Validate_RejectsUnsafeHosts(string rawUrl)
     {
         var result = SafeUrlPolicy.Validate(rawUrl);

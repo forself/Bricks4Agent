@@ -65,14 +65,19 @@ public static class SafeUrlPolicy
             return false;
         }
 
-        if (IPAddress.IsLoopback(address))
-        {
-            return true;
-        }
-
         if (address.AddressFamily == AddressFamily.InterNetwork)
         {
             return IsBlockedIPv4(address);
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            return IsBlockedIPv4(address.MapToIPv4());
+        }
+
+        if (IPAddress.IsLoopback(address))
+        {
+            return true;
         }
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
