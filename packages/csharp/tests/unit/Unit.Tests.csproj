@@ -22,6 +22,7 @@
     <ProjectReference Include="../../worker-sdk/WorkerSdk.csproj" />
     <ProjectReference Include="../../workers/file-worker/FileWorker.csproj" />
     <ProjectReference Include="../../workers/line-worker/LineWorker.csproj" />
+    <ProjectReference Include="../../workers/site-crawler-worker/SiteCrawlerWorker.csproj" />
     <ProjectReference Include="../../workers/transport-tdx-worker/TransportTdxWorker.csproj" />
   </ItemGroup>
 </Project>
