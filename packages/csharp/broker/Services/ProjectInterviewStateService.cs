@@ -8,14 +8,20 @@ namespace Broker.Services;
 public sealed class ProjectInterviewStateService
 {
     private const string SystemPrincipalId = "system:project-interview";
+    private const int DefaultActiveSessionTimeoutMinutes = 60;
     private readonly BrokerDb _db;
+    private readonly TimeSpan _activeSessionTimeout;
 
-    public ProjectInterviewStateService(BrokerDb db)
+    public ProjectInterviewStateService(BrokerDb db, IConfiguration? configuration = null)
     {
         _db = db;
+        var configuredTimeoutMinutes = configuration?.GetValue<int?>("ProjectInterview:ActiveSessionTimeoutMinutes");
+        _activeSessionTimeout = configuredTimeoutMinutes.HasValue && configuredTimeoutMinutes.Value > 0
+            ? TimeSpan.FromMinutes(configuredTimeoutMinutes.Value)
+            : TimeSpan.FromMinutes(DefaultActiveSessionTimeoutMinutes);
     }
 
-    public Task<ProjectInterviewTaskDocument> LoadTaskDocumentAsync(string channel, string userId, CancellationToken cancellationToken)
+    public async Task<ProjectInterviewTaskDocument> LoadTaskDocumentAsync(string channel, string userId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var latest = _db.Query<SharedContextEntry>(
@@ -23,16 +29,29 @@ public sealed class ProjectInterviewStateService
             new { docId = BuildTaskDocumentId(channel, userId) }).FirstOrDefault();
 
         if (latest == null || string.IsNullOrWhiteSpace(latest.ContentRef))
-            return Task.FromResult(ProjectInterviewTaskDocument.CreateEmpty(channel, userId));
+            return ProjectInterviewTaskDocument.CreateEmpty(channel, userId);
 
         try
         {
             var deserialized = JsonSerializer.Deserialize<ProjectInterviewTaskDocument>(latest.ContentRef);
-            return Task.FromResult(deserialized ?? ProjectInterviewTaskDocument.CreateEmpty(channel, userId));
+            if (deserialized == null)
+                return ProjectInterviewTaskDocument.CreateEmpty(channel, userId);
+
+            if (deserialized.IsActiveSession && IsStale(latest.CreatedAt))
+            {
+                var expired = deserialized
+                    .WithSessionState(deserialized.SessionState with { CurrentPhase = ProjectInterviewPhase.Expired })
+                    .ClearPendingOptions();
+
+                await SaveTaskDocumentAsync(expired, cancellationToken);
+                return expired;
+            }
+
+            return deserialized;
         }
         catch
         {
-            return Task.FromResult(ProjectInterviewTaskDocument.CreateEmpty(channel, userId));
+            return ProjectInterviewTaskDocument.CreateEmpty(channel, userId);
         }
     }
 
@@ -95,4 +114,10 @@ public sealed class ProjectInterviewStateService
 
     public static string BuildVersionDagDocumentId(string channel, string userId, int version)
         => $"hlm.project-interview.version-graph.{channel}.{userId}.{version}";
+
+    private bool IsStale(DateTime createdAtUtc)
+    {
+        var age = DateTime.UtcNow - DateTime.SpecifyKind(createdAtUtc, DateTimeKind.Utc);
+        return age >= _activeSessionTimeout;
+    }
 }

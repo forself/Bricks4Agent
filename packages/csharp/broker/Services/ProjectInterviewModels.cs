@@ -15,7 +15,8 @@ public enum ProjectInterviewPhase
     ReviseRequested = 10,
     Confirmed = 11,
     Cancelled = 12,
-    Failed = 13
+    Failed = 13,
+    Expired = 14
 }
 
 public enum ProjectInterviewCommand
@@ -109,7 +110,8 @@ public sealed record ProjectInterviewTaskDocument(
         SessionState.CurrentPhase is not ProjectInterviewPhase.Idle
         and not ProjectInterviewPhase.Confirmed
         and not ProjectInterviewPhase.Cancelled
-        and not ProjectInterviewPhase.Failed;
+        and not ProjectInterviewPhase.Failed
+        and not ProjectInterviewPhase.Expired;
 
     public ProjectInterviewTaskDocument WithSessionState(ProjectInterviewSessionState sessionState) =>
         this with { SessionState = sessionState };

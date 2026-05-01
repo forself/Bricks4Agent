@@ -1929,8 +1929,10 @@ public class HighLevelCoordinator
     {
         if (ContainsAny(normalized, _options.SystemScaffoldKeywords)) return "system_scaffold";
         if (ContainsAny(normalized, _options.CodeModifyKeywords)) return "code_modify";
+        var hasCodeArtifactHint = ContainsAny(normalized, _options.CodeArtifactKeywords);
         if (ContainsAny(normalized, _options.DocKeywords)) return "doc_gen";
-        if (ContainsAny(normalized, _options.CodeGenKeywords)) return "code_gen";
+        if (ContainsAny(normalized, _options.CreativeDocKeywords) && !hasCodeArtifactHint) return "doc_gen";
+        if (ContainsAny(normalized, _options.CodeGenKeywords) || hasCodeArtifactHint) return "code_gen";
         return "task_management";
     }
 
@@ -3801,6 +3803,46 @@ public class HighLevelCoordinatorOptions
         "readme",
         "doc",
         "documentation"
+    };
+
+    public string[] CreativeDocKeywords { get; set; } = new[]
+    {
+        "\u6545\u4e8b",
+        "\u7ae5\u8a71",
+        "\u5c0f\u8aaa",
+        "\u6587\u6848",
+        "\u6587\u7ae0",
+        "\u5287\u672c",
+        "\u8a69",
+        "story",
+        "fairy tale",
+        "novel",
+        "copywriting",
+        "article",
+        "script",
+        "poem"
+    };
+
+    public string[] CodeArtifactKeywords { get; set; } = new[]
+    {
+        "\u7db2\u7ad9",
+        "\u7db2\u9801",
+        "\u55ae\u9801",
+        "\u524d\u7aef",
+        "\u5f8c\u7aef",
+        "\u4ecb\u9762",
+        "\u753b\u9762",
+        "\u7cfb\u7d71",
+        "\u529f\u80fd",
+        "website",
+        "web page",
+        "webpage",
+        "landing page",
+        "frontend",
+        "backend",
+        "html",
+        "app",
+        "api"
     };
 }
 

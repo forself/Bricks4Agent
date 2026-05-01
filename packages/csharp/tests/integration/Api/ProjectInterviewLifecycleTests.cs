@@ -77,4 +77,23 @@ public class ProjectInterviewLifecycleTests : IClassFixture<BrokerFixture>
         message.Should().Contain("site structure direction");
         message.Should().NotContain("template family");
     }
+
+    [Fact]
+    public async Task ProjectInterview_ExpiredSessionFallsBackToConversationRoute()
+    {
+        const string userId = "line-project-expired-session";
+
+        await _fixture.SendHighLevelLineTextAsync("/proj", userId);
+        await _fixture.AgeProjectInterviewRequirementsAsync("line", userId, TimeSpan.FromHours(2));
+
+        using var response = await _fixture.SendHighLevelLineTextAsync("hello", userId);
+        var data = response.RootElement.GetProperty("data");
+
+        data.GetProperty("mode").GetString().Should().Be("conversation");
+        data.GetProperty("decision_reason").GetString().Should().Be("default conversation route");
+
+        var state = await _fixture.ReadProjectInterviewRequirementsAsync("line", userId);
+        state.SessionState.CurrentPhase.Should().Be(Broker.Services.ProjectInterviewPhase.Expired);
+        state.IsActiveSession.Should().BeFalse();
+    }
 }

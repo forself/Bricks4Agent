@@ -222,6 +222,32 @@ public class BrokerFixture : IAsyncLifetime
         return Task.FromResult(JsonSerializer.Deserialize<ProjectInterviewVersionDag>(entry.ContentRef));
     }
 
+    public Task AgeProjectInterviewRequirementsAsync(string channel, string userId, TimeSpan age)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BrokerCore.Data.BrokerDb>();
+        var documentId = ProjectInterviewStateService.BuildTaskDocumentId(channel, userId);
+        var staleCreatedAt = DateTime.UtcNow.Subtract(age);
+        db.Execute(
+            """
+            UPDATE shared_context_entries
+            SET created_at = @createdAt
+            WHERE document_id = @documentId
+              AND version = (
+                  SELECT MAX(version)
+                  FROM shared_context_entries
+                  WHERE document_id = @documentId
+              )
+            """,
+            new
+            {
+                createdAt = staleCreatedAt,
+                documentId
+            });
+
+        return Task.CompletedTask;
+    }
+
     public async Task DisposeAsync()
     {
         Client.Dispose();
