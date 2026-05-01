@@ -537,8 +537,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         <!-- per-model breakdown -->
         <el-card v-if="llmStatus" style="margin-top:14px">
           <template #header><span style="font-weight:600">{{t('llmPerModel')}}</span></template>
-          <el-empty v-if="llmStatus.metrics.per_model.length===0" :description="t('llmNoCalls')" :image-size="60"/>
-          <el-table v-else :data="llmStatus.metrics.per_model" stripe>
+          <el-table :data="llmStatus.metrics.per_model" :empty-text="t('llmNoCalls')" stripe>
             <el-table-column :label="t('llmModel')" min-width="180">
               <template #default="{row}"><code style="font-size:12px">{{row.model}}</code></template>
             </el-table-column>
@@ -624,8 +623,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               <el-button size="small" @click="loadLlmRecent" :loading="llmRecentLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
             </div>
           </template>
-          <el-empty v-if="llmRecent.length===0" :description="t('llmNoRecent')" :image-size="60"/>
-          <el-table v-else :data="llmRecent" stripe>
+          <el-table :data="llmRecent" :empty-text="t('llmNoRecent')" stripe>
             <el-table-column type="expand" width="42">
               <template #default="{row}">
                 <div style="padding:6px 16px 10px 50px">
