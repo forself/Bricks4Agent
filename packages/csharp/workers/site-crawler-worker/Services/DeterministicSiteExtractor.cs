@@ -20,7 +20,7 @@ public sealed class ExtractedPageResult
     public ExtractedPageModel Model { get; init; } = new();
 }
 
-public static class DeterministicSiteExtractor
+public sealed class DeterministicSiteExtractor
 {
     private const int TextExcerptLimit = 1000;
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
@@ -34,7 +34,7 @@ public static class DeterministicSiteExtractor
         RegexOptions.IgnoreCase | RegexOptions.Compiled,
         RegexTimeout);
 
-    public static ExtractedPageResult ExtractPage(Uri pageUri, string html)
+    public ExtractedPageResult ExtractPage(Uri pageUri, string html)
     {
         ArgumentNullException.ThrowIfNull(pageUri);
 

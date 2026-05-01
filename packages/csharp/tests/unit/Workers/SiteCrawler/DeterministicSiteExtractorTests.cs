@@ -31,7 +31,9 @@ public class DeterministicSiteExtractorTests
             </html>
             """;
 
-        var result = DeterministicSiteExtractor.ExtractPage(
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
             new Uri("https://example.com/docs/"),
             html);
 
@@ -69,7 +71,9 @@ public class DeterministicSiteExtractorTests
             </html>
             """;
 
-        var result = DeterministicSiteExtractor.ExtractPage(
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
             new Uri("https://example.com/docs/"),
             html);
 
