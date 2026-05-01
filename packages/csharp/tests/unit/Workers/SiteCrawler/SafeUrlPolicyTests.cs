@@ -14,7 +14,7 @@ public class SafeUrlPolicyTests
         result.IsAllowed.Should().BeTrue();
         result.Uri.Should().NotBeNull();
         result.Uri!.ToString().Should().Be(expectedUrl);
-        result.Reason.Should().BeNull();
+        result.Reason.Should().BeEmpty();
     }
 
     [Theory]
@@ -81,6 +81,6 @@ public class SafeUrlPolicyTests
         result.IsAllowed.Should().BeTrue();
         result.Uri.Should().NotBeNull();
         result.Uri!.ToString().Should().Be("https://example.com/");
-        result.Reason.Should().BeNull();
+        result.Reason.Should().BeEmpty();
     }
 }

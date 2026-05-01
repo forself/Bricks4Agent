@@ -3,9 +3,9 @@ using System.Net.Sockets;
 
 namespace SiteCrawlerWorker.Services;
 
-public sealed record SafeUrlValidationResult(bool IsAllowed, Uri? Uri, string? Reason)
+public sealed record SafeUrlValidationResult(bool IsAllowed, Uri? Uri, string Reason)
 {
-    public static SafeUrlValidationResult Allow(Uri uri) => new(true, uri, null);
+    public static SafeUrlValidationResult Allow(Uri uri) => new(true, uri, string.Empty);
 
     public static SafeUrlValidationResult Deny(string reason) => new(false, null, reason);
 }
