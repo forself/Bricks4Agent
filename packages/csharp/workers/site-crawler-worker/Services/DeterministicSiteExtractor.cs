@@ -69,7 +69,7 @@ public sealed class DeterministicSiteExtractor
     private static List<string> ExtractLinks(HtmlDocument document, Uri pageUri)
     {
         var links = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var anchor in SelectNodes(document.DocumentNode, "//a[@href]"))
         {
@@ -84,10 +84,11 @@ public sealed class DeterministicSiteExtractor
                 continue;
             }
 
-            var normalized = RemoveFragment(resolved).ToString();
-            if (seen.Add(normalized))
+            var normalized = RemoveFragment(resolved);
+            var distinctKey = BuildLinkDistinctKey(normalized);
+            if (seen.Add(distinctKey))
             {
-                links.Add(normalized);
+                links.Add(normalized.ToString());
             }
         }
 
@@ -230,21 +231,49 @@ public sealed class DeterministicSiteExtractor
 
     private static IEnumerable<HtmlNode> FindSectionCandidates(HtmlDocument document)
     {
-        foreach (var node in document.DocumentNode.Descendants()
-            .Where(node => node.NodeType == HtmlNodeType.Element))
+        var elements = document.DocumentNode.Descendants()
+            .Where(node => node.NodeType == HtmlNodeType.Element)
+            .ToList();
+        var semanticCandidates = elements
+            .Where(IsSemanticSectionCandidate)
+            .ToHashSet();
+
+        foreach (var node in elements)
         {
-            var name = node.Name.ToLowerInvariant();
-            if (name is "section" or "main" or "header" or "article")
+            if (IsSemanticSectionCandidate(node))
             {
                 yield return node;
                 continue;
             }
 
-            if (name == "div" && (HasHeroSignal(node) || ContainsHeading(node, "h1")))
+            if (node.Name.Equals("div", StringComparison.OrdinalIgnoreCase) &&
+                !HasSemanticCandidateAncestor(node, semanticCandidates) &&
+                (HasHeroSignal(node) || ContainsHeading(node, "h1")))
             {
                 yield return node;
             }
         }
+    }
+
+    private static bool IsSemanticSectionCandidate(HtmlNode node)
+    {
+        var name = node.Name.ToLowerInvariant();
+        return name is "section" or "main" or "header" or "article";
+    }
+
+    private static bool HasSemanticCandidateAncestor(
+        HtmlNode node,
+        IReadOnlySet<HtmlNode> semanticCandidates)
+    {
+        for (var current = node.ParentNode; current is not null; current = current.ParentNode)
+        {
+            if (semanticCandidates.Contains(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static HtmlNode? FindNearestCandidateContainingFirstH1(
@@ -445,6 +474,18 @@ public sealed class DeterministicSiteExtractor
         };
 
         return builder.Uri;
+    }
+
+    private static string BuildLinkDistinctKey(Uri uri)
+    {
+        var builder = new UriBuilder(uri)
+        {
+            Scheme = uri.Scheme.ToLowerInvariant(),
+            Host = uri.IdnHost.ToLowerInvariant(),
+            Fragment = string.Empty,
+        };
+
+        return builder.Uri.ToString();
     }
 
     private static IEnumerable<HtmlNode> SelectNodes(HtmlNode node, string xpath)

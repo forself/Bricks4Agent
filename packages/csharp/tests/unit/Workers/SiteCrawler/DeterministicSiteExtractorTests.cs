@@ -81,6 +81,56 @@ public class DeterministicSiteExtractorTests
     }
 
     [Fact]
+    public void ExtractPage_PrefersSemanticHeroSectionOverInnerContainerDiv()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="hero">
+                <div class="container">
+                  <h1>Build Faster</h1>
+                  <p>Create reliable agents.</p>
+                </div>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        var section = result.Model.Sections.Should().ContainSingle().Subject;
+        section.Tag.Should().Be("section");
+        section.Role.Should().Be("hero");
+        section.Headline.Should().Be("Build Faster");
+    }
+
+    [Fact]
+    public void ExtractPage_PreservesCaseSensitivePathLinksWhileDedupeIgnoresSchemeAndHostCase()
+    {
+        var html = """
+            <html>
+            <body>
+              <a href="/Docs">Upper path</a>
+              <a href="HTTPS://EXAMPLE.com/Docs#top">Same upper path with host case</a>
+              <a href="/docs">Lower path</a>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        result.Links.Should().Equal(
+            "https://example.com/Docs",
+            "https://example.com/docs");
+    }
+
+    [Fact]
     public void ExtractPage_WhenHeroSectionIsInsideMain_AssignsHeroOnlyToSection()
     {
         var html = """
