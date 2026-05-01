@@ -1986,8 +1986,8 @@ try
     Console.WriteLine("\n=== TDX API Live Test ===");
     var tdxOpts = new Broker.Services.TdxOptions
     {
-        ClientId = "n1126447-f30c7858-663c-480a",
-        ClientSecret = "7fd9d753-6d6a-4148-8a9a-89d72c959985"
+        ClientId = Environment.GetEnvironmentVariable("TDX_CLIENT_ID") ?? "",
+        ClientSecret = Environment.GetEnvironmentVariable("TDX_CLIENT_SECRET") ?? ""
     };
     var tdxService = new Broker.Services.TdxApiService(
         tdxOpts,

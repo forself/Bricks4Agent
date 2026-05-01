@@ -22,8 +22,17 @@ public sealed class TdxApiService
     }
 
     public bool IsConfigured =>
-        !string.IsNullOrWhiteSpace(_options.ClientId) &&
-        !string.IsNullOrWhiteSpace(_options.ClientSecret);
+        HasRealCredential(_options.ClientId) &&
+        HasRealCredential(_options.ClientSecret);
+
+    private static bool HasRealCredential(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return !value.StartsWith("REPLACE_WITH", StringComparison.OrdinalIgnoreCase) &&
+            !value.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
+    }
 
     public async Task<string?> GetAccessTokenAsync(CancellationToken ct = default)
     {

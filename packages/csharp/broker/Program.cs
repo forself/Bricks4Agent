@@ -509,6 +509,8 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseDevEndpointGuard();
+
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
 app.UseStaticFiles();
 
@@ -544,7 +546,7 @@ var healthHandler = () => Results.Ok(new
 api.MapGet("/health", healthHandler);
 api.MapPost("/health", healthHandler);
 
-// ── Dev RAG test（/dev/ 路徑已被 Encryption+Auth middleware 排除，無需額外保護） ──
+// ── Dev RAG test（/dev/ 路徑已被 Encryption+Auth middleware 排除，只允許 localhost 存取） ──
 {
     app.MapPost("/dev/rag-test", async (HttpContext ctx,
         BrokerCore.Data.BrokerDb ragTestDb,

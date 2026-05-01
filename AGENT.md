@@ -24,12 +24,52 @@
 
 ## 1. 專案概觀
 
-Bricks4Agent 是全端元件庫與程式碼生成工具集：
+Bricks4Agent 目前的主要定位是 **broker-centered governed AI operations platform**。
 
-- **75 個前端 UI 元件**（純 Vanilla JS，零外部依賴）
-- **21 個 C# 後端模組**（.NET 8 Minimal API）
-- **頁面生成引擎**（PageGenerator，支援 30 種欄位類型）
+目前 canonical live path 是：
+
+```text
+LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process
+```
+
+重要邊界：
+
+- `line-worker -> broker high-level coordinator` 是正式 LINE 路徑
+- `tools/agent --line-listen` 只保留作為 legacy / development-only 路徑
+- broker 是 control plane，不是任意 autonomous planner
+- high-level model 可以對話、澄清、提出 intent；broker 負責驗證、記錄與 promotion gate
+- execution layer 消費結構化 intent，不應直接吃 raw conversation
+
+本 repo 仍包含既有的 generator / UI library 子系統：
+
+- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency）
+- **C# 後端模組**（.NET 8 Minimal API）
+- **頁面生成引擎**（PageGenerator，支援多種欄位類型）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
+
+AI agent 修改本專案時，優先以 `README.md`、`CLAUDE.md`、`docs/reports/CurrentArchitectureAndProgress-2026-03-26.md` 的 control-plane 架構為準；本文件後半段的 SPA/generator 指令是子系統操作手冊。
+
+### 1.1 目前 live control-plane 核心
+
+- Broker：`packages/csharp/broker`
+- Broker core：`packages/csharp/broker-core`
+- LINE worker：`packages/csharp/workers/line-worker`
+- Governed agent runtime：`tools/agent`
+- Local admin console：`http://127.0.0.1:5361/line-admin.html`
+
+### 1.2 Build 與 test 入口
+
+```powershell
+dotnet build packages/csharp/ControlPlane.slnx
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+npm.cmd test
+```
+
+Integration tests 需要先啟動 broker instance：
+
+```powershell
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:{port}
+```
 
 ### 核心工具鏈
 
