@@ -273,6 +273,29 @@ public class DeterministicSiteExtractorTests
     }
 
     [Fact]
+    public void ExtractPage_PreservesCaseSensitiveQueryLinksWhileDedupeIgnoresSchemeAndHostCase()
+    {
+        var html = """
+            <html>
+            <body>
+              <a href="/docs/search?q=AI#top">Upper query</a>
+              <a href="HTTPS://EXAMPLE.com/docs/search?q=AI#details">Same query with host case</a>
+              <a href="/docs/search?q=ai#top">Lower query</a>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        result.Links.Should().Equal(
+            "https://example.com/docs/search?q=AI",
+            "https://example.com/docs/search?q=ai");
+    }
+
+    [Fact]
     public void ExtractPage_WhenHeroSectionIsInsideMain_AssignsHeroOnlyToSection()
     {
         var html = """
