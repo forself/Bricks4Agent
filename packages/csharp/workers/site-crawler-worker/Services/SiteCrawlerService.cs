@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SiteCrawlerWorker.Models;
 
 namespace SiteCrawlerWorker.Services;
@@ -6,21 +7,32 @@ public sealed class SiteCrawlerService
 {
     private readonly IPageFetcher pageFetcher;
     private readonly DeterministicSiteExtractor extractor;
+    private readonly ILogger<SiteCrawlerService>? logger;
 
     public SiteCrawlerService(IPageFetcher pageFetcher, DeterministicSiteExtractor extractor)
+        : this(pageFetcher, extractor, null)
+    {
+    }
+
+    public SiteCrawlerService(
+        IPageFetcher pageFetcher,
+        DeterministicSiteExtractor extractor,
+        ILogger<SiteCrawlerService>? logger)
     {
         this.pageFetcher = pageFetcher;
         this.extractor = extractor;
+        this.logger = logger;
     }
 
     public SiteCrawlerService(HttpClient httpClient)
-        : this(new HttpPageFetcher(httpClient), new DeterministicSiteExtractor())
+        : this(new HttpPageFetcher(httpClient), new DeterministicSiteExtractor(), null)
     {
     }
 
     public async Task<SiteCrawlResult> CrawlAsync(SiteCrawlRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        logger?.LogDebug("Starting site crawl for {StartUrl}", request.StartUrl);
 
         var startValidation = SafeUrlPolicy.Validate(request.StartUrl);
         if (!startValidation.IsAllowed || startValidation.Uri is null)
@@ -81,6 +93,12 @@ public sealed class SiteCrawlerService
             var fetch = await pageFetcher.FetchAsync(current.Uri, ct);
             if (!fetch.IsSuccess)
             {
+                if (fetch.RedirectUri is not null)
+                {
+                    EnqueueCandidate(fetch.RedirectUri, scope, result, excluded, seen, queue);
+                    continue;
+                }
+
                 AddExcluded(result, excluded, fetch.FinalUri.ToString(), fetch.FailureReason);
                 continue;
             }
@@ -132,30 +150,41 @@ public sealed class SiteCrawlerService
 
             foreach (var link in pageExtraction.Links)
             {
-                var linkValidation = SafeUrlPolicy.Validate(link);
-                if (!linkValidation.IsAllowed || linkValidation.Uri is null)
-                {
-                    AddExcluded(result, excluded, link, linkValidation.Reason);
-                    continue;
-                }
-
-                var linkScope = scope.Evaluate(linkValidation.Uri);
-                if (!linkScope.IsAllowed)
-                {
-                    AddExcluded(result, excluded, linkValidation.Uri.ToString(), linkScope.Reason);
-                    continue;
-                }
-
-                var linkKey = BuildCrawlKey(linkValidation.Uri);
-                if (seen.Add(linkKey))
-                {
-                    queue.Enqueue(new CrawlQueueItem(linkValidation.Uri));
-                }
+                EnqueueCandidate(new Uri(link), scope, result, excluded, seen, queue);
             }
         }
 
         PopulateRouteGraph(result, scope);
         return result;
+    }
+
+    private static void EnqueueCandidate(
+        Uri candidateUri,
+        PathDepthScope scope,
+        SiteCrawlResult result,
+        ISet<string> excluded,
+        ISet<string> seen,
+        Queue<CrawlQueueItem> queue)
+    {
+        var candidateValidation = SafeUrlPolicy.Validate(candidateUri.ToString());
+        if (!candidateValidation.IsAllowed || candidateValidation.Uri is null)
+        {
+            AddExcluded(result, excluded, candidateUri.ToString(), candidateValidation.Reason);
+            return;
+        }
+
+        var candidateScope = scope.Evaluate(candidateValidation.Uri);
+        if (!candidateScope.IsAllowed)
+        {
+            AddExcluded(result, excluded, candidateValidation.Uri.ToString(), candidateScope.Reason);
+            return;
+        }
+
+        var candidateKey = BuildCrawlKey(candidateValidation.Uri);
+        if (seen.Add(candidateKey))
+        {
+            queue.Enqueue(new CrawlQueueItem(candidateValidation.Uri));
+        }
     }
 
     private static void PopulateRouteGraph(SiteCrawlResult result, PathDepthScope scope)

@@ -1,3 +1,5 @@
+using System.Net;
+using Microsoft.Extensions.Logging.Abstractions;
 using SiteCrawlerWorker.Models;
 using SiteCrawlerWorker.Services;
 
@@ -13,6 +15,7 @@ public class SiteCrawlerServiceTests
             ["https://example.com/docs/"] = PageFetchResult.Ok(
                 new Uri("https://example.com/docs/"),
                 200,
+                "text/html",
                 """
                 <html>
                 <head>
@@ -32,6 +35,7 @@ public class SiteCrawlerServiceTests
             ["https://example.com/docs/a"] = PageFetchResult.Ok(
                 new Uri("https://example.com/docs/a"),
                 200,
+                "text/html; charset=utf-8",
                 """
                 <html>
                 <head><title>A</title></head>
@@ -44,7 +48,10 @@ public class SiteCrawlerServiceTests
                 </html>
                 """),
         });
-        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+        var service = new SiteCrawlerService(
+            fetcher,
+            new DeterministicSiteExtractor(),
+            NullLogger<SiteCrawlerService>.Instance);
 
         var result = await service.CrawlAsync(new SiteCrawlRequest
         {
@@ -91,6 +98,7 @@ public class SiteCrawlerServiceTests
             ["https://example.com/docs/"] = PageFetchResult.Ok(
                 new Uri("https://example.com/docs/"),
                 200,
+                "text/html",
                 "<html><head><title>Root</title></head><body><section><h1>Root</h1></section></body></html>"),
         });
         var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
@@ -125,6 +133,46 @@ public class SiteCrawlerServiceTests
         fetcher.RequestedUrls.Should().BeEmpty();
     }
 
+    [Fact]
+    public void PageFetchResultOk_PreservesRequestUriFinalUriAndContentType()
+    {
+        var uri = new Uri("https://example.com/docs/");
+        var html = "<html><body>Docs</body></html>";
+
+        var result = PageFetchResult.Ok(uri, 200, "text/html; charset=utf-8", html);
+
+        result.Uri.Should().Be(uri);
+        result.FinalUri.Should().Be(uri);
+        result.ContentType.Should().Be("text/html; charset=utf-8");
+        result.Html.Should().Be(html);
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenResponseIsRedirect_DoesNotFollowRedirect()
+    {
+        var redirectTarget = new Uri("http://127.0.0.1/secret");
+        var handler = new FakeHttpMessageHandler((request, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Found)
+            {
+                RequestMessage = request,
+            };
+            response.Headers.Location = redirectTarget;
+            return response;
+        });
+        var fetcher = new HttpPageFetcher(new HttpClient(handler));
+
+        var result = await fetcher.FetchAsync(new Uri("https://example.com/docs/"), CancellationToken.None);
+
+        handler.Requests.Should().ContainSingle()
+            .Which.RequestUri.Should().Be("https://example.com/docs/");
+        result.IsSuccess.Should().BeFalse();
+        result.Uri.Should().Be(new Uri("https://example.com/docs/"));
+        result.FinalUri.Should().Be(new Uri("https://example.com/docs/"));
+        result.RedirectUri.Should().Be(redirectTarget);
+        result.FailureReason.Should().Be("redirect_not_followed");
+    }
+
     private sealed class FakePageFetcher : IPageFetcher
     {
         private readonly IReadOnlyDictionary<string, PageFetchResult> pages;
@@ -142,6 +190,26 @@ public class SiteCrawlerServiceTests
             return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
                 ? result
                 : PageFetchResult.Fail(uri, 404, "not_found"));
+        }
+    }
+
+    private sealed class FakeHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> send;
+
+        public FakeHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> send)
+        {
+            this.send = send;
+        }
+
+        public List<HttpRequestMessage> Requests { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(send(request, cancellationToken));
         }
     }
 }
