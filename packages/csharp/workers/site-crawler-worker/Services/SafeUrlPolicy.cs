@@ -30,7 +30,7 @@ public static class SafeUrlPolicy
         }
 
         var normalizedUri = Normalize(uri);
-        if (IsBlockedHost(normalizedUri.Host))
+        if (IsBlockedHost(normalizedUri))
         {
             return SafeUrlValidationResult.Deny("blocked_host");
         }
@@ -53,9 +53,9 @@ public static class SafeUrlPolicy
         return builder.Uri;
     }
 
-    private static bool IsBlockedHost(string host)
+    private static bool IsBlockedHost(Uri uri)
     {
-        var canonicalHost = CanonicalizeHostForSafety(host);
+        var canonicalHost = CanonicalizeHostForSafety(uri.IdnHost);
         if (string.Equals(canonicalHost, "localhost", StringComparison.OrdinalIgnoreCase))
         {
             return true;
