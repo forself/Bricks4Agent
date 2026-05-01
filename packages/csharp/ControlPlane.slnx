@@ -62,4 +62,9 @@
   <Folder Name="/workers/risk-worker/">
     <Project Path="workers/risk-worker/RiskWorker.csproj" />
   </Folder>
+  <!-- [whitelist add: 2026-05-01 AnthonyLee] Agent runtime worker（MVP-0）—
+       純新增 project entry，不動 Benson 的既有 solution 結構。 -->
+  <Folder Name="/workers/agent-worker/">
+    <Project Path="workers/agent-worker/AgentWorker.csproj" />
+  </Folder>
 </Solution>

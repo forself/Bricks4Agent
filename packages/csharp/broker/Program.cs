@@ -1,5 +1,6 @@
 using BrokerCore.Crypto;
 using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
 using Broker.Adapters;
 using Broker.Endpoints;
@@ -39,6 +40,10 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     var dashboardSeed = builder.Configuration.GetSection("DashboardSeed").Get<DevelopmentSeedOptions>();
     if (dashboardSeed?.Enabled == true)
         initializer.Initialize(dashboardSeed);
+
+    // Agent Inbox 表（MVP-1 2026-05-01）— 不動 BrokerDbInitializer.cs（Benson 的）。
+    // EnsureTable 是 idempotent，補在初始化區段尾巴最乾淨。
+    initDb.EnsureTable<AgentInboxTask>();
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -904,6 +909,10 @@ HighLevelEndpoints.Map(api);
 GoogleDriveOAuthEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
+// Agent Inbox（MVP-1 2026-05-01）— 任務派發給已 spawn 的 agent，獨立於 AgentEndpoints
+AgentInboxEndpoints.Map(api);
+// Agent Exec（MVP-2 2026-05-01）— agent 容器執行 capability_grants 裡授權的工具
+AgentExecEndpoints.Map(api);
 // LLM 代理觀測 endpoint（無論 pool 是否 enabled 都掛，因為這層跟 worker 無關）
 LlmProxyEndpoints.Map(api);
 

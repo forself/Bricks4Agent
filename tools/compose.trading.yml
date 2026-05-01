@@ -69,7 +69,10 @@ services:
       # b4a-* containers spawned by compose.
       FunctionPool__ContainerManager__Enabled: "true"
       FunctionPool__ContainerManager__Runtime: "docker"
-      FunctionPool__ContainerManager__NetworkName: "b4a-trading_trading-net"
+      # 注意：以下要寫實際 docker 網路名（見檔案末 networks.trading-net.name），
+      # 不是 compose 的服務內參考名（"trading-net"）也不是預設 project-prefixed 名
+      # （"b4a-trading_trading-net"）。寫錯會導致 broker spawn 容器時找不到網路。
+      FunctionPool__ContainerManager__NetworkName: "b4a-trading-net"
       FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
       FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
 
@@ -88,6 +91,11 @@ services:
       FunctionPool__ContainerManager__WorkerImages__strategy-worker__Image: "b4a-strategy-worker:latest"
       FunctionPool__ContainerManager__WorkerImages__strategy-worker__MemoryLimit: "1g"
       FunctionPool__ContainerManager__WorkerImages__strategy-worker__CpuLimit: "1.0"
+      # Agent runtime（MVP-0，2026-05-01）— 給 /api/v1/agents/spawn 用。
+      # workerType=agent 是 AgentEndpoints.cs 寫死的；image 名要對得上 docker build 的 tag。
+      FunctionPool__ContainerManager__WorkerImages__agent__Image: "b4a-agent:latest"
+      FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "256m"
+      FunctionPool__ContainerManager__WorkerImages__agent__CpuLimit: "0.3"
     ports:
       - "5100:5000"
     volumes:

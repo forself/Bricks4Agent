@@ -58,7 +58,15 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/research/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/health/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/export/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/llm-proxy/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/llm-proxy/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-01 AnthonyLee] Agent Inbox（MVP-1）—
+            // agent 容器走 docker 內部網路 poll/complete，dashboard 也透過 plain JSON
+            // push/list；都不走 ECDH（與 /llm-proxy 同設計）。
+            || path.StartsWith("/api/v1/agents/inbox/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-01 AnthonyLee] Agent Exec（MVP-2）—
+            // agent 容器透過此端點執行被授予的 capability（記憶/網路/檔案 等），
+            // capability_grants 本身就是授權證明（spawn 時 PEP 已審核），不再走 ECDH。
+            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

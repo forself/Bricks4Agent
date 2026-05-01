@@ -300,8 +300,9 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               <template #default="{row}"><el-tag round size="small">{{row.capabilityCount}}</el-tag></template>
             </el-table-column>
             <el-table-column :label="t('created')" width="170"><template #default="{row}">{{fmtDate(row.createdAt)}}</template></el-table-column>
-            <el-table-column width="80" align="right">
+            <el-table-column :label="t('actions')" width="160" align="right">
               <template #default="{row}">
+                <el-button v-if="row.state==='Active'" type="primary" size="small" text @click="openDispatch(row)">{{t('dispatch')}}</el-button>
                 <el-button v-if="row.state==='Active'" type="danger" size="small" text @click="doStop(row.agentId)">{{t('stop')}}</el-button>
               </template>
             </el-table-column>
@@ -704,6 +705,47 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
   </template>
 </el-dialog>
 
+<!-- ── Agent Dispatch Dialog（MVP-1 派任務 + 歷史）── -->
+<el-dialog v-model="dispatchVisible" :title="t('dispatchTitle') + (dispatchAgent ? ': ' + dispatchAgent.agentId : '')" width="780px" :close-on-click-modal="false">
+  <el-form label-position="top" v-if="dispatchAgent">
+    <el-form-item :label="t('dispatchPrompt')">
+      <el-input v-model="dispatchPrompt" type="textarea" :rows="3" :placeholder="t('dispatchPromptPH')" />
+    </el-form-item>
+    <div style="margin-bottom:16px;display:flex;gap:8px;align-items:center">
+      <el-button type="primary" @click="doDispatch" :loading="dispatching" :disabled="!dispatchPrompt.trim()">{{t('send')}}</el-button>
+      <el-button size="small" @click="loadDispatchHistory(dispatchAgent.agentId)" :loading="dispatchHistoryLoading" text>↻ {{t('refresh')}}</el-button>
+      <span style="color:var(--m);font-size:12px;margin-left:auto">poll interval ~ 5s</span>
+    </div>
+    <div style="font-weight:600;margin-bottom:8px">{{t('dispatchHistory')}} <el-tag round size="small">{{dispatchHistory.length}}</el-tag></div>
+    <el-table :data="dispatchHistory" stripe size="small" max-height="320" :empty-text="t('noTasks')">
+      <el-table-column prop="seq" label="#" width="55"/>
+      <el-table-column prop="status" :label="t('state')" width="110">
+        <template #default="{row}">
+          <el-tag :type="dispatchStatusType(row.status)" size="small">{{row.status}}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="prompt" :label="t('dispatchPrompt')" min-width="200">
+        <template #default="{row}"><div style="white-space:pre-wrap;font-size:12px">{{row.prompt}}</div></template>
+      </el-table-column>
+      <el-table-column prop="reply" label="Reply" min-width="240">
+        <template #default="{row}">
+          <div v-if="row.reply" style="white-space:pre-wrap;font-size:12px;color:var(--t)">{{row.reply}}</div>
+          <div v-else-if="row.error" style="color:var(--err);font-size:12px">{{row.error}}</div>
+          <div v-else style="color:var(--m);font-size:12px">—</div>
+        </template>
+      </el-table-column>
+      <el-table-column :label="t('latency')" width="110" align="right">
+        <template #default="{row}">
+          <span v-if="row.latency_ms" style="font-family:monospace;font-size:11px">{{row.latency_ms}}ms</span>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-form>
+  <template #footer>
+    <el-button @click="dispatchVisible=false">{{t('close')}}</el-button>
+  </template>
+</el-dialog>
+
 <!-- ── Container Logs Dialog ── -->
 <el-dialog v-model="logsVisible" :title="t('logs') + ': ' + logsContainerId" width="880px" :close-on-click-modal="false">
   <el-tabs v-model="logsTab" @tab-change="onLogsTabChange">
@@ -1021,6 +1063,9 @@ const I18N={
     crypto:'加密貨幣',stock:'股票',change24h:'24h 漲跌',changePercent:'漲跌%',
     marketCap:'市值',volume:'成交量',lastFetch:'最後更新',
     pending:'待執行',running:'執行中',success:'成功',failed:'失敗',partial:'部分成功',
+    actions:'操作',dispatch:'派任務',dispatchTitle:'派任務給代理',dispatchPrompt:'任務內容',
+    dispatchPromptPH:'例：請列出 25 個能力裡有哪些是檔案類，並說明各自做什麼',
+    dispatchHistory:'任務歷史',send:'送出',close:'關閉',noTasks:'尚無任務',latency:'延遲',
   },
   en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
@@ -1080,6 +1125,9 @@ const I18N={
     crypto:'Crypto',stock:'Stock',change24h:'24h Change',changePercent:'Change%',
     marketCap:'Market Cap',volume:'Volume',lastFetch:'Last Updated',
     pending:'Pending',running:'Running',success:'Success',failed:'Failed',partial:'Partial',
+    actions:'Actions',dispatch:'Dispatch',dispatchTitle:'Dispatch task to agent',dispatchPrompt:'Prompt',
+    dispatchPromptPH:'e.g., List all file-related capabilities and explain each',
+    dispatchHistory:'Task History',send:'Send',close:'Close',noTasks:'No tasks',latency:'Latency',
   }
 };
 
@@ -1106,6 +1154,13 @@ const app=createApp({
 
     const createVisible=ref(false);const creating=ref(false);
     const createForm=reactive({name:'',taskType:'analysis',selected:new Set()});
+
+    // ── Agent dispatch (MVP-1)──
+    const dispatchVisible=ref(false);const dispatching=ref(false);
+    const dispatchAgent=ref(null);const dispatchPrompt=ref('');
+    const dispatchHistory=ref([]);const dispatchHistoryLoading=ref(false);
+    let dispatchPollTimer=null;
+    function dispatchStatusType(s){return s==='done'?'success':s==='failed'?'danger':s==='processing'?'warning':'info'}
 
     const activeAgentCount=computed(()=>agents.value.filter(function(a){return a.state==='Active'}).length);
 
@@ -1177,6 +1232,47 @@ const app=createApp({
         else ElementPlus.ElMessage.error(r.message||'Failed');
       }catch(e){ElementPlus.ElMessage.error(e.message)}
       creating.value=false;
+    }
+
+    // ── Agent dispatch (MVP-1)── inbox 走 trusted-internal plain JSON，不走 ECDH session
+    function openDispatch(agent){
+      dispatchAgent.value=agent;
+      dispatchPrompt.value='';
+      dispatchHistory.value=[];
+      dispatchVisible.value=true;
+      loadDispatchHistory(agent.agentId);
+      // 開著對話框時 5s 自動 refresh，看任務從 pending → done
+      if(dispatchPollTimer)clearInterval(dispatchPollTimer);
+      dispatchPollTimer=setInterval(()=>{
+        if(!dispatchVisible.value){clearInterval(dispatchPollTimer);dispatchPollTimer=null;return}
+        if(dispatchAgent.value)loadDispatchHistory(dispatchAgent.value.agentId,/*silent*/true);
+      },5000);
+    }
+    async function loadDispatchHistory(agentId,silent){
+      if(!silent)dispatchHistoryLoading.value=true;
+      try{
+        const r=await fetch(`${brokerUrl}/api/v1/agents/inbox/list?agent_id=${encodeURIComponent(agentId)}&limit=20`);
+        const j=await r.json();
+        dispatchHistory.value=j.data?.tasks||[];
+      }catch(e){if(!silent)ElementPlus.ElMessage.error(e.message)}
+      dispatchHistoryLoading.value=false;
+    }
+    async function doDispatch(){
+      if(!dispatchAgent.value||!dispatchPrompt.value.trim())return;
+      dispatching.value=true;
+      try{
+        const r=await fetch(`${brokerUrl}/api/v1/agents/inbox/push`,{
+          method:'POST',headers:{'Content-Type':'application/json; charset=utf-8'},
+          body:JSON.stringify({agent_id:dispatchAgent.value.agentId,prompt:dispatchPrompt.value,requested_by:'dashboard'})
+        });
+        const j=await r.json();
+        if(j.success){
+          ElementPlus.ElMessage.success(lang.value==='zh'?`已派送任務 #${j.data.seq}`:`Task #${j.data.seq} dispatched`);
+          dispatchPrompt.value='';
+          await loadDispatchHistory(dispatchAgent.value.agentId);
+        }else ElementPlus.ElMessage.error(j.message||'Failed');
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      dispatching.value=false;
     }
 
     async function doStop(id){
@@ -1644,6 +1740,8 @@ const app=createApp({
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
       activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
+      dispatchVisible,dispatching,dispatchAgent,dispatchPrompt,dispatchHistory,dispatchHistoryLoading,
+      openDispatch,doDispatch,loadDispatchHistory,dispatchStatusType,
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagSummaryText,diagNumStyle,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,

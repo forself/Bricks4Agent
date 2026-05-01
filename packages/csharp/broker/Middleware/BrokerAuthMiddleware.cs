@@ -54,7 +54,11 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/research/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/health/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/export/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/llm-proxy/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/llm-proxy/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-01 AnthonyLee] Agent Inbox（MVP-1）— 同上 EncryptionMiddleware 的理由。
+            || path.StartsWith("/api/v1/agents/inbox/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-01 AnthonyLee] Agent Exec（MVP-2）— 同上理由。
+            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(
