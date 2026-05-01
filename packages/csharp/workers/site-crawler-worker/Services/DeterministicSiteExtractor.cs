@@ -267,9 +267,18 @@ public sealed class DeterministicSiteExtractor
         HtmlNode node,
         IReadOnlySet<HtmlNode> semanticCandidates)
     {
-        return node.Name.Equals("div", StringComparison.OrdinalIgnoreCase) &&
-            !HasSemanticCandidateAncestor(node, semanticCandidates) &&
-            (HasHeroSignal(node) || ContainsHeading(node, "h1"));
+        if (!node.Name.Equals("div", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var hasHeroSignal = HasHeroSignal(node);
+        if (HasBlockingSemanticCandidateAncestor(node, semanticCandidates, hasHeroSignal))
+        {
+            return false;
+        }
+
+        return hasHeroSignal || ContainsHeading(node, "h1");
     }
 
     private static bool IsCanonicalNonSemanticDivCandidate(
@@ -285,19 +294,26 @@ public sealed class DeterministicSiteExtractor
             !HasNonSemanticCandidateDescendant(node, nonSemanticDivCandidates, _ => true);
     }
 
-    private static bool HasSemanticCandidateAncestor(
+    private static bool HasBlockingSemanticCandidateAncestor(
         HtmlNode node,
-        IReadOnlySet<HtmlNode> semanticCandidates)
+        IReadOnlySet<HtmlNode> semanticCandidates,
+        bool nodeHasHeroSignal)
     {
         for (var current = node.ParentNode; current is not null; current = current.ParentNode)
         {
-            if (semanticCandidates.Contains(current))
+            if (semanticCandidates.Contains(current) &&
+                (!nodeHasHeroSignal || !IsBroadSemanticContainer(current)))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private static bool IsBroadSemanticContainer(HtmlNode node)
+    {
+        return node.Name.Equals("main", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasNonSemanticCandidateAncestor(
