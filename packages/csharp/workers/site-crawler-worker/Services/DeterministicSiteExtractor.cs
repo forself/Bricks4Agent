@@ -237,6 +237,9 @@ public sealed class DeterministicSiteExtractor
         var semanticCandidates = elements
             .Where(IsSemanticSectionCandidate)
             .ToHashSet();
+        var nonSemanticDivCandidates = elements
+            .Where(node => IsNonSemanticDivCandidate(node, semanticCandidates))
+            .ToHashSet();
 
         foreach (var node in elements)
         {
@@ -246,9 +249,8 @@ public sealed class DeterministicSiteExtractor
                 continue;
             }
 
-            if (node.Name.Equals("div", StringComparison.OrdinalIgnoreCase) &&
-                !HasSemanticCandidateAncestor(node, semanticCandidates) &&
-                (HasHeroSignal(node) || ContainsHeading(node, "h1")))
+            if (nonSemanticDivCandidates.Contains(node) &&
+                IsCanonicalNonSemanticDivCandidate(node, nonSemanticDivCandidates))
             {
                 yield return node;
             }
@@ -259,6 +261,28 @@ public sealed class DeterministicSiteExtractor
     {
         var name = node.Name.ToLowerInvariant();
         return name is "section" or "main" or "header" or "article";
+    }
+
+    private static bool IsNonSemanticDivCandidate(
+        HtmlNode node,
+        IReadOnlySet<HtmlNode> semanticCandidates)
+    {
+        return node.Name.Equals("div", StringComparison.OrdinalIgnoreCase) &&
+            !HasSemanticCandidateAncestor(node, semanticCandidates) &&
+            (HasHeroSignal(node) || ContainsHeading(node, "h1"));
+    }
+
+    private static bool IsCanonicalNonSemanticDivCandidate(
+        HtmlNode node,
+        IReadOnlySet<HtmlNode> nonSemanticDivCandidates)
+    {
+        if (HasNonSemanticCandidateAncestor(node, nonSemanticDivCandidates, HasHeroSignal))
+        {
+            return false;
+        }
+
+        return HasHeroSignal(node) ||
+            !HasNonSemanticCandidateDescendant(node, nonSemanticDivCandidates, _ => true);
     }
 
     private static bool HasSemanticCandidateAncestor(
@@ -274,6 +298,31 @@ public sealed class DeterministicSiteExtractor
         }
 
         return false;
+    }
+
+    private static bool HasNonSemanticCandidateAncestor(
+        HtmlNode node,
+        IReadOnlySet<HtmlNode> nonSemanticDivCandidates,
+        Func<HtmlNode, bool> predicate)
+    {
+        for (var current = node.ParentNode; current is not null; current = current.ParentNode)
+        {
+            if (nonSemanticDivCandidates.Contains(current) && predicate(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasNonSemanticCandidateDescendant(
+        HtmlNode node,
+        IReadOnlySet<HtmlNode> nonSemanticDivCandidates,
+        Func<HtmlNode, bool> predicate)
+    {
+        return node.Descendants()
+            .Any(descendant => nonSemanticDivCandidates.Contains(descendant) && predicate(descendant));
     }
 
     private static HtmlNode? FindNearestCandidateContainingFirstH1(

@@ -108,6 +108,33 @@ public class DeterministicSiteExtractorTests
     }
 
     [Fact]
+    public void ExtractPage_PrefersOuterExplicitHeroDivOverInnerContainerDiv()
+    {
+        var html = """
+            <html>
+            <body>
+              <div class="hero">
+                <div class="container">
+                  <h1>Build Faster</h1>
+                  <p>Create reliable agents.</p>
+                </div>
+              </div>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        var section = result.Model.Sections.Should().ContainSingle().Subject;
+        section.Tag.Should().Be("div");
+        section.Role.Should().Be("hero");
+        section.Headline.Should().Be("Build Faster");
+    }
+
+    [Fact]
     public void ExtractPage_PreservesCaseSensitivePathLinksWhileDedupeIgnoresSchemeAndHostCase()
     {
         var html = """
