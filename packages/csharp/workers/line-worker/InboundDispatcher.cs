@@ -369,8 +369,8 @@ public class InboundDispatcher
 
             if (target == null)
             {
-                _logger.LogInformation("Approval response received but no pending approvals");
-                return true;
+                _logger.LogInformation("Approval-like response received with no pending approvals; forwarding to broker");
+                return false;
             }
 
             target.Result = new ApprovalResult

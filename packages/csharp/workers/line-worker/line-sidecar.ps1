@@ -17,6 +17,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..\..")
+$runtimeWorkerConfigPath = Join-Path $repoRoot ".run\line-sidecar\line-worker\appsettings.json"
 
 function Invoke-ChildScript {
     param(
@@ -76,6 +78,9 @@ switch ($Action) {
         $params = @{
             BrokerUrl = "http://127.0.0.1:$BrokerPort"
             UserId = $UserId
+        }
+        if (Test-Path $runtimeWorkerConfigPath) {
+            $params.ConfigPath = $runtimeWorkerConfigPath
         }
         if (-not [string]::IsNullOrWhiteSpace($Message)) {
             $params.Message = $Message

@@ -49,7 +49,8 @@ if (Test-Path $ConfigPath) {
         $nonce = [Guid]::NewGuid().ToString("N")
         $path = "/api/v1/high-level/line/process"
         $sha256 = [System.Security.Cryptography.SHA256]::Create()
-        $bodyHash = [Convert]::ToHexString($sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($body))).ToLowerInvariant()
+        $bodyHashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($body))
+        $bodyHash = ([System.BitConverter]::ToString($bodyHashBytes) -replace '-', '').ToLowerInvariant()
         $baseString = @(
             "POST"
             $path

@@ -28,10 +28,12 @@ $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
 $googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
+$workerRuntimeConfigPath = Join-Path $workerOut "appsettings.json"
 $brokerRuntimeDbPath = Join-Path $dataRoot "broker.db"
 $ngrokConfigPath = Join-Path $env:LOCALAPPDATA "ngrok\ngrok.yml"
 $ngrokOutLog = Join-Path $logDir "ngrok.out.log"
 $ngrokErrLog = Join-Path $logDir "ngrok.err.log"
+$projectInterviewTemplateCatalogPath = Join-Path $repoRoot "packages\javascript\browser\templates\catalog.json"
 
 foreach ($dir in @($runRoot, $dataRoot, $brokerOut, $workerOut, $logDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -93,6 +95,23 @@ $channelAccessToken = $config.Line.ChannelAccessToken
 $googleDriveSettings = $null
 if ($config.PSObject.Properties.Name -contains "GoogleDriveDelivery") {
     $googleDriveSettings = $config.GoogleDriveDelivery
+}
+$lineWorkerKeyId = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_KEY_ID)) {
+    $env:B4A_LINE_WORKER_KEY_ID.Trim()
+} else {
+    "sidecar-line-worker"
+}
+$lineWorkerSharedSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_SHARED_SECRET)) {
+    $env:B4A_LINE_WORKER_SHARED_SECRET.Trim()
+} else {
+    $secretBytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($secretBytes)
+    } finally {
+        $rng.Dispose()
+    }
+    [Convert]::ToBase64String($secretBytes)
 }
 
 function Stop-RecordedProcess {
@@ -385,6 +404,45 @@ if ($null -ne $googleOAuthClientFile) {
     }
     $productionOverrideMap["GoogleDriveDelivery"] = $googleDriveConfig
 }
+$productionOverrideMap["ProjectInterview"] = @{
+    TemplateCatalogPath = $projectInterviewTemplateCatalogPath
+}
+$productionOverrideMap["FunctionPool"] = @{
+    Enabled = $true
+    StrictMode = $false
+    ListenPort = 7000
+    BindAddress = "127.0.0.1"
+    DispatchTimeoutSeconds = 30
+    MaxRetries = 2
+    HeartbeatTimeoutSeconds = 30
+    HealthCheckIntervalSeconds = 10
+    MaxWorkers = 32
+    ContainerManager = @{
+        Enabled = $false
+    }
+}
+$productionOverrideMap["WorkerAuth"] = @{
+    Enforce = $true
+    ClockSkewSeconds = 300
+    Credentials = @(
+        @{
+            WorkerType = "line-worker"
+            KeyId = $lineWorkerKeyId
+            SharedSecret = $lineWorkerSharedSecret
+            Status = "active"
+        }
+    )
+    HttpRoutes = @(
+        @{
+            WorkerType = "line-worker"
+            Paths = @(
+                "/api/v1/high-level/line/process",
+                "/api/v1/high-level/line/notifications/pending",
+                "/api/v1/high-level/line/notifications/complete"
+            )
+        }
+    )
+}
 if ($productionOverrideMap.Count -gt 0) {
     $productionOverride = $productionOverrideMap | ConvertTo-Json -Depth 8
     [System.IO.File]::WriteAllText($brokerProductionOverridePath, $productionOverride, [System.Text.UTF8Encoding]::new($false))
@@ -399,6 +457,46 @@ Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue
 $brokerProc.Id | Out-File -FilePath $brokerPidFile -Encoding ascii -NoNewline
 
 Wait-HttpStatusCode -Uri "http://127.0.0.1:$BrokerPort/api/v1/local-admin/status" -AcceptStatusCodes @(200) -TimeoutSeconds 60 -Label "Broker"
+
+$workerRuntimeConfig = @{
+    Worker = @{
+        BrokerHost = "localhost"
+        BrokerPort = 7000
+        MaxConcurrent = 4
+        HeartbeatIntervalSeconds = 5
+        Auth = @{
+            WorkerType = "line-worker"
+            KeyId = $lineWorkerKeyId
+            SharedSecret = $lineWorkerSharedSecret
+        }
+    }
+    Broker = @{
+        ApiUrl = "http://localhost:$BrokerPort"
+        WorkerAuth = @{
+            WorkerType = "line-worker"
+            KeyId = $lineWorkerKeyId
+            SharedSecret = $lineWorkerSharedSecret
+        }
+    }
+    Line = @{
+        ChannelAccessToken = $config.Line.ChannelAccessToken
+        ChannelSecret = $config.Line.ChannelSecret
+        DefaultRecipientId = $config.Line.DefaultRecipientId
+        AllowedUserIds = $config.Line.AllowedUserIds
+        WebhookHost = "*"
+        WebhookPort = $WebhookPort
+        TtsProvider = if ($config.Line.PSObject.Properties.Name -contains "TtsProvider") { $config.Line.TtsProvider } else { "none" }
+        SttProvider = if ($config.Line.PSObject.Properties.Name -contains "SttProvider") { $config.Line.SttProvider } else { "none" }
+        AudioTempPath = if ($config.Line.PSObject.Properties.Name -contains "AudioTempPath") { $config.Line.AudioTempPath } else { "./audio_temp" }
+    }
+}
+if ($googleDriveSettings) {
+    $workerRuntimeConfig["GoogleDriveDelivery"] = @{
+        DefaultFolderId = $googleDriveSettings.DefaultFolderId
+    }
+}
+$workerRuntimeJson = $workerRuntimeConfig | ConvertTo-Json -Depth 8
+[System.IO.File]::WriteAllText($workerRuntimeConfigPath, $workerRuntimeJson, [System.Text.UTF8Encoding]::new($false))
 
 $env:WORKER_Broker__ApiUrl = "http://localhost:$BrokerPort"
 $env:WORKER_Line__WebhookPort = "$WebhookPort"
