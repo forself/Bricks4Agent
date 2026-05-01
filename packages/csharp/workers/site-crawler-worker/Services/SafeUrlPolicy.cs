@@ -76,6 +76,11 @@ public static class SafeUrlPolicy
             return IsBlockedIPv4(address.MapToIPv4());
         }
 
+        if (IsIPv4CompatibleIPv6(address))
+        {
+            return IsBlockedIPv4(address.MapToIPv4());
+        }
+
         if (IPAddress.IsLoopback(address))
         {
             return true;
@@ -95,6 +100,25 @@ public static class SafeUrlPolicy
 
     private static string CanonicalizeHostForSafety(string host) =>
         host.Trim().TrimEnd('.').Trim('[', ']');
+
+    private static bool IsIPv4CompatibleIPv6(IPAddress address)
+    {
+        if (address.AddressFamily != AddressFamily.InterNetworkV6)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        for (var index = 0; index < 12; index++)
+        {
+            if (bytes[index] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool IsBlockedIPv4(IPAddress address)
     {
