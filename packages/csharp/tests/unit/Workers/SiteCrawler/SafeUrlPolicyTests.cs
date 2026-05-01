@@ -80,6 +80,10 @@ public class SafeUrlPolicyTests
     [InlineData("http://[::10.0.0.1]/")]
     [InlineData("http://[::192.168.0.1]/")]
     [InlineData("http://[::224.0.0.1]/")]
+    [InlineData("http://[fe80::1%25lo0]/")]
+    [InlineData("http://[fec0::1%25lo0]/")]
+    [InlineData("http://[ff00::1%25lo0]/")]
+    [InlineData("http://[::1%25lo0]/")]
     [InlineData("http://[fc00::1]/")]
     [InlineData("http://[fd00::1]/")]
     public void Validate_RejectsUnsafeHosts(string rawUrl)

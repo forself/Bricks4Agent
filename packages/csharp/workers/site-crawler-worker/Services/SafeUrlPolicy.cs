@@ -98,8 +98,22 @@ public static class SafeUrlPolicy
         return false;
     }
 
-    private static string CanonicalizeHostForSafety(string host) =>
-        host.Trim().TrimEnd('.').Trim('[', ']');
+    private static string CanonicalizeHostForSafety(string host)
+    {
+        var canonicalHost = host.Trim().TrimEnd('.').Trim('[', ']');
+        return StripIPv6ZoneIdentifier(canonicalHost);
+    }
+
+    private static string StripIPv6ZoneIdentifier(string host)
+    {
+        if (!host.Contains(':', StringComparison.Ordinal))
+        {
+            return host;
+        }
+
+        var zoneIndex = host.IndexOf('%', StringComparison.Ordinal);
+        return zoneIndex < 0 ? host : host[..zoneIndex];
+    }
 
     private static bool IsIPv4CompatibleIPv6(IPAddress address)
     {
