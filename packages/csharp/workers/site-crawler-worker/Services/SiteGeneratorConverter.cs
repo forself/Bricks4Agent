@@ -188,9 +188,13 @@ public sealed class SiteGeneratorConverter
                 [role],
                 new()
                 {
-                    ["title"] = "string",
-                    ["body"] = "string",
-                    ["source_selector"] = "string",
+                    Required = ["title", "body"],
+                    Properties =
+                    {
+                        ["title"] = new ComponentPropSchema { Type = "string" },
+                        ["body"] = new ComponentPropSchema { Type = "string" },
+                        ["source_selector"] = new ComponentPropSchema { Type = "string" },
+                    },
                 },
                 generated: true));
         }
@@ -310,9 +314,35 @@ public sealed class SiteGeneratorConverter
                 Type = component.Type,
                 Description = component.Description,
                 SupportedRoles = component.SupportedRoles.ToList(),
-                Props = new Dictionary<string, string>(component.Props, StringComparer.Ordinal),
+                PropsSchema = ClonePropsSchema(component.PropsSchema),
                 Generated = component.Generated,
             }).ToList(),
+        };
+    }
+
+    private static ComponentPropsSchema ClonePropsSchema(ComponentPropsSchema schema)
+    {
+        return new ComponentPropsSchema
+        {
+            Required = schema.Required.ToList(),
+            Properties = schema.Properties.ToDictionary(
+                pair => pair.Key,
+                pair => ClonePropSchema(pair.Value),
+                StringComparer.Ordinal),
+        };
+    }
+
+    private static ComponentPropSchema ClonePropSchema(ComponentPropSchema schema)
+    {
+        return new ComponentPropSchema
+        {
+            Type = schema.Type,
+            Items = schema.Items is null ? null : ClonePropSchema(schema.Items),
+            Required = schema.Required.ToList(),
+            Properties = schema.Properties.ToDictionary(
+                pair => pair.Key,
+                pair => ClonePropSchema(pair.Value),
+                StringComparer.Ordinal),
         };
     }
 }

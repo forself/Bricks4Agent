@@ -14,41 +14,85 @@ public static class DefaultComponentLibrary
             [
                 Define("PageShell", "Top-level page container.", ["page"], new()
                 {
-                    ["title"] = "string",
-                    ["source_url"] = "string",
+                    Required = ["title", "source_url"],
+                    Properties =
+                    {
+                        ["title"] = String(),
+                        ["source_url"] = String(),
+                    },
                 }),
                 Define("SiteHeader", "Site title and navigation links.", ["navigation", "header"], new()
                 {
-                    ["title"] = "string",
-                    ["links"] = "array<{label:string,url:string}>",
+                    Required = ["title", "links"],
+                    Properties =
+                    {
+                        ["title"] = String(),
+                        ["links"] = LinkArray(),
+                    },
                 }),
                 Define("HeroSection", "Primary visual introduction section.", ["hero"], new()
                 {
-                    ["title"] = "string",
-                    ["body"] = "string",
-                    ["source_selector"] = "string",
+                    Required = ["title", "body"],
+                    Properties =
+                    {
+                        ["title"] = String(),
+                        ["body"] = String(),
+                        ["source_selector"] = String(),
+                    },
                 }),
                 Define("ContentSection", "General content block.", ["content", "article", "main"], new()
                 {
-                    ["title"] = "string",
-                    ["body"] = "string",
-                    ["source_selector"] = "string",
+                    Required = ["title", "body"],
+                    Properties =
+                    {
+                        ["title"] = String(),
+                        ["body"] = String(),
+                        ["source_selector"] = String(),
+                    },
                 }),
                 Define("LinkList", "List of related links.", ["links"], new()
                 {
-                    ["title"] = "string",
-                    ["links"] = "array<{label:string,url:string}>",
+                    Required = ["title", "links"],
+                    Properties =
+                    {
+                        ["title"] = String(),
+                        ["links"] = LinkArray(),
+                    },
                 }),
                 Define("FormBlock", "Non-submitting form representation.", ["form"], new()
                 {
-                    ["method"] = "string",
-                    ["action"] = "string",
-                    ["fields"] = "array<{name:string,label:string,type:string,required:boolean}>",
+                    Required = ["method", "action", "fields"],
+                    Properties =
+                    {
+                        ["method"] = String(),
+                        ["action"] = String(),
+                        ["fields"] = new ComponentPropSchema
+                        {
+                            Type = "array",
+                            Items = new ComponentPropSchema
+                            {
+                                Type = "object",
+                                Required = ["name", "label", "type", "required"],
+                                Properties =
+                                {
+                                    ["name"] = String(),
+                                    ["id"] = String(),
+                                    ["label"] = String(),
+                                    ["type"] = String(),
+                                    ["required"] = Boolean(),
+                                },
+                            },
+                        },
+                    },
                 }),
                 Define("SiteFooter", "Footer block with source attribution.", ["footer"], new()
                 {
-                    ["source_url"] = "string",
-                    ["notice"] = "string",
+                    Required = ["source_url", "notice"],
+                    Properties =
+                    {
+                        ["source_url"] = String(),
+                        ["notice"] = String(),
+                    },
                 }),
             ],
         };
@@ -58,7 +102,7 @@ public static class DefaultComponentLibrary
         string type,
         string description,
         IEnumerable<string> supportedRoles,
-        Dictionary<string, string> props,
+        ComponentPropsSchema propsSchema,
         bool generated = false)
     {
         return new ComponentDefinition
@@ -66,8 +110,30 @@ public static class DefaultComponentLibrary
             Type = type,
             Description = description,
             SupportedRoles = supportedRoles.ToList(),
-            Props = props,
+            PropsSchema = propsSchema,
             Generated = generated,
+        };
+    }
+
+    private static ComponentPropSchema String() => new() { Type = "string" };
+
+    private static ComponentPropSchema Boolean() => new() { Type = "boolean" };
+
+    private static ComponentPropSchema LinkArray()
+    {
+        return new ComponentPropSchema
+        {
+            Type = "array",
+            Items = new ComponentPropSchema
+            {
+                Type = "object",
+                Required = ["label", "url"],
+                Properties =
+                {
+                    ["label"] = String(),
+                    ["url"] = String(),
+                },
+            },
         };
     }
 }

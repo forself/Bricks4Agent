@@ -34,7 +34,11 @@ public class StaticSitePackageGeneratorTests : IDisposable
                     {
                         Id = "page",
                         Type = "PageShell",
-                        Props = { ["title"] = "Example" },
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
                         Children =
                         [
                             new ComponentNode

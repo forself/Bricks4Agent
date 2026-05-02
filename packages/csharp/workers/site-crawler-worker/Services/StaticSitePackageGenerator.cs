@@ -10,10 +10,28 @@ public sealed class StaticSitePackageGenerator
         WriteIndented = true,
     };
 
+    private readonly ComponentSchemaValidator validator;
+
+    public StaticSitePackageGenerator()
+        : this(new ComponentSchemaValidator())
+    {
+    }
+
+    public StaticSitePackageGenerator(ComponentSchemaValidator validator)
+    {
+        this.validator = validator;
+    }
+
     public StaticSitePackageResult Generate(GeneratorSiteDocument document, StaticSitePackageOptions options)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(options);
+
+        var validation = validator.Validate(document);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException($"Invalid site document: {string.Join("; ", validation.Errors)}");
+        }
 
         var outputDirectory = ResolveOutputDirectory(options);
         Directory.CreateDirectory(outputDirectory);

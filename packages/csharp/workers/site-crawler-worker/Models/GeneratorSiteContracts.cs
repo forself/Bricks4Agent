@@ -67,8 +67,8 @@ public sealed class ComponentDefinition
     [JsonPropertyName("supported_roles")]
     public List<string> SupportedRoles { get; set; } = new();
 
-    [JsonPropertyName("props")]
-    public Dictionary<string, string> Props { get; set; } = new();
+    [JsonPropertyName("props_schema")]
+    public ComponentPropsSchema PropsSchema { get; set; } = new();
 
     [JsonPropertyName("generated")]
     public bool Generated { get; set; }
@@ -87,6 +87,39 @@ public sealed class GeneratorRoute
 
     [JsonPropertyName("root")]
     public ComponentNode Root { get; set; } = new();
+}
+
+public sealed class ComponentPropsSchema
+{
+    [JsonPropertyName("required")]
+    public List<string> Required { get; set; } = new();
+
+    [JsonPropertyName("properties")]
+    public Dictionary<string, ComponentPropSchema> Properties { get; set; } = new();
+}
+
+public sealed class ComponentPropSchema
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "string";
+
+    [JsonPropertyName("items")]
+    public ComponentPropSchema? Items { get; set; }
+
+    [JsonPropertyName("properties")]
+    public Dictionary<string, ComponentPropSchema> Properties { get; set; } = new();
+
+    [JsonPropertyName("required")]
+    public List<string> Required { get; set; } = new();
+}
+
+public sealed class ComponentValidationResult
+{
+    [JsonPropertyName("is_valid")]
+    public bool IsValid => Errors.Count == 0;
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
 }
 
 public sealed class ComponentNode
