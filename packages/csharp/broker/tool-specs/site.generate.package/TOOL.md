@@ -21,6 +21,8 @@ The runtime loads:
 
 It then renders the site from the component tree in `site.json`.
 
+The worker loads the component library manifest from `Generator:ComponentLibraryPath` when configured. If it is empty, the bundled default manifest at `component-libraries/bricks4agent.default/manifest.json` is used.
+
 ## Component Rule
 
 The generated package must render only component types declared in `components/manifest.json`.

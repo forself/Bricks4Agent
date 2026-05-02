@@ -46,7 +46,8 @@ var crawlerService = new SiteCrawlerService(
     pageFetcher,
     extractor,
     loggerFactory.CreateLogger<SiteCrawlerService>());
-var componentLibrary = DefaultComponentLibrary.Create();
+var componentLibraryLoader = new ComponentLibraryLoader();
+var componentLibrary = componentLibraryLoader.Load(config.GetValue<string>("Generator:ComponentLibraryPath"));
 var generatorConverter = new SiteGeneratorConverter(componentLibrary);
 var packageGenerator = new StaticSitePackageGenerator();
 

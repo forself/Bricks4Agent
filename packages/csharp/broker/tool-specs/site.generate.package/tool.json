@@ -54,6 +54,7 @@
     "output_is_local_package": true,
     "entry_point": "index.html",
     "renderer_model": "runtime_loads_site_json",
+    "component_library_manifest_source": "worker_config_or_bundled_default",
     "component_library_only": true,
     "allow_arbitrary_html_layout": false,
     "requires_known_or_generated_component_definitions": true

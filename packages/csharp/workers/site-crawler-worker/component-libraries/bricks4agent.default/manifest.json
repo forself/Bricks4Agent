@@ -1,0 +1,133 @@
+{
+  "library_id": "bricks4agent.default",
+  "version": "1.0.0",
+  "components": [
+    {
+      "type": "PageShell",
+      "description": "Top-level page container.",
+      "supported_roles": ["page"],
+      "props_schema": {
+        "required": ["title", "source_url"],
+        "properties": {
+          "title": { "type": "string" },
+          "source_url": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "SiteHeader",
+      "description": "Site title and navigation links.",
+      "supported_roles": ["navigation", "header"],
+      "props_schema": {
+        "required": ["title", "links"],
+        "properties": {
+          "title": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "HeroSection",
+      "description": "Primary visual introduction section.",
+      "supported_roles": ["hero"],
+      "props_schema": {
+        "required": ["title", "body"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "source_selector": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ContentSection",
+      "description": "General content block.",
+      "supported_roles": ["content", "article", "main"],
+      "props_schema": {
+        "required": ["title", "body"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "source_selector": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "LinkList",
+      "description": "List of related links.",
+      "supported_roles": ["links"],
+      "props_schema": {
+        "required": ["title", "links"],
+        "properties": {
+          "title": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "FormBlock",
+      "description": "Non-submitting form representation.",
+      "supported_roles": ["form"],
+      "props_schema": {
+        "required": ["method", "action", "fields"],
+        "properties": {
+          "method": { "type": "string" },
+          "action": { "type": "string" },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "label", "type", "required"],
+              "properties": {
+                "name": { "type": "string" },
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "type": { "type": "string" },
+                "required": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "SiteFooter",
+      "description": "Footer block with source attribution.",
+      "supported_roles": ["footer"],
+      "props_schema": {
+        "required": ["source_url", "notice"],
+        "properties": {
+          "source_url": { "type": "string" },
+          "notice": { "type": "string" }
+        }
+      },
+      "generated": false
+    }
+  ]
+}
