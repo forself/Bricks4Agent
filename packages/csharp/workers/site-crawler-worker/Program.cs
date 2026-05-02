@@ -4,6 +4,10 @@ using SiteCrawlerWorker.Handlers;
 using SiteCrawlerWorker.Services;
 using WorkerSdk;
 
+const string DefaultWorkerType = "site-crawler-worker";
+const string DefaultWorkerAuthKeyId = "REPLACE_WITH_SITE_CRAWLER_WORKER_KEY_ID";
+const string DefaultWorkerAuthSharedSecret = "REPLACE_WITH_SITE_CRAWLER_WORKER_SHARED_SECRET";
+
 var config = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", optional: true)
@@ -18,15 +22,15 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 });
 
 var logger = loggerFactory.CreateLogger<WorkerHost>();
-var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType") ?? "site-crawler-worker";
-var workerAuthKeyId = config.GetValue<string>("Worker:Auth:KeyId") ?? string.Empty;
-var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret") ?? string.Empty;
+var workerAuthType = GetConfiguredValue("Worker:Auth:WorkerType", DefaultWorkerType);
+var workerAuthKeyId = GetConfiguredValue("Worker:Auth:KeyId", DefaultWorkerAuthKeyId);
+var workerAuthSharedSecret = GetConfiguredValue("Worker:Auth:SharedSecret", DefaultWorkerAuthSharedSecret);
 
 var options = new WorkerHostOptions
 {
-    BrokerHost = config.GetValue<string>("Worker:BrokerHost") ?? "localhost",
+    BrokerHost = GetConfiguredValue("Worker:BrokerHost", "localhost"),
     BrokerPort = config.GetValue("Worker:BrokerPort", 7000),
-    WorkerId = config.GetValue<string>("Worker:WorkerId") ?? $"site-crawler-wkr-{Guid.NewGuid():N}"[..24],
+    WorkerId = GetConfiguredValue("Worker:WorkerId", $"site-crawler-wkr-{Guid.NewGuid():N}"[..24]),
     MaxConcurrent = config.GetValue("Worker:MaxConcurrent", 2),
     HeartbeatIntervalSeconds = config.GetValue("Worker:HeartbeatIntervalSeconds", 5),
     WorkerType = workerAuthType,
@@ -62,3 +66,9 @@ Console.CancelKeyPress += (_, e) =>
 };
 
 await host.RunAsync(cts.Token);
+
+string GetConfiguredValue(string key, string fallback)
+{
+    var value = config.GetValue<string>(key);
+    return string.IsNullOrWhiteSpace(value) ? fallback : value;
+}
