@@ -165,7 +165,7 @@ public sealed class HighLevelSiteRebuildService
             StartUrl = sourceUrl,
             Scope = new SiteCrawlScope
             {
-                Kind = "path_depth",
+                Kind = "link_depth",
                 MaxDepth = maxDepth,
                 SameOriginOnly = true,
                 PathPrefixLock = true,

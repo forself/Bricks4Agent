@@ -1,11 +1,11 @@
 {
   "tool_id": "site.crawl.source",
   "display_name": "Site Crawl Source",
-  "summary": "Safely crawl a confirmed public website path-depth scope and return static HTML source plus deterministic visual/function cues for reconstruction.",
+  "summary": "Safely crawl a confirmed public website scope and return static HTML source plus deterministic visual/function cues for reconstruction.",
   "kind": "crawler",
   "status": "beta",
   "version": "2026-05-02",
-  "tags": ["site", "crawler", "source", "path-depth", "public-web", "generator-reference"],
+  "tags": ["site", "crawler", "source", "path-depth", "link-depth", "public-web", "generator-reference"],
   "capability_template": {
     "action_type": "read",
     "resource_type": "public_web",
@@ -19,7 +19,7 @@
     {
       "capability_id": "site.crawl_source",
       "route": "site_crawl_source",
-      "purpose": "Safe path-depth public website crawl for static public HTML source and deterministic visual/function cue extraction."
+      "purpose": "Safe public website crawl for static public HTML source and deterministic visual/function cue extraction."
     }
   ],
   "input_schema": {
@@ -29,7 +29,7 @@
       "scope": {
         "type": "object",
         "properties": {
-          "kind": { "type": "string", "enum": ["path_depth"] },
+          "kind": { "type": "string", "enum": ["path_depth", "link_depth"] },
           "max_depth": { "type": "integer", "minimum": 0 },
           "same_origin_only": { "type": "boolean" },
           "path_prefix_lock": { "type": "boolean" }
@@ -154,16 +154,16 @@
     "allow_authenticated_access": false,
     "allow_private_network": false,
     "default_scope": {
-      "kind": "path_depth",
+      "kind": "link_depth",
       "same_origin_only": true,
       "path_prefix_lock": true
     },
     "requires_user_depth_confirmation": true,
-    "depth_confirmation_options": ["first_layer_under_path", "within_two_layers", "n_layers"],
+    "depth_confirmation_options": ["entry_page_links", "within_two_link_hops", "n_link_hops"],
     "depth_confirmation_mapping": {
-      "first_layer_under_path": 1,
-      "within_two_layers": 2,
-      "n_layers": "N"
+      "entry_page_links": 1,
+      "within_two_link_hops": 2,
+      "n_link_hops": "N"
     },
     "additional_supported_depth_modes": {
       "root_current_path_only": 0

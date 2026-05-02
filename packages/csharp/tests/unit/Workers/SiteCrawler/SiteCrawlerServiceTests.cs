@@ -94,6 +94,149 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public async Task CrawlAsync_WithLinkDepth_CrawlsByLinkHopsIgnoringUrlPath()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Root</title></head>
+                <body><main><a href="/a.aspx">A</a></main></body></html>
+                """),
+            ["https://example.com/a.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/a.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>A</title></head>
+                <body><main><a href="/b.aspx">B</a></main></body></html>
+                """),
+            ["https://example.com/b.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/b.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>B</title></head>
+                <body><main><a href="/c.aspx">C</a></main></body></html>
+                """),
+            ["https://example.com/c.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/c.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>C</title></head>
+                <body><main><h1>C</h1></main></body></html>
+                """),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 2,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => (page.FinalUrl, page.Depth)).Should().Equal(
+            ("https://example.com/", 0),
+            ("https://example.com/a.aspx", 1),
+            ("https://example.com/b.aspx", 2));
+        result.Pages.Should().NotContain(page => page.FinalUrl == "https://example.com/c.aspx");
+        result.Excluded.Should().Contain(excluded =>
+            excluded.Url == "https://example.com/c.aspx" &&
+            excluded.Reason == "outside_link_depth");
+        result.ExtractedModel.RouteGraph.Routes.Select(route => (route.Path, route.Depth)).Should().Equal(
+            ("/", 0),
+            ("/a.aspx", 1),
+            ("/b.aspx", 2));
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WithLinkDepthAndPageBudget_StillSamplesDeeperHops()
+    {
+        var pages = new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Root</title></head><body><main>
+                  <a href="/branch.aspx">Branch</a>
+                  <a href="/shallow-1.aspx">Shallow 1</a>
+                  <a href="/shallow-2.aspx">Shallow 2</a>
+                  <a href="/shallow-3.aspx">Shallow 3</a>
+                  <a href="/shallow-4.aspx">Shallow 4</a>
+                </main></body></html>
+                """),
+            ["https://example.com/branch.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/branch.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Branch</title></head>
+                <body><main><a href="/child.aspx">Child</a></main></body></html>
+                """),
+            ["https://example.com/child.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/child.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Child</title></head>
+                <body><main><a href="/grandchild.aspx">Grandchild</a></main></body></html>
+                """),
+            ["https://example.com/grandchild.aspx"] = PageFetchResult.Ok(
+                new Uri("https://example.com/grandchild.aspx"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Grandchild</title></head>
+                <body><main><h1>Grandchild</h1></main></body></html>
+                """),
+        };
+
+        for (var index = 1; index <= 4; index++)
+        {
+            pages[$"https://example.com/shallow-{index}.aspx"] = PageFetchResult.Ok(
+                new Uri($"https://example.com/shallow-{index}.aspx"),
+                200,
+                "text/html",
+                $"<html><head><title>Shallow {index}</title></head><body><main><h1>Shallow {index}</h1></main></body></html>");
+        }
+
+        var service = new SiteCrawlerService(new FakePageFetcher(pages), new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 3,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 4 },
+        }, CancellationToken.None);
+
+        result.Limits.PageLimitHit.Should().BeTrue();
+        result.Pages.Select(page => (page.FinalUrl, page.Depth)).Should().Equal(
+            ("https://example.com/", 0),
+            ("https://example.com/branch.aspx", 1),
+            ("https://example.com/child.aspx", 2),
+            ("https://example.com/grandchild.aspx", 3));
+    }
+
+    [Fact]
     public async Task CrawlAsync_WhenCaptureHtmlIsFalse_BlanksPageHtml()
     {
         var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)

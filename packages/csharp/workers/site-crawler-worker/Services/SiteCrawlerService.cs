@@ -40,7 +40,11 @@ public sealed class SiteCrawlerService
         var scopeOptions = request.Scope ?? new SiteCrawlScope();
         var captureOptions = request.Capture ?? new SiteCrawlCaptureOptions();
         var budgets = request.Budgets ?? new SiteCrawlBudgets();
-        var scope = PathDepthScope.Create(startValidation.Uri, scopeOptions);
+        var useLinkDepth = IsLinkDepthScope(scopeOptions);
+        var maxLinkDepth = Math.Max(0, scopeOptions.MaxDepth);
+        var scope = PathDepthScope.Create(
+            startValidation.Uri,
+            useLinkDepth ? CreateBoundaryScope(scopeOptions) : scopeOptions);
         var maxPages = Math.Max(0, budgets.MaxPages);
         var maxTotalBytes = Math.Max(0, budgets.MaxTotalBytes);
         var stopwatch = Stopwatch.StartNew();
@@ -70,16 +74,16 @@ public sealed class SiteCrawlerService
             return result;
         }
 
-        var queue = new Queue<CrawlQueueItem>();
+        var pending = new List<CrawlQueueItem>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var crawled = new HashSet<string>(StringComparer.Ordinal);
         var excluded = new HashSet<string>(StringComparer.Ordinal);
         long totalBytes = 0;
 
-        queue.Enqueue(new CrawlQueueItem(startValidation.Uri));
+        pending.Add(new CrawlQueueItem(startValidation.Uri, 0));
         seen.Add(BuildCrawlKey(startValidation.Uri));
 
-        while (queue.Count > 0)
+        while (pending.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -96,7 +100,7 @@ public sealed class SiteCrawlerService
                 break;
             }
 
-            var current = queue.Dequeue();
+            var current = DequeueNext(pending, useLinkDepth);
             if (crawled.Contains(BuildCrawlKey(current.Uri)))
             {
                 continue;
@@ -140,7 +144,16 @@ public sealed class SiteCrawlerService
 
                 if (fetch.RedirectUri is not null)
                 {
-                    EnqueueCandidate(fetch.RedirectUri, scope, result, excluded, seen, queue);
+                    EnqueueCandidate(
+                        fetch.RedirectUri,
+                        current.Depth,
+                        scope,
+                        useLinkDepth,
+                        maxLinkDepth,
+                        result,
+                        excluded,
+                        seen,
+                        pending);
                     continue;
                 }
 
@@ -192,7 +205,7 @@ public sealed class SiteCrawlerService
             {
                 Url = current.Uri.ToString(),
                 FinalUrl = finalValidation.Uri.ToString(),
-                Depth = finalScope.Depth,
+                Depth = useLinkDepth ? current.Depth : finalScope.Depth,
                 StatusCode = fetch.StatusCode,
                 Title = pageExtraction.Title,
                 Html = captureOptions.Html ? fetch.Html : string.Empty,
@@ -205,7 +218,16 @@ public sealed class SiteCrawlerService
 
             foreach (var link in pageExtraction.Links)
             {
-                EnqueueCandidate(new Uri(link), scope, result, excluded, seen, queue);
+                EnqueueCandidate(
+                    new Uri(link),
+                    current.Depth + 1,
+                    scope,
+                    useLinkDepth,
+                    maxLinkDepth,
+                    result,
+                    excluded,
+                    seen,
+                    pending);
             }
         }
 
@@ -225,13 +247,53 @@ public sealed class SiteCrawlerService
         return remaining <= TimeSpan.Zero ? TimeSpan.FromTicks(1) : remaining;
     }
 
+    private static bool IsLinkDepthScope(SiteCrawlScope scope)
+    {
+        return string.Equals(scope.Kind, "link_depth", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(scope.Kind, "crawl_depth", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static SiteCrawlScope CreateBoundaryScope(SiteCrawlScope scope)
+    {
+        return new SiteCrawlScope
+        {
+            Kind = scope.Kind,
+            MaxDepth = int.MaxValue,
+            SameOriginOnly = scope.SameOriginOnly,
+            PathPrefixLock = scope.PathPrefixLock,
+        };
+    }
+
+    private static CrawlQueueItem DequeueNext(List<CrawlQueueItem> pending, bool useLinkDepth)
+    {
+        var selectedIndex = 0;
+        if (useLinkDepth)
+        {
+            // Site reconstruction needs vertical samples; wide top-level menus should not consume the whole page budget.
+            for (var index = 1; index < pending.Count; index++)
+            {
+                if (pending[index].Depth > pending[selectedIndex].Depth)
+                {
+                    selectedIndex = index;
+                }
+            }
+        }
+
+        var selected = pending[selectedIndex];
+        pending.RemoveAt(selectedIndex);
+        return selected;
+    }
+
     private static void EnqueueCandidate(
         Uri candidateUri,
+        int candidateDepth,
         PathDepthScope scope,
+        bool useLinkDepth,
+        int maxLinkDepth,
         SiteCrawlResult result,
         ISet<string> excluded,
         ISet<string> seen,
-        Queue<CrawlQueueItem> queue)
+        List<CrawlQueueItem> pending)
     {
         var candidateValidation = SafeUrlPolicy.Validate(candidateUri.ToString());
         if (!candidateValidation.IsAllowed || candidateValidation.Uri is null)
@@ -247,10 +309,18 @@ public sealed class SiteCrawlerService
             return;
         }
 
+        if (useLinkDepth && candidateDepth > maxLinkDepth)
+        {
+            AddExcluded(result, excluded, candidateValidation.Uri.ToString(), "outside_link_depth");
+            return;
+        }
+
         var candidateKey = BuildCrawlKey(candidateValidation.Uri);
         if (seen.Add(candidateKey))
         {
-            queue.Enqueue(new CrawlQueueItem(candidateValidation.Uri));
+            pending.Add(new CrawlQueueItem(
+                candidateValidation.Uri,
+                useLinkDepth ? candidateDepth : candidateScope.Depth));
         }
     }
 
@@ -364,5 +434,5 @@ public sealed class SiteCrawlerService
         return builder.Uri;
     }
 
-    private sealed record CrawlQueueItem(Uri Uri);
+    private sealed record CrawlQueueItem(Uri Uri, int Depth);
 }
