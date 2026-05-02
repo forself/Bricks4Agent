@@ -1234,10 +1234,16 @@ const app=createApp({
       if(!session)throw new Error('No session');return await session.post(brokerUrl,path,body);
     }
 
-    async function loadAgents(){try{const r=await api('/api/v1/agents/list');agents.value=r.data?.agents||[]}catch{agents.value=[]}}
+    // 失敗時保留上一次的 list，不要悄悄清空（重整時 ECDH handshake race / broker 重啟導致的暫時性 fail，畫面上看起來等於「沒 agent」會誤導）
+    async function loadAgents(){
+      try{const r=await api('/api/v1/agents/list');if(r.success)agents.value=r.data?.agents||[];else console.error('[loadAgents]',r.message||'unknown')}
+      catch(e){console.error('[loadAgents]',e.message||e)}
+    }
     async function loadCaps(){
-      try{const r=await api('/api/v1/agents/capabilities');caps.value=r.data?.capabilities||[]}catch{caps.value=[]}
-      try{const r=await api('/api/v1/agents/capabilities/defaults');defaultCaps.value=r.data?.capability_ids||[]}catch{defaultCaps.value=[]}
+      try{const r=await api('/api/v1/agents/capabilities');if(r.success)caps.value=r.data?.capabilities||[];else console.error('[loadCaps]',r.message||'unknown')}
+      catch(e){console.error('[loadCaps]',e.message||e)}
+      try{const r=await api('/api/v1/agents/capabilities/defaults');if(r.success)defaultCaps.value=r.data?.capability_ids||[];else console.error('[loadCaps:defaults]',r.message||'unknown')}
+      catch(e){console.error('[loadCaps:defaults]',e.message||e)}
     }
 
     async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers()]);refreshing.value=false}
