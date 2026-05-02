@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using BrokerCore.Contracts;
+using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
 using FunctionPool.Registry;
 using Microsoft.Extensions.Hosting;
@@ -13,11 +15,16 @@ namespace Broker.Services;
 ///
 /// 流程：拉 K 線 → 策略分析 → 風控檢查 → 下單
 /// 可透過 API 動態新增/移除/暫停監控的 symbol。
+///
+/// Watchlist 持久化到 SQLite（auto_trade_watchlist 表，2026-05-02 補完）。
+/// 啟動時 load 所有 entry 重建記憶體 dict；任何變更（add/remove/pause/resume/qty 調整）
+/// 同步寫回 DB——這樣 broker 重啟後監控清單不會消失。
 /// </summary>
 public class AutoTraderService : BackgroundService
 {
     private readonly IExecutionDispatcher _dispatcher;
     private readonly IWorkerRegistry _registry;
+    private readonly BrokerDb _db;
     private readonly ILogger<AutoTraderService> _logger;
 
     private readonly ConcurrentDictionary<string, WatchItem> _watchList = new();
@@ -30,11 +37,79 @@ public class AutoTraderService : BackgroundService
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
+        BrokerDb db,
         ILogger<AutoTraderService> logger)
     {
         _dispatcher = dispatcher;
         _registry   = registry;
+        _db         = db;
         _logger     = logger;
+
+        LoadWatchListFromDb();
+    }
+
+    // ── 持久化 ──────────────────────────────────────────────────────
+
+    private void LoadWatchListFromDb()
+    {
+        try
+        {
+            var entries = _db.GetAll<AutoTradeWatchEntry>();
+            foreach (var e in entries)
+            {
+                _watchList[e.EntryKey] = new WatchItem
+                {
+                    Symbol = e.Symbol, Exchange = e.Exchange, Strategy = e.Strategy,
+                    Quantity = e.Quantity, Active = e.Active,
+                    LastSignal = e.LastSignal, LastConfidence = e.LastConfidence, LastCheck = e.LastCheck,
+                };
+            }
+            if (entries.Count > 0)
+                _logger.LogInformation("AutoTrader: restored {Count} watch entries from DB", entries.Count);
+        }
+        catch (Exception ex)
+        {
+            // 不要因為 DB load 失敗就讓服務起不來——既有記憶體 dict 為空，至少 broker 起得來
+            _logger.LogError(ex, "AutoTrader: failed to load watchlist from DB; starting with empty list");
+        }
+    }
+
+    private void PersistWatch(string key, WatchItem item)
+    {
+        try
+        {
+            var existing = _db.Get<AutoTradeWatchEntry>(key);
+            var now = DateTime.UtcNow;
+            if (existing == null)
+            {
+                _db.Insert(new AutoTradeWatchEntry
+                {
+                    EntryKey = key, Symbol = item.Symbol, Exchange = item.Exchange,
+                    Strategy = item.Strategy, Quantity = item.Quantity, Active = item.Active,
+                    LastSignal = item.LastSignal, LastConfidence = item.LastConfidence, LastCheck = item.LastCheck,
+                    CreatedAt = now, UpdatedAt = now,
+                });
+            }
+            else
+            {
+                existing.Symbol = item.Symbol; existing.Exchange = item.Exchange;
+                existing.Strategy = item.Strategy; existing.Quantity = item.Quantity; existing.Active = item.Active;
+                existing.LastSignal = item.LastSignal; existing.LastConfidence = item.LastConfidence; existing.LastCheck = item.LastCheck;
+                existing.UpdatedAt = now;
+                _db.Update(existing);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 持久化失敗不要中斷主流程——記憶體 dict 已更新、log 出來等下次 add/remove 重試
+            _logger.LogWarning(ex, "AutoTrader: failed to persist watch entry {Key}", key);
+        }
+    }
+
+    private void DeletePersistedWatch(string key)
+    {
+        try { _db.Delete<AutoTradeWatchEntry>(key); }
+        catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader: failed to delete persisted watch {Key}", key); }
     }
 
     // ── 外部控制 API ────────────────────────────────────────────────
@@ -51,29 +126,42 @@ public class AutoTraderService : BackgroundService
     public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1)
     {
         var key = $"{exchange}:{symbol}";
-        _watchList[key] = new WatchItem
+        var item = new WatchItem
         {
             Symbol = symbol, Exchange = exchange, Strategy = strategy,
             Quantity = quantity, Active = true,
         };
+        _watchList[key] = item;
+        PersistWatch(key, item);
         _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty}", key, strategy, quantity);
     }
 
     public bool RemoveWatch(string symbol, string exchange)
     {
-        return _watchList.TryRemove($"{exchange}:{symbol}", out _);
+        var key = $"{exchange}:{symbol}";
+        var removed = _watchList.TryRemove(key, out _);
+        if (removed) DeletePersistedWatch(key);
+        return removed;
     }
 
     public void PauseWatch(string symbol, string exchange)
     {
-        if (_watchList.TryGetValue($"{exchange}:{symbol}", out var item))
+        var key = $"{exchange}:{symbol}";
+        if (_watchList.TryGetValue(key, out var item))
+        {
             item.Active = false;
+            PersistWatch(key, item);
+        }
     }
 
     public void ResumeWatch(string symbol, string exchange)
     {
-        if (_watchList.TryGetValue($"{exchange}:{symbol}", out var item))
+        var key = $"{exchange}:{symbol}";
+        if (_watchList.TryGetValue(key, out var item))
+        {
             item.Active = true;
+            PersistWatch(key, item);
+        }
     }
 
     // ── 主迴圈 ──────────────────────────────────────────────────────
@@ -166,6 +254,7 @@ public class AutoTraderService : BackgroundService
         item.LastSignal = action;
         item.LastConfidence = confidence;
         item.LastCheck = DateTime.UtcNow;
+        PersistWatch($"{exchange}:{symbol}", item);
 
         if (action == "hold")
         {
@@ -250,6 +339,7 @@ public class AutoTraderService : BackgroundService
                 if (orderAction == "reduce" && riskDoc.TryGetProperty("adjusted_qty", out var aq))
                 {
                     item.Quantity = aq.GetDecimal();
+                    PersistWatch($"{exchange}:{symbol}", item);
                     AddLog(item, "adjusted", $"Risk reduced qty to {item.Quantity}");
                 }
             }

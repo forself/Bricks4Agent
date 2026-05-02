@@ -44,6 +44,8 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Agent Inbox 表（MVP-1 2026-05-01）— 不動 BrokerDbInitializer.cs（Benson 的）。
     // EnsureTable 是 idempotent，補在初始化區段尾巴最乾淨。
     initDb.EnsureTable<AgentInboxTask>();
+    // Auto-trader 監控清單持久化（2026-05-02）— 取代 ConcurrentDictionary in-memory 設計
+    initDb.EnsureTable<AutoTradeWatchEntry>();
 }
 
 // ── Step 2: 加密基礎建設 ──
