@@ -46,9 +46,7 @@ public sealed class SiteIntentExtractor
             return snapshot.Regions
                 .OrderBy(region => region.Bounds.Y)
                 .ThenBy(region => region.Bounds.X)
-                .Select((region, index) => BuildVisualBlock(page, region, index))
-                .Where(block => block is not null)
-                .Select(block => block!)
+                .SelectMany((region, index) => BuildVisualBlocks(page, region, index))
                 .ToList();
         }
 
@@ -57,6 +55,69 @@ public sealed class SiteIntentExtractor
             .Where(block => block is not null)
             .Select(block => block!)
             .ToList();
+    }
+
+    private static IEnumerable<SiteIntentBlock> BuildVisualBlocks(SiteCrawlPage page, VisualRegion region, int index)
+    {
+        var block = BuildVisualBlock(page, region, index);
+        if (block is null)
+        {
+            return [];
+        }
+
+        if (IsTopHeaderLike(region, block.Section))
+        {
+            block.Kind = "header";
+            block.Slot = "header";
+            block.Reasons.Add("override:top_navigation_form");
+            return [block];
+        }
+
+        if (IsFooterLike(region, block.Section))
+        {
+            block.Kind = "footer";
+            block.Slot = "footer";
+            block.Reasons.Add("override:copyright_footer");
+            return [block];
+        }
+
+        if (IsLargeHomeMainRegion(page, region, block.Section))
+        {
+            var split = new List<SiteIntentBlock>();
+            var heroSection = CloneSection(block.Section, $"{block.Section.Id}-hero", "hero");
+            heroSection.Items.Clear();
+            heroSection.Actions.Clear();
+            heroSection.Media = heroSection.Media.Take(6).ToList();
+            split.Add(new SiteIntentBlock
+            {
+                Id = $"{block.Id}-hero",
+                Kind = "hero_carousel",
+                Slot = "hero",
+                Section = heroSection,
+                Confidence = 0.74,
+                Reasons = [.. block.Reasons, "split:large_home_region_hero"],
+            });
+
+            if (block.Section.Items.Count > 0 || HasNewsSignals(block.Section))
+            {
+                var newsSection = CloneSection(block.Section, $"{block.Section.Id}-news", "news");
+                newsSection.Media.Clear();
+                newsSection.Actions.Clear();
+                split.Add(new SiteIntentBlock
+                {
+                    Id = $"{block.Id}-news",
+                    Kind = "news_carousel",
+                    Slot = "news",
+                    Section = newsSection,
+                    Confidence = 0.72,
+                    Reasons = [.. block.Reasons, "split:large_home_region_news"],
+                });
+            }
+
+            return split;
+        }
+
+        return [block];
     }
 
     private static SiteIntentBlock? BuildVisualBlock(SiteCrawlPage page, VisualRegion region, int index)
@@ -362,6 +423,46 @@ public sealed class SiteIntentExtractor
             "content_article" or "form" => "content",
             "footer" => "footer",
             _ => "content",
+        };
+    }
+
+    private static bool IsTopHeaderLike(VisualRegion region, ExtractedSection section)
+    {
+        return region.Bounds.Y <= 180 &&
+            section.Actions.Count >= 3 &&
+            NormalizeRole(region.Role) is "form" or "content";
+    }
+
+    private static bool IsFooterLike(VisualRegion region, ExtractedSection section)
+    {
+        var text = $"{section.Headline} {section.Body}";
+        return text.Contains("copyright", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("all rights reserved", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("版權", StringComparison.OrdinalIgnoreCase) ||
+            (region.Bounds.Y > 1600 && text.Contains("University", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsLargeHomeMainRegion(SiteCrawlPage page, VisualRegion region, ExtractedSection section)
+    {
+        return page.Depth == 0 &&
+            NormalizeRole(region.Role) is "card_grid" or "visual_grid" or "content" &&
+            region.Bounds.Height >= 900 &&
+            (section.Media.Count >= 2 || section.Items.Count >= 2);
+    }
+
+    private static ExtractedSection CloneSection(ExtractedSection section, string id, string role)
+    {
+        return new ExtractedSection
+        {
+            Id = id,
+            Tag = section.Tag,
+            Role = role,
+            Headline = section.Headline,
+            Body = section.Body,
+            SourceSelector = section.SourceSelector,
+            Media = section.Media.ToList(),
+            Actions = section.Actions.ToList(),
+            Items = section.Items.ToList(),
         };
     }
 

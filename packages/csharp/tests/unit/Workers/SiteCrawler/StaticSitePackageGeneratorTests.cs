@@ -376,6 +376,8 @@ public class StaticSitePackageGeneratorTests : IDisposable
 
         var styles = File.ReadAllText(Path.Combine(result.OutputDirectory, "styles.css"));
         styles.Should().Contain(".template-hero");
+        styles.Should().Contain("align-items: center");
+        styles.Should().Contain("height: clamp(260px, 36vw, 430px)");
         styles.Should().Contain(".quick-link-ribbon");
         styles.Should().Contain(".institution-footer");
     }

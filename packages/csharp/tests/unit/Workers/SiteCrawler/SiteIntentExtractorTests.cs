@@ -159,6 +159,67 @@ public class SiteIntentExtractorTests
         intent.Pages[0].Blocks.Should().Contain(block => block.Kind == "content_article");
     }
 
+    [Fact]
+    public void Extract_SplitsLargeWebFormsHomeRegionIntoHeaderHeroNewsAndFooter()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages[0].VisualSnapshot = new VisualPageSnapshot
+        {
+            Regions =
+            [
+                new VisualRegion
+                {
+                    Id = "top",
+                    Role = "form",
+                    Selector = "div.logosearch-area",
+                    Bounds = new VisualBox { Y = 0, Height = 140 },
+                    Text = "Apply 招生與入學 校務系統 Welcome to SHU 關於世新",
+                    Media = [new ExtractedMedia { Url = "https://example.edu/logo.png", Alt = "Logo" }],
+                    Actions =
+                    [
+                        new ExtractedAction { Label = "招生與入學", Url = "https://example.edu/Admission.aspx" },
+                        new ExtractedAction { Label = "校務系統", Url = "https://example.edu/System-info.aspx" },
+                        new ExtractedAction { Label = "關於世新", Url = "https://example.edu/SHU.aspx" },
+                        new ExtractedAction { Label = "網站導覽", Url = "https://example.edu/Sitemap.aspx" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Id = "main",
+                    Role = "card_grid",
+                    Selector = "div:nth-of-type(3)",
+                    Bounds = new VisualBox { Y = 140, Height = 3100 },
+                    Headline = "亞洲夢工廠 全媒體全傳播 夢想從世新開始",
+                    Text = "亞洲夢工廠 全媒體全傳播 夢想從世新開始 貼心提醒 Reminder 新生入學資訊 2026-05-01 焦點新聞",
+                    Media =
+                    [
+                        new ExtractedMedia { Url = "https://example.edu/slide-1.jpg", Alt = "Slide 1" },
+                        new ExtractedMedia { Url = "https://example.edu/slide-2.jpg", Alt = "Slide 2" },
+                    ],
+                    Items =
+                    [
+                        new ExtractedItem { Title = "焦點新聞 A", Body = "2026-05-01", Url = "https://example.edu/Spotlight.aspx?from=06&sID=1", MediaUrl = "https://example.edu/a.jpg" },
+                        new ExtractedItem { Title = "焦點新聞 B", Body = "2026-04-30", Url = "https://example.edu/Spotlight.aspx?from=06&sID=2", MediaUrl = "https://example.edu/b.jpg" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Id = "copyright",
+                    Role = "content",
+                    Selector = "div.m1-area",
+                    Bounds = new VisualBox { Y = 3241, Height = 125 },
+                    Text = "世新大學 版權所有 Shih Hsin University All Rights Reserved",
+                },
+            ],
+        };
+        var extractor = new SiteIntentExtractor();
+
+        var intent = extractor.Extract(crawl);
+
+        intent.Pages[0].Blocks.Select(block => block.Kind).Should()
+            .Contain(["header", "hero_carousel", "news_carousel", "footer"]);
+    }
+
     private static SiteCrawlResult BuildCrawlResult()
     {
         return new SiteCrawlResult

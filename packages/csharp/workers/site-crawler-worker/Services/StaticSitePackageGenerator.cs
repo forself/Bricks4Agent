@@ -172,12 +172,12 @@ public sealed class StaticSitePackageGenerator
             .nav-links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
             .mega-header .search-chip { justify-self: end; align-self: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 13px; }
             main { max-width: 1180px; margin: 0 auto; padding: 0 20px 48px; }
-            .template-hero { display: grid; grid-template-columns: minmax(0, .86fr) minmax(320px, 1.14fr); gap: 28px; align-items: stretch; padding: 28px 0 34px; border-bottom: 1px solid var(--line); }
+            .template-hero { display: grid; grid-template-columns: minmax(0, .86fr) minmax(320px, 1.14fr); gap: 28px; align-items: center; padding: 28px 0 34px; border-bottom: 1px solid var(--line); }
             .template-hero-copy { align-self: center; display: grid; gap: 12px; }
             .template-hero h1 { margin: 0; font-size: clamp(30px, 4.2vw, 56px); line-height: 1.08; letter-spacing: 0; }
             .template-hero p { margin: 0; color: var(--muted); font-size: 17px; }
-            .template-hero-media { min-height: 320px; margin: 0; border-radius: 8px; overflow: hidden; background: var(--band); }
-            .template-hero-media img { width: 100%; height: 100%; min-height: 320px; object-fit: cover; display: block; }
+            .template-hero-media { height: clamp(260px, 36vw, 430px); margin: 0; border-radius: 8px; overflow: hidden; background: var(--band); }
+            .template-hero-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
             .template-hero-slides { display: flex; gap: 12px; overflow-x: auto; padding-top: 12px; }
             .template-hero-slide { min-width: min(240px, 72vw); border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
             .template-hero-slide h3 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0; }
@@ -246,7 +246,7 @@ public sealed class StaticSitePackageGenerator
               .site-header-inner { grid-template-columns: 1fr; grid-template-areas: "brand" "utility" "primary"; }
               .utility-links, .primary-links { justify-content: flex-start; }
               .template-hero { grid-template-columns: 1fr; }
-              .template-hero-media, .template-hero-media img { min-height: 220px; }
+              .template-hero-media { height: clamp(220px, 58vw, 320px); }
               .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
               .atomic-section--hero .image-block { order: 0; }
             }
