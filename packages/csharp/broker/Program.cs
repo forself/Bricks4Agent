@@ -205,6 +205,7 @@ builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldProgressSto
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSiteRebuildService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();

@@ -258,7 +258,7 @@ public class BrokerDbInitializer
             {
                 RoleId = "role_executor",
                 DisplayName = "Executor",
-                AllowedTaskTypes = ToJson(new[] { "code_gen", "system_scaffold", "doc_gen" }),
+                AllowedTaskTypes = ToJson(new[] { "code_gen", "system_scaffold", "site_rebuild", "doc_gen" }),
                 DefaultCapabilityIds = ToJson(new[] { "file.read", "file.list", "file.search_name", "file.search_content" }),
                 Status = EntityStatus.Active
             },

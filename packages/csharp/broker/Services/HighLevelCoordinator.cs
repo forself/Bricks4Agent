@@ -42,6 +42,7 @@ public class HighLevelCoordinator
     private readonly HighLevelDocumentArtifactService _documentArtifactService;
     private readonly HighLevelCodeArtifactService _codeArtifactService;
     private readonly HighLevelSystemScaffoldService _systemScaffoldService;
+    private readonly HighLevelSiteRebuildService _siteRebuildService;
     private readonly LineArtifactDeliveryService _lineArtifactDeliveryService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ProjectInterviewStateMachine _projectInterviewStateMachine;
@@ -67,6 +68,7 @@ public class HighLevelCoordinator
         HighLevelDocumentArtifactService documentArtifactService,
         HighLevelCodeArtifactService codeArtifactService,
         HighLevelSystemScaffoldService systemScaffoldService,
+        HighLevelSiteRebuildService siteRebuildService,
         LineArtifactDeliveryService lineArtifactDeliveryService,
         BrowserBindingService browserBindingService,
         ProjectInterviewStateMachine projectInterviewStateMachine,
@@ -98,6 +100,7 @@ public class HighLevelCoordinator
         _documentArtifactService = documentArtifactService;
         _codeArtifactService = codeArtifactService;
         _systemScaffoldService = systemScaffoldService;
+        _siteRebuildService = siteRebuildService;
         _lineArtifactDeliveryService = lineArtifactDeliveryService;
         _browserBindingService = browserBindingService;
         _projectInterviewStateMachine = projectInterviewStateMachine;
@@ -1629,6 +1632,7 @@ public class HighLevelCoordinator
         HighLevelDocumentArtifactResult? artifactResult = null;
         HighLevelCodeArtifactResult? codeArtifactResult = null;
         HighLevelSystemScaffoldResult? scaffoldArtifactResult = null;
+        HighLevelSiteRebuildResult? siteRebuildResult = null;
         if (string.Equals(draft.TaskType, "doc_gen", StringComparison.OrdinalIgnoreCase))
         {
             artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
@@ -1640,6 +1644,10 @@ public class HighLevelCoordinator
         else if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
         {
             scaffoldArtifactResult = await _systemScaffoldService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
+        }
+        else if (string.Equals(draft.TaskType, "site_rebuild", StringComparison.OrdinalIgnoreCase))
+        {
+            siteRebuildResult = await _siteRebuildService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -1661,6 +1669,10 @@ public class HighLevelCoordinator
         else if (scaffoldArtifactResult != null)
         {
             replyLines.Add(BuildSystemScaffoldReply(scaffoldArtifactResult));
+        }
+        else if (siteRebuildResult != null)
+        {
+            replyLines.Add(BuildSiteRebuildReply(siteRebuildResult));
         }
         else
         {
@@ -1820,6 +1832,37 @@ public class HighLevelCoordinator
         return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
+    internal static string BuildSiteRebuildReply(HighLevelSiteRebuildResult artifactResult)
+    {
+        if (!artifactResult.Success)
+            return $"網站重製失敗：{artifactResult.Message}";
+
+        var lines = new List<string>
+        {
+            "已重製網站並封裝成可下載套件。",
+            $"source_url: {artifactResult.SourceUrl}",
+            $"depth: {artifactResult.MaxDepth}",
+            $"pages: {artifactResult.PagesCrawled}",
+            $"routes: {artifactResult.RoutesGenerated}",
+            $"package_file: {artifactResult.PackageFilePath}"
+        };
+
+        if (artifactResult.Delivery?.GoogleDrive?.Success == true)
+        {
+            lines.Add("Google Drive download link:");
+            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.DownloadLink);
+            else if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.WebViewLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.WebViewLink);
+        }
+        else if (artifactResult.Delivery != null)
+        {
+            lines.Add("Google Drive upload was not completed; the package was kept as a local artifact.");
+        }
+
+        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
     private static HighLevelMemoryState BuildFallbackMemoryState(
         string channel,
         string userId,
@@ -1927,6 +1970,8 @@ public class HighLevelCoordinator
 
     private string InferTaskType(string normalized)
     {
+        if (!string.IsNullOrWhiteSpace(HighLevelSiteRebuildService.TryExtractSourceUrl(normalized)) &&
+            ContainsAny(normalized, _options.SiteRebuildKeywords)) return "site_rebuild";
         if (ContainsAny(normalized, _options.SystemScaffoldKeywords)) return "system_scaffold";
         if (ContainsAny(normalized, _options.CodeModifyKeywords)) return "code_modify";
         var hasCodeArtifactHint = ContainsAny(normalized, _options.CodeArtifactKeywords);
@@ -1950,12 +1995,13 @@ public class HighLevelCoordinator
         var title = decision.TaskType switch
         {
             "system_scaffold" => $"Generate system scaffold from {channel} request",
+            "site_rebuild" => $"Rebuild website package from {channel} request",
             "code_modify" => $"Modify artifact from {channel} request",
             "doc_gen" => $"Generate document from {channel} request",
             "code_gen" => $"Generate deliverable from {channel} request",
             _ => $"Production task from {channel} request"
         };
-        var requiresProjectName = decision.TaskType is "code_gen" or "system_scaffold";
+        var requiresProjectName = decision.TaskType is "code_gen" or "system_scaffold" or "site_rebuild";
         var inlineProjectName = requiresProjectName ? TryExtractInlineProjectName(message) : null;
         var inlineProjectFolderName = string.IsNullOrWhiteSpace(inlineProjectName)
             ? null
@@ -2011,6 +2057,18 @@ public class HighLevelCoordinator
                 new() { PhaseId = "test", Title = "Run basic verification", Kind = "verification" },
                 new() { PhaseId = "package", Title = "Package scaffold", Kind = "packaging" },
                 new() { PhaseId = "deliver", Title = "Deliver artifact", Kind = "delivery" }
+            };
+        }
+
+        if (taskType == "site_rebuild")
+        {
+            return new List<HighLevelTaskPhase>
+            {
+                new() { PhaseId = "crawl", Title = "Crawl source site", Kind = "context_collection" },
+                new() { PhaseId = "extract", Title = "Extract visual structure", Kind = "deterministic_extraction" },
+                new() { PhaseId = "generate", Title = "Generate component JSON package", Kind = "artifact_creation" },
+                new() { PhaseId = "test", Title = "Verify generated package", Kind = "verification" },
+                new() { PhaseId = "deliver", Title = "Upload package and return link", Kind = "delivery" }
             };
         }
 
@@ -2709,6 +2767,10 @@ public class HighLevelCoordinator
         else if (draft.TaskType == "system_scaffold")
         {
             draft.Title = $"Generate system scaffold {projectName} from {draft.Channel} request";
+        }
+        else if (draft.TaskType == "site_rebuild")
+        {
+            draft.Title = $"Rebuild website package {projectName} from {draft.Channel} request";
         }
 
         draft.Description = string.Join('\n', new[]
@@ -3792,6 +3854,21 @@ public class HighLevelCoordinatorOptions
         "full system",
         "project skeleton",
         "scaffold"
+    };
+
+    public string[] SiteRebuildKeywords { get; set; } = new[]
+    {
+        "\u91cd\u88fd",
+        "\u91cd\u69cb",
+        "\u53c3\u8003",
+        "\u5b98\u7db2",
+        "\u7db2\u7ad9",
+        "\u7db2\u9801",
+        "rebuild",
+        "recreate",
+        "clone",
+        "site",
+        "website"
     };
 
     public string[] DocKeywords { get; set; } = new[]
