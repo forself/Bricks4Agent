@@ -373,8 +373,116 @@ public sealed class DeterministicSiteExtractor
             return "hero";
         }
 
+        var tag = node.Name.ToLowerInvariant();
+        if (tag is "footer")
+        {
+            return "footer";
+        }
+
+        var visualRole = InferVisualRole(node);
+        if (!string.IsNullOrWhiteSpace(visualRole))
+        {
+            return visualRole;
+        }
+
         return "content";
     }
+
+    private static string InferVisualRole(HtmlNode node)
+    {
+        var tokens = GetRoleSignalTokens(node);
+        if (tokens.Any(IsNewsToken))
+        {
+            return "news";
+        }
+
+        if (tokens.Any(IsGalleryToken))
+        {
+            return "gallery";
+        }
+
+        if (tokens.Any(IsFeatureGridToken))
+        {
+            return "feature_grid";
+        }
+
+        if (tokens.Any(IsFaqToken))
+        {
+            return "faq";
+        }
+
+        if (tokens.Any(IsContactToken))
+        {
+            return "contact";
+        }
+
+        if (tokens.Any(IsProgramToken))
+        {
+            return "program_grid";
+        }
+
+        if (tokens.Any(IsProcessToken))
+        {
+            return "process";
+        }
+
+        if (tokens.Any(IsBenefitsToken))
+        {
+            return "benefits";
+        }
+
+        if (tokens.Any(IsStatsToken))
+        {
+            return "stats";
+        }
+
+        return string.Empty;
+    }
+
+    private static List<string> GetRoleSignalTokens(HtmlNode node)
+    {
+        var values = new[]
+        {
+            node.Name,
+            CleanAttribute(node.GetAttributeValue("id", string.Empty)),
+            CleanAttribute(node.GetAttributeValue("class", string.Empty)),
+            CleanAttribute(node.GetAttributeValue("role", string.Empty)),
+            CleanAttribute(node.GetAttributeValue("aria-label", string.Empty)),
+        };
+
+        return values
+            .SelectMany(value => Regex.Split(value, "[^a-zA-Z0-9]+", RegexOptions.None, RegexTimeout))
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Select(token => token.ToLowerInvariant())
+            .ToList();
+    }
+
+    private static bool IsNewsToken(string token)
+        => token is "news" or "announcement" or "announcements" or "event" or "events" or "latest" or "press";
+
+    private static bool IsGalleryToken(string token)
+        => token is "gallery" or "galleries" or "photo" or "photos" or "album" or "media";
+
+    private static bool IsFeatureGridToken(string token)
+        => token is "cards" or "card" or "grid" or "feature" or "features" or "service" or "services";
+
+    private static bool IsStatsToken(string token)
+        => token is "stats" or "stat" or "metrics" or "metric" or "numbers" or "counter";
+
+    private static bool IsFaqToken(string token)
+        => token is "faq" or "faqs" or "question" or "questions" or "accordion";
+
+    private static bool IsContactToken(string token)
+        => token is "contact" or "contacts" or "cta" or "ctabox";
+
+    private static bool IsProgramToken(string token)
+        => token is "program" or "programs" or "degree" or "degrees" or "major" or "majors";
+
+    private static bool IsProcessToken(string token)
+        => token is "apply" or "application" or "process" or "steps" or "step" or "journey";
+
+    private static bool IsBenefitsToken(string token)
+        => token is "why" or "benefit" or "benefits" or "reason" or "reasons";
 
     private static bool HasHeroSignal(HtmlNode node)
     {

@@ -44,7 +44,7 @@ public sealed class StaticSitePackageGenerator
         WriteFile(outputDirectory, "styles.css", BuildStylesCss(document), files);
         WriteFile(outputDirectory, "site.json", JsonSerializer.Serialize(document, JsonOptions), files);
         WriteFile(outputDirectory, Path.Combine("components", "manifest.json"), JsonSerializer.Serialize(document.ComponentLibrary, JsonOptions), files);
-        WriteGeneratedComponentDefinitions(outputDirectory, document, files);
+        WriteGeneratedComponentAssets(outputDirectory, document, files);
         WriteFile(outputDirectory, "README.md", BuildReadme(document), files);
 
         return new StaticSitePackageResult
@@ -77,7 +77,7 @@ public sealed class StaticSitePackageGenerator
         files.Add(path);
     }
 
-    private static void WriteGeneratedComponentDefinitions(
+    private static void WriteGeneratedComponentAssets(
         string outputDirectory,
         GeneratorSiteDocument document,
         List<string> files)
@@ -89,7 +89,33 @@ public sealed class StaticSitePackageGenerator
                 Path.Combine("components", "generated", $"{component.Type}.json"),
                 JsonSerializer.Serialize(component, JsonOptions),
                 files);
+            WriteFile(
+                outputDirectory,
+                Path.Combine("components", "generated", $"{component.Type}.js"),
+                BuildGeneratedComponentModule(component),
+                files);
         }
+    }
+
+    private static string BuildGeneratedComponentModule(ComponentDefinition component)
+    {
+        var typeLiteral = JsonSerializer.Serialize(component.Type);
+        var classNameLiteral = JsonSerializer.Serialize($"generated-section {ToKebabCase(component.Type)}");
+        return $$"""
+            export function render(node, helpers) {
+              const section = helpers.element('section', {{classNameLiteral}});
+              section.setAttribute('data-component', {{typeLiteral}});
+              if (node.props?.source_selector) {
+                section.setAttribute('data-source-selector', node.props.source_selector);
+              }
+
+              section.append(helpers.element('h2', '', node.props?.title || {{typeLiteral}}));
+              if (node.props?.body) {
+                section.append(helpers.element('p', '', node.props.body));
+              }
+              return section;
+            }
+            """;
     }
 
     private static string BuildIndexHtml(GeneratorSiteDocument document)
@@ -192,6 +218,30 @@ public sealed class StaticSitePackageGenerator
             .Replace("\"", "&quot;", StringComparison.Ordinal);
     }
 
+    private static string ToKebabCase(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "generated-component";
+        }
+
+        var chars = new List<char>();
+        for (var index = 0; index < value.Length; index++)
+        {
+            var ch = value[index];
+            if (char.IsUpper(ch) && index > 0)
+            {
+                chars.Add('-');
+            }
+
+            chars.Add(char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '-');
+        }
+
+        return string.Join(
+            '-',
+            new string(chars.ToArray()).Split('-', StringSplitOptions.RemoveEmptyEntries));
+    }
+
     private const string RuntimeJavaScript = """
         const app = document.getElementById('app');
 
@@ -209,6 +259,7 @@ public sealed class StaticSitePackageGenerator
         const manifest = await fetch('./components/manifest.json').then(response => response.json());
         let currentRoute = resolveRoute(site.routes);
         const knownTypes = new Set((manifest.components || []).map(component => component.type));
+        const generatedRenderers = await loadGeneratedRenderers(manifest);
 
         renderCurrentRoute();
         window.addEventListener('popstate', () => {
@@ -250,8 +301,36 @@ public sealed class StaticSitePackageGenerator
             throw new Error(`Unknown component type: ${node.type}`);
           }
 
-          const renderer = componentRenderers[node.type] || renderGeneratedComponent;
-          return renderer(node, knownTypes, manifest);
+          const renderer = componentRenderers[node.type];
+          if (renderer) {
+            return renderer(node, knownTypes, manifest);
+          }
+
+          const generatedRenderer = generatedRenderers.get(node.type);
+          if (generatedRenderer) {
+            return generatedRenderer(node, {
+              element,
+              renderChildren: (childNode, parent) => renderChildren(childNode, parent, knownTypes, manifest)
+            });
+          }
+
+          return renderGeneratedComponent(node);
+        }
+
+        async function loadGeneratedRenderers(manifest) {
+          const renderers = new Map();
+          for (const component of manifest.components || []) {
+            if (!component.generated) continue;
+            try {
+              const module = await import(`./components/generated/${component.type}.js`);
+              if (typeof module.render === 'function') {
+                renderers.set(component.type, module.render);
+              }
+            } catch (error) {
+              console.warn(`Generated component renderer unavailable: ${component.type}`, error);
+            }
+          }
+          return renderers;
         }
 
         function renderChildren(node, parent, knownTypes, manifest) {

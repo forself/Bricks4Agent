@@ -356,4 +356,29 @@ public class DeterministicSiteExtractorTests
 
         result.Model.Sections.Should().OnlyContain(section => section.Role == "content");
     }
+
+    [Fact]
+    public void ExtractPage_ClassifiesSpecificVisualRegionsForGeneratedComponents()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="news-list">
+                <h2>Campus News</h2>
+                <article>Story one</article>
+                <article>Story two</article>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(
+            new Uri("https://example.com/"),
+            html);
+
+        result.Model.Sections.Should()
+            .ContainSingle(section => section.SourceSelector == "section.news-list")
+            .Which.Role.Should().Be("news");
+    }
 }
