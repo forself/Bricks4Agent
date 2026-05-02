@@ -300,6 +300,16 @@ public class AutoTraderService : BackgroundService
                     JsonSerializer.Serialize(new { exchange })));
                 var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.account", "get_positions",
                     JsonSerializer.Serialize(new { exchange })));
+                // Fill poller 已在維護 trades 表，這裡查當天累計筆數餵給 risk engine 的
+                // max_daily_trades 規則（之前永遠傳 0、規則形同虛設）
+                var dailyResult = await _dispatcher.DispatchAsync(BuildRequest("trading.account", "daily_trade_count",
+                    JsonSerializer.Serialize(new { exchange })));
+                var dailyCount = 0;
+                if (dailyResult.Success)
+                {
+                    var dc = JsonDocument.Parse(dailyResult.ResultPayload ?? "{}").RootElement;
+                    if (dc.TryGetProperty("count", out var cnt)) dailyCount = cnt.GetInt32();
+                }
 
                 if (accResult.Success && posResult.Success)
                 {
@@ -316,7 +326,7 @@ public class AutoTraderService : BackgroundService
                             portfolio_value = acc.TryGetProperty("portfolio_value", out var pv) ? pv.GetDecimal() : 0,
                             day_pnl = acc.TryGetProperty("day_pnl", out var dp) ? dp.GetDecimal() : 0,
                             peak_value = acc.TryGetProperty("portfolio_value", out var pk) ? pk.GetDecimal() : 0,
-                            daily_trade_count = 0,
+                            daily_trade_count = dailyCount,
                             positions = pos.TryGetProperty("positions", out var posArr2) ? posArr2 : JsonDocument.Parse("[]").RootElement,
                         }
                     });

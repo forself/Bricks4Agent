@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using WorkerSdk;
 using TradingWorker.Exchange;
 using TradingWorker.Handlers;
+using TradingWorker.Services;
 using TradingWorker.Storage;
 
 // ── 設定 ──────────────────────────────────────────────────────────────
@@ -103,8 +104,18 @@ var host = new WorkerHost(options, logger);
 host.RegisterHandler(new TradingOrderHandler(clients, tradingDb));
 host.RegisterHandler(new TradingAccountHandler(clients, tradingDb));
 
+// ── Fill Poller（背景輪詢未成交訂單，把 fill 寫進 trades 表）──────────
+var fillPollerLogger = loggerFactory.CreateLogger<FillPollerService>();
+var fillPollerInterval = config.GetValue("Worker:Trading:FillPollIntervalSec", 30);
+var fillPoller = new FillPollerService(clients, tradingDb, fillPollerLogger, fillPollerInterval);
+var fillPollerTask = clients.Count > 0
+    ? Task.Run(() => fillPoller.RunAsync(cts.Token), cts.Token)
+    : Task.CompletedTask;  // 沒任何 exchange 設定就不啟動
+
 logger.LogInformation(
-    "TradingWorker starting: broker={Host}:{Port}, exchanges=[{Exchanges}]",
-    options.BrokerHost, options.BrokerPort, string.Join(", ", clients.Keys));
+    "TradingWorker starting: broker={Host}:{Port}, exchanges=[{Exchanges}], fillPoller={Enabled}",
+    options.BrokerHost, options.BrokerPort, string.Join(", ", clients.Keys), clients.Count > 0);
 
 await host.RunAsync(cts.Token);
+// host.RunAsync 退出後 cts 已被 cancel；等 fill poller 收尾
+try { await fillPollerTask; } catch (OperationCanceledException) { }

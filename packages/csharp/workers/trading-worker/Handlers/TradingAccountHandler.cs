@@ -9,9 +9,10 @@ namespace TradingWorker.Handlers;
 /// trading.account — 查詢帳戶餘額、持倉、成交紀錄。
 ///
 /// Routes:
-///   get_account    — 帳戶摘要（參數：exchange）
-///   get_positions  — 持倉列表（參數：exchange）
-///   get_trades     — 成交紀錄（參數：exchange, symbol, limit）
+///   get_account        — 帳戶摘要（參數：exchange）
+///   get_positions      — 持倉列表（參數：exchange）
+///   get_trades         — 成交紀錄（參數：exchange, symbol, limit）
+///   daily_trade_count  — 今天（UTC）已成交筆數，給 risk engine 餵 max_daily_trades 規則
 /// </summary>
 public class TradingAccountHandler : ICapabilityHandler
 {
@@ -34,12 +35,26 @@ public class TradingAccountHandler : ICapabilityHandler
 
         return route switch
         {
-            "get_account"   => await GetAccount(opts, ct),
-            "get_positions" => await GetPositions(opts, ct),
-            "get_trades"    => await GetTrades(opts, ct),
-            "list_exchanges" => ListExchanges(),
+            "get_account"        => await GetAccount(opts, ct),
+            "get_positions"      => await GetPositions(opts, ct),
+            "get_trades"         => await GetTrades(opts, ct),
+            "list_exchanges"     => ListExchanges(),
+            "daily_trade_count"  => DailyTradeCount(opts),
             _ => (false, null, $"Unknown route: {route}")
         };
+    }
+
+    private (bool, string?, string?) DailyTradeCount(JsonElement opts)
+    {
+        // 預設「今天」是 UTC 0 點起；caller 可帶 `from_utc` 蓋掉用本地時區的午夜
+        var fromUtc = opts.TryGetProperty("from_utc", out var fu) && fu.ValueKind == JsonValueKind.String
+            ? DateTime.Parse(fu.GetString()!, null, System.Globalization.DateTimeStyles.RoundtripKind)
+            : DateTime.UtcNow.Date;
+        var exchange = opts.TryGetProperty("exchange", out var ex) ? ex.GetString() : null;
+
+        var count = _db.GetDailyTradeCount(fromUtc, exchange);
+        var json = JsonSerializer.Serialize(new { count, from_utc = fromUtc, exchange });
+        return (true, json, null);
     }
 
     private async Task<(bool, string?, string?)> GetAccount(JsonElement opts, CancellationToken ct)

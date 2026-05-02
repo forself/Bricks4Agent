@@ -140,6 +140,25 @@ public class TradingDbStorage : IDisposable
         return list;
     }
 
+    /// <summary>
+    /// 取仍可能成交的訂單（給 fill poller 用）。terminal status (filled/cancelled/rejected) 跳過。
+    /// </summary>
+    public List<TradingOrder> GetOpenOrders()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT * FROM orders
+            WHERE status IN ('pending', 'submitted', 'partial')
+              AND external_id IS NOT NULL
+            ORDER BY created_at
+            """;
+
+        var list = new List<TradingOrder>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(ReadOrder(r));
+        return list;
+    }
+
     // ── Trades ──────────────────────────────────────────────────────
 
     public void SaveTrade(TradeRecord trade)
@@ -162,6 +181,21 @@ public class TradingDbStorage : IDisposable
         cmd.Parameters.AddWithValue("$pnl",        trade.RealizedPnl.HasValue ? (object)(double)trade.RealizedPnl.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$executedAt", trade.ExecutedAt.ToString("o"));
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 從指定 UTC 時間以後的成交筆數（給 risk engine 的 max_daily_trades 規則用）。
+    /// 預設用 UTC 0 點當「今天」的起點，跨時區呼叫者可自己算 fromUtc。
+    /// </summary>
+    public int GetDailyTradeCount(DateTime fromUtc, string? exchange = null)
+    {
+        using var cmd = _conn.CreateCommand();
+        var sql = "SELECT COUNT(*) FROM trades WHERE executed_at >= $from";
+        if (exchange != null) { sql += " AND exchange = $exchange"; cmd.Parameters.AddWithValue("$exchange", exchange); }
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$from", fromUtc.ToString("o"));
+        var raw = cmd.ExecuteScalar();
+        return raw == null ? 0 : Convert.ToInt32(raw);
     }
 
     public List<TradeRecord> GetTrades(string? symbol = null, int limit = 100)
