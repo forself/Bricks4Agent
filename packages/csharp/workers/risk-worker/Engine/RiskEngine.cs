@@ -6,12 +6,14 @@ namespace RiskWorker.Engine;
 /// 風控引擎 — 在下單前檢查一系列規則，決定是否放行。
 ///
 /// 規則類型：
-/// - max_position:     單一標的最大持倉市值
-/// - max_portfolio_pct: 單一標的佔投組最大比例
-/// - max_order_size:   單筆訂單最大金額
-/// - max_daily_loss:   當日最大虧損金額
-/// - max_drawdown_pct: 最大回撤百分比（從歷史峰值算）
-/// - max_daily_trades: 當日最大交易次數
+/// - max_position:        單一標的最大持倉市值
+/// - max_portfolio_pct:   單一標的佔投組最大比例
+/// - max_order_size:      單筆訂單最大金額
+/// - max_daily_loss:      當日最大虧損金額
+/// - max_drawdown_pct:    最大回撤百分比（從歷史峰值算）
+/// - max_daily_trades:    當日最大交易次數
+/// - min_cash_reserve:    買入後須保留的現金底（避免梭哈耗光現金）
+/// - max_position_count:  最多同時持有幾個不同標的（避免過度分散 / 防呆）
 /// </summary>
 public class RiskEngine
 {
@@ -46,12 +48,14 @@ public class RiskEngine
 
             var violation = rule.Type switch
             {
-                "max_position"      => CheckMaxPosition(rule, symbol, orderValue, side, portfolio),
-                "max_portfolio_pct" => CheckMaxPortfolioPct(rule, symbol, orderValue, side, portfolio),
-                "max_order_size"    => CheckMaxOrderSize(rule, orderValue),
-                "max_daily_loss"    => CheckMaxDailyLoss(rule, portfolio),
-                "max_drawdown_pct"  => CheckMaxDrawdown(rule, portfolio),
-                "max_daily_trades"  => CheckMaxDailyTrades(rule, portfolio),
+                "max_position"        => CheckMaxPosition(rule, symbol, orderValue, side, portfolio),
+                "max_portfolio_pct"   => CheckMaxPortfolioPct(rule, symbol, orderValue, side, portfolio),
+                "max_order_size"      => CheckMaxOrderSize(rule, orderValue),
+                "max_daily_loss"      => CheckMaxDailyLoss(rule, portfolio),
+                "max_drawdown_pct"    => CheckMaxDrawdown(rule, portfolio),
+                "max_daily_trades"    => CheckMaxDailyTrades(rule, portfolio),
+                "min_cash_reserve"    => CheckMinCashReserve(rule, orderValue, side, portfolio),
+                "max_position_count"  => CheckMaxPositionCount(rule, symbol, side, portfolio),
                 _ => null
             };
 
@@ -184,6 +188,46 @@ public class RiskEngine
         };
     }
 
+    private RiskViolation? CheckMinCashReserve(RiskRule rule, decimal orderValue, string side, PortfolioSnapshot portfolio)
+    {
+        // 只擋買入（賣出會增加現金、不會違反 reserve）
+        if (side != "buy") return null;
+
+        var projectedCash = portfolio.Cash - orderValue;
+        if (projectedCash >= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Buy would leave cash at ${projectedCash:N0}, below reserve floor ${rule.Threshold:N0}",
+            Current  = projectedCash,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxPositionCount(RiskRule rule, string symbol, string side, PortfolioSnapshot portfolio)
+    {
+        // 只擋會「新增」標的的買入；既有 symbol 的加碼不算新位
+        if (side != "buy") return null;
+
+        var alreadyHeld = portfolio.Positions.Any(p =>
+            p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase) && p.Quantity > 0);
+        if (alreadyHeld) return null;
+
+        var distinctCount = portfolio.Positions.Where(p => p.Quantity > 0).Select(p => p.Symbol.ToUpperInvariant()).Distinct().Count();
+        if (distinctCount < (int)rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Already holding {distinctCount} symbols (limit {(int)rule.Threshold}); buying {symbol} would add a new position",
+            Current  = distinctCount,
+            Limit    = rule.Threshold,
+        };
+    }
+
     // ── 嘗試縮小訂單 ────────────────────────────────────────────────
 
     private decimal? TryReduce(string symbol, string side, decimal quantity, decimal price, PortfolioSnapshot portfolio)
@@ -211,11 +255,13 @@ public class RiskEngine
     /// <summary>預設風控規則集。</summary>
     public static List<RiskRule> DefaultRules() => new()
     {
-        new() { RuleId = "r1", Name = "Max Position Size",       Type = "max_position",      Threshold = 10_000 },
-        new() { RuleId = "r2", Name = "Max Portfolio Allocation", Type = "max_portfolio_pct", Threshold = 25 },
-        new() { RuleId = "r3", Name = "Max Single Order",        Type = "max_order_size",    Threshold = 5_000 },
-        new() { RuleId = "r4", Name = "Max Daily Loss",          Type = "max_daily_loss",    Threshold = 1_000 },
-        new() { RuleId = "r5", Name = "Max Drawdown",            Type = "max_drawdown_pct",  Threshold = 10 },
-        new() { RuleId = "r6", Name = "Max Daily Trades",        Type = "max_daily_trades",  Threshold = 20 },
+        new() { RuleId = "r1", Name = "Max Position Size",        Type = "max_position",       Threshold = 10_000 },
+        new() { RuleId = "r2", Name = "Max Portfolio Allocation", Type = "max_portfolio_pct",  Threshold = 25 },
+        new() { RuleId = "r3", Name = "Max Single Order",         Type = "max_order_size",     Threshold = 5_000 },
+        new() { RuleId = "r4", Name = "Max Daily Loss",           Type = "max_daily_loss",     Threshold = 1_000 },
+        new() { RuleId = "r5", Name = "Max Drawdown",             Type = "max_drawdown_pct",   Threshold = 10 },
+        new() { RuleId = "r6", Name = "Max Daily Trades",         Type = "max_daily_trades",   Threshold = 20 },
+        new() { RuleId = "r7", Name = "Min Cash Reserve",         Type = "min_cash_reserve",   Threshold = 500 },
+        new() { RuleId = "r8", Name = "Max Position Count",       Type = "max_position_count", Threshold = 10 },
     };
 }
