@@ -262,6 +262,280 @@
         }
       },
       "generated": false
+    },
+    {
+      "type": "MegaHeader",
+      "description": "Institutional header with logo, utility links, primary navigation, and optional search affordance.",
+      "supported_roles": ["navigation", "header", "mega_nav"],
+      "props_schema": {
+        "required": ["title", "utility_links", "primary_links", "search_enabled"],
+        "properties": {
+          "title": { "type": "string" },
+          "logo_url": { "type": "string" },
+          "logo_alt": { "type": "string" },
+          "utility_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          },
+          "primary_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          },
+          "search_enabled": { "type": "boolean" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "HeroCarousel",
+      "description": "Reusable large visual carousel for institutional home pages.",
+      "supported_roles": ["hero", "carousel"],
+      "props_schema": {
+        "required": ["title", "body", "slides"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "slides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "media_url", "media_alt", "url", "source_url", "scope"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "HeroBanner",
+      "description": "Reusable single-image or text-led hero band.",
+      "supported_roles": ["hero", "banner"],
+      "props_schema": {
+        "required": ["title", "body", "media_url", "media_alt"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "media_url": { "type": "string" },
+          "media_alt": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "QuickLinkRibbon",
+      "description": "Reusable compact link ribbon for common institutional actions.",
+      "supported_roles": ["quick_links", "links", "navigation"],
+      "props_schema": {
+        "required": ["title", "links"],
+        "properties": {
+          "title": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "NewsCardCarousel",
+      "description": "Reusable horizontal news card carousel.",
+      "supported_roles": ["news", "carousel", "cards"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "NewsGrid",
+      "description": "Reusable grid of news or announcement cards.",
+      "supported_roles": ["news", "grid", "cards"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "MediaFeatureGrid",
+      "description": "Reusable media-rich feature grid composed from library card atoms.",
+      "supported_roles": ["media", "features", "gallery"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "InstitutionFooter",
+      "description": "Reusable institutional footer with contact text and curated links.",
+      "supported_roles": ["footer", "contact"],
+      "props_schema": {
+        "required": ["source_url", "contact_text", "links"],
+        "properties": {
+          "source_url": { "type": "string" },
+          "logo_url": { "type": "string" },
+          "logo_alt": { "type": "string" },
+          "contact_text": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ArticleList",
+      "description": "Reusable article or listing index.",
+      "supported_roles": ["listing", "article_list", "news"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ContentArticle",
+      "description": "Reusable article body with optional media.",
+      "supported_roles": ["article", "content"],
+      "props_schema": {
+        "required": ["title", "body", "media"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "media": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["url", "alt"],
+              "properties": {
+                "url": { "type": "string" },
+                "alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
     }
   ]
 }

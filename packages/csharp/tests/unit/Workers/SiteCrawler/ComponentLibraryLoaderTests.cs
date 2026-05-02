@@ -25,6 +25,19 @@ public class ComponentLibraryLoaderTests : IDisposable
 
         manifest.LibraryId.Should().Be("bricks4agent.default");
         manifest.Components.Should().Contain(component => component.Type == "PageShell");
+        manifest.Components.Select(component => component.Type).Should().Contain([
+            "MegaHeader",
+            "HeroCarousel",
+            "HeroBanner",
+            "QuickLinkRibbon",
+            "NewsCardCarousel",
+            "NewsGrid",
+            "MediaFeatureGrid",
+            "InstitutionFooter",
+            "ArticleList",
+            "ContentArticle",
+        ]);
+        manifest.Components.Should().NotContain(component => component.Generated);
         manifest.Components.Should().OnlyContain(component => component.PropsSchema.Properties.Count > 0);
     }
 

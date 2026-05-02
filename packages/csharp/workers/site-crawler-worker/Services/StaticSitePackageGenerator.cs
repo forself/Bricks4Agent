@@ -170,7 +170,34 @@ public sealed class StaticSitePackageGenerator
             .utility-links { grid-area: utility; justify-content: flex-end; font-size: 13px; color: var(--muted); }
             .primary-links { grid-area: primary; justify-content: flex-end; font-weight: 700; }
             .nav-links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
+            .mega-header .search-chip { justify-self: end; align-self: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 13px; }
             main { max-width: 1180px; margin: 0 auto; padding: 0 20px 48px; }
+            .template-hero { display: grid; grid-template-columns: minmax(0, .86fr) minmax(320px, 1.14fr); gap: 28px; align-items: stretch; padding: 28px 0 34px; border-bottom: 1px solid var(--line); }
+            .template-hero-copy { align-self: center; display: grid; gap: 12px; }
+            .template-hero h1 { margin: 0; font-size: clamp(30px, 4.2vw, 56px); line-height: 1.08; letter-spacing: 0; }
+            .template-hero p { margin: 0; color: var(--muted); font-size: 17px; }
+            .template-hero-media { min-height: 320px; margin: 0; border-radius: 8px; overflow: hidden; background: var(--band); }
+            .template-hero-media img { width: 100%; height: 100%; min-height: 320px; object-fit: cover; display: block; }
+            .template-hero-slides { display: flex; gap: 12px; overflow-x: auto; padding-top: 12px; }
+            .template-hero-slide { min-width: min(240px, 72vw); border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
+            .template-hero-slide h3 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0; }
+            .quick-link-ribbon { padding: 18px 0; border-bottom: 1px solid var(--line); }
+            .quick-link-ribbon h2, .template-card-section h2, .content-article h1 { margin: 0 0 14px; font-size: 24px; letter-spacing: 0; }
+            .quick-link-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+            .quick-link-list a { min-height: 44px; display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 6px; background: var(--surface); font-weight: 700; }
+            .template-card-section { padding: 30px 0; border-bottom: 1px solid var(--line); display: grid; gap: 16px; }
+            .template-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+            .template-card-grid--carousel { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+            .template-card-grid--carousel .template-card { min-width: min(320px, 82vw); scroll-snap-align: start; }
+            .template-card { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); min-height: 100%; display: flex; flex-direction: column; }
+            .template-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--band); }
+            .template-card-body { padding: 14px; display: grid; gap: 7px; }
+            .template-card h3 { margin: 0; font-size: 18px; letter-spacing: 0; }
+            .template-card p { margin: 0; color: var(--muted); }
+            .content-article { padding: 32px 0; border-bottom: 1px solid var(--line); }
+            .content-article p { color: var(--muted); max-width: 850px; }
+            .content-article-media { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 18px; }
+            .content-article-media img { width: 100%; border-radius: 8px; object-fit: cover; background: var(--band); }
             .hero-section { padding: 72px 0 44px; border-bottom: 1px solid var(--line); }
             .hero-section h1 { max-width: 840px; margin: 0 0 16px; font-size: clamp(34px, 5vw, 64px); line-height: 1.05; letter-spacing: 0; }
             .hero-section p { max-width: 760px; margin: 0; color: var(--muted); font-size: 18px; }
@@ -210,12 +237,16 @@ public sealed class StaticSitePackageGenerator
             .form-note { color: var(--muted); font-size: 13px; }
             .site-footer { padding: 26px 20px; border-top: 1px solid var(--line); background: var(--band); color: var(--muted); font-size: 13px; }
             .site-footer-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 24px; align-items: start; }
+            .institution-footer { padding: 28px 20px; border-top: 1px solid var(--line); background: #eef3f8; color: var(--muted); font-size: 13px; }
+            .institution-footer .site-footer-inner { grid-template-columns: auto minmax(0, 1fr); }
             .footer-logo { max-width: 180px; max-height: 72px; object-fit: contain; }
             .footer-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
             .runtime-error { max-width: 760px; margin: 48px auto; padding: 18px; border: 1px solid #e5484d; color: #8f1d22; background: #fff7f7; }
             @media (max-width: 760px) {
               .site-header-inner { grid-template-columns: 1fr; grid-template-areas: "brand" "utility" "primary"; }
               .utility-links, .primary-links { justify-content: flex-start; }
+              .template-hero { grid-template-columns: 1fr; }
+              .template-hero-media, .template-hero-media img { min-height: 220px; }
               .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
               .atomic-section--hero .image-block { order: 0; }
             }
@@ -284,11 +315,21 @@ public sealed class StaticSitePackageGenerator
         const componentRenderers = {
           PageShell: renderPageShell,
           SiteHeader: renderSiteHeader,
+          MegaHeader: renderMegaHeader,
           HeroSection: renderHeroSection,
+          HeroCarousel: renderHeroCarousel,
+          HeroBanner: renderHeroBanner,
           ContentSection: renderContentSection,
           LinkList: renderLinkList,
           FormBlock: renderFormBlock,
           SiteFooter: renderSiteFooter,
+          InstitutionFooter: renderInstitutionFooter,
+          QuickLinkRibbon: renderQuickLinkRibbon,
+          NewsCardCarousel: renderNewsCardCarousel,
+          NewsGrid: renderNewsGrid,
+          MediaFeatureGrid: renderMediaFeatureGrid,
+          ArticleList: renderArticleList,
+          ContentArticle: renderContentArticle,
           AtomicSection: renderAtomicSection,
           TextBlock: renderTextBlock,
           ImageBlock: renderImageBlock,
@@ -386,13 +427,18 @@ public sealed class StaticSitePackageGenerator
           const main = element('main');
           for (const child of node.children || []) {
             const rendered = renderNode(child, knownTypes, manifest);
-            if (child.type === 'SiteHeader' || child.type === 'SiteFooter') {
+            if (child.type === 'SiteHeader' || child.type === 'MegaHeader' || child.type === 'SiteFooter' || child.type === 'InstitutionFooter') {
               shell.appendChild(rendered);
             } else {
               main.appendChild(rendered);
             }
           }
-          shell.insertBefore(main, shell.querySelector('.site-footer'));
+          const footer = shell.querySelector('.site-footer, .institution-footer');
+          if (footer) {
+            shell.insertBefore(main, footer);
+          } else {
+            shell.appendChild(main);
+          }
           return shell;
         }
 
@@ -422,6 +468,34 @@ public sealed class StaticSitePackageGenerator
           return header;
         }
 
+        function renderMegaHeader(node) {
+          const header = element('header', 'site-header mega-header');
+          const inner = element('div', 'site-header-inner');
+          const brand = element('a', 'brand', node.props?.title || 'Generated Site');
+          brand.href = './';
+          brand.setAttribute('data-local-route', '/');
+          brand.addEventListener('click', event => {
+            event.preventDefault();
+            navigateToRoute('/');
+          });
+          if (node.props?.logo_url) {
+            brand.textContent = '';
+            const logo = document.createElement('img');
+            logo.className = 'brand-logo';
+            logo.src = node.props.logo_url;
+            logo.alt = node.props.logo_alt || node.props?.title || 'Site logo';
+            brand.appendChild(logo);
+          }
+          const utility = renderLinkSet(node.props?.utility_links || [], 'nav', 'nav-links utility-links');
+          const primary = renderLinkSet(node.props?.primary_links || [], 'nav', 'nav-links primary-links');
+          inner.append(brand, utility, primary);
+          if (node.props?.search_enabled) {
+            primary.appendChild(element('span', 'search-chip', 'Search'));
+          }
+          header.appendChild(inner);
+          return header;
+        }
+
         function renderHeroSection(node) {
           const section = element('section', 'hero-section');
           section.append(element('h1', '', node.props?.title || ''));
@@ -429,11 +503,140 @@ public sealed class StaticSitePackageGenerator
           return section;
         }
 
+        function renderHeroCarousel(node) {
+          const slides = node.props?.slides || [];
+          const primary = slides[0] || {};
+          const section = element('section', 'template-hero template-hero--carousel');
+          const copy = element('div', 'template-hero-copy');
+          copy.append(element('h1', '', node.props?.title || primary.title || ''));
+          if (node.props?.body || primary.body) copy.append(element('p', '', node.props?.body || primary.body));
+          if (slides.length > 1) {
+            const strip = element('div', 'template-hero-slides');
+            for (const slide of slides.slice(0, 8)) {
+              const card = element('article', 'template-hero-slide');
+              card.append(element('h3', '', slide.title || ''));
+              if (slide.url) {
+                const anchor = element('a', '', 'Open');
+                configureLink(anchor, slide);
+                card.append(anchor);
+              }
+              strip.appendChild(card);
+            }
+            copy.appendChild(strip);
+          }
+          section.appendChild(copy);
+          section.appendChild(renderHeroMedia(primary.media_url, primary.media_alt || primary.title || ''));
+          return section;
+        }
+
+        function renderHeroBanner(node) {
+          const section = element('section', 'template-hero template-hero--banner');
+          const copy = element('div', 'template-hero-copy');
+          copy.append(element('h1', '', node.props?.title || ''));
+          if (node.props?.body) copy.append(element('p', '', node.props.body));
+          section.appendChild(copy);
+          section.appendChild(renderHeroMedia(node.props?.media_url || '', node.props?.media_alt || ''));
+          return section;
+        }
+
+        function renderHeroMedia(url, alt) {
+          const figure = element('figure', 'template-hero-media');
+          if (url) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = alt || '';
+            img.loading = 'lazy';
+            figure.appendChild(img);
+          }
+          return figure;
+        }
+
         function renderContentSection(node) {
           const section = element('section', 'content-section');
           section.append(element('h2', '', node.props?.title || 'Section'));
           if (node.props?.body) section.append(element('p', '', node.props.body));
           return section;
+        }
+
+        function renderQuickLinkRibbon(node) {
+          const section = element('section', 'quick-link-ribbon');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const links = element('div', 'quick-link-list');
+          for (const link of node.props?.links || []) {
+            const anchor = element('a', '', link.label || link.url);
+            configureLink(anchor, link);
+            links.appendChild(anchor);
+          }
+          section.appendChild(links);
+          return section;
+        }
+
+        function renderNewsCardCarousel(node) {
+          return renderTemplateCardSection(node, 'news-card-carousel', 'carousel');
+        }
+
+        function renderNewsGrid(node) {
+          return renderTemplateCardSection(node, 'news-grid', 'grid');
+        }
+
+        function renderMediaFeatureGrid(node) {
+          return renderTemplateCardSection(node, 'media-feature-grid', 'grid');
+        }
+
+        function renderArticleList(node) {
+          return renderTemplateCardSection(node, 'article-list', 'list');
+        }
+
+        function renderTemplateCardSection(node, className, layout) {
+          const section = element('section', `template-card-section ${className}`);
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const gridClass = layout === 'carousel'
+            ? 'template-card-grid template-card-grid--carousel'
+            : 'template-card-grid template-card-grid--grid';
+          const grid = element('div', gridClass);
+          for (const item of node.props?.items || []) {
+            grid.appendChild(renderTemplateCard(item));
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderTemplateCard(item) {
+          const card = element('article', 'template-card');
+          if (item.media_url) {
+            const img = document.createElement('img');
+            img.src = item.media_url;
+            img.alt = item.media_alt || '';
+            img.loading = 'lazy';
+            card.appendChild(img);
+          }
+          const body = element('div', 'template-card-body');
+          body.append(element('h3', '', item.title || ''));
+          if (item.body) body.append(element('p', '', item.body));
+          if (item.url) {
+            const anchor = element('a', '', 'Open');
+            configureLink(anchor, item);
+            body.appendChild(anchor);
+          }
+          card.appendChild(body);
+          return card;
+        }
+
+        function renderContentArticle(node) {
+          const article = element('article', 'content-article');
+          article.append(element('h1', '', node.props?.title || ''));
+          if (node.props?.body) article.append(element('p', '', node.props.body));
+          const media = element('div', 'content-article-media');
+          for (const item of node.props?.media || []) {
+            if (!item.url) continue;
+            const img = document.createElement('img');
+            img.src = item.url;
+            img.alt = item.alt || '';
+            img.loading = 'lazy';
+            media.appendChild(img);
+          }
+          if (media.children.length) article.appendChild(media);
+          return article;
         }
 
         function renderAtomicSection(node, knownTypes, manifest) {
@@ -568,6 +771,30 @@ public sealed class StaticSitePackageGenerator
             const source = element('a', '', node.props.source_url);
             source.href = node.props.source_url;
             content.append(source);
+          }
+          inner.appendChild(content);
+          footer.appendChild(inner);
+          return footer;
+        }
+
+        function renderInstitutionFooter(node) {
+          const footer = element('footer', 'institution-footer');
+          const inner = element('div', 'site-footer-inner');
+          if (node.props?.logo_url) {
+            const logo = document.createElement('img');
+            logo.className = 'footer-logo';
+            logo.src = node.props.logo_url;
+            logo.alt = node.props.logo_alt || 'Footer logo';
+            inner.appendChild(logo);
+          }
+          const content = element('div', 'footer-content');
+          if (node.props?.contact_text) content.append(element('div', '', node.props.contact_text));
+          const footerLinks = renderLinkSet(node.props?.links || [], 'div', 'footer-links');
+          content.appendChild(footerLinks);
+          if (node.props?.source_url) {
+            const source = element('a', '', node.props.source_url);
+            source.href = node.props.source_url;
+            content.appendChild(source);
           }
           inner.appendChild(content);
           footer.appendChild(inner);

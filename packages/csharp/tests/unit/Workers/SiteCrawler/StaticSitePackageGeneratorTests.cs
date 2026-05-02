@@ -257,4 +257,126 @@ public class StaticSitePackageGeneratorTests : IDisposable
         styles.Should().Contain("min-height: 260px");
         styles.Should().Contain("object-fit: cover");
     }
+
+    [Fact]
+    public void Generate_WritesRuntimeRenderersForTemplateComponents()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    SourceUrl = "https://example.com/",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "header",
+                                Type = "MegaHeader",
+                                Props =
+                                {
+                                    ["title"] = "Example",
+                                    ["logo_url"] = "",
+                                    ["logo_alt"] = "",
+                                    ["utility_links"] = new List<Dictionary<string, string>>(),
+                                    ["primary_links"] = new List<Dictionary<string, string>>(),
+                                    ["search_enabled"] = true,
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "hero",
+                                Type = "HeroCarousel",
+                                Props =
+                                {
+                                    ["title"] = "Campus",
+                                    ["body"] = "Welcome.",
+                                    ["slides"] = new List<Dictionary<string, string>>
+                                    {
+                                        new()
+                                        {
+                                            ["title"] = "Slide",
+                                            ["body"] = "Slide body",
+                                            ["media_url"] = "https://example.com/hero.jpg",
+                                            ["media_alt"] = "Hero",
+                                            ["url"] = "/about",
+                                            ["source_url"] = "https://example.com/about",
+                                            ["scope"] = "internal",
+                                        },
+                                    },
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "quick",
+                                Type = "QuickLinkRibbon",
+                                Props =
+                                {
+                                    ["title"] = "Quick Links",
+                                    ["links"] = new List<Dictionary<string, string>>(),
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "news",
+                                Type = "NewsCardCarousel",
+                                Props =
+                                {
+                                    ["title"] = "News",
+                                    ["items"] = new List<Dictionary<string, string>>(),
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "footer",
+                                Type = "InstitutionFooter",
+                                Props =
+                                {
+                                    ["source_url"] = "https://example.com/",
+                                    ["logo_url"] = "",
+                                    ["logo_alt"] = "",
+                                    ["contact_text"] = "Address",
+                                    ["links"] = new List<Dictionary<string, string>>(),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "template-components-site",
+        });
+
+        var runtime = File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js"));
+        runtime.Should().Contain("renderMegaHeader");
+        runtime.Should().Contain("renderHeroCarousel");
+        runtime.Should().Contain("renderQuickLinkRibbon");
+        runtime.Should().Contain("renderNewsCardCarousel");
+        runtime.Should().Contain("renderInstitutionFooter");
+
+        var styles = File.ReadAllText(Path.Combine(result.OutputDirectory, "styles.css"));
+        styles.Should().Contain(".template-hero");
+        styles.Should().Contain(".quick-link-ribbon");
+        styles.Should().Contain(".institution-footer");
+    }
 }
