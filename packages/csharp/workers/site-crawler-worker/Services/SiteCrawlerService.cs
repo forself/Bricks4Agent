@@ -102,9 +102,42 @@ public sealed class SiteCrawlerService
                 continue;
             }
 
-            var fetch = await pageFetcher.FetchAsync(current.Uri, ct);
+            var remainingBytes = maxTotalBytes - totalBytes;
+            if (remainingBytes <= 0)
+            {
+                result.Limits.ByteLimitHit = true;
+                result.Limits.Truncated = true;
+                break;
+            }
+
+            PageFetchResult fetch;
+            try
+            {
+                using var fetchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                fetchCts.CancelAfter(GetRemainingWallClock(stopwatch, budgets.WallClockTimeoutSeconds));
+                fetch = await pageFetcher.FetchAsync(current.Uri, remainingBytes, fetchCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                result.Limits.Truncated = true;
+                break;
+            }
+
+            if (IsWallClockBudgetExpired(stopwatch, budgets.WallClockTimeoutSeconds))
+            {
+                result.Limits.Truncated = true;
+                break;
+            }
+
             if (!fetch.IsSuccess)
             {
+                if (fetch.FailureReason == "response_too_large")
+                {
+                    result.Limits.ByteLimitHit = true;
+                    result.Limits.Truncated = true;
+                    break;
+                }
+
                 if (fetch.RedirectUri is not null)
                 {
                     EnqueueCandidate(fetch.RedirectUri, scope, result, excluded, seen, queue);
@@ -184,6 +217,12 @@ public sealed class SiteCrawlerService
     {
         return wallClockTimeoutSeconds <= 0 ||
             stopwatch.Elapsed >= TimeSpan.FromSeconds(wallClockTimeoutSeconds);
+    }
+
+    private static TimeSpan GetRemainingWallClock(Stopwatch stopwatch, int wallClockTimeoutSeconds)
+    {
+        var remaining = TimeSpan.FromSeconds(wallClockTimeoutSeconds) - stopwatch.Elapsed;
+        return remaining <= TimeSpan.Zero ? TimeSpan.FromTicks(1) : remaining;
     }
 
     private static void EnqueueCandidate(

@@ -1,11 +1,17 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace SiteCrawlerWorker.Services;
 
 public interface IPageFetcher
 {
     Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct);
+
+    Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+    {
+        return FetchAsync(uri, ct);
+    }
 }
 
 public interface IHostAddressResolver
@@ -121,6 +127,11 @@ public sealed class HttpPageFetcher : IPageFetcher
 
     public async Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
     {
+        return await FetchAsync(uri, long.MaxValue, ct);
+    }
+
+    public async Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+    {
         ArgumentNullException.ThrowIfNull(uri);
 
         var resolvedAddressFailure = await ValidateResolvedAddressesAsync(uri, ct);
@@ -130,7 +141,23 @@ public sealed class HttpPageFetcher : IPageFetcher
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        HttpResponseMessage responseMessage;
+        try
+        {
+            responseMessage = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (InvalidOperationException exception) when (IsFetchSafetyFailure(exception.Message))
+        {
+            return PageFetchResult.Fail(uri, 0, exception.Message);
+        }
+        catch (HttpRequestException exception)
+            when (exception.InnerException is InvalidOperationException inner &&
+                IsFetchSafetyFailure(inner.Message))
+        {
+            return PageFetchResult.Fail(uri, 0, inner.Message);
+        }
+
+        using var response = responseMessage;
         var finalUri = response.RequestMessage?.RequestUri ?? uri;
         var statusCode = (int)response.StatusCode;
         var contentType = response.Content?.Headers.ContentType?.ToString() ?? string.Empty;
@@ -151,7 +178,12 @@ public sealed class HttpPageFetcher : IPageFetcher
             return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, "non_html_content_type");
         }
 
-        var html = response.Content is null ? string.Empty : await response.Content.ReadAsStringAsync(ct);
+        var html = await ReadHtmlWithinLimitAsync(response.Content, maxBytes, ct);
+        if (html is null)
+        {
+            return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, "response_too_large");
+        }
+
         return new PageFetchResult(
             true,
             uri,
@@ -164,17 +196,50 @@ public sealed class HttpPageFetcher : IPageFetcher
 
     private async Task<string?> ValidateResolvedAddressesAsync(Uri uri, CancellationToken ct)
     {
+        try
+        {
+            await ResolveAllowedEndpointAsync(
+                new DnsEndPoint(uri.IdnHost, uri.Port),
+                hostAddressResolver,
+                ct);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return exception.Message;
+        }
+
+        return null;
+    }
+
+    public static async Task<IPEndPoint> ResolveAllowedEndpointAsync(
+        DnsEndPoint dnsEndPoint,
+        IHostAddressResolver resolver,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(dnsEndPoint);
+        ArgumentNullException.ThrowIfNull(resolver);
+
         IReadOnlyList<IPAddress> addresses;
         try
         {
-            addresses = await hostAddressResolver.GetHostAddressesAsync(uri.IdnHost, ct);
+            addresses = await resolver.GetHostAddressesAsync(dnsEndPoint.Host, ct);
         }
-        catch (SocketException)
+        catch (SocketException exception)
         {
-            return "dns_resolution_failed";
+            throw new InvalidOperationException("dns_resolution_failed", exception);
         }
 
-        return addresses.Any(SafeUrlPolicy.IsBlockedIpAddress) ? "blocked_resolved_ip" : null;
+        if (addresses.Count == 0)
+        {
+            throw new InvalidOperationException("dns_resolution_failed");
+        }
+
+        if (addresses.Any(SafeUrlPolicy.IsBlockedIpAddress))
+        {
+            throw new InvalidOperationException("blocked_resolved_ip");
+        }
+
+        return new IPEndPoint(addresses[0], dnsEndPoint.Port);
     }
 
     private static bool IsRedirect(int statusCode)
@@ -187,12 +252,82 @@ public sealed class HttpPageFetcher : IPageFetcher
         return location.IsAbsoluteUri ? location : new Uri(baseUri, location);
     }
 
+    private static bool IsFetchSafetyFailure(string reason)
+    {
+        return reason is "blocked_resolved_ip" or "dns_resolution_failed";
+    }
+
     private static HttpClient CreateNonRedirectingHttpClient()
     {
-        return new HttpClient(new HttpClientHandler
+        return new HttpClient(CreateSafeSocketsHandler(SystemHostAddressResolver.Instance));
+    }
+
+    private static SocketsHttpHandler CreateSafeSocketsHandler(IHostAddressResolver resolver)
+    {
+        return new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
-        });
+            ConnectCallback = async (context, ct) =>
+            {
+                var endpoint = await ResolveAllowedEndpointAsync(context.DnsEndPoint, resolver, ct);
+                var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                try
+                {
+                    await socket.ConnectAsync(endpoint, ct);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            },
+        };
+    }
+
+    private static async Task<string?> ReadHtmlWithinLimitAsync(
+        HttpContent? content,
+        long maxBytes,
+        CancellationToken ct)
+    {
+        if (content is null)
+        {
+            return string.Empty;
+        }
+
+        if (maxBytes < 0)
+        {
+            return null;
+        }
+
+        if (content.Headers.ContentLength is long contentLength && contentLength > maxBytes)
+        {
+            return null;
+        }
+
+        await using var stream = await content.ReadAsStreamAsync(ct);
+        using var buffer = new MemoryStream();
+        var readBuffer = new byte[8192];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var bytesRead = await stream.ReadAsync(readBuffer, ct);
+            if (bytesRead == 0)
+            {
+                break;
+            }
+
+            if (totalBytes > maxBytes - bytesRead)
+            {
+                return null;
+            }
+
+            buffer.Write(readBuffer, 0, bytesRead);
+            totalBytes += bytesRead;
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     private sealed class SystemHostAddressResolver : IHostAddressResolver

@@ -154,6 +154,60 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public async Task CrawlAsync_WhenFetcherReportsResponseTooLarge_SetsByteLimitAndStops()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/docs/"] = PageFetchResult.Fail(
+                new Uri("https://example.com/docs/"),
+                200,
+                "response_too_large"),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/docs/",
+            Scope = new SiteCrawlScope { MaxDepth = 0 },
+            Budgets = new SiteCrawlBudgets
+            {
+                MaxPages = 10,
+                MaxTotalBytes = 64,
+                WallClockTimeoutSeconds = 180,
+            },
+        }, CancellationToken.None);
+
+        fetcher.RequestedUrls.Should().ContainSingle().Which.Should().Be("https://example.com/docs/");
+        fetcher.RequestedMaxBytes.Should().ContainSingle().Which.Should().Be(64);
+        result.Limits.ByteLimitHit.Should().BeTrue();
+        result.Limits.Truncated.Should().BeTrue();
+        result.Pages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WhenFetchExceedsWallClockBudget_TruncatesWithoutAddingPage()
+    {
+        var fetcher = new DelayingPageFetcher(TimeSpan.FromSeconds(5));
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/docs/",
+            Scope = new SiteCrawlScope { MaxDepth = 0 },
+            Budgets = new SiteCrawlBudgets
+            {
+                MaxPages = 10,
+                MaxTotalBytes = 1024,
+                WallClockTimeoutSeconds = 1,
+            },
+        }, CancellationToken.None);
+
+        fetcher.RequestedUrls.Should().ContainSingle().Which.Should().Be("https://example.com/docs/");
+        result.Limits.Truncated.Should().BeTrue();
+        result.Pages.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CrawlAsync_WhenWallClockBudgetIsZero_TruncatesBeforeFetching()
     {
         var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
@@ -206,6 +260,58 @@ public class SiteCrawlerServiceTests
         var fetcher = new HttpPageFetcher();
 
         fetcher.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenResponseExceedsMaxBytes_ReturnsTooLargeWithoutFullBody()
+    {
+        var largeHtml = $"<html><body>{new string('x', 256)}</body></html>";
+        var handler = new FakeHttpMessageHandler((request, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = request,
+            Content = new StringContent(largeHtml, System.Text.Encoding.UTF8, "text/html"),
+        });
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")));
+
+        var result = await fetcher.FetchAsync(new Uri("https://example.com/docs/"), 32, CancellationToken.None);
+
+        handler.Requests.Should().ContainSingle();
+        result.IsSuccess.Should().BeFalse();
+        result.FailureReason.Should().Be("response_too_large");
+        result.Html.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("169.254.169.254")]
+    public async Task ResolveAllowedEndpointAsync_WhenResolvedAddressIsBlocked_FailsConnectTimeValidation(
+        string resolvedAddress)
+    {
+        var resolver = new FakeHostAddressResolver(IPAddress.Parse(resolvedAddress));
+        var endPoint = new DnsEndPoint("public.example", 443);
+
+        var act = async () => await HttpPageFetcher.ResolveAllowedEndpointAsync(endPoint, resolver, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*blocked_resolved_ip*");
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenConnectTimeValidationRejectsAddress_ReturnsFailure()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            throw new InvalidOperationException("blocked_resolved_ip"));
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")));
+
+        var result = await fetcher.FetchAsync(new Uri("https://public.example/docs/"), 1024, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.FailureReason.Should().Be("blocked_resolved_ip");
+        result.Html.Should().BeEmpty();
     }
 
     [Fact]
@@ -283,12 +389,48 @@ public class SiteCrawlerServiceTests
 
         public List<string> RequestedUrls { get; } = new();
 
+        public List<long> RequestedMaxBytes { get; } = new();
+
         public Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
         {
+            return FetchAsync(uri, long.MaxValue, ct);
+        }
+
+        public Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+        {
             RequestedUrls.Add(uri.ToString());
+            RequestedMaxBytes.Add(maxBytes);
             return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
                 ? result
                 : PageFetchResult.Fail(uri, 404, "not_found"));
+        }
+    }
+
+    private sealed class DelayingPageFetcher : IPageFetcher
+    {
+        private readonly TimeSpan delay;
+
+        public DelayingPageFetcher(TimeSpan delay)
+        {
+            this.delay = delay;
+        }
+
+        public List<string> RequestedUrls { get; } = new();
+
+        public Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
+        {
+            return FetchAsync(uri, long.MaxValue, ct);
+        }
+
+        public async Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+        {
+            RequestedUrls.Add(uri.ToString());
+            await Task.Delay(delay, ct);
+            return PageFetchResult.Ok(
+                uri,
+                200,
+                "text/html",
+                "<html><head><title>Late</title></head><body><section><h1>Late</h1></section></body></html>");
         }
     }
 
