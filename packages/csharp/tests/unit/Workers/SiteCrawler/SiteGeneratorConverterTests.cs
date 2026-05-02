@@ -51,7 +51,7 @@ public class SiteGeneratorConverterTests
     }
 
     [Fact]
-    public void Convert_RewritesCrawledSameOriginLinksToGeneratedRoutes()
+    public void Convert_DoesNotRenderRawCrawlLinksAsVisualNavigation()
     {
         var crawl = BuildCrawlResult();
         crawl.Pages.Add(new SiteCrawlPage
@@ -69,16 +69,14 @@ public class SiteGeneratorConverterTests
 
         var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
         var links = header.Props["links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
-        links.Should().Contain(link =>
-            link["label"] == "about" &&
-            link["url"] == "/about" &&
-            link["source_url"] == "https://example.com/about" &&
-            link["scope"] == "internal");
-        links.Should().Contain(link =>
-            link["label"] == "contact" &&
-            link["url"] == "/contact" &&
-            link["source_url"] == "https://example.com/contact" &&
-            link["scope"] == "internal");
+        links.Should().BeEmpty();
+
+        document.Routes[0].Root.Children.Should().NotContain(node => node.Type == "LinkList");
+        Flatten(document.Routes[0].Root)
+            .Any(node => node.Props.TryGetValue("links", out var value) &&
+                value is List<Dictionary<string, string>> linksValue &&
+                linksValue.Count > 0)
+            .Should().BeFalse();
     }
 
     [Fact]

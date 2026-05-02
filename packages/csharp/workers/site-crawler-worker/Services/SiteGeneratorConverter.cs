@@ -72,27 +72,13 @@ public sealed class SiteGeneratorConverter
             Props =
             {
                 ["title"] = document.Site.Title,
-                ["links"] = BuildLinks(page.Links, crawl.Root.Origin, localRoutes, maxLinks: 12),
+                ["links"] = new List<Dictionary<string, string>>(),
             },
         });
 
         foreach (var section in extractedPage?.Sections ?? [])
         {
             root.Children.Add(BuildSectionNode(section, page, document, manifest, localRoutes, crawl.Root.Origin));
-        }
-
-        if (page.Links.Count > 0)
-        {
-            root.Children.Add(new ComponentNode
-            {
-                Id = BuildNodeId("links", page.FinalUrl),
-                Type = "LinkList",
-                Props =
-                {
-                    ["title"] = "Related links",
-                    ["links"] = BuildLinks(page.Links, crawl.Root.Origin, localRoutes, maxLinks: 24),
-                },
-            });
         }
 
         foreach (var form in page.Forms.Take(4))
