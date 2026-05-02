@@ -98,6 +98,20 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
             var page = await context.NewPageAsync();
             page.SetDefaultTimeout(options.DefaultTimeoutMs);
             page.SetDefaultNavigationTimeout(options.NavigationTimeoutMs);
+            if (options.BlockHeavyResources)
+            {
+                await page.RouteAsync("**/*", async route =>
+                {
+                    var resourceType = route.Request.ResourceType;
+                    if (resourceType is "image" or "media" or "font")
+                    {
+                        await route.AbortAsync();
+                        return;
+                    }
+
+                    await route.ContinueAsync();
+                });
+            }
 
             var response = await page.GotoAsync(uri.ToString(), new PageGotoOptions
             {
@@ -109,20 +123,28 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 return VisualPageRenderResult.Fail(uri, "visual_navigation_failed");
             }
 
-            try
+            if (options.PostNavigationSettleMs > 0)
             {
-                await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
+                await page.WaitForTimeoutAsync(options.PostNavigationSettleMs);
+            }
+
+            if (options.NetworkIdleTimeoutMs > 0)
+            {
+                try
                 {
-                    Timeout = options.NetworkIdleTimeoutMs,
-                });
-            }
-            catch (TimeoutException)
-            {
-                logger?.LogDebug("Network idle timeout while capturing {Url}; continuing with current render.", uri);
-            }
-            catch (PlaywrightException ex)
-            {
-                logger?.LogDebug(ex, "Network idle wait failed while capturing {Url}; continuing with current render.", uri);
+                    await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
+                    {
+                        Timeout = options.NetworkIdleTimeoutMs,
+                    });
+                }
+                catch (TimeoutException)
+                {
+                    logger?.LogDebug("Network idle timeout while capturing {Url}; continuing with current render.", uri);
+                }
+                catch (PlaywrightException ex)
+                {
+                    logger?.LogDebug(ex, "Network idle wait failed while capturing {Url}; continuing with current render.", uri);
+                }
             }
 
             var statusCode = response.Status;
@@ -420,9 +442,13 @@ public sealed class VisualPageRendererOptions
 
     public float NavigationTimeoutMs { get; set; } = 30000;
 
-    public float NetworkIdleTimeoutMs { get; set; } = 2500;
+    public float PostNavigationSettleMs { get; set; } = 150;
+
+    public float NetworkIdleTimeoutMs { get; set; } = 0;
 
     public string UserAgent { get; set; } = "Bricks4Agent-VisualRenderer/1.0";
+
+    public bool BlockHeavyResources { get; set; } = true;
 
     public int MaxRegions { get; set; } = 80;
 

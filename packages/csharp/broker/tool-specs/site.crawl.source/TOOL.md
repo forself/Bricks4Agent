@@ -33,7 +33,7 @@ The scope is link-depth based. URL path depth is not used as the website layer d
 
 The result is a `SiteCrawlResult` package containing `crawl_run_id`, `status`, `root`, `pages`, `excluded`, `extracted_model`, and `limits`.
 
-Pages include rendered visual snapshots when available: visible regions, layout boxes, text hierarchy, media, links, forms, and source selectors. Source-oriented fields such as `html`, `text_excerpt`, `links`, and `forms` remain auxiliary evidence.
+Pages include rendered visual snapshots for a bounded set of representative pages when available: visible regions, layout boxes, text hierarchy, media, links, forms, and source selectors. The crawl can still include more pages/routes than rendered snapshots; source-oriented fields such as `html`, `text_excerpt`, `links`, and `forms` remain auxiliary evidence.
 
 The output is rendered layout cue capture, but it is not full CSS/assets capture, full JavaScript behavior capture, authenticated flow capture, or an equivalent clone.
 

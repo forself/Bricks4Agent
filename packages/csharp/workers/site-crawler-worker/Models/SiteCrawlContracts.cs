@@ -43,6 +43,9 @@ public sealed class SiteCrawlCaptureOptions
     [JsonPropertyName("rendered_dom")]
     public bool RenderedDom { get; set; } = true;
 
+    [JsonPropertyName("rendered_dom_max_pages")]
+    public int RenderedDomMaxPages { get; set; } = 12;
+
     [JsonPropertyName("css")]
     public bool Css { get; set; } = true;
 

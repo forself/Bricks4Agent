@@ -195,6 +195,7 @@ public sealed class HighLevelSiteRebuildService
                 {
                     Html = false,
                     RenderedDom = true,
+                    RenderedDomMaxPages = 32,
                     Css = false,
                     Scripts = false,
                     Assets = false,
@@ -226,7 +227,8 @@ public sealed class HighLevelSiteRebuildService
                 Headless = true,
                 ViewportWidth = 1366,
                 ViewportHeight = 900,
-                NetworkIdleTimeoutMs = 1800,
+                PostNavigationSettleMs = 150,
+                NetworkIdleTimeoutMs = 0,
                 MaxRegions = 90,
                 MaxItemsPerRegion = 24,
             },

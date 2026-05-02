@@ -99,6 +99,7 @@ public sealed class SiteCrawlerService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var crawled = new HashSet<string>(StringComparer.Ordinal);
         var excluded = new HashSet<string>(StringComparer.Ordinal);
+        var visualCaptureCount = 0;
         long totalBytes = 0;
 
         pending.Add(new CrawlQueueItem(startValidation.Uri, 0));
@@ -208,11 +209,13 @@ public sealed class SiteCrawlerService
             var effectiveStatusCode = fetch.StatusCode;
             var effectiveHtml = fetch.Html;
             VisualPageSnapshot? visualSnapshot = null;
-            if (visualRenderer is not null && captureOptions.RenderedDom)
+            if (visualRenderer is not null &&
+                ShouldCaptureRenderedDom(captureOptions, visualCaptureCount))
             {
                 var visualResult = await visualRenderer.CaptureAsync(finalValidation.Uri, ct);
                 if (visualResult.Success)
                 {
+                    visualCaptureCount++;
                     var visualFinalUri = RemoveFragment(visualResult.FinalUri);
                     var visualValidation = SafeUrlPolicy.Validate(visualFinalUri.ToString());
                     if (visualValidation.IsAllowed && visualValidation.Uri is not null)
@@ -324,6 +327,17 @@ public sealed class SiteCrawlerService
         }
 
         return links;
+    }
+
+    private static bool ShouldCaptureRenderedDom(SiteCrawlCaptureOptions captureOptions, int visualCaptureCount)
+    {
+        if (!captureOptions.RenderedDom)
+        {
+            return false;
+        }
+
+        return captureOptions.RenderedDomMaxPages < 0 ||
+            visualCaptureCount < captureOptions.RenderedDomMaxPages;
     }
 
     private static bool IsRecoverableFetchException(Exception exception)

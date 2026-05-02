@@ -181,6 +181,6 @@
     "must_state_no_authenticated_access": true,
     "must_state_depth_was_confirmed": true,
     "must_state_reference_not_equivalent_clone": true,
-    "result_wording": "Return rendered visual/function cues for downstream generator reconstruction: visible regions, layout boxes, text hierarchy, links, forms, media hints, limited source/CSS-token hints, and route graph. Source HTML is auxiliary evidence, not the primary reconstruction input. The package is not an equivalent clone or a full JavaScript behavior capture."
+    "result_wording": "Return rendered visual/function cues for downstream generator reconstruction: visible regions, layout boxes, text hierarchy, links, forms, media hints, limited source/CSS-token hints, and route graph. Rendered visual snapshots may be bounded to representative pages while the crawl still preserves the full requested page/route set. Source HTML is auxiliary evidence, not the primary reconstruction input. The package is not an equivalent clone or a full JavaScript behavior capture."
   }
 }

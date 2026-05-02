@@ -303,6 +303,84 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public async Task CrawlAsync_WhenRenderedDomMaxPagesIsReached_ContinuesStaticCrawlWithoutMoreVisualCaptures()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Root</title></head><body><main>
+                  <a href="/one">One</a>
+                  <a href="/two">Two</a>
+                </main></body></html>
+                """),
+            ["https://example.com/one"] = PageFetchResult.Ok(
+                new Uri("https://example.com/one"),
+                200,
+                "text/html",
+                "<html><head><title>One</title></head><body><main><h1>One</h1></main></body></html>"),
+            ["https://example.com/two"] = PageFetchResult.Ok(
+                new Uri("https://example.com/two"),
+                200,
+                "text/html",
+                "<html><head><title>Two</title></head><body><main><h1>Two</h1></main></body></html>"),
+        });
+        var renderer = new FakeVisualPageRenderer(new Dictionary<string, VisualPageRenderResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = VisualPageRenderResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                """
+                <html><head><title>Rendered Root</title></head><body><main>
+                  <section><h1>Rendered Root</h1><a href="/one">One</a><a href="/two">Two</a></section>
+                </main></body></html>
+                """,
+                new VisualPageSnapshot
+                {
+                    Regions =
+                    [
+                        new VisualRegion
+                        {
+                            Role = "hero",
+                            Selector = "section",
+                            Headline = "Rendered Root",
+                            Text = "Rendered Root",
+                        },
+                    ],
+                }),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor(), renderer);
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            },
+            Capture = new SiteCrawlCaptureOptions
+            {
+                RenderedDom = true,
+                RenderedDomMaxPages = 1,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => page.FinalUrl).Should().Equal(
+            "https://example.com/",
+            "https://example.com/one",
+            "https://example.com/two");
+        renderer.RequestedUrls.Should().Equal("https://example.com/");
+        result.Pages.Count(page => page.VisualSnapshot is not null).Should().Be(1);
+    }
+
+    [Fact]
     public async Task CrawlAsync_WhenOnePageFetchThrowsRecoverableNetworkError_ExcludesPageAndContinues()
     {
         var fetcher = new ThrowingPageFetcher(
@@ -523,6 +601,16 @@ public class SiteCrawlerServiceTests
         var fetcher = new HttpPageFetcher();
 
         fetcher.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void VisualPageRendererOptions_DefaultsSkipNetworkIdleForFastRenderedCapture()
+    {
+        var options = new VisualPageRendererOptions();
+
+        options.NetworkIdleTimeoutMs.Should().Be(0);
+        options.PostNavigationSettleMs.Should().BeGreaterThan(0);
+        options.BlockHeavyResources.Should().BeTrue();
     }
 
     [Fact]
@@ -869,8 +957,11 @@ public class SiteCrawlerServiceTests
             this.pages = pages;
         }
 
+        public List<string> RequestedUrls { get; } = new();
+
         public Task<VisualPageRenderResult> CaptureAsync(Uri uri, CancellationToken ct)
         {
+            RequestedUrls.Add(uri.ToString());
             return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
                 ? result
                 : VisualPageRenderResult.Fail(uri, "not_rendered"));
