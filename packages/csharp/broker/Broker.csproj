@@ -27,6 +27,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Broker.Tests" />
     <InternalsVisibleTo Include="Integration.Tests" />
+    <InternalsVisibleTo Include="Unit.Tests" />
   </ItemGroup>
 
   <ItemGroup>

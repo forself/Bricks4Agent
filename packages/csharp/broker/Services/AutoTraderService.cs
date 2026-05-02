@@ -366,10 +366,8 @@ public class AutoTraderService : BackgroundService
         // 都會收到同一個 ID，trading-worker 端 + 交易所端各有一道 dedup（DB 查 + Alpaca/Binance
         // client_order_id unique 約束）。bucket = 5 分鐘正好對到預設 poll interval；
         // 跨 bucket 是新意圖、會用新 ID（不會被 dedup 擋）。
-        // 字元集：dot 換 _ 以符合 Binance newClientOrderId 限制 [a-zA-Z0-9-_]，36 char 內。
         var bucket5min = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 300;
-        var rawKey = $"auto-{exchange}-{symbol}-{action}-{item.Quantity:G}-{bucket5min}".Replace('.', '_');
-        var clientOrderId = rawKey.Length > 36 ? rawKey[..36] : rawKey;
+        var clientOrderId = BuildAutoOrderKey(exchange, symbol, action, item.Quantity, bucket5min);
 
         var orderPayload = JsonSerializer.Serialize(new
         {
@@ -395,6 +393,19 @@ public class AutoTraderService : BackgroundService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 算 deterministic client_order_id —— 拆出來方便單測 + 文檔化合約規則：
+    ///   - 同 (exchange, symbol, action, quantity, bucket) 永遠回同一個 key
+    ///   - bucket 不同 → key 不同（跨時間視窗的新意圖不會被 dedup）
+    ///   - dot 換 underscore（Binance newClientOrderId 限 [a-zA-Z0-9-_]）
+    ///   - 截到 36 char（Binance 上限）
+    /// </summary>
+    internal static string BuildAutoOrderKey(string exchange, string symbol, string action, decimal quantity, long bucket)
+    {
+        var rawKey = $"auto-{exchange}-{symbol}-{action}-{quantity:G}-{bucket}".Replace('.', '_');
+        return rawKey.Length > 36 ? rawKey[..36] : rawKey;
+    }
 
     private static ApprovedRequest BuildRequest(string capabilityId, string route, string payload = "{}")
         => new()
