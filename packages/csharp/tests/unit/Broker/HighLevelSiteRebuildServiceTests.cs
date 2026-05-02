@@ -11,6 +11,7 @@ namespace Unit.Tests.Broker;
 
 public sealed class HighLevelSiteRebuildServiceTests : IDisposable
 {
+    private const int FakeLinkedPageCount = 35;
     private readonly string tempRoot = Path.Combine(Path.GetTempPath(), $"b4a-site-rebuild-{Guid.NewGuid():N}");
 
     public void Dispose()
@@ -89,8 +90,8 @@ public sealed class HighLevelSiteRebuildServiceTests : IDisposable
         }, "task-site");
 
         result.Success.Should().BeTrue(result.Message);
-        result.PagesCrawled.Should().Be(3);
-        result.RoutesGenerated.Should().Be(3);
+        result.PagesCrawled.Should().Be(FakeLinkedPageCount + 1);
+        result.RoutesGenerated.Should().Be(FakeLinkedPageCount + 1);
         result.PackageFileName.Should().EndWith(".zip");
         File.Exists(result.PackageFilePath).Should().BeTrue();
         result.Delivery?.GoogleDrive?.Success.Should().BeTrue();
@@ -159,25 +160,32 @@ public sealed class HighLevelSiteRebuildServiceTests : IDisposable
         {
             var html = uri.AbsolutePath switch
             {
-                "/" => """
-                    <!doctype html><html><head><title>Example University</title></head>
-                    <body><header><a href="/about">About</a><a href="/news">News</a></header>
-                    <main><section><h1>Example University</h1><p>Welcome.</p></section></main></body></html>
-                    """,
-                "/about" => """
-                    <!doctype html><html><head><title>About</title></head>
-                    <body><main><section><h1>About</h1><p>About the university.</p></section></main></body></html>
-                    """,
-                "/news" => """
-                    <!doctype html><html><head><title>News</title></head>
-                    <body><main><section><h1>News</h1><p>Latest news.</p></section></main></body></html>
-                    """,
+                "/" => BuildRootHtml(),
                 _ => string.Empty,
             };
+            if (string.IsNullOrWhiteSpace(html) &&
+                uri.AbsolutePath.StartsWith("/page-", StringComparison.OrdinalIgnoreCase))
+            {
+                html = $"""
+                    <!doctype html><html><head><title>{uri.AbsolutePath.Trim('/')}</title></head>
+                    <body><main><section><h1>{uri.AbsolutePath.Trim('/')}</h1><p>Generated page.</p></section></main></body></html>
+                    """;
+            }
 
             return Task.FromResult(string.IsNullOrWhiteSpace(html)
                 ? PageFetchResult.Fail(uri, 404, "not_found")
                 : PageFetchResult.Ok(uri, 200, "text/html", html));
+        }
+
+        private static string BuildRootHtml()
+        {
+            var links = string.Concat(Enumerable.Range(1, FakeLinkedPageCount)
+                .Select(index => $"""<a href="/page-{index:00}">Page {index:00}</a>"""));
+            return $"""
+                <!doctype html><html><head><title>Example University</title></head>
+                <body><header>{links}</header>
+                <main><section><h1>Example University</h1><p>Welcome.</p></section></main></body></html>
+                """;
         }
     }
 

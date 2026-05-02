@@ -23,7 +23,7 @@ public sealed class HighLevelSiteRebuildResult
 public sealed class HighLevelSiteRebuildService
 {
     private const int DefaultMaxDepth = 1;
-    private const int DefaultMaxPages = 30;
+    private const int SiteRebuildMaxPages = int.MaxValue;
     private const int DefaultTimeoutSeconds = 120;
     private static readonly Regex UrlPattern = new(@"https?://[^\s#]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex DepthPattern = new(@"(?:深度|depth)\s*[:：]?\s*(\d+)|(\d+)\s*層", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -181,7 +181,7 @@ public sealed class HighLevelSiteRebuildService
             },
             Budgets = new SiteCrawlBudgets
             {
-                MaxPages = DefaultMaxPages,
+                MaxPages = SiteRebuildMaxPages,
                 MaxTotalBytes = 15 * 1024 * 1024,
                 MaxAssetBytes = 0,
                 WallClockTimeoutSeconds = DefaultTimeoutSeconds,
