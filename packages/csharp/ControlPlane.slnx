@@ -37,6 +37,9 @@
   <Folder Name="/tests/unit/">
     <Project Path="tests/unit/Unit.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/trading-worker-tests/">
+    <Project Path="tests/trading-worker-tests/TradingWorker.Tests.csproj" />
+  </Folder>
   <Folder Name="/worker-sdk/">
     <Project Path="worker-sdk/WorkerSdk.csproj" />
   </Folder>
