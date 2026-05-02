@@ -14,10 +14,11 @@ Safely crawls a public HTTP/HTTPS website within a confirmed path-depth scope an
 
 Before execution, the user must confirm the crawl depth as one of:
 
-- root/current path only: `max_depth = 0` (optional manual/safety mode)
 - first layer under the path: `max_depth = 1`
 - within two layers: `max_depth = 2`
 - N layers: `max_depth = N`
+
+Root/current path only, `max_depth = 0`, is supported only as an explicit manual/safety mode when requested.
 
 The scope is path-depth based. The default safety posture is same-origin only with path-prefix lock enabled.
 

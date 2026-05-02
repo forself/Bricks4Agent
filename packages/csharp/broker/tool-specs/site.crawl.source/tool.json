@@ -159,12 +159,14 @@
       "path_prefix_lock": true
     },
     "requires_user_depth_confirmation": true,
-    "depth_confirmation_options": ["first_layer", "within_two_layers", "n_layers"],
+    "depth_confirmation_options": ["first_layer_under_path", "within_two_layers", "n_layers"],
     "depth_confirmation_mapping": {
-      "root_current_path_only": 0,
       "first_layer_under_path": 1,
       "within_two_layers": 2,
       "n_layers": "N"
+    },
+    "additional_supported_depth_modes": {
+      "root_current_path_only": 0
     },
     "reference_package_only": true,
     "rendered_behavior_capture": false,
