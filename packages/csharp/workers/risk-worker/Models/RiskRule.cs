@@ -12,6 +12,13 @@ public class RiskRule
     public string? Exchange   { get; set; }
     public decimal Threshold  { get; set; }
     public bool Enabled       { get; set; } = true;
+
+    /// <summary>
+    /// 規則特化參數（JSON）。對 threshold 不夠用的規則類型用——例如 time_window 需要
+    /// start_hm / end_hm 兩個欄位。null 表示這條規則不需要額外參數。
+    /// 各 rule type 自己定義 schema、解析失敗時規則 silently 跳過（不爆 broker）。
+    /// </summary>
+    public string? Params     { get; set; }
 }
 
 /// <summary>

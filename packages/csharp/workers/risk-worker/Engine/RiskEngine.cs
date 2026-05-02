@@ -15,6 +15,7 @@ namespace RiskWorker.Engine;
 /// - min_cash_reserve:    買入後須保留的現金底（避免梭哈耗光現金）
 /// - max_position_count:  最多同時持有幾個不同標的（避免過度分散 / 防呆）
 /// - cooldown_seconds:    同一 (exchange,symbol) 兩次成交之間的最短間隔，防 signal 抖動連續開單
+/// - time_window:         只允許在指定 UTC 時段下單（Params: {"start_hm":"HH:mm","end_hm":"HH:mm"}）
 /// </summary>
 public class RiskEngine
 {
@@ -58,6 +59,7 @@ public class RiskEngine
                 "min_cash_reserve"    => CheckMinCashReserve(rule, orderValue, side, portfolio),
                 "max_position_count"  => CheckMaxPositionCount(rule, symbol, side, portfolio),
                 "cooldown_seconds"    => CheckCooldown(rule, symbol, exchange, portfolio),
+                "time_window"         => CheckTimeWindow(rule),
                 _ => null
             };
 
@@ -208,6 +210,40 @@ public class RiskEngine
         };
     }
 
+    private RiskViolation? CheckTimeWindow(RiskRule rule)
+    {
+        if (string.IsNullOrWhiteSpace(rule.Params)) return null;
+
+        TimeOnly start, end;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(rule.Params);
+            var root = doc.RootElement;
+            var startStr = root.TryGetProperty("start_hm", out var s) ? s.GetString() : null;
+            var endStr   = root.TryGetProperty("end_hm",   out var e) ? e.GetString() : null;
+            if (!TimeOnly.TryParse(startStr, out start) || !TimeOnly.TryParse(endStr, out end))
+                return null;   // params 解析不出來就 silently 不擋（避免被打死）
+        }
+        catch
+        {
+            return null;
+        }
+
+        var nowUtc = TimeOnly.FromDateTime(DateTime.UtcNow);
+        // 跨午夜支援：start <= end 是同日視窗、start > end 是跨午夜（如 22:00-04:00）
+        var inWindow = start <= end ? (nowUtc >= start && nowUtc <= end) : (nowUtc >= start || nowUtc <= end);
+        if (inWindow) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Outside trading window {start:HH\\:mm}-{end:HH\\:mm} UTC (now {nowUtc:HH\\:mm})",
+            Current  = nowUtc.Hour * 100 + nowUtc.Minute,
+            Limit    = end.Hour * 100 + end.Minute,
+        };
+    }
+
     private RiskViolation? CheckCooldown(RiskRule rule, string symbol, string exchange, PortfolioSnapshot portfolio)
     {
         // cooldown 同時擋 buy 和 sell —— signal 抖動會兩個方向都觸發
@@ -286,5 +322,9 @@ public class RiskEngine
         new() { RuleId = "r7", Name = "Min Cash Reserve",         Type = "min_cash_reserve",   Threshold = 500 },
         new() { RuleId = "r8", Name = "Max Position Count",       Type = "max_position_count", Threshold = 10 },
         new() { RuleId = "r9", Name = "Symbol Cooldown",          Type = "cooldown_seconds",   Threshold = 60 },
+        // r10 預設 disabled —— 24/7 加密貨幣不需要、美股使用者再啟動並設 params:
+        // {"start_hm":"13:30","end_hm":"20:00"} 對應 NYSE 9:30-16:00 ET（DST 期間 UTC-4）
+        new() { RuleId = "r10", Name = "Trading Hours Window",    Type = "time_window",        Threshold = 0, Enabled = false,
+                Params = "{\"start_hm\":\"13:30\",\"end_hm\":\"20:00\"}" },
     };
 }

@@ -129,6 +129,7 @@ public class RiskCheckHandler : ICapabilityHandler
                 exchange  = r.Exchange,
                 threshold = r.Threshold,
                 enabled   = r.Enabled,
+                @params   = r.Params,
             })
         });
         return (true, json, null);
@@ -155,6 +156,10 @@ public class RiskCheckHandler : ICapabilityHandler
                 Exchange  = r.TryGetProperty("exchange",   out var ex) ? ex.GetString()       : null,
                 Threshold = r.TryGetProperty("threshold",  out var th) ? th.GetDecimal()      : 0,
                 Enabled   = r.TryGetProperty("enabled",    out var en) ? en.GetBoolean()      : true,
+                // params 可能是 string（JSON 字串）或 object（內嵌物件）—— 兩種都接
+                Params    = r.TryGetProperty("params",    out var pa)
+                              ? (pa.ValueKind == JsonValueKind.String ? pa.GetString() : pa.GetRawText())
+                              : null,
             });
         }
 

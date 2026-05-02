@@ -230,6 +230,85 @@ public class RiskEngineNewRulesTests
         sellResult.Passed.Should().BeFalse();
     }
 
+    // ── time_window ────────────────────────────────────────────────
+
+    [Fact]
+    public void TimeWindow_NoParams_PassesAsNoOp()
+    {
+        // Params=null 時 silently 不擋，避免設定缺資料就把所有單擋掉
+        var engine = new RiskEngine(new() { Rule("r1", "time_window", 0m, paramsJson: null) });
+        var portfolio = new PortfolioSnapshot();
+
+        engine.Check("AAPL", "alpaca", "buy", 1m, 100m, portfolio).Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TimeWindow_NowInsideWindow_Passes()
+    {
+        // 視窗 = 現在 ±30 分鐘 → 一定包含現在
+        var now = DateTime.UtcNow;
+        var startHm = now.AddMinutes(-30).ToString("HH:mm");
+        var endHm   = now.AddMinutes(30).ToString("HH:mm");
+        var rule = Rule("r1", "time_window", 0m, paramsJson: $"{{\"start_hm\":\"{startHm}\",\"end_hm\":\"{endHm}\"}}");
+
+        new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot())
+            .Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TimeWindow_NowOutsideWindow_Fails()
+    {
+        // 視窗 = 現在 +1h ~ +2h → 不包含現在
+        var now = DateTime.UtcNow;
+        var startHm = now.AddHours(1).ToString("HH:mm");
+        var endHm   = now.AddHours(2).ToString("HH:mm");
+        var rule = Rule("r1", "time_window", 0m, paramsJson: $"{{\"start_hm\":\"{startHm}\",\"end_hm\":\"{endHm}\"}}");
+
+        var r = new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot());
+
+        r.Passed.Should().BeFalse();
+        r.Violations.Should().ContainSingle(v => v.RuleId == "r1");
+    }
+
+    [Fact]
+    public void TimeWindow_CrossMidnightSyntax_StartGreaterThanEnd_ParsesWithoutCrash()
+    {
+        // 跨午夜語法：start=22:00 end=04:00 應該被解析為「22:00 → 隔天 04:00」分支
+        // 這個 test 鎖「不會 crash + 行為定義」：22:00→04:00 視窗下、now 是 12:00 不該在視窗內
+        // （exact pass/fail 取決於跑測時的 UTC.Now，所以這裡不斷言通過 / 失敗，只斷言 engine 不 throw）
+        var rule = Rule("r1", "time_window", 0m, paramsJson: "{\"start_hm\":\"22:00\",\"end_hm\":\"04:00\"}");
+        var act = () => new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot());
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void TimeWindow_FullDayWindow_AlwaysPasses()
+    {
+        // 00:00-23:59 視窗無論何時跑都該包含 now —— 確認 same-day 分支運作正常
+        var rule = Rule("r1", "time_window", 0m, paramsJson: "{\"start_hm\":\"00:00\",\"end_hm\":\"23:59\"}");
+        new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot())
+            .Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TimeWindow_MalformedParams_FailsSafe_DoesNotBlockTrades()
+    {
+        var rule = Rule("r1", "time_window", 0m, paramsJson: "this is not json");
+
+        // 解析失敗時 rule 該 silently 跳過，不該因為設定錯就把交易擋光
+        new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot())
+            .Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TimeWindow_MissingFieldsInParams_FailsSafe()
+    {
+        var rule = Rule("r1", "time_window", 0m, paramsJson: "{\"start_hm\":\"09:30\"}");   // 缺 end_hm
+
+        new RiskEngine(new() { rule }).Check("AAPL", "alpaca", "buy", 1m, 100m, new PortfolioSnapshot())
+            .Passed.Should().BeTrue();
+    }
+
     // ── DefaultRules 整合 ──────────────────────────────────────────
 
     [Fact]
@@ -240,13 +319,24 @@ public class RiskEngineNewRulesTests
         defaults.Select(r => r.Type).Should()
             .Contain("min_cash_reserve")
             .And.Contain("max_position_count")
-            .And.Contain("cooldown_seconds");
+            .And.Contain("cooldown_seconds")
+            .And.Contain("time_window");
+    }
+
+    [Fact]
+    public void DefaultRules_TimeWindowDisabledByDefault_AndHasParams()
+    {
+        // time_window 預設停用（24/7 crypto 用戶不會被擋），但 params 必須有預設值給 US market
+        var rule = RiskEngine.DefaultRules().Single(r => r.Type == "time_window");
+        rule.Enabled.Should().BeFalse();
+        rule.Params.Should().NotBeNullOrWhiteSpace();
+        rule.Params.Should().Contain("start_hm").And.Contain("end_hm");
     }
 
     // ── Helpers ──────────────────────────────────────────────────
 
-    private static RiskRule Rule(string id, string type, decimal threshold)
-        => new() { RuleId = id, Name = type, Type = type, Threshold = threshold, Enabled = true };
+    private static RiskRule Rule(string id, string type, decimal threshold, string? paramsJson = null)
+        => new() { RuleId = id, Name = type, Type = type, Threshold = threshold, Enabled = true, Params = paramsJson };
 
     private static PositionEntry Pos(string symbol, decimal qty)
         => new() { Symbol = symbol, Exchange = "alpaca", Quantity = qty, MarketValue = qty * 100m };
