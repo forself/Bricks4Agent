@@ -80,6 +80,8 @@ public class StaticSitePackageGeneratorTests : IDisposable
         runtime.Should().Contain("componentRenderers");
         runtime.Should().Contain("navigateToRoute");
         runtime.Should().Contain("data-local-route");
+        runtime.Should().Contain("renderAtomicSection");
+        runtime.Should().Contain("renderFeatureCard");
 
         var siteJson = JsonSerializer.Deserialize<GeneratorSiteDocument>(
             File.ReadAllText(Path.Combine(result.OutputDirectory, "site.json")),

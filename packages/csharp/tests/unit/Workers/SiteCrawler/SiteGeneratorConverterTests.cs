@@ -27,7 +27,7 @@ public class SiteGeneratorConverterTests
     }
 
     [Fact]
-    public void Convert_WhenSectionRoleHasNoBuiltInComponent_GeneratesLocalComponentDefinition()
+    public void Convert_WhenSectionRoleHasNoBuiltInComponent_UsesAtomicCompositionBeforeGeneratingComponents()
     {
         var crawl = BuildCrawlResult();
         crawl.ExtractedModel.Pages[0].Sections.Add(new ExtractedSection
@@ -42,11 +42,12 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        document.ComponentRequests.Should().ContainSingle(request => request.Role == "gallery");
-        document.ComponentLibrary.Components.Should()
-            .ContainSingle(component => component.Type == "GeneratedGallerySection" && component.Generated);
+        document.ComponentRequests.Should().BeEmpty();
+        document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
         Flatten(document.Routes[0].Root).Should()
-            .ContainSingle(node => node.Type == "GeneratedGallerySection");
+            .ContainSingle(node => node.Type == "AtomicSection" && (string)node.Props["variant"]! == "standard");
+        Flatten(document.Routes[0].Root).Should()
+            .Contain(node => node.Type == "TextBlock");
     }
 
     [Fact]
@@ -75,8 +76,130 @@ public class SiteGeneratorConverterTests
             link["scope"] == "internal");
         links.Should().Contain(link =>
             link["label"] == "contact" &&
-            link["url"] == "https://example.com/contact" &&
-            link["scope"] == "external");
+            link["url"] == "/contact" &&
+            link["source_url"] == "https://example.com/contact" &&
+            link["scope"] == "internal");
+    }
+
+    [Fact]
+    public void Convert_ComposesVisualSectionsFromReusableAtomicComponents()
+    {
+        var crawl = BuildCrawlResult();
+        var page = crawl.ExtractedModel.Pages[0];
+        page.Sections.Clear();
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "hero",
+            Role = "hero",
+            Headline = "Study at SHU",
+            Body = "Media and communication programs in Taipei.",
+            SourceSelector = "section.hero",
+            Media =
+            [
+                new ExtractedMedia { Url = "https://example.com/assets/hero.jpg", Alt = "Campus gate", Kind = "image" },
+            ],
+            Actions =
+            [
+                new ExtractedAction { Label = "Apply now", Url = "https://example.com/apply", Kind = "primary" },
+            ],
+        });
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "programs",
+            Role = "program_grid",
+            Headline = "Programs",
+            Body = "Choose a path.",
+            SourceSelector = "section.programs",
+            Items =
+            [
+                new ExtractedItem
+                {
+                    Title = "Journalism",
+                    Body = "Reporting and multimedia storytelling.",
+                    MediaUrl = "https://example.com/assets/journalism.jpg",
+                    Url = "https://example.com/programs/journalism",
+                },
+            ],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        document.ComponentRequests.Should().BeEmpty();
+        document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
+
+        var nodes = Flatten(document.Routes[0].Root).ToList();
+        nodes.Should().Contain(node => node.Type == "AtomicSection" && (string)node.Props["variant"]! == "hero");
+        nodes.Should().Contain(node => node.Type == "ImageBlock");
+        nodes.Should().Contain(node => node.Type == "TextBlock");
+        nodes.Should().Contain(node => node.Type == "ButtonLink");
+        nodes.Should().Contain(node => node.Type == "CardGrid");
+        nodes.Should().Contain(node => node.Type == "FeatureCard");
+        nodes.Should().NotContain(node => node.Type.StartsWith("Generated", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Convert_RewritesAtomicActionAndCardLinksToGeneratedRoutes()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/apply",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "Apply",
+            TextExcerpt = "Apply.",
+            Links = [],
+        });
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/programs/journalism",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "Journalism",
+            TextExcerpt = "Journalism.",
+            Links = [],
+        });
+        var page = crawl.ExtractedModel.Pages[0];
+        page.Sections.Clear();
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "hero",
+            Role = "hero",
+            Headline = "Study at SHU",
+            Body = "Media and communication programs in Taipei.",
+            SourceSelector = "section.hero",
+            Actions =
+            [
+                new ExtractedAction { Label = "Apply now", Url = "https://example.com/apply", Kind = "primary" },
+            ],
+        });
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "programs",
+            Role = "program_grid",
+            Headline = "Programs",
+            Body = "Choose a path.",
+            SourceSelector = "section.programs",
+            Items =
+            [
+                new ExtractedItem
+                {
+                    Title = "Journalism",
+                    Body = "Reporting and multimedia storytelling.",
+                    Url = "https://example.com/programs/journalism",
+                },
+            ],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        var button = Flatten(document.Routes[0].Root).Single(node => node.Type == "ButtonLink");
+        button.Props["url"].Should().Be("/apply");
+
+        var card = Flatten(document.Routes[0].Root).Single(node => node.Type == "FeatureCard");
+        card.Props["url"].Should().Be("/programs/journalism");
     }
 
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)

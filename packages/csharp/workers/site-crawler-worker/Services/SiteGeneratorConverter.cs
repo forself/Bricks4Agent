@@ -78,7 +78,7 @@ public sealed class SiteGeneratorConverter
 
         foreach (var section in extractedPage?.Sections ?? [])
         {
-            root.Children.Add(BuildSectionNode(section, page, document, manifest));
+            root.Children.Add(BuildSectionNode(section, page, document, manifest, localRoutes, crawl.Root.Origin));
         }
 
         if (page.Links.Count > 0)
@@ -141,8 +141,16 @@ public sealed class SiteGeneratorConverter
         ExtractedSection section,
         SiteCrawlPage page,
         GeneratorSiteDocument document,
-        ComponentLibraryManifest manifest)
+        ComponentLibraryManifest manifest,
+        IReadOnlyDictionary<string, string> localRoutes,
+        string origin)
     {
+        if (section.Media.Count > 0 || section.Actions.Count > 0 || section.Items.Count > 0 ||
+            section.Role is "program_grid" or "news" or "gallery" or "faq" or "process" or "benefits" or "contact" or "feature_grid" or "stats")
+        {
+            return BuildAtomicSectionNode(section, page, origin, localRoutes);
+        }
+
         var type = section.Role switch
         {
             "hero" => "HeroSection",
@@ -172,6 +180,123 @@ public sealed class SiteGeneratorConverter
         }
 
         return node;
+    }
+
+    private static ComponentNode BuildAtomicSectionNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string crawlOrigin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        var sectionNode = new ComponentNode
+        {
+            Id = string.IsNullOrWhiteSpace(section.Id)
+                ? BuildNodeId(section.Role, $"{page.FinalUrl}:{section.SourceSelector}:{section.Headline}")
+                : SanitizeId(section.Id),
+            Type = "AtomicSection",
+            Props =
+            {
+                ["variant"] = section.Role == "hero" ? "hero" : "standard",
+                ["source_selector"] = section.SourceSelector,
+            },
+        };
+
+        if (section.Role == "hero" && section.Media.Count > 0)
+        {
+            sectionNode.Children.Add(BuildImageBlock(section.Media[0]));
+        }
+
+        sectionNode.Children.Add(new ComponentNode
+        {
+            Id = BuildNodeId("text", $"{page.FinalUrl}:{section.SourceSelector}:text"),
+            Type = "TextBlock",
+            Props =
+            {
+                ["title"] = section.Headline,
+                ["body"] = section.Body,
+            },
+        });
+
+        foreach (var media in section.Media.Skip(section.Role == "hero" ? 1 : 0).Take(3))
+        {
+            sectionNode.Children.Add(BuildImageBlock(media));
+        }
+
+        foreach (var action in section.Actions.Take(3))
+        {
+            var link = BuildLink(action.Url, crawlOrigin, localRoutes);
+            sectionNode.Children.Add(new ComponentNode
+            {
+                Id = BuildNodeId("action", $"{page.FinalUrl}:{section.SourceSelector}:{action.Label}:{action.Url}"),
+                Type = "ButtonLink",
+                Props =
+                {
+                    ["label"] = action.Label,
+                    ["url"] = link["url"],
+                    ["source_url"] = link["source_url"],
+                    ["scope"] = link["scope"],
+                    ["kind"] = action.Kind,
+                },
+            });
+        }
+
+        if (section.Items.Count > 0)
+        {
+            var grid = new ComponentNode
+            {
+                Id = BuildNodeId("grid", $"{page.FinalUrl}:{section.SourceSelector}:items"),
+                Type = "CardGrid",
+                Props =
+                {
+                    ["title"] = section.Headline,
+                },
+            };
+
+            foreach (var item in section.Items.Take(12))
+            {
+                var link = string.IsNullOrWhiteSpace(item.Url)
+                    ? new Dictionary<string, string>
+                    {
+                        ["url"] = string.Empty,
+                        ["source_url"] = string.Empty,
+                        ["scope"] = "none",
+                    }
+                    : BuildLink(item.Url, crawlOrigin, localRoutes);
+                grid.Children.Add(new ComponentNode
+                {
+                    Id = BuildNodeId("card", $"{page.FinalUrl}:{section.SourceSelector}:{item.Title}:{item.Url}"),
+                    Type = "FeatureCard",
+                    Props =
+                    {
+                        ["title"] = item.Title,
+                        ["body"] = item.Body,
+                        ["url"] = link["url"],
+                        ["source_url"] = link["source_url"],
+                        ["scope"] = link["scope"],
+                        ["media_url"] = item.MediaUrl,
+                        ["media_alt"] = item.MediaAlt,
+                    },
+                });
+            }
+
+            sectionNode.Children.Add(grid);
+        }
+
+        return sectionNode;
+    }
+
+    private static ComponentNode BuildImageBlock(ExtractedMedia media)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("image", media.Url),
+            Type = "ImageBlock",
+            Props =
+            {
+                ["url"] = media.Url,
+                ["alt"] = media.Alt,
+            },
+        };
     }
 
     private static string EnsureGeneratedComponent(
@@ -268,6 +393,17 @@ public sealed class SiteGeneratorConverter
             };
         }
 
+        if (IsSameOrigin(link, origin))
+        {
+            return new Dictionary<string, string>
+            {
+                ["label"] = BuildLinkLabel(link, origin),
+                ["url"] = BuildRoutePath(link),
+                ["source_url"] = link,
+                ["scope"] = "internal",
+            };
+        }
+
         return new Dictionary<string, string>
         {
             ["label"] = BuildLinkLabel(link, origin),
@@ -306,6 +442,19 @@ public sealed class SiteGeneratorConverter
         }
 
         return uri.Host;
+    }
+
+    private static bool IsSameOrigin(string link, string origin)
+    {
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var linkUri) ||
+            !Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+        {
+            return false;
+        }
+
+        return linkUri.Scheme.Equals(originUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            linkUri.IdnHost.Equals(originUri.IdnHost, StringComparison.OrdinalIgnoreCase) &&
+            linkUri.Port == originUri.Port;
     }
 
     private static ExtractedPageModel? FindExtractedPage(SiteCrawlResult crawl, SiteCrawlPage page)

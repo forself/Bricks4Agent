@@ -219,6 +219,57 @@ public sealed class ExtractedSection
 
     [JsonPropertyName("source_selector")]
     public string SourceSelector { get; set; } = string.Empty;
+
+    [JsonPropertyName("media")]
+    public List<ExtractedMedia> Media { get; set; } = new();
+
+    [JsonPropertyName("actions")]
+    public List<ExtractedAction> Actions { get; set; } = new();
+
+    [JsonPropertyName("items")]
+    public List<ExtractedItem> Items { get; set; } = new();
+}
+
+public sealed class ExtractedMedia
+{
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "image";
+
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("alt")]
+    public string Alt { get; set; } = string.Empty;
+}
+
+public sealed class ExtractedAction
+{
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
+
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "secondary";
+}
+
+public sealed class ExtractedItem
+{
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = string.Empty;
+
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("media_url")]
+    public string MediaUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("media_alt")]
+    public string MediaAlt { get; set; } = string.Empty;
 }
 
 public sealed class ExtractedForm

@@ -174,6 +174,25 @@ public sealed class StaticSitePackageGenerator
             .content-section, .generated-section, .link-list, .form-block { padding: 32px 0; border-bottom: 1px solid var(--line); }
             .content-section h2, .generated-section h2, .link-list h2, .form-block h2 { margin: 0 0 10px; font-size: 24px; letter-spacing: 0; }
             .content-section p, .generated-section p { max-width: 840px; margin: 0; color: var(--muted); }
+            .atomic-section { padding: 36px 0; border-bottom: 1px solid var(--line); display: grid; gap: 22px; }
+            .atomic-section--hero { min-height: 440px; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); align-items: center; gap: 34px; }
+            .atomic-section--hero .image-block { order: 2; }
+            .text-block h2 { margin: 0 0 12px; font-size: clamp(28px, 4vw, 52px); line-height: 1.08; letter-spacing: 0; }
+            .text-block p { max-width: 760px; margin: 0; color: var(--muted); font-size: 17px; }
+            .image-block { margin: 0; min-height: 220px; border-radius: 8px; overflow: hidden; background: var(--band); }
+            .image-block img { width: 100%; height: 100%; min-height: 220px; object-fit: cover; display: block; }
+            .button-link { justify-self: start; display: inline-flex; align-items: center; min-height: 42px; padding: 9px 15px; border-radius: 6px; border: 1px solid var(--brand); font-weight: 700; }
+            .button-link--primary { color: #fff; background: var(--brand); }
+            .button-link--secondary { color: var(--brand); background: var(--surface); }
+            .card-grid-section { display: grid; gap: 16px; }
+            .card-grid-section h2 { margin: 0; font-size: 24px; letter-spacing: 0; }
+            .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+            .feature-card { min-height: 100%; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); display: flex; flex-direction: column; }
+            .feature-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--band); }
+            .feature-card-body { padding: 16px; display: grid; gap: 8px; }
+            .feature-card h3 { margin: 0; font-size: 18px; letter-spacing: 0; }
+            .feature-card p { margin: 0; color: var(--muted); }
+            .feature-card-link { font-weight: 700; }
             .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; padding: 0; margin: 14px 0 0; list-style: none; }
             .link-grid a { display: block; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); background: var(--band); border-radius: 6px; }
             .form-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; max-width: 780px; }
@@ -183,6 +202,10 @@ public sealed class StaticSitePackageGenerator
             .site-footer { padding: 26px 20px; border-top: 1px solid var(--line); background: var(--band); color: var(--muted); font-size: 13px; }
             .site-footer-inner { max-width: 1180px; margin: 0 auto; }
             .runtime-error { max-width: 760px; margin: 48px auto; padding: 18px; border: 1px solid #e5484d; color: #8f1d22; background: #fff7f7; }
+            @media (max-width: 760px) {
+              .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
+              .atomic-section--hero .image-block { order: 0; }
+            }
             """;
     }
 
@@ -252,7 +275,13 @@ public sealed class StaticSitePackageGenerator
           ContentSection: renderContentSection,
           LinkList: renderLinkList,
           FormBlock: renderFormBlock,
-          SiteFooter: renderSiteFooter
+          SiteFooter: renderSiteFooter,
+          AtomicSection: renderAtomicSection,
+          TextBlock: renderTextBlock,
+          ImageBlock: renderImageBlock,
+          ButtonLink: renderButtonLink,
+          CardGrid: renderCardGrid,
+          FeatureCard: renderFeatureCard
         };
 
         const site = await fetch('./site.json').then(response => response.json());
@@ -387,6 +416,72 @@ public sealed class StaticSitePackageGenerator
           section.append(element('h2', '', node.props?.title || 'Section'));
           if (node.props?.body) section.append(element('p', '', node.props.body));
           return section;
+        }
+
+        function renderAtomicSection(node, knownTypes, manifest) {
+          const section = element('section', `atomic-section atomic-section--${node.props?.variant || 'standard'}`);
+          if (node.props?.source_selector) section.dataset.sourceSelector = node.props.source_selector;
+          renderChildren(node, section, knownTypes, manifest);
+          return section;
+        }
+
+        function renderTextBlock(node) {
+          const block = element('div', 'text-block');
+          if (node.props?.title) block.append(element('h2', '', node.props.title));
+          if (node.props?.body) block.append(element('p', '', node.props.body));
+          return block;
+        }
+
+        function renderImageBlock(node) {
+          const figure = element('figure', 'image-block');
+          const img = document.createElement('img');
+          img.src = node.props?.url || '';
+          img.alt = node.props?.alt || '';
+          img.loading = 'lazy';
+          figure.appendChild(img);
+          return figure;
+        }
+
+        function renderButtonLink(node) {
+          const link = {
+            label: node.props?.label || 'Open',
+            url: node.props?.url || '#',
+            scope: node.props?.url?.startsWith('/') ? 'internal' : 'external'
+          };
+          const anchor = element('a', `button-link button-link--${node.props?.kind || 'secondary'}`, link.label);
+          configureLink(anchor, link);
+          return anchor;
+        }
+
+        function renderCardGrid(node, knownTypes, manifest) {
+          const wrap = element('section', 'card-grid-section');
+          if (node.props?.title) wrap.append(element('h2', '', node.props.title));
+          const grid = element('div', 'card-grid');
+          renderChildren(node, grid, knownTypes, manifest);
+          wrap.appendChild(grid);
+          return wrap;
+        }
+
+        function renderFeatureCard(node) {
+          const card = element('article', 'feature-card');
+          if (node.props?.media_url) {
+            const img = document.createElement('img');
+            img.src = node.props.media_url;
+            img.alt = node.props.media_alt || '';
+            img.loading = 'lazy';
+            card.appendChild(img);
+          }
+          const body = element('div', 'feature-card-body');
+          body.append(element('h3', '', node.props?.title || ''));
+          if (node.props?.body) body.append(element('p', '', node.props.body));
+          if (node.props?.url) {
+            const link = { label: 'Open', url: node.props.url, scope: node.props.url.startsWith('/') ? 'internal' : 'external' };
+            const anchor = element('a', 'feature-card-link', link.label);
+            configureLink(anchor, link);
+            body.append(anchor);
+          }
+          card.appendChild(body);
+          return card;
         }
 
         function renderGeneratedComponent(node) {

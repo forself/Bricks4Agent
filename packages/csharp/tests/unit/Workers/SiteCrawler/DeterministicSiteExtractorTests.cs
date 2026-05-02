@@ -381,4 +381,108 @@ public class DeterministicSiteExtractorTests
             .ContainSingle(section => section.SourceSelector == "section.news-list")
             .Which.Role.Should().Be("news");
     }
+
+    [Fact]
+    public void ExtractPage_ExtractsReusableVisualAtoms()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="hero">
+                <img src="/assets/hero.jpg" alt="Campus gate">
+                <h1>Study at SHU</h1>
+                <p>Media and communication programs in Taipei.</p>
+                <a class="btn primary" href="/apply">Apply now</a>
+              </section>
+              <section class="programs">
+                <h2>Programs</h2>
+                <article class="card">
+                  <img src="/assets/journalism.jpg" alt="Journalism">
+                  <h3>Journalism</h3>
+                  <p>Reporting, editing, and multimedia storytelling.</p>
+                  <a href="/programs/journalism">Explore</a>
+                </article>
+                <article class="card">
+                  <h3>Public Relations</h3>
+                  <p>Campaign strategy and communication planning.</p>
+                </article>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        var hero = result.Model.Sections.Single(section => section.Role == "hero");
+        hero.Media.Should().ContainSingle(media =>
+            media.Url == "https://example.com/assets/hero.jpg" &&
+            media.Alt == "Campus gate");
+        hero.Actions.Should().ContainSingle(action =>
+            action.Label == "Apply now" &&
+            action.Url == "https://example.com/apply" &&
+            action.Kind == "primary");
+
+        var programs = result.Model.Sections.Single(section => section.Role == "program_grid");
+        programs.Items.Should().HaveCount(2);
+        programs.Items[0].Title.Should().Be("Journalism");
+        programs.Items[0].Body.Should().Be("Reporting, editing, and multimedia storytelling.");
+        programs.Items[0].MediaUrl.Should().Be("https://example.com/assets/journalism.jpg");
+        programs.Items[0].Url.Should().Be("https://example.com/programs/journalism");
+    }
+
+    [Fact]
+    public void ExtractPage_IgnoresNavigationChromeAndExtractsContentCards()
+    {
+        var html = """
+            <html>
+            <body>
+              <div class="logosearch-area">
+                <div class="n2021-area">
+                  <p class="top-linkbox"><a href="/apply">Apply</a><a href="/system">System</a></p>
+                  <h1><a href="/"><img src="/logo.png" alt="University logo"></a></h1>
+                </div>
+                <div class="navbar"><a href="/about">About</a></div>
+              </div>
+              <div class="m1-area spotlight">
+                <div class="sm1-box">
+                  <h2>Spotlight</h2>
+                  <div class="sbl-box">
+                    <img src="/news/main.jpg" alt="Main story">
+                    <h5><a href="/news/main">Main campus story</a></h5>
+                    <p>Lead story summary.</p>
+                    <a href="/news/main" class="read-more">Read more</a>
+                  </div>
+                  <ul>
+                    <li>
+                      <img src="/news/one.jpg" alt="Story one">
+                      <h6><a href="/news/one">Story one</a></h6>
+                      <a href="/news/one" class="read-more">Read more</a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Sections.Should().NotContain(section =>
+            section.SourceSelector.Contains("logosearch", StringComparison.Ordinal) ||
+            section.SourceSelector.Contains("n2021", StringComparison.Ordinal) ||
+            section.Body.Contains("Apply System", StringComparison.Ordinal));
+
+        var spotlight = result.Model.Sections.Should()
+            .ContainSingle(section => section.SourceSelector == "div.m1-area")
+            .Subject;
+        spotlight.Role.Should().Be("gallery");
+        spotlight.Headline.Should().Be("Spotlight");
+        spotlight.Items.Should().HaveCount(2);
+        spotlight.Items[0].Title.Should().Be("Main campus story");
+        spotlight.Items[0].Body.Should().Be("Lead story summary.");
+        spotlight.Items[0].MediaUrl.Should().Be("https://example.com/news/main.jpg");
+        spotlight.Items[0].Url.Should().Be("https://example.com/news/main");
+    }
 }

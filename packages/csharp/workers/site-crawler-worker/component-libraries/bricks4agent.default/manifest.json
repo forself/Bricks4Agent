@@ -132,6 +132,91 @@
         }
       },
       "generated": false
+    },
+    {
+      "type": "AtomicSection",
+      "description": "Reusable section container assembled from atomic child components.",
+      "supported_roles": ["section", "hero", "content", "group"],
+      "props_schema": {
+        "required": ["variant", "source_selector"],
+        "properties": {
+          "variant": { "type": "string" },
+          "source_selector": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "TextBlock",
+      "description": "Reusable heading and body text atom.",
+      "supported_roles": ["text", "heading", "body"],
+      "props_schema": {
+        "required": ["title", "body"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ImageBlock",
+      "description": "Reusable image atom.",
+      "supported_roles": ["image", "media"],
+      "props_schema": {
+        "required": ["url", "alt"],
+        "properties": {
+          "url": { "type": "string" },
+          "alt": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ButtonLink",
+      "description": "Reusable link button atom.",
+      "supported_roles": ["action", "link", "button"],
+      "props_schema": {
+        "required": ["label", "url", "kind"],
+        "properties": {
+          "label": { "type": "string" },
+          "url": { "type": "string" },
+          "source_url": { "type": "string" },
+          "scope": { "type": "string" },
+          "kind": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "CardGrid",
+      "description": "Reusable grid container for card atoms.",
+      "supported_roles": ["grid", "cards", "list"],
+      "props_schema": {
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "FeatureCard",
+      "description": "Reusable content card atom.",
+      "supported_roles": ["card", "feature", "program", "news"],
+      "props_schema": {
+        "required": ["title", "body", "url", "media_url", "media_alt"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "url": { "type": "string" },
+          "source_url": { "type": "string" },
+          "scope": { "type": "string" },
+          "media_url": { "type": "string" },
+          "media_alt": { "type": "string" }
+        }
+      },
+      "generated": false
     }
   ]
 }
