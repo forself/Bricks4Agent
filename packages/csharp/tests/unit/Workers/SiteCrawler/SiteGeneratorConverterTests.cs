@@ -6,7 +6,7 @@ namespace Unit.Tests.Workers.SiteCrawler;
 public class SiteGeneratorConverterTests
 {
     [Fact]
-    public void Convert_BuildsLegalComponentDocumentFromCrawlResult()
+    public void Convert_BuildsTemplateComponentDocumentFromCrawlResult()
     {
         var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
 
@@ -15,39 +15,18 @@ public class SiteGeneratorConverterTests
         document.SchemaVersion.Should().Be("site-generator/v1");
         document.Routes.Should().ContainSingle();
         document.Routes[0].Root.Type.Should().Be("PageShell");
-
-        var knownTypes = document.ComponentLibrary.Components
-            .Select(component => component.Type)
-            .ToHashSet(StringComparer.Ordinal);
-        Flatten(document.Routes[0].Root).Should().OnlyContain(node => knownTypes.Contains(node.Type));
-        Flatten(document.Routes[0].Root).Should().Contain(node => node.Type == "HeroSection");
-        Flatten(document.Routes[0].Root).Should().Contain(node => node.Type == "ContentSection");
-        Flatten(document.Routes[0].Root).Should().Contain(node => node.Type == "FormBlock");
-        Flatten(document.Routes[0].Root).Should().Contain(node => node.Type == "SiteFooter");
-    }
-
-    [Fact]
-    public void Convert_WhenSectionRoleHasNoBuiltInComponent_UsesAtomicCompositionBeforeGeneratingComponents()
-    {
-        var crawl = BuildCrawlResult();
-        crawl.ExtractedModel.Pages[0].Sections.Add(new ExtractedSection
-        {
-            Id = "gallery-1",
-            Role = "gallery",
-            Headline = "Campus Gallery",
-            Body = "Visual campus highlights.",
-            SourceSelector = "section.gallery",
-        });
-        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
-
-        var document = converter.Convert(crawl);
-
         document.ComponentRequests.Should().BeEmpty();
         document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
-        Flatten(document.Routes[0].Root).Should()
-            .ContainSingle(node => node.Type == "AtomicSection" && (string)node.Props["variant"]! == "standard");
-        Flatten(document.Routes[0].Root).Should()
-            .Contain(node => node.Type == "TextBlock");
+
+        var knownTypes = document.ComponentLibrary.Components.Select(component => component.Type).ToHashSet(StringComparer.Ordinal);
+        Flatten(document.Routes[0].Root).Should().OnlyContain(node => knownTypes.Contains(node.Type));
+        Flatten(document.Routes[0].Root).Select(node => node.Type).Should().Contain([
+            "MegaHeader",
+            "HeroBanner",
+            "ContentArticle",
+            "FormBlock",
+            "InstitutionFooter",
+        ]);
     }
 
     [Fact]
@@ -67,88 +46,22 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
-        var links = header.Props["links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
-        links.Should().BeEmpty();
-
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "MegaHeader");
+        HeaderLinks(header).Should().BeEmpty();
         document.Routes[0].Root.Children.Should().NotContain(node => node.Type == "LinkList");
-        Flatten(document.Routes[0].Root)
-            .Any(node => node.Props.TryGetValue("links", out var value) &&
-                value is List<Dictionary<string, string>> linksValue &&
-                linksValue.Count > 0)
-            .Should().BeFalse();
     }
 
     [Fact]
-    public void Convert_ComposesVisualSectionsFromReusableAtomicComponents()
+    public void Convert_MapsSpecialStaticRolesToReusableTemplateComponents()
     {
         var crawl = BuildCrawlResult();
-        var page = crawl.ExtractedModel.Pages[0];
-        page.Sections.Clear();
-        page.Sections.Add(new ExtractedSection
+        crawl.ExtractedModel.Pages[0].Sections.Add(new ExtractedSection
         {
-            Id = "hero",
-            Role = "hero",
-            Headline = "Study at SHU",
-            Body = "Media and communication programs in Taipei.",
-            SourceSelector = "section.hero",
-            Media =
-            [
-                new ExtractedMedia { Url = "https://example.com/assets/hero.jpg", Alt = "Campus gate", Kind = "image" },
-            ],
-            Actions =
-            [
-                new ExtractedAction { Label = "Apply now", Url = "https://example.com/apply", Kind = "primary" },
-            ],
-        });
-        page.Sections.Add(new ExtractedSection
-        {
-            Id = "programs",
-            Role = "program_grid",
-            Headline = "Programs",
-            Body = "Choose a path.",
-            SourceSelector = "section.programs",
-            Items =
-            [
-                new ExtractedItem
-                {
-                    Title = "Journalism",
-                    Body = "Reporting and multimedia storytelling.",
-                    MediaUrl = "https://example.com/assets/journalism.jpg",
-                    Url = "https://example.com/programs/journalism",
-                },
-            ],
-        });
-        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
-
-        var document = converter.Convert(crawl);
-
-        document.ComponentRequests.Should().BeEmpty();
-        document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
-
-        var nodes = Flatten(document.Routes[0].Root).ToList();
-        nodes.Should().Contain(node => node.Type == "AtomicSection" && (string)node.Props["variant"]! == "hero");
-        nodes.Should().Contain(node => node.Type == "ImageBlock");
-        nodes.Should().Contain(node => node.Type == "TextBlock");
-        nodes.Should().Contain(node => node.Type == "ButtonLink");
-        nodes.Should().Contain(node => node.Type == "CardGrid");
-        nodes.Should().Contain(node => node.Type == "FeatureCard");
-        nodes.Should().NotContain(node => node.Type.StartsWith("Generated", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Convert_WhenGalleryHasOnlyMedia_ComposesCarouselCardsFromReusableComponents()
-    {
-        var crawl = BuildCrawlResult();
-        var page = crawl.ExtractedModel.Pages[0];
-        page.Sections.Clear();
-        page.Sections.Add(new ExtractedSection
-        {
-            Id = "campus-gallery",
+            Id = "gallery-1",
             Role = "gallery",
             Headline = "Campus Gallery",
-            Body = "Rendered visual highlights.",
-            SourceSelector = "div.slider",
+            Body = "Visual campus highlights.",
+            SourceSelector = "section.gallery",
             Media =
             [
                 new ExtractedMedia { Url = "https://example.com/assets/slide-1.jpg", Alt = "Slide 1", Kind = "image" },
@@ -159,18 +72,14 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        var nodes = Flatten(document.Routes[0].Root).ToList();
-        var grid = nodes.Single(node => node.Type == "CardGrid");
-        grid.Props["layout"].Should().Be("carousel");
-        nodes.Count(node => node.Type == "FeatureCard").Should().Be(2);
-        nodes.Where(node => node.Type == "FeatureCard")
-            .Select(node => node.Props["media_url"])
-            .Should().Equal("https://example.com/assets/slide-1.jpg", "https://example.com/assets/slide-2.jpg");
-        nodes.Should().NotContain(node => node.Type.StartsWith("Generated", StringComparison.Ordinal));
+        document.ComponentRequests.Should().BeEmpty();
+        document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
+        var gallery = Flatten(document.Routes[0].Root).Single(node => node.Type == "MediaFeatureGrid");
+        GetItems(gallery).Should().HaveCount(2);
     }
 
     [Fact]
-    public void Convert_WhenVisualCardGridHasManyDistinctImages_TreatsItAsGalleryCarousel()
+    public void Convert_WhenVisualCardGridHasManyDistinctImages_TreatsItAsMediaFeatureGrid()
     {
         var crawl = BuildCrawlResult();
         crawl.Pages[0].VisualSnapshot = new VisualPageSnapshot
@@ -197,23 +106,15 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "CardGrid");
-        grid.Props["layout"].Should().Be("carousel");
+        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "MediaFeatureGrid");
+        GetItems(grid).Select(item => item["media_url"]).Should()
+            .Contain(["https://example.com/a.jpg", "https://example.com/b.jpg", "https://example.com/c.jpg"]);
     }
 
     [Fact]
-    public void Convert_RewritesAtomicActionAndCardLinksToGeneratedRoutes()
+    public void Convert_RewritesTemplateItemLinksToGeneratedRoutes()
     {
         var crawl = BuildCrawlResult();
-        crawl.Pages.Add(new SiteCrawlPage
-        {
-            FinalUrl = "https://example.com/apply",
-            Depth = 1,
-            StatusCode = 200,
-            Title = "Apply",
-            TextExcerpt = "Apply.",
-            Links = [],
-        });
         crawl.Pages.Add(new SiteCrawlPage
         {
             FinalUrl = "https://example.com/programs/journalism",
@@ -225,18 +126,6 @@ public class SiteGeneratorConverterTests
         });
         var page = crawl.ExtractedModel.Pages[0];
         page.Sections.Clear();
-        page.Sections.Add(new ExtractedSection
-        {
-            Id = "hero",
-            Role = "hero",
-            Headline = "Study at SHU",
-            Body = "Media and communication programs in Taipei.",
-            SourceSelector = "section.hero",
-            Actions =
-            [
-                new ExtractedAction { Label = "Apply now", Url = "https://example.com/apply", Kind = "primary" },
-            ],
-        });
         page.Sections.Add(new ExtractedSection
         {
             Id = "programs",
@@ -258,15 +147,12 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        var button = Flatten(document.Routes[0].Root).Single(node => node.Type == "ButtonLink");
-        button.Props["url"].Should().Be("/apply");
-
-        var card = Flatten(document.Routes[0].Root).Single(node => node.Type == "FeatureCard");
-        card.Props["url"].Should().Be("/programs/journalism");
+        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "MediaFeatureGrid");
+        GetItems(grid).Single()["url"].Should().Be("/programs/journalism");
     }
 
     [Fact]
-    public void Convert_PreservesVisualHeaderFooterAndUsesStaticRoutes()
+    public void Convert_PreservesHeaderFooterAndUsesStaticRoutes()
     {
         var crawl = BuildCrawlResult();
         crawl.Pages.Add(new SiteCrawlPage
@@ -335,21 +221,17 @@ public class SiteGeneratorConverterTests
 
         document.Routes.Select(route => route.Path).Should().Contain(["/", "/admission", "/Spotlight/from-06-sID-32588"]);
 
-        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "MegaHeader");
         header.Props["logo_url"].Should().Be("https://example.com/logo.png");
-        var primaryLinks = header.Props["primary_links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
-        primaryLinks.Should().Contain(link => link["label"] == "Admissions" && link["url"] == "/admission");
+        HeaderLinks(header).Should().Contain(link => link["label"] == "Admissions" && link["url"] == "/admission");
 
-        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "SiteFooter");
+        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "InstitutionFooter");
         footer.Props["logo_url"].Should().Be("https://example.com/footer.png");
         footer.Props["contact_text"].Should().Be("No. 1, University Road");
-        var footerLinks = footer.Props["links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
-        footerLinks.Should().Contain(link => link["label"] == "Privacy" && link["url"] == "/privacy");
+        GetLinks(footer).Should().Contain(link => link["label"] == "Privacy" && link["url"] == "/privacy");
 
-        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "CardGrid");
-        grid.Props["layout"].Should().Be("carousel");
-        var card = Flatten(document.Routes[0].Root).Single(node => node.Type == "FeatureCard");
-        card.Props["url"].Should().Be("/Spotlight/from-06-sID-32588");
+        var news = Flatten(document.Routes[0].Root).Single(node => node.Type == "NewsCardCarousel");
+        GetItems(news).Single()["url"].Should().Be("/Spotlight/from-06-sID-32588");
     }
 
     [Fact]
@@ -425,27 +307,15 @@ public class SiteGeneratorConverterTests
 
         var document = converter.Convert(crawl);
 
-        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "MegaHeader");
         header.Props["logo_url"].Should().Be("https://example.com/rendered-logo.png");
 
         var nodes = Flatten(document.Routes[0].Root).ToList();
-        var staticTitleNodes = nodes.Where(node =>
-        {
-            if (!node.Props.TryGetValue("title", out var title))
-            {
-                return false;
-            }
+        nodes.Where(HasStaticSourceHeroTitle).Should().BeEmpty();
+        nodes.Should().Contain(node => node.Type == "HeroBanner" && (string)node.Props["title"]! == "Rendered Hero");
+        nodes.Should().Contain(node => node.Type == "NewsCardCarousel" && GetItems(node).Any(item => item["title"] == "Rendered Story"));
 
-            return string.Equals(title?.ToString(), "Static Source Hero", StringComparison.Ordinal);
-        }).ToList();
-        staticTitleNodes.Should().BeEmpty();
-        nodes.Should().Contain(node => node.Type == "TextBlock" && (string)node.Props["title"]! == "Rendered Hero");
-
-        var grid = nodes.Single(node => node.Type == "CardGrid");
-        grid.Props["layout"].Should().Be("carousel");
-        nodes.Should().Contain(node => node.Type == "FeatureCard" && (string)node.Props["title"]! == "Rendered Story");
-
-        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "SiteFooter");
+        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "InstitutionFooter");
         footer.Props["logo_url"].Should().Be("https://example.com/rendered-footer.png");
         footer.Props["contact_text"].Should().Be("Rendered address");
     }
@@ -460,6 +330,31 @@ public class SiteGeneratorConverterTests
                 yield return nested;
             }
         }
+    }
+
+    private static bool HasStaticSourceHeroTitle(ComponentNode node)
+    {
+        return node.Props.TryGetValue("title", out var title) &&
+            string.Equals(title?.ToString(), "Static Source Hero", StringComparison.Ordinal);
+    }
+
+    private static List<Dictionary<string, string>> HeaderLinks(ComponentNode header)
+    {
+        return GetLinks(header, "utility_links").Concat(GetLinks(header, "primary_links")).ToList();
+    }
+
+    private static List<Dictionary<string, string>> GetLinks(ComponentNode node, string propName = "links")
+    {
+        return node.Props.TryGetValue(propName, out var value) && value is List<Dictionary<string, string>> links
+            ? links
+            : [];
+    }
+
+    private static List<Dictionary<string, string>> GetItems(ComponentNode node)
+    {
+        return node.Props.TryGetValue("items", out var value) && value is List<Dictionary<string, string>> items
+            ? items
+            : [];
     }
 
     private static SiteCrawlResult BuildCrawlResult()

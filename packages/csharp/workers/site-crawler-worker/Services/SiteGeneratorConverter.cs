@@ -19,30 +19,10 @@ public sealed class SiteGeneratorConverter
         ArgumentNullException.ThrowIfNull(crawl);
 
         var manifest = CloneManifest(baseManifest);
-        var localRoutes = BuildLocalRouteMap(crawl.Pages);
-        var document = new GeneratorSiteDocument
-        {
-            Site = new GeneratorSiteMetadata
-            {
-                Title = ResolveSiteTitle(crawl),
-                SourceUrl = crawl.Root.NormalizedStartUrl,
-                CrawlRunId = crawl.CrawlRunId,
-                Theme = new GeneratorTheme
-                {
-                    Colors = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Colors, StringComparer.Ordinal),
-                    Typography = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Typography, StringComparer.Ordinal),
-                },
-            },
-            ComponentLibrary = manifest,
-        };
-
-        foreach (var page in crawl.Pages)
-        {
-            var extractedPage = BuildVisualExtractedPage(page) ?? FindExtractedPage(crawl, page);
-            document.Routes.Add(BuildRoute(crawl, page, extractedPage, document, manifest, localRoutes));
-        }
-
-        return document;
+        var intent = new SiteIntentExtractor().Extract(crawl);
+        var templates = new TemplateFrameworkLoader().LoadDefault();
+        var plan = new TemplateMatcher(templates, manifest).Match(intent);
+        return new TemplateCompiler(manifest).Compile(crawl, intent, plan);
     }
 
     private static GeneratorRoute BuildRoute(

@@ -31,7 +31,11 @@ public class TemplateMatcherTests
     {
         var templates = new TemplateFrameworkLoader().LoadDefault();
         var manifest = DefaultComponentLibrary.Create();
-        manifest.Components.Add(DefineMinimal("HeroBanner"));
+        manifest.Components.RemoveAll(component => component.Type == "HeroCarousel");
+        if (manifest.Components.All(component => component.Type != "HeroBanner"))
+        {
+            manifest.Components.Add(DefineMinimal("HeroBanner"));
+        }
         var intent = BuildHomeIntent();
         var matcher = new TemplateMatcher(templates, manifest);
 

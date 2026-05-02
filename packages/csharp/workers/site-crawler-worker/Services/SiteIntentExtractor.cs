@@ -161,12 +161,12 @@ public sealed class SiteIntentExtractor
 
         if (role == "carousel")
         {
-            if (page.Depth == 0 && region.Bounds.Y <= 650 && (section.Media.Count > 0 || section.Items.Count > 0))
+            if (page.Depth == 0 && region.Bounds.Y <= 520 && (section.Media.Count > 0 || section.Items.Count > 0))
             {
                 return "hero_carousel";
             }
 
-            return HasNewsSignals(section) ? "news_carousel" : "media_feature_grid";
+            return section.Items.Count > 0 || HasNewsSignals(section) ? "news_carousel" : "media_feature_grid";
         }
 
         if (role == "news")
