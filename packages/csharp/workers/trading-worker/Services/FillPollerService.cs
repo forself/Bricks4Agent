@@ -57,7 +57,7 @@ public class FillPollerService
         }
     }
 
-    private async Task PollOnceAsync(CancellationToken ct)
+    internal async Task PollOnceAsync(CancellationToken ct)
     {
         var openOrders = _db.GetOpenOrders();
         if (openOrders.Count == 0) return;
