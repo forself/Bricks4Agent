@@ -14,6 +14,7 @@ namespace RiskWorker.Engine;
 /// - max_daily_trades:    當日最大交易次數
 /// - min_cash_reserve:    買入後須保留的現金底（避免梭哈耗光現金）
 /// - max_position_count:  最多同時持有幾個不同標的（避免過度分散 / 防呆）
+/// - cooldown_seconds:    同一 (exchange,symbol) 兩次成交之間的最短間隔，防 signal 抖動連續開單
 /// </summary>
 public class RiskEngine
 {
@@ -56,6 +57,7 @@ public class RiskEngine
                 "max_daily_trades"    => CheckMaxDailyTrades(rule, portfolio),
                 "min_cash_reserve"    => CheckMinCashReserve(rule, orderValue, side, portfolio),
                 "max_position_count"  => CheckMaxPositionCount(rule, symbol, side, portfolio),
+                "cooldown_seconds"    => CheckCooldown(rule, symbol, exchange, portfolio),
                 _ => null
             };
 
@@ -206,6 +208,26 @@ public class RiskEngine
         };
     }
 
+    private RiskViolation? CheckCooldown(RiskRule rule, string symbol, string exchange, PortfolioSnapshot portfolio)
+    {
+        // cooldown 同時擋 buy 和 sell —— signal 抖動會兩個方向都觸發
+        var key = $"{exchange}:{symbol}";
+        if (!portfolio.LastTradeBySymbol.TryGetValue(key, out var lastTrade)) return null;
+
+        var elapsedSec = (DateTime.UtcNow - lastTrade).TotalSeconds;
+        if (elapsedSec >= (double)rule.Threshold) return null;
+
+        var remaining = (int)((double)rule.Threshold - elapsedSec);
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"{symbol} traded {(int)elapsedSec}s ago; cooldown requires {(int)rule.Threshold}s ({remaining}s remaining)",
+            Current  = (decimal)elapsedSec,
+            Limit    = rule.Threshold,
+        };
+    }
+
     private RiskViolation? CheckMaxPositionCount(RiskRule rule, string symbol, string side, PortfolioSnapshot portfolio)
     {
         // 只擋會「新增」標的的買入；既有 symbol 的加碼不算新位
@@ -263,5 +285,6 @@ public class RiskEngine
         new() { RuleId = "r6", Name = "Max Daily Trades",         Type = "max_daily_trades",   Threshold = 20 },
         new() { RuleId = "r7", Name = "Min Cash Reserve",         Type = "min_cash_reserve",   Threshold = 500 },
         new() { RuleId = "r8", Name = "Max Position Count",       Type = "max_position_count", Threshold = 10 },
+        new() { RuleId = "r9", Name = "Symbol Cooldown",          Type = "cooldown_seconds",   Threshold = 60 },
     };
 }

@@ -184,6 +184,30 @@ public class TradingDbStorage : IDisposable
     }
 
     /// <summary>
+    /// 每個 (exchange:symbol) 最近一次成交時間。給 risk engine 的 cooldown_seconds 規則用——
+    /// 防同 symbol 在短期內連續被觸發 signal（signal 抖動）造成多次下單。
+    /// 回傳 key 格式："{exchange}:{symbol}"，跟 PortfolioSnapshot.LastTradeBySymbol 對齊。
+    /// </summary>
+    public Dictionary<string, DateTime> GetLastTradeTimePerSymbol()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT exchange, symbol, MAX(executed_at) AS last_at
+            FROM trades
+            GROUP BY exchange, symbol
+            """;
+        var dict = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var key = $"{r.GetString(0)}:{r.GetString(1)}";
+            // RoundtripKind 保留 ISO 8601 的 Z 後綴 → DateTime.Kind=Utc，避免被當成 local time 偏移
+            dict[key] = DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
+        }
+        return dict;
+    }
+
+    /// <summary>
     /// 從指定 UTC 時間以後的成交筆數（給 risk engine 的 max_daily_trades 規則用）。
     /// 預設用 UTC 0 點當「今天」的起點，跨時區呼叫者可自己算 fromUtc。
     /// </summary>

@@ -79,6 +79,19 @@ public class RiskCheckHandler : ICapabilityHandler
                     });
                 }
             }
+
+            // last_trade_by_symbol: { "alpaca:AAPL": "2026-05-02T..." } —— 給 cooldown_seconds 規則
+            if (pf.TryGetProperty("last_trade_by_symbol", out var lt) && lt.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in lt.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String &&
+                        DateTime.TryParse(prop.Value.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                    {
+                        portfolio.LastTradeBySymbol[prop.Name] = dt;
+                    }
+                }
+            }
         }
 
         var checkResult = _engine.Check(symbol, exchange, side, quantity, price, portfolio);

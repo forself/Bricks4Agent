@@ -311,10 +311,24 @@ public class AutoTraderService : BackgroundService
                     if (dc.TryGetProperty("count", out var cnt)) dailyCount = cnt.GetInt32();
                 }
 
+                // 每個 (exchange:symbol) 最近交易時間 → cooldown_seconds 規則用，防 signal 抖動連續開單
+                var lastTradesResult = await _dispatcher.DispatchAsync(BuildRequest("trading.account", "last_trade_times", "{}"));
+                var lastTradesJson = lastTradesResult.Success
+                    ? JsonDocument.Parse(lastTradesResult.ResultPayload ?? "{}").RootElement
+                    : JsonDocument.Parse("{}").RootElement;
+
                 if (accResult.Success && posResult.Success)
                 {
                     var acc = JsonDocument.Parse(accResult.ResultPayload ?? "{}").RootElement;
                     var pos = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
+
+                    var lastTradesDict = new Dictionary<string, DateTime>();
+                    if (lastTradesJson.TryGetProperty("last_trades", out var lt) && lt.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var prop in lt.EnumerateObject())
+                            if (prop.Value.ValueKind == JsonValueKind.String && DateTime.TryParse(prop.Value.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                                lastTradesDict[prop.Name] = dt;
+                    }
 
                     riskPayload = JsonSerializer.Serialize(new
                     {
@@ -328,6 +342,7 @@ public class AutoTraderService : BackgroundService
                             peak_value = acc.TryGetProperty("portfolio_value", out var pk) ? pk.GetDecimal() : 0,
                             daily_trade_count = dailyCount,
                             positions = pos.TryGetProperty("positions", out var posArr2) ? posArr2 : JsonDocument.Parse("[]").RootElement,
+                            last_trade_by_symbol = lastTradesDict,
                         }
                     });
                 }

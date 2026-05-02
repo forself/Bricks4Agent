@@ -13,6 +13,7 @@ namespace TradingWorker.Handlers;
 ///   get_positions      — 持倉列表（參數：exchange）
 ///   get_trades         — 成交紀錄（參數：exchange, symbol, limit）
 ///   daily_trade_count  — 今天（UTC）已成交筆數，給 risk engine 餵 max_daily_trades 規則
+///   last_trade_times   — 每個 (exchange:symbol) 最近一次成交時間，給 cooldown_seconds 規則用
 /// </summary>
 public class TradingAccountHandler : ICapabilityHandler
 {
@@ -40,8 +41,16 @@ public class TradingAccountHandler : ICapabilityHandler
             "get_trades"         => await GetTrades(opts, ct),
             "list_exchanges"     => ListExchanges(),
             "daily_trade_count"  => DailyTradeCount(opts),
+            "last_trade_times"   => LastTradeTimes(),
             _ => (false, null, $"Unknown route: {route}")
         };
+    }
+
+    private (bool, string?, string?) LastTradeTimes()
+    {
+        var dict = _db.GetLastTradeTimePerSymbol();
+        var json = JsonSerializer.Serialize(new { count = dict.Count, last_trades = dict });
+        return (true, json, null);
     }
 
     private (bool, string?, string?) DailyTradeCount(JsonElement opts)

@@ -140,16 +140,107 @@ public class RiskEngineNewRulesTests
         r.Passed.Should().BeTrue();
     }
 
+    // ── cooldown_seconds ───────────────────────────────────────────
+
+    [Fact]
+    public void Cooldown_NoLastTrade_AlwaysPasses()
+    {
+        // 第一次交易這個 symbol、dict 裡沒紀錄 → 不違反
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot();   // 空 LastTradeBySymbol
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        r.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Cooldown_LastTradeRecent_BlocksOrder()
+    {
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot
+        {
+            LastTradeBySymbol = { ["alpaca:AAPL"] = DateTime.UtcNow.AddSeconds(-10) },   // 10 秒前剛交易
+        };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        r.Passed.Should().BeFalse();
+        r.Violations.Should().ContainSingle(v => v.RuleId == "r1");
+    }
+
+    [Fact]
+    public void Cooldown_LastTradeBeyondWindow_Passes()
+    {
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot
+        {
+            LastTradeBySymbol = { ["alpaca:AAPL"] = DateTime.UtcNow.AddSeconds(-120) },   // 2 分鐘前 OK
+        };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        r.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Cooldown_DifferentSymbol_DoesNotShareCooldown()
+    {
+        // AAPL 剛交易過、TSLA 沒交易過 —— cooldown 不該擋 TSLA
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot
+        {
+            LastTradeBySymbol = { ["alpaca:AAPL"] = DateTime.UtcNow.AddSeconds(-5) },
+        };
+
+        var r = engine.Check("TSLA", "alpaca", "buy", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        r.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Cooldown_SameSymbolDifferentExchange_DoesNotShareCooldown()
+    {
+        // 同一 symbol 但不同交易所 —— 各自獨立的 cooldown
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot
+        {
+            LastTradeBySymbol = { ["alpaca:BTC"] = DateTime.UtcNow.AddSeconds(-5) },
+        };
+
+        var r = engine.Check("BTC", "binance", "buy", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        r.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Cooldown_BlocksBothBuyAndSell()
+    {
+        // signal 抖動可能 buy→sell→buy 連環觸發、cooldown 必須兩個方向都擋
+        var engine = new RiskEngine(new() { Rule("r1", "cooldown_seconds", 60m) });
+        var portfolio = new PortfolioSnapshot
+        {
+            LastTradeBySymbol = { ["alpaca:AAPL"] = DateTime.UtcNow.AddSeconds(-10) },
+        };
+
+        var buyResult  = engine.Check("AAPL", "alpaca", "buy",  quantity: 1m, estimatedPrice: 100m, portfolio);
+        var sellResult = engine.Check("AAPL", "alpaca", "sell", quantity: 1m, estimatedPrice: 100m, portfolio);
+
+        buyResult.Passed.Should().BeFalse();
+        sellResult.Passed.Should().BeFalse();
+    }
+
     // ── DefaultRules 整合 ──────────────────────────────────────────
 
     [Fact]
-    public void DefaultRules_Includes_BothNewRules()
+    public void DefaultRules_IncludesAllNewRules()
     {
         // 確保新規則被加進預設集，避免之後不小心被移掉
         var defaults = RiskEngine.DefaultRules();
         defaults.Select(r => r.Type).Should()
             .Contain("min_cash_reserve")
-            .And.Contain("max_position_count");
+            .And.Contain("max_position_count")
+            .And.Contain("cooldown_seconds");
     }
 
     // ── Helpers ──────────────────────────────────────────────────

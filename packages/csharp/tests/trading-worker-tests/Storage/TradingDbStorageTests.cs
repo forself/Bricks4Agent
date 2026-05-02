@@ -78,6 +78,36 @@ public class TradingDbStorageTests
         t.Db.GetDailyTradeCount(DateTime.UtcNow.Date).Should().Be(0);
     }
 
+    [Fact]
+    public void GetLastTradeTimePerSymbol_GroupsByExchangeAndSymbol_ReturnsLatestPerKey()
+    {
+        using var t = new TestTradingDb();
+        var earlier = DateTime.UtcNow.AddMinutes(-30);
+        var later = DateTime.UtcNow.AddMinutes(-5);
+
+        // 同 (alpaca, AAPL) 兩筆，要回 later 那筆
+        InsertParentOrder(t, "o-aapl-1");
+        InsertParentOrder(t, "o-aapl-2");
+        t.Db.SaveTrade(MakeTrade("aapl-1", earlier, exchange: "alpaca", symbol: "AAPL"));
+        t.Db.SaveTrade(MakeTrade("aapl-2", later,   exchange: "alpaca", symbol: "AAPL"));
+        // 不同交易所同 symbol 應該分開算
+        InsertParentOrder(t, "o-btc", "binance");
+        t.Db.SaveTrade(MakeTrade("btc", earlier, exchange: "binance", symbol: "BTC"));
+
+        var dict = t.Db.GetLastTradeTimePerSymbol();
+
+        dict.Should().HaveCount(2);
+        dict["alpaca:AAPL"].Should().BeCloseTo(later, TimeSpan.FromSeconds(1));
+        dict["binance:BTC"].Should().BeCloseTo(earlier, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public void GetLastTradeTimePerSymbol_EmptyTable_ReturnsEmptyDict()
+    {
+        using var t = new TestTradingDb();
+        t.Db.GetLastTradeTimePerSymbol().Should().BeEmpty();
+    }
+
     private static TradingOrder MakeOrder(string orderId, string status, string? externalId)
         => new()
         {
@@ -87,10 +117,10 @@ public class TradingDbStorageTests
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
 
-    private static TradeRecord MakeTrade(string id, DateTime executedAt, string exchange = "alpaca")
+    private static TradeRecord MakeTrade(string id, DateTime executedAt, string exchange = "alpaca", string symbol = "AAPL")
         => new()
         {
-            TradeId = id, OrderId = "o-" + id, Symbol = "AAPL", Exchange = exchange,
+            TradeId = id, OrderId = "o-" + id, Symbol = symbol, Exchange = exchange,
             Side = "buy", Quantity = 1m, Price = 100m, ExecutedAt = executedAt,
         };
 }
