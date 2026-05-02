@@ -1,0 +1,331 @@
+using System.Text.Json;
+using SiteCrawlerWorker.Models;
+
+namespace SiteCrawlerWorker.Services;
+
+public sealed class StaticSitePackageGenerator
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+    };
+
+    public StaticSitePackageResult Generate(GeneratorSiteDocument document, StaticSitePackageOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var outputDirectory = ResolveOutputDirectory(options);
+        Directory.CreateDirectory(outputDirectory);
+        Directory.CreateDirectory(Path.Combine(outputDirectory, "components"));
+        Directory.CreateDirectory(Path.Combine(outputDirectory, "components", "generated"));
+
+        var files = new List<string>();
+        WriteFile(outputDirectory, "index.html", BuildIndexHtml(document), files);
+        WriteFile(outputDirectory, "runtime.js", RuntimeJavaScript, files);
+        WriteFile(outputDirectory, "styles.css", BuildStylesCss(document), files);
+        WriteFile(outputDirectory, "site.json", JsonSerializer.Serialize(document, JsonOptions), files);
+        WriteFile(outputDirectory, Path.Combine("components", "manifest.json"), JsonSerializer.Serialize(document.ComponentLibrary, JsonOptions), files);
+        WriteGeneratedComponentDefinitions(outputDirectory, document, files);
+        WriteFile(outputDirectory, "README.md", BuildReadme(document), files);
+
+        return new StaticSitePackageResult
+        {
+            OutputDirectory = outputDirectory,
+            EntryPoint = Path.Combine(outputDirectory, "index.html"),
+            SiteJsonPath = Path.Combine(outputDirectory, "site.json"),
+            ManifestPath = Path.Combine(outputDirectory, "components", "manifest.json"),
+            Files = files,
+        };
+    }
+
+    private static string ResolveOutputDirectory(StaticSitePackageOptions options)
+    {
+        var baseDirectory = string.IsNullOrWhiteSpace(options.OutputDirectory)
+            ? Path.Combine(Path.GetTempPath(), "bricks4agent-generated-sites")
+            : options.OutputDirectory;
+        var packageName = SanitizePathSegment(string.IsNullOrWhiteSpace(options.PackageName)
+            ? "generated-site"
+            : options.PackageName);
+
+        return Path.GetFullPath(Path.Combine(baseDirectory, packageName));
+    }
+
+    private static void WriteFile(string outputDirectory, string relativePath, string content, List<string> files)
+    {
+        var path = Path.Combine(outputDirectory, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        files.Add(path);
+    }
+
+    private static void WriteGeneratedComponentDefinitions(
+        string outputDirectory,
+        GeneratorSiteDocument document,
+        List<string> files)
+    {
+        foreach (var component in document.ComponentLibrary.Components.Where(component => component.Generated))
+        {
+            WriteFile(
+                outputDirectory,
+                Path.Combine("components", "generated", $"{component.Type}.json"),
+                JsonSerializer.Serialize(component, JsonOptions),
+                files);
+        }
+    }
+
+    private static string BuildIndexHtml(GeneratorSiteDocument document)
+    {
+        var title = EscapeHtml(string.IsNullOrWhiteSpace(document.Site.Title) ? "Generated Site" : document.Site.Title);
+        return $$"""
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>{{title}}</title>
+              <link rel="stylesheet" href="./styles.css">
+            </head>
+            <body>
+              <div id="app"></div>
+              <script type="module" src="./runtime.js"></script>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildStylesCss(GeneratorSiteDocument document)
+    {
+        var brand = document.Site.Theme.Colors.TryGetValue("brand", out var brandColor)
+            ? brandColor
+            : "#2454d6";
+        var font = document.Site.Theme.Typography.TryGetValue("font_family", out var fontFamily)
+            ? fontFamily
+            : "Inter, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif";
+
+        return $$"""
+            :root {
+              --brand: {{brand}};
+              --ink: #18202f;
+              --muted: #5d6678;
+              --line: #d8deea;
+              --surface: #ffffff;
+              --band: #f4f7fb;
+              font-family: {{font}};
+            }
+
+            * { box-sizing: border-box; }
+            body { margin: 0; color: var(--ink); background: var(--surface); line-height: 1.6; }
+            a { color: var(--brand); text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .site-shell { min-height: 100vh; }
+            .site-header { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+            .site-header-inner { max-width: 1180px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 24px; }
+            .brand { font-weight: 700; color: var(--ink); white-space: nowrap; }
+            .nav-links { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; }
+            main { max-width: 1180px; margin: 0 auto; padding: 0 20px 48px; }
+            .hero-section { padding: 72px 0 44px; border-bottom: 1px solid var(--line); }
+            .hero-section h1 { max-width: 840px; margin: 0 0 16px; font-size: clamp(34px, 5vw, 64px); line-height: 1.05; letter-spacing: 0; }
+            .hero-section p { max-width: 760px; margin: 0; color: var(--muted); font-size: 18px; }
+            .content-section, .generated-section, .link-list, .form-block { padding: 32px 0; border-bottom: 1px solid var(--line); }
+            .content-section h2, .generated-section h2, .link-list h2, .form-block h2 { margin: 0 0 10px; font-size: 24px; letter-spacing: 0; }
+            .content-section p, .generated-section p { max-width: 840px; margin: 0; color: var(--muted); }
+            .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; padding: 0; margin: 14px 0 0; list-style: none; }
+            .link-grid a { display: block; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); background: var(--band); border-radius: 6px; }
+            .form-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; max-width: 780px; }
+            .field label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+            .field input, .field textarea, .field select { width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; }
+            .form-note { color: var(--muted); font-size: 13px; }
+            .site-footer { padding: 26px 20px; border-top: 1px solid var(--line); background: var(--band); color: var(--muted); font-size: 13px; }
+            .site-footer-inner { max-width: 1180px; margin: 0 auto; }
+            .runtime-error { max-width: 760px; margin: 48px auto; padding: 18px; border: 1px solid #e5484d; color: #8f1d22; background: #fff7f7; }
+            """;
+    }
+
+    private static string BuildReadme(GeneratorSiteDocument document)
+    {
+        return $$"""
+            # {{document.Site.Title}}
+
+            This package is rendered from `site.json` through `runtime.js`.
+            `index.html` is only the entry shell.
+
+            The generated website uses only components declared in `components/manifest.json`.
+            Generated local component definitions, if any, are under `components/generated/`.
+
+            Source URL: {{document.Site.SourceUrl}}
+            """;
+    }
+
+    private static string SanitizePathSegment(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var chars = value.Select(ch => invalidChars.Contains(ch) ? '-' : ch).ToArray();
+        var sanitized = new string(chars).Trim('.', ' ', '-');
+        return string.IsNullOrWhiteSpace(sanitized) ? "generated-site" : sanitized;
+    }
+
+    private static string EscapeHtml(string value)
+    {
+        return value
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal)
+            .Replace("\"", "&quot;", StringComparison.Ordinal);
+    }
+
+    private const string RuntimeJavaScript = """
+        const app = document.getElementById('app');
+
+        const componentRenderers = {
+          PageShell: renderPageShell,
+          SiteHeader: renderSiteHeader,
+          HeroSection: renderHeroSection,
+          ContentSection: renderContentSection,
+          LinkList: renderLinkList,
+          FormBlock: renderFormBlock,
+          SiteFooter: renderSiteFooter
+        };
+
+        const site = await fetch('./site.json').then(response => response.json());
+        const manifest = await fetch('./components/manifest.json').then(response => response.json());
+        const route = resolveRoute(site.routes);
+        const knownTypes = new Set((manifest.components || []).map(component => component.type));
+
+        try {
+          app.replaceChildren(renderNode(route.root, knownTypes, manifest));
+        } catch (error) {
+          const box = document.createElement('div');
+          box.className = 'runtime-error';
+          box.textContent = error.message;
+          app.replaceChildren(box);
+        }
+
+        function resolveRoute(routes) {
+          const path = window.location.pathname || '/';
+          return routes.find(route => route.path === path) || routes[0];
+        }
+
+        function renderNode(node, knownTypes, manifest) {
+          if (!knownTypes.has(node.type)) {
+            throw new Error(`Unknown component type: ${node.type}`);
+          }
+
+          const renderer = componentRenderers[node.type] || renderGeneratedComponent;
+          return renderer(node, knownTypes, manifest);
+        }
+
+        function renderChildren(node, parent, knownTypes, manifest) {
+          for (const child of node.children || []) {
+            parent.appendChild(renderNode(child, knownTypes, manifest));
+          }
+        }
+
+        function renderPageShell(node, knownTypes, manifest) {
+          const shell = element('div', 'site-shell');
+          const main = element('main');
+          for (const child of node.children || []) {
+            const rendered = renderNode(child, knownTypes, manifest);
+            if (child.type === 'SiteHeader' || child.type === 'SiteFooter') {
+              shell.appendChild(rendered);
+            } else {
+              main.appendChild(rendered);
+            }
+          }
+          shell.insertBefore(main, shell.querySelector('.site-footer'));
+          return shell;
+        }
+
+        function renderSiteHeader(node) {
+          const header = element('header', 'site-header');
+          const inner = element('div', 'site-header-inner');
+          const brand = element('a', 'brand', node.props?.title || 'Generated Site');
+          brand.href = './';
+          const nav = element('nav', 'nav-links');
+          for (const link of node.props?.links || []) {
+            const a = element('a', '', link.label || link.url);
+            a.href = link.url;
+            nav.appendChild(a);
+          }
+          inner.append(brand, nav);
+          header.appendChild(inner);
+          return header;
+        }
+
+        function renderHeroSection(node) {
+          const section = element('section', 'hero-section');
+          section.append(element('h1', '', node.props?.title || ''));
+          if (node.props?.body) section.append(element('p', '', node.props.body));
+          return section;
+        }
+
+        function renderContentSection(node) {
+          const section = element('section', 'content-section');
+          section.append(element('h2', '', node.props?.title || 'Section'));
+          if (node.props?.body) section.append(element('p', '', node.props.body));
+          return section;
+        }
+
+        function renderGeneratedComponent(node) {
+          const section = element('section', 'generated-section');
+          section.dataset.component = node.type;
+          section.append(element('h2', '', node.props?.title || node.type));
+          if (node.props?.body) section.append(element('p', '', node.props.body));
+          return section;
+        }
+
+        function renderLinkList(node) {
+          const section = element('section', 'link-list');
+          section.append(element('h2', '', node.props?.title || 'Links'));
+          const list = element('ul', 'link-grid');
+          for (const link of node.props?.links || []) {
+            const item = element('li');
+            const a = element('a', '', link.label || link.url);
+            a.href = link.url;
+            item.appendChild(a);
+            list.appendChild(item);
+          }
+          section.appendChild(list);
+          return section;
+        }
+
+        function renderFormBlock(node) {
+          const section = element('section', 'form-block');
+          section.append(element('h2', '', 'Form'));
+          const fields = element('div', 'form-fields');
+          for (const field of node.props?.fields || []) {
+            const wrap = element('div', 'field');
+            wrap.append(element('label', '', field.label || field.name || 'Field'));
+            const input = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
+            if (input.tagName === 'INPUT') input.type = field.type || 'text';
+            input.name = field.name || '';
+            input.required = Boolean(field.required);
+            input.disabled = true;
+            wrap.appendChild(input);
+            fields.appendChild(wrap);
+          }
+          section.append(fields, element('p', 'form-note', 'Form is shown as a non-submitting placeholder in the reconstructed package.'));
+          return section;
+        }
+
+        function renderSiteFooter(node) {
+          const footer = element('footer', 'site-footer');
+          const inner = element('div', 'site-footer-inner');
+          inner.append(element('div', '', node.props?.notice || 'Generated reference package.'));
+          if (node.props?.source_url) {
+            const source = element('a', '', node.props.source_url);
+            source.href = node.props.source_url;
+            inner.append(source);
+          }
+          footer.appendChild(inner);
+          return footer;
+        }
+
+        function element(tag, className = '', text = '') {
+          const node = document.createElement(tag);
+          if (className) node.className = className;
+          if (text) node.textContent = text;
+          return node;
+        }
+        """;
+}

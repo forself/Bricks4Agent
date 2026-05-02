@@ -1,0 +1,68 @@
+{
+  "tool_id": "site.generate.package",
+  "display_name": "Site Generate Package",
+  "summary": "Generate a static website package whose index.html runtime renders a component-library site.json document.",
+  "kind": "generator",
+  "status": "beta",
+  "version": "2026-05-02",
+  "tags": ["site", "generator", "component-library", "package", "static-site"],
+  "capability_template": {
+    "action_type": "write",
+    "resource_type": "website_package",
+    "risk_level": "medium",
+    "approval_policy": "require_approval",
+    "ttl_seconds": 900,
+    "audit_level": "full",
+    "quota": { "max_calls": 10, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "site.generate_package",
+      "route": "site_generate_package",
+      "purpose": "Generate a local static website package from crawl output or a valid component-library site document."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "crawl_result": { "type": "object" },
+      "site_document": { "type": "object" },
+      "output_directory": { "type": "string" },
+      "package_name": { "type": "string" }
+    },
+    "oneOf": [
+      { "required": ["crawl_result"] },
+      { "required": ["site_document"] }
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "output_directory": { "type": "string" },
+      "entry_point": { "type": "string" },
+      "site_json_path": { "type": "string" },
+      "manifest_path": { "type": "string" },
+      "files": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["site_crawl_result", "site_generator_document"]
+  },
+  "execution_rules": {
+    "runtime_required": "site-crawler-worker",
+    "mediation_required": true,
+    "output_is_local_package": true,
+    "entry_point": "index.html",
+    "renderer_model": "runtime_loads_site_json",
+    "component_library_only": true,
+    "allow_arbitrary_html_layout": false,
+    "requires_known_or_generated_component_definitions": true
+  },
+  "response_contract": {
+    "must_include_output_directory": true,
+    "must_include_entry_point": true,
+    "must_include_site_json_path": true,
+    "must_include_manifest_path": true,
+    "result_wording": "The generated package entry point is index.html. It loads runtime.js, which reads site.json and renders only component types declared in components/manifest.json, including generated local component definitions when needed."
+  }
+}

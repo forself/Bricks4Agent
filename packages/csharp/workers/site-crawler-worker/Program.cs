@@ -46,10 +46,17 @@ var crawlerService = new SiteCrawlerService(
     pageFetcher,
     extractor,
     loggerFactory.CreateLogger<SiteCrawlerService>());
+var componentLibrary = DefaultComponentLibrary.Create();
+var generatorConverter = new SiteGeneratorConverter(componentLibrary);
+var packageGenerator = new StaticSitePackageGenerator();
 
 host.RegisterHandler(new SiteCrawlSourceHandler(
     crawlerService,
     loggerFactory.CreateLogger<SiteCrawlSourceHandler>()));
+host.RegisterHandler(new SiteGeneratePackageHandler(
+    generatorConverter,
+    packageGenerator,
+    loggerFactory.CreateLogger<SiteGeneratePackageHandler>()));
 
 logger.LogInformation(
     "SiteCrawlerWorker starting: broker={Host}:{Port} maxConcurrent={MaxConcurrent}",
