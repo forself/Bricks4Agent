@@ -56,6 +56,16 @@ public class SafeUrlPolicyTests
         result.Reason.Should().Be("unsupported_scheme");
     }
 
+    [Fact]
+    public void Validate_RejectsUserInfoCredentials()
+    {
+        var result = SafeUrlPolicy.Validate("https://user:pass@example.com/docs/");
+
+        result.IsAllowed.Should().BeFalse();
+        result.Uri.Should().BeNull();
+        result.Reason.Should().Be("userinfo_not_allowed");
+    }
+
     [Theory]
     [InlineData("https://localhost/admin")]
     [InlineData("http://localhost./")]
@@ -71,6 +81,8 @@ public class SafeUrlPolicyTests
     [InlineData("http://10.0.0.1./")]
     [InlineData("http://172.16.0.1/")]
     [InlineData("http://192.168.0.1/")]
+    [InlineData("http://240.0.0.1/")]
+    [InlineData("http://255.255.255.255/")]
     [InlineData("http://224.0.0.1/")]
     [InlineData("http://239.255.255.255/")]
     [InlineData("http://[::ffff:127.0.0.1]/")]
@@ -83,6 +95,7 @@ public class SafeUrlPolicyTests
     [InlineData("http://[fe80::1%25lo0]/")]
     [InlineData("http://[fec0::1%25lo0]/")]
     [InlineData("http://[ff00::1%25lo0]/")]
+    [InlineData("http://[::]/")]
     [InlineData("http://[::1%25lo0]/")]
     [InlineData("http://[fc00::1]/")]
     [InlineData("http://[fd00::1]/")]

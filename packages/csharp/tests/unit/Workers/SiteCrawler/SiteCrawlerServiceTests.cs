@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using SiteCrawlerWorker.Models;
 using SiteCrawlerWorker.Services;
@@ -263,6 +266,61 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public void HttpPageFetcher_ProductionHandlerDisablesCookies()
+    {
+        var factory = typeof(HttpPageFetcher).GetMethod(
+            "CreateSafeSocketsHandler",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        factory.Should().NotBeNull();
+        using var handler = (SocketsHttpHandler)factory!.Invoke(
+            null,
+            new object[] { new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")) })!;
+
+        handler.UseCookies.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FetchAsync_WithSameFetcher_DoesNotReplayResponseCookies()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var observedCookies = new List<string?>();
+        var serverTask = RunCookieServerAsync(listener, observedCookies, expectedRequests: 2);
+        using var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            ConnectCallback = async (_, ct) =>
+            {
+                var client = new TcpClient();
+                try
+                {
+                    await client.ConnectAsync(IPAddress.Loopback, port, ct);
+                    return client.GetStream();
+                }
+                catch
+                {
+                    client.Dispose();
+                    throw;
+                }
+            },
+        };
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")));
+
+        var first = await fetcher.FetchAsync(new Uri("http://public.example/first"), CancellationToken.None);
+        var second = await fetcher.FetchAsync(new Uri("http://public.example/second"), CancellationToken.None);
+        await serverTask;
+
+        first.IsSuccess.Should().BeTrue();
+        second.IsSuccess.Should().BeTrue();
+        observedCookies.Should().Equal(null, null);
+    }
+
+    [Fact]
     public async Task FetchAsync_WhenResponseExceedsMaxBytes_ReturnsTooLargeWithoutFullBody()
     {
         var largeHtml = $"<html><body>{new string('x', 256)}</body></html>";
@@ -376,6 +434,67 @@ public class SiteCrawlerServiceTests
         result.IsSuccess.Should().BeFalse();
         result.Uri.Should().Be(new Uri("https://public.example/docs/"));
         result.FailureReason.Should().Be("blocked_resolved_ip");
+    }
+
+    private static async Task RunCookieServerAsync(
+        TcpListener listener,
+        ICollection<string?> observedCookies,
+        int expectedRequests)
+    {
+        for (var index = 0; index < expectedRequests; index++)
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            var requestHeaders = await ReadHeadersAsync(stream);
+            observedCookies.Add(FindHeaderValue(requestHeaders, "Cookie"));
+
+            const string body = "<html><body>ok</body></html>";
+            var response = string.Concat(
+                "HTTP/1.1 200 OK\r\n",
+                "Content-Type: text/html\r\n",
+                "Set-Cookie: crawl_secret=one\r\n",
+                "Connection: close\r\n",
+                "Content-Length: ",
+                Encoding.UTF8.GetByteCount(body).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "\r\n\r\n",
+                body);
+            var responseBytes = Encoding.UTF8.GetBytes(response);
+            await stream.WriteAsync(responseBytes);
+        }
+    }
+
+    private static async Task<string> ReadHeadersAsync(NetworkStream stream)
+    {
+        var buffer = new byte[1024];
+        using var requestBytes = new MemoryStream();
+
+        while (true)
+        {
+            var bytesRead = await stream.ReadAsync(buffer);
+            if (bytesRead == 0)
+            {
+                break;
+            }
+
+            requestBytes.Write(buffer, 0, bytesRead);
+            var requestText = Encoding.ASCII.GetString(requestBytes.ToArray());
+            if (requestText.Contains("\r\n\r\n", StringComparison.Ordinal))
+            {
+                return requestText;
+            }
+        }
+
+        return Encoding.ASCII.GetString(requestBytes.ToArray());
+    }
+
+    private static string? FindHeaderValue(string headers, string headerName)
+    {
+        var prefix = headerName + ":";
+        return headers
+            .Split("\r\n", StringSplitOptions.None)
+            .FirstOrDefault(line => line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))?
+            .Substring(prefix.Length)
+            .Trim();
     }
 
     private sealed class FakePageFetcher : IPageFetcher

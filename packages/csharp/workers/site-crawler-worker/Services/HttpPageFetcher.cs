@@ -267,6 +267,7 @@ public sealed class HttpPageFetcher : IPageFetcher
         return new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
+            UseCookies = false,
             ConnectCallback = async (context, ct) =>
             {
                 var endpoint = await ResolveAllowedEndpointAsync(context.DnsEndPoint, resolver, ct);
