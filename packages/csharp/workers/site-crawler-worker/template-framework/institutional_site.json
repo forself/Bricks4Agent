@@ -1,0 +1,122 @@
+{
+  "templates": [
+    {
+      "template_id": "institutional_site",
+      "supported_site_kinds": ["university", "school", "public_agency", "institutional"],
+      "page_types": {
+        "home": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "hero",
+              "required": false,
+              "accepts": ["HeroCarousel", "HeroBanner", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "quick_links",
+              "required": false,
+              "accepts": ["QuickLinkRibbon", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "news",
+              "required": false,
+              "accepts": ["NewsCardCarousel", "NewsGrid", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "features",
+              "required": false,
+              "accepts": ["MediaFeatureGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "listing": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "article": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

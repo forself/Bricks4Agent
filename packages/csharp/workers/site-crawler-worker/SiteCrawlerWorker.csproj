@@ -26,5 +26,6 @@
   <ItemGroup>
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="component-libraries\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="template-framework\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
