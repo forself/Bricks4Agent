@@ -379,27 +379,51 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           <div class="stat-c"><el-statistic :title="t('readyWorkers')" :value="diagReport.ready_workers"/></div>
         </div>
         <!-- Issue table -->
-        <el-card>
-          <el-skeleton v-if="scanning&&!diagReport" :rows="5" animated/>
-          <el-empty v-if="diagReport&&diagReport.issues.length===0" :description="t('noIssues')"/>
-          <el-table v-if="diagReport&&diagReport.issues.length>0" :data="diagReport.issues" stripe>
+        <el-card v-loading="scanning&&!diagReport">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">{{t('issueDetails')}}</span>
+              <el-tag v-if="diagReport" round size="small" :type="diagReport.issues.length>0?'danger':'success'">{{diagReport.issues.length}}</el-tag>
+              <el-radio-group v-if="diagReport && diagReport.issues.length>0" v-model="issueFilter" size="small" style="margin-left:auto">
+                <el-radio-button value="">{{t('filterAll')}} ({{diagReport.issues.length}})</el-radio-button>
+                <el-radio-button value="critical" :disabled="diagReport.critical_count===0">{{t('critical')}} ({{diagReport.critical_count}})</el-radio-button>
+                <el-radio-button value="error" :disabled="diagReport.error_count===0">{{t('error')}} ({{diagReport.error_count}})</el-radio-button>
+                <el-radio-button value="warning" :disabled="diagReport.warning_count===0">{{t('warning')}} ({{diagReport.warning_count}})</el-radio-button>
+              </el-radio-group>
+            </div>
+          </template>
+          <el-table :data="issueGroups" :empty-text="diagReport?t('noIssues'):(scanning?t('scanning'):t('scanNow'))" stripe>
+            <el-table-column type="expand" width="42">
+              <template #default="{row}">
+                <div style="padding:6px 16px 10px 50px">
+                  <div style="font-size:11px;color:var(--m);margin-bottom:6px">{{t('issueOccurrences')}}（{{row.count}}）</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto">
+                    <code v-for="(ts,i) in row.timestamps" :key="i" style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--td)">{{fmtDate(ts)}}</code>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column :label="t('state')" width="100">
               <template #default="{row}">
                 <el-tag :type="sevType(row.severity)" size="small">{{t(row.severity)||row.severity}}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="category" :label="t('category')" width="120"/>
+            <el-table-column prop="category" :label="t('category')" width="140"/>
             <el-table-column prop="entity_id" :label="t('entity')" width="140">
               <template #default="{row}"><code style="font-size:11px">{{row.entity_id}}</code></template>
             </el-table-column>
-            <el-table-column prop="message" :label="t('description')" min-width="300">
-              <template #default="{row}"><span style="font-size:12px;line-height:1.5">{{row.message}}</span></template>
+            <el-table-column prop="message" :label="t('description')" min-width="320">
+              <template #default="{row}"><span style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all">{{row.message}}</span></template>
             </el-table-column>
-            <el-table-column :label="t('created')" width="160">
-              <template #default="{row}">{{fmtDate(row.detected_at)}}</template>
+            <el-table-column :label="t('issueCount')" width="80" align="center">
+              <template #default="{row}">
+                <el-tag round size="small" :type="row.count>5?'danger':row.count>1?'warning':'info'">×{{row.count}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('issueLastSeen')" width="170">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td);font-family:monospace">{{fmtDate(row.last_seen)}}</span></template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!scanning&&!diagReport" :description="t('scanNow')"/>
         </el-card>
 
         <!-- 排程診斷歷史 -->
@@ -1086,7 +1110,8 @@ const I18N={
     diagnostics:'系統診斷',scanNow:'立即掃描',scanning:'掃描中...',
     healthy:'系統健康',unhealthy:'發現問題',runtimeOk:'容器執行環境正常',runtimeDown:'容器執行環境異常',
     critical:'嚴重',error:'錯誤',warning:'警告',info:'資訊',
-    category:'類別',entity:'實體',noIssues:'未偵測到問題',lastScan:'上次掃描',
+    category:'類別',entity:'實體',noIssues:'未偵測到問題',lastScan:'上次掃描',issueDetails:'問題清單',
+    issueCount:'次數',issueLastSeen:'最近一次',issueOccurrences:'所有發生時間',
     autoScan:'自動掃描',scanInterval:'掃描間隔',readyWorkers:'就緒 Workers',
     schedHistory:'排程診斷歷史',noHistory:'尚無排程紀錄',reason:'原因 / 明細',
     dbSpace:'資料庫空間',activeDb:'即時 DB',archiveDb:'歷史 DB',
@@ -1149,7 +1174,8 @@ const I18N={
     diagnostics:'Diagnostics',scanNow:'Scan Now',scanning:'Scanning...',
     healthy:'System Healthy',unhealthy:'Issues Detected',runtimeOk:'Runtime OK',runtimeDown:'Runtime Down',
     critical:'Critical',error:'Error',warning:'Warning',info:'Info',
-    category:'Category',entity:'Entity',noIssues:'No issues detected',lastScan:'Last scan',
+    category:'Category',entity:'Entity',noIssues:'No issues detected',lastScan:'Last scan',issueDetails:'Issue Details',
+    issueCount:'Count',issueLastSeen:'Last seen',issueOccurrences:'All occurrences',
     autoScan:'Auto Scan',scanInterval:'Interval',readyWorkers:'Ready Workers',
     schedHistory:'Scheduled Scan History',noHistory:'No scheduled scans yet',reason:'Reason',
     dbSpace:'DB Space',activeDb:'Active DB',archiveDb:'Archive DB',
@@ -1345,6 +1371,30 @@ const app=createApp({
     const autoScan=ref(false);
     const scanInterval=ref(30000);
     let autoScanTimer=null;
+    const issueFilter=ref('');
+    // 把同 severity + category + entity + message 的重複 issue 收攏成一筆，避免「Connection closed by broker」霸佔整個畫面
+    const issueGroups=computed(()=>{
+      if(!diagReport.value?.issues)return[];
+      const filtered=issueFilter.value
+        ? diagReport.value.issues.filter(i=>i.severity===issueFilter.value)
+        : diagReport.value.issues;
+      const map=new Map();
+      for(const i of filtered){
+        const key=i.severity+'|'+i.category+'|'+i.entity_id+'|'+i.message;
+        const ex=map.get(key);
+        if(ex){
+          ex.count++;
+          ex.timestamps.push(i.detected_at);
+          if(i.detected_at>ex.last_seen)ex.last_seen=i.detected_at;
+          if(i.detected_at<ex.first_seen)ex.first_seen=i.detected_at;
+        }else{
+          map.set(key,{severity:i.severity,category:i.category,entity_id:i.entity_id,message:i.message,count:1,first_seen:i.detected_at,last_seen:i.detected_at,timestamps:[i.detected_at]});
+        }
+      }
+      // 嚴重度權重 + 次數排序：critical 優先、同 severity 再按次數遞減
+      const sevW={critical:3,error:2,warning:1};
+      return[...map.values()].sort((a,b)=>(sevW[b.severity]||0)-(sevW[a.severity]||0)||b.count-a.count);
+    });
 
     async function runScan(){
       scanning.value=true;
@@ -1797,6 +1847,7 @@ const app=createApp({
       dispatchAgentOptions,switchDispatchAgent,
       openDispatch,doDispatch,loadDispatchHistory,dispatchStatusType,
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagSummaryText,diagNumStyle,
+      issueFilter,issueGroups,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
