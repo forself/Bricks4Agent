@@ -163,4 +163,98 @@ public class StaticSitePackageGeneratorTests : IDisposable
         File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js")).Should().Contain("loadGeneratedRenderers");
         result.Files.Should().Contain(modulePath);
     }
+
+    [Fact]
+    public void Generate_WritesCompactStandardImageStylesAndHeroOnlyLargeImageStyles()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    SourceUrl = "https://example.com/",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "notice",
+                                Type = "AtomicSection",
+                                Props =
+                                {
+                                    ["variant"] = "standard",
+                                    ["source_selector"] = "div.reminder",
+                                },
+                                Children =
+                                [
+                                    new ComponentNode
+                                    {
+                                        Id = "notice-image",
+                                        Type = "ImageBlock",
+                                        Props =
+                                        {
+                                            ["url"] = "https://example.com/reminder.png",
+                                            ["alt"] = "Reminder",
+                                        },
+                                    },
+                                ],
+                            },
+                            new ComponentNode
+                            {
+                                Id = "hero",
+                                Type = "AtomicSection",
+                                Props =
+                                {
+                                    ["variant"] = "hero",
+                                    ["source_selector"] = "section.hero",
+                                },
+                                Children =
+                                [
+                                    new ComponentNode
+                                    {
+                                        Id = "hero-image",
+                                        Type = "ImageBlock",
+                                        Props =
+                                        {
+                                            ["url"] = "https://example.com/hero.jpg",
+                                            ["alt"] = "Campus",
+                                        },
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "image-style-site",
+        });
+
+        var styles = File.ReadAllText(Path.Combine(result.OutputDirectory, "styles.css"));
+        styles.Should().Contain(".atomic-section--standard .image-block");
+        styles.Should().Contain("width: min(260px, 100%)");
+        styles.Should().Contain("max-height: 160px");
+        styles.Should().Contain(".atomic-section--hero .image-block");
+        styles.Should().Contain("min-height: 260px");
+        styles.Should().Contain("object-fit: cover");
+    }
 }

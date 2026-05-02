@@ -182,8 +182,12 @@ public sealed class StaticSitePackageGenerator
             .atomic-section--hero .image-block { order: 2; }
             .text-block h2 { margin: 0 0 12px; font-size: clamp(28px, 4vw, 52px); line-height: 1.08; letter-spacing: 0; }
             .text-block p { max-width: 760px; margin: 0; color: var(--muted); font-size: 17px; }
-            .image-block { margin: 0; min-height: 220px; border-radius: 8px; overflow: hidden; background: var(--band); }
-            .image-block img { width: 100%; height: 100%; min-height: 220px; object-fit: cover; display: block; }
+            .image-block { margin: 0; border-radius: 8px; overflow: hidden; background: var(--band); }
+            .image-block img { display: block; max-width: 100%; }
+            .atomic-section--standard .image-block { justify-self: start; width: min(260px, 100%); background: transparent; }
+            .atomic-section--standard .image-block img { width: auto; height: auto; max-height: 160px; object-fit: contain; }
+            .atomic-section--hero .image-block { min-height: 260px; }
+            .atomic-section--hero .image-block img { width: 100%; height: 100%; min-height: 260px; object-fit: cover; }
             .button-link { justify-self: start; display: inline-flex; align-items: center; min-height: 42px; padding: 9px 15px; border-radius: 6px; border: 1px solid var(--brand); font-weight: 700; }
             .button-link--primary { color: #fff; background: var(--brand); }
             .button-link--secondary { color: var(--brand); background: var(--surface); }
