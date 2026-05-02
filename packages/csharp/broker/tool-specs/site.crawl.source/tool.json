@@ -1,7 +1,7 @@
 {
   "tool_id": "site.crawl.source",
   "display_name": "Site Crawl Source",
-  "summary": "Safely crawl a confirmed public website path-depth scope and return source plus deterministic visual/function reference extraction output.",
+  "summary": "Safely crawl a confirmed public website path-depth scope and return static HTML source plus deterministic visual/function cues for reconstruction.",
   "kind": "crawler",
   "status": "beta",
   "version": "2026-05-02",
@@ -19,7 +19,7 @@
     {
       "capability_id": "site.crawl_source",
       "route": "site_crawl_source",
-      "purpose": "Safe path-depth public website crawl for visual/function reference extraction."
+      "purpose": "Safe path-depth public website crawl for static public HTML source and deterministic visual/function cue extraction."
     }
   ],
   "input_schema": {
@@ -33,7 +33,8 @@
           "max_depth": { "type": "integer", "minimum": 0 },
           "same_origin_only": { "type": "boolean" },
           "path_prefix_lock": { "type": "boolean" }
-        }
+        },
+        "required": ["max_depth"]
       },
       "capture": {
         "type": "object",
@@ -50,7 +51,7 @@
         }
       }
     },
-    "required": ["start_url"]
+    "required": ["start_url", "scope"]
   },
   "output_schema": {
     "type": "object",
@@ -147,7 +148,7 @@
     "allowed_sources": ["public_web"]
   },
   "execution_rules": {
-    "runtime_required": "site_crawler_worker",
+    "runtime_required": "site-crawler-worker",
     "mediation_required": true,
     "public_http_https_only": true,
     "allow_authenticated_access": false,
@@ -159,7 +160,14 @@
     },
     "requires_user_depth_confirmation": true,
     "depth_confirmation_options": ["first_layer", "within_two_layers", "n_layers"],
+    "depth_confirmation_mapping": {
+      "root_current_path_only": 0,
+      "first_layer_under_path": 1,
+      "within_two_layers": 2,
+      "n_layers": "N"
+    },
     "reference_package_only": true,
+    "rendered_behavior_capture": false,
     "clone_equivalence_allowed": false
   },
   "response_contract": {
@@ -171,6 +179,6 @@
     "must_state_no_authenticated_access": true,
     "must_state_depth_was_confirmed": true,
     "must_state_reference_not_equivalent_clone": true,
-    "result_wording": "Return a deterministic source/reference package for downstream generator reconstruction. The package is for approximate visual layout and function reconstruction with a custom component library, not a DOM, pixel, label-equivalent, or otherwise equivalent clone."
+    "result_wording": "Return static public HTML source plus deterministic visual/function cues for downstream generator reconstruction: sections, text hierarchy, links, forms, limited inline/CSS-token hints, and route graph. The package is not rendered layout capture, screenshot capture, full CSS/assets capture, JavaScript behavior capture, functional flow capture, or an equivalent clone."
   }
 }
