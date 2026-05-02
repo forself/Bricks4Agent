@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging.Abstractions;
 using SiteCrawlerWorker.Models;
 using SiteCrawlerWorker.Services;
 
@@ -24,20 +25,26 @@ public sealed class HighLevelSiteRebuildService
 {
     private const int DefaultMaxDepth = 1;
     private const int SiteRebuildMaxPages = int.MaxValue;
-    private const int DefaultTimeoutSeconds = 120;
+    private const int DefaultTimeoutSeconds = 600;
     private static readonly Regex UrlPattern = new(@"https?://[^\s#]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex DepthPattern = new(@"(?:深度|depth)\s*[:：]?\s*(\d+)|(\d+)\s*層", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly HighLevelLineWorkspaceService workspaceService;
     private readonly LineArtifactDeliveryService artifactDeliveryService;
     private readonly IPageFetcher pageFetcher;
+    private readonly Func<IVisualPageRenderer?>? visualRendererFactory;
     private readonly ILogger<HighLevelSiteRebuildService> logger;
 
     public HighLevelSiteRebuildService(
         HighLevelLineWorkspaceService workspaceService,
         LineArtifactDeliveryService artifactDeliveryService,
         ILogger<HighLevelSiteRebuildService> logger)
-        : this(workspaceService, artifactDeliveryService, new HttpPageFetcher(), logger)
+        : this(
+            workspaceService,
+            artifactDeliveryService,
+            new HttpPageFetcher(),
+            CreateDefaultVisualRenderer,
+            logger)
     {
     }
 
@@ -46,10 +53,21 @@ public sealed class HighLevelSiteRebuildService
         LineArtifactDeliveryService artifactDeliveryService,
         IPageFetcher pageFetcher,
         ILogger<HighLevelSiteRebuildService> logger)
+        : this(workspaceService, artifactDeliveryService, pageFetcher, null, logger)
+    {
+    }
+
+    public HighLevelSiteRebuildService(
+        HighLevelLineWorkspaceService workspaceService,
+        LineArtifactDeliveryService artifactDeliveryService,
+        IPageFetcher pageFetcher,
+        Func<IVisualPageRenderer?>? visualRendererFactory,
+        ILogger<HighLevelSiteRebuildService> logger)
     {
         this.workspaceService = workspaceService;
         this.artifactDeliveryService = artifactDeliveryService;
         this.pageFetcher = pageFetcher;
+        this.visualRendererFactory = visualRendererFactory;
         this.logger = logger;
     }
 
@@ -158,35 +176,61 @@ public sealed class HighLevelSiteRebuildService
 
     private async Task<SiteCrawlResult> CrawlAsync(string sourceUrl, int maxDepth, CancellationToken cancellationToken)
     {
-        var crawler = new SiteCrawlerService(pageFetcher, new DeterministicSiteExtractor());
-        return await crawler.CrawlAsync(new SiteCrawlRequest
+        var visualRenderer = visualRendererFactory?.Invoke();
+        try
         {
-            RequestId = $"site-rebuild-{Guid.NewGuid():N}"[..24],
-            StartUrl = sourceUrl,
-            Scope = new SiteCrawlScope
+            var crawler = new SiteCrawlerService(pageFetcher, new DeterministicSiteExtractor(), visualRenderer, null);
+            return await crawler.CrawlAsync(new SiteCrawlRequest
             {
-                Kind = "link_depth",
-                MaxDepth = maxDepth,
-                SameOriginOnly = true,
-                PathPrefixLock = true,
-            },
-            Capture = new SiteCrawlCaptureOptions
+                RequestId = $"site-rebuild-{Guid.NewGuid():N}"[..24],
+                StartUrl = sourceUrl,
+                Scope = new SiteCrawlScope
+                {
+                    Kind = "link_depth",
+                    MaxDepth = maxDepth,
+                    SameOriginOnly = true,
+                    PathPrefixLock = true,
+                },
+                Capture = new SiteCrawlCaptureOptions
+                {
+                    Html = false,
+                    RenderedDom = true,
+                    Css = false,
+                    Scripts = false,
+                    Assets = false,
+                    Screenshots = false,
+                },
+                Budgets = new SiteCrawlBudgets
+                {
+                    MaxPages = SiteRebuildMaxPages,
+                    MaxTotalBytes = 80 * 1024 * 1024,
+                    MaxAssetBytes = 0,
+                    WallClockTimeoutSeconds = DefaultTimeoutSeconds,
+                },
+            }, cancellationToken);
+        }
+        finally
+        {
+            if (visualRenderer is not null)
             {
-                Html = false,
-                RenderedDom = false,
-                Css = false,
-                Scripts = false,
-                Assets = false,
-                Screenshots = false,
-            },
-            Budgets = new SiteCrawlBudgets
+                await visualRenderer.DisposeAsync();
+            }
+        }
+    }
+
+    private static IVisualPageRenderer CreateDefaultVisualRenderer()
+    {
+        return new PlaywrightVisualPageRenderer(
+            new VisualPageRendererOptions
             {
-                MaxPages = SiteRebuildMaxPages,
-                MaxTotalBytes = 15 * 1024 * 1024,
-                MaxAssetBytes = 0,
-                WallClockTimeoutSeconds = DefaultTimeoutSeconds,
+                Headless = true,
+                ViewportWidth = 1366,
+                ViewportHeight = 900,
+                NetworkIdleTimeoutMs = 1800,
+                MaxRegions = 90,
+                MaxItemsPerRegion = 24,
             },
-        }, cancellationToken);
+            NullLogger<PlaywrightVisualPageRenderer>.Instance);
     }
 
     private static void VerifyGeneratedPackage(StaticSitePackageResult package)

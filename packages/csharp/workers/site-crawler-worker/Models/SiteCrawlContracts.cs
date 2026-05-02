@@ -144,6 +144,117 @@ public sealed class SiteCrawlPage
 
     [JsonPropertyName("resources")]
     public List<string> Resources { get; set; } = new();
+
+    [JsonPropertyName("visual_snapshot")]
+    public VisualPageSnapshot? VisualSnapshot { get; set; }
+}
+
+public sealed class VisualPageSnapshot
+{
+    [JsonPropertyName("capture_mode")]
+    public string CaptureMode { get; set; } = "browser_render";
+
+    [JsonPropertyName("viewport")]
+    public VisualViewport Viewport { get; set; } = new();
+
+    [JsonPropertyName("regions")]
+    public List<VisualRegion> Regions { get; set; } = new();
+
+    [JsonPropertyName("links")]
+    public List<string> Links { get; set; } = new();
+
+    [JsonPropertyName("forms")]
+    public List<ExtractedForm> Forms { get; set; } = new();
+
+    [JsonPropertyName("rendered_text")]
+    public string RenderedText { get; set; } = string.Empty;
+}
+
+public sealed class VisualViewport
+{
+    [JsonPropertyName("width")]
+    public int Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public int Height { get; set; }
+
+    [JsonPropertyName("device_scale_factor")]
+    public double DeviceScaleFactor { get; set; } = 1;
+}
+
+public sealed class VisualRegion
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "content";
+
+    [JsonPropertyName("selector")]
+    public string Selector { get; set; } = string.Empty;
+
+    [JsonPropertyName("tag")]
+    public string Tag { get; set; } = string.Empty;
+
+    [JsonPropertyName("bounds")]
+    public VisualBox Bounds { get; set; } = new();
+
+    [JsonPropertyName("style")]
+    public VisualStyle Style { get; set; } = new();
+
+    [JsonPropertyName("headline")]
+    public string Headline { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("media")]
+    public List<ExtractedMedia> Media { get; set; } = new();
+
+    [JsonPropertyName("actions")]
+    public List<ExtractedAction> Actions { get; set; } = new();
+
+    [JsonPropertyName("items")]
+    public List<ExtractedItem> Items { get; set; } = new();
+}
+
+public sealed class VisualBox
+{
+    [JsonPropertyName("x")]
+    public double X { get; set; }
+
+    [JsonPropertyName("y")]
+    public double Y { get; set; }
+
+    [JsonPropertyName("width")]
+    public double Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public double Height { get; set; }
+}
+
+public sealed class VisualStyle
+{
+    [JsonPropertyName("display")]
+    public string Display { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public string Position { get; set; } = string.Empty;
+
+    [JsonPropertyName("background_color")]
+    public string BackgroundColor { get; set; } = string.Empty;
+
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = string.Empty;
+
+    [JsonPropertyName("font_family")]
+    public string FontFamily { get; set; } = string.Empty;
+
+    [JsonPropertyName("font_size")]
+    public string FontSize { get; set; } = string.Empty;
+
+    [JsonPropertyName("font_weight")]
+    public string FontWeight { get; set; } = string.Empty;
 }
 
 public sealed class SiteCrawlAsset

@@ -1,7 +1,7 @@
 {
   "tool_id": "site.crawl.source",
   "display_name": "Site Crawl Source",
-  "summary": "Safely crawl a confirmed public website scope and return static HTML source plus deterministic visual/function cues for reconstruction.",
+  "summary": "Safely crawl a confirmed public website scope and return rendered visual/function cues plus auxiliary source hints for reconstruction.",
   "kind": "crawler",
   "status": "beta",
   "version": "2026-05-02",
@@ -19,7 +19,7 @@
     {
       "capability_id": "site.crawl_source",
       "route": "site_crawl_source",
-      "purpose": "Safe public website crawl for static public HTML source and deterministic visual/function cue extraction."
+      "purpose": "Safe public website crawl for rendered visual/function cue extraction with source HTML as auxiliary evidence."
     }
   ],
   "input_schema": {
@@ -169,7 +169,7 @@
       "root_current_path_only": 0
     },
     "reference_package_only": true,
-    "rendered_behavior_capture": false,
+    "rendered_behavior_capture": true,
     "clone_equivalence_allowed": false
   },
   "response_contract": {
@@ -181,6 +181,6 @@
     "must_state_no_authenticated_access": true,
     "must_state_depth_was_confirmed": true,
     "must_state_reference_not_equivalent_clone": true,
-    "result_wording": "Return static public HTML source plus deterministic visual/function cues for downstream generator reconstruction: sections, text hierarchy, links, forms, limited inline/CSS-token hints, and route graph. The package is not rendered layout capture, screenshot capture, full CSS/assets capture, JavaScript behavior capture, functional flow capture, or an equivalent clone."
+    "result_wording": "Return rendered visual/function cues for downstream generator reconstruction: visible regions, layout boxes, text hierarchy, links, forms, media hints, limited source/CSS-token hints, and route graph. Source HTML is auxiliary evidence, not the primary reconstruction input. The package is not an equivalent clone or a full JavaScript behavior capture."
   }
 }

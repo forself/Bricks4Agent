@@ -156,6 +156,14 @@ public sealed class HttpPageFetcher : IPageFetcher
         {
             return PageFetchResult.Fail(uri, 0, inner.Message);
         }
+        catch (HttpRequestException exception)
+        {
+            return PageFetchResult.Fail(uri, 0, BuildTransportFailureReason(exception));
+        }
+        catch (IOException exception)
+        {
+            return PageFetchResult.Fail(uri, 0, BuildTransportFailureReason(exception));
+        }
 
         using var response = responseMessage;
         var finalUri = response.RequestMessage?.RequestUri ?? uri;
@@ -178,7 +186,20 @@ public sealed class HttpPageFetcher : IPageFetcher
             return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, "non_html_content_type");
         }
 
-        var html = await ReadHtmlWithinLimitAsync(response.Content, maxBytes, ct);
+        string? html;
+        try
+        {
+            html = await ReadHtmlWithinLimitAsync(response.Content, maxBytes, ct);
+        }
+        catch (HttpRequestException exception)
+        {
+            return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, BuildTransportFailureReason(exception));
+        }
+        catch (IOException exception)
+        {
+            return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, BuildTransportFailureReason(exception));
+        }
+
         if (html is null)
         {
             return PageFetchResult.Fail(uri, finalUri, statusCode, contentType, "response_too_large");
@@ -255,6 +276,16 @@ public sealed class HttpPageFetcher : IPageFetcher
     private static bool IsFetchSafetyFailure(string reason)
     {
         return reason is "blocked_resolved_ip" or "dns_resolution_failed";
+    }
+
+    private static string BuildTransportFailureReason(Exception exception)
+    {
+        return exception switch
+        {
+            HttpRequestException => "fetch_http_request_failed",
+            IOException => "fetch_io_failed",
+            _ => "fetch_failed",
+        };
     }
 
     private static HttpClient CreateNonRedirectingHttpClient()

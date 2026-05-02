@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using SiteCrawlerWorker.Models;
@@ -9,10 +11,11 @@ public sealed class SiteCrawlerService
 {
     private readonly IPageFetcher pageFetcher;
     private readonly DeterministicSiteExtractor extractor;
+    private readonly IVisualPageRenderer? visualRenderer;
     private readonly ILogger<SiteCrawlerService>? logger;
 
     public SiteCrawlerService(IPageFetcher pageFetcher, DeterministicSiteExtractor extractor)
-        : this(pageFetcher, extractor, null)
+        : this(pageFetcher, extractor, null, null)
     {
     }
 
@@ -20,9 +23,27 @@ public sealed class SiteCrawlerService
         IPageFetcher pageFetcher,
         DeterministicSiteExtractor extractor,
         ILogger<SiteCrawlerService>? logger)
+        : this(pageFetcher, extractor, null, logger)
+    {
+    }
+
+    public SiteCrawlerService(
+        IPageFetcher pageFetcher,
+        DeterministicSiteExtractor extractor,
+        IVisualPageRenderer visualRenderer)
+        : this(pageFetcher, extractor, visualRenderer, null)
+    {
+    }
+
+    public SiteCrawlerService(
+        IPageFetcher pageFetcher,
+        DeterministicSiteExtractor extractor,
+        IVisualPageRenderer? visualRenderer,
+        ILogger<SiteCrawlerService>? logger)
     {
         this.pageFetcher = pageFetcher;
         this.extractor = extractor;
+        this.visualRenderer = visualRenderer;
         this.logger = logger;
     }
 
@@ -126,6 +147,12 @@ public sealed class SiteCrawlerService
                 result.Limits.Truncated = true;
                 break;
             }
+            catch (Exception exception) when (IsRecoverableFetchException(exception))
+            {
+                logger?.LogDebug(exception, "Fetch failed for {Url}; excluding page and continuing crawl.", current.Uri);
+                AddExcluded(result, excluded, current.Uri.ToString(), BuildRecoverableFetchFailureReason(exception));
+                continue;
+            }
 
             if (IsWallClockBudgetExpired(stopwatch, budgets.WallClockTimeoutSeconds))
             {
@@ -176,7 +203,41 @@ public sealed class SiteCrawlerService
                 continue;
             }
 
-            var pageBytes = Encoding.UTF8.GetByteCount(fetch.Html);
+            var effectiveUri = finalValidation.Uri;
+            var effectiveScope = finalScope;
+            var effectiveStatusCode = fetch.StatusCode;
+            var effectiveHtml = fetch.Html;
+            VisualPageSnapshot? visualSnapshot = null;
+            if (visualRenderer is not null && captureOptions.RenderedDom)
+            {
+                var visualResult = await visualRenderer.CaptureAsync(finalValidation.Uri, ct);
+                if (visualResult.Success)
+                {
+                    var visualFinalUri = RemoveFragment(visualResult.FinalUri);
+                    var visualValidation = SafeUrlPolicy.Validate(visualFinalUri.ToString());
+                    if (visualValidation.IsAllowed && visualValidation.Uri is not null)
+                    {
+                        var visualScope = scope.Evaluate(visualValidation.Uri);
+                        if (visualScope.IsAllowed)
+                        {
+                            effectiveUri = visualValidation.Uri;
+                            effectiveScope = visualScope;
+                            effectiveStatusCode = visualResult.StatusCode == 0 ? fetch.StatusCode : visualResult.StatusCode;
+                            effectiveHtml = visualResult.RenderedHtml;
+                            visualSnapshot = visualResult.Snapshot;
+                        }
+                    }
+                }
+                else
+                {
+                    logger?.LogDebug(
+                        "Visual render failed for {Url}: {Reason}; falling back to fetched HTML.",
+                        finalValidation.Uri,
+                        visualResult.FailureReason);
+                }
+            }
+
+            var pageBytes = Encoding.UTF8.GetByteCount(effectiveHtml);
             if (totalBytes + pageBytes > maxTotalBytes)
             {
                 result.Limits.ByteLimitHit = true;
@@ -186,7 +247,7 @@ public sealed class SiteCrawlerService
 
             totalBytes += pageBytes;
 
-            var finalKey = BuildCrawlKey(finalValidation.Uri);
+            var finalKey = BuildCrawlKey(effectiveUri);
             if (!string.Equals(finalKey, BuildCrawlKey(current.Uri), StringComparison.Ordinal))
             {
                 if (!seen.Add(finalKey) && crawled.Contains(finalKey))
@@ -200,23 +261,26 @@ public sealed class SiteCrawlerService
                 continue;
             }
 
-            var pageExtraction = extractor.ExtractPage(finalValidation.Uri, fetch.Html);
+            var pageExtraction = extractor.ExtractPage(effectiveUri, effectiveHtml);
+            var pageLinks = MergeLinks(pageExtraction.Links, visualSnapshot?.Links);
+            var pageForms = visualSnapshot?.Forms.Count > 0 ? visualSnapshot.Forms : pageExtraction.Forms;
             result.Pages.Add(new SiteCrawlPage
             {
                 Url = current.Uri.ToString(),
-                FinalUrl = finalValidation.Uri.ToString(),
-                Depth = useLinkDepth ? current.Depth : finalScope.Depth,
-                StatusCode = fetch.StatusCode,
+                FinalUrl = effectiveUri.ToString(),
+                Depth = useLinkDepth ? current.Depth : effectiveScope.Depth,
+                StatusCode = effectiveStatusCode,
                 Title = pageExtraction.Title,
-                Html = captureOptions.Html ? fetch.Html : string.Empty,
+                Html = captureOptions.Html ? effectiveHtml : string.Empty,
                 TextExcerpt = pageExtraction.TextExcerpt,
-                Links = pageExtraction.Links,
-                Forms = pageExtraction.Forms,
+                Links = pageLinks,
+                Forms = pageForms,
+                VisualSnapshot = visualSnapshot,
             });
             result.ExtractedModel.Pages.Add(pageExtraction.Model);
             MergeThemeTokens(result.ExtractedModel.ThemeTokens, pageExtraction.ThemeTokens);
 
-            foreach (var link in pageExtraction.Links)
+            foreach (var link in pageLinks)
             {
                 EnqueueCandidate(
                     new Uri(link),
@@ -245,6 +309,37 @@ public sealed class SiteCrawlerService
     {
         var remaining = TimeSpan.FromSeconds(wallClockTimeoutSeconds) - stopwatch.Elapsed;
         return remaining <= TimeSpan.Zero ? TimeSpan.FromTicks(1) : remaining;
+    }
+
+    private static List<string> MergeLinks(IEnumerable<string> primary, IEnumerable<string>? secondary)
+    {
+        var links = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var link in primary.Concat(secondary ?? []))
+        {
+            if (seen.Add(link))
+            {
+                links.Add(link);
+            }
+        }
+
+        return links;
+    }
+
+    private static bool IsRecoverableFetchException(Exception exception)
+    {
+        return exception is HttpRequestException or IOException or SocketException;
+    }
+
+    private static string BuildRecoverableFetchFailureReason(Exception exception)
+    {
+        return exception switch
+        {
+            HttpRequestException => "fetch_http_request_failed",
+            IOException => "fetch_io_failed",
+            SocketException => "fetch_socket_failed",
+            _ => "fetch_failed",
+        };
     }
 
     private static bool IsLinkDepthScope(SiteCrawlScope scope)

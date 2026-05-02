@@ -237,6 +237,123 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
+    public async Task CrawlAsync_WhenVisualRendererIsAvailable_UsesRenderedDomForExtractionAndLinks()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                "<html><head><title>Static</title></head><body><main><section><h1>Static Source</h1></section></main></body></html>"),
+            ["https://example.com/rendered"] = PageFetchResult.Ok(
+                new Uri("https://example.com/rendered"),
+                200,
+                "text/html",
+                "<html><head><title>Rendered Child</title></head><body><main><section><h1>Rendered Child</h1></section></main></body></html>"),
+        });
+        var renderer = new FakeVisualPageRenderer(new Dictionary<string, VisualPageRenderResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = VisualPageRenderResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                """
+                <html><head><title>Rendered</title></head><body>
+                  <main><section class="hero"><h1>Rendered Browser DOM</h1><a href="/rendered">Rendered child</a></section></main>
+                </body></html>
+                """,
+                new VisualPageSnapshot
+                {
+                    CaptureMode = "browser_render",
+                    Regions =
+                    [
+                        new VisualRegion
+                        {
+                            Role = "hero",
+                            Selector = "section.hero",
+                            Headline = "Rendered Browser DOM",
+                            Text = "Rendered Browser DOM Rendered child",
+                        },
+                    ],
+                }),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor(), renderer);
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            },
+            Capture = new SiteCrawlCaptureOptions { Html = true, RenderedDom = true },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => page.FinalUrl).Should().Equal(
+            "https://example.com/",
+            "https://example.com/rendered");
+        result.Pages[0].Html.Should().Contain("Rendered Browser DOM");
+        result.Pages[0].VisualSnapshot.Should().NotBeNull();
+        result.ExtractedModel.Pages[0].Sections.Should()
+            .Contain(section => section.Headline == "Rendered Browser DOM");
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WhenOnePageFetchThrowsRecoverableNetworkError_ExcludesPageAndContinues()
+    {
+        var fetcher = new ThrowingPageFetcher(
+            new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+            {
+                ["https://example.com/"] = PageFetchResult.Ok(
+                    new Uri("https://example.com/"),
+                    200,
+                    "text/html",
+                    """
+                    <html><head><title>Root</title></head><body>
+                      <main>
+                        <a href="/bad">Bad</a>
+                        <a href="/good">Good</a>
+                      </main>
+                    </body></html>
+                    """),
+                ["https://example.com/good"] = PageFetchResult.Ok(
+                    new Uri("https://example.com/good"),
+                    200,
+                    "text/html",
+                    "<html><head><title>Good</title></head><body><main><h1>Good</h1></main></body></html>"),
+            },
+            new Dictionary<string, Exception>(StringComparer.Ordinal)
+            {
+                ["https://example.com/bad"] = new HttpRequestException("connection reset"),
+            });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = true,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => page.FinalUrl).Should().Equal(
+            "https://example.com/",
+            "https://example.com/good");
+        result.Excluded.Should().Contain(excluded =>
+            excluded.Url == "https://example.com/bad" &&
+            excluded.Reason == "fetch_http_request_failed");
+    }
+
+    [Fact]
     public async Task CrawlAsync_WhenCaptureHtmlIsFalse_BlanksPageHtml()
     {
         var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
@@ -484,6 +601,22 @@ public class SiteCrawlerServiceTests
         result.Html.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task FetchAsync_WhenTransportRequestFails_ReturnsFailureResult()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) =>
+            throw new HttpRequestException("connection reset", new IOException("reset")));
+        var fetcher = new HttpPageFetcher(
+            handler,
+            new FakeHostAddressResolver(IPAddress.Parse("93.184.216.34")));
+
+        var result = await fetcher.FetchAsync(new Uri("https://example.com/docs/"), 1024, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.FailureReason.Should().Be("fetch_http_request_failed");
+        result.Html.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("127.0.0.1")]
     [InlineData("169.254.169.254")]
@@ -694,6 +827,56 @@ public class SiteCrawlerServiceTests
                 "text/html",
                 "<html><head><title>Late</title></head><body><section><h1>Late</h1></section></body></html>");
         }
+    }
+
+    private sealed class ThrowingPageFetcher : IPageFetcher
+    {
+        private readonly IReadOnlyDictionary<string, PageFetchResult> pages;
+        private readonly IReadOnlyDictionary<string, Exception> exceptions;
+
+        public ThrowingPageFetcher(
+            IReadOnlyDictionary<string, PageFetchResult> pages,
+            IReadOnlyDictionary<string, Exception> exceptions)
+        {
+            this.pages = pages;
+            this.exceptions = exceptions;
+        }
+
+        public Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
+        {
+            return FetchAsync(uri, long.MaxValue, ct);
+        }
+
+        public Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+        {
+            if (exceptions.TryGetValue(uri.ToString(), out var exception))
+            {
+                throw exception;
+            }
+
+            return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
+                ? result
+                : PageFetchResult.Fail(uri, 404, "not_found"));
+        }
+    }
+
+    private sealed class FakeVisualPageRenderer : IVisualPageRenderer
+    {
+        private readonly IReadOnlyDictionary<string, VisualPageRenderResult> pages;
+
+        public FakeVisualPageRenderer(IReadOnlyDictionary<string, VisualPageRenderResult> pages)
+        {
+            this.pages = pages;
+        }
+
+        public Task<VisualPageRenderResult> CaptureAsync(Uri uri, CancellationToken ct)
+        {
+            return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
+                ? result
+                : VisualPageRenderResult.Fail(uri, "not_rendered"));
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class FakeHostAddressResolver : IHostAddressResolver

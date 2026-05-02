@@ -137,6 +137,71 @@ public class SiteGeneratorConverterTests
     }
 
     [Fact]
+    public void Convert_WhenGalleryHasOnlyMedia_ComposesCarouselCardsFromReusableComponents()
+    {
+        var crawl = BuildCrawlResult();
+        var page = crawl.ExtractedModel.Pages[0];
+        page.Sections.Clear();
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "campus-gallery",
+            Role = "gallery",
+            Headline = "Campus Gallery",
+            Body = "Rendered visual highlights.",
+            SourceSelector = "div.slider",
+            Media =
+            [
+                new ExtractedMedia { Url = "https://example.com/assets/slide-1.jpg", Alt = "Slide 1", Kind = "image" },
+                new ExtractedMedia { Url = "https://example.com/assets/slide-2.jpg", Alt = "Slide 2", Kind = "image" },
+            ],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        var nodes = Flatten(document.Routes[0].Root).ToList();
+        var grid = nodes.Single(node => node.Type == "CardGrid");
+        grid.Props["layout"].Should().Be("carousel");
+        nodes.Count(node => node.Type == "FeatureCard").Should().Be(2);
+        nodes.Where(node => node.Type == "FeatureCard")
+            .Select(node => node.Props["media_url"])
+            .Should().Equal("https://example.com/assets/slide-1.jpg", "https://example.com/assets/slide-2.jpg");
+        nodes.Should().NotContain(node => node.Type.StartsWith("Generated", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Convert_WhenVisualCardGridHasManyDistinctImages_TreatsItAsGalleryCarousel()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages[0].VisualSnapshot = new VisualPageSnapshot
+        {
+            CaptureMode = "browser_render",
+            Regions =
+            [
+                new VisualRegion
+                {
+                    Role = "card_grid",
+                    Selector = "div.visual-slider",
+                    Headline = "Visual Highlights",
+                    Text = "Visual Highlights",
+                    Items =
+                    [
+                        new ExtractedItem { Title = "A", MediaUrl = "https://example.com/a.jpg" },
+                        new ExtractedItem { Title = "B", MediaUrl = "https://example.com/b.jpg" },
+                        new ExtractedItem { Title = "C", MediaUrl = "https://example.com/c.jpg" },
+                    ],
+                },
+            ],
+        };
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "CardGrid");
+        grid.Props["layout"].Should().Be("carousel");
+    }
+
+    [Fact]
     public void Convert_RewritesAtomicActionAndCardLinksToGeneratedRoutes()
     {
         var crawl = BuildCrawlResult();
@@ -285,6 +350,104 @@ public class SiteGeneratorConverterTests
         grid.Props["layout"].Should().Be("carousel");
         var card = Flatten(document.Routes[0].Root).Single(node => node.Type == "FeatureCard");
         card.Props["url"].Should().Be("/Spotlight/from-06-sID-32588");
+    }
+
+    [Fact]
+    public void Convert_UsesVisualSnapshotBeforeStaticExtractedModel()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.ExtractedModel.Pages[0].Sections[0].Headline = "Static Source Hero";
+        crawl.Pages[0].VisualSnapshot = new VisualPageSnapshot
+        {
+            CaptureMode = "browser_render",
+            Viewport = new VisualViewport { Width = 1366, Height = 900 },
+            Regions =
+            [
+                new VisualRegion
+                {
+                    Role = "header",
+                    Selector = "header.site-header",
+                    Bounds = new VisualBox { X = 0, Y = 0, Width = 1366, Height = 96 },
+                    Media =
+                    [
+                        new ExtractedMedia { Url = "https://example.com/rendered-logo.png", Alt = "Rendered logo" },
+                    ],
+                    Actions =
+                    [
+                        new ExtractedAction { Label = "Admissions", Url = "https://example.com/admission.aspx" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "hero",
+                    Selector = "section.visual-hero",
+                    Headline = "Rendered Hero",
+                    Text = "Rendered page copy from the browser.",
+                    Bounds = new VisualBox { X = 0, Y = 96, Width = 1366, Height = 520 },
+                    Media =
+                    [
+                        new ExtractedMedia { Url = "https://example.com/rendered-hero.jpg", Alt = "Rendered campus" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "carousel",
+                    Selector = "div.rendered-carousel",
+                    Headline = "Rendered Stories",
+                    Text = "Rendered carousel",
+                    Bounds = new VisualBox { X = 0, Y = 650, Width = 1366, Height = 340 },
+                    Items =
+                    [
+                        new ExtractedItem
+                        {
+                            Title = "Rendered Story",
+                            Body = "Story from rendered layout.",
+                            Url = "https://example.com/Spotlight.aspx?from=06&sID=32588",
+                            MediaUrl = "https://example.com/story.jpg",
+                            MediaAlt = "Story",
+                        },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "footer",
+                    Selector = "footer.site-footer",
+                    Text = "Rendered address",
+                    Bounds = new VisualBox { X = 0, Y = 1200, Width = 1366, Height = 220 },
+                    Media =
+                    [
+                        new ExtractedMedia { Url = "https://example.com/rendered-footer.png", Alt = "Rendered footer" },
+                    ],
+                },
+            ],
+        };
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
+        header.Props["logo_url"].Should().Be("https://example.com/rendered-logo.png");
+
+        var nodes = Flatten(document.Routes[0].Root).ToList();
+        var staticTitleNodes = nodes.Where(node =>
+        {
+            if (!node.Props.TryGetValue("title", out var title))
+            {
+                return false;
+            }
+
+            return string.Equals(title?.ToString(), "Static Source Hero", StringComparison.Ordinal);
+        }).ToList();
+        staticTitleNodes.Should().BeEmpty();
+        nodes.Should().Contain(node => node.Type == "TextBlock" && (string)node.Props["title"]! == "Rendered Hero");
+
+        var grid = nodes.Single(node => node.Type == "CardGrid");
+        grid.Props["layout"].Should().Be("carousel");
+        nodes.Should().Contain(node => node.Type == "FeatureCard" && (string)node.Props["title"]! == "Rendered Story");
+
+        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "SiteFooter");
+        footer.Props["logo_url"].Should().Be("https://example.com/rendered-footer.png");
+        footer.Props["contact_text"].Should().Be("Rendered address");
     }
 
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)

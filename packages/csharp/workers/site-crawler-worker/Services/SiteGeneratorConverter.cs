@@ -38,7 +38,7 @@ public sealed class SiteGeneratorConverter
 
         foreach (var page in crawl.Pages)
         {
-            var extractedPage = FindExtractedPage(crawl, page);
+            var extractedPage = BuildVisualExtractedPage(page) ?? FindExtractedPage(crawl, page);
             document.Routes.Add(BuildRoute(crawl, page, extractedPage, document, manifest, localRoutes));
         }
 
@@ -211,7 +211,13 @@ public sealed class SiteGeneratorConverter
             },
         });
 
-        foreach (var media in section.Media.Skip(section.Role == "hero" ? 1 : 0).Take(3))
+        var mediaAsCarouselCards = section.Role is "gallery" or "news" &&
+            section.Items.Count == 0 &&
+            section.Media.Count > 1;
+
+        foreach (var media in section.Media
+                     .Skip(section.Role == "hero" ? 1 : 0)
+                     .Take(mediaAsCarouselCards ? 0 : 3))
         {
             sectionNode.Children.Add(BuildImageBlock(media));
         }
@@ -234,7 +240,19 @@ public sealed class SiteGeneratorConverter
             });
         }
 
-        if (section.Items.Count > 0)
+        var cardItems = section.Items.Count > 0
+            ? section.Items
+            : mediaAsCarouselCards
+                ? section.Media.Select(media => new ExtractedItem
+                {
+                    Title = string.IsNullOrWhiteSpace(media.Alt) ? "Image" : media.Alt,
+                    Body = string.Empty,
+                    MediaUrl = media.Url,
+                    MediaAlt = media.Alt,
+                }).ToList()
+                : new List<ExtractedItem>();
+
+        if (cardItems.Count > 0)
         {
             var grid = new ComponentNode
             {
@@ -247,7 +265,7 @@ public sealed class SiteGeneratorConverter
                 },
             };
 
-            foreach (var item in section.Items.Take(24))
+            foreach (var item in cardItems.Take(24))
             {
                 var link = string.IsNullOrWhiteSpace(item.Url)
                     ? new Dictionary<string, string>
@@ -475,6 +493,174 @@ public sealed class SiteGeneratorConverter
     {
         return crawl.ExtractedModel.Pages.FirstOrDefault(candidate =>
             string.Equals(candidate.PageUrl, page.FinalUrl, StringComparison.Ordinal));
+    }
+
+    private static ExtractedPageModel? BuildVisualExtractedPage(SiteCrawlPage page)
+    {
+        var snapshot = page.VisualSnapshot;
+        if (snapshot is null || snapshot.Regions.Count == 0)
+        {
+            return null;
+        }
+
+        var model = new ExtractedPageModel
+        {
+            PageUrl = page.FinalUrl,
+        };
+
+        var headerRegion = snapshot.Regions.FirstOrDefault(region => IsVisualRole(region, "header")) ??
+            snapshot.Regions.FirstOrDefault(region => IsVisualRole(region, "nav"));
+        if (headerRegion is not null)
+        {
+            var logo = FindVisualLogo(headerRegion);
+            model.Header = new ExtractedHeader
+            {
+                LogoUrl = logo?.Url ?? string.Empty,
+                LogoAlt = logo?.Alt ?? string.Empty,
+                PrimaryLinks = headerRegion.Actions
+                    .Where(action => !string.IsNullOrWhiteSpace(action.Label) && !string.IsNullOrWhiteSpace(action.Url))
+                    .DistinctBy(action => $"{action.Label}\n{action.Url}", StringComparer.Ordinal)
+                    .Take(16)
+                    .ToList(),
+            };
+        }
+
+        var footerRegion = snapshot.Regions.FirstOrDefault(region => IsVisualRole(region, "footer"));
+        if (footerRegion is not null)
+        {
+            var logo = FindVisualLogo(footerRegion);
+            model.Footer = new ExtractedFooter
+            {
+                LogoUrl = logo?.Url ?? string.Empty,
+                LogoAlt = logo?.Alt ?? string.Empty,
+                Text = LimitVisualText(footerRegion.Text, 600),
+                Links = footerRegion.Actions
+                    .Where(action => !string.IsNullOrWhiteSpace(action.Label) && !string.IsNullOrWhiteSpace(action.Url))
+                    .DistinctBy(action => $"{action.Label}\n{action.Url}", StringComparer.Ordinal)
+                    .Take(16)
+                    .ToList(),
+            };
+        }
+
+        foreach (var region in snapshot.Regions)
+        {
+            if (IsVisualRole(region, "header") || IsVisualRole(region, "footer") || IsVisualRole(region, "nav"))
+            {
+                continue;
+            }
+
+            var body = CleanVisualBody(region.Text, region.Headline);
+            if (string.IsNullOrWhiteSpace(body) &&
+                region.Media.Count == 0 &&
+                region.Actions.Count == 0 &&
+                region.Items.Count == 0)
+            {
+                continue;
+            }
+
+            model.Sections.Add(new ExtractedSection
+            {
+                Id = string.IsNullOrWhiteSpace(region.Id) ? $"visual-section-{model.Sections.Count + 1}" : region.Id,
+                Tag = string.IsNullOrWhiteSpace(region.Tag) ? "section" : region.Tag,
+                Role = NormalizeVisualRole(region),
+                Headline = region.Headline,
+                Body = body,
+                SourceSelector = string.IsNullOrWhiteSpace(region.Selector)
+                    ? $"visual-region-{model.Sections.Count + 1}"
+                    : region.Selector,
+                Media = region.Media
+                    .Where(media => !string.IsNullOrWhiteSpace(media.Url))
+                    .DistinctBy(media => media.Url, StringComparer.Ordinal)
+                    .Take(8)
+                    .ToList(),
+                Actions = region.Actions
+                    .Where(action => !string.IsNullOrWhiteSpace(action.Label) && !string.IsNullOrWhiteSpace(action.Url))
+                    .DistinctBy(action => $"{action.Label}\n{action.Url}", StringComparer.Ordinal)
+                    .Take(8)
+                    .ToList(),
+                Items = region.Items
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Title) ||
+                        !string.IsNullOrWhiteSpace(item.Body) ||
+                        !string.IsNullOrWhiteSpace(item.MediaUrl))
+                    .DistinctBy(item => $"{item.Title}\n{item.Url}\n{item.MediaUrl}", StringComparer.Ordinal)
+                    .Take(24)
+                    .ToList(),
+            });
+        }
+
+        return model.Sections.Count == 0 &&
+            string.IsNullOrWhiteSpace(model.Header.LogoUrl) &&
+            model.Header.PrimaryLinks.Count == 0 &&
+            string.IsNullOrWhiteSpace(model.Footer.Text)
+            ? null
+            : model;
+    }
+
+    private static bool IsVisualRole(VisualRegion region, string role)
+    {
+        return string.Equals(region.Role, role, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ExtractedMedia? FindVisualLogo(VisualRegion region)
+    {
+        return region.Media.FirstOrDefault(media =>
+            media.Alt.Contains("logo", StringComparison.OrdinalIgnoreCase) ||
+            media.Url.Contains("logo", StringComparison.OrdinalIgnoreCase)) ??
+            region.Media.FirstOrDefault();
+    }
+
+    private static string NormalizeVisualRole(VisualRegion region)
+    {
+        var role = region.Role.ToLowerInvariant();
+        if (role is "card_grid" or "visual_grid")
+        {
+            var uniqueItemMedia = region.Items
+                .Select(item => item.MediaUrl)
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            var uniqueRegionMedia = region.Media
+                .Select(media => media.Url)
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+
+            if (Math.Max(uniqueItemMedia, uniqueRegionMedia) >= 3)
+            {
+                return "gallery";
+            }
+        }
+
+        return role switch
+        {
+            "carousel" => "gallery",
+            "card_grid" => "feature_grid",
+            "visual_grid" => "feature_grid",
+            "header" => "content",
+            "nav" => "content",
+            "footer" => "footer",
+            "hero" => "hero",
+            "news" => "news",
+            "form" => "contact",
+            _ => "content",
+        };
+    }
+
+    private static string CleanVisualBody(string text, string headline)
+    {
+        var body = (text ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(headline) && body.StartsWith(headline, StringComparison.Ordinal))
+        {
+            body = body[headline.Length..].Trim();
+        }
+
+        return LimitVisualText(body, 2000);
+    }
+
+    private static string LimitVisualText(string text, int limit)
+    {
+        var value = (text ?? string.Empty).Trim();
+        return value.Length <= limit ? value : value[..limit].TrimEnd();
     }
 
     private static string ResolveSiteTitle(SiteCrawlResult crawl)
