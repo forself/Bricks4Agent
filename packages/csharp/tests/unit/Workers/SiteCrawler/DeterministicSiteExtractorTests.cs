@@ -485,4 +485,51 @@ public class DeterministicSiteExtractorTests
         spotlight.Items[0].MediaUrl.Should().Be("https://example.com/news/main.jpg");
         spotlight.Items[0].Url.Should().Be("https://example.com/news/main");
     }
+
+    [Fact]
+    public void ExtractPage_ExtractsVisualHeaderAndFooterChrome()
+    {
+        var html = """
+            <html>
+            <body>
+              <div class="logosearch-area">
+                <p class="top-linkbox">
+                  <a href="/apply.aspx">Apply</a>
+                  <a href="/contact.aspx">Contact</a>
+                </p>
+                <h1><a href="/default.aspx"><img src="/logo.png" alt="University logo"></a></h1>
+                <div class="navbar">
+                  <ul class="nav">
+                    <li><a href="/about.aspx">About SHU</a></li>
+                    <li><a href="/admission.aspx">Admissions</a></li>
+                  </ul>
+                </div>
+              </div>
+              <main>
+                <section><h2>Welcome</h2><p>Main content.</p></section>
+              </main>
+              <div class="m1-area footer">
+                <img src="/footer-logo.png" alt="Footer logo">
+                <span>No. 1, University Road</span>
+                <span>Tel: 02-2236-8225</span>
+                <a href="/privacy.aspx">Privacy</a>
+              </div>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Header.LogoUrl.Should().Be("https://example.com/logo.png");
+        result.Model.Header.LogoAlt.Should().Be("University logo");
+        result.Model.Header.UtilityLinks.Should().Contain(action => action.Label == "Apply" && action.Url == "https://example.com/apply.aspx");
+        result.Model.Header.PrimaryLinks.Should().Contain(action => action.Label == "About SHU" && action.Url == "https://example.com/about.aspx");
+        result.Model.Header.PrimaryLinks.Should().Contain(action => action.Label == "Admissions" && action.Url == "https://example.com/admission.aspx");
+
+        result.Model.Footer.LogoUrl.Should().Be("https://example.com/footer-logo.png");
+        result.Model.Footer.Text.Should().Contain("No. 1, University Road");
+        result.Model.Footer.Text.Should().Contain("Tel: 02-2236-8225");
+        result.Model.Footer.Links.Should().Contain(action => action.Label == "Privacy" && action.Url == "https://example.com/privacy.aspx");
+    }
 }

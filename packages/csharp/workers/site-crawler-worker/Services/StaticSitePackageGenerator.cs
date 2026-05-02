@@ -163,10 +163,13 @@ public sealed class StaticSitePackageGenerator
             a { color: var(--brand); text-decoration: none; }
             a:hover { text-decoration: underline; }
             .site-shell { min-height: 100vh; }
-            .site-header { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
-            .site-header-inner { max-width: 1180px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 24px; }
-            .brand { font-weight: 700; color: var(--ink); white-space: nowrap; }
-            .nav-links { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; }
+            .site-header { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+            .site-header-inner { max-width: 1180px; margin: 0 auto; padding: 10px 20px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand utility" "brand primary"; gap: 8px 24px; align-items: center; }
+            .brand { grid-area: brand; display: inline-flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+            .brand-logo { max-width: 220px; max-height: 58px; width: auto; height: auto; object-fit: contain; display: block; }
+            .utility-links { grid-area: utility; justify-content: flex-end; font-size: 13px; color: var(--muted); }
+            .primary-links { grid-area: primary; justify-content: flex-end; font-weight: 700; }
+            .nav-links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
             main { max-width: 1180px; margin: 0 auto; padding: 0 20px 48px; }
             .hero-section { padding: 72px 0 44px; border-bottom: 1px solid var(--line); }
             .hero-section h1 { max-width: 840px; margin: 0 0 16px; font-size: clamp(34px, 5vw, 64px); line-height: 1.05; letter-spacing: 0; }
@@ -187,6 +190,8 @@ public sealed class StaticSitePackageGenerator
             .card-grid-section { display: grid; gap: 16px; }
             .card-grid-section h2 { margin: 0; font-size: 24px; letter-spacing: 0; }
             .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+            .card-grid--carousel { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+            .card-grid--carousel .feature-card { min-width: min(320px, 82vw); scroll-snap-align: start; }
             .feature-card { min-height: 100%; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); display: flex; flex-direction: column; }
             .feature-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--band); }
             .feature-card-body { padding: 16px; display: grid; gap: 8px; }
@@ -200,9 +205,13 @@ public sealed class StaticSitePackageGenerator
             .field input, .field textarea, .field select { width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; }
             .form-note { color: var(--muted); font-size: 13px; }
             .site-footer { padding: 26px 20px; border-top: 1px solid var(--line); background: var(--band); color: var(--muted); font-size: 13px; }
-            .site-footer-inner { max-width: 1180px; margin: 0 auto; }
+            .site-footer-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 24px; align-items: start; }
+            .footer-logo { max-width: 180px; max-height: 72px; object-fit: contain; }
+            .footer-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
             .runtime-error { max-width: 760px; margin: 48px auto; padding: 18px; border: 1px solid #e5484d; color: #8f1d22; background: #fff7f7; }
             @media (max-width: 760px) {
+              .site-header-inner { grid-template-columns: 1fr; grid-template-areas: "brand" "utility" "primary"; }
+              .utility-links, .primary-links { justify-content: flex-start; }
               .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
               .atomic-section--hero .image-block { order: 0; }
             }
@@ -393,13 +402,18 @@ public sealed class StaticSitePackageGenerator
             event.preventDefault();
             navigateToRoute('/');
           });
-          const nav = element('nav', 'nav-links');
-          for (const link of node.props?.links || []) {
-            const a = element('a', '', link.label || link.url);
-            configureLink(a, link);
-            nav.appendChild(a);
+          if (node.props?.logo_url) {
+            brand.textContent = '';
+            const logo = document.createElement('img');
+            logo.className = 'brand-logo';
+            logo.src = node.props.logo_url;
+            logo.alt = node.props.logo_alt || node.props?.title || 'Site logo';
+            brand.appendChild(logo);
           }
-          inner.append(brand, nav);
+          const utility = renderLinkSet(node.props?.utility_links || [], 'nav', 'nav-links utility-links');
+          const primaryLinks = node.props?.primary_links?.length ? node.props.primary_links : node.props?.links || [];
+          const primary = renderLinkSet(primaryLinks, 'nav', 'nav-links primary-links');
+          inner.append(brand, utility, primary);
           header.appendChild(inner);
           return header;
         }
@@ -456,7 +470,12 @@ public sealed class StaticSitePackageGenerator
         function renderCardGrid(node, knownTypes, manifest) {
           const wrap = element('section', 'card-grid-section');
           if (node.props?.title) wrap.append(element('h2', '', node.props.title));
-          const grid = element('div', 'card-grid');
+          const layout = node.props?.layout === 'carousel' ? 'carousel' : 'grid';
+          const gridClass = layout === 'carousel' ? 'card-grid card-grid--carousel' : 'card-grid card-grid--grid';
+          const grid = element('div', gridClass);
+          if (layout === 'carousel') {
+            grid.setAttribute('aria-label', node.props?.title || 'Carousel');
+          }
           renderChildren(node, grid, knownTypes, manifest);
           wrap.appendChild(grid);
           return wrap;
@@ -529,14 +548,36 @@ public sealed class StaticSitePackageGenerator
         function renderSiteFooter(node) {
           const footer = element('footer', 'site-footer');
           const inner = element('div', 'site-footer-inner');
-          inner.append(element('div', '', node.props?.notice || 'Generated reference package.'));
+          if (node.props?.logo_url) {
+            const logo = document.createElement('img');
+            logo.className = 'footer-logo';
+            logo.src = node.props.logo_url;
+            logo.alt = node.props.logo_alt || 'Footer logo';
+            inner.appendChild(logo);
+          }
+          const content = element('div', 'footer-content');
+          if (node.props?.contact_text) content.append(element('div', '', node.props.contact_text));
+          content.append(element('div', '', node.props?.notice || 'Generated reference package.'));
+          const footerLinks = renderLinkSet(node.props?.links || [], 'div', 'footer-links');
+          content.appendChild(footerLinks);
           if (node.props?.source_url) {
             const source = element('a', '', node.props.source_url);
             source.href = node.props.source_url;
-            inner.append(source);
+            content.append(source);
           }
+          inner.appendChild(content);
           footer.appendChild(inner);
           return footer;
+        }
+
+        function renderLinkSet(links, tag, className) {
+          const container = element(tag, className);
+          for (const link of links || []) {
+            const a = element('a', '', link.label || link.url);
+            configureLink(a, link);
+            container.appendChild(a);
+          }
+          return container;
         }
 
         function element(tag, className = '', text = '') {
@@ -547,15 +588,29 @@ public sealed class StaticSitePackageGenerator
         }
 
         function configureLink(anchor, link) {
-          anchor.href = link.url;
-          if (link.scope === 'internal' && link.url?.startsWith('/')) {
-            anchor.setAttribute('data-local-route', link.url);
+          const url = normalizeInternalRoute(link.url || '#');
+          anchor.href = toStaticHref(url);
+          if (link.scope === 'internal' && url.startsWith('/')) {
+            anchor.setAttribute('data-local-route', url);
             anchor.addEventListener('click', event => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
               event.preventDefault();
-              navigateToRoute(link.url);
+              navigateToRoute(url);
             });
           }
+        }
+
+        function normalizeInternalRoute(url) {
+          if (!url?.startsWith('/')) return url || '#';
+          return url
+            .replace(/\/index$/i, '/')
+            .replace(/\.(aspx|html|htm)(?=\/|$|\?)/i, '')
+            .replace(/[?&=]+/g, '-');
+        }
+
+        function toStaticHref(url) {
+          if (!url?.startsWith('/')) return url || '#';
+          return `#${url}`;
         }
         """;
 }

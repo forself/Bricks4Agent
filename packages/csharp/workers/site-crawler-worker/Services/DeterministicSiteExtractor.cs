@@ -45,7 +45,9 @@ public sealed class DeterministicSiteExtractor
         var model = new ExtractedPageModel
         {
             PageUrl = RemoveFragment(pageUri).ToString(),
+            Header = ExtractHeader(document, pageUri),
             Sections = ExtractSections(document, pageUri),
+            Footer = ExtractFooter(document, pageUri),
         };
 
         var themeTokens = ExtractThemeTokens(document);
@@ -216,7 +218,7 @@ public sealed class DeterministicSiteExtractor
                 continue;
             }
 
-            var items = ExtractItems(candidate, pageUri, maxItems: 12);
+            var items = ExtractItems(candidate, pageUri, maxItems: 24);
             var bodyText = items.Count > 0
                 ? GetVisibleTextWithoutNestedItems(candidate, SectionBodyLimit + 1)
                 : GetVisibleText(candidate, SectionBodyLimit + 1);
@@ -242,6 +244,90 @@ public sealed class DeterministicSiteExtractor
         }
 
         return sections;
+    }
+
+    private static ExtractedHeader ExtractHeader(HtmlDocument document, Uri pageUri)
+    {
+        var node = document.DocumentNode.Descendants()
+            .Where(descendant => descendant.NodeType == HtmlNodeType.Element)
+            .FirstOrDefault(IsHeaderCandidate);
+        if (node is null)
+        {
+            return new ExtractedHeader();
+        }
+
+        var logo = FindLogoImage(node);
+        var utilityNode = node.Descendants()
+            .FirstOrDefault(descendant => descendant.NodeType == HtmlNodeType.Element &&
+                GetRoleSignalTokens(descendant).Any(token => token is "toplinkbox" or "linkbox" or "utility" or "topsec"));
+        var primaryNode = node.Descendants()
+            .FirstOrDefault(descendant => descendant.NodeType == HtmlNodeType.Element &&
+                GetRoleSignalTokens(descendant).Any(token => token is "nav" or "navbar" or "navarea" or "menu979" or "navbar-inner"));
+
+        return new ExtractedHeader
+        {
+            LogoUrl = logo is null ? string.Empty : ResolveHttpUrl(pageUri, FirstNonEmptyAttribute(logo, "src", "data-src", "data-original")),
+            LogoAlt = logo is null ? string.Empty : CleanAttribute(logo.GetAttributeValue("alt", string.Empty)),
+            UtilityLinks = utilityNode is null ? [] : ExtractActionLinks(utilityNode, pageUri, maxItems: 10),
+            PrimaryLinks = primaryNode is null
+                ? ExtractActionLinks(node, pageUri, maxItems: 12)
+                : ExtractActionLinks(primaryNode, pageUri, maxItems: 12),
+        };
+    }
+
+    private static ExtractedFooter ExtractFooter(HtmlDocument document, Uri pageUri)
+    {
+        var node = document.DocumentNode.Descendants()
+            .Where(descendant => descendant.NodeType == HtmlNodeType.Element)
+            .FirstOrDefault(IsFooterCandidate);
+        if (node is null)
+        {
+            return new ExtractedFooter();
+        }
+
+        var logo = FindLogoImage(node);
+        return new ExtractedFooter
+        {
+            LogoUrl = logo is null ? string.Empty : ResolveHttpUrl(pageUri, FirstNonEmptyAttribute(logo, "src", "data-src", "data-original")),
+            LogoAlt = logo is null ? string.Empty : CleanAttribute(logo.GetAttributeValue("alt", string.Empty)),
+            Text = LimitText(CleanText(node.InnerText), 600),
+            Links = ExtractActionLinks(node, pageUri, maxItems: 16),
+        };
+    }
+
+    private static HtmlNode? FindLogoImage(HtmlNode node)
+    {
+        return SelectNodes(node, ".//img[@src or @data-src or @data-original]")
+            .FirstOrDefault(img =>
+                CleanAttribute(img.GetAttributeValue("alt", string.Empty)).Contains("logo", StringComparison.OrdinalIgnoreCase) ||
+                CleanAttribute(img.GetAttributeValue("class", string.Empty)).Contains("logo", StringComparison.OrdinalIgnoreCase)) ??
+            SelectNodes(node, ".//img[@src or @data-src or @data-original]").FirstOrDefault();
+    }
+
+    private static List<ExtractedAction> ExtractActionLinks(HtmlNode node, Uri pageUri, int maxItems)
+    {
+        return SelectNodes(node, ".//a[@href]")
+            .Select(anchor =>
+            {
+                var label = CleanText(anchor.InnerText);
+                var url = ResolveHttpUrl(pageUri, CleanAttribute(anchor.GetAttributeValue("href", string.Empty)));
+                if (IsNonVisualLinkLabel(label) || string.IsNullOrWhiteSpace(url))
+                {
+                    return null;
+                }
+
+                return new ExtractedAction
+                {
+                    Label = label,
+                    Url = url,
+                    Kind = InferActionKind(anchor),
+                };
+            })
+            .Where(action => action is not null)
+            .Select(action => action!)
+            .DistinctBy(action => $"{action.Label}\n{action.Url}", StringComparer.Ordinal)
+            .Take(maxItems)
+            .ToList();
     }
 
     private static List<ExtractedMedia> ExtractMedia(HtmlNode node, Uri pageUri, int maxItems)
@@ -687,6 +773,30 @@ public sealed class DeterministicSiteExtractor
                 "remind" or "reminder" or "sloga" or "notice");
     }
 
+    private static bool IsHeaderCandidate(HtmlNode node)
+    {
+        if (node.Name.Equals("header", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var tokens = GetRoleSignalTokens(node);
+        return tokens.Any(token => token is "logosearch" or "siteheader" or "header") &&
+            SelectNodes(node, ".//a[@href]").Any();
+    }
+
+    private static bool IsFooterCandidate(HtmlNode node)
+    {
+        if (node.Name.Equals("footer", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var tokens = GetRoleSignalTokens(node);
+        return tokens.Any(token => token is "footer" or "sitefooter") &&
+            (SelectNodes(node, ".//a[@href]").Any() || SelectNodes(node, ".//img[@src or @data-src or @data-original]").Any());
+    }
+
     private static bool IsItemCandidate(HtmlNode node)
     {
         if (node.NodeType != HtmlNodeType.Element)
@@ -746,6 +856,12 @@ public sealed class DeterministicSiteExtractor
         => token is "nav" or "navbar" or "menu" or "dropdown" or "top" or "topsec" or
             "toplinkbox" or "logosearch" or "logo" or "search" or "footer" or "breadcrumb" or
             "breadcrumbs" or "skip" or "sr" or "sr-only";
+
+    private static bool IsNonVisualLinkLabel(string label)
+        => string.IsNullOrWhiteSpace(label) ||
+            label.Equals(":::", StringComparison.Ordinal) ||
+            label.Equals("更多", StringComparison.Ordinal) ||
+            label.Equals("More", StringComparison.OrdinalIgnoreCase);
 
     private static string ExtractHeadline(HtmlNode node)
     {

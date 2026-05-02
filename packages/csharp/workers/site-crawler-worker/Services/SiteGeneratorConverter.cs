@@ -72,6 +72,10 @@ public sealed class SiteGeneratorConverter
             Props =
             {
                 ["title"] = document.Site.Title,
+                ["logo_url"] = extractedPage?.Header.LogoUrl ?? string.Empty,
+                ["logo_alt"] = extractedPage?.Header.LogoAlt ?? string.Empty,
+                ["utility_links"] = BuildLinks(extractedPage?.Header.UtilityLinks ?? [], crawl.Root.Origin, localRoutes, maxLinks: 10),
+                ["primary_links"] = BuildLinks(extractedPage?.Header.PrimaryLinks ?? [], crawl.Root.Origin, localRoutes, maxLinks: 12),
                 ["links"] = new List<Dictionary<string, string>>(),
             },
         });
@@ -111,6 +115,10 @@ public sealed class SiteGeneratorConverter
             {
                 ["source_url"] = page.FinalUrl,
                 ["notice"] = "Reconstructed from static public source cues. Not an equivalent clone.",
+                ["logo_url"] = extractedPage?.Footer.LogoUrl ?? string.Empty,
+                ["logo_alt"] = extractedPage?.Footer.LogoAlt ?? string.Empty,
+                ["contact_text"] = extractedPage?.Footer.Text ?? string.Empty,
+                ["links"] = BuildLinks(extractedPage?.Footer.Links ?? [], crawl.Root.Origin, localRoutes, maxLinks: 16),
             },
         });
 
@@ -235,10 +243,11 @@ public sealed class SiteGeneratorConverter
                 Props =
                 {
                     ["title"] = section.Headline,
+                    ["layout"] = section.Role is "news" or "gallery" ? "carousel" : "grid",
                 },
             };
 
-            foreach (var item in section.Items.Take(12))
+            foreach (var item in section.Items.Take(24))
             {
                 var link = string.IsNullOrWhiteSpace(item.Url)
                     ? new Dictionary<string, string>
@@ -341,6 +350,25 @@ public sealed class SiteGeneratorConverter
             .Distinct(StringComparer.Ordinal)
             .Take(maxLinks)
             .Select(link => BuildLink(link, origin, localRoutes))
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildLinks(
+        IEnumerable<ExtractedAction> links,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes,
+        int maxLinks)
+    {
+        return links
+            .Where(link => !string.IsNullOrWhiteSpace(link.Url) && !string.IsNullOrWhiteSpace(link.Label))
+            .DistinctBy(link => $"{link.Label}\n{link.Url}", StringComparer.Ordinal)
+            .Take(maxLinks)
+            .Select(link =>
+            {
+                var built = BuildLink(link.Url, origin, localRoutes);
+                built["label"] = link.Label;
+                return built;
+            })
             .ToList();
     }
 
@@ -469,8 +497,46 @@ public sealed class SiteGeneratorConverter
             return "/";
         }
 
-        var path = uri.PathAndQuery;
-        return string.IsNullOrWhiteSpace(path) ? "/" : path;
+        var path = uri.AbsolutePath;
+        if (string.IsNullOrWhiteSpace(path) || path == "/")
+        {
+            return "/";
+        }
+
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".aspx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
+        {
+            path = path[..^extension.Length];
+        }
+
+        path = path.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = "/";
+        }
+
+        var querySlug = BuildQuerySlug(uri.Query);
+        return string.IsNullOrWhiteSpace(querySlug)
+            ? path
+            : $"{path}/{querySlug}";
+    }
+
+    private static string BuildQuerySlug(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return string.Empty;
+        }
+
+        var tokens = query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(part => part.Split('=', 2, StringSplitOptions.RemoveEmptyEntries))
+            .Select(token => Regex.Replace(Uri.UnescapeDataString(token), "[^a-zA-Z0-9]+", "-").Trim('-'))
+            .Where(token => !string.IsNullOrWhiteSpace(token));
+
+        return string.Join('-', tokens);
     }
 
     private static string BuildNodeId(string prefix, string source)

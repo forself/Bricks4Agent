@@ -196,8 +196,44 @@ public sealed class ExtractedPageModel
     [JsonPropertyName("page_url")]
     public string PageUrl { get; set; } = string.Empty;
 
+    [JsonPropertyName("header")]
+    public ExtractedHeader Header { get; set; } = new();
+
     [JsonPropertyName("sections")]
     public List<ExtractedSection> Sections { get; set; } = new();
+
+    [JsonPropertyName("footer")]
+    public ExtractedFooter Footer { get; set; } = new();
+}
+
+public sealed class ExtractedHeader
+{
+    [JsonPropertyName("logo_url")]
+    public string LogoUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("logo_alt")]
+    public string LogoAlt { get; set; } = string.Empty;
+
+    [JsonPropertyName("utility_links")]
+    public List<ExtractedAction> UtilityLinks { get; set; } = new();
+
+    [JsonPropertyName("primary_links")]
+    public List<ExtractedAction> PrimaryLinks { get; set; } = new();
+}
+
+public sealed class ExtractedFooter
+{
+    [JsonPropertyName("logo_url")]
+    public string LogoUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("logo_alt")]
+    public string LogoAlt { get; set; } = string.Empty;
+
+    [JsonPropertyName("text")]
+    public string Text { get; set; } = string.Empty;
+
+    [JsonPropertyName("links")]
+    public List<ExtractedAction> Links { get; set; } = new();
 }
 
 public sealed class ExtractedSection

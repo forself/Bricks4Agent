@@ -23,6 +23,34 @@
         "required": ["title", "links"],
         "properties": {
           "title": { "type": "string" },
+          "logo_url": { "type": "string" },
+          "logo_alt": { "type": "string" },
+          "utility_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          },
+          "primary_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          },
           "links": {
             "type": "array",
             "items": {
@@ -128,7 +156,23 @@
         "required": ["source_url", "notice"],
         "properties": {
           "source_url": { "type": "string" },
-          "notice": { "type": "string" }
+          "notice": { "type": "string" },
+          "logo_url": { "type": "string" },
+          "logo_alt": { "type": "string" },
+          "contact_text": { "type": "string" },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
         }
       },
       "generated": false
@@ -195,7 +239,8 @@
       "props_schema": {
         "required": ["title"],
         "properties": {
-          "title": { "type": "string" }
+          "title": { "type": "string" },
+          "layout": { "type": "string" }
         }
       },
       "generated": false

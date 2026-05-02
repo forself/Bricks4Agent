@@ -200,6 +200,93 @@ public class SiteGeneratorConverterTests
         card.Props["url"].Should().Be("/programs/journalism");
     }
 
+    [Fact]
+    public void Convert_PreservesVisualHeaderFooterAndUsesStaticRoutes()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/admission.aspx",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "Admissions",
+            TextExcerpt = "Admissions.",
+            Links = [],
+        });
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/Spotlight.aspx?from=06&sID=32588",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "Spotlight",
+            TextExcerpt = "Spotlight.",
+            Links = [],
+        });
+        var page = crawl.ExtractedModel.Pages[0];
+        page.Header = new ExtractedHeader
+        {
+            LogoUrl = "https://example.com/logo.png",
+            LogoAlt = "University logo",
+            UtilityLinks =
+            [
+                new ExtractedAction { Label = "Apply", Url = "https://example.com/apply.aspx" },
+            ],
+            PrimaryLinks =
+            [
+                new ExtractedAction { Label = "Admissions", Url = "https://example.com/admission.aspx" },
+            ],
+        };
+        page.Footer = new ExtractedFooter
+        {
+            LogoUrl = "https://example.com/footer.png",
+            LogoAlt = "Footer logo",
+            Text = "No. 1, University Road",
+            Links =
+            [
+                new ExtractedAction { Label = "Privacy", Url = "https://example.com/privacy.aspx" },
+            ],
+        };
+        page.Sections.Clear();
+        page.Sections.Add(new ExtractedSection
+        {
+            Id = "news",
+            Role = "news",
+            Headline = "News",
+            Body = "Latest stories.",
+            SourceSelector = "div.carousel",
+            Items =
+            [
+                new ExtractedItem
+                {
+                    Title = "Story",
+                    Body = "Summary.",
+                    Url = "https://example.com/Spotlight.aspx?from=06&sID=32588",
+                },
+            ],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        document.Routes.Select(route => route.Path).Should().Contain(["/", "/admission", "/Spotlight/from-06-sID-32588"]);
+
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
+        header.Props["logo_url"].Should().Be("https://example.com/logo.png");
+        var primaryLinks = header.Props["primary_links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
+        primaryLinks.Should().Contain(link => link["label"] == "Admissions" && link["url"] == "/admission");
+
+        var footer = document.Routes[0].Root.Children.Single(node => node.Type == "SiteFooter");
+        footer.Props["logo_url"].Should().Be("https://example.com/footer.png");
+        footer.Props["contact_text"].Should().Be("No. 1, University Road");
+        var footerLinks = footer.Props["links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
+        footerLinks.Should().Contain(link => link["label"] == "Privacy" && link["url"] == "/privacy");
+
+        var grid = Flatten(document.Routes[0].Root).Single(node => node.Type == "CardGrid");
+        grid.Props["layout"].Should().Be("carousel");
+        var card = Flatten(document.Routes[0].Root).Single(node => node.Type == "FeatureCard");
+        card.Props["url"].Should().Be("/Spotlight/from-06-sID-32588");
+    }
+
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)
     {
         yield return root;
