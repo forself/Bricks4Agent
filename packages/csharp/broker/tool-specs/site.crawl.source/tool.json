@@ -1,0 +1,176 @@
+{
+  "tool_id": "site.crawl.source",
+  "display_name": "Site Crawl Source",
+  "summary": "Safely crawl a confirmed public website path-depth scope and return source plus deterministic visual/function reference extraction output.",
+  "kind": "crawler",
+  "status": "beta",
+  "version": "2026-05-02",
+  "tags": ["site", "crawler", "source", "path-depth", "public-web", "generator-reference"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "public_web",
+    "risk_level": "medium",
+    "approval_policy": "require_approval",
+    "ttl_seconds": 900,
+    "audit_level": "full",
+    "quota": { "max_calls": 10, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "site.crawl_source",
+      "route": "site_crawl_source",
+      "purpose": "Safe path-depth public website crawl for visual/function reference extraction."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "start_url": { "type": "string", "format": "uri" },
+      "scope": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["path_depth"] },
+          "max_depth": { "type": "integer", "minimum": 0 },
+          "same_origin_only": { "type": "boolean" },
+          "path_prefix_lock": { "type": "boolean" }
+        }
+      },
+      "capture": {
+        "type": "object",
+        "properties": {
+          "html": { "type": "boolean" }
+        }
+      },
+      "budgets": {
+        "type": "object",
+        "properties": {
+          "max_pages": { "type": "integer", "minimum": 1 },
+          "max_total_bytes": { "type": "integer", "minimum": 1 },
+          "wall_clock_timeout_seconds": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "required": ["start_url"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "crawl_run_id": { "type": "string" },
+      "status": { "type": "string" },
+      "root": {
+        "type": "object",
+        "properties": {
+          "start_url": { "type": "string" },
+          "normalized_start_url": { "type": "string" },
+          "origin": { "type": "string" },
+          "path_prefix": { "type": "string" }
+        }
+      },
+      "pages": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "final_url": { "type": "string" },
+            "depth": { "type": "integer" },
+            "status_code": { "type": "integer" },
+            "title": { "type": "string" },
+            "html": { "type": "string" },
+            "text_excerpt": { "type": "string" },
+            "links": { "type": "array", "items": { "type": "string" } },
+            "forms": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "selector": { "type": "string" },
+                  "method": { "type": "string" },
+                  "action": { "type": "string" },
+                  "fields": { "type": "array", "items": { "type": "object" } }
+                }
+              }
+            }
+          }
+        }
+      },
+      "excluded": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "reason": { "type": "string" }
+          }
+        }
+      },
+      "extracted_model": {
+        "type": "object",
+        "properties": {
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "page_url": { "type": "string" },
+                "sections": { "type": "array", "items": { "type": "object" } }
+              }
+            }
+          },
+          "theme_tokens": {
+            "type": "object",
+            "properties": {
+              "colors": { "type": "object" },
+              "typography": { "type": "object" }
+            }
+          },
+          "route_graph": {
+            "type": "object",
+            "properties": {
+              "routes": { "type": "array", "items": { "type": "object" } },
+              "edges": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      },
+      "limits": {
+        "type": "object",
+        "properties": {
+          "truncated": { "type": "boolean" },
+          "page_limit_hit": { "type": "boolean" },
+          "byte_limit_hit": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["public_web"]
+  },
+  "execution_rules": {
+    "runtime_required": "site_crawler_worker",
+    "mediation_required": true,
+    "public_http_https_only": true,
+    "allow_authenticated_access": false,
+    "allow_private_network": false,
+    "default_scope": {
+      "kind": "path_depth",
+      "same_origin_only": true,
+      "path_prefix_lock": true
+    },
+    "requires_user_depth_confirmation": true,
+    "depth_confirmation_options": ["first_layer", "within_two_layers", "n_layers"],
+    "reference_package_only": true,
+    "clone_equivalence_allowed": false
+  },
+  "response_contract": {
+    "must_include_crawl_run_id": true,
+    "must_include_root_scope": true,
+    "must_include_pages_excluded_extracted_model_and_limits": true,
+    "must_mark_truncation": true,
+    "must_state_public_http_https_only": true,
+    "must_state_no_authenticated_access": true,
+    "must_state_depth_was_confirmed": true,
+    "must_state_reference_not_equivalent_clone": true,
+    "result_wording": "Return a deterministic source/reference package for downstream generator reconstruction. The package is for approximate visual layout and function reconstruction with a custom component library, not a DOM, pixel, label-equivalent, or otherwise equivalent clone."
+  }
+}
