@@ -49,6 +49,36 @@ public class SiteGeneratorConverterTests
             .ContainSingle(node => node.Type == "GeneratedGallerySection");
     }
 
+    [Fact]
+    public void Convert_RewritesCrawledSameOriginLinksToGeneratedRoutes()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/about",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "About",
+            TextExcerpt = "About page.",
+            Links = [],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+
+        var header = document.Routes[0].Root.Children.Single(node => node.Type == "SiteHeader");
+        var links = header.Props["links"].Should().BeAssignableTo<List<Dictionary<string, string>>>().Subject;
+        links.Should().Contain(link =>
+            link["label"] == "about" &&
+            link["url"] == "/about" &&
+            link["source_url"] == "https://example.com/about" &&
+            link["scope"] == "internal");
+        links.Should().Contain(link =>
+            link["label"] == "contact" &&
+            link["url"] == "https://example.com/contact" &&
+            link["scope"] == "external");
+    }
+
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)
     {
         yield return root;

@@ -207,21 +207,42 @@ public sealed class StaticSitePackageGenerator
 
         const site = await fetch('./site.json').then(response => response.json());
         const manifest = await fetch('./components/manifest.json').then(response => response.json());
-        const route = resolveRoute(site.routes);
+        let currentRoute = resolveRoute(site.routes);
         const knownTypes = new Set((manifest.components || []).map(component => component.type));
 
-        try {
-          app.replaceChildren(renderNode(route.root, knownTypes, manifest));
-        } catch (error) {
-          const box = document.createElement('div');
-          box.className = 'runtime-error';
-          box.textContent = error.message;
-          app.replaceChildren(box);
+        renderCurrentRoute();
+        window.addEventListener('popstate', () => {
+          currentRoute = resolveRoute(site.routes);
+          renderCurrentRoute();
+        });
+
+        function renderCurrentRoute() {
+          try {
+            app.replaceChildren(renderNode(currentRoute.root, knownTypes, manifest));
+          } catch (error) {
+            const box = document.createElement('div');
+            box.className = 'runtime-error';
+            box.textContent = error.message;
+            app.replaceChildren(box);
+          }
         }
 
         function resolveRoute(routes) {
           const path = window.location.pathname || '/';
           return routes.find(route => route.path === path) || routes[0];
+        }
+
+        function navigateToRoute(path) {
+          const nextRoute = site.routes.find(route => route.path === path);
+          if (!nextRoute) return false;
+
+          currentRoute = nextRoute;
+          if (window.location.pathname !== path) {
+            history.pushState({ path }, '', path);
+          }
+          renderCurrentRoute();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
         }
 
         function renderNode(node, knownTypes, manifest) {
@@ -259,10 +280,15 @@ public sealed class StaticSitePackageGenerator
           const inner = element('div', 'site-header-inner');
           const brand = element('a', 'brand', node.props?.title || 'Generated Site');
           brand.href = './';
+          brand.setAttribute('data-local-route', '/');
+          brand.addEventListener('click', event => {
+            event.preventDefault();
+            navigateToRoute('/');
+          });
           const nav = element('nav', 'nav-links');
           for (const link of node.props?.links || []) {
             const a = element('a', '', link.label || link.url);
-            a.href = link.url;
+            configureLink(a, link);
             nav.appendChild(a);
           }
           inner.append(brand, nav);
@@ -299,7 +325,7 @@ public sealed class StaticSitePackageGenerator
           for (const link of node.props?.links || []) {
             const item = element('li');
             const a = element('a', '', link.label || link.url);
-            a.href = link.url;
+            configureLink(a, link);
             item.appendChild(a);
             list.appendChild(item);
           }
@@ -344,6 +370,18 @@ public sealed class StaticSitePackageGenerator
           if (className) node.className = className;
           if (text) node.textContent = text;
           return node;
+        }
+
+        function configureLink(anchor, link) {
+          anchor.href = link.url;
+          if (link.scope === 'internal' && link.url?.startsWith('/')) {
+            anchor.setAttribute('data-local-route', link.url);
+            anchor.addEventListener('click', event => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              event.preventDefault();
+              navigateToRoute(link.url);
+            });
+          }
         }
         """;
 }

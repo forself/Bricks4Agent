@@ -116,7 +116,9 @@ public class ComponentSchemaValidatorTests
                                         new()
                                         {
                                             ["label"] = "About",
-                                            ["url"] = "https://example.com/about",
+                                            ["url"] = "/about",
+                                            ["source_url"] = "https://example.com/about",
+                                            ["scope"] = "internal",
                                         },
                                     },
                                 },

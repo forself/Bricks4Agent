@@ -19,6 +19,7 @@ public sealed class SiteGeneratorConverter
         ArgumentNullException.ThrowIfNull(crawl);
 
         var manifest = CloneManifest(baseManifest);
+        var localRoutes = BuildLocalRouteMap(crawl.Pages);
         var document = new GeneratorSiteDocument
         {
             Site = new GeneratorSiteMetadata
@@ -38,7 +39,7 @@ public sealed class SiteGeneratorConverter
         foreach (var page in crawl.Pages)
         {
             var extractedPage = FindExtractedPage(crawl, page);
-            document.Routes.Add(BuildRoute(crawl, page, extractedPage, document, manifest));
+            document.Routes.Add(BuildRoute(crawl, page, extractedPage, document, manifest, localRoutes));
         }
 
         return document;
@@ -49,7 +50,8 @@ public sealed class SiteGeneratorConverter
         SiteCrawlPage page,
         ExtractedPageModel? extractedPage,
         GeneratorSiteDocument document,
-        ComponentLibraryManifest manifest)
+        ComponentLibraryManifest manifest,
+        IReadOnlyDictionary<string, string> localRoutes)
     {
         var pageTitle = string.IsNullOrWhiteSpace(page.Title) ? document.Site.Title : page.Title;
         var root = new ComponentNode
@@ -70,7 +72,7 @@ public sealed class SiteGeneratorConverter
             Props =
             {
                 ["title"] = document.Site.Title,
-                ["links"] = BuildLinks(page.Links, crawl.Root.Origin, maxLinks: 12),
+                ["links"] = BuildLinks(page.Links, crawl.Root.Origin, localRoutes, maxLinks: 12),
             },
         });
 
@@ -88,7 +90,7 @@ public sealed class SiteGeneratorConverter
                 Props =
                 {
                     ["title"] = "Related links",
-                    ["links"] = BuildLinks(page.Links, crawl.Root.Origin, maxLinks: 24),
+                    ["links"] = BuildLinks(page.Links, crawl.Root.Origin, localRoutes, maxLinks: 24),
                 },
             });
         }
@@ -217,18 +219,76 @@ public sealed class SiteGeneratorConverter
         return type;
     }
 
-    private static List<Dictionary<string, string>> BuildLinks(IEnumerable<string> links, string origin, int maxLinks)
+    private static List<Dictionary<string, string>> BuildLinks(
+        IEnumerable<string> links,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes,
+        int maxLinks)
     {
         return links
             .Where(link => Uri.TryCreate(link, UriKind.Absolute, out _))
             .Distinct(StringComparer.Ordinal)
             .Take(maxLinks)
-            .Select(link => new Dictionary<string, string>
+            .Select(link => BuildLink(link, origin, localRoutes))
+            .ToList();
+    }
+
+    private static Dictionary<string, string> BuildLocalRouteMap(IEnumerable<SiteCrawlPage> pages)
+    {
+        var routes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var page in pages)
+        {
+            var key = NormalizeUrlForLookup(page.FinalUrl);
+            if (string.IsNullOrWhiteSpace(key) || routes.ContainsKey(key))
+            {
+                continue;
+            }
+
+            routes[key] = BuildRoutePath(page.FinalUrl);
+        }
+
+        return routes;
+    }
+
+    private static Dictionary<string, string> BuildLink(
+        string link,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        var normalized = NormalizeUrlForLookup(link);
+        if (!string.IsNullOrWhiteSpace(normalized) &&
+            localRoutes.TryGetValue(normalized, out var localRoute))
+        {
+            return new Dictionary<string, string>
             {
                 ["label"] = BuildLinkLabel(link, origin),
-                ["url"] = link,
-            })
-            .ToList();
+                ["url"] = localRoute,
+                ["source_url"] = link,
+                ["scope"] = "internal",
+            };
+        }
+
+        return new Dictionary<string, string>
+        {
+            ["label"] = BuildLinkLabel(link, origin),
+            ["url"] = link,
+            ["source_url"] = link,
+            ["scope"] = "external",
+        };
+    }
+
+    private static string NormalizeUrlForLookup(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return string.Empty;
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Fragment = string.Empty,
+        };
+        return builder.Uri.AbsoluteUri;
     }
 
     private static string BuildLinkLabel(string link, string origin)

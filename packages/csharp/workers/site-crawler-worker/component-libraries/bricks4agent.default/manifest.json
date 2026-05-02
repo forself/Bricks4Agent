@@ -27,10 +27,12 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url"],
+              "required": ["label", "url", "source_url", "scope"],
               "properties": {
                 "label": { "type": "string" },
-                "url": { "type": "string" }
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
               }
             }
           }
@@ -78,10 +80,12 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url"],
+              "required": ["label", "url", "source_url", "scope"],
               "properties": {
                 "label": { "type": "string" },
-                "url": { "type": "string" }
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
               }
             }
           }
