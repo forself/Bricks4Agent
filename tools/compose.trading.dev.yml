@@ -1,0 +1,19 @@
+# Dev-only overlay for compose.trading.yml
+#
+# 用途：把專案根目錄的 wwwroot 直接 bind-mount 進 broker container，
+# 改 dashboard HTML/JS 後只要瀏覽器 Ctrl+Shift+R 就能看到新版，
+# 不用 `docker compose build broker` 再 `up -d` 那一輪。
+#
+# 用法：
+#   docker compose --env-file tools/.env.trading \
+#     -f tools/compose.trading.yml -f tools/compose.trading.dev.yml \
+#     up -d broker
+#
+# 注意：
+# - 唯讀掛載（:ro），broker 不能改本機的 wwwroot
+# - 後端（Broker.dll 等）改動還是要 rebuild image 才會生效
+# - 此 overlay 不要 commit 到 production 部署設定
+services:
+  broker:
+    volumes:
+      - ../packages/csharp/broker/wwwroot:/app/wwwroot:ro
