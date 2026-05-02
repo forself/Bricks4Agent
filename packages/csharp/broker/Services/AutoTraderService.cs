@@ -352,10 +352,20 @@ public class AutoTraderService : BackgroundService
             return;
         }
 
+        // Deterministic client_order_id：同一 5 分鐘 bucket 內 retry 同 (exchange/symbol/side/qty)
+        // 都會收到同一個 ID，trading-worker 端 + 交易所端各有一道 dedup（DB 查 + Alpaca/Binance
+        // client_order_id unique 約束）。bucket = 5 分鐘正好對到預設 poll interval；
+        // 跨 bucket 是新意圖、會用新 ID（不會被 dedup 擋）。
+        // 字元集：dot 換 _ 以符合 Binance newClientOrderId 限制 [a-zA-Z0-9-_]，36 char 內。
+        var bucket5min = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 300;
+        var rawKey = $"auto-{exchange}-{symbol}-{action}-{item.Quantity:G}-{bucket5min}".Replace('.', '_');
+        var clientOrderId = rawKey.Length > 36 ? rawKey[..36] : rawKey;
+
         var orderPayload = JsonSerializer.Serialize(new
         {
             exchange, symbol, side = action,
             quantity = item.Quantity, order_type = "market",
+            client_order_id = clientOrderId,
         });
 
         var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.order", "place_order", orderPayload));

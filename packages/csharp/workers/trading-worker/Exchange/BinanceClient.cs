@@ -117,6 +117,12 @@ public class BinanceClient : IExchangeClient
             $"quantity={order.Quantity:G}",
         };
 
+        // Send our local OrderId as Binance's newClientOrderId — exchange-side dedup.
+        // Binance newClientOrderId 限制 [a-zA-Z0-9-_] 36 char 內，autoTrader 的 deterministic
+        // key 已經符合（格式 `auto-{ex}-{sym}-{side}-{qty}-{epoch}`，dot 已被替換）。
+        if (!string.IsNullOrWhiteSpace(order.OrderId))
+            ps.Add($"newClientOrderId={order.OrderId}");
+
         if (order.OrderType == "limit" || order.OrderType == "stop_limit")
         {
             ps.Add($"price={order.LimitPrice:G}");

@@ -103,6 +103,12 @@ public class AlpacaClient : IExchangeClient
             ["time_in_force"] = order.TimeInForce,
         };
 
+        // Send our local OrderId as Alpaca's client_order_id — exchange-side dedup safety net.
+        // 送同樣 client_order_id 第二次，Alpaca 回 422 + "client_order_id must be unique"，
+        // handler 端的 DB 檢查理論上會先擋下重複，但這層是萬一 DB 漏網的最後一道。
+        if (!string.IsNullOrWhiteSpace(order.OrderId))
+            body["client_order_id"] = order.OrderId;
+
         if (order.LimitPrice.HasValue)
             body["limit_price"] = order.LimitPrice.Value.ToString("G");
         if (order.StopPrice.HasValue)

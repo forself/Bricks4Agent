@@ -50,9 +50,15 @@ public class TradingOrderHandler : ICapabilityHandler
         if (!_clients.TryGetValue(exchange, out var client))
             return (false, null, $"Unknown exchange: {exchange}. Available: {string.Join(", ", _clients.Keys)}");
 
+        // 接受呼叫者帶來的 client_order_id 做 idempotency；沒帶才自己生
+        var clientOrderId = opts.TryGetProperty("client_order_id", out var cid) ? cid.GetString() : null;
+        var orderId = !string.IsNullOrWhiteSpace(clientOrderId)
+            ? clientOrderId!
+            : $"ord-{Guid.NewGuid():N}"[..16];
+
         var order = new TradingOrder
         {
-            OrderId     = $"ord-{Guid.NewGuid():N}"[..16],
+            OrderId     = orderId,
             Symbol      = opts.TryGetProperty("symbol",      out var s)   ? s.GetString() ?? ""       : "",
             Exchange    = exchange,
             Side        = opts.TryGetProperty("side",         out var sd)  ? sd.GetString() ?? "buy"   : "buy",
@@ -67,6 +73,15 @@ public class TradingOrderHandler : ICapabilityHandler
             return (false, null, "Missing required parameter: symbol");
         if (order.Quantity <= 0)
             return (false, null, "Quantity must be > 0");
+
+        // Idempotency：呼叫者帶 client_order_id 而且 DB 已有非 rejected 紀錄 → 直接回那筆
+        // 不重新打交易所（怕重複出單）。rejected 狀態允許重試（之前是因錯誤被拒、不是真的下出去）
+        if (!string.IsNullOrWhiteSpace(clientOrderId))
+        {
+            var existing = _db.GetOrder(orderId);
+            if (existing != null && existing.Status != "rejected")
+                return (true, SerializeOrder(existing), null);
+        }
 
         try
         {
