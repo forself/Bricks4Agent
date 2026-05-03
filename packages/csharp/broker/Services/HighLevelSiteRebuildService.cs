@@ -15,6 +15,7 @@ public sealed class HighLevelSiteRebuildResult
     public int MaxDepth { get; set; }
     public int PagesCrawled { get; set; }
     public int RoutesGenerated { get; set; }
+    public SiteGenerationQualityReport QualityReport { get; set; } = new();
     public string GeneratedSiteRoot { get; set; } = string.Empty;
     public string PackageFilePath { get; set; } = string.Empty;
     public string PackageFileName { get; set; } = string.Empty;
@@ -100,6 +101,18 @@ public sealed class HighLevelSiteRebuildService
             return Fail("site crawl returned no pages.");
 
         var document = new SiteGeneratorConverter(new ComponentLibraryLoader().LoadDefault()).Convert(crawl);
+        var quality = new SiteGenerationQualityAnalyzer().Analyze(document);
+        if (!quality.IsPassed)
+        {
+            return Fail(
+                $"site_generation_quality_gate_failed: {string.Join("; ", quality.Errors)}",
+                quality,
+                sourceUrl,
+                maxDepth,
+                crawl.Pages.Count,
+                document.Routes.Count);
+        }
+
         var generatedRoot = Path.Combine(draft.ManagedPaths.ProjectRoot, "generated-site");
         if (Directory.Exists(generatedRoot))
             Directory.Delete(generatedRoot, recursive: true);
@@ -108,6 +121,7 @@ public sealed class HighLevelSiteRebuildService
         {
             OutputDirectory = generatedRoot,
             PackageName = "site",
+            EnforceQualityGate = true,
         });
 
         VerifyGeneratedPackage(package);
@@ -146,6 +160,7 @@ public sealed class HighLevelSiteRebuildService
             MaxDepth = maxDepth,
             PagesCrawled = crawl.Pages.Count,
             RoutesGenerated = document.Routes.Count,
+            QualityReport = package.QualityReport,
             GeneratedSiteRoot = package.OutputDirectory,
             PackageFilePath = packageFilePath,
             PackageFileName = packageFileName,
@@ -250,13 +265,24 @@ public sealed class HighLevelSiteRebuildService
         return $"{name}-site-package.zip";
     }
 
-    private HighLevelSiteRebuildResult Fail(string message)
+    private HighLevelSiteRebuildResult Fail(
+        string message,
+        SiteGenerationQualityReport? qualityReport = null,
+        string sourceUrl = "",
+        int maxDepth = 0,
+        int pagesCrawled = 0,
+        int routesGenerated = 0)
     {
         logger.LogWarning("Site rebuild generation failed: {Message}", message);
         return new HighLevelSiteRebuildResult
         {
             Success = false,
             Message = message,
+            SourceUrl = sourceUrl,
+            MaxDepth = maxDepth,
+            PagesCrawled = pagesCrawled,
+            RoutesGenerated = routesGenerated,
+            QualityReport = qualityReport ?? new SiteGenerationQualityReport(),
         };
     }
 }

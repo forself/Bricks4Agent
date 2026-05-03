@@ -92,6 +92,9 @@ public sealed class HighLevelSiteRebuildServiceTests : IDisposable
         result.Success.Should().BeTrue(result.Message);
         result.PagesCrawled.Should().Be(FakeLinkedPageCount + 1);
         result.RoutesGenerated.Should().Be(FakeLinkedPageCount + 1);
+        result.QualityReport.IsPassed.Should().BeTrue();
+        result.QualityReport.ComponentRequestCount.Should().Be(0);
+        result.QualityReport.GeneratedComponentCount.Should().Be(0);
         result.PackageFileName.Should().EndWith(".zip");
         File.Exists(result.PackageFilePath).Should().BeTrue();
         result.Delivery?.GoogleDrive?.Success.Should().BeTrue();
