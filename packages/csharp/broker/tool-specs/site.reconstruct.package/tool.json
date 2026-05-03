@@ -101,6 +101,7 @@
     "component_library_only": true,
     "strict_quality_gate_default": true,
     "package_verification_default": true,
+    "runtime_contract_verification": true,
     "archive_zip_default": true,
     "allow_arbitrary_html_layout": false,
     "clone_equivalence_allowed": false,

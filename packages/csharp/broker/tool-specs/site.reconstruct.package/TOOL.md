@@ -54,6 +54,9 @@ Successful output includes `package.verification_report`. The verifier checks:
 - `site.json`
 - `components/manifest.json`
 - `README.md`
+- `index.html` declares `#app` and loads `./runtime.js`
+- `runtime.js` loads `./site.json` and `./components/manifest.json`
+- `components/manifest.json` declares every component type used by `site.json`
 - zip archive entries
 
 For normal user delivery, both `package.quality_report.is_passed` and `package.verification_report.is_passed` must be true.

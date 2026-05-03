@@ -65,6 +65,7 @@
     "component_library_only": true,
     "strict_quality_gate_default": true,
     "package_verification_default": true,
+    "runtime_contract_verification": true,
     "allow_arbitrary_html_layout": false,
     "requires_known_or_generated_component_definitions": true
   },

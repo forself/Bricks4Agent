@@ -54,6 +54,9 @@ Strict mode 預設啟用。以下情況會阻擋 package 建立：
 - `site.json`
 - `components/manifest.json`
 - `README.md`
+- `index.html` 宣告 `#app` 並載入 `./runtime.js`
+- `runtime.js` 載入 `./site.json` 與 `./components/manifest.json`
+- `components/manifest.json` 宣告 `site.json` 使用到的每一種元件類型
 - zip archive 條目
 
 正常交付給使用者時，`package.quality_report.is_passed` 與 `package.verification_report.is_passed` 都必須為 true。

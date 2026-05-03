@@ -79,4 +79,69 @@ public class StaticSitePackageVerifierTests : IDisposable
         report.IsPassed.Should().BeFalse();
         report.Errors.Should().Contain(error => error.Contains("runtime.js", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Verify_WhenIndexDoesNotLoadRuntime_ReturnsError()
+    {
+        var package = new StaticSitePackageGenerator().Generate(ComponentSchemaValidatorTests.BuildValidDocument(), new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "broken-index-site",
+            EnforceQualityGate = true,
+        });
+        File.WriteAllText(package.EntryPoint, "<!doctype html><div id=\"app\"></div>");
+        var verifier = new StaticSitePackageVerifier();
+
+        var report = verifier.Verify(package);
+
+        report.IsPassed.Should().BeFalse();
+        report.Errors.Should().Contain(error => error.Contains("index.html", StringComparison.Ordinal) &&
+            error.Contains("runtime.js", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Verify_WhenRuntimeDoesNotLoadSiteJsonAndManifest_ReturnsError()
+    {
+        var package = new StaticSitePackageGenerator().Generate(ComponentSchemaValidatorTests.BuildValidDocument(), new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "broken-runtime-site",
+            EnforceQualityGate = true,
+        });
+        File.WriteAllText(Path.Combine(package.OutputDirectory, "runtime.js"), "console.log('broken runtime');");
+        var verifier = new StaticSitePackageVerifier();
+
+        var report = verifier.Verify(package);
+
+        report.IsPassed.Should().BeFalse();
+        report.Errors.Should().Contain(error => error.Contains("runtime.js", StringComparison.Ordinal) &&
+            error.Contains("site.json", StringComparison.Ordinal));
+        report.Errors.Should().Contain(error => error.Contains("runtime.js", StringComparison.Ordinal) &&
+            error.Contains("components/manifest.json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Verify_WhenManifestFileDoesNotDeclareUsedComponent_ReturnsError()
+    {
+        var package = new StaticSitePackageGenerator().Generate(ComponentSchemaValidatorTests.BuildValidDocument(), new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "broken-manifest-site",
+            EnforceQualityGate = true,
+        });
+        File.WriteAllText(package.ManifestPath, """
+            {
+              "library_id": "broken",
+              "version": "1.0.0",
+              "components": []
+            }
+            """);
+        var verifier = new StaticSitePackageVerifier();
+
+        var report = verifier.Verify(package);
+
+        report.IsPassed.Should().BeFalse();
+        report.Errors.Should().Contain(error => error.Contains("components/manifest.json", StringComparison.Ordinal) &&
+            error.Contains("PageShell", StringComparison.Ordinal));
+    }
 }

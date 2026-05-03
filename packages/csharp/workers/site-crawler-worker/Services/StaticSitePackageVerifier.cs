@@ -56,7 +56,10 @@ public sealed class StaticSitePackageVerifier
         }
 
         VerifyPackageFiles(package, report);
+        VerifyIndexContract(package, report);
+        VerifyRuntimeContract(package, report);
         var document = ReadSiteDocument(package, report);
+        var manifest = ReadManifest(package, report);
         if (document is not null)
         {
             NormalizeDocumentProps(document);
@@ -65,6 +68,11 @@ public sealed class StaticSitePackageVerifier
             report.ComponentNodeCount = quality.ComponentNodeCount;
             report.Errors.AddRange(quality.Errors.Select(error => $"quality: {error}"));
             report.Warnings.AddRange(quality.Warnings.Select(warning => $"quality: {warning}"));
+        }
+
+        if (document is not null && manifest is not null)
+        {
+            VerifyManifestCompatibility(document, manifest, report);
         }
 
         VerifyArchive(package, report);
@@ -130,6 +138,118 @@ public sealed class StaticSitePackageVerifier
         {
             report.Errors.Add($"site.json is invalid JSON: {exception.Message}");
             return null;
+        }
+    }
+
+    private static ComponentLibraryManifest? ReadManifest(
+        StaticSitePackageResult package,
+        StaticSitePackageVerificationReport report)
+    {
+        if (!File.Exists(package.ManifestPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ComponentLibraryManifest>(
+                File.ReadAllText(package.ManifestPath),
+                JsonOptions);
+        }
+        catch (JsonException exception)
+        {
+            report.Errors.Add($"components/manifest.json is invalid JSON: {exception.Message}");
+            return null;
+        }
+    }
+
+    private static void VerifyIndexContract(
+        StaticSitePackageResult package,
+        StaticSitePackageVerificationReport report)
+    {
+        if (!File.Exists(package.EntryPoint))
+        {
+            return;
+        }
+
+        var index = File.ReadAllText(package.EntryPoint);
+        if (!ContainsAny(index, ["id=\"app\"", "id='app'"]))
+        {
+            report.Errors.Add("index.html must declare the #app runtime mount point.");
+        }
+
+        if (!ContainsAny(index, ["src=\"./runtime.js\"", "src='./runtime.js'"]))
+        {
+            report.Errors.Add("index.html must load ./runtime.js.");
+        }
+    }
+
+    private static void VerifyRuntimeContract(
+        StaticSitePackageResult package,
+        StaticSitePackageVerificationReport report)
+    {
+        var runtimePath = Path.Combine(package.OutputDirectory, "runtime.js");
+        if (!File.Exists(runtimePath))
+        {
+            return;
+        }
+
+        var runtime = File.ReadAllText(runtimePath);
+        if (!ContainsAny(runtime, ["fetch('./site.json')", "fetch(\"./site.json\")"]))
+        {
+            report.Errors.Add("runtime.js must load ./site.json.");
+        }
+
+        if (!ContainsAny(runtime, ["fetch('./components/manifest.json')", "fetch(\"./components/manifest.json\")"]))
+        {
+            report.Errors.Add("runtime.js must load ./components/manifest.json.");
+        }
+
+        if (!runtime.Contains("componentRenderers", StringComparison.Ordinal))
+        {
+            report.Errors.Add("runtime.js must define componentRenderers.");
+        }
+    }
+
+    private static void VerifyManifestCompatibility(
+        GeneratorSiteDocument document,
+        ComponentLibraryManifest manifest,
+        StaticSitePackageVerificationReport report)
+    {
+        var manifestTypes = manifest.Components
+            .Select(component => component.Type)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .ToHashSet(StringComparer.Ordinal);
+        var siteLibraryTypes = document.ComponentLibrary.Components
+            .Select(component => component.Type)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .ToHashSet(StringComparer.Ordinal);
+        var usedTypes = document.Routes
+            .SelectMany(route => Flatten(route.Root))
+            .Select(node => node.Type)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+
+        foreach (var usedType in usedTypes)
+        {
+            if (!manifestTypes.Contains(usedType))
+            {
+                report.Errors.Add($"components/manifest.json does not declare used component type '{usedType}'.");
+            }
+        }
+
+        foreach (var siteLibraryType in siteLibraryTypes.Order(StringComparer.Ordinal))
+        {
+            if (!manifestTypes.Contains(siteLibraryType))
+            {
+                report.Errors.Add($"components/manifest.json is missing site.json component definition '{siteLibraryType}'.");
+            }
+        }
+
+        foreach (var extraType in manifestTypes.Except(siteLibraryTypes, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            report.Warnings.Add($"components/manifest.json declares unused component type '{extraType}'.");
         }
     }
 
@@ -228,5 +348,22 @@ public sealed class StaticSitePackageVerifier
             JsonValueKind.Null => null,
             _ => null,
         };
+    }
+
+    private static bool ContainsAny(string text, IEnumerable<string> candidates)
+    {
+        return candidates.Any(candidate => text.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<ComponentNode> Flatten(ComponentNode root)
+    {
+        yield return root;
+        foreach (var child in root.Children)
+        {
+            foreach (var nested in Flatten(child))
+            {
+                yield return nested;
+            }
+        }
     }
 }
