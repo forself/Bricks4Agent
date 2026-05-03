@@ -37,6 +37,8 @@ public class SiteGeneratePackageHandlerTests : IDisposable
 
         var result = await handler.ExecuteAsync("req-1", "site_generate_package", payload, "{}", CancellationToken.None);
 
+        result.Error.Should().BeNull();
+        result.Error.Should().BeNull();
         result.Success.Should().BeTrue();
         result.Error.Should().BeNull();
         var package = JsonSerializer.Deserialize<StaticSitePackageResult>(
@@ -46,6 +48,86 @@ public class SiteGeneratePackageHandlerTests : IDisposable
         File.Exists(package!.EntryPoint).Should().BeTrue();
         File.Exists(package.SiteJsonPath).Should().BeTrue();
         File.Exists(package.ManifestPath).Should().BeTrue();
+        package.QualityReport.IsPassed.Should().BeTrue();
+        package.QualityReport.ComponentNodeCount.Should().BeGreaterThan(0);
+        package.QualityReport.ComponentRequestCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenQualityGateFailsByDefault_DoesNotWritePackage()
+    {
+        var handler = new SiteGeneratePackageHandler(
+            new SiteGeneratorConverter(DefaultComponentLibrary.Create()),
+            new StaticSitePackageGenerator(),
+            NullLogger<SiteGeneratePackageHandler>.Instance);
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        document.ComponentRequests.Add(new ComponentRequest
+        {
+            RequestId = "missing-hero",
+            Role = "hero",
+            ComponentType = "MissingHero",
+            Reason = "No reusable component supports this visual pattern.",
+        });
+        var payload = JsonSerializer.Serialize(new
+        {
+            args = new
+            {
+                site_document = document,
+                output_directory = tempRoot,
+                package_name = "blocked-site"
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var result = await handler.ExecuteAsync("req-1", "site_generate_package", payload, "{}", CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("quality gate failed");
+        result.Error.Should().Contain("component request");
+        result.ResultPayload.Should().NotBeNull();
+        using var failure = JsonDocument.Parse(result.ResultPayload!);
+        failure.RootElement.GetProperty("quality_report").GetProperty("is_passed").GetBoolean().Should().BeFalse();
+        failure.RootElement.GetProperty("quality_report").GetProperty("component_request_count").GetInt32().Should().Be(1);
+        Directory.Exists(Path.Combine(tempRoot, "blocked-site")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenQualityGateIsDisabled_ReturnsDiagnosticReportWithPackage()
+    {
+        var handler = new SiteGeneratePackageHandler(
+            new SiteGeneratorConverter(DefaultComponentLibrary.Create()),
+            new StaticSitePackageGenerator(),
+            NullLogger<SiteGeneratePackageHandler>.Instance);
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        document.ComponentRequests.Add(new ComponentRequest
+        {
+            RequestId = "missing-hero",
+            Role = "hero",
+            ComponentType = "MissingHero",
+            Reason = "No reusable component supports this visual pattern.",
+        });
+        var payload = JsonSerializer.Serialize(new
+        {
+            args = new
+            {
+                site_document = document,
+                output_directory = tempRoot,
+                package_name = "diagnostic-site",
+                enforce_quality_gate = false
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var result = await handler.ExecuteAsync("req-1", "site_generate_package", payload, "{}", CancellationToken.None);
+
+        result.Error.Should().BeNull();
+        result.Success.Should().BeTrue();
+        var package = JsonSerializer.Deserialize<StaticSitePackageResult>(
+            result.ResultPayload!,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        package.Should().NotBeNull();
+        File.Exists(package!.EntryPoint).Should().BeTrue();
+        package.QualityReport.IsPassed.Should().BeFalse();
+        package.QualityReport.ComponentRequestCount.Should().Be(1);
+        package.QualityReport.Errors.Should().Contain(error => error.Contains("component request", StringComparison.Ordinal));
     }
 
     [Fact]

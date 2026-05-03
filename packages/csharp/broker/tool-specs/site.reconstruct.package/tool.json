@@ -1,0 +1,112 @@
+{
+  "tool_id": "site.reconstruct.package",
+  "display_name": "Site Reconstruct Package",
+  "summary": "Crawl a confirmed public URL, convert rendered visual/function cues into component-library JSON, and generate a strict static website package.",
+  "kind": "generator",
+  "status": "beta",
+  "version": "2026-05-03",
+  "tags": ["site", "crawler", "generator", "component-library", "package", "static-site", "reconstruction"],
+  "capability_template": {
+    "action_type": "write",
+    "resource_type": "website_package",
+    "risk_level": "medium",
+    "approval_policy": "require_approval",
+    "ttl_seconds": 1200,
+    "audit_level": "full",
+    "quota": { "max_calls": 5, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "site.reconstruct_package",
+      "route": "site_reconstruct_package",
+      "purpose": "One-step public website reconstruction flow: crawl source, convert to component-library site JSON, quality-gate, and generate a local package."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "start_url": { "type": "string", "format": "uri" },
+      "scope": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["path_depth", "link_depth"] },
+          "max_depth": { "type": "integer", "minimum": 0 },
+          "same_origin_only": { "type": "boolean" },
+          "path_prefix_lock": { "type": "boolean" }
+        },
+        "required": ["max_depth"]
+      },
+      "capture": {
+        "type": "object",
+        "properties": {
+          "html": { "type": "boolean" },
+          "rendered_dom": { "type": "boolean" },
+          "rendered_dom_max_pages": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "budgets": {
+        "type": "object",
+        "properties": {
+          "max_pages": { "type": "integer", "minimum": 1 },
+          "max_total_bytes": { "type": "integer", "minimum": 1 },
+          "wall_clock_timeout_seconds": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "output_directory": { "type": "string" },
+      "package_name": { "type": "string" },
+      "enforce_quality_gate": { "type": "boolean", "default": true }
+    },
+    "required": ["start_url", "scope"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "crawl_run_id": { "type": "string" },
+      "page_count": { "type": "integer" },
+      "excluded_count": { "type": "integer" },
+      "package": {
+        "type": "object",
+        "properties": {
+          "output_directory": { "type": "string" },
+          "entry_point": { "type": "string" },
+          "site_json_path": { "type": "string" },
+          "manifest_path": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "quality_report": { "type": "object" }
+        }
+      }
+    }
+  },
+  "source_policy": {
+    "allowed_sources": ["public_web"]
+  },
+  "execution_rules": {
+    "runtime_required": "site-crawler-worker",
+    "mediation_required": true,
+    "public_http_https_only": true,
+    "allow_authenticated_access": false,
+    "allow_private_network": false,
+    "default_scope": {
+      "kind": "link_depth",
+      "same_origin_only": true,
+      "path_prefix_lock": true
+    },
+    "requires_user_depth_confirmation": true,
+    "visual_cues_primary": true,
+    "source_html_auxiliary": true,
+    "component_library_only": true,
+    "strict_quality_gate_default": true,
+    "allow_arbitrary_html_layout": false,
+    "clone_equivalence_allowed": false,
+    "entry_point": "index.html",
+    "renderer_model": "runtime_loads_site_json"
+  },
+  "response_contract": {
+    "must_include_crawl_run_id": true,
+    "must_include_package_entry_point": true,
+    "must_include_site_json_path": true,
+    "must_include_quality_report": true,
+    "must_not_claim_equivalent_clone": true,
+    "result_wording": "Return the local package path and index.html entry point. The package uses runtime.js to load site.json and render only component types from the component manifest. If strict quality fails, return quality_report and do not write the package."
+  }
+}

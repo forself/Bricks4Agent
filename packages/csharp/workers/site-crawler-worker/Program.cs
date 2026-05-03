@@ -42,9 +42,11 @@ var host = new WorkerHost(options, logger);
 
 var pageFetcher = new HttpPageFetcher();
 var extractor = new DeterministicSiteExtractor();
+await using var visualRenderer = VisualPageRendererFactory.Create(config, loggerFactory);
 var crawlerService = new SiteCrawlerService(
     pageFetcher,
     extractor,
+    visualRenderer,
     loggerFactory.CreateLogger<SiteCrawlerService>());
 var componentLibraryLoader = new ComponentLibraryLoader();
 var componentLibrary = componentLibraryLoader.Load(config.GetValue<string>("Generator:ComponentLibraryPath"));
@@ -58,6 +60,11 @@ host.RegisterHandler(new SiteGeneratePackageHandler(
     generatorConverter,
     packageGenerator,
     loggerFactory.CreateLogger<SiteGeneratePackageHandler>()));
+host.RegisterHandler(new SiteReconstructPackageHandler(
+    crawlerService,
+    generatorConverter,
+    packageGenerator,
+    loggerFactory.CreateLogger<SiteReconstructPackageHandler>()));
 
 logger.LogInformation(
     "SiteCrawlerWorker starting: broker={Host}:{Port} maxConcurrent={MaxConcurrent}",

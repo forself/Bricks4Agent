@@ -35,9 +35,9 @@ public sealed class StaticSitePackageGenerator
             throw new InvalidOperationException($"Invalid site document: {string.Join("; ", validation.Errors)}");
         }
 
+        var quality = qualityAnalyzer.Analyze(document);
         if (options.EnforceQualityGate)
         {
-            var quality = qualityAnalyzer.Analyze(document);
             if (!quality.IsPassed)
             {
                 throw new InvalidOperationException($"Site generation quality gate failed: {string.Join("; ", quality.Errors)}");
@@ -65,6 +65,7 @@ public sealed class StaticSitePackageGenerator
             SiteJsonPath = Path.Combine(outputDirectory, "site.json"),
             ManifestPath = Path.Combine(outputDirectory, "components", "manifest.json"),
             Files = files,
+            QualityReport = quality,
         };
     }
 

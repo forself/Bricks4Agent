@@ -215,6 +215,33 @@ public sealed class StaticSitePackageOptions
     public bool EnforceQualityGate { get; set; }
 }
 
+public sealed class SiteReconstructPackageRequest
+{
+    [JsonPropertyName("request_id")]
+    public string RequestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_url")]
+    public string StartUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("scope")]
+    public SiteCrawlScope Scope { get; set; } = new();
+
+    [JsonPropertyName("capture")]
+    public SiteCrawlCaptureOptions Capture { get; set; } = new();
+
+    [JsonPropertyName("budgets")]
+    public SiteCrawlBudgets Budgets { get; set; } = new();
+
+    [JsonPropertyName("output_directory")]
+    public string OutputDirectory { get; set; } = string.Empty;
+
+    [JsonPropertyName("package_name")]
+    public string PackageName { get; set; } = "generated-site";
+
+    [JsonPropertyName("enforce_quality_gate")]
+    public bool EnforceQualityGate { get; set; } = true;
+}
+
 public sealed class StaticSitePackageResult
 {
     [JsonPropertyName("output_directory")]
@@ -231,4 +258,22 @@ public sealed class StaticSitePackageResult
 
     [JsonPropertyName("files")]
     public List<string> Files { get; set; } = new();
+
+    [JsonPropertyName("quality_report")]
+    public SiteGenerationQualityReport QualityReport { get; set; } = new();
+}
+
+public sealed class SiteReconstructPackageResult
+{
+    [JsonPropertyName("crawl_run_id")]
+    public string CrawlRunId { get; set; } = string.Empty;
+
+    [JsonPropertyName("page_count")]
+    public int PageCount { get; set; }
+
+    [JsonPropertyName("excluded_count")]
+    public int ExcludedCount { get; set; }
+
+    [JsonPropertyName("package")]
+    public StaticSitePackageResult Package { get; set; } = new();
 }

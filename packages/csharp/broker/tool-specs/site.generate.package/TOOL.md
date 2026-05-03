@@ -2,6 +2,8 @@
 
 Generates a local static website package from either a `SiteCrawlResult` or a valid `GeneratorSiteDocument`.
 
+By default this tool enforces the site generation quality gate. The package is written only when the document can be rendered with the loaded component library without generated components or unresolved component requests. Set `enforce_quality_gate = false` only for diagnostic package output.
+
 ## Capability
 
 - Tool ID: `site.generate.package`
@@ -31,6 +33,8 @@ If source cues cannot be represented by a built-in component, the conversion ste
 
 The generator must not produce arbitrary page HTML, DOM-equivalent clones, pixel-equivalent clones, or hidden free-form layout outside the component tree.
 
+In strict mode, generated component definitions and component requests are treated as quality failures. The caller receives a structured `quality_report` and no package is written.
+
 ## Output
 
 The result includes:
@@ -40,3 +44,4 @@ The result includes:
 - `site_json_path`
 - `manifest_path`
 - `files`
+- `quality_report`
