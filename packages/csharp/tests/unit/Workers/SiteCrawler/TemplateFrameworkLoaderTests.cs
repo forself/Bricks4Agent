@@ -47,12 +47,21 @@ public class TemplateFrameworkLoaderTests : IDisposable
             slot.Accepts.Contains("NewsGrid"));
         var searchService = templates.Templates.Single(template => template.TemplateId == "search_service_portal");
         searchService.PageTypes["home"].Slots.Should().Contain(slot =>
+            slot.Name == "hero" &&
+            slot.Accepts.Contains("HeroCarousel"));
+        searchService.PageTypes["home"].Slots.Should().Contain(slot =>
             slot.Name == "search" &&
             slot.Accepts.Contains("ServiceSearchHero"));
         searchService.PageTypes["home"].Slots.Should().Contain(slot =>
             slot.Name == "service_categories" &&
             slot.Accepts.Contains("ServiceCategoryGrid"));
+        searchService.PageTypes["home"].Slots.Should().Contain(slot =>
+            slot.Name == "news" &&
+            slot.Accepts.Contains("NewsGrid"));
         var serviceAction = templates.Templates.Single(template => template.TemplateId == "service_action_portal");
+        serviceAction.PageTypes["home"].Slots.Should().Contain(slot =>
+            slot.Name == "news" &&
+            slot.Accepts.Contains("NewsGrid"));
         serviceAction.PageTypes["home"].Slots.Should().Contain(slot =>
             slot.Name == "service_actions" &&
             slot.Accepts.Contains("ServiceActionGrid"));

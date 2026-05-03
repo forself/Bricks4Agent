@@ -1267,7 +1267,8 @@ public sealed class SiteIntentExtractor
             selector.StartsWith("footer", StringComparison.OrdinalIgnoreCase) ||
             selector.Contains("#footer", StringComparison.OrdinalIgnoreCase) ||
             selector.Contains(".footer", StringComparison.OrdinalIgnoreCase) ||
-            selector.Contains("__footer", StringComparison.OrdinalIgnoreCase);
+            selector.Contains("__footer", StringComparison.OrdinalIgnoreCase) ||
+            selector.Contains("footer", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsStructuralNavigation(VisualRegion region, ExtractedSection section)

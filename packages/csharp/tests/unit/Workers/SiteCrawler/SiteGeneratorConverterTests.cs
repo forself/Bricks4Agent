@@ -1110,6 +1110,157 @@ public class SiteGeneratorConverterTests
             .BeFalse();
     }
 
+    [Fact]
+    public void Convert_WhenDeepPagesHaveSearchServiceSignals_DoesNotDropHomeHeroNewsLayout()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages[0].VisualSnapshot = new VisualPageSnapshot
+        {
+            CaptureMode = "browser_render",
+            Viewport = new VisualViewport { Width = 1366, Height = 900 },
+            Regions =
+            [
+                new VisualRegion
+                {
+                    Role = "header",
+                    Selector = "header",
+                    Bounds = new VisualBox { X = 0, Y = 0, Width = 1366, Height = 120 },
+                },
+                new VisualRegion
+                {
+                    Role = "carousel",
+                    Selector = "div#banner",
+                    Bounds = new VisualBox { X = 0, Y = 130, Width = 1366, Height = 500 },
+                    Media =
+                    [
+                        new ExtractedMedia { Url = "https://example.com/hero.jpg", Alt = "Hero" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "card_grid",
+                    Selector = "section.activity",
+                    Headline = "Activity Board",
+                    Text = "Activity Board 2026-04-30 Event A 2026-04-29 Event B",
+                    Bounds = new VisualBox { X = 100, Y = 720, Width = 1080, Height = 420 },
+                    Items =
+                    [
+                        new ExtractedItem { Title = "Event A", Body = "2026-04-30", MediaUrl = "https://example.com/event-a.jpg" },
+                        new ExtractedItem { Title = "Event B", Body = "2026-04-29", MediaUrl = "https://example.com/event-b.jpg" },
+                        new ExtractedItem { Title = "Event C", Body = "2026-04-28", MediaUrl = "https://example.com/event-c.jpg" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "card_grid",
+                    Selector = "section.announcements",
+                    Headline = "Announcement Center",
+                    Text = "Announcement Center 2026-05-01 Notice A 2026-04-30 Notice B",
+                    Bounds = new VisualBox { X = 100, Y = 1180, Width = 1080, Height = 520 },
+                    Actions =
+                    [
+                        new ExtractedAction { Label = "Announcements", Url = "https://example.com/announcements" },
+                        new ExtractedAction { Label = "Research", Url = "https://example.com/research" },
+                        new ExtractedAction { Label = "Admissions", Url = "https://example.com/admissions" },
+                    ],
+                    Items =
+                    [
+                        new ExtractedItem { Title = "Notice A", Body = "2026-05-01", Url = "https://example.com/notice-a" },
+                        new ExtractedItem { Title = "Notice B", Body = "2026-04-30", Url = "https://example.com/notice-b" },
+                        new ExtractedItem { Title = "Notice C", Body = "2026-04-30", Url = "https://example.com/notice-c" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "card_grid",
+                    Selector = "section.news-center",
+                    Headline = "News Center",
+                    Text = "News Center 2026-04-24 Story A 2026-04-23 Story B",
+                    Bounds = new VisualBox { X = 100, Y = 1760, Width = 1080, Height = 360 },
+                    Items =
+                    [
+                        new ExtractedItem { Title = "Story A", Body = "2026-04-24", MediaUrl = "https://example.com/story-a.jpg" },
+                        new ExtractedItem { Title = "Story B", Body = "2026-04-23", MediaUrl = "https://example.com/story-b.jpg" },
+                        new ExtractedItem { Title = "Story C", Body = "2026-04-21", MediaUrl = "https://example.com/story-c.jpg" },
+                    ],
+                },
+                new VisualRegion
+                {
+                    Role = "footer",
+                    Selector = "footer",
+                    Bounds = new VisualBox { X = 0, Y = 2200, Width = 1366, Height = 220 },
+                },
+            ],
+        };
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/search",
+            Depth = 2,
+            StatusCode = 200,
+            Title = "Service Search",
+            TextExcerpt = "Search services by keyword.",
+            VisualSnapshot = new VisualPageSnapshot
+            {
+                CaptureMode = "browser_render",
+                Viewport = new VisualViewport { Width = 1366, Height = 900 },
+                Regions =
+                [
+                    new VisualRegion
+                    {
+                        Role = "content",
+                        Selector = "section.search",
+                        Headline = "Search services",
+                        Text = "Search services by keyword.",
+                        Bounds = new VisualBox { X = 100, Y = 160, Width = 1000, Height = 260 },
+                    },
+                    new VisualRegion
+                    {
+                        Role = "card_grid",
+                        Selector = "section.service-actions",
+                        Headline = "Online service portal",
+                        Text = "Online service portal registration appointment contact service lookup",
+                        Bounds = new VisualBox { X = 100, Y = 460, Width = 1000, Height = 320 },
+                        Actions =
+                        [
+                            new ExtractedAction { Label = "Registration", Url = "https://example.com/register" },
+                            new ExtractedAction { Label = "Appointment", Url = "https://example.com/appointment" },
+                            new ExtractedAction { Label = "Contact", Url = "https://example.com/contact" },
+                        ],
+                    },
+                    new VisualRegion
+                    {
+                        Role = "card_grid",
+                        Selector = "section.service-categories",
+                        Headline = "Public services",
+                        Text = "Public services application service categories transport employment tax",
+                        Bounds = new VisualBox { X = 100, Y = 820, Width = 1000, Height = 320 },
+                        Items =
+                        [
+                            new ExtractedItem { Title = "Transport", Body = "Application service", Url = "https://example.com/transport" },
+                            new ExtractedItem { Title = "Employment", Body = "Application service", Url = "https://example.com/employment" },
+                            new ExtractedItem { Title = "Tax", Body = "Application service", Url = "https://example.com/tax" },
+                        ],
+                    },
+                ],
+            },
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+        var homeNodes = Flatten(document.Routes[0].Root).ToList();
+        var homeChildren = document.Routes[0].Root.Children;
+
+        homeNodes.Any(node => node.Type == "HeroCarousel").Should().BeTrue();
+        homeNodes.Any(node => node.Type == "NewsGrid" &&
+            HasTitle(node, "Activity Board")).Should().BeTrue();
+        homeNodes.Any(node => node.Type == "TabbedNewsBoard" &&
+            HasTitle(node, "Announcement Center")).Should().BeTrue();
+        homeNodes.Any(node => node.Type is "NewsGrid" or "MediaFeatureGrid" &&
+            HasTitle(node, "News Center")).Should().BeTrue();
+        homeChildren.FindIndex(node => node.Type == "HeroCarousel").Should()
+            .BeLessThan(homeChildren.FindIndex(node => HasTitle(node, "Activity Board")));
+    }
+
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)
     {
         yield return root;

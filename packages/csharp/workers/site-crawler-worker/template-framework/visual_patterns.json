@@ -131,10 +131,28 @@
               "fallback": "SiteHeader"
             },
             {
+              "name": "hero",
+              "required": false,
+              "accepts": ["HeroCarousel", "HeroBanner", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
               "name": "search",
               "required": false,
               "accepts": ["ServiceSearchHero", "HeroBanner", "AtomicSection"],
               "fallback": "AtomicSection"
+            },
+            {
+              "name": "news",
+              "required": false,
+              "accepts": ["NewsCardCarousel", "NewsGrid", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "tabbed_news",
+              "required": false,
+              "accepts": ["TabbedNewsBoard", "NewsGrid", "ArticleList", "CardGrid"],
+              "fallback": "CardGrid"
             },
             {
               "name": "service_categories",
@@ -147,12 +165,6 @@
               "required": false,
               "accepts": ["ServiceActionGrid", "QuickLinkRibbon", "CardGrid", "AtomicSection"],
               "fallback": "AtomicSection"
-            },
-            {
-              "name": "tabbed_news",
-              "required": false,
-              "accepts": ["TabbedNewsBoard", "NewsGrid", "ArticleList", "CardGrid"],
-              "fallback": "CardGrid"
             },
             {
               "name": "features",
@@ -261,10 +273,22 @@
               "fallback": "AtomicSection"
             },
             {
+              "name": "news",
+              "required": false,
+              "accepts": ["NewsCardCarousel", "NewsGrid", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
               "name": "tabbed_news",
               "required": false,
               "accepts": ["TabbedNewsBoard", "NewsGrid", "ArticleList", "CardGrid"],
               "fallback": "CardGrid"
+            },
+            {
+              "name": "features",
+              "required": false,
+              "accepts": ["MediaFeatureGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
             },
             {
               "name": "service_categories",

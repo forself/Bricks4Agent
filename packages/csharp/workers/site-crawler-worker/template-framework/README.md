@@ -22,15 +22,17 @@ Home slots:
 
 ### `search_service_portal`
 
-Use when the visual source is organized around a prominent search area, service/category discovery cards, optional action shortcuts, tabbed announcements or news, and footer.
+Use when the visual source is organized around an optional hero, a prominent search area, service/category discovery cards, action shortcuts, tabbed announcements, news/card sections, and footer.
 
 Home slots:
 
 - `header`: `MegaHeader` or `SiteHeader`
+- `hero`: `HeroCarousel`, `HeroBanner`, or `AtomicSection`
 - `search`: `ServiceSearchHero`, `HeroBanner`, or `AtomicSection`
+- `news`: `NewsCardCarousel`, `NewsGrid`, or `CardGrid`
+- `tabbed_news`: `TabbedNewsBoard`, `NewsGrid`, `ArticleList`, or `CardGrid`
 - `service_categories`: `ServiceCategoryGrid`, `CardGrid`, or `AtomicSection`
 - `service_actions`: `ServiceActionGrid`, `QuickLinkRibbon`, `CardGrid`, or `AtomicSection`
-- `tabbed_news`: `TabbedNewsBoard`, `NewsGrid`, `ArticleList`, or `CardGrid`
 - `features`: `MediaFeatureGrid`, `ServiceCategoryGrid`, `CardGrid`, or `AtomicSection`
 - `footer`: `InstitutionFooter` or `SiteFooter`
 
@@ -43,7 +45,9 @@ Home slots:
 - `header`: `MegaHeader` or `SiteHeader`
 - `hero`: `HeroCarousel`, `HeroBanner`, or `AtomicSection`
 - `service_actions`: `ServiceActionGrid`, `QuickLinkRibbon`, `CardGrid`, or `AtomicSection`
+- `news`: `NewsCardCarousel`, `NewsGrid`, or `CardGrid`
 - `tabbed_news`: `TabbedNewsBoard`, `NewsGrid`, `ArticleList`, or `CardGrid`
+- `features`: `MediaFeatureGrid`, `CardGrid`, or `AtomicSection`
 - `service_categories`: `ServiceCategoryGrid`, `CardGrid`, or `AtomicSection`
 - `footer`: `InstitutionFooter` or `SiteFooter`
 
