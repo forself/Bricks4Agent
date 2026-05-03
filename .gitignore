@@ -57,6 +57,7 @@ tools/*.png
 .dotnet/
 .run/
 .test-output/
+.superpowers/
 ngrok_recovery_codes.txt
 packages/csharp/broker/appsettings.Development.json
 packages/csharp/workers/line-worker/appsettings.json

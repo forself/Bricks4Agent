@@ -217,6 +217,27 @@ public sealed class TemplateCompiler
             "HeroCarousel" => BuildHeroCarouselNode(section, page, origin, localRoutes),
             "HeroBanner" => BuildHeroBannerNode(section, page),
             "QuickLinkRibbon" => BuildQuickLinkRibbonNode(section, origin, localRoutes),
+            "ServiceSearchHero" => BuildServiceSearchHeroNode(section, page, origin, localRoutes),
+            "ServiceCategoryGrid" => BuildServiceCategoryGridNode(section, page, origin, localRoutes),
+            "ServiceActionGrid" => BuildServiceActionGridNode(section, page, origin, localRoutes),
+            "TabbedNewsBoard" => BuildTabbedNewsBoardNode(section, page, origin, localRoutes),
+            "SearchBoxPanel" => BuildSearchBoxPanelNode(section, page, origin, localRoutes),
+            "FacetFilterPanel" => BuildFacetFilterPanelNode(section, page),
+            "ResultList" => BuildResultListNode(section, page, origin, localRoutes),
+            "PaginationNav" => BuildPaginationNavNode(section, origin, localRoutes),
+            "DashboardFilterBar" => BuildDashboardFilterBarNode(section, page, origin, localRoutes),
+            "MetricSummaryGrid" => BuildMetricSummaryGridNode(section, page),
+            "ChartPanel" => BuildChartPanelNode(section, page),
+            "DataTablePreview" => BuildDataTablePreviewNode(section, page),
+            "StepIndicator" => BuildStepIndicatorNode(section, page),
+            "StructuredFormPanel" => BuildStructuredFormPanelNode(section, page),
+            "ValidationSummary" => BuildValidationSummaryNode(section, page),
+            "FormActionBar" => BuildFormActionBarNode(section, origin, localRoutes),
+            "ShowcaseHero" => BuildShowcaseHeroNode(section, page, origin, localRoutes),
+            "ProductCardGrid" => BuildProductCardGridNode(section, page, origin, localRoutes),
+            "ProofStrip" => BuildProofStripNode(section, page),
+            "PricingPanel" => BuildPricingPanelNode(section, page, origin, localRoutes),
+            "CtaBand" => BuildCtaBandNode(section, page, origin, localRoutes),
             "NewsCardCarousel" => BuildItemCollectionNode("NewsCardCarousel", section, page, origin, localRoutes),
             "NewsGrid" => BuildItemCollectionNode("NewsGrid", section, page, origin, localRoutes),
             "MediaFeatureGrid" => BuildItemCollectionNode("MediaFeatureGrid", section, page, origin, localRoutes),
@@ -312,6 +333,368 @@ public sealed class TemplateCompiler
             {
                 ["title"] = section.Headline,
                 ["items"] = BuildItems(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildServiceSearchHeroNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("service-search", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ServiceSearchHero",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? page.Title : section.Headline,
+                ["body"] = section.Body,
+                ["query_placeholder"] = "Search services",
+                ["hot_keywords"] = BuildLinks(section.Actions, origin, localRoutes, 8),
+                ["actions"] = BuildLinks(section.Actions, origin, localRoutes, 6),
+            },
+        };
+    }
+
+    private static ComponentNode BuildServiceCategoryGridNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("service-categories", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ServiceCategoryGrid",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Services" : section.Headline,
+                ["categories"] = BuildServiceCategories(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildServiceActionGridNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("service-actions", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ServiceActionGrid",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Services" : section.Headline,
+                ["actions"] = BuildActionLinks(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildTabbedNewsBoardNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("tabbed-news", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "TabbedNewsBoard",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "News" : section.Headline,
+                ["tabs"] = new List<Dictionary<string, object?>>
+                {
+                    new()
+                    {
+                        ["label"] = string.IsNullOrWhiteSpace(section.Headline) ? "Latest" : section.Headline,
+                        ["items"] = BuildItems(section, origin, localRoutes),
+                    },
+                },
+            },
+        };
+    }
+
+    private static ComponentNode BuildSearchBoxPanelNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("search-box", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "SearchBoxPanel",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Search" : section.Headline,
+                ["body"] = section.Body,
+                ["query_placeholder"] = "Search keyword",
+                ["suggestions"] = BuildLinks(section.Actions, origin, localRoutes, 8),
+            },
+        };
+    }
+
+    private static ComponentNode BuildFacetFilterPanelNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("filters", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "FacetFilterPanel",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Filters" : section.Headline,
+                ["filters"] = BuildFilterOptions(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildResultListNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("results", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ResultList",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Results" : section.Headline,
+                ["summary"] = string.IsNullOrWhiteSpace(section.Body) ? page.TextExcerpt : section.Body,
+                ["items"] = BuildItems(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildPaginationNavNode(
+        ExtractedSection section,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("pagination", section.SourceSelector),
+            Type = "PaginationNav",
+            Props =
+            {
+                ["links"] = BuildLinks(section.Actions, origin, localRoutes, 12),
+            },
+        };
+    }
+
+    private static ComponentNode BuildDashboardFilterBarNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("dashboard-filter", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "DashboardFilterBar",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Report filters" : section.Headline,
+                ["filters"] = BuildFilterOptions(section),
+                ["actions"] = BuildLinks(section.Actions, origin, localRoutes, 8),
+            },
+        };
+    }
+
+    private static ComponentNode BuildMetricSummaryGridNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("metrics", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "MetricSummaryGrid",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Metrics" : section.Headline,
+                ["metrics"] = BuildMetricItems(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildChartPanelNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("chart", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ChartPanel",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Chart" : section.Headline,
+                ["body"] = section.Body,
+                ["series"] = BuildSeries(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildDataTablePreviewNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("data-table", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "DataTablePreview",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Data" : section.Headline,
+                ["columns"] = new List<string> { "Item", "Details" },
+                ["rows"] = BuildTableRows(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildStepIndicatorNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("steps", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "StepIndicator",
+            Props =
+            {
+                ["steps"] = BuildSteps(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildStructuredFormPanelNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("structured-form", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "StructuredFormPanel",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Form" : section.Headline,
+                ["fields"] = BuildFields(section, page),
+            },
+        };
+    }
+
+    private static ComponentNode BuildValidationSummaryNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("validation", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ValidationSummary",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Validation" : section.Headline,
+                ["messages"] = BuildMessages(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildFormActionBarNode(
+        ExtractedSection section,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("form-actions", section.SourceSelector),
+            Type = "FormActionBar",
+            Props =
+            {
+                ["actions"] = BuildActionLinks(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildShowcaseHeroNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        var media = section.Media.FirstOrDefault();
+        return new ComponentNode
+        {
+            Id = BuildNodeId("showcase-hero", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ShowcaseHero",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? page.Title : section.Headline,
+                ["body"] = section.Body,
+                ["media_url"] = media?.Url ?? string.Empty,
+                ["media_alt"] = media?.Alt ?? string.Empty,
+                ["actions"] = BuildActionLinks(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildProductCardGridNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("product-cards", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ProductCardGrid",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Products" : section.Headline,
+                ["items"] = BuildItems(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildProofStripNode(ExtractedSection section, SiteCrawlPage page)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("proof", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "ProofStrip",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Proof" : section.Headline,
+                ["items"] = BuildMetricItems(section),
+            },
+        };
+    }
+
+    private static ComponentNode BuildPricingPanelNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("pricing", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "PricingPanel",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Pricing" : section.Headline,
+                ["plans"] = BuildPricingPlans(section, origin, localRoutes),
+            },
+        };
+    }
+
+    private static ComponentNode BuildCtaBandNode(
+        ExtractedSection section,
+        SiteCrawlPage page,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        return new ComponentNode
+        {
+            Id = BuildNodeId("cta", $"{page.FinalUrl}:{section.SourceSelector}"),
+            Type = "CtaBand",
+            Props =
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? page.Title : section.Headline,
+                ["body"] = section.Body,
+                ["actions"] = BuildActionLinks(section, origin, localRoutes),
             },
         };
     }
@@ -585,6 +968,376 @@ public sealed class TemplateCompiler
                 ["media_alt"] = string.Empty,
             };
         }).ToList();
+    }
+
+    private static List<Dictionary<string, object?>> BuildServiceCategories(
+        ExtractedSection section,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        if (section.Items.Count > 0)
+        {
+            return section.Items.Take(16).Select(item =>
+            {
+                var links = new List<Dictionary<string, string>>();
+                if (!string.IsNullOrWhiteSpace(item.Url))
+                {
+                    var link = BuildLink(item.Url, origin, localRoutes);
+                    link["label"] = string.IsNullOrWhiteSpace(item.Title) ? link["label"] : item.Title;
+                    links.Add(link);
+                }
+
+                return new Dictionary<string, object?>
+                {
+                    ["title"] = item.Title,
+                    ["body"] = item.Body,
+                    ["links"] = links,
+                };
+            }).ToList();
+        }
+
+        return section.Actions
+            .Chunk(4)
+            .Take(6)
+            .Select((chunk, index) => new Dictionary<string, object?>
+            {
+                ["title"] = index == 0 && !string.IsNullOrWhiteSpace(section.Headline)
+                    ? section.Headline
+                    : $"Service Group {index + 1}",
+                ["body"] = string.Empty,
+                ["links"] = BuildLinks(chunk, origin, localRoutes, 4),
+            })
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildActionLinks(
+        ExtractedSection section,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        if (section.Actions.Count > 0)
+        {
+            return section.Actions
+                .Where(action => !string.IsNullOrWhiteSpace(action.Label) && !string.IsNullOrWhiteSpace(action.Url))
+                .DistinctBy(action => $"{action.Label}\n{action.Url}", StringComparer.Ordinal)
+                .Take(16)
+                .Select(action =>
+                {
+                    var link = BuildLink(action.Url, origin, localRoutes);
+                    link["label"] = action.Label;
+                    link["kind"] = string.IsNullOrWhiteSpace(action.Kind) ? "secondary" : action.Kind;
+                    return link;
+                })
+                .ToList();
+        }
+
+        return section.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title) && !string.IsNullOrWhiteSpace(item.Url))
+            .Take(16)
+            .Select(item =>
+            {
+                var link = BuildLink(item.Url, origin, localRoutes);
+                link["label"] = item.Title;
+                link["kind"] = "secondary";
+                return link;
+            })
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildFilterOptions(ExtractedSection section)
+    {
+        if (section.Actions.Count > 0)
+        {
+            return section.Actions.Take(12).Select(action => new Dictionary<string, string>
+            {
+                ["label"] = action.Label,
+                ["value"] = string.IsNullOrWhiteSpace(action.Url) ? action.Label : action.Url,
+                ["count"] = string.Empty,
+            }).ToList();
+        }
+
+        if (section.Items.Count > 0)
+        {
+            return section.Items.Take(12).Select(item => new Dictionary<string, string>
+            {
+                ["label"] = item.Title,
+                ["value"] = string.IsNullOrWhiteSpace(item.Url) ? item.Title : item.Url,
+                ["count"] = ExtractFirstNumber(item.Body),
+            }).ToList();
+        }
+
+        return SplitTokens($"{section.Headline} {section.Body}")
+            .Where(token => token.Length > 1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .Select(token => new Dictionary<string, string>
+            {
+                ["label"] = token,
+                ["value"] = token,
+                ["count"] = string.Empty,
+            })
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildMetricItems(ExtractedSection section)
+    {
+        if (section.Items.Count > 0)
+        {
+            return section.Items.Take(12).Select(item => new Dictionary<string, string>
+            {
+                ["label"] = item.Title,
+                ["value"] = ExtractFirstNumber(item.Body),
+                ["detail"] = item.Body,
+            }).ToList();
+        }
+
+        var tokens = SplitTokens($"{section.Headline} {section.Body}")
+            .Where(token => !string.Equals(token, section.Headline, StringComparison.OrdinalIgnoreCase))
+            .Take(12)
+            .ToList();
+        if (tokens.Count == 0)
+        {
+            tokens.Add(string.IsNullOrWhiteSpace(section.Headline) ? "Metric" : section.Headline);
+        }
+
+        return tokens
+            .Chunk(2)
+            .Select((chunk, index) => new Dictionary<string, string>
+            {
+                ["label"] = chunk[0],
+                ["value"] = chunk.Length > 1 ? chunk[1] : (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["detail"] = section.Body,
+            })
+            .Take(6)
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildSeries(ExtractedSection section)
+    {
+        var tokens = SplitTokens(section.Body).Take(16).ToList();
+        if (tokens.Count < 2)
+        {
+            tokens = SplitTokens(section.Headline).Take(4).ToList();
+        }
+
+        if (tokens.Count == 0)
+        {
+            return
+            [
+                new Dictionary<string, string>
+                {
+                    ["label"] = "Value",
+                    ["value"] = "1",
+                },
+            ];
+        }
+
+        return tokens
+            .Chunk(2)
+            .Select((chunk, index) => new Dictionary<string, string>
+            {
+                ["label"] = chunk[0],
+                ["value"] = chunk.Length > 1 ? chunk[1] : (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            })
+            .ToList();
+    }
+
+    private static List<Dictionary<string, object?>> BuildTableRows(ExtractedSection section)
+    {
+        if (section.Items.Count > 0)
+        {
+            return section.Items.Take(12).Select(item => new Dictionary<string, object?>
+            {
+                ["cells"] = new List<string> { item.Title, item.Body },
+            }).ToList();
+        }
+
+        var tokens = SplitTokens(section.Body).ToList();
+        if (tokens.Count == 0)
+        {
+            tokens.Add(string.IsNullOrWhiteSpace(section.Headline) ? "Item" : section.Headline);
+        }
+
+        return tokens
+            .Chunk(2)
+            .Take(8)
+            .Select(chunk => new Dictionary<string, object?>
+            {
+                ["cells"] = new List<string>
+                {
+                    chunk[0],
+                    chunk.Length > 1 ? chunk[1] : string.Empty,
+                },
+            })
+            .ToList();
+    }
+
+    private static List<Dictionary<string, string>> BuildSteps(ExtractedSection section)
+    {
+        var tokens = SplitTokens($"{section.Headline} {section.Body}")
+            .Where(token => !Regex.IsMatch(token, @"^\d+$", RegexOptions.CultureInvariant))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
+        if (tokens.Count == 0)
+        {
+            tokens.Add("Start");
+        }
+
+        return tokens.Select((token, index) => new Dictionary<string, string>
+        {
+            ["label"] = token,
+            ["status"] = index == 0 ? "current" : "upcoming",
+        }).ToList();
+    }
+
+    private static List<Dictionary<string, object?>> BuildFields(ExtractedSection section, SiteCrawlPage page)
+    {
+        if (page.Forms.Count > 0)
+        {
+            return page.Forms
+                .SelectMany(form => form.Fields)
+                .Take(16)
+                .Select(field => new Dictionary<string, object?>
+                {
+                    ["name"] = field.Name,
+                    ["id"] = field.Id,
+                    ["label"] = string.IsNullOrWhiteSpace(field.Label) ? field.Name : field.Label,
+                    ["type"] = string.IsNullOrWhiteSpace(field.Type) ? "text" : field.Type,
+                    ["required"] = field.Required,
+                })
+                .ToList();
+        }
+
+        var required = ContainsAny($"{section.Headline} {section.Body}", "required", "must", "必填");
+        var tokens = SplitTokens($"{section.Headline} {section.Body}")
+            .Where(token => token.Length > 2 && !string.Equals(token, "required", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToList();
+        if (tokens.Count == 0)
+        {
+            tokens.Add("Field");
+        }
+
+        return tokens.Select(token => new Dictionary<string, object?>
+        {
+            ["name"] = SanitizeFieldName(token),
+            ["id"] = SanitizeFieldName(token),
+            ["label"] = token,
+            ["type"] = token.Contains("email", StringComparison.OrdinalIgnoreCase) ? "email" : "text",
+            ["required"] = required,
+        }).ToList();
+    }
+
+    private static List<string> BuildMessages(ExtractedSection section)
+    {
+        var messages = Regex.Split($"{section.Headline}. {section.Body}", @"[\r\n.。]+")
+            .Select(message => message.Trim())
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+
+        return messages.Count == 0 ? ["Review required fields before continuing."] : messages;
+    }
+
+    private static List<Dictionary<string, object?>> BuildPricingPlans(
+        ExtractedSection section,
+        string origin,
+        IReadOnlyDictionary<string, string> localRoutes)
+    {
+        var plans = section.Items.Count > 0
+            ? section.Items.Take(6).Select(item =>
+            {
+                var link = string.IsNullOrWhiteSpace(item.Url) ? EmptyActionLink() : BuildLink(item.Url, origin, localRoutes);
+                link["label"] = string.IsNullOrWhiteSpace(item.Title) ? "Choose plan" : item.Title;
+                link["kind"] = "primary";
+                return new Dictionary<string, object?>
+                {
+                    ["title"] = item.Title,
+                    ["price"] = ExtractPrice(item.Body),
+                    ["body"] = item.Body,
+                    ["features"] = SplitFeatureText(item.Body),
+                    ["action"] = link,
+                };
+            }).ToList()
+            : [];
+
+        if (plans.Count > 0)
+        {
+            return plans;
+        }
+
+        var fallbackAction = section.Actions.Count > 0
+            ? BuildActionLinks(section, origin, localRoutes).First()
+            : EmptyActionLink();
+        return
+        [
+            new Dictionary<string, object?>
+            {
+                ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "Plan" : section.Headline,
+                ["price"] = ExtractPrice(section.Body),
+                ["body"] = section.Body,
+                ["features"] = SplitFeatureText(section.Body),
+                ["action"] = fallbackAction,
+            },
+        ];
+    }
+
+    private static Dictionary<string, string> EmptyActionLink()
+    {
+        return new Dictionary<string, string>
+        {
+            ["label"] = string.Empty,
+            ["url"] = string.Empty,
+            ["source_url"] = string.Empty,
+            ["scope"] = "none",
+            ["kind"] = "secondary",
+        };
+    }
+
+    private static List<string> SplitFeatureText(string value)
+    {
+        var features = Regex.Split(value ?? string.Empty, @"[\r\n,;。]+")
+            .Select(feature => feature.Trim())
+            .Where(feature => !string.IsNullOrWhiteSpace(feature))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
+
+        return features.Count == 0 ? ["Included"] : features;
+    }
+
+    private static List<string> SplitTokens(string value)
+    {
+        return Regex.Matches(value ?? string.Empty, @"[\p{L}\p{N}%$.-]+", RegexOptions.CultureInvariant)
+            .Select(match => match.Value.Trim())
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToList();
+    }
+
+    private static string ExtractFirstNumber(string value)
+    {
+        var match = Regex.Match(value ?? string.Empty, @"\d+(?:[.,]\d+)?%?", RegexOptions.CultureInvariant);
+        return match.Success ? match.Value : string.Empty;
+    }
+
+    private static string ExtractPrice(string value)
+    {
+        var match = Regex.Match(value ?? string.Empty, @"[$NTDUSD\s]*\d+(?:[.,]\d+)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? match.Value.Trim() : string.Empty;
+    }
+
+    private static string SanitizeFieldName(string value)
+    {
+        var sanitized = Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9]+", "_").Trim('_');
+        return string.IsNullOrWhiteSpace(sanitized) ? "field" : sanitized;
+    }
+
+    private static bool ContainsAny(string value, params string[] tokens)
+    {
+        return tokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<Dictionary<string, string>> BuildLinks(

@@ -11,6 +11,7 @@ public sealed class StaticSitePackageGenerator
     };
 
     private readonly ComponentSchemaValidator validator;
+    private readonly SiteGenerationQualityAnalyzer qualityAnalyzer;
 
     public StaticSitePackageGenerator()
         : this(new ComponentSchemaValidator())
@@ -20,6 +21,7 @@ public sealed class StaticSitePackageGenerator
     public StaticSitePackageGenerator(ComponentSchemaValidator validator)
     {
         this.validator = validator;
+        qualityAnalyzer = new SiteGenerationQualityAnalyzer(validator);
     }
 
     public StaticSitePackageResult Generate(GeneratorSiteDocument document, StaticSitePackageOptions options)
@@ -31,6 +33,15 @@ public sealed class StaticSitePackageGenerator
         if (!validation.IsValid)
         {
             throw new InvalidOperationException($"Invalid site document: {string.Join("; ", validation.Errors)}");
+        }
+
+        if (options.EnforceQualityGate)
+        {
+            var quality = qualityAnalyzer.Analyze(document);
+            if (!quality.IsPassed)
+            {
+                throw new InvalidOperationException($"Site generation quality gate failed: {string.Join("; ", quality.Errors)}");
+            }
         }
 
         var outputDirectory = ResolveOutputDirectory(options);
@@ -185,6 +196,53 @@ public sealed class StaticSitePackageGenerator
             .quick-link-ribbon h2, .template-card-section h2, .content-article h1 { margin: 0 0 14px; font-size: 24px; letter-spacing: 0; }
             .quick-link-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
             .quick-link-list a { min-height: 44px; display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 6px; background: var(--surface); font-weight: 700; }
+            .service-search-hero { padding: 32px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr); gap: 28px; align-items: center; }
+            .service-search-copy { display: grid; gap: 10px; }
+            .service-search-copy h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); line-height: 1.08; letter-spacing: 0; }
+            .service-search-copy p { margin: 0; color: var(--muted); font-size: 17px; }
+            .service-search-panel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--band); }
+            .service-search-input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); font: inherit; }
+            .service-keywords, .service-hero-actions, .service-category-links, .tabbed-news-links { display: flex; flex-wrap: wrap; gap: 8px; }
+            .service-keywords a, .service-hero-actions a, .service-category-links a, .tabbed-news-links a { min-height: 36px; display: inline-flex; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-weight: 700; }
+            .service-category-grid, .service-action-grid, .tabbed-news-board { padding: 30px 0; border-bottom: 1px solid var(--line); display: grid; gap: 16px; }
+            .service-category-grid h2, .service-action-grid h2, .tabbed-news-board h2 { margin: 0; font-size: 24px; letter-spacing: 0; }
+            .service-category-list, .service-action-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+            .service-category-card, .service-action-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--surface); display: grid; gap: 8px; align-content: start; }
+            .service-category-card h3, .service-action-card h3, .tabbed-news-item h3 { margin: 0; font-size: 18px; letter-spacing: 0; }
+            .service-category-card p, .tabbed-news-item p { margin: 0; color: var(--muted); }
+            .service-action-card--primary { border-left: 4px solid var(--brand); }
+            .tabbed-news-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+            .tabbed-news-controls button { min-height: 36px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; }
+            .tabbed-news-controls button[aria-selected="true"] { border-color: var(--brand); color: #fff; background: var(--brand); }
+            .tabbed-news-panel[hidden] { display: none; }
+            .tabbed-news-list { display: grid; gap: 10px; }
+            .tabbed-news-item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--surface); display: grid; gap: 6px; }
+            .search-box-panel, .showcase-hero { padding: 32px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, .9fr) minmax(300px, 1.1fr); gap: 24px; align-items: center; }
+            .search-box-copy h1, .showcase-copy h1 { margin: 0 0 10px; font-size: clamp(30px, 4vw, 52px); line-height: 1.08; letter-spacing: 0; }
+            .search-box-copy p, .showcase-copy p { margin: 0; color: var(--muted); font-size: 17px; }
+            .search-box-input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+            .search-suggestions, .pagination-links, .dashboard-actions, .form-action-links, .showcase-actions, .cta-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+            .search-suggestions a, .pagination-links a, .dashboard-actions a, .form-action-links a, .showcase-actions a, .cta-actions a { min-height: 36px; display: inline-flex; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-weight: 700; }
+            .facet-filter-panel, .result-list, .dashboard-filter-bar, .metric-summary-grid, .chart-panel, .data-table-preview, .step-indicator, .structured-form-panel, .validation-summary, .form-action-bar, .proof-strip, .pricing-panel, .cta-band { padding: 28px 0; border-bottom: 1px solid var(--line); display: grid; gap: 14px; }
+            .facet-filter-panel h2, .result-list h2, .dashboard-filter-bar h2, .metric-summary-grid h2, .chart-panel h2, .data-table-preview h2, .structured-form-panel h2, .validation-summary h2, .proof-strip h2, .pricing-panel h2, .cta-band h2 { margin: 0; font-size: 24px; letter-spacing: 0; }
+            .facet-filter-list { display: flex; flex-wrap: wrap; gap: 8px; }
+            .facet-filter-chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--band); color: var(--muted); font-size: 13px; }
+            .result-list-items { display: grid; gap: 12px; }
+            .metric-grid, .proof-list, .pricing-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+            .metric-card, .proof-item, .pricing-card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--surface); display: grid; gap: 7px; align-content: start; }
+            .metric-label { color: var(--muted); font-size: 13px; }
+            .metric-value, .pricing-price { font-size: 28px; line-height: 1.1; }
+            .chart-bars { display: grid; gap: 8px; }
+            .chart-bar { display: grid; grid-template-columns: minmax(100px, .3fr) minmax(0, .7fr); gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--band); }
+            .data-table-preview table { width: 100%; border-collapse: collapse; border: 1px solid var(--line); }
+            .data-table-preview th, .data-table-preview td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+            .step-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
+            .step-item { min-height: 34px; display: inline-flex; align-items: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+            .step-item--current { border-color: var(--brand); background: var(--brand); color: #fff; }
+            .validation-list, .pricing-features { margin: 0; padding-left: 18px; }
+            .product-card-grid .template-card { border-left: 4px solid var(--brand); }
+            .proof-item strong { font-size: 24px; }
+            .cta-band { padding: 34px 20px; border-radius: 8px; border: 1px solid var(--line); background: var(--band); margin: 28px 0; }
             .template-card-section { padding: 30px 0; border-bottom: 1px solid var(--line); display: grid; gap: 16px; }
             .template-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
             .template-card-grid--carousel { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
@@ -246,6 +304,7 @@ public sealed class StaticSitePackageGenerator
               .site-header-inner { grid-template-columns: 1fr; grid-template-areas: "brand" "utility" "primary"; }
               .utility-links, .primary-links { justify-content: flex-start; }
               .template-hero { grid-template-columns: 1fr; }
+              .service-search-hero { grid-template-columns: 1fr; }
               .template-hero-media { height: clamp(220px, 58vw, 320px); }
               .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
               .atomic-section--hero .image-block { order: 0; }
@@ -325,6 +384,27 @@ public sealed class StaticSitePackageGenerator
           SiteFooter: renderSiteFooter,
           InstitutionFooter: renderInstitutionFooter,
           QuickLinkRibbon: renderQuickLinkRibbon,
+          ServiceSearchHero: renderServiceSearchHero,
+          ServiceCategoryGrid: renderServiceCategoryGrid,
+          ServiceActionGrid: renderServiceActionGrid,
+          TabbedNewsBoard: renderTabbedNewsBoard,
+          SearchBoxPanel: renderSearchBoxPanel,
+          FacetFilterPanel: renderFacetFilterPanel,
+          ResultList: renderResultList,
+          PaginationNav: renderPaginationNav,
+          DashboardFilterBar: renderDashboardFilterBar,
+          MetricSummaryGrid: renderMetricSummaryGrid,
+          ChartPanel: renderChartPanel,
+          DataTablePreview: renderDataTablePreview,
+          StepIndicator: renderStepIndicator,
+          StructuredFormPanel: renderStructuredFormPanel,
+          ValidationSummary: renderValidationSummary,
+          FormActionBar: renderFormActionBar,
+          ShowcaseHero: renderShowcaseHero,
+          ProductCardGrid: renderProductCardGrid,
+          ProofStrip: renderProofStrip,
+          PricingPanel: renderPricingPanel,
+          CtaBand: renderCtaBand,
           NewsCardCarousel: renderNewsCardCarousel,
           NewsGrid: renderNewsGrid,
           MediaFeatureGrid: renderMediaFeatureGrid,
@@ -568,6 +648,308 @@ public sealed class StaticSitePackageGenerator
             links.appendChild(anchor);
           }
           section.appendChild(links);
+          return section;
+        }
+
+        function renderServiceSearchHero(node) {
+          const section = element('section', 'service-search-hero');
+          const copy = element('div', 'service-search-copy');
+          copy.append(element('h1', '', node.props?.title || 'Search'));
+          if (node.props?.body) copy.append(element('p', '', node.props.body));
+          const panel = element('div', 'service-search-panel');
+          const input = document.createElement('input');
+          input.className = 'service-search-input';
+          input.type = 'search';
+          input.placeholder = node.props?.query_placeholder || 'Search';
+          input.disabled = true;
+          panel.appendChild(input);
+          panel.appendChild(renderLinkSet(node.props?.hot_keywords || [], 'div', 'service-keywords'));
+          panel.appendChild(renderLinkSet(node.props?.actions || [], 'div', 'service-hero-actions'));
+          section.append(copy, panel);
+          return section;
+        }
+
+        function renderServiceCategoryGrid(node) {
+          const section = element('section', 'service-category-grid');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const grid = element('div', 'service-category-list');
+          for (const category of node.props?.categories || []) {
+            const card = element('article', 'service-category-card');
+            card.append(element('h3', '', category.title || 'Service'));
+            if (category.body) card.append(element('p', '', category.body));
+            card.appendChild(renderLinkSet(category.links || [], 'div', 'service-category-links'));
+            grid.appendChild(card);
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderServiceActionGrid(node) {
+          const section = element('section', 'service-action-grid');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const grid = element('div', 'service-action-list');
+          for (const action of node.props?.actions || []) {
+            const card = element('article', `service-action-card service-action-card--${action.kind || 'secondary'}`);
+            card.append(element('h3', '', action.label || 'Open'));
+            if (action.url) {
+              const anchor = element('a', '', 'Open');
+              configureLink(anchor, action);
+              card.appendChild(anchor);
+            }
+            grid.appendChild(card);
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderTabbedNewsBoard(node) {
+          const section = element('section', 'tabbed-news-board');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const tabs = node.props?.tabs || [];
+          const controls = element('div', 'tabbed-news-controls');
+          const panels = element('div', 'tabbed-news-panels');
+          tabs.forEach((tab, index) => {
+            const panelId = `${node.id || 'tabbed-news'}-${index}`;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = tab.label || `Tab ${index + 1}`;
+            button.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+            button.setAttribute('aria-controls', panelId);
+            const panel = element('div', 'tabbed-news-panel');
+            panel.id = panelId;
+            if (index !== 0) panel.hidden = true;
+            const list = element('div', 'tabbed-news-list');
+            for (const item of tab.items || []) {
+              const article = element('article', 'tabbed-news-item');
+              article.append(element('h3', '', item.title || ''));
+              if (item.body) article.append(element('p', '', item.body));
+              if (item.url) {
+                const anchor = element('a', '', 'Open');
+                configureLink(anchor, item);
+                article.appendChild(anchor);
+              }
+              list.appendChild(article);
+            }
+            panel.appendChild(list);
+            button.addEventListener('click', () => {
+              [...controls.children].forEach(child => child.setAttribute('aria-selected', 'false'));
+              [...panels.children].forEach(child => { child.hidden = true; });
+              button.setAttribute('aria-selected', 'true');
+              panel.hidden = false;
+            });
+            controls.appendChild(button);
+            panels.appendChild(panel);
+          });
+          section.append(controls, panels);
+          return section;
+        }
+
+        function renderSearchBoxPanel(node) {
+          const section = element('section', 'search-box-panel');
+          const copy = element('div', 'search-box-copy');
+          copy.append(element('h1', '', node.props?.title || 'Search'));
+          if (node.props?.body) copy.append(element('p', '', node.props.body));
+          const input = document.createElement('input');
+          input.className = 'search-box-input';
+          input.type = 'search';
+          input.placeholder = node.props?.query_placeholder || 'Search';
+          input.disabled = true;
+          section.append(copy, input, renderLinkSet(node.props?.suggestions || [], 'div', 'search-suggestions'));
+          return section;
+        }
+
+        function renderFacetFilterPanel(node) {
+          const aside = element('aside', 'facet-filter-panel');
+          aside.append(element('h2', '', node.props?.title || 'Filters'));
+          const list = element('div', 'facet-filter-list');
+          for (const filter of node.props?.filters || []) {
+            const chip = element('span', 'facet-filter-chip', filter.count ? `${filter.label} (${filter.count})` : filter.label || filter.value || 'Filter');
+            list.appendChild(chip);
+          }
+          aside.appendChild(list);
+          return aside;
+        }
+
+        function renderResultList(node) {
+          const section = element('section', 'result-list');
+          section.append(element('h2', '', node.props?.title || 'Results'));
+          if (node.props?.summary) section.append(element('p', 'result-summary', node.props.summary));
+          const list = element('div', 'result-list-items');
+          for (const item of node.props?.items || []) {
+            list.appendChild(renderTemplateCard(item));
+          }
+          section.appendChild(list);
+          return section;
+        }
+
+        function renderPaginationNav(node) {
+          const nav = element('nav', 'pagination-nav');
+          nav.setAttribute('aria-label', 'Pagination');
+          nav.appendChild(renderLinkSet(node.props?.links || [], 'div', 'pagination-links'));
+          return nav;
+        }
+
+        function renderDashboardFilterBar(node) {
+          const section = element('section', 'dashboard-filter-bar');
+          section.append(element('h2', '', node.props?.title || 'Filters'));
+          section.appendChild(renderFacetFilterPanel({ props: { title: '', filters: node.props?.filters || [] } }));
+          section.appendChild(renderLinkSet(node.props?.actions || [], 'div', 'dashboard-actions'));
+          return section;
+        }
+
+        function renderMetricSummaryGrid(node) {
+          const section = element('section', 'metric-summary-grid');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const grid = element('div', 'metric-grid');
+          for (const metric of node.props?.metrics || []) {
+            const card = element('article', 'metric-card');
+            card.append(element('span', 'metric-label', metric.label || 'Metric'));
+            card.append(element('strong', 'metric-value', metric.value || ''));
+            if (metric.detail) card.append(element('p', '', metric.detail));
+            grid.appendChild(card);
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderChartPanel(node) {
+          const section = element('section', 'chart-panel');
+          section.append(element('h2', '', node.props?.title || 'Chart'));
+          if (node.props?.body) section.append(element('p', '', node.props.body));
+          const bars = element('div', 'chart-bars');
+          for (const point of node.props?.series || []) {
+            const bar = element('div', 'chart-bar');
+            bar.append(element('span', '', point.label || 'Value'));
+            bar.append(element('strong', '', point.value || ''));
+            bars.appendChild(bar);
+          }
+          section.appendChild(bars);
+          return section;
+        }
+
+        function renderDataTablePreview(node) {
+          const section = element('section', 'data-table-preview');
+          section.append(element('h2', '', node.props?.title || 'Data'));
+          const table = document.createElement('table');
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          for (const column of node.props?.columns || []) headRow.append(element('th', '', column));
+          thead.appendChild(headRow);
+          const tbody = document.createElement('tbody');
+          for (const row of node.props?.rows || []) {
+            const tr = document.createElement('tr');
+            for (const cell of row.cells || []) tr.append(element('td', '', cell));
+            tbody.appendChild(tr);
+          }
+          table.append(thead, tbody);
+          section.appendChild(table);
+          return section;
+        }
+
+        function renderStepIndicator(node) {
+          const nav = element('nav', 'step-indicator');
+          nav.setAttribute('aria-label', 'Progress');
+          const list = element('ol', 'step-list');
+          for (const step of node.props?.steps || []) {
+            const item = element('li', `step-item step-item--${step.status || 'upcoming'}`, step.label || 'Step');
+            list.appendChild(item);
+          }
+          nav.appendChild(list);
+          return nav;
+        }
+
+        function renderStructuredFormPanel(node) {
+          const section = element('section', 'structured-form-panel');
+          section.append(element('h2', '', node.props?.title || 'Form'));
+          const fields = element('div', 'form-fields');
+          for (const field of node.props?.fields || []) {
+            const wrap = element('div', 'field');
+            wrap.append(element('label', '', field.label || field.name || 'Field'));
+            const input = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
+            if (input.tagName === 'INPUT') input.type = field.type || 'text';
+            input.name = field.name || '';
+            input.required = Boolean(field.required);
+            input.disabled = true;
+            wrap.appendChild(input);
+            fields.appendChild(wrap);
+          }
+          section.append(fields, element('p', 'form-note', 'Form is shown as a non-submitting reconstruction.'));
+          return section;
+        }
+
+        function renderValidationSummary(node) {
+          const section = element('section', 'validation-summary');
+          section.append(element('h2', '', node.props?.title || 'Notice'));
+          const list = element('ul', 'validation-list');
+          for (const message of node.props?.messages || []) list.append(element('li', '', message));
+          section.appendChild(list);
+          return section;
+        }
+
+        function renderFormActionBar(node) {
+          const section = element('section', 'form-action-bar');
+          section.appendChild(renderLinkSet(node.props?.actions || [], 'div', 'form-action-links'));
+          return section;
+        }
+
+        function renderShowcaseHero(node) {
+          const section = element('section', 'showcase-hero');
+          const copy = element('div', 'showcase-copy');
+          copy.append(element('h1', '', node.props?.title || ''));
+          if (node.props?.body) copy.append(element('p', '', node.props.body));
+          copy.appendChild(renderLinkSet(node.props?.actions || [], 'div', 'showcase-actions'));
+          section.appendChild(copy);
+          section.appendChild(renderHeroMedia(node.props?.media_url || '', node.props?.media_alt || ''));
+          return section;
+        }
+
+        function renderProductCardGrid(node) {
+          return renderTemplateCardSection(node, 'product-card-grid', 'grid');
+        }
+
+        function renderProofStrip(node) {
+          const section = element('section', 'proof-strip');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const grid = element('div', 'proof-list');
+          for (const item of node.props?.items || []) {
+            const proof = element('article', 'proof-item');
+            proof.append(element('strong', '', item.value || item.label || ''));
+            proof.append(element('span', '', item.label || ''));
+            if (item.detail) proof.append(element('p', '', item.detail));
+            grid.appendChild(proof);
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderPricingPanel(node) {
+          const section = element('section', 'pricing-panel');
+          if (node.props?.title) section.append(element('h2', '', node.props.title));
+          const grid = element('div', 'pricing-list');
+          for (const plan of node.props?.plans || []) {
+            const card = element('article', 'pricing-card');
+            card.append(element('h3', '', plan.title || 'Plan'));
+            if (plan.price) card.append(element('strong', 'pricing-price', plan.price));
+            if (plan.body) card.append(element('p', '', plan.body));
+            const features = element('ul', 'pricing-features');
+            for (const feature of plan.features || []) features.append(element('li', '', feature));
+            card.appendChild(features);
+            if (plan.action) {
+              const anchor = element('a', `button-link button-link--${plan.action.kind || 'primary'}`, plan.action.label || 'Choose');
+              configureLink(anchor, plan.action);
+              card.appendChild(anchor);
+            }
+            grid.appendChild(card);
+          }
+          section.appendChild(grid);
+          return section;
+        }
+
+        function renderCtaBand(node) {
+          const section = element('section', 'cta-band');
+          section.append(element('h2', '', node.props?.title || ''));
+          if (node.props?.body) section.append(element('p', '', node.props.body));
+          section.appendChild(renderLinkSet(node.props?.actions || [], 'div', 'cta-actions'));
           return section;
         }
 

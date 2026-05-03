@@ -308,17 +308,49 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 return '';
               };
               const tokensOf = el => `${el.tagName} ${el.id || ''} ${el.className || ''} ${el.getAttribute('role') || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+              const tokenListOf = el => tokensOf(el).split(/[^a-zA-Z0-9]+/).filter(Boolean);
+              const hasAny = (tokens, values) => tokens.some(token => values.includes(token));
+              const hasSearchControls = el => {
+                const controls = [...el.querySelectorAll('input, button')];
+                if (controls.length === 0) return false;
+                return controls.some(control => {
+                  const text = `${control.getAttribute('type') || ''} ${control.getAttribute('name') || ''} ${control.id || ''} ${control.value || ''} ${control.innerText || ''}`.toLowerCase();
+                  return /\b(search|query|keyword|keywords)\b/.test(text);
+                });
+              };
               const roleOf = el => {
                 const tag = el.tagName.toLowerCase();
                 const tokens = tokensOf(el);
-                if (tag === 'header' || tokens.includes('header') || tokens.includes('banner')) return 'header';
-                if (tag === 'footer' || tokens.includes('footer') || tokens.includes('contentinfo')) return 'footer';
-                if (tag === 'nav' || tokens.includes('navbar') || tokens.includes('navigation')) return 'nav';
+                const tokenList = tokenListOf(el);
+                const rect = el.getBoundingClientRect();
+                const hasSiteHeaderToken = /siteheader|global-header|globalheader|main-header|masthead|banner|usa-banner/.test(tokens);
+                const hasSiteFooterToken = /sitefooter|global-footer|globalfooter|main-footer|contentinfo/.test(tokens);
+                const hasHeaderNavigation = el.querySelectorAll('a[href], nav, button').length >= 2;
+                const hasFooterNotice = /copyright|all rights reserved|privacy|terms/.test((el.innerText || '').toLowerCase());
+                if (hasAny(tokenList, ['filter', 'filters', 'facet', 'facets', 'refine', 'refinement'])) {
+                  return hasAny(tokenList, ['dashboard', 'report', 'reports', 'analytics']) ? 'filter_bar' : 'filters';
+                }
+                if (hasAny(tokenList, ['result', 'results', 'resultlist', 'listing', 'listings', 'searchresults'])) return 'results';
+                if (hasAny(tokenList, ['pagination', 'pager', 'pages', 'pagenav'])) return 'pagination';
+                if (hasAny(tokenList, ['search', 'searchbox', 'searchform', 'query', 'keyword', 'keywords']) || hasSearchControls(el)) return 'search';
+                if (hasAny(tokenList, ['stats', 'stat', 'metrics', 'metric', 'numbers', 'counter', 'kpi', 'scorecard', 'indicator', 'indicators'])) return 'metrics';
+                if (hasAny(tokenList, ['chart', 'charts', 'graph', 'graphs', 'visualization', 'visualisation', 'viz'])) return 'chart';
+                if (hasAny(tokenList, ['table', 'datatable', 'dataset', 'data', 'spreadsheet']) || tag === 'table') return 'data_table';
+                if (hasAny(tokenList, ['step', 'steps', 'wizard', 'progress', 'stepper', 'flow'])) return 'steps';
+                if (hasAny(tokenList, ['validation', 'error', 'errors', 'alert', 'required', 'notice'])) return 'validation';
+                if (hasAny(tokenList, ['actions', 'actionbar', 'buttons', 'submit', 'continue', 'controls'])) return 'action_bar';
+                if (hasAny(tokenList, ['showcase', 'producthero'])) return 'product_hero';
+                if (hasAny(tokenList, ['proof', 'trust', 'testimonial', 'testimonials', 'logos', 'customers'])) return 'proof';
+                if (hasAny(tokenList, ['pricing', 'price', 'prices', 'billing', 'plans', 'plan'])) return 'pricing';
+                if (hasAny(tokenList, ['cta', 'calltoaction', 'signup', 'start', 'contactsales'])) return 'cta';
+                if (hasAny(tokenList, ['product', 'products', 'offer', 'offers', 'solution', 'solutions'])) return 'products';
+                if ((tag === 'header' && (hasSiteHeaderToken || (rect.top < 220 && hasHeaderNavigation))) || hasSiteHeaderToken) return 'header';
+                if ((tag === 'footer' && (hasSiteFooterToken || hasFooterNotice)) || hasSiteFooterToken) return 'footer';
+                if ((tag === 'nav' && rect.top < 260) || tokens.includes('navbar') || tokens.includes('navigation')) return 'nav';
                 if (tag === 'form' || el.querySelector('input, textarea, select')) return 'form';
                 if (tokens.includes('carousel') || tokens.includes('swiper') || tokens.includes('slick') || tokens.includes('slider') || tokens.includes('owl')) return 'carousel';
                 if (tokens.includes('news') || tokens.includes('announcement') || tokens.includes('latest')) return 'news';
                 if (tokens.includes('gallery') || tokens.includes('spotlight') || tokens.includes('photo')) return 'carousel';
-                const rect = el.getBoundingClientRect();
                 if ((tokens.includes('hero') || el.querySelector('h1')) && rect.top < viewport.height * 1.1) return 'hero';
                 if (el.querySelectorAll('article, li, .card, .item').length >= 2) return 'card_grid';
                 return 'content';

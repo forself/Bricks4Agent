@@ -1,0 +1,446 @@
+{
+  "templates": [
+    {
+      "template_id": "hero_news_portal",
+      "pattern_tags": ["hero", "news", "quick_links"],
+      "page_types": {
+        "home": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "hero",
+              "required": false,
+              "accepts": ["HeroCarousel", "HeroBanner", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "quick_links",
+              "required": false,
+              "accepts": ["QuickLinkRibbon", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "news",
+              "required": false,
+              "accepts": ["NewsCardCarousel", "NewsGrid", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "features",
+              "required": false,
+              "accepts": ["MediaFeatureGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "listing": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "article": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "search_service_portal",
+      "pattern_tags": ["search", "service_categories", "tabbed_news"],
+      "page_types": {
+        "home": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "search",
+              "required": false,
+              "accepts": ["ServiceSearchHero", "HeroBanner", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "service_categories",
+              "required": false,
+              "accepts": ["ServiceCategoryGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "service_actions",
+              "required": false,
+              "accepts": ["ServiceActionGrid", "QuickLinkRibbon", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "tabbed_news",
+              "required": false,
+              "accepts": ["TabbedNewsBoard", "NewsGrid", "ArticleList", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "features",
+              "required": false,
+              "accepts": ["MediaFeatureGrid", "ServiceCategoryGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "listing": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ArticleList", "TabbedNewsBoard", "NewsGrid", "CardGrid", "AtomicSection"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "article": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "service_action_portal",
+      "pattern_tags": ["hero", "service_actions", "tabbed_news"],
+      "page_types": {
+        "home": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "hero",
+              "required": false,
+              "accepts": ["HeroCarousel", "HeroBanner", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "service_actions",
+              "required": false,
+              "accepts": ["ServiceActionGrid", "QuickLinkRibbon", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "tabbed_news",
+              "required": false,
+              "accepts": ["TabbedNewsBoard", "NewsGrid", "ArticleList", "CardGrid"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "service_categories",
+              "required": false,
+              "accepts": ["ServiceCategoryGrid", "CardGrid", "AtomicSection"],
+              "fallback": "AtomicSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "listing": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["TabbedNewsBoard", "ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
+              "fallback": "CardGrid"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "article": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": true,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            {
+              "name": "header",
+              "required": true,
+              "accepts": ["MegaHeader", "SiteHeader"],
+              "fallback": "SiteHeader"
+            },
+            {
+              "name": "content",
+              "required": false,
+              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
+              "name": "footer",
+              "required": true,
+              "accepts": ["InstitutionFooter", "SiteFooter"],
+              "fallback": "SiteFooter"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "search_results_portal",
+      "pattern_tags": ["search_results", "filters", "results"],
+      "page_types": {
+        "home": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "search_box", "required": false, "accepts": ["SearchBoxPanel", "ServiceSearchHero", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "filter_panel", "required": false, "accepts": ["FacetFilterPanel", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "result_list", "required": false, "accepts": ["ResultList", "ArticleList", "CardGrid", "AtomicSection"], "fallback": "CardGrid" },
+            { "name": "pagination", "required": false, "accepts": ["PaginationNav", "QuickLinkRibbon", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "result_list", "required": false, "accepts": ["ResultList", "ArticleList", "CardGrid", "AtomicSection"], "fallback": "CardGrid" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "report_dashboard",
+      "pattern_tags": ["report", "metrics", "data_table"],
+      "page_types": {
+        "home": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "filter_bar", "required": false, "accepts": ["DashboardFilterBar", "FacetFilterPanel", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "metric_summary", "required": false, "accepts": ["MetricSummaryGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "chart_panel", "required": false, "accepts": ["ChartPanel", "MediaFeatureGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "data_table", "required": false, "accepts": ["DataTablePreview", "ArticleList", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "data_table", "required": false, "accepts": ["DataTablePreview", "ArticleList", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "input_flow",
+      "pattern_tags": ["input_flow", "form", "steps"],
+      "page_types": {
+        "home": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "step_indicator", "required": false, "accepts": ["StepIndicator", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "form_fields", "required": false, "accepts": ["StructuredFormPanel", "FormBlock", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "validation_summary", "required": false, "accepts": ["ValidationSummary", "ContentSection", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "action_bar", "required": false, "accepts": ["FormActionBar", "QuickLinkRibbon", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "form_fields", "required": false, "accepts": ["StructuredFormPanel", "FormBlock", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        }
+      }
+    },
+    {
+      "template_id": "commercial_showcase",
+      "pattern_tags": ["showcase", "product_cards", "cta"],
+      "page_types": {
+        "home": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "showcase_hero", "required": false, "accepts": ["ShowcaseHero", "HeroBanner", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "product_cards", "required": false, "accepts": ["ProductCardGrid", "MediaFeatureGrid", "CardGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "feature_grid", "required": false, "accepts": ["MediaFeatureGrid", "CardGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "proof_strip", "required": false, "accepts": ["ProofStrip", "MetricSummaryGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "pricing_panel", "required": false, "accepts": ["PricingPanel", "ProductCardGrid", "CardGrid", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "cta_band", "required": false, "accepts": ["CtaBand", "QuickLinkRibbon", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        },
+        "unknown": {
+          "slots": [
+            { "name": "header", "required": true, "accepts": ["MegaHeader", "SiteHeader"], "fallback": "SiteHeader" },
+            { "name": "showcase_hero", "required": false, "accepts": ["ShowcaseHero", "HeroBanner", "AtomicSection"], "fallback": "AtomicSection" },
+            { "name": "footer", "required": true, "accepts": ["InstitutionFooter", "SiteFooter"], "fallback": "SiteFooter" }
+          ]
+        }
+      }
+    }
+  ]
+}

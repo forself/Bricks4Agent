@@ -265,7 +265,7 @@
     },
     {
       "type": "MegaHeader",
-      "description": "Institutional header with logo, utility links, primary navigation, and optional search affordance.",
+      "description": "Multi-tier header with logo, utility links, primary navigation, and optional search affordance.",
       "supported_roles": ["navigation", "header", "mega_nav"],
       "props_schema": {
         "required": ["title", "utility_links", "primary_links", "search_enabled"],
@@ -306,7 +306,7 @@
     },
     {
       "type": "HeroCarousel",
-      "description": "Reusable large visual carousel for institutional home pages.",
+      "description": "Reusable large visual carousel for image-led home pages.",
       "supported_roles": ["hero", "carousel"],
       "props_schema": {
         "required": ["title", "body", "slides"],
@@ -350,7 +350,7 @@
     },
     {
       "type": "QuickLinkRibbon",
-      "description": "Reusable compact link ribbon for common institutional actions.",
+      "description": "Reusable compact link ribbon for common actions.",
       "supported_roles": ["quick_links", "links", "navigation"],
       "props_schema": {
         "required": ["title", "links"],
@@ -458,8 +458,602 @@
       "generated": false
     },
     {
+      "type": "ServiceSearchHero",
+      "description": "Reusable search-led hero for portal-like home pages.",
+      "supported_roles": ["search", "hero", "service_portal"],
+      "props_schema": {
+        "required": ["title", "body", "query_placeholder", "hot_keywords", "actions"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "query_placeholder": { "type": "string" },
+          "hot_keywords": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ServiceCategoryGrid",
+      "description": "Reusable grid of audience, topic, or task categories with nested links.",
+      "supported_roles": ["service_categories", "category_grid", "portal"],
+      "props_schema": {
+        "required": ["title", "categories"],
+        "properties": {
+          "title": { "type": "string" },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "links"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "links": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["label", "url", "source_url", "scope"],
+                    "properties": {
+                      "label": { "type": "string" },
+                      "url": { "type": "string" },
+                      "source_url": { "type": "string" },
+                      "scope": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ServiceActionGrid",
+      "description": "Reusable grid of high-priority service actions such as registration, portal entry, contact, or service lookup.",
+      "supported_roles": ["service_actions", "quick_actions", "portal"],
+      "props_schema": {
+        "required": ["title", "actions"],
+        "properties": {
+          "title": { "type": "string" },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope", "kind"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "kind": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "TabbedNewsBoard",
+      "description": "Reusable multi-category news and announcement board.",
+      "supported_roles": ["news", "announcements", "tabs"],
+      "props_schema": {
+        "required": ["title", "tabs"],
+        "properties": {
+          "title": { "type": "string" },
+          "tabs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "items"],
+              "properties": {
+                "label": { "type": "string" },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+                    "properties": {
+                      "title": { "type": "string" },
+                      "body": { "type": "string" },
+                      "url": { "type": "string" },
+                      "source_url": { "type": "string" },
+                      "scope": { "type": "string" },
+                      "media_url": { "type": "string" },
+                      "media_alt": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "SearchBoxPanel",
+      "description": "Reusable search input panel with suggestions and context text.",
+      "supported_roles": ["search_box", "search", "discovery"],
+      "props_schema": {
+        "required": ["title", "body", "query_placeholder", "suggestions"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "query_placeholder": { "type": "string" },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "FacetFilterPanel",
+      "description": "Reusable filter/facet panel for narrowing result sets.",
+      "supported_roles": ["filter_panel", "facets", "filters"],
+      "props_schema": {
+        "required": ["title", "filters"],
+        "properties": {
+          "title": { "type": "string" },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value", "count"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" },
+                "count": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ResultList",
+      "description": "Reusable list of search or discovery results.",
+      "supported_roles": ["result_list", "results", "listing"],
+      "props_schema": {
+        "required": ["title", "summary", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "PaginationNav",
+      "description": "Reusable pagination or result navigation strip.",
+      "supported_roles": ["pagination", "pager"],
+      "props_schema": {
+        "required": ["links"],
+        "properties": {
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "DashboardFilterBar",
+      "description": "Reusable report/dashboard filter and action toolbar.",
+      "supported_roles": ["filter_bar", "dashboard_filters", "toolbar"],
+      "props_schema": {
+        "required": ["title", "filters", "actions"],
+        "properties": {
+          "title": { "type": "string" },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value", "count"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" },
+                "count": { "type": "string" }
+              }
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "MetricSummaryGrid",
+      "description": "Reusable KPI and metric card grid.",
+      "supported_roles": ["metric_summary", "kpi", "stats"],
+      "props_schema": {
+        "required": ["title", "metrics"],
+        "properties": {
+          "title": { "type": "string" },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value", "detail"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" },
+                "detail": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ChartPanel",
+      "description": "Reusable chart-like panel represented from extracted visual values.",
+      "supported_roles": ["chart_panel", "chart", "visualization"],
+      "props_schema": {
+        "required": ["title", "body", "series"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "DataTablePreview",
+      "description": "Reusable table preview for report and listing data.",
+      "supported_roles": ["data_table", "table"],
+      "props_schema": {
+        "required": ["title", "columns", "rows"],
+        "properties": {
+          "title": { "type": "string" },
+          "columns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["cells"],
+              "properties": {
+                "cells": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "StepIndicator",
+      "description": "Reusable step/progress indicator for form flows.",
+      "supported_roles": ["step_indicator", "steps", "progress"],
+      "props_schema": {
+        "required": ["steps"],
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "status"],
+              "properties": {
+                "label": { "type": "string" },
+                "status": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "StructuredFormPanel",
+      "description": "Reusable non-submitting structured form panel.",
+      "supported_roles": ["form_fields", "form", "input"],
+      "props_schema": {
+        "required": ["title", "fields"],
+        "properties": {
+          "title": { "type": "string" },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "label", "type", "required"],
+              "properties": {
+                "name": { "type": "string" },
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "type": { "type": "string" },
+                "required": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ValidationSummary",
+      "description": "Reusable validation and required-field summary.",
+      "supported_roles": ["validation_summary", "validation", "notice"],
+      "props_schema": {
+        "required": ["title", "messages"],
+        "properties": {
+          "title": { "type": "string" },
+          "messages": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "FormActionBar",
+      "description": "Reusable form-flow action bar.",
+      "supported_roles": ["action_bar", "form_actions", "actions"],
+      "props_schema": {
+        "required": ["actions"],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope", "kind"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "kind": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ShowcaseHero",
+      "description": "Reusable commercial-style hero with media and calls to action.",
+      "supported_roles": ["showcase_hero", "product_hero", "hero"],
+      "props_schema": {
+        "required": ["title", "body", "media_url", "media_alt", "actions"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "media_url": { "type": "string" },
+          "media_alt": { "type": "string" },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope", "kind"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "kind": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ProductCardGrid",
+      "description": "Reusable product or offer card grid.",
+      "supported_roles": ["product_cards", "products", "offers"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "properties": {
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "media_url": { "type": "string" },
+                "media_alt": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "ProofStrip",
+      "description": "Reusable trust, logo, or statistic proof strip.",
+      "supported_roles": ["proof_strip", "proof", "trust"],
+      "props_schema": {
+        "required": ["title", "items"],
+        "properties": {
+          "title": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value", "detail"],
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string" },
+                "detail": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "PricingPanel",
+      "description": "Reusable pricing/package option panel.",
+      "supported_roles": ["pricing_panel", "pricing", "plans"],
+      "props_schema": {
+        "required": ["title", "plans"],
+        "properties": {
+          "title": { "type": "string" },
+          "plans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "price", "body", "features", "action"],
+              "properties": {
+                "title": { "type": "string" },
+                "price": { "type": "string" },
+                "body": { "type": "string" },
+                "features": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "action": {
+                  "type": "object",
+                  "required": ["label", "url", "source_url", "scope", "kind"],
+                  "properties": {
+                    "label": { "type": "string" },
+                    "url": { "type": "string" },
+                    "source_url": { "type": "string" },
+                    "scope": { "type": "string" },
+                    "kind": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
+      "type": "CtaBand",
+      "description": "Reusable call-to-action band.",
+      "supported_roles": ["cta_band", "cta", "conversion"],
+      "props_schema": {
+        "required": ["title", "body", "actions"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "url", "source_url", "scope", "kind"],
+              "properties": {
+                "label": { "type": "string" },
+                "url": { "type": "string" },
+                "source_url": { "type": "string" },
+                "scope": { "type": "string" },
+                "kind": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "generated": false
+    },
+    {
       "type": "InstitutionFooter",
-      "description": "Reusable institutional footer with contact text and curated links.",
+      "description": "Reusable footer with contact text and curated links.",
       "supported_roles": ["footer", "contact"],
       "props_schema": {
         "required": ["source_url", "contact_text", "links"],

@@ -122,6 +122,51 @@ public sealed class ComponentValidationResult
     public List<string> Errors { get; set; } = new();
 }
 
+public sealed class SiteGenerationQualityPolicy
+{
+    [JsonPropertyName("allow_generated_components")]
+    public bool AllowGeneratedComponents { get; set; }
+
+    [JsonPropertyName("allow_component_requests")]
+    public bool AllowComponentRequests { get; set; }
+
+    [JsonPropertyName("require_unique_route_paths")]
+    public bool RequireUniqueRoutePaths { get; set; } = true;
+
+    [JsonPropertyName("require_page_shell_root")]
+    public bool RequirePageShellRoot { get; set; } = true;
+}
+
+public sealed class SiteGenerationQualityReport
+{
+    [JsonPropertyName("is_passed")]
+    public bool IsPassed => Errors.Count == 0;
+
+    [JsonPropertyName("route_count")]
+    public int RouteCount { get; set; }
+
+    [JsonPropertyName("component_node_count")]
+    public int ComponentNodeCount { get; set; }
+
+    [JsonPropertyName("component_request_count")]
+    public int ComponentRequestCount { get; set; }
+
+    [JsonPropertyName("generated_component_count")]
+    public int GeneratedComponentCount { get; set; }
+
+    [JsonPropertyName("component_types")]
+    public List<string> ComponentTypes { get; set; } = new();
+
+    [JsonPropertyName("unknown_component_types")]
+    public List<string> UnknownComponentTypes { get; set; } = new();
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = new();
+}
+
 public sealed class ComponentNode
 {
     [JsonPropertyName("id")]
@@ -165,6 +210,9 @@ public sealed class StaticSitePackageOptions
 
     [JsonPropertyName("package_name")]
     public string PackageName { get; set; } = "generated-site";
+
+    [JsonPropertyName("enforce_quality_gate")]
+    public bool EnforceQualityGate { get; set; }
 }
 
 public sealed class StaticSitePackageResult

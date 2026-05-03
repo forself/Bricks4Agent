@@ -383,6 +383,162 @@ public class DeterministicSiteExtractorTests
     }
 
     [Fact]
+    public void ExtractPage_ClassifiesSearchResultPatternSections()
+    {
+        var html = """
+            <html>
+            <body>
+              <main>
+                <section class="lookup-panel">
+                  <h1>Search services</h1>
+                  <form><input name="q" type="search"><button>Search</button></form>
+                </section>
+                <aside class="facets">
+                  <h2>Filter results</h2>
+                  <label><input type="checkbox"> News</label>
+                </aside>
+                <section class="search-results">
+                  <h2>42 results</h2>
+                  <article><a href="/one">First result</a><p>Result summary.</p></article>
+                  <article><a href="/two">Second result</a><p>Result summary.</p></article>
+                </section>
+                <nav class="pagination"><a href="?page=2">Next</a></nav>
+              </main>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Sections.Select(section => section.Role).Should().Contain([
+            "search",
+            "filters",
+            "results",
+            "pagination",
+        ]);
+    }
+
+    [Fact]
+    public void ExtractPage_ClassifiesReportDashboardPatternSections()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="dashboard filters">
+                <h2>Report filters</h2>
+                <button>Export</button>
+              </section>
+              <section class="kpi metrics">
+                <h2>Key metrics</h2>
+                <p>Total 1,200 Growth 12%</p>
+              </section>
+              <section class="chart visualization">
+                <h2>Monthly trend</h2>
+                <p>Jan 20 Feb 32 Mar 41</p>
+              </section>
+              <section class="data-table">
+                <h2>Recent records</h2>
+                <table><tr><th>Name</th><th>Status</th></tr><tr><td>Alpha</td><td>Open</td></tr></table>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Sections.Select(section => section.Role).Should().Contain([
+            "filter_bar",
+            "stats",
+            "chart",
+            "data_table",
+        ]);
+    }
+
+    [Fact]
+    public void ExtractPage_ClassifiesInputFlowPatternSections()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="stepper">
+                <h2>Step 1 of 3</h2>
+                <ol><li>Applicant</li><li>Review</li><li>Submit</li></ol>
+              </section>
+              <section class="application-form">
+                <h2>Applicant information</h2>
+                <label>Name <input name="name" required></label>
+                <label>Email <input name="email" type="email" required></label>
+              </section>
+              <section class="validation-summary">
+                <h2>Required fields</h2>
+                <p>Name and email are required.</p>
+              </section>
+              <section class="form-actions">
+                <h2>Actions</h2>
+                <button>Back</button><button>Continue</button>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Sections.Select(section => section.Role).Should().Contain([
+            "steps",
+            "form",
+            "validation",
+            "action_bar",
+        ]);
+    }
+
+    [Fact]
+    public void ExtractPage_ClassifiesCommercialShowcasePatternSections()
+    {
+        var html = """
+            <html>
+            <body>
+              <section class="product-hero showcase">
+                <h1>Launch faster</h1>
+                <a href="/signup">Start free</a>
+              </section>
+              <section class="products">
+                <h2>Products</h2>
+                <article><h3>Starter</h3><p>For small teams.</p></article>
+                <article><h3>Scale</h3><p>For growing teams.</p></article>
+              </section>
+              <section class="proof-strip testimonials">
+                <h2>Trusted by teams</h2>
+                <p>500 customers</p>
+              </section>
+              <section class="pricing">
+                <h2>Pricing</h2>
+                <article><h3>Starter</h3><p>$19 per month</p></article>
+                <article><h3>Pro</h3><p>$49 per month</p></article>
+              </section>
+              <section class="cta">
+                <h2>Ready to start?</h2>
+                <a href="/signup">Start free</a>
+              </section>
+            </body>
+            </html>
+            """;
+        var extractor = new DeterministicSiteExtractor();
+
+        var result = extractor.ExtractPage(new Uri("https://example.com/"), html);
+
+        result.Model.Sections.Select(section => section.Role).Should().Contain([
+            "product_hero",
+            "products",
+            "proof",
+            "pricing",
+            "cta",
+        ]);
+    }
+
+    [Fact]
     public void ExtractPage_ExtractsReusableVisualAtoms()
     {
         var html = """

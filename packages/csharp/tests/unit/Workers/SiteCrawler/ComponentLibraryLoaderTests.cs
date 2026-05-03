@@ -33,12 +33,52 @@ public class ComponentLibraryLoaderTests : IDisposable
             "NewsCardCarousel",
             "NewsGrid",
             "MediaFeatureGrid",
+            "ServiceSearchHero",
+            "ServiceCategoryGrid",
+            "ServiceActionGrid",
+            "TabbedNewsBoard",
+            "SearchBoxPanel",
+            "FacetFilterPanel",
+            "ResultList",
+            "PaginationNav",
+            "DashboardFilterBar",
+            "MetricSummaryGrid",
+            "ChartPanel",
+            "DataTablePreview",
+            "StepIndicator",
+            "StructuredFormPanel",
+            "ValidationSummary",
+            "FormActionBar",
+            "ShowcaseHero",
+            "ProductCardGrid",
+            "ProofStrip",
+            "PricingPanel",
+            "CtaBand",
             "InstitutionFooter",
             "ArticleList",
             "ContentArticle",
         ]);
         manifest.Components.Should().NotContain(component => component.Generated);
         manifest.Components.Should().OnlyContain(component => component.PropsSchema.Properties.Count > 0);
+    }
+
+    [Fact]
+    public void LoadDefault_ComponentLibraryReadmeDocumentsEveryManifestComponent()
+    {
+        var manifest = new ComponentLibraryLoader().LoadDefault();
+        var readme = File.ReadAllText(ResolveRepoFile(
+            "packages",
+            "csharp",
+            "workers",
+            "site-crawler-worker",
+            "component-libraries",
+            "bricks4agent.default",
+            "README.md"));
+
+        foreach (var component in manifest.Components)
+        {
+            readme.Should().Contain($"`{component.Type}`");
+        }
     }
 
     [Fact]
@@ -104,5 +144,22 @@ public class ComponentLibraryLoaderTests : IDisposable
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*props_schema*");
+    }
+
+    private static string ResolveRepoFile(params string[] segments)
+    {
+        var current = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (current is not null)
+        {
+            var candidate = Path.Combine([current.FullName, .. segments]);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new FileNotFoundException($"Could not find repo file: {Path.Combine(segments)}");
     }
 }

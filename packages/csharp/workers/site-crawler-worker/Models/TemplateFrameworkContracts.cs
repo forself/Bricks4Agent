@@ -13,6 +13,9 @@ public sealed class TemplateDefinition
     [JsonPropertyName("template_id")]
     public string TemplateId { get; set; } = string.Empty;
 
+    [JsonPropertyName("pattern_tags")]
+    public List<string> PatternTags { get; set; } = new();
+
     [JsonPropertyName("supported_site_kinds")]
     public List<string> SupportedSiteKinds { get; set; } = new();
 

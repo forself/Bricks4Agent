@@ -5,7 +5,10 @@ namespace SiteCrawlerWorker.Services;
 
 public sealed class TemplateFrameworkLoader
 {
-    private const string DefaultTemplatePath = "template-framework/institutional_site.json";
+    private const string DefaultTemplateFileName = "visual_patterns.json";
+    private const string LegacyTemplateFileName = "institutional_site.json";
+    private const string DefaultTemplatePath = $"template-framework/{DefaultTemplateFileName}";
+    private const string LegacyDefaultTemplatePath = $"template-framework/{LegacyTemplateFileName}";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -71,7 +74,10 @@ public sealed class TemplateFrameworkLoader
         var resolved = Path.GetFullPath(path, Directory.GetCurrentDirectory());
         if (Directory.Exists(resolved))
         {
-            resolved = Path.Combine(resolved, "institutional_site.json");
+            var visualPatternPath = Path.Combine(resolved, DefaultTemplateFileName);
+            resolved = File.Exists(visualPatternPath)
+                ? visualPatternPath
+                : Path.Combine(resolved, LegacyTemplateFileName);
         }
 
         if (!File.Exists(resolved))
@@ -85,7 +91,9 @@ public sealed class TemplateFrameworkLoader
     private static IEnumerable<string> GetDefaultTemplateCandidates()
     {
         yield return Path.Combine(AppContext.BaseDirectory, DefaultTemplatePath);
+        yield return Path.Combine(AppContext.BaseDirectory, LegacyDefaultTemplatePath);
         yield return Path.Combine(Directory.GetCurrentDirectory(), DefaultTemplatePath);
+        yield return Path.Combine(Directory.GetCurrentDirectory(), LegacyDefaultTemplatePath);
         yield return Path.Combine(
             Directory.GetCurrentDirectory(),
             "packages",
@@ -93,6 +101,13 @@ public sealed class TemplateFrameworkLoader
             "workers",
             "site-crawler-worker",
             DefaultTemplatePath);
+        yield return Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "packages",
+            "csharp",
+            "workers",
+            "site-crawler-worker",
+            LegacyDefaultTemplatePath);
     }
 
     private static void Normalize(TemplateFrameworkManifest manifest)
@@ -102,7 +117,13 @@ public sealed class TemplateFrameworkLoader
         foreach (var template in manifest.Templates)
         {
             template.TemplateId ??= string.Empty;
+            template.PatternTags ??= [];
             template.SupportedSiteKinds ??= [];
+            if (template.PatternTags.Count == 0 && template.SupportedSiteKinds.Count > 0)
+            {
+                template.PatternTags.AddRange(template.SupportedSiteKinds);
+            }
+
             template.PageTypes ??= new Dictionary<string, TemplatePageTypeDefinition>(StringComparer.Ordinal);
 
             foreach (var pageType in template.PageTypes.Values)
@@ -140,9 +161,9 @@ public sealed class TemplateFrameworkLoader
                 errors.Add($"template_id '{template.TemplateId}' is duplicated.");
             }
 
-            if (template.SupportedSiteKinds.Count == 0)
+            if (template.PatternTags.Count == 0)
             {
-                errors.Add($"template '{template.TemplateId}' must define at least one supported site kind.");
+                errors.Add($"template '{template.TemplateId}' must define at least one pattern_tags metadata value.");
             }
 
             if (template.PageTypes.Count == 0)

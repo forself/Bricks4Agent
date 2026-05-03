@@ -493,7 +493,8 @@ public sealed class DeterministicSiteExtractor
     private static bool IsSemanticSectionCandidate(HtmlNode node)
     {
         var name = node.Name.ToLowerInvariant();
-        return name is "section" or "main" or "article";
+        return name is "section" or "main" or "article" or "aside" or "table" ||
+            (name == "nav" && HasReusablePatternSignal(node));
     }
 
     private static bool IsNonSemanticDivCandidate(
@@ -606,6 +607,12 @@ public sealed class DeterministicSiteExtractor
 
     private static string InferSectionRole(HtmlNode node, HtmlNode? firstH1HeroCandidate)
     {
+        var visualRole = InferVisualRole(node);
+        if (ShouldPreferVisualRoleOverHero(node, visualRole))
+        {
+            return visualRole;
+        }
+
         if (HasHeroSignal(node) || ReferenceEquals(node, firstH1HeroCandidate))
         {
             return "hero";
@@ -617,7 +624,6 @@ public sealed class DeterministicSiteExtractor
             return "footer";
         }
 
-        var visualRole = InferVisualRole(node);
         if (!string.IsNullOrWhiteSpace(visualRole))
         {
             return visualRole;
@@ -626,9 +632,106 @@ public sealed class DeterministicSiteExtractor
         return "content";
     }
 
+    private static bool ShouldPreferVisualRoleOverHero(HtmlNode node, string visualRole)
+    {
+        if (string.IsNullOrWhiteSpace(visualRole))
+        {
+            return false;
+        }
+
+        if (visualRole != "form")
+        {
+            return true;
+        }
+
+        var tokens = GetRoleSignalTokens(node);
+        return node.Name.Equals("form", StringComparison.OrdinalIgnoreCase) ||
+            tokens.Any(token => token is "form" or "application" or "apply" or "checkout" or "signup");
+    }
+
     private static string InferVisualRole(HtmlNode node)
     {
         var tokens = GetRoleSignalTokens(node);
+        if (tokens.Any(IsFilterToken))
+        {
+            return tokens.Any(IsDashboardToken) ? "filter_bar" : "filters";
+        }
+
+        if (tokens.Any(IsResultToken))
+        {
+            return "results";
+        }
+
+        if (tokens.Any(IsPaginationToken))
+        {
+            return "pagination";
+        }
+
+        if (tokens.Any(IsSearchToken) || HasSearchControls(node))
+        {
+            return "search";
+        }
+
+        if (tokens.Any(IsMetricToken))
+        {
+            return "stats";
+        }
+
+        if (tokens.Any(IsChartToken))
+        {
+            return "chart";
+        }
+
+        if (tokens.Any(IsDataTableToken) || node.Name.Equals("table", StringComparison.OrdinalIgnoreCase))
+        {
+            return "data_table";
+        }
+
+        if (tokens.Any(IsStepToken))
+        {
+            return "steps";
+        }
+
+        if (tokens.Any(IsValidationToken))
+        {
+            return "validation";
+        }
+
+        if (tokens.Any(IsActionBarToken))
+        {
+            return "action_bar";
+        }
+
+        if (tokens.Any(IsShowcaseHeroToken))
+        {
+            return "product_hero";
+        }
+
+        if (tokens.Any(IsProofToken))
+        {
+            return "proof";
+        }
+
+        if (tokens.Any(IsPricingToken))
+        {
+            return "pricing";
+        }
+
+        if (tokens.Any(IsCtaToken))
+        {
+            return "cta";
+        }
+
+        if (tokens.Any(IsProductToken))
+        {
+            return "products";
+        }
+
+        if (HasFormControls(node) && IsFormPatternNode(node, tokens))
+        {
+            return "form";
+        }
+
         if (tokens.Any(IsNewsToken))
         {
             return "news";
@@ -708,6 +811,54 @@ public sealed class DeterministicSiteExtractor
     private static bool IsStatsToken(string token)
         => token is "stats" or "stat" or "metrics" or "metric" or "numbers" or "counter";
 
+    private static bool IsSearchToken(string token)
+        => token is "search" or "searchbox" or "searchform" or "query" or "keyword" or "keywords";
+
+    private static bool IsFilterToken(string token)
+        => token is "filter" or "filters" or "facet" or "facets" or "refine" or "refinement";
+
+    private static bool IsResultToken(string token)
+        => token is "result" or "results" or "resultlist" or "listing" or "listings" or "searchresults";
+
+    private static bool IsPaginationToken(string token)
+        => token is "pagination" or "pager" or "pages" or "page-numbers" or "pagenav";
+
+    private static bool IsDashboardToken(string token)
+        => token is "dashboard" or "report" or "reports" or "analytics";
+
+    private static bool IsMetricToken(string token)
+        => IsStatsToken(token) || token is "kpi" or "scorecard" or "indicator" or "indicators";
+
+    private static bool IsChartToken(string token)
+        => token is "chart" or "charts" or "graph" or "graphs" or "visualization" or "visualisation" or "viz";
+
+    private static bool IsDataTableToken(string token)
+        => token is "table" or "datatable" or "data-table" or "dataset" or "data" or "spreadsheet";
+
+    private static bool IsStepToken(string token)
+        => token is "step" or "steps" or "wizard" or "progress" or "stepper" or "flow";
+
+    private static bool IsValidationToken(string token)
+        => token is "validation" or "error" or "errors" or "alert" or "required" or "notice";
+
+    private static bool IsActionBarToken(string token)
+        => token is "actions" or "actionbar" or "buttons" or "submit" or "continue" or "controls";
+
+    private static bool IsShowcaseHeroToken(string token)
+        => token is "showcase" or "producthero" or "product-hero";
+
+    private static bool IsProductToken(string token)
+        => token is "product" or "products" or "offer" or "offers" or "solution" or "solutions";
+
+    private static bool IsProofToken(string token)
+        => token is "proof" or "trust" or "testimonial" or "testimonials" or "logos" or "customers";
+
+    private static bool IsPricingToken(string token)
+        => token is "pricing" or "price" or "prices" or "billing" or "plans" or "plan";
+
+    private static bool IsCtaToken(string token)
+        => token is "cta" or "calltoaction" or "call-to-action" or "signup" or "start" or "contactsales";
+
     private static bool IsFaqToken(string token)
         => token is "faq" or "faqs" or "question" or "questions" or "accordion";
 
@@ -752,6 +903,22 @@ public sealed class DeterministicSiteExtractor
     {
         var tokens = GetRoleSignalTokens(node);
         return tokens.Any(token =>
+            IsSearchToken(token) ||
+            IsFilterToken(token) ||
+            IsResultToken(token) ||
+            IsPaginationToken(token) ||
+            IsDashboardToken(token) ||
+            IsMetricToken(token) ||
+            IsChartToken(token) ||
+            IsDataTableToken(token) ||
+            IsStepToken(token) ||
+            IsValidationToken(token) ||
+            IsActionBarToken(token) ||
+            IsShowcaseHeroToken(token) ||
+            IsProductToken(token) ||
+            IsProofToken(token) ||
+            IsPricingToken(token) ||
+            IsCtaToken(token) ||
             IsNewsToken(token) ||
             IsGalleryToken(token) ||
             IsFeatureGridToken(token) ||
@@ -770,7 +937,8 @@ public sealed class DeterministicSiteExtractor
         return tokens.Any(token =>
             token is "area" or "section" or "content" or "main" or "panel" or "spotlight" or
                 "news" or "newsa" or "classification" or "catalog" or "category" or "catloga" or
-                "remind" or "reminder" or "sloga" or "notice");
+                "remind" or "reminder" or "sloga" or "notice" or "results" or "filters" or
+                "dashboard" or "metrics" or "chart" or "pricing" or "showcase");
     }
 
     private static bool IsHeaderCandidate(HtmlNode node)
@@ -829,9 +997,19 @@ public sealed class DeterministicSiteExtractor
             }
 
             var name = current.Name.ToLowerInvariant();
-            if (name is "nav" or "header" or "footer")
+            if (name is "header" or "footer")
             {
                 return true;
+            }
+
+            if (name == "nav" && !HasReusablePatternSignal(current))
+            {
+                return true;
+            }
+
+            if (HasReusablePatternSignal(current) || HasHeroSignal(current))
+            {
+                continue;
             }
 
             var role = CleanAttribute(current.GetAttributeValue("role", string.Empty));
@@ -854,8 +1032,63 @@ public sealed class DeterministicSiteExtractor
 
     private static bool IsNavigationChromeToken(string token)
         => token is "nav" or "navbar" or "menu" or "dropdown" or "top" or "topsec" or
-            "toplinkbox" or "logosearch" or "logo" or "search" or "footer" or "breadcrumb" or
+            "toplinkbox" or "logosearch" or "logo" or "footer" or "breadcrumb" or
             "breadcrumbs" or "skip" or "sr" or "sr-only";
+
+    private static bool HasReusablePatternSignal(HtmlNode node)
+    {
+        var tokens = GetRoleSignalTokens(node);
+        return tokens.Any(token =>
+            IsSearchToken(token) ||
+            IsFilterToken(token) ||
+            IsResultToken(token) ||
+            IsPaginationToken(token) ||
+            IsDashboardToken(token) ||
+            IsMetricToken(token) ||
+            IsChartToken(token) ||
+            IsDataTableToken(token) ||
+            IsStepToken(token) ||
+            IsValidationToken(token) ||
+            IsActionBarToken(token) ||
+            IsShowcaseHeroToken(token) ||
+            IsProductToken(token) ||
+            IsProofToken(token) ||
+            IsPricingToken(token) ||
+            IsCtaToken(token));
+    }
+
+    private static bool HasFormControls(HtmlNode node)
+        => SelectNodes(node, ".//input|.//textarea|.//select|.//button").Any();
+
+    private static bool HasSearchControls(HtmlNode node)
+    {
+        if (!HasFormControls(node))
+        {
+            return false;
+        }
+
+        return SelectNodes(node, ".//input|.//button")
+            .Any(control =>
+            {
+                var type = CleanAttribute(control.GetAttributeValue("type", string.Empty));
+                var name = CleanAttribute(control.GetAttributeValue("name", string.Empty));
+                var id = CleanAttribute(control.GetAttributeValue("id", string.Empty));
+                var value = CleanAttribute(control.GetAttributeValue("value", string.Empty));
+                var label = CleanText(control.InnerText);
+                var text = $"{type} {name} {id} {value} {label}";
+                return ContainsToken(text, "search") ||
+                    ContainsToken(text, "query") ||
+                    ContainsToken(text, "keyword") ||
+                    ContainsToken(text, "keywords");
+            });
+    }
+
+    private static bool ContainsToken(string value, string token)
+        => value.Contains(token, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFormPatternNode(HtmlNode node, IReadOnlyCollection<string> tokens)
+        => node.Name.Equals("form", StringComparison.OrdinalIgnoreCase) ||
+            tokens.Any(token => token is "form" or "application" or "apply" or "checkout" or "signup" or "contact");
 
     private static bool IsNonVisualLinkLabel(string label)
         => string.IsNullOrWhiteSpace(label) ||
