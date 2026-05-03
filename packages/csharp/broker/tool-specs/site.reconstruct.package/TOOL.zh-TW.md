@@ -57,9 +57,13 @@ Strict mode 預設啟用。以下情況會阻擋 package 建立：
 - `index.html` 宣告 `#app` 並載入 `./runtime.js`
 - `runtime.js` 載入 `./site.json` 與 `./components/manifest.json`
 - `components/manifest.json` 宣告 `site.json` 使用到的每一種元件類型
+- `site.json` 使用到的每一種非生成元件都必須有 `runtime.js` renderer
+- 生成元件必須有本地 `components/generated/<Type>.js` 與 `.json` 資產
 - zip archive 條目
 
 正常交付給使用者時，`package.quality_report.is_passed` 與 `package.verification_report.is_passed` 都必須為 true。
+
+`package.verification_report.runtime_renderer_types` 會列出從 `runtime.js` 解析出的 renderer key。
 
 ## 輸出
 

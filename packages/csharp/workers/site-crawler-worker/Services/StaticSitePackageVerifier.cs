@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SiteCrawlerWorker.Models;
 
 namespace SiteCrawlerWorker.Services;
@@ -20,6 +21,10 @@ public sealed class StaticSitePackageVerifier
         "components/manifest.json",
         "README.md",
     ];
+
+    private static readonly Regex RuntimeRendererEntryPattern = new(
+        @"^\s*(?<type>[A-Za-z][A-Za-z0-9_]*)\s*:\s*render[A-Za-z0-9_]+\s*,?\s*$",
+        RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
     private readonly SiteGenerationQualityAnalyzer qualityAnalyzer;
 
@@ -73,6 +78,7 @@ public sealed class StaticSitePackageVerifier
         if (document is not null && manifest is not null)
         {
             VerifyManifestCompatibility(document, manifest, report);
+            VerifyRuntimeRendererCoverage(package, document, manifest, report);
         }
 
         VerifyArchive(package, report);
@@ -209,6 +215,12 @@ public sealed class StaticSitePackageVerifier
         {
             report.Errors.Add("runtime.js must define componentRenderers.");
         }
+
+        report.RuntimeRendererTypes = ExtractRuntimeRendererTypes(runtime);
+        if (report.RuntimeRendererTypes.Count == 0)
+        {
+            report.Errors.Add("runtime.js must declare at least one component renderer.");
+        }
     }
 
     private static void VerifyManifestCompatibility(
@@ -250,6 +262,57 @@ public sealed class StaticSitePackageVerifier
         foreach (var extraType in manifestTypes.Except(siteLibraryTypes, StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             report.Warnings.Add($"components/manifest.json declares unused component type '{extraType}'.");
+        }
+    }
+
+    private static void VerifyRuntimeRendererCoverage(
+        StaticSitePackageResult package,
+        GeneratorSiteDocument document,
+        ComponentLibraryManifest manifest,
+        StaticSitePackageVerificationReport report)
+    {
+        var definitions = manifest.Components
+            .Where(component => !string.IsNullOrWhiteSpace(component.Type))
+            .GroupBy(component => component.Type, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var rendererTypes = report.RuntimeRendererTypes.ToHashSet(StringComparer.Ordinal);
+
+        foreach (var componentType in GetUsedComponentTypes(document))
+        {
+            if (!definitions.TryGetValue(componentType, out var definition))
+            {
+                continue;
+            }
+
+            if (definition.Generated)
+            {
+                VerifyGeneratedComponentAssets(package, componentType, report);
+                continue;
+            }
+
+            if (!rendererTypes.Contains(componentType))
+            {
+                report.Errors.Add($"runtime.js does not define a renderer for component type '{componentType}'.");
+            }
+        }
+    }
+
+    private static void VerifyGeneratedComponentAssets(
+        StaticSitePackageResult package,
+        string componentType,
+        StaticSitePackageVerificationReport report)
+    {
+        var generatedDirectory = Path.Combine(package.OutputDirectory, "components", "generated");
+        var modulePath = Path.Combine(generatedDirectory, $"{componentType}.js");
+        var definitionPath = Path.Combine(generatedDirectory, $"{componentType}.json");
+        if (!File.Exists(modulePath))
+        {
+            report.Errors.Add($"generated component renderer is missing: components/generated/{componentType}.js");
+        }
+
+        if (!File.Exists(definitionPath))
+        {
+            report.Errors.Add($"generated component definition is missing: components/generated/{componentType}.json");
         }
     }
 
@@ -353,6 +416,26 @@ public sealed class StaticSitePackageVerifier
     private static bool ContainsAny(string text, IEnumerable<string> candidates)
     {
         return candidates.Any(candidate => text.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static List<string> ExtractRuntimeRendererTypes(string runtime)
+    {
+        return RuntimeRendererEntryPattern.Matches(runtime)
+            .Select(match => match.Groups["type"].Value)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static IEnumerable<string> GetUsedComponentTypes(GeneratorSiteDocument document)
+    {
+        return document.Routes
+            .SelectMany(route => Flatten(route.Root))
+            .Select(node => node.Type)
+            .Where(type => !string.IsNullOrWhiteSpace(type))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
     }
 
     private static IEnumerable<ComponentNode> Flatten(ComponentNode root)

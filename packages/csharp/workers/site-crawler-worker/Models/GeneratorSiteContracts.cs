@@ -301,6 +301,9 @@ public sealed class StaticSitePackageVerificationReport
     [JsonPropertyName("archive_entries")]
     public List<string> ArchiveEntries { get; set; } = new();
 
+    [JsonPropertyName("runtime_renderer_types")]
+    public List<string> RuntimeRendererTypes { get; set; } = new();
+
     [JsonPropertyName("errors")]
     public List<string> Errors { get; set; } = new();
 

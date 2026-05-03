@@ -36,6 +36,7 @@ public class StaticSitePackageVerifierTests : IDisposable
         report.HasArchive.Should().BeTrue();
         report.RouteCount.Should().Be(document.Routes.Count);
         report.ComponentNodeCount.Should().BeGreaterThan(0);
+        report.RuntimeRendererTypes.Should().Contain(["PageShell", "HeroSection"]);
         report.RequiredFiles.Should().Contain([
             "index.html",
             "runtime.js",
@@ -143,5 +144,45 @@ public class StaticSitePackageVerifierTests : IDisposable
         report.IsPassed.Should().BeFalse();
         report.Errors.Should().Contain(error => error.Contains("components/manifest.json", StringComparison.Ordinal) &&
             error.Contains("PageShell", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Verify_WhenUsedLibraryComponentHasNoRuntimeRenderer_ReturnsError()
+    {
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        document.ComponentLibrary.Components.Add(DefaultComponentLibrary.Define(
+            "RuntimeMissingPanel",
+            "Schema-valid component without a runtime renderer.",
+            ["content"],
+            new ComponentPropsSchema
+            {
+                Required = ["title"],
+                Properties =
+                {
+                    ["title"] = new ComponentPropSchema { Type = "string" },
+                },
+            }));
+        document.Routes[0].Root.Children.Add(new ComponentNode
+        {
+            Id = "runtime-missing",
+            Type = "RuntimeMissingPanel",
+            Props =
+            {
+                ["title"] = "Runtime missing",
+            },
+        });
+        var package = new StaticSitePackageGenerator().Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "missing-runtime-renderer-site",
+            EnforceQualityGate = true,
+        });
+        var verifier = new StaticSitePackageVerifier();
+
+        var report = verifier.Verify(package);
+
+        report.IsPassed.Should().BeFalse();
+        report.Errors.Should().Contain(error => error.Contains("runtime.js", StringComparison.Ordinal) &&
+            error.Contains("RuntimeMissingPanel", StringComparison.Ordinal));
     }
 }

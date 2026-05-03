@@ -52,7 +52,11 @@ The verifier must pass for normal delivery. It checks:
 - `index.html` declares `#app` and loads `./runtime.js`
 - `runtime.js` loads `./site.json` and `./components/manifest.json`
 - `components/manifest.json` declares every component type used by `site.json`
+- every non-generated component type used by `site.json` has a `runtime.js` renderer
+- generated component types have local `components/generated/<Type>.js` and `.json` assets
 - zip archive entries when `create_archive = true`
+
+The `verification_report.runtime_renderer_types` field lists renderer keys parsed from `runtime.js`.
 
 If `enforce_quality_gate = false`, diagnostic packages may still be written with a failing `quality_report` and `verification_report`. Such output is for component-library gap analysis, not user delivery.
 

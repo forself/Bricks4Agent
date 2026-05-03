@@ -57,9 +57,13 @@ Successful output includes `package.verification_report`. The verifier checks:
 - `index.html` declares `#app` and loads `./runtime.js`
 - `runtime.js` loads `./site.json` and `./components/manifest.json`
 - `components/manifest.json` declares every component type used by `site.json`
+- every non-generated component type used by `site.json` has a `runtime.js` renderer
+- generated component types have local `components/generated/<Type>.js` and `.json` assets
 - zip archive entries
 
 For normal user delivery, both `package.quality_report.is_passed` and `package.verification_report.is_passed` must be true.
+
+The `package.verification_report.runtime_renderer_types` field lists renderer keys parsed from `runtime.js`.
 
 ## Output
 
