@@ -152,6 +152,44 @@ public class SiteGeneratorConverterTests
     }
 
     [Fact]
+    public void Convert_WhenRootQueryPagesExist_BuildsUniqueStaticRoutes()
+    {
+        var crawl = BuildCrawlResult();
+        crawl.Pages.Add(new SiteCrawlPage
+        {
+            FinalUrl = "https://example.com/?Lang=zh-tw",
+            Depth = 1,
+            StatusCode = 200,
+            Title = "Chinese",
+            TextExcerpt = "Chinese homepage.",
+            Links = [],
+        });
+        crawl.ExtractedModel.Pages.Add(new ExtractedPageModel
+        {
+            PageUrl = "https://example.com/?Lang=zh-tw",
+            Sections =
+            [
+                new ExtractedSection
+                {
+                    Id = "zh-home",
+                    Role = "content",
+                    Headline = "Chinese",
+                    Body = "Chinese homepage.",
+                    SourceSelector = "main",
+                },
+            ],
+        });
+        var converter = new SiteGeneratorConverter(DefaultComponentLibrary.Create());
+
+        var document = converter.Convert(crawl);
+        var quality = new SiteGenerationQualityAnalyzer().Analyze(document);
+
+        document.Routes.Select(route => route.Path).Should().Contain(["/", "/Lang-zh-tw"]);
+        document.Routes.Select(route => route.Path).Should().OnlyHaveUniqueItems();
+        quality.IsPassed.Should().BeTrue();
+    }
+
+    [Fact]
     public void Convert_PreservesHeaderFooterAndUsesStaticRoutes()
     {
         var crawl = BuildCrawlResult();

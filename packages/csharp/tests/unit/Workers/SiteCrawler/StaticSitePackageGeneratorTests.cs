@@ -333,6 +333,9 @@ public class StaticSitePackageGeneratorTests : IDisposable
         styles.Should().Contain(".atomic-section--hero .image-block");
         styles.Should().Contain("min-height: 260px");
         styles.Should().Contain("object-fit: cover");
+        styles.Should().Contain(".content-article-media {");
+        styles.Should().Contain("grid-template-columns: repeat(auto-fill, minmax(180px, 280px))");
+        styles.Should().Contain("max-height: 180px");
     }
 
     [Fact]

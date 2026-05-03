@@ -293,8 +293,8 @@ public sealed class StaticSitePackageGenerator
             .template-card p { margin: 0; color: var(--muted); }
             .content-article { padding: 32px 0; border-bottom: 1px solid var(--line); }
             .content-article p { color: var(--muted); max-width: 850px; }
-            .content-article-media { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 18px; }
-            .content-article-media img { width: 100%; border-radius: 8px; object-fit: cover; background: var(--band); }
+            .content-article-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 280px)); justify-content: start; gap: 14px; margin-top: 18px; }
+            .content-article-media img { width: 100%; aspect-ratio: 4 / 3; max-height: 180px; border-radius: 8px; object-fit: cover; background: var(--band); }
             .hero-section { padding: 72px 0 44px; border-bottom: 1px solid var(--line); }
             .hero-section h1 { max-width: 840px; margin: 0 0 16px; font-size: clamp(34px, 5vw, 64px); line-height: 1.05; letter-spacing: 0; }
             .hero-section p { max-width: 760px; margin: 0; color: var(--muted); font-size: 18px; }

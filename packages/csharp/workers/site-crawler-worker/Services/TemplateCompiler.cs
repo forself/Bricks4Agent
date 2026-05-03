@@ -1504,7 +1504,8 @@ public sealed class TemplateCompiler
         var path = uri.AbsolutePath;
         if (string.IsNullOrWhiteSpace(path) || path == "/")
         {
-            return "/";
+            var rootQuerySlug = BuildQuerySlug(uri.Query);
+            return string.IsNullOrWhiteSpace(rootQuerySlug) ? "/" : $"/{rootQuerySlug}";
         }
 
         var extension = Path.GetExtension(path);
