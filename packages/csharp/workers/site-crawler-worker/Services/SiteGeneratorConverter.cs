@@ -672,6 +672,7 @@ public sealed class SiteGeneratorConverter
 
         var extension = Path.GetExtension(path);
         if (extension.Equals(".aspx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".php", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
         {

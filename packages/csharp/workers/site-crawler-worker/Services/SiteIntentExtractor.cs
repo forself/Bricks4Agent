@@ -43,7 +43,7 @@ public sealed class SiteIntentExtractor
     {
         if (page.VisualSnapshot is { Regions.Count: > 0 } snapshot)
         {
-            return snapshot.Regions
+            return SelectSpecificVisualRegions(snapshot)
                 .OrderBy(region => region.Bounds.Y)
                 .ThenBy(region => region.Bounds.X)
                 .SelectMany((region, index) => BuildVisualBlocks(page, region, index))
@@ -55,6 +55,215 @@ public sealed class SiteIntentExtractor
             .Where(block => block is not null)
             .Select(block => block!)
             .ToList();
+    }
+
+    private static IEnumerable<VisualRegion> SelectSpecificVisualRegions(VisualPageSnapshot snapshot)
+    {
+        var candidates = snapshot.Regions
+            .Where(region => !IsBroadVisualContainer(region, snapshot.Regions, snapshot.Viewport))
+            .ToList();
+
+        return candidates
+            .Where(region => !IsRedundantHeaderLogoRegion(region, candidates))
+            .Where(region => !IsDuplicateNestedRegion(region, candidates));
+    }
+
+    private static bool IsRedundantHeaderLogoRegion(VisualRegion region, IReadOnlyList<VisualRegion> regions)
+    {
+        if (!IsLogoOnlyContentRegion(region))
+        {
+            return false;
+        }
+
+        return regions.Any(other =>
+            !ReferenceEquals(other, region) &&
+            NormalizeRole(other.Role) is "header" or "nav" &&
+            IsContainedRegion(other.Bounds, region.Bounds));
+    }
+
+    private static bool IsLogoOnlyContentRegion(VisualRegion region)
+    {
+        if (NormalizeRole(region.Role) != "content" || region.Media.Count == 0 || region.Items.Count > 0)
+        {
+            return false;
+        }
+
+        var text = $"{region.Headline} {region.Text}".Trim();
+        if (!string.IsNullOrWhiteSpace(text) && !LooksLikeControlText(text))
+        {
+            return false;
+        }
+
+        if (region.Actions.Count > 1 || region.Bounds.Y > 260)
+        {
+            return false;
+        }
+
+        var selector = region.Selector ?? string.Empty;
+        return selector.Contains("logo", StringComparison.OrdinalIgnoreCase) ||
+            selector.Contains("mlogo", StringComparison.OrdinalIgnoreCase) ||
+            selector.Contains("brand", StringComparison.OrdinalIgnoreCase) ||
+            region.Media.Any(media =>
+                media.Url.Contains("logo", StringComparison.OrdinalIgnoreCase) ||
+                media.Alt.Contains("logo", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDuplicateNestedRegion(VisualRegion region, IReadOnlyList<VisualRegion> regions)
+    {
+        if (NormalizeRole(region.Role) is "header" or "footer" or "nav" or "carousel" or "hero")
+        {
+            return false;
+        }
+
+        return regions.Any(parent =>
+            !ReferenceEquals(parent, region) &&
+            NormalizeRole(parent.Role) is not ("header" or "footer" or "nav" or "carousel" or "hero") &&
+            IsSpatiallyContained(parent.Bounds, region.Bounds) &&
+            IsPreferredDuplicateParent(parent, region) &&
+            HasSameVisualTopic(parent, region));
+    }
+
+    private static bool IsPreferredDuplicateParent(VisualRegion parent, VisualRegion child)
+    {
+        var parentArea = parent.Bounds.Width * parent.Bounds.Height;
+        var childArea = child.Bounds.Width * child.Bounds.Height;
+        if (parentArea <= 0 || childArea <= 0)
+        {
+            return false;
+        }
+
+        if (parentArea > childArea * 1.03)
+        {
+            return true;
+        }
+
+        if (Math.Abs(parentArea - childArea) > childArea * 0.03)
+        {
+            return false;
+        }
+
+        var parentSelector = parent.Selector ?? string.Empty;
+        var childSelector = child.Selector ?? string.Empty;
+        if (parentSelector.Contains('#') && !childSelector.Contains('#'))
+        {
+            return true;
+        }
+
+        if (!parentSelector.Contains('#') && childSelector.Contains('#'))
+        {
+            return false;
+        }
+
+        return parentSelector.Length > 0 &&
+            (childSelector.Contains(".module", StringComparison.OrdinalIgnoreCase) ||
+             childSelector.Contains("section.mb", StringComparison.OrdinalIgnoreCase) ||
+             parentSelector.Length < childSelector.Length);
+    }
+
+    private static bool IsSpatiallyContained(VisualBox parent, VisualBox child)
+    {
+        const double tolerance = 8;
+        return child.X >= parent.X - tolerance &&
+            child.Y >= parent.Y - tolerance &&
+            child.X + child.Width <= parent.X + parent.Width + tolerance &&
+            child.Y + child.Height <= parent.Y + parent.Height + tolerance;
+    }
+
+    private static bool HasSameVisualTopic(VisualRegion parent, VisualRegion child)
+    {
+        var parentHeadline = NormalizeTextKey(parent.Headline);
+        var childHeadline = NormalizeTextKey(child.Headline);
+        if (!string.IsNullOrWhiteSpace(parentHeadline) &&
+            string.Equals(parentHeadline, childHeadline, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var itemOverlap = parent.Items
+            .Select(item => NormalizeTextKey(item.Title))
+            .Where(title => !string.IsNullOrWhiteSpace(title))
+            .Intersect(
+                child.Items.Select(item => NormalizeTextKey(item.Title)).Where(title => !string.IsNullOrWhiteSpace(title)),
+                StringComparer.OrdinalIgnoreCase)
+            .Count();
+        if (itemOverlap >= Math.Min(2, Math.Max(1, child.Items.Count)))
+        {
+            return true;
+        }
+
+        var mediaOverlap = parent.Media
+            .Select(media => media.Url)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Intersect(child.Media.Select(media => media.Url).Where(url => !string.IsNullOrWhiteSpace(url)), StringComparer.Ordinal)
+            .Count();
+        return mediaOverlap >= Math.Min(2, Math.Max(1, child.Media.Count));
+    }
+
+    private static string NormalizeTextKey(string value)
+    {
+        return Regex.Replace((value ?? string.Empty).Trim(), @"\s+", " ");
+    }
+
+    private static bool IsBroadVisualContainer(
+        VisualRegion region,
+        IReadOnlyList<VisualRegion> regions,
+        VisualViewport viewport)
+    {
+        var role = NormalizeRole(region.Role);
+        if (role is "header" or "footer" or "nav" or "carousel" or "hero")
+        {
+            return false;
+        }
+
+        var viewportHeight = viewport.Height > 0 ? viewport.Height : 900;
+        if (IsFocusedVisualCollection(region, viewportHeight))
+        {
+            return false;
+        }
+
+        var childCount = regions.Count(other =>
+            !ReferenceEquals(other, region) &&
+            IsContainedRegion(region.Bounds, other.Bounds));
+        if (childCount == 0)
+        {
+            return false;
+        }
+
+        return (region.Bounds.Height >= viewportHeight * 0.65 && childCount >= 2) ||
+            region.Bounds.Height >= viewportHeight;
+    }
+
+    private static bool IsFocusedVisualCollection(VisualRegion region, double viewportHeight)
+    {
+        if (NormalizeRole(region.Role) is not ("card_grid" or "visual_grid" or "news" or "content") ||
+            string.IsNullOrWhiteSpace(region.Headline) ||
+            region.Bounds.Height > viewportHeight * 0.95)
+        {
+            return false;
+        }
+
+        return region.Items.Count >= 3 || region.Actions.Count >= 3;
+    }
+
+    private static bool IsContainedRegion(VisualBox parent, VisualBox child)
+    {
+        const double tolerance = 8;
+        if (child.Width < 80 || child.Height < 40)
+        {
+            return false;
+        }
+
+        var parentArea = parent.Width * parent.Height;
+        var childArea = child.Width * child.Height;
+        if (parentArea <= 0 || childArea >= parentArea * 0.85)
+        {
+            return false;
+        }
+
+        return child.X >= parent.X - tolerance &&
+            child.Y >= parent.Y - tolerance &&
+            child.X + child.Width <= parent.X + parent.Width + tolerance &&
+            child.Y + child.Height <= parent.Y + parent.Height + tolerance;
     }
 
     private static IEnumerable<SiteIntentBlock> BuildVisualBlocks(SiteCrawlPage page, VisualRegion region, int index)
@@ -103,7 +312,7 @@ public sealed class SiteIntentExtractor
                 Reasons = [.. block.Reasons, "split:large_home_region_hero"],
             });
 
-            if (block.Section.Items.Count > 0 || HasNewsSignals(block.Section))
+            if (block.Section.Items.Count > 0 || HasNewsSignalsReliable(block.Section))
             {
                 var newsSection = CloneSection(block.Section, $"{block.Section.Id}-news", "news");
                 newsSection.Media.Clear();
@@ -385,6 +594,11 @@ public sealed class SiteIntentExtractor
             return functionKind;
         }
 
+        if (LooksLikeTabbedNews(section))
+        {
+            return "tabbed_news";
+        }
+
         if (role == "hero")
         {
             return section.Media.Count > 1 || section.Items.Count > 1 ? "hero_carousel" : "hero_banner";
@@ -397,7 +611,7 @@ public sealed class SiteIntentExtractor
                 return "hero_carousel";
             }
 
-            return section.Items.Count > 0 || HasNewsSignals(section) ? "news_carousel" : "media_feature_grid";
+            return section.Items.Count > 0 || HasNewsSignalsReliable(section) ? "news_carousel" : "media_feature_grid";
         }
 
         if (role == "news")
@@ -427,7 +641,7 @@ public sealed class SiteIntentExtractor
                 return "quick_links";
             }
 
-            return HasNewsSignals(section) ? "news_grid" : "media_feature_grid";
+            return HasNewsSignalsReliable(section) ? "news_grid" : "media_feature_grid";
         }
 
         if (role is "gallery" or "feature_grid")
@@ -570,6 +784,11 @@ public sealed class SiteIntentExtractor
         if (!string.IsNullOrWhiteSpace(functionKind))
         {
             return functionKind;
+        }
+
+        if (LooksLikeTabbedNews(section))
+        {
+            return "tabbed_news";
         }
 
         if (section.Items.Count >= 3)
@@ -768,7 +987,7 @@ public sealed class SiteIntentExtractor
 
     private static bool IsServiceActionGrid(SiteCrawlPage page, ExtractedSection section)
     {
-        if (section.Actions.Count < 3)
+        if (section.Actions.Count < 3 || HasNewsSignalsReliable(section))
         {
             return false;
         }
@@ -927,6 +1146,53 @@ public sealed class SiteIntentExtractor
         return averageLabelLength <= 18 && section.Media.Count <= 1 && section.Items.Count <= section.Actions.Count;
     }
 
+    private static bool LooksLikeTabbedNews(ExtractedSection section)
+    {
+        if (!HasNewsSignalsReliable(section))
+        {
+            return false;
+        }
+
+        var actionTabCount = section.Actions
+            .Select(action => action.Label)
+            .Where(IsTabLabel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        if (actionTabCount >= 3)
+        {
+            return true;
+        }
+
+        var itemTabCount = section.Items
+            .Where(item => string.IsNullOrWhiteSpace(item.Body) && string.IsNullOrWhiteSpace(item.MediaUrl))
+            .Select(item => item.Title)
+            .Where(IsTabLabel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        return itemTabCount >= 3;
+    }
+
+    private static bool IsTabLabel(string value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        var normalized = text.ToLowerInvariant();
+        return text.Length is >= 2 and <= 24 &&
+            !Regex.IsMatch(text, @"\d") &&
+            normalized is not ":::" and not "search" and not "more" and not "open" and not "skip" and not "home";
+    }
+
+    private static bool HasNewsSignalsReliable(ExtractedSection section)
+    {
+        return HasNewsText($"{section.Headline} {section.Body}") ||
+            section.Items.Any(item => HasNewsText($"{item.Title} {item.Body}"));
+    }
+
+    private static bool HasNewsText(string value)
+    {
+        return ContainsAny(value, "news", "announcement") ||
+            Regex.IsMatch(value, @"\b(?:19|20)\d{2}\s*[-/.年]\s*\d{1,2}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
     private static bool HasNewsSignals(ExtractedSection section)
     {
         return Regex.IsMatch($"{section.Headline} {section.Body}", @"\b(19|20)\d{2}[-/.年]\d{1,2}|\bnews\b|最新|公告|焦點", RegexOptions.IgnoreCase) ||
@@ -1019,6 +1285,7 @@ public sealed class SiteIntentExtractor
     {
         return page.Depth == 0 &&
             NormalizeRole(region.Role) is "card_grid" or "visual_grid" or "content" &&
+            region.Bounds.Y <= 560 &&
             region.Bounds.Height >= 900 &&
             (section.Media.Count >= 2 || section.Items.Count >= 2);
     }
@@ -1091,7 +1358,24 @@ public sealed class SiteIntentExtractor
             body = body[headline.Length..].Trim();
         }
 
+        if (LooksLikeControlText(body))
+        {
+            return string.Empty;
+        }
+
         return body.Length <= 2200 ? body : body[..2200].TrimEnd();
+    }
+
+    private static bool LooksLikeControlText(string text)
+    {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0 || value.Length > 96)
+        {
+            return false;
+        }
+
+        var stripped = Regex.Replace(value, @"[\s.。·•\-–—_:/\\|<>\[\]\(\){}‹›«»]+", string.Empty);
+        return stripped.Length == 0;
     }
 
     private static ExtractedHeader CloneHeader(ExtractedHeader header)

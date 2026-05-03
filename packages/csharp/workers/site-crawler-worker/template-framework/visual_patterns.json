@@ -31,16 +31,16 @@
               "fallback": "CardGrid"
             },
             {
+              "name": "content",
+              "required": false,
+              "accepts": ["TabbedNewsBoard", "ArticleList", "NewsGrid", "CardGrid", "ContentArticle", "ContentSection", "AtomicSection"],
+              "fallback": "ContentSection"
+            },
+            {
               "name": "features",
               "required": false,
               "accepts": ["MediaFeatureGrid", "CardGrid", "AtomicSection"],
               "fallback": "AtomicSection"
-            },
-            {
-              "name": "content",
-              "required": false,
-              "accepts": ["ContentArticle", "ContentSection", "AtomicSection"],
-              "fallback": "ContentSection"
             },
             {
               "name": "footer",

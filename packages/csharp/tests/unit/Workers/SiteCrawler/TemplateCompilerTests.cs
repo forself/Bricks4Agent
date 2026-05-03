@@ -41,6 +41,7 @@ public class TemplateCompilerTests
         linkValues.Should().OnlyContain(url =>
             url.StartsWith("/", StringComparison.Ordinal) &&
             !url.Contains(".aspx", StringComparison.OrdinalIgnoreCase) &&
+            !url.Contains(".php", StringComparison.OrdinalIgnoreCase) &&
             !url.Contains(".html", StringComparison.OrdinalIgnoreCase) &&
             !url.Contains(".htm", StringComparison.OrdinalIgnoreCase));
 
@@ -263,7 +264,7 @@ public class TemplateCompilerTests
                                 [
                                     new ExtractedAction { Label = "Admissions", Url = "https://example.edu/admission.aspx" },
                                     new ExtractedAction { Label = "Calendar", Url = "https://example.edu/calendar.aspx" },
-                                    new ExtractedAction { Label = "Library", Url = "https://example.edu/library.aspx" },
+                                    new ExtractedAction { Label = "Library", Url = "https://example.edu/library.php?Lang=zh-tw" },
                                 ],
                             },
                             new VisualRegion

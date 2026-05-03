@@ -604,13 +604,13 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
-    public void VisualPageRendererOptions_DefaultsSkipNetworkIdleForFastRenderedCapture()
+    public void VisualPageRendererOptions_DefaultsKeepVisualAssetsForRenderedCapture()
     {
         var options = new VisualPageRendererOptions();
 
         options.NetworkIdleTimeoutMs.Should().Be(0);
         options.PostNavigationSettleMs.Should().BeGreaterThan(0);
-        options.BlockHeavyResources.Should().BeTrue();
+        options.BlockHeavyResources.Should().BeFalse();
     }
 
     [Fact]

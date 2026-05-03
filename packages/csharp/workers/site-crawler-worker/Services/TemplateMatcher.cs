@@ -39,13 +39,19 @@ public sealed class TemplateMatcher
                 PageUrl = page.PageUrl,
                 PageType = pageType,
             };
+            var usedBlockIds = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var slot in pageDefinition.Slots)
             {
-                var block = SelectBlockForSlot(page, slot.Name);
+                var block = SelectBlockForSlot(page, slot.Name, usedBlockIds);
                 if (block is null && !slot.Required)
                 {
                     continue;
+                }
+
+                if (block is not null)
+                {
+                    usedBlockIds.Add(block.Id);
                 }
 
                 pagePlan.Slots.Add(BuildSlotPlan(plan, page, slot, block));
@@ -187,13 +193,104 @@ public sealed class TemplateMatcher
         };
     }
 
-    private static SiteIntentBlock? SelectBlockForSlot(SiteIntentPage page, string slotName)
+    private static SiteIntentBlock? SelectBlockForSlot(
+        SiteIntentPage page,
+        string slotName,
+        IReadOnlySet<string> usedBlockIds)
     {
-        return page.Blocks.FirstOrDefault(block =>
-                string.Equals(block.Slot, slotName, StringComparison.Ordinal)) ??
-            (slotName == "content"
-                ? page.Blocks.FirstOrDefault(block => block.Kind is "content_article" or "article_list" or "form")
-                : null);
+        var available = page.Blocks
+            .Where(block => !usedBlockIds.Contains(block.Id))
+            .ToList();
+
+        var direct = available.FirstOrDefault(block =>
+            string.Equals(block.Slot, slotName, StringComparison.Ordinal) &&
+            (slotName != "content" || HasRenderableContent(page, block)));
+        if (direct is not null)
+        {
+            return direct;
+        }
+
+        return slotName switch
+        {
+            "features" => available.FirstOrDefault(block =>
+                (block.Kind is "media_feature_grid" or "news_grid" or "news_carousel") &&
+                HasVisualMedia(block)),
+            "content" => SelectContentBlock(page, available),
+            "tabbed_news" => available.FirstOrDefault(block =>
+                block.Kind is "tabbed_news" or "news_grid" or "news_carousel" or "article_list"),
+            _ => null,
+        };
+    }
+
+    private static SiteIntentBlock? SelectContentBlock(SiteIntentPage page, IReadOnlyList<SiteIntentBlock> available)
+    {
+        return available.FirstOrDefault(block =>
+                (block.Kind is "article_list" or "news_grid" or "news_carousel" or "tabbed_news") &&
+                HasRenderableCollection(block)) ??
+            available.FirstOrDefault(block =>
+                (block.Kind is "content_article" or "form") &&
+                HasRenderableContent(page, block));
+    }
+
+    private static bool HasVisualMedia(SiteIntentBlock block)
+    {
+        return block.Section.Media.Count > 0 ||
+            block.Section.Items.Any(item => !string.IsNullOrWhiteSpace(item.MediaUrl));
+    }
+
+    private static bool HasRenderableCollection(SiteIntentBlock block)
+    {
+        return block.Section.Items.Count > 0 || block.Section.Actions.Count > 0 || HasVisualMedia(block);
+    }
+
+    private static bool HasRenderableContent(SiteIntentPage page, SiteIntentBlock block)
+    {
+        if (IsHomeDecorativeTitleOnlyBlock(page, block))
+        {
+            return false;
+        }
+
+        if (block.Section.Media.Count > 0 || block.Section.Items.Count > 0)
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(block.Section.Headline))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(block.Section.Body))
+        {
+            return false;
+        }
+
+        return !string.Equals(page.PageType, "home", StringComparison.Ordinal);
+    }
+
+    private static bool IsHomeDecorativeTitleOnlyBlock(SiteIntentPage page, SiteIntentBlock block)
+    {
+        if (!string.Equals(page.PageType, "home", StringComparison.Ordinal) ||
+            block.Section.Items.Count > 0 ||
+            block.Section.Actions.Count > 0 ||
+            block.Section.Media.Count == 0)
+        {
+            return false;
+        }
+
+        var hasDecorativeMedia = block.Section.Media.All(media =>
+            media.Url.Contains("boardTitle", StringComparison.OrdinalIgnoreCase) ||
+            media.Url.Contains("title", StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrWhiteSpace(block.Section.Headline) &&
+                string.Equals(media.Alt.Trim(), block.Section.Headline.Trim(), StringComparison.OrdinalIgnoreCase)));
+        if (!hasDecorativeMedia)
+        {
+            return false;
+        }
+
+        var body = block.Section.Body.Trim();
+        return body.Length == 0 ||
+            (body.Length <= 64 && body.All(character => !char.IsLetter(character) || char.IsUpper(character)));
     }
 
     private static IEnumerable<string> GetPreferredTypes(TemplateSlotDefinition slot, SiteIntentBlock? block)
@@ -236,6 +333,11 @@ public sealed class TemplateMatcher
             ("news", _) => ["NewsCardCarousel", "NewsGrid", "CardGrid"],
             ("features", _) => ["MediaFeatureGrid", "CardGrid", "AtomicSection"],
             ("content", "article_list") => ["ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
+            ("content", "news_grid") => HasVisualMedia(block)
+                ? ["NewsGrid", "ArticleList", "CardGrid", "AtomicSection"]
+                : ["ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
+            ("content", "news_carousel") => ["NewsGrid", "ArticleList", "CardGrid", "AtomicSection"],
+            ("content", "tabbed_news") => ["TabbedNewsBoard", "ArticleList", "NewsGrid", "CardGrid", "AtomicSection"],
             ("content", "content_article") => ["ContentArticle", "ContentSection", "AtomicSection"],
             ("footer", _) => ["InstitutionFooter", "SiteFooter"],
             _ => slot.Accepts,

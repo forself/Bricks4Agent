@@ -99,4 +99,40 @@ public class SiteGenerationQualityAnalyzerTests
         report.IsPassed.Should().BeFalse();
         report.Errors.Should().Contain(error => error.Contains("duplicate route path '/'", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Analyze_WhenHeroCarouselContainsMixedPageText_ReturnsError()
+    {
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        document.Routes[0].Root.Children.Add(new ComponentNode
+        {
+            Id = "mixed-hero",
+            Type = "HeroCarousel",
+            Props =
+            {
+                ["title"] = "Activity Board",
+                ["body"] = string.Join(' ', Enumerable.Repeat("Activity Board Announcements News Center Campus Links", 30)),
+                ["slides"] = new List<Dictionary<string, string>>
+                {
+                    new()
+                    {
+                        ["title"] = "Activity Board",
+                        ["body"] = string.Join(' ', Enumerable.Repeat("Activity Board Announcements News Center Campus Links", 30)),
+                        ["media_url"] = "https://example.com/activity.jpg",
+                        ["media_alt"] = "Activity",
+                        ["url"] = string.Empty,
+                        ["source_url"] = string.Empty,
+                        ["scope"] = "none",
+                    },
+                },
+            },
+        });
+        var analyzer = new SiteGenerationQualityAnalyzer();
+
+        var report = analyzer.Analyze(document);
+
+        report.IsPassed.Should().BeFalse();
+        report.Errors.Should().Contain(error => error.Contains("HeroCarousel", StringComparison.Ordinal) &&
+            error.Contains("mixed page content", StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -97,6 +97,251 @@ public class StaticSitePackageGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void Generate_HeroCarouselRuntimeRendersImageFirstVisualBanner()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "hero",
+                                Type = "HeroCarousel",
+                                Props =
+                                {
+                                    ["title"] = "",
+                                    ["body"] = "",
+                                    ["slides"] = new List<Dictionary<string, string>>
+                                    {
+                                        new()
+                                        {
+                                            ["title"] = "",
+                                            ["body"] = "",
+                                            ["media_url"] = "https://example.com/hero.jpg",
+                                            ["media_alt"] = "Hero",
+                                            ["url"] = "",
+                                            ["source_url"] = "",
+                                            ["scope"] = "none",
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "hero-carousel-site",
+        });
+
+        var runtime = File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js"));
+        var styles = File.ReadAllText(Path.Combine(result.OutputDirectory, "styles.css"));
+        runtime.Should().Contain("template-hero--visual-banner");
+        runtime.Should().Contain("hasMeaningfulHeroText");
+        styles.Should().Contain(".template-hero--visual-banner");
+        styles.Should().Contain("grid-template-columns: 1fr");
+        styles.Should().Contain(".template-hero--visual-banner .template-hero-media img");
+        styles.Should().Contain("object-fit: contain");
+    }
+
+    [Fact]
+    public void Generate_TemplateCardRuntimeLinksCardTitlesWithoutOpenPlaceholders()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "news",
+                                Type = "NewsGrid",
+                                Props =
+                                {
+                                    ["title"] = "News",
+                                    ["items"] = new List<Dictionary<string, string>>
+                                    {
+                                        new()
+                                        {
+                                            ["title"] = "Campus Story",
+                                            ["body"] = "Story body.",
+                                            ["media_url"] = "https://example.com/story.jpg",
+                                            ["media_alt"] = "Story",
+                                            ["url"] = "/story",
+                                            ["source_url"] = "https://example.com/story",
+                                            ["scope"] = "internal",
+                                        },
+                                    },
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "tabbed-news",
+                                Type = "TabbedNewsBoard",
+                                Props =
+                                {
+                                    ["title"] = "Announcements",
+                                    ["tabs"] = new List<Dictionary<string, object?>>
+                                    {
+                                        new()
+                                        {
+                                            ["label"] = "Latest",
+                                            ["items"] = new List<Dictionary<string, string>>
+                                            {
+                                                new()
+                                                {
+                                                    ["title"] = "Enrollment update",
+                                                    ["body"] = "Update body.",
+                                                    ["url"] = "/announcements/1",
+                                                    ["source_url"] = "https://example.com/announcements/1",
+                                                    ["scope"] = "internal",
+                                                    ["media_url"] = "",
+                                                    ["media_alt"] = "",
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "news-card-site",
+        });
+
+        var runtime = File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js"));
+        var styles = File.ReadAllText(Path.Combine(result.OutputDirectory, "styles.css"));
+        runtime.Should().Contain("template-card-title-link");
+        runtime.Should().NotContain("const anchor = element('a', '', 'Open');");
+        runtime.Should().NotContain("body.appendChild(anchor);");
+        runtime.Should().NotContain("article.appendChild(anchor);");
+        styles.Should().Contain(".template-card-title-link");
+    }
+
+    [Fact]
+    public void Generate_RuntimeDoesNotNavigateToOriginalExternalUrls()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "links",
+                                Type = "LinkList",
+                                Props =
+                                {
+                                    ["title"] = "Links",
+                                    ["links"] = new List<Dictionary<string, string>>
+                                    {
+                                        new()
+                                        {
+                                            ["label"] = "External source",
+                                            ["url"] = "https://source.example.edu/news.aspx?id=1",
+                                            ["source_url"] = "https://source.example.edu/news.aspx?id=1",
+                                            ["scope"] = "external",
+                                        },
+                                    },
+                                },
+                            },
+                            new ComponentNode
+                            {
+                                Id = "footer",
+                                Type = "InstitutionFooter",
+                                Props =
+                                {
+                                    ["source_url"] = "https://example.com/",
+                                    ["contact_text"] = "Address",
+                                    ["links"] = new List<Dictionary<string, string>>(),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "external-link-site",
+        });
+
+        var runtime = File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js"));
+        runtime.Should().Contain("sourceRouteMap");
+        runtime.Should().Contain("link.scope === 'external'");
+        runtime.Should().Contain("anchor.href = '#';");
+        runtime.Should().Contain("anchor.dataset.sourceUrl");
+        runtime.Should().NotContain("source.href = node.props.source_url;");
+    }
+
+    [Fact]
     public void Generate_WhenDocumentHasGeneratedComponent_WritesLoadableComponentModule()
     {
         var document = new GeneratorSiteDocument
@@ -890,6 +1135,9 @@ public class StaticSitePackageGeneratorTests : IDisposable
         styles.Should().Contain(".service-category-grid");
         styles.Should().Contain(".service-action-grid");
         styles.Should().Contain(".tabbed-news-board");
+        styles.Should().Contain("background: #a71483");
+        styles.Should().Contain(".tabbed-news-item { border: 0;");
+        styles.Should().Contain(".media-feature-grid .template-card-body");
         styles.Should().Contain(".search-box-panel");
         styles.Should().Contain(".facet-filter-panel");
         styles.Should().Contain(".result-list");

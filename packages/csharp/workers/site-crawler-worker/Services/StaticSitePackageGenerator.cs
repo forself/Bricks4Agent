@@ -228,6 +228,9 @@ public sealed class StaticSitePackageGenerator
             .template-hero p { margin: 0; color: var(--muted); font-size: 17px; }
             .template-hero-media { height: clamp(260px, 36vw, 430px); margin: 0; border-radius: 8px; overflow: hidden; background: var(--band); }
             .template-hero-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+            .template-hero--visual-banner { grid-template-columns: 1fr; display: grid; padding-top: 0; }
+            .template-hero--visual-banner .template-hero-media { width: 100%; height: clamp(320px, 42vw, 560px); border-radius: 0; }
+            .template-hero--visual-banner .template-hero-copy { max-width: 720px; }
             .template-hero-slides { display: flex; gap: 12px; overflow-x: auto; padding-top: 12px; }
             .template-hero-slide { min-width: min(240px, 72vw); border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); }
             .template-hero-slide h3 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0; }
@@ -250,12 +253,14 @@ public sealed class StaticSitePackageGenerator
             .service-category-card h3, .service-action-card h3, .tabbed-news-item h3 { margin: 0; font-size: 18px; letter-spacing: 0; }
             .service-category-card p, .tabbed-news-item p { margin: 0; color: var(--muted); }
             .service-action-card--primary { border-left: 4px solid var(--brand); }
-            .tabbed-news-controls { display: flex; flex-wrap: wrap; gap: 8px; }
-            .tabbed-news-controls button { min-height: 36px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; }
+            .tabbed-news-controls { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 2px solid #a71483; }
+            .tabbed-news-controls button { min-height: 44px; padding: 9px 18px; border: 0; border-radius: 0; background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; }
             .tabbed-news-controls button[aria-selected="true"] { border-color: var(--brand); color: #fff; background: var(--brand); }
             .tabbed-news-panel[hidden] { display: none; }
-            .tabbed-news-list { display: grid; gap: 10px; }
-            .tabbed-news-item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--surface); display: grid; gap: 6px; }
+            .tabbed-news-list { display: grid; gap: 0; }
+            .tabbed-news-item { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 4px 12px 22px; background: var(--surface); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; position: relative; }
+            .tabbed-news-item::before { content: ''; position: absolute; left: 4px; top: 1.05em; border-left: 7px solid #b8beca; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+            .tabbed-news-item p { justify-self: end; white-space: nowrap; }
             .search-box-panel, .showcase-hero { padding: 32px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, .9fr) minmax(300px, 1.1fr); gap: 24px; align-items: center; }
             .search-box-copy h1, .showcase-copy h1 { margin: 0 0 10px; font-size: clamp(30px, 4vw, 52px); line-height: 1.08; letter-spacing: 0; }
             .search-box-copy p, .showcase-copy p { margin: 0; color: var(--muted); font-size: 17px; }
@@ -290,7 +295,13 @@ public sealed class StaticSitePackageGenerator
             .template-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--band); }
             .template-card-body { padding: 14px; display: grid; gap: 7px; }
             .template-card h3 { margin: 0; font-size: 18px; letter-spacing: 0; }
+            .template-card-title-link { color: var(--ink); }
             .template-card p { margin: 0; color: var(--muted); }
+            .media-feature-grid .template-card { position: relative; border: 0; background: #10131a; min-height: 220px; }
+            .media-feature-grid .template-card img { height: 100%; min-height: 220px; aspect-ratio: 4 / 3; }
+            .media-feature-grid .template-card-body { position: absolute; inset: auto 0 0; padding: 54px 16px 14px; background: linear-gradient(180deg, transparent, rgba(0,0,0,.74)); color: #fff; }
+            .media-feature-grid .template-card-title-link { color: #fff; }
+            .media-feature-grid .template-card p { color: rgba(255,255,255,.84); }
             .content-article { padding: 32px 0; border-bottom: 1px solid var(--line); }
             .content-article p { color: var(--muted); max-width: 850px; }
             .content-article-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 280px)); justify-content: start; gap: 14px; margin-top: 18px; }
@@ -334,8 +345,10 @@ public sealed class StaticSitePackageGenerator
             .form-note { color: var(--muted); font-size: 13px; }
             .site-footer { padding: 26px 20px; border-top: 1px solid var(--line); background: var(--band); color: var(--muted); font-size: 13px; }
             .site-footer-inner { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 24px; align-items: start; }
-            .institution-footer { padding: 28px 20px; border-top: 1px solid var(--line); background: #eef3f8; color: var(--muted); font-size: 13px; }
+            .institution-footer { padding: 38px 20px; border-top: 0; background: #a71483; color: rgba(255,255,255,.92); font-size: 13px; }
             .institution-footer .site-footer-inner { grid-template-columns: auto minmax(0, 1fr); }
+            .institution-footer a { color: #fff; }
+            .institution-footer .footer-logo { filter: brightness(0) invert(1); opacity: .95; }
             .footer-logo { max-width: 180px; max-height: 72px; object-fit: contain; }
             .footer-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
             .runtime-error { max-width: 760px; margin: 48px auto; padding: 18px; border: 1px solid #e5484d; color: #8f1d22; background: #fff7f7; }
@@ -345,6 +358,8 @@ public sealed class StaticSitePackageGenerator
               .template-hero { grid-template-columns: 1fr; }
               .service-search-hero { grid-template-columns: 1fr; }
               .template-hero-media { height: clamp(220px, 58vw, 320px); }
+              .template-hero--visual-banner .template-hero-media { height: auto; }
+              .template-hero--visual-banner .template-hero-media img { height: auto; object-fit: contain; }
               .atomic-section--hero { grid-template-columns: 1fr; min-height: 0; }
               .atomic-section--hero .image-block { order: 0; }
             }
@@ -460,6 +475,7 @@ public sealed class StaticSitePackageGenerator
         const site = await fetch('./site.json').then(response => response.json());
         const manifest = await fetch('./components/manifest.json').then(response => response.json());
         let currentRoute = resolveRoute(site.routes);
+        const sourceRouteMap = buildSourceRouteMap(site.routes);
         const knownTypes = new Set((manifest.components || []).map(component => component.type));
         const generatedRenderers = await loadGeneratedRenderers(manifest);
 
@@ -496,6 +512,18 @@ public sealed class StaticSitePackageGenerator
           renderCurrentRoute();
           window.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
+        }
+
+        function buildSourceRouteMap(routes) {
+          const map = new Map();
+          for (const route of routes || []) {
+            const sourceUrl = route.root?.props?.source_url || route.source_url || '';
+            const normalized = normalizeSourceUrl(sourceUrl);
+            if (normalized && route.path && !map.has(normalized)) {
+              map.set(normalized, route.path);
+            }
+          }
+          return map;
         }
 
         function renderNode(node, knownTypes, manifest) {
@@ -624,26 +652,34 @@ public sealed class StaticSitePackageGenerator
 
         function renderHeroCarousel(node) {
           const slides = node.props?.slides || [];
-          const primary = slides[0] || {};
-          const section = element('section', 'template-hero template-hero--carousel');
-          const copy = element('div', 'template-hero-copy');
-          copy.append(element('h1', '', node.props?.title || primary.title || ''));
-          if (node.props?.body || primary.body) copy.append(element('p', '', node.props?.body || primary.body));
-          if (slides.length > 1) {
+          const primary = slides.find(slide => slide.media_url) || slides[0] || {};
+          const hasCopy = hasMeaningfulHeroText(node.props?.title, primary.title, node.props?.body, primary.body);
+          const visualBanner = primary.media_url && !hasCopy;
+          const section = element('section', `template-hero template-hero--carousel${visualBanner ? ' template-hero--visual-banner' : ''}`);
+          if (hasCopy) {
+            const copy = element('div', 'template-hero-copy');
+            const title = meaningfulText(node.props?.title, primary.title);
+            const body = meaningfulText(node.props?.body, primary.body);
+            if (title) copy.append(element('h1', '', title));
+            if (body) copy.append(element('p', '', body));
+            section.appendChild(copy);
+          }
+          if (!visualBanner && slides.length > 1) {
             const strip = element('div', 'template-hero-slides');
             for (const slide of slides.slice(0, 8)) {
+              const slideTitle = meaningfulText(slide.title);
+              if (!slideTitle && !slide.url) continue;
               const card = element('article', 'template-hero-slide');
-              card.append(element('h3', '', slide.title || ''));
+              if (slideTitle) card.append(element('h3', '', slideTitle));
               if (slide.url) {
-                const anchor = element('a', '', 'Open');
+                const anchor = element('a', '', slideTitle || 'More');
                 configureLink(anchor, slide);
                 card.append(anchor);
               }
               strip.appendChild(card);
             }
-            copy.appendChild(strip);
+            if (strip.children.length) section.appendChild(strip);
           }
-          section.appendChild(copy);
           section.appendChild(renderHeroMedia(primary.media_url, primary.media_alt || primary.title || ''));
           return section;
         }
@@ -658,13 +694,31 @@ public sealed class StaticSitePackageGenerator
           return section;
         }
 
+        function hasMeaningfulHeroText(...values) {
+          return values.some(value => Boolean(meaningfulText(value)));
+        }
+
+        function meaningfulText(...values) {
+          for (const value of values) {
+            const text = String(value || '').trim();
+            if (text && !isControlText(text)) return text;
+          }
+          return '';
+        }
+
+        function isControlText(value) {
+          const text = String(value || '').trim();
+          if (!text || text.length > 96) return false;
+          return text.replace(/[\s.。·•\-–—_:/\\|<>\[\]\(\){}‹›«»]+/g, '').length === 0;
+        }
+
         function renderHeroMedia(url, alt) {
           const figure = element('figure', 'template-hero-media');
           if (url) {
             const img = document.createElement('img');
             img.src = url;
             img.alt = alt || '';
-            img.loading = 'lazy';
+            img.loading = 'eager';
             figure.appendChild(img);
           }
           return figure;
@@ -729,12 +783,16 @@ public sealed class StaticSitePackageGenerator
           const grid = element('div', 'service-action-list');
           for (const action of node.props?.actions || []) {
             const card = element('article', `service-action-card service-action-card--${action.kind || 'secondary'}`);
-            card.append(element('h3', '', action.label || 'Open'));
-            if (action.url) {
-              const anchor = element('a', '', 'Open');
+            const label = action.label || action.url || '';
+            const heading = element('h3');
+            if (action.url && label) {
+              const anchor = element('a', 'template-card-title-link', label);
               configureLink(anchor, action);
-              card.appendChild(anchor);
+              heading.appendChild(anchor);
+            } else {
+              heading.textContent = label;
             }
+            card.append(heading);
             grid.appendChild(card);
           }
           section.appendChild(grid);
@@ -760,13 +818,17 @@ public sealed class StaticSitePackageGenerator
             const list = element('div', 'tabbed-news-list');
             for (const item of tab.items || []) {
               const article = element('article', 'tabbed-news-item');
-              article.append(element('h3', '', item.title || ''));
-              if (item.body) article.append(element('p', '', item.body));
-              if (item.url) {
-                const anchor = element('a', '', 'Open');
+              const title = item.title || '';
+              const heading = element('h3');
+              if (item.url && title) {
+                const anchor = element('a', 'template-card-title-link', title);
                 configureLink(anchor, item);
-                article.appendChild(anchor);
+                heading.appendChild(anchor);
+              } else {
+                heading.textContent = title;
               }
+              article.append(heading);
+              if (item.body) article.append(element('p', '', item.body));
               list.appendChild(article);
             }
             panel.appendChild(list);
@@ -1028,17 +1090,21 @@ public sealed class StaticSitePackageGenerator
             const img = document.createElement('img');
             img.src = item.media_url;
             img.alt = item.media_alt || '';
-            img.loading = 'lazy';
+            img.loading = 'eager';
             card.appendChild(img);
           }
           const body = element('div', 'template-card-body');
-          body.append(element('h3', '', item.title || ''));
-          if (item.body) body.append(element('p', '', item.body));
-          if (item.url) {
-            const anchor = element('a', '', 'Open');
+          const title = item.title || '';
+          const heading = element('h3');
+          if (item.url && title) {
+            const anchor = element('a', 'template-card-title-link', title);
             configureLink(anchor, item);
-            body.appendChild(anchor);
+            heading.appendChild(anchor);
+          } else {
+            heading.textContent = title;
           }
+          body.append(heading);
+          if (item.body) body.append(element('p', '', item.body));
           card.appendChild(body);
           return card;
         }
@@ -1053,7 +1119,7 @@ public sealed class StaticSitePackageGenerator
             const img = document.createElement('img');
             img.src = item.url;
             img.alt = item.alt || '';
-            img.loading = 'lazy';
+            img.loading = 'eager';
             media.appendChild(img);
           }
           if (media.children.length) article.appendChild(media);
@@ -1079,7 +1145,7 @@ public sealed class StaticSitePackageGenerator
           const img = document.createElement('img');
           img.src = node.props?.url || '';
           img.alt = node.props?.alt || '';
-          img.loading = 'lazy';
+          img.loading = 'eager';
           figure.appendChild(img);
           return figure;
         }
@@ -1115,18 +1181,22 @@ public sealed class StaticSitePackageGenerator
             const img = document.createElement('img');
             img.src = node.props.media_url;
             img.alt = node.props.media_alt || '';
-            img.loading = 'lazy';
+            img.loading = 'eager';
             card.appendChild(img);
           }
           const body = element('div', 'feature-card-body');
-          body.append(element('h3', '', node.props?.title || ''));
-          if (node.props?.body) body.append(element('p', '', node.props.body));
-          if (node.props?.url) {
-            const link = { label: 'Open', url: node.props.url, scope: node.props.url.startsWith('/') ? 'internal' : 'external' };
+          const title = node.props?.title || '';
+          const heading = element('h3');
+          if (node.props?.url && title) {
+            const link = { label: title, url: node.props.url, scope: node.props.url.startsWith('/') ? 'internal' : 'external' };
             const anchor = element('a', 'feature-card-link', link.label);
             configureLink(anchor, link);
-            body.append(anchor);
+            heading.appendChild(anchor);
+          } else {
+            heading.textContent = title;
           }
+          body.append(heading);
+          if (node.props?.body) body.append(element('p', '', node.props.body));
           card.appendChild(body);
           return card;
         }
@@ -1188,11 +1258,6 @@ public sealed class StaticSitePackageGenerator
           content.append(element('div', '', node.props?.notice || 'Generated reference package.'));
           const footerLinks = renderLinkSet(node.props?.links || [], 'div', 'footer-links');
           content.appendChild(footerLinks);
-          if (node.props?.source_url) {
-            const source = element('a', '', node.props.source_url);
-            source.href = node.props.source_url;
-            content.append(source);
-          }
           inner.appendChild(content);
           footer.appendChild(inner);
           return footer;
@@ -1212,11 +1277,6 @@ public sealed class StaticSitePackageGenerator
           if (node.props?.contact_text) content.append(element('div', '', node.props.contact_text));
           const footerLinks = renderLinkSet(node.props?.links || [], 'div', 'footer-links');
           content.appendChild(footerLinks);
-          if (node.props?.source_url) {
-            const source = element('a', '', node.props.source_url);
-            source.href = node.props.source_url;
-            content.appendChild(source);
-          }
           inner.appendChild(content);
           footer.appendChild(inner);
           return footer;
@@ -1240,29 +1300,54 @@ public sealed class StaticSitePackageGenerator
         }
 
         function configureLink(anchor, link) {
-          const url = normalizeInternalRoute(link.url || '#');
-          anchor.href = toStaticHref(url);
-          if (link.scope === 'internal' && url.startsWith('/')) {
+          const originalUrl = link.url || '#';
+          const sourceUrl = link.source_url || originalUrl;
+          const mappedRoute = sourceRouteMap.get(normalizeSourceUrl(sourceUrl)) || sourceRouteMap.get(normalizeSourceUrl(originalUrl));
+          const url = normalizeInternalRoute(mappedRoute || originalUrl);
+          if (mappedRoute || (link.scope === 'internal' && url.startsWith('/'))) {
+            anchor.href = toStaticHref(url);
             anchor.setAttribute('data-local-route', url);
             anchor.addEventListener('click', event => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
               event.preventDefault();
               navigateToRoute(url);
             });
+            return;
           }
+
+          if (link.scope === 'external' || /^https?:\/\//i.test(originalUrl)) {
+            anchor.href = '#';
+            anchor.dataset.sourceUrl = sourceUrl;
+            anchor.setAttribute('aria-disabled', 'true');
+            anchor.addEventListener('click', event => event.preventDefault());
+            return;
+          }
+
+          anchor.href = toStaticHref(url);
         }
 
         function normalizeInternalRoute(url) {
           if (!url?.startsWith('/')) return url || '#';
           return url
             .replace(/\/index$/i, '/')
-            .replace(/\.(aspx|html|htm)(?=\/|$|\?)/i, '')
+            .replace(/\.(aspx|php|html|htm)(?=\/|$|\?)/i, '')
             .replace(/[?&=]+/g, '-');
         }
 
         function toStaticHref(url) {
           if (!url?.startsWith('/')) return url || '#';
           return `#${url}`;
+        }
+
+        function normalizeSourceUrl(value) {
+          if (!value) return '';
+          try {
+            const parsed = new URL(value, window.location.origin);
+            parsed.hash = '';
+            return parsed.href;
+          } catch {
+            return '';
+          }
         }
         """;
 }

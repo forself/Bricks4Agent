@@ -86,7 +86,7 @@ public sealed class TemplateCompiler
             }
         }
 
-        foreach (var form in page.Forms.Take(4))
+        foreach (var form in page.Forms.Where(ShouldRenderForm).Take(4))
         {
             root.Children.Add(BuildFormNode(page, form));
         }
@@ -277,8 +277,8 @@ public sealed class TemplateCompiler
             Type = "HeroCarousel",
             Props =
             {
-                ["title"] = section.Headline,
-                ["body"] = section.Body,
+                ["title"] = CleanDisplayText(section.Headline),
+                ["body"] = CleanDisplayText(section.Body),
                 ["slides"] = slides,
             },
         };
@@ -400,6 +400,22 @@ public sealed class TemplateCompiler
         string origin,
         IReadOnlyDictionary<string, string> localRoutes)
     {
+        var tabLabels = ExtractTabLabels(section).ToList();
+        var items = BuildItems(section, origin, localRoutes);
+        if (tabLabels.Count == 0)
+        {
+            tabLabels.Add(string.IsNullOrWhiteSpace(section.Headline) ? "Latest" : section.Headline);
+        }
+
+        var labelSet = tabLabels.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var contentItems = items
+            .Where(item => !IsTabPlaceholderItem(item, labelSet))
+            .ToList();
+        if (contentItems.Count == 0)
+        {
+            contentItems = items;
+        }
+
         return new ComponentNode
         {
             Id = BuildNodeId("tabbed-news", $"{page.FinalUrl}:{section.SourceSelector}"),
@@ -407,16 +423,35 @@ public sealed class TemplateCompiler
             Props =
             {
                 ["title"] = string.IsNullOrWhiteSpace(section.Headline) ? "News" : section.Headline,
-                ["tabs"] = new List<Dictionary<string, object?>>
-                {
-                    new()
+                ["tabs"] = tabLabels
+                    .Select((label, index) => new Dictionary<string, object?>
                     {
-                        ["label"] = string.IsNullOrWhiteSpace(section.Headline) ? "Latest" : section.Headline,
-                        ["items"] = BuildItems(section, origin, localRoutes),
-                    },
-                },
+                        ["label"] = label,
+                        ["items"] = index == 0 ? contentItems : new List<Dictionary<string, string>>(),
+                    })
+                    .ToList(),
             },
         };
+    }
+
+    private static IEnumerable<string> ExtractTabLabels(ExtractedSection section)
+    {
+        return section.Actions
+            .Select(action => CleanDisplayText(action.Label))
+            .Concat(section.Items
+                .Where(item => string.IsNullOrWhiteSpace(item.Body) && string.IsNullOrWhiteSpace(item.MediaUrl))
+                .Select(item => CleanDisplayText(item.Title)))
+            .Where(IsTabLabel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8);
+    }
+
+    private static bool IsTabPlaceholderItem(Dictionary<string, string> item, IReadOnlySet<string> tabLabels)
+    {
+        return item.TryGetValue("title", out var title) &&
+            tabLabels.Contains(title) &&
+            (!item.TryGetValue("body", out var body) || string.IsNullOrWhiteSpace(body)) &&
+            (!item.TryGetValue("media_url", out var mediaUrl) || string.IsNullOrWhiteSpace(mediaUrl));
     }
 
     private static ComponentNode BuildSearchBoxPanelNode(
@@ -862,6 +897,38 @@ public sealed class TemplateCompiler
         };
     }
 
+    private static bool ShouldRenderForm(ExtractedForm form)
+    {
+        if (!IsSearchUtilityForm(form))
+        {
+            return true;
+        }
+
+        return form.Fields.Count(field => !IsHiddenField(field)) > 1;
+    }
+
+    private static bool IsSearchUtilityForm(ExtractedForm form)
+    {
+        var signature = $"{form.Selector} {form.Action}".ToLowerInvariant();
+        if (signature.Contains("search", StringComparison.Ordinal) ||
+            signature.Contains("ptsearch", StringComparison.Ordinal) ||
+            signature.Contains("schkey", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return form.Fields.Any(field =>
+            field.Name.Contains("search", StringComparison.OrdinalIgnoreCase) ||
+            field.Name.Contains("schkey", StringComparison.OrdinalIgnoreCase) ||
+            field.Label.Contains("關鍵字", StringComparison.OrdinalIgnoreCase) ||
+            field.Label.Contains("keyword", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsHiddenField(ExtractedFormField field)
+    {
+        return string.Equals(field.Type, "hidden", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void AddDefaultContent(ComponentNode root, SiteCrawlPage page)
     {
         if (string.IsNullOrWhiteSpace(page.TextExcerpt))
@@ -882,6 +949,33 @@ public sealed class TemplateCompiler
         });
     }
 
+    private static string CleanDisplayText(string value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        return LooksLikeControlText(text) ? string.Empty : text;
+    }
+
+    private static bool IsTabLabel(string value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        var normalized = text.ToLowerInvariant();
+        return text.Length is >= 2 and <= 24 &&
+            !Regex.IsMatch(text, @"\d") &&
+            normalized is not ":::" and not "search" and not "more" and not "open" and not "skip" and not "home";
+    }
+
+    private static bool LooksLikeControlText(string text)
+    {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0 || value.Length > 96)
+        {
+            return false;
+        }
+
+        var stripped = Regex.Replace(value, @"[\s.。·•\-–—_:/\\|<>\[\]\(\){}‹›«»]+", string.Empty);
+        return stripped.Length == 0;
+    }
+
     private static List<Dictionary<string, string>> BuildSlides(
         ExtractedSection section,
         string origin,
@@ -894,10 +988,10 @@ public sealed class TemplateCompiler
                 var link = string.IsNullOrWhiteSpace(item.Url) ? EmptyLink() : BuildLink(item.Url, origin, localRoutes);
                 return new Dictionary<string, string>
                 {
-                    ["title"] = item.Title,
-                    ["body"] = item.Body,
+                    ["title"] = CleanDisplayText(item.Title),
+                    ["body"] = CleanDisplayText(item.Body),
                     ["media_url"] = item.MediaUrl,
-                    ["media_alt"] = item.MediaAlt,
+                    ["media_alt"] = CleanDisplayText(item.MediaAlt),
                     ["url"] = link["url"],
                     ["source_url"] = link["source_url"],
                     ["scope"] = link["scope"],
@@ -907,10 +1001,10 @@ public sealed class TemplateCompiler
 
         return section.Media.Take(8).Select(media => new Dictionary<string, string>
         {
-            ["title"] = string.IsNullOrWhiteSpace(media.Alt) ? section.Headline : media.Alt,
-            ["body"] = section.Body,
+            ["title"] = CleanDisplayText(string.IsNullOrWhiteSpace(media.Alt) ? section.Headline : media.Alt),
+            ["body"] = CleanDisplayText(section.Body),
             ["media_url"] = media.Url,
-            ["media_alt"] = media.Alt,
+            ["media_alt"] = CleanDisplayText(media.Alt),
             ["url"] = string.Empty,
             ["source_url"] = string.Empty,
             ["scope"] = "none",
@@ -929,13 +1023,13 @@ public sealed class TemplateCompiler
                 var link = string.IsNullOrWhiteSpace(item.Url) ? EmptyLink() : BuildLink(item.Url, origin, localRoutes);
                 return new Dictionary<string, string>
                 {
-                    ["title"] = item.Title,
-                    ["body"] = item.Body,
+                    ["title"] = CleanDisplayText(item.Title),
+                    ["body"] = CleanDisplayText(item.Body),
                     ["url"] = link["url"],
                     ["source_url"] = link["source_url"],
                     ["scope"] = link["scope"],
                     ["media_url"] = item.MediaUrl,
-                    ["media_alt"] = item.MediaAlt,
+                    ["media_alt"] = CleanDisplayText(item.MediaAlt),
                 };
             }).ToList();
         }
@@ -944,13 +1038,13 @@ public sealed class TemplateCompiler
         {
             return section.Media.Take(24).Select(media => new Dictionary<string, string>
             {
-                ["title"] = string.IsNullOrWhiteSpace(media.Alt) ? section.Headline : media.Alt,
-                ["body"] = section.Body,
+                ["title"] = CleanDisplayText(string.IsNullOrWhiteSpace(media.Alt) ? section.Headline : media.Alt),
+                ["body"] = CleanDisplayText(section.Body),
                 ["url"] = string.Empty,
                 ["source_url"] = string.Empty,
                 ["scope"] = "none",
                 ["media_url"] = media.Url,
-                ["media_alt"] = media.Alt,
+                ["media_alt"] = CleanDisplayText(media.Alt),
             }).ToList();
         }
 
@@ -1510,6 +1604,7 @@ public sealed class TemplateCompiler
 
         var extension = Path.GetExtension(path);
         if (extension.Equals(".aspx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".php", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
         {

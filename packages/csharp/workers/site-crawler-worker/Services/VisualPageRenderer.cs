@@ -263,6 +263,10 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 const rect = el.getBoundingClientRect();
                 return rect.width >= 2 && rect.height >= 2;
               };
+              const intersectsViewportX = el => {
+                const rect = el.getBoundingClientRect();
+                return rect.right > 0 && rect.left < viewport.width;
+              };
               const selectorOf = el => {
                 const tag = el.tagName.toLowerCase();
                 if (el.id) return `${tag}#${CSS.escape(el.id)}`;
@@ -323,10 +327,12 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 const tokens = tokensOf(el);
                 const tokenList = tokenListOf(el);
                 const rect = el.getBoundingClientRect();
-                const hasSiteHeaderToken = /siteheader|global-header|globalheader|main-header|masthead|banner|usa-banner/.test(tokens);
+                const explicitRole = (el.getAttribute('role') || '').toLowerCase();
+                const hasSiteHeaderToken = explicitRole === 'banner' || /siteheader|global-header|globalheader|main-header|masthead|usa-banner/.test(tokens);
                 const hasSiteFooterToken = /sitefooter|global-footer|globalfooter|main-footer|contentinfo/.test(tokens);
                 const hasHeaderNavigation = el.querySelectorAll('a[href], nav, button').length >= 2;
                 const hasFooterNotice = /copyright|all rights reserved|privacy|terms/.test((el.innerText || '').toLowerCase());
+                if (tokens.includes('carousel') || tokens.includes('swiper') || tokens.includes('slick') || tokens.includes('slider') || tokens.includes('owl') || (tokens.includes('banner') && explicitRole !== 'banner')) return 'carousel';
                 if (hasAny(tokenList, ['filter', 'filters', 'facet', 'facets', 'refine', 'refinement'])) {
                   return hasAny(tokenList, ['dashboard', 'report', 'reports', 'analytics']) ? 'filter_bar' : 'filters';
                 }
@@ -344,19 +350,19 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 if (hasAny(tokenList, ['pricing', 'price', 'prices', 'billing', 'plans', 'plan'])) return 'pricing';
                 if (hasAny(tokenList, ['cta', 'calltoaction', 'signup', 'start', 'contactsales'])) return 'cta';
                 if (hasAny(tokenList, ['product', 'products', 'offer', 'offers', 'solution', 'solutions'])) return 'products';
+                if (rect.top < 180 && hasHeaderNavigation && (el.querySelector('img') || hasAny(tokenList, ['head', 'header', 'topnav', 'mainmenu', 'mlogo']))) return 'header';
                 if ((tag === 'header' && (hasSiteHeaderToken || (rect.top < 220 && hasHeaderNavigation))) || hasSiteHeaderToken) return 'header';
                 if ((tag === 'footer' && (hasSiteFooterToken || hasFooterNotice)) || hasSiteFooterToken) return 'footer';
-                if ((tag === 'nav' && rect.top < 260) || tokens.includes('navbar') || tokens.includes('navigation')) return 'nav';
+                if ((tag === 'nav' && rect.top < 260) || tokens.includes('navbar') || tokens.includes('navigation') || hasAny(tokenList, ['topnav', 'mainmenu'])) return 'nav';
                 if (tag === 'form' || el.querySelector('input, textarea, select')) return 'form';
-                if (tokens.includes('carousel') || tokens.includes('swiper') || tokens.includes('slick') || tokens.includes('slider') || tokens.includes('owl')) return 'carousel';
                 if (tokens.includes('news') || tokens.includes('announcement') || tokens.includes('latest')) return 'news';
                 if (tokens.includes('gallery') || tokens.includes('spotlight') || tokens.includes('photo')) return 'carousel';
                 if ((tokens.includes('hero') || el.querySelector('h1')) && rect.top < viewport.height * 1.1) return 'hero';
-                if (el.querySelectorAll('article, li, .card, .item').length >= 2) return 'card_grid';
+                if (el.querySelectorAll('article, li, .card, .item, .d-item, .mbox, .listBS > *').length >= 2) return 'card_grid';
                 return 'content';
               };
               const mediaOf = root => {
-                const imageMedia = [...root.querySelectorAll('img, picture img')]
+                const imageMedia = [...(root.matches('img') ? [root] : []), ...root.querySelectorAll('img, picture img')]
                 .filter(visible)
                 .map(img => ({
                   kind: 'image',
@@ -389,11 +395,13 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 }))
                 .filter(action => action.label || action.url);
               const itemOf = item => {
-                const firstLink = item.querySelector('a[href]');
+                const links = [...item.querySelectorAll('a[href]')];
+                const textLink = links.find(link => clean(link.innerText || link.getAttribute('aria-label') || link.getAttribute('title') || ''));
+                const firstLink = textLink || links[0];
                 const firstImage = item.querySelector('img');
                 const backgroundUrl = firstImage ? '' : firstBackgroundUrl(item);
                 const heading = item.querySelector('h1,h2,h3,h4,h5,h6');
-                let title = clean(heading?.innerText || firstLink?.innerText || '');
+                let title = clean(heading?.innerText || textLink?.innerText || firstImage?.alt || '');
                 let body = truncate(item.innerText || '');
                 if (title && body.startsWith(title)) body = clean(body.slice(title.length));
                 return {
@@ -405,14 +413,48 @@ public sealed class PlaywrightVisualPageRenderer : IVisualPageRenderer
                 };
               };
               const itemsOf = root => {
-                const candidates = [...root.querySelectorAll('article, li, .card, .item, .slide, .swiper-slide, .slick-slide')]
+                const candidates = [...root.querySelectorAll('article, li, .card, .item, .d-item, .mbox, .slide, .swiper-slide, .slick-slide, .listBS > *')]
                   .filter(visible)
+                  .filter(intersectsViewportX)
                   .filter(item => clean(item.innerText || '') || item.querySelector('img') || firstBackgroundUrl(item));
                 return candidates.slice(0, maxItemsPerRegion).map(itemOf).filter(item => item.title || item.body || item.media_url);
               };
               const headlineOf = root => clean(root.querySelector('h1,h2,h3,h4,h5,h6')?.innerText || '');
-              const candidates = [...document.querySelectorAll('header, nav, main > section, main > div, body > section, body > main, body > div, article, form, footer')]
+              const regionSelector = [
+                'header',
+                'nav',
+                'main > section',
+                'main > div',
+                'main [id^="Dyn_"]',
+                'main .module',
+                'main section.mb',
+                'main .row.listBS',
+                'main .d-item',
+                'main .mbox',
+                'main header.mt',
+                'main nav',
+                '[class~="head" i]',
+                '[class~="mlogo" i]',
+                'body > section',
+                'body > main',
+                'body > div',
+                'article',
+                'form',
+                'footer',
+                '[id*="banner" i]',
+                '[class*="banner" i]',
+                '[class*="carousel" i]',
+                '[class*="slider" i]',
+                '[class*="swiper" i]',
+                '[class*="slick" i]',
+                '[class*="owl-carousel" i]',
+                '[class*="topnav" i]',
+                '[class*="mainmenu" i]',
+                '[class*="footer" i]'
+              ].join(',');
+              const candidates = [...document.querySelectorAll(regionSelector)]
                 .filter(visible)
+                .filter(intersectsViewportX)
                 .filter(el => !el.closest('script, style, noscript, template'))
                 .filter(el => {
                   const text = clean(el.innerText || '');
@@ -480,7 +522,7 @@ public sealed class VisualPageRendererOptions
 
     public string UserAgent { get; set; } = "Bricks4Agent-VisualRenderer/1.0";
 
-    public bool BlockHeavyResources { get; set; } = true;
+    public bool BlockHeavyResources { get; set; }
 
     public int MaxRegions { get; set; } = 80;
 
