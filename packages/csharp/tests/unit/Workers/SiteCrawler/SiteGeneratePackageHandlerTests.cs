@@ -131,6 +131,35 @@ public class SiteGeneratePackageHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenCreateArchiveIsRequested_ReturnsArchivePath()
+    {
+        var handler = new SiteGeneratePackageHandler(
+            new SiteGeneratorConverter(DefaultComponentLibrary.Create()),
+            new StaticSitePackageGenerator(),
+            NullLogger<SiteGeneratePackageHandler>.Instance);
+        var payload = JsonSerializer.Serialize(new
+        {
+            args = new
+            {
+                site_document = ComponentSchemaValidatorTests.BuildValidDocument(),
+                output_directory = tempRoot,
+                package_name = "handler-archive-site",
+                create_archive = true
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var result = await handler.ExecuteAsync("req-1", "site_generate_package", payload, "{}", CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.Error);
+        var package = JsonSerializer.Deserialize<StaticSitePackageResult>(
+            result.ResultPayload!,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        package.Should().NotBeNull();
+        package!.ArchivePath.Should().Be(Path.Combine(tempRoot, "handler-archive-site.zip"));
+        File.Exists(package.ArchivePath).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenPayloadHasNoCrawlOrSiteDocument_ReturnsValidationError()
     {
         var handler = new SiteGeneratePackageHandler(

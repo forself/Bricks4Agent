@@ -64,6 +64,8 @@ public sealed class SiteGeneratePackageHandler : ICapabilityHandler
                 OutputDirectory = TryGetString(root, "output_directory") ?? string.Empty,
                 PackageName = TryGetString(root, "package_name") ?? BuildDefaultPackageName(requestId),
                 EnforceQualityGate = TryGetBoolean(root, "enforce_quality_gate") ?? true,
+                CreateArchive = TryGetBoolean(root, "create_archive") ?? false,
+                ArchivePath = TryGetString(root, "archive_path") ?? string.Empty,
             };
 
             if (options.EnforceQualityGate)

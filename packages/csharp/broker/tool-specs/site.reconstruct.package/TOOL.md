@@ -27,6 +27,7 @@ Root/current page only, `max_depth = 0`, is supported as an explicit diagnostic/
 3. Convert the site intent into template slots and component-library nodes.
 4. Enforce the quality gate by default.
 5. Write a package whose entry point is `index.html`.
+6. Write a portable zip archive by default for artifact delivery.
 
 The package runtime loads `site.json` and `components/manifest.json`, then renders the component tree. It must not write arbitrary page HTML or a DOM-equivalent clone.
 
@@ -53,6 +54,7 @@ The success result includes:
 - `package.entry_point`
 - `package.site_json_path`
 - `package.manifest_path`
+- `package.archive_path`
 - `package.files`
 - `package.quality_report`
 

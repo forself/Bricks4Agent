@@ -213,6 +213,12 @@ public sealed class StaticSitePackageOptions
 
     [JsonPropertyName("enforce_quality_gate")]
     public bool EnforceQualityGate { get; set; }
+
+    [JsonPropertyName("create_archive")]
+    public bool CreateArchive { get; set; }
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
 }
 
 public sealed class SiteReconstructPackageRequest
@@ -240,6 +246,12 @@ public sealed class SiteReconstructPackageRequest
 
     [JsonPropertyName("enforce_quality_gate")]
     public bool EnforceQualityGate { get; set; } = true;
+
+    [JsonPropertyName("create_archive")]
+    public bool CreateArchive { get; set; } = true;
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
 }
 
 public sealed class StaticSitePackageResult
@@ -255,6 +267,9 @@ public sealed class StaticSitePackageResult
 
     [JsonPropertyName("manifest_path")]
     public string ManifestPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
 
     [JsonPropertyName("files")]
     public List<string> Files { get; set; } = new();

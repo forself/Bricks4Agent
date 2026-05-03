@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using SiteCrawlerWorker.Models;
 
@@ -45,6 +47,11 @@ public sealed class StaticSitePackageGenerator
         }
 
         var outputDirectory = ResolveOutputDirectory(options);
+        if (Directory.Exists(outputDirectory))
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+
         Directory.CreateDirectory(outputDirectory);
         Directory.CreateDirectory(Path.Combine(outputDirectory, "components"));
         Directory.CreateDirectory(Path.Combine(outputDirectory, "components", "generated"));
@@ -58,12 +65,31 @@ public sealed class StaticSitePackageGenerator
         WriteGeneratedComponentAssets(outputDirectory, document, files);
         WriteFile(outputDirectory, "README.md", BuildReadme(document), files);
 
+        var archivePath = string.Empty;
+        if (options.CreateArchive)
+        {
+            archivePath = ResolveArchivePath(options, outputDirectory);
+            Directory.CreateDirectory(Path.GetDirectoryName(archivePath)!);
+            if (File.Exists(archivePath))
+            {
+                File.Delete(archivePath);
+            }
+
+            ZipFile.CreateFromDirectory(
+                outputDirectory,
+                archivePath,
+                CompressionLevel.SmallestSize,
+                includeBaseDirectory: false,
+                entryNameEncoding: Encoding.UTF8);
+        }
+
         return new StaticSitePackageResult
         {
             OutputDirectory = outputDirectory,
             EntryPoint = Path.Combine(outputDirectory, "index.html"),
             SiteJsonPath = Path.Combine(outputDirectory, "site.json"),
             ManifestPath = Path.Combine(outputDirectory, "components", "manifest.json"),
+            ArchivePath = archivePath,
             Files = files,
             QualityReport = quality,
         };
@@ -79,6 +105,16 @@ public sealed class StaticSitePackageGenerator
             : options.PackageName);
 
         return Path.GetFullPath(Path.Combine(baseDirectory, packageName));
+    }
+
+    private static string ResolveArchivePath(StaticSitePackageOptions options, string outputDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ArchivePath))
+        {
+            return Path.GetFullPath(options.ArchivePath);
+        }
+
+        return $"{outputDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}.zip";
     }
 
     private static void WriteFile(string outputDirectory, string relativePath, string content, List<string> files)

@@ -98,6 +98,8 @@ public sealed class SiteReconstructPackageHandler : ICapabilityHandler
                     ? BuildDefaultPackageName(request.RequestId)
                     : request.PackageName,
                 EnforceQualityGate = request.EnforceQualityGate,
+                CreateArchive = request.CreateArchive,
+                ArchivePath = request.ArchivePath,
             });
 
             return (

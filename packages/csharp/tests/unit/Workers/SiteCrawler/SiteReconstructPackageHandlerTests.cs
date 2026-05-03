@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Compression;
 using Microsoft.Extensions.Logging.Abstractions;
 using SiteCrawlerWorker.Handlers;
 using SiteCrawlerWorker.Models;
@@ -68,6 +69,11 @@ public class SiteReconstructPackageHandlerTests : IDisposable
         response.PageCount.Should().Be(1);
         File.Exists(response.Package.EntryPoint).Should().BeTrue();
         File.Exists(response.Package.SiteJsonPath).Should().BeTrue();
+        File.Exists(response.Package.ArchivePath).Should().BeTrue();
+        using (var archive = ZipFile.OpenRead(response.Package.ArchivePath))
+        {
+            archive.Entries.Select(entry => entry.FullName).Should().Contain("index.html");
+        }
         response.Package.QualityReport.IsPassed.Should().BeTrue();
         response.Package.QualityReport.ComponentRequestCount.Should().Be(0);
         fetcher.RequestedUrls.Should().Equal("https://example.com/");

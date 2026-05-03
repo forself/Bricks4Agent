@@ -54,7 +54,9 @@
       },
       "output_directory": { "type": "string" },
       "package_name": { "type": "string" },
-      "enforce_quality_gate": { "type": "boolean", "default": true }
+      "enforce_quality_gate": { "type": "boolean", "default": true },
+      "create_archive": { "type": "boolean", "default": true },
+      "archive_path": { "type": "string" }
     },
     "required": ["start_url", "scope"]
   },
@@ -71,6 +73,7 @@
           "entry_point": { "type": "string" },
           "site_json_path": { "type": "string" },
           "manifest_path": { "type": "string" },
+          "archive_path": { "type": "string" },
           "files": { "type": "array", "items": { "type": "string" } },
           "quality_report": { "type": "object" }
         }
@@ -96,6 +99,7 @@
     "source_html_auxiliary": true,
     "component_library_only": true,
     "strict_quality_gate_default": true,
+    "archive_zip_default": true,
     "allow_arbitrary_html_layout": false,
     "clone_equivalence_allowed": false,
     "entry_point": "index.html",

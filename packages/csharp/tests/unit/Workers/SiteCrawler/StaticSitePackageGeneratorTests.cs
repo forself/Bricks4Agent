@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Compression;
 using SiteCrawlerWorker.Models;
 using SiteCrawlerWorker.Services;
 
@@ -187,6 +188,57 @@ public class StaticSitePackageGeneratorTests : IDisposable
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*quality gate failed*component request*");
         Directory.Exists(Path.Combine(tempRoot, "strict-fail")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Generate_WhenCreateArchiveIsEnabled_WritesPortableZipPackage()
+    {
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "archive-site",
+            EnforceQualityGate = true,
+            CreateArchive = true,
+        });
+
+        result.ArchivePath.Should().Be(Path.Combine(tempRoot, "archive-site.zip"));
+        File.Exists(result.ArchivePath).Should().BeTrue();
+        using var archive = ZipFile.OpenRead(result.ArchivePath);
+        archive.Entries.Select(entry => entry.FullName).Should().Contain([
+            "index.html",
+            "site.json",
+            "components/manifest.json",
+        ]);
+    }
+
+    [Fact]
+    public void Generate_WhenPackageDirectoryAlreadyExists_RemovesStaleFilesBeforeWriting()
+    {
+        var staleDirectory = Path.Combine(tempRoot, "clean-site");
+        Directory.CreateDirectory(Path.Combine(staleDirectory, "components", "generated"));
+        File.WriteAllText(Path.Combine(staleDirectory, "old.txt"), "stale");
+        File.WriteAllText(Path.Combine(staleDirectory, "components", "generated", "OldComponent.js"), "stale");
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        var generator = new StaticSitePackageGenerator();
+
+        var result = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "clean-site",
+            EnforceQualityGate = true,
+            CreateArchive = true,
+        });
+
+        File.Exists(Path.Combine(result.OutputDirectory, "old.txt")).Should().BeFalse();
+        File.Exists(Path.Combine(result.OutputDirectory, "components", "generated", "OldComponent.js")).Should().BeFalse();
+        using var archive = ZipFile.OpenRead(result.ArchivePath);
+        archive.Entries.Select(entry => entry.FullName).Should().NotContain([
+            "old.txt",
+            "components/generated/OldComponent.js",
+        ]);
     }
 
     [Fact]

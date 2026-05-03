@@ -4,6 +4,8 @@ Generates a local static website package from either a `SiteCrawlResult` or a va
 
 By default this tool enforces the site generation quality gate. The package is written only when the document can be rendered with the loaded component library without generated components or unresolved component requests. Set `enforce_quality_gate = false` only for diagnostic package output.
 
+Set `create_archive = true` to also write a portable zip file. If `archive_path` is omitted, the archive is created next to the package directory as `<package_name>.zip`.
+
 ## Capability
 
 - Tool ID: `site.generate.package`
@@ -43,5 +45,6 @@ The result includes:
 - `entry_point`
 - `site_json_path`
 - `manifest_path`
+- `archive_path`
 - `files`
 - `quality_report`
