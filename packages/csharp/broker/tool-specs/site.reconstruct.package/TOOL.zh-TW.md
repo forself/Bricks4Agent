@@ -44,6 +44,8 @@ Strict mode 預設啟用。以下情況會阻擋 package 建立：
 
 失敗時，工具會回傳結構化的 `quality_report`，且不會寫出 package。
 
+Strict mode 也會在 package 驗收失敗時阻擋交付。工具會回傳結構化的 `verification_report`，失敗的 package 產物會在可行時被移除。
+
 ## Package 驗收
 
 成功輸出會包含 `package.verification_report`。驗收器會檢查：

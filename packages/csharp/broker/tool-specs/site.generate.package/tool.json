@@ -65,6 +65,7 @@
     "component_library_only": true,
     "strict_quality_gate_default": true,
     "package_verification_default": true,
+    "strict_verification_gate_default": true,
     "runtime_contract_verification": true,
     "allow_arbitrary_html_layout": false,
     "requires_known_or_generated_component_definitions": true
@@ -76,6 +77,6 @@
     "must_include_manifest_path": true,
     "must_include_quality_report": true,
     "must_include_verification_report": true,
-    "result_wording": "The generated package entry point is index.html. It loads runtime.js, which reads site.json and renders only component types declared in components/manifest.json. By default, strict quality gate failures stop package creation and return a quality report. Successful output includes a verification report for required files, site.json renderability, and zip archive contents when an archive is requested."
+    "result_wording": "The generated package entry point is index.html. It loads runtime.js, which reads site.json and renders only component types declared in components/manifest.json. By default, strict quality or package verification failures stop package delivery and return quality_report and/or verification_report. Successful output includes a verification report for required files, runtime contract, renderer coverage, site.json renderability, and zip archive contents when an archive is requested."
   }
 }

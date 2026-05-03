@@ -101,6 +101,21 @@ public sealed class SiteReconstructPackageHandler : ICapabilityHandler
                 CreateArchive = request.CreateArchive,
                 ArchivePath = request.ArchivePath,
             });
+            if (request.EnforceQualityGate && !package.VerificationReport.IsPassed)
+            {
+                TryDeletePackageArtifacts(package);
+                return (
+                    false,
+                    JsonSerializer.Serialize(new Dictionary<string, object?>
+                    {
+                        ["crawl_run_id"] = crawl.CrawlRunId,
+                        ["page_count"] = crawl.Pages.Count,
+                        ["excluded_count"] = crawl.Excluded.Count,
+                        ["quality_report"] = package.QualityReport,
+                        ["verification_report"] = package.VerificationReport,
+                    }, JsonOptions),
+                    $"Site package verification failed: {string.Join("; ", package.VerificationReport.Errors)}");
+            }
 
             return (
                 true,
@@ -141,5 +156,27 @@ public sealed class SiteReconstructPackageHandler : ICapabilityHandler
     private static string BuildDefaultPackageName(string requestId)
     {
         return string.IsNullOrWhiteSpace(requestId) ? "generated-site" : requestId;
+    }
+
+    private static void TryDeletePackageArtifacts(StaticSitePackageResult result)
+    {
+        try
+        {
+            if (Directory.Exists(result.OutputDirectory))
+            {
+                Directory.Delete(result.OutputDirectory, recursive: true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.ArchivePath) && File.Exists(result.ArchivePath))
+            {
+                File.Delete(result.ArchivePath);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }

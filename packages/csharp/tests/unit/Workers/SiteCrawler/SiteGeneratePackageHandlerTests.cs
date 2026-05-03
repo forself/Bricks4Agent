@@ -164,6 +164,60 @@ public class SiteGeneratePackageHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_WhenPackageVerificationFailsByDefault_ReturnsStructuredVerificationPayload()
+    {
+        var handler = new SiteGeneratePackageHandler(
+            new SiteGeneratorConverter(DefaultComponentLibrary.Create()),
+            new StaticSitePackageGenerator(),
+            NullLogger<SiteGeneratePackageHandler>.Instance);
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        document.ComponentLibrary.Components.Add(DefaultComponentLibrary.Define(
+            "RuntimeMissingPanel",
+            "Schema-valid component without a runtime renderer.",
+            ["content"],
+            new ComponentPropsSchema
+            {
+                Required = ["title"],
+                Properties =
+                {
+                    ["title"] = new ComponentPropSchema { Type = "string" },
+                },
+            }));
+        document.Routes[0].Root.Children.Add(new ComponentNode
+        {
+            Id = "runtime-missing",
+            Type = "RuntimeMissingPanel",
+            Props =
+            {
+                ["title"] = "Runtime missing",
+            },
+        });
+        var payload = JsonSerializer.Serialize(new
+        {
+            args = new
+            {
+                site_document = document,
+                output_directory = tempRoot,
+                package_name = "verification-blocked-site"
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        var result = await handler.ExecuteAsync("req-1", "site_generate_package", payload, "{}", CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("package verification failed");
+        result.ResultPayload.Should().NotBeNull();
+        using var failure = JsonDocument.Parse(result.ResultPayload!);
+        failure.RootElement.GetProperty("verification_report").GetProperty("is_passed").GetBoolean().Should().BeFalse();
+        var verificationErrors = failure.RootElement.GetProperty("verification_report").GetProperty("errors").EnumerateArray()
+            .Select(error => error.GetString())
+            .ToList();
+        verificationErrors.Any(error => error != null &&
+            error.Contains("RuntimeMissingPanel", StringComparison.Ordinal)).Should().BeTrue();
+        Directory.Exists(Path.Combine(tempRoot, "verification-blocked-site")).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_WhenPayloadHasNoCrawlOrSiteDocument_ReturnsValidationError()
     {
         var handler = new SiteGeneratePackageHandler(

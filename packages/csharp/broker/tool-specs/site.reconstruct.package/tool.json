@@ -101,6 +101,7 @@
     "component_library_only": true,
     "strict_quality_gate_default": true,
     "package_verification_default": true,
+    "strict_verification_gate_default": true,
     "runtime_contract_verification": true,
     "archive_zip_default": true,
     "allow_arbitrary_html_layout": false,
@@ -115,6 +116,6 @@
     "must_include_quality_report": true,
     "must_include_verification_report": true,
     "must_not_claim_equivalent_clone": true,
-    "result_wording": "Return the local package path and index.html entry point. The package uses runtime.js to load site.json and render only component types from the component manifest. Successful output includes verification_report for package files, site.json renderability, and archive contents. If strict quality fails, return quality_report and do not write the package."
+    "result_wording": "Return the local package path and index.html entry point. The package uses runtime.js to load site.json and render only component types from the component manifest. Successful output includes verification_report for package files, runtime contract, renderer coverage, site.json renderability, and archive contents. If strict quality or package verification fails, return quality_report and/or verification_report and do not deliver the package."
   }
 }

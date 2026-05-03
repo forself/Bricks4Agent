@@ -39,6 +39,8 @@ The generator must not produce arbitrary page HTML, DOM-equivalent clones, pixel
 
 In strict mode, generated component definitions and component requests are treated as quality failures. The caller receives a structured `quality_report` and no package is written.
 
+Strict mode also treats package verification failures as delivery blockers. The caller receives a structured `verification_report`, and the failed package artifacts are removed when possible.
+
 ## Package Verification
 
 The verifier must pass for normal delivery. It checks:

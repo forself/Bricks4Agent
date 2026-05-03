@@ -44,6 +44,8 @@ Strict mode is enabled by default. It blocks package creation when:
 
 On failure the tool returns a structured `quality_report` and does not write the package.
 
+Strict mode also blocks delivery when package verification fails. The tool returns a structured `verification_report`, and failed package artifacts are removed when possible.
+
 ## Package Verification
 
 Successful output includes `package.verification_report`. The verifier checks:
