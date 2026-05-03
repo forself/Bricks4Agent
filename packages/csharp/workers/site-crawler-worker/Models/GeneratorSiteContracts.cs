@@ -276,6 +276,36 @@ public sealed class StaticSitePackageResult
 
     [JsonPropertyName("quality_report")]
     public SiteGenerationQualityReport QualityReport { get; set; } = new();
+
+    [JsonPropertyName("verification_report")]
+    public StaticSitePackageVerificationReport VerificationReport { get; set; } = new();
+}
+
+public sealed class StaticSitePackageVerificationReport
+{
+    [JsonPropertyName("is_passed")]
+    public bool IsPassed => Errors.Count == 0;
+
+    [JsonPropertyName("has_archive")]
+    public bool HasArchive { get; set; }
+
+    [JsonPropertyName("route_count")]
+    public int RouteCount { get; set; }
+
+    [JsonPropertyName("component_node_count")]
+    public int ComponentNodeCount { get; set; }
+
+    [JsonPropertyName("required_files")]
+    public List<string> RequiredFiles { get; set; } = new();
+
+    [JsonPropertyName("archive_entries")]
+    public List<string> ArchiveEntries { get; set; } = new();
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = new();
 }
 
 public sealed class SiteReconstructPackageResult

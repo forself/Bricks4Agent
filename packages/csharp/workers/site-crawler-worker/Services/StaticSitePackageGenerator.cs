@@ -83,7 +83,7 @@ public sealed class StaticSitePackageGenerator
                 entryNameEncoding: Encoding.UTF8);
         }
 
-        return new StaticSitePackageResult
+        var result = new StaticSitePackageResult
         {
             OutputDirectory = outputDirectory,
             EntryPoint = Path.Combine(outputDirectory, "index.html"),
@@ -93,6 +93,8 @@ public sealed class StaticSitePackageGenerator
             Files = files,
             QualityReport = quality,
         };
+        result.VerificationReport = new StaticSitePackageVerifier(qualityAnalyzer).Verify(result);
+        return result;
     }
 
     private static string ResolveOutputDirectory(StaticSitePackageOptions options)

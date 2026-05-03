@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging.Abstractions;
 using SiteCrawlerWorker.Models;
@@ -16,6 +14,7 @@ public sealed class HighLevelSiteRebuildResult
     public int PagesCrawled { get; set; }
     public int RoutesGenerated { get; set; }
     public SiteGenerationQualityReport QualityReport { get; set; } = new();
+    public StaticSitePackageVerificationReport VerificationReport { get; set; } = new();
     public string GeneratedSiteRoot { get; set; } = string.Empty;
     public string PackageFilePath { get; set; } = string.Empty;
     public string PackageFileName { get; set; } = string.Empty;
@@ -117,21 +116,18 @@ public sealed class HighLevelSiteRebuildService
         if (Directory.Exists(generatedRoot))
             Directory.Delete(generatedRoot, recursive: true);
 
+        var packageFileName = BuildPackageFileName(draft);
+        var packageFilePath = Path.Combine(managedPaths.DocumentsRoot, packageFileName);
         var package = new StaticSitePackageGenerator().Generate(document, new StaticSitePackageOptions
         {
             OutputDirectory = generatedRoot,
             PackageName = "site",
             EnforceQualityGate = true,
+            CreateArchive = true,
+            ArchivePath = packageFilePath,
         });
 
         VerifyGeneratedPackage(package);
-
-        var packageFileName = BuildPackageFileName(draft);
-        var packageFilePath = Path.Combine(managedPaths.DocumentsRoot, packageFileName);
-        if (File.Exists(packageFilePath))
-            File.Delete(packageFilePath);
-
-        ZipFile.CreateFromDirectory(package.OutputDirectory, packageFilePath, CompressionLevel.SmallestSize, includeBaseDirectory: false, Encoding.UTF8);
 
         var uploadToGoogleDrive = artifactDeliveryService.CanUploadToGoogleDrive(profile.UserId, "shared_delegated");
         var delivery = await artifactDeliveryService.DeliverExistingFileAsync(new LineExistingArtifactDeliveryRequest
@@ -161,6 +157,7 @@ public sealed class HighLevelSiteRebuildService
             PagesCrawled = crawl.Pages.Count,
             RoutesGenerated = document.Routes.Count,
             QualityReport = package.QualityReport,
+            VerificationReport = package.VerificationReport,
             GeneratedSiteRoot = package.OutputDirectory,
             PackageFilePath = packageFilePath,
             PackageFileName = packageFileName,
@@ -256,6 +253,15 @@ public sealed class HighLevelSiteRebuildService
         {
             if (!File.Exists(path))
                 throw new InvalidOperationException($"generated site package is missing {path}");
+        }
+
+        if (string.IsNullOrWhiteSpace(package.ArchivePath) || !File.Exists(package.ArchivePath))
+            throw new InvalidOperationException("generated site package archive is missing.");
+
+        if (!package.VerificationReport.IsPassed)
+        {
+            throw new InvalidOperationException(
+                $"generated site package verification failed: {string.Join("; ", package.VerificationReport.Errors)}");
         }
     }
 

@@ -28,6 +28,7 @@ Root/current page only, `max_depth = 0`, is supported as an explicit diagnostic/
 4. Enforce the quality gate by default.
 5. Write a package whose entry point is `index.html`.
 6. Write a portable zip archive by default for artifact delivery.
+7. Verify the package files, `site.json` renderability, and archive contents.
 
 The package runtime loads `site.json` and `components/manifest.json`, then renders the component tree. It must not write arbitrary page HTML or a DOM-equivalent clone.
 
@@ -43,6 +44,20 @@ Strict mode is enabled by default. It blocks package creation when:
 
 On failure the tool returns a structured `quality_report` and does not write the package.
 
+## Package Verification
+
+Successful output includes `package.verification_report`. The verifier checks:
+
+- `index.html`
+- `runtime.js`
+- `styles.css`
+- `site.json`
+- `components/manifest.json`
+- `README.md`
+- zip archive entries
+
+For normal user delivery, both `package.quality_report.is_passed` and `package.verification_report.is_passed` must be true.
+
 ## Output
 
 The success result includes:
@@ -57,5 +72,6 @@ The success result includes:
 - `package.archive_path`
 - `package.files`
 - `package.quality_report`
+- `package.verification_report`
 
 The result is a reusable reconstruction package, not an equivalent clone of the source website.

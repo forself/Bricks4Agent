@@ -76,6 +76,8 @@ public class SiteReconstructPackageHandlerTests : IDisposable
         }
         response.Package.QualityReport.IsPassed.Should().BeTrue();
         response.Package.QualityReport.ComponentRequestCount.Should().Be(0);
+        response.Package.VerificationReport.IsPassed.Should().BeTrue();
+        response.Package.VerificationReport.ArchiveEntries.Should().Contain("runtime.js");
         fetcher.RequestedUrls.Should().Equal("https://example.com/");
     }
 

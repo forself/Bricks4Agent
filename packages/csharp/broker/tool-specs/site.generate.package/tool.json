@@ -4,7 +4,7 @@
   "summary": "Generate a static website package whose index.html runtime renders a component-library site.json document.",
   "kind": "generator",
   "status": "beta",
-  "version": "2026-05-02",
+  "version": "2026-05-04",
   "tags": ["site", "generator", "component-library", "package", "static-site"],
   "capability_template": {
     "action_type": "write",
@@ -47,7 +47,8 @@
       "manifest_path": { "type": "string" },
       "archive_path": { "type": "string" },
       "files": { "type": "array", "items": { "type": "string" } },
-      "quality_report": { "type": "object" }
+      "quality_report": { "type": "object" },
+      "verification_report": { "type": "object" }
     }
   },
   "source_policy": {
@@ -63,6 +64,7 @@
     "component_library_manifest_source": "worker_config_or_bundled_default",
     "component_library_only": true,
     "strict_quality_gate_default": true,
+    "package_verification_default": true,
     "allow_arbitrary_html_layout": false,
     "requires_known_or_generated_component_definitions": true
   },
@@ -72,6 +74,7 @@
     "must_include_site_json_path": true,
     "must_include_manifest_path": true,
     "must_include_quality_report": true,
-    "result_wording": "The generated package entry point is index.html. It loads runtime.js, which reads site.json and renders only component types declared in components/manifest.json. By default, strict quality gate failures stop package creation and return a quality report."
+    "must_include_verification_report": true,
+    "result_wording": "The generated package entry point is index.html. It loads runtime.js, which reads site.json and renders only component types declared in components/manifest.json. By default, strict quality gate failures stop package creation and return a quality report. Successful output includes a verification report for required files, site.json renderability, and zip archive contents when an archive is requested."
   }
 }

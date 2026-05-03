@@ -95,6 +95,9 @@ public sealed class HighLevelSiteRebuildServiceTests : IDisposable
         result.QualityReport.IsPassed.Should().BeTrue();
         result.QualityReport.ComponentRequestCount.Should().Be(0);
         result.QualityReport.GeneratedComponentCount.Should().Be(0);
+        result.VerificationReport.IsPassed.Should().BeTrue();
+        result.VerificationReport.HasArchive.Should().BeTrue();
+        result.VerificationReport.ArchiveEntries.Should().Contain("runtime.js");
         result.PackageFileName.Should().EndWith(".zip");
         File.Exists(result.PackageFilePath).Should().BeTrue();
         result.Delivery?.GoogleDrive?.Success.Should().BeTrue();

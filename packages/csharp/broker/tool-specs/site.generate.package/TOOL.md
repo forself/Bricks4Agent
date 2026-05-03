@@ -6,6 +6,8 @@ By default this tool enforces the site generation quality gate. The package is w
 
 Set `create_archive = true` to also write a portable zip file. If `archive_path` is omitted, the archive is created next to the package directory as `<package_name>.zip`.
 
+Every generated package includes a `verification_report`. The verifier checks the required package files, re-reads `site.json`, confirms component-library renderability through the quality analyzer, and verifies zip entries when an archive is requested.
+
 ## Capability
 
 - Tool ID: `site.generate.package`
@@ -37,6 +39,20 @@ The generator must not produce arbitrary page HTML, DOM-equivalent clones, pixel
 
 In strict mode, generated component definitions and component requests are treated as quality failures. The caller receives a structured `quality_report` and no package is written.
 
+## Package Verification
+
+The verifier must pass for normal delivery. It checks:
+
+- `index.html`
+- `runtime.js`
+- `styles.css`
+- `site.json`
+- `components/manifest.json`
+- `README.md`
+- zip archive entries when `create_archive = true`
+
+If `enforce_quality_gate = false`, diagnostic packages may still be written with a failing `quality_report` and `verification_report`. Such output is for component-library gap analysis, not user delivery.
+
 ## Output
 
 The result includes:
@@ -48,3 +64,4 @@ The result includes:
 - `archive_path`
 - `files`
 - `quality_report`
+- `verification_report`

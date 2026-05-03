@@ -51,6 +51,8 @@ public class SiteGeneratePackageHandlerTests : IDisposable
         package.QualityReport.IsPassed.Should().BeTrue();
         package.QualityReport.ComponentNodeCount.Should().BeGreaterThan(0);
         package.QualityReport.ComponentRequestCount.Should().Be(0);
+        package.VerificationReport.IsPassed.Should().BeTrue();
+        package.VerificationReport.RequiredFiles.Should().Contain("site.json");
     }
 
     [Fact]
@@ -157,6 +159,8 @@ public class SiteGeneratePackageHandlerTests : IDisposable
         package.Should().NotBeNull();
         package!.ArchivePath.Should().Be(Path.Combine(tempRoot, "handler-archive-site.zip"));
         File.Exists(package.ArchivePath).Should().BeTrue();
+        package.VerificationReport.IsPassed.Should().BeTrue();
+        package.VerificationReport.ArchiveEntries.Should().Contain("runtime.js");
     }
 
     [Fact]
