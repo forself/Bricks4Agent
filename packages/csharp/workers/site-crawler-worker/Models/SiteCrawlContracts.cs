@@ -33,6 +33,9 @@ public sealed class SiteCrawlScope
 
     [JsonPropertyName("path_prefix_lock")]
     public bool PathPrefixLock { get; set; } = true;
+
+    [JsonPropertyName("allowed_host_suffixes")]
+    public List<string> AllowedHostSuffixes { get; set; } = new();
 }
 
 public sealed class SiteCrawlCaptureOptions
@@ -93,6 +96,9 @@ public sealed class SiteCrawlResult
 
     [JsonPropertyName("excluded")]
     public List<SiteCrawlExcludedUrl> Excluded { get; set; } = new();
+
+    [JsonPropertyName("redirects")]
+    public List<SiteCrawlRedirect> Redirects { get; set; } = new();
 
     [JsonPropertyName("extracted_model")]
     public ExtractedSiteModel ExtractedModel { get; set; } = new();
@@ -279,6 +285,18 @@ public sealed class SiteCrawlExcludedUrl
 
     [JsonPropertyName("reason")]
     public string Reason { get; set; } = string.Empty;
+}
+
+public sealed class SiteCrawlRedirect
+{
+    [JsonPropertyName("from_url")]
+    public string FromUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("to_url")]
+    public string ToUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("status_code")]
+    public int StatusCode { get; set; }
 }
 
 public sealed class SiteCrawlLimitState

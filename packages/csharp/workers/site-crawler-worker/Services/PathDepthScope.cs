@@ -14,6 +14,7 @@ public sealed class PathDepthScope
     private readonly int maxDepth;
     private readonly bool sameOriginOnly;
     private readonly bool pathPrefixLock;
+    private readonly HashSet<string> allowedHostSuffixes;
 
     private PathDepthScope(string origin, string pathPrefix, SiteCrawlScope scope)
     {
@@ -22,6 +23,7 @@ public sealed class PathDepthScope
         maxDepth = scope.MaxDepth;
         sameOriginOnly = scope.SameOriginOnly;
         pathPrefixLock = scope.PathPrefixLock;
+        allowedHostSuffixes = NormalizeHostSuffixes(scope.AllowedHostSuffixes);
     }
 
     public string Origin { get; }
@@ -43,7 +45,9 @@ public sealed class PathDepthScope
     {
         ArgumentNullException.ThrowIfNull(uri);
 
-        if (sameOriginOnly && !string.Equals(NormalizeOrigin(uri), Origin, StringComparison.OrdinalIgnoreCase))
+        if (sameOriginOnly &&
+            !string.Equals(NormalizeOrigin(uri), Origin, StringComparison.OrdinalIgnoreCase) &&
+            !IsAllowedHostSuffix(uri))
         {
             return PathDepthEvaluation.Deny("outside_origin", -1);
         }
@@ -79,6 +83,39 @@ public sealed class PathDepthScope
 
         var origin = $"{uri.Scheme.ToLowerInvariant()}://{host}";
         return uri.IsDefaultPort ? origin : $"{origin}:{uri.Port}";
+    }
+
+    private static HashSet<string> NormalizeHostSuffixes(IEnumerable<string>? suffixes)
+    {
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var suffix in suffixes ?? [])
+        {
+            var value = suffix.Trim().TrimEnd('.').ToLowerInvariant();
+            if (value.StartsWith("*.", StringComparison.Ordinal))
+            {
+                value = value[2..];
+            }
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                normalized.Add(value);
+            }
+        }
+
+        return normalized;
+    }
+
+    private bool IsAllowedHostSuffix(Uri uri)
+    {
+        if (allowedHostSuffixes.Count == 0)
+        {
+            return false;
+        }
+
+        var host = uri.IdnHost.Trim().TrimEnd('.').ToLowerInvariant();
+        return allowedHostSuffixes.Any(suffix =>
+            string.Equals(host, suffix, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizePath(string path)

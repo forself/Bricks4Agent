@@ -49,6 +49,60 @@ public class TemplateCompilerTests
     }
 
     [Fact]
+    public void Compile_UsesHostQualifiedRoutesForSameSiteSubdomains()
+    {
+        var crawl = BuildSameSiteSubdomainCrawl();
+        var manifest = DefaultComponentLibrary.Create();
+        var intent = new SiteIntentExtractor().Extract(crawl);
+        var plan = new TemplateMatcher(new TemplateFrameworkLoader().LoadDefault(), manifest).Match(intent);
+        var compiler = new TemplateCompiler(manifest);
+
+        var document = compiler.Compile(crawl, intent, plan);
+
+        document.Routes.Select(route => route.Path).Should().Equal(
+            "/",
+            "/sites/news.example.edu.tw/",
+            "/sites/admis.example.edu.tw/");
+        document.Routes.Select(route => route.Path).Should().OnlyHaveUniqueItems();
+
+        var linkValues = Flatten(document.Routes[0].Root)
+            .SelectMany(node => node.Props.Values)
+            .SelectMany(ExtractLinkDictionaries)
+            .Where(link => link.TryGetValue("scope", out var scope) && scope == "internal")
+            .Select(link => link["url"])
+            .ToList();
+        linkValues.Should().Contain([
+            "/sites/news.example.edu.tw/",
+            "/sites/admis.example.edu.tw/",
+        ]);
+        new ComponentSchemaValidator().Validate(document).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Compile_MapsRedirectAliasesToCrawledLocalRoutes()
+    {
+        var crawl = BuildRedirectAliasCrawl();
+        var manifest = DefaultComponentLibrary.Create();
+        var intent = new SiteIntentExtractor().Extract(crawl);
+        var plan = new TemplateMatcher(new TemplateFrameworkLoader().LoadDefault(), manifest).Match(intent);
+        var compiler = new TemplateCompiler(manifest);
+
+        var document = compiler.Compile(crawl, intent, plan);
+
+        document.Routes.Select(route => route.Path).Should().Equal("/", "/new");
+        var linkValues = Flatten(document.Routes[0].Root)
+            .SelectMany(node => node.Props.Values)
+            .SelectMany(ExtractLinkDictionaries)
+            .Where(link => link.TryGetValue("scope", out var scope) && scope == "internal")
+            .ToList();
+        linkValues.Should().ContainSingle(link =>
+            link["source_url"] == "https://example.edu/old.aspx" &&
+            link["url"] == "/new");
+        linkValues.Select(link => link["url"]).Should().NotContain("/old");
+        new ComponentSchemaValidator().Validate(document).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
     public void Compile_WhenPreferredComponentFallsBack_RecordsRequestWithoutGeneratedComponents()
     {
         var crawl = BuildVisualCrawl();
@@ -329,6 +383,125 @@ public class TemplateCompilerTests
                     Typography = { ["font_family"] = "Inter, sans-serif" },
                 },
             },
+        };
+    }
+
+    private static SiteCrawlResult BuildSameSiteSubdomainCrawl()
+    {
+        return new SiteCrawlResult
+        {
+            CrawlRunId = "crawl-same-site",
+            Root = new SiteCrawlRoot
+            {
+                StartUrl = "https://www.example.edu.tw/",
+                NormalizedStartUrl = "https://www.example.edu.tw/",
+                Origin = "https://www.example.edu.tw",
+                PathPrefix = "/",
+            },
+            Pages =
+            [
+                new SiteCrawlPage
+                {
+                    FinalUrl = "https://www.example.edu.tw/",
+                    Depth = 0,
+                    StatusCode = 200,
+                    Title = "Example University",
+                    TextExcerpt = "Example University.",
+                    VisualSnapshot = new VisualPageSnapshot
+                    {
+                        Regions =
+                        [
+                            new VisualRegion
+                            {
+                                Id = "header",
+                                Role = "header",
+                                Selector = "header",
+                                Actions =
+                                [
+                                    new ExtractedAction { Label = "News", Url = "https://news.example.edu.tw/" },
+                                    new ExtractedAction { Label = "Admissions", Url = "https://admis.example.edu.tw/" },
+                                ],
+                            },
+                        ],
+                    },
+                },
+                new SiteCrawlPage
+                {
+                    FinalUrl = "https://news.example.edu.tw/",
+                    Depth = 1,
+                    StatusCode = 200,
+                    Title = "News",
+                    TextExcerpt = "News.",
+                },
+                new SiteCrawlPage
+                {
+                    FinalUrl = "https://admis.example.edu.tw/",
+                    Depth = 1,
+                    StatusCode = 200,
+                    Title = "Admissions",
+                    TextExcerpt = "Admissions.",
+                },
+            ],
+        };
+    }
+
+    private static SiteCrawlResult BuildRedirectAliasCrawl()
+    {
+        return new SiteCrawlResult
+        {
+            CrawlRunId = "crawl-redirect",
+            Root = new SiteCrawlRoot
+            {
+                StartUrl = "https://example.edu/",
+                NormalizedStartUrl = "https://example.edu/",
+                Origin = "https://example.edu",
+                PathPrefix = "/",
+            },
+            Pages =
+            [
+                new SiteCrawlPage
+                {
+                    FinalUrl = "https://example.edu/",
+                    Depth = 0,
+                    StatusCode = 200,
+                    Title = "Example University",
+                    TextExcerpt = "Example University.",
+                    VisualSnapshot = new VisualPageSnapshot
+                    {
+                        Regions =
+                        [
+                            new VisualRegion
+                            {
+                                Id = "header",
+                                Role = "header",
+                                Selector = "header",
+                                Actions =
+                                [
+                                    new ExtractedAction { Label = "Old entry", Url = "https://example.edu/old.aspx" },
+                                ],
+                            },
+                        ],
+                    },
+                },
+                new SiteCrawlPage
+                {
+                    Url = "https://example.edu/new.aspx",
+                    FinalUrl = "https://example.edu/new.aspx",
+                    Depth = 1,
+                    StatusCode = 200,
+                    Title = "New",
+                    TextExcerpt = "New page.",
+                },
+            ],
+            Redirects =
+            [
+                new SiteCrawlRedirect
+                {
+                    FromUrl = "https://example.edu/old.aspx",
+                    ToUrl = "https://example.edu/new.aspx",
+                    StatusCode = 302,
+                },
+            ],
         };
     }
 

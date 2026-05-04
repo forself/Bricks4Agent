@@ -21,7 +21,7 @@ public sealed class TemplateCompiler
         ArgumentNullException.ThrowIfNull(plan);
 
         var manifest = CloneManifest(baseManifest);
-        var localRoutes = BuildLocalRouteMap(crawl.Pages);
+        var localRoutes = BuildLocalRouteMap(crawl.Pages, crawl.Redirects, crawl.Root.Origin);
         var document = new GeneratorSiteDocument
         {
             Site = new GeneratorSiteMetadata
@@ -75,7 +75,7 @@ public sealed class TemplateCompiler
         if (pagePlan is null || pagePlan.Slots.Count == 0)
         {
             root.Children.Add(BuildHeaderNode("MegaHeader", document.Site.Title, intent.GlobalHeader, crawl.Root.Origin, localRoutes, page.FinalUrl));
-            AddDefaultContent(root, page);
+            AddDefaultContent(root, page, crawl.Root.Origin);
             root.Children.Add(BuildFooterNode("InstitutionFooter", page.FinalUrl, intent.GlobalFooter, crawl.Root.Origin, localRoutes));
         }
         else
@@ -93,7 +93,7 @@ public sealed class TemplateCompiler
 
         return new GeneratorRoute
         {
-            Path = BuildRoutePath(page.FinalUrl),
+            Path = BuildRoutePath(page.FinalUrl, crawl.Root.Origin),
             Title = pageTitle,
             SourceUrl = page.FinalUrl,
             Root = root,
@@ -209,7 +209,7 @@ public sealed class TemplateCompiler
             Id = slot.SlotName,
             Headline = string.IsNullOrWhiteSpace(page.Title) ? slot.SlotName : page.Title,
             Body = page.TextExcerpt,
-            SourceSelector = $"route:{BuildRoutePath(page.FinalUrl)}",
+            SourceSelector = $"route:{BuildRoutePath(page.FinalUrl, origin)}",
         };
 
         return slot.ComponentType switch
@@ -929,7 +929,7 @@ public sealed class TemplateCompiler
         return string.Equals(field.Type, "hidden", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AddDefaultContent(ComponentNode root, SiteCrawlPage page)
+    private static void AddDefaultContent(ComponentNode root, SiteCrawlPage page, string rootOrigin)
     {
         if (string.IsNullOrWhiteSpace(page.TextExcerpt))
         {
@@ -944,7 +944,7 @@ public sealed class TemplateCompiler
             {
                 ["title"] = page.Title,
                 ["body"] = page.TextExcerpt,
-                ["source_selector"] = $"route:{BuildRoutePath(page.FinalUrl)}",
+                ["source_selector"] = $"route:{BuildRoutePath(page.FinalUrl, rootOrigin)}",
             },
         });
     }
@@ -1477,7 +1477,7 @@ public sealed class TemplateCompiler
             return new Dictionary<string, string>
             {
                 ["label"] = BuildLinkLabel(absolute, origin),
-                ["url"] = BuildRoutePath(absolute),
+                ["url"] = BuildRoutePath(absolute, origin),
                 ["source_url"] = absolute,
                 ["scope"] = "internal",
             };
@@ -1503,19 +1503,63 @@ public sealed class TemplateCompiler
         };
     }
 
-    private static Dictionary<string, string> BuildLocalRouteMap(IEnumerable<SiteCrawlPage> pages)
+    private static Dictionary<string, string> BuildLocalRouteMap(
+        IEnumerable<SiteCrawlPage> pages,
+        IEnumerable<SiteCrawlRedirect> redirects,
+        string rootOrigin)
     {
         var routes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var page in pages)
         {
-            var key = NormalizeUrlForLookup(page.FinalUrl);
-            if (!string.IsNullOrWhiteSpace(key) && !routes.ContainsKey(key))
+            var routePath = BuildRoutePath(page.FinalUrl, rootOrigin);
+            AddRouteLookupWithAlternateScheme(routes, page.FinalUrl, routePath);
+            AddRouteLookupWithAlternateScheme(routes, page.Url, routePath);
+        }
+
+        foreach (var redirect in redirects)
+        {
+            var targetKey = NormalizeUrlForLookup(redirect.ToUrl);
+            if (string.IsNullOrWhiteSpace(targetKey) ||
+                !routes.TryGetValue(targetKey, out var routePath))
             {
-                routes[key] = BuildRoutePath(page.FinalUrl);
+                continue;
             }
+
+            AddRouteLookupWithAlternateScheme(routes, redirect.FromUrl, routePath);
         }
 
         return routes;
+    }
+
+    private static void AddRouteLookupWithAlternateScheme(
+        IDictionary<string, string> routes,
+        string absoluteUrl,
+        string routePath)
+    {
+        AddRouteLookup(routes, absoluteUrl, routePath);
+        if (!Uri.TryCreate(absoluteUrl, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        var alternateScheme = uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttp
+            : Uri.UriSchemeHttps;
+        var alternate = new UriBuilder(uri)
+        {
+            Scheme = alternateScheme,
+            Port = -1,
+        }.Uri.ToString();
+        AddRouteLookup(routes, alternate, routePath);
+    }
+
+    private static void AddRouteLookup(IDictionary<string, string> routes, string absoluteUrl, string routePath)
+    {
+        var key = NormalizeUrlForLookup(absoluteUrl);
+        if (!string.IsNullOrWhiteSpace(key) && !routes.ContainsKey(key))
+        {
+            routes[key] = routePath;
+        }
     }
 
     private static string NormalizeAbsoluteUrl(string link, string origin)
@@ -1588,7 +1632,7 @@ public sealed class TemplateCompiler
             : crawl.Root.NormalizedStartUrl;
     }
 
-    private static string BuildRoutePath(string finalUrl)
+    private static string BuildRoutePath(string finalUrl, string rootOrigin)
     {
         if (!Uri.TryCreate(finalUrl, UriKind.Absolute, out var uri))
         {
@@ -1599,28 +1643,57 @@ public sealed class TemplateCompiler
         if (string.IsNullOrWhiteSpace(path) || path == "/")
         {
             var rootQuerySlug = BuildQuerySlug(uri.Query);
-            return string.IsNullOrWhiteSpace(rootQuerySlug) ? "/" : $"/{rootQuerySlug}";
+            path = string.IsNullOrWhiteSpace(rootQuerySlug) ? "/" : $"/{rootQuerySlug}";
         }
-
-        var extension = Path.GetExtension(path);
-        if (extension.Equals(".aspx", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".php", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
+        else
         {
-            path = path[..^extension.Length];
+            var extension = Path.GetExtension(path);
+            if (extension.Equals(".aspx", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".php", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".htm", StringComparison.OrdinalIgnoreCase))
+            {
+                path = path[..^extension.Length];
+            }
+
+            path = path.TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = "/";
+            }
+
+            var querySlug = BuildQuerySlug(uri.Query);
+            if (!string.IsNullOrWhiteSpace(querySlug))
+            {
+                path = $"{path}/{querySlug}";
+            }
         }
 
-        path = path.TrimEnd('/');
-        if (string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(rootOrigin) ||
+            string.Equals(NormalizeOrigin(uri), rootOrigin, StringComparison.OrdinalIgnoreCase))
         {
-            path = "/";
+            return path;
         }
 
-        var querySlug = BuildQuerySlug(uri.Query);
-        return string.IsNullOrWhiteSpace(querySlug)
-            ? path
-            : $"{path}/{querySlug}";
+        return "/sites/" + BuildHostRouteSegment(uri) + (path == "/" ? "/" : path);
+    }
+
+    private static string NormalizeOrigin(Uri uri)
+    {
+        var host = uri.IdnHost.ToLowerInvariant();
+        if (uri.HostNameType == UriHostNameType.IPv6 && !host.StartsWith("[", StringComparison.Ordinal))
+        {
+            host = $"[{host.Trim('[', ']')}]";
+        }
+
+        var origin = $"{uri.Scheme.ToLowerInvariant()}://{host}";
+        return uri.IsDefaultPort ? origin : $"{origin}:{uri.Port}";
+    }
+
+    private static string BuildHostRouteSegment(Uri uri)
+    {
+        var host = uri.IdnHost.Trim().TrimEnd('.').ToLowerInvariant();
+        return uri.IsDefaultPort ? host : $"{host}-{uri.Port}";
     }
 
     private static string BuildQuerySlug(string query)

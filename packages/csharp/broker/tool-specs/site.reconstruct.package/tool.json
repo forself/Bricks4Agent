@@ -11,7 +11,7 @@
     "resource_type": "website_package",
     "risk_level": "medium",
     "approval_policy": "require_approval",
-    "ttl_seconds": 1200,
+    "ttl_seconds": 3600,
     "audit_level": "full",
     "quota": { "max_calls": 5, "per_window_seconds": 3600 }
   },
@@ -32,7 +32,12 @@
           "kind": { "type": "string", "enum": ["path_depth", "link_depth"] },
           "max_depth": { "type": "integer", "minimum": 0 },
           "same_origin_only": { "type": "boolean" },
-          "path_prefix_lock": { "type": "boolean" }
+          "path_prefix_lock": { "type": "boolean" },
+          "allowed_host_suffixes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional public host suffix allow-list for same-site reconstruction, for example ntub.edu.tw to include www.ntub.edu.tw, sec.ntub.edu.tw, and other public subdomains."
+          }
         },
         "required": ["max_depth"]
       },
@@ -93,7 +98,8 @@
     "default_scope": {
       "kind": "link_depth",
       "same_origin_only": true,
-      "path_prefix_lock": true
+      "path_prefix_lock": false,
+      "allowed_host_suffixes": []
     },
     "requires_user_depth_confirmation": true,
     "visual_cues_primary": true,

@@ -18,15 +18,17 @@ Before execution, the user must confirm the crawl depth as one of:
 - within two link hops: `max_depth = 2`
 - N link hops: `max_depth = N`
 
-Root/current path only, `max_depth = 0`, is supported only as an explicit manual/safety mode when requested.
+Root/current page only, `max_depth = 0`, is supported only as an explicit manual/safety mode when requested.
 
-The scope is link-depth based. URL path depth is not used as the website layer definition. The default safety posture is same-origin only with path-prefix lock enabled.
+The scope is link-depth based. URL path depth is not used as the website layer definition. Link-depth crawls are breadth-first: lower layers must be completed before deeper layers when any safety budget is reached.
+
+For institutional or multi-subdomain sites, callers may include public same-site subdomains with `scope.allowed_host_suffixes`, for example `["ntub.edu.tw"]`. This keeps public HTTP/HTTPS and private-network safety checks while allowing `www.ntub.edu.tw`, `sec.ntub.edu.tw`, and similar subdomains to be crawled as one site. Do not use this to widen to unrelated domains.
 
 ## Safety Rules
 
 - Public HTTP/HTTPS URLs only.
 - No authenticated access, delegated credentials, cookies, private sessions, localhost, loopback, link-local, or private-network targets.
-- Do not widen from the confirmed same-origin/path-prefix scope during execution.
+- Do not widen from the confirmed same-origin or allowed same-site host-suffix scope during execution.
 - Budgets are safety limits, not substitutes for user-confirmed path depth.
 
 ## Output Contract

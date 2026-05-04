@@ -161,7 +161,7 @@ public class SiteCrawlerServiceTests
     }
 
     [Fact]
-    public async Task CrawlAsync_WithLinkDepthAndPageBudget_StillSamplesDeeperHops()
+    public async Task CrawlAsync_WithLinkDepthAndPageBudget_CompletesLowerLayersBeforeDeeperHops()
     {
         var pages = new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
         {
@@ -232,8 +232,164 @@ public class SiteCrawlerServiceTests
         result.Pages.Select(page => (page.FinalUrl, page.Depth)).Should().Equal(
             ("https://example.com/", 0),
             ("https://example.com/branch.aspx", 1),
-            ("https://example.com/child.aspx", 2),
-            ("https://example.com/grandchild.aspx", 3));
+            ("https://example.com/shallow-1.aspx", 1),
+            ("https://example.com/shallow-2.aspx", 1));
+        result.Pages.Should().NotContain(page => page.Depth > 1);
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WithAllowedHostSuffix_CrawlsSubdomainLinksWithinLinkDepth()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://www.example.edu.tw/"] = PageFetchResult.Ok(
+                new Uri("https://www.example.edu.tw/"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Root</title></head><body><main>
+                  <a href="https://news.example.edu.tw/">News</a>
+                  <a href="https://outside.example.com/">Outside</a>
+                </main></body></html>
+                """),
+            ["https://news.example.edu.tw/"] = PageFetchResult.Ok(
+                new Uri("https://news.example.edu.tw/"),
+                200,
+                "text/html",
+                "<html><head><title>News</title></head><body><main><h1>News</h1></main></body></html>"),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://www.example.edu.tw/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = false,
+                AllowedHostSuffixes = ["example.edu.tw"],
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => (page.FinalUrl, page.Depth)).Should().Equal(
+            ("https://www.example.edu.tw/", 0),
+            ("https://news.example.edu.tw/", 1));
+        result.ExtractedModel.RouteGraph.Routes.Select(route => route.Path).Should().Equal(
+            "/",
+            "/sites/news.example.edu.tw/");
+        result.Excluded.Should().NotContain(excluded =>
+            excluded.Url == "https://news.example.edu.tw/" &&
+            excluded.Reason == "outside_origin");
+        result.Excluded.Should().Contain(excluded =>
+            excluded.Url == "https://outside.example.com/" &&
+            excluded.Reason == "outside_origin");
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WithLinkDepth_DoesNotReportAlreadySeenShallowUrlsAsOutsideDepth()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                """
+                <html><head><title>Root</title></head><body><main>
+                  <a href="/a">A</a>
+                  <a href="/deep-1">Deep 1</a>
+                </main></body></html>
+                """),
+            ["https://example.com/a"] = PageFetchResult.Ok(
+                new Uri("https://example.com/a"),
+                200,
+                "text/html",
+                "<html><head><title>A</title></head><body><main><h1>A</h1></main></body></html>"),
+            ["https://example.com/deep-1"] = PageFetchResult.Ok(
+                new Uri("https://example.com/deep-1"),
+                200,
+                "text/html",
+                "<html><head><title>D1</title></head><body><main><a href=\"/deep-2\">Deep 2</a></main></body></html>"),
+            ["https://example.com/deep-2"] = PageFetchResult.Ok(
+                new Uri("https://example.com/deep-2"),
+                200,
+                "text/html",
+                "<html><head><title>D2</title></head><body><main><a href=\"/deep-3\">Deep 3</a></main></body></html>"),
+            ["https://example.com/deep-3"] = PageFetchResult.Ok(
+                new Uri("https://example.com/deep-3"),
+                200,
+                "text/html",
+                "<html><head><title>D3</title></head><body><main><a href=\"/a\">A again</a></main></body></html>"),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 3,
+                SameOriginOnly = true,
+                PathPrefixLock = false,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Should().Contain(page => page.FinalUrl == "https://example.com/a" && page.Depth == 1);
+        result.Excluded.Should().NotContain(excluded =>
+            excluded.Url == "https://example.com/a" &&
+            excluded.Reason == "outside_link_depth");
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WhenLinkRedirectsToCrawledPage_RecordsRedirectAlias()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                "<html><head><title>Root</title></head><body><main><a href=\"/old\">Old</a></main></body></html>"),
+            ["https://example.com/old"] = PageFetchResult.Redirect(
+                new Uri("https://example.com/old"),
+                new Uri("https://example.com/old"),
+                302,
+                new Uri("https://example.com/new")),
+            ["https://example.com/new"] = PageFetchResult.Ok(
+                new Uri("https://example.com/new"),
+                200,
+                "text/html",
+                "<html><head><title>New</title></head><body><main><h1>New</h1></main></body></html>"),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor());
+
+        var result = await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Scope = new SiteCrawlScope
+            {
+                Kind = "link_depth",
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = false,
+            },
+            Budgets = new SiteCrawlBudgets { MaxPages = 10 },
+        }, CancellationToken.None);
+
+        result.Pages.Select(page => page.FinalUrl).Should().Equal(
+            "https://example.com/",
+            "https://example.com/new");
+        result.Redirects.Should().ContainSingle(redirect =>
+            redirect.FromUrl == "https://example.com/old" &&
+            redirect.ToUrl == "https://example.com/new");
+        result.ExtractedModel.RouteGraph.Edges.Should().ContainSingle(edge =>
+            edge.From == "/" &&
+            edge.To == "/new");
     }
 
     [Fact]
@@ -378,6 +534,41 @@ public class SiteCrawlerServiceTests
             "https://example.com/two");
         renderer.RequestedUrls.Should().Equal("https://example.com/");
         result.Pages.Count(page => page.VisualSnapshot is not null).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CrawlAsync_WhenVisualRendererRuns_UsesWallClockBoundedCancellationToken()
+    {
+        var fetcher = new FakePageFetcher(new Dictionary<string, PageFetchResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = PageFetchResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "text/html",
+                "<html><head><title>Root</title></head><body><main><h1>Root</h1></main></body></html>"),
+        });
+        var renderer = new FakeVisualPageRenderer(new Dictionary<string, VisualPageRenderResult>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = VisualPageRenderResult.Ok(
+                new Uri("https://example.com/"),
+                200,
+                "<html><head><title>Rendered</title></head><body><main><h1>Rendered</h1></main></body></html>",
+                new VisualPageSnapshot()),
+        });
+        var service = new SiteCrawlerService(fetcher, new DeterministicSiteExtractor(), renderer);
+
+        await service.CrawlAsync(new SiteCrawlRequest
+        {
+            StartUrl = "https://example.com/",
+            Capture = new SiteCrawlCaptureOptions { RenderedDom = true },
+            Budgets = new SiteCrawlBudgets
+            {
+                MaxPages = 1,
+                WallClockTimeoutSeconds = 30,
+            },
+        }, CancellationToken.None);
+
+        renderer.CaptureTokenCanBeCanceled.Should().ContainSingle().Which.Should().BeTrue();
     }
 
     [Fact]
@@ -959,9 +1150,12 @@ public class SiteCrawlerServiceTests
 
         public List<string> RequestedUrls { get; } = new();
 
+        public List<bool> CaptureTokenCanBeCanceled { get; } = new();
+
         public Task<VisualPageRenderResult> CaptureAsync(Uri uri, CancellationToken ct)
         {
             RequestedUrls.Add(uri.ToString());
+            CaptureTokenCanBeCanceled.Add(ct.CanBeCanceled);
             return Task.FromResult(pages.TryGetValue(uri.ToString(), out var result)
                 ? result
                 : VisualPageRenderResult.Fail(uri, "not_rendered"));

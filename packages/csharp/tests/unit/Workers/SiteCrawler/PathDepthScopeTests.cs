@@ -129,6 +129,45 @@ public class PathDepthScopeTests
     }
 
     [Fact]
+    public void Evaluate_WithAllowedHostSuffix_AllowsPublicSameSiteSubdomain()
+    {
+        var scope = PathDepthScope.Create(
+            new Uri("https://www.example.edu.tw/"),
+            new SiteCrawlScope
+            {
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = false,
+                AllowedHostSuffixes = ["example.edu.tw"],
+            });
+
+        var result = scope.Evaluate(new Uri("https://news.example.edu.tw/latest"));
+
+        result.IsAllowed.Should().BeTrue();
+        result.Depth.Should().Be(1);
+        result.Reason.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Evaluate_WithAllowedHostSuffix_StillRejectsUnrelatedDomain()
+    {
+        var scope = PathDepthScope.Create(
+            new Uri("https://www.example.edu.tw/"),
+            new SiteCrawlScope
+            {
+                MaxDepth = 1,
+                SameOriginOnly = true,
+                PathPrefixLock = false,
+                AllowedHostSuffixes = ["example.edu.tw"],
+            });
+
+        var result = scope.Evaluate(new Uri("https://example.edu.tw.evil.test/latest"));
+
+        result.IsAllowed.Should().BeFalse();
+        result.Reason.Should().Be("outside_origin");
+    }
+
+    [Fact]
     public void Evaluate_WhenPathPrefixLockFalse_EvaluatesOutsidePrefixByDepth()
     {
         var scope = PathDepthScope.Create(

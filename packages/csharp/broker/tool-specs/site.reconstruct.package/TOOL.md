@@ -20,6 +20,12 @@ Before execution, the user must confirm crawl depth as link depth:
 
 Root/current page only, `max_depth = 0`, is supported as an explicit diagnostic/manual mode.
 
+The crawl is breadth-first for `link_depth`: lower layers must be completed before deeper layers when any safety budget is reached. URL path depth is not used as the website layer definition.
+
+For institutional or multi-subdomain sites, callers may include public same-site subdomains with `scope.allowed_host_suffixes`, for example `["ntub.edu.tw"]`. This keeps public HTTP/HTTPS and private-network safety checks while allowing `www.ntub.edu.tw`, `sec.ntub.edu.tw`, and similar subdomains to be reconstructed as one site. Do not use this to widen to unrelated domains.
+
+Rendered visual snapshots may be bounded for performance, but this bound must not be used as the page/route crawl limit.
+
 ## Flow
 
 1. Crawl only the confirmed public HTTP/HTTPS scope.

@@ -25,7 +25,7 @@ public sealed class HighLevelSiteRebuildService
 {
     private const int DefaultMaxDepth = 1;
     private const int SiteRebuildMaxPages = int.MaxValue;
-    private const int DefaultTimeoutSeconds = 600;
+    private const int DefaultTimeoutSeconds = 1800;
     private static readonly Regex UrlPattern = new(@"https?://[^\s#]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex DepthPattern = new(@"(?:深度|depth)\s*[:：]?\s*(\d+)|(\d+)\s*層", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -189,6 +189,7 @@ public sealed class HighLevelSiteRebuildService
     private async Task<SiteCrawlResult> CrawlAsync(string sourceUrl, int maxDepth, CancellationToken cancellationToken)
     {
         var visualRenderer = visualRendererFactory?.Invoke();
+        var hostSuffix = TryBuildSiteHostSuffix(sourceUrl);
         try
         {
             var crawler = new SiteCrawlerService(pageFetcher, new DeterministicSiteExtractor(), visualRenderer, null);
@@ -201,13 +202,14 @@ public sealed class HighLevelSiteRebuildService
                     Kind = "link_depth",
                     MaxDepth = maxDepth,
                     SameOriginOnly = true,
-                    PathPrefixLock = true,
+                    PathPrefixLock = false,
+                    AllowedHostSuffixes = hostSuffix is null ? [] : [hostSuffix],
                 },
                 Capture = new SiteCrawlCaptureOptions
                 {
                     Html = false,
                     RenderedDom = true,
-                    RenderedDomMaxPages = 32,
+                    RenderedDomMaxPages = 128,
                     Css = false,
                     Scripts = false,
                     Assets = false,
@@ -229,6 +231,34 @@ public sealed class HighLevelSiteRebuildService
                 await visualRenderer.DisposeAsync();
             }
         }
+    }
+
+    private static string? TryBuildSiteHostSuffix(string sourceUrl)
+    {
+        if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri))
+            return null;
+
+        var labels = uri.IdnHost
+            .Trim()
+            .TrimEnd('.')
+            .ToLowerInvariant()
+            .Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (labels.Length < 2 || labels.Any(label => label.Length == 0))
+            return null;
+
+        if (labels.Length >= 3 &&
+            labels[^1].Length == 2 &&
+            IsCommonSecondLevelPublicSuffix(labels[^2]))
+        {
+            return string.Join('.', labels[^3], labels[^2], labels[^1]);
+        }
+
+        return string.Join('.', labels[^2], labels[^1]);
+    }
+
+    private static bool IsCommonSecondLevelPublicSuffix(string label)
+    {
+        return label is "com" or "edu" or "gov" or "org" or "net" or "mil" or "ac" or "co";
     }
 
     private static IVisualPageRenderer CreateDefaultVisualRenderer()

@@ -99,6 +99,7 @@ public sealed class SiteCrawlerService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var crawled = new HashSet<string>(StringComparer.Ordinal);
         var excluded = new HashSet<string>(StringComparer.Ordinal);
+        var redirects = new HashSet<string>(StringComparer.Ordinal);
         var visualCaptureCount = 0;
         long totalBytes = 0;
 
@@ -122,7 +123,7 @@ public sealed class SiteCrawlerService
                 break;
             }
 
-            var current = DequeueNext(pending, useLinkDepth);
+            var current = DequeueNext(pending);
             if (crawled.Contains(BuildCrawlKey(current.Uri)))
             {
                 continue;
@@ -172,6 +173,7 @@ public sealed class SiteCrawlerService
 
                 if (fetch.RedirectUri is not null)
                 {
+                    AddRedirect(result, redirects, current.Uri, fetch.RedirectUri, fetch.StatusCode);
                     EnqueueCandidate(
                         fetch.RedirectUri,
                         current.Depth,
@@ -212,7 +214,19 @@ public sealed class SiteCrawlerService
             if (visualRenderer is not null &&
                 ShouldCaptureRenderedDom(captureOptions, visualCaptureCount))
             {
-                var visualResult = await visualRenderer.CaptureAsync(finalValidation.Uri, ct);
+                VisualPageRenderResult visualResult;
+                try
+                {
+                    using var visualCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    visualCts.CancelAfter(GetRemainingWallClock(stopwatch, budgets.WallClockTimeoutSeconds));
+                    visualResult = await visualRenderer.CaptureAsync(finalValidation.Uri, visualCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    result.Limits.Truncated = true;
+                    break;
+                }
+
                 if (visualResult.Success)
                 {
                     visualCaptureCount++;
@@ -370,26 +384,14 @@ public sealed class SiteCrawlerService
             MaxDepth = int.MaxValue,
             SameOriginOnly = scope.SameOriginOnly,
             PathPrefixLock = scope.PathPrefixLock,
+            AllowedHostSuffixes = [.. scope.AllowedHostSuffixes],
         };
     }
 
-    private static CrawlQueueItem DequeueNext(List<CrawlQueueItem> pending, bool useLinkDepth)
+    private static CrawlQueueItem DequeueNext(List<CrawlQueueItem> pending)
     {
-        var selectedIndex = 0;
-        if (useLinkDepth)
-        {
-            // Site reconstruction needs vertical samples; wide top-level menus should not consume the whole page budget.
-            for (var index = 1; index < pending.Count; index++)
-            {
-                if (pending[index].Depth > pending[selectedIndex].Depth)
-                {
-                    selectedIndex = index;
-                }
-            }
-        }
-
-        var selected = pending[selectedIndex];
-        pending.RemoveAt(selectedIndex);
+        var selected = pending[0];
+        pending.RemoveAt(0);
         return selected;
     }
 
@@ -411,6 +413,12 @@ public sealed class SiteCrawlerService
             return;
         }
 
+        var candidateKey = BuildCrawlKey(candidateValidation.Uri);
+        if (seen.Contains(candidateKey))
+        {
+            return;
+        }
+
         var candidateScope = scope.Evaluate(candidateValidation.Uri);
         if (!candidateScope.IsAllowed)
         {
@@ -424,28 +432,28 @@ public sealed class SiteCrawlerService
             return;
         }
 
-        var candidateKey = BuildCrawlKey(candidateValidation.Uri);
-        if (seen.Add(candidateKey))
-        {
-            pending.Add(new CrawlQueueItem(
-                candidateValidation.Uri,
-                useLinkDepth ? candidateDepth : candidateScope.Depth));
-        }
+        seen.Add(candidateKey);
+        pending.Add(new CrawlQueueItem(
+            candidateValidation.Uri,
+            useLinkDepth ? candidateDepth : candidateScope.Depth));
     }
 
     private static void PopulateRouteGraph(SiteCrawlResult result, PathDepthScope scope)
     {
         var routePaths = new HashSet<string>(StringComparer.Ordinal);
         var pageRoutePaths = new Dictionary<string, string>(StringComparer.Ordinal);
+        var knownUrlRoutePaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         for (var index = 0; index < result.Pages.Count; index++)
         {
             var page = result.Pages[index];
             var finalUri = new Uri(page.FinalUrl);
-            var routePath = BuildRoutePath(finalUri);
+            var routePath = BuildRoutePath(finalUri, scope.Origin);
             var pageId = $"page-{index + 1}";
             routePaths.Add(routePath);
             pageRoutePaths[page.FinalUrl] = routePath;
+            AddKnownRoute(knownUrlRoutePaths, page.FinalUrl, routePath);
+            AddKnownRoute(knownUrlRoutePaths, page.Url, routePath);
             result.ExtractedModel.RouteGraph.Routes.Add(new ExtractedRoute
             {
                 Path = routePath,
@@ -453,6 +461,16 @@ public sealed class SiteCrawlerService
                 Depth = page.Depth,
                 Title = page.Title,
             });
+        }
+
+        foreach (var redirect in result.Redirects)
+        {
+            var targetKey = NormalizeKnownRouteKey(redirect.ToUrl);
+            if (!string.IsNullOrWhiteSpace(targetKey) &&
+                knownUrlRoutePaths.TryGetValue(targetKey, out var routePath))
+            {
+                AddKnownRoute(knownUrlRoutePaths, redirect.FromUrl, routePath);
+            }
         }
 
         var edgeKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -473,7 +491,11 @@ public sealed class SiteCrawlerService
                     continue;
                 }
 
-                var to = BuildRoutePath(linkValidation.Uri);
+                var linkKey = NormalizeKnownRouteKey(linkValidation.Uri.ToString());
+                var to = !string.IsNullOrWhiteSpace(linkKey) &&
+                    knownUrlRoutePaths.TryGetValue(linkKey, out var knownRoutePath)
+                    ? knownRoutePath
+                    : BuildRoutePath(linkValidation.Uri, scope.Origin);
                 if (!routePaths.Contains(to))
                 {
                     continue;
@@ -491,6 +513,22 @@ public sealed class SiteCrawlerService
                 }
             }
         }
+    }
+
+    private static void AddKnownRoute(IDictionary<string, string> knownRoutes, string url, string routePath)
+    {
+        var key = NormalizeKnownRouteKey(url);
+        if (!string.IsNullOrWhiteSpace(key) && !knownRoutes.ContainsKey(key))
+        {
+            knownRoutes[key] = routePath;
+        }
+    }
+
+    private static string NormalizeKnownRouteKey(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? RemoveFragment(uri).ToString()
+            : string.Empty;
     }
 
     private static void MergeThemeTokens(ExtractedThemeTokens target, ExtractedThemeTokens source)
@@ -523,14 +561,64 @@ public sealed class SiteCrawlerService
         }
     }
 
+    private static void AddRedirect(
+        SiteCrawlResult result,
+        ISet<string> seen,
+        Uri fromUri,
+        Uri toUri,
+        int statusCode)
+    {
+        var fromUrl = NormalizeRedirectUrl(fromUri);
+        var toUrl = NormalizeRedirectUrl(toUri);
+        var key = $"{fromUrl}\n{toUrl}";
+        if (seen.Add(key))
+        {
+            result.Redirects.Add(new SiteCrawlRedirect
+            {
+                FromUrl = fromUrl,
+                ToUrl = toUrl,
+                StatusCode = statusCode,
+            });
+        }
+    }
+
+    private static string NormalizeRedirectUrl(Uri uri)
+    {
+        return uri.IsAbsoluteUri ? RemoveFragment(uri).ToString() : uri.ToString();
+    }
+
     private static string BuildCrawlKey(Uri uri)
     {
         return RemoveFragment(uri).ToString();
     }
 
-    private static string BuildRoutePath(Uri uri)
+    private static string BuildRoutePath(Uri uri, string rootOrigin)
     {
-        return string.IsNullOrEmpty(uri.PathAndQuery) ? "/" : uri.PathAndQuery;
+        var path = string.IsNullOrEmpty(uri.PathAndQuery) ? "/" : uri.PathAndQuery;
+        if (string.Equals(NormalizeOrigin(uri), rootOrigin, StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        return "/sites/" + BuildHostRouteSegment(uri) + (path == "/" ? "/" : path);
+    }
+
+    private static string NormalizeOrigin(Uri uri)
+    {
+        var host = uri.IdnHost.ToLowerInvariant();
+        if (uri.HostNameType == UriHostNameType.IPv6 && !host.StartsWith("[", StringComparison.Ordinal))
+        {
+            host = $"[{host.Trim('[', ']')}]";
+        }
+
+        var origin = $"{uri.Scheme.ToLowerInvariant()}://{host}";
+        return uri.IsDefaultPort ? origin : $"{origin}:{uri.Port}";
+    }
+
+    private static string BuildHostRouteSegment(Uri uri)
+    {
+        var host = uri.IdnHost.Trim().TrimEnd('.').ToLowerInvariant();
+        return uri.IsDefaultPort ? host : $"{host}-{uri.Port}";
     }
 
     private static Uri RemoveFragment(Uri uri)
