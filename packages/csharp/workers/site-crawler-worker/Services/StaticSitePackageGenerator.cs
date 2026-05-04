@@ -484,6 +484,10 @@ public sealed class StaticSitePackageGenerator
           currentRoute = resolveRoute(site.routes);
           renderCurrentRoute();
         });
+        window.addEventListener('hashchange', () => {
+          currentRoute = resolveRoute(site.routes);
+          renderCurrentRoute();
+        });
 
         function renderCurrentRoute() {
           try {
@@ -497,8 +501,18 @@ public sealed class StaticSitePackageGenerator
         }
 
         function resolveRoute(routes) {
-          const path = window.location.pathname || '/';
+          const path = routePathFromLocation(routes);
           return routes.find(route => route.path === path) || routes[0];
+        }
+
+        function routePathFromLocation(routes) {
+          const hash = window.location.hash || '';
+          if (hash.startsWith('#/')) {
+            return normalizeInternalRoute(hash.slice(1));
+          }
+
+          const path = normalizeInternalRoute(window.location.pathname || '/');
+          return (routes || []).some(route => route.path === path) ? path : '/';
         }
 
         function navigateToRoute(path) {
@@ -506,8 +520,9 @@ public sealed class StaticSitePackageGenerator
           if (!nextRoute) return false;
 
           currentRoute = nextRoute;
-          if (window.location.pathname !== path) {
-            history.pushState({ path }, '', path);
+          const nextHref = toStaticHref(path);
+          if (window.location.hash !== nextHref) {
+            history.pushState({ path }, '', nextHref);
           }
           renderCurrentRoute();
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -593,7 +608,7 @@ public sealed class StaticSitePackageGenerator
           const header = element('header', 'site-header');
           const inner = element('div', 'site-header-inner');
           const brand = element('a', 'brand', node.props?.title || 'Generated Site');
-          brand.href = './';
+          brand.href = toStaticHref('/');
           brand.setAttribute('data-local-route', '/');
           brand.addEventListener('click', event => {
             event.preventDefault();
@@ -619,7 +634,7 @@ public sealed class StaticSitePackageGenerator
           const header = element('header', 'site-header mega-header');
           const inner = element('div', 'site-header-inner');
           const brand = element('a', 'brand', node.props?.title || 'Generated Site');
-          brand.href = './';
+          brand.href = toStaticHref('/');
           brand.setAttribute('data-local-route', '/');
           brand.addEventListener('click', event => {
             event.preventDefault();
@@ -1316,9 +1331,10 @@ public sealed class StaticSitePackageGenerator
           }
 
           if (link.scope === 'external' || /^https?:\/\//i.test(originalUrl)) {
-            anchor.href = '#';
+            anchor.removeAttribute('href');
             anchor.dataset.sourceUrl = sourceUrl;
             anchor.setAttribute('aria-disabled', 'true');
+            anchor.setAttribute('tabindex', '-1');
             anchor.addEventListener('click', event => event.preventDefault());
             return;
           }

@@ -80,6 +80,8 @@ public class StaticSitePackageGeneratorTests : IDisposable
         runtime.Should().Contain("fetch('./site.json')");
         runtime.Should().Contain("componentRenderers");
         runtime.Should().Contain("navigateToRoute");
+        runtime.Should().Contain("routePathFromLocation");
+        runtime.Should().Contain("window.location.hash");
         runtime.Should().Contain("data-local-route");
         runtime.Should().Contain("renderAtomicSection");
         runtime.Should().Contain("renderFeatureCard");
@@ -336,9 +338,10 @@ public class StaticSitePackageGeneratorTests : IDisposable
         var runtime = File.ReadAllText(Path.Combine(result.OutputDirectory, "runtime.js"));
         runtime.Should().Contain("sourceRouteMap");
         runtime.Should().Contain("link.scope === 'external'");
-        runtime.Should().Contain("anchor.href = '#';");
+        runtime.Should().Contain("anchor.removeAttribute('href');");
         runtime.Should().Contain("anchor.dataset.sourceUrl");
         runtime.Should().NotContain("source.href = node.props.source_url;");
+        runtime.Should().NotContain("anchor.href = '#';");
     }
 
     [Fact]
