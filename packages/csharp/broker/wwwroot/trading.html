@@ -153,6 +153,28 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .chart-legend span { display:inline-flex; align-items:center; gap:5px; }
 .chart-legend i { display:inline-block; width:14px; height:2px; vertical-align:middle; }
 
+/* Risk:Reward 視覺化 */
+.rr-panel { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin-top:8px; font-size:11px; }
+.rr-panel.tier-good { border-left:3px solid var(--green); }
+.rr-panel.tier-ok   { border-left:3px solid #f0b90b; }
+.rr-panel.tier-bad  { border-left:3px solid var(--red); }
+.rr-panel .rr-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px; }
+.rr-panel .rr-ratio { font-size:22px; font-weight:800; }
+.rr-panel.tier-good .rr-ratio { color:var(--green); }
+.rr-panel.tier-ok   .rr-ratio { color:#f0b90b; }
+.rr-panel.tier-bad  .rr-ratio { color:var(--red); }
+.rr-panel .rr-tag { font-size:10px; padding:2px 7px; border-radius:2px; font-weight:600; text-transform:uppercase; }
+.rr-panel.tier-good .rr-tag { background:rgba(14,203,129,0.18); color:var(--green); }
+.rr-panel.tier-ok   .rr-tag { background:rgba(240,185,11,0.18); color:#f0b90b; }
+.rr-panel.tier-bad  .rr-tag { background:rgba(246,70,93,0.18); color:var(--red); }
+.rr-bar { display:flex; height:16px; border-radius:3px; overflow:hidden; background:var(--bg3); margin:4px 0; }
+.rr-bar .risk   { background:rgba(246,70,93,0.7);  display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; font-weight:700; }
+.rr-bar .reward { background:rgba(14,203,129,0.7); display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; font-weight:700; }
+.rr-meta { display:flex; gap:14px; color:var(--text2); }
+.rr-meta strong { color:var(--text); }
+.rr-warn { color:#f0b90b; font-size:10px; margin-top:4px; }
+.rr-err  { color:var(--red);   font-size:10px; margin-top:4px; }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -308,14 +330,15 @@ tr:hover { background:rgba(240,185,11,0.02); }
       </div>
     </div>
     <div class="order-form">
-      <div class="form-row"><div class="fg sym-picker" style="flex:1"><label>Symbol</label><input id="ord-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'ord')" oninput="filterSymPicker(this,'ord')"><div class="sym-dropdown" id="ord-sym-dropdown"></div></div>
+      <div class="form-row"><div class="fg sym-picker" style="flex:1"><label>Symbol</label><input id="ord-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'ord')" oninput="filterSymPicker(this,'ord');updateRRPanel()"><div class="sym-dropdown" id="ord-sym-dropdown"></div></div>
         <div class="fg"><label>Exchange</label><select id="ord-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
       <div class="form-row"><div class="fg" style="flex:1"><label>類型</label><select id="ord-type"><option value="market">Market</option><option value="limit">Limit</option></select></div>
-        <div class="fg" style="flex:1"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any"></div></div>
-      <div class="form-row"><div class="fg" style="flex:1"><label>限價（Limit 單）</label><input id="ord-limit" type="number" step="any" placeholder="—"></div>
+        <div class="fg" style="flex:1"><label>數量</label><input id="ord-qty" type="number" value="1" min="0.001" step="any" oninput="updateRRPanel()"></div></div>
+      <div class="form-row"><div class="fg" style="flex:1"><label>限價（Limit 單）</label><input id="ord-limit" type="number" step="any" placeholder="—" oninput="updateRRPanel()"></div>
         <div class="fg"><label>&nbsp;</label><button class="btn btn-o btn-sm" onclick="riskCheckBeforeOrder()">風控預檢</button></div></div>
-      <div class="form-row"><div class="fg" style="flex:1"><label>止盈 TP</label><input id="ord-tp" type="number" step="any" placeholder="—"></div>
-        <div class="fg" style="flex:1"><label>止損 SL</label><input id="ord-sl" type="number" step="any" placeholder="—"></div></div>
+      <div class="form-row"><div class="fg" style="flex:1"><label>止盈 TP</label><input id="ord-tp" type="number" step="any" placeholder="—" oninput="updateRRPanel()"></div>
+        <div class="fg" style="flex:1"><label>止損 SL</label><input id="ord-sl" type="number" step="any" placeholder="—" oninput="updateRRPanel()"></div></div>
+      <div id="rr-panel"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-g" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('buy')">買入 Buy</button>
         <button class="btn btn-r" style="flex:1;padding:12px;font-size:14px" onclick="placeOrder('sell')">賣出 Sell</button>
@@ -654,7 +677,7 @@ function symHtml(s,ddId){const q=liveQuotes[s.symbol];const pr=q?'$'+Number(q.pr
 const pfx=ddId.replace('-sym-dropdown','');return`<div class="sym-item" onclick="selectSymbol('${pfx}','${s.symbol}','${s.exchange}','${s.type}')"><span class="badge ${s.type}">${s.type==='stock'?'US':s.type==='tw_stock'?'TW':'Crypto'}</span><span class="sym-ticker">${s.symbol}</span><span class="sym-name">${s.name}</span><span class="sym-price">${pr}</span><span class="sym-change ${cls}">${ch}</span></div>`;}
 function openSymPicker(input,pfx){const dd=document.getElementById(pfx+'-sym-dropdown');renderSymDropdown(pfx+'-sym-dropdown',input.value);dd.classList.add('open');}
 function filterSymPicker(input,pfx){renderSymDropdown(pfx+'-sym-dropdown',input.value);}
-function selectSymbol(pfx,sym,ex,type){document.getElementById(pfx+'-symbol').value=sym;const exSel=document.getElementById(pfx+'-exchange');if(exSel)exSel.value=ex;if(pfx==='chart')updateChartIntervals(type);document.getElementById(pfx+'-sym-dropdown').classList.remove('open');}
+function selectSymbol(pfx,sym,ex,type){document.getElementById(pfx+'-symbol').value=sym;const exSel=document.getElementById(pfx+'-exchange');if(exSel)exSel.value=ex;if(pfx==='chart')updateChartIntervals(type);if(pfx==='ord')updateRRPanel();document.getElementById(pfx+'-sym-dropdown').classList.remove('open');}
 document.addEventListener('click',e=>{if(!e.target.closest('.sym-picker'))document.querySelectorAll('.sym-dropdown').forEach(d=>d.classList.remove('open'));});
 
 // ── Chart intervals ─────────────────────────────────────────────
@@ -784,6 +807,60 @@ function computeExtraIndicators(bars){if(!bars||bars.length<20)return{};
   if(n>=20){const past=vols.slice(-20,-1),avg=past.reduce((a,b)=>a+b,0)/past.length;
     if(avg>0)out.volChange=((vols[n-1]-avg)/avg)*100;}
   return out;}
+
+// ── R:R 視覺化 ──────────────────────────────────────────────────
+// TP/SL 改動時即時算 risk:reward 比 + 期望值勝率，根據 TP/SL 相對 entry 的位置自動判斷 buy 或 sell 視角
+let _rrLastQuotePrice=null,_rrLastQuoteSym=null;
+async function _rrEntryPrice(sym){
+  // 優先用 limit；沒有就抓最近報價（同 symbol cache 1 次避免每打字都 fetch）
+  const lim=parseFloat(document.getElementById('ord-limit').value);
+  if(!isNaN(lim)&&lim>0)return lim;
+  if(_rrLastQuoteSym===sym&&_rrLastQuotePrice!=null)return _rrLastQuotePrice;
+  try{const q=await api('/api/v1/workers/quote/prices');
+    const found=q?.data?.quotes?.find(x=>x.symbol===sym||x.symbol===sym.toUpperCase());
+    if(found?.price){_rrLastQuoteSym=sym;_rrLastQuotePrice=found.price;return found.price;}}catch{}
+  return null;}
+
+let _rrTimer=null;
+function updateRRPanel(){clearTimeout(_rrTimer);_rrTimer=setTimeout(_rrRender,200);} // debounce 200ms
+async function _rrRender(){
+  const el=document.getElementById('rr-panel');if(!el)return;
+  const sym=document.getElementById('ord-symbol').value.trim();
+  const qty=parseFloat(document.getElementById('ord-qty').value);
+  const tp=parseFloat(document.getElementById('ord-tp').value);
+  const sl=parseFloat(document.getElementById('ord-sl').value);
+  // 任一缺就清空（避免雜訊）
+  if(!sym||isNaN(qty)||qty<=0||isNaN(tp)||tp<=0||isNaN(sl)||sl<=0){el.innerHTML='';return;}
+  const entry=await _rrEntryPrice(sym);
+  if(!entry||entry<=0){el.innerHTML='<div class="rr-panel tier-bad"><div class="rr-err">無法取得 '+sym+' 進場價（請填限價或先在市場分頁載入報價）</div></div>';return;}
+  // 推斷方向：buy = SL < entry < TP；sell = TP < entry < SL
+  let side='?',valid=false;
+  if(sl<entry&&entry<tp){side='buy';valid=true;}
+  else if(tp<entry&&entry<sl){side='sell';valid=true;}
+  if(!valid){el.innerHTML=`<div class="rr-panel tier-bad"><div class="rr-row"><strong>R:R 設定不一致</strong></div><div class="rr-err">進場 \$${entry.toFixed(2)} 需在 TP \$${tp} 跟 SL \$${sl} 之間（buy: SL < 進場 < TP；sell: TP < 進場 < SL）</div></div>`;return;}
+  const riskPerUnit=Math.abs(entry-sl),rewardPerUnit=Math.abs(tp-entry);
+  const riskTotal=riskPerUnit*qty,rewardTotal=rewardPerUnit*qty;
+  const rr=rewardPerUnit/riskPerUnit;
+  // 損益平衡勝率：rr=1 → 50%；rr=2 → 33%；rr=3 → 25%
+  const breakEven=100/(1+rr);
+  const tier=rr>=2?'good':rr>=1?'ok':'bad';
+  const tag=rr>=3?'優秀':rr>=2?'良好':rr>=1?'可接受':'不利';
+  // bar 寬度比例
+  const total=riskPerUnit+rewardPerUnit,riskW=(riskPerUnit/total)*100,rewardW=(rewardPerUnit/total)*100;
+  el.innerHTML=`<div class="rr-panel tier-${tier}">
+    <div class="rr-row">
+      <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Risk : Reward · ${side==='buy'?'買入視角':'賣出視角'}</div><div class="rr-ratio">1 : ${rr.toFixed(2)}</div></div>
+      <span class="rr-tag">${tag}</span>
+    </div>
+    <div class="rr-bar"><div class="risk" style="width:${riskW.toFixed(1)}%">-\$${riskTotal.toFixed(2)}</div><div class="reward" style="width:${rewardW.toFixed(1)}%">+\$${rewardTotal.toFixed(2)}</div></div>
+    <div class="rr-meta" style="margin-top:8px">
+      <div>進場 <strong>\$${entry.toFixed(2)}</strong></div>
+      <div>風險/股 <strong>\$${riskPerUnit.toFixed(2)}</strong></div>
+      <div>報酬/股 <strong>\$${rewardPerUnit.toFixed(2)}</strong></div>
+      <div>需勝率 <strong>≥${breakEven.toFixed(1)}%</strong></div>
+    </div>
+    ${rr<1?'<div class="rr-warn">⚠ R:R < 1 表示風險大於報酬、長期期望值偏負，除非你有極高勝率的策略否則不建議</div>':''}
+  </div>`;}
 
 // ── Orders ──────────────────────────────────────────────────────
 async function placeOrder(side){const ex=document.getElementById('ord-exchange').value,sym=document.getElementById('ord-symbol').value,qty=parseFloat(document.getElementById('ord-qty').value),type=document.getElementById('ord-type').value,lim=parseFloat(document.getElementById('ord-limit').value);
