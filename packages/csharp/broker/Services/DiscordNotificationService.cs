@@ -123,7 +123,8 @@ public class DiscordNotificationService : BackgroundService
             if (_seenLogKeys.Contains(key)) continue;
             _seenLogKeys.Add(key);
 
-            // 只推「會導致部位變動 / 需要注意」的事件，一般 skip/hold 不推，避免訊息爆量
+            // 只推「會導致部位變動 / 需要注意」的事件，一般 skip/hold/dedup 不推，避免訊息爆量
+            // （dedup = trading-worker 端 idempotency 命中、沒打交易所，跟 hold 一樣是 no-op 不需通知）
             var action = l.Action.ToLowerInvariant();
             var (emoji, color, prefix) = action switch
             {

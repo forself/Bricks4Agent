@@ -76,11 +76,13 @@ public class TradingOrderHandler : ICapabilityHandler
 
         // Idempotency：呼叫者帶 client_order_id 而且 DB 已有非 rejected 紀錄 → 直接回那筆
         // 不重新打交易所（怕重複出單）。rejected 狀態允許重試（之前是因錯誤被拒、不是真的下出去）
+        // 回傳裡加 idempotent=true 標記，讓上層（AutoTrader / Discord 推播）能區分「真新單」和
+        // 「dedup 命中」，避免每輪 poll 都吵新通知。
         if (!string.IsNullOrWhiteSpace(clientOrderId))
         {
             var existing = _db.GetOrder(orderId);
             if (existing != null && existing.Status != "rejected")
-                return (true, SerializeOrder(existing), null);
+                return (true, SerializeOrder(existing, idempotent: true), null);
         }
 
         try
@@ -153,12 +155,13 @@ public class TradingOrderHandler : ICapabilityHandler
         return (true, json, null);
     }
 
-    private static string SerializeOrder(TradingOrder o) => JsonSerializer.Serialize(new
+    private static string SerializeOrder(TradingOrder o, bool idempotent = false) => JsonSerializer.Serialize(new
     {
         order_id = o.OrderId, external_id = o.ExternalId, symbol = o.Symbol,
         exchange = o.Exchange, side = o.Side, order_type = o.OrderType,
         quantity = o.Quantity, limit_price = o.LimitPrice, stop_price = o.StopPrice,
         status = o.Status, filled_qty = o.FilledQty, filled_price = o.FilledPrice,
         error = o.Error, created_at = o.CreatedAt, filled_at = o.FilledAt,
+        idempotent,   // true = dedup 命中、不是新打交易所；false = 真的新出單（包含 list/get 路徑都是 false）
     });
 }

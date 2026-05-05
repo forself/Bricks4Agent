@@ -427,9 +427,19 @@ public class AutoTraderService : BackgroundService
             var order = JsonDocument.Parse(orderResult.ResultPayload ?? "{}").RootElement;
             var orderId = order.TryGetProperty("order_id", out var oid) ? oid.GetString() : "?";
             var status = order.TryGetProperty("status", out var st) ? st.GetString() : "?";
-            AddLog(item, action, $"ORDER PLACED: {orderId} {action} {item.Quantity} {symbol} @ market → {status}");
-            _logger.LogInformation("AutoTrader: {Action} {Qty} {Symbol} on {Exchange} → {Status}",
-                action, item.Quantity, symbol, exchange, status);
+            // idempotent=true → trading-worker DB 命中 client_order_id dedup、根本沒打交易所，
+            // log 加 [DEDUP] 前綴讓 webhook / dashboard 知道這不是新成交
+            var isDedup = order.TryGetProperty("idempotent", out var idem) && idem.GetBoolean();
+            if (isDedup)
+            {
+                AddLog(item, "dedup", $"[DEDUP] {orderId} same-bucket retry, no new exchange call (existing status={status})");
+            }
+            else
+            {
+                AddLog(item, action, $"ORDER PLACED: {orderId} {action} {item.Quantity} {symbol} @ market → {status}");
+                _logger.LogInformation("AutoTrader: {Action} {Qty} {Symbol} on {Exchange} → {Status}",
+                    action, item.Quantity, symbol, exchange, status);
+            }
         }
         else
         {
