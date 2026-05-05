@@ -175,6 +175,49 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .rr-warn { color:#f0b90b; font-size:10px; margin-top:4px; }
 .rr-err  { color:var(--red);   font-size:10px; margin-top:4px; }
 
+/* Multi-agent consensus 視圖 (α) + 風險校準 (β) */
+.consensus-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+@media(max-width:900px) { .consensus-grid { grid-template-columns:1fr; } }
+.agent-card { background:var(--bg); border:1px solid var(--border); border-left:4px solid var(--text3); border-radius:4px; padding:12px 14px; }
+.agent-card.is-buy   { border-left-color:var(--green); background:var(--greenBg); }
+.agent-card.is-sell  { border-left-color:var(--red);   background:var(--redBg); }
+.agent-card.is-risk-high   { border-left-color:var(--red);  background:var(--redBg); }
+.agent-card.is-risk-medium { border-left-color:#f0b90b; background:rgba(240,185,11,0.08); }
+.agent-card .ag-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.agent-card .ag-name { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:1.5px; }
+.agent-card .ag-tag { font-size:10px; padding:2px 6px; border-radius:2px; background:var(--bg3); color:var(--text2); font-weight:600; }
+.agent-card.is-buy   .ag-tag { background:rgba(14,203,129,0.18); color:var(--green); }
+.agent-card.is-sell  .ag-tag { background:rgba(246,70,93,0.18); color:var(--red); }
+.agent-card.is-risk-high   .ag-tag { background:rgba(246,70,93,0.18); color:var(--red); }
+.agent-card.is-risk-medium .ag-tag { background:rgba(240,185,11,0.2); color:#f0b90b; }
+.agent-card .ag-verdict { font-size:20px; font-weight:800; }
+.agent-card .ag-conf { font-size:11px; color:var(--text2); margin-top:2px; }
+.agent-card .ag-reason { font-size:11px; color:var(--text2); margin-top:8px; line-height:1.4; max-height:60px; overflow:hidden; }
+
+/* 綜合判斷 hero（蓋過 hero-grid 的內容、附 alignment chip）*/
+.consensus-final { background:var(--bg); border:1px solid var(--border); border-left:4px solid var(--text3); border-radius:4px; padding:16px 20px; margin-top:12px; position:relative; }
+.consensus-final.is-buy  { border-left-color:var(--green); background:var(--greenBg); }
+.consensus-final.is-sell { border-left-color:var(--red);   background:var(--redBg); }
+.consensus-final .cf-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:1.5px; }
+.consensus-final .cf-action { font-size:32px; font-weight:800; line-height:1.1; margin-top:4px; }
+.consensus-final .cf-conf { font-size:14px; color:var(--text2); margin-top:4px; }
+.consensus-final .cf-align { position:absolute; top:14px; right:16px; font-size:11px; padding:4px 10px; border-radius:3px; font-weight:700; background:var(--bg3); color:var(--text2); }
+.consensus-final.align-aligned .cf-align { background:rgba(14,203,129,0.18); color:var(--green); }
+.consensus-final.align-mixed   .cf-align { background:rgba(240,185,11,0.2); color:#f0b90b; }
+.consensus-final.align-conflict .cf-align { background:rgba(246,70,93,0.18); color:var(--red); }
+.consensus-final .cf-reasons { font-size:11px; color:var(--text2); margin-top:10px; line-height:1.6; }
+.consensus-final .cf-reasons strong { color:var(--text); }
+
+/* β: 信心校準浮層（接在原 hero-grid 下方）*/
+.conf-adj { display:flex; align-items:center; gap:14px; padding:8px 14px; background:var(--bg); border:1px solid var(--border); border-radius:4px; margin-top:8px; font-size:11px; }
+.conf-adj .ca-arrow { color:var(--text3); font-size:14px; }
+.conf-adj .ca-orig { color:var(--text2); }
+.conf-adj .ca-final { font-weight:700; }
+.conf-adj.is-down  .ca-final { color:#f0b90b; }
+.conf-adj.is-down2 .ca-final { color:var(--red); }
+.conf-adj .ca-reasons { color:var(--text3); margin-left:auto; font-size:10px; }
+.conf-adj .ca-pill { display:inline-block; font-size:9px; padding:1px 5px; margin-left:5px; background:var(--bg3); border-radius:2px; color:var(--text2); }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -304,6 +347,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <button class="btn btn-y" onclick="runStrategy()">分析</button>
       <button class="btn btn-o btn-sm" onclick="document.getElementById('strat-params').style.display=document.getElementById('strat-params').style.display==='none'?'flex':'none'">參數</button>
       <button class="btn btn-o btn-sm" onclick="runStrategyComparison()">比較所有策略</button>
+      <button class="btn btn-g btn-sm" onclick="runMultiAgentAnalysis()" title="同時跑 Technical + News + Risk 三 agent 並合成共識判斷">🧠 全方位分析</button>
     </div>
     <div class="form-row" id="strat-params" style="display:none;background:var(--bg3);padding:8px 10px;border-radius:4px">
       <div class="fg"><label>SMA Fast</label><input id="sp-sma-fast" type="number" value="10" style="width:50px"></div>
@@ -737,6 +781,11 @@ const extra=computeExtraIndicators(bars.data.bars);
 // Hero 4 主卡 — 訊號 / 建議 / 現價 / 信心
 const rec=deriveRecommendation(s.action,s.confidence||0);
 const heroHtml=renderHeroGrid({action:s.action,cls,price,confidence:s.confidence||0,stratLabel,symbol:s.symbol,exchange:s.exchange,rec});
+// β: 風險校準浮層 — 用 chart stats + indicators 算 risk level、按他 risk_agent 規則扣信心
+const cdForRisk=bars.data.bars.map(b=>({open:b.open,high:b.high,low:b.low,close:b.close}));
+const statsForRisk=computeChartStats(cdForRisk);
+const riskInfo=computeRiskScore(statsForRisk,ind);
+const confAdjHtml=renderConfAdjustment(s.confidence||0,riskInfo);
 // 即時指標 tile 面板
 const rsi=ind['rsi_oversold.rsi'],macdH=ind['macd_divergence.histogram'],smaF=ind['sma_cross.sma_10'],smaS=ind['sma_cross.sma_30'];
 const tilesHtml=renderIndicatorTiles({rsi,macdH,smaF,smaS,price,extra});
@@ -746,7 +795,7 @@ if(isLlm){const reason=(s.reason||'').replace(/^\[LLM\]\s*/,'').replace(/^\[Sent
 stratCards=`<div class="sig-card" style="grid-column:1/-1"><div class="sc-name">${s.strategy==='news_sentiment'?'News Sentiment Analysis':'AI Analysis'}</div><div class="sc-detail" style="font-size:12px;line-height:1.5;white-space:pre-wrap">${reason||s.reason}</div></div>`;}
 else{const parts=(s.reason||'').split(' | ');stratCards=parts.map(p=>{const m=p.match(/\[(\w+)\]\s*(\w+)\((\d+)\s*%\):\s*(.*)/);if(!m)return'';const[,name,action,conf,detail]=m;const ac=action==='buy'?'buy':action==='sell'?'sell':'hold';
 const labels={sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI'};return`<div class="sig-card"><div class="sc-name">${labels[name]||name}</div><div class="sc-action" style="color:var(--${ac==='buy'?'green':ac==='sell'?'red':'text2'})">${action.toUpperCase()} <span style="font-size:11px;color:var(--text2)">${conf}%</span></div><div class="sc-detail">${detail}</div></div>`;}).join('');}
-el.innerHTML=heroHtml+tilesHtml+`<div class="sig-strategies" style="margin-top:14px">${stratCards}</div>`;}
+el.innerHTML=heroHtml+confAdjHtml+tilesHtml+`<div class="sig-strategies" style="margin-top:14px">${stratCards}</div>`;}
 
 // ── 增強顯示輔助：建議分級、Hero 主卡、即時指標 tiles、client-side 補充指標 ──
 
@@ -961,6 +1010,114 @@ function computeChartStats(cd){if(!cd||cd.length<2)return null;
     const std=Math.sqrt(slice.reduce((a,b)=>a+(b-mean)**2,0)/20),up=mean+2*std,lw=mean-2*std;
     if(up>lw)bbPos=((last-lw)/(up-lw))*100;}
   return{last,dayChange,atrPct,highPos,lowPos,bbPos};}
+
+// ── Multi-agent consensus + risk-aware confidence (借鑒 ai-quant-starter 的 risk_agent / decision_agent) ──
+
+// 從 chart stats + indicators 算 risk score（0-1），格式對齊他 risk_agent 的累加打分
+// score >= 0.45 high；>= 0.18 medium；其他 low
+function computeRiskScore(stats,ind){const reasons=[];let score=0;
+  const rsi=ind?.['rsi_oversold.rsi'];
+  if(rsi!=null){if(rsi>75||rsi<25){score+=0.30;reasons.push(`RSI 極端 (${rsi.toFixed(0)})`);}
+    else if(rsi>65||rsi<35){score+=0.10;reasons.push(`RSI 偏離中性 (${rsi.toFixed(0)})`);}}
+  if(stats?.atrPct!=null){if(stats.atrPct>4){score+=0.25;reasons.push(`高波動 ATR ${stats.atrPct.toFixed(1)}%`);}
+    else if(stats.atrPct>2){score+=0.05;}}
+  if(stats?.bbPos!=null){if(stats.bbPos>90||stats.bbPos<10){score+=0.20;reasons.push(`BB 觸軌 (${stats.bbPos.toFixed(0)}%)`);}
+    else if(stats.bbPos>75||stats.bbPos<25){score+=0.05;}}
+  if(stats?.highPos!=null&&stats.highPos>=98){score+=0.10;reasons.push('近 52w 高點');}
+  if(stats?.dayChange!=null&&Math.abs(stats.dayChange)>5){score+=0.10;reasons.push(`日內巨幅 ${stats.dayChange>0?'+':''}${stats.dayChange.toFixed(1)}%`);}
+  const level=score>=0.45?'high':score>=0.18?'medium':'low';
+  return{level,score:Math.min(1,score),reasons};}
+
+// 對齊判定：technical action × news action → aligned / mixed / one-sided
+function detectAlignment(techAction,newsAction){
+  const t=techAction||'hold',n=newsAction||'hold';
+  if(t!=='hold'&&n!=='hold'){if(t===n)return{tag:'aligned',label:t==='buy'?'雙向看多':'雙向看空',cls:'aligned'};
+    return{tag:'conflict',label:'技術 vs 新聞分歧',cls:'conflict'};}
+  if(t!=='hold')return{tag:'tech-only',label:'純技術訊號',cls:'mixed'};
+  if(n!=='hold')return{tag:'news-only',label:'純情緒訊號',cls:'mixed'};
+  return{tag:'neutral',label:'雙向中性',cls:'mixed'};}
+
+// β: 給 runStrategy 完算原始 confidence 後追加的「校準後」展示
+function renderConfAdjustment(origConf,risk){if(!risk||risk.level==='low')return'';
+  const dampen=risk.level==='high'?0.15:0.08;
+  const adj=Math.max(0.05,Math.min(0.95,(origConf||0)-dampen));
+  const cls=risk.level==='high'?'is-down2':'is-down';
+  const pills=risk.reasons.slice(0,3).map(r=>`<span class="ca-pill">${r}</span>`).join('');
+  return`<div class="conf-adj ${cls}">
+    <span class="ca-orig">原始信心 ${(origConf*100).toFixed(0)}%</span>
+    <span class="ca-arrow">→</span>
+    <span class="ca-final">風險校準後 ${(adj*100).toFixed(0)}%</span>
+    <span class="ca-reasons">${risk.level.toUpperCase()} 風險：${pills}</span>
+  </div>`;}
+
+// α: 並行跑 technical (composite) + news_sentiment 兩條 strategy + 從 K 棒算 risk
+async function runMultiAgentAnalysis(){
+  const symbol=document.getElementById('sig-symbol').value,exchange=document.getElementById('sig-exchange').value;
+  const el=document.getElementById('signal-result');el.innerHTML='<div style="color:var(--text2);padding:12px">三個 agent 並行分析中…</div>';
+  const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+symbol+'&limit=100');
+  if(!bars?.data?.bars||bars.data.bars.length<30){el.innerHTML='<div style="color:var(--red);padding:8px">K 線不足 30 根、無法做完整分析</div>';return;}
+  const barArr=bars.data.bars;
+  // 並行打兩條 strategy（composite = technical 視角，news_sentiment = 新聞情緒）
+  const [techR,newsR]=await Promise.all([
+    api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'composite',symbol,exchange,interval:'1d',bars:barArr})}),
+    api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'news_sentiment',symbol,exchange,interval:'1d',bars:barArr})})
+  ]);
+  const tech=techR?.data,news=newsR?.data;
+  // Risk 從本地 K 棒 + 既有 indicators 算（不打額外 strategy）
+  const cd=barArr.map(b=>({time:0,open:b.open,high:b.high,low:b.low,close:b.close}));
+  const stats=computeChartStats(cd);
+  const ind=tech?.indicators||{};
+  const risk=computeRiskScore(stats,ind);
+  // 對齊 + 最終合成
+  const align=detectAlignment(tech?.action,news?.action);
+  // 最終 action：對齊則跟、分歧降為 hold、單向則跟單向那條
+  let finalAction='hold',finalReason=[];
+  if(align.tag==='aligned'){finalAction=tech.action;finalReason.push(`Technical 跟 News ${tech.action==='buy'?'同向看多':'同向看空'}、可信度提升`);}
+  else if(align.tag==='conflict'){finalAction='hold';finalReason.push('Technical 跟 News 訊號矛盾、建議觀望直到方向明朗');}
+  else if(align.tag==='tech-only'){finalAction=tech.action!=='hold'?tech.action:'hold';finalReason.push('純技術訊號驅動、無新聞輔證');}
+  else if(align.tag==='news-only'){finalAction=news.action!=='hold'?news.action:'hold';finalReason.push('純情緒訊號驅動、技術面中性');}
+  // 信心：取較高那條當基底，risk dampening 直接抄他的數字
+  const baseConf=Math.max(tech?.confidence||0,news?.confidence||0);
+  let finalConf=baseConf;
+  if(align.tag==='aligned')finalConf=Math.min(0.95,baseConf+0.05);
+  if(align.tag==='conflict')finalConf=Math.max(0.05,baseConf-0.20);
+  if(risk.level==='high'){finalConf=Math.max(0.05,finalConf-0.15);finalReason.push(`高風險環境扣 15% 信心 (${risk.reasons.join('、')})`);}
+  else if(risk.level==='medium'){finalConf=Math.max(0.05,finalConf-0.08);finalReason.push(`中等風險扣 8% 信心 (${risk.reasons.slice(0,2).join('、')})`);}
+  finalConf=Math.max(0.05,Math.min(0.95,finalConf));
+  // 渲染
+  const fcls=finalAction==='buy'?'buy':finalAction==='sell'?'sell':'hold';
+  const techCls=tech?.action==='buy'?'is-buy':tech?.action==='sell'?'is-sell':'';
+  const newsCls=news?.action==='buy'?'is-buy':news?.action==='sell'?'is-sell':'';
+  const riskCls=risk.level==='high'?'is-risk-high':risk.level==='medium'?'is-risk-medium':'';
+  const techReason=(tech?.reason||'').split(' | ').slice(0,2).join(' | ');
+  const newsReason=(news?.reason||'').replace(/^\[Sentiment:.*?\]\s*/,'').replace(/```json[\s\S]*?```/g,'').slice(0,150);
+  const stratLabel='全方位 Multi-Agent';
+  el.innerHTML=`
+    <div class="consensus-final is-${fcls} align-${align.cls}">
+      <span class="cf-align">${align.label}</span>
+      <div class="cf-label">綜合判斷</div>
+      <div class="cf-action" style="color:var(--${fcls==='buy'?'green':fcls==='sell'?'red':'text2'})">${finalAction.toUpperCase()}</div>
+      <div class="cf-conf">最終信心 ${(finalConf*100).toFixed(0)}% · ${stratLabel}</div>
+      <div class="cf-reasons"><strong>解釋：</strong>${finalReason.join('；')}</div>
+    </div>
+    <div class="consensus-grid">
+      <div class="agent-card ${techCls}">
+        <div class="ag-head"><span class="ag-name">📊 Technical</span><span class="ag-tag">${(tech?.action||'?').toUpperCase()}</span></div>
+        <div class="ag-verdict" style="color:var(--${tech?.action==='buy'?'green':tech?.action==='sell'?'red':'text2'})">${(tech?.action||'—').toUpperCase()} ${tech?.confidence?((tech.confidence*100).toFixed(0)+'%'):''}</div>
+        <div class="ag-reason">${techReason||'—'}</div>
+      </div>
+      <div class="agent-card ${newsCls}">
+        <div class="ag-head"><span class="ag-name">📰 News</span><span class="ag-tag">${(news?.action||'?').toUpperCase()}</span></div>
+        <div class="ag-verdict" style="color:var(--${news?.action==='buy'?'green':news?.action==='sell'?'red':'text2'})">${(news?.action||'—').toUpperCase()} ${news?.confidence?((news.confidence*100).toFixed(0)+'%'):''}</div>
+        <div class="ag-reason">${newsReason||'無新聞或情緒中性'}</div>
+      </div>
+      <div class="agent-card ${riskCls}">
+        <div class="ag-head"><span class="ag-name">🛡 Risk</span><span class="ag-tag">${risk.level.toUpperCase()}</span></div>
+        <div class="ag-verdict" style="color:var(--${risk.level==='high'?'red':risk.level==='medium'?'text':'text2'})">${risk.level==='high'?'高風險':risk.level==='medium'?'中度風險':'低風險'}</div>
+        <div class="ag-reason">${risk.reasons.length>0?risk.reasons.join('、'):'波動正常、無極端訊號'}</div>
+      </div>
+    </div>`;
+}
 
 // ── Backtest ────────────────────────────────────────────────────
 let btChart=null;
