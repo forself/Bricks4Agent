@@ -109,6 +109,39 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .sig-ind .si-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; }
 .sig-ind .si-value { font-size:18px; font-weight:700; margin-top:2px; }
 
+/* Strategy hero — 4 主卡片區 (訊號 / 建議 / 現價 / 信心) */
+.hero-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:14px; }
+@media(max-width:900px) { .hero-grid { grid-template-columns:repeat(2,1fr); } }
+@media(max-width:500px) { .hero-grid { grid-template-columns:1fr; } }
+.hero-card { background:var(--bg); border:1px solid var(--border); border-left:4px solid var(--text3); border-radius:4px; padding:14px 16px; min-height:110px; display:flex; flex-direction:column; justify-content:space-between; position:relative; }
+.hero-card.is-buy  { border-left-color:var(--green); background:var(--greenBg); }
+.hero-card.is-sell { border-left-color:var(--red);   background:var(--redBg); }
+.hero-card.is-hold { border-left-color:var(--text3); }
+.hero-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:1.5px; }
+.hero-value { font-size:28px; font-weight:800; line-height:1.1; margin-top:6px; }
+.hero-sub   { font-size:11px; color:var(--text2); margin-top:6px; }
+.hero-icon  { font-size:22px; font-weight:700; margin-right:6px; }
+.hero-conf-ring { position:absolute; right:14px; top:50%; transform:translateY(-50%); }
+
+/* Indicator tiles — RSI / MACD / SMA / BB / ATR / Vol 一覽 */
+.ind-tiles { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:12px; }
+@media(max-width:1000px) { .ind-tiles { grid-template-columns:repeat(3,1fr); } }
+@media(max-width:600px)  { .ind-tiles { grid-template-columns:repeat(2,1fr); } }
+.ind-tile { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:9px 12px; }
+.ind-tile.zone-up { border-color:rgba(14,203,129,0.4); }
+.ind-tile.zone-down { border-color:rgba(246,70,93,0.4); }
+.ind-tile-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:1px; display:flex; justify-content:space-between; }
+.ind-tile-zone  { font-size:9px; padding:1px 5px; border-radius:2px; background:var(--bg3); color:var(--text2); font-weight:600; }
+.ind-tile.zone-up   .ind-tile-zone { background:rgba(14,203,129,0.18); color:var(--green); }
+.ind-tile.zone-down .ind-tile-zone { background:rgba(246,70,93,0.18); color:var(--red); }
+.ind-tile-value { font-size:17px; font-weight:700; margin-top:4px; }
+.ind-tile.zone-up   .ind-tile-value { color:var(--green); }
+.ind-tile.zone-down .ind-tile-value { color:var(--red); }
+.ind-tile-bar { height:3px; background:var(--bg3); border-radius:2px; margin-top:6px; overflow:hidden; }
+.ind-tile-bar .fill { height:100%; background:var(--text2); transition:width .3s; }
+.ind-tile.zone-up   .ind-tile-bar .fill { background:var(--green); }
+.ind-tile.zone-down .ind-tile-bar .fill { background:var(--red); }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -661,16 +694,83 @@ const params=getCustomParams();const r=await api('/api/v1/strategy/signal',{meth
 if(!r?.data){el.innerHTML='<div style="color:var(--red);padding:8px">分析失敗: '+(r?.error||'unknown')+'</div>';return;}
 const s=r.data,ind=s.indicators||{},cls=s.action==='buy'?'buy':s.action==='sell'?'sell':'hold';
 const price=ind['sma_cross.price']||ind['rsi_oversold.price']||ind['macd_divergence.price']||ind['price']||0;
+const stratLabel={composite:'Composite',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
 const isLlm=s.strategy==='llm'||s.strategy==='news_sentiment';
+// 從 K 棒算 client-side 補充指標（ATR、Bollinger 位置、量變化）
+const extra=computeExtraIndicators(bars.data.bars);
+// Hero 4 主卡 — 訊號 / 建議 / 現價 / 信心
+const rec=deriveRecommendation(s.action,s.confidence||0);
+const heroHtml=renderHeroGrid({action:s.action,cls,price,confidence:s.confidence||0,stratLabel,symbol:s.symbol,exchange:s.exchange,rec});
+// 即時指標 tile 面板
+const rsi=ind['rsi_oversold.rsi'],macdH=ind['macd_divergence.histogram'],smaF=ind['sma_cross.sma_10'],smaS=ind['sma_cross.sma_30'];
+const tilesHtml=renderIndicatorTiles({rsi,macdH,smaF,smaS,price,extra});
+// 子策略明細卡（既有設計保留）
 let stratCards='';
 if(isLlm){const reason=(s.reason||'').replace(/^\[LLM\]\s*/,'').replace(/^\[Sentiment:.*?\]\s*/,'').replace(/```json\s*/g,'').replace(/```/g,'').trim();
 stratCards=`<div class="sig-card" style="grid-column:1/-1"><div class="sc-name">${s.strategy==='news_sentiment'?'News Sentiment Analysis':'AI Analysis'}</div><div class="sc-detail" style="font-size:12px;line-height:1.5;white-space:pre-wrap">${reason||s.reason}</div></div>`;}
 else{const parts=(s.reason||'').split(' | ');stratCards=parts.map(p=>{const m=p.match(/\[(\w+)\]\s*(\w+)\((\d+)\s*%\):\s*(.*)/);if(!m)return'';const[,name,action,conf,detail]=m;const ac=action==='buy'?'buy':action==='sell'?'sell':'hold';
 const labels={sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI'};return`<div class="sig-card"><div class="sc-name">${labels[name]||name}</div><div class="sc-action" style="color:var(--${ac==='buy'?'green':ac==='sell'?'red':'text2'})">${action.toUpperCase()} <span style="font-size:11px;color:var(--text2)">${conf}%</span></div><div class="sc-detail">${detail}</div></div>`;}).join('');}
-const rsi=ind['rsi_oversold.rsi'],macdH=ind['macd_divergence.histogram'],smaF=ind['sma_cross.sma_10'],smaS=ind['sma_cross.sma_30'];
-const indCards=`${price?`<div class="sig-ind"><div class="si-label">Price</div><div class="si-value">$${Number(price).toFixed(2)}</div></div>`:''}${rsi!=null?`<div class="sig-ind"><div class="si-label">RSI</div><div class="si-value ${rsi>70?'down':rsi<30?'up':''}">${Number(rsi).toFixed(1)}</div></div>`:''}${macdH!=null?`<div class="sig-ind"><div class="si-label">MACD H</div><div class="si-value ${macdH>0?'up':'down'}">${Number(macdH).toFixed(4)}</div></div>`:''}${smaF!=null?`<div class="sig-ind"><div class="si-label">SMA10</div><div class="si-value ${smaF>smaS?'up':'down'}">${Number(smaF).toFixed(2)}</div></div>`:''}${smaS!=null?`<div class="sig-ind"><div class="si-label">SMA30</div><div class="si-value">${Number(smaS).toFixed(2)}</div></div>`:''}`;
-const stratLabel={composite:'Composite',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
-el.innerHTML=`<div class="sig-box ${cls}"><div class="sig-header"><div><div class="sig-action" style="color:var(--${cls==='buy'?'green':cls==='sell'?'red':'text2'})">${s.action}</div><div class="sig-sub">${stratLabel} | Confidence: ${(s.confidence*100).toFixed(0)}%</div></div><div style="text-align:right"><div class="sig-price">${price?'$'+Number(price).toFixed(2):''}</div><div class="sig-sym">${s.symbol} · ${s.exchange}</div></div></div><div class="sig-inds">${indCards}</div><div class="sig-strategies">${stratCards}</div></div>`;}
+el.innerHTML=heroHtml+tilesHtml+`<div class="sig-strategies" style="margin-top:14px">${stratCards}</div>`;}
+
+// ── 增強顯示輔助：建議分級、Hero 主卡、即時指標 tiles、client-side 補充指標 ──
+
+// action × confidence → 5 級建議 + 視覺 icon
+function deriveRecommendation(action,confidence){const c=(confidence||0)*100;
+  if(action==='buy'){if(c>=80)return{label:'強烈買入',icon:'⇈',cls:'is-buy'};if(c>=60)return{label:'建議買入',icon:'↑',cls:'is-buy'};return{label:'弱買訊號',icon:'↗',cls:'is-hold'};}
+  if(action==='sell'){if(c>=80)return{label:'強烈賣出',icon:'⇊',cls:'is-sell'};if(c>=60)return{label:'建議賣出',icon:'↓',cls:'is-sell'};return{label:'弱賣訊號',icon:'↘',cls:'is-hold'};}
+  return{label:'觀望持有',icon:'→',cls:'is-hold'};}
+
+function renderHeroGrid(o){const conf=Math.round((o.confidence||0)*100);
+  // 信心進度環（SVG）— stroke-dasharray 控制進度
+  const r=22,circ=2*Math.PI*r,offset=circ-(conf/100)*circ;
+  const ringCol=o.cls==='buy'?'var(--green)':o.cls==='sell'?'var(--red)':'var(--text2)';
+  const ring=`<svg width="58" height="58" class="hero-conf-ring" viewBox="0 0 58 58"><circle cx="29" cy="29" r="${r}" fill="none" stroke="var(--border)" stroke-width="4"/><circle cx="29" cy="29" r="${r}" fill="none" stroke="${ringCol}" stroke-width="4" stroke-dasharray="${circ}" stroke-dashoffset="${offset}" transform="rotate(-90 29 29)" style="transition:stroke-dashoffset .4s"/></svg>`;
+  return`<div class="hero-grid">
+    <div class="hero-card is-${o.cls}"><div class="hero-label">訊號</div><div class="hero-value">${o.action.toUpperCase()}</div><div class="hero-sub">${o.stratLabel}</div></div>
+    <div class="hero-card ${o.rec.cls}"><div class="hero-label">建議</div><div class="hero-value"><span class="hero-icon">${o.rec.icon}</span>${o.rec.label}</div><div class="hero-sub">基於 ${conf}% 信心度</div></div>
+    <div class="hero-card"><div class="hero-label">現價</div><div class="hero-value">${o.price?'$'+Number(o.price).toFixed(2):'—'}</div><div class="hero-sub">${o.symbol} · ${o.exchange}</div></div>
+    <div class="hero-card is-${o.cls}" style="padding-right:80px">${ring}<div class="hero-label">信心</div><div class="hero-value">${conf}%</div><div class="hero-sub">${conf>=80?'極高':conf>=60?'高':conf>=40?'中等':'偏弱'}</div></div>
+  </div>`;}
+
+function renderIndicatorTiles(o){const tiles=[];
+  // RSI(14) — 超買 >70 / 超賣 <30 / 中性
+  if(o.rsi!=null){const z=o.rsi>70?'down':o.rsi<30?'up':'neutral',label=o.rsi>70?'超買':o.rsi<30?'超賣':'中性';
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>RSI(14)</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${Number(o.rsi).toFixed(1)}</div><div class="ind-tile-bar"><div class="fill" style="width:${Math.min(100,Math.max(0,o.rsi))}%"></div></div></div>`);}
+  // MACD Histogram — 動能方向
+  if(o.macdH!=null){const z=o.macdH>0?'up':'down',label=o.macdH>0?'看多':'看空';
+    const pct=Math.min(100,Math.abs(o.macdH)/Math.max(0.5,Math.abs(o.macdH)*3)*100);
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>MACD H</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${Number(o.macdH).toFixed(3)}</div><div class="ind-tile-bar"><div class="fill" style="width:${pct}%"></div></div></div>`);}
+  // SMA Cross — 短長均線位置（黃金交叉 / 死亡交叉 / 無）
+  if(o.smaF!=null&&o.smaS!=null){const diff=((o.smaF-o.smaS)/o.smaS)*100,z=diff>0.5?'up':diff<-0.5?'down':'neutral',label=diff>0.5?'黃金交叉':diff<-0.5?'死亡交叉':'糾結';
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>SMA Cross</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${diff>=0?'+':''}${diff.toFixed(2)}%</div><div class="ind-tile-bar"><div class="fill" style="width:${Math.min(100,Math.abs(diff)*20)}%"></div></div></div>`);}
+  // Bollinger Band 位置（價格在上下軌之間 0-100%）
+  if(o.extra?.bbPos!=null){const z=o.extra.bbPos>80?'down':o.extra.bbPos<20?'up':'neutral',label=o.extra.bbPos>80?'近上軌':o.extra.bbPos<20?'近下軌':'中段';
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>BB 位置</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${o.extra.bbPos.toFixed(0)}%</div><div class="ind-tile-bar"><div class="fill" style="width:${Math.min(100,Math.max(0,o.extra.bbPos))}%"></div></div></div>`);}
+  // ATR(14) — 波動性，相對價格百分比
+  if(o.extra?.atr!=null&&o.price){const atrPct=(o.extra.atr/o.price)*100,z=atrPct>3?'down':atrPct<1?'up':'neutral',label=atrPct>3?'高波動':atrPct<1?'低波動':'正常';
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>ATR(14)</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${atrPct.toFixed(2)}%</div><div class="ind-tile-bar"><div class="fill" style="width:${Math.min(100,atrPct*20)}%"></div></div></div>`);}
+  // Volume 變化（最近 vs 20 日均量）
+  if(o.extra?.volChange!=null){const v=o.extra.volChange,z=v>50?'up':v<-30?'down':'neutral',label=v>50?'放量':v<-30?'縮量':'正常';
+    tiles.push(`<div class="ind-tile zone-${z}"><div class="ind-tile-label"><span>Vol Δ</span><span class="ind-tile-zone">${label}</span></div><div class="ind-tile-value">${v>=0?'+':''}${v.toFixed(0)}%</div><div class="ind-tile-bar"><div class="fill" style="width:${Math.min(100,Math.abs(v)/2)}%"></div></div></div>`);}
+  return tiles.length>0?`<div class="ind-tiles">${tiles.join('')}</div>`:'';}
+
+// 從 OHLCV bars 算 ATR(14) / Bollinger Band 當前位置 / Volume 變化
+function computeExtraIndicators(bars){if(!bars||bars.length<20)return{};
+  const closes=bars.map(b=>b.close),highs=bars.map(b=>b.high),lows=bars.map(b=>b.low),vols=bars.map(b=>b.volume||0),n=bars.length;
+  const out={};
+  // ATR(14)：True Range 14 日均
+  if(n>=15){const trs=[];for(let i=1;i<n;i++){trs.push(Math.max(highs[i]-lows[i],Math.abs(highs[i]-closes[i-1]),Math.abs(lows[i]-closes[i-1])));}
+    out.atr=trs.slice(-14).reduce((a,b)=>a+b,0)/14;}
+  // Bollinger(20, 2)：當前價在上下軌之間的位置 0-100%
+  if(n>=20){const slice=closes.slice(-20),mean=slice.reduce((a,b)=>a+b,0)/20;
+    const variance=slice.reduce((a,b)=>a+(b-mean)**2,0)/20,std=Math.sqrt(variance);
+    const upper=mean+2*std,lower=mean-2*std,price=closes[n-1];
+    if(upper>lower)out.bbPos=((price-lower)/(upper-lower))*100;
+    out.bbUpper=upper;out.bbLower=lower;}
+  // Volume 變化：最新 vs 過去 19 日平均
+  if(n>=20){const past=vols.slice(-20,-1),avg=past.reduce((a,b)=>a+b,0)/past.length;
+    if(avg>0)out.volChange=((vols[n-1]-avg)/avg)*100;}
+  return out;}
 
 // ── Orders ──────────────────────────────────────────────────────
 async function placeOrder(side){const ex=document.getElementById('ord-exchange').value,sym=document.getElementById('ord-symbol').value,qty=parseFloat(document.getElementById('ord-qty').value),type=document.getElementById('ord-type').value,lim=parseFloat(document.getElementById('ord-limit').value);
