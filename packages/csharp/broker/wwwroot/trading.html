@@ -142,6 +142,17 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .ind-tile.zone-up   .ind-tile-bar .fill { background:var(--green); }
 .ind-tile.zone-down .ind-tile-bar .fill { background:var(--red); }
 
+/* Chart stats overlay — 圖右上角浮層顯示 ATR / 52w / BB 位置 */
+.chart-stats-overlay { position:absolute; top:10px; right:14px; background:rgba(11,14,17,0.88); border:1px solid var(--border); border-radius:4px; padding:8px 12px; font-size:11px; z-index:5; min-width:140px; backdrop-filter:blur(6px); }
+.chart-stats-overlay .csr { display:flex; justify-content:space-between; gap:14px; padding:2px 0; }
+.chart-stats-overlay .csr .label { color:var(--text3); font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+.chart-stats-overlay .csr .val { font-weight:700; font-family:'Consolas',monospace; }
+.chart-stats-overlay .csr .val.up { color:var(--green); }
+.chart-stats-overlay .csr .val.down { color:var(--red); }
+.chart-legend { position:absolute; top:10px; left:14px; background:rgba(11,14,17,0.85); border:1px solid var(--border); border-radius:3px; padding:5px 9px; font-size:10px; z-index:5; display:flex; gap:10px; }
+.chart-legend span { display:inline-flex; align-items:center; gap:5px; }
+.chart-legend i { display:inline-block; width:14px; height:2px; vertical-align:middle; }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -247,8 +258,10 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <button class="btn btn-o btn-sm" onclick="loadChartWithMarkers()">載入+買賣標記</button>
     </div>
   </div>
-  <div style="margin-top:2px;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+  <div style="margin-top:2px;border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative">
     <div id="chart-container" style="height:520px;width:100%"></div>
+    <div id="chart-legend" class="chart-legend" style="display:none"></div>
+    <div id="chart-overlay" class="chart-stats-overlay" style="display:none"></div>
   </div>
 </div>
 
@@ -828,8 +841,49 @@ const vs=chartInstance.addHistogramSeries({priceFormat:{type:'volume'},priceScal
 const cd=r.data.bars.map(b=>({time:Math.floor(new Date(b.open_time).getTime()/1000),open:b.open,high:b.high,low:b.low,close:b.close}));
 const vd=r.data.bars.map(b=>({time:Math.floor(new Date(b.open_time).getTime()/1000),value:b.volume,color:b.close>=b.open?'rgba(14,203,129,.25)':'rgba(246,70,93,.25)'}));
 cs.setData(cd);vs.setData(vd);
-if(cd.length>=20){const sma=chartInstance.addLineSeries({color:'#f0b90b',lineWidth:1,priceLineVisible:false});const sd=[];for(let i=19;i<cd.length;i++){let s=0;for(let j=i-19;j<=i;j++)s+=cd[j].close;sd.push({time:cd[i].time,value:s/20});}sma.setData(sd);}
+// SMA-20 + Bollinger Bands(20, 2)：同窗口算 mean/std，三條線一次出
+if(cd.length>=20){const sd=[],ud=[],ld=[];
+  for(let i=19;i<cd.length;i++){
+    let sum=0;for(let j=i-19;j<=i;j++)sum+=cd[j].close;
+    const mean=sum/20;
+    let varSum=0;for(let j=i-19;j<=i;j++)varSum+=(cd[j].close-mean)**2;
+    const std=Math.sqrt(varSum/20);
+    sd.push({time:cd[i].time,value:mean});
+    ud.push({time:cd[i].time,value:mean+2*std});
+    ld.push({time:cd[i].time,value:mean-2*std});}
+  const sma=chartInstance.addLineSeries({color:'#f0b90b',lineWidth:1,priceLineVisible:false,lastValueVisible:false});sma.setData(sd);
+  const upper=chartInstance.addLineSeries({color:'rgba(246,70,93,0.55)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});upper.setData(ud);
+  const lower=chartInstance.addLineSeries({color:'rgba(14,203,129,0.55)',lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false});lower.setData(ld);
+  // Legend 標示三條線顏色
+  const lg=document.getElementById('chart-legend');
+  if(lg){lg.innerHTML='<span><i style="background:#f0b90b"></i>SMA20</span><span><i style="background:#f6465d;opacity:.55"></i>BB Upper</span><span><i style="background:#0ecb81;opacity:.55"></i>BB Lower</span>';lg.style.display='flex';}}
+// Stats overlay：ATR / 52w 高低 / BB 位置 / 日變化
+const stats=computeChartStats(cd);
+const ov=document.getElementById('chart-overlay');
+if(ov&&stats){ov.innerHTML=`
+  <div class="csr"><span class="label">最新</span><span class="val">$${stats.last.toFixed(2)}</span></div>
+  <div class="csr"><span class="label">日變化</span><span class="val ${stats.dayChange>=0?'up':'down'}">${stats.dayChange>=0?'+':''}${stats.dayChange.toFixed(2)}%</span></div>
+  ${stats.atrPct!=null?`<div class="csr"><span class="label">ATR(14)</span><span class="val">${stats.atrPct.toFixed(2)}%</span></div>`:''}
+  ${stats.bbPos!=null?`<div class="csr"><span class="label">BB 位置</span><span class="val ${stats.bbPos>80?'down':stats.bbPos<20?'up':''}">${stats.bbPos.toFixed(0)}%</span></div>`:''}
+  <div class="csr"><span class="label">52w 高</span><span class="val">${stats.highPos.toFixed(0)}%</span></div>
+  <div class="csr"><span class="label">52w 低</span><span class="val">+${stats.lowPos.toFixed(0)}%</span></div>`;ov.style.display='block';}
 chartInstance.timeScale().fitContent();window.addEventListener('resize',()=>{if(chartInstance)chartInstance.resize(c.clientWidth,520);});}
+
+// 從 OHLCV 算圖右上角顯示用的快照統計
+function computeChartStats(cd){if(!cd||cd.length<2)return null;
+  const n=cd.length,last=cd[n-1].close,prev=cd[n-2].close;
+  const dayChange=((last-prev)/prev)*100;
+  // ATR(14)
+  let atrPct=null;if(n>=15){const trs=[];for(let i=1;i<n;i++){trs.push(Math.max(cd[i].high-cd[i].low,Math.abs(cd[i].high-cd[i-1].close),Math.abs(cd[i].low-cd[i-1].close)));}
+    const atr=trs.slice(-14).reduce((a,b)=>a+b,0)/14;atrPct=(atr/last)*100;}
+  // 52w（用最多 252 個交易日的窗口）
+  const w=cd.slice(-252),hi=Math.max(...w.map(b=>b.high)),lo=Math.min(...w.map(b=>b.low));
+  const highPos=(last/hi)*100,lowPos=((last-lo)/lo)*100;
+  // BB 位置
+  let bbPos=null;if(n>=20){const slice=cd.slice(-20).map(b=>b.close),mean=slice.reduce((a,b)=>a+b,0)/20;
+    const std=Math.sqrt(slice.reduce((a,b)=>a+(b-mean)**2,0)/20),up=mean+2*std,lw=mean-2*std;
+    if(up>lw)bbPos=((last-lw)/(up-lw))*100;}
+  return{last,dayChange,atrPct,highPos,lowPos,bbPos};}
 
 // ── Backtest ────────────────────────────────────────────────────
 let btChart=null;
