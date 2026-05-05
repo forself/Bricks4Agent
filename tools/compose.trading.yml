@@ -22,6 +22,10 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/broker.db"
 
+      # Dev-only：設成 buy 或 sell 會強制 AutoTrader 覆蓋訊號 + 跳 confidence 門檻。
+      # 預設空字串 = 走原本訊號驅動邏輯。**只在 paper 帳號用、用完務必 unset**。
+      AUTOTRADER_DEV_FORCE_ACTION: "${AUTOTRADER_DEV_FORCE_ACTION:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"

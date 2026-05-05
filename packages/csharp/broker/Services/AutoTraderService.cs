@@ -34,6 +34,14 @@ public class AutoTraderService : BackgroundService
     private int _intervalSeconds = 300; // 預設 5 分鐘
     private bool _enabled = false;
 
+    /// <summary>
+    /// 開發/測試用：env AUTOTRADER_DEV_FORCE_ACTION=buy|sell 會強制覆蓋 strategy 訊號
+    /// （繞過 action=="hold" early-return 跟 confidence < 60% 門檻），讓 e2e 真的打到
+    /// 交易所。**只該在 paper 帳號用、用完一定要 unset**——每一輪會印 WARNING log 提醒。
+    /// 預設 null = 不啟用、走原本訊號驅動邏輯。
+    /// </summary>
+    private readonly string? _devForceAction;
+
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
@@ -44,6 +52,15 @@ public class AutoTraderService : BackgroundService
         _registry   = registry;
         _db         = db;
         _logger     = logger;
+
+        var forceRaw = Environment.GetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION")?.Trim().ToLowerInvariant();
+        if (forceRaw == "buy" || forceRaw == "sell")
+        {
+            _devForceAction = forceRaw;
+            _logger.LogWarning(
+                "⚠ AUTOTRADER_DEV_FORCE_ACTION={Action} active — signals will be overridden, threshold bypassed. UNSET FOR PRODUCTION.",
+                forceRaw);
+        }
 
         LoadWatchListFromDb();
     }
@@ -118,6 +135,8 @@ public class AutoTraderService : BackgroundService
     public int IntervalSeconds => _intervalSeconds;
     public IReadOnlyDictionary<string, WatchItem> WatchList => _watchList;
     public IEnumerable<TradeLog> RecentLogs => _tradeLog.ToArray().Take(MaxLogEntries);
+    /// <summary>Dev-only force action（"buy"/"sell"/null）。null=正常訊號驅動。</summary>
+    public string? DevForceAction => _devForceAction;
 
     public void Enable() { _enabled = true; _logger.LogInformation("AutoTrader ENABLED"); }
     public void Disable() { _enabled = false; _logger.LogInformation("AutoTrader DISABLED"); }
@@ -256,17 +275,28 @@ public class AutoTraderService : BackgroundService
         item.LastCheck = DateTime.UtcNow;
         PersistWatch($"{exchange}:{symbol}", item);
 
-        if (action == "hold")
+        // Dev-only override：env 設了就覆蓋訊號 + 跳過 threshold（用於 e2e 測試）
+        if (_devForceAction != null)
         {
-            AddLog(item, "hold", $"Confidence={confidence:P0}. {TruncateReason(reason)}");
-            return;
+            _logger.LogWarning("⚠ AUTOTRADER_DEV_FORCE_ACTION overriding {Original}@{Conf:P0} → {Forced} for {Symbol}",
+                action, confidence, _devForceAction, symbol);
+            action = _devForceAction;
+            AddLog(item, "force", $"DEV: forcing {action} (real signal was {item.LastSignal}@{confidence:P0})");
         }
-
-        // 信心度門檻
-        if (confidence < 0.6m)
+        else
         {
-            AddLog(item, "skip", $"Signal={action} but confidence {confidence:P0} < 60% threshold");
-            return;
+            if (action == "hold")
+            {
+                AddLog(item, "hold", $"Confidence={confidence:P0}. {TruncateReason(reason)}");
+                return;
+            }
+
+            // 信心度門檻
+            if (confidence < 0.6m)
+            {
+                AddLog(item, "skip", $"Signal={action} but confidence {confidence:P0} < 60% threshold");
+                return;
+            }
         }
 
         // Step 3: 取得價格估算

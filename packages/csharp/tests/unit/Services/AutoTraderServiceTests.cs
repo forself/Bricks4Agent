@@ -164,6 +164,57 @@ public class AutoTraderServiceTests
         item.LastConfidence.Should().Be(0.75m);
     }
 
+    // ── Dev-only force action env override ────────────────────────
+
+    [Fact]
+    public void DevForceAction_DefaultEnvUnset_IsNull()
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", null);
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+
+        var svc = MakeService(db);
+
+        svc.DevForceAction.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("buy")]
+    [InlineData("sell")]
+    [InlineData("BUY")]   // case-insensitive
+    [InlineData("Sell")]
+    public void DevForceAction_EnvSetToValidAction_ParsedAndExposed(string raw)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory();
+            db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.DevForceAction.Should().Be(raw.Trim().ToLowerInvariant());
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", null); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("hold")]
+    [InlineData("invalid")]
+    [InlineData("BUYSELL")]
+    public void DevForceAction_EnvSetToInvalidValue_StaysNull(string raw)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory();
+            db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.DevForceAction.Should().BeNull("only buy/sell should activate the override");
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", null); }
+    }
+
     [Fact]
     public void AddSameKeyTwice_OverwritesAndKeepsSingleRow()
     {
