@@ -36,11 +36,22 @@ public class AutoTraderService : BackgroundService
 
     /// <summary>
     /// 開發/測試用：env AUTOTRADER_DEV_FORCE_ACTION=buy|sell 會強制覆蓋 strategy 訊號
-    /// （繞過 action=="hold" early-return 跟 confidence < 60% 門檻），讓 e2e 真的打到
+    /// （繞過 action=="hold" early-return 跟 confidence threshold），讓 e2e 真的打到
     /// 交易所。**只該在 paper 帳號用、用完一定要 unset**——每一輪會印 WARNING log 提醒。
     /// 預設 null = 不啟用、走原本訊號驅動邏輯。
     /// </summary>
     private readonly string? _devForceAction;
+
+    /// <summary>
+    /// 信心度門檻——env AUTOTRADER_MIN_CONFIDENCE 可覆蓋（合法範圍 [0, 1]）。
+    /// 預設 0.5。Composite 策略 + 三道過濾鏈（hold 稀釋 + auto-trader 門檻 + risk
+    /// dampening）很容易把 buy/sell 訊號擋下來，這個 knob 讓 paper 階段可以放寬到 0.45-0.5
+    /// 觀察出單頻率，正式上線再拉回 0.6+。
+    /// </summary>
+    private readonly decimal _minConfidence;
+
+    public string? DevForceAction => _devForceAction;
+    public decimal MinConfidence => _minConfidence;
 
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
@@ -62,7 +73,22 @@ public class AutoTraderService : BackgroundService
                 forceRaw);
         }
 
+        _minConfidence = ParseMinConfidence(Environment.GetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE"));
+        _logger.LogInformation("AutoTrader confidence threshold = {Threshold:P0}", _minConfidence);
+
         LoadWatchListFromDb();
+    }
+
+    internal static decimal ParseMinConfidence(string? raw)
+    {
+        const decimal defaultValue = 0.5m;
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (!decimal.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return defaultValue;
+        if (v < 0m) return 0m;
+        if (v > 1m) return 1m;
+        return v;
     }
 
     // ── 持久化 ──────────────────────────────────────────────────────
@@ -135,8 +161,6 @@ public class AutoTraderService : BackgroundService
     public int IntervalSeconds => _intervalSeconds;
     public IReadOnlyDictionary<string, WatchItem> WatchList => _watchList;
     public IEnumerable<TradeLog> RecentLogs => _tradeLog.ToArray().Take(MaxLogEntries);
-    /// <summary>Dev-only force action（"buy"/"sell"/null）。null=正常訊號驅動。</summary>
-    public string? DevForceAction => _devForceAction;
 
     public void Enable() { _enabled = true; _logger.LogInformation("AutoTrader ENABLED"); }
     public void Disable() { _enabled = false; _logger.LogInformation("AutoTrader DISABLED"); }
@@ -291,10 +315,10 @@ public class AutoTraderService : BackgroundService
                 return;
             }
 
-            // 信心度門檻
-            if (confidence < 0.6m)
+            // 信心度門檻（env AUTOTRADER_MIN_CONFIDENCE 可調，預設 0.5）
+            if (confidence < _minConfidence)
             {
-                AddLog(item, "skip", $"Signal={action} but confidence {confidence:P0} < 60% threshold");
+                AddLog(item, "skip", $"Signal={action} but confidence {confidence:P0} < {_minConfidence:P0} threshold");
                 return;
             }
         }

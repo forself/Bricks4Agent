@@ -301,6 +301,45 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .mtf-consensus.aligned-sell { background:var(--redBg);   color:var(--red);   border-left-color:var(--red); }
 .mtf-consensus.mixed { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* Cut C — 持倉保護地圖（每倉位的入場/現價/TP/SL 視覺化） */
+.pmap-card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:14px; }
+.pmap-card .pmap-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.pmap-card .pmap-head h3 { margin:0; }
+.pmap-row { padding:10px 12px; background:var(--bg3); border-radius:4px; margin-bottom:8px; }
+.pmap-row:last-child { margin-bottom:0; }
+.pmap-top { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text2); margin-bottom:14px; gap:10px; flex-wrap:wrap; }
+.pmap-top .pm-sym { font-weight:700; font-size:13px; color:var(--text); }
+.pmap-top .pm-pnl.up { color:var(--green); font-weight:700; }
+.pmap-top .pm-pnl.down { color:var(--red); font-weight:700; }
+.pmap-bar { position:relative; height:6px; background:var(--bg4); border-radius:3px; }
+.pmap-bar .pm-fill { position:absolute; top:0; bottom:0; background:linear-gradient(90deg, var(--redBg), rgba(132,142,156,0.2), var(--greenBg)); border-radius:3px; }
+.pmap-marker { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--bg2); }
+.pmap-marker.entry { background:var(--text2); }
+.pmap-marker.cur   { background:var(--accent); width:12px; height:12px; box-shadow:0 0 6px rgba(240,185,11,.6); z-index:2; }
+.pmap-marker.tp    { background:var(--green); }
+.pmap-marker.sl    { background:var(--red); }
+.pmap-marker.trail { background:#f0b90b; opacity:.7; }
+.pmap-legend { display:flex; gap:14px; font-size:10px; color:var(--text3); margin-top:10px; flex-wrap:wrap; }
+.pmap-legend span { display:flex; align-items:center; gap:4px; }
+.pmap-legend i { display:inline-block; width:8px; height:8px; border-radius:50%; }
+
+/* Cut C — 市場掃描器（一籃子 symbol 跑 composite、一鍵加入監控） */
+.scan-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px; }
+.scan-progress { font-size:11px; color:var(--text2); margin-left:auto; align-self:center; }
+.scan-result { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; max-height:360px; overflow-y:auto; }
+.scan-row { display:grid; grid-template-columns:60px 60px 1fr 110px 60px; gap:8px; align-items:center; padding:6px 8px; border-bottom:1px solid rgba(43,49,57,0.5); font-size:12px; }
+.scan-row:last-child { border-bottom:none; }
+.scan-row .sr-sym { font-weight:700; }
+.scan-row .sr-act { font-size:11px; font-weight:700; padding:2px 6px; border-radius:2px; text-align:center; }
+.scan-row .sr-act.buy  { background:var(--greenBg); color:var(--green); }
+.scan-row .sr-act.sell { background:var(--redBg);   color:var(--red); }
+.scan-confidence-bar { height:5px; background:var(--bg3); border-radius:3px; overflow:hidden; }
+.scan-confidence-bar .fill { height:100%; transition:width .3s; }
+.scan-confidence-bar .fill.up   { background:var(--green); }
+.scan-confidence-bar .fill.down { background:var(--red); }
+.scan-row .sr-px { color:var(--text2); font-family:Consolas,monospace; text-align:right; font-size:11px; }
+.scan-empty { color:var(--text3); font-size:11px; text-align:center; padding:14px; }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -380,11 +419,11 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <!-- 左 rail：自選股 + 行情快覽 -->
     <aside class="cmd-rail">
       <div class="cmd-block">
-        <h4>📈 監控清單 <span class="lk" onclick="tab('auto')">編輯</span></h4>
+        <h4>📈 監控清單 <span class="lk" onclick="switchTab('auto')">編輯</span></h4>
         <div id="ov-watchlist"><div style="color:var(--text3);font-size:10px;text-align:center;padding:10px">—</div></div>
       </div>
       <div class="cmd-block">
-        <h4>🔥 即時行情 <span class="lk" onclick="tab('quotes')">完整</span></h4>
+        <h4>🔥 即時行情 <span class="lk" onclick="switchTab('quotes')">完整</span></h4>
         <div id="ov-hotlist"><div style="color:var(--text3);font-size:10px;text-align:center;padding:10px">—</div></div>
       </div>
     </aside>
@@ -398,7 +437,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <!-- 右 rail：Auto-trade feed + status -->
     <aside class="cmd-rail">
       <div class="cmd-block">
-        <h4>🤖 Auto-Trader <span class="lk" onclick="tab('auto')">設定</span></h4>
+        <h4>🤖 Auto-Trader <span class="lk" onclick="switchTab('auto')">設定</span></h4>
         <div id="ov-auto-status" style="font-size:11px;color:var(--text2);margin-bottom:6px">—</div>
       </div>
       <div class="cmd-block">
@@ -408,6 +447,24 @@ tr:hover { background:rgba(240,185,11,0.02); }
         </div>
       </div>
     </aside>
+  </div>
+  <!-- Cut C: 持倉保護地圖（每倉位的入場 / 現價 / TP / SL / Trailing 視覺化）-->
+  <div class="pmap-card" style="margin-top:12px" id="pmap-card">
+    <div class="pmap-head">
+      <h3>🛡️ 保護地圖</h3>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:11px;color:var(--text3)">入場 / 現價 / TP +10% / SL −5% / Trailing −3%（30s 自動刷新）</span>
+        <button class="btn btn-o btn-sm" onclick="loadProtectionMap()">↻</button>
+      </div>
+    </div>
+    <div id="pmap-rows"><div style="color:var(--text3);font-size:11px;text-align:center;padding:12px">載入中…</div></div>
+    <div class="pmap-legend">
+      <span><i style="background:var(--text2)"></i>進場</span>
+      <span><i style="background:var(--accent)"></i>現價</span>
+      <span><i style="background:var(--green)"></i>TP</span>
+      <span><i style="background:var(--red)"></i>SL</span>
+      <span><i style="background:#f0b90b;opacity:.7"></i>Trailing</span>
+    </div>
   </div>
 </div>
 
@@ -452,7 +509,8 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="fg"><label>Exchange</label><select id="sig-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
       <div class="fg"><label>策略</label>
         <select id="sig-strategy">
-          <option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option>
+          <option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option>
+          <option value="multi_timeframe">Multi-TF</option>
           <option value="sma_cross">SMA Cross</option><option value="rsi_oversold">RSI</option>
           <option value="macd_divergence">MACD</option><option value="news_sentiment">News</option>
           <option value="llm">LLM (AI)</option>
@@ -535,7 +593,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <h3>回測設定</h3>
       <div class="form-row"><div class="fg sym-picker"><label>Symbol</label><input id="bt-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'bt')" oninput="filterSymPicker(this,'bt')"><div class="sym-dropdown" id="bt-sym-dropdown"></div></div>
         <div class="fg"><label>Exchange</label><select id="bt-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
-      <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
+      <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="composite">Composite</option><option value="ensemble">Ensemble</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
         <div class="fg"><label>初始資金</label><input id="bt-cash" type="number" value="100000" step="1000"></div>
         <div class="fg"><label>手續費%</label><input id="bt-commission" type="number" value="0.1" step="0.01"></div>
         <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="730"></div></div>
@@ -567,7 +625,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="form-row">
         <div class="fg sym-picker"><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
         <div class="fg"><select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
-        <div class="fg"><select id="auto-strategy"><option value="composite">Composite</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
+        <div class="fg"><select id="auto-strategy"><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
         <div class="fg"><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:60px"></div>
         <button class="btn btn-y btn-sm" onclick="addAutoWatch()">新增</button>
       </div>
@@ -576,6 +634,21 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <table><thead><tr><th>Symbol</th><th>Exchange</th><th>策略</th><th>數量</th><th>訊號</th><th>信心</th><th>檢查</th><th></th></tr></thead>
       <tbody id="auto-watch-table"><tr><td colspan="8" style="color:var(--text2)">無</td></tr></tbody></table>
     </div>
+  </div>
+  <!-- Cut C: 市場掃描器 — 一籃子 symbol 跑 composite、按信心 + 動作篩選、勾選後一鍵加入監控 -->
+  <div class="card" style="margin-top:12px">
+    <h3>🔍 市場掃描器 — 一鍵建立監控</h3>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">對全部 symbol 跑 composite 策略、按信心 + 動作篩出候選、勾選後一鍵加入監控清單（用 上方「新增監控」的數量）</div>
+    <div class="scan-form">
+      <div class="fg"><label>動作</label><select id="scan-action"><option value="any">任意</option><option value="buy">僅 BUY</option><option value="sell">僅 SELL</option></select></div>
+      <div class="fg"><label>最低信心</label><input id="scan-min-conf" type="number" value="0.65" min="0" max="1" step="0.05" style="width:70px"></div>
+      <div class="fg"><label>Top N</label><input id="scan-topn" type="number" value="10" min="3" max="30" step="1" style="width:60px"></div>
+      <div class="fg"><label>類型</label><select id="scan-type"><option value="all">全部</option><option value="stock">美股</option><option value="crypto">加密</option></select></div>
+      <button class="btn btn-y btn-sm" onclick="runMarketScan()" id="scan-run-btn">開始掃描</button>
+      <button class="btn btn-g btn-sm" onclick="addBatchToWatch()" id="scan-add-btn" disabled>加入勾選</button>
+      <span class="scan-progress" id="scan-progress"></span>
+    </div>
+    <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描，按「開始掃描」跑 composite 策略</div></div>
   </div>
   <div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">交易日誌</h3><button class="btn btn-o btn-sm" onclick="fetchAutoLogs()">重新整理</button></div>
     <div id="auto-logs" class="log" style="max-height:250px">—</div>
@@ -882,8 +955,8 @@ document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (
 const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
 if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','${ex}',${p.quantity})">平倉</button></td></tr>`).join('');
 else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
-// 順帶刷新左右兩 rail
-loadOverviewRails();}
+// 順帶刷新左右兩 rail + 保護地圖
+loadOverviewRails();loadProtectionMap();}
 
 // 左 rail（auto-trader 監控清單 + 即時報價 top）+ 右 rail（auto-trader 狀態 + feed）
 async function loadOverviewRails(){
@@ -893,17 +966,18 @@ async function loadOverviewRails(){
     const wl=document.getElementById('ov-watchlist'),hl=document.getElementById('ov-hotlist');
     const watch=at?.data?.watch_list||[];
     if(watch.length>0){wl.innerHTML=watch.map(w=>{const q=quotes[w.symbol];const pc=q?Number(q.change_percent):null;const cls=pc==null?'':(pc>=0?'up':'down');
-      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${w.symbol}';document.getElementById('sig-exchange').value='${w.exchange}';tab('strategy')"><span class="nm">${w.symbol}</span><span class="px">${q?'$'+Number(q.price).toFixed(2):'—'}</span><span class="pc ${cls}">${pc!=null?(pc>=0?'+':'')+pc.toFixed(2)+'%':''}</span></div>`;}).join('');}
-    else{wl.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">尚未加任何 watch、<span style="color:var(--text2);cursor:pointer" onclick="tab(\'auto\')">去設定</span></div>';}
+      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${w.symbol}';document.getElementById('sig-exchange').value='${w.exchange}';switchTab('strategy')"><span class="nm">${w.symbol}</span><span class="px">${q?'$'+Number(q.price).toFixed(2):'—'}</span><span class="pc ${cls}">${pc!=null?(pc>=0?'+':'')+pc.toFixed(2)+'%':''}</span></div>`;}).join('');}
+    else{wl.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">尚未加任何 watch、<span style="color:var(--text2);cursor:pointer" onclick="switchTab(\'auto\')">去設定</span></div>';}
     // 右：auto-trader 狀態 summary
     const stat=document.getElementById('ov-auto-status');
     if(at?.data){const d=at.data;const dot=d.enabled?'<span style="color:var(--green)">●</span>':'<span style="color:var(--text3)">○</span>';
       const dev=d.dev_force_action?` <span style="color:#f0b90b;font-size:10px">[FORCE:${d.dev_force_action}]</span>`:'';
-      stat.innerHTML=`${dot} ${d.enabled?'運行中':'已停止'}${dev} · poll ${d.interval_seconds}s · 監控 ${d.watch_count} 個`;}
+      const conf=d.min_confidence!=null?` · 門檻 ${Math.round(d.min_confidence*100)}%`:'';
+      stat.innerHTML=`${dot} ${d.enabled?'運行中':'已停止'}${dev} · poll ${d.interval_seconds}s · 監控 ${d.watch_count} 個${conf}`;}
     // 即時行情 top 6
     const hot=(qs?.data?.quotes||[]).filter(q=>q.price>0).sort((a,b)=>Math.abs(b.change_percent||0)-Math.abs(a.change_percent||0)).slice(0,6);
     if(hot.length>0)hl.innerHTML=hot.map(q=>{const pc=Number(q.change_percent||0),cls=pc>=0?'up':'down';
-      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${q.symbol}';tab('strategy')"><span class="nm">${q.symbol}</span><span class="px">$${Number(q.price).toFixed(2)}</span><span class="pc ${cls}">${pc>=0?'+':''}${pc.toFixed(2)}%</span></div>`;}).join('');
+      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${q.symbol}';switchTab('strategy')"><span class="nm">${q.symbol}</span><span class="px">$${Number(q.price).toFixed(2)}</span><span class="pc ${cls}">${pc>=0?'+':''}${pc.toFixed(2)}%</span></div>`;}).join('');
     else hl.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">無報價</div>';
   }catch(e){console.warn('loadOverviewRails:',e);}
   loadOverviewFeed();
@@ -969,7 +1043,7 @@ const params=getCustomParams();const r=await api('/api/v1/strategy/signal',{meth
 if(!r?.data){el.innerHTML='<div style="color:var(--red);padding:8px">分析失敗: '+(r?.error||'unknown')+'</div>';return;}
 const s=r.data,ind=s.indicators||{},cls=s.action==='buy'?'buy':s.action==='sell'?'sell':'hold';
 const price=ind['sma_cross.price']||ind['rsi_oversold.price']||ind['macd_divergence.price']||ind['price']||0;
-const stratLabel={composite:'Composite',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
+const stratLabel={composite:'Composite',ensemble:'Ensemble (動態權重)',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
 const isLlm=s.strategy==='llm'||s.strategy==='news_sentiment';
 // 從 K 棒算 client-side 補充指標（ATR、Bollinger 位置、量變化）
 const extra=computeExtraIndicators(bars.data.bars);
@@ -1576,8 +1650,118 @@ tb.innerHTML='<tr><th>Rank</th><th>參數</th><th>報酬%</th><th>Sharpe</th><th
 // ── Backtest save ───────────────────────────────────────────────
 async function saveBacktest(data){const r=await api('/api/v1/backtest-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r?.data)alert('回測已保存: '+r.data.id);}
 
+// ── Cut C: 持倉保護地圖 ──────────────────────────────────────────
+let _pmapTimer=null;
+async function loadProtectionMap(){
+  const ex=document.getElementById('ov-account-select')?.value||'alpaca';
+  const r=await api('/api/v1/trading/positions?exchange='+ex);
+  const box=document.getElementById('pmap-rows');if(!box)return;
+  const positions=r?.data?.positions||[];
+  if(positions.length===0){box.innerHTML='<div style="color:var(--text3);font-size:11px;text-align:center;padding:12px">無持倉</div>';return;}
+  const rows=positions.map(p=>{
+    const cost=Number(p.avg_entry_price)||0,cur=Number(p.current_price)||cost;
+    if(cost<=0||cur<=0)return'';
+    // 預設 TP +10% / SL −5% / Trailing −3%（以 max(cost,cur) 為 peak）
+    const tp=cost*1.10,sl=cost*0.95,peak=Math.max(cur,cost),trail=peak*0.97;
+    const lo=Math.min(sl,cost,cur,trail)*0.985;
+    const hi=Math.max(tp,cost,cur,peak)*1.015;
+    const pos=v=>Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+    const pnl=Number(p.unrealized_pnl)||0,cls=pnl>=0?'up':'down';
+    const pct=cost>0?((cur-cost)/cost*100):0;
+    return`<div class="pmap-row">
+      <div class="pmap-top">
+        <div><span class="pm-sym">${p.symbol}</span> <span style="color:var(--text3)">× ${fmt(p.quantity,4)}</span></div>
+        <div>進 ${fmtUsd(cost)} · 現 <strong style="color:var(--text)">${fmtUsd(cur)}</strong> <span class="pm-pnl ${cls}">(${pct>=0?'+':''}${pct.toFixed(2)}%)</span> · TP ${fmtUsd(tp)} · SL ${fmtUsd(sl)} · Trail ${fmtUsd(trail)}</div>
+      </div>
+      <div class="pmap-bar">
+        <div class="pm-fill" style="left:${pos(sl)}%;right:${100-pos(tp)}%"></div>
+        <div class="pmap-marker sl"    style="left:${pos(sl)}%"    title="SL ${fmtUsd(sl)}"></div>
+        <div class="pmap-marker trail" style="left:${pos(trail)}%" title="Trailing ${fmtUsd(trail)}"></div>
+        <div class="pmap-marker entry" style="left:${pos(cost)}%"  title="進場 ${fmtUsd(cost)}"></div>
+        <div class="pmap-marker cur"   style="left:${pos(cur)}%"   title="現價 ${fmtUsd(cur)}"></div>
+        <div class="pmap-marker tp"    style="left:${pos(tp)}%"    title="TP ${fmtUsd(tp)}"></div>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+  box.innerHTML=rows||'<div style="color:var(--text3);font-size:11px;text-align:center;padding:12px">無有效持倉</div>';
+}
+function _ensurePmapTimer(){
+  if(_pmapTimer)clearInterval(_pmapTimer);
+  _pmapTimer=setInterval(()=>{
+    if(document.getElementById('panel-overview')?.classList.contains('active'))loadProtectionMap();
+  },30000);
+}
+
+// ── Cut C: 市場掃描器 ────────────────────────────────────────────
+let _scanResults=[];
+async function runMarketScan(){
+  const minConf=parseFloat(document.getElementById('scan-min-conf').value)||0.65;
+  const topN=parseInt(document.getElementById('scan-topn').value)||10;
+  const actionFilter=document.getElementById('scan-action').value;
+  const typeFilter=document.getElementById('scan-type').value;
+  const all=getAllSymbols().filter(s=>typeFilter==='all'||s.type===typeFilter);
+  const prog=document.getElementById('scan-progress'),out=document.getElementById('scan-result');
+  const addBtn=document.getElementById('scan-add-btn'),runBtn=document.getElementById('scan-run-btn');
+  addBtn.disabled=true;runBtn.disabled=true;_scanResults=[];
+  if(all.length===0){out.innerHTML='<div class="scan-empty">無符合 symbol</div>';runBtn.disabled=false;return;}
+  out.innerHTML='<div class="scan-empty">掃描中… 0 / '+all.length+'</div>';
+  const results=[];
+  // batch 5 並行、避免一次打 60 個 API
+  for(let i=0;i<all.length;i+=5){
+    const batch=all.slice(i,i+5);
+    prog.textContent=`掃描中… ${i} / ${all.length}`;
+    const res=await Promise.all(batch.map(async s=>{
+      try{
+        const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+s.symbol+'&limit=100');
+        if(!bars?.data?.bars||bars.data.bars.length<30)return null;
+        const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'composite',symbol:s.symbol,exchange:s.exchange,interval:'1d',bars:bars.data.bars})});
+        if(!r?.data)return null;
+        const last=bars.data.bars[bars.data.bars.length-1];
+        return{symbol:s.symbol,exchange:s.exchange,type:s.type,action:r.data.action,confidence:r.data.confidence||0,price:last.close};
+      }catch(e){return null;}
+    }));
+    res.forEach(r=>{if(r)results.push(r);});
+  }
+  prog.textContent=`完成 ${results.length} / ${all.length}`;
+  runBtn.disabled=false;
+  const filtered=results
+    .filter(r=>r.action!=='hold')
+    .filter(r=>actionFilter==='any'||r.action===actionFilter)
+    .filter(r=>r.confidence>=minConf)
+    .sort((a,b)=>b.confidence-a.confidence)
+    .slice(0,topN);
+  _scanResults=filtered;
+  if(filtered.length===0){out.innerHTML='<div class="scan-empty">無符合條件（共掃 '+results.length+' 個、信心 ≥ '+minConf+'）</div>';return;}
+  out.innerHTML=filtered.map((r,i)=>{
+    const cls=r.action==='buy'?'buy':'sell',fcls=r.action==='buy'?'up':'down',pct=Math.round(r.confidence*100);
+    return`<div class="scan-row">
+      <span class="sr-sym">${r.symbol}</span>
+      <span class="sr-act ${cls}">${r.action.toUpperCase()}</span>
+      <div class="scan-confidence-bar"><div class="fill ${fcls}" style="width:${pct}%"></div></div>
+      <span class="sr-px">$${Number(r.price).toFixed(2)} · ${pct}%</span>
+      <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-idx="${i}" checked>加</label>
+    </div>`;
+  }).join('');
+  addBtn.disabled=false;
+}
+
+async function addBatchToWatch(){
+  if(!_scanResults.length)return;
+  const checked=[...document.querySelectorAll('#scan-result input[type=checkbox]:checked')]
+    .map(cb=>_scanResults[parseInt(cb.dataset.idx)]).filter(Boolean);
+  if(!checked.length){alert('沒有勾選任何 symbol');return;}
+  const qty=parseFloat(document.getElementById('auto-qty').value)||1;
+  let ok=0,fail=0;
+  for(const r of checked){
+    const x=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:r.symbol,exchange:r.exchange,strategy:'composite',quantity:qty})});
+    if(x?.data||x?.ok)ok++;else fail++;
+  }
+  alert('已加入 '+ok+' 個 · 失敗 '+fail);
+  fetchAutoStatus();
+}
+
 // ── Init ────────────────────────────────────────────────────────
-checkWorkers();loadOverview();loadLiveQuotes();connectWs();
+checkWorkers();loadOverview();loadLiveQuotes();connectWs();loadProtectionMap();_ensurePmapTimer();
 setInterval(checkWorkers,30000);setInterval(loadLiveQuotes,60000);
 </script>
 </body>

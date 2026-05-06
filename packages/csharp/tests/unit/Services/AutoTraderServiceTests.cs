@@ -215,6 +215,86 @@ public class AutoTraderServiceTests
         finally { Environment.SetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION", null); }
     }
 
+    // ── AUTOTRADER_MIN_CONFIDENCE env override ────────────────────
+
+    [Fact]
+    public void MinConfidence_DefaultEnvUnset_Is_0_5()
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", null);
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+
+        var svc = MakeService(db);
+
+        svc.MinConfidence.Should().Be(0.5m);
+    }
+
+    [Theory]
+    [InlineData("0.45", 0.45)]
+    [InlineData("0.6",  0.6)]
+    [InlineData("0",    0)]
+    [InlineData("1",    1)]
+    public void MinConfidence_EnvSetToValidValue_IsParsed(string raw, decimal expected)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory();
+            db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.MinConfidence.Should().Be(expected);
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", null); }
+    }
+
+    [Theory]
+    [InlineData("-0.1", 0)]   // negative → clamp 0
+    [InlineData("1.5",  1)]   // > 1 → clamp 1
+    [InlineData("999",  1)]
+    public void MinConfidence_EnvOutOfRange_IsClamped(string raw, decimal expected)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory();
+            db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.MinConfidence.Should().Be(expected);
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", null); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("notanumber")]
+    [InlineData("0.5x")]
+    public void MinConfidence_EnvSetToGarbage_FallsBackToDefault(string raw)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory();
+            db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.MinConfidence.Should().Be(0.5m, "garbage env value should fall back to default 0.5");
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE", null); }
+    }
+
+    [Fact]
+    public void ParseMinConfidence_DirectStaticHelper_HandlesEdgeCases()
+    {
+        // 直接驗 static helper、不繞 env
+        AutoTraderService.ParseMinConfidence(null).Should().Be(0.5m);
+        AutoTraderService.ParseMinConfidence("").Should().Be(0.5m);
+        AutoTraderService.ParseMinConfidence("0.3").Should().Be(0.3m);
+        AutoTraderService.ParseMinConfidence("0").Should().Be(0m);
+        AutoTraderService.ParseMinConfidence("1").Should().Be(1m);
+        AutoTraderService.ParseMinConfidence("-5").Should().Be(0m);
+        AutoTraderService.ParseMinConfidence("2").Should().Be(1m);
+    }
+
     [Fact]
     public void AddSameKeyTwice_OverwritesAndKeepsSingleRow()
     {
