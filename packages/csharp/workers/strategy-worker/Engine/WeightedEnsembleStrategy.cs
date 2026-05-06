@@ -72,8 +72,12 @@ public class WeightedEnsembleStrategy : IStrategy
             totalWeight = _constituents.Count;
         }
 
-        // Step 3: 加權投票
-        decimal buyScore = 0m, sellScore = 0m, holdScore = 0m;
+        // Step 3: 加權投票——hold 視為棄權、不參與比較（與 CompositeStrategy 同步的 fix）。
+        // 原本作法把 hold 也算進 score、結果只要任一成員中性、buy/sell 票就被稀釋。
+        // 改成：buyScore/sellScore 各自用「同向票權重總和」當分母（同向票的平均信心），
+        // 全員 hold → hold @ 0.3；buy vs sell 持平 → hold。
+        decimal buyScore = 0m, sellScore = 0m;
+        decimal buyWeight = 0m, sellWeight = 0m;
         var indicators = new Dictionary<string, decimal>();
         var reasonParts = new List<string>();
 
@@ -84,9 +88,15 @@ public class WeightedEnsembleStrategy : IStrategy
 
             switch (sig.Action)
             {
-                case "buy":  buyScore  += sig.Confidence * wNorm; break;
-                case "sell": sellScore += sig.Confidence * wNorm; break;
-                default:     holdScore += sig.Confidence * wNorm; break;
+                case "buy":
+                    buyScore  += sig.Confidence * wNorm;
+                    buyWeight += wNorm;
+                    break;
+                case "sell":
+                    sellScore  += sig.Confidence * wNorm;
+                    sellWeight += wNorm;
+                    break;
+                // hold: 棄權、不算 score 也不算 weight
             }
 
             indicators[$"weight.{s.Name}"] = Math.Round(wNorm, 4);
@@ -99,20 +109,21 @@ public class WeightedEnsembleStrategy : IStrategy
             reasonParts.Add($"[{s.Name} w={wNorm:P0}] {sig.Action}({sig.Confidence:P0})");
         }
 
-        // Step 4: 決定 action + confidence
+        // Step 4: 決定 action + confidence（同向票平均信心）
         string action;
         decimal confidence;
-        if (buyScore >= sellScore && buyScore >= holdScore && buyScore > 0m)
+        if (buyScore > sellScore && buyWeight > 0m)
         {
-            action = "buy"; confidence = buyScore;
+            action = "buy"; confidence = buyScore / buyWeight;
         }
-        else if (sellScore >= holdScore && sellScore > 0m)
+        else if (sellScore > buyScore && sellWeight > 0m)
         {
-            action = "sell"; confidence = sellScore;
+            action = "sell"; confidence = sellScore / sellWeight;
         }
         else
         {
-            action = "hold"; confidence = holdScore;
+            // 全員 hold 或 buy/sell 持平
+            action = "hold"; confidence = 0.3m;
         }
 
         // Step 5: 同向比例（用來衡量意見分歧）
@@ -124,7 +135,6 @@ public class WeightedEnsembleStrategy : IStrategy
         indicators["agreement_ratio"] = agreementRatio;
         indicators["buy_score"] = Math.Round(buyScore, 4);
         indicators["sell_score"] = Math.Round(sellScore, 4);
-        indicators["hold_score"] = Math.Round(holdScore, 4);
 
         return new Signal
         {
