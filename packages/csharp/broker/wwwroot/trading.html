@@ -340,6 +340,29 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .scan-row .sr-px { color:var(--text2); font-family:Consolas,monospace; text-align:right; font-size:11px; }
 .scan-empty { color:var(--text3); font-size:11px; text-align:center; padding:14px; }
 
+/* 回測：K 棒重播 + 多策略對比 */
+.replay-info { background:var(--bg3); border-radius:4px; padding:10px 12px; font-size:12px; color:var(--text2); }
+.replay-info .ri-row { display:flex; gap:18px; flex-wrap:wrap; align-items:baseline; }
+.replay-info .ri-bar { color:var(--text3); font-family:Consolas,monospace; }
+.replay-info .ri-bar strong { color:var(--text); }
+.replay-info .ri-act { font-weight:700; padding:2px 8px; border-radius:3px; font-size:11px; }
+.replay-info .ri-act.up   { background:var(--greenBg); color:var(--green); }
+.replay-info .ri-act.down { background:var(--redBg); color:var(--red); }
+.replay-info .ri-act.neutral { background:var(--bg4); color:var(--text2); }
+.replay-info .ri-regime { background:rgba(240,185,11,0.12); color:#f0b90b; padding:2px 8px; border-radius:3px; font-weight:700; font-size:11px; }
+.replay-info .ri-reason { font-size:11px; color:var(--text3); margin-top:8px; line-height:1.5; word-break:break-all; }
+.replay-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.replay-controls input[type=range] { flex:1; min-width:200px; accent-color:var(--accent); }
+.preset-desc { font-size:11px; color:#f0b90b; margin-top:-4px; margin-bottom:6px; padding:6px 10px; background:rgba(240,185,11,0.06); border-left:2px solid #f0b90b; border-radius:2px; }
+
+/* 多策略對比 */
+.cmp-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+.cmp-table th { padding:8px 10px; text-align:left; color:var(--text3); border-bottom:1px solid var(--border); font-weight:600; font-size:11px; text-transform:uppercase; }
+.cmp-table td { padding:7px 10px; border-bottom:1px solid rgba(43,49,57,0.5); }
+.cmp-table .cmp-strat { font-weight:700; }
+.cmp-table .cmp-color { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:8px; vertical-align:middle; }
+.cmp-table .cmp-best { background:rgba(14,203,129,0.05); }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -592,14 +615,31 @@ tr:hover { background:rgba(240,185,11,0.02); }
   <div class="g g2">
     <div class="card">
       <h3>回測設定</h3>
+      <div class="form-row">
+        <div class="fg" style="flex:1"><label>📅 歷史事件 preset（選填）</label>
+          <select id="bt-preset" onchange="loadEventPreset()">
+            <option value="">— 自訂回測 —</option>
+            <option value="covid20">COVID 2020 全球崩盤 (SPY)</option>
+            <option value="luna22">LUNA / Terra 崩盤 2022-05 (BTC)</option>
+            <option value="ftx22">FTX 倒閉 2022-11 (BTC)</option>
+            <option value="svb23">SVB 銀行倒閉 2023-03 (SPY)</option>
+            <option value="btc24">BTC 第四次減半 2024-04 (BTC)</option>
+            <option value="yen24">日圓套利反轉 2024-08 (SPY)</option>
+          </select>
+        </div>
+      </div>
+      <div id="bt-preset-desc" class="preset-desc" style="display:none"></div>
       <div class="form-row"><div class="fg sym-picker"><label>Symbol</label><input id="bt-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'bt')" oninput="filterSymPicker(this,'bt')"><div class="sym-dropdown" id="bt-sym-dropdown"></div></div>
         <div class="fg"><label>Exchange</label><select id="bt-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
       <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="auto_select">🎯 AutoSelect</option><option value="composite">Composite</option><option value="ensemble">Ensemble</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
         <div class="fg"><label>初始資金</label><input id="bt-cash" type="number" value="100000" step="1000"></div>
         <div class="fg"><label>手續費%</label><input id="bt-commission" type="number" value="0.1" step="0.01"></div>
-        <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="730"></div></div>
-      <button class="btn btn-y" onclick="runBacktest()">開始回測</button>
-      <button class="btn btn-o btn-sm" onclick="runOptimizer()">參數優化</button>
+        <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="2000"></div></div>
+      <div class="form-row">
+        <button class="btn btn-y" onclick="runBacktest()">開始回測</button>
+        <button class="btn btn-g" onclick="runStrategyCompareBacktest()" title="auto_select / composite / ensemble / 買入持有 並排比較">🔬 對比 4 策略</button>
+        <button class="btn btn-o btn-sm" onclick="runOptimizer()">參數優化</button>
+      </div>
       <div id="bt-status" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
     </div>
     <div class="card" id="bt-summary-card" style="display:none"><h3>績效</h3><div class="g g3" id="bt-metrics" style="gap:6px"></div></div>
@@ -608,6 +648,35 @@ tr:hover { background:rgba(240,185,11,0.02); }
   <div class="card" style="margin-top:12px" id="bt-trades-card" style="display:none"><h3>交易明細</h3>
     <table><thead><tr><th>#</th><th>方向</th><th>進場日</th><th>進場價</th><th>出場日</th><th>出場價</th><th>數量</th><th>損益</th><th>損益%</th><th>天數</th></tr></thead>
     <tbody id="bt-trades-table"></tbody></table>
+  </div>
+  <!-- Cut A: K 棒重播——逐 bar 看策略決策、規避 look-ahead -->
+  <div class="card" id="bt-replay-card" style="display:none;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0">📼 K 棒重播</h3>
+      <span style="font-size:11px;color:var(--text3)">逐 bar 看策略決策、看出單邏輯是否符合行情、避免 look-ahead bias</span>
+    </div>
+    <div class="replay-controls" style="margin-bottom:10px">
+      <button class="btn btn-o btn-sm" onclick="replayPrev()">← Prev</button>
+      <input id="bt-replay-slider" type="range" min="0" max="0" value="0">
+      <button class="btn btn-o btn-sm" onclick="replayNext()">Next →</button>
+      <button class="btn btn-y btn-sm" id="bt-replay-play" onclick="toggleReplay()">▶ 播放</button>
+      <select id="bt-replay-speed" onchange="updateReplaySpeed()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px">
+        <option value="200">5x</option>
+        <option value="500">2x</option>
+        <option value="1000" selected>1x</option>
+        <option value="2000">.5x</option>
+      </select>
+    </div>
+    <div id="bt-replay-info" class="replay-info">尚未開始重播</div>
+  </div>
+  <!-- Cut C: 多策略對比——auto_select / composite / ensemble / 買入持有 並排 -->
+  <div class="card" id="bt-compare-card" style="display:none;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0">🔬 多策略對比</h3>
+      <span style="font-size:11px;color:var(--text3)">同一段 K 線並行跑、看 auto_select 對 vanilla 是否有 alpha</span>
+    </div>
+    <div id="bt-compare-chart-container" style="height:280px;border:1px solid var(--border);border-radius:4px;overflow:hidden"></div>
+    <div id="bt-compare-table"></div>
   </div>
 </div>
 
@@ -1494,7 +1563,139 @@ es.setData(d.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/10
 const bl=btChart.addLineSeries({color:'#5e6673',lineWidth:1,lineStyle:2,priceLineVisible:false});bl.setData(d.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:cash})));btChart.timeScale().fitContent();}
 document.getElementById('bt-trades-card').style.display='block';const tb=document.getElementById('bt-trades-table');
 if(d.trades?.length)tb.innerHTML=d.trades.map((t,i)=>`<tr><td>${i+1}</td><td><span class="badge buy">${t.side}</span></td><td style="font-size:10px">${timeStr(t.entry_date)}</td><td>${fmtUsd(t.entry_price)}</td><td style="font-size:10px">${timeStr(t.exit_date)}</td><td>${fmtUsd(t.exit_price)}</td><td>${fmt(t.quantity,2)}</td><td class="${t.pnl>=0?'up':'down'}">${fmtUsd(t.pnl)}</td><td class="${t.pnl_pct>=0?'up':'down'}">${t.pnl_pct}%</td><td>${t.hold_bars||'—'}</td></tr>`).join('');
-else tb.innerHTML='<tr><td colspan="10" style="color:var(--text2)">無交易</td></tr>';}
+else tb.innerHTML='<tr><td colspan="10" style="color:var(--text2)">無交易</td></tr>';
+// 同步把回測 bars 餵給重播控制
+initReplay(bars.data.bars, strategy, symbol, exchange);}
+
+// ── Cut B: 歷史事件 preset ──────────────────────────────────────
+const _eventPresets={
+  covid20:{symbol:'SPY',     exchange:'alpaca',  barLimit:1500, desc:'COVID 2020-03 全球大流行宣布、SPY 一個月 -34%、史上最快熊市；測 strategy 在斷崖式下跌時是否有去風險'},
+  luna22: {symbol:'BTCUSDT', exchange:'binance', barLimit:1100, desc:'2022-05 UST 脫鉤 → LUNA 從 $80 崩到 $0.0001；加密蒸發 $400B；測對加密黑天鵝的反應'},
+  ftx22:  {symbol:'BTCUSDT', exchange:'binance', barLimit:900,  desc:'2022-11 FTX 倒閉、SBF 被捕；BTC 從 $21k 跌到 $15.5k；測連環倒閉信任危機'},
+  svb23:  {symbol:'SPY',     exchange:'alpaca',  barLimit:800,  desc:'2023-03 SVB / Signature / FRC 銀行擠兌；Fed 開 BTFP；測金融系統壓力時 strategy 動向'},
+  btc24:  {symbol:'BTCUSDT', exchange:'binance', barLimit:400,  desc:'2024-04 BTC 第四次減半（區塊獎勵 6.25→3.125）；歷史減半後 6-12 個月通常大漲；測趨勢策略表現'},
+  yen24:  {symbol:'SPY',     exchange:'alpaca',  barLimit:200,  desc:'2024-08-05 日圓套利反轉 flash crash、Nikkei -12%、SPY -3%；測單日尾部風險的反應'},
+};
+function loadEventPreset(){
+  const key=document.getElementById('bt-preset').value;
+  const desc=document.getElementById('bt-preset-desc');
+  if(!key){desc.style.display='none';desc.textContent='';return;}
+  const p=_eventPresets[key];if(!p)return;
+  document.getElementById('bt-symbol').value=p.symbol;
+  document.getElementById('bt-exchange').value=p.exchange;
+  document.getElementById('bt-bars').value=p.barLimit;
+  desc.style.display='block';desc.textContent='📅 '+p.desc;
+}
+
+// ── Cut A: K 棒重播 ──────────────────────────────────────────────
+let _replay={bars:null,idx:0,intervalId:null,speedMs:1000,strategy:'composite',symbol:'AAPL',exchange:'alpaca'};
+function initReplay(bars,strategy,symbol,exchange){
+  _replay.bars=bars;_replay.strategy=strategy;_replay.symbol=symbol;_replay.exchange=exchange;
+  _replay.idx=Math.min(50,bars.length-1);  // 從 idx=50 起跳，前面 bars 太少策略沒法評估
+  if(_replay.intervalId){clearInterval(_replay.intervalId);_replay.intervalId=null;document.getElementById('bt-replay-play').textContent='▶ 播放';}
+  const slider=document.getElementById('bt-replay-slider');
+  slider.min=Math.min(50,bars.length-1);slider.max=bars.length-1;slider.value=_replay.idx;
+  slider.oninput=()=>stepReplay(parseInt(slider.value));
+  document.getElementById('bt-replay-card').style.display='block';
+  stepReplay(_replay.idx);
+}
+async function stepReplay(idx){
+  _replay.idx=idx;
+  document.getElementById('bt-replay-slider').value=idx;
+  const win=_replay.bars.slice(0,idx+1);
+  const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:_replay.strategy,symbol:_replay.symbol,exchange:_replay.exchange,interval:'1d',bars:win})});
+  const bar=_replay.bars[idx];const sig=r?.data;const ind=sig?.indicators||{};
+  const regimeNames=['Unclear','TrendingUp','TrendingDown','RangeBound','Squeeze','HighVol'];
+  const regimeKey=ind['regime.type']!=null?regimeNames[Math.round(ind['regime.type'])]:null;
+  const cls=sig?.action==='buy'?'up':sig?.action==='sell'?'down':'neutral';
+  const date=new Date(bar.open_time||bar.openTime||bar.date).toLocaleDateString('zh-TW');
+  document.getElementById('bt-replay-info').innerHTML=`
+    <div class="ri-row">
+      <div class="ri-bar"><span style="color:var(--text2)">Bar ${idx+1}/${_replay.bars.length}</span> · <strong>${date}</strong></div>
+      <div class="ri-bar">O ${fmt(bar.open)} H ${fmt(bar.high)} L ${fmt(bar.low)} <strong>C ${fmt(bar.close)}</strong></div>
+      <div class="ri-act ${cls}">${(sig?.action||'?').toUpperCase()} @ ${((sig?.confidence||0)*100).toFixed(0)}%</div>
+      ${regimeKey?`<div class="ri-regime">regime: ${regimeKey}</div>`:''}
+    </div>
+    <div class="ri-reason">${(sig?.reason||'(no reason)').slice(0,260)}</div>`;
+}
+function toggleReplay(){
+  const btn=document.getElementById('bt-replay-play');
+  if(_replay.intervalId){clearInterval(_replay.intervalId);_replay.intervalId=null;btn.textContent='▶ 播放';return;}
+  if(_replay.idx>=_replay.bars.length-1){_replay.idx=parseInt(document.getElementById('bt-replay-slider').min);}
+  btn.textContent='⏸ 暫停';
+  _replay.intervalId=setInterval(async()=>{
+    if(_replay.idx>=_replay.bars.length-1){toggleReplay();return;}
+    await stepReplay(_replay.idx+1);
+  },_replay.speedMs);
+}
+function replayPrev(){if(_replay.bars&&_replay.idx>parseInt(document.getElementById('bt-replay-slider').min))stepReplay(_replay.idx-1);}
+function replayNext(){if(_replay.bars&&_replay.idx<_replay.bars.length-1)stepReplay(_replay.idx+1);}
+function updateReplaySpeed(){
+  _replay.speedMs=parseInt(document.getElementById('bt-replay-speed').value);
+  if(_replay.intervalId){clearInterval(_replay.intervalId);_replay.intervalId=null;toggleReplay();}
+}
+
+// ── Cut C: 多策略對比 ───────────────────────────────────────────
+let _compareChart=null;
+async function runStrategyCompareBacktest(){
+  const symbol=document.getElementById('bt-symbol').value,exchange=document.getElementById('bt-exchange').value;
+  const cash=parseFloat(document.getElementById('bt-cash').value)||100000;
+  const commission=(parseFloat(document.getElementById('bt-commission').value)||.1)/100;
+  const barLimit=parseInt(document.getElementById('bt-bars').value)||365;
+  const st=document.getElementById('bt-status');st.textContent='載入 K 線…';st.style.color='var(--text2)';
+  const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&limit=${barLimit}`);
+  if(!bars?.data?.bars||bars.data.bars.length<60){st.textContent='K 線不足';st.style.color='var(--red)';return;}
+  st.textContent='對比 4 策略並行回測…可能需要 10-30 秒';
+  const strats=['auto_select','composite','ensemble'];
+  const results=await Promise.all(strats.map(async s=>{
+    try{const r=await api('/api/v1/strategy/backtest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:s,symbol,exchange,bars:bars.data.bars,initial_cash:cash,commission})});
+      return{strategy:s,data:r?.data};}catch(e){return{strategy:s,data:null,error:e.message};}
+  }));
+  // Buy-and-hold benchmark：純粹 cash * (price/firstClose) 沒手續費
+  const firstClose=bars.data.bars[0].close;const lastClose=bars.data.bars[bars.data.bars.length-1].close;
+  const bhCurve=bars.data.bars.map(b=>({date:b.open_time||b.openTime,value:cash*(b.close/firstClose)}));
+  const bhFinal=cash*(lastClose/firstClose);const bhRet=(bhFinal-cash)/cash*100;
+  // 計算 buy-and-hold 的最大回撤
+  let bhPeak=cash,bhMaxDd=0;for(const e of bhCurve){if(e.value>bhPeak)bhPeak=e.value;const dd=(bhPeak-e.value)/bhPeak*100;if(dd>bhMaxDd)bhMaxDd=dd;}
+  results.push({strategy:'buy_and_hold',data:{
+    total_return:bhFinal-cash,total_return_pct:Math.round(bhRet*100)/100,final_value:Math.round(bhFinal*100)/100,
+    total_trades:1,win_rate:bhRet>=0?100:0,sharpe_ratio:0,max_drawdown_pct:Math.round(bhMaxDd*100)/100,
+    equity_curve:bhCurve}});
+  st.textContent='';
+  // 渲染
+  const colors={auto_select:'#f0b90b',composite:'#5e8ad6',ensemble:'#0ecb81',buy_and_hold:'#848e9c'};
+  const labels={auto_select:'AutoSelect',composite:'Composite',ensemble:'Ensemble',buy_and_hold:'買入持有'};
+  document.getElementById('bt-compare-card').style.display='block';
+  // 表格——找出最高 Sharpe / 最高報酬 / 最低 DD 各標 best
+  const valid=results.filter(r=>r.data);
+  const bestSharpe=Math.max(...valid.map(r=>r.data.sharpe_ratio||0));
+  const bestRet=Math.max(...valid.map(r=>r.data.total_return_pct||-Infinity));
+  const bestDd=Math.min(...valid.map(r=>r.data.max_drawdown_pct||Infinity));
+  const tableHtml=`<table class="cmp-table">
+    <thead><tr><th>策略</th><th>總報酬%</th><th>最終淨值</th><th>Sharpe</th><th>最大回撤%</th><th>勝率%</th><th>交易次數</th></tr></thead>
+    <tbody>${results.map(r=>{
+      if(!r.data)return`<tr><td><span class="cmp-color" style="background:${colors[r.strategy]}"></span>${labels[r.strategy]}</td><td colspan="6" style="color:var(--red)">失敗：${r.error||'—'}</td></tr>`;
+      const d=r.data;const isBestRet=d.total_return_pct===bestRet;const isBestS=d.sharpe_ratio===bestSharpe&&bestSharpe>0;const isBestDd=d.max_drawdown_pct===bestDd;
+      return`<tr><td class="cmp-strat"><span class="cmp-color" style="background:${colors[r.strategy]}"></span>${labels[r.strategy]}</td>
+        <td class="${d.total_return_pct>=0?'up':'down'} ${isBestRet?'cmp-best':''}">${d.total_return_pct>=0?'+':''}${d.total_return_pct}%</td>
+        <td>${fmtUsd(d.final_value)}</td>
+        <td class="${isBestS?'cmp-best':''}">${d.sharpe_ratio||'—'}</td>
+        <td class="down ${isBestDd?'cmp-best':''}">${d.max_drawdown_pct}%</td>
+        <td>${d.win_rate}%</td>
+        <td>${d.total_trades}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  document.getElementById('bt-compare-table').innerHTML=tableHtml;
+  // Chart——overlay 4 條 equity curve
+  const cc=document.getElementById('bt-compare-chart-container');cc.innerHTML='';
+  if(_compareChart){_compareChart.remove();_compareChart=null;}
+  _compareChart=LightweightCharts.createChart(cc,{width:cc.clientWidth,height:280,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},timeScale:{borderColor:'#2b3139'},rightPriceScale:{borderColor:'#2b3139'}});
+  for(const r of results){
+    if(!r.data?.equity_curve?.length)continue;
+    const series=_compareChart.addLineSeries({color:colors[r.strategy],lineWidth:2,priceLineVisible:false,title:labels[r.strategy]});
+    series.setData(r.data.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:e.value})));
+  }
+  _compareChart.timeScale().fitContent();
+}
 
 // ── P&L ─────────────────────────────────────────────────────────
 async function loadPnlReport(){const ex=document.getElementById('pnl-exchange').value;
