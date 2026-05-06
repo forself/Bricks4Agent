@@ -463,6 +463,205 @@ public class AutoTraderServiceTests
         json.Should().Contain("triggered");
     }
 
+    // ── B4a Position protection (pure decision) ───────────────────
+
+    private static AutoTraderService.ProtectionConfig DefaultProtConfig() => new()
+    {
+        InitialSlPct        = 5m,
+        PartialExitPct      = 5m,
+        PartialExitRatio    = 0.5m,
+        BreakevenTriggerPct = 3m,
+        BreakevenBufferPct  = 0.5m,
+    };
+
+    private static AutoTraderService.PositionProtectionState MakeState(
+        decimal entry = 100m, decimal? sl = null, bool partialExited = false, bool beMoved = false, decimal? peak = null) => new()
+    {
+        Exchange = "alpaca", Symbol = "AAPL",
+        EntryPrice = entry, PeakPrice = peak ?? entry,
+        SlPrice = sl ?? entry * 0.95m,
+        PartialExited = partialExited, BeMoved = beMoved,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public void Protection_PriceAtSL_TriggersSlHit()
+    {
+        // Entry 100, SL 95；當前 95 → SL hit
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 95m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit);
+        d.PartialQty.Should().Be(10m);
+        d.Reason.Should().Contain("SL hit");
+    }
+
+    [Fact]
+    public void Protection_PriceBelowSL_TriggersSlHit()
+    {
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 90m, 10m, DefaultProtConfig());
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit);
+    }
+
+    [Fact]
+    public void Protection_PnlAtPartialExitThreshold_TriggersPartialExit()
+    {
+        // Entry 100, +5% = 105 → partial exit
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.PartialQty.Should().Be(5m, "10 × 0.5 ratio = 5");
+    }
+
+    [Fact]
+    public void Protection_AfterPartialExit_DoesNotRePartialExit()
+    {
+        // Already exited, +10% — should not trigger partial again
+        var state = MakeState(entry: 100m, partialExited: true);
+        var d = AutoTraderService.EvaluateProtection(state, 110m, 5m, DefaultProtConfig());
+
+        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.PartialExit);
+    }
+
+    [Fact]
+    public void Protection_PnlAtBreakevenThreshold_TriggersBeMove()
+    {
+        // Entry 100, +3% = 103，BE trigger=3% → SL 移到 entry × 1.005 = 100.5
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 103m, 10m, DefaultProtConfig());
+
+        // 注意：3% 也滿足 partial exit 條件嗎？partial=5%、3<5 所以這裡 partial 不會觸發、走 BE
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove);
+        d.NewSlPrice.Should().Be(100.5m, "entry 100 × (1 + 0.5%) = 100.5");
+    }
+
+    [Fact]
+    public void Protection_AfterBeMoveDone_DoesNotReTrigger()
+    {
+        var state = MakeState(entry: 100m, sl: 100.5m, beMoved: true);
+        var d = AutoTraderService.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
+
+        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.BeMove);
+    }
+
+    [Fact]
+    public void Protection_SlHasPriorityOverPartialExit()
+    {
+        // 若 SL 跟 partial 同時都該觸發、SL 優先（因為已虧損、優先止損）
+        // 雖然這 case 物理上少見（當前價 < SL 但 PnL > +5% 不可能），但邏輯保險還是先 SL。
+        // 實際模擬：entry=100, sl=110（已 BE 後挪上去），current=109（破 sl）
+        var state = MakeState(entry: 100m, sl: 110m, beMoved: true);
+        var d = AutoTraderService.EvaluateProtection(state, 109m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit, "BE 後挪上的 SL 被打到 = 鎖小利、優先觸發");
+    }
+
+    [Fact]
+    public void Protection_BetweenThresholds_ReturnsNone()
+    {
+        // +1.5% 在 BE trigger (3%) 之下 → 沒事
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 101.5m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.None);
+        d.PnlPct.Should().Be(1.5m);
+    }
+
+    [Fact]
+    public void Protection_InvalidInputs_ReturnsNone()
+    {
+        var cfg = DefaultProtConfig();
+        AutoTraderService.EvaluateProtection(MakeState(entry: 0m), 100m, 10m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
+        AutoTraderService.EvaluateProtection(MakeState(), 0m, 10m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
+        AutoTraderService.EvaluateProtection(MakeState(), 100m, 0m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
+    }
+
+    [Fact]
+    public void Protection_PartialExitFloorsToZero_PreventsRoundUp()
+    {
+        // qty=0.001、ratio=0.5 → 0.0005 round 到小數 4 位 = 0.0005，但 ToZero 模式下保留 0
+        // 確認小量倉位 partial 時不會因 round-up 賣超過實際 qty
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 0.001m, DefaultProtConfig());
+
+        // partialQty = round(0.001 * 0.5, 4, ToZero) = 0.0005
+        // 0.0005 > 0 且 < 0.001 → partial exit OK
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.PartialQty.Should().Be(0.0005m);
+    }
+
+    [Fact]
+    public void Protection_HighRatio_StillLeavesQty()
+    {
+        // ratio = 0.9：qty 5、賣 0.9 → 4.5 留 0.5
+        var customCfg = new AutoTraderService.ProtectionConfig
+        {
+            InitialSlPct = 5m, PartialExitPct = 5m, PartialExitRatio = 0.9m,
+            BreakevenTriggerPct = 3m, BreakevenBufferPct = 0.5m,
+        };
+
+        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 5m, customCfg);
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.PartialQty.Should().Be(4.5m);
+    }
+
+    // ── B4a env parsing ───────────────────────────────────────────
+
+    [Fact]
+    public void ParsePctEnv_DefaultWhenUnset()
+    {
+        Environment.SetEnvironmentVariable("TEST_PCT_ENV", null);
+        AutoTraderService.ParsePctEnv("TEST_PCT_ENV", 5m, 0.5m, 50m).Should().Be(5m);
+    }
+
+    [Theory]
+    [InlineData("3.5", 3.5)]
+    [InlineData("0.5", 0.5)]
+    [InlineData("50",  50)]
+    public void ParsePctEnv_ValidValueParsed(string raw, decimal expected)
+    {
+        Environment.SetEnvironmentVariable("TEST_PCT_ENV", raw);
+        try { AutoTraderService.ParsePctEnv("TEST_PCT_ENV", 5m, 0.5m, 50m).Should().Be(expected); }
+        finally { Environment.SetEnvironmentVariable("TEST_PCT_ENV", null); }
+    }
+
+    [Fact]
+    public void ParsePctEnv_BelowMinFallsBackToDefault()
+    {
+        Environment.SetEnvironmentVariable("TEST_PCT_ENV", "0.1");
+        try { AutoTraderService.ParsePctEnv("TEST_PCT_ENV", 5m, 0.5m, 50m).Should().Be(5m); }
+        finally { Environment.SetEnvironmentVariable("TEST_PCT_ENV", null); }
+    }
+
+    [Fact]
+    public void ParsePctEnv_AboveMaxClamps()
+    {
+        Environment.SetEnvironmentVariable("TEST_PCT_ENV", "999");
+        try { AutoTraderService.ParsePctEnv("TEST_PCT_ENV", 5m, 0.5m, 50m).Should().Be(50m); }
+        finally { Environment.SetEnvironmentVariable("TEST_PCT_ENV", null); }
+    }
+
+    [Theory]
+    [InlineData("0.5", 0.5)]
+    [InlineData("0.3", 0.3)]
+    [InlineData("0.95", 0.95)]
+    public void ParseRatioEnv_ValidValuesInOpenInterval(string raw, decimal expected)
+    {
+        Environment.SetEnvironmentVariable("TEST_RATIO_ENV", raw);
+        try { AutoTraderService.ParseRatioEnv("TEST_RATIO_ENV", 0.5m).Should().Be(expected); }
+        finally { Environment.SetEnvironmentVariable("TEST_RATIO_ENV", null); }
+    }
+
+    [Theory]
+    [InlineData("0")]    // boundary not in (0, 1)
+    [InlineData("1")]
+    [InlineData("-0.5")]
+    [InlineData("1.5")]
+    [InlineData("garbage")]
+    public void ParseRatioEnv_OutOfRangeOrGarbage_FallsBackToDefault(string raw)
+    {
+        Environment.SetEnvironmentVariable("TEST_RATIO_ENV", raw);
+        try { AutoTraderService.ParseRatioEnv("TEST_RATIO_ENV", 0.7m).Should().Be(0.7m); }
+        finally { Environment.SetEnvironmentVariable("TEST_RATIO_ENV", null); }
+    }
+
     [Fact]
     public void AddSameKeyTwice_OverwritesAndKeepsSingleRow()
     {

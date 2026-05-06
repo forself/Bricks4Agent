@@ -98,6 +98,118 @@ public class AutoTraderService : BackgroundService
         public DateTime PeakResetAt { get; init; }
     }
 
+    // ── B4a Position protection ─────────────────────────────────────
+    //
+    // 每個 open position 一份 state，每 cycle 跑 sweep：
+    //   1. SL hit  → 賣全部 → 清 state（下次 sweep 由 qty=0 觸發 cleanup）
+    //   2. 漲 ≥ partial_exit_pct → 賣 partial_exit_ratio 的量、partial_exited=true（只觸發 1 次）
+    //   3. 漲 ≥ breakeven_trigger_pct → SL 移到 entry × (1 + buffer) (be_moved=true)
+    //
+    // SL 是 broker 端「軟 SL」——不打交易所的 stop-loss order，每 cycle 拉 current_price
+    // 比對 sl_price 自己決定要不要平倉。好處：可動態調整、不用管 exchange 的 SL 規格差異。
+    // 風險：cycle 間隔 5 分鐘期間若有 flash crash，會錯過。配 B1 circuit breaker 為兜底。
+    public class ProtectionConfig
+    {
+        public decimal InitialSlPct        { get; init; }  // 進場時 SL 距離 entry 的 %
+        public decimal PartialExitPct      { get; init; }  // 漲 ≥ 此 % 觸發部分平倉
+        public decimal PartialExitRatio    { get; init; }  // 部分平倉的數量比例 [0, 1]
+        public decimal BreakevenTriggerPct { get; init; }  // 漲 ≥ 此 % SL 移到 BE
+        public decimal BreakevenBufferPct  { get; init; }  // BE 上方留多少 buffer（避免價差掃損）
+    }
+
+    public class PositionProtectionState
+    {
+        public string Exchange      { get; set; } = "";
+        public string Symbol        { get; set; } = "";
+        public decimal EntryPrice   { get; set; }
+        public decimal PeakPrice    { get; set; }
+        public decimal SlPrice      { get; set; }
+        public bool PartialExited   { get; set; }
+        public bool BeMoved         { get; set; }
+        public DateTime CreatedAt   { get; set; }
+        public DateTime UpdatedAt   { get; set; }
+    }
+
+    private readonly ProtectionConfig _protectionConfig;
+    private readonly ConcurrentDictionary<string, PositionProtectionState> _positionState = new();
+
+    public ProtectionConfig PositionProtectionConfig => _protectionConfig;
+    public IReadOnlyDictionary<string, PositionProtectionState> PositionStates => _positionState;
+
+    public enum ProtectionAction { None, SlHit, PartialExit, BeMove }
+
+    public class ProtectionDecision
+    {
+        public ProtectionAction Action { get; init; }
+        public decimal PartialQty      { get; init; }
+        public decimal NewSlPrice      { get; init; }
+        public decimal PnlPct          { get; init; }
+        public string Reason           { get; init; } = "";
+    }
+
+    /// <summary>
+    /// Pure decision——給 state + 當前 price/qty + config 回傳該做什麼動作。
+    /// 不下單、不改 state、不依賴 dispatcher，方便單元測試。
+    /// 呼叫端拿到 decision 後再決定怎麼執行（下單 / 改 state）。
+    ///
+    /// 優先順序：SL hit > Partial exit > BE move > None
+    /// 一次只回一個 action（同 cycle 不會既 partial 又 BE）；下次 sweep 自然會接著走。
+    /// </summary>
+    public static ProtectionDecision EvaluateProtection(
+        PositionProtectionState state, decimal currentPrice, decimal qty, ProtectionConfig config)
+    {
+        if (state.EntryPrice <= 0m || qty <= 0m || currentPrice <= 0m)
+            return new ProtectionDecision { Action = ProtectionAction.None, Reason = "invalid inputs" };
+
+        var pnlPct = (currentPrice - state.EntryPrice) / state.EntryPrice * 100m;
+
+        // 1) SL hit (含 BE 後挪過的 SL)
+        if (currentPrice <= state.SlPrice)
+        {
+            return new ProtectionDecision
+            {
+                Action = ProtectionAction.SlHit,
+                PartialQty = qty,
+                PnlPct = pnlPct,
+                Reason = $"SL hit @ {currentPrice:F4} ≤ {state.SlPrice:F4} (entry {state.EntryPrice:F4}, peak {state.PeakPrice:F4}, P&L {pnlPct:+0.00;-0.00}%)",
+            };
+        }
+
+        // 2) Partial exit
+        if (!state.PartialExited && pnlPct >= config.PartialExitPct)
+        {
+            var partialQty = Math.Round(qty * config.PartialExitRatio, 4, MidpointRounding.ToZero);
+            if (partialQty > 0m && partialQty < qty)
+            {
+                return new ProtectionDecision
+                {
+                    Action = ProtectionAction.PartialExit,
+                    PartialQty = partialQty,
+                    PnlPct = pnlPct,
+                    Reason = $"Partial exit @ +{pnlPct:F2}% — selling {config.PartialExitRatio:P0} ({partialQty})",
+                };
+            }
+        }
+
+        // 3) BE SL move
+        if (!state.BeMoved && pnlPct >= config.BreakevenTriggerPct)
+        {
+            var newSl = state.EntryPrice * (1m + config.BreakevenBufferPct / 100m);
+            if (newSl > state.SlPrice)
+            {
+                return new ProtectionDecision
+                {
+                    Action = ProtectionAction.BeMove,
+                    NewSlPrice = newSl,
+                    PnlPct = pnlPct,
+                    Reason = $"SL → BE +{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at +{pnlPct:F2}%",
+                };
+            }
+        }
+
+        return new ProtectionDecision { Action = ProtectionAction.None, PnlPct = pnlPct };
+    }
+
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
@@ -120,11 +232,47 @@ public class AutoTraderService : BackgroundService
 
         _minConfidence = ParseMinConfidence(Environment.GetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE"));
         _maxPortfolioDdPct = ParseMaxPortfolioDdPct(Environment.GetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT"));
+        _protectionConfig = ParseProtectionConfig();
         _logger.LogInformation(
-            "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}%",
-            _minConfidence, _maxPortfolioDdPct);
+            "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% · " +
+            "protection: initial_sl={IniSl}% partial_exit={Pe}% (sell {Per:P0}) BE_trigger={Bet}% (buffer {Beb}%)",
+            _minConfidence, _maxPortfolioDdPct,
+            _protectionConfig.InitialSlPct, _protectionConfig.PartialExitPct, _protectionConfig.PartialExitRatio,
+            _protectionConfig.BreakevenTriggerPct, _protectionConfig.BreakevenBufferPct);
 
         LoadWatchListFromDb();
+    }
+
+    private static ProtectionConfig ParseProtectionConfig() => new()
+    {
+        InitialSlPct        = ParsePctEnv("AUTOTRADER_INITIAL_SL_PCT",        defaultValue: 5m,    min: 0.5m, max: 50m),
+        PartialExitPct      = ParsePctEnv("AUTOTRADER_PARTIAL_EXIT_PCT",      defaultValue: 5m,    min: 0.5m, max: 100m),
+        PartialExitRatio    = ParseRatioEnv("AUTOTRADER_PARTIAL_EXIT_RATIO",  defaultValue: 0.5m),
+        BreakevenTriggerPct = ParsePctEnv("AUTOTRADER_BREAKEVEN_TRIGGER_PCT", defaultValue: 3m,    min: 0.5m, max: 100m),
+        BreakevenBufferPct  = ParsePctEnv("AUTOTRADER_BREAKEVEN_BUFFER_PCT",  defaultValue: 0.5m,  min: 0m,   max: 10m),
+    };
+
+    internal static decimal ParsePctEnv(string envName, decimal defaultValue, decimal min, decimal max)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (!decimal.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return defaultValue;
+        if (v < min) return defaultValue;
+        if (v > max) return max;
+        return v;
+    }
+
+    internal static decimal ParseRatioEnv(string envName, decimal defaultValue)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (!decimal.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return defaultValue;
+        if (v <= 0m || v >= 1m) return defaultValue;  // (0, 1) 之外無意義
+        return v;
     }
 
     internal static decimal ParseMinConfidence(string? raw)
@@ -337,6 +485,11 @@ public class AutoTraderService : BackgroundService
 
             if (!_enabled || _watchList.IsEmpty) continue;
 
+            // Step 0: Position protection sweep——先處理現有部位的部分平倉 / SL hit / BE 移動，
+            // 之後的 watch loop 才不會在已被 SL 平掉的 symbol 又開新單
+            try { await SweepPositionProtectionAsync(ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader protection sweep failed"); }
+
             foreach (var (key, item) in _watchList)
             {
                 if (!item.Active || ct.IsCancellationRequested) continue;
@@ -352,6 +505,159 @@ public class AutoTraderService : BackgroundService
                 }
             }
         }
+    }
+
+    // ── B4a Position protection sweep ──────────────────────────────
+    //
+    // 對所有 watch 出現過的 exchange，拉 get_positions、對每個有 qty 的部位：
+    //   1. 沒 state 的（新部位）→ 建 state、entry/peak/sl 從 avg_entry_price 算
+    //   2. SL hit → 賣全部
+    //   3. PnL ≥ partial_exit_pct 且未 partial_exited → 賣 ratio 比例
+    //   4. PnL ≥ breakeven_trigger_pct 且未 be_moved → SL 上挪到 entry × (1 + buffer%)
+    // 完成後清除 state 裡 qty=0 的舊部位。
+    private async Task SweepPositionProtectionAsync(CancellationToken ct)
+    {
+        if (!_registry.HasAvailableWorker("trading.account") || !_registry.HasAvailableWorker("trading.order"))
+            return;
+
+        var exchanges = _watchList.Values.Select(w => w.Exchange).Distinct().ToList();
+        foreach (var exchange in exchanges)
+        {
+            if (ct.IsCancellationRequested) return;
+            var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.account", "get_positions",
+                JsonSerializer.Serialize(new { exchange })));
+            if (!posResult.Success) continue;
+
+            var pos = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
+            if (!pos.TryGetProperty("positions", out var posArr) || posArr.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var liveKeys = new HashSet<string>();
+            foreach (var p in posArr.EnumerateArray())
+            {
+                var symbol = p.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+                var qty = p.TryGetProperty("quantity", out var q) ? q.GetDecimal() : 0m;
+                var entryPrice = p.TryGetProperty("avg_entry_price", out var e) ? e.GetDecimal() : 0m;
+                var currentPrice = p.TryGetProperty("current_price", out var cp) ? cp.GetDecimal() : 0m;
+                if (string.IsNullOrEmpty(symbol) || qty <= 0m || entryPrice <= 0m || currentPrice <= 0m) continue;
+
+                liveKeys.Add($"{exchange}:{symbol}");
+                try
+                {
+                    await ProcessPositionProtectionAsync(exchange, symbol, qty, entryPrice, currentPrice, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Protection check failed for {Exchange}:{Symbol}", exchange, symbol);
+                }
+            }
+
+            // 清除 state 裡 exchange 下、live 沒出現的（已被全平的）
+            var staleKeys = _positionState
+                .Where(kv => kv.Key.StartsWith(exchange + ":") && !liveKeys.Contains(kv.Key))
+                .Select(kv => kv.Key).ToList();
+            foreach (var k in staleKeys)
+            {
+                if (_positionState.TryRemove(k, out _))
+                    _logger.LogInformation("Position {Key} closed — protection state cleaned", k);
+            }
+        }
+    }
+
+    private async Task ProcessPositionProtectionAsync(
+        string exchange, string symbol, decimal qty, decimal entryPrice, decimal currentPrice, CancellationToken ct)
+    {
+        var key = $"{exchange}:{symbol}";
+        var now = DateTime.UtcNow;
+        var state = _positionState.GetOrAdd(key, _ =>
+        {
+            var initialSl = entryPrice * (1m - _protectionConfig.InitialSlPct / 100m);
+            _logger.LogInformation(
+                "Protection state init for {Key}: entry={Entry:F4}, SL={Sl:F4} ({Pct}% below entry)",
+                key, entryPrice, initialSl, _protectionConfig.InitialSlPct);
+            return new PositionProtectionState
+            {
+                Exchange = exchange, Symbol = symbol,
+                EntryPrice = entryPrice, PeakPrice = currentPrice,
+                SlPrice = initialSl, PartialExited = false, BeMoved = false,
+                CreatedAt = now, UpdatedAt = now,
+            };
+        });
+
+        // 若交易所那邊 avg_entry_price 變了（比如加倉），更新 entry / 重置 SL
+        if (state.EntryPrice != entryPrice && entryPrice > 0m)
+        {
+            _logger.LogInformation("Entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL",
+                key, state.EntryPrice, entryPrice);
+            state.EntryPrice = entryPrice;
+            state.SlPrice = entryPrice * (1m - _protectionConfig.InitialSlPct / 100m);
+            state.PartialExited = false;
+            state.BeMoved = false;
+            state.PeakPrice = currentPrice;
+        }
+
+        if (currentPrice > state.PeakPrice) state.PeakPrice = currentPrice;
+        state.UpdatedAt = now;
+
+        var decision = EvaluateProtection(state, currentPrice, qty, _protectionConfig);
+        switch (decision.Action)
+        {
+            case ProtectionAction.SlHit:
+                await ExecuteProtectionOrderAsync(exchange, symbol, "sell", qty, decision.Reason, ct);
+                // state 在下次 sweep 因 qty=0 自動清掉
+                break;
+
+            case ProtectionAction.PartialExit:
+            {
+                var ok = await ExecuteProtectionOrderAsync(exchange, symbol, "sell", decision.PartialQty, decision.Reason, ct);
+                if (ok) state.PartialExited = true;
+                break;
+            }
+
+            case ProtectionAction.BeMove:
+                _logger.LogInformation("BE SL move for {Key}: {Reason}", key, decision.Reason);
+                state.SlPrice = decision.NewSlPrice;
+                state.BeMoved = true;
+                if (_watchList.TryGetValue(key, out var wi))
+                    AddLog(wi, "protect", decision.Reason);
+                break;
+
+            case ProtectionAction.None:
+            default:
+                break;
+        }
+    }
+
+    /// <summary>下保護單（partial exit / SL hit），回傳是否成功送出。</summary>
+    private async Task<bool> ExecuteProtectionOrderAsync(
+        string exchange, string symbol, string side, decimal qty, string reason, CancellationToken ct)
+    {
+        var key = $"{exchange}:{symbol}";
+        var clientOrderId = $"prot-{exchange}-{symbol}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}".Replace(".", "_");
+        if (clientOrderId.Length > 36) clientOrderId = clientOrderId.Substring(0, 36);
+
+        var orderPayload = JsonSerializer.Serialize(new
+        {
+            exchange, symbol, side, quantity = qty,
+            order_type = "market",
+            client_order_id = clientOrderId,
+        });
+        var result = await _dispatcher.DispatchAsync(BuildRequest("trading.order", "place_order", orderPayload));
+        if (result.Success)
+        {
+            _logger.LogInformation(
+                "🛡 Protection order placed: {Symbol} {Side} {Qty} on {Exchange} — {Reason}",
+                symbol, side, qty, exchange, reason);
+            if (_watchList.TryGetValue(key, out var wi))
+                AddLog(wi, "protect", $"{side.ToUpper()} {qty} — {reason}");
+            return true;
+        }
+        _logger.LogWarning(
+            "Protection order failed: {Symbol} {Side} {Qty} on {Exchange} — {Error}",
+            symbol, side, qty, exchange, result.ErrorMessage);
+        if (_watchList.TryGetValue(key, out var wi2))
+            AddLog(wi2, "error", $"Protection {side} failed: {result.ErrorMessage}");
+        return false;
     }
 
     private async Task ProcessSymbolAsync(WatchItem item, CancellationToken ct)

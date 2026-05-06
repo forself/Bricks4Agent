@@ -34,6 +34,18 @@ services:
       # 避免單日連環失誤把帳戶打殘。預設 8%。peak 在 UTC 午夜重置。0 / 負數 / garbage → 走預設。
       AUTOTRADER_MAX_PORTFOLIO_DD_PCT: "${AUTOTRADER_MAX_PORTFOLIO_DD_PCT:-}"
 
+      # Position protection（B4a）——每 cycle 對所有部位跑一次：
+      #  - INITIAL_SL_PCT (預設 5)：開倉時 SL 距離 entry 的 %（軟 SL，broker 端監控）
+      #  - PARTIAL_EXIT_PCT (預設 5)：漲超此 % 觸發部分平倉（一次）
+      #  - PARTIAL_EXIT_RATIO (預設 0.5)：部分平倉的 qty 比例 ∈ (0, 1)
+      #  - BREAKEVEN_TRIGGER_PCT (預設 3)：漲超此 % SL 移到 entry × (1 + buffer%)
+      #  - BREAKEVEN_BUFFER_PCT (預設 0.5)：BE 上方留多少 buffer 避免價差掃損
+      AUTOTRADER_INITIAL_SL_PCT: "${AUTOTRADER_INITIAL_SL_PCT:-}"
+      AUTOTRADER_PARTIAL_EXIT_PCT: "${AUTOTRADER_PARTIAL_EXIT_PCT:-}"
+      AUTOTRADER_PARTIAL_EXIT_RATIO: "${AUTOTRADER_PARTIAL_EXIT_RATIO:-}"
+      AUTOTRADER_BREAKEVEN_TRIGGER_PCT: "${AUTOTRADER_BREAKEVEN_TRIGGER_PCT:-}"
+      AUTOTRADER_BREAKEVEN_BUFFER_PCT: "${AUTOTRADER_BREAKEVEN_BUFFER_PCT:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"

@@ -476,7 +476,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <div class="pmap-head">
       <h3>🛡️ 保護地圖</h3>
       <div style="display:flex;gap:10px;align-items:center">
-        <span style="font-size:11px;color:var(--text3)">入場 / 現價 / TP +10% / SL −5% / Trailing −3%（30s 自動刷新）</span>
+        <span style="font-size:11px;color:var(--text3)">真實 auto-trader 保護狀態：✓ partial exited / 🔒 SL→BE（30s 自動刷新）</span>
         <button class="btn btn-o btn-sm" onclick="loadProtectionMap()">↻</button>
       </div>
     </div>
@@ -484,9 +484,9 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <div class="pmap-legend">
       <span><i style="background:var(--text2)"></i>進場</span>
       <span><i style="background:var(--accent)"></i>現價</span>
-      <span><i style="background:var(--green)"></i>TP</span>
-      <span><i style="background:var(--red)"></i>SL</span>
-      <span><i style="background:#f0b90b;opacity:.7"></i>Trailing</span>
+      <span><i style="background:var(--green)"></i>Partial exit 觸發點</span>
+      <span><i style="background:var(--red)"></i>SL（軟 SL、auto-trader 監控）</span>
+      <span><i style="background:#f0b90b;opacity:.7"></i>Trailing / BE 後 SL</span>
     </div>
   </div>
 </div>
@@ -1860,32 +1860,54 @@ async function saveBacktest(data){const r=await api('/api/v1/backtest-history',{
 let _pmapTimer=null;
 async function loadProtectionMap(){
   const ex=document.getElementById('ov-account-select')?.value||'alpaca';
-  const r=await api('/api/v1/trading/positions?exchange='+ex);
+  // 同時拉持倉 + auto-trader 的 protection state（含真實 SL / peak / partial 旗標）
+  const [posR,atR]=await Promise.all([
+    api('/api/v1/trading/positions?exchange='+ex),
+    api('/api/v1/auto-trader/status'),
+  ]);
   const box=document.getElementById('pmap-rows');if(!box)return;
-  const positions=r?.data?.positions||[];
+  const positions=posR?.data?.positions||[];
   if(positions.length===0){box.innerHTML='<div style="color:var(--text3);font-size:11px;text-align:center;padding:12px">無持倉</div>';return;}
+  // 從 auto-trader status 拉 protection_config + position_states
+  const protCfg=atR?.data?.protection_config||{initial_sl_pct:5,partial_exit_pct:5,partial_exit_ratio:0.5,breakeven_trigger_pct:3,breakeven_buffer_pct:0.5};
+  const protStates=atR?.data?.position_states||{};
   const rows=positions.map(p=>{
     const cost=Number(p.avg_entry_price)||0,cur=Number(p.current_price)||cost;
     if(cost<=0||cur<=0)return'';
-    // 預設 TP +10% / SL −5% / Trailing −3%（以 max(cost,cur) 為 peak）
-    const tp=cost*1.10,sl=cost*0.95,peak=Math.max(cur,cost),trail=peak*0.97;
+    const stateKey=`${ex}:${p.symbol}`;const state=protStates[stateKey];
+    // 真實 SL：state 有就用 state.sl_price（已可能 BE 過了）；沒 state 就回退到 entry × (1 - initial_sl%)
+    const sl=state?.sl_price ?? cost*(1-protCfg.initial_sl_pct/100);
+    // partial exit 線：cost × (1 + partial_exit_pct%)
+    const tp=cost*(1+protCfg.partial_exit_pct/100);
+    // peak 用 state 提供、沒有就用 max(cost, cur)
+    const peak=state?.peak_price ?? Math.max(cur,cost);
+    // trailing：用 BE 後的 SL 為 trail ref（如果還沒 BE，就 peak × 0.97 當「假設 trail」）
+    const trail=state?.be_moved ? sl : peak*0.97;
     const lo=Math.min(sl,cost,cur,trail)*0.985;
     const hi=Math.max(tp,cost,cur,peak)*1.015;
     const pos=v=>Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
     const pnl=Number(p.unrealized_pnl)||0,cls=pnl>=0?'up':'down';
     const pct=cost>0?((cur-cost)/cost*100):0;
+    // 狀態標籤：✓ 已 partial exit、🔒 SL 已 BE、無 state 就顯示「auto-trader 未運行」
+    const tags=[];
+    if(state){
+      if(state.partial_exited)tags.push('<span style="background:var(--greenBg);color:var(--green);padding:1px 5px;border-radius:2px;font-size:10px">✓ Partial</span>');
+      if(state.be_moved)tags.push('<span style="background:rgba(240,185,11,0.12);color:#f0b90b;padding:1px 5px;border-radius:2px;font-size:10px">🔒 BE</span>');
+    }else{
+      tags.push('<span style="background:var(--bg4);color:var(--text3);padding:1px 5px;border-radius:2px;font-size:10px">no auto-protect</span>');
+    }
     return`<div class="pmap-row">
       <div class="pmap-top">
-        <div><span class="pm-sym">${p.symbol}</span> <span style="color:var(--text3)">× ${fmt(p.quantity,4)}</span></div>
-        <div>進 ${fmtUsd(cost)} · 現 <strong style="color:var(--text)">${fmtUsd(cur)}</strong> <span class="pm-pnl ${cls}">(${pct>=0?'+':''}${pct.toFixed(2)}%)</span> · TP ${fmtUsd(tp)} · SL ${fmtUsd(sl)} · Trail ${fmtUsd(trail)}</div>
+        <div><span class="pm-sym">${p.symbol}</span> <span style="color:var(--text3)">× ${fmt(p.quantity,4)}</span> ${tags.join(' ')}</div>
+        <div>進 ${fmtUsd(cost)} · 現 <strong style="color:var(--text)">${fmtUsd(cur)}</strong> <span class="pm-pnl ${cls}">(${pct>=0?'+':''}${pct.toFixed(2)}%)</span> · TP ${fmtUsd(tp)} · SL ${fmtUsd(sl)}${state?.be_moved?' (BE)':''} · Peak ${fmtUsd(peak)}</div>
       </div>
       <div class="pmap-bar">
         <div class="pm-fill" style="left:${pos(sl)}%;right:${100-pos(tp)}%"></div>
-        <div class="pmap-marker sl"    style="left:${pos(sl)}%"    title="SL ${fmtUsd(sl)}"></div>
+        <div class="pmap-marker sl"    style="left:${pos(sl)}%"    title="SL ${fmtUsd(sl)}${state?.be_moved?' (BE)':''}"></div>
         <div class="pmap-marker trail" style="left:${pos(trail)}%" title="Trailing ${fmtUsd(trail)}"></div>
         <div class="pmap-marker entry" style="left:${pos(cost)}%"  title="進場 ${fmtUsd(cost)}"></div>
         <div class="pmap-marker cur"   style="left:${pos(cur)}%"   title="現價 ${fmtUsd(cur)}"></div>
-        <div class="pmap-marker tp"    style="left:${pos(tp)}%"    title="TP ${fmtUsd(tp)}"></div>
+        <div class="pmap-marker tp"    style="left:${pos(tp)}%"    title="Partial exit @ +${protCfg.partial_exit_pct}% = ${fmtUsd(tp)}"></div>
       </div>
     </div>`;
   }).filter(Boolean).join('');

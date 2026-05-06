@@ -57,6 +57,26 @@ public static class AutoTraderEndpoints
                 min_confidence = svc.MinConfidence,
                 max_portfolio_dd_pct = svc.MaxPortfolioDdPct,
                 circuit_breakers = svc.CircuitBreakerSnapshot,
+                protection_config = new
+                {
+                    initial_sl_pct        = svc.PositionProtectionConfig.InitialSlPct,
+                    partial_exit_pct      = svc.PositionProtectionConfig.PartialExitPct,
+                    partial_exit_ratio    = svc.PositionProtectionConfig.PartialExitRatio,
+                    breakeven_trigger_pct = svc.PositionProtectionConfig.BreakevenTriggerPct,
+                    breakeven_buffer_pct  = svc.PositionProtectionConfig.BreakevenBufferPct,
+                },
+                position_states = svc.PositionStates.ToDictionary(
+                    kv => kv.Key,
+                    kv => (object)new
+                    {
+                        entry_price     = kv.Value.EntryPrice,
+                        peak_price      = kv.Value.PeakPrice,
+                        sl_price        = kv.Value.SlPrice,
+                        partial_exited  = kv.Value.PartialExited,
+                        be_moved        = kv.Value.BeMoved,
+                        created_at      = kv.Value.CreatedAt,
+                        updated_at      = kv.Value.UpdatedAt,
+                    }),
             }));
         });
 
