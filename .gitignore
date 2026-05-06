@@ -52,6 +52,9 @@ docs/0[0-9][0-9][0-9]/
 *.db-journal
 tools/*.png
 
+# Reference material (partner repos cloned for design comparison, never committed)
+_ref/
+
 # Local tool/runtime state
 .dotnet/
 .run/
