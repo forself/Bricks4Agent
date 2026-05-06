@@ -509,6 +509,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="fg"><label>Exchange</label><select id="sig-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
       <div class="fg"><label>策略</label>
         <select id="sig-strategy">
+          <option value="auto_select">🎯 AutoSelect (依行情擇優)</option>
           <option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option>
           <option value="multi_timeframe">Multi-TF</option>
           <option value="sma_cross">SMA Cross</option><option value="rsi_oversold">RSI</option>
@@ -593,7 +594,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <h3>回測設定</h3>
       <div class="form-row"><div class="fg sym-picker"><label>Symbol</label><input id="bt-symbol" value="AAPL" placeholder="搜尋…" onfocus="openSymPicker(this,'bt')" oninput="filterSymPicker(this,'bt')"><div class="sym-dropdown" id="bt-sym-dropdown"></div></div>
         <div class="fg"><label>Exchange</label><select id="bt-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div></div>
-      <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="composite">Composite</option><option value="ensemble">Ensemble</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
+      <div class="form-row"><div class="fg"><label>策略</label><select id="bt-strategy"><option value="auto_select">🎯 AutoSelect</option><option value="composite">Composite</option><option value="ensemble">Ensemble</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option></select></div>
         <div class="fg"><label>初始資金</label><input id="bt-cash" type="number" value="100000" step="1000"></div>
         <div class="fg"><label>手續費%</label><input id="bt-commission" type="number" value="0.1" step="0.01"></div>
         <div class="fg"><label>Bar數</label><input id="bt-bars" type="number" value="365" min="60" max="730"></div></div>
@@ -625,7 +626,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="form-row">
         <div class="fg sym-picker"><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
         <div class="fg"><select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
-        <div class="fg"><select id="auto-strategy"><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
+        <div class="fg"><select id="auto-strategy"><option value="auto_select">🎯 AutoSelect (依行情擇優)</option><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
         <div class="fg"><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:60px"></div>
         <button class="btn btn-y btn-sm" onclick="addAutoWatch()">新增</button>
       </div>
@@ -1043,7 +1044,7 @@ const params=getCustomParams();const r=await api('/api/v1/strategy/signal',{meth
 if(!r?.data){el.innerHTML='<div style="color:var(--red);padding:8px">分析失敗: '+(r?.error||'unknown')+'</div>';return;}
 const s=r.data,ind=s.indicators||{},cls=s.action==='buy'?'buy':s.action==='sell'?'sell':'hold';
 const price=ind['sma_cross.price']||ind['rsi_oversold.price']||ind['macd_divergence.price']||ind['price']||0;
-const stratLabel={composite:'Composite',ensemble:'Ensemble (動態權重)',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
+const stratLabel={auto_select:'AutoSelect',composite:'Composite',ensemble:'Ensemble (動態權重)',multi_timeframe:'Multi-TF',sma_cross:'SMA Cross',rsi_oversold:'RSI',macd_divergence:'MACD',llm:'LLM AI',news_sentiment:'News Sentiment'}[s.strategy]||s.strategy;
 const isLlm=s.strategy==='llm'||s.strategy==='news_sentiment';
 // 從 K 棒算 client-side 補充指標（ATR、Bollinger 位置、量變化）
 const extra=computeExtraIndicators(bars.data.bars);

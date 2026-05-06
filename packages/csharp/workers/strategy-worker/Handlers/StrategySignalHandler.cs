@@ -309,6 +309,7 @@ public class StrategySignalHandler : ICapabilityHandler
                 ["macd_divergence"] = "MACD Crossover — MACD 與 Signal 交叉",
                 ["composite"]      = "Composite — 固定等權投票（SMA + RSI + MACD）",
                 ["ensemble"]       = "Ensemble — 動態加權投票，權重 = 成員近期 Sharpe（適應市場變化）",
+                ["auto_select"]    = "AutoSelect — 偵測行情類型（趨勢/震盪/收斂/高波動）→ 挑當下最適合的單一成員策略",
                 ["fibonacci_retracement"] = "Fibonacci Retracement — 在擺動高低點的 0.382-0.618 黃金區偵測順勢回撤進場",
                 ["bollinger_bands"] = "Bollinger Bands — 均值回歸：觸下軌買、觸上軌賣、squeeze 時觀望",
                 ["harmonic_pattern"] = "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 四種經典 5 點諧波形態",

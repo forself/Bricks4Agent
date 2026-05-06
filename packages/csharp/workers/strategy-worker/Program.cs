@@ -59,6 +59,9 @@ strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
     strategies["multi_timeframe"],
 });
 
+// AutoSelect 也是要 constituents 都在後才能建（regime → 1 個成員執行）
+strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
+
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。
