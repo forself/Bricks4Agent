@@ -1047,7 +1047,17 @@ async function loadOverviewRails(){
       // circuit breaker 狀態：有 triggered=true 就顯示紅警告
       const cb=d.circuit_breakers||{};const cbHits=Object.entries(cb).filter(([_,v])=>v.triggered);
       const cbHtml=cbHits.length>0?`<div style="margin-top:4px;color:var(--red);font-size:10px;font-weight:700">⚠ Circuit breaker: ${cbHits.map(([ex,v])=>`${ex} DD ${v.dd_pct}%`).join(' · ')}</div>`:'';
-      stat.innerHTML=`${dot} ${d.enabled?'運行中':'已停止'}${dev} · poll ${d.interval_seconds}s · 監控 ${d.watch_count} 個${conf}${ddCap}${cbHtml}`;}
+      // SL flush 觸發了就紅燈警示 + 提供 reset button
+      const sf=d.sl_flush;const sfHtml=(sf?.triggered)?
+        `<div style="margin-top:4px;color:var(--red);font-size:10px;font-weight:700">🛑 SL flush triggered: ${sf.recent_count} SLs / ${sf.window_minutes}min — auto-trader 已凍結 <button class="btn btn-o btn-sm" style="padding:1px 8px;font-size:10px;margin-left:6px" onclick="resetSlFlush()">復原</button></div>`
+        :'';
+      stat.innerHTML=`${dot} ${d.enabled?'運行中':'已停止'}${dev} · poll ${d.interval_seconds}s · 監控 ${d.watch_count} 個${conf}${ddCap}${cbHtml}${sfHtml}`;}
+
+async function resetSlFlush(){
+  if(!confirm('確定要復原 SL flush 凍結？復原後仍要手動按啟用 auto-trader。'))return;
+  await api('/api/v1/auto-trader/sl-flush/reset',{method:'POST'});
+  loadOverviewRails();
+}
     // 即時行情 top 6
     const hot=(qs?.data?.quotes||[]).filter(q=>q.price>0).sort((a,b)=>Math.abs(b.change_percent||0)-Math.abs(a.change_percent||0)).slice(0,6);
     if(hot.length>0)hl.innerHTML=hot.map(q=>{const pc=Number(q.change_percent||0),cls=pc>=0?'up':'down';

@@ -136,6 +136,29 @@ public class AutoTraderService : BackgroundService
     public ProtectionConfig PositionProtectionConfig => _protectionConfig;
     public IReadOnlyDictionary<string, PositionProtectionState> PositionStates => _positionState;
 
+    // ── B3 SL flush freeze ─────────────────────────────────────────
+    //
+    // 連環 SL 觸發 = 訊號斷崖式失敗（策略當下抓不住行情、或極端 regime）。
+    // 滑動視窗看最近 N 分鐘的 SL hit 次數，超過閾值就把 _enabled 翻 false、
+    // 強制讓使用者手動 reset。避免「演算法亂跑、user 還沒注意到、損失越滾越大」。
+    public class SlHitRecord
+    {
+        public string Exchange { get; init; } = "";
+        public string Symbol   { get; init; } = "";
+        public DateTime At     { get; init; }
+    }
+
+    private readonly int _slFlushThreshold;
+    private readonly int _slFlushWindowMinutes;
+    private readonly ConcurrentQueue<SlHitRecord> _recentSlHits = new();
+    private DateTime? _slFlushTriggeredAt;
+
+    public int SlFlushThreshold      => _slFlushThreshold;
+    public int SlFlushWindowMinutes  => _slFlushWindowMinutes;
+    public bool SlFlushTriggered     => _slFlushTriggeredAt.HasValue;
+    public DateTime? SlFlushTriggeredAt => _slFlushTriggeredAt;
+    public IReadOnlyList<SlHitRecord> RecentSlHits => _recentSlHits.ToArray();
+
     public enum ProtectionAction { None, SlHit, PartialExit, BeMove }
 
     public class ProtectionDecision
@@ -233,14 +256,59 @@ public class AutoTraderService : BackgroundService
         _minConfidence = ParseMinConfidence(Environment.GetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE"));
         _maxPortfolioDdPct = ParseMaxPortfolioDdPct(Environment.GetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT"));
         _protectionConfig = ParseProtectionConfig();
+        _slFlushThreshold = ParseIntEnv("AUTOTRADER_SL_FLUSH_THRESHOLD", defaultValue: 3, min: 1, max: 100);
+        _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
         _logger.LogInformation(
-            "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% · " +
+            "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% sl_flush={Flush}/{Window}min · " +
             "protection: initial_sl={IniSl}% partial_exit={Pe}% (sell {Per:P0}) BE_trigger={Bet}% (buffer {Beb}%)",
-            _minConfidence, _maxPortfolioDdPct,
+            _minConfidence, _maxPortfolioDdPct, _slFlushThreshold, _slFlushWindowMinutes,
             _protectionConfig.InitialSlPct, _protectionConfig.PartialExitPct, _protectionConfig.PartialExitRatio,
             _protectionConfig.BreakevenTriggerPct, _protectionConfig.BreakevenBufferPct);
 
         LoadWatchListFromDb();
+    }
+
+    internal static int ParseIntEnv(string envName, int defaultValue, int min, int max)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (!int.TryParse(raw.Trim(), out var v)) return defaultValue;
+        if (v < min) return defaultValue;
+        if (v > max) return max;
+        return v;
+    }
+
+    /// <summary>
+    /// 記錄一次 SL hit，並判斷是否觸發 flush（連環 SL → 凍結 auto-trader）。
+    /// 滑動視窗外的舊 hit 會在這裡 prune；達到閾值就把 _enabled 翻 false、
+    /// 寫 _slFlushTriggeredAt 給 dashboard 看（要 user 手動按 ResetSlFlush 復原）。
+    /// </summary>
+    internal void RecordSlHit(string exchange, string symbol, DateTime now)
+    {
+        _recentSlHits.Enqueue(new SlHitRecord { Exchange = exchange, Symbol = symbol, At = now });
+
+        // 在 window 外的舊 hit 移除
+        var cutoff = now.AddMinutes(-_slFlushWindowMinutes);
+        while (_recentSlHits.TryPeek(out var oldest) && oldest.At < cutoff)
+            _recentSlHits.TryDequeue(out _);
+
+        // 達到閾值 → 凍結
+        if (_slFlushTriggeredAt == null && _recentSlHits.Count >= _slFlushThreshold)
+        {
+            _slFlushTriggeredAt = now;
+            _enabled = false;
+            _logger.LogError(
+                "⚠ SL flush triggered: {Count} SLs hit within {Window}min — auto-trader DISABLED. Manual reset required via /api/v1/auto-trader/sl-flush/reset.",
+                _recentSlHits.Count, _slFlushWindowMinutes);
+        }
+    }
+
+    /// <summary>手動清除 SL flush 狀態（呼叫 /api/v1/auto-trader/sl-flush/reset 後）。</summary>
+    public void ResetSlFlush()
+    {
+        _slFlushTriggeredAt = null;
+        while (_recentSlHits.TryDequeue(out _)) { }
+        _logger.LogInformation("SL flush state reset (queue cleared, trigger flag cleared)");
     }
 
     private static ProtectionConfig ParseProtectionConfig() => new()
@@ -604,6 +672,8 @@ public class AutoTraderService : BackgroundService
         {
             case ProtectionAction.SlHit:
                 await ExecuteProtectionOrderAsync(exchange, symbol, "sell", qty, decision.Reason, ct);
+                // 記入 SL flush 滑動視窗——夠多 SL 在窗內就把 _enabled 翻 false
+                RecordSlHit(exchange, symbol, now);
                 // state 在下次 sweep 因 qty=0 自動清掉
                 break;
 

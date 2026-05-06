@@ -662,6 +662,149 @@ public class AutoTraderServiceTests
         finally { Environment.SetEnvironmentVariable("TEST_RATIO_ENV", null); }
     }
 
+    // ── B3 SL flush freeze ────────────────────────────────────────
+
+    [Fact]
+    public void ParseIntEnv_DefaultWhenUnsetOrGarbage()
+    {
+        Environment.SetEnvironmentVariable("TEST_INT_ENV", null);
+        AutoTraderService.ParseIntEnv("TEST_INT_ENV", 5, 1, 100).Should().Be(5);
+
+        Environment.SetEnvironmentVariable("TEST_INT_ENV", "abc");
+        try { AutoTraderService.ParseIntEnv("TEST_INT_ENV", 5, 1, 100).Should().Be(5); }
+        finally { Environment.SetEnvironmentVariable("TEST_INT_ENV", null); }
+    }
+
+    [Fact]
+    public void ParseIntEnv_BelowMinFallsBackAboveMaxClamps()
+    {
+        Environment.SetEnvironmentVariable("TEST_INT_ENV", "0");
+        try { AutoTraderService.ParseIntEnv("TEST_INT_ENV", 5, 1, 100).Should().Be(5); }
+        finally { Environment.SetEnvironmentVariable("TEST_INT_ENV", null); }
+
+        Environment.SetEnvironmentVariable("TEST_INT_ENV", "999");
+        try { AutoTraderService.ParseIntEnv("TEST_INT_ENV", 5, 1, 100).Should().Be(100); }
+        finally { Environment.SetEnvironmentVariable("TEST_INT_ENV", null); }
+    }
+
+    [Fact]
+    public void SlFlush_DefaultsAre_3_And_60()
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_SL_FLUSH_THRESHOLD", null);
+        Environment.SetEnvironmentVariable("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", null);
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        svc.SlFlushThreshold.Should().Be(3);
+        svc.SlFlushWindowMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public void SlFlush_BelowThreshold_DoesNotTrigger()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);  // 預設 3 次 / 60 分
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca", "AAPL", t0);
+        svc.RecordSlHit("alpaca", "TSLA", t0.AddMinutes(5));
+
+        svc.SlFlushTriggered.Should().BeFalse();
+        svc.RecentSlHits.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void SlFlush_AtThreshold_TriggersAndDisablesAutoTrader()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.Enable();
+        svc.IsEnabled.Should().BeTrue();
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca", "AAPL", t0);
+        svc.RecordSlHit("alpaca", "TSLA", t0.AddMinutes(5));
+        svc.RecordSlHit("alpaca", "NVDA", t0.AddMinutes(10));
+
+        svc.SlFlushTriggered.Should().BeTrue();
+        svc.SlFlushTriggeredAt.Should().Be(t0.AddMinutes(10));
+        svc.IsEnabled.Should().BeFalse("hitting flush threshold should auto-disable");
+    }
+
+    [Fact]
+    public void SlFlush_OldHitsOutsideWindow_ArePruned()
+    {
+        // 預設 60 分鐘視窗：兩個 90 分鐘前的 hit 應該被移除、新 hit 不會湊到 3
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 10, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca", "OLD1", t0);
+        svc.RecordSlHit("alpaca", "OLD2", t0.AddMinutes(5));
+        // 90 分後一個新 hit
+        svc.RecordSlHit("alpaca", "NEW1", t0.AddMinutes(90));
+
+        // 老的兩個應該被視窗外踢掉、剩下 1 個
+        svc.SlFlushTriggered.Should().BeFalse();
+        svc.RecentSlHits.Should().HaveCount(1);
+        svc.RecentSlHits[0].Symbol.Should().Be("NEW1");
+    }
+
+    [Fact]
+    public void SlFlush_AlreadyTriggered_DoesNotDoubleTrigger()
+    {
+        // 觸發後再加 SL，不應該重設 _slFlushTriggeredAt（保留首次觸發時間）
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca", "A", t0);
+        svc.RecordSlHit("alpaca", "B", t0.AddMinutes(5));
+        svc.RecordSlHit("alpaca", "C", t0.AddMinutes(10));   // 觸發
+        var firstTrigger = svc.SlFlushTriggeredAt;
+
+        svc.RecordSlHit("alpaca", "D", t0.AddMinutes(15));   // 多一個
+        svc.SlFlushTriggeredAt.Should().Be(firstTrigger, "first trigger time should be sticky");
+    }
+
+    [Fact]
+    public void SlFlush_Reset_ClearsQueueAndFlag()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca", "A", t0);
+        svc.RecordSlHit("alpaca", "B", t0.AddMinutes(5));
+        svc.RecordSlHit("alpaca", "C", t0.AddMinutes(10));
+        svc.SlFlushTriggered.Should().BeTrue();
+
+        svc.ResetSlFlush();
+
+        svc.SlFlushTriggered.Should().BeFalse();
+        svc.SlFlushTriggeredAt.Should().BeNull();
+        svc.RecentSlHits.Should().BeEmpty();
+        // 注意：reset 不自動 re-enable auto-trader——user 要手動按 enable
+        svc.IsEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SlFlush_PerExchangeEventsAllCount()
+    {
+        // 跨 exchange 的 SL hit 也算進同一個 flush 計數（這是「全帳戶 backstop」）
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.Enable();
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.RecordSlHit("alpaca",  "AAPL",    t0);
+        svc.RecordSlHit("binance", "BTCUSDT", t0.AddMinutes(5));
+        svc.RecordSlHit("alpaca",  "TSLA",    t0.AddMinutes(10));
+
+        svc.SlFlushTriggered.Should().BeTrue();
+        svc.IsEnabled.Should().BeFalse();
+    }
+
     [Fact]
     public void AddSameKeyTwice_OverwritesAndKeepsSingleRow()
     {

@@ -77,7 +77,24 @@ public static class AutoTraderEndpoints
                         created_at      = kv.Value.CreatedAt,
                         updated_at      = kv.Value.UpdatedAt,
                     }),
+                sl_flush = new
+                {
+                    threshold        = svc.SlFlushThreshold,
+                    window_minutes   = svc.SlFlushWindowMinutes,
+                    triggered        = svc.SlFlushTriggered,
+                    triggered_at     = svc.SlFlushTriggeredAt,
+                    recent_count     = svc.RecentSlHits.Count,
+                    recent_hits      = svc.RecentSlHits.Select(h => new { h.Exchange, h.Symbol, h.At }).ToList(),
+                },
             }));
+        });
+
+        // B3: 手動 reset SL flush 凍結狀態（連環 SL 觸發 auto-trader 自動 disable 後、
+        // user 確認沒問題、手動按 reset 清掉滑動視窗 + 復原 enabled 狀態）
+        at.MapPost("/sl-flush/reset", (AutoTraderService svc) =>
+        {
+            svc.ResetSlFlush();
+            return Results.Ok(ApiResponseHelper.Success(new { reset = true, sl_flush_triggered = svc.SlFlushTriggered }));
         });
 
         at.MapPost("/watch", async (AutoTraderService svc, HttpRequest req) =>

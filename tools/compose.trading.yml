@@ -46,6 +46,11 @@ services:
       AUTOTRADER_BREAKEVEN_TRIGGER_PCT: "${AUTOTRADER_BREAKEVEN_TRIGGER_PCT:-}"
       AUTOTRADER_BREAKEVEN_BUFFER_PCT: "${AUTOTRADER_BREAKEVEN_BUFFER_PCT:-}"
 
+      # SL flush freeze（B3）——滑動視窗內若 SL hit ≥ threshold 次，自動 disable auto-trader、
+      # 強制 user 手動按 /sl-flush/reset 復原。預設 3 次/60 分。
+      AUTOTRADER_SL_FLUSH_THRESHOLD: "${AUTOTRADER_SL_FLUSH_THRESHOLD:-}"
+      AUTOTRADER_SL_FLUSH_WINDOW_MINUTES: "${AUTOTRADER_SL_FLUSH_WINDOW_MINUTES:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
