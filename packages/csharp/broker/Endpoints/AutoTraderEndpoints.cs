@@ -55,6 +55,8 @@ public static class AutoTraderEndpoints
                 watch_list = watchList,
                 dev_force_action = svc.DevForceAction,   // 非 null 表示 dev override 啟用中
                 min_confidence = svc.MinConfidence,
+                max_portfolio_dd_pct = svc.MaxPortfolioDdPct,
+                circuit_breakers = svc.CircuitBreakerSnapshot,
             }));
         });
 

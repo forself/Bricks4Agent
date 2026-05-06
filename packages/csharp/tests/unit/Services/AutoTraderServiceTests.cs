@@ -295,6 +295,174 @@ public class AutoTraderServiceTests
         AutoTraderService.ParseMinConfidence("2").Should().Be(1m);
     }
 
+    // ── B1 Portfolio circuit breaker ──────────────────────────────
+
+    [Fact]
+    public void MaxPortfolioDdPct_DefaultEnvUnset_Is_8()
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT", null);
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        svc.MaxPortfolioDdPct.Should().Be(8m);
+    }
+
+    [Theory]
+    [InlineData("3",  3)]
+    [InlineData("12.5", 12.5)]
+    [InlineData("100", 100)]
+    public void MaxPortfolioDdPct_EnvSetToValidValue_IsParsed(string raw, decimal expected)
+    {
+        Environment.SetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT", raw);
+        try
+        {
+            using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+            var svc = MakeService(db);
+            svc.MaxPortfolioDdPct.Should().Be(expected);
+        }
+        finally { Environment.SetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT", null); }
+    }
+
+    [Theory]
+    [InlineData("", 8)]            // empty → default
+    [InlineData("garbage", 8)]
+    [InlineData("0", 8)]           // 0 視為無效（會永遠觸發）→ 走預設
+    [InlineData("-5", 8)]
+    [InlineData("150", 100)]       // > 100 clamp 到 100
+    public void ParseMaxPortfolioDdPct_EdgeCases(string raw, decimal expected)
+    {
+        AutoTraderService.ParseMaxPortfolioDdPct(raw).Should().Be(expected);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_FirstCallSetsPeak_ReturnsNotTriggered()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var now = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        var r = svc.EvaluateCircuitBreaker("alpaca", 100_000m, now);
+
+        r.Triggered.Should().BeFalse();
+        r.PeakValue.Should().Be(100_000m);
+        r.DdPct.Should().Be(0m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_PortfolioRises_PeakRaisedNotTriggered()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca", 100_000m, t0);
+        var r = svc.EvaluateCircuitBreaker("alpaca", 105_000m, t0.AddMinutes(5));
+
+        r.Triggered.Should().BeFalse();
+        r.PeakValue.Should().Be(105_000m, "rising portfolio raises peak");
+        r.DdPct.Should().Be(0m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_DdBelowThreshold_NotTriggered()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);  // default 8%
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca", 100_000m, t0);
+        var r = svc.EvaluateCircuitBreaker("alpaca", 95_000m, t0.AddMinutes(5));  // 5% DD
+
+        r.Triggered.Should().BeFalse();
+        r.DdPct.Should().Be(5m);
+        r.Threshold.Should().Be(8m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_DdAtOrAboveThreshold_Triggered()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);  // default 8%
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca", 100_000m, t0);
+        var r = svc.EvaluateCircuitBreaker("alpaca", 92_000m, t0.AddMinutes(5));  // 8% DD
+
+        r.Triggered.Should().BeTrue("DD ≥ threshold should trigger");
+        r.DdPct.Should().Be(8m);
+        r.PeakValue.Should().Be(100_000m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_NextDayResetsPeak()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        // Day 1: 100k peak, drops to 92k → triggered
+        var d1 = new DateTime(2026, 5, 6, 23, 30, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca", 100_000m, d1);
+        var d1End = svc.EvaluateCircuitBreaker("alpaca", 92_000m, d1.AddMinutes(15));
+        d1End.Triggered.Should().BeTrue();
+
+        // Day 2: same 92k value, now is the new peak → not triggered
+        var d2 = new DateTime(2026, 5, 7, 1, 0, 0, DateTimeKind.Utc);
+        var d2Start = svc.EvaluateCircuitBreaker("alpaca", 92_000m, d2);
+        d2Start.Triggered.Should().BeFalse("UTC midnight should reset peak");
+        d2Start.PeakValue.Should().Be(92_000m);
+        d2Start.DdPct.Should().Be(0m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_PerExchangeIndependentTracking()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca",  100_000m, t0);
+        svc.EvaluateCircuitBreaker("binance", 50_000m,  t0);
+
+        // Alpaca crash 8%, Binance flat
+        var ar = svc.EvaluateCircuitBreaker("alpaca",  92_000m, t0.AddMinutes(5));
+        var br = svc.EvaluateCircuitBreaker("binance", 50_000m, t0.AddMinutes(5));
+
+        ar.Triggered.Should().BeTrue();
+        br.Triggered.Should().BeFalse("Binance peak/DD tracked separately");
+        br.PeakValue.Should().Be(50_000m);
+    }
+
+    [Fact]
+    public void EvaluateCircuitBreaker_ZeroOrNegativeCurrentValue_NotTriggered()
+    {
+        // worker 連不上、acc 失敗 → portfolio_value=0；不該誤觸 circuit breaker
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var r = svc.EvaluateCircuitBreaker("alpaca", 0m, DateTime.UtcNow);
+
+        r.Triggered.Should().BeFalse();
+        r.DdPct.Should().Be(0m);
+    }
+
+    [Fact]
+    public void CircuitBreakerSnapshot_ReflectsLastEvaluation()
+    {
+        using var db = TestDb.CreateInMemory(); db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var t0 = new DateTime(2026, 5, 6, 12, 0, 0, DateTimeKind.Utc);
+        svc.EvaluateCircuitBreaker("alpaca", 100_000m, t0);
+        svc.EvaluateCircuitBreaker("alpaca", 92_000m, t0.AddMinutes(5));
+
+        svc.CircuitBreakerSnapshot.Should().ContainKey("alpaca");
+        // snapshot 內容透過反射檢查不容易、用 JSON serialize 後 grep 關鍵字確認結構即可
+        var json = System.Text.Json.JsonSerializer.Serialize(svc.CircuitBreakerSnapshot);
+        json.Should().Contain("peak_value");
+        json.Should().Contain("dd_pct");
+        json.Should().Contain("triggered");
+    }
+
     [Fact]
     public void AddSameKeyTwice_OverwritesAndKeepsSingleRow()
     {

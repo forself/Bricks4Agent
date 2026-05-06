@@ -50,8 +50,53 @@ public class AutoTraderService : BackgroundService
     /// </summary>
     private readonly decimal _minConfidence;
 
+    /// <summary>
+    /// Portfolio 當日最大 drawdown 上限（%）。env AUTOTRADER_MAX_PORTFOLIO_DD_PCT 可覆蓋。
+    /// 預設 8。每個 exchange 各自追蹤當日 peak，當 (peak - current) / peak ≥ 此 % 時，
+    /// 該 exchange 的所有新單會被該 cycle 擋下（既有持倉不動）；peak 在 UTC 午夜重置。
+    /// 跟 risk-worker 的 max_drawdown_pct 規則互補：那條看「歷史總高」、這條看「當日最高」。
+    /// </summary>
+    private readonly decimal _maxPortfolioDdPct;
+    private readonly ConcurrentDictionary<string, PortfolioPeakState> _peakByExchange = new();
+
     public string? DevForceAction => _devForceAction;
     public decimal MinConfidence => _minConfidence;
+    public decimal MaxPortfolioDdPct => _maxPortfolioDdPct;
+    public IReadOnlyDictionary<string, object> CircuitBreakerSnapshot =>
+        _peakByExchange.ToDictionary(
+            kv => kv.Key,
+            kv => (object)new
+            {
+                peak_value     = kv.Value.PeakValue,
+                last_value     = kv.Value.LastValue,
+                dd_pct         = kv.Value.LastDdPct,
+                triggered      = kv.Value.LastTriggered,
+                threshold_pct  = _maxPortfolioDdPct,
+                peak_reset_at  = kv.Value.PeakResetAt,
+                last_update    = kv.Value.LastUpdate,
+            });
+
+    /// <summary>每 exchange 一份的當日 peak / 最近一次評估快照。</summary>
+    internal class PortfolioPeakState
+    {
+        public decimal PeakValue;
+        public decimal LastValue;
+        public decimal LastDdPct;
+        public bool LastTriggered;
+        public DateTime PeakResetAt;  // UTC 當日 00:00
+        public DateTime LastUpdate;
+    }
+
+    /// <summary>單次 circuit breaker 評估結果。</summary>
+    public class CircuitBreakerEval
+    {
+        public bool Triggered    { get; init; }
+        public decimal PeakValue { get; init; }
+        public decimal CurrentValue { get; init; }
+        public decimal DdPct     { get; init; }
+        public decimal Threshold { get; init; }
+        public DateTime PeakResetAt { get; init; }
+    }
 
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
@@ -74,7 +119,10 @@ public class AutoTraderService : BackgroundService
         }
 
         _minConfidence = ParseMinConfidence(Environment.GetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE"));
-        _logger.LogInformation("AutoTrader confidence threshold = {Threshold:P0}", _minConfidence);
+        _maxPortfolioDdPct = ParseMaxPortfolioDdPct(Environment.GetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT"));
+        _logger.LogInformation(
+            "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}%",
+            _minConfidence, _maxPortfolioDdPct);
 
         LoadWatchListFromDb();
     }
@@ -89,6 +137,72 @@ public class AutoTraderService : BackgroundService
         if (v < 0m) return 0m;
         if (v > 1m) return 1m;
         return v;
+    }
+
+    internal static decimal ParseMaxPortfolioDdPct(string? raw)
+    {
+        const decimal defaultValue = 8m;
+        if (string.IsNullOrWhiteSpace(raw)) return defaultValue;
+        if (!decimal.TryParse(raw.Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return defaultValue;
+        if (v <= 0m) return defaultValue;  // 0 / 負數視同沒設、走預設
+        if (v > 100m) return 100m;
+        return v;
+    }
+
+    /// <summary>
+    /// 每 cycle 對 (exchange, currentPortfolioValue) 評估 circuit breaker。
+    /// 內部會更新該 exchange 的 peak（漲就抬高、跨 UTC 午夜重置）並計算 DD%。
+    /// 觸發條件：DD% ≥ _maxPortfolioDdPct → Triggered=true，呼叫端要 skip 該 cycle 的下單。
+    /// </summary>
+    public CircuitBreakerEval EvaluateCircuitBreaker(string exchange, decimal currentValue, DateTime nowUtc)
+    {
+        if (currentValue <= 0m)
+        {
+            // 沒有有效 portfolio value（worker 連不上、或帳戶為空）→ 視為 0 DD、不擋
+            return new CircuitBreakerEval { Triggered = false, PeakValue = 0m, CurrentValue = 0m, DdPct = 0m, Threshold = _maxPortfolioDdPct };
+        }
+
+        var todayUtc = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, DateTimeKind.Utc);
+        var state = _peakByExchange.AddOrUpdate(
+            exchange,
+            _ => new PortfolioPeakState
+            {
+                PeakValue = currentValue, PeakResetAt = todayUtc,
+                LastValue = currentValue, LastDdPct = 0m, LastTriggered = false, LastUpdate = nowUtc,
+            },
+            (_, s) =>
+            {
+                // UTC 午夜重置 peak
+                if (s.PeakResetAt < todayUtc)
+                {
+                    s.PeakValue = currentValue;
+                    s.PeakResetAt = todayUtc;
+                }
+                else if (currentValue > s.PeakValue)
+                {
+                    s.PeakValue = currentValue;
+                }
+                s.LastValue = currentValue;
+                s.LastUpdate = nowUtc;
+                return s;
+            });
+
+        var ddPct = state.PeakValue > 0m ? (state.PeakValue - currentValue) / state.PeakValue * 100m : 0m;
+        var triggered = ddPct >= _maxPortfolioDdPct;
+        state.LastDdPct = Math.Round(ddPct, 2);
+        state.LastTriggered = triggered;
+
+        return new CircuitBreakerEval
+        {
+            Triggered    = triggered,
+            PeakValue    = state.PeakValue,
+            CurrentValue = currentValue,
+            DdPct        = Math.Round(ddPct, 2),
+            Threshold    = _maxPortfolioDdPct,
+            PeakResetAt  = state.PeakResetAt,
+        };
     }
 
     // ── 持久化 ──────────────────────────────────────────────────────
@@ -375,6 +489,21 @@ public class AutoTraderService : BackgroundService
                 {
                     var acc = JsonDocument.Parse(accResult.ResultPayload ?? "{}").RootElement;
                     var pos = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
+
+                    // ── Portfolio circuit breaker（B1）──
+                    // 在 risk-engine 之前先查當日 DD，超過 _maxPortfolioDdPct 就直接擋、
+                    // 不浪費 risk-engine 的算力、log 也明確標 halt 而非 risk reject。
+                    var portfolioValue = acc.TryGetProperty("portfolio_value", out var pvCb) ? pvCb.GetDecimal() : 0m;
+                    var cb = EvaluateCircuitBreaker(exchange, portfolioValue, DateTime.UtcNow);
+                    if (cb.Triggered)
+                    {
+                        _logger.LogWarning(
+                            "⚠ Circuit breaker triggered on {Exchange}: DD {Dd}% ≥ {Threshold}% (peak={Peak:C}, current={Cur:C}). Skipping {Symbol} {Action}.",
+                            exchange, cb.DdPct, cb.Threshold, cb.PeakValue, cb.CurrentValue, symbol, action);
+                        AddLog(item, "halt",
+                            $"⚠ Portfolio DD {cb.DdPct:F1}% ≥ {cb.Threshold}% on {exchange} (peak={cb.PeakValue:F2}, now={cb.CurrentValue:F2}) — order blocked");
+                        return;
+                    }
 
                     var lastTradesDict = new Dictionary<string, DateTime>();
                     if (lastTradesJson.TryGetProperty("last_trades", out var lt) && lt.ValueKind == JsonValueKind.Object)

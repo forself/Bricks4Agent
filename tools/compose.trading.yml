@@ -30,6 +30,10 @@ services:
       # 訊號擋下來，paper 階段可調 0.45-0.55 觀察出單頻率，正式上線再拉回 0.6+。
       AUTOTRADER_MIN_CONFIDENCE: "${AUTOTRADER_MIN_CONFIDENCE:-}"
 
+      # Portfolio circuit breaker：當日從 peak 跌幅超過此 % 時，該 exchange 暫停下新單，
+      # 避免單日連環失誤把帳戶打殘。預設 8%。peak 在 UTC 午夜重置。0 / 負數 / garbage → 走預設。
+      AUTOTRADER_MAX_PORTFOLIO_DD_PCT: "${AUTOTRADER_MAX_PORTFOLIO_DD_PCT:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
