@@ -255,6 +255,52 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .entry-zone .ez-tip.act-now  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
 .entry-zone .ez-tip.act-wait { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* Bloomberg 風 3 欄 layout for panel-overview — 240px rail / center / 320px rail，sticky */
+.cmd-grid { display:grid; grid-template-columns:240px 1fr 320px; gap:12px; align-items:start; }
+@media(max-width:1300px) { .cmd-grid { grid-template-columns:1fr; } .cmd-rail { position:static !important; max-height:none !important; } }
+.cmd-rail { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:12px; position:sticky; top:12px; max-height:calc(100vh - 24px); overflow-y:auto; }
+.cmd-rail h4 { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+.cmd-rail h4 .lk { color:var(--text2); cursor:pointer; text-transform:none; letter-spacing:0; font-weight:400; font-size:10px; }
+.cmd-rail h4 .lk:hover { color:#f0b90b; }
+.cmd-block { padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid var(--border); }
+.cmd-block:last-child { border:none; margin:0; padding:0; }
+.cmd-row { display:flex; justify-content:space-between; align-items:center; padding:5px 7px; border-radius:3px; cursor:pointer; font-size:11px; gap:6px; }
+.cmd-row:hover { background:var(--bg3); }
+.cmd-row .nm { color:var(--text); font-weight:600; min-width:50px; }
+.cmd-row .px { color:var(--text2); font-family:Consolas,monospace; flex:1; text-align:right; font-size:10px; }
+.cmd-row .pc { font-size:9px; font-weight:600; padding:1px 5px; border-radius:2px; min-width:42px; text-align:center; }
+.cmd-row .pc.up   { background:var(--greenBg); color:var(--green); }
+.cmd-row .pc.down { background:var(--redBg);   color:var(--red); }
+
+/* Auto-trade feed scroll */
+.at-feed { display:flex; flex-direction:column; gap:4px; max-height:300px; overflow-y:auto; }
+.at-item { font-size:10px; padding:5px 8px; background:var(--bg); border-radius:3px; border-left:2px solid var(--text3); }
+.at-item.act-buy   { border-left-color:var(--green); }
+.at-item.act-sell  { border-left-color:var(--red); }
+.at-item.act-blocked, .at-item.act-error { border-left-color:#f0b90b; }
+.at-item.act-hold  { opacity:.6; }
+.at-item .at-time  { font-size:9px; color:var(--text3); font-family:Consolas,monospace; }
+.at-item .at-sym   { font-size:10px; font-weight:700; color:var(--text); margin-left:5px; }
+.at-item .at-act   { font-size:9px; padding:0 4px; border-radius:2px; margin-left:5px; }
+.at-item.act-buy   .at-act { background:var(--greenBg); color:var(--green); }
+.at-item.act-sell  .at-act { background:var(--redBg);   color:var(--red); }
+.at-item .at-msg   { color:var(--text2); margin-top:2px; line-height:1.4; }
+
+/* 多時段共識卡 1D / 4H / 1H */
+.mtf-card { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:12px 14px; margin-top:8px; }
+.mtf-head { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
+.mtf-rows { display:grid; grid-template-columns:60px 1fr 110px; gap:10px; align-items:center; row-gap:6px; }
+.mtf-tf { font-size:12px; color:var(--text2); font-weight:700; font-family:Consolas,monospace; }
+.mtf-conf-bar { height:5px; background:var(--bg3); border-radius:3px; overflow:hidden; position:relative; }
+.mtf-conf-bar .fill { height:100%; transition:width .4s; }
+.mtf-action { font-size:11px; font-weight:700; text-align:right; }
+.mtf-action.up   { color:var(--green); }
+.mtf-action.down { color:var(--red); }
+.mtf-consensus { margin-top:10px; padding:8px 11px; border-radius:3px; font-size:11px; border-left:3px solid var(--text3); background:var(--bg2); color:var(--text2); }
+.mtf-consensus.aligned-buy  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
+.mtf-consensus.aligned-sell { background:var(--redBg);   color:var(--red);   border-left-color:var(--red); }
+.mtf-consensus.mixed { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
+
 /* Symbol picker */
 .sym-picker { position:relative; }
 .sym-dropdown { position:absolute; top:100%; left:0; width:300px; max-height:320px; overflow-y:auto; background:var(--bg2); border:1px solid var(--border); border-radius:4px; z-index:100; display:none; box-shadow:0 8px 32px rgba(0,0,0,.6); }
@@ -322,6 +368,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <option value="alpaca">Alpaca (美股)</option><option value="binance">Binance (加密貨幣)</option>
     </select>
     <span style="font-size:11px;color:var(--text2)">切換帳戶</span>
+    <button class="btn btn-o btn-sm" onclick="loadOverview()" style="margin-left:auto">↻ 重新整理</button>
   </div>
   <div class="g g4" style="margin-bottom:12px">
     <div class="stat"><div class="stat-label">帳戶餘額</div><div class="stat-value" id="ov-cash">—</div><div style="font-size:11px;color:var(--text2);margin-top:2px" id="ov-exchange"></div></div>
@@ -329,9 +376,38 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <div class="stat"><div class="stat-label">購買力</div><div class="stat-value" id="ov-buying-power">—</div></div>
     <div class="stat"><div class="stat-label">當日損益</div><div class="stat-value" id="ov-day-pnl">—</div></div>
   </div>
-  <div class="card"><h3>持倉</h3>
-    <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th><th></th></tr></thead>
-    <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+  <div class="cmd-grid">
+    <!-- 左 rail：自選股 + 行情快覽 -->
+    <aside class="cmd-rail">
+      <div class="cmd-block">
+        <h4>📈 監控清單 <span class="lk" onclick="tab('auto')">編輯</span></h4>
+        <div id="ov-watchlist"><div style="color:var(--text3);font-size:10px;text-align:center;padding:10px">—</div></div>
+      </div>
+      <div class="cmd-block">
+        <h4>🔥 即時行情 <span class="lk" onclick="tab('quotes')">完整</span></h4>
+        <div id="ov-hotlist"><div style="color:var(--text3);font-size:10px;text-align:center;padding:10px">—</div></div>
+      </div>
+    </aside>
+    <!-- 中央：持倉 -->
+    <main>
+      <div class="card"><h3>持倉</h3>
+        <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th><th></th></tr></thead>
+        <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+      </div>
+    </main>
+    <!-- 右 rail：Auto-trade feed + status -->
+    <aside class="cmd-rail">
+      <div class="cmd-block">
+        <h4>🤖 Auto-Trader <span class="lk" onclick="tab('auto')">設定</span></h4>
+        <div id="ov-auto-status" style="font-size:11px;color:var(--text2);margin-bottom:6px">—</div>
+      </div>
+      <div class="cmd-block">
+        <h4>📡 即時動態 <span class="lk" onclick="loadOverviewFeed()">↻</span></h4>
+        <div id="ov-auto-feed" class="at-feed">
+          <div style="color:var(--text3);font-size:10px;text-align:center;padding:10px">—</div>
+        </div>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -385,6 +461,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <button class="btn btn-o btn-sm" onclick="document.getElementById('strat-params').style.display=document.getElementById('strat-params').style.display==='none'?'flex':'none'">參數</button>
       <button class="btn btn-o btn-sm" onclick="runStrategyComparison()">比較所有策略</button>
       <button class="btn btn-g btn-sm" onclick="runMultiAgentAnalysis()" title="同時跑 Technical + News + Risk 三 agent 並合成共識判斷">🧠 全方位分析</button>
+      <button class="btn btn-o btn-sm" onclick="runMultiTimeframe()" title="跑 1D / 4H / 1H 三個時段 composite、看共識方向">🕐 多時段共識</button>
     </div>
     <div class="form-row" id="strat-params" style="display:none;background:var(--bg3);padding:8px 10px;border-radius:4px">
       <div class="fg"><label>SMA Fast</label><input id="sp-sma-fast" type="number" value="10" style="width:50px"></div>
@@ -804,7 +881,75 @@ document.getElementById('ov-buying-power').textContent=fmtUsd(d.buying_power);co
 document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (Live)');}
 const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
 if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','${ex}',${p.quantity})">平倉</button></td></tr>`).join('');
-else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';}
+else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
+// 順帶刷新左右兩 rail
+loadOverviewRails();}
+
+// 左 rail（auto-trader 監控清單 + 即時報價 top）+ 右 rail（auto-trader 狀態 + feed）
+async function loadOverviewRails(){
+  // 左：監控清單（從 auto-trader watchlist + 順帶現價）
+  try{const at=await api('/api/v1/auto-trader/status'),qs=await api('/api/v1/workers/quote/prices');
+    const quotes={};(qs?.data?.quotes||[]).forEach(q=>quotes[q.symbol]=q);
+    const wl=document.getElementById('ov-watchlist'),hl=document.getElementById('ov-hotlist');
+    const watch=at?.data?.watch_list||[];
+    if(watch.length>0){wl.innerHTML=watch.map(w=>{const q=quotes[w.symbol];const pc=q?Number(q.change_percent):null;const cls=pc==null?'':(pc>=0?'up':'down');
+      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${w.symbol}';document.getElementById('sig-exchange').value='${w.exchange}';tab('strategy')"><span class="nm">${w.symbol}</span><span class="px">${q?'$'+Number(q.price).toFixed(2):'—'}</span><span class="pc ${cls}">${pc!=null?(pc>=0?'+':'')+pc.toFixed(2)+'%':''}</span></div>`;}).join('');}
+    else{wl.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">尚未加任何 watch、<span style="color:var(--text2);cursor:pointer" onclick="tab(\'auto\')">去設定</span></div>';}
+    // 右：auto-trader 狀態 summary
+    const stat=document.getElementById('ov-auto-status');
+    if(at?.data){const d=at.data;const dot=d.enabled?'<span style="color:var(--green)">●</span>':'<span style="color:var(--text3)">○</span>';
+      const dev=d.dev_force_action?` <span style="color:#f0b90b;font-size:10px">[FORCE:${d.dev_force_action}]</span>`:'';
+      stat.innerHTML=`${dot} ${d.enabled?'運行中':'已停止'}${dev} · poll ${d.interval_seconds}s · 監控 ${d.watch_count} 個`;}
+    // 即時行情 top 6
+    const hot=(qs?.data?.quotes||[]).filter(q=>q.price>0).sort((a,b)=>Math.abs(b.change_percent||0)-Math.abs(a.change_percent||0)).slice(0,6);
+    if(hot.length>0)hl.innerHTML=hot.map(q=>{const pc=Number(q.change_percent||0),cls=pc>=0?'up':'down';
+      return`<div class="cmd-row" onclick="document.getElementById('sig-symbol').value='${q.symbol}';tab('strategy')"><span class="nm">${q.symbol}</span><span class="px">$${Number(q.price).toFixed(2)}</span><span class="pc ${cls}">${pc>=0?'+':''}${pc.toFixed(2)}%</span></div>`;}).join('');
+    else hl.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">無報價</div>';
+  }catch(e){console.warn('loadOverviewRails:',e);}
+  loadOverviewFeed();
+}
+
+async function loadOverviewFeed(){
+  try{const r=await api('/api/v1/auto-trader/logs?limit=15');
+    const feed=document.getElementById('ov-auto-feed'),logs=r?.data?.logs||[];
+    if(logs.length===0){feed.innerHTML='<div style="color:var(--text3);font-size:10px;text-align:center;padding:8px">尚無動態</div>';return;}
+    feed.innerHTML=logs.slice().reverse().map(l=>{const act=(l.action||'').toLowerCase();const t=new Date(l.time).toLocaleTimeString('zh-TW',{hour12:false});
+      return`<div class="at-item act-${act}"><div><span class="at-time">${t}</span><span class="at-sym">${l.symbol||''}</span><span class="at-act">${(l.action||'').toUpperCase()}</span></div><div class="at-msg">${(l.message||'').slice(0,90)}</div></div>`;}).join('');}
+  catch(e){console.warn('loadOverviewFeed:',e);}
+}
+
+// 多時段共識：1D / 4H / 1H 並行跑、看共識方向
+async function runMultiTimeframe(){
+  const symbol=document.getElementById('sig-symbol').value,exchange=document.getElementById('sig-exchange').value;
+  const el=document.getElementById('signal-result');el.innerHTML='<div style="color:var(--text2);padding:12px">並行跑 1D / 4H / 1H 三時段…</div>';
+  const intervals=[['1d','1D'],['4h','4H'],['1h','1H']];
+  const results=await Promise.all(intervals.map(async([itv,label])=>{
+    try{const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${itv}&limit=100`);
+      if(!bars?.data?.bars||bars.data.bars.length<30)return{label,interval:itv,action:null,err:'K 線不足'};
+      const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({strategy:'composite',symbol,exchange,interval:itv,bars:bars.data.bars})});
+      if(r?.data)return{label,interval:itv,action:r.data.action,confidence:r.data.confidence||0};
+      return{label,interval:itv,action:null,err:'分析失敗'};}
+    catch(e){return{label,interval:itv,action:null,err:e.message};}}));
+  const valid=results.filter(r=>r.action);
+  if(valid.length===0){el.innerHTML='<div style="color:var(--red);padding:8px">三個時段都拿不到 K 線（quote-worker 可能不支援多 interval）：'+results.map(r=>r.label+': '+(r.err||'?')).join('、')+'</div>';return;}
+  // 票數
+  const votes={buy:0,sell:0,hold:0};valid.forEach(r=>votes[r.action]=(votes[r.action]||0)+1);
+  let csClass='mixed',csLabel='訊號分歧、各時段方向不一致、建議觀望';
+  if(votes.buy>=2&&votes.sell===0){csClass='aligned-buy';csLabel='✓ 多時段共識看多 — '+votes.buy+' / '+valid.length+' 時段給買訊';}
+  else if(votes.sell>=2&&votes.buy===0){csClass='aligned-sell';csLabel='✓ 多時段共識看空 — '+votes.sell+' / '+valid.length+' 時段給賣訊';}
+  else if(votes.hold===valid.length){csClass='mixed';csLabel='所有時段都 hold、沒有明確方向';}
+  const rowsHtml=valid.map(r=>{const cf=Math.round(r.confidence*100),cls=r.action==='buy'?'up':r.action==='sell'?'down':'';
+    const fillCol=r.action==='buy'?'var(--green)':r.action==='sell'?'var(--red)':'var(--text2)';
+    return`<span class="mtf-tf">${r.label}</span><div class="mtf-conf-bar"><div class="fill" style="width:${cf}%;background:${fillCol}"></div></div><span class="mtf-action ${cls}">${r.action.toUpperCase()} ${cf}%</span>`;}).join('');
+  const failed=results.filter(r=>!r.action).map(r=>r.label+'('+r.err+')').join('、');
+  el.innerHTML=`<div class="mtf-card">
+    <div class="mtf-head">🕐 多時段共識 — ${symbol} · ${exchange}</div>
+    <div class="mtf-rows">${rowsHtml}</div>
+    <div class="mtf-consensus ${csClass}">${csLabel}</div>
+    ${failed?'<div style="font-size:10px;color:var(--text3);margin-top:6px">未能取得：'+failed+'</div>':''}
+  </div>`;
+}
 
 // ── Quotes ──────────────────────────────────────────────────────
 async function fetchQuotes(){const r=await api('/api/v1/workers/quote/prices');const tb=document.getElementById('quote-table');
