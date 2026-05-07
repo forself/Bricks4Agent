@@ -949,6 +949,7 @@ if (poolEnabled)
     AutoTraderEndpoints.Map(api);
     AlertEndpoints.Map(api);
     AlertRulesEndpoints.Map(api);
+    PerpetualEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);

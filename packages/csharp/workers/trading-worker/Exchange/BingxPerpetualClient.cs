@@ -1,0 +1,375 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using TradingWorker.Models;
+
+namespace TradingWorker.Exchange;
+
+/// <summary>
+/// BingX USDT-M Perpetual Swap V2 API 客戶端。
+///
+/// 文件：https://bingx-api.github.io/docs/#/swapV2/
+///
+/// 認證：HMAC-SHA256 簽 `{queryString}&timestamp=...`，header 帶 `X-BX-APIKEY`。
+/// signature 加在 query 結尾或 body 結尾（按 method 不同）。
+///
+/// IsDemo:
+///   true  → https://open-api-vst.bingx.com（VST demo、給虛擬 USDT）
+///   false → https://open-api.bingx.com（實盤）
+///
+/// Side / PositionSide 對映：
+///   open long  → side=BUY,  positionSide=LONG
+///   close long → side=SELL, positionSide=LONG
+///   open short → side=SELL, positionSide=SHORT
+///   close short → side=BUY, positionSide=SHORT
+/// </summary>
+public class BingxPerpetualClient : IPerpetualClient
+{
+    private readonly HttpClient _http;
+    private readonly ILogger<BingxPerpetualClient> _logger;
+    private readonly string _apiKey;
+    private readonly string _apiSecret;
+    private readonly string _baseUrl;
+
+    public string ExchangeName => "bingx";
+    public bool IsDemo { get; }
+
+    public BingxPerpetualClient(
+        HttpClient http,
+        ILogger<BingxPerpetualClient> logger,
+        string apiKey,
+        string apiSecret,
+        bool isDemo = true)
+    {
+        _http = http;
+        _logger = logger;
+        _apiKey = apiKey;
+        _apiSecret = apiSecret;
+        IsDemo = isDemo;
+        _baseUrl = isDemo
+            ? "https://open-api-vst.bingx.com"
+            : "https://open-api.bingx.com";
+
+        _http.DefaultRequestHeaders.Clear();
+        _http.DefaultRequestHeaders.Add("X-BX-APIKEY", apiKey);
+    }
+
+    // ── Account ─────────────────────────────────────────────────────
+
+    public async Task<PerpetualAccount> GetAccountAsync(CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/user/balance
+        var json = await SignedGetAsync("/openApi/swap/v2/user/balance", "", ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        EnsureOk(doc, "GetAccount");
+
+        // BingX V2 回 { code, msg, data: { balance: { ... } } }
+        var data = doc.GetProperty("data");
+        var bal = data.TryGetProperty("balance", out var b) ? b : data;
+
+        var balance = ParseDec(bal, "balance");
+        var equity = ParseDec(bal, "equity");
+        var unrealized = ParseDec(bal, "unrealizedProfit");
+        var marginUsed = ParseDec(bal, "usedMargin");
+        var available = ParseDec(bal, "availableMargin");
+        var userId = bal.TryGetProperty("userId", out var u) ? u.ToString() : "bingx-vst";
+
+        // 數開倉 — 順帶拉一次 positions（不算太貴、bingx 沒收費）
+        var positions = await GetPositionsAsync(ct);
+
+        return new PerpetualAccount
+        {
+            Exchange = ExchangeName,
+            AccountId = string.IsNullOrEmpty(userId) ? "bingx-vst" : userId,
+            Currency = "USDT",
+            Balance = balance,
+            Equity = equity > 0 ? equity : balance + unrealized,
+            UnrealizedPnl = unrealized,
+            MarginUsed = marginUsed,
+            AvailableMargin = available > 0 ? available : Math.Max(0m, balance - marginUsed),
+            OpenPositionsCount = positions.Count,
+            IsDemo = IsDemo,
+            UpdatedAt = DateTime.UtcNow,
+        };
+    }
+
+    // ── Positions ───────────────────────────────────────────────────
+
+    public async Task<List<PerpetualPosition>> GetPositionsAsync(CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/user/positions
+        var json = await SignedGetAsync("/openApi/swap/v2/user/positions", "", ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        EnsureOk(doc, "GetPositions");
+
+        var list = new List<PerpetualPosition>();
+        if (!doc.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var p in data.EnumerateArray())
+        {
+            var qty = ParseDec(p, "positionAmt");
+            if (qty == 0m) continue;  // BingX 即使沒倉也會回零部位、過濾掉
+
+            var symbol = p.GetProperty("symbol").GetString() ?? "";
+            var side = (p.TryGetProperty("positionSide", out var ps) ? ps.GetString() ?? "LONG" : "LONG").ToLowerInvariant();
+            var entry = ParseDec(p, "avgPrice");
+            var mark = ParseDec(p, "markPrice");
+            var unrealized = ParseDec(p, "unrealizedProfit");
+            var leverage = p.TryGetProperty("leverage", out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 1;
+            var marginMode = (p.TryGetProperty("marginMode", out var mm) ? mm.GetString() ?? "isolated" : "isolated").ToLowerInvariant();
+            var marginUsed = ParseDec(p, "initialMargin");
+            var liqPrice = ParseDec(p, "liquidationPrice");
+
+            var pnlPct = entry > 0m && qty != 0m
+                ? (side == "long" ? (mark - entry) / entry * 100m : (entry - mark) / entry * 100m)
+                : 0m;
+
+            var liqDist = mark > 0m && liqPrice > 0m
+                ? Math.Abs((mark - liqPrice) / mark) * 100m
+                : 0m;
+
+            list.Add(new PerpetualPosition
+            {
+                Symbol = symbol,
+                Exchange = ExchangeName,
+                Side = side,
+                Quantity = Math.Abs(qty),
+                AvgEntryPrice = entry,
+                MarkPrice = mark,
+                UnrealizedPnl = unrealized,
+                UnrealizedPnlPercent = Math.Round(pnlPct, 4),
+                Leverage = leverage,
+                MarginMode = marginMode,
+                MarginUsed = marginUsed,
+                LiquidationPrice = liqPrice,
+                LiquidationDistancePct = Math.Round(liqDist, 4),
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        return list;
+    }
+
+    // ── Orders ──────────────────────────────────────────────────────
+
+    public async Task<PerpetualOrder> PlaceOrderAsync(PerpetualOrder order, CancellationToken ct = default)
+    {
+        // POST /openApi/swap/v2/trade/order
+        // 必填：symbol, side, positionSide, type, quantity（market）/ price（limit）
+        var qs = new Dictionary<string, string>
+        {
+            ["symbol"]       = order.Symbol,
+            ["side"]         = order.Side.ToUpperInvariant(),                    // BUY / SELL
+            ["positionSide"] = order.PositionSide.ToUpperInvariant(),            // LONG / SHORT
+            ["type"]         = MapOrderType(order.OrderType),
+            ["quantity"]     = order.Quantity.ToString(CultureInfo.InvariantCulture),
+        };
+        if (order.OrderType == "limit" && order.LimitPrice.HasValue)
+            qs["price"] = order.LimitPrice.Value.ToString(CultureInfo.InvariantCulture);
+        if (order.StopPrice.HasValue)
+            qs["stopPrice"] = order.StopPrice.Value.ToString(CultureInfo.InvariantCulture);
+        if (order.ReduceOnly)
+            qs["reduceOnly"] = "true";
+
+        var json = await SignedPostAsync("/openApi/swap/v2/trade/order", BuildQuery(qs), ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        EnsureOk(doc, "PlaceOrder");
+
+        // BingX 回 { data: { order: { orderId, status, ... } } }
+        var data = doc.GetProperty("data");
+        var ord = data.TryGetProperty("order", out var o) ? o : data;
+        order.ExternalId = ord.TryGetProperty("orderId", out var oid) ? oid.ToString() : null;
+        order.Status = MapOrderStatus(ord.TryGetProperty("status", out var st) ? st.GetString() ?? "submitted" : "submitted");
+        order.UpdatedAt = DateTime.UtcNow;
+        if (ord.TryGetProperty("avgPrice", out var ap)) order.FilledPrice = ParseDecValue(ap);
+        if (ord.TryGetProperty("executedQty", out var eq)) order.FilledQty = ParseDecValue(eq);
+        return order;
+    }
+
+    public async Task<PerpetualOrder> CancelOrderAsync(string symbol, string externalId, CancellationToken ct = default)
+    {
+        // DELETE /openApi/swap/v2/trade/order
+        var qs = $"symbol={symbol}&orderId={externalId}";
+        var json = await SignedDeleteAsync("/openApi/swap/v2/trade/order", qs, ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        EnsureOk(doc, "CancelOrder");
+        return new PerpetualOrder
+        {
+            ExternalId = externalId, Symbol = symbol, Exchange = ExchangeName,
+            Status = "cancelled", UpdatedAt = DateTime.UtcNow,
+        };
+    }
+
+    public async Task<PerpetualOrder?> GetOrderStatusAsync(string symbol, string externalId, CancellationToken ct = default)
+    {
+        var json = await SignedGetAsync("/openApi/swap/v2/trade/order", $"symbol={symbol}&orderId={externalId}", ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        if (!IsOk(doc)) return null;
+        if (!doc.TryGetProperty("data", out var data)) return null;
+        var ord = data.TryGetProperty("order", out var o) ? o : data;
+        return new PerpetualOrder
+        {
+            ExternalId = ord.TryGetProperty("orderId", out var oid) ? oid.ToString() : externalId,
+            Symbol = symbol,
+            Exchange = ExchangeName,
+            Side = (ord.TryGetProperty("side", out var sd) ? sd.GetString() ?? "" : "").ToLowerInvariant(),
+            PositionSide = (ord.TryGetProperty("positionSide", out var pss) ? pss.GetString() ?? "" : "").ToLowerInvariant(),
+            OrderType = (ord.TryGetProperty("type", out var ty) ? ty.GetString() ?? "market" : "market").ToLowerInvariant(),
+            Quantity = ParseDec(ord, "origQty"),
+            FilledQty = ParseDec(ord, "executedQty"),
+            FilledPrice = ord.TryGetProperty("avgPrice", out var ap) ? ParseDecValue(ap) : null,
+            Status = MapOrderStatus(ord.TryGetProperty("status", out var st) ? st.GetString() ?? "submitted" : "submitted"),
+            UpdatedAt = DateTime.UtcNow,
+        };
+    }
+
+    public async Task<List<PerpetualOrder>> GetOpenOrdersAsync(string? symbol = null, CancellationToken ct = default)
+    {
+        var qs = string.IsNullOrEmpty(symbol) ? "" : $"symbol={symbol}";
+        var json = await SignedGetAsync("/openApi/swap/v2/trade/openOrders", qs, ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        var list = new List<PerpetualOrder>();
+        if (!IsOk(doc)) return list;
+        if (!doc.TryGetProperty("data", out var data)) return list;
+        var arr = data.TryGetProperty("orders", out var ords) ? ords : data;
+        if (arr.ValueKind != JsonValueKind.Array) return list;
+        foreach (var o in arr.EnumerateArray())
+        {
+            list.Add(new PerpetualOrder
+            {
+                ExternalId = o.TryGetProperty("orderId", out var oid) ? oid.ToString() : null,
+                Symbol = o.TryGetProperty("symbol", out var sym) ? sym.GetString() ?? "" : "",
+                Exchange = ExchangeName,
+                Side = (o.TryGetProperty("side", out var sd) ? sd.GetString() ?? "" : "").ToLowerInvariant(),
+                PositionSide = (o.TryGetProperty("positionSide", out var pss) ? pss.GetString() ?? "" : "").ToLowerInvariant(),
+                OrderType = (o.TryGetProperty("type", out var ty) ? ty.GetString() ?? "market" : "market").ToLowerInvariant(),
+                Quantity = ParseDec(o, "origQty"),
+                FilledQty = ParseDec(o, "executedQty"),
+                Status = MapOrderStatus(o.TryGetProperty("status", out var st) ? st.GetString() ?? "submitted" : "submitted"),
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+        return list;
+    }
+
+    // ── Leverage / Mark price ──────────────────────────────────────
+
+    public async Task<bool> SetLeverageAsync(string symbol, string positionSide, int leverage, CancellationToken ct = default)
+    {
+        // POST /openApi/swap/v2/trade/leverage
+        var qs = $"symbol={symbol}&side={positionSide.ToUpperInvariant()}&leverage={leverage}";
+        try
+        {
+            var json = await SignedPostAsync("/openApi/swap/v2/trade/leverage", qs, ct);
+            var doc = JsonDocument.Parse(json).RootElement;
+            return IsOk(doc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BingX SetLeverage failed for {Symbol} {Side} {Lev}", symbol, positionSide, leverage);
+            return false;
+        }
+    }
+
+    public async Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/quote/premiumIndex （mark price + funding）
+        // 注意：這個是 public endpoint、不需要簽
+        var resp = await _http.GetAsync($"{_baseUrl}/openApi/swap/v2/quote/premiumIndex?symbol={symbol}", ct);
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        if (!IsOk(doc) || !doc.TryGetProperty("data", out var data)) return 0m;
+        return ParseDec(data, "markPrice");
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────
+
+    private static string MapOrderType(string t) => t.ToLowerInvariant() switch
+    {
+        "market"               => "MARKET",
+        "limit"                => "LIMIT",
+        "stop_market"          => "STOP_MARKET",
+        "take_profit_market"   => "TAKE_PROFIT_MARKET",
+        _                      => "MARKET",
+    };
+
+    private static string MapOrderStatus(string s) => s.ToUpperInvariant() switch
+    {
+        "NEW"               => "submitted",
+        "PARTIALLY_FILLED"  => "partial",
+        "FILLED"            => "filled",
+        "CANCELED"          => "cancelled",
+        "CANCELLED"         => "cancelled",
+        "EXPIRED"           => "cancelled",
+        "REJECTED"          => "rejected",
+        _                   => "submitted",
+    };
+
+    private static decimal ParseDec(JsonElement obj, string prop)
+    {
+        if (!obj.TryGetProperty(prop, out var el)) return 0m;
+        return ParseDecValue(el);
+    }
+
+    private static decimal ParseDecValue(JsonElement el)
+    {
+        return el.ValueKind switch
+        {
+            JsonValueKind.Number => el.TryGetDecimal(out var d) ? d : 0m,
+            JsonValueKind.String => decimal.TryParse(el.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0m,
+            _ => 0m,
+        };
+    }
+
+    private static bool IsOk(JsonElement doc)
+        => doc.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number && c.GetInt32() == 0;
+
+    private static void EnsureOk(JsonElement doc, string op)
+    {
+        if (IsOk(doc)) return;
+        var msg = doc.TryGetProperty("msg", out var m) ? m.GetString() : "(no msg)";
+        var code = doc.TryGetProperty("code", out var c) ? c.ToString() : "(no code)";
+        throw new InvalidOperationException($"BingX {op} failed: code={code} msg={msg}");
+    }
+
+    private static string BuildQuery(Dictionary<string, string> kv)
+        => string.Join("&", kv.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+
+    private string Sign(string query)
+    {
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var qs = string.IsNullOrEmpty(query) ? $"timestamp={ts}" : $"{query}&timestamp={ts}";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_apiSecret));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(qs));
+        var signature = Convert.ToHexString(hash).ToLower();
+        return $"{qs}&signature={signature}";
+    }
+
+    private async Task<string> SignedGetAsync(string path, string query, CancellationToken ct)
+    {
+        var signed = Sign(query);
+        var resp = await _http.GetAsync($"{_baseUrl}{path}?{signed}", ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+
+    private async Task<string> SignedPostAsync(string path, string query, CancellationToken ct)
+    {
+        var signed = Sign(query);
+        var content = new StringContent("", Encoding.UTF8, "application/x-www-form-urlencoded");
+        var resp = await _http.PostAsync($"{_baseUrl}{path}?{signed}", content, ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+
+    private async Task<string> SignedDeleteAsync(string path, string query, CancellationToken ct)
+    {
+        var signed = Sign(query);
+        var resp = await _http.DeleteAsync($"{_baseUrl}{path}?{signed}", ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+}

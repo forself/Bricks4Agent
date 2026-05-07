@@ -50,6 +50,8 @@ config.LogSecretSummary(logger,
     "Worker:Trading:Alpaca:ApiSecret",
     "Worker:Trading:Binance:ApiKey",
     "Worker:Trading:Binance:ApiSecret",
+    "Worker:Trading:BingxPerp:ApiKey",
+    "Worker:Trading:BingxPerp:ApiSecret",
     "Worker:Auth:SharedSecret");
 
 // ── 交易所客戶端 ──────────────────────────────────────────────────────
@@ -101,6 +103,27 @@ if (config.GetValue("Worker:Trading:Binance:Enabled", false))
 if (clients.Count == 0)
     logger.LogWarning("No exchange clients configured — trading capabilities will fail. Set Alpaca or Binance config.");
 
+// ── 永續合約 client（BingX）───────────────────────────────────────────
+var perpClients = new Dictionary<string, IPerpetualClient>();
+if (config.GetValue("Worker:Trading:BingxPerp:Enabled", false))
+{
+    var bingxKey    = config.GetSecret("Worker:Trading:BingxPerp:ApiKey")    ?? "";
+    var bingxSecret = config.GetSecret("Worker:Trading:BingxPerp:ApiSecret") ?? "";
+    var bingxDemo   = config.GetValue("Worker:Trading:BingxPerp:IsDemo", true);
+
+    if (!string.IsNullOrEmpty(bingxKey) && !string.IsNullOrEmpty(bingxSecret))
+    {
+        var bingxLogger = loggerFactory.CreateLogger<BingxPerpetualClient>();
+        perpClients["bingx"] = new BingxPerpetualClient(new HttpClient { Timeout = TimeSpan.FromSeconds(30) },
+            bingxLogger, bingxKey, bingxSecret, bingxDemo);
+        logger.LogInformation("BingX Perpetual exchange enabled (demo={IsDemo})", bingxDemo);
+    }
+    else
+    {
+        logger.LogWarning("BingX Perpetual enabled but API key/secret not configured");
+    }
+}
+
 // ── 取消 Token ────────────────────────────────────────────────────────
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -114,6 +137,8 @@ Console.CancelKeyPress += (_, e) =>
 var host = new WorkerHost(options, logger);
 host.RegisterHandler(new TradingOrderHandler(clients, tradingDb));
 host.RegisterHandler(new TradingAccountHandler(clients, tradingDb));
+if (perpClients.Count > 0)
+    host.RegisterHandler(new TradingPerpetualHandler(perpClients));
 
 // ── Fill Poller（背景輪詢未成交訂單，把 fill 寫進 trades 表）──────────
 var fillPollerLogger = loggerFactory.CreateLogger<FillPollerService>();

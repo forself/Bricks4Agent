@@ -220,11 +220,17 @@ services:
       WORKER_Worker__Trading__Alpaca__ApiSecret: "${ALPACA_API_SECRET:-}"
       WORKER_Worker__Trading__Alpaca__IsPaper: "${ALPACA_IS_PAPER:-true}"
 
-      # Binance（加密貨幣）
+      # Binance（加密貨幣 spot）
       WORKER_Worker__Trading__Binance__Enabled: "${BINANCE_ENABLED:-false}"
       WORKER_Worker__Trading__Binance__ApiKey: "${BINANCE_API_KEY:-}"
       WORKER_Worker__Trading__Binance__ApiSecret: "${BINANCE_API_SECRET:-}"
       WORKER_Worker__Trading__Binance__IsTestnet: "${BINANCE_IS_TESTNET:-true}"
+
+      # BingX 永續合約（USDT-M perpetual swap）
+      WORKER_Worker__Trading__BingxPerp__Enabled: "${BINGX_PERP_ENABLED:-false}"
+      WORKER_Worker__Trading__BingxPerp__ApiKey: "${BINGX_PERP_API_KEY:-}"
+      WORKER_Worker__Trading__BingxPerp__ApiSecret: "${BINGX_PERP_API_SECRET:-}"
+      WORKER_Worker__Trading__BingxPerp__IsDemo: "${BINGX_PERP_IS_DEMO:-true}"
     volumes:
       - trading-data:/data
     networks:
