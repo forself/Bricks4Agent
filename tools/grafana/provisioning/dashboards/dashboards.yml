@@ -1,0 +1,13 @@
+# Auto-import dashboards from /etc/grafana/provisioning/dashboards/*.json
+apiVersion: 1
+
+providers:
+  - name: B4A
+    orgId: 1
+    folder: B4A
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true   # 允許在 UI 改後留下、之後手動 export 回檔案
+    options:
+      path: /etc/grafana/provisioning/dashboards

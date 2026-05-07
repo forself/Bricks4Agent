@@ -1,0 +1,27 @@
+# Prometheus scrape config for B4A trading stack
+# 由 compose.observability.yml 掛載成 /etc/prometheus/prometheus.yml
+
+global:
+  scrape_interval: 15s        # 對 b4a 的 gauge metrics 夠用、不用更密
+  evaluation_interval: 15s
+  external_labels:
+    monitor: b4a-trading
+
+scrape_configs:
+  # broker 的 /metrics（根層、非 /api/v1 之下）
+  - job_name: b4a-broker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - broker:5000        # 同 docker network 用 service name + container 內部 port
+        labels:
+          service: broker
+          stack: trading
+
+  # Prometheus 自己的 metrics（Grafana panel 可以用來看 scrape 健康度）
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+# alertmanager 暫不啟用——alert 走我們自己的 AlertRulesService + Discord

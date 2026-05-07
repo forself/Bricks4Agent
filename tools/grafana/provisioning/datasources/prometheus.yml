@@ -1,0 +1,16 @@
+# Auto-import Prometheus 為預設 datasource
+# 由 compose.observability.yml 掛載成 /etc/grafana/provisioning/datasources/prometheus.yml
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST

@@ -1,0 +1,63 @@
+# Observability overlay for compose.trading.yml（#2 後續）
+#
+# 加 Prometheus + Grafana 兩個 service、scrape broker 的 /metrics、
+# 預載 B4A Overview dashboard。跟主 stack 共用 trading-net、不需額外網路設定。
+#
+# 用法：
+#   docker compose --env-file tools/.env.trading \
+#     -f tools/compose.trading.yml \
+#     -f tools/compose.observability.yml \
+#     up -d
+#
+# 訪問：
+#   - Prometheus UI:  http://localhost:9090
+#   - Grafana UI:     http://localhost:3000  （預設 admin / admin、首次登入會被要求改密碼）
+#
+# Grafana 載入後左側 Dashboards → B4A → "Trading Overview" 直接開圖。
+# 主 stack 不啟用此 overlay 時 broker /metrics 仍正常運作（沒人 scrape 而已）。
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: b4a-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'   # 預設留 30 天，PoC 規模夠
+      - '--web.enable-lifecycle'              # POST /-/reload 可熱重整 config
+    ports:
+      - "9090:9090"
+    networks:
+      - trading-net
+    restart: unless-stopped
+    depends_on:
+      - broker
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: b4a-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      # 不啟用匿名訪問——首次登入要改密碼，避免裸奔
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # 自動 import datasource + dashboard provisioning
+      GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - trading-net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:
