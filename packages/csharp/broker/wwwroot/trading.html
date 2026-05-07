@@ -264,6 +264,34 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .entry-zone .ez-tip.act-now  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
 .entry-zone .ez-tip.act-wait { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* Toast 通知（取代 alert，非阻塞 + 自動 fade） */
+.toast-stack { position:fixed; top:60px; right:18px; z-index:10000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.toast { background:var(--bg2); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:4px; padding:10px 14px; font-size:12px; color:var(--text); min-width:240px; max-width:380px; box-shadow:0 8px 24px rgba(0,0,0,.5); pointer-events:auto; animation:toast-in .2s ease-out; }
+.toast.t-ok    { border-left-color:var(--green); }
+.toast.t-warn  { border-left-color:#f0b90b; }
+.toast.t-err   { border-left-color:var(--red); }
+.toast.t-info  { border-left-color:var(--accent); }
+.toast.fading  { animation:toast-out .25s ease-in forwards; }
+.toast-title { font-weight:700; margin-bottom:3px; }
+.toast-body  { color:var(--text2); font-size:11px; line-height:1.4; }
+@keyframes toast-in { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toast-out { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(20px); } }
+
+/* 鍵盤快捷鍵 help overlay */
+.kbd-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; display:none; align-items:center; justify-content:center; padding:20px; }
+.kbd-overlay.show { display:flex; }
+.kbd-modal { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:24px 28px; max-width:560px; width:100%; max-height:80vh; overflow-y:auto; }
+.kbd-modal h3 { font-size:14px; color:var(--text); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.kbd-modal h3 .kbd-close { color:var(--text3); cursor:pointer; font-size:18px; }
+.kbd-modal h3 .kbd-close:hover { color:var(--text); }
+.kbd-grid { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; }
+.kbd-grid kbd { background:var(--bg3); border:1px solid var(--border); border-radius:3px; padding:2px 7px; font-family:Consolas,monospace; font-size:11px; color:var(--accent); }
+.kbd-grid .kbd-desc { font-size:12px; color:var(--text2); align-self:center; }
+.kbd-section { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; grid-column:1 / -1; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.kbd-section:first-child { border-top:none; padding-top:0; margin-top:0; }
+.kbd-hint { position:fixed; bottom:14px; right:18px; font-size:10px; color:var(--text3); pointer-events:none; opacity:.6; }
+.kbd-hint kbd { background:var(--bg3); border:1px solid var(--border); border-radius:2px; padding:1px 5px; font-family:Consolas,monospace; }
+
 /* #2 Terminal hero — 當前標的綜合視圖 */
 .term-hero { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px 20px; margin-bottom:12px; }
 .term-hero-top { display:flex; align-items:flex-start; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
@@ -440,6 +468,46 @@ tr:hover { background:rgba(240,185,11,0.02); }
 </style>
 </head>
 <body>
+
+<!-- Toast 通知區（右上角、非阻塞）+ 鍵盤快捷鍵說明 overlay -->
+<div class="toast-stack" id="toast-stack"></div>
+<div class="kbd-overlay" id="kbd-overlay" onclick="if(event.target.id==='kbd-overlay')toggleKbdHelp(false)">
+  <div class="kbd-modal">
+    <h3>⌨️ 鍵盤快捷鍵 <span class="kbd-close" onclick="toggleKbdHelp(false)">✕</span></h3>
+    <div class="kbd-grid">
+      <div class="kbd-section">全域</div>
+      <div><kbd>Ctrl</kbd>+<kbd>K</kbd> · <kbd>/</kbd></div>
+      <div class="kbd-desc">focus 頂端 symbol 搜尋框</div>
+      <div><kbd>?</kbd></div>
+      <div class="kbd-desc">開／關此快捷鍵說明</div>
+      <div><kbd>Esc</kbd></div>
+      <div class="kbd-desc">關掉打開中的 dropdown / modal</div>
+
+      <div class="kbd-section">Tab 跳轉（Vim 風格）</div>
+      <div><kbd>g</kbd> <kbd>o</kbd></div>
+      <div class="kbd-desc">總覽 (overview)</div>
+      <div><kbd>g</kbd> <kbd>q</kbd></div>
+      <div class="kbd-desc">市場 (quotes)</div>
+      <div><kbd>g</kbd> <kbd>c</kbd></div>
+      <div class="kbd-desc">圖表 (chart)</div>
+      <div><kbd>g</kbd> <kbd>s</kbd></div>
+      <div class="kbd-desc">策略 (strategy)</div>
+      <div><kbd>g</kbd> <kbd>t</kbd></div>
+      <div class="kbd-desc">交易 (trade)</div>
+      <div><kbd>g</kbd> <kbd>b</kbd></div>
+      <div class="kbd-desc">回測 (backtest)</div>
+      <div><kbd>g</kbd> <kbd>a</kbd></div>
+      <div class="kbd-desc">自動 (auto-trader)</div>
+      <div><kbd>g</kbd> <kbd>r</kbd></div>
+      <div class="kbd-desc">風控 (risk + alerts)</div>
+      <div><kbd>g</kbd> <kbd>p</kbd></div>
+      <div class="kbd-desc">資產 (P&L)</div>
+      <div><kbd>g</kbd> <kbd>h</kbd></div>
+      <div class="kbd-desc">健康 (health)</div>
+    </div>
+  </div>
+</div>
+<div class="kbd-hint">按 <kbd>?</kbd> 看快捷鍵</div>
 
 <!-- Header -->
 <div class="hdr">
@@ -1229,6 +1297,56 @@ function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
 if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
 
+// ── Toast 通知 ──────────────────────────────────────────────────
+// 取代 alert() 的非阻塞通知；type 影響 border-left 顏色（ok/warn/err/info）
+function toast(message,type='info',title='',ttlMs=3500){
+  const stack=document.getElementById('toast-stack');if(!stack)return;
+  const div=document.createElement('div');div.className='toast t-'+type;
+  const safeTitle=title?`<div class="toast-title">${title}</div>`:'';
+  div.innerHTML=safeTitle+`<div class="toast-body">${message}</div>`;
+  stack.appendChild(div);
+  setTimeout(()=>{div.classList.add('fading');setTimeout(()=>div.remove(),250);},ttlMs);
+}
+function toastOk(m,t)  { toast(m,'ok',t||'✓ 完成'); }
+function toastErr(m,t) { toast(m,'err',t||'⚠ 失敗',5000); }
+function toastWarn(m,t){ toast(m,'warn',t||'⚠ 注意',4500); }
+
+// ── 鍵盤快捷鍵（全域）──────────────────────────────────────────
+let _keyBuffer='';let _keyBufferTimer=null;
+const _tabShortcuts={o:'overview',q:'quotes',c:'chart',s:'strategy',t:'trade',b:'backtest',a:'auto',r:'risk',p:'pnl',h:'health'};
+function toggleKbdHelp(show){
+  const el=document.getElementById('kbd-overlay');if(!el)return;
+  if(show===undefined)show=!el.classList.contains('show');
+  el.classList.toggle('show',show);
+}
+document.addEventListener('keydown',e=>{
+  // 在 input/textarea 裡按鍵不攔（除 Escape）
+  const inField=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
+  if(e.key==='Escape'){
+    document.querySelectorAll('.sym-dropdown.open').forEach(d=>d.classList.remove('open'));
+    if(document.getElementById('kbd-overlay')?.classList.contains('show'))toggleKbdHelp(false);
+    if(inField&&document.activeElement.id==='hdr-symbol')document.activeElement.blur();
+    return;
+  }
+  if(inField)return;
+  // Cmd+K / Ctrl+K → focus header search
+  if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();const inp=document.getElementById('hdr-symbol');if(inp){inp.focus();inp.select();}return;}
+  // / 也是常見搜尋觸發鍵
+  if(e.key==='/'){e.preventDefault();document.getElementById('hdr-symbol')?.focus();return;}
+  // ? 顯示快捷鍵說明
+  if(e.key==='?'){e.preventDefault();toggleKbdHelp();return;}
+  // Vim-style g+X tab 跳轉
+  if(e.key==='g'&&!_keyBuffer){_keyBuffer='g';if(_keyBufferTimer)clearTimeout(_keyBufferTimer);_keyBufferTimer=setTimeout(()=>{_keyBuffer='';},1200);return;}
+  if(_keyBuffer==='g'&&_tabShortcuts[e.key]){
+    const tab=_tabShortcuts[e.key];switchTab(tab);
+    toast(`跳到「${tab}」 tab`,'info','g '+e.key,1500);
+    _keyBuffer='';if(_keyBufferTimer)clearTimeout(_keyBufferTimer);
+    e.preventDefault();return;
+  }
+  // 其他鍵打斷 sequence
+  if(_keyBuffer&&e.key!=='g'){_keyBuffer='';if(_keyBufferTimer)clearTimeout(_keyBufferTimer);}
+});
+
 // ── API helper ──────────────────────────────────────────────────
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
 function fmt(n,d=2){return n!=null?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';}
@@ -1394,7 +1512,8 @@ async function quickAddWatch(){
   if(isNaN(qty)||qty<=0)return;
   const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({symbol:_currentSymbol,exchange:_currentExchange,strategy:'composite',quantity:qty})});
-  alert(r?.success?`已加入 ${_currentSymbol} (qty=${qty})`:'加入失敗：'+(r?.error||'unknown'));
+  if(r?.success)toastOk(`${_currentSymbol} 已加入監控（qty=${qty}）`);
+  else toastErr('加入失敗：'+(r?.error||'unknown'));
 }
 
 // 多時段共識：1D / 4H / 1H 並行跑、看共識方向
@@ -1722,7 +1841,7 @@ if(r?.data?.logs?.length>0)el.textContent=r.data.logs.map(l=>{const t=new Date(l
 let chartInstance=null;
 async function loadChart(){const symbol=document.getElementById('chart-symbol').value,interval=document.getElementById('chart-interval').value,limit=parseInt(document.getElementById('chart-limit').value)||120;
 const sym=getAllSymbols().find(s=>s.symbol===symbol.toUpperCase());updateChartIntervals(sym?.type||'stock');
-const r=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${interval}&limit=${limit}`);if(!r?.data?.bars?.length){alert('No data');return;}
+const r=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=${interval}&limit=${limit}`);if(!r?.data?.bars?.length){toastWarn(`${symbol} 無 K 線資料，先去市場 tab 抓取`);return;}
 const c=document.getElementById('chart-container');c.innerHTML='';
 chartInstance=LightweightCharts.createChart(c,{width:c.clientWidth,height:520,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},timeScale:{borderColor:'#2b3139',timeVisible:true},rightPriceScale:{borderColor:'#2b3139'}});
 const cs=chartInstance.addCandlestickSeries({upColor:'#0ecb81',downColor:'#f6465d',borderDownColor:'#f6465d',borderUpColor:'#0ecb81',wickDownColor:'#f6465d',wickUpColor:'#0ecb81'});
@@ -2122,7 +2241,7 @@ async function closePosition(symbol, exchange, qty) {
   if (!confirm(`確定平倉 ${qty} ${symbol}？`)) return;
   const r = await api('/api/v1/trading/order', { method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ exchange, symbol, side: 'sell', quantity: qty, order_type: 'market' })});
-  if (r?.data) { alert(`平倉成功: ${r.data.status}`); loadOverview(); } else alert('平倉失敗: ' + (r?.error || 'unknown'));
+  if (r?.data) { toastOk(`平倉成功：${r.data.status}`); loadOverview(); } else toastErr('平倉失敗：' + (r?.error || 'unknown'));
 }
 
 // ── Alerts ──────────────────────────────────────────────────────
@@ -2168,13 +2287,16 @@ async function createAlertRule(){
   const exchange=document.getElementById('ar-exchange').value;
   const threshold=parseFloat(document.getElementById('ar-threshold').value);
   const cooldown=parseInt(document.getElementById('ar-cooldown').value)||30;
-  if(!name){alert('請輸入名稱');return;}
-  if(isNaN(threshold)){alert('請輸入閾值');return;}
-  if(conditionType!=='portfolio_dd_above'&&!symbol){alert('該條件需要 Symbol');return;}
+  if(!name){toastWarn('請輸入規則名稱');return;}
+  if(isNaN(threshold)){toastWarn('請輸入有效的閾值');return;}
+  if(conditionType!=='portfolio_dd_above'&&!symbol){toastWarn('該條件需要 Symbol');return;}
   const r=await api('/api/v1/alerts/rules',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name,condition_type:conditionType,symbol,exchange,threshold,cooldown_minutes:cooldown})});
-  if(r?.success){document.getElementById('ar-name').value='';document.getElementById('ar-threshold').value='';fetchAlertRules();}
-  else alert('建立失敗：'+(r?.message||r?.error||'unknown'));
+  if(r?.success){
+    document.getElementById('ar-name').value='';document.getElementById('ar-threshold').value='';
+    fetchAlertRules();
+    toastOk(`規則「${name}」已建立`);
+  } else toastErr('建立失敗：'+(r?.message||r?.error||'unknown'));
 }
 async function toggleAlertRule(id,enabled){
   await api(`/api/v1/alerts/rules/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
@@ -2337,7 +2459,7 @@ document.getElementById('bt-trades-card').style.display='block';const tb=documen
 tb.innerHTML='<tr><th>Rank</th><th>參數</th><th>報酬%</th><th>Sharpe</th><th>勝率</th><th>回撤%</th><th>交易數</th></tr>'+d.top_results.map((r,i)=>`<tr><td>${i+1}</td><td style="font-size:10px">${Object.entries(r.params).map(([k,v])=>k+'='+v).join(', ')}</td><td class="${r.total_return_pct>=0?'up':'down'}">${r.total_return_pct}%</td><td>${r.sharpe}</td><td>${r.win_rate}%</td><td class="down">${r.max_drawdown_pct}%</td><td>${r.trades}</td></tr>`).join('');}
 
 // ── Backtest save ───────────────────────────────────────────────
-async function saveBacktest(data){const r=await api('/api/v1/backtest-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r?.data)alert('回測已保存: '+r.data.id);}
+async function saveBacktest(data){const r=await api('/api/v1/backtest-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r?.data)toastOk(`回測已保存：${r.data.id}`);}
 
 // ── Cut C: 持倉保護地圖 ──────────────────────────────────────────
 let _pmapTimer=null;
@@ -2460,14 +2582,15 @@ async function addBatchToWatch(){
   if(!_scanResults.length)return;
   const checked=[...document.querySelectorAll('#scan-result input[type=checkbox]:checked')]
     .map(cb=>_scanResults[parseInt(cb.dataset.idx)]).filter(Boolean);
-  if(!checked.length){alert('沒有勾選任何 symbol');return;}
+  if(!checked.length){toastWarn('沒有勾選任何 symbol');return;}
   const qty=parseFloat(document.getElementById('auto-qty').value)||1;
   let ok=0,fail=0;
   for(const r of checked){
     const x=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:r.symbol,exchange:r.exchange,strategy:'composite',quantity:qty})});
     if(x?.data||x?.ok)ok++;else fail++;
   }
-  alert('已加入 '+ok+' 個 · 失敗 '+fail);
+  if(ok>0)toastOk(`已加入 ${ok} 個監控`+(fail>0?`，失敗 ${fail}`:''));
+  else toastErr(`全部失敗：${fail} 個`);
   fetchAutoStatus();
 }
 
