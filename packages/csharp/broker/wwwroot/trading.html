@@ -264,6 +264,26 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .entry-zone .ez-tip.act-now  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
 .entry-zone .ez-tip.act-wait { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* Live / Paper 模式 badge（header） */
+.mode-badge { display:inline-flex; align-items:center; gap:5px; font-size:10px; padding:3px 8px; border-radius:3px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }
+.mode-badge.paper { background:rgba(132,142,156,0.15); color:var(--text2); border:1px solid var(--border); }
+.mode-badge.live  { background:rgba(246,70,93,0.15); color:var(--red); border:1px solid var(--red); animation:pulse 2s ease-in-out infinite; }
+.mode-badge.mixed { background:rgba(240,185,11,0.12); color:#f0b90b; border:1px solid #f0b90b; }
+.mode-badge.unknown { background:var(--bg3); color:var(--text3); border:1px dashed var(--border); }
+@keyframes pulse { 0%,100% { box-shadow:0 0 0 0 rgba(246,70,93,0.4); } 50% { box-shadow:0 0 0 4px rgba(246,70,93,0); } }
+
+/* Pre-flight 確認 modal（live 啟用前） */
+.preflight-overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9998; display:none; align-items:center; justify-content:center; padding:20px; }
+.preflight-overlay.show { display:flex; }
+.preflight-modal { background:var(--bg2); border:2px solid var(--red); border-radius:6px; padding:24px 28px; max-width:640px; width:100%; max-height:85vh; overflow-y:auto; }
+.preflight-modal h2 { color:var(--red); font-size:16px; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.preflight-modal .pf-row { padding:8px 12px; background:var(--bg3); border-radius:4px; margin-bottom:6px; font-size:12px; }
+.preflight-modal .pf-row .pf-sym { font-weight:700; color:var(--red); }
+.preflight-modal .pf-section { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; margin:14px 0 6px; font-weight:600; }
+.preflight-modal .pf-check { display:flex; align-items:flex-start; gap:8px; padding:10px 12px; background:rgba(246,70,93,0.06); border-left:3px solid var(--red); border-radius:3px; margin-top:14px; font-size:12px; cursor:pointer; }
+.preflight-modal .pf-check input { margin-top:2px; transform:scale(1.2); accent-color:var(--red); }
+.preflight-modal .pf-buttons { display:flex; gap:10px; margin-top:14px; justify-content:flex-end; }
+
 /* Toast 通知（取代 alert，非阻塞 + 自動 fade） */
 .toast-stack { position:fixed; top:60px; right:18px; z-index:10000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
 .toast { background:var(--bg2); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:4px; padding:10px 14px; font-size:12px; color:var(--text); min-width:240px; max-width:380px; box-shadow:0 8px 24px rgba(0,0,0,.5); pointer-events:auto; animation:toast-in .2s ease-out; }
@@ -538,11 +558,36 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('health')">健康</a>
   </nav>
   <div class="hdr-right">
+    <span class="mode-badge unknown" id="mode-badge" title="loading...">— MODE —</span>
     <div class="status-group">
       <span><i class="dot" id="dot-quote"></i>Quote</span>
       <span><i class="dot" id="dot-strategy"></i>Strategy</span>
       <span><i class="dot" id="dot-risk"></i>Risk</span>
       <span><i class="dot" id="dot-trading"></i>Trading</span>
+    </div>
+  </div>
+</div>
+
+<!-- Pre-flight 確認 modal：啟用 auto-trader 前若有 live watch、強制使用者確認 -->
+<div class="preflight-overlay" id="preflight-overlay" onclick="if(event.target.id==='preflight-overlay')closePreflight()">
+  <div class="preflight-modal">
+    <h2>⚠️ 即將啟用「LIVE」自動交易</h2>
+    <div style="font-size:12px;color:var(--text2);line-height:1.6">即將用真錢執行的設定如下，請逐一確認：</div>
+
+    <div class="pf-section">受影響的 LIVE 監控標的</div>
+    <div id="pf-watches"><div style="color:var(--text3);font-size:11px;text-align:center;padding:12px">—</div></div>
+
+    <div class="pf-section">當前風控設定</div>
+    <div id="pf-thresholds" style="font-size:11px;color:var(--text2);line-height:1.7"></div>
+
+    <label class="pf-check">
+      <input type="checkbox" id="pf-acknowledge">
+      <span>我已閱讀 <code style="background:var(--bg3);padding:1px 4px;border-radius:2px">docs/live-trading-prep.md</code> 的所有 7 項準備步驟、確認 API key 已啟用 IP 白名單、第一週 USDT 不超過可虧光金額，並接受真錢可能的損失。</span>
+    </label>
+
+    <div class="pf-buttons">
+      <button class="btn btn-o btn-sm" onclick="closePreflight()">取消</button>
+      <button class="btn btn-r" id="pf-confirm-btn" onclick="confirmEnableLive()" disabled>啟用 LIVE 自動交易</button>
     </div>
   </div>
 </div>
@@ -1860,7 +1905,94 @@ const tb=document.getElementById('auto-watch-table');
 if(d.watch_list?.length>0)tb.innerHTML=d.watch_list.map(w=>{const sc=w.last_signal==='buy'?'buy':w.last_signal==='sell'?'sell':'hold';
 return`<tr><td><strong>${w.symbol}</strong></td><td>${w.exchange}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
 else tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
-async function toggleAutoTrader(){const r=await api('/api/v1/auto-trader/status');await api('/api/v1/auto-trader/'+(r?.data?.enabled?'disable':'enable'),{method:'POST'});fetchAutoStatus();}
+async function toggleAutoTrader(){
+  const r=await api('/api/v1/auto-trader/status');const d=r?.data||{};
+  // 已 enabled → disable 不需要確認、直接執行
+  if(d.enabled){
+    await api('/api/v1/auto-trader/disable',{method:'POST'});
+    fetchAutoStatus();toast('Auto-trader 已停止','warn','已停用');
+    return;
+  }
+  // 即將 enable → 先檢查 watch 是否有 LIVE 標的、有就跳 pre-flight modal
+  const liveWatches=await collectLiveWatches(d.watch_list||[]);
+  if(liveWatches.length===0){
+    await api('/api/v1/auto-trader/enable',{method:'POST'});
+    fetchAutoStatus();toastOk('Auto-trader 已啟用（純 paper / testnet 模式）');
+    return;
+  }
+  showPreflight(liveWatches,d);
+}
+
+// 蒐集所有 LIVE 標的（透過 /trading/account is_paper 判斷）
+async function collectLiveWatches(watchList){
+  const exMode={};
+  const exchanges=[...new Set(watchList.map(w=>w.exchange))];
+  for(const ex of exchanges){
+    const r=await api('/api/v1/trading/account?exchange='+ex);
+    exMode[ex]=r?.data?.is_paper===false;  // is_paper:false = live
+  }
+  return watchList.filter(w=>exMode[w.exchange]);
+}
+
+function showPreflight(liveWatches,status){
+  // Render live watches list
+  const wEl=document.getElementById('pf-watches');
+  wEl.innerHTML=liveWatches.map(w=>`<div class="pf-row">
+    <span class="pf-sym">${w.symbol}</span> on <strong>${w.exchange}</strong>
+    · 策略 ${w.strategy} · 數量 ${w.quantity}
+  </div>`).join('');
+  // Render thresholds
+  const tEl=document.getElementById('pf-thresholds');
+  const cb=status.circuit_breakers||{};
+  const sf=status.sl_flush||{};
+  const pc=status.protection_config||{};
+  tEl.innerHTML=`
+    <div>· Min confidence: <strong>${((status.min_confidence||0.5)*100).toFixed(0)}%</strong></div>
+    <div>· Portfolio DD halt: <strong>${status.max_portfolio_dd_pct||8}%</strong></div>
+    <div>· SL flush freeze: <strong>${sf.threshold||3} hits / ${sf.window_minutes||60}min</strong></div>
+    <div>· Initial SL: <strong>${pc.initial_sl_pct||5}%</strong> · Partial exit @ <strong>+${pc.partial_exit_pct||5}%</strong>（賣 ${((pc.partial_exit_ratio||0.5)*100).toFixed(0)}%） · BE 觸發 @ <strong>+${pc.breakeven_trigger_pct||3}%</strong></div>
+    <div>· Cycle interval: <strong>${status.interval_seconds}s</strong></div>`;
+  // Reset checkbox state
+  const cb2=document.getElementById('pf-acknowledge');cb2.checked=false;
+  document.getElementById('pf-confirm-btn').disabled=true;
+  cb2.onchange=()=>{document.getElementById('pf-confirm-btn').disabled=!cb2.checked;};
+  document.getElementById('preflight-overlay').classList.add('show');
+}
+function closePreflight(){document.getElementById('preflight-overlay').classList.remove('show');}
+async function confirmEnableLive(){
+  closePreflight();
+  await api('/api/v1/auto-trader/enable',{method:'POST'});
+  fetchAutoStatus();
+  toast('🔴 Auto-trader 已啟用 LIVE 模式、請密切觀察','err','LIVE 啟動',6000);
+}
+
+// Mode badge：根據各 exchange 的 is_paper 決定顯示 PAPER / LIVE / MIXED
+async function updateModeBadge(){
+  const badge=document.getElementById('mode-badge');if(!badge)return;
+  try{
+    const ex=await api('/api/v1/trading/exchanges');
+    const exList=ex?.data?.exchanges||[];
+    const states=await Promise.all(exList.map(async e=>{
+      const r=await api('/api/v1/trading/account?exchange='+e);
+      return{exchange:e,paper:r?.data?.is_paper};
+    }));
+    const known=states.filter(s=>s.paper!==undefined);
+    if(known.length===0){badge.className='mode-badge unknown';badge.textContent='—';return;}
+    const liveExs=known.filter(s=>s.paper===false).map(s=>s.exchange);
+    const paperExs=known.filter(s=>s.paper===true).map(s=>s.exchange);
+    if(liveExs.length===0){
+      badge.className='mode-badge paper';badge.innerHTML='📋 ALL PAPER';
+      badge.title='All exchanges in paper / testnet mode';
+    }else if(paperExs.length===0){
+      badge.className='mode-badge live';badge.innerHTML='🔴 ALL LIVE';
+      badge.title='All exchanges in LIVE mode (real money)';
+    }else{
+      badge.className='mode-badge mixed';
+      badge.innerHTML=`⚠ MIX · LIVE: ${liveExs.join(',')}`;
+      badge.title=`Live: ${liveExs.join(', ')} · Paper: ${paperExs.join(', ')}`;
+    }
+  }catch(e){badge.className='mode-badge unknown';badge.textContent='—';}
+}
 async function setAutoInterval(){await api('/api/v1/auto-trader/interval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:parseInt(document.getElementById('auto-interval').value)||300})});fetchAutoStatus();}
 async function addAutoWatch(){await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('auto-symbol').value,exchange:document.getElementById('auto-exchange').value,strategy:document.getElementById('auto-strategy').value,quantity:parseFloat(document.getElementById('auto-qty').value)||1})});fetchAutoStatus();}
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
@@ -2706,9 +2838,11 @@ async function addBatchToWatch(){
 }
 
 // ── Init ────────────────────────────────────────────────────────
-checkWorkers();loadOverview();loadLiveQuotes();connectWs();loadProtectionMap();_ensurePmapTimer();
+checkWorkers();loadOverview();loadLiveQuotes();connectWs();loadProtectionMap();_ensurePmapTimer();updateModeBadge();
 // 初始化全域 symbol 狀態 + 推到所有 tab 的輸入框（讓首次載入時所有 tab 都已預填 AAPL）
 setCurrentSymbol('AAPL','alpaca','stock');
+// Mode badge 跟著 dot health 一樣每 30s 重 check（連線後 / 重啟 trading-worker 後狀態更新）
+setInterval(updateModeBadge,30000);
 setInterval(checkWorkers,30000);setInterval(loadLiveQuotes,60000);
 </script>
 </body>
