@@ -264,6 +264,46 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .entry-zone .ez-tip.act-now  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
 .entry-zone .ez-tip.act-wait { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* #2 Terminal hero — 當前標的綜合視圖 */
+.term-hero { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px 20px; margin-bottom:12px; }
+.term-hero-top { display:flex; align-items:flex-start; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
+.term-hero-top > div:first-child { flex:1; min-width:200px; }
+.term-sym-name { font-size:24px; font-weight:700; color:var(--text); letter-spacing:1px; }
+.term-sym-sub { font-size:11px; color:var(--text3); margin-top:3px; }
+.term-price { font-size:26px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; line-height:1; }
+.term-price-chg { font-size:12px; font-weight:600; margin-top:4px; }
+.term-price-chg.up { color:var(--green); } .term-price-chg.down { color:var(--red); }
+.term-tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+@media(max-width:700px) { .term-tiles { grid-template-columns:repeat(2,1fr); } }
+.term-tile { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:10px 12px; }
+.term-tile .tt-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; }
+.term-tile .tt-value { font-size:14px; font-weight:700; color:var(--text2); margin-top:4px; }
+.term-tile.act-buy   .tt-value { color:var(--green); }
+.term-tile.act-sell  .tt-value { color:var(--red); }
+.term-tile.act-hold  .tt-value { color:var(--text2); }
+.term-tile.risk-low  .tt-value { color:var(--green); }
+.term-tile.risk-mid  .tt-value { color:#f0b90b; }
+.term-tile.risk-high .tt-value { color:var(--red); }
+.term-ind { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:6px; margin-bottom:12px; }
+.ind-cell { background:var(--bg3); border-radius:3px; padding:7px 10px; }
+.ind-cell .ic-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; }
+.ind-cell .ic-value { font-size:12px; font-weight:600; color:var(--text); margin-top:2px; font-family:Consolas,monospace; }
+
+/* Quick-action 跳轉按鈕：色塊區分用途 */
+.term-actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.btn-quick { padding:6px 12px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600; border:1px solid var(--border); background:var(--bg3); transition:.15s; }
+.btn-quick:hover { background:var(--bg4); transform:translateY(-1px); }
+.btn-q-chart { color:#a78bfa; border-color:rgba(167,139,250,0.4); }
+.btn-q-strat { color:#60a5fa; border-color:rgba(96,165,250,0.4); }
+.btn-q-bt    { color:#22d3ee; border-color:rgba(34,211,238,0.4); }
+.btn-q-trade { color:var(--green); border-color:rgba(14,203,129,0.4); }
+.btn-q-auto  { color:#fbbf24; border-color:rgba(251,191,36,0.4); }
+
+/* 3-card row */
+.term-3col { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:10px; }
+.term-3col-card { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:12px 14px; }
+.t3-h { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; font-weight:600; }
+
 /* Bloomberg 風 3 欄 layout for panel-overview — 240px rail / center / 320px rail，sticky */
 .cmd-grid { display:grid; grid-template-columns:240px 1fr 320px; gap:12px; align-items:start; }
 @media(max-width:1300px) { .cmd-grid { grid-template-columns:1fr; } .cmd-rail { position:static !important; max-height:none !important; } }
@@ -459,6 +499,61 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <div class="stat"><div class="stat-label">購買力</div><div class="stat-value" id="ov-buying-power">—</div></div>
     <div class="stat"><div class="stat-label">當日損益</div><div class="stat-value" id="ov-day-pnl">—</div></div>
   </div>
+
+  <!-- #2 Terminal hero — 當前標的綜合視圖（讀全域 _currentSymbol、信號 + 指標 + 多時段 + 進場計畫 + 快捷跳轉） -->
+  <div class="term-hero" id="term-hero">
+    <div class="term-hero-top">
+      <div>
+        <div class="term-sym-name" id="term-sym-name">AAPL</div>
+        <div class="term-sym-sub" id="term-sym-sub">在頂端搜尋框輸入標的後按 Enter 開始</div>
+      </div>
+      <div style="text-align:right">
+        <div class="term-price" id="term-price">—</div>
+        <div class="term-price-chg" id="term-price-chg">—</div>
+      </div>
+      <button class="btn btn-y btn-sm" onclick="loadTerminalHero()" style="align-self:flex-start">🚀 全方位分析</button>
+    </div>
+    <!-- Signal / Conf / Risk / Action 4 tile -->
+    <div class="term-tiles">
+      <div class="term-tile"><div class="tt-label">訊號</div><div class="tt-value" id="term-signal">—</div></div>
+      <div class="term-tile"><div class="tt-label">信心</div><div class="tt-value" id="term-conf">—</div></div>
+      <div class="term-tile"><div class="tt-label">風險</div><div class="tt-value" id="term-risk">—</div></div>
+      <div class="term-tile"><div class="tt-label">建議</div><div class="tt-value" id="term-action">—</div></div>
+    </div>
+    <!-- 9 indicator grid -->
+    <div class="term-ind" id="term-ind">
+      <div class="ind-cell"><div class="ic-label">RSI</div><div class="ic-value" id="ind-rsi">—</div></div>
+      <div class="ind-cell"><div class="ic-label">MACD Hist</div><div class="ic-value" id="ind-macd">—</div></div>
+      <div class="ind-cell"><div class="ic-label">SMA10/30</div><div class="ic-value" id="ind-sma">—</div></div>
+      <div class="ind-cell"><div class="ic-label">ATR%</div><div class="ic-value" id="ind-atr">—</div></div>
+      <div class="ind-cell"><div class="ic-label">BB Width</div><div class="ic-value" id="ind-bbw">—</div></div>
+      <div class="ind-cell"><div class="ic-label">Vol 變化</div><div class="ic-value" id="ind-vol">—</div></div>
+    </div>
+    <!-- Quick-action 跳轉列（#3：跳到對應 tab、symbol 已預填）-->
+    <div class="term-actions">
+      <button class="btn-quick btn-q-chart"   onclick="quickJump('chart')">📈 K 線詳細</button>
+      <button class="btn-quick btn-q-strat"   onclick="quickJump('strategy')">🤖 策略 / AI</button>
+      <button class="btn-quick btn-q-bt"      onclick="quickJump('backtest')">🔁 回測</button>
+      <button class="btn-quick btn-q-trade"   onclick="quickJump('trade')">💵 模擬下單</button>
+      <button class="btn-quick btn-q-auto"    onclick="quickAddWatch()">🤖 加入監控</button>
+    </div>
+    <!-- 3-card row：MTF 共識 / 進場計畫 / Reason 細節 -->
+    <div class="term-3col">
+      <div class="term-3col-card" id="term-mtf-card">
+        <div class="t3-h">🕐 多時段共識</div>
+        <div id="term-mtf-rows"><div style="color:var(--text3);font-size:11px;text-align:center;padding:14px">按「全方位分析」載入</div></div>
+      </div>
+      <div class="term-3col-card" id="term-plan-card">
+        <div class="t3-h">🎯 進場 / SL / TP 計畫</div>
+        <div id="term-plan-rows"><div style="color:var(--text3);font-size:11px;text-align:center;padding:14px">—</div></div>
+      </div>
+      <div class="term-3col-card" id="term-reason-card">
+        <div class="t3-h">📋 策略推理</div>
+        <div id="term-reason" style="font-size:11px;color:var(--text2);line-height:1.6;max-height:160px;overflow-y:auto">—</div>
+      </div>
+    </div>
+  </div>
+
   <div class="cmd-grid">
     <!-- 左 rail：自選股 + 行情快覽 -->
     <aside class="cmd-rail">
@@ -1065,6 +1160,8 @@ function setCurrentSymbol(sym,exchange,type){
   if(typeof updateChartIntervals==='function')updateChartIntervals(_currentType);
   // ord 區的 R:R 計算機要重算
   if(typeof updateRRPanel==='function')updateRRPanel();
+  // 同步更新 Terminal hero（總覽 tab 在用、且非首次初始化才跑、避免 init 時打 API）
+  if(typeof loadTerminalHero==='function'&&document.getElementById('panel-overview')?.classList.contains('active')&&document.getElementById('term-sym-name'))loadTerminalHero();
 }
 
 function applyHdrSymbol(){
@@ -1130,7 +1227,7 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
 
 // ── API helper ──────────────────────────────────────────────────
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
@@ -1200,6 +1297,104 @@ async function loadOverviewFeed(){
     feed.innerHTML=logs.slice().reverse().map(l=>{const act=(l.action||'').toLowerCase();const t=new Date(l.time).toLocaleTimeString('zh-TW',{hour12:false});
       return`<div class="at-item act-${act}"><div><span class="at-time">${t}</span><span class="at-sym">${l.symbol||''}</span><span class="at-act">${(l.action||'').toUpperCase()}</span></div><div class="at-msg">${(l.message||'').slice(0,90)}</div></div>`;}).join('');}
   catch(e){console.warn('loadOverviewFeed:',e);}
+}
+
+// ── #2 Terminal hero — 當前標的綜合視圖 ──────────────────────────
+// 拉 OHLCV → composite + multi_timeframe 並行 → 渲染 hero card 各區
+let _termHeroLoading=false;
+async function loadTerminalHero(){
+  if(_termHeroLoading)return; _termHeroLoading=true;
+  const sym=_currentSymbol,exchange=_currentExchange;
+  document.getElementById('term-sym-name').textContent=sym;
+  document.getElementById('term-sym-sub').textContent=`${exchange} · 載入中…`;
+  try{
+    const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${sym}&interval=1d&limit=100`);
+    if(!bars?.data?.bars||bars.data.bars.length<30){
+      document.getElementById('term-sym-sub').textContent=`${exchange} · K 線不足（< 30 根）— 先去市場 tab 抓歷史`;
+      _termHeroLoading=false;return;
+    }
+    const cd=bars.data.bars;const last=cd[cd.length-1],prev=cd[cd.length-2]||last;
+    const change=last.close-prev.close;const chgPct=prev.close?change/prev.close*100:0;
+    document.getElementById('term-price').textContent='$'+Number(last.close).toFixed(2);
+    const chgEl=document.getElementById('term-price-chg');
+    chgEl.textContent=`${change>=0?'+':''}${change.toFixed(2)} (${chgPct>=0?'+':''}${chgPct.toFixed(2)}%)`;
+    chgEl.className='term-price-chg '+(change>=0?'up':'down');
+    document.getElementById('term-sym-sub').textContent=`${exchange} · 最後 ${new Date(last.open_time||last.openTime||last.date).toLocaleDateString('zh-TW')} · 全方位分析中`;
+    // 並行：composite + multi_timeframe（後者一次給三時段共識）
+    const [compR,mtfR]=await Promise.all([
+      api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({strategy:'composite',symbol:sym,exchange,interval:'1d',bars:cd})}),
+      api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({strategy:'multi_timeframe',symbol:sym,exchange,interval:'1d',bars:cd})}),
+    ]);
+    // ── Tile 1-4：訊號 / 信心 / 風險 / 建議 ──
+    const c=compR?.data;
+    if(c){
+      const ind=c.indicators||{};
+      const stats=computeChartStats(cd);
+      const risk=computeRiskScore(stats,ind);
+      const rec=deriveRecommendation(c.action,c.confidence||0);
+      _setTileText('term-signal',`${c.action.toUpperCase()}`,`act-${c.action}`);
+      _setTileText('term-conf',`${((c.confidence||0)*100).toFixed(0)}%`,c.action!=='hold'?`act-${c.action}`:'');
+      _setTileText('term-risk',risk.label,`risk-${risk.tier}`);
+      _setTileText('term-action',rec.label||'觀望','');
+      // ── 9 indicator cells ──
+      const rsi=ind['rsi_oversold.rsi']||0,macdH=ind['macd_divergence.histogram']||0;
+      const smaF=ind['sma_cross.sma_10']||0,smaS=ind['sma_cross.sma_30']||0;
+      const extra=computeExtraIndicators(cd);
+      document.getElementById('ind-rsi').textContent=rsi?rsi.toFixed(1)+(rsi<30?' ↓超賣':rsi>70?' ↑超買':' 中性'):'—';
+      document.getElementById('ind-macd').textContent=macdH?macdH.toFixed(3)+(macdH>0?' ↑':' ↓'):'—';
+      document.getElementById('ind-sma').textContent=smaF?`${smaF.toFixed(2)} / ${smaS.toFixed(2)} ${smaF>smaS?'↑':'↓'}`:'—';
+      document.getElementById('ind-atr').textContent=extra.atr?`${(extra.atr/last.close*100).toFixed(2)}%`:'—';
+      document.getElementById('ind-bbw').textContent=extra.bbUpper?`${((extra.bbUpper-extra.bbLower)/((extra.bbUpper+extra.bbLower)/2)*100).toFixed(1)}%`:'—';
+      document.getElementById('ind-vol').textContent=extra.volChange!=null?`${extra.volChange>=0?'+':''}${extra.volChange.toFixed(1)}%`:'—';
+      // Reason
+      document.getElementById('term-reason').innerHTML=(c.reason||'—').replace(/ \| /g,'<br>');
+      // Plan
+      const price=last.close;
+      const sl=price*0.95,tp=price*1.10,trail=price*0.97;
+      const planHtml=`
+        <div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">進場（市價）</span><strong>$${price.toFixed(2)}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">SL（−5%）</span><span class="down">$${sl.toFixed(2)}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">Trailing（−3% peak）</span><span style="color:#f0b90b">$${trail.toFixed(2)}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">TP（+10%）</span><span class="up">$${tp.toFixed(2)}</span></div>`;
+      document.getElementById('term-plan-rows').innerHTML=planHtml;
+    }
+    // ── MTF rows ──
+    const m=mtfR?.data;
+    if(m){
+      const mtfInd=m.indicators||{};
+      const tfData=[
+        {tf:'1D',action:mtfInd['mtf.1d.action']!=null?(mtfInd['mtf.1d.action']>0?'buy':mtfInd['mtf.1d.action']<0?'sell':'hold'):null,conf:mtfInd['mtf.1d.confidence']},
+        {tf:'4H',action:mtfInd['mtf.4h.action']!=null?(mtfInd['mtf.4h.action']>0?'buy':mtfInd['mtf.4h.action']<0?'sell':'hold'):null,conf:mtfInd['mtf.4h.confidence']},
+        {tf:'1H',action:mtfInd['mtf.1h.action']!=null?(mtfInd['mtf.1h.action']>0?'buy':mtfInd['mtf.1h.action']<0?'sell':'hold'):null,conf:mtfInd['mtf.1h.confidence']},
+      ];
+      const rows=tfData.map(t=>{
+        if(!t.action)return`<div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--text3);font-size:11px"><span>${t.tf}</span><span>—</span></div>`;
+        const cls=t.action==='buy'?'up':t.action==='sell'?'down':'';
+        return`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span style="color:var(--text2);font-family:Consolas,monospace">${t.tf}</span><span><span class="${cls}" style="font-weight:700">${t.action.toUpperCase()}</span> <span style="color:var(--text3)">${((t.conf||0)*100).toFixed(0)}%</span></span></div>`;
+      }).join('');
+      // 加總共識指示
+      const validTfs=tfData.filter(t=>t.action&&t.action!=='hold');
+      const aligned=validTfs.length>=2&&new Set(validTfs.map(t=>t.action)).size===1;
+      const consensusLine=aligned?
+        `<div style="margin-top:8px;padding:6px 8px;border-left:3px solid ${validTfs[0].action==='buy'?'var(--green)':'var(--red)'};background:var(--bg3);font-size:11px;font-weight:700;color:${validTfs[0].action==='buy'?'var(--green)':'var(--red)'}">✓ 多時段一致看 ${validTfs[0].action.toUpperCase()}</div>`:
+        validTfs.length>0?`<div style="margin-top:8px;padding:6px 8px;border-left:3px solid #f0b90b;background:rgba(240,185,11,.06);font-size:11px;color:#f0b90b">⚠ 多時段不一致、訊號減弱</div>`:'';
+      document.getElementById('term-mtf-rows').innerHTML=rows+consensusLine;
+    }
+  }catch(e){console.warn('loadTerminalHero error',e);document.getElementById('term-sym-sub').textContent='載入失敗：'+e.message;}
+  finally{_termHeroLoading=false;}
+}
+function _setTileText(id,text,extraClass){const el=document.getElementById(id);if(!el)return;el.textContent=text;const tile=el.closest('.term-tile');if(tile){tile.className='term-tile';if(extraClass)tile.classList.add(extraClass);}}
+
+// #3 Quick-action buttons：跳到對應 tab、symbol context 已透過全域帶過去
+function quickJump(target){switchTab(target);}
+async function quickAddWatch(){
+  const qty=parseFloat(prompt(`加入 ${_currentSymbol} 到 auto-trader 監控、輸入數量：`,'1'));
+  if(isNaN(qty)||qty<=0)return;
+  const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({symbol:_currentSymbol,exchange:_currentExchange,strategy:'composite',quantity:qty})});
+  alert(r?.success?`已加入 ${_currentSymbol} (qty=${qty})`:'加入失敗：'+(r?.error||'unknown'));
 }
 
 // 多時段共識：1D / 4H / 1H 並行跑、看共識方向
