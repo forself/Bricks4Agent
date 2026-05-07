@@ -638,7 +638,14 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div class="form-row">
         <button class="btn btn-y" onclick="runBacktest()">開始回測</button>
         <button class="btn btn-g" onclick="runStrategyCompareBacktest()" title="auto_select / composite / ensemble / 買入持有 並排比較">🔬 對比 4 策略</button>
+        <button class="btn btn-o" onclick="runWalkForwardBacktest()" title="切 train/test 滑窗、看 OOS 績效跟過擬合">📐 Walk-Forward</button>
         <button class="btn btn-o btn-sm" onclick="runOptimizer()">參數優化</button>
+      </div>
+      <div class="form-row" id="bt-wf-params" style="display:none;background:var(--bg3);padding:8px 10px;border-radius:4px">
+        <div class="fg"><label>Train bars</label><input id="bt-wf-train" type="number" value="180" min="50" max="500" style="width:70px"></div>
+        <div class="fg"><label>Test bars</label><input id="bt-wf-test" type="number" value="60" min="10" max="200" style="width:60px"></div>
+        <div class="fg"><label>Stride</label><input id="bt-wf-stride" type="number" value="30" min="1" max="100" style="width:60px"></div>
+        <div class="fg" style="flex:1;align-self:flex-end;font-size:10px;color:var(--text3)">滑動視窗：每隔 stride 切一個 fold，前段訓練、後段 OOS 測試。bars 數要 ≥ train + test。</div>
       </div>
       <div id="bt-status" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
     </div>
@@ -677,6 +684,17 @@ tr:hover { background:rgba(240,185,11,0.02); }
     </div>
     <div id="bt-compare-chart-container" style="height:280px;border:1px solid var(--border);border-radius:4px;overflow:hidden"></div>
     <div id="bt-compare-table"></div>
+  </div>
+  <!-- #1 Walk-forward backtest 結果——切 train/test 滑窗、看 OOS 績效 + IS-OOS gap -->
+  <div class="card" id="bt-wf-card" style="display:none;margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0">📐 Walk-Forward 回測（OOS 驗證）</h3>
+      <span style="font-size:11px;color:var(--text3)">每 fold 用前段訓練、後段測試（純 out-of-sample）；IS-OOS gap 大 = 過擬合</span>
+    </div>
+    <div class="g g4" id="bt-wf-summary" style="margin-bottom:12px"></div>
+    <div id="bt-wf-table" style="margin-bottom:10px"></div>
+    <div id="bt-wf-equity-container" style="height:240px;border:1px solid var(--border);border-radius:4px;overflow:hidden"></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:8px">折線 = 每個 fold 的 OOS equity curve（黑底背景方便看是否多數收正）；空白段為 fold 之間的時間 gap。</div>
   </div>
 </div>
 
@@ -1709,6 +1727,73 @@ async function runStrategyCompareBacktest(){
     series.setData(r.data.equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:e.value})));
   }
   _compareChart.timeScale().fitContent();
+}
+
+// ── #1 Walk-forward backtest ────────────────────────────────────
+let _wfChart=null;
+async function runWalkForwardBacktest(){
+  // 第一次按時 toggle 參數面板顯示，方便 user 看到再調 train/test/stride
+  const paramsEl=document.getElementById('bt-wf-params');
+  if(paramsEl.style.display==='none'){paramsEl.style.display='flex';}
+  const symbol=document.getElementById('bt-symbol').value,exchange=document.getElementById('bt-exchange').value;
+  const strategy=document.getElementById('bt-strategy').value;
+  const cash=parseFloat(document.getElementById('bt-cash').value)||100000;
+  const commission=(parseFloat(document.getElementById('bt-commission').value)||.1)/100;
+  const trainBars=parseInt(document.getElementById('bt-wf-train').value)||180;
+  const testBars=parseInt(document.getElementById('bt-wf-test').value)||60;
+  const stride=parseInt(document.getElementById('bt-wf-stride').value)||30;
+  const minBars=trainBars+testBars+50;  // 多抓 50 根當 buffer
+  const barLimit=Math.max(parseInt(document.getElementById('bt-bars').value)||365,minBars);
+  document.getElementById('bt-bars').value=barLimit;
+  const st=document.getElementById('bt-status');st.textContent='載入 K 線…';st.style.color='var(--text2)';
+  const bars=await api(`/api/v1/workers/quote/ohlcv?symbol=${symbol}&interval=1d&limit=${barLimit}`);
+  if(!bars?.data?.bars||bars.data.bars.length<trainBars+testBars){st.textContent=`K 線不足（需 ≥ ${trainBars+testBars}、目前 ${bars?.data?.bars?.length||0}）`;st.style.color='var(--red)';return;}
+  st.textContent=`Walk-forward 跑中（每 fold 跑兩次 backtest，可能 30-60 秒）…`;
+  const r=await api('/api/v1/strategy/backtest-walkforward',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy,symbol,exchange,bars:bars.data.bars,initial_cash:cash,commission,train_bars:trainBars,test_bars:testBars,stride})});
+  if(!r?.data){st.textContent='Walk-forward 失敗：'+(r?.error||'unknown');st.style.color='var(--red)';return;}
+  st.textContent='';
+  const d=r.data;
+  document.getElementById('bt-wf-card').style.display='block';
+  // Summary 4 stat：avg OOS return / Sharpe / 正報酬 fold 比例 / IS-OOS gap
+  const ret=d.avg_test_return_pct,retCls=ret>=0?'up':'down';
+  const sh=d.avg_test_sharpe;
+  const posPct=d.total_folds>0?Math.round(d.positive_test_folds/d.total_folds*100):0;
+  const gap=d.is_oos_return_gap;
+  const gapWarn=Math.abs(gap)>5?'down':(Math.abs(gap)>2?'':'up');
+  document.getElementById('bt-wf-summary').innerHTML=`
+    <div class="stat"><div class="stat-label">平均 OOS 報酬</div><div class="stat-value ${retCls}">${ret>=0?'+':''}${ret}%</div></div>
+    <div class="stat"><div class="stat-label">平均 OOS Sharpe</div><div class="stat-value">${sh}</div></div>
+    <div class="stat"><div class="stat-label">正報酬 fold 比例</div><div class="stat-value">${d.positive_test_folds}/${d.total_folds} (${posPct}%)</div></div>
+    <div class="stat"><div class="stat-label">IS-OOS 報酬 gap</div><div class="stat-value ${gapWarn}">${gap>=0?'+':''}${gap}%</div><div style="font-size:10px;color:var(--text3);margin-top:2px">${Math.abs(gap)>5?'⚠ 過擬合風險高':Math.abs(gap)>2?'可接受':'✓ 穩健'}</div></div>`;
+  // Folds 表格
+  const rows=d.folds.map(f=>{
+    const tCls=f.test_return_pct>=0?'up':'down';
+    const trCls=f.train_return_pct>=0?'up':'down';
+    const dateRange=`${new Date(f.test_start).toLocaleDateString('zh-TW')} → ${new Date(f.test_end).toLocaleDateString('zh-TW')}`;
+    return`<tr><td>${f.fold_index+1}</td>
+      <td style="font-size:10px;color:var(--text2)">${dateRange}</td>
+      <td class="${trCls}">${f.train_return_pct>=0?'+':''}${f.train_return_pct}%</td>
+      <td>${f.train_sharpe}</td>
+      <td class="${tCls}">${f.test_return_pct>=0?'+':''}${f.test_return_pct}%</td>
+      <td>${f.test_sharpe}</td>
+      <td>${f.test_win_rate}%</td>
+      <td class="down">${f.test_max_drawdown_pct}%</td>
+      <td>${f.test_trades}</td></tr>`;
+  }).join('');
+  document.getElementById('bt-wf-table').innerHTML=`<table style="font-size:11px">
+    <thead><tr><th>#</th><th>OOS 區間</th><th>IS Ret%</th><th>IS Sharpe</th><th>OOS Ret%</th><th>OOS Sharpe</th><th>OOS 勝率</th><th>OOS DD%</th><th>OOS 交易數</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+  // OOS equity curves overlay（每 fold 一條線、淡綠/淡紅依該 fold 報酬正負）
+  const cc=document.getElementById('bt-wf-equity-container');cc.innerHTML='';
+  if(_wfChart){_wfChart.remove();_wfChart=null;}
+  _wfChart=LightweightCharts.createChart(cc,{width:cc.clientWidth,height:240,layout:{background:{color:'#0b0e11'},textColor:'#848e9c'},grid:{vertLines:{color:'#1e2329'},horzLines:{color:'#1e2329'}},timeScale:{borderColor:'#2b3139'},rightPriceScale:{borderColor:'#2b3139'}});
+  for(const f of d.folds){
+    if(!f.test_equity_curve||!f.test_equity_curve.length)continue;
+    const c=f.test_return_pct>=0?'#0ecb81':'#f6465d';
+    const series=_wfChart.addLineSeries({color:c,lineWidth:1,priceLineVisible:false,title:`Fold ${f.fold_index+1}`});
+    series.setData(f.test_equity_curve.map(e=>({time:Math.floor(new Date(e.date).getTime()/1000),value:e.value})));
+  }
+  _wfChart.timeScale().fitContent();
 }
 
 // ── P&L ─────────────────────────────────────────────────────────

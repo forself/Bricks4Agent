@@ -190,4 +190,133 @@ public class BacktestEngine
 
         return result;
     }
+
+    /// <summary>
+    /// Walk-forward 回測 fold——記錄一個 train/test 切窗的結果。
+    /// </summary>
+    public class WalkForwardFold
+    {
+        public int FoldIndex { get; set; }
+        public DateTime TrainStart { get; set; }
+        public DateTime TrainEnd   { get; set; }
+        public DateTime TestStart  { get; set; }
+        public DateTime TestEnd    { get; set; }
+        public BacktestResult? Train { get; set; }  // 訓練窗（in-sample）回測結果
+        public BacktestResult? Test  { get; set; }  // 測試窗（out-of-sample）回測結果
+    }
+
+    /// <summary>
+    /// Walk-forward 整體結果——所有 fold + 聚合 OOS 指標。
+    /// </summary>
+    public class WalkForwardResult
+    {
+        public string Strategy   { get; set; } = "";
+        public string Symbol     { get; set; } = "";
+        public int TrainBars     { get; set; }
+        public int TestBars      { get; set; }
+        public int Stride        { get; set; }
+        public List<WalkForwardFold> Folds { get; set; } = new();
+
+        // 聚合 OOS 指標——每 fold 的 test 結果平均/總和
+        public decimal AvgTestReturnPct  { get; set; }
+        public decimal MedianTestReturnPct { get; set; }
+        public decimal AvgTestSharpe     { get; set; }
+        public decimal AvgTestWinRate    { get; set; }
+        public decimal WorstTestDdPct    { get; set; }
+        public int     PositiveTestFolds { get; set; }
+        public int     TotalFolds        { get; set; }
+
+        // In-sample / out-of-sample gap——過擬合的指標。差距大 = 訓練看起來好但測試垃圾
+        public decimal IsOosReturnGap    { get; set; }  // (avg train return) - (avg test return)
+        public decimal IsOosSharpeGap    { get; set; }
+    }
+
+    /// <summary>
+    /// Walk-forward 回測——把 bars 切成 [train, test, train, test, ...] 滑動視窗，
+    /// 每個 fold 用 train 窗回測算 in-sample 指標，再用 test 窗做 out-of-sample 驗證。
+    ///
+    /// 標準學術 backtest 嚴謹度高、可看出策略是否過擬合：
+    ///   - 如果 train 報酬遠優於 test 報酬 → 過擬合（看歷史撿便宜）
+    ///   - 如果 train 跟 test 差不多 → 真有 alpha
+    ///
+    /// 預設 train=180、test=60、stride=30——對日線約是 9 個月訓練 / 3 個月測試 / 1.5 月間隔。
+    /// </summary>
+    public static WalkForwardResult RunWalkForward(
+        IStrategy strategy,
+        List<BarData> bars,
+        StrategyConfig config,
+        int trainBars = 180,
+        int testBars  = 60,
+        int stride    = 30,
+        decimal initialCash = 100_000,
+        decimal commission = 0.001m)
+    {
+        var result = new WalkForwardResult
+        {
+            Strategy = strategy.Name,
+            Symbol   = config.Symbol,
+            TrainBars = trainBars,
+            TestBars  = testBars,
+            Stride    = stride,
+        };
+
+        var requiredPerFold = trainBars + testBars;
+        if (bars.Count < requiredPerFold) return result;
+        if (trainBars < 50 || testBars < 10 || stride < 1) return result;
+
+        // 從 0 開始，每 stride 切一個 fold；最後一個 fold 必須完整覆蓋 train+test
+        int foldIdx = 0;
+        for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
+        {
+            var trainSlice = bars.GetRange(start, trainBars);
+            var testSlice  = bars.GetRange(start + trainBars, testBars);
+
+            // 訓練窗：直接跑 backtest
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission);
+            // 測試窗：跑 backtest 但 strategy.Evaluate 內部仍只看自己窗內 bars（pure OOS）
+            var testBt  = Run(strategy, testSlice, config, initialCash, commission);
+
+            result.Folds.Add(new WalkForwardFold
+            {
+                FoldIndex  = foldIdx++,
+                TrainStart = trainSlice.First().OpenTime,
+                TrainEnd   = trainSlice.Last().OpenTime,
+                TestStart  = testSlice.First().OpenTime,
+                TestEnd    = testSlice.Last().OpenTime,
+                Train      = trainBt,
+                Test       = testBt,
+            });
+        }
+
+        // 聚合 OOS 統計
+        if (result.Folds.Count == 0) return result;
+        var testReturns = result.Folds.Where(f => f.Test != null).Select(f => f.Test!.TotalReturnPct).ToList();
+        var trainReturns = result.Folds.Where(f => f.Train != null).Select(f => f.Train!.TotalReturnPct).ToList();
+        var testSharpes  = result.Folds.Where(f => f.Test != null).Select(f => f.Test!.SharpeRatio).ToList();
+        var trainSharpes = result.Folds.Where(f => f.Train != null).Select(f => f.Train!.SharpeRatio).ToList();
+        var testWins     = result.Folds.Where(f => f.Test != null).Select(f => f.Test!.WinRate).ToList();
+        var testDds      = result.Folds.Where(f => f.Test != null).Select(f => f.Test!.MaxDrawdownPct).ToList();
+
+        result.TotalFolds         = result.Folds.Count;
+        result.PositiveTestFolds  = testReturns.Count(r => r > 0);
+        result.AvgTestReturnPct   = testReturns.Count > 0 ? Math.Round(testReturns.Average(), 2) : 0;
+        result.MedianTestReturnPct = testReturns.Count > 0 ? Math.Round(Median(testReturns), 2) : 0;
+        result.AvgTestSharpe      = testSharpes.Count > 0 ? Math.Round(testSharpes.Average(), 2) : 0;
+        result.AvgTestWinRate     = testWins.Count > 0 ? Math.Round(testWins.Average(), 2) : 0;
+        result.WorstTestDdPct     = testDds.Count > 0 ? Math.Round(testDds.Max(), 2) : 0;  // DdPct 是正數、越大越差
+        result.IsOosReturnGap     = trainReturns.Count > 0 && testReturns.Count > 0
+            ? Math.Round(trainReturns.Average() - testReturns.Average(), 2) : 0;
+        result.IsOosSharpeGap     = trainSharpes.Count > 0 && testSharpes.Count > 0
+            ? Math.Round(trainSharpes.Average() - testSharpes.Average(), 2) : 0;
+
+        return result;
+    }
+
+    private static decimal Median(List<decimal> xs)
+    {
+        if (xs.Count == 0) return 0;
+        var sorted = xs.OrderBy(x => x).ToList();
+        int n = sorted.Count;
+        return n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2m;
+    }
 }

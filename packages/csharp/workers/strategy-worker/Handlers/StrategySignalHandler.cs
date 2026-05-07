@@ -33,7 +33,8 @@ public class StrategySignalHandler : ICapabilityHandler
             "evaluate"     => Evaluate(payload),
             "backtest"     => Backtest(payload),
             "optimize"     => Optimize(payload),
-            "walk_forward" => WalkForward(payload),
+            "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
+            "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -292,6 +293,84 @@ public class StrategySignalHandler : ICapabilityHandler
                 out_of_sample_win_rate = w.OutOfSampleWinRate,
                 out_of_sample_max_drawdown_pct = w.OutOfSampleMaxDrawdownPct,
                 out_of_sample_trades = w.OutOfSampleTrades,
+            }),
+        });
+        return (true, json, null);
+    }
+
+    // ── #1 通用 walk-forward backtest ──────────────────────────────
+    //
+    // 比上面 `walk_forward`（只支援 sma_cross/rsi 的參數優化）泛用：對任何已註冊策略
+    // 切 [train, test, train, test, ...] 滑動視窗、回傳每個 fold 的 in-sample / OOS
+    // 績效，並聚合成 OOS 平均報酬 / Sharpe / 勝率 + IS-OOS gap（過擬合指標）。
+    private (bool, string?, string?) BacktestWalkForward(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
+        if (!_strategies.TryGetValue(strategyName, out var strategy))
+            return (false, null, $"Unknown strategy: {strategyName}");
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open  = b.TryGetProperty("open",  out var o) ? o.GetDecimal() : 0,
+                High  = b.TryGetProperty("high",  out var h) ? h.GetDecimal() : 0,
+                Low   = b.TryGetProperty("low",   out var l) ? l.GetDecimal() : 0,
+                Close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
+                Volume = b.TryGetProperty("volume", out var v) ? v.GetDecimal() : 0,
+            });
+
+        var config = new StrategyConfig
+        {
+            Symbol   = doc.TryGetProperty("symbol",   out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var exg) ? exg.GetString() ?? "" : "",
+            Interval = doc.TryGetProperty("interval", out var iv)  ? iv.GetString() ?? "1d" : "1d",
+        };
+
+        var cash       = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
+        var commission = doc.TryGetProperty("commission", out var cm) ? cm.GetDecimal() : 0.001m;
+        var trainBars  = doc.TryGetProperty("train_bars", out var tb) ? tb.GetInt32() : 180;
+        var testBars   = doc.TryGetProperty("test_bars",  out var tt) ? tt.GetInt32() : 60;
+        var stride     = doc.TryGetProperty("stride",     out var st) ? st.GetInt32() : 30;
+
+        var r = BacktestEngine.RunWalkForward(strategy, bars, config, trainBars, testBars, stride, cash, commission);
+        if (r.Folds.Count == 0)
+            return (false, null,
+                $"Not enough bars or invalid params: bars={bars.Count} train={trainBars} test={testBars} stride={stride}");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            strategy = r.Strategy, symbol = r.Symbol,
+            train_bars = r.TrainBars, test_bars = r.TestBars, stride = r.Stride,
+            total_folds = r.TotalFolds, positive_test_folds = r.PositiveTestFolds,
+            avg_test_return_pct = r.AvgTestReturnPct,
+            median_test_return_pct = r.MedianTestReturnPct,
+            avg_test_sharpe = r.AvgTestSharpe,
+            avg_test_win_rate = r.AvgTestWinRate,
+            worst_test_dd_pct = r.WorstTestDdPct,
+            is_oos_return_gap = r.IsOosReturnGap,
+            is_oos_sharpe_gap = r.IsOosSharpeGap,
+            folds = r.Folds.Select(f => new
+            {
+                fold_index = f.FoldIndex,
+                train_start = f.TrainStart, train_end = f.TrainEnd,
+                test_start  = f.TestStart,  test_end  = f.TestEnd,
+                train_return_pct  = f.Train?.TotalReturnPct ?? 0,
+                train_sharpe     = f.Train?.SharpeRatio ?? 0,
+                train_trades     = f.Train?.TotalTrades ?? 0,
+                test_return_pct  = f.Test?.TotalReturnPct ?? 0,
+                test_sharpe     = f.Test?.SharpeRatio ?? 0,
+                test_win_rate   = f.Test?.WinRate ?? 0,
+                test_max_drawdown_pct = f.Test?.MaxDrawdownPct ?? 0,
+                test_trades     = f.Test?.TotalTrades ?? 0,
+                test_equity_curve = f.Test?.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
             }),
         });
         return (true, json, null);
