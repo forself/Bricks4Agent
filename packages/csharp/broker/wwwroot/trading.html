@@ -264,6 +264,37 @@ tr:hover { background:rgba(240,185,11,0.02); }
 .entry-zone .ez-tip.act-now  { background:var(--greenBg); color:var(--green); border-left-color:var(--green); }
 .entry-zone .ez-tip.act-wait { background:rgba(240,185,11,0.08); color:#f0b90b; border-left-color:#f0b90b; }
 
+/* 永續合約 panel-perp 專用 */
+.perp-side-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+.perp-side-grid .btn-side { padding:10px 12px; border-radius:4px; cursor:pointer; font-weight:700; font-size:12px; border:1px solid var(--border); background:var(--bg3); transition:.15s; text-align:center; }
+.perp-side-grid .btn-side:hover { transform:translateY(-1px); }
+.btn-side.open-long  { color:var(--green); border-color:rgba(14,203,129,.5); }
+.btn-side.open-long.active { background:var(--green); color:#fff; }
+.btn-side.open-short { color:var(--red); border-color:rgba(246,70,93,.5); }
+.btn-side.open-short.active { background:var(--red); color:#fff; }
+.btn-side.close-long  { color:#f0b90b; border-color:rgba(240,185,11,.4); font-size:11px; }
+.btn-side.close-short { color:#f0b90b; border-color:rgba(240,185,11,.4); font-size:11px; }
+.btn-side.close-long:hover, .btn-side.close-short:hover { background:rgba(240,185,11,.15); }
+
+.perp-pos-card { background:var(--bg3); padding:10px 12px; border-radius:4px; margin-bottom:8px; border-left:3px solid var(--text3); }
+.perp-pos-card.long  { border-left-color:var(--green); }
+.perp-pos-card.short { border-left-color:var(--red); }
+.perp-pos-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:8px; flex-wrap:wrap; }
+.perp-pos-top .pp-sym { font-weight:700; font-size:14px; color:var(--text); }
+.perp-pos-top .pp-side-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:2px; }
+.perp-pos-top .pp-side-badge.long  { background:var(--greenBg); color:var(--green); }
+.perp-pos-top .pp-side-badge.short { background:var(--redBg);   color:var(--red); }
+.perp-pos-top .pp-lev { background:rgba(240,185,11,.15); color:#f0b90b; padding:2px 6px; border-radius:2px; font-size:10px; font-weight:700; }
+.perp-pos-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:6px 12px; font-size:11px; color:var(--text2); }
+.perp-pos-grid .ppg-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; }
+.perp-pos-grid .ppg-value { color:var(--text); font-family:Consolas,monospace; }
+.perp-liq-bar { height:5px; background:var(--bg4); border-radius:3px; position:relative; margin-top:8px; overflow:hidden; }
+.perp-liq-bar .pl-fill { position:absolute; top:0; bottom:0; left:0; background:linear-gradient(90deg, var(--red), #f0b90b 50%, var(--green)); transition:width .3s; }
+.perp-liq-bar .pl-mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text); }
+.perp-liq-warn { color:var(--red); font-weight:700; font-size:11px; margin-top:4px; }
+
+.perp-mode-badge.live { animation:pulse 2s ease-in-out infinite; }
+
 /* Live / Paper 模式 badge（header） */
 .mode-badge { display:inline-flex; align-items:center; gap:5px; font-size:10px; padding:3px 8px; border-radius:3px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }
 .mode-badge.paper { background:rgba(132,142,156,0.15); color:var(--text2); border:1px solid var(--border); }
@@ -553,6 +584,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('orders')">訂單</a>
     <a onclick="switchTab('backtest')">回測</a>
     <a onclick="switchTab('auto')">自動</a>
+    <a onclick="switchTab('perp')">永續</a>
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
     <a onclick="switchTab('health')">健康</a>
@@ -972,6 +1004,86 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- 永續合約（Phase 2 + BingX）-->
+<div class="panel" id="panel-perp">
+  <div class="form-row" style="margin-bottom:12px;align-items:center">
+    <div class="fg"><label>交易所</label><select id="perp-exchange" onchange="loadPerpAll()"><option value="bingx">BingX (USDT-M)</option></select></div>
+    <span id="perp-mode-tag" class="mode-badge unknown" style="margin-left:6px">— —</span>
+    <button class="btn btn-o btn-sm" onclick="loadPerpAll()" style="margin-left:auto">↻ 重新整理</button>
+  </div>
+
+  <!-- Account stats -->
+  <div class="g" style="grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px">
+    <div class="stat"><div class="stat-label">餘額</div><div class="stat-value" id="perp-balance">—</div></div>
+    <div class="stat"><div class="stat-label">淨值 (Equity)</div><div class="stat-value" id="perp-equity">—</div></div>
+    <div class="stat"><div class="stat-label">未實現 P&L</div><div class="stat-value" id="perp-unrealized">—</div></div>
+    <div class="stat"><div class="stat-label">已用保證金</div><div class="stat-value" id="perp-margin-used">—</div></div>
+    <div class="stat"><div class="stat-label">可用保證金</div><div class="stat-value" id="perp-margin-avail">—</div></div>
+    <div class="stat"><div class="stat-label">開倉數</div><div class="stat-value" id="perp-pos-count">—</div></div>
+  </div>
+
+  <div class="trade-grid">
+    <!-- 左：部位 + 開倉訂單 -->
+    <div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">📦 持倉（雙向）</h3>
+          <span style="font-size:11px;color:var(--text3)">含強平距離；按 ⏏ 一鍵市價平倉</span>
+        </div>
+        <div id="perp-positions"><div style="color:var(--text3);font-size:11px;text-align:center;padding:14px">—</div></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">📋 未成交訂單</h3>
+          <button class="btn btn-o btn-sm" onclick="loadPerpOpenOrders()">↻</button>
+        </div>
+        <table style="font-size:11px"><thead><tr><th>Symbol</th><th>方向</th><th>類型</th><th>數量</th><th>已成</th><th>狀態</th><th></th></tr></thead>
+        <tbody id="perp-orders-table"><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- 右：下單表單 -->
+    <div class="order-form">
+      <h3>下單</h3>
+      <div class="form-row">
+        <div class="fg" style="flex:1"><label>Symbol</label>
+          <select id="perp-symbol">
+            <option value="BTC-USDT">BTC-USDT</option><option value="ETH-USDT">ETH-USDT</option>
+            <option value="SOL-USDT">SOL-USDT</option><option value="BNB-USDT">BNB-USDT</option>
+            <option value="XRP-USDT">XRP-USDT</option><option value="DOGE-USDT">DOGE-USDT</option>
+            <option value="AVAX-USDT">AVAX-USDT</option><option value="LINK-USDT">LINK-USDT</option>
+          </select>
+        </div>
+        <div class="fg"><label>類型</label><select id="perp-order-type" onchange="onPerpTypeChange()">
+          <option value="market">Market</option><option value="limit">Limit</option>
+          <option value="stop_market">Stop Market</option><option value="take_profit_market">Take Profit Market</option>
+        </select></div>
+      </div>
+      <div class="form-row">
+        <div class="fg" style="flex:1"><label>Mark Price</label><input id="perp-mark-price" readonly style="background:var(--bg3);color:var(--text2)" placeholder="—"></div>
+        <button class="btn btn-o btn-sm" onclick="loadPerpMarkPrice()" style="align-self:flex-end">取最新</button>
+      </div>
+      <div class="form-row">
+        <div class="fg" style="flex:1"><label>數量（base）</label><input id="perp-qty" type="number" step="any" placeholder="0.01"></div>
+        <div class="fg" style="width:90px"><label>槓桿</label><input id="perp-leverage" type="number" min="1" max="125" value="5"></div>
+      </div>
+      <div class="form-row" id="perp-limit-row" style="display:none">
+        <div class="fg" style="flex:1"><label>限價</label><input id="perp-limit-price" type="number" step="any" placeholder="—"></div>
+      </div>
+      <div class="form-row" id="perp-stop-row" style="display:none">
+        <div class="fg" style="flex:1"><label>停損/停利價</label><input id="perp-stop-price" type="number" step="any" placeholder="—"></div>
+      </div>
+      <div class="perp-side-grid" style="margin-top:8px">
+        <button class="btn-side open-long"  onclick="placePerpOrder('buy','long',false)">📈 開多 Open Long</button>
+        <button class="btn-side open-short" onclick="placePerpOrder('sell','short',false)">📉 開空 Open Short</button>
+        <button class="btn-side close-long"  onclick="placePerpOrder('sell','long',true)">⏏ 平多 Close Long</button>
+        <button class="btn-side close-short" onclick="placePerpOrder('buy','short',true)">⏏ 平空 Close Short</button>
+      </div>
+      <div id="perp-order-result" class="log" style="margin-top:10px;display:none;max-height:120px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 風控 -->
 <div class="panel" id="panel-risk">
   <div class="g g2">
@@ -1368,9 +1480,9 @@ else sel.innerHTML='<option value="1d" selected>1D</option>'; // 美股+台股�
 updateChartIntervals('stock');
 
 // ── Tab switch ──────────────────────────────────────────────────
-function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
+function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','perp','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
 
 // ── Toast 通知 ──────────────────────────────────────────────────
 // 取代 alert() 的非阻塞通知；type 影響 border-left 顏色（ok/warn/err/info）
@@ -1993,6 +2105,180 @@ async function updateModeBadge(){
     }
   }catch(e){badge.className='mode-badge unknown';badge.textContent='—';}
 }
+
+// ── #Phase 2 永續合約 panel ──────────────────────────────────────
+let _perpRefreshTimer=null;
+function loadPerpAll(){
+  loadPerpAccount();loadPerpPositions();loadPerpOpenOrders();loadPerpMarkPrice();
+  // 進到 perp tab 後 10s 自動 refresh、切走 tab 時 clear
+  if(_perpRefreshTimer)clearInterval(_perpRefreshTimer);
+  _perpRefreshTimer=setInterval(()=>{
+    if(document.getElementById('panel-perp')?.classList.contains('active')){
+      loadPerpAccount();loadPerpPositions();
+    }else{
+      clearInterval(_perpRefreshTimer);_perpRefreshTimer=null;
+    }
+  },10000);
+}
+
+function _perpEx(){return document.getElementById('perp-exchange')?.value||'bingx';}
+
+async function loadPerpAccount(){
+  const ex=_perpEx();
+  const r=await api('/api/v1/perpetual/account?exchange='+ex);
+  if(!r?.success){
+    document.getElementById('perp-balance').textContent='—';
+    const tag=document.getElementById('perp-mode-tag');
+    tag.className='mode-badge unknown';tag.textContent=r?.message||'未連線';
+    return;
+  }
+  const d=r.data;
+  document.getElementById('perp-balance').textContent=fmtUsd(d.balance);
+  document.getElementById('perp-equity').textContent=fmtUsd(d.equity);
+  const ue=document.getElementById('perp-unrealized');ue.textContent=fmtUsd(d.unrealized_pnl);ue.className='stat-value '+pnlClass(d.unrealized_pnl);
+  document.getElementById('perp-margin-used').textContent=fmtUsd(d.margin_used);
+  document.getElementById('perp-margin-avail').textContent=fmtUsd(d.available_margin);
+  document.getElementById('perp-pos-count').textContent=d.open_positions_count;
+  // mode tag
+  const tag=document.getElementById('perp-mode-tag');
+  if(d.is_demo){tag.className='mode-badge paper';tag.textContent='📋 VST DEMO';}
+  else{tag.className='mode-badge live';tag.textContent='🔴 LIVE';}
+}
+
+async function loadPerpPositions(){
+  const ex=_perpEx();
+  const r=await api('/api/v1/perpetual/positions?exchange='+ex);
+  const box=document.getElementById('perp-positions');
+  if(!r?.success||!r.data?.positions?.length){
+    box.innerHTML='<div style="color:var(--text3);font-size:11px;text-align:center;padding:14px">無持倉</div>';return;
+  }
+  box.innerHTML=r.data.positions.map(p=>{
+    const isLong=p.side==='long';
+    const pnlCls=p.unrealized_pnl>=0?'up':'down';
+    const liqDist=p.liquidation_distance_pct;
+    const liqWarn=liqDist>0&&liqDist<10?`<div class="perp-liq-warn">⚠ 強平距離僅 ${liqDist.toFixed(2)}% — 建議減倉或提高保證金</div>`:'';
+    // 強平 bar：顯示 mark 在 [liq, mark*2-liq] 軸線上的位置
+    const liqBarHtml=p.liquidation_price>0?_renderLiqBar(p.mark_price,p.liquidation_price,isLong):'';
+    return`<div class="perp-pos-card ${p.side}">
+      <div class="perp-pos-top">
+        <span class="pp-sym">${p.symbol}</span>
+        <span class="pp-side-badge ${p.side}">${p.side.toUpperCase()}</span>
+        <span class="pp-lev">${p.leverage}x</span>
+        <span class="pp-lev" style="background:rgba(132,142,156,.15);color:var(--text2)">${p.margin_mode}</span>
+        <span style="margin-left:auto" class="${pnlCls}">${fmtUsd(p.unrealized_pnl)} (${p.unrealized_pnl_pct>=0?'+':''}${(p.unrealized_pnl_pct||0).toFixed(2)}%)</span>
+        <button class="btn btn-r btn-sm" onclick="closePerpPosition('${p.symbol}','${p.side}',${p.quantity})" title="市價平倉" style="padding:2px 8px">⏏</button>
+      </div>
+      <div class="perp-pos-grid">
+        <div><div class="ppg-label">數量</div><div class="ppg-value">${fmt(p.quantity,4)}</div></div>
+        <div><div class="ppg-label">入場價</div><div class="ppg-value">${fmtUsd(p.avg_entry_price)}</div></div>
+        <div><div class="ppg-label">標記價</div><div class="ppg-value">${fmtUsd(p.mark_price)}</div></div>
+        <div><div class="ppg-label">保證金</div><div class="ppg-value">${fmtUsd(p.margin_used)}</div></div>
+        <div><div class="ppg-label">強平價</div><div class="ppg-value down">${fmtUsd(p.liquidation_price)}</div></div>
+        <div><div class="ppg-label">距強平</div><div class="ppg-value ${liqDist<10?'down':''}">${liqDist?liqDist.toFixed(2)+'%':'—'}</div></div>
+      </div>
+      ${liqBarHtml}
+      ${liqWarn}
+    </div>`;
+  }).join('');
+}
+
+function _renderLiqBar(mark,liq,isLong){
+  // 簡化軸：[liq.. mark + (mark - liq)] 之間、mark 落在 50% 為基準
+  const range=Math.abs(mark-liq);if(range<=0)return'';
+  const lo=isLong?liq:mark-range;
+  const hi=isLong?mark+range:liq;
+  const markPct=Math.max(0,Math.min(100,((mark-lo)/(hi-lo))*100));
+  const fillPct=isLong?markPct:(100-markPct);
+  return`<div class="perp-liq-bar"><div class="pl-fill" style="width:${fillPct}%"></div><div class="pl-mark" style="left:${markPct}%"></div></div>`;
+}
+
+async function loadPerpOpenOrders(){
+  const ex=_perpEx();
+  const r=await api('/api/v1/perpetual/open-orders?exchange='+ex);
+  const tb=document.getElementById('perp-orders-table');
+  if(!r?.success||!r.data?.orders?.length){
+    tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">—</td></tr>';return;
+  }
+  tb.innerHTML=r.data.orders.map(o=>{
+    const sd=o.side==='buy'?'<span class="badge buy">BUY</span>':'<span class="badge sell">SELL</span>';
+    const ps=o.position_side?` <span style="color:var(--text3);font-size:9px">${o.position_side.toUpperCase()}</span>`:'';
+    return`<tr><td><strong>${o.symbol}</strong></td>
+      <td>${sd}${ps}</td>
+      <td>${o.order_type}</td>
+      <td>${fmt(o.quantity,4)}</td>
+      <td>${fmt(o.filled_qty,4)}</td>
+      <td><span class="badge ${o.status}">${o.status}</span></td>
+      <td><button class="btn btn-r btn-sm" onclick="cancelPerpOrder('${o.symbol}','${o.external_id}')">取消</button></td></tr>`;
+  }).join('');
+}
+
+async function loadPerpMarkPrice(){
+  const ex=_perpEx();const sym=document.getElementById('perp-symbol')?.value;if(!sym)return;
+  const r=await api(`/api/v1/perpetual/mark-price?exchange=${ex}&symbol=${sym}`);
+  const el=document.getElementById('perp-mark-price');
+  if(r?.success&&r.data?.mark_price>0){el.value=Number(r.data.mark_price).toFixed(4);}
+  else{el.value='';}
+}
+
+function onPerpTypeChange(){
+  const t=document.getElementById('perp-order-type').value;
+  document.getElementById('perp-limit-row').style.display=t==='limit'?'flex':'none';
+  document.getElementById('perp-stop-row').style.display=(t==='stop_market'||t==='take_profit_market')?'flex':'none';
+}
+
+async function placePerpOrder(side,positionSide,reduceOnly){
+  const ex=_perpEx();
+  const symbol=document.getElementById('perp-symbol').value;
+  const orderType=document.getElementById('perp-order-type').value;
+  const qty=parseFloat(document.getElementById('perp-qty').value);
+  const leverage=parseInt(document.getElementById('perp-leverage').value)||1;
+  const limitPrice=parseFloat(document.getElementById('perp-limit-price').value)||null;
+  const stopPrice=parseFloat(document.getElementById('perp-stop-price').value)||null;
+  if(!qty||qty<=0){toastWarn('請輸入有效數量');return;}
+  // open 確認 modal、close 直接送（風險低）
+  if(!reduceOnly){
+    if(!confirm(`確認 ${positionSide==='long'?'📈 開多':'📉 開空'} ${symbol} qty=${qty} 槓桿 ${leverage}x?`))return;
+  }
+  const body={exchange:ex,symbol,side,position_side:positionSide,order_type:orderType,quantity:qty,leverage,reduce_only:reduceOnly};
+  if(limitPrice!==null)body.limit_price=limitPrice;
+  if(stopPrice!==null)body.stop_price=stopPrice;
+  const r=await api('/api/v1/perpetual/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const out=document.getElementById('perp-order-result');out.style.display='block';
+  if(r?.success){
+    out.textContent=JSON.stringify(r.data,null,2);
+    const action=reduceOnly?'平倉':'開倉';
+    toastOk(`${action} ${symbol} ${side} 已送出 (${r.data?.status||'submitted'})`);
+    setTimeout(()=>{loadPerpPositions();loadPerpOpenOrders();loadPerpAccount();},800);
+  }else{
+    out.textContent='ERR: '+(r?.message||r?.error||'unknown');
+    toastErr((reduceOnly?'平倉':'開倉')+'失敗：'+(r?.message||r?.error||'unknown'));
+  }
+}
+
+async function cancelPerpOrder(symbol,orderId){
+  if(!orderId){toastWarn('order id 缺失');return;}
+  const ex=_perpEx();
+  const r=await api(`/api/v1/perpetual/order?exchange=${ex}&symbol=${symbol}&order_id=${orderId}`,{method:'DELETE'});
+  if(r?.success){toastOk(`訂單 ${orderId} 已取消`);loadPerpOpenOrders();}
+  else toastErr('取消失敗：'+(r?.message||'unknown'));
+}
+
+async function closePerpPosition(symbol,side,qty){
+  if(!confirm(`市價平倉 ${symbol} ${side.toUpperCase()} qty=${qty}?`))return;
+  const ex=_perpEx();
+  // 平多 = sell + position_side=long + reduceOnly；平空 = buy + position_side=short + reduceOnly
+  const closeSide=side==='long'?'sell':'buy';
+  const r=await api('/api/v1/perpetual/order',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({exchange:ex,symbol,side:closeSide,position_side:side,order_type:'market',quantity:qty,reduce_only:true})});
+  if(r?.success){toastOk(`已送出平倉 ${symbol} ${side}`);setTimeout(loadPerpAll,800);}
+  else toastErr('平倉失敗：'+(r?.message||'unknown'));
+}
+
+// 切換 symbol 時自動更新 mark price
+document.addEventListener('change',e=>{
+  if(e.target.id==='perp-symbol')loadPerpMarkPrice();
+});
+
 async function setAutoInterval(){await api('/api/v1/auto-trader/interval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:parseInt(document.getElementById('auto-interval').value)||300})});fetchAutoStatus();}
 async function addAutoWatch(){await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('auto-symbol').value,exchange:document.getElementById('auto-exchange').value,strategy:document.getElementById('auto-strategy').value,quantity:parseFloat(document.getElementById('auto-qty').value)||1})});fetchAutoStatus();}
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
