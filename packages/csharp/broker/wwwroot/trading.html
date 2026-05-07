@@ -15,12 +15,21 @@
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
 
 /* Header */
-.hdr { background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; height:48px; }
-.hdr .logo { font-size:16px; font-weight:700; color:var(--accent); margin-right:24px; letter-spacing:1px; }
-.hdr nav { display:flex; gap:4px; flex:1; }
+.hdr { background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; height:48px; gap:12px; }
+.hdr .logo { font-size:16px; font-weight:700; color:var(--accent); letter-spacing:1px; flex-shrink:0; }
+.hdr nav { display:flex; gap:4px; flex-shrink:0; }
 .hdr nav a { color:var(--text2); padding:6px 14px; border-radius:4px; cursor:pointer; font-size:13px; text-decoration:none; transition:.15s; }
 .hdr nav a:hover { color:var(--text); background:var(--bg3); }
 .hdr nav a.active { color:var(--accent); background:rgba(240,185,11,0.08); }
+
+/* 全域 symbol search bar */
+.hdr-search { display:flex; align-items:center; gap:6px; flex:1; max-width:420px; min-width:200px; position:relative; }
+.hdr-search select, .hdr-search input { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:4px; font-size:12px; outline:none; }
+.hdr-search select { cursor:pointer; }
+.hdr-search input { flex:1; }
+.hdr-search input:focus, .hdr-search select:focus { border-color:var(--accent); }
+.hdr-search .sym-dropdown { top:42px !important; left:0 !important; right:auto; width:100% !important; }
+@media(max-width:1100px) { .hdr-search { max-width:240px; } .hdr nav a { padding:6px 8px; font-size:12px; } }
 .hdr .hdr-right { display:flex; align-items:center; gap:12px; }
 .hdr .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
 .dot.on { background:var(--green); } .dot.off { background:var(--red); }
@@ -395,6 +404,18 @@ tr:hover { background:rgba(240,185,11,0.02); }
 <!-- Header -->
 <div class="hdr">
   <div class="logo">B4A TRADING</div>
+  <!-- 全域 symbol search：頂端固定、所有 tab 共用 _currentSymbol（解掉每個 tab 自己 picker 的痛） -->
+  <div class="hdr-search sym-picker">
+    <select id="hdr-market" onchange="onHdrMarketChange()" title="篩選 dropdown 顯示的標的類型">
+      <option value="all">🌐 全部</option>
+      <option value="stock">🇺🇸 美股</option>
+      <option value="tw_stock">🇹🇼 台股</option>
+      <option value="crypto">🪙 加密</option>
+    </select>
+    <input id="hdr-symbol" type="text" placeholder="搜尋 symbol（Enter 立即帶入所有 tab）..." autocomplete="off"
+      onfocus="openSymPicker(this,'hdr')" oninput="filterSymPicker(this,'hdr')" onkeydown="if(event.key==='Enter')applyHdrSymbol()">
+    <div class="sym-dropdown" id="hdr-sym-dropdown"></div>
+  </div>
   <nav id="main-nav">
     <a class="active" onclick="switchTab('overview')">總覽</a>
     <a onclick="switchTab('quotes')">市場</a>
@@ -1026,23 +1047,77 @@ function updateTicker(){const el=document.getElementById('ticker-strip');const i
 el.innerHTML=items.map(s=>{const q=liveQuotes[s.symbol];const cls=q.change_percent>0?'up':'down';
 return`<div class="ticker-item" onclick="quickSelect('${s.symbol}','${s.exchange}','${s.type}')"><span class="t-sym">${s.symbol}</span><span class="t-price">$${Number(q.price).toFixed(2)}</span><span class="t-chg ${cls}">${q.change_percent>0?'+':''}${Number(q.change_percent).toFixed(2)}%</span></div>`;}).join('');}
 
-function quickSelect(sym,ex,type){
-  ['sig','ord','chart','bt','auto'].forEach(p=>{const el=document.getElementById(p+'-symbol');if(el)el.value=sym;const exEl=document.getElementById(p+'-exchange');if(exEl)exEl.value=ex;});
-  if(document.getElementById('panel-chart').classList.contains('active')){updateChartIntervals(type);loadChart();}
+function quickSelect(sym,ex,type){setCurrentSymbol(sym,ex,type);if(document.getElementById('panel-chart').classList.contains('active'))loadChart();}
+
+// ── #1 Global symbol state ─────────────────────────────────────
+// 所有 tab 共用一個「當前標的」概念，避免每個 tab 都要重選 symbol
+let _currentSymbol='AAPL',_currentExchange='alpaca',_currentType='stock';
+function setCurrentSymbol(sym,exchange,type){
+  if(!sym)return;
+  _currentSymbol=sym.toUpperCase();_currentExchange=exchange||_currentExchange;_currentType=type||_currentType;
+  // 推到所有 per-tab 輸入框
+  const prefixes=['sig','ord','chart','bt','auto','hdr','ar','pa'];
+  prefixes.forEach(p=>{
+    const el=document.getElementById(p+'-symbol');if(el&&el.value!==_currentSymbol)el.value=_currentSymbol;
+    const exEl=document.getElementById(p+'-exchange');if(exEl&&_currentExchange)exEl.value=_currentExchange;
+  });
+  // chart interval 跟著 symbol 類型切（crypto 才有分鐘線）
+  if(typeof updateChartIntervals==='function')updateChartIntervals(_currentType);
+  // ord 區的 R:R 計算機要重算
+  if(typeof updateRRPanel==='function')updateRRPanel();
+}
+
+function applyHdrSymbol(){
+  const v=document.getElementById('hdr-symbol').value.trim().toUpperCase();
+  if(!v)return;
+  // 嘗試從 known symbols 找對應 exchange/type；找不到就猜 stock/alpaca
+  const known=getAllSymbols().find(s=>s.symbol===v);
+  if(known)setCurrentSymbol(known.symbol,known.exchange,known.type);
+  else setCurrentSymbol(v,v.endsWith('USDT')?'binance':'alpaca',v.endsWith('USDT')?'crypto':'stock');
+  document.getElementById('hdr-sym-dropdown').classList.remove('open');
+  // 自動觸發當前 active tab 的主要動作
+  const active=document.querySelector('.panel.active')?.id;
+  if(active==='panel-chart')loadChart();
+  else if(active==='panel-strategy')runStrategy();
+  else if(active==='panel-backtest')runBacktest();
+}
+
+function onHdrMarketChange(){
+  // market dropdown 切換時，重 render 頂端 dropdown（如果有打開）
+  const dd=document.getElementById('hdr-sym-dropdown');
+  if(dd&&dd.classList.contains('open'))renderSymDropdown('hdr-sym-dropdown',document.getElementById('hdr-symbol').value);
 }
 
 // ── Symbol picker ───────────────────────────────────────────────
-function renderSymDropdown(id,filter=''){const dd=document.getElementById(id);const all=getAllSymbols();const q=filter.toUpperCase();const f=q?all.filter(s=>s.symbol.toUpperCase().includes(q)||s.name.toUpperCase().includes(q)):all;
-const stocks=f.filter(s=>s.type==='stock'),tw=f.filter(s=>s.type==='tw_stock'),crypto=f.filter(s=>s.type==='crypto');let h='';
-if(stocks.length)h+='<div class="sym-section">美股 US Stocks</div>'+stocks.map(s=>symHtml(s,id)).join('');
-if(tw.length)h+='<div class="sym-section">台股 TWSE</div>'+tw.map(s=>symHtml(s,id)).join('');
-if(crypto.length)h+='<div class="sym-section">加密貨幣 Crypto</div>'+crypto.map(s=>symHtml(s,id)).join('');
-if(!f.length)h='<div style="padding:10px;color:var(--text2);text-align:center">無結果</div>';dd.innerHTML=h;}
+function renderSymDropdown(id,filter=''){const dd=document.getElementById(id);
+  let all=getAllSymbols();const q=filter.toUpperCase();
+  // 頂端搜尋的 market 篩選——其他 picker 不過濾，保留各自 dropdown 的完整列表
+  if(id==='hdr-sym-dropdown'){
+    const m=document.getElementById('hdr-market')?.value||'all';
+    if(m!=='all')all=all.filter(s=>s.type===m);
+  }
+  const f=q?all.filter(s=>s.symbol.toUpperCase().includes(q)||s.name.toUpperCase().includes(q)):all;
+  const stocks=f.filter(s=>s.type==='stock'),tw=f.filter(s=>s.type==='tw_stock'),crypto=f.filter(s=>s.type==='crypto');let h='';
+  if(stocks.length)h+='<div class="sym-section">美股 US Stocks</div>'+stocks.map(s=>symHtml(s,id)).join('');
+  if(tw.length)h+='<div class="sym-section">台股 TWSE</div>'+tw.map(s=>symHtml(s,id)).join('');
+  if(crypto.length)h+='<div class="sym-section">加密貨幣 Crypto</div>'+crypto.map(s=>symHtml(s,id)).join('');
+  if(!f.length)h='<div style="padding:10px;color:var(--text2);text-align:center">無結果</div>';dd.innerHTML=h;
+}
 function symHtml(s,ddId){const q=liveQuotes[s.symbol];const pr=q?'$'+Number(q.price).toFixed(2):'';const ch=q?Number(q.change_percent).toFixed(2)+'%':'';const cls=q?(q.change_percent>0?'up':'down'):'';
 const pfx=ddId.replace('-sym-dropdown','');return`<div class="sym-item" onclick="selectSymbol('${pfx}','${s.symbol}','${s.exchange}','${s.type}')"><span class="badge ${s.type}">${s.type==='stock'?'US':s.type==='tw_stock'?'TW':'Crypto'}</span><span class="sym-ticker">${s.symbol}</span><span class="sym-name">${s.name}</span><span class="sym-price">${pr}</span><span class="sym-change ${cls}">${ch}</span></div>`;}
 function openSymPicker(input,pfx){const dd=document.getElementById(pfx+'-sym-dropdown');renderSymDropdown(pfx+'-sym-dropdown',input.value);dd.classList.add('open');}
 function filterSymPicker(input,pfx){renderSymDropdown(pfx+'-sym-dropdown',input.value);}
-function selectSymbol(pfx,sym,ex,type){document.getElementById(pfx+'-symbol').value=sym;const exSel=document.getElementById(pfx+'-exchange');if(exSel)exSel.value=ex;if(pfx==='chart')updateChartIntervals(type);if(pfx==='ord')updateRRPanel();document.getElementById(pfx+'-sym-dropdown').classList.remove('open');}
+// 任何 picker 選 symbol 都推到全域、其他 tab 同步——這就是「打破 tab 隔離」的核心
+function selectSymbol(pfx,sym,ex,type){
+  setCurrentSymbol(sym,ex,type);
+  document.getElementById(pfx+'-sym-dropdown').classList.remove('open');
+  // 在 hdr 選擇後立刻觸發當前 active tab 的主要動作（跟 applyHdrSymbol 一致）
+  if(pfx==='hdr'){
+    const active=document.querySelector('.panel.active')?.id;
+    if(active==='panel-chart')loadChart();
+    else if(active==='panel-strategy')runStrategy();
+  }
+}
 document.addEventListener('click',e=>{if(!e.target.closest('.sym-picker'))document.querySelectorAll('.sym-dropdown').forEach(d=>d.classList.remove('open'));});
 
 // ── Chart intervals ─────────────────────────────────────────────
@@ -2203,6 +2278,8 @@ async function addBatchToWatch(){
 
 // ── Init ────────────────────────────────────────────────────────
 checkWorkers();loadOverview();loadLiveQuotes();connectWs();loadProtectionMap();_ensurePmapTimer();
+// 初始化全域 symbol 狀態 + 推到所有 tab 的輸入框（讓首次載入時所有 tab 都已預填 AAPL）
+setCurrentSymbol('AAPL','alpaca','stock');
 setInterval(checkWorkers,30000);setInterval(loadLiveQuotes,60000);
 </script>
 </body>
