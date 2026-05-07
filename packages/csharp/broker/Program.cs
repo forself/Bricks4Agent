@@ -46,6 +46,9 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     initDb.EnsureTable<AgentInboxTask>();
     // Auto-trader 監控清單持久化（2026-05-02）— 取代 ConcurrentDictionary in-memory 設計
     initDb.EnsureTable<AutoTradeWatchEntry>();
+    // Alert system（#2 2026-05-07）—— 規則 + 事件
+    initDb.EnsureTable<AlertRuleEntry>();
+    initDb.EnsureTable<AlertEventEntry>();
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -254,6 +257,8 @@ builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
 builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
+builder.Services.AddSingleton<Broker.Services.AlertRulesService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AlertRulesService>());
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -929,6 +934,7 @@ if (poolEnabled)
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
     AlertEndpoints.Map(api);
+    AlertRulesEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);

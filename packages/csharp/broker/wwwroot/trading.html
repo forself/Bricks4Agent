@@ -766,6 +766,39 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <div id="alert-triggered" style="font-size:11px;color:var(--text2)">無</div>
     </div>
   </div>
+  <!-- #2 Alert system: 持久化規則 + acknowledge workflow + 多 condition type -->
+  <div class="card" style="margin-top:12px" id="alert-rules-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0">🔔 進階告警規則（持久化 + acknowledge）</h3>
+      <span style="font-size:11px;color:var(--text3)">支援 price / position PnL / portfolio DD 條件，觸發後須手動 ack</span>
+    </div>
+    <div class="form-row">
+      <div class="fg" style="flex:1"><label>名稱</label><input id="ar-name" placeholder="如：BTC 站上 70k 提醒" style="width:100%"></div>
+      <div class="fg"><label>條件</label>
+        <select id="ar-type" onchange="updateAlertRuleFields()">
+          <option value="price_above">價格 ≥</option>
+          <option value="price_below">價格 ≤</option>
+          <option value="position_pnl_below">持倉 PnL% ≤（虧損警告）</option>
+          <option value="portfolio_dd_above">當日 DD% ≥</option>
+        </select>
+      </div>
+      <div class="fg sym-picker" id="ar-symbol-fg"><label>Symbol</label><input id="ar-symbol" placeholder="搜尋…" style="width:90px" onfocus="openSymPicker(this,'ar')" oninput="filterSymPicker(this,'ar')"><div class="sym-dropdown" id="ar-sym-dropdown"></div></div>
+      <div class="fg"><label>Exchange</label><select id="ar-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
+      <div class="fg"><label id="ar-threshold-label">閾值</label><input id="ar-threshold" type="number" step="any" style="width:80px"></div>
+      <div class="fg"><label>Cooldown 分</label><input id="ar-cooldown" type="number" value="30" min="1" max="1440" style="width:60px"></div>
+      <button class="btn btn-y btn-sm" onclick="createAlertRule()">建立</button>
+    </div>
+    <table style="margin-top:10px"><thead><tr><th>名稱</th><th>條件</th><th>Symbol</th><th>閾值</th><th>Cooldown</th><th>上次觸發</th><th>狀態</th><th></th></tr></thead>
+      <tbody id="ar-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+    <h3 style="margin-top:14px;display:flex;justify-content:space-between;align-items:center"><span>觸發事件</span>
+      <span style="font-size:11px;font-weight:400;color:var(--text3)">
+        <label style="cursor:pointer"><input type="checkbox" id="ar-events-unack" onchange="fetchAlertEvents()" checked> 只看未處理</label>
+        <button class="btn btn-o btn-sm" onclick="fetchAlertEvents()" style="margin-left:8px">↻</button>
+      </span>
+    </h3>
+    <table><thead><tr><th>時間</th><th>規則</th><th>條件</th><th>Symbol</th><th>觀察值</th><th>訊息</th><th></th></tr></thead>
+      <tbody id="ar-events-table"><tr><td colspan="7" style="color:var(--text2)">尚無觸發</td></tr></tbody></table>
+  </div>
   <div style="margin-top:12px;display:flex;gap:8px">
     <a class="btn btn-o btn-sm" href="/api/v1/export/orders" download>匯出訂單 CSV</a>
     <a class="btn btn-o btn-sm" href="/api/v1/export/trades?exchange=alpaca" download>匯出成交 CSV</a>
@@ -1022,7 +1055,7 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
+if(name==='overview')loadOverview();if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
 
 // ── API helper ──────────────────────────────────────────────────
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
@@ -1840,6 +1873,91 @@ async function fetchAlerts() {
   const trig = document.getElementById('alert-triggered');
   if (r.data.triggered?.length > 0) trig.innerHTML = r.data.triggered.map(t => `<div style="padding:4px 0;color:var(--accent)">⚡ ${t.symbol} ${t.condition==='above'?'↑':'↓'} $${t.target} (now $${Number(t.current).toFixed(2)}) — ${timeStr(t.triggeredAt)}</div>`).join('');
   else trig.textContent = '無';
+}
+
+// ── #2 進階告警規則（持久化 + acknowledge）────────────────────
+const _alertTypeLabels = {
+  price_above: '價格 ≥', price_below: '價格 ≤',
+  position_pnl_below: '持倉 PnL% ≤', portfolio_dd_above: '當日 DD% ≥',
+};
+function updateAlertRuleFields(){
+  const t=document.getElementById('ar-type').value;
+  const label=document.getElementById('ar-threshold-label');
+  const symbolFg=document.getElementById('ar-symbol-fg');
+  // portfolio_dd_above 不需要 symbol
+  symbolFg.style.display=(t==='portfolio_dd_above')?'none':'flex';
+  label.textContent={
+    price_above:'價格',price_below:'價格',
+    position_pnl_below:'PnL% (例 -5)',portfolio_dd_above:'DD% (例 5)',
+  }[t]||'閾值';
+}
+async function createAlertRule(){
+  const name=document.getElementById('ar-name').value.trim();
+  const conditionType=document.getElementById('ar-type').value;
+  const symbol=document.getElementById('ar-symbol').value.trim().toUpperCase();
+  const exchange=document.getElementById('ar-exchange').value;
+  const threshold=parseFloat(document.getElementById('ar-threshold').value);
+  const cooldown=parseInt(document.getElementById('ar-cooldown').value)||30;
+  if(!name){alert('請輸入名稱');return;}
+  if(isNaN(threshold)){alert('請輸入閾值');return;}
+  if(conditionType!=='portfolio_dd_above'&&!symbol){alert('該條件需要 Symbol');return;}
+  const r=await api('/api/v1/alerts/rules',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,condition_type:conditionType,symbol,exchange,threshold,cooldown_minutes:cooldown})});
+  if(r?.success){document.getElementById('ar-name').value='';document.getElementById('ar-threshold').value='';fetchAlertRules();}
+  else alert('建立失敗：'+(r?.message||r?.error||'unknown'));
+}
+async function toggleAlertRule(id,enabled){
+  await api(`/api/v1/alerts/rules/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  fetchAlertRules();
+}
+async function deleteAlertRule(id){
+  if(!confirm('確定刪除此規則？'))return;
+  await api(`/api/v1/alerts/rules/${id}`,{method:'DELETE'});
+  fetchAlertRules();
+}
+async function fetchAlertRules(){
+  const r=await api('/api/v1/alerts/rules');
+  const tb=document.getElementById('ar-table');if(!tb)return;
+  const rules=r?.data?.rules||[];
+  if(rules.length===0){tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">尚無規則</td></tr>';return;}
+  tb.innerHTML=rules.map(rl=>{
+    const lt=rl.last_triggered_at?new Date(rl.last_triggered_at).toLocaleString('zh-TW'):'從未';
+    const stat=rl.enabled?'<span style="color:var(--green)">啟用</span>':'<span style="color:var(--text3)">停用</span>';
+    return`<tr><td><strong>${rl.name}</strong></td>
+      <td>${_alertTypeLabels[rl.condition_type]||rl.condition_type}</td>
+      <td>${rl.symbol||'—'}</td>
+      <td>${rl.threshold}</td>
+      <td>${rl.cooldown_minutes}m</td>
+      <td style="color:var(--text2);font-size:10px">${lt}</td>
+      <td>${stat}</td>
+      <td>
+        <button class="btn btn-o btn-sm" onclick="toggleAlertRule('${rl.id}',${!rl.enabled})">${rl.enabled?'停用':'啟用'}</button>
+        <button class="btn btn-r btn-sm" onclick="deleteAlertRule('${rl.id}')">刪</button>
+      </td></tr>`;
+  }).join('');
+}
+async function fetchAlertEvents(){
+  const onlyUnack=document.getElementById('ar-events-unack')?.checked!==false;
+  const r=await api(`/api/v1/alerts/events?limit=50&unacknowledged_only=${onlyUnack}`);
+  const tb=document.getElementById('ar-events-table');if(!tb)return;
+  const events=r?.data?.events||[];
+  if(events.length===0){tb.innerHTML=`<tr><td colspan="7" style="color:var(--text2)">${onlyUnack?'無未處理事件':'尚無觸發'}</td></tr>`;return;}
+  tb.innerHTML=events.map(e=>{
+    const acked=e.acknowledged_at!=null;
+    const cls=acked?'style="opacity:.5"':'';
+    return`<tr ${cls}><td style="font-size:10px;color:var(--text2)">${new Date(e.triggered_at).toLocaleString('zh-TW')}</td>
+      <td><strong>${e.rule_name}</strong></td>
+      <td>${_alertTypeLabels[e.condition_type]||e.condition_type}</td>
+      <td>${e.symbol||'—'}</td>
+      <td style="font-family:Consolas,monospace">${Number(e.observed_value).toFixed(4)}</td>
+      <td style="font-size:11px">${e.message}</td>
+      <td>${acked?'<span style="color:var(--text3);font-size:10px">已處理</span>':`<button class="btn btn-y btn-sm" onclick="ackAlertEvent('${e.id}')">標已讀</button>`}</td>
+    </tr>`;
+  }).join('');
+}
+async function ackAlertEvent(id){
+  await api(`/api/v1/alerts/events/${id}/acknowledge`,{method:'POST'});
+  fetchAlertEvents();
 }
 
 // ── TP/SL ───────────────────────────────────────────────────────
