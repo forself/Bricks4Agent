@@ -53,7 +53,7 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
 
 // ── Step 2: 加密基礎建設 ──
 // ECDH P-256 金鑰對（Singleton，所有 instance 共享同一金鑰）
-var ecdhPrivateKey = builder.Configuration.GetValue<string>("Broker:Encryption:EcdhPrivateKeyBase64");
+var ecdhPrivateKey = builder.Configuration.GetSecret("Broker:Encryption:EcdhPrivateKeyBase64");
 if (!string.IsNullOrEmpty(ecdhPrivateKey) && !ecdhPrivateKey.StartsWith("CHANGE_ME"))
 {
     builder.Services.AddSingleton<IEnvelopeCrypto>(sp =>
@@ -72,6 +72,13 @@ else
         "Broker public key generated (length={KeyLength}, prefix={KeyPrefix}...)",
         pubKey.Length, pubKey[..Math.Min(8, pubKey.Length)]);
 }
+
+// 啟動時 log 機密來源總覽——讓人知道哪些 key 從 file mount、哪些從 env、哪些缺
+builder.Configuration.LogSecretSummary(startupLogger,
+    "Broker:Encryption:EcdhPrivateKeyBase64",
+    "Broker:Encryption:MasterKeyBase64",
+    "Broker:ScopedToken:Secret",
+    "LlmProxy:ApiKey");
 
 // ── Phase 2: 分散式快取（條件式接入） ──
 var cacheEnabled = builder.Configuration.GetValue<bool>("CacheCluster:Enabled", false);
@@ -103,7 +110,7 @@ if (cacheEnabled)
 }
 
 // Session 金鑰存儲（DB 後端，主金鑰加密）
-var masterKeyBase64 = builder.Configuration.GetValue<string>("Broker:Encryption:MasterKeyBase64") ?? "";
+var masterKeyBase64 = builder.Configuration.GetSecret("Broker:Encryption:MasterKeyBase64") ?? "";
 var dbSessionKeyStore = new Func<IServiceProvider, DbSessionKeyStore>(sp =>
     new DbSessionKeyStore(sp.GetRequiredService<BrokerDb>(), masterKeyBase64));
 
@@ -118,7 +125,7 @@ else
 }
 
 // ── Step 3: Token + Session + Epoch ──
-var tokenSecret = builder.Configuration.GetValue<string>("Broker:ScopedToken:Secret") ?? "";
+var tokenSecret = builder.Configuration.GetSecret("Broker:ScopedToken:Secret") ?? "";
 var tokenIssuer = builder.Configuration.GetValue<string>("Broker:ScopedToken:Issuer") ?? "broker-control-plane";
 var tokenAudience = builder.Configuration.GetValue<string>("Broker:ScopedToken:Audience") ?? "broker-agents";
 var tokenExpMin = builder.Configuration.GetValue<int>("Broker:ScopedToken:ExpirationMinutes");
@@ -170,6 +177,10 @@ builder.Services.AddSingleton<IPolicyEngine>(sp =>
     new PolicyEngine(sp.GetRequiredService<ISchemaValidator>(), policyOptions));
 var llmProxyOptions = builder.Configuration.GetSection("LlmProxy").Get<LlmProxyOptions>()
     ?? new LlmProxyOptions();
+// Docker secrets 支援：若設了 LlmProxy:ApiKeyFile，覆蓋從 binder 拿到的 ApiKey（可能為空）
+var llmApiKeyFromSecret = builder.Configuration.GetSecret("LlmProxy:ApiKey");
+if (!string.IsNullOrEmpty(llmApiKeyFromSecret))
+    llmProxyOptions.ApiKey = llmApiKeyFromSecret;
 builder.Services.AddSingleton(llmProxyOptions);
 builder.Services.AddSingleton<LlmProxyMetrics>();
 // HttpClient + 內部 LlmProxyService 註冊在 keyed name "raw"，外面用 MeteredLlmProxyService 包起來

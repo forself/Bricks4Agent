@@ -55,6 +55,9 @@ tools/*.png
 # Reference material (partner repos cloned for design comparison, never committed)
 _ref/
 
+# Docker secrets — file-mounted credentials for compose.trading.secrets.yml
+tools/secrets/
+
 # Local tool/runtime state
 .dotnet/
 .run/

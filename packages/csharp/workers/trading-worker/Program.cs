@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using BrokerCore.Services;
 using WorkerSdk;
 using TradingWorker.Exchange;
 using TradingWorker.Handlers;
@@ -43,6 +44,14 @@ var dbPath    = config.GetValue("Worker:Trading:DbPath", "trading.db")!;
 var dbLogger  = loggerFactory.CreateLogger<TradingDbStorage>();
 var tradingDb = new TradingDbStorage(dbPath, dbLogger);
 
+// ── 機密來源總覽（一次 log 標示哪些 secret 走 file mount、哪些走 env、哪些缺）──
+config.LogSecretSummary(logger,
+    "Worker:Trading:Alpaca:ApiKey",
+    "Worker:Trading:Alpaca:ApiSecret",
+    "Worker:Trading:Binance:ApiKey",
+    "Worker:Trading:Binance:ApiSecret",
+    "Worker:Auth:SharedSecret");
+
 // ── 交易所客戶端 ──────────────────────────────────────────────────────
 var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 var clients = new Dictionary<string, IExchangeClient>();
@@ -50,8 +59,10 @@ var clients = new Dictionary<string, IExchangeClient>();
 // Alpaca（美股）
 if (config.GetValue("Worker:Trading:Alpaca:Enabled", false))
 {
-    var alpacaKey    = config.GetValue<string>("Worker:Trading:Alpaca:ApiKey") ?? "";
-    var alpacaSecret = config.GetValue<string>("Worker:Trading:Alpaca:ApiSecret") ?? "";
+    // GetSecret 支援 Docker secrets：若 env 設了 `Worker__Trading__Alpaca__ApiKeyFile=/run/secrets/alpaca_key`
+    // 會去讀檔；沒設就 fallback 到 ApiKey 直接讀，向後相容
+    var alpacaKey    = config.GetSecret("Worker:Trading:Alpaca:ApiKey")    ?? "";
+    var alpacaSecret = config.GetSecret("Worker:Trading:Alpaca:ApiSecret") ?? "";
     var alpacaPaper  = config.GetValue("Worker:Trading:Alpaca:IsPaper", true);
 
     if (!string.IsNullOrEmpty(alpacaKey) && !string.IsNullOrEmpty(alpacaSecret))
@@ -70,8 +81,8 @@ if (config.GetValue("Worker:Trading:Alpaca:Enabled", false))
 // Binance（加密貨幣）
 if (config.GetValue("Worker:Trading:Binance:Enabled", false))
 {
-    var binanceKey    = config.GetValue<string>("Worker:Trading:Binance:ApiKey") ?? "";
-    var binanceSecret = config.GetValue<string>("Worker:Trading:Binance:ApiSecret") ?? "";
+    var binanceKey    = config.GetSecret("Worker:Trading:Binance:ApiKey")    ?? "";
+    var binanceSecret = config.GetSecret("Worker:Trading:Binance:ApiSecret") ?? "";
     var binanceTest   = config.GetValue("Worker:Trading:Binance:IsTestnet", true);
 
     if (!string.IsNullOrEmpty(binanceKey) && !string.IsNullOrEmpty(binanceSecret))
