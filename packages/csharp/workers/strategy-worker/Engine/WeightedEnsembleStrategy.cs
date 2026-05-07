@@ -3,6 +3,30 @@ using StrategyWorker.Models;
 namespace StrategyWorker.Engine;
 
 /// <summary>
+/// Ensemble 衝突仲裁器——當成員策略意見分歧（agreement_ratio 低）時，
+/// 由仲裁者讀完所有成員的 reasoning 重新給判斷。實作可以是 LLM、人工規則、
+/// 或更高階的 ML 模型。預設不註冊（null）→ ensemble 走原本的加權投票。
+///
+/// 觸發條件：agreement_ratio &lt; threshold （預設 0.6、不足三分之二同向）。
+/// 一致時直接走加權投票（更快、更便宜）。
+/// </summary>
+public interface IEnsembleArbitrator
+{
+    /// <summary>觸發 agreement_ratio 閾值——例如 0.6 = 不足 60% 同向就叫仲裁。</summary>
+    decimal Threshold { get; }
+
+    /// <summary>
+    /// 由 ensemble 在偵測到分歧時呼叫。回傳 null = 沒意見（fallback 加權投票）；
+    /// 回傳 Signal = 用此覆蓋 ensemble 的最終答案。失敗時應該回 null 而非拋例外。
+    /// </summary>
+    Signal? Arbitrate(
+        IReadOnlyList<Signal> constituentSignals,
+        decimal agreementRatio,
+        List<BarData> bars,
+        StrategyConfig config);
+}
+
+/// <summary>
 /// 動態加權投票策略（Weighted Ensemble / Performance-Adaptive Voting）
 ///
 /// 與既有 CompositeStrategy 的差異：
@@ -20,6 +44,10 @@ namespace StrategyWorker.Engine;
 /// - 1.0 = 全員同向（高信心）
 /// - 0.33 = 三分意見（低信心）
 /// - 可用於讓下游（auto-trader）在意見分歧時跳過
+///
+/// 衝突仲裁（選用）：注入 IEnsembleArbitrator 後，當 agreement_ratio
+/// &lt; arbitrator.Threshold 時，會把所有成員 signal 餵給仲裁者讓它做最終決策。
+/// 一致時不呼叫仲裁者（節省 LLM cost / 加速）。
 /// </summary>
 public class WeightedEnsembleStrategy : IStrategy
 {
@@ -28,17 +56,20 @@ public class WeightedEnsembleStrategy : IStrategy
     private readonly List<IStrategy> _constituents;
     private readonly int _evaluationBars;
     private readonly decimal _maxWeight;  // 避免單一策略完全壟斷權重
+    private readonly IEnsembleArbitrator? _arbitrator;
 
     public WeightedEnsembleStrategy(
         List<IStrategy> constituents,
         int evaluationBars = 100,
-        decimal maxWeight = 3m)
+        decimal maxWeight = 3m,
+        IEnsembleArbitrator? arbitrator = null)
     {
         if (constituents == null || constituents.Count == 0)
             throw new ArgumentException("WeightedEnsembleStrategy 需要至少 1 個 constituent");
         _constituents = constituents;
         _evaluationBars = evaluationBars;
         _maxWeight = maxWeight;
+        _arbitrator = arbitrator;
     }
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
@@ -135,6 +166,35 @@ public class WeightedEnsembleStrategy : IStrategy
         indicators["agreement_ratio"] = agreementRatio;
         indicators["buy_score"] = Math.Round(buyScore, 4);
         indicators["sell_score"] = Math.Round(sellScore, 4);
+
+        // Step 5.5: 衝突仲裁——只有「有 arbitrator 註冊 + agreement 不足」才 fallthrough 到 LLM
+        // 一致時直接走加權投票結果（省 cost / 延遲）。
+        if (_arbitrator != null && agreementRatio < _arbitrator.Threshold)
+        {
+            indicators["arbitration.invoked"] = 1m;
+            try
+            {
+                var arbitrated = _arbitrator.Arbitrate(
+                    currentSignals.Values.ToList(), agreementRatio, bars, config);
+                if (arbitrated != null)
+                {
+                    // 用仲裁者結果覆蓋 ensemble action / confidence，但保留 weight / vote / agreement
+                    indicators["arbitration.result_action"] = arbitrated.Action switch
+                    {
+                        "buy" => 1m, "sell" => -1m, _ => 0m,
+                    };
+                    indicators["arbitration.result_confidence"] = arbitrated.Confidence;
+                    action = arbitrated.Action;
+                    confidence = arbitrated.Confidence;
+                    reasonParts.Insert(0, $"[arbitrator] {arbitrated.Reason}");
+                }
+            }
+            catch
+            {
+                // 仲裁失敗不影響主流程——保留原本的加權投票結果
+                indicators["arbitration.failed"] = 1m;
+            }
+        }
 
         return new Signal
         {

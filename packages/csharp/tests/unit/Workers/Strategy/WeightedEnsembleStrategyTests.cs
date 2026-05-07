@@ -156,4 +156,136 @@ public class WeightedEnsembleStrategyTests
         var act = () => new WeightedEnsembleStrategy(new List<IStrategy>());
         act.Should().Throw<ArgumentException>();
     }
+
+    // ── Arbitrator hook (#3) ───────────────────────────────────────
+
+    /// <summary>記錄是否被叫到、回傳指定的 signal（或 null 模擬 LLM 失敗）</summary>
+    private sealed class StubArbitrator : IEnsembleArbitrator
+    {
+        public decimal Threshold { get; }
+        public int Calls { get; private set; }
+        public decimal LastAgreementRatio { get; private set; }
+        public IReadOnlyList<Signal>? LastSignals { get; private set; }
+        private readonly Signal? _toReturn;
+        public StubArbitrator(decimal threshold, Signal? toReturn) { Threshold = threshold; _toReturn = toReturn; }
+        public Signal? Arbitrate(IReadOnlyList<Signal> sigs, decimal agreementRatio, List<BarData> bars, StrategyConfig config)
+        {
+            Calls++; LastAgreementRatio = agreementRatio; LastSignals = sigs;
+            return _toReturn;
+        }
+    }
+
+    [Fact]
+    public void Arbitrator_NotInvokedWhenAgreementHigh()
+    {
+        // 全員 buy → agreement = 1.0、threshold 0.6 → 不該叫 arbitrator
+        var stub = new StubArbitrator(0.6m, toReturn: null);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "buy", 0.7m),
+            new StubStrategy("b", "buy", 0.7m),
+            new StubStrategy("c", "buy", 0.7m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        stub.Calls.Should().Be(0, "all-aligned ensemble should not pay LLM cost");
+        sig.Action.Should().Be("buy");
+    }
+
+    [Fact]
+    public void Arbitrator_InvokedWhenAgreementBelowThreshold()
+    {
+        // 4 個 constituent、1 buy / 3 sell → 主流（sell）agreement = 3/4 = 0.75
+        // threshold 0.8 → 0.75 < 0.8 → 觸發
+        var stub = new StubArbitrator(0.8m, toReturn: null);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "buy",  0.6m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.5m),
+            new StubStrategy("d", "sell", 0.6m),
+        }, arbitrator: stub);
+
+        ensemble.Evaluate(MakeBars(), Cfg());
+
+        stub.Calls.Should().Be(1);
+        stub.LastSignals.Should().HaveCount(4);
+        stub.LastAgreementRatio.Should().BeApproximately(0.75m, 0.01m);
+    }
+
+    [Fact]
+    public void Arbitrator_OverridesActionWhenItReturnsSignal()
+    {
+        // 4 個 constituent、3 sell + 1 buy；arbitrator 強制回 buy → 最終 action = buy
+        var override_ = new Signal
+        {
+            SignalId = "arb", Strategy = "ensemble", Symbol = "AAPL", Exchange = "alpaca",
+            Action = "buy", Confidence = 0.85m, Reason = "LLM 看穿 short 的 reasoning 是雜訊", Interval = "1d",
+        };
+        var stub = new StubArbitrator(0.8m, toReturn: override_);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "sell", 0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        sig.Action.Should().Be("buy", "arbitrator override should win over weighted vote");
+        sig.Confidence.Should().Be(0.85m);
+        sig.Reason.Should().Contain("LLM 看穿");
+        sig.Indicators["arbitration.invoked"].Should().Be(1m);
+        sig.Indicators["arbitration.result_action"].Should().Be(1m);
+    }
+
+    [Fact]
+    public void Arbitrator_NullReturnFallsBackToWeightedVote()
+    {
+        // arbitrator 回 null（模擬 LLM 超時或解析失敗）→ 用原本的加權投票結果
+        var stub = new StubArbitrator(0.8m, toReturn: null);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "sell", 0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        stub.Calls.Should().Be(1);
+        sig.Action.Should().Be("sell", "fallback to weighted vote when arbitrator declines");
+        sig.Indicators.Should().ContainKey("arbitration.invoked");
+        sig.Indicators.Should().NotContainKey("arbitration.result_action", "no override applied");
+    }
+
+    [Fact]
+    public void Arbitrator_ThrowsExceptionFallsBackGracefully()
+    {
+        // 仲裁者拋例外 → 不該打死整個 evaluate
+        var throwing = new ThrowingArbitrator(threshold: 0.8m);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "buy",  0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: throwing);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        sig.Should().NotBeNull();
+        sig.Indicators.Should().ContainKey("arbitration.failed");
+    }
+
+    private sealed class ThrowingArbitrator : IEnsembleArbitrator
+    {
+        public decimal Threshold { get; }
+        public ThrowingArbitrator(decimal threshold) { Threshold = threshold; }
+        public Signal? Arbitrate(IReadOnlyList<Signal> sigs, decimal agreementRatio, List<BarData> bars, StrategyConfig config)
+            => throw new InvalidOperationException("simulated LLM proxy failure");
+    }
 }

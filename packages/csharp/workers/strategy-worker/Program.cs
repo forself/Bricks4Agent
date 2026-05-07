@@ -50,14 +50,33 @@ var strategies = new Dictionary<string, IStrategy>
     ["vegas_tunnel"] = new VegasTunnelStrategy(),
 };
 
-// Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe）
+// LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model
+IEnsembleArbitrator? arbitrator = null;
+var llmEnabled = config.GetValue("Worker:Strategy:Llm:Enabled", false);
+var llmBrokerUrl = config.GetValue<string>("Worker:Strategy:Llm:BrokerUrl")
+                   ?? config.GetValue<string>("Worker:Strategy:Llm:BaseUrl")
+                   ?? "http://broker:5000";
+var llmModel = config.GetValue("Worker:Strategy:Llm:Model", "gemini-2.0-flash")!;
+
+if (llmEnabled)
+{
+    // 仲裁者跟 ensemble 互相依賴的順序：先建 arbitrator、再建 ensemble 時注入
+    var arbThreshold = (decimal)config.GetValue("Worker:Strategy:Ensemble:ArbitratorThreshold", 0.6);
+    var arbHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+    var arbLogger = loggerFactory.CreateLogger<LlmEnsembleArbitrator>();
+    arbitrator = new LlmEnsembleArbitrator(arbHttp, arbLogger, llmBrokerUrl, llmModel, arbThreshold);
+    logger.LogInformation("Ensemble LLM arbitrator enabled: threshold={T:P0} model={M}",
+        arbThreshold, llmModel);
+}
+
+// Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe + 選用 LLM 仲裁）
 strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
 {
     strategies["sma_cross"],
     strategies["rsi_oversold"],
     strategies["macd_divergence"],
     strategies["multi_timeframe"],
-});
+}, arbitrator: arbitrator);
 
 // AutoSelect 也是要 constituents 都在後才能建（regime → 1 個成員執行）
 strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
@@ -65,15 +84,8 @@ strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。
-if (config.GetValue("Worker:Strategy:Llm:Enabled", false))
+if (llmEnabled)
 {
-    // BrokerUrl 容器內預設 http://broker:5000；若舊 config 還有 BaseUrl，且看起來是 broker
-    // 路徑（含 5000）也接受作 fallback。
-    var llmBrokerUrl = config.GetValue<string>("Worker:Strategy:Llm:BrokerUrl")
-                       ?? config.GetValue<string>("Worker:Strategy:Llm:BaseUrl")
-                       ?? "http://broker:5000";
-    var llmModel = config.GetValue("Worker:Strategy:Llm:Model", "gemini-2.0-flash")!;
-
     var llmLogger = loggerFactory.CreateLogger<LlmStrategy>();
     var llmHttp   = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
     strategies["llm"] = new LlmStrategy(llmHttp, llmLogger, llmBrokerUrl, llmModel);
