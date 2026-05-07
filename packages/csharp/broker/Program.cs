@@ -618,6 +618,9 @@ app.UseBrokerAudit();
 // ── API 路由 ──
 var api = app.MapGroup("/api/v1");
 
+// /metrics（Prometheus exposition format，根層、非 /api/v1）—— 給外部監控 scrape
+Broker.Endpoints.MetricsEndpoints.Map(app);
+
 // L-7 修復：健康檢查同時支援 GET（標準 LB 探測）和 POST（向後相容）
 var brokerCrypto = app.Services.GetRequiredService<IEnvelopeCrypto>();
 var healthHandler = () => Results.Ok(new

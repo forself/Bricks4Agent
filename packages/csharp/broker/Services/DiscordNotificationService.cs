@@ -32,6 +32,13 @@ public class DiscordNotificationService : BackgroundService
     private readonly HashSet<string> _seenAlertKeys = new();
     private readonly HashSet<string> _seenLogKeys = new();
 
+    // ── Heartbeat watchdog（#2）──
+    // auto-trader 開了卻沒在跑（broker process freeze / dispatcher hang）→ 要叫醒人。
+    // 觀察方式：每次 cycle Discord poll 時檢查 LastCycleAt 是否超過 _heartbeatStaleMinutes。
+    // 第一次偵測到 stale 才推 1 次警報，避免每 15 秒 spam 同一封警告。
+    private bool _heartbeatStaleNotified = false;
+    private readonly int _heartbeatStaleMinutes;
+
     public DiscordNotificationService(
         PriceAlertService alerts,
         AutoTraderService autoTrader,
@@ -45,6 +52,8 @@ public class DiscordNotificationService : BackgroundService
         _logger = logger;
         _webhookUrl = config["Notifications:Discord:WebhookUrl"] ?? "";
         _intervalSeconds = Math.Max(10, config.GetValue("Notifications:Discord:IntervalSeconds", 15));
+        // Auto-trader cycle 預設 5 分鐘、給寬限到 15 分鐘才視為 stale
+        _heartbeatStaleMinutes = Math.Max(2, config.GetValue("Notifications:Discord:HeartbeatStaleMinutes", 15));
     }
 
     public bool IsEnabled => !string.IsNullOrWhiteSpace(_webhookUrl);
@@ -75,6 +84,7 @@ public class DiscordNotificationService : BackgroundService
             {
                 await CheckAlertsAsync(ct);
                 await CheckTradeLogsAsync(ct);
+                await CheckHeartbeatAsync(ct);
             }
             catch (Exception ex)
             {
@@ -179,6 +189,74 @@ public class DiscordNotificationService : BackgroundService
         catch (Exception ex)
         {
             return (false, ex.Message);
+        }
+    }
+
+    // ── #2 Heartbeat watchdog ──────────────────────────────────────
+    // 偵測 auto-trader 開了卻沒在 cycle（broker freeze / 主迴圈卡死）。
+    // 第一次偵測到 stale 推 1 次警報；恢復正常時推「已恢復」訊息並 reset 旗。
+    private async Task CheckHeartbeatAsync(CancellationToken ct)
+    {
+        // 沒 enabled 就不檢查——關著的 auto-trader 永遠不該 heartbeat
+        if (!_autoTrader.IsEnabled)
+        {
+            // 從 stale 變成 disabled 時也清旗，避免使用者重啟後立刻誤報
+            _heartbeatStaleNotified = false;
+            return;
+        }
+
+        var lastCycle = _autoTrader.LastCycleAt;
+        var now = DateTime.UtcNow;
+
+        // 從 enable 到第一次 cycle 之間有個 gap（最多 _intervalSeconds），給 2x 寬限
+        var gracePeriod = TimeSpan.FromSeconds(Math.Max(60, _autoTrader.IntervalSeconds * 2));
+
+        bool isStale;
+        TimeSpan? sinceCycle = lastCycle is { } at ? now - at : null;
+        if (sinceCycle == null)
+        {
+            // 從未 cycle 過——只有在啟用後超過 grace 才視為 stale
+            // 但這邊拿不到「何時 enable」、保守一點不警報、直接交給人為觀察
+            isStale = false;
+        }
+        else
+        {
+            isStale = sinceCycle.Value.TotalMinutes >= _heartbeatStaleMinutes;
+        }
+
+        if (isStale && !_heartbeatStaleNotified)
+        {
+            _heartbeatStaleNotified = true;
+            _logger.LogWarning(
+                "⚠ Auto-trader heartbeat STALE: last cycle {SinceMin:F1} min ago (≥ {ThresholdMin} min)",
+                sinceCycle?.TotalMinutes ?? -1, _heartbeatStaleMinutes);
+            await SendEmbedAsync(
+                title:       "⚠️ Auto-Trader Heartbeat Stale",
+                description: $"自動交易啟用中、但已 **{sinceCycle?.TotalMinutes:F1}** 分鐘沒跑 cycle "
+                           + $"（門檻 {_heartbeatStaleMinutes} 分）。可能 broker 卡死、worker 失聯、"
+                           + $"或 dispatcher 死鎖。請檢查 broker 容器 + worker 狀態。",
+                color:       0xFCD535,
+                fields:      new[]
+                {
+                    new { name = "Last Cycle",    value = lastCycle?.ToString("u") ?? "never", inline = true },
+                    new { name = "Watch Count",   value = _autoTrader.WatchList.Count.ToString(), inline = true },
+                    new { name = "Interval",      value = $"{_autoTrader.IntervalSeconds}s", inline = true },
+                },
+                timestamp:   now,
+                ct:          ct);
+        }
+        else if (!isStale && _heartbeatStaleNotified)
+        {
+            // 恢復正常——推「已恢復」訊息並 clear 旗
+            _heartbeatStaleNotified = false;
+            _logger.LogInformation("✓ Auto-trader heartbeat recovered");
+            await SendEmbedAsync(
+                title:       "✅ Auto-Trader Heartbeat 恢復",
+                description: $"Cycle 已重新跑起來、距上次 cycle {sinceCycle?.TotalSeconds:F0} 秒。",
+                color:       0x0ECB81,
+                fields:      null,
+                timestamp:   now,
+                ct:          ct);
         }
     }
 

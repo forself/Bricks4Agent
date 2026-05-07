@@ -34,6 +34,11 @@ public class AutoTraderService : BackgroundService
     private int _intervalSeconds = 300; // 預設 5 分鐘
     private bool _enabled = false;
 
+    /// <summary>上次 cycle 開始時間（UTC）。null = 從未跑過 / 沒 enabled。
+    /// 給 /metrics 跟 heartbeat watchdog 看「auto-trader 是不是真的有在跑」用。</summary>
+    private DateTime? _lastCycleAt;
+    public DateTime? LastCycleAt => _lastCycleAt;
+
     /// <summary>
     /// 開發/測試用：env AUTOTRADER_DEV_FORCE_ACTION=buy|sell 會強制覆蓋 strategy 訊號
     /// （繞過 action=="hold" early-return 跟 confidence threshold），讓 e2e 真的打到
@@ -552,6 +557,10 @@ public class AutoTraderService : BackgroundService
             catch (OperationCanceledException) { break; }
 
             if (!_enabled || _watchList.IsEmpty) continue;
+
+            // 標記本次 cycle 開始時間——觀察性指標 / heartbeat watchdog 用，
+            // 看 auto-trader 是否真的在跑（沒在跑時 dashboard / Discord 可警告）
+            _lastCycleAt = DateTime.UtcNow;
 
             // Step 0: Position protection sweep——先處理現有部位的部分平倉 / SL hit / BE 移動，
             // 之後的 watch loop 才不會在已被 SL 平掉的 symbol 又開新單
