@@ -1,0 +1,124 @@
+# SQL Server overlay for compose.trading.yml
+#
+# 純 infrastructure：把 SQL Server 跑起來、broker 繼續用 SQLite，等驗證
+# 連線 + 工具熟悉後再決定要不要遷移（那會是 BaseOrm dialect + data migration
+# 兩件事、~4h 工作、之後另開 commit）。
+#
+# 用法：
+#   1. 設 SA password（任選一）：
+#      a. 用 Docker secret（推薦）：
+#         echo -n "你的密碼" > tools/secrets/mssql_sa_password.txt
+#         （密碼規則：≥8 字、需含大寫 + 小寫 + 數字 + 特殊字符）
+#      b. 不想搞 secret 的話、改用 env：
+#         在 tools/.env.trading 加 MSSQL_SA_PASSWORD=YourPwd123!
+#
+#   2. 啟動：
+#      docker compose --env-file tools/.env.trading \
+#        -f tools/compose.trading.yml \
+#        -f tools/compose.sqlserver.yml \
+#        up -d sqlserver
+#
+#   3. 等 ~30 秒（SQL Server 起來慢）→ 看 log 確認：
+#      docker logs b4a-sqlserver | grep "SQL Server is now ready"
+#
+#   4. 從 host 連（用 SSMS / Azure Data Studio / sqlcmd / DBeaver）：
+#      Server: 127.0.0.1,1433
+#      Auth:   SQL Server Authentication
+#      User:   sa
+#      Pwd:    （你設定的）
+#
+#   5. 從 broker 容器內連（之後遷移時用）：
+#      Connection string: Server=sqlserver,1433;Database=B4A;User Id=sa;Password=...;TrustServerCertificate=true
+#
+# Express edition 限制：DB 10GB / RAM 1.4GB / CPU 1 socket。對我們 PoC 規模綽綽有餘。
+# 真要上規模要換 Standard / Developer (dev 用免費)。
+
+secrets:
+  mssql_sa_password:
+    file: ./secrets/mssql_sa_password.txt
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: b4a-sqlserver
+    secrets:
+      - mssql_sa_password
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"   # 免費版（DB 10GB 上限、商業使用合法）
+      # 任選一個 SA 密碼來源——優先 file（secret），fallback env
+      MSSQL_SA_PASSWORD_FILE: /run/secrets/mssql_sa_password
+      # 注意：mssql 官方 image 不直接讀 *_FILE、要 entrypoint 自己處理。
+      # 下面 entrypoint override 把 file 讀出來塞進真正的 MSSQL_SA_PASSWORD。
+      # 若你選 env 模式（沒設 secret 檔）、刪掉上面 MSSQL_SA_PASSWORD_FILE
+      # 改下面這行：
+      # MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-ChangeMe_Insecure_123!}"
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        if [ -f /run/secrets/mssql_sa_password ]; then
+          export MSSQL_SA_PASSWORD=$$(cat /run/secrets/mssql_sa_password)
+        elif [ -z "$$MSSQL_SA_PASSWORD" ]; then
+          export MSSQL_SA_PASSWORD="ChangeMe_Insecure_123!"
+          echo "WARN: no SA password set, using default. CHANGE FOR PRODUCTION."
+        fi
+        exec /opt/mssql/bin/sqlservr
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      # init 腳本：第一次啟動時建好 B4A 資料庫（idempotent、再啟動不會壞）
+      # （可選）：放 .sql 檔到 ./sqlserver/init/ 後解開下面 mount
+      # - ./sqlserver/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # 健康檢查：從 secret 檔讀密碼（exec 不繼承 entrypoint 的 env），用 sqlcmd 試 SELECT 1
+      test: ["CMD-SHELL", "PWD=$$(cat /run/secrets/mssql_sa_password 2>/dev/null) && /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$PWD\" -C -N -Q 'SELECT 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - trading-net
+    restart: unless-stopped
+
+  # 一次性 init 容器：等 sqlserver healthy 後 run、建 B4A 資料庫
+  # 這樣不用手動進去 sqlcmd 跑 CREATE DATABASE
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: b4a-sqlserver-init
+    secrets:
+      - mssql_sa_password
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        export PWD=$$(cat /run/secrets/mssql_sa_password 2>/dev/null || echo "$$MSSQL_SA_PASSWORD")
+        # 等 sqlserver 接受連線（healthcheck 寫了、但 init 跑得早）
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          if /opt/mssql-tools/bin/sqlcmd -S sqlserver,1433 -U sa -P "$$PWD" -Q "SELECT 1" >/dev/null 2>&1; then
+            break
+          fi
+          echo "waiting for sqlserver... ($$i/12)"
+          sleep 5
+        done
+        # idempotent：if not exists 才建
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver,1433 -U sa -P "$$PWD" -Q "
+          IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'B4A')
+          BEGIN
+            CREATE DATABASE B4A;
+            PRINT 'B4A database created.';
+          END
+          ELSE
+            PRINT 'B4A database already exists.';
+        "
+        echo "init complete."
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - trading-net
+    restart: "no"   # 一次性、跑完就 exit
+
+volumes:
+  sqlserver-data:
