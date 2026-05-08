@@ -404,6 +404,8 @@ public class AutoTraderService : BackgroundService
             _perpLiqEmergencyPct);
 
         LoadWatchListFromDb();
+        LoadSettingsFromDb();
+        LoadPerpStatesFromDb();
     }
 
     internal static int ParseIntEnv(string envName, int defaultValue, int min, int max)
@@ -435,6 +437,7 @@ public class AutoTraderService : BackgroundService
         {
             _slFlushTriggeredAt = now;
             _enabled = false;
+            PersistSettings();   // SL flush 觸發的 disabled 也要持久化、避免重啟後又自己 enable 出去
             _logger.LogError(
                 "⚠ SL flush triggered: {Count} SLs hit within {Window}min — auto-trader DISABLED. Manual reset required via /api/v1/auto-trader/sl-flush/reset.",
                 _recentSlHits.Count, _slFlushWindowMinutes);
@@ -627,6 +630,121 @@ public class AutoTraderService : BackgroundService
         catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader: failed to delete persisted watch {Key}", key); }
     }
 
+    // ── 全域設定持久化（enabled / interval_seconds）──
+    private const string SettingsKey = "main";
+
+    private void LoadSettingsFromDb()
+    {
+        try
+        {
+            var entry = _db.Get<AutoTraderSettingsEntry>(SettingsKey);
+            if (entry != null)
+            {
+                _enabled = entry.Enabled;
+                _intervalSeconds = Math.Max(60, entry.IntervalSeconds);
+                _logger.LogInformation(
+                    "AutoTrader: restored settings from DB (enabled={Enabled}, interval={Interval}s)",
+                    _enabled, _intervalSeconds);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoTrader: failed to load settings; using defaults");
+        }
+    }
+
+    private void PersistSettings()
+    {
+        try
+        {
+            var existing = _db.Get<AutoTraderSettingsEntry>(SettingsKey);
+            var now = DateTime.UtcNow;
+            if (existing == null)
+            {
+                _db.Insert(new AutoTraderSettingsEntry
+                {
+                    SingletonKey = SettingsKey, Enabled = _enabled,
+                    IntervalSeconds = _intervalSeconds, UpdatedAt = now,
+                });
+            }
+            else
+            {
+                existing.Enabled = _enabled;
+                existing.IntervalSeconds = _intervalSeconds;
+                existing.UpdatedAt = now;
+                _db.Update(existing);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoTrader: failed to persist settings");
+        }
+    }
+
+    // ── Perp 部位保護狀態持久化 ──
+    private void LoadPerpStatesFromDb()
+    {
+        try
+        {
+            var entries = _db.GetAll<PerpetualPositionStateEntry>();
+            foreach (var e in entries)
+            {
+                _perpPositionState[e.EntryKey] = new PerpetualPositionState
+                {
+                    Exchange = e.Exchange, Symbol = e.Symbol, Side = e.Side,
+                    EntryPrice = e.EntryPrice, PeakMark = e.PeakMark, SlPrice = e.SlPrice,
+                    LiquidationPrice = e.LiquidationPrice, Leverage = e.Leverage,
+                    PartialExited = e.PartialExited, BeMoved = e.BeMoved,
+                    CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt,
+                };
+            }
+            if (entries.Count > 0)
+                _logger.LogInformation("AutoTrader: restored {Count} perp position states from DB", entries.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoTrader: failed to load perp position states");
+        }
+    }
+
+    private void PersistPerpState(string key, PerpetualPositionState state)
+    {
+        try
+        {
+            var existing = _db.Get<PerpetualPositionStateEntry>(key);
+            if (existing == null)
+            {
+                _db.Insert(new PerpetualPositionStateEntry
+                {
+                    EntryKey = key, Exchange = state.Exchange, Symbol = state.Symbol, Side = state.Side,
+                    EntryPrice = state.EntryPrice, PeakMark = state.PeakMark, SlPrice = state.SlPrice,
+                    LiquidationPrice = state.LiquidationPrice, Leverage = state.Leverage,
+                    PartialExited = state.PartialExited, BeMoved = state.BeMoved,
+                    CreatedAt = state.CreatedAt, UpdatedAt = state.UpdatedAt,
+                });
+            }
+            else
+            {
+                existing.EntryPrice = state.EntryPrice; existing.PeakMark = state.PeakMark;
+                existing.SlPrice = state.SlPrice; existing.LiquidationPrice = state.LiquidationPrice;
+                existing.Leverage = state.Leverage;
+                existing.PartialExited = state.PartialExited; existing.BeMoved = state.BeMoved;
+                existing.UpdatedAt = state.UpdatedAt;
+                _db.Update(existing);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoTrader: failed to persist perp state {Key}", key);
+        }
+    }
+
+    private void DeletePersistedPerpState(string key)
+    {
+        try { _db.Delete<PerpetualPositionStateEntry>(key); }
+        catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader: failed to delete perp state {Key}", key); }
+    }
+
     // ── 外部控制 API ────────────────────────────────────────────────
 
     public bool IsEnabled => _enabled;
@@ -634,9 +752,9 @@ public class AutoTraderService : BackgroundService
     public IReadOnlyDictionary<string, WatchItem> WatchList => _watchList;
     public IEnumerable<TradeLog> RecentLogs => _tradeLog.ToArray().Take(MaxLogEntries);
 
-    public void Enable() { _enabled = true; _logger.LogInformation("AutoTrader ENABLED"); }
-    public void Disable() { _enabled = false; _logger.LogInformation("AutoTrader DISABLED"); }
-    public void SetInterval(int seconds) { _intervalSeconds = Math.Max(60, seconds); }
+    public void Enable() { _enabled = true; PersistSettings(); _logger.LogInformation("AutoTrader ENABLED"); }
+    public void Disable() { _enabled = false; PersistSettings(); _logger.LogInformation("AutoTrader DISABLED"); }
+    public void SetInterval(int seconds) { _intervalSeconds = Math.Max(60, seconds); PersistSettings(); }
 
     public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1,
         string mode = "spot", int leverage = 5)
@@ -946,7 +1064,10 @@ public class AutoTraderService : BackgroundService
             foreach (var k in staleKeys)
             {
                 if (_perpPositionState.TryRemove(k, out _))
+                {
+                    DeletePersistedPerpState(k);
                     _logger.LogInformation("Perp position {Key} closed — protection state cleaned", k);
+                }
             }
         }
     }
@@ -1023,6 +1144,10 @@ public class AutoTraderService : BackgroundService
             default:
                 break;
         }
+
+        // 不論 action 為何、把 PeakMark / SlPrice / PartialExited / BeMoved 的最新狀態落 DB——
+        // broker 重啟後 cycle 才能用既有 state 恢復、避免「entry 用最新 mark 重算 SL 跑遠」。
+        PersistPerpState(key, state);
     }
 
     /// <summary>

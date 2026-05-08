@@ -46,6 +46,12 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     initDb.EnsureTable<AgentInboxTask>();
     // Auto-trader 監控清單持久化（2026-05-02）— 取代 ConcurrentDictionary in-memory 設計
     initDb.EnsureTable<AutoTradeWatchEntry>();
+    // Auto-trader 全域設定 + 永續部位保護狀態（2026-05-08 補完）
+    // 設定：enabled / interval_seconds 重啟保留；perp 部位狀態：SL / peak / be_moved 重啟保留
+    initDb.EnsureTable<AutoTraderSettingsEntry>();
+    initDb.EnsureTable<PerpetualPositionStateEntry>();
+    // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
+    Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
     // Alert system（#2 2026-05-07）—— 規則 + 事件
     initDb.EnsureTable<AlertRuleEntry>();
     initDb.EnsureTable<AlertEventEntry>();
