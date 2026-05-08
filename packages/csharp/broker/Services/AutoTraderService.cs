@@ -1386,6 +1386,85 @@ public class AutoTraderService : BackgroundService
             return;
         }
 
+        // ── Risk gate（只擋開倉、平倉永遠放行）──
+        // 平倉（reduceOnly=true）必須一律允許——擋出場才是真風險。
+        // 開倉前 fetch mark price 估名目、把現有 positions 一起餵給 risk-worker 的 pre_perp_order。
+        if (!reduceOnly && _registry.HasAvailableWorker("risk.check"))
+        {
+            decimal markPrice = 0m;
+            var mpResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_mark_price",
+                JsonSerializer.Serialize(new { exchange = item.Exchange, symbol = item.Symbol })));
+            if (mpResult.Success)
+            {
+                var mpDoc = JsonDocument.Parse(mpResult.ResultPayload ?? "{}").RootElement;
+                if (mpDoc.TryGetProperty("mark_price", out var mp)) markPrice = mp.GetDecimal();
+            }
+
+            // 把 get_positions 結果整理成 risk-worker 接受的 perp snapshot 形狀
+            var perpPositions = new List<object>();
+            decimal balance = 0m, available = 0m;
+            if (posDoc.TryGetProperty("positions", out var allPos) && allPos.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pp in allPos.EnumerateArray())
+                {
+                    var pq = pp.TryGetProperty("quantity",   out var pqv) ? pqv.GetDecimal() : 0m;
+                    var pmk = pp.TryGetProperty("mark_price", out var pmkv) ? pmkv.GetDecimal() : 0m;
+                    perpPositions.Add(new
+                    {
+                        symbol        = pp.TryGetProperty("symbol",       out var pps)  ? pps.GetString() : "",
+                        exchange      = pp.TryGetProperty("exchange",     out var pex)  ? pex.GetString() : "",
+                        position_side = pp.TryGetProperty("side",         out var pside)? pside.GetString() : "",
+                        quantity      = pq,
+                        mark_price    = pmk,
+                        notional      = pq * pmk,
+                        leverage      = pp.TryGetProperty("leverage",     out var pl) && pl.TryGetInt32(out var pli) ? pli : 1,
+                        liquidation_distance_pct = pp.TryGetProperty("liquidation_distance_pct", out var pld) ? pld.GetDecimal() : 0m,
+                    });
+                }
+            }
+            // account 也撈一下、給未來規則用（目前 3 條規則沒用到 balance、但留 payload 給後續）
+            var accResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_account",
+                JsonSerializer.Serialize(new { exchange = item.Exchange })));
+            if (accResult.Success)
+            {
+                var ad = JsonDocument.Parse(accResult.ResultPayload ?? "{}").RootElement;
+                if (ad.TryGetProperty("balance",          out var bv))  balance   = bv.GetDecimal();
+                if (ad.TryGetProperty("available_margin", out var amv)) available = amv.GetDecimal();
+            }
+
+            var riskPayload = JsonSerializer.Serialize(new
+            {
+                symbol        = item.Symbol,
+                exchange      = item.Exchange,
+                side          = perpSide,
+                position_side = perpPosSide,
+                quantity      = qtyToUse,
+                price         = markPrice,
+                leverage      = item.Leverage,
+                perp = new { balance, available_margin = available, positions = perpPositions },
+            });
+            var riskResult = await _dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_perp_order", riskPayload));
+            if (riskResult.Success)
+            {
+                var riskDoc = JsonDocument.Parse(riskResult.ResultPayload ?? "{}").RootElement;
+                var passed = riskDoc.TryGetProperty("passed", out var rp) && rp.GetBoolean();
+                if (!passed)
+                {
+                    var msgs = new List<string>();
+                    if (riskDoc.TryGetProperty("violations", out var vs) && vs.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var v in vs.EnumerateArray())
+                            if (v.TryGetProperty("message", out var vm)) msgs.Add(vm.GetString() ?? "");
+                    }
+                    var summary = msgs.Count > 0 ? string.Join("; ", msgs) : "perp risk rejected";
+                    AddLog(item, "blocked", $"PERP risk blocked: {summary}");
+                    _logger.LogWarning("AutoTrader perp risk blocked {Symbol} on {Exchange}: {Msg}", item.Symbol, item.Exchange, summary);
+                    return;
+                }
+            }
+            // riskResult.Success == false → risk-worker 不在線；保留 fail-open 行為跟 spot 路徑一致
+        }
+
         var perpPayload = JsonSerializer.Serialize(new
         {
             exchange = item.Exchange,

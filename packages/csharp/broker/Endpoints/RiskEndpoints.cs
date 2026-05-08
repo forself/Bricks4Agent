@@ -9,9 +9,10 @@ namespace Broker.Endpoints;
 /// <summary>
 /// Risk API — 透過 IExecutionDispatcher 轉發至 risk-worker
 ///
-/// POST /api/v1/risk/check    — 下單前風控檢查
-/// GET  /api/v1/risk/rules    — 列出風控規則
-/// PUT  /api/v1/risk/rules    — 更新風控規則
+/// POST /api/v1/risk/check        — spot 下單前風控檢查
+/// POST /api/v1/risk/check-perp   — perp 下單前風控檢查（max_leverage / max_total_notional / max_liquidation_distance）
+/// GET  /api/v1/risk/rules        — 列出風控規則
+/// PUT  /api/v1/risk/rules        — 更新風控規則
 /// </summary>
 public static class RiskEndpoints
 {
@@ -29,6 +30,19 @@ public static class RiskEndpoints
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync(ct);
             var result = await dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_order", body));
+            return ToResponse(result);
+        });
+
+        risk.MapPost("/check-perp", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("risk.check"))
+                return Results.Ok(ApiResponseHelper.Error("risk-worker not connected"));
+
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync(ct);
+            var result = await dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_perp_order", body));
             return ToResponse(result);
         });
 

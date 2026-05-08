@@ -9,9 +9,12 @@ namespace RiskWorker.Handlers;
 /// risk.check — 風控檢查。
 ///
 /// Routes:
-///   pre_order  — 下單前檢查（參數：symbol, exchange, side, quantity, price, portfolio）
-///   get_rules  — 列出當前規則
-///   set_rules  — 更新規則（參數：rules 陣列）
+///   pre_order       — spot 下單前檢查（參數：symbol, exchange, side, quantity, price, portfolio）
+///   pre_perp_order  — perp 下單前檢查（參數：symbol, exchange, side, position_side,
+///                     quantity, price, leverage, perp: { balance, available_margin, positions[] }）
+///                     開倉走規則；平倉（SELL+LONG / BUY+SHORT）永遠放行
+///   get_rules       — 列出當前規則
+///   set_rules       — 更新規則（參數：rules 陣列）
 /// </summary>
 public class RiskCheckHandler : ICapabilityHandler
 {
@@ -30,12 +33,75 @@ public class RiskCheckHandler : ICapabilityHandler
     {
         var result = route switch
         {
-            "pre_order" => PreOrder(payload),
-            "get_rules" => GetRules(),
-            "set_rules" => SetRules(payload),
+            "pre_order"      => PreOrder(payload),
+            "pre_perp_order" => PrePerpOrder(payload),
+            "get_rules"      => GetRules(),
+            "set_rules"      => SetRules(payload),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
         return Task.FromResult(result);
+    }
+
+    private (bool, string?, string?) PrePerpOrder(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        var symbol       = doc.TryGetProperty("symbol",        out var s)   ? s.GetString() ?? ""  : "";
+        var exchange     = doc.TryGetProperty("exchange",      out var ex)  ? ex.GetString() ?? "" : "";
+        var side         = doc.TryGetProperty("side",          out var sd)  ? sd.GetString() ?? "" : "";
+        var positionSide = doc.TryGetProperty("position_side", out var ps)  ? ps.GetString() ?? "" : "";
+        var quantity     = doc.TryGetProperty("quantity",      out var q)   ? q.GetDecimal()       : 0;
+        var price        = doc.TryGetProperty("price",         out var p)   ? p.GetDecimal()       : 0;
+        var leverage     = doc.TryGetProperty("leverage",      out var lv) && lv.TryGetInt32(out var lvi) ? lvi : 1;
+
+        if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(positionSide) || quantity <= 0 || price <= 0)
+            return (false, null, "Missing required: symbol, position_side, quantity > 0, price > 0");
+
+        var snap = new PerpetualSnapshot();
+        if (doc.TryGetProperty("perp", out var perp))
+        {
+            snap.Balance         = perp.TryGetProperty("balance",          out var b)   ? b.GetDecimal()  : 0;
+            snap.AvailableMargin = perp.TryGetProperty("available_margin", out var am)  ? am.GetDecimal() : 0;
+            if (perp.TryGetProperty("positions", out var posArr) && posArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pe in posArr.EnumerateArray())
+                {
+                    snap.Positions.Add(new PerpetualPositionInfo
+                    {
+                        Symbol       = pe.TryGetProperty("symbol",        out var psym) ? psym.GetString() ?? "" : "",
+                        Exchange     = pe.TryGetProperty("exchange",      out var pex)  ? pex.GetString()  ?? "" : "",
+                        PositionSide = pe.TryGetProperty("position_side", out var pps)  ? pps.GetString()  ?? "" : "",
+                        Quantity     = pe.TryGetProperty("quantity",      out var pq)   ? pq.GetDecimal()        : 0,
+                        MarkPrice    = pe.TryGetProperty("mark_price",    out var pmk)  ? pmk.GetDecimal()       : 0,
+                        Notional     = pe.TryGetProperty("notional",      out var pn)   ? pn.GetDecimal()        : 0,
+                        Leverage     = pe.TryGetProperty("leverage",      out var pl) && pl.TryGetInt32(out var pli) ? pli : 1,
+                        LiquidationDistancePct = pe.TryGetProperty("liquidation_distance_pct", out var pld) ? pld.GetDecimal() : 0,
+                    });
+                }
+            }
+        }
+
+        var checkResult = _engine.CheckPerp(symbol, exchange, side, positionSide, quantity, price, leverage, snap);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            passed       = checkResult.Passed,
+            order_action = checkResult.OrderAction,
+            violations   = checkResult.Violations.Select(v => new
+            {
+                rule_id   = v.RuleId,
+                rule_name = v.RuleName,
+                message   = v.Message,
+                current   = v.Current,
+                limit     = v.Limit,
+            }),
+            checked_at = checkResult.CheckedAt,
+        });
+
+        return (true, json, null);
     }
 
     private (bool, string?, string?) PreOrder(string payload)

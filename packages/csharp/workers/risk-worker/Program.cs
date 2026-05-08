@@ -37,16 +37,23 @@ var options = new WorkerHostOptions
     WorkerAuthSharedSecret   = config.GetValue<string>("Worker:Auth:SharedSecret") ?? "",
 };
 
-// ── 風控規則（從設定檔載入，可透過 API 動態更新）──────────────────────
-var rules = new List<RiskRule>
+// ── 風控規則 ────────────────────────────────────────────────────────
+// 規則表的單一事實來源是 RiskEngine.DefaultRules()——這裡只負責載入後
+// 對舊的 r1~r6 用環境變數覆蓋 threshold（向後相容；之前 r7+ 完全沒被讀到）。
+// 完整動態管理走 admin UI 的 set_rules（會整批覆蓋 _rules）。
+var rules = RiskEngine.DefaultRules();
+var thresholdOverrides = new Dictionary<string, decimal?>
 {
-    new() { RuleId = "r1", Name = "Max Position Size",        Type = "max_position",      Threshold = config.GetValue("Worker:Risk:MaxPositionSize", 10_000m) },
-    new() { RuleId = "r2", Name = "Max Portfolio Allocation",  Type = "max_portfolio_pct", Threshold = config.GetValue("Worker:Risk:MaxPortfolioPct", 25m) },
-    new() { RuleId = "r3", Name = "Max Single Order",         Type = "max_order_size",    Threshold = config.GetValue("Worker:Risk:MaxOrderSize", 5_000m) },
-    new() { RuleId = "r4", Name = "Max Daily Loss",           Type = "max_daily_loss",    Threshold = config.GetValue("Worker:Risk:MaxDailyLoss", 1_000m) },
-    new() { RuleId = "r5", Name = "Max Drawdown",             Type = "max_drawdown_pct",  Threshold = config.GetValue("Worker:Risk:MaxDrawdownPct", 10m) },
-    new() { RuleId = "r6", Name = "Max Daily Trades",         Type = "max_daily_trades",  Threshold = config.GetValue("Worker:Risk:MaxDailyTrades", 20m) },
+    ["r1"] = config.GetValue<decimal?>("Worker:Risk:MaxPositionSize"),
+    ["r2"] = config.GetValue<decimal?>("Worker:Risk:MaxPortfolioPct"),
+    ["r3"] = config.GetValue<decimal?>("Worker:Risk:MaxOrderSize"),
+    ["r4"] = config.GetValue<decimal?>("Worker:Risk:MaxDailyLoss"),
+    ["r5"] = config.GetValue<decimal?>("Worker:Risk:MaxDrawdownPct"),
+    ["r6"] = config.GetValue<decimal?>("Worker:Risk:MaxDailyTrades"),
 };
+foreach (var rule in rules)
+    if (thresholdOverrides.TryGetValue(rule.RuleId, out var ov) && ov.HasValue)
+        rule.Threshold = ov.Value;
 
 logger.LogInformation("Risk rules loaded: {Count} rules", rules.Count);
 foreach (var r in rules)

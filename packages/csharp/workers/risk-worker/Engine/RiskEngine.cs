@@ -5,7 +5,7 @@ namespace RiskWorker.Engine;
 /// <summary>
 /// 風控引擎 — 在下單前檢查一系列規則，決定是否放行。
 ///
-/// 規則類型：
+/// 規則類型（spot, 走 Check 路徑）：
 /// - max_position:        單一標的最大持倉市值
 /// - max_portfolio_pct:   單一標的佔投組最大比例
 /// - max_order_size:      單筆訂單最大金額
@@ -16,6 +16,14 @@ namespace RiskWorker.Engine;
 /// - max_position_count:  最多同時持有幾個不同標的（避免過度分散 / 防呆）
 /// - cooldown_seconds:    同一 (exchange,symbol) 兩次成交之間的最短間隔，防 signal 抖動連續開單
 /// - time_window:         只允許在指定 UTC 時段下單（Params: {"start_hm":"HH:mm","end_hm":"HH:mm"}）
+///
+/// 規則類型（perp, 走 CheckPerp 路徑）：
+/// - max_leverage:              開倉允許的最高槓桿倍數
+/// - max_total_notional:        所有開倉名目（USDT）+ 本筆名目的上限
+/// - max_liquidation_distance:  最低可接受的「mark→liq」距離百分比；
+///                              預估值 = (1/leverage − 0.005) × 100，過低就拒
+/// 注意：perp 的「平倉」（SELL+LONG / BUY+SHORT）永遠放行——任何規則都不該擋出場、
+/// 否則就跑不掉爛單。CheckPerp 會在最前面短路掉這種請求。
 /// </summary>
 public class RiskEngine
 {
@@ -286,6 +294,97 @@ public class RiskEngine
         };
     }
 
+    // ── 永續合約檢查 ────────────────────────────────────────────────
+
+    /// <summary>
+    /// 檢查一筆永續合約預計下單。平倉永遠放行；只擋開倉。
+    /// </summary>
+    public RiskCheckResult CheckPerp(
+        string symbol,
+        string exchange,
+        string side,            // BUY / SELL
+        string positionSide,    // LONG / SHORT
+        decimal quantity,
+        decimal estimatedPrice,
+        int leverage,
+        PerpetualSnapshot snapshot)
+    {
+        // hedge mode：(side, positionSide) 組合決定開/平。平倉永遠放行——擋不出場才是真風險。
+        var sideUp = side?.ToUpperInvariant() ?? "";
+        var psUp = positionSide?.ToUpperInvariant() ?? "";
+        var isClosing = (sideUp == "SELL" && psUp == "LONG") || (sideUp == "BUY" && psUp == "SHORT");
+        if (isClosing)
+        {
+            return new RiskCheckResult { Passed = true, OrderAction = "allow" };
+        }
+
+        var violations = new List<RiskViolation>();
+        var orderNotional = quantity * estimatedPrice;
+
+        foreach (var rule in _rules.Where(r => r.Enabled))
+        {
+            if (rule.Symbol != null && !rule.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (rule.Exchange != null && !rule.Exchange.Equals(exchange, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var v = rule.Type switch
+            {
+                "max_leverage"             => CheckMaxLeverage(rule, leverage),
+                "max_total_notional"       => CheckMaxTotalNotional(rule, orderNotional, snapshot),
+                "max_liquidation_distance" => CheckMaxLiquidationDistance(rule, leverage),
+                _ => null
+            };
+            if (v != null) violations.Add(v);
+        }
+
+        return violations.Count == 0
+            ? new RiskCheckResult { Passed = true, OrderAction = "allow" }
+            : new RiskCheckResult { Passed = false, OrderAction = "reject", Violations = violations };
+    }
+
+    private RiskViolation? CheckMaxLeverage(RiskRule rule, int leverage)
+    {
+        if (leverage <= rule.Threshold) return null;
+        return new RiskViolation
+        {
+            RuleId = rule.RuleId, RuleName = rule.Name,
+            Message = $"Leverage {leverage}x exceeds limit {(int)rule.Threshold}x",
+            Current = leverage, Limit = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxTotalNotional(RiskRule rule, decimal orderNotional, PerpetualSnapshot snap)
+    {
+        var existing = snap.Positions.Sum(p => p.Notional);
+        var total = existing + orderNotional;
+        if (total <= rule.Threshold) return null;
+        return new RiskViolation
+        {
+            RuleId = rule.RuleId, RuleName = rule.Name,
+            Message = $"Total perp notional {total:F0} USDT (existing {existing:F0} + new {orderNotional:F0}) exceeds limit {rule.Threshold:F0}",
+            Current = total, Limit = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxLiquidationDistance(RiskRule rule, int leverage)
+    {
+        // Threshold 語意：可接受的最低「mark→liq」距離百分比（越大越保守）。
+        // 開倉前我們手上沒實際 liq price（要等 BingX 回 position 才有）、
+        // 所以用保守預估：liq_dist ≈ (1/leverage − maintenance_rate) × 100
+        // BingX USDT-M 各幣 maintenance margin rate 不同（BTC 0.4%、ETH 0.5%、alts 1%+）
+        // 用 0.5% 做近似；要更精準就要 fetch 各幣 maintenance rate（之後優化）。
+        if (leverage <= 0) return null;
+        var forecastPct = (1m / leverage - 0.005m) * 100m;
+        if (forecastPct >= rule.Threshold) return null;
+        return new RiskViolation
+        {
+            RuleId = rule.RuleId, RuleName = rule.Name,
+            Message = $"Forecasted liquidation distance {forecastPct:F2}% (lev={leverage}x) below minimum {rule.Threshold:F2}%",
+            Current = forecastPct, Limit = rule.Threshold,
+        };
+    }
+
     // ── 嘗試縮小訂單 ────────────────────────────────────────────────
 
     private decimal? TryReduce(string symbol, string side, decimal quantity, decimal price, PortfolioSnapshot portfolio)
@@ -326,5 +425,13 @@ public class RiskEngine
         // {"start_hm":"13:30","end_hm":"20:00"} 對應 NYSE 9:30-16:00 ET（DST 期間 UTC-4）
         new() { RuleId = "r10", Name = "Trading Hours Window",    Type = "time_window",        Threshold = 0, Enabled = false,
                 Params = "{\"start_hm\":\"13:30\",\"end_hm\":\"20:00\"}" },
+
+        // ── 永續合約規則（給 BingX perp 用、走 CheckPerp 路徑、平倉永遠放行）────
+        // r11: 槓桿上限 10x——對 30 USDT 起步帳戶這已經很激進，但留空間給之後調大
+        new() { RuleId = "r11", Name = "Max Perp Leverage",         Type = "max_leverage",            Threshold = 10 },
+        // r12: 所有開倉名目（含本筆）≤ 1000 USDT——首次實盤期保守設小，accustomed 後再放
+        new() { RuleId = "r12", Name = "Max Perp Total Notional",   Type = "max_total_notional",      Threshold = 1000 },
+        // r13: 最低距離爆倉 5%——10x 預估 ~9.5% 過、20x ~4.5% 擋。算保守。
+        new() { RuleId = "r13", Name = "Min Liquidation Distance",  Type = "max_liquidation_distance",Threshold = 5 },
     };
 }
