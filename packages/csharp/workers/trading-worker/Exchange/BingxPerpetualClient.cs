@@ -170,8 +170,9 @@ public class BingxPerpetualClient : IPerpetualClient
             qs["price"] = order.LimitPrice.Value.ToString(CultureInfo.InvariantCulture);
         if (order.StopPrice.HasValue)
             qs["stopPrice"] = order.StopPrice.Value.ToString(CultureInfo.InvariantCulture);
-        if (order.ReduceOnly)
-            qs["reduceOnly"] = "true";
+        // BingX 在 hedge mode（雙向持倉）不接受 reduceOnly——側向已被 (side, positionSide) 隱含：
+        // SELL+LONG = 平多、BUY+SHORT = 平空。傳了會回 code=109400。
+        // ReduceOnly 旗標仍保留在 PerpetualOrder 上、給 caller 表達意圖、但不送到 BingX。
 
         var json = await SignedPostAsync("/openApi/swap/v2/trade/order", BuildQuery(qs), ct);
         var doc = JsonDocument.Parse(json).RootElement;
