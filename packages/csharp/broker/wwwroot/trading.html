@@ -1489,7 +1489,39 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','perp','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();}
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();
+startAutoRefresh(name);}
+
+// ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
+// 沒列表 = 不刷（chart/strategy/trade/backtest 是手動操作頁、自動刷反而打亂）。
+// 間隔差異化：交易動態頁 5s（perp/auto），其他 10-30s。
+const _tabRefresh = {
+  overview: { fn: () => { loadOverview(); if(typeof loadTerminalHero==='function') loadTerminalHero(); }, ms: 10000 },
+  quotes:   { fn: () => fetchQuotes(),    ms: 10000 },
+  orders:   { fn: () => fetchOrders(),    ms: 10000 },
+  auto:     { fn: () => fetchAutoStatus(),ms: 5000  },
+  perp:     { fn: () => loadPerpAll(),    ms: 5000  },
+  pnl:      { fn: () => loadPnlReport(),  ms: 30000 },
+  health:   { fn: () => fetchHealth(),    ms: 10000 },
+};
+let _refreshTimer = null;
+let _currentTab = 'overview';
+function startAutoRefresh(tab){
+  stopAutoRefresh();
+  _currentTab = tab;
+  if(document.hidden) return;        // visibilitychange 會在切回來時重啟
+  const cfg = _tabRefresh[tab];
+  if(cfg) _refreshTimer = setInterval(cfg.fn, cfg.ms);
+}
+function stopAutoRefresh(){
+  if(_refreshTimer){ clearInterval(_refreshTimer); _refreshTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) stopAutoRefresh();
+  else startAutoRefresh(_currentTab);
+});
+// 啟動時 bootstrap（預設 active panel = overview）
+window.addEventListener('DOMContentLoaded', () => startAutoRefresh('overview'));
 
 // ── Toast 通知 ──────────────────────────────────────────────────
 // 取代 alert() 的非阻塞通知；type 影響 border-left 顏色（ok/warn/err/info）
