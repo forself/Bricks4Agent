@@ -287,6 +287,8 @@ builder.Services.AddSingleton<Broker.Services.KellyPositionSizingService>();
 builder.Services.AddHttpClient("discord-webhook");
 builder.Services.AddSingleton<Broker.Services.DiscordNotificationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DiscordNotificationService>());
+builder.Services.AddSingleton<Broker.Services.LineNotificationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.LineNotificationService>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
