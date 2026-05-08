@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using WorkerSdk;
 
+using static BrokerCore.Services.SecretConfig;
+
 Console.InputEncoding = new UTF8Encoding(false);
 Console.OutputEncoding = new UTF8Encoding(false);
 
@@ -26,9 +28,11 @@ var logger = loggerFactory.CreateLogger<WorkerHost>();
 var webhookLogger = loggerFactory.CreateLogger<WebhookReceiver>();
 var dispatcherLogger = loggerFactory.CreateLogger<InboundDispatcher>();
 
-var channelAccessToken = config.GetValue<string>("Line:ChannelAccessToken") ?? "";
-var channelSecret = config.GetValue<string>("Line:ChannelSecret") ?? "";
-var defaultRecipientId = config.GetValue<string>("Line:DefaultRecipientId") ?? "";
+// 三個 secret 走 SecretConfig：先看 *File 路徑（Docker secret 掛載）→ 沒設就 fallback 到原本的 env。
+// 跟 trading-worker / broker 同一套機制，避免 plain env 經 docker inspect 洩漏。
+var channelAccessToken = config.GetSecret("Line:ChannelAccessToken") ?? "";
+var channelSecret = config.GetSecret("Line:ChannelSecret") ?? "";
+var defaultRecipientId = config.GetSecret("Line:DefaultRecipientId") ?? "";
 var webhookPort = config.GetValue("Line:WebhookPort", 5357);
 var webhookHost = config.GetValue<string>("Line:WebhookHost") ?? "localhost";
 var audioTempPath = config.GetValue<string>("Line:AudioTempPath") ?? "./audio_temp";

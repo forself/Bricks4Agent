@@ -79,6 +79,9 @@ services:
       Embedding__Enabled: "false"
 
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
+      Notifications__Line__Enabled: "${NOTIFICATIONS_LINE_ENABLED:-false}"
+      # RecipientId 不設、line-worker 用自己的 DefaultRecipientId（從 secret 檔讀）
+      # Notifications__Line__RecipientId: "${NOTIFICATIONS_LINE_RECIPIENT:-}"
 
       DevelopmentSeed__Enabled: "true"
       DevelopmentSeed__PrincipalId: "prn_dashboard"
@@ -237,6 +240,35 @@ services:
       WORKER_Worker__Trading__BingxPerp__IsDemo: "${BINGX_PERP_IS_DEMO:-true}"
     volumes:
       - trading-data:/data
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
+  # ── LINE Worker（Messaging API 推播 + webhook 回應）─────────────────
+  # 開啟流程：
+  #   1. tools/secrets/ 下放三個檔（access token / secret / default recipient userId）
+  #   2. compose.trading.secrets.yml overlay 會把它們當 docker secret 掛進去
+  #   3. broker 端設 Notifications__Line__Enabled=true 才會真的開始推
+  # 不放 secret 檔的話、容器起來後 Program.cs 會 LogError 並提早退出，broker 那邊
+  # LineNotificationService 會 worker_available=false、靜默 skip。
+  line-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/line-worker/Containerfile
+    image: b4a-line-worker:latest
+    container_name: b4a-line-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      # InboundDispatcher 用、把 LINE 收到的訊息回 broker HTTP API；單純推播不會走這條路徑
+      # 但設了 broker:5000 才能避免 stack trace 錯誤刷屏
+      WORKER_Broker__ApiUrl: "http://broker:5000"
+      WORKER_Line__WebhookHost: "0.0.0.0"
+      WORKER_Line__WebhookPort: "5357"
+      # Channel access token / secret / default recipient 透過 secrets overlay 注入
+      # （見 tools/compose.trading.secrets.yml 的 line-worker block）
     networks:
       - trading-net
     depends_on:
