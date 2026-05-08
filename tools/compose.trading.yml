@@ -80,6 +80,10 @@ services:
 
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
       Notifications__Line__Enabled: "${NOTIFICATIONS_LINE_ENABLED:-false}"
+      # appsettings.json 預設 AccessRoot=%LOCALAPPDATA%\\... 是 Windows 路徑、
+      # Linux container 起來會炸 "must be an absolute path" 把整個 broker 健康度拉成 critical。
+      # 改成 /data 下的子目錄、跟 broker.db 同一個 named volume、容器重建也不會丟。
+      HighLevelCoordinator__AccessRoot: "/data/managed-workspaces"
       # RecipientId 不設、line-worker 用自己的 DefaultRecipientId（從 secret 檔讀）
       # Notifications__Line__RecipientId: "${NOTIFICATIONS_LINE_RECIPIENT:-}"
 
