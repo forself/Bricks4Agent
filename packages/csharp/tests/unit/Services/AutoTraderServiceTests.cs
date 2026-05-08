@@ -821,4 +821,161 @@ public class AutoTraderServiceTests
         rows[0].Strategy.Should().Be("rsi_oversold");
         rows[0].Quantity.Should().Be(5m);
     }
+
+    // ── Phase 4: Perpetual protection (pure decision) ─────────────
+
+    private static AutoTraderService.PerpetualPositionState MakePerpState(
+        string side = "long", decimal entry = 100m, decimal? sl = null,
+        bool partialExited = false, bool beMoved = false, decimal liqPrice = 0m) => new()
+    {
+        Exchange = "bingx", Symbol = "BTC-USDT", Side = side,
+        EntryPrice = entry, PeakMark = entry,
+        SlPrice = sl ?? (side == "long" ? entry * 0.95m : entry * 1.05m),
+        LiquidationPrice = liqPrice,
+        Leverage = 5,
+        PartialExited = partialExited, BeMoved = beMoved,
+        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+    };
+
+    [Fact]
+    public void PerpProtection_LongPriceAtSL_TriggersSlHit()
+    {
+        // Long entry 100, SL 95；mark 95 → SL hit (mark ≤ sl)
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("long", entry: 100m, sl: 95m), 95m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+        d.PartialQty.Should().Be(10m);
+        d.Reason.Should().Contain("SL hit (long)");
+    }
+
+    [Fact]
+    public void PerpProtection_ShortPriceAtSL_TriggersSlHit()
+    {
+        // Short entry 100, SL 105；mark 105 → SL hit (mark ≥ sl 才是反向)
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("short", entry: 100m, sl: 105m), 105m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+        d.Reason.Should().Contain("SL hit (short)");
+    }
+
+    [Fact]
+    public void PerpProtection_LongPnlAtPartialThreshold_TriggersPartial()
+    {
+        // Long entry 100, mark 105 → +5% pnl → partial exit
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("long", entry: 100m), 105m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.PartialExit);
+        d.PartialQty.Should().Be(5m);
+    }
+
+    [Fact]
+    public void PerpProtection_ShortPnlAtPartialThreshold_TriggersPartial()
+    {
+        // Short entry 100, mark 95 → +5% pnl (entry-mark 算)
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("short", entry: 100m), 95m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.PartialExit);
+        d.PartialQty.Should().Be(5m);
+    }
+
+    [Fact]
+    public void PerpProtection_LongBeMove_NewSlAboveEntry()
+    {
+        // Long entry 100, mark 103 → +3% pnl → BE move with 0.5% buffer = 100.5
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("long", entry: 100m, sl: 95m), 103m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.NewSlPrice.Should().Be(100.5m, "long BE: entry × (1 + buffer/100)");
+    }
+
+    [Fact]
+    public void PerpProtection_ShortBeMove_NewSlBelowEntry()
+    {
+        // Short entry 100, mark 97 → +3% pnl → BE move with 0.5% buffer = 99.5
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("short", entry: 100m, sl: 105m), 97m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.NewSlPrice.Should().Be(99.5m, "short BE: entry × (1 - buffer/100)");
+    }
+
+    [Fact]
+    public void PerpProtection_LiquidationEmergency_TopPriority()
+    {
+        // 距強平 3%（< 5% 預設）→ emergency close、即使 SL 還沒到、partial / BE 也不重要
+        var state = MakePerpState("long", entry: 100m, sl: 95m, liqPrice: 92m);
+        state.PeakMark = 110m;  // 已賺很多、partial 跟 BE 應該都會 trigger，但 liq 優先
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            state, 110m, 10m, liqDistancePct: 3m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.LiquidationEmergency);
+        d.PartialQty.Should().Be(10m, "emergency closes full position");
+        d.Reason.Should().Contain("liquidation emergency");
+    }
+
+    [Fact]
+    public void PerpProtection_LiquidationFar_NoEmergency()
+    {
+        // 距強平 20%（> 5%）→ 不觸發
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("long", entry: 100m, sl: 95m, liqPrice: 80m), 100m, 10m, 20m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().NotBe(AutoTraderService.PerpProtectionAction.LiquidationEmergency);
+    }
+
+    [Fact]
+    public void PerpProtection_AfterBeAndShortFalls_SlHitOnNewSl()
+    {
+        // Short entry 100、BE 後 SL 移到 99.5、mark 突破 99.5 → SL hit (short 反向：mark ≥ sl)
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("short", entry: 100m, sl: 99.5m, beMoved: true), 99.5m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+    }
+
+    [Fact]
+    public void PerpProtection_AfterPartialExited_DoesNotRePartial()
+    {
+        var state = MakePerpState("long", entry: 100m, partialExited: true);
+        var d = AutoTraderService.EvaluatePerpetualProtection(state, 110m, 5m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().NotBe(AutoTraderService.PerpProtectionAction.PartialExit);
+    }
+
+    [Fact]
+    public void PerpProtection_BetweenThresholds_ReturnsNone()
+    {
+        // Long entry 100, mark 101.5 → +1.5% pnl，partial 5%、BE 3% 都沒到
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            MakePerpState("long", entry: 100m), 101.5m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+        d.PnlPct.Should().Be(1.5m);
+    }
+
+    [Fact]
+    public void PerpProtection_InvalidInputs_ReturnsNone()
+    {
+        var cfg = DefaultProtConfig();
+        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(entry: 0m), 100m, 10m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(), 0m, 10m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(), 100m, 0m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+    }
+
+    [Fact]
+    public void PerpProtection_SlHitTakesPriorityOverPartial()
+    {
+        // Long entry 100, mark 95（SL hit + partial 都 trigger 不到）— 主要驗 SL 先觸發
+        // 用 SL 100 已經 BE 後挪上來的 case：mark 100 = SL hit (≤ sl)
+        var state = MakePerpState("long", entry: 90m, sl: 100m, beMoved: true);
+        // mark 100 = SL hit, but pnl = (100-90)/90 = 11.1% 滿足 partial 條件
+        var d = AutoTraderService.EvaluatePerpetualProtection(state, 100m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit, "SL hit should win when both apply");
+    }
 }

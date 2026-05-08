@@ -141,6 +141,135 @@ public class AutoTraderService : BackgroundService
     public ProtectionConfig PositionProtectionConfig => _protectionConfig;
     public IReadOnlyDictionary<string, PositionProtectionState> PositionStates => _positionState;
 
+    // ── Phase 4: Perpetual position protection（雙向 + 強平距離）──
+    //
+    // 跟 spot 的 PositionProtectionState 故意分開：
+    //   - Side: long / short — SL math 完全反向（long: mark ≤ sl 觸發 / short: mark ≥ sl 觸發）
+    //   - PnL%: long = (mark-entry)/entry, short = (entry-mark)/entry
+    //   - PeakMark: long 看最高 mark、short 看最低 mark（保護「漲過再跌」/「跌過再漲」）
+    //   - LiquidationPrice: 強平價（從交易所即時拉），距離過近觸發 emergency close
+    public class PerpetualPositionState
+    {
+        public string Exchange      { get; set; } = "";
+        public string Symbol        { get; set; } = "";
+        public string Side          { get; set; } = "long";  // "long" | "short"
+        public decimal EntryPrice   { get; set; }
+        public decimal PeakMark     { get; set; }            // long: max mark seen; short: min mark seen
+        public decimal SlPrice      { get; set; }            // long: 在 entry 下方; short: 在 entry 上方
+        public decimal LiquidationPrice { get; set; }
+        public int Leverage         { get; set; } = 1;
+        public bool PartialExited   { get; set; }
+        public bool BeMoved         { get; set; }
+        public DateTime CreatedAt   { get; set; }
+        public DateTime UpdatedAt   { get; set; }
+    }
+
+    private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
+    private readonly decimal _perpLiqEmergencyPct;
+    public IReadOnlyDictionary<string, PerpetualPositionState> PerpetualPositionStates => _perpPositionState;
+    public decimal PerpLiquidationEmergencyPct => _perpLiqEmergencyPct;
+
+    public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency }
+
+    public class PerpProtectionDecision
+    {
+        public PerpProtectionAction Action { get; init; }
+        public decimal PartialQty       { get; init; }
+        public decimal NewSlPrice       { get; init; }
+        public decimal PnlPct           { get; init; }
+        public decimal LiqDistancePct   { get; init; }
+        public string Reason            { get; init; } = "";
+    }
+
+    /// <summary>
+    /// Pure decision——給 perpetual position state + mark + qty + config 回傳該做什麼。
+    /// 同樣不下單、不改 state、不依賴 dispatcher，方便單元測試。
+    ///
+    /// 優先順序：LiquidationEmergency > SlHit > PartialExit > BeMove > None
+    /// 強平距離保護排第一：即使 SL 還沒到、若離強平太近也要先平
+    ///
+    /// 雙向 SL math：
+    ///   long  SlHit:  mark ≤ sl_price
+    ///   short SlHit:  mark ≥ sl_price
+    /// 雙向 PnL%:
+    ///   long  pnlPct = (mark - entry) / entry × 100
+    ///   short pnlPct = (entry - mark) / entry × 100
+    /// 雙向 BE:
+    ///   long  newSl = entry × (1 + buffer/100)
+    ///   short newSl = entry × (1 - buffer/100)
+    /// </summary>
+    public static PerpProtectionDecision EvaluatePerpetualProtection(
+        PerpetualPositionState state, decimal markPrice, decimal qty,
+        decimal liqDistancePct, ProtectionConfig config, decimal liqEmergencyPct)
+    {
+        if (state.EntryPrice <= 0m || qty <= 0m || markPrice <= 0m)
+            return new PerpProtectionDecision { Action = PerpProtectionAction.None, Reason = "invalid inputs" };
+
+        var isLong = state.Side == "long";
+        var pnlPct = isLong
+            ? (markPrice - state.EntryPrice) / state.EntryPrice * 100m
+            : (state.EntryPrice - markPrice) / state.EntryPrice * 100m;
+
+        // 1) Liquidation emergency — 不論方向、距離過近就先平
+        if (state.LiquidationPrice > 0m && liqDistancePct > 0m && liqDistancePct <= liqEmergencyPct)
+        {
+            return new PerpProtectionDecision
+            {
+                Action = PerpProtectionAction.LiquidationEmergency,
+                PartialQty = qty, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
+                Reason = $"⚠ liquidation emergency: distance {liqDistancePct:F2}% ≤ {liqEmergencyPct}% (mark {markPrice:F4}, liq {state.LiquidationPrice:F4})",
+            };
+        }
+
+        // 2) SL hit (含 BE 後挪過的 SL)
+        var slHit = isLong ? markPrice <= state.SlPrice : markPrice >= state.SlPrice;
+        if (slHit)
+        {
+            return new PerpProtectionDecision
+            {
+                Action = PerpProtectionAction.SlHit,
+                PartialQty = qty, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
+                Reason = $"SL hit ({state.Side}) @ {markPrice:F4} {(isLong ? "≤" : "≥")} {state.SlPrice:F4} (entry {state.EntryPrice:F4}, P&L {pnlPct:+0.00;-0.00}%)",
+            };
+        }
+
+        // 3) Partial exit
+        if (!state.PartialExited && pnlPct >= config.PartialExitPct)
+        {
+            var partialQty = Math.Round(qty * config.PartialExitRatio, 4, MidpointRounding.ToZero);
+            if (partialQty > 0m && partialQty < qty)
+            {
+                return new PerpProtectionDecision
+                {
+                    Action = PerpProtectionAction.PartialExit,
+                    PartialQty = partialQty, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
+                    Reason = $"Partial exit ({state.Side}) @ +{pnlPct:F2}% — selling {config.PartialExitRatio:P0} ({partialQty})",
+                };
+            }
+        }
+
+        // 4) BE SL move
+        if (!state.BeMoved && pnlPct >= config.BreakevenTriggerPct)
+        {
+            var newSl = isLong
+                ? state.EntryPrice * (1m + config.BreakevenBufferPct / 100m)
+                : state.EntryPrice * (1m - config.BreakevenBufferPct / 100m);
+            // 只往「縮小風險」方向挪：long 往上挪、short 往下挪
+            var moves = isLong ? newSl > state.SlPrice : newSl < state.SlPrice;
+            if (moves)
+            {
+                return new PerpProtectionDecision
+                {
+                    Action = PerpProtectionAction.BeMove,
+                    NewSlPrice = newSl, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
+                    Reason = $"SL → BE ({state.Side}) {(isLong ? "+" : "−")}{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at +{pnlPct:F2}%",
+                };
+            }
+        }
+
+        return new PerpProtectionDecision { Action = PerpProtectionAction.None, PnlPct = pnlPct, LiqDistancePct = liqDistancePct };
+    }
+
     // ── B3 SL flush freeze ─────────────────────────────────────────
     //
     // 連環 SL 觸發 = 訊號斷崖式失敗（策略當下抓不住行情、或極端 regime）。
@@ -263,12 +392,16 @@ public class AutoTraderService : BackgroundService
         _protectionConfig = ParseProtectionConfig();
         _slFlushThreshold = ParseIntEnv("AUTOTRADER_SL_FLUSH_THRESHOLD", defaultValue: 3, min: 1, max: 100);
         _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
+        // Perp 強平距離保護：低於此 % 觸發 emergency close（不論 SL 是否到）。預設 5%
+        _perpLiqEmergencyPct = ParsePctEnv("AUTOTRADER_PERP_LIQ_EMERGENCY_PCT", defaultValue: 5m, min: 0.5m, max: 50m);
         _logger.LogInformation(
             "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% sl_flush={Flush}/{Window}min · " +
-            "protection: initial_sl={IniSl}% partial_exit={Pe}% (sell {Per:P0}) BE_trigger={Bet}% (buffer {Beb}%)",
+            "protection: initial_sl={IniSl}% partial_exit={Pe}% (sell {Per:P0}) BE_trigger={Bet}% (buffer {Beb}%) · " +
+            "perp_liq_emergency={LiqEm}%",
             _minConfidence, _maxPortfolioDdPct, _slFlushThreshold, _slFlushWindowMinutes,
             _protectionConfig.InitialSlPct, _protectionConfig.PartialExitPct, _protectionConfig.PartialExitRatio,
-            _protectionConfig.BreakevenTriggerPct, _protectionConfig.BreakevenBufferPct);
+            _protectionConfig.BreakevenTriggerPct, _protectionConfig.BreakevenBufferPct,
+            _perpLiqEmergencyPct);
 
         LoadWatchListFromDb();
     }
@@ -573,10 +706,14 @@ public class AutoTraderService : BackgroundService
             // 看 auto-trader 是否真的在跑（沒在跑時 dashboard / Discord 可警告）
             _lastCycleAt = DateTime.UtcNow;
 
-            // Step 0: Position protection sweep——先處理現有部位的部分平倉 / SL hit / BE 移動，
-            // 之後的 watch loop 才不會在已被 SL 平掉的 symbol 又開新單
+            // Step 0a: Spot position protection sweep——既有的長倉保護
             try { await SweepPositionProtectionAsync(ct); }
-            catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader protection sweep failed"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader spot protection sweep failed"); }
+
+            // Step 0b: Perpetual position protection sweep（Phase 4）——
+            // 雙向部位 SL math + 強平距離保護。BingX 等 perp exchange 才跑。
+            try { await SweepPerpetualProtectionAsync(ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader perp protection sweep failed"); }
 
             foreach (var (key, item) in _watchList)
             {
@@ -747,6 +884,174 @@ public class AutoTraderService : BackgroundService
             symbol, side, qty, exchange, result.ErrorMessage);
         if (_watchList.TryGetValue(key, out var wi2))
             AddLog(wi2, "error", $"Protection {side} failed: {result.ErrorMessage}");
+        return false;
+    }
+
+    // ── Phase 4: Perpetual protection sweep ──────────────────────────
+    //
+    // 對所有 watch 列出的 perp exchange、抓 trading.perpetual.get_positions、
+    // 對每個有 qty 的 position 跑 EvaluatePerpetualProtection、執行決策。
+    // state 用 (exchange, symbol, side) 三元組 key——同 symbol 雙向倉位（hedge mode）各自記錄。
+    private async Task SweepPerpetualProtectionAsync(CancellationToken ct)
+    {
+        if (!_registry.HasAvailableWorker("trading.perpetual")) return;
+
+        // 從 watch list 找出所有 perp exchanges
+        var exchanges = _watchList.Values
+            .Where(w => w.Mode == "perp_long_only" || w.Mode == "perp_both")
+            .Select(w => w.Exchange).Distinct().ToList();
+        if (exchanges.Count == 0) return;
+
+        foreach (var exchange in exchanges)
+        {
+            if (ct.IsCancellationRequested) return;
+            var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_positions",
+                JsonSerializer.Serialize(new { exchange })));
+            if (!posResult.Success) continue;
+
+            var pos = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
+            if (!pos.TryGetProperty("positions", out var posArr) || posArr.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var liveKeys = new HashSet<string>();
+            foreach (var p in posArr.EnumerateArray())
+            {
+                var symbol = p.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+                var side = p.TryGetProperty("side", out var sd) ? sd.GetString() ?? "long" : "long";
+                var qty = p.TryGetProperty("quantity", out var q) ? q.GetDecimal() : 0m;
+                var entryPrice = p.TryGetProperty("avg_entry_price", out var e) ? e.GetDecimal() : 0m;
+                var markPrice = p.TryGetProperty("mark_price", out var mp) ? mp.GetDecimal() : 0m;
+                var liqPrice = p.TryGetProperty("liquidation_price", out var lp) ? lp.GetDecimal() : 0m;
+                var liqDist = p.TryGetProperty("liquidation_distance_pct", out var ld) ? ld.GetDecimal() : 0m;
+                var leverage = p.TryGetProperty("leverage", out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 1;
+                if (string.IsNullOrEmpty(symbol) || qty <= 0m || entryPrice <= 0m || markPrice <= 0m) continue;
+
+                var key = $"{exchange}:{symbol}:{side}";
+                liveKeys.Add(key);
+                try
+                {
+                    await ProcessPerpProtectionAsync(exchange, symbol, side, qty, entryPrice, markPrice,
+                        liqPrice, liqDist, leverage, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Perp protection check failed for {Key}", key);
+                }
+            }
+
+            // 清掉 state 裡 exchange 下、live 沒出現的（已被全平的）
+            var staleKeys = _perpPositionState
+                .Where(kv => kv.Key.StartsWith(exchange + ":") && !liveKeys.Contains(kv.Key))
+                .Select(kv => kv.Key).ToList();
+            foreach (var k in staleKeys)
+            {
+                if (_perpPositionState.TryRemove(k, out _))
+                    _logger.LogInformation("Perp position {Key} closed — protection state cleaned", k);
+            }
+        }
+    }
+
+    private async Task ProcessPerpProtectionAsync(
+        string exchange, string symbol, string side, decimal qty,
+        decimal entryPrice, decimal markPrice, decimal liqPrice, decimal liqDistPct, int leverage,
+        CancellationToken ct)
+    {
+        var key = $"{exchange}:{symbol}:{side}";
+        var now = DateTime.UtcNow;
+        var isLong = side == "long";
+        var state = _perpPositionState.GetOrAdd(key, _ =>
+        {
+            var initialSl = isLong
+                ? entryPrice * (1m - _protectionConfig.InitialSlPct / 100m)
+                : entryPrice * (1m + _protectionConfig.InitialSlPct / 100m);
+            _logger.LogInformation(
+                "Perp protection state init for {Key}: entry={Entry:F4}, SL={Sl:F4} ({Pct}% {Dir} entry, lev {Lev}x)",
+                key, entryPrice, initialSl, _protectionConfig.InitialSlPct, isLong ? "below" : "above", leverage);
+            return new PerpetualPositionState
+            {
+                Exchange = exchange, Symbol = symbol, Side = side,
+                EntryPrice = entryPrice, PeakMark = markPrice, SlPrice = initialSl,
+                LiquidationPrice = liqPrice, Leverage = leverage,
+                PartialExited = false, BeMoved = false,
+                CreatedAt = now, UpdatedAt = now,
+            };
+        });
+
+        // entry 變了（加倉）→ reset state
+        if (state.EntryPrice != entryPrice && entryPrice > 0m)
+        {
+            _logger.LogInformation("Perp entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL", key, state.EntryPrice, entryPrice);
+            state.EntryPrice = entryPrice;
+            state.SlPrice = isLong
+                ? entryPrice * (1m - _protectionConfig.InitialSlPct / 100m)
+                : entryPrice * (1m + _protectionConfig.InitialSlPct / 100m);
+            state.PartialExited = false; state.BeMoved = false; state.PeakMark = markPrice;
+        }
+
+        // PeakMark：long 取最高、short 取最低
+        if (isLong && markPrice > state.PeakMark) state.PeakMark = markPrice;
+        else if (!isLong && (state.PeakMark == 0m || markPrice < state.PeakMark)) state.PeakMark = markPrice;
+        state.LiquidationPrice = liqPrice;
+        state.UpdatedAt = now;
+
+        var decision = EvaluatePerpetualProtection(state, markPrice, qty, liqDistPct, _protectionConfig, _perpLiqEmergencyPct);
+        switch (decision.Action)
+        {
+            case PerpProtectionAction.LiquidationEmergency:
+            case PerpProtectionAction.SlHit:
+                await ExecutePerpProtectionOrderAsync(exchange, symbol, side, qty, decision.Reason, ct);
+                if (decision.Action == PerpProtectionAction.SlHit)
+                    RecordSlHit(exchange, symbol, now);  // 連環 SL flush 也適用
+                break;
+
+            case PerpProtectionAction.PartialExit:
+            {
+                var ok = await ExecutePerpProtectionOrderAsync(exchange, symbol, side, decision.PartialQty, decision.Reason, ct);
+                if (ok) state.PartialExited = true;
+                break;
+            }
+
+            case PerpProtectionAction.BeMove:
+                _logger.LogInformation("Perp BE SL move for {Key}: {Reason}", key, decision.Reason);
+                state.SlPrice = decision.NewSlPrice;
+                state.BeMoved = true;
+                if (_watchList.TryGetValue($"{exchange}:{symbol}", out var wi))
+                    AddLog(wi, "protect", decision.Reason);
+                break;
+
+            case PerpProtectionAction.None:
+            default:
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 平倉用：long 倉用 sell + position_side=long + reduce_only；short 倉用 buy + position_side=short + reduce_only。
+    /// </summary>
+    private async Task<bool> ExecutePerpProtectionOrderAsync(
+        string exchange, string symbol, string side, decimal qty, string reason, CancellationToken ct)
+    {
+        // 平多 = sell + LONG + reduceOnly；平空 = buy + SHORT + reduceOnly
+        var orderSide = side == "long" ? "sell" : "buy";
+        var watchKey = $"{exchange}:{symbol}";
+        var orderPayload = JsonSerializer.Serialize(new
+        {
+            exchange, symbol, side = orderSide, position_side = side,
+            order_type = "market", quantity = qty, reduce_only = true,
+        });
+        var result = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", orderPayload));
+        if (result.Success)
+        {
+            _logger.LogInformation("🛡 Perp protection close: {Symbol} {Side}({OrdSide}) {Qty} on {Exchange} — {Reason}",
+                symbol, side, orderSide, qty, exchange, reason);
+            if (_watchList.TryGetValue(watchKey, out var wi))
+                AddLog(wi, "protect", $"perp close {side.ToUpper()} {qty} — {reason}");
+            return true;
+        }
+        _logger.LogWarning("Perp protection close failed: {Symbol} {Side} {Qty} on {Exchange} — {Error}",
+            symbol, side, qty, exchange, result.ErrorMessage);
+        if (_watchList.TryGetValue(watchKey, out var wi2))
+            AddLog(wi2, "error", $"perp protection close failed: {result.ErrorMessage}");
         return false;
     }
 

@@ -51,6 +51,10 @@ services:
       AUTOTRADER_SL_FLUSH_THRESHOLD: "${AUTOTRADER_SL_FLUSH_THRESHOLD:-}"
       AUTOTRADER_SL_FLUSH_WINDOW_MINUTES: "${AUTOTRADER_SL_FLUSH_WINDOW_MINUTES:-}"
 
+      # Perp 強平距離保護（Phase 4）：當 liquidation_distance_pct ≤ 此 % → emergency close
+      # 整個部位（不論 SL 是否到）。預設 5%。實盤建議拉高到 8-10%（更保守）。
+      AUTOTRADER_PERP_LIQ_EMERGENCY_PCT: "${AUTOTRADER_PERP_LIQ_EMERGENCY_PCT:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
