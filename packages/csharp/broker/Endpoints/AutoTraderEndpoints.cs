@@ -42,6 +42,8 @@ public static class AutoTraderEndpoints
                 strategy = kv.Value.Strategy,
                 quantity = kv.Value.Quantity,
                 active = kv.Value.Active,
+                mode = kv.Value.Mode,
+                leverage = kv.Value.Leverage,
                 last_signal = kv.Value.LastSignal,
                 last_confidence = kv.Value.LastConfidence,
                 last_check = kv.Value.LastCheck,
@@ -107,12 +109,15 @@ public static class AutoTraderEndpoints
             var exchange = doc.TryGetProperty("exchange",  out var e) ? e.GetString() ?? "alpaca" : "alpaca";
             var strategy = doc.TryGetProperty("strategy",  out var st) ? st.GetString() ?? "composite" : "composite";
             var quantity = doc.TryGetProperty("quantity",   out var q) ? q.GetDecimal() : 1m;
+            // Phase 3：perpetual 模式 + leverage（向後相容、不傳就走 spot）
+            var mode     = doc.TryGetProperty("mode",      out var m)  ? m.GetString() ?? "spot" : "spot";
+            var leverage = doc.TryGetProperty("leverage",  out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 5;
 
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
-            svc.AddWatch(symbol, exchange, strategy, quantity);
-            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, strategy, quantity }));
+            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage);
+            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, strategy, quantity, mode, leverage }));
         });
 
         at.MapDelete("/watch", async (AutoTraderService svc, HttpRequest req) =>

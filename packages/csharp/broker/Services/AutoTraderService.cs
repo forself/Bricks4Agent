@@ -440,6 +440,8 @@ public class AutoTraderService : BackgroundService
                     Symbol = e.Symbol, Exchange = e.Exchange, Strategy = e.Strategy,
                     Quantity = e.Quantity, Active = e.Active,
                     LastSignal = e.LastSignal, LastConfidence = e.LastConfidence, LastCheck = e.LastCheck,
+                    Mode = string.IsNullOrEmpty(e.Mode) ? "spot" : e.Mode,
+                    Leverage = e.Leverage > 0 ? e.Leverage : 5,
                 };
             }
             if (entries.Count > 0)
@@ -465,6 +467,7 @@ public class AutoTraderService : BackgroundService
                     EntryKey = key, Symbol = item.Symbol, Exchange = item.Exchange,
                     Strategy = item.Strategy, Quantity = item.Quantity, Active = item.Active,
                     LastSignal = item.LastSignal, LastConfidence = item.LastConfidence, LastCheck = item.LastCheck,
+                    Mode = item.Mode, Leverage = item.Leverage,
                     CreatedAt = now, UpdatedAt = now,
                 });
             }
@@ -473,6 +476,7 @@ public class AutoTraderService : BackgroundService
                 existing.Symbol = item.Symbol; existing.Exchange = item.Exchange;
                 existing.Strategy = item.Strategy; existing.Quantity = item.Quantity; existing.Active = item.Active;
                 existing.LastSignal = item.LastSignal; existing.LastConfidence = item.LastConfidence; existing.LastCheck = item.LastCheck;
+                existing.Mode = item.Mode; existing.Leverage = item.Leverage;
                 existing.UpdatedAt = now;
                 _db.Update(existing);
             }
@@ -501,17 +505,24 @@ public class AutoTraderService : BackgroundService
     public void Disable() { _enabled = false; _logger.LogInformation("AutoTrader DISABLED"); }
     public void SetInterval(int seconds) { _intervalSeconds = Math.Max(60, seconds); }
 
-    public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1)
+    public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1,
+        string mode = "spot", int leverage = 5)
     {
         var key = $"{exchange}:{symbol}";
+        // 驗 mode：unknown 一律退回 spot 避免奇怪行為
+        var validModes = new[] { "spot", "perp_long_only", "perp_both" };
+        if (!validModes.Contains(mode)) mode = "spot";
+        // leverage clamp：1-125（BingX 上限）；非 perp 模式忽略此值但仍存
+        leverage = Math.Max(1, Math.Min(125, leverage));
         var item = new WatchItem
         {
             Symbol = symbol, Exchange = exchange, Strategy = strategy,
-            Quantity = quantity, Active = true,
+            Quantity = quantity, Active = true, Mode = mode, Leverage = leverage,
         };
         _watchList[key] = item;
         PersistWatch(key, item);
-        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty}", key, strategy, quantity);
+        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x",
+            key, strategy, quantity, mode, leverage);
     }
 
     public bool RemoveWatch(string symbol, string exchange)
@@ -938,7 +949,20 @@ public class AutoTraderService : BackgroundService
             }
         }
 
-        // Step 5: 下單
+        // Step 5: 下單 — spot 走 trading.order；perp_* 走 trading.perpetual 並做 signal→open/close 映射
+        if (item.Mode == "perp_long_only" || item.Mode == "perp_both")
+        {
+            await PlacePerpOrderForSignalAsync(item, action, ct);
+        }
+        else
+        {
+            await PlaceSpotOrderAsync(item, action, exchange, symbol, ct);
+        }
+    }
+
+    /// <summary>既有 spot 下單路徑（拆出來讓 perp 分支不亂）。</summary>
+    private async Task PlaceSpotOrderAsync(WatchItem item, string action, string exchange, string symbol, CancellationToken ct)
+    {
         if (!_registry.HasAvailableWorker("trading.order"))
         {
             AddLog(item, "skip", "trading-worker not connected");
@@ -946,9 +970,7 @@ public class AutoTraderService : BackgroundService
         }
 
         // Deterministic client_order_id：同一 5 分鐘 bucket 內 retry 同 (exchange/symbol/side/qty)
-        // 都會收到同一個 ID，trading-worker 端 + 交易所端各有一道 dedup（DB 查 + Alpaca/Binance
-        // client_order_id unique 約束）。bucket = 5 分鐘正好對到預設 poll interval；
-        // 跨 bucket 是新意圖、會用新 ID（不會被 dedup 擋）。
+        // 都會收到同一個 ID，trading-worker 端 + 交易所端各有一道 dedup
         var bucket5min = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 300;
         var clientOrderId = BuildAutoOrderKey(exchange, symbol, action, item.Quantity, bucket5min);
 
@@ -965,13 +987,9 @@ public class AutoTraderService : BackgroundService
             var order = JsonDocument.Parse(orderResult.ResultPayload ?? "{}").RootElement;
             var orderId = order.TryGetProperty("order_id", out var oid) ? oid.GetString() : "?";
             var status = order.TryGetProperty("status", out var st) ? st.GetString() : "?";
-            // idempotent=true → trading-worker DB 命中 client_order_id dedup、根本沒打交易所，
-            // log 加 [DEDUP] 前綴讓 webhook / dashboard 知道這不是新成交
             var isDedup = order.TryGetProperty("idempotent", out var idem) && idem.GetBoolean();
             if (isDedup)
-            {
                 AddLog(item, "dedup", $"[DEDUP] {orderId} same-bucket retry, no new exchange call (existing status={status})");
-            }
             else
             {
                 AddLog(item, action, $"ORDER PLACED: {orderId} {action} {item.Quantity} {symbol} @ market → {status}");
@@ -982,6 +1000,111 @@ public class AutoTraderService : BackgroundService
         else
         {
             AddLog(item, "error", $"Order failed: {orderResult.ErrorMessage}");
+        }
+    }
+
+    /// <summary>
+    /// Phase 3：perp 分支——把 strategy 的 buy/sell 訊號映射到 open/close + LONG/SHORT。
+    ///
+    /// 映射規則：先查當前部位、再決定動作
+    ///   perp_long_only:
+    ///     buy  + 無倉            → open long
+    ///     buy  + 已 long          → skip (不加倉)
+    ///     sell + has long         → close long
+    ///     sell + 無倉             → skip (long_only 不開空)
+    ///   perp_both:
+    ///     buy  + 無倉            → open long
+    ///     buy  + has long         → skip
+    ///     buy  + has short        → close short (保守、不立即翻多)
+    ///     sell + 無倉             → open short
+    ///     sell + has short        → skip
+    ///     sell + has long         → close long (保守、不立即翻空)
+    ///
+    /// 翻倉等下次 cycle 才開、避免一次 cycle 內連續打交易所。
+    /// </summary>
+    private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, CancellationToken ct)
+    {
+        if (!_registry.HasAvailableWorker("trading.perpetual"))
+        {
+            AddLog(item, "skip", "trading-worker has no perpetual capability (BingX disabled?)");
+            return;
+        }
+
+        // 拉現有部位
+        var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_positions",
+            JsonSerializer.Serialize(new { exchange = item.Exchange })));
+        if (!posResult.Success)
+        {
+            AddLog(item, "skip", $"perp get_positions failed: {posResult.ErrorMessage}");
+            return;
+        }
+
+        var posDoc = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
+        decimal longQty = 0m, shortQty = 0m;
+        if (posDoc.TryGetProperty("positions", out var posArr) && posArr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var p in posArr.EnumerateArray())
+            {
+                var sym = p.TryGetProperty("symbol", out var s) ? s.GetString() : "";
+                if (sym != item.Symbol) continue;
+                var side = p.TryGetProperty("side", out var sd) ? sd.GetString() : "";
+                var qty = p.TryGetProperty("quantity", out var q) ? q.GetDecimal() : 0m;
+                if (side == "long") longQty = qty;
+                else if (side == "short") shortQty = qty;
+            }
+        }
+
+        // Map signal → (perpAction, sideOverride, positionSide, qtyOverride, reduceOnly)
+        string? perpAction = null;
+        string? perpSide = null;
+        string? perpPosSide = null;
+        decimal qtyToUse = item.Quantity;
+        bool reduceOnly = false;
+
+        if (action == "buy")
+        {
+            if (longQty > 0m)         perpAction = $"skip:already-long ({longQty})";
+            else if (shortQty > 0m)   { perpAction = "close_short"; perpSide = "buy";  perpPosSide = "short"; qtyToUse = shortQty; reduceOnly = true; }
+            else                      { perpAction = "open_long";   perpSide = "buy";  perpPosSide = "long";  reduceOnly = false; }
+        }
+        else // sell
+        {
+            if (shortQty > 0m)        perpAction = $"skip:already-short ({shortQty})";
+            else if (longQty > 0m)    { perpAction = "close_long"; perpSide = "sell"; perpPosSide = "long";  qtyToUse = longQty; reduceOnly = true; }
+            else if (item.Mode == "perp_long_only") perpAction = "skip:long-only-no-open-short";
+            else                      { perpAction = "open_short"; perpSide = "sell"; perpPosSide = "short"; reduceOnly = false; }
+        }
+
+        if (perpSide == null)
+        {
+            AddLog(item, "skip", $"perp[{item.Mode}] {action} → {perpAction}");
+            return;
+        }
+
+        var perpPayload = JsonSerializer.Serialize(new
+        {
+            exchange = item.Exchange,
+            symbol = item.Symbol,
+            side = perpSide,
+            position_side = perpPosSide,
+            order_type = "market",
+            quantity = qtyToUse,
+            leverage = item.Leverage,
+            reduce_only = reduceOnly,
+        });
+        var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", perpPayload));
+        if (orderResult.Success)
+        {
+            var ord = JsonDocument.Parse(orderResult.ResultPayload ?? "{}").RootElement;
+            var status = ord.TryGetProperty("status", out var st) ? st.GetString() : "?";
+            var extId = ord.TryGetProperty("external_id", out var ei) ? ei.GetString() : "?";
+            AddLog(item, perpAction!, $"PERP {perpAction!.ToUpper()}: {extId} {perpSide} {qtyToUse} {item.Symbol} {item.Leverage}x → {status}");
+            _logger.LogInformation("AutoTrader perp: {PerpAction} {Side} {Qty} {Symbol} on {Exchange} {Lev}x → {Status}",
+                perpAction, perpSide, qtyToUse, item.Symbol, item.Exchange, item.Leverage, status);
+        }
+        else
+        {
+            AddLog(item, "error", $"perp order failed: {orderResult.ErrorMessage}");
         }
     }
 
@@ -1034,6 +1157,10 @@ public class WatchItem
     public string? LastSignal    { get; set; }
     public decimal LastConfidence { get; set; }
     public DateTime? LastCheck    { get; set; }
+    /// <summary>"spot" / "perp_long_only" / "perp_both" — 預設 spot 保持既有行為。</summary>
+    public string Mode     { get; set; } = "spot";
+    /// <summary>perpetual 模式開倉用槓桿。spot 模式忽略。預設 5x。</summary>
+    public int Leverage    { get; set; } = 5;
 }
 
 public class TradeLog

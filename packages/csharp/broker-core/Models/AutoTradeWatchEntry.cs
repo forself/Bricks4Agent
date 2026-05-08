@@ -43,6 +43,20 @@ public class AutoTradeWatchEntry
     [Column("active")]
     public bool Active { get; set; } = true;
 
+    /// <summary>
+    /// 交易模式（Phase 3：BingX perpetual）。預設 "spot" 保持既有行為。
+    ///   - "spot"           — 走 IExchangeClient（Alpaca / Binance spot），buy/sell 直接打交易所
+    ///   - "perp_long_only" — 走 IPerpetualClient，只開多：buy=open_long（如果無倉）/sell=close_long
+    ///   - "perp_both"      — 走 IPerpetualClient，雙向：buy=open_long 或 close_short / sell=open_short 或 close_long
+    /// </summary>
+    [Column("mode")]
+    [MaxLength(20)]
+    public string Mode { get; set; } = "spot";
+
+    /// <summary>perpetual 模式才用、開倉時的槓桿倍數。spot 模式忽略此欄位。預設 5x。</summary>
+    [Column("leverage")]
+    public int Leverage { get; set; } = 5;
+
     [Column("last_signal")]
     [MaxLength(20)]
     public string? LastSignal { get; set; }

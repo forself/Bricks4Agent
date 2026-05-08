@@ -972,16 +972,23 @@ tr:hover { background:rgba(240,185,11,0.02); }
       </div>
       <h3 style="margin-top:14px">新增監控</h3>
       <div class="form-row">
-        <div class="fg sym-picker"><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
-        <div class="fg"><select id="auto-exchange"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
-        <div class="fg"><select id="auto-strategy"><option value="auto_select">🎯 AutoSelect (依行情擇優)</option><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
-        <div class="fg"><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:60px"></div>
+        <div class="fg sym-picker"><label>Symbol</label><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
+        <div class="fg"><label>Exchange</label><select id="auto-exchange" onchange="onAutoExchangeChange()"><option value="alpaca">Alpaca</option><option value="binance">Binance</option><option value="bingx">BingX (Perp)</option></select></div>
+        <div class="fg"><label>策略</label><select id="auto-strategy"><option value="auto_select">🎯 AutoSelect (依行情擇優)</option><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
+        <div class="fg"><label>數量</label><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:70px"></div>
+        <div class="fg" id="auto-mode-fg" style="display:none"><label>模式</label>
+          <select id="auto-mode">
+            <option value="perp_long_only">📈 Long-only（僅開多）</option>
+            <option value="perp_both">↕ Both（雙向開倉）</option>
+          </select>
+        </div>
+        <div class="fg" id="auto-leverage-fg" style="display:none"><label>槓桿</label><input id="auto-leverage" type="number" value="5" min="1" max="125" style="width:60px"></div>
         <button class="btn btn-y btn-sm" onclick="addAutoWatch()">新增</button>
       </div>
     </div>
     <div class="card"><h3>監控清單</h3>
-      <table><thead><tr><th>Symbol</th><th>Exchange</th><th>策略</th><th>數量</th><th>訊號</th><th>信心</th><th>檢查</th><th></th></tr></thead>
-      <tbody id="auto-watch-table"><tr><td colspan="8" style="color:var(--text2)">無</td></tr></tbody></table>
+      <table><thead><tr><th>Symbol</th><th>Exchange</th><th>模式</th><th>策略</th><th>數量</th><th>訊號</th><th>信心</th><th>檢查</th><th></th></tr></thead>
+      <tbody id="auto-watch-table"><tr><td colspan="9" style="color:var(--text2)">無</td></tr></tbody></table>
     </div>
   </div>
   <!-- Cut C: 市場掃描器 — 一籃子 symbol 跑 composite、按信心 + 動作篩選、勾選後一鍵加入監控 -->
@@ -2015,8 +2022,10 @@ st.textContent=d.enabled?'運行中':'已停止';st.style.color=d.enabled?'var(-
 document.getElementById('auto-interval').value=d.interval_seconds;
 const tb=document.getElementById('auto-watch-table');
 if(d.watch_list?.length>0)tb.innerHTML=d.watch_list.map(w=>{const sc=w.last_signal==='buy'?'buy':w.last_signal==='sell'?'sell':'hold';
-return`<tr><td><strong>${w.symbol}</strong></td><td>${w.exchange}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
-else tb.innerHTML='<tr><td colspan="8" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
+const mode=w.mode||'spot';
+const modeBadge=mode==='spot'?'<span style="color:var(--text3);font-size:10px">spot</span>':mode==='perp_long_only'?`<span style="background:var(--greenBg);color:var(--green);padding:1px 5px;border-radius:2px;font-size:10px">📈 long-only ${w.leverage||5}x</span>`:`<span style="background:rgba(240,185,11,.15);color:#f0b90b;padding:1px 5px;border-radius:2px;font-size:10px">↕ both ${w.leverage||5}x</span>`;
+return`<tr><td><strong>${w.symbol}</strong></td><td>${w.exchange}</td><td>${modeBadge}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
+else tb.innerHTML='<tr><td colspan="9" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
 async function toggleAutoTrader(){
   const r=await api('/api/v1/auto-trader/status');const d=r?.data||{};
   // 已 enabled → disable 不需要確認、直接執行
@@ -2280,7 +2289,33 @@ document.addEventListener('change',e=>{
 });
 
 async function setAutoInterval(){await api('/api/v1/auto-trader/interval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:parseInt(document.getElementById('auto-interval').value)||300})});fetchAutoStatus();}
-async function addAutoWatch(){await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('auto-symbol').value,exchange:document.getElementById('auto-exchange').value,strategy:document.getElementById('auto-strategy').value,quantity:parseFloat(document.getElementById('auto-qty').value)||1})});fetchAutoStatus();}
+function onAutoExchangeChange(){
+  const ex=document.getElementById('auto-exchange').value;
+  const isPerp=(ex==='bingx');
+  document.getElementById('auto-mode-fg').style.display=isPerp?'flex':'none';
+  document.getElementById('auto-leverage-fg').style.display=isPerp?'flex':'none';
+}
+async function addAutoWatch(){
+  const ex=document.getElementById('auto-exchange').value;
+  const isPerp=(ex==='bingx');
+  const body={
+    symbol:document.getElementById('auto-symbol').value,
+    exchange:ex,
+    strategy:document.getElementById('auto-strategy').value,
+    quantity:parseFloat(document.getElementById('auto-qty').value)||1,
+  };
+  if(isPerp){
+    body.mode=document.getElementById('auto-mode').value;
+    body.leverage=parseInt(document.getElementById('auto-leverage').value)||5;
+  }
+  const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r?.success){
+    toastOk(`${body.symbol} 已加入監控`+(isPerp?` (${body.mode}, ${body.leverage}x)`:''));
+    fetchAutoStatus();
+  }else{
+    toastErr('加入失敗：'+(r?.message||r?.error||'unknown'));
+  }
+}
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
 async function fetchAutoLogs(){const r=await api('/api/v1/auto-trader/logs?limit=100');const el=document.getElementById('auto-logs');
 if(r?.data?.logs?.length>0)el.textContent=r.data.logs.map(l=>{const t=new Date(l.time).toLocaleTimeString('zh-TW');return`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;}).join('\n');else el.textContent='無日誌';}
