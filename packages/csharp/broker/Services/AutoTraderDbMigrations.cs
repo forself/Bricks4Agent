@@ -39,6 +39,12 @@ public static class AutoTraderDbMigrations
             table: "backtest_results",
             column: "owner_principal_id",
             sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
+
+        // A2.5b PASS 2：perp_position_state 加 owner、讓不同 user 同 (exchange, symbol, side) 部位獨立
+        AddColumnIfMissing(db, logger,
+            table: "perp_position_state",
+            column: "owner_principal_id",
+            sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

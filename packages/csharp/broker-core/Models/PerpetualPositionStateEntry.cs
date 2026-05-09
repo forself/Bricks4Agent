@@ -24,6 +24,14 @@ public class PerpetualPositionStateEntry
     [MaxLength(140)]
     public string EntryKey { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Phase A2.5b PASS 2：擁有者 principal_id。同 (exchange, symbol, side) 不同用戶視為不同部位、
+    /// state key 加 owner 前綴避免互相覆蓋。Migration 對既有資料一律標 'prn_dashboard'（admin）。
+    /// </summary>
+    [Column("owner_principal_id")]
+    [MaxLength(80)]
+    public string OwnerPrincipalId { get; set; } = "prn_dashboard";
+
     [Column("exchange")]
     [Required]
     [MaxLength(40)]

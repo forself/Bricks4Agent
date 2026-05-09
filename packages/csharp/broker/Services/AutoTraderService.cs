@@ -150,6 +150,8 @@ public class AutoTraderService : BackgroundService
     //   - LiquidationPrice: 強平價（從交易所即時拉），距離過近觸發 emergency close
     public class PerpetualPositionState
     {
+        /// <summary>A2.5b PASS 2：擁有者 principal_id。state key = {owner}:{exchange}:{symbol}:{side}</summary>
+        public string OwnerPrincipalId { get; set; } = "prn_dashboard";
         public string Exchange      { get; set; } = "";
         public string Symbol        { get; set; } = "";
         public string Side          { get; set; } = "long";  // "long" | "short"
@@ -728,6 +730,7 @@ public class AutoTraderService : BackgroundService
             {
                 _perpPositionState[e.EntryKey] = new PerpetualPositionState
                 {
+                    OwnerPrincipalId = string.IsNullOrEmpty(e.OwnerPrincipalId) ? "prn_dashboard" : e.OwnerPrincipalId,
                     Exchange = e.Exchange, Symbol = e.Symbol, Side = e.Side,
                     EntryPrice = e.EntryPrice, PeakMark = e.PeakMark, SlPrice = e.SlPrice,
                     LiquidationPrice = e.LiquidationPrice, Leverage = e.Leverage,
@@ -753,7 +756,8 @@ public class AutoTraderService : BackgroundService
             {
                 _db.Insert(new PerpetualPositionStateEntry
                 {
-                    EntryKey = key, Exchange = state.Exchange, Symbol = state.Symbol, Side = state.Side,
+                    EntryKey = key, OwnerPrincipalId = state.OwnerPrincipalId,
+                    Exchange = state.Exchange, Symbol = state.Symbol, Side = state.Side,
                     EntryPrice = state.EntryPrice, PeakMark = state.PeakMark, SlPrice = state.SlPrice,
                     LiquidationPrice = state.LiquidationPrice, Leverage = state.Leverage,
                     PartialExited = state.PartialExited, BeMoved = state.BeMoved,
@@ -762,6 +766,7 @@ public class AutoTraderService : BackgroundService
             }
             else
             {
+                existing.OwnerPrincipalId = state.OwnerPrincipalId;
                 existing.EntryPrice = state.EntryPrice; existing.PeakMark = state.PeakMark;
                 existing.SlPrice = state.SlPrice; existing.LiquidationPrice = state.LiquidationPrice;
                 existing.Leverage = state.Leverage;
@@ -1059,30 +1064,37 @@ public class AutoTraderService : BackgroundService
 
     // ── Phase 4: Perpetual protection sweep ──────────────────────────
     //
-    // 對所有 watch 列出的 perp exchange、抓 trading.perpetual.get_positions、
-    // 對每個有 qty 的 position 跑 EvaluatePerpetualProtection、執行決策。
-    // state 用 (exchange, symbol, side) 三元組 key——同 symbol 雙向倉位（hedge mode）各自記錄。
+    // 對 watch list 裡每個 (owner, exchange) pair 各自跑保護鏈、用該 owner 自己的 BingX credential。
+    // state key = {owner}:{exchange}:{symbol}:{side}——同 symbol 雙向（hedge）+ 不同 user 各自獨立。
     private async Task SweepPerpetualProtectionAsync(CancellationToken ct)
     {
         if (!_registry.HasAvailableWorker("trading.perpetual")) return;
 
-        // 從 watch list 找出所有 perp exchanges
-        var exchanges = _watchList.Values
+        // 從 watch list 找出所有 (owner, exchange) pairs
+        var pairs = _watchList.Values
             .Where(w => w.Mode == "perp_long_only" || w.Mode == "perp_both")
-            .Select(w => w.Exchange).Distinct().ToList();
-        if (exchanges.Count == 0) return;
+            .Select(w => (Owner: w.OwnerPrincipalId, Exchange: w.Exchange))
+            .Distinct()
+            .ToList();
+        if (pairs.Count == 0) return;
 
-        foreach (var exchange in exchanges)
+        foreach (var (owner, exchange) in pairs)
         {
             if (ct.IsCancellationRequested) return;
-            var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_positions",
-                JsonSerializer.Serialize(new { exchange })));
+
+            // 帶 user credential 抓他 / 她自己的 positions（沒設則 fallback env 預設）
+            var creds = BuildCredentialsObject(owner, exchange);
+            var getPosPayload = creds == null
+                ? JsonSerializer.Serialize(new { exchange })
+                : JsonSerializer.Serialize(new { exchange, __credentials = creds });
+            var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_positions", getPosPayload));
             if (!posResult.Success) continue;
 
             var pos = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
             if (!pos.TryGetProperty("positions", out var posArr) || posArr.ValueKind != JsonValueKind.Array)
                 continue;
 
+            var stateKeyPrefix = $"{owner}:{exchange}:";
             var liveKeys = new HashSet<string>();
             foreach (var p in posArr.EnumerateArray())
             {
@@ -1096,11 +1108,11 @@ public class AutoTraderService : BackgroundService
                 var leverage = p.TryGetProperty("leverage", out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 1;
                 if (string.IsNullOrEmpty(symbol) || qty <= 0m || entryPrice <= 0m || markPrice <= 0m) continue;
 
-                var key = $"{exchange}:{symbol}:{side}";
+                var key = $"{owner}:{exchange}:{symbol}:{side}";
                 liveKeys.Add(key);
                 try
                 {
-                    await ProcessPerpProtectionAsync(exchange, symbol, side, qty, entryPrice, markPrice,
+                    await ProcessPerpProtectionAsync(owner, exchange, symbol, side, qty, entryPrice, markPrice,
                         liqPrice, liqDist, leverage, ct);
                 }
                 catch (Exception ex)
@@ -1109,9 +1121,9 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
-            // 清掉 state 裡 exchange 下、live 沒出現的（已被全平的）
+            // 清掉這個 (owner, exchange) 下、live 沒出現的 state（已全平）
             var staleKeys = _perpPositionState
-                .Where(kv => kv.Key.StartsWith(exchange + ":") && !liveKeys.Contains(kv.Key))
+                .Where(kv => kv.Key.StartsWith(stateKeyPrefix, StringComparison.Ordinal) && !liveKeys.Contains(kv.Key))
                 .Select(kv => kv.Key).ToList();
             foreach (var k in staleKeys)
             {
@@ -1125,11 +1137,11 @@ public class AutoTraderService : BackgroundService
     }
 
     private async Task ProcessPerpProtectionAsync(
-        string exchange, string symbol, string side, decimal qty,
+        string ownerPrincipalId, string exchange, string symbol, string side, decimal qty,
         decimal entryPrice, decimal markPrice, decimal liqPrice, decimal liqDistPct, int leverage,
         CancellationToken ct)
     {
-        var key = $"{exchange}:{symbol}:{side}";
+        var key = $"{ownerPrincipalId}:{exchange}:{symbol}:{side}";
         var now = DateTime.UtcNow;
         var isLong = side == "long";
         var state = _perpPositionState.GetOrAdd(key, _ =>
@@ -1142,6 +1154,7 @@ public class AutoTraderService : BackgroundService
                 key, entryPrice, initialSl, _protectionConfig.InitialSlPct, isLong ? "below" : "above", leverage);
             return new PerpetualPositionState
             {
+                OwnerPrincipalId = ownerPrincipalId,
                 Exchange = exchange, Symbol = symbol, Side = side,
                 EntryPrice = entryPrice, PeakMark = markPrice, SlPrice = initialSl,
                 LiquidationPrice = liqPrice, Leverage = leverage,
@@ -1172,14 +1185,14 @@ public class AutoTraderService : BackgroundService
         {
             case PerpProtectionAction.LiquidationEmergency:
             case PerpProtectionAction.SlHit:
-                await ExecutePerpProtectionOrderAsync(exchange, symbol, side, qty, decision.Reason, ct);
+                await ExecutePerpProtectionOrderAsync(ownerPrincipalId, exchange, symbol, side, qty, decision.Reason, ct);
                 if (decision.Action == PerpProtectionAction.SlHit)
-                    RecordSlHit(exchange, symbol, now);  // 連環 SL flush 也適用
+                    RecordSlHit(exchange, symbol, now);  // 連環 SL flush 仍以 (exchange, symbol) 算、跨 user 共用
                 break;
 
             case PerpProtectionAction.PartialExit:
             {
-                var ok = await ExecutePerpProtectionOrderAsync(exchange, symbol, side, decision.PartialQty, decision.Reason, ct);
+                var ok = await ExecutePerpProtectionOrderAsync(ownerPrincipalId, exchange, symbol, side, decision.PartialQty, decision.Reason, ct);
                 if (ok) state.PartialExited = true;
                 break;
             }
@@ -1206,16 +1219,25 @@ public class AutoTraderService : BackgroundService
     /// 平倉用：long 倉用 sell + position_side=long + reduce_only；short 倉用 buy + position_side=short + reduce_only。
     /// </summary>
     private async Task<bool> ExecutePerpProtectionOrderAsync(
-        string exchange, string symbol, string side, decimal qty, string reason, CancellationToken ct)
+        string ownerPrincipalId, string exchange, string symbol, string side, decimal qty, string reason, CancellationToken ct)
     {
         // 平多 = sell + LONG + reduceOnly；平空 = buy + SHORT + reduceOnly
         var orderSide = side == "long" ? "sell" : "buy";
         var watchKey = $"{exchange}:{symbol}";
-        var orderPayload = JsonSerializer.Serialize(new
-        {
-            exchange, symbol, side = orderSide, position_side = side,
-            order_type = "market", quantity = qty, reduce_only = true,
-        });
+        // 帶 user 自己的 credential、平倉才會打到 user 自己的帳戶（沒設則 fallback env 預設）
+        var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
+        var orderPayload = creds == null
+            ? JsonSerializer.Serialize(new
+            {
+                exchange, symbol, side = orderSide, position_side = side,
+                order_type = "market", quantity = qty, reduce_only = true,
+            })
+            : JsonSerializer.Serialize(new
+            {
+                exchange, symbol, side = orderSide, position_side = side,
+                order_type = "market", quantity = qty, reduce_only = true,
+                __credentials = creds,
+            });
         var result = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", orderPayload));
         if (result.Success)
         {
