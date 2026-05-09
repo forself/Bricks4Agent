@@ -45,6 +45,20 @@ public static class AutoTraderDbMigrations
             table: "perp_position_state",
             column: "owner_principal_id",
             sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
+
+        // A4 PASS 1：principal_credentials 加 failed-login 追蹤 + 鎖定欄位
+        AddColumnIfMissing(db, logger,
+            table: "principal_credentials",
+            column: "failed_login_attempts",
+            sqlType: "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing(db, logger,
+            table: "principal_credentials",
+            column: "first_failed_at",
+            sqlType: "TEXT NULL");
+        AddColumnIfMissing(db, logger,
+            table: "principal_credentials",
+            column: "locked_until",
+            sqlType: "TEXT NULL");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

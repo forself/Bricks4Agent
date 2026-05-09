@@ -20,6 +20,17 @@ public sealed class PrincipalAuthService
     public const string SessionCookieName = "b4a_session";
     private const int SessionTtlHours = 12;
 
+    // ── A4 PASS 1：rate limit / lockout 參數 ──
+    private const int FailedAttemptThreshold = 5;          // N 次失敗就鎖
+    private const int FailedWindowMinutes = 10;            // sliding window
+    private const int LockDurationMinutes = 15;            // 鎖多久
+
+    // 每個 IP 多久最多嘗試幾次（更廣的防爆破層、跨 principal 累計）
+    // 結構：ip → (firstAttemptAt, count)。in-memory、broker 重啟清。
+    private const int IpAttemptThreshold = 20;
+    private const int IpWindowMinutes = 5;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime FirstAt, int Count)> _ipAttempts = new();
+
     private readonly BrokerDb _db;
     private readonly ILogger<PrincipalAuthService> _logger;
 
@@ -52,14 +63,46 @@ public sealed class PrincipalAuthService
         if (string.IsNullOrWhiteSpace(principalId) || string.IsNullOrWhiteSpace(password))
             return new LoginResult { Authenticated = false, Message = "Missing principalId or password" };
 
+        // A4 PASS 1：IP 層 rate limit（防同一個爆破來源跨 principal 試）
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (IsIpRateLimited(ip, out var ipRetryMin))
+        {
+            _logger.LogWarning("Auth: IP {Ip} rate-limited (>={Threshold}/{WindowMin}min). Try again in ~{Min}min.",
+                ip, IpAttemptThreshold, IpWindowMinutes, ipRetryMin);
+            return new LoginResult { Authenticated = false, Message = $"Too many attempts from this IP. Try again in ~{ipRetryMin}min." };
+        }
+
         var cred = _db.Get<PrincipalCredential>(principalId);
         if (cred == null || cred.Disabled)
-            return new LoginResult { Authenticated = false, Message = "Invalid credentials" };  // 不洩漏「user 存在但密碼錯」
+        {
+            // 即使 user 不存在也記 IP 嘗試、避免 enum
+            RecordIpAttempt(ip);
+            return new LoginResult { Authenticated = false, Message = "Invalid credentials" };
+        }
+
+        // 帳號層 lockout 檢查（避免進 PBKDF2 浪費 CPU）
+        if (cred.LockedUntil.HasValue && cred.LockedUntil.Value > DateTime.UtcNow)
+        {
+            var remaining = (int)Math.Ceiling((cred.LockedUntil.Value - DateTime.UtcNow).TotalMinutes);
+            _logger.LogWarning("Auth: account {Pid} is locked, remaining {Min}min", principalId, remaining);
+            return new LoginResult { Authenticated = false, Message = $"Account locked. Try again in {remaining} min." };
+        }
 
         if (!VerifyPassword(password, cred))
+        {
+            RecordIpAttempt(ip);
+            RecordFailedAttempt(cred);
             return new LoginResult { Authenticated = false, Message = "Invalid credentials" };
+        }
 
-        // OK：發 session
+        // 成功：清失敗計數、發 session
+        if (cred.FailedLoginAttempts > 0 || cred.LockedUntil.HasValue)
+        {
+            cred.FailedLoginAttempts = 0;
+            cred.FirstFailedAt = null;
+            cred.LockedUntil = null;
+        }
+
         var (cookieValue, expiresAt) = IssueSession(context, cred);
         WriteSessionCookie(context, cookieValue, expiresAt);
 
@@ -76,6 +119,66 @@ public sealed class PrincipalAuthService
             ExpiresAt = expiresAt,
             Message = cred.MustChangePassword ? "Authenticated; password change required." : "ok",
         };
+    }
+
+    // ── A4 PASS 1 helpers ────────────────────────────────────────────
+
+    private bool IsIpRateLimited(string ip, out int retryMinutes)
+    {
+        retryMinutes = 0;
+        if (!_ipAttempts.TryGetValue(ip, out var rec)) return false;
+        var windowStart = DateTime.UtcNow.AddMinutes(-IpWindowMinutes);
+        if (rec.FirstAt < windowStart)
+        {
+            // 視窗已過、清掉
+            _ipAttempts.TryRemove(ip, out _);
+            return false;
+        }
+        if (rec.Count >= IpAttemptThreshold)
+        {
+            retryMinutes = Math.Max(1, (int)Math.Ceiling((rec.FirstAt.AddMinutes(IpWindowMinutes) - DateTime.UtcNow).TotalMinutes));
+            return true;
+        }
+        return false;
+    }
+
+    private void RecordIpAttempt(string ip)
+    {
+        var now = DateTime.UtcNow;
+        _ipAttempts.AddOrUpdate(ip,
+            _ => (now, 1),
+            (_, prev) =>
+            {
+                // 視窗外 → reset 計數
+                if (prev.FirstAt < now.AddMinutes(-IpWindowMinutes)) return (now, 1);
+                return (prev.FirstAt, prev.Count + 1);
+            });
+    }
+
+    private void RecordFailedAttempt(PrincipalCredential cred)
+    {
+        var now = DateTime.UtcNow;
+        var windowStart = now.AddMinutes(-FailedWindowMinutes);
+
+        // 視窗外 → reset
+        if (!cred.FirstFailedAt.HasValue || cred.FirstFailedAt.Value < windowStart)
+        {
+            cred.FirstFailedAt = now;
+            cred.FailedLoginAttempts = 1;
+        }
+        else
+        {
+            cred.FailedLoginAttempts++;
+        }
+
+        if (cred.FailedLoginAttempts >= FailedAttemptThreshold)
+        {
+            cred.LockedUntil = now.AddMinutes(LockDurationMinutes);
+            _logger.LogWarning("Auth: account {Pid} locked for {Min}min after {N} failed attempts",
+                cred.PrincipalId, LockDurationMinutes, cred.FailedLoginAttempts);
+        }
+        cred.UpdatedAt = now;
+        _db.Update(cred);
     }
 
     public bool ChangePassword(HttpContext context, string currentPassword, string newPassword, out string error)

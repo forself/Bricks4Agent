@@ -56,4 +56,17 @@ public class PrincipalCredential
 
     [Column("last_login_at")]
     public DateTime? LastLoginAt { get; set; }
+
+    // ── A4 PASS 1：失敗登入鎖（per principal）──
+    /// <summary>滑動視窗內失敗次數；成功登入歸零。</summary>
+    [Column("failed_login_attempts")]
+    public int FailedLoginAttempts { get; set; }
+
+    /// <summary>第一次失敗的時間（用於 sliding window 起算）。</summary>
+    [Column("first_failed_at")]
+    public DateTime? FirstFailedAt { get; set; }
+
+    /// <summary>鎖到何時；null = 未鎖。鎖期間 login 直接拒絕、不浪費 PBKDF2 算力。</summary>
+    [Column("locked_until")]
+    public DateTime? LockedUntil { get; set; }
 }
