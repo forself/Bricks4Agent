@@ -166,8 +166,16 @@ public class AutoTraderService : BackgroundService
 
     private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
     private readonly decimal _perpLiqEmergencyPct;
+    /// <summary>
+    /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
+    /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
+    /// 設 0 = 永遠用 MinConfidence、等同允許無限加倉（不建議）；
+    /// 設 1 = 已有 1 倉就鎖死（再強的訊號也不能加倉）。
+    /// </summary>
+    private readonly decimal _perpScaleInStep;
     public IReadOnlyDictionary<string, PerpetualPositionState> PerpetualPositionStates => _perpPositionState;
     public decimal PerpLiquidationEmergencyPct => _perpLiqEmergencyPct;
+    public decimal PerpScaleInStep => _perpScaleInStep;
 
     /// <summary>申報資金錨定（per exchange）。risk gate 用 min(declared, live) 算 equity。</summary>
     private readonly Dictionary<string, decimal> _declaredCapitalByExchange;
@@ -398,6 +406,9 @@ public class AutoTraderService : BackgroundService
         _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
         // Perp 強平距離保護：低於此 % 觸發 emergency close（不論 SL 是否到）。預設 5%
         _perpLiqEmergencyPct = ParsePctEnv("AUTOTRADER_PERP_LIQ_EMERGENCY_PCT", defaultValue: 5m, min: 0.5m, max: 50m);
+        // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
+        var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
+        _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
 
         // 申報資金錨定（per exchange）：risk rules 用 min(declared, live_balance)，
         // 跌會收緊（正確）、漲不會放寬（user 要求）。0 = 不啟用、用實際 balance（向後相容）。
@@ -1297,7 +1308,13 @@ public class AutoTraderService : BackgroundService
         }
 
         // Step 4: 風控檢查
-        if (_registry.HasAvailableWorker("risk.check") && price > 0)
+        // perp watch 整段跳過 spot risk——spot 路徑用「USDT 名目」算 max_position，
+        // 套到 perp 的 base-unit qty (e.g., 0.08 SOL) 會把 qty 誤調大成 ~108 SOL，
+        // 然後 perp risk gate 才看到 $10k 名目把它擋下、形成 false-blocked log。
+        // perp watch 的真正風控走 PlacePerpOrderForSignalAsync 內部的 pre_perp_order 路徑、
+        // 那邊有 r11-r15 完整 perp 規則 + circuit breaker 也已經在 perp 路徑各自處理。
+        var isPerpMode = item.Mode == "perp_long_only" || item.Mode == "perp_both";
+        if (!isPerpMode && _registry.HasAvailableWorker("risk.check") && price > 0)
         {
             var riskPayload = JsonSerializer.Serialize(new
             {
@@ -1401,7 +1418,7 @@ public class AutoTraderService : BackgroundService
         // Step 5: 下單 — spot 走 trading.order；perp_* 走 trading.perpetual 並做 signal→open/close 映射
         if (item.Mode == "perp_long_only" || item.Mode == "perp_both")
         {
-            await PlacePerpOrderForSignalAsync(item, action, ct);
+            await PlacePerpOrderForSignalAsync(item, action, confidence, ct);
         }
         else
         {
@@ -1471,7 +1488,7 @@ public class AutoTraderService : BackgroundService
     ///
     /// 翻倉等下次 cycle 才開、避免一次 cycle 內連續打交易所。
     /// </summary>
-    private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, CancellationToken ct)
+    private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, decimal confidence, CancellationToken ct)
     {
         if (!_registry.HasAvailableWorker("trading.perpetual"))
         {
@@ -1490,6 +1507,7 @@ public class AutoTraderService : BackgroundService
 
         var posDoc = JsonDocument.Parse(posResult.ResultPayload ?? "{}").RootElement;
         decimal longQty = 0m, shortQty = 0m;
+        int sameSymbolLongs = 0, sameSymbolShorts = 0;  // 計算 scale-in 用、含部分平倉後殘存
         if (posDoc.TryGetProperty("positions", out var posArr) && posArr.ValueKind == JsonValueKind.Array)
         {
             foreach (var p in posArr.EnumerateArray())
@@ -1498,10 +1516,17 @@ public class AutoTraderService : BackgroundService
                 if (sym != item.Symbol) continue;
                 var side = p.TryGetProperty("side", out var sd) ? sd.GetString() : "";
                 var qty = p.TryGetProperty("quantity", out var q) ? q.GetDecimal() : 0m;
-                if (side == "long") longQty = qty;
-                else if (side == "short") shortQty = qty;
+                if (side == "long")  { longQty = qty; sameSymbolLongs++; }
+                else if (side == "short") { shortQty = qty; sameSymbolShorts++; }
             }
         }
+
+        // Scale-in 門檻：同 symbol 已有同方向倉時、再加倉需要更高 confidence。
+        // 公式：required = base + (existing_same_side_count × step)
+        // 預設 base=0.5 / step=0.15 → 0 倉=0.50、1 倉=0.65、2 倉=0.80、3 倉=0.95
+        // 單一倉位的場景下這條完全不影響（existing=0、required=base）。
+        decimal RequiredConfidence(int existingSameSide)
+            => Math.Min(0.99m, _minConfidence + existingSameSide * _perpScaleInStep);
 
         // Map signal → (perpAction, sideOverride, positionSide, qtyOverride, reduceOnly)
         string? perpAction = null;
@@ -1512,16 +1537,41 @@ public class AutoTraderService : BackgroundService
 
         if (action == "buy")
         {
-            if (longQty > 0m)         perpAction = $"skip:already-long ({longQty})";
-            else if (shortQty > 0m)   { perpAction = "close_short"; perpSide = "buy";  perpPosSide = "short"; qtyToUse = shortQty; reduceOnly = true; }
-            else                      { perpAction = "open_long";   perpSide = "buy";  perpPosSide = "long";  reduceOnly = false; }
+            if (longQty > 0m)
+            {
+                // 已有 long、評估是否符合 scale-in 門檻
+                var required = RequiredConfidence(sameSymbolLongs);
+                if (confidence >= required)
+                {
+                    perpAction = $"scale_in_long ({sameSymbolLongs}→{sameSymbolLongs+1}, conf {confidence:P0}≥{required:P0})";
+                    perpSide = "buy"; perpPosSide = "long"; reduceOnly = false;
+                }
+                else
+                {
+                    perpAction = $"skip:already-long, conf {confidence:P0} < scale-in threshold {required:P0} (need higher confidence to add to existing position)";
+                }
+            }
+            else if (shortQty > 0m) { perpAction = "close_short"; perpSide = "buy";  perpPosSide = "short"; qtyToUse = shortQty; reduceOnly = true; }
+            else                    { perpAction = "open_long";   perpSide = "buy";  perpPosSide = "long";  reduceOnly = false; }
         }
         else // sell
         {
-            if (shortQty > 0m)        perpAction = $"skip:already-short ({shortQty})";
-            else if (longQty > 0m)    { perpAction = "close_long"; perpSide = "sell"; perpPosSide = "long";  qtyToUse = longQty; reduceOnly = true; }
+            if (shortQty > 0m)
+            {
+                var required = RequiredConfidence(sameSymbolShorts);
+                if (confidence >= required)
+                {
+                    perpAction = $"scale_in_short ({sameSymbolShorts}→{sameSymbolShorts+1}, conf {confidence:P0}≥{required:P0})";
+                    perpSide = "sell"; perpPosSide = "short"; reduceOnly = false;
+                }
+                else
+                {
+                    perpAction = $"skip:already-short, conf {confidence:P0} < scale-in threshold {required:P0} (need higher confidence to add to existing position)";
+                }
+            }
+            else if (longQty > 0m) { perpAction = "close_long"; perpSide = "sell"; perpPosSide = "long";  qtyToUse = longQty; reduceOnly = true; }
             else if (item.Mode == "perp_long_only") perpAction = "skip:long-only-no-open-short";
-            else                      { perpAction = "open_short"; perpSide = "sell"; perpPosSide = "short"; reduceOnly = false; }
+            else                    { perpAction = "open_short"; perpSide = "sell"; perpPosSide = "short"; reduceOnly = false; }
         }
 
         if (perpSide == null)
