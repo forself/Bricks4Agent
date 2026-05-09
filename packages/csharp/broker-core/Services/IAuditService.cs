@@ -42,6 +42,36 @@ public interface IAuditService
     /// 用於 sankey/桑基圖：principal → capability。
     /// </summary>
     List<TopologyEdge> GetTopology(int sinceMinutes = 60);
+
+    /// <summary>
+    /// 每 capability 的延遲統計（p50 / p95 / p99 / max）+ 分布 bucket。
+    /// 從 PoolDispatcher 寫進 audit_events.details 的 duration_ms 欄位反推。
+    /// </summary>
+    List<CapabilityLatencyStats> GetLatencyStats(int sinceMinutes = 60);
+}
+
+/// <summary>單一 capability 的延遲統計 + histogram bucket。</summary>
+public class CapabilityLatencyStats
+{
+    public string CapabilityId { get; set; } = string.Empty;
+    public int Calls { get; set; }
+    public int Succeeded { get; set; }
+    public int Failed { get; set; }
+    public long P50Ms { get; set; }
+    public long P95Ms { get; set; }
+    public long P99Ms { get; set; }
+    public long MaxMs { get; set; }
+    public long AvgMs { get; set; }
+    /// <summary>分布 bucket：[(label, count), ...]，固定 7 個 bucket（&lt;10/10-50/50-100/100-500/500-1k/1-5k/&gt;5k ms）。</summary>
+    public List<LatencyBucket> Distribution { get; set; } = new();
+}
+
+public class LatencyBucket
+{
+    public string Label { get; set; } = string.Empty;
+    public long LowerMs { get; set; }
+    public long UpperMs { get; set; }   // long.MaxValue = unbounded
+    public int Count { get; set; }
 }
 
 /// <summary>(principal, capability) 聚合邊——後端拿來畫 sankey。</summary>

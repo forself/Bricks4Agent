@@ -266,6 +266,94 @@ ORDER BY Started DESC, Succeeded DESC
         public int Failed { get; set; }
     }
 
+    /// <inheritdoc />
+    public List<CapabilityLatencyStats> GetLatencyStats(int sinceMinutes = 60)
+    {
+        // 拉所有 DISPATCH_SUCCEEDED / DISPATCH_FAILED（這兩種 event 的 details JSON 裡才會有 duration_ms）
+        // 失敗事件的 duration_ms 也算進去——latency 不是只有「成功才算」
+        var since = DateTime.UtcNow.AddMinutes(-sinceMinutes);
+        var rows = _db.Query<DurationRow>(@"
+SELECT
+    COALESCE(resource_ref, '(unknown)')              AS Capability,
+    event_type                                       AS EventType,
+    json_extract(details, '$.duration_ms')           AS DurationMs
+FROM audit_events
+WHERE occurred_at > @since
+  AND (event_type = 'DISPATCH_SUCCEEDED' OR event_type = 'DISPATCH_FAILED')
+  AND json_extract(details, '$.duration_ms') IS NOT NULL
+",
+            new { since });
+
+        // 分組並計算 percentile + bucket
+        return rows
+            .GroupBy(r => r.Capability)
+            .Select(g =>
+            {
+                var durations = g.Select(r => r.DurationMs).OrderBy(d => d).ToList();
+                var n = durations.Count;
+                var succeeded = g.Count(r => r.EventType == "DISPATCH_SUCCEEDED");
+                var failed    = g.Count(r => r.EventType == "DISPATCH_FAILED");
+
+                return new CapabilityLatencyStats
+                {
+                    CapabilityId = g.Key,
+                    Calls = n, Succeeded = succeeded, Failed = failed,
+                    P50Ms = Percentile(durations, 50),
+                    P95Ms = Percentile(durations, 95),
+                    P99Ms = Percentile(durations, 99),
+                    MaxMs = durations[^1],
+                    AvgMs = (long)durations.Average(),
+                    Distribution = BucketDistribution(durations),
+                };
+            })
+            .OrderByDescending(s => s.Calls)
+            .ToList();
+    }
+
+    private static long Percentile(List<long> sortedAsc, int pct)
+    {
+        if (sortedAsc.Count == 0) return 0;
+        var idx = Math.Min(sortedAsc.Count - 1, (int)Math.Ceiling(sortedAsc.Count * pct / 100.0) - 1);
+        return sortedAsc[Math.Max(0, idx)];
+    }
+
+    /// <summary>固定 7 桶：&lt;10/10-50/50-100/100-500/500-1000/1000-5000/&gt;5000 ms。</summary>
+    private static readonly (string Label, long Lower, long Upper)[] BucketDefs = new[]
+    {
+        ("<10ms",       0L,    10L),
+        ("10-50ms",     10L,   50L),
+        ("50-100ms",    50L,   100L),
+        ("100-500ms",   100L,  500L),
+        ("500ms-1s",    500L,  1_000L),
+        ("1-5s",        1_000L, 5_000L),
+        (">5s",         5_000L, long.MaxValue),
+    };
+
+    private static List<LatencyBucket> BucketDistribution(List<long> sortedAsc)
+    {
+        var result = BucketDefs
+            .Select(b => new LatencyBucket { Label = b.Label, LowerMs = b.Lower, UpperMs = b.Upper, Count = 0 })
+            .ToList();
+        foreach (var d in sortedAsc)
+        {
+            for (int i = 0; i < BucketDefs.Length; i++)
+            {
+                var (_, lo, hi) = BucketDefs[i];
+                if (d >= lo && d < hi) { result[i].Count++; break; }
+                // edge: max bucket includes >= 5000
+                if (i == BucketDefs.Length - 1 && d >= lo) { result[i].Count++; break; }
+            }
+        }
+        return result;
+    }
+
+    private class DurationRow
+    {
+        public string Capability { get; set; } = string.Empty;
+        public string EventType { get; set; } = string.Empty;
+        public long DurationMs { get; set; }
+    }
+
     // ── 內部方法 ──
 
     private static string ComputeSha256(string input)

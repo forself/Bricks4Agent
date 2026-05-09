@@ -112,6 +112,39 @@ public static class AuditEndpoints
             })));
         });
 
+        // ── GET /api/v1/audit/latency?since_minutes=60 ──
+        // 每 capability 的 p50/p95/p99/max + 分布 histogram
+        audit.MapGet("/latency", (HttpContext ctx, IAuditService auditService) =>
+        {
+            var q = ctx.Request.Query;
+            var sinceMin = int.TryParse(q["since_minutes"].ToString(), out var s) ? Math.Clamp(s, 1, 1440) : 60;
+            var stats = auditService.GetLatencyStats(sinceMin);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                since_minutes = sinceMin,
+                generated_at  = DateTime.UtcNow,
+                capabilities  = stats.Select(c => new
+                {
+                    capability_id = c.CapabilityId,
+                    calls         = c.Calls,
+                    succeeded     = c.Succeeded,
+                    failed        = c.Failed,
+                    p50_ms        = c.P50Ms,
+                    p95_ms        = c.P95Ms,
+                    p99_ms        = c.P99Ms,
+                    max_ms        = c.MaxMs,
+                    avg_ms        = c.AvgMs,
+                    distribution  = c.Distribution.Select(b => new
+                    {
+                        label = b.Label,
+                        lower_ms = b.LowerMs,
+                        upper_ms = b.UpperMs == long.MaxValue ? (long?)null : b.UpperMs,
+                        count = b.Count,
+                    }),
+                }),
+            }));
+        });
+
         // ── GET /api/v1/audit/topology?since_minutes=60 ──
         // (principal, capability) 聚合邊，給 topology.html 桑基圖
         audit.MapGet("/topology", (HttpContext ctx, IAuditService auditService) =>

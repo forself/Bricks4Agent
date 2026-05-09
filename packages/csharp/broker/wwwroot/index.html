@@ -1025,6 +1025,48 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               </el-card>
             </el-col>
           </el-row>
+
+          <!-- Latency stats：每 capability 的 p50/p95/p99 + 分布 histogram -->
+          <el-card style="margin-top:14px">
+            <template #header>
+              <div style="display:flex;align-items:center">
+                <span style="font-weight:600">{{t('latencyStats')}}</span>
+                <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('latencySubtitle')}}</span>
+              </div>
+            </template>
+            <el-table :data="latency?.capabilities || []" stripe :empty-text="t('latencyEmpty')">
+              <el-table-column :label="t('capability')" min-width="160">
+                <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+              </el-table-column>
+              <el-table-column label="calls" width="70" align="right" prop="calls"/>
+              <el-table-column label="p50" width="80" align="right">
+                <template #default="{row}"><span style="font-family:Consolas,monospace;color:#67c23a">{{fmtMs(row.p50_ms)}}</span></template>
+              </el-table-column>
+              <el-table-column label="p95" width="80" align="right">
+                <template #default="{row}"><span style="font-family:Consolas,monospace;color:#e6a23c">{{fmtMs(row.p95_ms)}}</span></template>
+              </el-table-column>
+              <el-table-column label="p99" width="80" align="right">
+                <template #default="{row}"><span style="font-family:Consolas,monospace;color:#f56c6c">{{fmtMs(row.p99_ms)}}</span></template>
+              </el-table-column>
+              <el-table-column label="max" width="80" align="right">
+                <template #default="{row}"><span style="font-family:Consolas,monospace;color:var(--td)">{{fmtMs(row.max_ms)}}</span></template>
+              </el-table-column>
+              <el-table-column :label="t('latencyDistribution')" min-width="320">
+                <template #default="{row}">
+                  <div style="display:flex;align-items:flex-end;gap:2px;height:32px">
+                    <div v-for="b in row.distribution" :key="b.label"
+                         :style="`flex:1;background:${distBarColor(b.label)};height:${distBarHeight(b.count, row.calls)}%;min-height:2px;border-radius:2px 2px 0 0`"
+                         :title="`${b.label}: ${b.count} (${(b.count/row.calls*100).toFixed(1)}%)`"></div>
+                  </div>
+                  <div style="display:flex;font-size:9px;color:var(--td);margin-top:2px">
+                    <span style="flex:1;text-align:left">{{'<10'}}</span>
+                    <span style="flex:1;text-align:center">100ms</span>
+                    <span style="flex:1;text-align:right">{{'>5s'}}</span>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
         </template>
       </el-tab-pane>
 
@@ -1477,6 +1519,10 @@ const I18N={
     aclRules:'ACL 角色規則',
     aclSubtitle:'role → 允許呼叫的 capability pattern',
     aclPatterns:'允許 capability',aclNothing:'（無）',
+    latencyStats:'延遲統計',
+    latencySubtitle:'每 capability 的 p50/p95/p99 + 分布 histogram',
+    latencyDistribution:'分布（&lt;10ms 到 &gt;5s）',
+    latencyEmpty:'視窗內無延遲資料',
   },
   en:{login:'Login',principalId:'Username (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'Password',
     changePasswordRequired:'Set a new password',currentPassword:'Current password',newPassword:'New password',newPasswordConfirm:'Confirm new password',
@@ -1567,6 +1613,10 @@ const I18N={
     aclRules:'Role ACL Rules',
     aclSubtitle:'role → allowed capability patterns',
     aclPatterns:'Allowed capabilities',aclNothing:'(none)',
+    latencyStats:'Latency stats',
+    latencySubtitle:'p50/p95/p99 + distribution histogram per capability',
+    latencyDistribution:'Distribution (<10ms to >5s)',
+    latencyEmpty:'No latency data in this window',
   }
 };
 
@@ -1878,11 +1928,32 @@ const app=createApp({
     async function loadTopology(){
       topologyLoading.value=true;
       try{
-        const r=await fetch('/api/v1/audit/topology?since_minutes='+topologySince.value,{credentials:'include'});
-        const j=await r.json();
-        topology.value=j.success?j.data:null;
-      }catch(e){console.error('[loadTopology]',e);topology.value=null}
+        const [topR,latR]=await Promise.all([
+          fetch('/api/v1/audit/topology?since_minutes='+topologySince.value,{credentials:'include'}),
+          fetch('/api/v1/audit/latency?since_minutes='+topologySince.value,{credentials:'include'}),
+        ]);
+        const topJ=await topR.json();const latJ=await latR.json();
+        topology.value=topJ.success?topJ.data:null;
+        latency.value=latJ.success?latJ.data:null;
+      }catch(e){console.error('[loadTopology]',e);topology.value=null;latency.value=null}
       topologyLoading.value=false;
+    }
+    const latency=ref(null);
+    function fmtMs(ms){
+      if(ms==null) return '—';
+      if(ms<1000) return ms+'ms';
+      return (ms/1000).toFixed(2)+'s';
+    }
+    function distBarColor(label){
+      // 顏色梯：快=綠、中=黃、慢=紅。配合 p50/p95/p99 的色調
+      const map={'<10ms':'#67c23a','10-50ms':'#67c23a','50-100ms':'#9bc94a','100-500ms':'#e6a23c','500ms-1s':'#e6a23c','1-5s':'#f56c6c','>5s':'#f56c6c'};
+      return map[label]||'#909399';
+    }
+    function distBarHeight(count, total){
+      if(!total||count===0) return 0;
+      const pct=count/total*100;
+      // log scale 讓小 bucket 也看得到（純 linear 太極端）
+      return Math.max(6, Math.min(100, Math.log10(pct+1)*55));
     }
 
     const topologyTotalCalls=computed(()=>topology.value?.capabilities.reduce((s,c)=>s+c.calls,0)||0);
@@ -2535,6 +2606,7 @@ const app=createApp({
       ganttRows,ganttTicks,
       topology,topologyLoading,topologySince,loadTopology,
       topologyTotalCalls,topologyTotalSucceeded,topologyTotalFailed,topologySuccessRate,sankey,
+      latency,fmtMs,distBarColor,distBarHeight,
       session:computed(()=>session)};
   }
 });
