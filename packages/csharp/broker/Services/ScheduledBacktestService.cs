@@ -40,7 +40,9 @@ public class ScheduledBacktestService : BackgroundService
 
     private static readonly string[] Timeframes = { "1h", "4h", "1d" };
     private static readonly string[] Strategies = { "sma_cross", "rsi_oversold", "macd_divergence", "composite" };
-    private const int BarsPerBacktest = 200;
+    // 從 200 拉到 500、訊號穩定度提升、low-sample tag 會大幅減少。
+    // BingX 1h/4h 都有 500+ 根、1d 看歷史長度但 quote-worker 已經抓 365 根 daily、夠用。
+    private const int BarsPerBacktest = 500;
 
     public ScheduledBacktestService(
         IExecutionDispatcher dispatcher,
@@ -131,10 +133,14 @@ public class ScheduledBacktestService : BackgroundService
                     continue;
                 }
 
+                // 為這個 (symbol, timeframe) 對應的 bars 窗口算一次 regime、所有策略共用
+                var regime = ClassifyRegime(barsOpt.Value);
+
                 foreach (var strat in Strategies)
                 {
                     if (ct.IsCancellationRequested) break;
                     var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, ct);
+                    entry.Regime = regime;
                     if (!string.IsNullOrEmpty(entry.Error)) errors++;
                     allResults.Add(entry);
                 }
@@ -186,6 +192,12 @@ public class ScheduledBacktestService : BackgroundService
         catch { return null; }
     }
 
+    /// <summary>有 grid search optimizer 的策略——這些走 /optimize 找最佳 params；其他用 default 跑 /backtest。</summary>
+    private static readonly HashSet<string> OptimizableStrategies = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sma_cross", "rsi_oversold", "macd_divergence",
+    };
+
     private async Task<BacktestResultEntry> RunSingleBacktestAsync(
         string runId, string symbol, string exchange, string tf, string strategy, JsonElement bars, CancellationToken ct)
     {
@@ -194,6 +206,9 @@ public class ScheduledBacktestService : BackgroundService
             RunId = runId, Symbol = symbol, Exchange = exchange,
             Timeframe = tf, Strategy = strategy, BarsCount = bars.GetArrayLength(),
         };
+
+        var useOptimizer = OptimizableStrategies.Contains(strategy);
+        var route = useOptimizer ? "optimize" : "backtest";
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -206,7 +221,7 @@ public class ScheduledBacktestService : BackgroundService
         var req = new ApprovedRequest
         {
             RequestId = Guid.NewGuid().ToString("N"),
-            CapabilityId = "strategy.signal", Route = "backtest", Payload = payload,
+            CapabilityId = "strategy.signal", Route = route, Payload = payload,
             Scope = "{}", PrincipalId = "system",
             TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
         };
@@ -221,13 +236,31 @@ public class ScheduledBacktestService : BackgroundService
         try
         {
             var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-            // strategy worker 回 total_return_pct / sharpe_ratio / win_rate / max_drawdown_pct / total_trades；
-            // 'trades' 在 response 是 trade list array（單筆交易明細）、別跟總筆數混淆。
-            entry.TotalReturnPct = doc.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
-            entry.Sharpe = doc.TryGetProperty("sharpe_ratio", out var sh) ? sh.GetDecimal() : 0m;
-            entry.WinRate = doc.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
-            entry.MaxDdPct = doc.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
-            entry.Trades = doc.TryGetProperty("total_trades", out var t) ? t.GetInt32() : 0;
+            if (useOptimizer)
+            {
+                // /optimize 回 best_params + top_results[]，取 top_results[0] 拿完整指標
+                if (doc.TryGetProperty("best_params", out var bp) && bp.ValueKind == JsonValueKind.Object)
+                    entry.ParamsJson = bp.GetRawText();
+
+                if (doc.TryGetProperty("top_results", out var tops) && tops.ValueKind == JsonValueKind.Array && tops.GetArrayLength() > 0)
+                {
+                    var best = tops[0];
+                    entry.TotalReturnPct = best.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
+                    entry.Sharpe = best.TryGetProperty("sharpe", out var sh) ? sh.GetDecimal() : 0m;
+                    entry.WinRate = best.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
+                    entry.MaxDdPct = best.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
+                    entry.Trades = best.TryGetProperty("trades", out var t) ? t.GetInt32() : 0;
+                }
+            }
+            else
+            {
+                // /backtest 回平面欄位、注意 sharpe_ratio / total_trades 跟 /optimize 不同
+                entry.TotalReturnPct = doc.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
+                entry.Sharpe = doc.TryGetProperty("sharpe_ratio", out var sh) ? sh.GetDecimal() : 0m;
+                entry.WinRate = doc.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
+                entry.MaxDdPct = doc.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
+                entry.Trades = doc.TryGetProperty("total_trades", out var t) ? t.GetInt32() : 0;
+            }
             entry.Score = ComputeScore(entry);
         }
         catch (Exception ex)
@@ -253,5 +286,55 @@ public class ScheduledBacktestService : BackgroundService
         return Math.Round(
             0.4m * sharpeNorm + 0.3m * returnNorm + 0.2m * winRateNorm - 0.1m * ddPenalty,
             4);
+    }
+
+    /// <summary>
+    /// 把 bars 窗口分類成市場行情類型——讓 lab/recommendations 將來可以按 regime 過濾、
+    /// 「現在是震盪市、推薦 mean-reversion 類；現在是趨勢市、推薦 trend-follow 類」。
+    ///
+    /// 簡化版判斷（之後可再升級用真 ADX）：
+    ///   - close 變動方向一致性（trend strength proxy）：(end - start) / range_total
+    ///   - 平均 daily range %（atr proxy）：mean((high - low) / open)
+    ///
+    /// 規則：
+    ///   trending  : trend_strength &gt; 0.4
+    ///   volatile  : avg_range_pct &gt; 5%
+    ///   squeeze   : avg_range_pct &lt; 1.5% AND trend_strength &lt; 0.2
+    ///   ranging   : 其他（震盪 / 沒明顯方向）
+    /// </summary>
+    private static string ClassifyRegime(JsonElement bars)
+    {
+        var n = bars.GetArrayLength();
+        if (n < 20) return "unknown";
+
+        decimal firstClose = 0m, lastClose = 0m;
+        decimal totalRange = 0m;     // sum of |close[i] - close[i-1]|
+        decimal sumRangePct = 0m;    // sum of (high-low)/open
+        decimal prevClose = 0m;
+        int idx = 0;
+        foreach (var b in bars.EnumerateArray())
+        {
+            var open = b.TryGetProperty("open", out var o) ? o.GetDecimal() : 0m;
+            var high = b.TryGetProperty("high", out var h) ? h.GetDecimal() : 0m;
+            var low = b.TryGetProperty("low", out var l) ? l.GetDecimal() : 0m;
+            var close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0m;
+
+            if (idx == 0) firstClose = close;
+            lastClose = close;
+            if (open > 0m) sumRangePct += (high - low) / open;
+            if (idx > 0) totalRange += Math.Abs(close - prevClose);
+            prevClose = close;
+            idx++;
+        }
+
+        if (firstClose <= 0m || idx == 0) return "unknown";
+        var netMove = Math.Abs(lastClose - firstClose);
+        var trendStrength = totalRange > 0m ? (decimal)Math.Abs((double)(netMove / totalRange)) : 0m;
+        var avgRangePct = sumRangePct / idx * 100m;
+
+        if (trendStrength > 0.4m) return "trending";
+        if (avgRangePct > 5m) return "volatile";
+        if (avgRangePct < 1.5m && trendStrength < 0.2m) return "squeeze";
+        return "ranging";
     }
 }

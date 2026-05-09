@@ -95,6 +95,42 @@ public static class ParameterOptimizer
         return BuildResult("rsi_oversold", baseConfig.Symbol, results);
     }
 
+    /// <summary>
+    /// 優化 MACD 策略的 fast / slow / signal 三組 EMA 週期。
+    /// 標準 (12,26,9) 之外掃常見的 (8,21,5) / (5,13,3) / (10,30,8) 等替代組合。
+    /// </summary>
+    public static OptimizeResult OptimizeMacd(List<BarData> bars, StrategyConfig baseConfig, decimal cash = 100_000)
+    {
+        var results = new List<ParamResult>();
+        // fast 5–13、slow 21–35、signal 5–11——把高低頻 + 標準都納入
+        var fastRange   = new[] { 5, 8, 10, 12 };
+        var slowRange   = new[] { 21, 26, 30, 35 };
+        var signalRange = new[] { 5, 7, 9, 11 };
+
+        foreach (var fast in fastRange)
+        foreach (var slow in slowRange)
+        foreach (var sig in signalRange)
+        {
+            if (fast >= slow) continue;
+            var config = new StrategyConfig
+            {
+                Symbol = baseConfig.Symbol, Exchange = baseConfig.Exchange,
+                MacdFast = fast, MacdSlow = slow, MacdSignal = sig,
+                SmaFast = baseConfig.SmaFast, SmaSlow = baseConfig.SmaSlow,
+                RsiPeriod = baseConfig.RsiPeriod,
+            };
+            var bt = BacktestEngine.Run(new MacdStrategy(), bars, config, cash);
+            results.Add(new ParamResult
+            {
+                Params = new() { ["macd_fast"] = fast, ["macd_slow"] = slow, ["macd_signal"] = sig },
+                TotalReturnPct = bt.TotalReturnPct, Sharpe = bt.SharpeRatio,
+                WinRate = bt.WinRate, MaxDrawdownPct = bt.MaxDrawdownPct, Trades = bt.TotalTrades,
+            });
+        }
+
+        return BuildResult("macd_divergence", baseConfig.Symbol, results);
+    }
+
     private static OptimizeResult BuildResult(string strategy, string symbol, List<ParamResult> results)
     {
         var sorted = results.Where(r => r.Trades > 0).OrderByDescending(r => r.Sharpe).ToList();

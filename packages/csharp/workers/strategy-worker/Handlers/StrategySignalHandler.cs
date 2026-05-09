@@ -204,12 +204,13 @@ public class StrategySignalHandler : ICapabilityHandler
 
         var result = strategy switch
         {
-            "sma_cross" => ParameterOptimizer.OptimizeSma(bars, config, cash),
-            "rsi_oversold" => ParameterOptimizer.OptimizeRsi(bars, config, cash),
+            "sma_cross"        => ParameterOptimizer.OptimizeSma(bars, config, cash),
+            "rsi_oversold"     => ParameterOptimizer.OptimizeRsi(bars, config, cash),
+            "macd_divergence"  => ParameterOptimizer.OptimizeMacd(bars, config, cash),
             _ => null
         };
 
-        if (result == null) return (false, null, $"Optimizer not available for: {strategy}. Use sma_cross or rsi_oversold.");
+        if (result == null) return (false, null, $"Optimizer not available for: {strategy}. Use sma_cross / rsi_oversold / macd_divergence.");
 
         var json = JsonSerializer.Serialize(new
         {
