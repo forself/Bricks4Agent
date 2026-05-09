@@ -101,8 +101,9 @@ public sealed class PrincipalAuthService
             return new LoginResult { Authenticated = false, Message = "Invalid credentials" };
         }
 
-        // A4 PASS 2：密碼通過、若 user 已啟用 2FA 還需驗 TOTP
-        if (!string.IsNullOrEmpty(cred.TotpSecretEnc))
+        // A4 PASS 2：密碼通過、若 user 已**完成 enrollment**（TotpEnrolledAt 有值）才強制 TOTP。
+        // 只有 secret 沒 enrolled = setup 階段、login 不擋（避免 setup 一半被自己鎖在外）。
+        if (cred.TotpEnrolledAt.HasValue && !string.IsNullOrEmpty(cred.TotpSecretEnc))
         {
             if (string.IsNullOrWhiteSpace(totpCode))
                 return new LoginResult { Authenticated = false, Message = "TOTP code required", RequiresTotp = true };
