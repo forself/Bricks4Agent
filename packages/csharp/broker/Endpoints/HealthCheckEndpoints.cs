@@ -85,5 +85,51 @@ public static class HealthCheckEndpoints
                 workers,
             }));
         });
+
+        // GET /api/v1/health/score — Worker 健康綜合分數（0-100、含三個子分量）
+        hc.MapGet("/score", async (
+            Broker.Services.HealthScoreService svc, CancellationToken ct) =>
+        {
+            var report = await svc.ComputeAsync(ct);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                generated_at   = report.GeneratedAt,
+                overall_score  = report.OverallScore,
+                overall_status = report.OverallStatus,
+                worker_count   = report.WorkerCount,
+                healthy_count  = report.HealthyCount,
+                degraded_count = report.DegradedCount,
+                critical_count = report.CriticalCount,
+                workers = report.Workers.Select(w => new
+                {
+                    worker_id    = w.WorkerId,
+                    capabilities = w.Capabilities,
+                    state        = w.State,
+                    score        = w.Score,
+                    status       = w.Status,
+                    heartbeat = w.Heartbeat == null ? null : new
+                    {
+                        score = w.Heartbeat.Score,
+                        label = w.Heartbeat.Label,
+                        age_seconds = w.Heartbeat.AgeSeconds,
+                    },
+                    dispatch = w.Dispatch == null ? null : (object)new
+                    {
+                        score = w.Dispatch.Score,
+                        label = w.Dispatch.Label,
+                        succeeded = w.Dispatch.Succeeded,
+                        failed = w.Dispatch.Failed,
+                        success_rate_pct = w.Dispatch.SuccessRatePct,
+                    },
+                    resource = w.Resource == null ? null : (object)new
+                    {
+                        score = w.Resource.Score,
+                        label = w.Resource.Label,
+                        cpu_pct = w.Resource.CpuPct,
+                        mem_pct = w.Resource.MemPct,
+                    },
+                }),
+            }));
+        });
     }
 }

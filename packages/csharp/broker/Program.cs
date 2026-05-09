@@ -169,6 +169,9 @@ builder.Services.AddSingleton<IAuditService>(sp =>
 // ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role） ──
 builder.Services.AddSingleton<ICapabilityAclService, CapabilityAclService>();
 
+// ── Step 4.6: Worker 健康綜合分數（heartbeat + dispatch success + resource） ──
+builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
+
 // ── Step 5: Capability Catalog + Policy Engine ──
 builder.Services.AddSingleton<ISchemaValidator, SchemaValidator>();
 builder.Services.AddSingleton<ITaskRouter, TaskRouter>();
