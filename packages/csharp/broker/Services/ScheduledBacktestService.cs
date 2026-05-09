@@ -221,11 +221,13 @@ public class ScheduledBacktestService : BackgroundService
         try
         {
             var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            // strategy worker 回 total_return_pct / sharpe_ratio / win_rate / max_drawdown_pct / total_trades；
+            // 'trades' 在 response 是 trade list array（單筆交易明細）、別跟總筆數混淆。
             entry.TotalReturnPct = doc.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
-            entry.Sharpe = doc.TryGetProperty("sharpe", out var sh) ? sh.GetDecimal() : 0m;
+            entry.Sharpe = doc.TryGetProperty("sharpe_ratio", out var sh) ? sh.GetDecimal() : 0m;
             entry.WinRate = doc.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
             entry.MaxDdPct = doc.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
-            entry.Trades = doc.TryGetProperty("trades", out var t) ? t.GetInt32() : 0;
+            entry.Trades = doc.TryGetProperty("total_trades", out var t) ? t.GetInt32() : 0;
             entry.Score = ComputeScore(entry);
         }
         catch (Exception ex)
