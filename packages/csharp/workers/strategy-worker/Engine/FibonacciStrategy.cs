@@ -22,6 +22,10 @@ namespace StrategyWorker.Engine;
 public class FibonacciStrategy : IStrategy
 {
     public string Name => "fibonacci_retracement";
+    public string Description => "Fibonacci Retracement — 擺動高低點 0.382-0.618 黃金區順勢回撤進場";
+    public StrategyCategory Category => StrategyCategory.Pattern;
+    public int MinBars => 52;                  // SwingLookback=50 + 2
+    public decimal MinCapitalUsdt => 200m;     // 黃金區進場、止損偏遠、單筆風險較大
 
     private const int SwingLookback = 50;   // 從最近 50 根 K 線找擺動
     private const int TrendSmaPeriod = 50;  // 用 SMA-50 判斷趨勢

@@ -16,6 +16,10 @@ namespace StrategyWorker.Engine;
 public class BollingerStrategy : IStrategy
 {
     public string Name => "bollinger_bands";
+    public string Description => "Bollinger Bands — 均值回歸：觸下軌買、觸上軌賣、squeeze 時觀望";
+    public StrategyCategory Category => StrategyCategory.MeanReversion;
+    public int MinBars => 25;
+    public decimal MinCapitalUsdt => 100m;
 
     private const int Period = 20;
     private const decimal KSigma = 2m;

@@ -33,6 +33,10 @@ namespace StrategyWorker.Engine;
 public class VegasTunnelStrategy : IStrategy
 {
     public string Name => "vegas_tunnel";
+    public string Description => "Vegas Tunnel — 費波那契 EMA(144/169/576/676/12) 多層通道趨勢跟隨";
+    public StrategyCategory Category => StrategyCategory.Trend;
+    public int MinBars => 700;
+    public decimal MinCapitalUsdt => 200m;
 
     private const int MainFast  = 144;
     private const int MainSlow  = 169;

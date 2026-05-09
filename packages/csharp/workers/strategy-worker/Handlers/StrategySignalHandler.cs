@@ -17,12 +17,12 @@ namespace StrategyWorker.Handlers;
 /// </summary>
 public class StrategySignalHandler : ICapabilityHandler
 {
-    private readonly Dictionary<string, IStrategy> _strategies;
+    private readonly IStrategyRegistry _registry;
     public string CapabilityId => "strategy.signal";
 
-    public StrategySignalHandler(Dictionary<string, IStrategy> strategies)
+    public StrategySignalHandler(IStrategyRegistry registry)
     {
-        _strategies = strategies;
+        _registry = registry;
     }
 
     public Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -51,8 +51,9 @@ public class StrategySignalHandler : ICapabilityHandler
         // 解析策略名稱
         var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
 
-        if (!_strategies.TryGetValue(strategyName, out var strategy))
-            return (false, null, $"Unknown strategy: {strategyName}. Available: {string.Join(", ", _strategies.Keys)}");
+        var strategy = _registry.Get(strategyName);
+        if (strategy == null)
+            return (false, null, $"Unknown strategy: {strategyName}. Available: {string.Join(", ", _registry.Names())}");
 
         // 解析 K 線資料
         if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
@@ -118,7 +119,8 @@ public class StrategySignalHandler : ICapabilityHandler
         var doc = JsonDocument.Parse(payload).RootElement;
         var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
 
-        if (!_strategies.TryGetValue(strategyName, out var strategy))
+        var strategy = _registry.Get(strategyName);
+        if (strategy == null)
             return (false, null, $"Unknown strategy: {strategyName}");
 
         if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
@@ -310,7 +312,8 @@ public class StrategySignalHandler : ICapabilityHandler
         var doc = JsonDocument.Parse(payload).RootElement;
 
         var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "composite" : "composite";
-        if (!_strategies.TryGetValue(strategyName, out var strategy))
+        var strategy = _registry.Get(strategyName);
+        if (strategy == null)
             return (false, null, $"Unknown strategy: {strategyName}");
 
         if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
@@ -379,25 +382,35 @@ public class StrategySignalHandler : ICapabilityHandler
 
     private (bool, string?, string?) ListStrategies()
     {
+        // 全部從 registry 拿——每個 IStrategy 自己 expose Description / Category /
+        // MinBars / MinCapitalUsdt / ParamSchema。broker 端讀回來就能直接餵給
+        // dashboard tooltip / Lab MinCapital 檢查 / grid search 維度，不用再寫死表。
+        var all = _registry.All();
         var json = JsonSerializer.Serialize(new
         {
-            strategies = _strategies.Keys.ToList(),
-            descriptions = new Dictionary<string, string>
+            strategies = all.Select(s => s.Name).ToList(),
+            // 保留舊欄位讓現有 broker 端 fallback 解析 OK
+            descriptions = all.ToDictionary(s => s.Name, s => s.Description),
+            metadata = all.Select(s => new
             {
-                ["sma_cross"]       = "SMA Golden/Death Cross — 快慢均線交叉",
-                ["rsi_oversold"]    = "RSI Oversold/Overbought — 超買超賣",
-                ["macd_divergence"] = "MACD Crossover — MACD 與 Signal 交叉",
-                ["composite"]      = "Composite — 固定等權投票（SMA + RSI + MACD）",
-                ["ensemble"]       = "Ensemble — 動態加權投票，權重 = 成員近期 Sharpe（適應市場變化）",
-                ["auto_select"]    = "AutoSelect — 偵測行情類型（趨勢/震盪/收斂/高波動）→ 挑當下最適合的單一成員策略",
-                ["fibonacci_retracement"] = "Fibonacci Retracement — 在擺動高低點的 0.382-0.618 黃金區偵測順勢回撤進場",
-                ["bollinger_bands"] = "Bollinger Bands — 均值回歸：觸下軌買、觸上軌賣、squeeze 時觀望",
-                ["harmonic_pattern"] = "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 四種經典 5 點諧波形態",
-                ["vegas_tunnel"]    = "Vegas Tunnel — 費波那契 EMA（144/169/576/676/12）多層通道趨勢跟隨 + 回檔進場",
-                ["llm"]             = "LLM — AI 模型分析市場資料產生訊號",
-                ["multi_timeframe"] = "Multi-Timeframe — 多時間框架交叉確認",
-                ["news_sentiment"]  = "News Sentiment — AI 分析財經新聞情緒",
-            }
+                name             = s.Name,
+                description      = s.Description,
+                category         = s.Category.ToString(),
+                min_bars         = s.MinBars,
+                min_capital_usdt = s.MinCapitalUsdt,
+                param_schema     = s.ParamSchema.ToDictionary(
+                    kv => kv.Key,
+                    kv => new
+                    {
+                        type        = kv.Value.Type,
+                        @default    = kv.Value.Default,
+                        min         = kv.Value.Min,
+                        max         = kv.Value.Max,
+                        step        = kv.Value.Step,
+                        description = kv.Value.Description,
+                        choices     = kv.Value.Choices,
+                    }),
+            }),
         });
         return (true, json, null);
     }

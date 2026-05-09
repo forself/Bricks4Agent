@@ -31,6 +31,10 @@ public class LlmStrategy : IStrategy
     private static readonly TimeSpan PerCallTimeout = TimeSpan.FromSeconds(10);
 
     public string Name => "llm";
+    public string Description => "LLM — AI 模型分析市場資料產生訊號（透過 broker llm-proxy）";
+    public StrategyCategory Category => StrategyCategory.Sentiment;
+    public int MinBars => 50;
+    public decimal MinCapitalUsdt => 500m;     // LLM API cost 對小本金不利
 
     public LlmStrategy(
         HttpClient http,

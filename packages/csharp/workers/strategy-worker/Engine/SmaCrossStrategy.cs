@@ -11,6 +11,16 @@ namespace StrategyWorker.Engine;
 public class SmaCrossStrategy : IStrategy
 {
     public string Name => "sma_cross";
+    public string Description => "SMA Golden/Death Cross — 快慢均線交叉";
+    public StrategyCategory Category => StrategyCategory.Trend;
+    public int MinBars => 31;                  // slow=30 default + 1
+    public decimal MinCapitalUsdt => 50m;      // trend-following, 小資金可跑
+
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["sma_fast"] = new() { Type = "int", Default = 10, Min = 5,  Max = 50,  Step = 5,  Description = "快線週期" },
+        ["sma_slow"] = new() { Type = "int", Default = 30, Min = 20, Max = 200, Step = 10, Description = "慢線週期" },
+    };
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {

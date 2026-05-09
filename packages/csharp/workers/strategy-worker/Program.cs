@@ -100,6 +100,10 @@ if (llmEnabled)
 
 logger.LogInformation("Available strategies: [{Strategies}]", string.Join(", ", strategies.Keys));
 
+// 把 dict 包進 IStrategyRegistry——handler / list endpoint / 之後的 lab 都從這拿單一來源
+var registry = new DefaultStrategyRegistry();
+foreach (var s in strategies.Values) registry.Register(s);
+
 // ── 取消 Token ────────────────────────────────────────────────────────
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -111,7 +115,7 @@ Console.CancelKeyPress += (_, e) =>
 
 // ── 建立 WorkerHost 並註冊能力 ────────────────────────────────────────
 var host = new WorkerHost(options, logger);
-host.RegisterHandler(new StrategySignalHandler(strategies));
+host.RegisterHandler(new StrategySignalHandler(registry));
 
 logger.LogInformation(
     "StrategyWorker starting: broker={Host}:{Port}",

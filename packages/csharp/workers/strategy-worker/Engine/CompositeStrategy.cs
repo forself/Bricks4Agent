@@ -8,6 +8,10 @@ namespace StrategyWorker.Engine;
 public class CompositeStrategy : IStrategy
 {
     public string Name => "composite";
+    public string Description => "Composite — 固定等權投票（SMA + RSI + MACD）";
+    public StrategyCategory Category => StrategyCategory.Composite;
+    public int MinBars => 36;                  // 取成員中最大者 (MACD)
+    public decimal MinCapitalUsdt => 100m;
 
     private readonly List<(IStrategy Strategy, decimal Weight)> _strategies;
 

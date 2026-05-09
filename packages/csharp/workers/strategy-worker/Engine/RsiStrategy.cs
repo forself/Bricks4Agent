@@ -11,6 +11,17 @@ namespace StrategyWorker.Engine;
 public class RsiStrategy : IStrategy
 {
     public string Name => "rsi_oversold";
+    public string Description => "RSI Oversold/Overbought — 超買超賣均值回歸";
+    public StrategyCategory Category => StrategyCategory.MeanReversion;
+    public int MinBars => 15;                  // RsiPeriod=14 default + 1
+    public decimal MinCapitalUsdt => 50m;
+
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["rsi_period"]     = new() { Type = "int",     Default = 14, Min = 7,  Max = 30, Step = 1, Description = "RSI 週期" },
+        ["rsi_oversold"]   = new() { Type = "decimal", Default = 30, Min = 20, Max = 40, Step = 5, Description = "超賣閾值（買入）" },
+        ["rsi_overbought"] = new() { Type = "decimal", Default = 70, Min = 60, Max = 80, Step = 5, Description = "超買閾值（賣出）" },
+    };
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {

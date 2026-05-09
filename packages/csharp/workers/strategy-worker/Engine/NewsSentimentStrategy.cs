@@ -21,6 +21,10 @@ public class NewsSentimentStrategy : IStrategy
     private readonly string _model;
 
     public string Name => "news_sentiment";
+    public string Description => "News Sentiment — AI 分析財經新聞情緒";
+    public StrategyCategory Category => StrategyCategory.Sentiment;
+    public int MinBars => 30;
+    public decimal MinCapitalUsdt => 500m;
 
     public NewsSentimentStrategy(
         HttpClient http,

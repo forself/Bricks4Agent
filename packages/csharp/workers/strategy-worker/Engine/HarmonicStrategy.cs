@@ -21,6 +21,10 @@ namespace StrategyWorker.Engine;
 public class HarmonicStrategy : IStrategy
 {
     public string Name => "harmonic_pattern";
+    public string Description => "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 5 點諧波形態";
+    public StrategyCategory Category => StrategyCategory.Pattern;
+    public int MinBars => 60;                  // 需 5 個 pivot ≈ 60 根
+    public decimal MinCapitalUsdt => 300m;     // pattern 檢出稀有、需大本金週轉
 
     private const int PivotWindow = 3;
     private const decimal MaxDistanceFromD = 0.02m;  // 當前價格距離 D 點 > 2% 視為還沒到位

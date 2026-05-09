@@ -20,6 +20,10 @@ namespace StrategyWorker.Engine;
 public class MultiTimeframeStrategy : IStrategy
 {
     public string Name => "multi_timeframe";
+    public string Description => "Multi-Timeframe — 多時間框架交叉確認";
+    public StrategyCategory Category => StrategyCategory.MultiTimeframe;
+    public int MinBars => 50;
+    public decimal MinCapitalUsdt => 150m;
 
     private readonly IStrategy _baseStrategy;
 

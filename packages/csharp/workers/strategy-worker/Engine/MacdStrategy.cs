@@ -11,6 +11,17 @@ namespace StrategyWorker.Engine;
 public class MacdStrategy : IStrategy
 {
     public string Name => "macd_divergence";
+    public string Description => "MACD Crossover — MACD 與 Signal 線交叉";
+    public StrategyCategory Category => StrategyCategory.Momentum;
+    public int MinBars => 36;                  // slow=26 + signal=9 + 1
+    public decimal MinCapitalUsdt => 80m;
+
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["macd_fast"]   = new() { Type = "int", Default = 12, Min = 8,  Max = 20, Step = 2, Description = "快線週期" },
+        ["macd_slow"]   = new() { Type = "int", Default = 26, Min = 20, Max = 40, Step = 2, Description = "慢線週期" },
+        ["macd_signal"] = new() { Type = "int", Default = 9,  Min = 5,  Max = 15, Step = 1, Description = "訊號線週期" },
+    };
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {

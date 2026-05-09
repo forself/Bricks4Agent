@@ -52,6 +52,10 @@ public interface IEnsembleArbitrator
 public class WeightedEnsembleStrategy : IStrategy
 {
     public string Name => "ensemble";
+    public string Description => "Ensemble — 動態加權投票，權重 = 成員近期 Sharpe（適應市場變化）";
+    public StrategyCategory Category => StrategyCategory.Composite;
+    public int MinBars => 50;
+    public decimal MinCapitalUsdt => 200m;
 
     private readonly List<IStrategy> _constituents;
     private readonly int _evaluationBars;

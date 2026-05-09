@@ -25,6 +25,10 @@ namespace StrategyWorker.Engine;
 public class AutoSelectStrategy : IStrategy
 {
     public string Name => "auto_select";
+    public string Description => "AutoSelect — 偵測行情類型（趨勢/震盪/收斂/高波動）→ 挑當下最適合的單一策略";
+    public StrategyCategory Category => StrategyCategory.Composite;
+    public int MinBars => 50;
+    public decimal MinCapitalUsdt => 100m;
 
     private readonly Dictionary<RegimeDetector.RegimeType, IStrategy> _regimeMap;
     private readonly IStrategy _fallback;
