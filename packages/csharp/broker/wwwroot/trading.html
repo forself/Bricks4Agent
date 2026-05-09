@@ -588,6 +588,8 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
     <a onclick="switchTab('lab')">Lab</a>
+    <a onclick="switchTab('me')">我的</a>
+    <a onclick="switchTab('admin')" id="nav-admin" style="display:none">管理</a>
     <a onclick="switchTab('health')">健康</a>
   </nav>
   <div class="hdr-right">
@@ -1248,6 +1250,85 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- 我的設定（exchange credentials）-->
+<div class="panel" id="panel-me">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">我的帳戶 — Exchange API 憑證</span>
+    <span id="me-viewer" style="color:var(--text2);font-size:11px">—</span>
+    <button class="btn btn-o btn-sm" onclick="loadMe()" style="margin-left:auto">重新整理</button>
+  </div>
+
+  <div class="card" style="margin-bottom:12px">
+    <h3>新增憑證</h3>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:end">
+      <div><label style="font-size:11px;color:var(--text2)">交易所</label>
+        <select id="me-cred-ex" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px">
+          <option value="bingx">BingX 永續</option>
+          <option value="binance">Binance 加密</option>
+          <option value="alpaca">Alpaca 美股</option>
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text2)">標籤（選填）</label>
+        <input id="me-cred-label" placeholder="主帳號 / Demo 等" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px" /></div>
+      <div><label style="font-size:11px;color:var(--text2)">API Key</label>
+        <input id="me-cred-key" autocomplete="off" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace" /></div>
+      <div><label style="font-size:11px;color:var(--text2)">API Secret</label>
+        <input id="me-cred-secret" type="password" autocomplete="off" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace" /></div>
+      <div><label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="me-cred-demo" /> Demo / Paper 帳號（VST / testnet）</label></div>
+      <div><button class="btn btn-y btn-sm" onclick="addMyCredential()">加入並驗證</button></div>
+    </div>
+    <div id="me-cred-msg" style="font-size:11px;color:var(--text2);margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h3>已儲存憑證（加密儲存、broker 重啟不會丟）</h3>
+    <table id="me-cred-table" style="font-size:12px">
+      <thead><tr><th>交易所</th><th>標籤</th><th>類型</th><th>狀態</th><th>建立</th><th>最近使用</th><th>操作</th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+    <div style="margin-top:8px;font-size:11px;color:var(--text2)">
+      ℹ️ API key / secret 用 broker master key (AES-256-GCM) 加密儲存、AAD 綁 entry_id、改任一欄解密失敗。<br>
+      ℹ️ 同一交易所同一類型（live / demo）只能一筆 active；要換 key 先停用或刪舊的。
+    </div>
+  </div>
+</div>
+
+<!-- 用戶管理（admin only）-->
+<div class="panel" id="panel-admin">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">用戶管理</span>
+    <span style="color:var(--text2);font-size:11px">admin only · 修改 role / 重設密碼會撤銷該用戶現有 session</span>
+    <button class="btn btn-o btn-sm" onclick="loadAdmin()" style="margin-left:auto">重新整理</button>
+  </div>
+
+  <div class="card" style="margin-bottom:12px">
+    <h3>新增用戶</h3>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:end">
+      <div><label style="font-size:11px;color:var(--text2)">Principal ID（帳號）</label>
+        <input id="admin-new-pid" placeholder="user_alice / user_bob" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace" /></div>
+      <div><label style="font-size:11px;color:var(--text2)">顯示名稱</label>
+        <input id="admin-new-name" placeholder="Alice" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px" /></div>
+      <div><label style="font-size:11px;color:var(--text2)">初始密碼（≥8 字、user 第一次登入後不強制改）</label>
+        <input id="admin-new-pwd" type="password" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px" /></div>
+      <div><label style="font-size:11px;color:var(--text2)">角色</label>
+        <select id="admin-new-role" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px">
+          <option value="user">user（看自己）</option>
+          <option value="admin">admin（看全部）</option>
+        </select></div>
+      <div style="grid-column:1/-1"><button class="btn btn-y btn-sm" onclick="addUser()">建立</button>
+        <span id="admin-new-msg" style="font-size:11px;color:var(--text2);margin-left:10px"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>用戶清單</h3>
+    <table id="admin-users-table" style="font-size:12px">
+      <thead><tr><th>Principal ID</th><th>顯示名稱</th><th>角色</th><th>狀態</th><th>建立</th><th>最後登入</th><th>操作</th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- 健康檢查 -->
 <div class="panel" id="panel-health">
   <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchHealth()">重新整理</button></div>
@@ -1528,9 +1609,9 @@ else sel.innerHTML='<option value="1d" selected>1D</option>'; // 美股+台股�
 updateChartIntervals('stock');
 
 // ── Tab switch ──────────────────────────────────────────────────
-function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','perp','risk','pnl','lab','health'];a.classList.toggle('active',tabs[i]===name);});
+function switchTab(name){document.querySelectorAll('#main-nav a').forEach(a=>{const t=a.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];a.classList.toggle('active',t===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='lab')loadLab();if(name==='health')fetchHealth();
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
 startAutoRefresh(name);}
 
 // ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
@@ -3223,6 +3304,201 @@ async function runLabNow(){
 }
 
 // ── Health check ────────────────────────────────────────────────
+// ── 我的帳戶 / Exchange credentials ─────────────────────────────
+// 用 fetch+credentials:'include' 直接走 cookie session，不經過 ECDH api()
+async function _authFetch(path, opts={}){
+  const r = await fetch(path, Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}}, opts));
+  return await r.json().catch(()=>({success:false,message:'Invalid JSON'}));
+}
+
+async function loadMe(){
+  const r = await _authFetch('/api/v1/exchange-credentials/');
+  const v = document.getElementById('me-viewer');
+  const tb = document.querySelector('#me-cred-table tbody');
+  if(!r?.success){
+    if(v) v.textContent = '需要登入';
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--down)">'+(r?.message||'unauthorized')+'</td></tr>';
+    return;
+  }
+  const data = r.data;
+  if(v) v.textContent = '登入身份：' + data.viewer.principal_id + ' · 角色：' + data.viewer.role + ' · 看到：' + (data.viewer.scope==='all'?'全部用戶憑證':'我自己');
+  const creds = data.credentials || [];
+  if(creds.length===0){
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">尚未新增憑證</td></tr>';
+    return;
+  }
+  tb.innerHTML = creds.map(c => {
+    const live = c.is_demo ? '<span style="color:var(--down)">📋 Demo</span>' : '<span style="color:var(--up)">🟢 Live</span>';
+    const status = c.disabled ? '<span style="color:var(--text2)">停用</span>' : '<span style="color:var(--up)">啟用</span>';
+    const lastUsed = c.last_used_at ? new Date(c.last_used_at).toLocaleString() : '—';
+    const toggleBtn = c.disabled
+      ? `<button class="btn btn-o btn-sm" onclick="toggleMyCred('${c.entry_id}',false)">啟用</button>`
+      : `<button class="btn btn-o btn-sm" onclick="toggleMyCred('${c.entry_id}',true)">停用</button>`;
+    return `<tr>
+      <td><strong>${c.exchange}</strong></td>
+      <td>${c.label||'<span style="color:var(--text2)">—</span>'}</td>
+      <td>${live}</td>
+      <td>${status}</td>
+      <td>${new Date(c.created_at).toLocaleDateString()}</td>
+      <td>${lastUsed}</td>
+      <td>
+        <button class="btn btn-y btn-sm" onclick="testMyCred('${c.entry_id}')">測試</button>
+        ${toggleBtn}
+        <button class="btn btn-r btn-sm" onclick="deleteMyCred('${c.entry_id}','${c.exchange}')">刪除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function addMyCredential(){
+  const ex = document.getElementById('me-cred-ex').value;
+  const label = document.getElementById('me-cred-label').value;
+  const key = document.getElementById('me-cred-key').value.trim();
+  const sec = document.getElementById('me-cred-secret').value.trim();
+  const isDemo = document.getElementById('me-cred-demo').checked;
+  const msg = document.getElementById('me-cred-msg');
+  if(!key||!sec){msg.textContent='缺 API key 或 secret';msg.style.color='var(--down)';return}
+  msg.textContent='儲存中...';msg.style.color='var(--text2)';
+  const r = await _authFetch('/api/v1/exchange-credentials/', {method:'POST',
+    body: JSON.stringify({exchange:ex,api_key:key,api_secret:sec,label,is_demo:isDemo})});
+  if(!r.success){msg.textContent='✗ '+(r.message||'failed');msg.style.color='var(--down)';return}
+  msg.textContent='✓ 已加入、清除欄位中';msg.style.color='var(--up)';
+  document.getElementById('me-cred-key').value='';
+  document.getElementById('me-cred-secret').value='';
+  document.getElementById('me-cred-label').value='';
+  document.getElementById('me-cred-demo').checked=false;
+  setTimeout(()=>{msg.textContent='';loadMe()}, 800);
+}
+
+async function testMyCred(entryId){
+  toast('測試中、call 交易所...', 'info');
+  const r = await _authFetch('/api/v1/exchange-credentials/'+encodeURIComponent(entryId)+'/test', {method:'POST'});
+  if(!r.success){toastErr(r.message||'failed');return}
+  const d = r.data;
+  if(d.exchange_call_ok){
+    toastOk(`✓ 連線 OK · balance ${d.account.balance.toFixed(2)} ${d.account.is_demo?'VST':'USDT'} · 部位 ${d.account.positions}`);
+  } else {
+    toastWarn('解密 OK 但交易所拒絕');
+  }
+}
+
+async function toggleMyCred(entryId, disable){
+  const path = '/api/v1/exchange-credentials/'+encodeURIComponent(entryId)+'/'+(disable?'disable':'enable');
+  const r = await _authFetch(path, {method:'POST'});
+  if(r.success){toastOk(disable?'已停用':'已啟用');loadMe()} else toastErr(r.message);
+}
+
+async function deleteMyCred(entryId, exchange){
+  if(!confirm(`刪除 ${exchange} 憑證？此動作不可逆。`))return;
+  const r = await _authFetch('/api/v1/exchange-credentials/'+encodeURIComponent(entryId), {method:'DELETE'});
+  if(r.success){toastOk('已刪除');loadMe()} else toastErr(r.message);
+}
+
+// ── 用戶管理（admin only）────────────────────────────────────────
+async function loadAdmin(){
+  const r = await _authFetch('/api/v1/admin/users/');
+  const tb = document.querySelector('#admin-users-table tbody');
+  if(!r?.success){
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--down)">'+(r?.message||'admin only')+'</td></tr>';
+    return;
+  }
+  const users = r.data.users || [];
+  tb.innerHTML = users.map(u => {
+    const roleColor = u.role==='admin' ? 'var(--up)' : 'var(--text)';
+    const stateChip = u.disabled
+      ? '<span style="color:var(--down)">✗ 停用</span>'
+      : (u.must_change_password
+          ? '<span style="color:var(--warn,#FCD535)">⚠ 待改密碼</span>'
+          : '<span style="color:var(--up)">✓ 啟用</span>');
+    const lastLogin = u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '—';
+    const toggleBtn = u.disabled
+      ? `<button class="btn btn-o btn-sm" onclick="adminEnableUser('${u.principal_id}')">啟用</button>`
+      : `<button class="btn btn-o btn-sm" onclick="adminDisableUser('${u.principal_id}')">停用</button>`;
+    return `<tr>
+      <td><code style="font-size:11px">${u.principal_id}</code></td>
+      <td>${u.display_name||''}</td>
+      <td><span style="color:${roleColor}">${u.role}</span></td>
+      <td>${stateChip}</td>
+      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>${lastLogin}</td>
+      <td>
+        <button class="btn btn-y btn-sm" onclick="adminResetPwd('${u.principal_id}')">重設密碼</button>
+        <button class="btn btn-o btn-sm" onclick="adminToggleRole('${u.principal_id}','${u.role}')">切角色</button>
+        ${toggleBtn}
+        <button class="btn btn-r btn-sm" onclick="adminDeleteUser('${u.principal_id}')">刪除</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="color:var(--text2)">無用戶</td></tr>';
+}
+
+async function addUser(){
+  const pid = document.getElementById('admin-new-pid').value.trim();
+  const pwd = document.getElementById('admin-new-pwd').value;
+  const role = document.getElementById('admin-new-role').value;
+  const name = document.getElementById('admin-new-name').value.trim();
+  const msg = document.getElementById('admin-new-msg');
+  if(!pid||!pwd){msg.textContent='缺 principal_id 或密碼';msg.style.color='var(--down)';return}
+  if(pwd.length<8){msg.textContent='密碼至少 8 字';msg.style.color='var(--down)';return}
+  msg.textContent='建立中...';msg.style.color='var(--text2)';
+  const r = await _authFetch('/api/v1/admin/users/', {method:'POST',
+    body: JSON.stringify({principal_id:pid,password:pwd,role,display_name:name})});
+  if(!r.success){msg.textContent='✗ '+(r.message||'failed');msg.style.color='var(--down)';return}
+  msg.textContent='✓ 建立成功';msg.style.color='var(--up)';
+  document.getElementById('admin-new-pid').value='';
+  document.getElementById('admin-new-pwd').value='';
+  document.getElementById('admin-new-name').value='';
+  setTimeout(()=>{msg.textContent='';loadAdmin()}, 800);
+}
+
+async function adminResetPwd(pid){
+  const np = prompt(`為 ${pid} 設新密碼（≥8 字、user 下次登入需再改）：`);
+  if(!np)return;
+  if(np.length<8){toastErr('密碼至少 8 字');return}
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/reset-password',
+    {method:'POST',body:JSON.stringify({new_password:np})});
+  if(r.success)toastOk('已重設、已撤銷該用戶 sessions'); else toastErr(r.message);
+  loadAdmin();
+}
+
+async function adminToggleRole(pid, current){
+  const next = current==='admin' ? 'user' : 'admin';
+  if(!confirm(`把 ${pid} 改成 ${next}？將撤銷其現有 session。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/role',
+    {method:'POST',body:JSON.stringify({role:next})});
+  if(r.success)toastOk('角色已改為 '+next); else toastErr(r.message);
+  loadAdmin();
+}
+
+async function adminDisableUser(pid){
+  if(!confirm(`停用 ${pid}？該用戶現有 session 會被踢線、不能登入。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/disable', {method:'POST'});
+  if(r.success)toastOk('已停用'); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminEnableUser(pid){
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/enable', {method:'POST'});
+  if(r.success)toastOk('已啟用'); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminDeleteUser(pid){
+  if(!confirm(`徹底刪 ${pid}？不可逆。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid), {method:'DELETE'});
+  if(r.success)toastOk('已刪除'); else toastErr(r.message);
+  loadAdmin();
+}
+
+// 啟動時偵測 admin 並顯示「管理」分頁
+async function _detectAdminTab(){
+  try{
+    const r = await _authFetch('/api/v1/auth/me');
+    if(r?.success && r.data?.role==='admin'){
+      const navAdmin = document.getElementById('nav-admin');
+      if(navAdmin) navAdmin.style.display='';
+    }
+  }catch{}
+}
+window.addEventListener('DOMContentLoaded', _detectAdminTab);
+
 async function fetchHealth(){const r=await api('/api/v1/health/workers');if(!r?.data)return;const d=r.data;
 document.getElementById('health-summary').innerHTML=`<div class="stat"><div class="stat-label">Broker</div><div class="stat-value up">${d.broker_status}</div></div><div class="stat"><div class="stat-label">Uptime</div><div class="stat-value">${d.uptime_display}</div></div><div class="stat"><div class="stat-label">Workers</div><div class="stat-value">${d.worker_count}/4</div></div><div class="stat"><div class="stat-label">Avg Latency</div><div class="stat-value">${d.workers.filter(w=>w.latency_ms>0).length>0?Math.round(d.workers.filter(w=>w.latency_ms>0).reduce((a,w)=>a+w.latency_ms,0)/d.workers.filter(w=>w.latency_ms>0).length)+'ms':'—'}</div></div>`;
 const tb=document.getElementById('health-table');

@@ -149,6 +149,136 @@ public sealed class PrincipalAuthService
         return session;
     }
 
+    // ── A3：admin operations ─────────────────────────────────────────
+
+    public sealed class UserSummary
+    {
+        public string PrincipalId { get; set; } = "";
+        public string Role { get; set; } = "user";
+        public string? DisplayName { get; set; }
+        public bool MustChangePassword { get; set; }
+        public bool Disabled { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? LastLoginAt { get; set; }
+        public DateTime? LastPasswordChangeAt { get; set; }
+    }
+
+    public List<UserSummary> ListUsers()
+    {
+        return _db.GetAll<PrincipalCredential>()
+            .OrderBy(c => c.PrincipalId)
+            .Select(c => new UserSummary
+            {
+                PrincipalId = c.PrincipalId, Role = c.Role,
+                DisplayName = c.DisplayName, MustChangePassword = c.MustChangePassword, Disabled = c.Disabled,
+                CreatedAt = c.CreatedAt, LastLoginAt = c.LastLoginAt, LastPasswordChangeAt = c.LastPasswordChangeAt,
+            })
+            .ToList();
+    }
+
+    public UserSummary CreateUser(string principalId, string password, string role, string? displayName)
+    {
+        if (string.IsNullOrWhiteSpace(principalId)) throw new InvalidOperationException("principal_id required");
+        if (principalId.Length < 3 || principalId.Length > 80) throw new InvalidOperationException("principal_id length must be 3-80");
+        // 簡單格式限制：英數+底線+冒號（codebase 既有 'prn_dashboard' / 'role_admin' 等用底線、要兼容）
+        foreach (var ch in principalId)
+            if (!(char.IsLetterOrDigit(ch) || ch == '_' || ch == ':' || ch == '-'))
+                throw new InvalidOperationException("principal_id must be alphanumeric / _ / : / -");
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 8) throw new InvalidOperationException("password must be ≥ 8 chars");
+        if (role != "admin" && role != "user") throw new InvalidOperationException("role must be 'admin' or 'user'");
+
+        if (_db.Get<PrincipalCredential>(principalId) != null)
+            throw new InvalidOperationException($"User '{principalId}' already exists");
+
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var cred = new PrincipalCredential
+        {
+            PrincipalId = principalId,
+            PasswordSalt = Convert.ToBase64String(salt),
+            PasswordHash = Convert.ToBase64String(HashPassword(password, salt, 120000)),
+            HashIterations = 120000,
+            Role = role,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? principalId : displayName.Trim(),
+            MustChangePassword = false,
+        };
+        _db.Insert(cred);
+        _logger.LogInformation("Auth admin: created user {Pid} role={Role}", principalId, role);
+        return new UserSummary
+        {
+            PrincipalId = cred.PrincipalId, Role = cred.Role,
+            DisplayName = cred.DisplayName, CreatedAt = cred.CreatedAt,
+        };
+    }
+
+    public bool AdminResetPassword(string principalId, string newPassword)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+            throw new InvalidOperationException("New password must be ≥ 8 chars");
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null) return false;
+        var salt = RandomNumberGenerator.GetBytes(16);
+        cred.PasswordSalt = Convert.ToBase64String(salt);
+        cred.PasswordHash = Convert.ToBase64String(HashPassword(newPassword, salt, 120000));
+        cred.HashIterations = 120000;
+        cred.MustChangePassword = true;     // admin 重設後、user 下次登入強制再改
+        cred.UpdatedAt = DateTime.UtcNow;
+        cred.LastPasswordChangeAt = DateTime.UtcNow;
+        _db.Update(cred);
+        // 撤銷所有現存 session、強迫重登
+        RevokeAllSessions(principalId);
+        _logger.LogInformation("Auth admin: reset password for {Pid} (force-change on next login)", principalId);
+        return true;
+    }
+
+    public bool SetUserDisabled(string principalId, bool disabled)
+    {
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null) return false;
+        cred.Disabled = disabled;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+        if (disabled) RevokeAllSessions(principalId);    // disable 立刻踢線
+        _logger.LogInformation("Auth admin: {State} user {Pid}", disabled ? "DISABLED" : "ENABLED", principalId);
+        return true;
+    }
+
+    public bool SetUserRole(string principalId, string role)
+    {
+        if (role != "admin" && role != "user") throw new InvalidOperationException("role must be 'admin' or 'user'");
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null) return false;
+        cred.Role = role;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+        // 改 role 後既有 session 仍記載舊 role、可選擇撤銷重登
+        RevokeAllSessions(principalId);
+        _logger.LogInformation("Auth admin: changed role of {Pid} to {Role}", principalId, role);
+        return true;
+    }
+
+    public bool DeleteUser(string principalId)
+    {
+        if (principalId == "prn_dashboard") throw new InvalidOperationException("Cannot delete the primary admin");
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null) return false;
+        RevokeAllSessions(principalId);
+        _db.Delete<PrincipalCredential>(principalId);
+        _logger.LogInformation("Auth admin: deleted user {Pid}", principalId);
+        return true;
+    }
+
+    private void RevokeAllSessions(string principalId)
+    {
+        var sessions = _db.Query<PrincipalSession>(
+            "SELECT * FROM principal_sessions WHERE principal_id = @pid AND revoked_at IS NULL",
+            new { pid = principalId });
+        foreach (var s in sessions)
+        {
+            s.RevokedAt = DateTime.UtcNow;
+            _db.Update(s);
+        }
+    }
+
     /// <summary>
     /// 啟動時呼叫——確保 prn_dashboard 有一筆 admin credential。
     /// 沒密碼就用 env Auth__InitialAdminPassword（沒設則 "admin"）、強制下次登入改密碼。

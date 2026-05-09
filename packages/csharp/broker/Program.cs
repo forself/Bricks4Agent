@@ -987,6 +987,7 @@ if (poolEnabled)
     LabEndpoints.Map(api);
     AuthEndpoints.Map(api);
     ExchangeCredentialsEndpoints.Map(api);
+    AdminUsersEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);
