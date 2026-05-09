@@ -116,13 +116,17 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 <div v-if="!loggedIn" class="login-w">
   <el-card class="login-b">
     <template #header><h2><em>B4A</em> Broker {{t('login')}}</h2></template>
-    <el-form label-position="top">
-      <el-form-item :label="t('principalId')"><el-input v-model="loginForm.principal" /></el-form-item>
-      <el-form-item :label="t('taskId')"><el-input v-model="loginForm.task" /></el-form-item>
-      <el-form-item :label="t('roleId')"><el-input v-model="loginForm.role" /></el-form-item>
+    <el-form label-position="top" @submit.prevent="doLogin">
+      <el-form-item :label="t('principalId')">
+        <el-input v-model="loginForm.principal" autocomplete="username" placeholder="prn_dashboard" />
+      </el-form-item>
+      <el-form-item :label="t('password')">
+        <el-input v-model="loginForm.password" type="password" autocomplete="current-password" show-password
+          placeholder="預設 admin、登入後請立即改" @keyup.enter="doLogin" />
+      </el-form-item>
       <el-form-item>
-        <el-button type="primary" style="width:100%" :loading="loginLoading" @click="doLogin">
-          ECDH Handshake & {{t('login')}}
+        <el-button type="primary" native-type="submit" style="width:100%" :loading="loginLoading">
+          {{t('login')}}
         </el-button>
       </el-form-item>
     </el-form>
@@ -132,6 +136,27 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <el-button text size="small" @click="toggleLang">{{lang==='zh'?'English':'中文'}}</el-button>
     </div>
   </el-card>
+
+  <!-- 強制改密碼 dialog（首次登入或 admin 重設後彈出）-->
+  <el-dialog v-model="changePwdDialog" :title="t('changePasswordRequired')" width="420px" :close-on-click-modal="false" :show-close="false">
+    <el-form label-position="top">
+      <el-form-item :label="t('currentPassword')">
+        <el-input v-model="changePwdForm.current" type="password" show-password autocomplete="current-password" />
+      </el-form-item>
+      <el-form-item :label="t('newPassword')">
+        <el-input v-model="changePwdForm.next" type="password" show-password autocomplete="new-password"
+          placeholder="≥ 8 字、含字母 + 數字" />
+      </el-form-item>
+      <el-form-item :label="t('newPasswordConfirm')">
+        <el-input v-model="changePwdForm.confirm" type="password" show-password autocomplete="new-password" @keyup.enter="doChangePassword" />
+      </el-form-item>
+    </el-form>
+    <el-alert v-if="changePwdError" :title="changePwdError" type="error" :closable="false" show-icon style="margin-bottom:10px"/>
+    <template #footer>
+      <el-button @click="cancelChangePassword">{{t('cancel')}}</el-button>
+      <el-button type="primary" :loading="changePwdLoading" @click="doChangePassword">{{t('updatePassword')}}</el-button>
+    </template>
+  </el-dialog>
 </div>
 
 <!-- ── Main ── -->
@@ -1065,7 +1090,10 @@ class CryptoSession{
 // i18n
 // ═══════════════════════════════════════════════
 const I18N={
-  zh:{login:'登入',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'加密連線',refresh:'重新整理',logout:'登出',
+  zh:{login:'登入',principalId:'帳號 (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'密碼',
+    changePasswordRequired:'請設定新密碼',currentPassword:'目前密碼',newPassword:'新密碼',newPasswordConfirm:'再次輸入新密碼',
+    updatePassword:'更新密碼',passwordMismatch:'兩次新密碼不一致',
+    encrypted:'加密連線',refresh:'重新整理',logout:'登出',
     overview:'總覽',agents:'代理',capabilities:'能力',capList:'能力清單',allAgents:'所有代理',
     totalAgents:'代理總數',activeAgents:'活躍中',sessionSeq:'Session 序號',
     state:'狀態',role:'角色',taskType:'任務類別',created:'建立時間',stop:'停止',start:'啟動',
@@ -1129,7 +1157,10 @@ const I18N={
     dispatchPromptPH:'例：請列出 25 個能力裡有哪些是檔案類，並說明各自做什麼',
     dispatchHistory:'任務歷史',send:'送出',close:'關閉',noTasks:'尚無任務',latency:'延遲',
   },
-  en:{login:'Login',principalId:'Principal ID',taskId:'Task ID',roleId:'Role ID',encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
+  en:{login:'Login',principalId:'Username (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'Password',
+    changePasswordRequired:'Set a new password',currentPassword:'Current password',newPassword:'New password',newPasswordConfirm:'Confirm new password',
+    updatePassword:'Update password',passwordMismatch:'New passwords don\'t match',
+    encrypted:'Encrypted',refresh:'Refresh',logout:'Logout',
     overview:'Overview',agents:'Agents',capabilities:'Capabilities',capList:'Capability List',allAgents:'All Agents',
     totalAgents:'Total Agents',activeAgents:'Active',sessionSeq:'Session Seq',
     state:'State',role:'Role',taskType:'Task Type',created:'Created',stop:'Stop',start:'Start',
@@ -1209,7 +1240,13 @@ const app=createApp({
 
     const loggedIn=ref(false);const loginLoading=ref(false);const loginError=ref('');
     const cryptoInfo=ref('Waiting for ECDH P-256 handshake...');
-    const loginForm=reactive({principal:'prn_dashboard',task:'task_dashboard',role:'role_admin'});
+    // Phase A1.5：移除 task / role 顯示、改用 password。task/role 內部仍保留固定值給 ECDH handshake 用。
+    const loginForm=reactive({principal:'prn_dashboard',password:''});
+    const _ecdhDefaults={task:'task_dashboard',role:'role_admin'};
+
+    // 強制改密碼 dialog state
+    const changePwdDialog=ref(false);const changePwdLoading=ref(false);const changePwdError=ref('');
+    const changePwdForm=reactive({current:'',next:'',confirm:''});
 
     let session=null;let brokerUrl='';let brokerPubKey='';
 
@@ -1238,22 +1275,78 @@ const app=createApp({
       loginLoading.value=true;loginError.value='';
       brokerUrl=window.location.origin;
       try{
-        cryptoInfo.value='Fetching broker public key...';
-        const h=await(await fetch(brokerUrl+'/api/v1/health')).json();
-        brokerPubKey=h.broker_public_key;
-        if(!brokerPubKey)throw new Error('No broker_public_key in health');
-        cryptoInfo.value=`Broker PK: ${brokerPubKey.substring(0,24)}...\nGenerating ECDH P-256 keypair...`;
-        session=new CryptoSession();
-        await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,loginForm.task,loginForm.role);
-        cryptoInfo.value=`Session: ${session.sessionId}\nEncryption: AES-256-GCM | Key Exchange: ECDH P-256 + HKDF-SHA256`;
-        loggedIn.value=true;
-        await refreshAll();
-      }catch(e){loginError.value=e.message;cryptoInfo.value='Handshake failed';session=null}
+        // ── Step 1: 帳密 → cookie ──
+        cryptoInfo.value='Verifying credentials...';
+        const ar=await fetch(brokerUrl+'/api/v1/auth/login',{
+          method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',
+          body:JSON.stringify({principal_id:loginForm.principal,password:loginForm.password})
+        });
+        const aj=await ar.json();
+        if(!ar.ok||!aj.success)throw new Error(aj.message||'Authentication failed');
+
+        // ── Step 1.5: 強制改密碼 ──
+        if(aj.data?.must_change_password){
+          // 先把舊密碼帶過去當 current（user 不必再打一次）
+          changePwdForm.current=loginForm.password;
+          changePwdForm.next='';changePwdForm.confirm='';changePwdError.value='';
+          changePwdDialog.value=true;
+          loginLoading.value=false;
+          return;  // 等改完密碼、由 doChangePassword 接手繼續 handshake
+        }
+
+        await _continueWithEcdh();
+      }catch(e){loginError.value=e.message;cryptoInfo.value='Login failed';session=null;loginLoading.value=false}
+    }
+
+    async function _continueWithEcdh(){
+      // ── Step 2: ECDH handshake、把後續 API 走加密通道 ──
+      cryptoInfo.value='Fetching broker public key...';
+      const h=await(await fetch(brokerUrl+'/api/v1/health')).json();
+      brokerPubKey=h.broker_public_key;
+      if(!brokerPubKey)throw new Error('No broker_public_key in health');
+      cryptoInfo.value=`Broker PK: ${brokerPubKey.substring(0,24)}...\nGenerating ECDH P-256 keypair...`;
+      session=new CryptoSession();
+      await session.handshake(brokerUrl,brokerPubKey,loginForm.principal,_ecdhDefaults.task,_ecdhDefaults.role);
+      cryptoInfo.value=`Session: ${session.sessionId}\nEncryption: AES-256-GCM | Key Exchange: ECDH P-256 + HKDF-SHA256`;
+      loggedIn.value=true;
       loginLoading.value=false;
+      await refreshAll();
+    }
+
+    async function doChangePassword(){
+      changePwdError.value='';
+      if(!changePwdForm.next||changePwdForm.next.length<8){changePwdError.value='New password must be at least 8 characters';return}
+      if(changePwdForm.next!==changePwdForm.confirm){changePwdError.value=t('passwordMismatch');return}
+      changePwdLoading.value=true;
+      try{
+        const r=await fetch(brokerUrl+'/api/v1/auth/change-password',{
+          method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',
+          body:JSON.stringify({current_password:changePwdForm.current,new_password:changePwdForm.next})
+        });
+        const j=await r.json();
+        if(!r.ok||!j.success)throw new Error(j.message||'Password change failed');
+        // 把 loginForm.password 也更新成新的、避免 user 之後忘了
+        loginForm.password=changePwdForm.next;
+        changePwdDialog.value=false;
+        loginLoading.value=true;
+        await _continueWithEcdh();
+      }catch(e){changePwdError.value=e.message}
+      changePwdLoading.value=false;
+    }
+
+    function cancelChangePassword(){
+      changePwdDialog.value=false;
+      // 取消等於放棄登入——清掉 cookie + reset state
+      fetch(brokerUrl+'/api/v1/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});
+      loginForm.password='';
     }
 
     async function doLogout(){
-      stopAutoRefresh();stopAutoScan();if(session)await session.close(brokerUrl);session=null;loggedIn.value=false;
+      stopAutoRefresh();stopAutoScan();
+      if(session)await session.close(brokerUrl);
+      // 清 cookie
+      try{await fetch(brokerUrl+'/api/v1/auth/logout',{method:'POST',credentials:'include'})}catch{}
+      session=null;loggedIn.value=false;
     }
 
     async function api(path,body={}){
@@ -1841,6 +1934,7 @@ const app=createApp({
     }
 
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
+      changePwdDialog,changePwdLoading,changePwdError,changePwdForm,doChangePassword,cancelChangePassword,
       activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
       dispatchVisible,dispatching,dispatchAgent,dispatchPrompt,dispatchHistory,dispatchHistoryLoading,
