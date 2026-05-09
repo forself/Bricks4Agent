@@ -393,7 +393,97 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </el-table-column>
           </el-table>
         </el-card>
+
+        <!-- ACL 規則卡：哪個 role 能呼叫哪些 capability（admin only） -->
+        <el-card v-if="aclRules" style="margin-top:14px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('aclRules')}}</span>
+              <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('aclSubtitle')}}</span>
+              <el-button size="small" text @click="loadAclRules" style="margin-left:auto">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="aclRules.rules" stripe>
+            <el-table-column prop="role" label="role" width="160">
+              <template #default="{row}">
+                <code>{{row.role}}</code>
+                <el-tag v-if="row.is_admin_role" type="warning" size="small" style="margin-left:6px">admin</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('aclPatterns')">
+              <template #default="{row}">
+                <code v-for="p in row.patterns" :key="p" style="background:var(--s2);padding:2px 6px;border-radius:3px;margin-right:5px;font-size:11px">{{p}}</code>
+                <span v-if="row.patterns.length===0" style="color:var(--td);font-size:12px">{{t('aclNothing')}}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div style="font-size:11px;color:var(--td);margin-top:10px">{{aclRules.policy}}</div>
+        </el-card>
       </el-tab-pane>
+
+      <!-- ── Approvals（待審）── -->
+      <el-tab-pane :label="t('approvals')" name="approvals">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <span style="color:var(--td);font-size:12px">{{t('aprStatusFilter')}}：</span>
+          <el-radio-group v-model="aprFilter.status" size="small" @change="loadApprovals">
+            <el-radio-button value="pending">{{t('aprPending')}}</el-radio-button>
+            <el-radio-button value="approved">{{t('aprApproved')}}</el-radio-button>
+            <el-radio-button value="rejected">{{t('aprRejected')}}</el-radio-button>
+            <el-radio-button value="">{{t('filterAll')}}</el-radio-button>
+          </el-radio-group>
+          <el-button size="small" @click="loadApprovals" :loading="aprLoading">{{t('refresh')}}</el-button>
+          <span style="color:var(--td);font-size:12px;margin-left:8px">{{approvals.length}} {{t('entries')}}</span>
+        </div>
+
+        <el-card>
+          <template #header>
+            <div>
+              <span style="font-weight:600">{{t('aprList')}}</span>
+              <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('aprSubtitle')}}</span>
+            </div>
+          </template>
+          <el-table :data="approvals" stripe :empty-text="t('aprEmpty')">
+            <el-table-column :label="t('aprRequestedAt')" width="170">
+              <template #default="{row}">{{fmtDate(row.requested_at)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('capability')" width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('aprRoute')" width="120">
+              <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.route||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('principal')" width="140">
+              <template #default="{row}"><code style="font-size:11px">{{row.principal_id}}</code> <code style="font-size:10px;color:var(--td)">({{row.role}})</code></template>
+            </el-table-column>
+            <el-table-column :label="t('aprPayload')" min-width="280">
+              <template #default="{row}">
+                <code style="font-size:10px;color:var(--td);max-height:48px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{row.payload}}</code>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('status')" width="110">
+              <template #default="{row}">
+                <el-tag :type="aprStatusType(row.status)" size="small">{{row.status}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('aprDecidedBy')" width="170">
+              <template #default="{row}">
+                <span v-if="row.decided_by" style="font-size:11px"><code>{{row.decided_by}}</code> · {{fmtDate(row.decided_at)}}</span>
+                <span v-else style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('actions')" width="160" align="right">
+              <template #default="{row}">
+                <template v-if="row.status==='pending'">
+                  <el-button type="success" size="small" plain @click="doApprove(row)">{{t('aprApprove')}}</el-button>
+                  <el-button type="danger" size="small" plain @click="doReject(row)">{{t('aprReject')}}</el-button>
+                </template>
+                <span v-else-if="row.decision_reason" style="font-size:11px;color:var(--td)" :title="row.decision_reason">{{row.decision_reason.slice(0,30)}}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
       <!-- ── Diagnostics ── -->
       <el-tab-pane :label="t('diagnostics')" name="diagnostics">
         <!-- Controls -->
@@ -1378,6 +1468,15 @@ const I18N={
     noTopologyYet:'視窗內沒有 dispatch 資料。先觸發任何 capability 後再回來看。',
     duration:'耗時',includeHttp:'包含 HTTP 中介層 trace',
     healthScore:'健康分數',
+    approvals:'待審',aprList:'核准請求',aprSubtitle:'高風險 capability 派發前需 admin 核可',
+    aprStatusFilter:'狀態',aprPending:'待審',aprApproved:'已核准',aprRejected:'已拒絕',
+    aprRequestedAt:'申請時間',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'裁決者',
+    aprApprove:'核准',aprReject:'拒絕',
+    aprApproveReason:'核准原因（可空）：',aprRejectReason:'拒絕原因（可空）：',
+    aprEmpty:'視窗內無待審請求',
+    aclRules:'ACL 角色規則',
+    aclSubtitle:'role → 允許呼叫的 capability pattern',
+    aclPatterns:'允許 capability',aclNothing:'（無）',
   },
   en:{login:'Login',principalId:'Username (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'Password',
     changePasswordRequired:'Set a new password',currentPassword:'Current password',newPassword:'New password',newPasswordConfirm:'Confirm new password',
@@ -1459,6 +1558,15 @@ const I18N={
     noTopologyYet:'No dispatch data in this window yet. Trigger a capability and come back.',
     duration:'Duration',includeHttp:'Include HTTP middleware traces',
     healthScore:'Health Score',
+    approvals:'Approvals',aprList:'Approval requests',aprSubtitle:'High-risk capability dispatches require admin approval',
+    aprStatusFilter:'Status',aprPending:'Pending',aprApproved:'Approved',aprRejected:'Rejected',
+    aprRequestedAt:'Requested',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'Decided by',
+    aprApprove:'Approve',aprReject:'Reject',
+    aprApproveReason:'Approval reason (optional):',aprRejectReason:'Rejection reason (optional):',
+    aprEmpty:'No approval requests in this window',
+    aclRules:'Role ACL Rules',
+    aclSubtitle:'role → allowed capability patterns',
+    aclPatterns:'Allowed capabilities',aclNothing:'(none)',
   }
 };
 
@@ -1602,6 +1710,49 @@ const app=createApp({
     }
 
     async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers(),loadHealthScore()]);refreshing.value=false}
+
+    // ── Approvals + ACL（治理分頁） ──
+    const approvals=ref([]);const aprLoading=ref(false);
+    const aprFilter=reactive({status:'pending'});
+    const aclRules=ref(null);
+
+    async function loadApprovals(){
+      aprLoading.value=true;
+      try{
+        const qs=new URLSearchParams();
+        if(aprFilter.status) qs.set('status',aprFilter.status);
+        qs.set('limit','100');
+        const r=await fetch('/api/v1/admin/approvals?'+qs.toString(),{credentials:'include'});
+        const j=await r.json();
+        approvals.value=j.success?(j.data||[]):[];
+      }catch(e){console.error('[loadApprovals]',e);approvals.value=[]}
+      aprLoading.value=false;
+    }
+    async function loadAclRules(){
+      try{
+        const r=await fetch('/api/v1/admin/acl',{credentials:'include'});
+        const j=await r.json();
+        aclRules.value=j.success?j.data:null;
+      }catch(e){console.error('[loadAclRules]',e);aclRules.value=null}
+    }
+    function aprStatusType(s){return({pending:'warning',approved:'success',rejected:'danger',expired:'info'})[s]||''}
+    async function decideApproval(row, action){
+      const promptKey=action==='approve'?'aprApproveReason':'aprRejectReason';
+      try{
+        const reason=window.prompt(I18N[lang.value][promptKey]||'Reason?','')||null;
+        const r=await fetch(`/api/v1/admin/approvals/${row.approval_id}/${action}`,{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({reason}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.message||'failed');return}
+        ElementPlus.ElMessage.success(`${action} OK`);
+        loadApprovals();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    function doApprove(row){decideApproval(row,'approve')}
+    function doReject(row){decideApproval(row,'reject')}
 
     // ── Health Score（容器分頁 KPI 卡） ──
     const healthScore=ref(null);
@@ -1784,6 +1935,8 @@ const app=createApp({
       else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='traces'){loadTraces();startTracesAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='topology'){loadTopology();startTopologyAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh()}
+      else if(tab==='approvals'){loadApprovals();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='caps'){loadAclRules();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else{stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
     }
 
@@ -2373,6 +2526,9 @@ const app=createApp({
       fmtNumberShort,fmtUptime, Math,
       // Health Score
       healthScore,loadHealthScore,healthScoreColor,healthKpiStyle,
+      // Approvals + ACL
+      approvals,aprLoading,aprFilter,aclRules,
+      loadApprovals,loadAclRules,aprStatusType,doApprove,doReject,
       // Tracing + Topology
       traces,tracesLoading,traceFilter,selectedTraceId,selectedTraceIntegrity,
       loadTraces,selectTrace,fmtDur,traceStatusType,
