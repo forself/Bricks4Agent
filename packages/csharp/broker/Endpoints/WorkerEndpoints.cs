@@ -351,6 +351,48 @@ public static class WorkerEndpoints
             })));
         });
 
+        // ── GET /api/v1/workers/scaling-state — auto-scale per-type 視窗 + 最近決策 ──
+        workers.MapGet("/scaling-state", (IServiceProvider sp) =>
+        {
+            var svc = sp.GetService<Broker.Services.WorkerAutoScaleService>();
+            if (svc == null)
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    enabled = false,
+                    note = "Auto-scale disabled (ContainerManager not enabled)",
+                }));
+            var snap = svc.GetSnapshot();
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                enabled = snap.Enabled,
+                max_per_type = snap.MaxPerType,
+                scale_up_threshold = snap.ScaleUpThreshold,
+                cooldown_seconds = snap.CooldownSeconds,
+                state = snap.State.Select(kv => new
+                {
+                    worker_type = kv.Key,
+                    samples = kv.Value.Samples.Select(s => new
+                    {
+                        at = s.At,
+                        utilization = s.Utilization,
+                        active = s.ActiveTasks,
+                        max = s.MaxConcurrent,
+                        container_count = s.ContainerCount,
+                    }),
+                    last_action_at = kv.Value.LastActionAt == DateTime.MinValue ? (DateTime?)null : kv.Value.LastActionAt,
+                }),
+                recent_decisions = snap.RecentDecisions.Select(d => new
+                {
+                    at = d.At,
+                    worker_type = d.WorkerType,
+                    action = d.Action,
+                    utilization = d.Utilization,
+                    container_count_before = d.ContainerCountBefore,
+                    result = d.Result,
+                }),
+            }));
+        });
+
         // ── GET /api/v1/workers/restart-state — auto-restart per-container 紀錄 ──
         workers.MapGet("/restart-state", (IServiceProvider sp) =>
         {

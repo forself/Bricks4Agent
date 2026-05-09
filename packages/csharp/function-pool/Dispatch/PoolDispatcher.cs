@@ -73,7 +73,7 @@ public class PoolDispatcher : IExecutionDispatcher
         // ── ACL 檢查（fail-open by design）──
         // role 為空 / admin / system → 永遠 allow；只有 explicit 非 admin role 走白名單檢查。
         // 不通過 → 寫 DISPATCH_DENIED 進 audit chain、回 ExecutionResult.Fail。
-        if (_acl != null && !_acl.IsAllowed(request.Role, request.CapabilityId))
+        if (_acl != null && !_acl.IsAllowed(request.PrincipalId, request.Role, request.CapabilityId))
         {
             _logger.LogWarning(
                 "ACL denied: role='{Role}' principal='{Pid}' capability='{Cap}'",

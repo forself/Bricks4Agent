@@ -156,6 +156,53 @@ public static class AdminEndpoints
             }));
         });
 
+        // ── Per-principal capability overrides（個別 user 例外規則）──
+        admin.MapGet("/acl/overrides", (HttpContext ctx, ICapabilityAclService aclSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var pid = ctx.Request.Query.TryGetValue("principal_id", out var p) ? p.ToString() : null;
+            var list = aclSvc.ListOverrides(string.IsNullOrEmpty(pid) ? null : pid);
+            return Results.Ok(ApiResponseHelper.Success(list.Select(o => new
+            {
+                override_id        = o.OverrideId,
+                principal_id       = o.PrincipalId,
+                capability_pattern = o.CapabilityPattern,
+                action             = o.Action,
+                created_at         = o.CreatedAt,
+                created_by         = o.CreatedBy,
+                reason             = o.Reason,
+            })));
+        });
+
+        admin.MapPost("/acl/overrides", (HttpContext ctx, ICapabilityAclService aclSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var pid = body.GetProperty("principal_id").GetString() ?? "";
+            var pat = body.GetProperty("capability_pattern").GetString() ?? "";
+            var act = body.GetProperty("action").GetString() ?? "allow";
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            if (string.IsNullOrEmpty(pid) || string.IsNullOrEmpty(pat))
+                return Results.BadRequest(ApiResponseHelper.Error("principal_id and capability_pattern required"));
+            try
+            {
+                var ovr = aclSvc.AddOverride(pid, pat, act, RequestBodyHelper.GetPrincipalId(ctx), reason);
+                return Results.Ok(ApiResponseHelper.Success(new { override_id = ovr.OverrideId, action = ovr.Action }));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        admin.MapPost("/acl/overrides/{id}/remove", (string id, HttpContext ctx, ICapabilityAclService aclSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var ok = aclSvc.RemoveOverride(id);
+            if (!ok) return Results.BadRequest(ApiResponseHelper.Error("override_id not found"));
+            return Results.Ok(ApiResponseHelper.Success(new { override_id = id, removed = true }));
+        });
+
         // ── Approval workflow（高風險 capability 需 admin 點 approve）──
         admin.MapGet("/approvals", (HttpContext ctx, IApprovalService aprSvc) =>
         {

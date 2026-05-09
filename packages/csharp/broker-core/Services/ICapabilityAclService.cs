@@ -1,48 +1,45 @@
+using BrokerCore.Data;
+using BrokerCore.Models;
+
 namespace BrokerCore.Services;
 
 /// <summary>
-/// Capability 角色存取控制（ACL）。
+/// Capability 角色存取控制（ACL）+ 個別 principal 覆寫。
 ///
-/// PoolDispatcher 在派送 capability 前查一次：呼叫者的 role 是否被允許呼叫此 capability。
+/// PoolDispatcher 在派送 capability 前查一次。決策順序：
+///   1. principal-specific deny override → 拒絕（最強、覆蓋 role 允許）
+///   2. principal-specific allow override → 允許（覆蓋 role 拒絕）
+///   3. role-based whitelist → 走 fail-open by design（empty/admin/system → allow）
+///
 /// 不通過 → DISPATCH_DENIED 事件 + ExecutionResult.Fail。
-///
-/// 設計成 fail-open：role 為空 / "role_admin" / "system" → 永遠 allow。
-/// 只有 explicit 非 admin role（例如 "role_user"）才會走白名單檢查。
-/// 這讓既有大量「PrincipalId="system"」的 dashboard 直呼路徑不需要動就能保持原行為。
-///
-/// 多用戶 SaaS 階段：把 dashboard endpoint 從 hardcode "system" 改成從 cookie 讀真實
-/// (principal_id, role)、就會自動受 ACL 約束。
 /// </summary>
 public interface ICapabilityAclService
 {
-    /// <summary>是否允許指定 role 呼叫指定 capability。</summary>
-    bool IsAllowed(string? role, string capabilityId);
+    /// <summary>是否允許指定 (principal, role) 呼叫指定 capability。</summary>
+    bool IsAllowed(string? principalId, string? role, string capabilityId);
 
-    /// <summary>取得目前 ACL 規則表（給 dashboard 顯示）。</summary>
+    /// <summary>取得目前 ACL 角色規則表（給 dashboard 顯示）。</summary>
     IReadOnlyDictionary<string, IReadOnlyList<string>> GetRules();
+
+    /// <summary>列指定 principal 的覆寫規則。null = 全部。</summary>
+    List<PrincipalCapabilityOverride> ListOverrides(string? principalId = null);
+
+    /// <summary>新增 / 更新 override（同 principal_id + capability_pattern 視為 upsert）。</summary>
+    PrincipalCapabilityOverride AddOverride(
+        string principalId, string capabilityPattern, string action,
+        string createdBy, string? reason = null);
+
+    /// <summary>刪除 override。</summary>
+    bool RemoveOverride(string overrideId);
 }
 
 /// <summary>
-/// 預設實作——規則表寫死在 code 裡（之後可改成 DB-backed 由 admin 調整）。
-///
-/// Pattern 語法：
-///   "*"        → 全部 capability
-///   "trading.*" → trading 開頭的所有 capability
-///   "trading.account" → 完全比對
-///
-/// 預設規則（KISS）：
-///   role_admin / system → ["*"]                                  全部
-///   role_user           → ["strategy.signal", "quote.*",          看訊號/行情/自己帳戶
-///                          "trading.account",                     讀部位、不能下單
-///                          "trading.perpetual"]                   perp 互動（trading-worker
-///                                                                 內部還是 owner-filter）
-///   其他/空              → fail-open（視為 admin）
-///
-/// trading.order 故意不給 user——多用戶 SaaS 階段不開放手動下單，只能透過 AutoTrader
-/// （受 risk rule + portfolio circuit breaker 約束）。
+/// 預設實作：role 規則寫死、principal override 走 BrokerDb 動態管理。
 /// </summary>
 public sealed class CapabilityAclService : ICapabilityAclService
 {
+    private readonly BrokerDb _db;
+
     private static readonly Dictionary<string, string[]> Rules =
         new(StringComparer.OrdinalIgnoreCase)
     {
@@ -58,13 +55,29 @@ public sealed class CapabilityAclService : ICapabilityAclService
         ["role_guest"] = Array.Empty<string>(),
     };
 
-    public bool IsAllowed(string? role, string capabilityId)
+    public CapabilityAclService(BrokerDb db) { _db = db; }
+
+    public bool IsAllowed(string? principalId, string? role, string capabilityId)
     {
-        // fail-open：沒設 role 視為內部呼叫、放行
+        // 1. principal-specific override 先查
+        if (!string.IsNullOrEmpty(principalId))
+        {
+            var overrides = ListOverrides(principalId);
+            // deny 優先（最強）
+            if (overrides.Any(o => o.Action == "deny" && MatchPattern(o.CapabilityPattern, capabilityId)))
+                return false;
+            // allow override 直接放行（不再查 role）
+            if (overrides.Any(o => o.Action == "allow" && MatchPattern(o.CapabilityPattern, capabilityId)))
+                return true;
+        }
+
+        // 2. fail-open：沒設 role 視為內部呼叫、放行
         if (string.IsNullOrEmpty(role)) return true;
 
-        if (!Rules.TryGetValue(role, out var patterns)) return true;  // 不認識的 role → fail-open
+        // 3. 不認識的 role → fail-open
+        if (!Rules.TryGetValue(role, out var patterns)) return true;
 
+        // 4. 走 role 白名單
         return patterns.Any(p => MatchPattern(p, capabilityId));
     }
 
@@ -83,4 +96,60 @@ public sealed class CapabilityAclService : ICapabilityAclService
         => Rules.ToDictionary(
             kv => kv.Key,
             kv => (IReadOnlyList<string>)kv.Value.ToList());
+
+    public List<PrincipalCapabilityOverride> ListOverrides(string? principalId = null)
+    {
+        if (string.IsNullOrEmpty(principalId))
+            return _db.Query<PrincipalCapabilityOverride>(
+                "SELECT * FROM principal_capability_overrides ORDER BY created_at DESC");
+        return _db.Query<PrincipalCapabilityOverride>(
+            "SELECT * FROM principal_capability_overrides WHERE principal_id = @pid ORDER BY created_at DESC",
+            new { pid = principalId });
+    }
+
+    public PrincipalCapabilityOverride AddOverride(
+        string principalId, string capabilityPattern, string action,
+        string createdBy, string? reason = null)
+    {
+        if (action != "allow" && action != "deny")
+            throw new ArgumentException("action must be 'allow' or 'deny'");
+
+        // upsert：同 (principal_id, capability_pattern) 視為更新
+        var existing = _db.QueryFirst<PrincipalCapabilityOverride>(
+            "SELECT * FROM principal_capability_overrides WHERE principal_id = @pid AND capability_pattern = @pat LIMIT 1",
+            new { pid = principalId, pat = capabilityPattern });
+
+        if (existing != null)
+        {
+            existing.Action = action;
+            existing.CreatedAt = DateTime.UtcNow;
+            existing.CreatedBy = createdBy;
+            existing.Reason = reason;
+            _db.Update(existing);
+            return existing;
+        }
+
+        var entry = new PrincipalCapabilityOverride
+        {
+            OverrideId = IdGen.New("ovr"),
+            PrincipalId = principalId,
+            CapabilityPattern = capabilityPattern,
+            Action = action,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = createdBy,
+            Reason = reason,
+        };
+        _db.Insert(entry);
+        return entry;
+    }
+
+    public bool RemoveOverride(string overrideId)
+    {
+        var existing = _db.QueryFirst<PrincipalCapabilityOverride>(
+            "SELECT * FROM principal_capability_overrides WHERE override_id = @id",
+            new { id = overrideId });
+        if (existing == null) return false;
+        _db.Delete<PrincipalCapabilityOverride>(existing);
+        return true;
+    }
 }

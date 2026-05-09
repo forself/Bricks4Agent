@@ -166,8 +166,9 @@ else
 builder.Services.AddSingleton<IAuditService>(sp =>
     new AuditService(sp.GetRequiredService<BrokerDb>()));
 
-// ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role） ──
-builder.Services.AddSingleton<ICapabilityAclService, CapabilityAclService>();
+// ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role + principal override） ──
+builder.Services.AddSingleton<ICapabilityAclService>(sp =>
+    new CapabilityAclService(sp.GetRequiredService<BrokerDb>()));
 
 // ── Step 4.6: Worker 健康綜合分數（heartbeat + dispatch success + resource） ──
 builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
@@ -449,6 +450,10 @@ if (poolEnabled)
         // 只在 ContainerManager 真的啟用時才註冊，避免 NoOpContainerManager 上跑無效循環
         builder.Services.AddSingleton<Broker.Services.WorkerAutoRestartService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.WorkerAutoRestartService>());
+
+        // 自動擴縮：utilization 高 → spawn / 全閒 → stop oldest
+        builder.Services.AddSingleton<Broker.Services.WorkerAutoScaleService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.WorkerAutoScaleService>());
 
         startupLogger.LogInformation(
             "Container manager enabled: runtime={Runtime}, workerTypes=[{Types}]",

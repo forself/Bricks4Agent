@@ -40,6 +40,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<ExecutionRequest>();
         _db.EnsureTable<AuditEvent>();
         _db.EnsureTable<ApprovalRequest>();
+        _db.EnsureTable<PrincipalCapabilityOverride>();
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
         _db.EnsureTable<BrowserSessionLease>();
