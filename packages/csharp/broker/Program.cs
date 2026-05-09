@@ -166,12 +166,19 @@ else
 builder.Services.AddSingleton<IAuditService>(sp =>
     new AuditService(sp.GetRequiredService<BrokerDb>()));
 
+// ── Step 4.4.5: Shutdown 旗標（給 PoolDispatcher 拒絕 broker 關閉中的新派發） ──
+builder.Services.AddSingleton<IShutdownState, ShutdownState>();
+
 // ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role + principal override） ──
 builder.Services.AddSingleton<ICapabilityAclService>(sp =>
     new CapabilityAclService(sp.GetRequiredService<BrokerDb>()));
 
 // ── Step 4.6: Worker 健康綜合分數（heartbeat + dispatch success + resource） ──
 builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
+
+// ── Step 4.6b: 每 5 min 拍 health snapshot 進 DB（給 dashboard 趨勢圖） ──
+builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
 
 // ── Step 4.7: Approve-before-execute（高風險 capability 需 admin 點按 approve） ──
 builder.Services.AddSingleton<IApprovalService>(sp =>
@@ -363,7 +370,8 @@ if (poolEnabled)
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
                 sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
                 sp.GetService<ICapabilityAclService>(),   // role-based capability allowlist
-                sp.GetService<IApprovalService>());       // approve-before-execute for sensitive caps
+                sp.GetService<IApprovalService>(),        // approve-before-execute for sensitive caps
+                sp.GetService<IShutdownState>());         // graceful shutdown gate
             return new StrictPoolDispatcher(
                 poolDispatcher,
                 sp.GetRequiredService<ILogger<StrictPoolDispatcher>>());
@@ -392,7 +400,8 @@ if (poolEnabled)
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
                 sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
                 sp.GetService<ICapabilityAclService>(),   // role-based capability allowlist
-                sp.GetService<IApprovalService>());       // approve-before-execute for sensitive caps
+                sp.GetService<IApprovalService>(),        // approve-before-execute for sensitive caps
+                sp.GetService<IShutdownState>());         // graceful shutdown gate
             return new FallbackDispatcher(
                 poolDispatcher, inProcess, inProcess.CanHandle,
                 sp.GetRequiredService<ILogger<FallbackDispatcher>>());
@@ -1047,6 +1056,35 @@ if (poolEnabled)
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
     lifetime.ApplicationStopping.Register(() =>
     {
+        // 1. 立刻設旗標：PoolDispatcher 之後拒絕新派發、不讓 in-flight 撞到 worker disconnect
+        var shutdown = app.Services.GetService<FunctionPool.Dispatch.IShutdownState>();
+        shutdown?.MarkStopping();
+
+        // 2. 為每個還連著的 worker 寫一筆 audit、記下 broker 重啟事件（給之後 trace 對照）
+        try
+        {
+            var registry = app.Services.GetService<FunctionPool.Registry.IWorkerRegistry>();
+            var audit = app.Services.GetService<BrokerCore.Services.IAuditService>();
+            if (registry != null && audit != null)
+            {
+                var traceId = $"trc_brk_shutdown_{DateTime.UtcNow:yyyyMMddHHmmss}";
+                foreach (var w in registry.GetAllWorkers())
+                {
+                    audit.RecordEvent(traceId, "BROKER_SHUTDOWN",
+                        principalId: "system",
+                        resourceRef: w.WorkerId,
+                        details: System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            worker_id = w.WorkerId,
+                            capabilities = w.Capabilities,
+                            active_tasks = w.ActiveTasks,
+                            reason = "broker process stopping",
+                        }));
+                }
+            }
+        }
+        catch { /* shutdown 路徑best-effort、別擋 */ }
+
         healthMonitor.Dispose();
         if (!poolListener.StopAsync().Wait(TimeSpan.FromSeconds(10)))
         {

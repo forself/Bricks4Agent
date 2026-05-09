@@ -39,6 +39,7 @@ public class PoolDispatcher : IExecutionDispatcher
     private readonly IAuditService? _audit;
     private readonly ICapabilityAclService? _acl;
     private readonly IApprovalService? _approval;
+    private readonly IShutdownState? _shutdown;
 
     public PoolDispatcher(
         IWorkerRegistry registry,
@@ -46,7 +47,8 @@ public class PoolDispatcher : IExecutionDispatcher
         ILogger<PoolDispatcher> logger,
         IAuditService? audit = null,
         ICapabilityAclService? acl = null,
-        IApprovalService? approval = null)
+        IApprovalService? approval = null,
+        IShutdownState? shutdown = null)
     {
         _registry = registry;
         _config = config;
@@ -54,6 +56,7 @@ public class PoolDispatcher : IExecutionDispatcher
         _audit = audit;
         _acl = acl;
         _approval = approval;
+        _shutdown = shutdown;
     }
 
     /// <summary>是否有指定能力的可用 Worker</summary>
@@ -69,6 +72,20 @@ public class PoolDispatcher : IExecutionDispatcher
         var traceId = string.IsNullOrEmpty(request.TraceId) ? IdGen.New("trc") : request.TraceId;
         var startedAt = DateTime.UtcNow;
         var sw = Stopwatch.StartNew();
+
+        // ── Graceful shutdown gate ──
+        // broker 正在收尾、不接新派發、避免 in-flight dispatch 撞到 worker connection drop。
+        // Caller 看到明確的 "broker shutting down"、不必猜為什麼 worker 沒回。
+        if (_shutdown?.IsStopping == true)
+        {
+            TryAudit(traceId, "DISPATCH_DENIED", request, details: new
+            {
+                capability = request.CapabilityId,
+                reason = "broker shutting down",
+            });
+            return ExecutionResult.Fail(request.RequestId,
+                "Broker is shutting down; dispatch refused.");
+        }
 
         // ── ACL 檢查（fail-open by design）──
         // role 為空 / admin / system → 永遠 allow；只有 explicit 非 admin role 走白名單檢查。
