@@ -608,6 +608,7 @@ public class AutoTraderService : BackgroundService
                     LastSignal = e.LastSignal, LastConfidence = e.LastConfidence, LastCheck = e.LastCheck,
                     Mode = string.IsNullOrEmpty(e.Mode) ? "spot" : e.Mode,
                     Leverage = e.Leverage > 0 ? e.Leverage : 5,
+                    OwnerPrincipalId = string.IsNullOrEmpty(e.OwnerPrincipalId) ? "prn_dashboard" : e.OwnerPrincipalId,
                 };
             }
             if (entries.Count > 0)
@@ -634,6 +635,7 @@ public class AutoTraderService : BackgroundService
                     Strategy = item.Strategy, Quantity = item.Quantity, Active = item.Active,
                     LastSignal = item.LastSignal, LastConfidence = item.LastConfidence, LastCheck = item.LastCheck,
                     Mode = item.Mode, Leverage = item.Leverage,
+                    OwnerPrincipalId = item.OwnerPrincipalId,
                     CreatedAt = now, UpdatedAt = now,
                 });
             }
@@ -643,6 +645,7 @@ public class AutoTraderService : BackgroundService
                 existing.Strategy = item.Strategy; existing.Quantity = item.Quantity; existing.Active = item.Active;
                 existing.LastSignal = item.LastSignal; existing.LastConfidence = item.LastConfidence; existing.LastCheck = item.LastCheck;
                 existing.Mode = item.Mode; existing.Leverage = item.Leverage;
+                existing.OwnerPrincipalId = item.OwnerPrincipalId;
                 existing.UpdatedAt = now;
                 _db.Update(existing);
             }
@@ -787,31 +790,46 @@ public class AutoTraderService : BackgroundService
     public void SetInterval(int seconds) { _intervalSeconds = Math.Max(60, seconds); PersistSettings(); }
 
     public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1,
-        string mode = "spot", int leverage = 5)
+        string mode = "spot", int leverage = 5, string ownerPrincipalId = "prn_dashboard")
     {
         var key = $"{exchange}:{symbol}";
-        // 驗 mode：unknown 一律退回 spot 避免奇怪行為
         var validModes = new[] { "spot", "perp_long_only", "perp_both" };
         if (!validModes.Contains(mode)) mode = "spot";
-        // leverage clamp：1-125（BingX 上限）；非 perp 模式忽略此值但仍存
         leverage = Math.Max(1, Math.Min(125, leverage));
         var item = new WatchItem
         {
             Symbol = symbol, Exchange = exchange, Strategy = strategy,
             Quantity = quantity, Active = true, Mode = mode, Leverage = leverage,
+            OwnerPrincipalId = string.IsNullOrEmpty(ownerPrincipalId) ? "prn_dashboard" : ownerPrincipalId,
         };
         _watchList[key] = item;
         PersistWatch(key, item);
-        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x",
-            key, strategy, quantity, mode, leverage);
+        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x owner={Owner}",
+            key, strategy, quantity, mode, leverage, item.OwnerPrincipalId);
     }
 
-    public bool RemoveWatch(string symbol, string exchange)
+    /// <summary>
+    /// 移除 watch。Phase A2：傳 requesterPrincipalId + isAdmin、只允許 owner 自己或 admin 刪。
+    /// 回傳 (removed, reason)：reason="not_found" / "forbidden" / "" 成功。
+    /// 老 caller 不傳會 backward-compat：requesterPrincipalId=null 視為 admin（單機開發用）。
+    /// </summary>
+    public (bool Removed, string Reason) RemoveWatch(string symbol, string exchange,
+        string? requesterPrincipalId = null, bool isAdmin = false)
     {
         var key = $"{exchange}:{symbol}";
+        if (!_watchList.TryGetValue(key, out var existing))
+            return (false, "not_found");
+
+        // null requester = legacy 路徑（無 auth context）→ 允許；正常 user 走 endpoint 一定有 requester
+        if (requesterPrincipalId != null && !isAdmin
+            && !string.Equals(existing.OwnerPrincipalId, requesterPrincipalId, StringComparison.Ordinal))
+        {
+            return (false, "forbidden");
+        }
+
         var removed = _watchList.TryRemove(key, out _);
         if (removed) DeletePersistedWatch(key);
-        return removed;
+        return (removed, "");
     }
 
     public void PauseWatch(string symbol, string exchange)
@@ -1745,6 +1763,8 @@ public class WatchItem
     public string Mode     { get; set; } = "spot";
     /// <summary>perpetual 模式開倉用槓桿。spot 模式忽略。預設 5x。</summary>
     public int Leverage    { get; set; } = 5;
+    /// <summary>Phase A2：擁有者 principal_id。admin 看全部、user 看自己這個 == 自己 principal 的。</summary>
+    public string OwnerPrincipalId { get; set; } = "prn_dashboard";
 }
 
 public class TradeLog

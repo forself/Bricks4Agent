@@ -1,4 +1,5 @@
 using Broker.Helpers;
+using Broker.Middleware;
 using Broker.Services;
 using BrokerCore.Data;
 using BrokerCore.Models;
@@ -52,10 +53,16 @@ public static class LabEndpoints
     {
         var lab = group.MapGroup("/lab");
 
-        lab.MapGet("/recommendations", (BrokerDb db, HttpRequest req) =>
+        lab.MapGet("/recommendations", (BrokerDb db, HttpContext ctx) =>
         {
+            var req = ctx.Request;
             var capital = req.Query.TryGetValue("capital", out var c) && decimal.TryParse(c, out var cv) ? cv : 0m;
             var tf = req.Query.TryGetValue("timeframe", out var t) ? t.ToString() : null;
+
+            // Phase A2：admin 看全部 owner 的結果、user 只看自己。
+            var (pid, role) = ctx.GetCurrentUser();
+            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            var ownerFilter = isAdminOrLegacy ? null : pid;
 
             // 取最近一個 finished run
             var latestRun = db.Query<BacktestRunEntry>(
@@ -64,14 +71,19 @@ public static class LabEndpoints
             if (latestRun == null)
                 return Results.Ok(ApiResponseHelper.Success(new { run = (object?)null, recommendations = Array.Empty<object>() }));
 
-            // recommended=true 那些。timeframe 也走 parameter binding、不做字串拼接（SQL injection 防護）。
-            // BaseOrm 對 null 參數會自動展開成 IS NULL 或被 ignore；這邊用 COALESCE 讓 SQL 一份打死兩種情境。
+            // recommended=true 那些。所有 user 輸入欄位（timeframe、owner）都用 parameter binding。
             var rows = db.Query<BacktestResultEntry>(
                 "SELECT * FROM backtest_results " +
                 "WHERE run_id = @rid AND recommended = 1 " +
                 "AND (@tf IS NULL OR timeframe = @tf) " +
+                "AND (@owner IS NULL OR owner_principal_id = @owner) " +
                 "ORDER BY score DESC",
-                new { rid = latestRun.RunId, tf = string.IsNullOrEmpty(tf) ? null : tf });
+                new
+                {
+                    rid = latestRun.RunId,
+                    tf = string.IsNullOrEmpty(tf) ? null : tf,
+                    owner = ownerFilter,
+                });
 
             var enriched = rows.Select(r =>
             {

@@ -72,4 +72,12 @@ public class AutoTradeWatchEntry
 
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// 擁有者 principal_id（Phase A2 新增）。資料隔離：admin 看全部、user 看自己這個欄位 == 自己 principal 的列。
+    /// 既有資料 migration 時都標 'prn_dashboard'（admin user）。
+    /// </summary>
+    [Column("owner_principal_id")]
+    [MaxLength(80)]
+    public string OwnerPrincipalId { get; set; } = "prn_dashboard";
 }

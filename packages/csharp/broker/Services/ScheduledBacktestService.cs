@@ -141,6 +141,7 @@ public class ScheduledBacktestService : BackgroundService
                     if (ct.IsCancellationRequested) break;
                     var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, ct);
                     entry.Regime = regime;
+                    entry.OwnerPrincipalId = string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId;
                     if (!string.IsNullOrEmpty(entry.Error)) errors++;
                     allResults.Add(entry);
                 }

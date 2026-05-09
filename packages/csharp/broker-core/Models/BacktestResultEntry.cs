@@ -77,4 +77,12 @@ public class BacktestResultEntry
 
     [Column("finished_at")]
     public DateTime FinishedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// 這條結果歸屬於哪個 user 的 watch。Phase A2：lab/recommendations 按這個過濾。
+    /// 跟 BacktestRunEntry.RunId 加總可以還原「這次 run 為誰跑了哪些 symbol」。
+    /// </summary>
+    [Column("owner_principal_id")]
+    [MaxLength(80)]
+    public string OwnerPrincipalId { get; set; } = "prn_dashboard";
 }

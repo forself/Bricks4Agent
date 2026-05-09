@@ -27,6 +27,18 @@ public static class AutoTraderDbMigrations
             table: "auto_trade_watchlist",
             column: "leverage",
             sqlType: "INTEGER NOT NULL DEFAULT 5");
+
+        // Phase A2: 加 owner 欄位、既有資料一律標 prn_dashboard（admin）。
+        // 之後 user 自己加的 watch 會用各自 principal_id；admin 看全部、user 看自己。
+        AddColumnIfMissing(db, logger,
+            table: "auto_trade_watchlist",
+            column: "owner_principal_id",
+            sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
+
+        AddColumnIfMissing(db, logger,
+            table: "backtest_results",
+            column: "owner_principal_id",
+            sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

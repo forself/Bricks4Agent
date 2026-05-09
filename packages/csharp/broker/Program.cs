@@ -632,6 +632,8 @@ app.UseWorkerIdentityAuth();
 app.UseBrokerAuth();
 // [6] AuditMiddleware（稽核記錄）
 app.UseBrokerAudit();
+// [7] CurrentUserMiddleware（Phase A2：把 cookie session 解出來、塞 HttpContext.Items 給 endpoint 用）
+app.UseCurrentUser();
 
 // ── Dashboard（靜態 HTML，由 UseStaticFiles 提供） ──
 // Dashboard JS 內建完整 ECDH+AES-GCM 加密客戶端，所有 API 呼叫走加密 POST

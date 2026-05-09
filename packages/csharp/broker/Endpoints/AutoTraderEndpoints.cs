@@ -1,4 +1,5 @@
 using Broker.Helpers;
+using Broker.Middleware;
 using Broker.Services;
 using System.Text.Json;
 
@@ -33,28 +34,37 @@ public static class AutoTraderEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { enabled = false }));
         });
 
-        at.MapGet("/status", (AutoTraderService svc) =>
+        at.MapGet("/status", (AutoTraderService svc, HttpContext ctx) =>
         {
-            var watchList = svc.WatchList.Select(kv => new
+            // Phase A2：admin 看全部、user 只看自己 owner 的 watches。
+            // 未登入（legacy / 內部 health check）視為 admin，不做過濾——避免破舊呼叫。
+            var (pid, role) = ctx.GetCurrentUser();
+            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            var visibleWatches = svc.WatchList.Values
+                .Where(w => isAdminOrLegacy || string.Equals(w.OwnerPrincipalId, pid, StringComparison.Ordinal))
+                .ToList();
+            var watchList = visibleWatches.Select(w => new
             {
-                symbol = kv.Value.Symbol,
-                exchange = kv.Value.Exchange,
-                strategy = kv.Value.Strategy,
-                quantity = kv.Value.Quantity,
-                active = kv.Value.Active,
-                mode = kv.Value.Mode,
-                leverage = kv.Value.Leverage,
-                last_signal = kv.Value.LastSignal,
-                last_confidence = kv.Value.LastConfidence,
-                last_check = kv.Value.LastCheck,
+                symbol = w.Symbol,
+                exchange = w.Exchange,
+                strategy = w.Strategy,
+                quantity = w.Quantity,
+                active = w.Active,
+                mode = w.Mode,
+                leverage = w.Leverage,
+                owner_principal_id = w.OwnerPrincipalId,
+                last_signal = w.LastSignal,
+                last_confidence = w.LastConfidence,
+                last_check = w.LastCheck,
             });
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 enabled = svc.IsEnabled,
                 interval_seconds = svc.IntervalSeconds,
-                watch_count = svc.WatchList.Count,
+                watch_count = visibleWatches.Count,
                 watch_list = watchList,
+                viewer = new { principal_id = pid, role, scope = isAdminOrLegacy ? "all" : "self" },
                 dev_force_action = svc.DevForceAction,   // 非 null 表示 dev override 啟用中
                 min_confidence = svc.MinConfidence,
                 max_portfolio_dd_pct = svc.MaxPortfolioDdPct,
@@ -99,9 +109,9 @@ public static class AutoTraderEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { reset = true, sl_flush_triggered = svc.SlFlushTriggered }));
         });
 
-        at.MapPost("/watch", async (AutoTraderService svc, HttpRequest req) =>
+        at.MapPost("/watch", async (AutoTraderService svc, HttpContext ctx) =>
         {
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync();
             var doc = JsonDocument.Parse(body).RootElement;
 
@@ -109,27 +119,35 @@ public static class AutoTraderEndpoints
             var exchange = doc.TryGetProperty("exchange",  out var e) ? e.GetString() ?? "alpaca" : "alpaca";
             var strategy = doc.TryGetProperty("strategy",  out var st) ? st.GetString() ?? "composite" : "composite";
             var quantity = doc.TryGetProperty("quantity",   out var q) ? q.GetDecimal() : 1m;
-            // Phase 3：perpetual 模式 + leverage（向後相容、不傳就走 spot）
             var mode     = doc.TryGetProperty("mode",      out var m)  ? m.GetString() ?? "spot" : "spot";
             var leverage = doc.TryGetProperty("leverage",  out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 5;
 
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
-            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage);
-            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, strategy, quantity, mode, leverage }));
+            // 擁有者 = 當前登入者；未登入視同 admin user prn_dashboard（向後相容、本機 dev）
+            var (pid, _) = ctx.GetCurrentUser();
+            var owner = pid ?? "prn_dashboard";
+
+            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner);
+            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, strategy, quantity, mode, leverage, owner_principal_id = owner }));
         });
 
-        at.MapDelete("/watch", async (AutoTraderService svc, HttpRequest req) =>
+        at.MapDelete("/watch", async (AutoTraderService svc, HttpContext ctx) =>
         {
-            var symbol   = req.Query.TryGetValue("symbol",   out var s) ? s.ToString() : "";
-            var exchange = req.Query.TryGetValue("exchange",  out var e) ? e.ToString() : "alpaca";
+            await Task.CompletedTask;
+            var symbol   = ctx.Request.Query.TryGetValue("symbol",   out var s) ? s.ToString() : "";
+            var exchange = ctx.Request.Query.TryGetValue("exchange",  out var e) ? e.ToString() : "alpaca";
 
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
-            var removed = svc.RemoveWatch(symbol, exchange);
-            return Results.Ok(ApiResponseHelper.Success(new { removed, symbol, exchange }));
+            var (pid, role) = ctx.GetCurrentUser();
+            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            var (removed, reason) = svc.RemoveWatch(symbol, exchange, pid, isAdminOrLegacy);
+            if (!removed && reason == "forbidden")
+                return Results.Json(ApiResponseHelper.Error("Forbidden: not your watch", 403), statusCode: 403);
+            return Results.Ok(ApiResponseHelper.Success(new { removed, symbol, exchange, reason }));
         });
 
         at.MapPost("/interval", async (AutoTraderService svc, HttpRequest req) =>
