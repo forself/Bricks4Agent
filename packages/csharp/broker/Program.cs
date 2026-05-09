@@ -439,6 +439,11 @@ if (poolEnabled)
         builder.Services.AddSingleton<IContainerManager>(sp =>
             new ContainerManager(containerConfig, sp.GetRequiredService<ILogger<ContainerManager>>()));
 
+        // 自動重啟：container 變 Stopped/Failed 時用 exponential backoff 重啟
+        // 只在 ContainerManager 真的啟用時才註冊，避免 NoOpContainerManager 上跑無效循環
+        builder.Services.AddSingleton<Broker.Services.WorkerAutoRestartService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.WorkerAutoRestartService>());
+
         startupLogger.LogInformation(
             "Container manager enabled: runtime={Runtime}, workerTypes=[{Types}]",
             containerConfig.Runtime, string.Join(", ", containerConfig.WorkerImages.Keys));

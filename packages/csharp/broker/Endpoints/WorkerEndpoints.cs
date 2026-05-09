@@ -351,6 +351,45 @@ public static class WorkerEndpoints
             })));
         });
 
+        // ── GET /api/v1/workers/restart-state — auto-restart per-container 紀錄 ──
+        workers.MapGet("/restart-state", (IServiceProvider sp) =>
+        {
+            var svc = sp.GetService<Broker.Services.WorkerAutoRestartService>();
+            if (svc == null)
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    enabled = false,
+                    note = "Auto-restart disabled (ContainerManager not enabled)",
+                    snapshots = Array.Empty<object>(),
+                }));
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                enabled = true,
+                snapshots = svc.GetSnapshots().Select(s => new
+                {
+                    container_id    = s.ContainerId,
+                    attempts        = s.Attempts,
+                    last_attempt_at = s.LastAttemptAt,
+                    unrecoverable   = s.Unrecoverable,
+                    last_error      = s.LastError,
+                }),
+            }));
+        });
+
+        // ── POST /api/v1/workers/reset-restart-state — admin 清掉某 container 的 backoff ──
+        workers.MapPost("/reset-restart-state", (HttpContext ctx, IServiceProvider sp) =>
+        {
+            if (!Broker.Helpers.RequestBodyHelper.IsAdmin(ctx))
+                return Results.Json(Broker.Helpers.ApiResponseHelper.Error("admin required", 403), statusCode: 403);
+            var svc = sp.GetService<Broker.Services.WorkerAutoRestartService>();
+            if (svc == null) return Results.BadRequest(Broker.Helpers.ApiResponseHelper.Error("auto-restart disabled"));
+            var body = Broker.Helpers.RequestBodyHelper.GetBody(ctx);
+            var cid = body.TryGetProperty("container_id", out var c) ? c.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(cid)) return Results.BadRequest(Broker.Helpers.ApiResponseHelper.Error("container_id required"));
+            var ok = svc.Reset(cid);
+            return Results.Ok(Broker.Helpers.ApiResponseHelper.Success(new { container_id = cid, reset = ok }));
+        });
+
         // ── GET /api/v1/workers/health — Pool health summary ──
         workers.MapGet("/health", async (
             IWorkerRegistry registry,
