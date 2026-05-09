@@ -155,6 +155,52 @@ public static class AdminEndpoints
                 policy = "fail-open: empty role / unknown role → allow; only known non-admin roles enforce whitelist.",
             }));
         });
+
+        // ── Approval workflow（高風險 capability 需 admin 點 approve）──
+        admin.MapGet("/approvals", (HttpContext ctx, IApprovalService aprSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var status = ctx.Request.Query.TryGetValue("status", out var s) ? s.ToString() : "pending";
+            var limit = int.TryParse(ctx.Request.Query["limit"].ToString(), out var l) ? Math.Clamp(l, 1, 200) : 50;
+            var list = aprSvc.List(string.IsNullOrEmpty(status) ? null : status, limit);
+            return Results.Ok(ApiResponseHelper.Success(list.Select(a => new
+            {
+                approval_id     = a.ApprovalId,
+                trace_id        = a.TraceId,
+                capability_id   = a.CapabilityId,
+                route           = a.Route,
+                payload         = a.Payload,
+                principal_id    = a.PrincipalId,
+                role            = a.Role,
+                requested_at    = a.RequestedAt,
+                status          = a.Status,
+                decided_by      = a.DecidedBy,
+                decided_at      = a.DecidedAt,
+                decision_reason = a.DecisionReason,
+            })));
+        });
+
+        admin.MapPost("/approvals/{id}/approve", (string id, HttpContext ctx, IApprovalService aprSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            var by = RequestBodyHelper.GetPrincipalId(ctx);
+            var ok = aprSvc.Approve(id, by, reason);
+            if (!ok) return Results.BadRequest(ApiResponseHelper.Error("approval_id not found or already decided"));
+            return Results.Ok(ApiResponseHelper.Success(new { approval_id = id, status = "approved" }));
+        });
+
+        admin.MapPost("/approvals/{id}/reject", (string id, HttpContext ctx, IApprovalService aprSvc) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            var by = RequestBodyHelper.GetPrincipalId(ctx);
+            var ok = aprSvc.Reject(id, by, reason);
+            if (!ok) return Results.BadRequest(ApiResponseHelper.Error("approval_id not found or already decided"));
+            return Results.Ok(ApiResponseHelper.Success(new { approval_id = id, status = "rejected" }));
+        });
     }
 
     /// <summary>

@@ -38,19 +38,22 @@ public class PoolDispatcher : IExecutionDispatcher
     private readonly ILogger<PoolDispatcher> _logger;
     private readonly IAuditService? _audit;
     private readonly ICapabilityAclService? _acl;
+    private readonly IApprovalService? _approval;
 
     public PoolDispatcher(
         IWorkerRegistry registry,
         PoolConfig config,
         ILogger<PoolDispatcher> logger,
         IAuditService? audit = null,
-        ICapabilityAclService? acl = null)
+        ICapabilityAclService? acl = null,
+        IApprovalService? approval = null)
     {
         _registry = registry;
         _config = config;
         _logger = logger;
         _audit = audit;
         _acl = acl;
+        _approval = approval;
     }
 
     /// <summary>是否有指定能力的可用 Worker</summary>
@@ -83,6 +86,48 @@ public class PoolDispatcher : IExecutionDispatcher
             });
             return ExecutionResult.Fail(request.RequestId,
                 $"Capability '{request.CapabilityId}' is not allowed for role '{request.Role}'");
+        }
+
+        // ── Approval gate（policy by capability）──
+        // 高風險 capability（trading.order）需要 admin 在 dashboard 點 approve 才放行。
+        // 沒設 approval service 或 capability 不在受控集合 → skip。
+        // system principal 跳過 approval（內部背景任務、AutoTrader 等不會被擋）。
+        if (_approval != null && _approval.RequiresApproval(request.CapabilityId)
+            && !string.Equals(request.PrincipalId, "system", StringComparison.OrdinalIgnoreCase))
+        {
+            var apr = _approval.GetOrCreatePending(
+                traceId, request.CapabilityId, request.Route, request.Payload,
+                request.PrincipalId, request.Role);
+            switch (apr.Status)
+            {
+                case "approved":
+                    // 放行、繼續派發（會走後面的 STARTED → SUCCEEDED/FAILED 流程）
+                    _logger.LogInformation("Approval {Id} approved by {By}, proceeding dispatch",
+                        apr.ApprovalId, apr.DecidedBy);
+                    TryAudit(traceId, "DISPATCH_APPROVED", request, details: new
+                    {
+                        approval_id = apr.ApprovalId,
+                        decided_by = apr.DecidedBy,
+                    });
+                    break;
+                case "rejected":
+                    TryAudit(traceId, "DISPATCH_DENIED", request, details: new
+                    {
+                        approval_id = apr.ApprovalId,
+                        reason = "Rejected by admin: " + (apr.DecisionReason ?? ""),
+                    });
+                    return ExecutionResult.Fail(request.RequestId,
+                        $"Approval rejected by {apr.DecidedBy}: {apr.DecisionReason}");
+                default: // pending
+                    TryAudit(traceId, "DISPATCH_PENDING_APPROVAL", request, details: new
+                    {
+                        approval_id = apr.ApprovalId,
+                        capability = request.CapabilityId,
+                        principal_id = request.PrincipalId,
+                    });
+                    return ExecutionResult.Fail(request.RequestId,
+                        $"Pending admin approval (approval_id={apr.ApprovalId}). Retry the same trace_id after approval.");
+            }
         }
 
         TryAudit(traceId, "DISPATCH_STARTED", request, details: new

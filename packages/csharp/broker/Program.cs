@@ -172,6 +172,10 @@ builder.Services.AddSingleton<ICapabilityAclService, CapabilityAclService>();
 // ── Step 4.6: Worker 健康綜合分數（heartbeat + dispatch success + resource） ──
 builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
 
+// ── Step 4.7: Approve-before-execute（高風險 capability 需 admin 點按 approve） ──
+builder.Services.AddSingleton<IApprovalService>(sp =>
+    new ApprovalService(sp.GetRequiredService<BrokerDb>()));
+
 // ── Step 5: Capability Catalog + Policy Engine ──
 builder.Services.AddSingleton<ISchemaValidator, SchemaValidator>();
 builder.Services.AddSingleton<ITaskRouter, TaskRouter>();
@@ -357,7 +361,8 @@ if (poolEnabled)
                 poolConfig,
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
                 sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
-                sp.GetService<ICapabilityAclService>());   // role-based capability allowlist
+                sp.GetService<ICapabilityAclService>(),   // role-based capability allowlist
+                sp.GetService<IApprovalService>());       // approve-before-execute for sensitive caps
             return new StrictPoolDispatcher(
                 poolDispatcher,
                 sp.GetRequiredService<ILogger<StrictPoolDispatcher>>());
@@ -385,7 +390,8 @@ if (poolEnabled)
                 poolConfig,
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
                 sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
-                sp.GetService<ICapabilityAclService>());   // role-based capability allowlist
+                sp.GetService<ICapabilityAclService>(),   // role-based capability allowlist
+                sp.GetService<IApprovalService>());       // approve-before-execute for sensitive caps
             return new FallbackDispatcher(
                 poolDispatcher, inProcess, inProcess.CanHandle,
                 sp.GetRequiredService<ILogger<FallbackDispatcher>>());
