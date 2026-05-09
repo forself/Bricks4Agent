@@ -53,6 +53,9 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Strategy Lab 自動回測（2026-05-09）— 每日批次跑、結果存 DB、API 查推薦
     initDb.EnsureTable<BacktestRunEntry>();
     initDb.EnsureTable<BacktestResultEntry>();
+    // Principal 多用戶帳密 + cookie session（Phase A1 2026-05-10）
+    initDb.EnsureTable<PrincipalCredential>();
+    initDb.EnsureTable<PrincipalSession>();
     // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
     Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
     // Alert system（#2 2026-05-07）—— 規則 + 事件
@@ -282,6 +285,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Al
 builder.Services.AddSingleton<Broker.Services.SymbolScreenerService>();
 builder.Services.AddSingleton<Broker.Services.ScheduledBacktestService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.ScheduledBacktestService>());
+builder.Services.AddSingleton<Broker.Services.PrincipalAuthService>();
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -591,6 +595,9 @@ builder.Services.AddSingleton<IPlanEngine>(sp =>
 var app = builder.Build();
 
 app.Logger.LogInformation("Broker database path: {DbPath}", dbPath);
+
+// Phase A1：seed 一筆 admin（prn_dashboard / 預設密碼 admin、強制下次改）
+app.Services.GetRequiredService<Broker.Services.PrincipalAuthService>().EnsureInitialAdmin(app.Configuration);
 
 app.Use(async (context, next) =>
 {
@@ -966,6 +973,7 @@ if (poolEnabled)
     PerpetualEndpoints.Map(api);
     ScreenerEndpoints.Map(api);
     LabEndpoints.Map(api);
+    AuthEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);
