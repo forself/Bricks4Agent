@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using BrokerCore;
 using CacheProtocol;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
@@ -17,6 +19,11 @@ namespace FunctionPool.Dispatch;
 /// 3. 等待 WORKER_RESULT（含超時）
 /// 4. 失敗重試（嘗試下一個 Worker 實例）
 /// 5. 所有 Worker 不可用 → 返回失敗
+///
+/// Tracing：若 ctor 注入 IAuditService、Dispatcher 會在派發前後各記一筆 audit event，
+/// 細節（worker_id / 嘗試次數 / 耗時 ms）寫進 details JSON。Dashboard 走 dispatcher 的
+/// 路徑（StrategyEndpoints / AutoTrader…）跟 BrokerService 16 步驟那條重型路徑都會被追到。
+/// 沒設 TraceId 的請求會自動產一個（"trc_..."）以撐起 audit hash chain。
 /// </summary>
 public class PoolDispatcher : IExecutionDispatcher
 {
@@ -29,15 +36,18 @@ public class PoolDispatcher : IExecutionDispatcher
     private readonly IWorkerRegistry _registry;
     private readonly PoolConfig _config;
     private readonly ILogger<PoolDispatcher> _logger;
+    private readonly IAuditService? _audit;
 
     public PoolDispatcher(
         IWorkerRegistry registry,
         PoolConfig config,
-        ILogger<PoolDispatcher> logger)
+        ILogger<PoolDispatcher> logger,
+        IAuditService? audit = null)
     {
         _registry = registry;
         _config = config;
         _logger = logger;
+        _audit = audit;
     }
 
     /// <summary>是否有指定能力的可用 Worker</summary>
@@ -48,17 +58,40 @@ public class PoolDispatcher : IExecutionDispatcher
 
     public async Task<ExecutionResult> DispatchAsync(ApprovedRequest request)
     {
+        // Dashboard 直呼路徑（StrategyEndpoints 等）常常沒設 TraceId、但 audit hash chain
+        // 需要 trace_id 為 key——這裡補一個就好，不要求 caller 配合。
+        var traceId = string.IsNullOrEmpty(request.TraceId) ? IdGen.New("trc") : request.TraceId;
+        var startedAt = DateTime.UtcNow;
+        var sw = Stopwatch.StartNew();
+
+        TryAudit(traceId, "DISPATCH_STARTED", request, details: new
+        {
+            capability = request.CapabilityId,
+            route      = request.Route,
+            attempts_max = _config.MaxRetries + 1,
+            started_at = startedAt,
+        });
+
+        ExecutionResult result;
+        string? finalWorkerId = null;
+        var attemptsUsed = 0;
+
         for (int attempt = 0; attempt <= _config.MaxRetries; attempt++)
         {
+            attemptsUsed = attempt + 1;
             var conn = _registry.GetAvailableWorker(request.CapabilityId);
             if (conn == null)
             {
                 _logger.LogDebug(
                     "No available worker for capability '{Cap}' (attempt {A})",
                     request.CapabilityId, attempt);
-                return ExecutionResult.Fail(request.RequestId,
+                result = ExecutionResult.Fail(request.RequestId,
                     $"No available worker for capability '{request.CapabilityId}'");
+                EmitCompleted(traceId, request, result, finalWorkerId, attemptsUsed, sw);
+                return result;
             }
+
+            finalWorkerId = conn.WorkerId;
 
             try
             {
@@ -73,15 +106,15 @@ public class PoolDispatcher : IExecutionDispatcher
                     Route = request.Route,
                     Payload = request.Payload,
                     Scope = request.Scope,
-                    TraceId = request.TraceId
+                    TraceId = traceId
                 };
 
                 var payload = JsonSerializer.SerializeToUtf8Bytes(executeCmd, JsonOptions);
                 var frame = FrameCodec.Encode(OpCodes.WORKER_EXECUTE, payload);
 
                 _logger.LogDebug(
-                    "Dispatching to worker {W}: requestId={R} capability={C} route={Route}",
-                    conn.WorkerId, request.RequestId, request.CapabilityId, request.Route);
+                    "Dispatching to worker {W}: requestId={R} capability={C} route={Route} trace={T}",
+                    conn.WorkerId, request.RequestId, request.CapabilityId, request.Route, traceId);
 
                 // 發送並等待結果（含 timeout）
                 var (respOpCode, respPayload) = await conn.SendAndWaitAsync(
@@ -90,7 +123,9 @@ public class PoolDispatcher : IExecutionDispatcher
                 // 成功完成 → 歸還活躍任務計數
                 _registry.DecrementActiveTask(conn.WorkerId);
 
-                return ParseExecutionResult(request.RequestId, respOpCode, respPayload);
+                result = ParseExecutionResult(request.RequestId, respOpCode, respPayload);
+                EmitCompleted(traceId, request, result, finalWorkerId, attemptsUsed, sw);
+                return result;
             }
             catch (TimeoutException ex)
             {
@@ -123,12 +158,55 @@ public class PoolDispatcher : IExecutionDispatcher
                 // 最終失敗 → 歸還活躍任務計數
                 _registry.DecrementActiveTask(conn.WorkerId);
 
-                return ExecutionResult.Fail(request.RequestId,
+                result = ExecutionResult.Fail(request.RequestId,
                     $"Worker dispatch failed: {ex.Message}");
+                EmitCompleted(traceId, request, result, finalWorkerId, attemptsUsed, sw);
+                return result;
             }
         }
 
-        return ExecutionResult.Fail(request.RequestId, "All worker dispatch attempts failed");
+        result = ExecutionResult.Fail(request.RequestId, "All worker dispatch attempts failed");
+        EmitCompleted(traceId, request, result, finalWorkerId, attemptsUsed, sw);
+        return result;
+    }
+
+    // ── Audit emission helpers ─────────────────────────────────────────
+
+    private void EmitCompleted(
+        string traceId, ApprovedRequest request, ExecutionResult result,
+        string? workerId, int attempts, Stopwatch sw)
+    {
+        sw.Stop();
+        TryAudit(traceId, result.Success ? "DISPATCH_SUCCEEDED" : "DISPATCH_FAILED", request, details: new
+        {
+            capability  = request.CapabilityId,
+            route       = request.Route,
+            worker_id   = workerId,
+            attempts,
+            duration_ms = sw.ElapsedMilliseconds,
+            error       = result.Success ? null : result.ErrorMessage,
+        });
+    }
+
+    private void TryAudit(string traceId, string eventType, ApprovedRequest request, object details)
+    {
+        if (_audit == null) return;
+        try
+        {
+            _audit.RecordEvent(
+                traceId: traceId,
+                eventType: eventType,
+                principalId: string.IsNullOrEmpty(request.PrincipalId) ? null : request.PrincipalId,
+                taskId: string.IsNullOrEmpty(request.TaskId) ? null : request.TaskId,
+                sessionId: string.IsNullOrEmpty(request.SessionId) ? null : request.SessionId,
+                resourceRef: request.CapabilityId,
+                details: JsonSerializer.Serialize(details, JsonOptions));
+        }
+        catch (Exception ex)
+        {
+            // Audit 是 best-effort、寫不進去也不能擋住 dispatch
+            _logger.LogWarning(ex, "Failed to record dispatch audit event {E} for trace {T}", eventType, traceId);
+        }
     }
 
     /// <summary>解析 WORKER_RESULT payload → ExecutionResult</summary>

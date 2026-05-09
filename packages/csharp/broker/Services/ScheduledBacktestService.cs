@@ -86,6 +86,10 @@ public class ScheduledBacktestService : BackgroundService
     public async Task<string> RunOnceAsync(string runType, CancellationToken ct)
     {
         var runId = $"run_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+        // 整輪 backtest 共用一個 trace_id——這樣 /audit/traces 上會看到「一個 run 包含 N 次
+        // quote.ohlcv + N 次 strategy.signal」的長條 trace，而不是 N 個獨立 trace。
+        // 是 fan-out tracing 的展示點。
+        var traceId = $"trc_{runId}";
         var startedAt = DateTime.UtcNow;
         var run = new BacktestRunEntry { RunId = runId, StartedAt = startedAt, RunType = runType };
         _db.Insert(run);
@@ -119,7 +123,7 @@ public class ScheduledBacktestService : BackgroundService
         {
             foreach (var tf in Timeframes)
             {
-                var barsOpt = await FetchBarsAsync(w.Symbol, tf, BarsPerBacktest, ct);
+                var barsOpt = await FetchBarsAsync(w.Symbol, tf, BarsPerBacktest, traceId, ct);
                 var barsCount = barsOpt.HasValue ? barsOpt.Value.GetArrayLength() : 0;
                 if (!barsOpt.HasValue || barsCount < 50)
                 {
@@ -139,7 +143,7 @@ public class ScheduledBacktestService : BackgroundService
                 foreach (var strat in Strategies)
                 {
                     if (ct.IsCancellationRequested) break;
-                    var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, ct);
+                    var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, traceId, ct);
                     entry.Regime = regime;
                     entry.OwnerPrincipalId = string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId;
                     if (!string.IsNullOrEmpty(entry.Error)) errors++;
@@ -173,7 +177,7 @@ public class ScheduledBacktestService : BackgroundService
         return runId;
     }
 
-    private async Task<JsonElement?> FetchBarsAsync(string symbol, string interval, int limit, CancellationToken ct)
+    private async Task<JsonElement?> FetchBarsAsync(string symbol, string interval, int limit, string traceId, CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new { symbol, interval, limit });
         var req = new ApprovedRequest
@@ -182,6 +186,7 @@ public class ScheduledBacktestService : BackgroundService
             CapabilityId = "quote.ohlcv", Route = "get_bars", Payload = payload,
             Scope = "{}", PrincipalId = "system",
             TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
+            TraceId = traceId,
         };
         var result = await _dispatcher.DispatchAsync(req);
         if (!result.Success) return null;
@@ -200,7 +205,7 @@ public class ScheduledBacktestService : BackgroundService
     };
 
     private async Task<BacktestResultEntry> RunSingleBacktestAsync(
-        string runId, string symbol, string exchange, string tf, string strategy, JsonElement bars, CancellationToken ct)
+        string runId, string symbol, string exchange, string tf, string strategy, JsonElement bars, string traceId, CancellationToken ct)
     {
         var entry = new BacktestResultEntry
         {
@@ -225,6 +230,7 @@ public class ScheduledBacktestService : BackgroundService
             CapabilityId = "strategy.signal", Route = route, Payload = payload,
             Scope = "{}", PrincipalId = "system",
             TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
+            TraceId = traceId,
         };
 
         var result = await _dispatcher.DispatchAsync(req);

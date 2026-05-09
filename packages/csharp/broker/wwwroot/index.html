@@ -108,6 +108,27 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
 .ct-empty{background:var(--s);border:1px dashed var(--bd);border-radius:12px;padding:60px 20px;text-align:center;color:var(--td)}
 .ct-empty .big{font-size:48px;margin-bottom:8px}
+
+/* Tracing — Gantt */
+.gantt-wrap{padding:8px 4px}
+.gantt-axis{position:relative;height:18px;border-bottom:1px solid var(--bd);margin-bottom:6px;color:var(--td);font-size:10px}
+.gantt-axis span{position:absolute;top:0;transform:translateX(-50%)}
+.gantt-row{position:relative;height:24px;margin-top:3px}
+.gantt-label{position:absolute;left:0;top:4px;width:200px;color:var(--t);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace}
+.gantt-track{position:relative;margin-left:210px;height:24px;background:rgba(255,255,255,.02);border-radius:3px}
+.gantt-bar{position:absolute;top:3px;height:18px;border-radius:3px;font-size:10px;line-height:18px;padding:0 6px;color:#fff;white-space:nowrap;overflow:hidden;cursor:default;font-variant-numeric:tabular-nums}
+.gantt-bar.ok{background:linear-gradient(90deg,#67c23a,#4ba32b)}
+.gantt-bar.bad{background:linear-gradient(90deg,#f56c6c,#cf4a4a)}
+.gantt-bar.unknown{background:linear-gradient(90deg,#909399,#606266)}
+.gantt-dot{position:absolute;top:9px;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg);transform:translateX(-4px);cursor:default}
+.gantt-dot.ok{background:#67c23a}
+.gantt-dot.bad{background:#f56c6c}
+.gantt-dot.warn{background:#e6a23c}
+.gantt-dot.run{background:#409eff}
+
+/* Topology — Sankey */
+.sankey-wrap svg{display:block;width:100%}
+.sankey-edge{transition:stroke-opacity .15s}
 </style>
 </head>
 <body>
@@ -730,6 +751,180 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </div>
       </el-tab-pane>
 
+      <!-- ── Traces（dispatch trace + audit hash chain） ── -->
+      <el-tab-pane :label="t('traces')" name="traces">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+          <span style="color:var(--td);font-size:12px">{{t('filterPrincipal')}}：</span>
+          <el-input v-model="traceFilter.principal" size="small" style="width:160px" clearable placeholder="prn_..."/>
+          <span style="color:var(--td);font-size:12px;margin-left:6px">{{t('filterCapability')}}：</span>
+          <el-input v-model="traceFilter.capability" size="small" style="width:180px" clearable placeholder="strategy.signal"/>
+          <span style="color:var(--td);font-size:12px;margin-left:6px">limit：</span>
+          <el-input-number v-model="traceFilter.limit" :min="10" :max="200" :step="10" size="small" controls-position="right" style="width:120px"/>
+          <el-button size="small" type="primary" @click="loadTraces" :loading="tracesLoading">{{t('apply')}}</el-button>
+          <span style="color:var(--td);font-size:12px;margin-left:8px">{{traces.length}} {{t('entries')}}</span>
+        </div>
+
+        <el-card style="margin-bottom:14px">
+          <template #header><span style="font-weight:600">{{t('traceList')}}</span> <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('tracesSubtitle')}}</span></template>
+          <el-table :data="traces" stripe :empty-text="t('noTracesYet')" highlight-current-row
+                    @row-click="row=>selectTrace(row.trace_id)" style="cursor:pointer">
+            <el-table-column :label="t('traceId')" min-width="140">
+              <template #default="{row}"><code style="font-size:11px">{{(row.trace_id||'').slice(0,18)}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('time')" width="170">
+              <template #default="{row}">{{fmtDate(row.first_at)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('duration')" width="100">
+              <template #default="{row}"><span style="color:#a374ff;font-family:Consolas,monospace">{{fmtDur(row.duration_ms)}}</span></template>
+            </el-table-column>
+            <el-table-column prop="event_count" :label="t('eventCount')" width="80" align="center"/>
+            <el-table-column :label="t('capability')" min-width="140">
+              <template #default="{row}"><code style="font-size:11px">{{row.capability_id||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('principal')" min-width="120">
+              <template #default="{row}"><code style="font-size:11px">{{row.principal_id||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('lastEvent')" min-width="170">
+              <template #default="{row}"><code style="font-size:11px">{{row.last_event||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('status')" width="120">
+              <template #default="{row}"><el-tag :type="traceStatusType(row.status)" size="small">{{row.status}}</el-tag></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <el-card v-if="selectedTraceId">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('traceDetail')}}</span>
+              <code style="margin-left:10px;font-size:11px;color:var(--td)">{{selectedTraceId}}</code>
+              <span style="margin-left:auto;font-size:11px;color:var(--td)" v-if="selectedTraceIntegrity!==null">
+                {{t('integrity')}}：
+                <el-tag :type="selectedTraceIntegrity?'success':'danger'" size="small">
+                  {{selectedTraceIntegrity?'✓ '+t('hashChainOk'):'✗ '+t('hashChainBad')}}
+                </el-tag>
+              </span>
+            </div>
+          </template>
+          <div v-if="ganttRows.length===0" class="ct-empty" style="padding:30px">{{t('loading')}}…</div>
+          <div v-else class="gantt-wrap">
+            <div class="gantt-axis" style="margin-left:210px">
+              <span v-for="tk in ganttTicks" :key="tk.pct" :style="`left:${tk.pct}%`">{{tk.label}}</span>
+            </div>
+            <div v-for="row in ganttRows" :key="row.cap" class="gantt-row">
+              <div class="gantt-label" :title="row.cap">{{row.cap}}</div>
+              <div class="gantt-track">
+                <div v-for="(b,bi) in row.bars" :key="'b'+bi"
+                     class="gantt-bar" :class="b.ok?'ok':'bad'"
+                     :style="`left:${b.x}%;width:${b.w}%`"
+                     :title="`${row.cap}\n${b.startType} → ${b.endType}\n${b.durLabel}`">{{b.durLabel}}</div>
+                <div v-for="(d,di) in row.dots" :key="'d'+di"
+                     class="gantt-dot" :class="d.kind"
+                     :style="`left:${d.x}%`"
+                     :title="`${d.type}\n${fmtDate(d.ts)}`"></div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── Topology（capability dispatch flow） ── -->
+      <el-tab-pane :label="t('topology')" name="topology">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <span style="color:var(--td);font-size:12px">{{t('sinceWindow')}}：</span>
+          <el-radio-group v-model="topologySince" size="small" @change="loadTopology">
+            <el-radio-button :value="15">{{t('sinceMin15')}}</el-radio-button>
+            <el-radio-button :value="60">{{t('sinceMin60')}}</el-radio-button>
+            <el-radio-button :value="360">{{t('sinceMin360')}}</el-radio-button>
+            <el-radio-button :value="1440">{{t('sinceMin1440')}}</el-radio-button>
+          </el-radio-group>
+          <el-button size="small" @click="loadTopology" :loading="topologyLoading">{{t('refresh')}}</el-button>
+          <span style="color:var(--td);font-size:11px;margin-left:8px" v-if="topology">@{{fmtDate(topology.generated_at)}}</span>
+        </div>
+
+        <div v-if="!topology && !topologyLoading" class="ct-empty">
+          <div class="big">📊</div>
+          <div>{{t('noTopologyYet')}}</div>
+        </div>
+        <template v-else-if="topology">
+          <div class="ct-summary" style="margin-bottom:14px">
+            <div class="ct-kpi"><div class="lbl">capabilities</div><div class="val">{{topology.capabilities.length}}</div></div>
+            <div class="ct-kpi"><div class="lbl">principals</div><div class="val">{{topology.principals.length}}</div></div>
+            <div class="ct-kpi"><div class="lbl">{{t('totalCalls')}}</div><div class="val">{{topologyTotalCalls}}</div></div>
+            <div class="ct-kpi" :style="topologyTotalFailed>0?'border-left-color:#f56c6c':'border-left-color:#67c23a'">
+              <div class="lbl">{{t('successRate')}}</div>
+              <div class="val">{{topologySuccessRate}}</div>
+              <div class="sub">{{topologyTotalSucceeded}} ok · {{topologyTotalFailed}} fail</div>
+            </div>
+          </div>
+
+          <el-card style="margin-bottom:14px">
+            <template #header>
+              <div style="display:flex;align-items:center">
+                <span style="font-weight:600">{{t('flowChart')}}</span>
+                <span style="margin-left:auto;font-size:11px;color:var(--td)">
+                  <span style="display:inline-block;width:10px;height:10px;background:#409eff;margin-right:5px;vertical-align:middle;border-radius:2px"></span>principal
+                  <span style="display:inline-block;width:10px;height:10px;background:#a374ff;margin:0 5px 0 12px;vertical-align:middle;border-radius:2px"></span>capability
+                  <span style="margin:0 5px 0 12px;color:#67c23a">━ ok</span>
+                  <span style="margin:0 5px;color:#e6a23c">━ partial</span>
+                  <span style="margin:0 5px;color:#f56c6c">━ fail</span>
+                </span>
+              </div>
+            </template>
+            <div class="sankey-wrap" v-if="sankey.paths.length>0">
+              <svg :viewBox="`0 0 ${sankey.W} ${sankey.H}`" preserveAspectRatio="xMidYMin meet"
+                   :style="`height:${Math.min(sankey.H,700)}px`">
+                <path v-for="(p,i) in sankey.paths" :key="'p'+i" class="sankey-edge"
+                      :d="p.d" :stroke="p.color" :stroke-width="p.w"
+                      fill="none" stroke-opacity="0.32"
+                      @mouseover="ev=>ev.target.setAttribute('stroke-opacity','0.65')"
+                      @mouseleave="ev=>ev.target.setAttribute('stroke-opacity','0.32')">
+                  <title>{{p.tooltip}}</title>
+                </path>
+                <template v-for="(n,i) in sankey.nodesL" :key="'l'+i">
+                  <rect :x="n.x" :y="n.y" :width="18" :height="n.h" fill="#409eff" fill-opacity="0.8"><title>{{n.label}} · {{n.calls}} calls</title></rect>
+                  <text :x="n.x-8" :y="n.y+n.h/2" text-anchor="end" fill="#e4e7f0" font-size="12" dominant-baseline="middle">{{n.label}}</text>
+                  <text :x="n.x-8" :y="n.y+n.h/2+14" text-anchor="end" fill="#8b90a5" font-size="10" dominant-baseline="middle">{{n.calls}}</text>
+                </template>
+                <template v-for="(n,i) in sankey.nodesR" :key="'r'+i">
+                  <rect :x="n.x" :y="n.y" :width="18" :height="n.h" fill="#a374ff" fill-opacity="0.8"><title>{{n.label}} · {{n.calls}} calls</title></rect>
+                  <text :x="n.x+26" :y="n.y+n.h/2" fill="#e4e7f0" font-size="12" dominant-baseline="middle">{{n.label}}</text>
+                  <text :x="n.x+26" :y="n.y+n.h/2+14" fill="#8b90a5" font-size="10" dominant-baseline="middle">{{n.calls}}</text>
+                </template>
+              </svg>
+            </div>
+            <div v-else class="ct-empty" style="padding:30px">{{t('noTopologyYet')}}</div>
+          </el-card>
+
+          <el-row :gutter="14">
+            <el-col :span="12">
+              <el-card>
+                <template #header><span style="font-weight:600">{{t('principalRanking')}}</span></template>
+                <el-table :data="topology.principals" stripe :empty-text="t('noData')" max-height="320">
+                  <el-table-column prop="id" label="principal"><template #default="{row}"><code style="font-size:11px">{{row.id}}</code></template></el-table-column>
+                  <el-table-column prop="calls" label="calls" width="120" align="right"/>
+                </el-table>
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card>
+                <template #header><span style="font-weight:600">{{t('capabilityRanking')}}</span></template>
+                <el-table :data="topology.capabilities" stripe :empty-text="t('noData')" max-height="320">
+                  <el-table-column prop="id" label="capability"><template #default="{row}"><code style="font-size:11px">{{row.id}}</code></template></el-table-column>
+                  <el-table-column prop="calls" label="calls" width="80" align="right"/>
+                  <el-table-column prop="succeeded" label="ok" width="60" align="right">
+                    <template #default="{row}"><span style="color:#67c23a">{{row.succeeded}}</span></template>
+                  </el-table-column>
+                  <el-table-column prop="failed" label="fail" width="60" align="right">
+                    <template #default="{row}"><span :style="row.failed>0?'color:#f56c6c':'color:var(--td)'">{{row.failed}}</span></template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+      </el-tab-pane>
+
     </el-tabs>
   </div>
 </div>
@@ -1156,6 +1351,19 @@ const I18N={
     actions:'操作',dispatch:'派任務',dispatchTitle:'派任務給代理',dispatchAgentLabel:'代理',dispatchPrompt:'任務內容',
     dispatchPromptPH:'例：請列出 25 個能力裡有哪些是檔案類，並說明各自做什麼',
     dispatchHistory:'任務歷史',send:'送出',close:'關閉',noTasks:'尚無任務',latency:'延遲',
+    // Tracing + Topology
+    traces:'追蹤',topology:'拓撲',
+    tracesSubtitle:'點選一筆 trace 看 Gantt 詳細',
+    traceList:'最近的 trace',traceDetail:'trace 詳情',traceId:'trace_id',
+    eventCount:'事件數',lastEvent:'最後事件',capability:'capability',principal:'principal',
+    filterPrincipal:'principal_id',filterCapability:'capability_id',apply:'套用',
+    integrity:'hash chain 完整性',hashChainOk:'valid',hashChainBad:'tampered',
+    noTracesYet:'尚無 trace 紀錄。在儀表板觸發任何 capability、或讓 ScheduledBacktestService 跑一輪後就會出現。',
+    sinceWindow:'時間視窗',sinceMin15:'15 分鐘',sinceMin60:'1 小時',sinceMin360:'6 小時',sinceMin1440:'24 小時',
+    flowChart:'capability 流向圖',principalRanking:'principal 排行',capabilityRanking:'capability 排行',
+    totalCalls:'總呼叫',successRate:'成功率',
+    noTopologyYet:'視窗內沒有 dispatch 資料。先觸發任何 capability 後再回來看。',
+    duration:'耗時',
   },
   en:{login:'Login',principalId:'Username (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'Password',
     changePasswordRequired:'Set a new password',currentPassword:'Current password',newPassword:'New password',newPasswordConfirm:'Confirm new password',
@@ -1223,6 +1431,19 @@ const I18N={
     actions:'Actions',dispatch:'Dispatch',dispatchTitle:'Dispatch task to agent',dispatchAgentLabel:'Agent',dispatchPrompt:'Prompt',
     dispatchPromptPH:'e.g., List all file-related capabilities and explain each',
     dispatchHistory:'Task History',send:'Send',close:'Close',noTasks:'No tasks',latency:'Latency',
+    // Tracing + Topology
+    traces:'Traces',topology:'Topology',
+    tracesSubtitle:'Click a row to inspect Gantt detail',
+    traceList:'Recent traces',traceDetail:'Trace detail',traceId:'trace_id',
+    eventCount:'Events',lastEvent:'Last event',capability:'Capability',principal:'Principal',
+    filterPrincipal:'principal_id',filterCapability:'capability_id',apply:'Apply',
+    integrity:'Hash chain integrity',hashChainOk:'valid',hashChainBad:'tampered',
+    noTracesYet:'No trace records yet. Trigger any capability from the dashboard, or let the scheduled backtest service run once.',
+    sinceWindow:'Since',sinceMin15:'15 min',sinceMin60:'1 hour',sinceMin360:'6 hours',sinceMin1440:'24 hours',
+    flowChart:'Capability flow',principalRanking:'Principals',capabilityRanking:'Capabilities',
+    totalCalls:'Total calls',successRate:'Success rate',
+    noTopologyYet:'No dispatch data in this window yet. Trigger a capability and come back.',
+    duration:'Duration',
   }
 };
 
@@ -1366,11 +1587,168 @@ const app=createApp({
     }
 
     async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers()]);refreshing.value=false}
+
+    // ── Traces + Topology（觀察性分頁） ──
+    const traces=ref([]);const tracesLoading=ref(false);
+    const traceFilter=reactive({principal:'',capability:'',limit:50});
+    const selectedTraceId=ref(null);const selectedTraceEvents=ref([]);
+    const selectedTraceIntegrity=ref(null);
+    const topology=ref(null);const topologyLoading=ref(false);
+    const topologySince=ref(60);
+    let tracesAutoTimer=null, topologyAutoTimer=null;
+
+    function fmtDur(ms){
+      if(ms==null||isNaN(ms)) return '—';
+      if(ms<1000) return ms+'ms';
+      if(ms<60_000) return (ms/1000).toFixed(2)+'s';
+      return Math.floor(ms/60000)+'m '+Math.floor((ms%60000)/1000)+'s';
+    }
+    function traceStatusType(s){return({SUCCEEDED:'success',FAILED:'danger',DENIED:'danger',IN_PROGRESS:'info'})[s]||''}
+
+    async function loadTraces(){
+      tracesLoading.value=true;
+      try{
+        const qs=new URLSearchParams();
+        if(traceFilter.principal) qs.set('principal_id',traceFilter.principal);
+        if(traceFilter.capability) qs.set('capability_id',traceFilter.capability);
+        qs.set('limit',String(traceFilter.limit||50));
+        const r=await fetch('/api/v1/audit/traces?'+qs.toString(),{credentials:'include'});
+        const j=await r.json();
+        traces.value=j.success?(j.data||[]):[];
+      }catch(e){console.error('[loadTraces]',e);traces.value=[]}
+      tracesLoading.value=false;
+    }
+
+    async function selectTrace(traceId){
+      if(!traceId) return;
+      selectedTraceId.value=traceId;
+      selectedTraceEvents.value=[];selectedTraceIntegrity.value=null;
+      try{
+        const [evResp,verResp]=await Promise.all([
+          fetch('/api/v1/audit/trace',{method:'POST',credentials:'include',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({trace_id:traceId})}),
+          fetch('/api/v1/audit/verify',{method:'POST',credentials:'include',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({trace_id:traceId})}),
+        ]);
+        const evJ=await evResp.json(); const verJ=await verResp.json();
+        selectedTraceEvents.value=evJ.success?(evJ.data||[]):[];
+        selectedTraceIntegrity.value=verJ.success?(verJ.data?.integrity_valid??null):null;
+      }catch(e){console.error('[selectTrace]',e)}
+    }
+
+    // Gantt 計算：把 STARTED→SUCCEEDED/FAILED 配對成長條，其餘事件落到 dots
+    const ganttRows=computed(()=>{
+      const evs=selectedTraceEvents.value.map(e=>({
+        ts:new Date(e.occurredAt||e.OccurredAt||e.occurred_at),
+        type:e.eventType||e.EventType||e.event_type,
+        cap:e.resourceRef||e.ResourceRef||e.resource_ref||'',
+      })).filter(e=>e.type);
+      if(evs.length===0) return [];
+      const t0=evs[0].ts.getTime();const tN=evs[evs.length-1].ts.getTime();
+      const span=Math.max(tN-t0,1);
+      const bars=[];const dots=[];const pending=[];
+      evs.forEach(e=>{
+        if(e.type.endsWith('_STARTED')||e.type==='EXECUTION_DISPATCHED'){pending.push(e)}
+        else if(e.type.endsWith('_SUCCEEDED')||e.type.endsWith('_FAILED')||e.type.endsWith('_DENIED')){
+          let pIdx=-1;
+          for(let j=pending.length-1;j>=0;j--){if(pending[j].cap===e.cap){pIdx=j;break}}
+          if(pIdx===-1&&pending.length>0) pIdx=pending.length-1;
+          if(pIdx>=0){
+            const s=pending[pIdx];
+            bars.push({cap:e.cap||s.cap||'(no cap)',start:s.ts,end:e.ts,
+              ok:e.type.endsWith('_SUCCEEDED'),startType:s.type,endType:e.type});
+            pending.splice(pIdx,1);
+          } else dots.push({ts:e.ts,type:e.type,cap:e.cap,kind:e.type.endsWith('_SUCCEEDED')?'ok':'bad'});
+        } else dots.push({ts:e.ts,type:e.type,cap:e.cap,kind:'warn'});
+      });
+      pending.forEach(p=>dots.push({ts:p.ts,type:p.type,cap:p.cap,kind:'run'}));
+
+      const byCap={};
+      bars.forEach(b=>{(byCap[b.cap]=byCap[b.cap]||{cap:b.cap,bars:[],dots:[]}).bars.push({
+        x:(b.start.getTime()-t0)/span*100,
+        w:Math.max((b.end.getTime()-b.start.getTime())/span*100,0.4),
+        ok:b.ok,startType:b.startType,endType:b.endType,
+        durLabel:fmtDur(b.end.getTime()-b.start.getTime())
+      })});
+      if(dots.length>0){
+        const r=byCap['(events)']=byCap['(events)']||{cap:'(events)',bars:[],dots:[]};
+        dots.forEach(d=>r.dots.push({x:(d.ts.getTime()-t0)/span*100,type:d.type,ts:d.ts,kind:d.kind}));
+      }
+      return Object.values(byCap);
+    });
+
+    const ganttTicks=computed(()=>{
+      const evs=selectedTraceEvents.value;
+      if(evs.length===0) return [];
+      const t0=new Date(evs[0].occurredAt||evs[0].OccurredAt||evs[0].occurred_at).getTime();
+      const tN=new Date(evs[evs.length-1].occurredAt||evs[evs.length-1].OccurredAt||evs[evs.length-1].occurred_at).getTime();
+      const span=Math.max(tN-t0,1);
+      const ticks=5;const out=[];
+      for(let i=0;i<=ticks;i++){out.push({pct:i*100/ticks,label:fmtDur(Math.round(span*i/ticks))})}
+      return out;
+    });
+
+    async function loadTopology(){
+      topologyLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/audit/topology?since_minutes='+topologySince.value,{credentials:'include'});
+        const j=await r.json();
+        topology.value=j.success?j.data:null;
+      }catch(e){console.error('[loadTopology]',e);topology.value=null}
+      topologyLoading.value=false;
+    }
+
+    const topologyTotalCalls=computed(()=>topology.value?.capabilities.reduce((s,c)=>s+c.calls,0)||0);
+    const topologyTotalSucceeded=computed(()=>topology.value?.capabilities.reduce((s,c)=>s+c.succeeded,0)||0);
+    const topologyTotalFailed=computed(()=>topology.value?.capabilities.reduce((s,c)=>s+c.failed,0)||0);
+    const topologySuccessRate=computed(()=>{
+      const tc=topologyTotalCalls.value;
+      return tc>0?(topologyTotalSucceeded.value/tc*100).toFixed(1)+'%':'—';
+    });
+
+    // Sankey layout（無 d3、純算）
+    const sankey=computed(()=>{
+      const d=topology.value;
+      if(!d||d.principals.length===0||d.capabilities.length===0) return {paths:[],nodesL:[],nodesR:[],W:1100,H:120};
+      const W=1100,padX=180,midX1=padX,midX2=W-padX,nodeW=18,padY=16,gap=8;
+      const totalCalls=d.principals.reduce((s,p)=>s+p.calls,0);
+      const maxAvail=600-padY*2-gap*Math.max(d.principals.length,d.capabilities.length);
+      const pxPerCall=totalCalls>0?maxAvail/totalCalls:0;
+      let yL=padY,leftMap={};
+      d.principals.forEach(p=>{const h=Math.max(p.calls*pxPerCall,4);leftMap[p.id]={y:yL,h,calls:p.calls,label:p.id,x:midX1};yL+=h+gap});
+      let yR=padY,rightMap={};
+      d.capabilities.forEach(c=>{const h=Math.max(c.calls*pxPerCall,4);rightMap[c.id]={y:yR,h,calls:c.calls,succeeded:c.succeeded,failed:c.failed,label:c.id,x:midX2};yR+=h+gap});
+      const H=Math.max(yL,yR)+padY;
+      const lOff={},rOff={};Object.keys(leftMap).forEach(k=>lOff[k]=0);Object.keys(rightMap).forEach(k=>rOff[k]=0);
+      const paths=[];
+      [...d.edges].sort((a,b)=>b.calls-a.calls).forEach(e=>{
+        const L=leftMap[e.from],R=rightMap[e.to];
+        if(!L||!R) return;
+        const eH=Math.max(e.calls*pxPerCall,1);
+        const ly=L.y+lOff[e.from]+eH/2;const ry=R.y+rOff[e.to]+eH/2;
+        lOff[e.from]+=eH;rOff[e.to]+=eH;
+        const color=e.failed===0?'#67c23a':(e.succeeded===0?'#f56c6c':'#e6a23c');
+        paths.push({
+          d:`M${midX1+nodeW},${ly} C${(midX1+midX2)/2},${ly} ${(midX1+midX2)/2},${ry} ${midX2},${ry}`,
+          color,w:eH,
+          tooltip:`${e.from} → ${e.to}\ncalls: ${e.calls}\nok: ${e.succeeded} · fail: ${e.failed}`
+        });
+      });
+      return {paths,nodesL:Object.values(leftMap),nodesR:Object.values(rightMap),W,H};
+    });
+
+    function startTracesAutoRefresh(){stopTracesAutoRefresh();tracesAutoTimer=setInterval(()=>{if(!selectedTraceId.value) loadTraces()},5000)}
+    function stopTracesAutoRefresh(){if(tracesAutoTimer){clearInterval(tracesAutoTimer);tracesAutoTimer=null}}
+    function startTopologyAutoRefresh(){stopTopologyAutoRefresh();topologyAutoTimer=setInterval(loadTopology,10000)}
+    function stopTopologyAutoRefresh(){if(topologyAutoTimer){clearInterval(topologyAutoTimer);topologyAutoTimer=null}}
+
     function onTabChange(tab){
-      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh()}
-      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh()}
-      else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan()}
-      else{stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh()}
+      if(tab==='containers'){refreshContainers();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='traces'){loadTraces();startTracesAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='topology'){loadTopology();startTopologyAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh()}
+      else{stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
     }
 
     function riskType(r){const s=(r||'').toLowerCase();if(s==='low')return'success';if(s==='medium')return'warning';if(s==='high'||s==='critical')return'danger';return'info'}
@@ -1957,6 +2335,12 @@ const app=createApp({
       llmAutoRefresh,llmRefreshInterval,loadLlmStatus,loadLlmRecent,loadLlmTrend,runLlmHealthCheck,onLlmAutoRefreshChange,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
       fmtNumberShort,fmtUptime, Math,
+      // Tracing + Topology
+      traces,tracesLoading,traceFilter,selectedTraceId,selectedTraceIntegrity,
+      loadTraces,selectTrace,fmtDur,traceStatusType,
+      ganttRows,ganttTicks,
+      topology,topologyLoading,topologySince,loadTopology,
+      topologyTotalCalls,topologyTotalSucceeded,topologyTotalFailed,topologySuccessRate,sankey,
       session:computed(()=>session)};
   }
 });

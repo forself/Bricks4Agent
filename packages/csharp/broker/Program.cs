@@ -349,7 +349,8 @@ if (poolEnabled)
             var poolDispatcher = new PoolDispatcher(
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
-                sp.GetRequiredService<ILogger<PoolDispatcher>>());
+                sp.GetRequiredService<ILogger<PoolDispatcher>>(),
+                sp.GetService<IAuditService>());   // 讓 dashboard direct-dispatch 也能被 trace
             return new StrictPoolDispatcher(
                 poolDispatcher,
                 sp.GetRequiredService<ILogger<StrictPoolDispatcher>>());
@@ -375,7 +376,8 @@ if (poolEnabled)
             var poolDispatcher = new PoolDispatcher(
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
-                sp.GetRequiredService<ILogger<PoolDispatcher>>());
+                sp.GetRequiredService<ILogger<PoolDispatcher>>(),
+                sp.GetService<IAuditService>());   // 讓 dashboard direct-dispatch 也能被 trace
             return new FallbackDispatcher(
                 poolDispatcher, inProcess, inProcess.CanHandle,
                 sp.GetRequiredService<ILogger<FallbackDispatcher>>());

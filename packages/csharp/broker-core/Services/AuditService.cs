@@ -145,6 +145,117 @@ public class AuditService : IAuditService
         return _db.Query<AuditEvent>(sql.ToString(), parameters);
     }
 
+    /// <inheritdoc />
+    public List<TraceSummary> ListRecentTraces(
+        string? principalId = null, string? capabilityId = null,
+        int offset = 0, int limit = 50)
+    {
+        // 子查詢：trace_id + 起訖事件 + 事件數
+        // 外查詢：抓那個 trace 的最後一筆完整資訊（用 MAX(event_id)）作代表行
+        // SQLite 不支援 first_value、所以用 sub-query join 取最後一筆
+        var sql = new StringBuilder(@"
+SELECT
+    g.trace_id              AS TraceId,
+    g.first_at              AS FirstAt,
+    g.last_at               AS LastAt,
+    g.event_count           AS EventCount,
+    last_ev.event_type      AS LastEventType,
+    first_ev.event_type     AS FirstEventType,
+    last_ev.principal_id    AS PrincipalId,
+    last_ev.task_id         AS TaskId,
+    last_ev.resource_ref    AS CapabilityId
+FROM (
+    SELECT trace_id,
+           MIN(occurred_at) AS first_at,
+           MAX(occurred_at) AS last_at,
+           MIN(event_id)    AS first_event_id,
+           MAX(event_id)    AS last_event_id,
+           COUNT(*)         AS event_count
+    FROM audit_events
+    GROUP BY trace_id
+) g
+JOIN audit_events last_ev  ON last_ev.event_id  = g.last_event_id
+JOIN audit_events first_ev ON first_ev.event_id = g.first_event_id
+WHERE 1=1
+");
+        var parameters = new Dictionary<string, object>();
+        if (!string.IsNullOrEmpty(principalId))
+        {
+            sql.Append(" AND last_ev.principal_id = @principalId");
+            parameters["principalId"] = principalId;
+        }
+        if (!string.IsNullOrEmpty(capabilityId))
+        {
+            sql.Append(" AND last_ev.resource_ref = @capabilityId");
+            parameters["capabilityId"] = capabilityId;
+        }
+        sql.Append(" ORDER BY g.last_event_id DESC LIMIT @limit OFFSET @offset");
+        parameters["limit"] = limit;
+        parameters["offset"] = offset;
+
+        var rows = _db.Query<TraceSummary>(sql.ToString(), parameters);
+
+        // 計算 duration_ms 跟狀態（last_event_type 後綴判斷）
+        foreach (var r in rows)
+        {
+            r.DurationMs = (long)(r.LastAt - r.FirstAt).TotalMilliseconds;
+            r.Status = r.LastEventType switch
+            {
+                var s when s != null && s.EndsWith("_SUCCEEDED", StringComparison.Ordinal) => "SUCCEEDED",
+                var s when s != null && s.EndsWith("_FAILED",    StringComparison.Ordinal) => "FAILED",
+                var s when s != null && s.EndsWith("_DENIED",    StringComparison.Ordinal) => "DENIED",
+                _ => "IN_PROGRESS",
+            };
+        }
+        return rows;
+    }
+
+    /// <inheritdoc />
+    public List<TopologyEdge> GetTopology(int sinceMinutes = 60)
+    {
+        // 只看 dispatch + execution 事件、把噪音（TASK_CREATED 等）排除
+        // 一個 (principal, capability) 配對：calls = STARTED 事件數，
+        // success = SUCCEEDED 事件數，failed = FAILED + DENIED 事件數
+        var since = DateTime.UtcNow.AddMinutes(-sinceMinutes);
+        var rows = _db.Query<EdgeRow>(@"
+SELECT
+    COALESCE(principal_id, '(unknown)') AS Principal,
+    COALESCE(resource_ref, '(unknown)') AS Capability,
+    SUM(CASE WHEN event_type LIKE '%_STARTED' OR event_type = 'EXECUTION_DISPATCHED' THEN 1 ELSE 0 END) AS Started,
+    SUM(CASE WHEN event_type LIKE '%_SUCCEEDED' THEN 1 ELSE 0 END) AS Succeeded,
+    SUM(CASE WHEN event_type LIKE '%_FAILED' OR event_type LIKE '%_DENIED' THEN 1 ELSE 0 END) AS Failed
+FROM audit_events
+WHERE occurred_at > @since
+  AND (event_type LIKE 'DISPATCH_%' OR event_type LIKE 'EXECUTION_%')
+GROUP BY principal_id, resource_ref
+ORDER BY Started DESC, Succeeded DESC
+",
+            new { since });
+
+        return rows
+            .Where(r => r.Started > 0 || r.Succeeded > 0 || r.Failed > 0)
+            .Select(r => new TopologyEdge
+            {
+                Principal      = r.Principal,
+                Capability     = r.Capability,
+                // 用 STARTED 數估總呼叫；如果只有 SUCCEEDED 沒 STARTED（例如 16 步驟 PEP 沒記 STARTED 事件）
+                // 就 fallback 到 Succeeded+Failed
+                CallsTotal     = r.Started > 0 ? r.Started : (r.Succeeded + r.Failed),
+                CallsSucceeded = r.Succeeded,
+                CallsFailed    = r.Failed,
+            })
+            .ToList();
+    }
+
+    private class EdgeRow
+    {
+        public string Principal { get; set; } = string.Empty;
+        public string Capability { get; set; } = string.Empty;
+        public int Started { get; set; }
+        public int Succeeded { get; set; }
+        public int Failed { get; set; }
+    }
+
     // ── 內部方法 ──
 
     private static string ComputeSha256(string input)
