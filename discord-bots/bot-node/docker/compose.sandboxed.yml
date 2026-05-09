@@ -1,0 +1,55 @@
+# B4A bot-node — Sandboxed container（複用既有 claude bot sandbox profile）
+#
+# 跟 ../../claude/docker/compose.sandboxed.yml 同套 hardening：
+#   1. b4a-trading-net only → 只能網路打到 broker、進不了 host LAN
+#   2. cap_drop ALL + no-new-privileges → escape 路徑全砍
+#   3. host.docker.internal / gateway.docker.internal → 127.0.0.1（防 host port 觸達）
+#   4. read_only rootfs + tmpfs /tmp → 容器 fs 可寫的只有 ephemeral
+#   5. mount access.json read-only → bot 不能改自己的權限白名單
+#
+# 用法（前提：b4a-trading-net 已存在、broker 在跑）：
+#   cd C:\Users\USER\Desktop\AI_Project\discord-bots\bot-node\docker
+#   docker compose -f compose.sandboxed.yml --env-file ../.env up -d --build
+#
+# 同時只能跑一個 bot 連同個 token、要先 stop claude bot：
+#   docker compose -f ../../claude/docker/compose.sandboxed.yml down
+
+name: b4a-bot-node
+
+services:
+  bot-node:
+    image: b4a-bot-node:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: b4a-bot-node
+    restart: unless-stopped
+
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - ACCESS_JSON_PATH=/app/access.json
+      - BOT_PHASE=1
+      - BROKER_URL=http://broker:5000
+
+    volumes:
+      # access.json 唯讀 mount、bot 改不了自己的權限白名單
+      - ../access.json:/app/access.json:ro
+
+    networks:
+      - b4a-trading-net
+
+    extra_hosts:
+      - "host.docker.internal:127.0.0.1"
+      - "gateway.docker.internal:127.0.0.1"
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+
+networks:
+  b4a-trading-net:
+    external: true

@@ -1,0 +1,16 @@
+{
+  "name": "b4a-bot-node",
+  "version": "0.1.0",
+  "description": "B4A Discord bot in Node.js — bypasses Claude Code --channels limitations, integrates with broker via custom protocol",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

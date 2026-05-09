@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to access.json (gitignored) and fill in your real Discord IDs. Default deny — empty arrays mean bot ignores everyone.",
+  "allowed_user_ids": [
+    "560349344293847061"
+  ],
+  "allowed_channel_ids": [],
+  "allowed_guild_ids": []
+}
