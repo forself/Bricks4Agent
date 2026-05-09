@@ -64,12 +64,14 @@ public static class LabEndpoints
             if (latestRun == null)
                 return Results.Ok(ApiResponseHelper.Success(new { run = (object?)null, recommendations = Array.Empty<object>() }));
 
-            // recommended=true 那些
-            var recsSql = "SELECT * FROM backtest_results WHERE run_id = @rid AND recommended = 1";
-            if (!string.IsNullOrEmpty(tf)) recsSql += $" AND timeframe = '{tf.Replace("'", "")}'";
-            recsSql += " ORDER BY score DESC";
-
-            var rows = db.Query<BacktestResultEntry>(recsSql, new { rid = latestRun.RunId });
+            // recommended=true 那些。timeframe 也走 parameter binding、不做字串拼接（SQL injection 防護）。
+            // BaseOrm 對 null 參數會自動展開成 IS NULL 或被 ignore；這邊用 COALESCE 讓 SQL 一份打死兩種情境。
+            var rows = db.Query<BacktestResultEntry>(
+                "SELECT * FROM backtest_results " +
+                "WHERE run_id = @rid AND recommended = 1 " +
+                "AND (@tf IS NULL OR timeframe = @tf) " +
+                "ORDER BY score DESC",
+                new { rid = latestRun.RunId, tf = string.IsNullOrEmpty(tf) ? null : tf });
 
             var enriched = rows.Select(r =>
             {
@@ -120,8 +122,10 @@ public static class LabEndpoints
         lab.MapGet("/runs", (BrokerDb db, HttpRequest req) =>
         {
             var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? Math.Clamp(n, 1, 100) : 10;
+            // limit 雖然已 Clamp 過、但仍走 parameter 而非 string interpolation——一致性 + 防止之後重構誤改成接受 string
             var rows = db.Query<BacktestRunEntry>(
-                $"SELECT * FROM backtest_runs ORDER BY started_at DESC LIMIT {limit}");
+                "SELECT * FROM backtest_runs ORDER BY started_at DESC LIMIT @lim",
+                new { lim = limit });
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 count = rows.Count,
