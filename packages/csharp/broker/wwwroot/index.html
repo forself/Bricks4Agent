@@ -419,6 +419,41 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </el-table>
           <div style="font-size:11px;color:var(--td);margin-top:10px">{{aclRules.policy}}</div>
         </el-card>
+
+        <!-- Per-principal overrides 卡 -->
+        <el-card style="margin-top:14px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('aclOverrides')}}</span>
+              <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('aclOverridesSubtitle')}}</span>
+              <el-button size="small" type="primary" plain style="margin-left:auto" @click="openOverrideDialog">+ {{t('aclAddOverride')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="aclOverrides" stripe :empty-text="t('aclNoOverrides')">
+            <el-table-column :label="t('principal')" width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.principal_id}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('aclPattern')" width="180">
+              <template #default="{row}"><code style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:3px">{{row.capability_pattern}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('aclAction')" width="100">
+              <template #default="{row}">
+                <el-tag :type="row.action==='allow'?'success':'danger'" size="small">{{row.action}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('aprDecidedBy')" width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.created_by||'—'}}</code> · {{fmtDate(row.created_at)}}</template>
+            </el-table-column>
+            <el-table-column :label="t('aclReason')" min-width="160">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{row.reason||'—'}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('actions')" width="80" align="right">
+              <template #default="{row}">
+                <el-button type="danger" size="small" plain @click="removeOverride(row)">{{t('remove')}}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
       </el-tab-pane>
 
       <!-- ── Approvals（待審）── -->
@@ -1345,6 +1380,32 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
   </template>
 </el-dialog>
 
+<!-- ACL Override 新增對話框 -->
+<el-dialog v-model="overrideVisible" :title="t('aclAddOverride')" width="540px" :close-on-click-modal="false">
+  <el-form label-position="top">
+    <el-form-item :label="t('principal')+' (principal_id)'">
+      <el-input v-model="overrideForm.principalId" placeholder="prn_xxxxx"/>
+    </el-form-item>
+    <el-form-item :label="t('aclPattern')">
+      <el-input v-model="overrideForm.pattern" placeholder="trading.order / quote.* / *"/>
+    </el-form-item>
+    <el-form-item :label="t('aclAction')">
+      <el-radio-group v-model="overrideForm.action">
+        <el-radio-button value="allow">{{t('aclAllow')}}</el-radio-button>
+        <el-radio-button value="deny">{{t('aclDeny')}}</el-radio-button>
+      </el-radio-group>
+    </el-form-item>
+    <el-form-item :label="t('aclReason')">
+      <el-input v-model="overrideForm.reason" type="textarea" :rows="2" placeholder="optional"/>
+    </el-form-item>
+  </el-form>
+  <template #footer>
+    <el-button @click="overrideVisible=false">{{t('cancel')}}</el-button>
+    <el-button type="primary" @click="doAddOverride"
+               :disabled="!overrideForm.principalId||!overrideForm.pattern">{{t('aclAddOverride')}}</el-button>
+  </template>
+</el-dialog>
+
 </div>
 
 <div id="err-overlay" style="display:none;position:fixed;inset:0;background:#1a0000;color:#ff8888;padding:24px;z-index:99999;overflow:auto;font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all"></div>
@@ -1519,6 +1580,11 @@ const I18N={
     aclRules:'ACL 角色規則',
     aclSubtitle:'role → 允許呼叫的 capability pattern',
     aclPatterns:'允許 capability',aclNothing:'（無）',
+    aclOverrides:'個別 user 覆寫',
+    aclOverridesSubtitle:'principal-specific 規則優先於 role；deny > allow > role',
+    aclAddOverride:'新增覆寫',aclNoOverrides:'尚無覆寫',
+    aclPattern:'capability pattern',aclAction:'動作',aclAllow:'allow',aclDeny:'deny',
+    aclReason:'原因（可空）',remove:'移除',
     latencyStats:'延遲統計',
     latencySubtitle:'每 capability 的 p50/p95/p99 + 分布 histogram',
     latencyDistribution:'分布（&lt;10ms 到 &gt;5s）',
@@ -1613,6 +1679,11 @@ const I18N={
     aclRules:'Role ACL Rules',
     aclSubtitle:'role → allowed capability patterns',
     aclPatterns:'Allowed capabilities',aclNothing:'(none)',
+    aclOverrides:'Per-principal overrides',
+    aclOverridesSubtitle:'principal-specific rules take precedence over role; deny > allow > role',
+    aclAddOverride:'Add override',aclNoOverrides:'No overrides yet',
+    aclPattern:'capability pattern',aclAction:'Action',aclAllow:'allow',aclDeny:'deny',
+    aclReason:'Reason (optional)',remove:'Remove',
     latencyStats:'Latency stats',
     latencySubtitle:'p50/p95/p99 + distribution histogram per capability',
     latencyDistribution:'Distribution (<10ms to >5s)',
@@ -1780,10 +1851,51 @@ const app=createApp({
     }
     async function loadAclRules(){
       try{
-        const r=await fetch('/api/v1/admin/acl',{credentials:'include'});
-        const j=await r.json();
+        const [r,or]=await Promise.all([
+          fetch('/api/v1/admin/acl',{credentials:'include'}),
+          fetch('/api/v1/admin/acl/overrides',{credentials:'include'}),
+        ]);
+        const j=await r.json();const oj=await or.json();
         aclRules.value=j.success?j.data:null;
-      }catch(e){console.error('[loadAclRules]',e);aclRules.value=null}
+        aclOverrides.value=oj.success?(oj.data||[]):[];
+      }catch(e){console.error('[loadAclRules]',e);aclRules.value=null;aclOverrides.value=[]}
+    }
+    const aclOverrides=ref([]);
+    const overrideVisible=ref(false);
+    const overrideForm=reactive({principalId:'',pattern:'',action:'allow',reason:''});
+    function openOverrideDialog(){
+      overrideForm.principalId='';overrideForm.pattern='';overrideForm.action='allow';overrideForm.reason='';
+      overrideVisible.value=true;
+    }
+    async function doAddOverride(){
+      try{
+        const r=await fetch('/api/v1/admin/acl/overrides',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            principal_id:overrideForm.principalId,
+            capability_pattern:overrideForm.pattern,
+            action:overrideForm.action,
+            reason:overrideForm.reason||null,
+          }),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.message||'failed');return}
+        ElementPlus.ElMessage.success(`${overrideForm.action} override added`);
+        overrideVisible.value=false;
+        loadAclRules();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function removeOverride(row){
+      try{
+        const r=await fetch(`/api/v1/admin/acl/overrides/${row.override_id}/remove`,{
+          method:'POST',credentials:'include',
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.message||'failed');return}
+        ElementPlus.ElMessage.success('removed');
+        loadAclRules();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
     }
     function aprStatusType(s){return({pending:'warning',approved:'success',rejected:'danger',expired:'info'})[s]||''}
     async function decideApproval(row, action){
@@ -2598,8 +2710,9 @@ const app=createApp({
       // Health Score
       healthScore,loadHealthScore,healthScoreColor,healthKpiStyle,
       // Approvals + ACL
-      approvals,aprLoading,aprFilter,aclRules,
+      approvals,aprLoading,aprFilter,aclRules,aclOverrides,
       loadApprovals,loadAclRules,aprStatusType,doApprove,doReject,
+      overrideVisible,overrideForm,openOverrideDialog,doAddOverride,removeOverride,
       // Tracing + Topology
       traces,tracesLoading,traceFilter,selectedTraceId,selectedTraceIntegrity,
       loadTraces,selectTrace,fmtDur,traceStatusType,
