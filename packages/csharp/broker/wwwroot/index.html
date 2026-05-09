@@ -225,6 +225,18 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               <span style="margin-left:8px;color:var(--td)">{{healthScore.overall_status}}</span>
             </div>
             <div class="sub" v-else style="color:var(--td)">—</div>
+            <!-- Sparkline：過去 6 小時的健康分數趨勢 -->
+            <svg v-if="healthHistory && healthHistory.length>1" viewBox="0 0 200 30"
+                 preserveAspectRatio="none" style="width:100%;height:24px;margin-top:6px;display:block">
+              <polyline :points="healthSparklinePoints" fill="none"
+                        :stroke="healthScoreColor" stroke-width="1.5"/>
+              <!-- 80 / 50 threshold 線（極淡背景） -->
+              <line x1="0" y1="6" x2="200" y2="6" stroke="#67c23a" stroke-opacity="0.15" stroke-dasharray="2 2"/>
+              <line x1="0" y1="15" x2="200" y2="15" stroke="#e6a23c" stroke-opacity="0.15" stroke-dasharray="2 2"/>
+            </svg>
+            <div v-if="healthHistory && healthHistory.length>1" style="font-size:9px;color:var(--td);text-align:right">
+              {{healthHistory.length}} pts · 6h
+            </div>
           </div>
         </div>
 
@@ -274,6 +286,69 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           <el-button size="small" @click="refreshContainers" :loading="containerRefreshing">{{t('refresh')}}</el-button>
           <el-button type="primary" size="small" @click="openSpawn">+ {{t('spawnWorker')}}</el-button>
         </div>
+
+        <!-- Auto-scale 狀態卡（只在 ContainerManager enabled 時顯示）-->
+        <el-card v-if="autoScale && autoScale.enabled" style="margin-bottom:12px">
+          <template #header>
+            <div style="display:flex;align-items:center">
+              <span style="font-weight:600">{{t('autoScaleStatus')}}</span>
+              <span style="color:var(--td);font-size:12px;margin-left:8px">
+                {{t('autoScaleParams')}}: max/type={{autoScale.max_per_type}} ·
+                threshold={{(autoScale.scale_up_threshold*100).toFixed(0)}}% ·
+                cooldown={{autoScale.cooldown_seconds}}s
+              </span>
+              <el-button size="small" text @click="loadAutoScale" style="margin-left:auto">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+          <!-- per worker_type 樣本視窗 + 最新 utilization -->
+          <el-table :data="autoScale.state" stripe :empty-text="t('autoScaleNoData')" size="small">
+            <el-table-column :label="t('workerType')" width="160">
+              <template #default="{row}"><code>{{row.worker_type}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('autoScaleLatest')" width="200">
+              <template #default="{row}">
+                <span v-if="row.samples.length>0" style="font-family:Consolas,monospace">
+                  <span :style="`color:${utilColor(row.samples[row.samples.length-1].utilization)}`">
+                    {{(row.samples[row.samples.length-1].utilization*100).toFixed(1)}}%
+                  </span>
+                  ({{row.samples[row.samples.length-1].active}}/{{row.samples[row.samples.length-1].max}})
+                  · {{row.samples[row.samples.length-1].container_count}} ct
+                </span>
+                <span v-else style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('autoScaleSparkline')" min-width="200">
+              <template #default="{row}">
+                <div style="display:flex;align-items:flex-end;gap:1px;height:24px">
+                  <div v-for="(s,i) in row.samples" :key="i"
+                       :style="`flex:1;background:${utilColor(s.utilization)};height:${Math.max(s.utilization*100, 4)}%;border-radius:1px`"
+                       :title="`${(s.utilization*100).toFixed(1)}% (${s.active}/${s.max})\n${fmtDate(s.at)}`"></div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('autoScaleLastAction')" width="170">
+              <template #default="{row}">
+                <span v-if="row.last_action_at" style="font-size:11px;color:var(--td)">{{fmtDate(row.last_action_at)}}</span>
+                <span v-else style="color:var(--td)">—</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <!-- 最近決策 timeline -->
+          <div v-if="autoScale.recent_decisions.length>0" style="margin-top:14px">
+            <div style="font-size:12px;color:var(--td);margin-bottom:6px">{{t('autoScaleRecent')}}（{{autoScale.recent_decisions.length}}）</div>
+            <div style="max-height:140px;overflow-y:auto">
+              <div v-for="(d,i) in autoScale.recent_decisions" :key="i"
+                   style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--bd);font-family:Consolas,monospace">
+                <span style="color:var(--td)">{{fmtDate(d.at)}}</span>
+                <el-tag :type="d.action==='scale_up'?'success':'warning'" size="small" style="margin:0 6px">{{d.action}}</el-tag>
+                <code>{{d.worker_type}}</code>
+                <span style="color:var(--td);margin-left:6px">util={{(d.utilization*100).toFixed(0)}}%, was {{d.container_count_before}}ct</span>
+                <span style="color:var(--t);margin-left:6px">→ {{d.result}}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else style="font-size:11px;color:var(--td);margin-top:10px">{{t('autoScaleNoDecisions')}}</div>
+        </el-card>
 
         <!-- 容器卡片網格 -->
         <div v-if="displayedContainers.length===0" class="ct-empty">
@@ -1571,6 +1646,14 @@ const I18N={
     noTopologyYet:'視窗內沒有 dispatch 資料。先觸發任何 capability 後再回來看。',
     duration:'耗時',includeHttp:'包含 HTTP 中介層 trace',
     healthScore:'健康分數',
+    autoScaleStatus:'容器自動擴縮',
+    autoScaleParams:'參數',
+    autoScaleNoData:'尚未收集 utilization 樣本',
+    autoScaleLatest:'最新 utilization',
+    autoScaleSparkline:'5-sample window',
+    autoScaleLastAction:'最近動作時間',
+    autoScaleRecent:'最近決策',
+    autoScaleNoDecisions:'尚無 scale 決策（broker 啟動以來都未觸發）',
     approvals:'待審',aprList:'核准請求',aprSubtitle:'高風險 capability 派發前需 admin 核可',
     aprStatusFilter:'狀態',aprPending:'待審',aprApproved:'已核准',aprRejected:'已拒絕',
     aprRequestedAt:'申請時間',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'裁決者',
@@ -1670,6 +1753,14 @@ const I18N={
     noTopologyYet:'No dispatch data in this window yet. Trigger a capability and come back.',
     duration:'Duration',includeHttp:'Include HTTP middleware traces',
     healthScore:'Health Score',
+    autoScaleStatus:'Container Auto-scale',
+    autoScaleParams:'Params',
+    autoScaleNoData:'No utilization samples yet',
+    autoScaleLatest:'Latest utilization',
+    autoScaleSparkline:'5-sample window',
+    autoScaleLastAction:'Last action at',
+    autoScaleRecent:'Recent decisions',
+    autoScaleNoDecisions:'No scale decisions (none triggered since broker start)',
     approvals:'Approvals',aprList:'Approval requests',aprSubtitle:'High-risk capability dispatches require admin approval',
     aprStatusFilter:'Status',aprPending:'Pending',aprApproved:'Approved',aprRejected:'Rejected',
     aprRequestedAt:'Requested',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'Decided by',
@@ -1830,7 +1921,24 @@ const app=createApp({
       catch(e){console.error('[loadCaps:defaults]',e.message||e)}
     }
 
-    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers(),loadHealthScore()]);refreshing.value=false}
+    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers(),loadHealthScore(),loadAutoScale()]);refreshing.value=false}
+
+    // ── Auto-scale state ──
+    const autoScale=ref(null);
+    async function loadAutoScale(){
+      try{
+        const r=await fetch('/api/v1/workers/scaling-state',{credentials:'include'});
+        const j=await r.json();
+        autoScale.value=j.success?j.data:null;
+      }catch(e){console.error('[loadAutoScale]',e);autoScale.value=null}
+    }
+    function utilColor(u){
+      // u 是 0-1 utilization
+      if(u>=0.8) return '#f56c6c';
+      if(u>=0.5) return '#e6a23c';
+      if(u>0)    return '#67c23a';
+      return '#606266';
+    }
 
     // ── Approvals + ACL（治理分頁） ──
     const approvals=ref([]);const aprLoading=ref(false);
@@ -1918,13 +2026,29 @@ const app=createApp({
 
     // ── Health Score（容器分頁 KPI 卡） ──
     const healthScore=ref(null);
+    const healthHistory=ref([]);
     async function loadHealthScore(){
       try{
-        const r=await fetch('/api/v1/health/score',{credentials:'include'});
-        const j=await r.json();
+        const [r,hr]=await Promise.all([
+          fetch('/api/v1/health/score',{credentials:'include'}),
+          fetch('/api/v1/health/score/history?since_minutes=360',{credentials:'include'}),
+        ]);
+        const j=await r.json();const hj=await hr.json();
         healthScore.value=j.success?j.data:null;
-      }catch(e){console.error('[loadHealthScore]',e);healthScore.value=null}
+        healthHistory.value=hj.success?(hj.data?.snapshots||[]):[];
+      }catch(e){console.error('[loadHealthScore]',e);healthScore.value=null;healthHistory.value=[]}
     }
+    // Sparkline polyline points（200 寬 × 30 高、score 0-100 → y 30→0、時序均分 x）
+    const healthSparklinePoints=computed(()=>{
+      const h=healthHistory.value;
+      if(!h||h.length<2) return '';
+      const n=h.length;
+      return h.map((s,i)=>{
+        const x=(i/(n-1))*200;
+        const y=30-((s.overall_score||0)/100)*30;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+    });
     const healthScoreColor=computed(()=>{
       const s=healthScore.value?.overall_score;
       if(s==null) return 'var(--t)';
@@ -2113,7 +2237,7 @@ const app=createApp({
     function stopTopologyAutoRefresh(){if(topologyAutoTimer){clearInterval(topologyAutoTimer);topologyAutoTimer=null}}
 
     function onTabChange(tab){
-      if(tab==='containers'){refreshContainers();loadHealthScore();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      if(tab==='containers'){refreshContainers();loadHealthScore();loadAutoScale();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='traces'){loadTraces();startTracesAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTopologyAutoRefresh()}
@@ -2708,7 +2832,9 @@ const app=createApp({
       trendBarPct,trendBucketTooltip,trendAxisLabel,
       fmtNumberShort,fmtUptime, Math,
       // Health Score
-      healthScore,loadHealthScore,healthScoreColor,healthKpiStyle,
+      healthScore,healthHistory,loadHealthScore,healthScoreColor,healthKpiStyle,healthSparklinePoints,
+      // Auto-scale
+      autoScale,loadAutoScale,utilColor,
       // Approvals + ACL
       approvals,aprLoading,aprFilter,aclRules,aclOverrides,
       loadApprovals,loadAclRules,aprStatusType,doApprove,doReject,
