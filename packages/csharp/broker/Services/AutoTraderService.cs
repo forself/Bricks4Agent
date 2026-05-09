@@ -169,6 +169,10 @@ public class AutoTraderService : BackgroundService
     public IReadOnlyDictionary<string, PerpetualPositionState> PerpetualPositionStates => _perpPositionState;
     public decimal PerpLiquidationEmergencyPct => _perpLiqEmergencyPct;
 
+    /// <summary>申報資金錨定（per exchange）。risk gate 用 min(declared, live) 算 equity。</summary>
+    private readonly Dictionary<string, decimal> _declaredCapitalByExchange;
+    public IReadOnlyDictionary<string, decimal> DeclaredCapital => _declaredCapitalByExchange;
+
     public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency }
 
     public class PerpProtectionDecision
@@ -394,6 +398,21 @@ public class AutoTraderService : BackgroundService
         _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
         // Perp 強平距離保護：低於此 % 觸發 emergency close（不論 SL 是否到）。預設 5%
         _perpLiqEmergencyPct = ParsePctEnv("AUTOTRADER_PERP_LIQ_EMERGENCY_PCT", defaultValue: 5m, min: 0.5m, max: 50m);
+
+        // 申報資金錨定（per exchange）：risk rules 用 min(declared, live_balance)，
+        // 跌會收緊（正確）、漲不會放寬（user 要求）。0 = 不啟用、用實際 balance（向後相容）。
+        // env 設定例：Risk__DeclaredCapital__Bingx=100 → BingX 即使後來賺到 200、risk 仍按 100 算。
+        // 直到 user 主動調高、賺到的部分都不計入風控基底。
+        _declaredCapitalByExchange = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ex in new[] { "Bingx", "Binance", "Alpaca" })
+        {
+            var raw = Environment.GetEnvironmentVariable($"Risk__DeclaredCapital__{ex}");
+            if (decimal.TryParse(raw, out var amt) && amt > 0m)
+                _declaredCapitalByExchange[ex.ToLowerInvariant()] = amt;
+        }
+        if (_declaredCapitalByExchange.Count > 0)
+            _logger.LogInformation("Risk capital anchors: {Anchors}",
+                string.Join(", ", _declaredCapitalByExchange.Select(kv => $"{kv.Key}={kv.Value:F2}")));
         _logger.LogInformation(
             "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% sl_flush={Flush}/{Window}min · " +
             "protection: initial_sl={IniSl}% partial_exit={Pe}% (sell {Per:P0}) BE_trigger={Bet}% (buffer {Beb}%) · " +
@@ -1557,6 +1576,11 @@ public class AutoTraderService : BackgroundService
                 if (ad.TryGetProperty("available_margin", out var amv)) available = amv.GetDecimal();
             }
 
+            // 申報資金錨定：跌會收緊、漲不放寬。0 / 沒設 = 用實際 balance。
+            var anchoredBalance = balance;
+            if (_declaredCapitalByExchange.TryGetValue(item.Exchange, out var declared) && declared > 0m)
+                anchoredBalance = Math.Min(balance, declared);
+
             var riskPayload = JsonSerializer.Serialize(new
             {
                 symbol        = item.Symbol,
@@ -1567,7 +1591,7 @@ public class AutoTraderService : BackgroundService
                 price         = markPrice,
                 leverage      = item.Leverage,
                 initial_sl_pct = _protectionConfig.InitialSlPct,   // 給 r14 max_loss_per_trade_pct 用
-                perp = new { balance, available_margin = available, positions = perpPositions },
+                perp = new { balance = anchoredBalance, available_margin = available, positions = perpPositions },
             });
             var riskResult = await _dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_perp_order", riskPayload));
             if (riskResult.Success)

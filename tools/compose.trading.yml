@@ -80,6 +80,11 @@ services:
 
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
       Notifications__Line__Enabled: "${NOTIFICATIONS_LINE_ENABLED:-false}"
+      # 申報資金錨定（per exchange）：risk rules 用 min(這個值, 實際 balance) 算 equity。
+      # 賺到不會自動放寬風控，必須由人手動調這個 env 才會。0 = 用實際值。
+      Risk__DeclaredCapital__Bingx: "${RISK_DECLARED_CAPITAL_BINGX:-0}"
+      Risk__DeclaredCapital__Binance: "${RISK_DECLARED_CAPITAL_BINANCE:-0}"
+      Risk__DeclaredCapital__Alpaca: "${RISK_DECLARED_CAPITAL_ALPACA:-0}"
       # appsettings.json 預設 AccessRoot=%LOCALAPPDATA%\\... 是 Windows 路徑、
       # Linux container 起來會炸 "must be an absolute path" 把整個 broker 健康度拉成 critical。
       # 改成 /data 下的子目錄、跟 broker.db 同一個 named volume、容器重建也不會丟。
