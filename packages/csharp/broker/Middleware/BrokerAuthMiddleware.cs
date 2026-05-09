@@ -49,6 +49,7 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/screener/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/lab/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auth/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/exchange-credentials", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase)

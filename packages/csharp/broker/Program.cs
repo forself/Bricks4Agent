@@ -56,6 +56,8 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Principal 多用戶帳密 + cookie session（Phase A1 2026-05-10）
     initDb.EnsureTable<PrincipalCredential>();
     initDb.EnsureTable<PrincipalSession>();
+    // 用戶交易所 API 憑證（Phase A2.5a 2026-05-10）— at-rest AES-GCM 加密、AAD 綁 entry_id
+    initDb.EnsureTable<ExchangeCredential>();
     // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
     Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
     // Alert system（#2 2026-05-07）—— 規則 + 事件
@@ -286,6 +288,14 @@ builder.Services.AddSingleton<Broker.Services.SymbolScreenerService>();
 builder.Services.AddSingleton<Broker.Services.ScheduledBacktestService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.ScheduledBacktestService>());
 builder.Services.AddSingleton<Broker.Services.PrincipalAuthService>();
+builder.Services.AddSingleton<BrokerCore.Crypto.AtRestSecretCrypto>(sp =>
+{
+    // 重用 broker master key 做 at-rest 加密（跟 ECDH session 加密同 key、不同 AAD）。
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var key = cfg.GetSecret("Broker:Encryption:MasterKeyBase64") ?? "";
+    return new BrokerCore.Crypto.AtRestSecretCrypto(key);
+});
+builder.Services.AddSingleton<Broker.Services.ExchangeCredentialService>();
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -976,6 +986,7 @@ if (poolEnabled)
     ScreenerEndpoints.Map(api);
     LabEndpoints.Map(api);
     AuthEndpoints.Map(api);
+    ExchangeCredentialsEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);
