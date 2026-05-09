@@ -1633,3 +1633,110 @@ if (snap.PriceZone == -1)
 4. **多帳戶合併檢視**：Alpaca + Binance 績效合併在一張圖上
 5. **通知嚴重度分級**：Discord 推播加上 severity（info / warn / critical）並 @mention 重要事件
 6. **策略 Ensemble**：`VotingStrategy` / `WeightedEnsembleStrategy` 把現有 composite/sma/rsi/macd 訊號加權投票
+
+---
+
+## 二十三、Strategy 介面重構：IStrategyRegistry + Self-describing IStrategy（2026-05-09）
+
+### 23.1 要解決的問題
+
+主題 A-P 累計 13 個策略後、**每加一支新策略要 touch 4-5 個檔案**：
+
+```text
+1. 寫 strategy 類別（必要）
+2. StrategyConfig.cs 加 named field（如果有特殊 param）
+3. StrategySignalHandler.cs 在 ListStrategies() 裡加 description 字串
+4. strategy-worker/Program.cs 在 strategies dict 加一行 ["xxx"] = new MyStrategy()
+5. broker 端 LabEndpoints.cs 的 MinCapital 字典加一行
+（6. ParameterOptimizer 的 grid range 寫死在 OptimizeXxx，每個策略獨立函式）
+```
+
+各檔案分散在 4 個專案、容易漏改、新人接手不知道全集合在哪。**架構紀律的反例**：擴充點散落而非集中。
+
+### 23.2 重構成果
+
+把策略 metadata **下放給策略類別自己 expose**——一個策略一個檔案、所有 metadata 都在那裡：
+
+```csharp
+public class SmaCrossStrategy : IStrategy
+{
+    public string Name              => "sma_cross";
+    public string Description       => "SMA Golden/Death Cross — 快慢均線交叉";
+    public StrategyCategory Category => StrategyCategory.Trend;
+    public int MinBars              => 31;       // slow=30 default + 1
+    public decimal MinCapitalUsdt   => 50m;      // trend-following 小資金可跑
+
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["sma_fast"] = new() { Type = "int", Default = 10, Min = 5,  Max = 50,  Step = 5 },
+        ["sma_slow"] = new() { Type = "int", Default = 30, Min = 20, Max = 200, Step = 10 },
+    };
+
+    public Signal Evaluate(...) { /* 不變 */ }
+}
+```
+
+`IStrategy` 介面用 C# 8 default interface members，**既有 13 個策略不 override 也能編譯**（拿到 fallback 預設值），擴充無破壞。
+
+`IStrategyRegistry` 取代 `Dictionary<string, IStrategy>`：handler 透過 `reg.Get(name)` / `reg.All()` 拿，`/strategy/list` endpoint 自動把 `metadata` 一併回傳（含 `category` / `min_bars` / `min_capital_usdt` / `param_schema`）。
+
+`StrategyConfig` 加 `Params: Dictionary<string, object>` + `GetParam<T>` helper——新策略要新增參數**不必再擴 named field**：
+
+```csharp
+public class MyNewStrategy : IStrategy
+{
+    public Signal Evaluate(List<BarData> bars, StrategyConfig config)
+    {
+        var threshold = config.GetParam<decimal>("my_threshold", 0.5m);  // 沒設 fallback 0.5
+        ...
+    }
+}
+```
+
+### 23.3 與既有檔案的關聯
+
+| 檔案 | 變動 |
+| --- | --- |
+| `strategy-worker/Engine/IStrategy.cs` | 加 default impl members + `ParamSpec` + `StrategyCategory` enum |
+| `strategy-worker/Engine/StrategyRegistry.cs` | **新檔**：`IStrategyRegistry` 介面 + `DefaultStrategyRegistry` 實作 |
+| `strategy-worker/Models/StrategyConfig.cs` | 加 `Params` dict + `GetParam<T>` |
+| `strategy-worker/Engine/*Strategy.cs`（13 個） | 各自 override 5 個 metadata property |
+| `strategy-worker/Handlers/StrategySignalHandler.cs` | ctor 改吃 `IStrategyRegistry`、`ListStrategies()` 動態組 metadata（13 行硬編 description map 拿掉） |
+| `strategy-worker/Program.cs` | 把 `strategies` dict 包進 registry 後傳給 handler |
+
+**0 個 broker 端檔案被動到**——broker `LabEndpoints.MinCapital` 字典留作 fallback、跟策略類別內 metadata 重複但相容（之後同步 startup pull 一次再拋掉那字典即可）。
+
+### 23.4 對未來新策略的工作量影響
+
+**Before**：4-5 個檔案、4 個專案
+**After**：1 個檔案 + 1 行 register
+
+```csharp
+// strategy-worker/Engine/MyNewStrategy.cs（新檔）
+public class MyNewStrategy : IStrategy
+{
+    public string Name => "my_new";
+    public string Description => "...";
+    public StrategyCategory Category => StrategyCategory.Trend;
+    // ... 其他 metadata 都自己帶
+    public Signal Evaluate(List<BarData> bars, StrategyConfig config) { ... }
+}
+
+// strategy-worker/Program.cs（+1 行）
+strategies["my_new"] = new MyNewStrategy();
+```
+
+`/strategy/list` 自動帶新策略、Lab MinCapital 自動有值、ParameterOptimizer 之後改成從 `ParamSchema` 自動產 grid 之後**連 grid range 都不用寫**。
+
+### 23.5 報告說詞（主題 23）
+
+> 「累計 13 個策略後、原本擴充策略要 touch 4-5 個檔案、四個專案，是『擴充點散落』的反例。本輪把策略 metadata 從外部 lookup table 下放回策略類別本身——`IStrategy` 介面加 `Description / Category / MinBars / MinCapitalUsdt / ParamSchema` 五個 default impl members，每個策略類別 self-describing。
+>
+> 取代 raw `Dictionary<string, IStrategy>` 的是 `IStrategyRegistry`、`/strategy/list` 自動把 metadata 跟著吐出來，dashboard 跟 Lab 不再需要硬編 description map。`StrategyConfig` 加通用 `Params` dictionary 後、新策略要加參數也不必再擴 named field。
+>
+> 這個重構是『**擴充點向內折疊**』的對應例：把擴充必要的所有資訊收斂到擴充點本身、外部不需要再記第二份。對應主軸文件 §四 `capability metadata（route / approvalPolicy / category）也都掛在 capability 上、不在 broker 端做查表』是同一招。新增第 14 個策略只要 1 個新檔 + 1 行 register、之後就不會再爆 4-5 檔案的工作量。」
+
+### 23.6 已知限制
+
+- 5 個 metadata property 是 default-impl、舊策略沒 override 拿 fallback 值（`"(策略沒寫描述)"` / `Category.Other` / `MinBars=50` / `MinCapitalUsdt=100`）。本輪 13 個策略全 override 完了，但 fallback 機制仍在、誰寫新策略忘了 override 不會編譯失敗。可考慮把 `Description` 改成 abstract 強制實作，trade-off：失去向後相容。
+- `LabEndpoints.MinCapital` 字典仍存在當 fallback、跟策略內 `MinCapitalUsdt` 同義重複。下一步可改成 broker 啟動時拉一次 `/strategy/list` 把 metadata 快取到 broker 端、字典純當 offline fallback。
