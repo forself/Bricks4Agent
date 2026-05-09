@@ -587,6 +587,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('perp')">永續</a>
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
+    <a onclick="switchTab('lab')">Lab</a>
     <a onclick="switchTab('health')">健康</a>
   </nav>
   <div class="hdr-right">
@@ -1211,6 +1212,42 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- Strategy Lab：自動回測推薦 -->
+<div class="panel" id="panel-lab">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">Strategy Lab — 自動回測推薦</span>
+    <span style="color:var(--text2);font-size:11px">每 24h schedule、跨 4 標的 × 3 時段 × 4 策略</span>
+    <select id="lab-tf-filter" onchange="loadLab()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px">
+      <option value="">所有時段</option>
+      <option value="1h">1h</option>
+      <option value="4h">4h</option>
+      <option value="1d">1d</option>
+    </select>
+    <input type="number" id="lab-capital" placeholder="申報資金 USDT" value="100" min="0" onchange="loadLab()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;width:120px" />
+    <button class="btn btn-o btn-sm" onclick="loadLab()">重新整理</button>
+    <button class="btn btn-y btn-sm" onclick="runLabNow()">立刻跑一輪（~30s）</button>
+  </div>
+  <div id="lab-run-meta" style="font-size:11px;color:var(--text2);margin-bottom:10px">—</div>
+  <div class="card">
+    <h3>推薦組合（每 [標的 × 時段] 取最高分策略）</h3>
+    <table id="lab-recs-table" style="font-size:12px">
+      <thead><tr>
+        <th>標的</th><th>時段</th><th>策略</th><th>行情</th><th>分數</th>
+        <th>報酬</th><th>Sharpe</th><th>勝率</th><th>最大 DD</th><th>交易筆</th>
+        <th>樣本</th><th>最佳參數</th><th>適配資金</th><th>標籤</th>
+      </tr></thead>
+      <tbody><tr><td colspan="14" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>歷史 run</h3>
+    <table id="lab-runs-table" style="font-size:11px">
+      <thead><tr><th>Run ID</th><th>類型</th><th>開始</th><th>耗時</th><th>標的數</th><th>結果數</th><th>錯誤數</th></tr></thead>
+      <tbody><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- 健康檢查 -->
 <div class="panel" id="panel-health">
   <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchHealth()">重新整理</button></div>
@@ -1491,9 +1528,9 @@ else sel.innerHTML='<option value="1d" selected>1D</option>'; // 美股+台股�
 updateChartIntervals('stock');
 
 // ── Tab switch ──────────────────────────────────────────────────
-function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','perp','risk','pnl','health'];a.classList.toggle('active',tabs[i]===name);});
+function switchTab(name){document.querySelectorAll('#main-nav a').forEach((a,i)=>{const tabs=['overview','quotes','chart','strategy','trade','orders','backtest','auto','perp','risk','pnl','lab','health'];a.classList.toggle('active',tabs[i]===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='health')fetchHealth();
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='lab')loadLab();if(name==='health')fetchHealth();
 startAutoRefresh(name);}
 
 // ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
@@ -1506,6 +1543,7 @@ const _tabRefresh = {
   auto:     { fn: () => fetchAutoStatus(),ms: 5000  },
   perp:     { fn: () => loadPerpAll(),    ms: 5000  },
   pnl:      { fn: () => loadPnlReport(),  ms: 30000 },
+  lab:      { fn: () => loadLab(),         ms: 60000 },  // 1 分鐘刷一次、實際 schedule 是日級
   health:   { fn: () => fetchHealth(),    ms: 10000 },
 };
 let _refreshTimer = null;
@@ -3108,6 +3146,81 @@ setInterval(async () => {
     }
   }
 }, 10000);
+
+// ── Strategy Lab：自動回測推薦 ─────────────────────────────────
+async function loadLab(){
+  const tf = document.getElementById('lab-tf-filter')?.value || '';
+  const cap = document.getElementById('lab-capital')?.value || '0';
+  const qs = new URLSearchParams();
+  if (tf) qs.set('timeframe', tf);
+  if (cap) qs.set('capital', cap);
+  const r = await api('/api/v1/lab/recommendations?' + qs.toString());
+  const meta = document.getElementById('lab-run-meta');
+  const tbody = document.querySelector('#lab-recs-table tbody');
+  if (!r?.data?.run) {
+    meta.textContent = '尚無 run、按「立刻跑一輪」觸發';
+    tbody.innerHTML = '<tr><td colspan="14" style="color:var(--text2)">—</td></tr>';
+  } else {
+    const run = r.data.run;
+    const dur = Math.round((run.duration_ms || 0) / 1000);
+    meta.innerHTML = `Run <strong>${run.run_id}</strong> · 完成於 ${new Date(run.finished_at).toLocaleString()} · 耗時 ${dur}s · ${run.symbols_count} 標的 / ${run.results_count} 結果 / ${run.error_count} 錯誤`;
+    const recs = r.data.recommendations || [];
+    if (recs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="14" style="color:var(--text2)">無推薦</td></tr>';
+    } else {
+      tbody.innerHTML = recs.map(x => {
+        const fitColor = x.capital_fit === 'ok' ? 'var(--up)' : (x.capital_fit === 'underfunded' ? 'var(--down)' : 'var(--text2)');
+        const fitText = x.capital_fit === 'ok' ? '✓ 適配' : (x.capital_fit === 'underfunded' ? `✗ 需 ≥${x.min_capital_usdt}` : '—');
+        const tagsHtml = (x.tags || []).map(t => `<span style="background:var(--bg3);padding:1px 5px;border-radius:3px;font-size:10px;margin-right:3px">${t}</span>`).join('');
+        const params = x.best_params ? `<code style="font-size:10px;color:var(--text2)">${x.best_params}</code>` : '<span style="color:var(--text2)">default</span>';
+        const regimeColor = { trending:'var(--up)', volatile:'#ff9933', ranging:'var(--text2)', squeeze:'#888', unknown:'var(--text2)' }[x.regime] || 'var(--text2)';
+        return `<tr>
+          <td><strong>${x.symbol}</strong></td>
+          <td>${x.timeframe}</td>
+          <td><strong>${x.strategy}</strong></td>
+          <td><span style="color:${regimeColor}">${x.regime}</span></td>
+          <td><strong>${x.score}</strong></td>
+          <td class="${pnlClass(x.total_return_pct)}">${x.total_return_pct >= 0 ? '+' : ''}${x.total_return_pct.toFixed(2)}%</td>
+          <td>${x.sharpe.toFixed(2)}</td>
+          <td>${x.win_rate.toFixed(1)}%</td>
+          <td>${x.max_dd_pct.toFixed(1)}%</td>
+          <td>${x.trades}</td>
+          <td>${x.bars_count || '—'}</td>
+          <td>${params}</td>
+          <td style="color:${fitColor}">${fitText}</td>
+          <td>${tagsHtml}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+  // 順帶刷歷史 run
+  const runs = await api('/api/v1/lab/runs?limit=8');
+  const runsTbody = document.querySelector('#lab-runs-table tbody');
+  if (runs?.data?.runs?.length > 0) {
+    runsTbody.innerHTML = runs.data.runs.map(x => `<tr>
+      <td><code style="font-size:10px">${x.run_id}</code></td>
+      <td>${x.run_type}</td>
+      <td>${new Date(x.started_at).toLocaleString()}</td>
+      <td>${Math.round((x.duration_ms || 0) / 1000)}s</td>
+      <td>${x.symbols_count}</td>
+      <td>${x.results_count}</td>
+      <td class="${x.error_count > 0 ? 'down' : ''}">${x.error_count}</td>
+    </tr>`).join('');
+  } else {
+    runsTbody.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">—</td></tr>';
+  }
+}
+
+async function runLabNow(){
+  toast('開始跑一輪、約 30 秒…', 'info');
+  const r = await api('/api/v1/lab/run-now', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+  if (r?.data?.status === 'completed') {
+    toastOk(`完成 ${r.data.run_id}`);
+    loadLab();
+  } else {
+    toastErr(r?.message || '失敗');
+  }
+}
 
 // ── Health check ────────────────────────────────────────────────
 async function fetchHealth(){const r=await api('/api/v1/health/workers');if(!r?.data)return;const d=r.data;
