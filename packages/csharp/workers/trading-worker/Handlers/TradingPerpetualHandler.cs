@@ -40,17 +40,46 @@ public class TradingPerpetualHandler : ICapabilityHandler
 
         return route switch
         {
-            "get_account"     => await GetAccount(opts, ct),
-            "get_positions"   => await GetPositions(opts, ct),
-            "place_order"     => await PlaceOrder(opts, ct),
-            "cancel_order"    => await CancelOrder(opts, ct),
-            "get_order"       => await GetOrder(opts, ct),
-            "get_open_orders" => await GetOpenOrders(opts, ct),
-            "set_leverage"    => await SetLeverage(opts, ct),
-            "get_mark_price"  => await GetMarkPrice(opts, ct),
-            "list_exchanges"  => ListExchanges(),
+            "get_account"      => await GetAccount(opts, ct),
+            "get_positions"    => await GetPositions(opts, ct),
+            "place_order"      => await PlaceOrder(opts, ct),
+            "cancel_order"     => await CancelOrder(opts, ct),
+            "get_order"        => await GetOrder(opts, ct),
+            "get_open_orders"  => await GetOpenOrders(opts, ct),
+            "set_leverage"     => await SetLeverage(opts, ct),
+            "get_mark_price"   => await GetMarkPrice(opts, ct),
+            "get_tickers_24h"  => await GetTickers24h(opts, ct),
+            "list_exchanges"   => ListExchanges(),
             _ => (false, null, $"Unknown route: {route}")
         };
+    }
+
+    private async Task<(bool, string?, string?)> GetTickers24h(JsonElement opts, CancellationToken ct)
+    {
+        if (!TryGetClient(opts, out var c, out var err)) return (false, null, err);
+        try
+        {
+            var list = await c!.GetTickers24hAsync(ct);
+            var json = JsonSerializer.Serialize(new
+            {
+                count = list.Count,
+                snapshot_at = list.FirstOrDefault()?.SnapshotAt ?? DateTime.UtcNow,
+                tickers = list.Select(t => new
+                {
+                    symbol = t.Symbol,
+                    last_price = t.LastPrice,
+                    high = t.HighPrice,
+                    low = t.LowPrice,
+                    open = t.OpenPrice,
+                    volume = t.Volume,
+                    quote_volume = t.QuoteVolume,
+                    price_change = t.PriceChange,
+                    price_change_pct = t.PriceChangePercent,
+                })
+            });
+            return (true, json, null);
+        }
+        catch (Exception ex) { return (false, null, ex.Message); }
     }
 
     private (bool, string?, string?) ListExchanges()

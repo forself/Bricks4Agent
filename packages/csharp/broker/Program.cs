@@ -276,6 +276,7 @@ builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
 builder.Services.AddSingleton<Broker.Services.AlertRulesService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AlertRulesService>());
+builder.Services.AddSingleton<Broker.Services.SymbolScreenerService>();
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -958,6 +959,7 @@ if (poolEnabled)
     AlertEndpoints.Map(api);
     AlertRulesEndpoints.Map(api);
     PerpetualEndpoints.Map(api);
+    ScreenerEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);

@@ -286,6 +286,45 @@ public class BingxPerpetualClient : IPerpetualClient
         return ParseDec(data, "markPrice");
     }
 
+    public async Task<List<PerpetualTicker24h>> GetTickers24hAsync(CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/quote/ticker （省略 symbol 參數 = 全部 USDT-M perp）
+        // public endpoint、回 array of { symbol, lastPrice, openPrice, highPrice, lowPrice,
+        // priceChange, priceChangePercent, volume, quoteVolume, ... }
+        var result = new List<PerpetualTicker24h>();
+        var resp = await _http.GetAsync($"{_baseUrl}/openApi/swap/v2/quote/ticker", ct);
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        if (!IsOk(doc) || !doc.TryGetProperty("data", out var data)) return result;
+
+        // BingX 偶爾回 single object（指定 symbol 時），偶爾回 array（全部時）。兩種都接。
+        var items = data.ValueKind == JsonValueKind.Array
+            ? data.EnumerateArray()
+            : new[] { data }.AsEnumerable().Select(x => x);
+
+        foreach (var item in items)
+        {
+            var sym = item.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(sym)) continue;
+
+            result.Add(new PerpetualTicker24h
+            {
+                Symbol             = sym,
+                LastPrice          = ParseDec(item, "lastPrice"),
+                HighPrice          = ParseDec(item, "highPrice"),
+                LowPrice           = ParseDec(item, "lowPrice"),
+                OpenPrice          = ParseDec(item, "openPrice"),
+                Volume             = ParseDec(item, "volume"),
+                QuoteVolume        = ParseDec(item, "quoteVolume"),
+                PriceChange        = ParseDec(item, "priceChange"),
+                PriceChangePercent = ParseDec(item, "priceChangePercent"),
+                SnapshotAt         = DateTime.UtcNow,
+            });
+        }
+        return result;
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private static string MapOrderType(string t) => t.ToLowerInvariant() switch

@@ -31,4 +31,11 @@ public interface IPerpetualClient
 
     /// <summary>取得 mark price（用於計算 PnL / 強平距離）</summary>
     Task<decimal> GetMarkPriceAsync(string symbol, CancellationToken ct = default);
+
+    /// <summary>
+    /// 取所有 USDT-M 永續的 24h ticker。給 SymbolScreener 做標的評分用。
+    /// 一次 call 全部回來、broker 端每隔幾小時 cache、不會打爆 API。
+    /// 公開端點、不需 auth、流量便宜。
+    /// </summary>
+    Task<List<PerpetualTicker24h>> GetTickers24hAsync(CancellationToken ct = default);
 }
