@@ -86,6 +86,30 @@ public static class HealthCheckEndpoints
             }));
         });
 
+        // GET /api/v1/health/score/history?since_minutes=360 — Health Score 時序
+        hc.MapGet("/score/history", (
+            HttpContext ctx, Broker.Services.HealthScoreSnapshotService snapSvc) =>
+        {
+            var sinceMin = int.TryParse(ctx.Request.Query["since_minutes"].ToString(), out var s)
+                ? Math.Clamp(s, 5, 10080) : 360;  // default 6h, max 7d
+            var history = snapSvc.GetHistory(sinceMin);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                since_minutes = sinceMin,
+                count         = history.Count,
+                snapshots = history.Select(h => new
+                {
+                    captured_at    = h.CapturedAt,
+                    overall_score  = h.OverallScore,
+                    status         = h.OverallStatus,
+                    worker_count   = h.WorkerCount,
+                    healthy        = h.HealthyCount,
+                    degraded       = h.DegradedCount,
+                    critical       = h.CriticalCount,
+                }),
+            }));
+        });
+
         // GET /api/v1/health/score — Worker 健康綜合分數（0-100、含三個子分量）
         hc.MapGet("/score", async (
             Broker.Services.HealthScoreService svc, CancellationToken ct) =>
