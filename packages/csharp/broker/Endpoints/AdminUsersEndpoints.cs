@@ -144,6 +144,14 @@ public static class AdminUsersEndpoints
             catch (Exception ex) { return Results.BadRequest(ApiResponseHelper.Error(ex.Message)); }
         });
 
+        admin.MapPost("/{id}/unlock", (PrincipalAuthService svc, HttpContext ctx, string id) =>
+        {
+            var deny = RequireAdmin(ctx, out _); if (deny != null) return deny;
+            var ok = svc.AdminUnlockUser(id);
+            if (!ok) return Results.NotFound(ApiResponseHelper.Error("User not found"));
+            return Results.Ok(ApiResponseHelper.Success(new { ok, unlocked = true }));
+        });
+
         admin.MapDelete("/{id}", (PrincipalAuthService svc, HttpContext ctx, string id) =>
         {
             var deny = RequireAdmin(ctx, out var caller); if (deny != null) return deny;

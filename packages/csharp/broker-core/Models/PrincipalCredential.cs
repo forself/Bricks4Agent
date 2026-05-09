@@ -69,4 +69,16 @@ public class PrincipalCredential
     /// <summary>鎖到何時；null = 未鎖。鎖期間 login 直接拒絕、不浪費 PBKDF2 算力。</summary>
     [Column("locked_until")]
     public DateTime? LockedUntil { get; set; }
+
+    // ── A4 PASS 2：TOTP 2FA ──
+    /// <summary>TOTP secret 用 master key 加密後 base64；null = 未啟用 2FA。AAD 綁 principal_id。</summary>
+    [Column("totp_secret_enc")]
+    public string? TotpSecretEnc { get; set; }
+
+    [Column("totp_enrolled_at")]
+    public DateTime? TotpEnrolledAt { get; set; }
+
+    /// <summary>JSON: ["{hash}", ...]、PBKDF2 hash backup code、用一次後從 list 移除。</summary>
+    [Column("backup_codes_enc")]
+    public string? BackupCodesEnc { get; set; }
 }

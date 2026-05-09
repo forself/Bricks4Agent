@@ -59,6 +59,11 @@ public static class AutoTraderDbMigrations
             table: "principal_credentials",
             column: "locked_until",
             sqlType: "TEXT NULL");
+
+        // A4 PASS 2：principal_credentials 加 TOTP 2FA 欄位
+        AddColumnIfMissing(db, logger, "principal_credentials", "totp_secret_enc", "TEXT NULL");
+        AddColumnIfMissing(db, logger, "principal_credentials", "totp_enrolled_at", "TEXT NULL");
+        AddColumnIfMissing(db, logger, "principal_credentials", "backup_codes_enc", "TEXT NULL");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

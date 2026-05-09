@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using BrokerCore.Crypto;
 using BrokerCore.Data;
 using BrokerCore.Models;
 
@@ -32,11 +34,14 @@ public sealed class PrincipalAuthService
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime FirstAt, int Count)> _ipAttempts = new();
 
     private readonly BrokerDb _db;
+    private readonly AtRestSecretCrypto? _crypto;
     private readonly ILogger<PrincipalAuthService> _logger;
 
-    public PrincipalAuthService(BrokerDb db, ILogger<PrincipalAuthService> logger)
+    public PrincipalAuthService(BrokerDb db, ILogger<PrincipalAuthService> logger,
+        AtRestSecretCrypto? crypto = null)
     {
         _db = db;
+        _crypto = crypto;
         _logger = logger;
     }
 
@@ -47,6 +52,7 @@ public sealed class PrincipalAuthService
         public string? PrincipalId { get; set; }
         public string? Role { get; set; }
         public bool MustChangePassword { get; set; }
+        public bool RequiresTotp { get; set; }     // A4 PASS 2：true = user 已 enroll 2FA、login 缺 totp_code
         public DateTime? ExpiresAt { get; set; }
     }
 
@@ -58,7 +64,7 @@ public sealed class PrincipalAuthService
         public DateTime ExpiresAt { get; set; }
     }
 
-    public LoginResult Login(HttpContext context, string principalId, string password)
+    public LoginResult Login(HttpContext context, string principalId, string password, string? totpCode = null)
     {
         if (string.IsNullOrWhiteSpace(principalId) || string.IsNullOrWhiteSpace(password))
             return new LoginResult { Authenticated = false, Message = "Missing principalId or password" };
@@ -93,6 +99,20 @@ public sealed class PrincipalAuthService
             RecordIpAttempt(ip);
             RecordFailedAttempt(cred);
             return new LoginResult { Authenticated = false, Message = "Invalid credentials" };
+        }
+
+        // A4 PASS 2：密碼通過、若 user 已啟用 2FA 還需驗 TOTP
+        if (!string.IsNullOrEmpty(cred.TotpSecretEnc))
+        {
+            if (string.IsNullOrWhiteSpace(totpCode))
+                return new LoginResult { Authenticated = false, Message = "TOTP code required", RequiresTotp = true };
+
+            if (!VerifyTotpOrBackupCode(cred, totpCode))
+            {
+                RecordIpAttempt(ip);
+                RecordFailedAttempt(cred);
+                return new LoginResult { Authenticated = false, Message = "Invalid TOTP code", RequiresTotp = true };
+            }
         }
 
         // 成功：清失敗計數、發 session
@@ -356,6 +376,148 @@ public sealed class PrincipalAuthService
         // 改 role 後既有 session 仍記載舊 role、可選擇撤銷重登
         RevokeAllSessions(principalId);
         _logger.LogInformation("Auth admin: changed role of {Pid} to {Role}", principalId, role);
+        return true;
+    }
+
+    // ── A4 PASS 2：TOTP 2FA enrollment + verify ───────────────────────
+
+    public sealed class TotpSetupResult
+    {
+        public string Secret { get; set; } = "";       // base32、給 user 手動輸入備用
+        public string OtpAuthUrl { get; set; } = "";   // otpauth://... 給 QR code
+        public string[] BackupCodes { get; set; } = Array.Empty<string>();
+    }
+
+    /// <summary>產生新 TOTP secret + backup codes 並暫存（user 用 verify-enroll 確認後才正式生效）。</summary>
+    public TotpSetupResult Setup2fa(string principalId)
+    {
+        if (_crypto == null) throw new InvalidOperationException("AtRestSecretCrypto not configured");
+        var cred = _db.Get<PrincipalCredential>(principalId)
+            ?? throw new InvalidOperationException("User not found");
+
+        // 已 enrolled 就拒——要先 disable 才能重設
+        if (!string.IsNullOrEmpty(cred.TotpSecretEnc))
+            throw new InvalidOperationException("2FA already enabled. Disable it first to re-enroll.");
+
+        var secret = TotpHelper.GenerateSecret();
+        var backupCodes = TotpHelper.GenerateBackupCodes(8);
+
+        // 寫入 enc 欄、但等 verify-enroll 確認才標 enrolled_at（讓 user 確實掃了 QR）
+        var aad = $"totp:{principalId}";
+        cred.TotpSecretEnc = _crypto.Encrypt(TotpHelper.ToBase32(secret), aad);
+        cred.BackupCodesEnc = _crypto.Encrypt(JsonSerializer.Serialize(backupCodes.Select(HashCode).ToArray()), aad);
+        cred.TotpEnrolledAt = null;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+
+        return new TotpSetupResult
+        {
+            Secret = TotpHelper.ToBase32(secret),
+            OtpAuthUrl = TotpHelper.BuildOtpAuthUrl(secret, principalId),
+            BackupCodes = backupCodes,    // ← 唯一一次 user 能看到原始值
+        };
+    }
+
+    /// <summary>用 user 輸入的 TOTP 碼確認 enrollment、之後 login 才會強制要求。</summary>
+    public bool VerifyEnroll2fa(string principalId, string totpCode)
+    {
+        if (_crypto == null) throw new InvalidOperationException("AtRestSecretCrypto not configured");
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null || string.IsNullOrEmpty(cred.TotpSecretEnc)) return false;
+
+        var aad = $"totp:{principalId}";
+        var secretB32 = _crypto.Decrypt(cred.TotpSecretEnc, aad);
+        var secret = TotpHelper.FromBase32(secretB32);
+        if (!TotpHelper.Verify(secret, totpCode, DateTime.UtcNow)) return false;
+
+        cred.TotpEnrolledAt = DateTime.UtcNow;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+        _logger.LogInformation("Auth 2FA: enrolled for {Pid}", principalId);
+        return true;
+    }
+
+    /// <summary>停用 2FA。要當下 TOTP 碼或 backup code 才能停（防 session hijack 後直接關 2FA）。</summary>
+    public bool Disable2fa(string principalId, string proofCode)
+    {
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null || string.IsNullOrEmpty(cred.TotpSecretEnc)) return false;
+        if (!VerifyTotpOrBackupCode(cred, proofCode)) return false;
+
+        cred.TotpSecretEnc = null;
+        cred.TotpEnrolledAt = null;
+        cred.BackupCodesEnc = null;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+        _logger.LogInformation("Auth 2FA: disabled for {Pid}", principalId);
+        return true;
+    }
+
+    public bool Has2faEnabled(string principalId)
+    {
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        return cred != null && !string.IsNullOrEmpty(cred.TotpSecretEnc) && cred.TotpEnrolledAt.HasValue;
+    }
+
+    private bool VerifyTotpOrBackupCode(PrincipalCredential cred, string code)
+    {
+        if (_crypto == null || string.IsNullOrEmpty(cred.TotpSecretEnc)) return false;
+        var aad = $"totp:{cred.PrincipalId}";
+
+        // 純數字 = TOTP 碼
+        if (code.Length == 6 && code.All(char.IsDigit))
+        {
+            var secretB32 = _crypto.Decrypt(cred.TotpSecretEnc, aad);
+            var secret = TotpHelper.FromBase32(secretB32);
+            return TotpHelper.Verify(secret, code, DateTime.UtcNow);
+        }
+
+        // 否則當 backup code、查 hash list、命中就消耗那一筆
+        if (string.IsNullOrEmpty(cred.BackupCodesEnc)) return false;
+        try
+        {
+            var json = _crypto.Decrypt(cred.BackupCodesEnc, aad);
+            var hashes = JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>();
+            var inputHash = HashCode(code);
+            var idx = Array.FindIndex(hashes, h => CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(h), Encoding.ASCII.GetBytes(inputHash)));
+            if (idx < 0) return false;
+
+            // 消耗：移除這個 hash
+            var remaining = hashes.Where((_, i) => i != idx).ToArray();
+            cred.BackupCodesEnc = _crypto.Encrypt(JsonSerializer.Serialize(remaining), aad);
+            cred.UpdatedAt = DateTime.UtcNow;
+            _db.Update(cred);
+            _logger.LogInformation("Auth 2FA: backup code consumed for {Pid}, {Remaining} left",
+                cred.PrincipalId, remaining.Length);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backup code verify failed for {Pid}", cred.PrincipalId);
+            return false;
+        }
+    }
+
+    /// <summary>Backup code hash：PBKDF2 30k iterations、固定 salt（per-principal、簡化）。</summary>
+    private static string HashCode(string code)
+    {
+        var salt = Encoding.UTF8.GetBytes("b4a-backup-code-v1");
+        using var pbkdf2 = new Rfc2898DeriveBytes(code, salt, 30000, HashAlgorithmName.SHA256);
+        return Convert.ToBase64String(pbkdf2.GetBytes(16));
+    }
+
+    /// <summary>Admin 手動解鎖用戶——清失敗計數 + 解鎖、不動密碼。</summary>
+    public bool AdminUnlockUser(string principalId)
+    {
+        var cred = _db.Get<PrincipalCredential>(principalId);
+        if (cred == null) return false;
+        cred.FailedLoginAttempts = 0;
+        cred.FirstFailedAt = null;
+        cred.LockedUntil = null;
+        cred.UpdatedAt = DateTime.UtcNow;
+        _db.Update(cred);
+        _logger.LogInformation("Auth admin: unlocked user {Pid}", principalId);
         return true;
     }
 
