@@ -50,6 +50,9 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // 設定：enabled / interval_seconds 重啟保留；perp 部位狀態：SL / peak / be_moved 重啟保留
     initDb.EnsureTable<AutoTraderSettingsEntry>();
     initDb.EnsureTable<PerpetualPositionStateEntry>();
+    // Strategy Lab 自動回測（2026-05-09）— 每日批次跑、結果存 DB、API 查推薦
+    initDb.EnsureTable<BacktestRunEntry>();
+    initDb.EnsureTable<BacktestResultEntry>();
     // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
     Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
     // Alert system（#2 2026-05-07）—— 規則 + 事件
@@ -277,6 +280,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Pr
 builder.Services.AddSingleton<Broker.Services.AlertRulesService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AlertRulesService>());
 builder.Services.AddSingleton<Broker.Services.SymbolScreenerService>();
+builder.Services.AddSingleton<Broker.Services.ScheduledBacktestService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.ScheduledBacktestService>());
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -960,6 +965,7 @@ if (poolEnabled)
     AlertRulesEndpoints.Map(api);
     PerpetualEndpoints.Map(api);
     ScreenerEndpoints.Map(api);
+    LabEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
     BacktestHistoryEndpoints.Map(api);

@@ -51,6 +51,7 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/perpetual/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/quote/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/screener/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/lab/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase)
