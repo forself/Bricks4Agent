@@ -180,6 +180,9 @@ builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
 builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
 
+// ── Step 4.6c: 治理層告警（health 變壞 / 新 pending approval → Discord + LINE 推送） ──
+builder.Services.AddHostedService<Broker.Services.GovernanceAlertsService>();
+
 // ── Step 4.7: Approve-before-execute（高風險 capability 需 admin 點按 approve） ──
 builder.Services.AddSingleton<IApprovalService>(sp =>
     new ApprovalService(sp.GetRequiredService<BrokerDb>()));
