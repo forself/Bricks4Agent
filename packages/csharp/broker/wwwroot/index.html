@@ -761,6 +761,8 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           <span style="color:var(--td);font-size:12px;margin-left:6px">limit：</span>
           <el-input-number v-model="traceFilter.limit" :min="10" :max="200" :step="10" size="small" controls-position="right" style="width:120px"/>
           <el-button size="small" type="primary" @click="loadTraces" :loading="tracesLoading">{{t('apply')}}</el-button>
+          <el-switch v-model="traceFilter.includeHttp" size="small" @change="loadTraces" style="margin-left:10px"/>
+          <span style="color:var(--td);font-size:12px">{{t('includeHttp')}}</span>
           <span style="color:var(--td);font-size:12px;margin-left:8px">{{traces.length}} {{t('entries')}}</span>
         </div>
 
@@ -1363,7 +1365,7 @@ const I18N={
     flowChart:'capability 流向圖',principalRanking:'principal 排行',capabilityRanking:'capability 排行',
     totalCalls:'總呼叫',successRate:'成功率',
     noTopologyYet:'視窗內沒有 dispatch 資料。先觸發任何 capability 後再回來看。',
-    duration:'耗時',
+    duration:'耗時',includeHttp:'包含 HTTP 中介層 trace',
   },
   en:{login:'Login',principalId:'Username (Principal ID)',taskId:'Task ID',roleId:'Role ID',password:'Password',
     changePasswordRequired:'Set a new password',currentPassword:'Current password',newPassword:'New password',newPasswordConfirm:'Confirm new password',
@@ -1443,7 +1445,7 @@ const I18N={
     flowChart:'Capability flow',principalRanking:'Principals',capabilityRanking:'Capabilities',
     totalCalls:'Total calls',successRate:'Success rate',
     noTopologyYet:'No dispatch data in this window yet. Trigger a capability and come back.',
-    duration:'Duration',
+    duration:'Duration',includeHttp:'Include HTTP middleware traces',
   }
 };
 
@@ -1590,7 +1592,7 @@ const app=createApp({
 
     // ── Traces + Topology（觀察性分頁） ──
     const traces=ref([]);const tracesLoading=ref(false);
-    const traceFilter=reactive({principal:'',capability:'',limit:50});
+    const traceFilter=reactive({principal:'',capability:'',limit:50,includeHttp:false});
     const selectedTraceId=ref(null);const selectedTraceEvents=ref([]);
     const selectedTraceIntegrity=ref(null);
     const topology=ref(null);const topologyLoading=ref(false);
@@ -1612,6 +1614,7 @@ const app=createApp({
         if(traceFilter.principal) qs.set('principal_id',traceFilter.principal);
         if(traceFilter.capability) qs.set('capability_id',traceFilter.capability);
         qs.set('limit',String(traceFilter.limit||50));
+        if(traceFilter.includeHttp) qs.set('include_http','true');
         const r=await fetch('/api/v1/audit/traces?'+qs.toString(),{credentials:'include'});
         const j=await r.json();
         traces.value=j.success?(j.data||[]):[];

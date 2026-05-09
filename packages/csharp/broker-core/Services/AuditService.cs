@@ -148,11 +148,20 @@ public class AuditService : IAuditService
     /// <inheritdoc />
     public List<TraceSummary> ListRecentTraces(
         string? principalId = null, string? capabilityId = null,
-        int offset = 0, int limit = 50)
+        int offset = 0, int limit = 50, bool includeHttp = false)
     {
         // 子查詢：trace_id + 起訖事件 + 事件數
         // 外查詢：抓那個 trace 的最後一筆完整資訊（用 MAX(event_id)）作代表行
         // SQLite 不支援 first_value、所以用 sub-query join 取最後一筆
+        //
+        // dispatcher-only filter (預設)：只列「至少有一筆 DISPATCH_* / EXECUTION_*」的 trace、
+        // 把 ASP.NET HTTP middleware 寫的 W3C trace（API_REQUEST / API_RESPONSE 之類純 HTTP 事件）
+        // 排掉、避免 dashboard 自己 polling /audit/traces 一直把列表灌爆。想看全部 → includeHttp=true。
+        var dispatcherFilter = includeHttp ? "" : @"
+    AND trace_id IN (
+        SELECT DISTINCT trace_id FROM audit_events
+        WHERE event_type LIKE 'DISPATCH_%' OR event_type LIKE 'EXECUTION_%'
+    )";
         var sql = new StringBuilder(@"
 SELECT
     g.trace_id              AS TraceId,
@@ -172,6 +181,7 @@ FROM (
            MAX(event_id)    AS last_event_id,
            COUNT(*)         AS event_count
     FROM audit_events
+    WHERE 1=1" + dispatcherFilter + @"
     GROUP BY trace_id
 ) g
 JOIN audit_events last_ev  ON last_ev.event_id  = g.last_event_id

@@ -31,9 +31,11 @@ public interface IAuditService
     /// 列出最近 N 個 trace、做摘要（給 Tracing Dashboard 用）。
     /// 每筆回傳 trace_id + 起訖時間 + 事件數 + 大致狀態（SUCCEEDED/FAILED/IN_PROGRESS）。
     /// 細節請呼叫 GetTraceEvents(traceId)。
+    /// 預設僅回傳「至少有 DISPATCH_* / EXECUTION_* 事件」的 trace；
+    /// includeHttp=true 才會包進 ASP.NET HTTP middleware 寫的 W3C trace。
     /// </summary>
     List<TraceSummary> ListRecentTraces(string? principalId = null, string? capabilityId = null,
-        int offset = 0, int limit = 50);
+        int offset = 0, int limit = 50, bool includeHttp = false);
 
     /// <summary>
     /// 拓撲圖資料：最近 N 分鐘 (principal, capability) 呼叫次數聚合。

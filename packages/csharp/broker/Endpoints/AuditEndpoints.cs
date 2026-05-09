@@ -77,6 +77,7 @@ public static class AuditEndpoints
             var cap = q.TryGetValue("capability_id", out var c) ? c.ToString() : null;
             var offset = int.TryParse(q["offset"].ToString(), out var o) ? Math.Max(o, 0) : 0;
             var limit  = int.TryParse(q["limit"].ToString(),  out var l) ? Math.Clamp(l, 1, 200) : 50;
+            var includeHttp = bool.TryParse(q["include_http"].ToString(), out var ih) && ih;
 
             // 非 admin 強制只看自己
             if (!isAdmin)
@@ -93,7 +94,7 @@ public static class AuditEndpoints
             var traces = auditService.ListRecentTraces(
                 string.IsNullOrEmpty(pid) ? null : pid,
                 string.IsNullOrEmpty(cap) ? null : cap,
-                offset, limit);
+                offset, limit, includeHttp);
 
             return Results.Ok(ApiResponseHelper.Success(traces.Select(t => new
             {
