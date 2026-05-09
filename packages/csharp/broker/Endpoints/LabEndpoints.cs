@@ -93,6 +93,8 @@ public static class LabEndpoints
                 if (r.Trades < 5) tags.Add("low-sample");
                 if (r.Sharpe > 1.5m) tags.Add("strong-edge");
                 if (r.MaxDdPct > 30m) tags.Add("deep-drawdown");
+                if (r.WfFolds > 0 && Math.Abs(r.IsOosGap) >= 0.5m) tags.Add("oos-degraded");
+                if (r.WfFolds > 0 && Math.Abs(r.IsOosGap) < 0.2m) tags.Add("oos-robust");
                 return new
                 {
                     symbol = r.Symbol,
@@ -109,6 +111,12 @@ public static class LabEndpoints
                     best_params = r.ParamsJson,
                     min_capital_usdt = minCap,
                     capital_fit = capital <= 0m ? "unknown" : (capital >= minCap ? "ok" : "underfunded"),
+                    // B3 walk-forward OOS metrics（WfFolds=0 表示沒跑成功）
+                    wf_folds = r.WfFolds,
+                    oos_return_pct = r.OosReturnPct,
+                    oos_sharpe = r.OosSharpe,
+                    oos_win_rate = r.OosWinRate,
+                    is_oos_gap = r.IsOosGap,
                     tags,
                 };
             }).ToList();

@@ -153,8 +153,11 @@ public class ScheduledBacktestService : BackgroundService
         }
 
         // ranking：每 (symbol, timeframe) 找 score 最高的標 recommended
+        // B3 OOS gate：WfFolds>0 且 |IsOosGap|>=0.7 → 排除（過擬合紅線、不論 IS 多漂亮都不該被推薦）
+        // WfFolds=0（沒跑成功）→ 不擋（向後相容、bars 不夠也能用 IS-only ranking）
         var grouped = allResults
             .Where(r => string.IsNullOrEmpty(r.Error) && r.Trades > 0)
+            .Where(r => r.WfFolds == 0 || Math.Abs(r.IsOosGap) < 0.7m)
             .GroupBy(r => (r.Symbol, r.Timeframe));
         foreach (var g in grouped)
         {
@@ -273,14 +276,64 @@ public class ScheduledBacktestService : BackgroundService
         catch (Exception ex)
         {
             entry.Error = ex.Message?.Length > 200 ? ex.Message[..200] : ex.Message;
+            return entry;
+        }
+
+        // B3：跑 walk-forward 拿 OOS 數據（額外一次 strategy.signal 呼叫）
+        // 失敗 / bars 不夠 → 維持 IS-only、WfFolds=0、OOS 欄位 = 0、不擋
+        try
+        {
+            await RunWalkForwardAsync(entry, symbol, exchange, tf, strategy, bars, traceId, ct);
+            // 跑成功 → 用 IS+OOS 重新算 score
+            entry.Score = ComputeScore(entry);
+        }
+        catch (Exception ex)
+        {
+            // 不覆寫 entry.Error（IS 已成功）、log 即可
+            _logger.LogDebug(ex, "Walk-forward extension failed for {Sym}/{Tf}/{Strat}", symbol, tf, strategy);
         }
 
         return entry;
     }
 
     /// <summary>
-    /// composite ranking: 0.4·sharpe + 0.3·return_norm + 0.2·win_rate − 0.1·dd_penalty。
-    /// sharpe 假設 [-2, +5] 線性 norm 到 [0,1]；return [0,100%] norm；dd_penalty 越大扣越多。
+    /// 跑 strategy.signal 的 backtest_walk_forward route、把 OOS 數據填回 entry。
+    /// 預設 train=180 / test=60 / stride=30。500 bars 大概切出 5 個 fold。
+    /// </summary>
+    private async Task RunWalkForwardAsync(
+        BacktestResultEntry entry, string symbol, string exchange, string tf,
+        string strategy, JsonElement bars, string traceId, CancellationToken ct)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            strategy, symbol, exchange, interval = tf, bars,
+            initial_cash = 1000.0,
+            train_bars = 180,
+            test_bars = 60,
+            stride = 30,
+        });
+        var req = new ApprovedRequest
+        {
+            RequestId = Guid.NewGuid().ToString("N"),
+            CapabilityId = "strategy.signal", Route = "backtest_walk_forward", Payload = payload,
+            Scope = "{}", PrincipalId = "system",
+            TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
+            TraceId = traceId,
+        };
+        var result = await _dispatcher.DispatchAsync(req);
+        if (!result.Success) return;  // bars 不夠等失敗 → 略過
+
+        var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+        entry.WfFolds      = doc.TryGetProperty("total_folds",          out var tf0) ? tf0.GetInt32()    : 0;
+        entry.OosReturnPct = doc.TryGetProperty("avg_test_return_pct",  out var ar)  ? ar.GetDecimal()   : 0m;
+        entry.OosSharpe    = doc.TryGetProperty("avg_test_sharpe",      out var asr) ? asr.GetDecimal()  : 0m;
+        entry.OosWinRate   = doc.TryGetProperty("avg_test_win_rate",    out var awr) ? awr.GetDecimal()  : 0m;
+        entry.IsOosGap     = doc.TryGetProperty("is_oos_return_gap",    out var iog) ? iog.GetDecimal()  : 0m;
+    }
+
+    /// <summary>
+    /// composite ranking: 0.35·sharpe + 0.25·return_norm + 0.15·win_rate − 0.1·dd_penalty + 0.15·oos_quality
+    /// （OOS 沒跑 → oos_quality=0、退化成 IS-only。Walk-forward 跑成功時納入過擬合懲罰）
     /// 沒交易直接 0 分（拒列入 recommended）。
     /// </summary>
     private static decimal ComputeScore(BacktestResultEntry r)
@@ -290,9 +343,23 @@ public class ScheduledBacktestService : BackgroundService
         var returnNorm = Math.Clamp(r.TotalReturnPct / 100m, 0m, 1m);
         var winRateNorm = Math.Clamp(r.WinRate / 100m, 0m, 1m);
         var ddPenalty = Math.Clamp(r.MaxDdPct / 50m, 0m, 1m);
-        return Math.Round(
-            0.4m * sharpeNorm + 0.3m * returnNorm + 0.2m * winRateNorm - 0.1m * ddPenalty,
-            4);
+
+        var baseScore = 0.35m * sharpeNorm + 0.25m * returnNorm + 0.15m * winRateNorm - 0.1m * ddPenalty;
+
+        // B3 OOS quality factor：walk-forward 跑成功才加分
+        // - 高 IS-OOS gap（>= 0.5）→ 紅旗、加負分
+        // - 低 gap + 正 OOS sharpe → 加正分
+        // 沒跑（WfFolds=0）→ 不加不扣
+        decimal oosQuality = 0m;
+        if (r.WfFolds > 0)
+        {
+            var oosSharpeNorm = Math.Clamp((r.OosSharpe + 2m) / 7m, 0m, 1m);
+            var gapPenalty    = Math.Clamp(Math.Abs(r.IsOosGap), 0m, 1m);
+            // -0.5 ~ +0.5 區間後乘 0.15 權重
+            oosQuality = (oosSharpeNorm - 0.5m) - gapPenalty * 0.5m;
+        }
+
+        return Math.Round(baseScore + 0.15m * oosQuality, 4);
     }
 
     /// <summary>

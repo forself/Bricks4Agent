@@ -78,6 +78,31 @@ public class BacktestResultEntry
     [Column("finished_at")]
     public DateTime FinishedAt { get; set; } = DateTime.UtcNow;
 
+    // ── B3 walk-forward 補資料：跑完普通 backtest 後再切 train/test rolling 視窗、量過擬合 ──
+    /// <summary>過去 walk-forward windows OOS 平均 return%（NaN/0 = 沒跑成功）。</summary>
+    [Column("oos_return_pct")]
+    public decimal OosReturnPct { get; set; }
+
+    /// <summary>OOS 平均 Sharpe</summary>
+    [Column("oos_sharpe")]
+    public decimal OosSharpe { get; set; }
+
+    /// <summary>OOS 平均勝率</summary>
+    [Column("oos_win_rate")]
+    public decimal OosWinRate { get; set; }
+
+    /// <summary>
+    /// IS-OOS gap：(is_return - oos_return) / |is_return|。
+    /// 越接近 0 越穩、≥0.5 表示 OOS 嚴重縮水（過擬合 red flag）。
+    /// score 算分時這條會給扣分；&gt; 0.7 直接排除 recommended。
+    /// </summary>
+    [Column("is_oos_gap")]
+    public decimal IsOosGap { get; set; }
+
+    /// <summary>walk-forward 切了幾個 fold（&gt;0 表示跑成功、=0 表示沒跑或 bars 不夠）。</summary>
+    [Column("wf_folds")]
+    public int WfFolds { get; set; }
+
     /// <summary>
     /// 這條結果歸屬於哪個 user 的 watch。Phase A2：lab/recommendations 按這個過濾。
     /// 跟 BacktestRunEntry.RunId 加總可以還原「這次 run 為誰跑了哪些 symbol」。
