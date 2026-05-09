@@ -66,6 +66,7 @@ public class RiskCheckHandler : ICapabilityHandler
         {
             snap.Balance         = perp.TryGetProperty("balance",          out var b)   ? b.GetDecimal()  : 0;
             snap.AvailableMargin = perp.TryGetProperty("available_margin", out var am)  ? am.GetDecimal() : 0;
+            snap.DayPnlPct       = perp.TryGetProperty("day_pnl_pct",      out var dpp) ? dpp.GetDecimal() : 0;
             if (perp.TryGetProperty("positions", out var posArr) && posArr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var pe in posArr.EnumerateArray())

@@ -1532,6 +1532,50 @@ public class AutoTraderService : BackgroundService
     ///
     /// 翻倉等下次 cycle 才開、避免一次 cycle 內連續打交易所。
     /// </summary>
+    /// <summary>
+    /// 取得 / 建立今日 UTC 開盤 balance（給 r16 daily_loss circuit breaker 用），
+    /// 計算 (current - today_open) / today_open × 100。
+    ///
+    /// 邏輯：
+    ///   - 若 (exchange, today UTC) 沒紀錄 → 寫一筆 today_open = current_balance、回 0%
+    ///   - 已有紀錄 → 用該紀錄當分母算 PnL%
+    ///   - today_open ≤ 0 → 回 0（避免除以 0、且新帳戶從沒錢開始本來就不該觸發）
+    ///
+    /// broker 重啟也保留（持久化到 DB），UTC 跨日下個 cycle 自動寫新紀錄。
+    /// 沒有特地重置舊紀錄、舊 row 累積在 DB 中、之後想做歷史趨勢可以用。
+    /// </summary>
+    private decimal ComputePerpDayPnlPct(string exchange, decimal currentBalance)
+    {
+        try
+        {
+            var utcDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var key = $"{exchange}:{utcDate}";
+            var existing = _db.Get<BrokerCore.Models.PerpDailyOpenBalance>(key);
+            if (existing == null)
+            {
+                _db.Insert(new BrokerCore.Models.PerpDailyOpenBalance
+                {
+                    Key = key,
+                    Exchange = exchange,
+                    UtcDate = utcDate,
+                    Balance = currentBalance,
+                    CapturedAt = DateTime.UtcNow,
+                });
+                _logger.LogInformation(
+                    "Perp daily open balance recorded for {Ex} on {Date}: {Bal} USDT",
+                    exchange, utcDate, currentBalance);
+                return 0m;
+            }
+            if (existing.Balance <= 0m) return 0m;
+            return (currentBalance - existing.Balance) / existing.Balance * 100m;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ComputePerpDayPnlPct failed for {Ex}", exchange);
+            return 0m;  // fail-safe：算不出來不誤觸熔斷
+        }
+    }
+
     private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, decimal confidence, CancellationToken ct)
     {
         if (!_registry.HasAvailableWorker("trading.perpetual"))
@@ -1683,6 +1727,9 @@ public class AutoTraderService : BackgroundService
             if (_declaredCapitalByExchange.TryGetValue(item.Exchange, out var declared) && declared > 0m)
                 anchoredBalance = Math.Min(balance, declared);
 
+            // r16 daily loss circuit breaker：取「今日 UTC 開盤 balance」、算當日 PnL%
+            var dayPnlPct = ComputePerpDayPnlPct(item.Exchange, balance);
+
             var riskPayload = JsonSerializer.Serialize(new
             {
                 symbol        = item.Symbol,
@@ -1693,7 +1740,7 @@ public class AutoTraderService : BackgroundService
                 price         = markPrice,
                 leverage      = item.Leverage,
                 initial_sl_pct = _protectionConfig.InitialSlPct,   // 給 r14 max_loss_per_trade_pct 用
-                perp = new { balance = anchoredBalance, available_margin = available, positions = perpPositions },
+                perp = new { balance = anchoredBalance, available_margin = available, day_pnl_pct = dayPnlPct, positions = perpPositions },
             });
             var riskResult = await _dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_perp_order", riskPayload));
             if (riskResult.Success)

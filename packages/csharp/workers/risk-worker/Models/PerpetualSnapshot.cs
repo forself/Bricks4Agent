@@ -10,6 +10,13 @@ public class PerpetualSnapshot
     public decimal Balance         { get; set; }   // USDT 保證金餘額
     public decimal AvailableMargin { get; set; }   // 可用保證金（已開倉占用後剩多少）
     public List<PerpetualPositionInfo> Positions { get; set; } = new();
+
+    /// <summary>
+    /// 今天（UTC 跨日）累計 PnL %（balance - today_open_balance）/ today_open_balance × 100。
+    /// 負值表示今天賠錢。給 r16 max_perp_daily_loss_pct 用。
+    /// 由 AutoTraderService 從 perp_daily_open_balance 表算好後填進來；caller 不填 → 0（不會誤觸熔斷）。
+    /// </summary>
+    public decimal DayPnlPct { get; set; }
 }
 
 public class PerpetualPositionInfo

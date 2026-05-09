@@ -334,11 +334,12 @@ public class RiskEngine
 
             var v = rule.Type switch
             {
-                "max_leverage"             => CheckMaxLeverage(rule, leverage),
-                "max_total_notional"       => CheckMaxTotalNotional(rule, symbol, psUp, orderNotional, snapshot),
-                "max_liquidation_distance" => CheckMaxLiquidationDistance(rule, leverage),
-                "max_loss_per_trade_pct"   => CheckMaxLossPerTradePct(rule, orderNotional, initialSlPct, snapshot),
-                "max_positions_per_side"   => CheckMaxPositionsPerSide(rule, psUp, snapshot),
+                "max_leverage"               => CheckMaxLeverage(rule, leverage),
+                "max_total_notional"         => CheckMaxTotalNotional(rule, symbol, psUp, orderNotional, snapshot),
+                "max_liquidation_distance"   => CheckMaxLiquidationDistance(rule, leverage),
+                "max_loss_per_trade_pct"     => CheckMaxLossPerTradePct(rule, orderNotional, initialSlPct, snapshot),
+                "max_positions_per_side"     => CheckMaxPositionsPerSide(rule, psUp, snapshot),
+                "max_perp_daily_loss_pct"    => CheckMaxPerpDailyLossPct(rule, snapshot),
                 _ => null
             };
             if (v != null) violations.Add(v);
@@ -429,6 +430,23 @@ public class RiskEngine
         };
     }
 
+    private RiskViolation? CheckMaxPerpDailyLossPct(RiskRule rule, PerpetualSnapshot snap)
+    {
+        // DayPnlPct 是 (current - today_open) / today_open × 100；負值 = 賠錢。
+        // 規則 threshold 是「容許今天最多虧 N %」(正值)。比較 |loss| ≥ threshold。
+        // caller 不填 → 0、永遠 pass（不誤觸熔斷）。
+        var todayLossPct = -Math.Min(0m, snap.DayPnlPct);
+        if (todayLossPct < rule.Threshold) return null;
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Daily perp loss {todayLossPct:F2}% reached limit {rule.Threshold:F1}% — circuit breaker tripped, no new opens until UTC reset.",
+            Current  = todayLossPct,
+            Limit    = rule.Threshold,
+        };
+    }
+
     private RiskViolation? CheckMaxLiquidationDistance(RiskRule rule, int leverage)
     {
         // Threshold 語意：可接受的最低「mark→liq」距離百分比（越大越保守）。
@@ -499,5 +517,10 @@ public class RiskEngine
         new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = 2 },
         // r15: 同方向最多 5 倉；對沖時放寬到 5+反向倉數
         new() { RuleId = "r15", Name = "Max Positions Per Side",    Type = "max_positions_per_side",  Threshold = 5 },
+        // r16: 當日 perp 帳戶虧損 > 6% → 整天熔斷不再開新倉。
+        // 用 (current_balance - today_open_balance) / today_open_balance × 100 算、
+        // 由 AutoTraderService 維護 perp_daily_open_balance 表跨日 reset。平倉永遠放行不受影響。
+        // 6% = 例如 $99 容許今日內 $5.94 虧損；3 筆 r14 約滿就觸發、留 1 筆緩衝。
+        new() { RuleId = "r16", Name = "Max Perp Daily Loss %",     Type = "max_perp_daily_loss_pct", Threshold = 6 },
     };
 }

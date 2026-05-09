@@ -42,6 +42,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<ApprovalRequest>();
         _db.EnsureTable<PrincipalCapabilityOverride>();
         _db.EnsureTable<HealthScoreSnapshot>();
+        _db.EnsureTable<PerpDailyOpenBalance>();
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
         _db.EnsureTable<BrowserSessionLease>();
