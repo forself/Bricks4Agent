@@ -633,9 +633,13 @@ tr:hover { background:rgba(240,185,11,0.02); }
 <div class="panel active" id="panel-overview">
   <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
     <select id="ov-account-select" onchange="loadOverview()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px">
-      <option value="alpaca">Alpaca (美股)</option><option value="binance">Binance (加密貨幣)</option>
+      <!-- 動態填充：populateAccountSelect() 會根據 _showPaper 切過濾 -->
     </select>
     <span style="font-size:11px;color:var(--text2)">切換帳戶</span>
+    <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer">
+      <input type="checkbox" id="ov-show-paper" onchange="onShowPaperToggle()" style="margin:0">
+      顯示測試帳戶（Paper / Demo）
+    </label>
     <button class="btn btn-o btn-sm" onclick="loadOverview()" style="margin-left:auto">↻ 重新整理</button>
   </div>
   <div class="g g4" style="margin-bottom:12px">
@@ -1585,15 +1589,87 @@ async function checkWorkers(){const checks=[{id:'dot-quote',path:'/api/v1/worker
 for(const c of checks){const r=await api(c.path);document.getElementById(c.id).className='dot '+(r&&r.ok!==false&&!r.error?'on':'off');}}
 
 // ── Overview ────────────────────────────────────────────────────
-async function loadOverview(){const ex=document.getElementById('ov-account-select')?.value||'alpaca';const acc=await api('/api/v1/trading/account?exchange='+ex);
-if(acc?.data){const d=acc.data;document.getElementById('ov-cash').textContent=fmtUsd(d.cash);document.getElementById('ov-portfolio').textContent=fmtUsd(d.portfolio_value);
-document.getElementById('ov-buying-power').textContent=fmtUsd(d.buying_power);const pnl=document.getElementById('ov-day-pnl');pnl.textContent=fmtUsd(d.day_pnl);pnl.className='stat-value '+pnlClass(d.day_pnl);
-document.getElementById('ov-exchange').textContent=ex+(d.is_paper?' (Paper)':' (Live)');}
-const pos=await api('/api/v1/trading/positions?exchange='+ex);const tb=document.getElementById('ov-positions');
-if(pos?.data?.positions?.length>0)tb.innerHTML=pos.data.positions.map(p=>`<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','${ex}',${p.quantity})">平倉</button></td></tr>`).join('');
-else tb.innerHTML='<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
-// 順帶刷新左右兩 rail + 保護地圖
-loadOverviewRails();loadProtectionMap();}
+// 帳戶清單：name = dropdown 顯示、value = exchange API 名稱、type = spot/perp、live = 是否為實盤
+const _ovAccounts = [
+  { value:'bingx',   name:'BingX 永續',     type:'perp', live:true  },
+  { value:'alpaca',  name:'Alpaca 美股',    type:'spot', live:false },
+  { value:'binance', name:'Binance 加密',  type:'spot', live:false },
+];
+let _showPaper = false;  // 預設只顯示實盤
+
+function populateAccountSelect(){
+  const sel = document.getElementById('ov-account-select'); if(!sel) return;
+  const visible = _ovAccounts.filter(a => _showPaper || a.live);
+  if(visible.length === 0){ sel.innerHTML='<option value="">無可用帳戶</option>'; return; }
+  const prev = sel.value;
+  sel.innerHTML = visible.map(a => {
+    const tag = a.live ? '🟢 LIVE' : '📋 PAPER';
+    return `<option value="${a.value}">${a.name} · ${tag}</option>`;
+  }).join('');
+  // 維持原選擇、若被過濾掉就 fallback 到第一個
+  sel.value = visible.some(a => a.value === prev) ? prev : visible[0].value;
+}
+
+function onShowPaperToggle(){
+  _showPaper = document.getElementById('ov-show-paper')?.checked || false;
+  populateAccountSelect();
+  loadOverview();
+}
+
+async function loadOverview(){
+  const sel = document.getElementById('ov-account-select');
+  if(!sel || !sel.options.length) populateAccountSelect();
+  const ex = sel?.value || 'bingx';
+  const meta = _ovAccounts.find(a => a.value === ex) || _ovAccounts[0];
+
+  // perp 走 /api/v1/perpetual/*；spot 維持既有 /api/v1/trading/*
+  if(meta.type === 'perp'){
+    const acc = await api('/api/v1/perpetual/account?exchange='+ex);
+    if(acc?.data){
+      const d = acc.data;
+      // perp 欄位 → overview 卡片：balance ≈ cash、equity ≈ portfolio、available_margin ≈ buying_power、unrealized_pnl ≈ day_pnl
+      document.getElementById('ov-cash').textContent = fmtUsd(d.balance);
+      document.getElementById('ov-portfolio').textContent = fmtUsd(d.equity);
+      document.getElementById('ov-buying-power').textContent = fmtUsd(d.available_margin);
+      const pnl = document.getElementById('ov-day-pnl');
+      pnl.textContent = fmtUsd(d.unrealized_pnl);
+      pnl.className = 'stat-value '+pnlClass(d.unrealized_pnl);
+      document.getElementById('ov-exchange').textContent = ex+(d.is_demo ? ' (Demo)' : ' (Live)');
+    }
+    const pos = await api('/api/v1/perpetual/positions?exchange='+ex);
+    const tb = document.getElementById('ov-positions');
+    if(pos?.data?.positions?.length>0)
+      tb.innerHTML = pos.data.positions.map(p =>
+        `<tr><td><strong>${p.symbol} ${p.side}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.mark_price)}</td><td>${fmtUsd(p.quantity*p.mark_price)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><span style="color:var(--text2);font-size:11px">永續、平倉走「永續」分頁</span></td></tr>`
+      ).join('');
+    else tb.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
+  } else {
+    // spot 路徑（原本邏輯）
+    const acc = await api('/api/v1/trading/account?exchange='+ex);
+    if(acc?.data){
+      const d = acc.data;
+      document.getElementById('ov-cash').textContent = fmtUsd(d.cash);
+      document.getElementById('ov-portfolio').textContent = fmtUsd(d.portfolio_value);
+      document.getElementById('ov-buying-power').textContent = fmtUsd(d.buying_power);
+      const pnl = document.getElementById('ov-day-pnl');
+      pnl.textContent = fmtUsd(d.day_pnl);
+      pnl.className = 'stat-value '+pnlClass(d.day_pnl);
+      document.getElementById('ov-exchange').textContent = ex+(d.is_paper ? ' (Paper)' : ' (Live)');
+    }
+    const pos = await api('/api/v1/trading/positions?exchange='+ex);
+    const tb = document.getElementById('ov-positions');
+    if(pos?.data?.positions?.length>0)
+      tb.innerHTML = pos.data.positions.map(p =>
+        `<tr><td><strong>${p.symbol}</strong></td><td>${fmt(p.quantity,4)}</td><td>${fmtUsd(p.avg_entry_price)}</td><td>${fmtUsd(p.current_price)}</td><td>${fmtUsd(p.market_value)}</td><td class="${pnlClass(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td><td><button class="btn btn-r btn-sm" onclick="closePosition('${p.symbol}','${ex}',${p.quantity})">平倉</button></td></tr>`
+      ).join('');
+    else tb.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">無持倉</td></tr>';
+  }
+  loadOverviewRails();
+  loadProtectionMap();
+}
+
+// 啟動時先填 dropdown（DOMContentLoaded 之後 startAutoRefresh 也會 trigger loadOverview）
+window.addEventListener('DOMContentLoaded', populateAccountSelect);
 
 // 左 rail（auto-trader 監控清單 + 即時報價 top）+ 右 rail（auto-trader 狀態 + feed）
 async function loadOverviewRails(){
