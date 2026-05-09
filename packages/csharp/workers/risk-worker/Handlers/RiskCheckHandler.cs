@@ -56,6 +56,7 @@ public class RiskCheckHandler : ICapabilityHandler
         var quantity     = doc.TryGetProperty("quantity",      out var q)   ? q.GetDecimal()       : 0;
         var price        = doc.TryGetProperty("price",         out var p)   ? p.GetDecimal()       : 0;
         var leverage     = doc.TryGetProperty("leverage",      out var lv) && lv.TryGetInt32(out var lvi) ? lvi : 1;
+        var initialSlPct = doc.TryGetProperty("initial_sl_pct", out var isp) ? isp.GetDecimal()  : 5m;
 
         if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(positionSide) || quantity <= 0 || price <= 0)
             return (false, null, "Missing required: symbol, position_side, quantity > 0, price > 0");
@@ -84,7 +85,7 @@ public class RiskCheckHandler : ICapabilityHandler
             }
         }
 
-        var checkResult = _engine.CheckPerp(symbol, exchange, side, positionSide, quantity, price, leverage, snap);
+        var checkResult = _engine.CheckPerp(symbol, exchange, side, positionSide, quantity, price, leverage, snap, initialSlPct);
 
         var json = JsonSerializer.Serialize(new
         {

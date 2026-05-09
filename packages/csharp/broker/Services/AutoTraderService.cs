@@ -1566,6 +1566,7 @@ public class AutoTraderService : BackgroundService
                 quantity      = qtyToUse,
                 price         = markPrice,
                 leverage      = item.Leverage,
+                initial_sl_pct = _protectionConfig.InitialSlPct,   // 給 r14 max_loss_per_trade_pct 用
                 perp = new { balance, available_margin = available, positions = perpPositions },
             });
             var riskResult = await _dispatcher.DispatchAsync(BuildRequest("risk.check", "pre_perp_order", riskPayload));

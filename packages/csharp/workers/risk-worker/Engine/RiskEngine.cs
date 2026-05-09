@@ -19,9 +19,12 @@ namespace RiskWorker.Engine;
 ///
 /// 規則類型（perp, 走 CheckPerp 路徑）：
 /// - max_leverage:              開倉允許的最高槓桿倍數
-/// - max_total_notional:        所有開倉名目（USDT）+ 本筆名目的上限
+/// - max_total_notional:        所有開倉的「淨曝險」名目（每 symbol |long-short| 加總、
+///                              對沖友善：同 symbol 多空互抵）+ 本筆預判
 /// - max_liquidation_distance:  最低可接受的「mark→liq」距離百分比；
 ///                              預估值 = (1/leverage − 0.005) × 100，過低就拒
+/// - max_loss_per_trade_pct:    單筆預估最大損 ≤ 合約資金 N%（用 InitialSlPct 線性估）
+/// - max_positions_per_side:    同方向最多 N 倉；若反向有 K 倉則放寬到 N+K（淨方向 ≤ N）
 /// 注意：perp 的「平倉」（SELL+LONG / BUY+SHORT）永遠放行——任何規則都不該擋出場、
 /// 否則就跑不掉爛單。CheckPerp 會在最前面短路掉這種請求。
 /// </summary>
@@ -307,7 +310,8 @@ public class RiskEngine
         decimal quantity,
         decimal estimatedPrice,
         int leverage,
-        PerpetualSnapshot snapshot)
+        PerpetualSnapshot snapshot,
+        decimal initialSlPct = 5m)   // 從 broker 的 protection_config 帶來、給 max_loss_per_trade_pct 用
     {
         // hedge mode：(side, positionSide) 組合決定開/平。平倉永遠放行——擋不出場才是真風險。
         var sideUp = side?.ToUpperInvariant() ?? "";
@@ -331,8 +335,10 @@ public class RiskEngine
             var v = rule.Type switch
             {
                 "max_leverage"             => CheckMaxLeverage(rule, leverage),
-                "max_total_notional"       => CheckMaxTotalNotional(rule, orderNotional, snapshot),
+                "max_total_notional"       => CheckMaxTotalNotional(rule, symbol, psUp, orderNotional, snapshot),
                 "max_liquidation_distance" => CheckMaxLiquidationDistance(rule, leverage),
+                "max_loss_per_trade_pct"   => CheckMaxLossPerTradePct(rule, orderNotional, initialSlPct, snapshot),
+                "max_positions_per_side"   => CheckMaxPositionsPerSide(rule, psUp, snapshot),
                 _ => null
             };
             if (v != null) violations.Add(v);
@@ -354,16 +360,72 @@ public class RiskEngine
         };
     }
 
-    private RiskViolation? CheckMaxTotalNotional(RiskRule rule, decimal orderNotional, PerpetualSnapshot snap)
+    private RiskViolation? CheckMaxTotalNotional(RiskRule rule, string orderSymbol, string orderPositionSide, decimal orderNotional, PerpetualSnapshot snap)
     {
-        var existing = snap.Positions.Sum(p => p.Notional);
-        var total = existing + orderNotional;
-        if (total <= rule.Threshold) return null;
+        // 用「淨曝險」算總名目：每個 symbol 的 long 跟 short 互相抵銷、再加總跨 symbol。
+        // 這樣對沖部位（同 symbol 多空都有）對 r12 的計入就只剩|long-short|、給策略留空間做避險。
+        // 純單邊（沒對沖）行為跟 gross 完全一樣。
+        decimal netSum = 0m;
+        var symbols = snap.Positions.Select(p => p.Symbol).Append(orderSymbol).Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (var sym in symbols)
+        {
+            var symLong = snap.Positions
+                .Where(p => p.Symbol.Equals(sym, StringComparison.OrdinalIgnoreCase) && p.PositionSide.Equals("long", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Notional);
+            var symShort = snap.Positions
+                .Where(p => p.Symbol.Equals(sym, StringComparison.OrdinalIgnoreCase) && p.PositionSide.Equals("short", StringComparison.OrdinalIgnoreCase))
+                .Sum(p => p.Notional);
+            // 預判：把這筆新單也加進去算
+            if (sym.Equals(orderSymbol, StringComparison.OrdinalIgnoreCase))
+            {
+                if (orderPositionSide == "LONG") symLong += orderNotional;
+                else if (orderPositionSide == "SHORT") symShort += orderNotional;
+            }
+            netSum += Math.Abs(symLong - symShort);
+        }
+        if (netSum <= rule.Threshold) return null;
         return new RiskViolation
         {
             RuleId = rule.RuleId, RuleName = rule.Name,
-            Message = $"Total perp notional {total:F0} USDT (existing {existing:F0} + new {orderNotional:F0}) exceeds limit {rule.Threshold:F0}",
-            Current = total, Limit = rule.Threshold,
+            Message = $"Net perp notional {netSum:F0} USDT (after this order, hedge-aware) exceeds limit {rule.Threshold:F0}",
+            Current = netSum, Limit = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxLossPerTradePct(RiskRule rule, decimal orderNotional, decimal initialSlPct, PerpetualSnapshot snap)
+    {
+        // 預估單筆最大損失 = 名目 × SL 距離百分比（線性、不考慮 BE 移動跟部分平倉、保守）
+        // 例：0.0001 BTC × $80k = $8 名目；SL 5% → 觸發時損 $0.40
+        // 跟 equity（= snap.Balance）比、超過 threshold% 就拒。equity = 0 時跳過避免除零。
+        if (snap.Balance <= 0m || initialSlPct <= 0m) return null;
+        var estimatedLoss = orderNotional * initialSlPct / 100m;
+        var lossPct = estimatedLoss / snap.Balance * 100m;
+        if (lossPct <= rule.Threshold) return null;
+        return new RiskViolation
+        {
+            RuleId = rule.RuleId, RuleName = rule.Name,
+            Message = $"Estimated loss {estimatedLoss:F2} USDT ({lossPct:F2}% of equity {snap.Balance:F2}, SL {initialSlPct}%) exceeds limit {rule.Threshold:F2}%",
+            Current = lossPct, Limit = rule.Threshold,
+        };
+    }
+
+    private RiskViolation? CheckMaxPositionsPerSide(RiskRule rule, string orderPositionSide, PerpetualSnapshot snap)
+    {
+        // 「同方向最多 N 倉」、但對沖時放寬：
+        // 若反向已有 K 倉、本側上限 = N + K（淨方向部位 ≤ N）。
+        // 若反向 0 倉（純單邊）、就嚴格 N。
+        var sameSideKey = orderPositionSide == "LONG" ? "long" : "short";
+        var oppositeKey = orderPositionSide == "LONG" ? "short" : "long";
+        var sameCount = snap.Positions.Count(p => p.PositionSide.Equals(sameSideKey, StringComparison.OrdinalIgnoreCase));
+        var oppositeCount = snap.Positions.Count(p => p.PositionSide.Equals(oppositeKey, StringComparison.OrdinalIgnoreCase));
+        var effectiveLimit = (int)rule.Threshold + oppositeCount;
+        if (sameCount < effectiveLimit) return null;
+        var hedgeNote = oppositeCount > 0 ? $" (relaxed by {oppositeCount} hedge positions)" : "";
+        return new RiskViolation
+        {
+            RuleId = rule.RuleId, RuleName = rule.Name,
+            Message = $"Already holding {sameCount} {sameSideKey} positions (limit {(int)rule.Threshold}{hedgeNote})",
+            Current = sameCount, Limit = effectiveLimit,
         };
     }
 
@@ -433,5 +495,9 @@ public class RiskEngine
         new() { RuleId = "r12", Name = "Max Perp Total Notional",   Type = "max_total_notional",      Threshold = 1000 },
         // r13: 最低距離爆倉 5%——10x 預估 ~9.5% 過、20x ~4.5% 擋。算保守。
         new() { RuleId = "r13", Name = "Min Liquidation Distance",  Type = "max_liquidation_distance",Threshold = 5 },
+        // r14: 單筆預估損 ≤ 合約資金 2%（用 InitialSlPct 線性估、保守）
+        new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = 2 },
+        // r15: 同方向最多 5 倉；對沖時放寬到 5+反向倉數
+        new() { RuleId = "r15", Name = "Max Positions Per Side",    Type = "max_positions_per_side",  Threshold = 5 },
     };
 }
