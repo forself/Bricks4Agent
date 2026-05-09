@@ -115,11 +115,21 @@ public class AutoTraderService : BackgroundService
     // 風險：cycle 間隔 5 分鐘期間若有 flash crash，會錯過。配 B1 circuit breaker 為兜底。
     public class ProtectionConfig
     {
-        public decimal InitialSlPct        { get; init; }  // 進場時 SL 距離 entry 的 %
+        public decimal InitialSlPct        { get; init; }  // 進場時 SL 距離 entry 的 %（fixed fallback）
         public decimal PartialExitPct      { get; init; }  // 漲 ≥ 此 % 觸發部分平倉
         public decimal PartialExitRatio    { get; init; }  // 部分平倉的數量比例 [0, 1]
         public decimal BreakevenTriggerPct { get; init; }  // 漲 ≥ 此 % SL 移到 BE
         public decimal BreakevenBufferPct  { get; init; }  // BE 上方留多少 buffer（避免價差掃損）
+
+        /// <summary>
+        /// ATR-based SL multiplier。&gt; 0 啟用 ATR 模式：SL = entry ± multiplier × ATR；
+        /// 同時把 effective SL% clamp 在 [InitialSlPct × 0.5, InitialSlPct × 3] 之間（ATR 太小被太緊、太大被慘賠保護）。
+        /// 0 / 沒設 → 維持原 InitialSlPct fixed mode。預設 0（向後相容）。
+        /// 推薦值 2.0-2.5：14-period ATR 在多數 regime 下、2× ATR 約等於 fixed 5%。
+        /// </summary>
+        public decimal AtrSlMultiplier     { get; init; }
+        public int     AtrPeriod           { get; init; }
+        public string  AtrInterval         { get; init; } = "1h";
     }
 
     public class PositionProtectionState
@@ -495,6 +505,9 @@ public class AutoTraderService : BackgroundService
         PartialExitRatio    = ParseRatioEnv("AUTOTRADER_PARTIAL_EXIT_RATIO",  defaultValue: 0.5m),
         BreakevenTriggerPct = ParsePctEnv("AUTOTRADER_BREAKEVEN_TRIGGER_PCT", defaultValue: 3m,    min: 0.5m, max: 100m),
         BreakevenBufferPct  = ParsePctEnv("AUTOTRADER_BREAKEVEN_BUFFER_PCT",  defaultValue: 0.5m,  min: 0m,   max: 10m),
+        AtrSlMultiplier     = ParsePctEnv("AUTOTRADER_ATR_SL_MULTIPLIER",     defaultValue: 0m,    min: 0m,   max: 10m),
+        AtrPeriod           = (int)ParsePctEnv("AUTOTRADER_ATR_PERIOD",       defaultValue: 14m,   min: 5m,   max: 100m),
+        AtrInterval         = Environment.GetEnvironmentVariable("AUTOTRADER_ATR_INTERVAL") ?? "1h",
     };
 
     internal static decimal ParsePctEnv(string envName, decimal defaultValue, decimal min, decimal max)
@@ -1144,14 +1157,25 @@ public class AutoTraderService : BackgroundService
         var key = $"{ownerPrincipalId}:{exchange}:{symbol}:{side}";
         var now = DateTime.UtcNow;
         var isLong = side == "long";
+
+        // 沒 state（新部位）才需要 fetch ATR——既有 state 不重算 SL；reset 時用 cache hit 不會重打 quote
+        decimal effectiveSlPct;
+        if (_perpPositionState.ContainsKey(key))
+            effectiveSlPct = _protectionConfig.InitialSlPct;  // 不會用到、僅為 lambda capture
+        else
+            effectiveSlPct = await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct);
+
         var state = _perpPositionState.GetOrAdd(key, _ =>
         {
             var initialSl = isLong
-                ? entryPrice * (1m - _protectionConfig.InitialSlPct / 100m)
-                : entryPrice * (1m + _protectionConfig.InitialSlPct / 100m);
+                ? entryPrice * (1m - effectiveSlPct / 100m)
+                : entryPrice * (1m + effectiveSlPct / 100m);
+            var slMode = _protectionConfig.AtrSlMultiplier > 0
+                && Math.Abs(effectiveSlPct - _protectionConfig.InitialSlPct) > 0.01m
+                ? $"ATR×{_protectionConfig.AtrSlMultiplier}" : "fixed";
             _logger.LogInformation(
-                "Perp protection state init for {Key}: entry={Entry:F4}, SL={Sl:F4} ({Pct}% {Dir} entry, lev {Lev}x)",
-                key, entryPrice, initialSl, _protectionConfig.InitialSlPct, isLong ? "below" : "above", leverage);
+                "Perp protection state init for {Key}: entry={Entry:F4}, SL={Sl:F4} ({Pct:F2}% {Dir} entry, lev {Lev}x, mode={Mode})",
+                key, entryPrice, initialSl, effectiveSlPct, isLong ? "below" : "above", leverage, slMode);
             return new PerpetualPositionState
             {
                 OwnerPrincipalId = ownerPrincipalId,
@@ -1163,14 +1187,17 @@ public class AutoTraderService : BackgroundService
             };
         });
 
-        // entry 變了（加倉）→ reset state
+        // entry 變了（加倉）→ reset state、重用同 effectiveSlPct（短期內 ATR 不會大變）
         if (state.EntryPrice != entryPrice && entryPrice > 0m)
         {
-            _logger.LogInformation("Perp entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL", key, state.EntryPrice, entryPrice);
+            // 加倉路徑要重新算（因為新 entry、ATR cache 還在）
+            if (_protectionConfig.AtrSlMultiplier > 0)
+                effectiveSlPct = await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct);
+            _logger.LogInformation("Perp entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL ({Pct:F2}%)", key, state.EntryPrice, entryPrice, effectiveSlPct);
             state.EntryPrice = entryPrice;
             state.SlPrice = isLong
-                ? entryPrice * (1m - _protectionConfig.InitialSlPct / 100m)
-                : entryPrice * (1m + _protectionConfig.InitialSlPct / 100m);
+                ? entryPrice * (1m - effectiveSlPct / 100m)
+                : entryPrice * (1m + effectiveSlPct / 100m);
             state.PartialExited = false; state.BeMoved = false; state.PeakMark = markPrice;
         }
 
@@ -1532,6 +1559,83 @@ public class AutoTraderService : BackgroundService
     ///
     /// 翻倉等下次 cycle 才開、避免一次 cycle 內連續打交易所。
     /// </summary>
+    // A2 ATR cache：避免每次 sweep 都打 quote.indicator（4 watches × N sweeps/天 = 太多呼叫）
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (decimal AtrPct, DateTime At)> _atrCache = new();
+    private static readonly TimeSpan AtrCacheTtl = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// 計算進場 SL 應該距離 entry 幾 %。
+    /// AtrSlMultiplier ≤ 0 → 走 fixed `InitialSlPct`（向後相容）。
+    /// AtrSlMultiplier &gt; 0 → 從 quote-worker 拉 ATR(period)、回 multiplier × ATR / entry × 100；
+    /// clamp 在 [InitialSlPct × 0.5, InitialSlPct × 3] 防 ATR 異常給出極端值。
+    /// 任何失敗 → fallback InitialSlPct（fail-safe，real money 不該因為 quote 沒回就拒開倉）。
+    /// </summary>
+    private async Task<decimal> ComputeEffectiveSlPctAsync(string exchange, string symbol, decimal entryPrice, CancellationToken ct)
+    {
+        var cfg = _protectionConfig;
+        if (cfg.AtrSlMultiplier <= 0m || entryPrice <= 0m)
+            return cfg.InitialSlPct;
+
+        var cacheKey = $"{exchange}:{symbol}:{cfg.AtrInterval}:{cfg.AtrPeriod}";
+        var now = DateTime.UtcNow;
+        if (_atrCache.TryGetValue(cacheKey, out var cached) && now - cached.At < AtrCacheTtl)
+            return ClampAtrPct(cached.AtrPct, cfg.InitialSlPct);
+
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol,
+                interval = cfg.AtrInterval,
+                limit = Math.Max(cfg.AtrPeriod * 4, 50),
+                period = cfg.AtrPeriod,
+            });
+            var req = new BrokerCore.Contracts.ApprovedRequest
+            {
+                RequestId = Guid.NewGuid().ToString("N"),
+                CapabilityId = "quote.indicator", Route = "atr", Payload = payload,
+                Scope = "{}", PrincipalId = "system",
+                TaskId = "auto-trader-atr", SessionId = "auto-trader-atr",
+            };
+            var result = await _dispatcher.DispatchAsync(req);
+            if (!result.Success)
+            {
+                _logger.LogDebug("ATR fetch failed for {Sym} ({Iv}): {Err}; falling back to fixed",
+                    symbol, cfg.AtrInterval, result.ErrorMessage);
+                return cfg.InitialSlPct;
+            }
+            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            if (!doc.TryGetProperty("series", out var series) || series.ValueKind != JsonValueKind.Array)
+                return cfg.InitialSlPct;
+            var arr = series.EnumerateArray().ToList();
+            if (arr.Count == 0) return cfg.InitialSlPct;
+            // 取最後一筆 ATR 值
+            if (!arr[^1].TryGetProperty("value", out var av)) return cfg.InitialSlPct;
+            var lastAtr = av.GetDecimal();
+            if (lastAtr <= 0m) return cfg.InitialSlPct;
+
+            var atrSlPct = cfg.AtrSlMultiplier * lastAtr / entryPrice * 100m;
+            _atrCache[cacheKey] = (atrSlPct, now);
+            var clamped = ClampAtrPct(atrSlPct, cfg.InitialSlPct);
+            _logger.LogInformation(
+                "ATR-based SL for {Sym} ({Iv}, period={P}): ATR={Atr:F4} entry={Ent:F4} mult={M} → raw={Raw:F2}% clamped={Cl:F2}%",
+                symbol, cfg.AtrInterval, cfg.AtrPeriod, lastAtr, entryPrice, cfg.AtrSlMultiplier, atrSlPct, clamped);
+            return clamped;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ComputeEffectiveSlPctAsync failed for {Sym}, fallback fixed", symbol);
+            return cfg.InitialSlPct;
+        }
+    }
+
+    private static decimal ClampAtrPct(decimal pct, decimal fixedPct)
+    {
+        var lo = fixedPct * 0.5m;
+        var hi = fixedPct * 3m;
+        return Math.Max(lo, Math.Min(hi, pct));
+    }
+
     /// <summary>
     /// 取得 / 建立今日 UTC 開盤 balance（給 r16 daily_loss circuit breaker 用），
     /// 計算 (current - today_open) / today_open × 100。
