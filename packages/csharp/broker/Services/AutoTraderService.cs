@@ -379,16 +379,20 @@ public class AutoTraderService : BackgroundService
         return new ProtectionDecision { Action = ProtectionAction.None, PnlPct = pnlPct };
     }
 
+    private readonly ExchangeCredentialService? _credentials;
+
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
         BrokerDb db,
-        ILogger<AutoTraderService> logger)
+        ILogger<AutoTraderService> logger,
+        ExchangeCredentialService? credentials = null)
     {
         _dispatcher = dispatcher;
         _registry   = registry;
         _db         = db;
         _logger     = logger;
+        _credentials = credentials;
 
         var forceRaw = Environment.GetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION")?.Trim().ToLowerInvariant();
         if (forceRaw == "buy" || forceRaw == "sell")
@@ -1514,9 +1518,14 @@ public class AutoTraderService : BackgroundService
             return;
         }
 
-        // 拉現有部位
+        // A2.5b：以 watch.OwnerPrincipalId 找 user 自己的 BingX credential。沒設就 fallback env 預設 client。
+        var creds = BuildCredentialsObject(item.OwnerPrincipalId, item.Exchange);
+
+        // 拉現有部位（用 user credential、看得到 user 自己的倉）
         var posResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_positions",
-            JsonSerializer.Serialize(new { exchange = item.Exchange })));
+            creds == null
+                ? JsonSerializer.Serialize(new { exchange = item.Exchange })
+                : JsonSerializer.Serialize(new { exchange = item.Exchange, __credentials = creds })));
         if (!posResult.Success)
         {
             AddLog(item, "skip", $"perp get_positions failed: {posResult.ErrorMessage}");
@@ -1635,8 +1644,11 @@ public class AutoTraderService : BackgroundService
                 }
             }
             // account 也撈一下、給未來規則用（目前 3 條規則沒用到 balance、但留 payload 給後續）
+            // 帶 user 自己的 credential、balance 才是 user 真實帳戶餘額
             var accResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_account",
-                JsonSerializer.Serialize(new { exchange = item.Exchange })));
+                creds == null
+                    ? JsonSerializer.Serialize(new { exchange = item.Exchange })
+                    : JsonSerializer.Serialize(new { exchange = item.Exchange, __credentials = creds })));
             if (accResult.Success)
             {
                 var ad = JsonDocument.Parse(accResult.ResultPayload ?? "{}").RootElement;
@@ -1683,17 +1695,31 @@ public class AutoTraderService : BackgroundService
             // riskResult.Success == false → risk-worker 不在線；保留 fail-open 行為跟 spot 路徑一致
         }
 
-        var perpPayload = JsonSerializer.Serialize(new
-        {
-            exchange = item.Exchange,
-            symbol = item.Symbol,
-            side = perpSide,
-            position_side = perpPosSide,
-            order_type = "market",
-            quantity = qtyToUse,
-            leverage = item.Leverage,
-            reduce_only = reduceOnly,
-        });
+        // 真開單——帶 user credential 才會走到 user 自己的帳戶
+        var perpPayload = creds == null
+            ? JsonSerializer.Serialize(new
+            {
+                exchange = item.Exchange,
+                symbol = item.Symbol,
+                side = perpSide,
+                position_side = perpPosSide,
+                order_type = "market",
+                quantity = qtyToUse,
+                leverage = item.Leverage,
+                reduce_only = reduceOnly,
+            })
+            : JsonSerializer.Serialize(new
+            {
+                exchange = item.Exchange,
+                symbol = item.Symbol,
+                side = perpSide,
+                position_side = perpPosSide,
+                order_type = "market",
+                quantity = qtyToUse,
+                leverage = item.Leverage,
+                reduce_only = reduceOnly,
+                __credentials = creds,
+            });
         var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", perpPayload));
         if (orderResult.Success)
         {
@@ -1732,6 +1758,19 @@ public class AutoTraderService : BackgroundService
             CapabilityId = capabilityId, Route = route, Payload = payload,
             Scope = "{}", PrincipalId = "system", TaskId = "auto-trader", SessionId = "auto-trader"
         };
+
+    /// <summary>
+    /// A2.5b：建 trading.perpetual dispatch 用的 __credentials object。
+    /// 找不到（用戶沒設 credential / service 沒注入）回 null、worker 端 fallback env 預設 client。
+    /// 找到回 anon object {api_key, api_secret, is_demo}、可直接拼進 payload。
+    /// </summary>
+    private object? BuildCredentialsObject(string ownerPrincipalId, string exchange)
+    {
+        if (_credentials == null) return null;
+        var dec = _credentials.Resolve(ownerPrincipalId, exchange);
+        if (dec == null) return null;
+        return new { api_key = dec.ApiKey, api_secret = dec.ApiSecret, is_demo = dec.IsDemo };
+    }
 
     private void AddLog(WatchItem item, string action, string message)
     {

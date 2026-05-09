@@ -104,7 +104,7 @@ public class AutoTraderServiceTests
         var svc = MakeService(db);
         svc.AddWatch("AAPL", "alpaca");
 
-        var removed = svc.RemoveWatch("AAPL", "alpaca");
+        var (removed, _) = svc.RemoveWatch("AAPL", "alpaca");
 
         removed.Should().BeTrue();
         db.GetAll<AutoTradeWatchEntry>().Should().BeEmpty();

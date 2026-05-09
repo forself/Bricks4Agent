@@ -23,12 +23,20 @@ namespace TradingWorker.Handlers;
 public class TradingPerpetualHandler : ICapabilityHandler
 {
     private readonly Dictionary<string, IPerpetualClient> _clients;
+    private readonly Microsoft.Extensions.Logging.ILoggerFactory? _loggerFactory;
+
+    // ── ad-hoc per-user client cache（A2.5b 2026-05-10）──
+    // 用 (exchange, sha256(apiKey)[:16], isDemo) 當 key、避免每筆請求 rebuild HttpClient + BingxClient。
+    // 沒有 TTL——容器活著就快取在；容器重啟自動清。同 user 兩支 key 切換時各自一個 entry、互不干擾。
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IPerpetualClient> _adhocClients = new();
 
     public string CapabilityId => "trading.perpetual";
 
-    public TradingPerpetualHandler(Dictionary<string, IPerpetualClient> clients)
+    public TradingPerpetualHandler(Dictionary<string, IPerpetualClient> clients,
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         _clients = clients;
+        _loggerFactory = loggerFactory;
     }
 
     public async Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -251,6 +259,21 @@ public class TradingPerpetualHandler : ICapabilityHandler
     {
         var exchange = opts.TryGetProperty("exchange", out var e) ? e.GetString() ?? "" : "";
         if (string.IsNullOrEmpty(exchange)) exchange = _clients.Keys.FirstOrDefault() ?? "";
+
+        // A2.5b：payload 帶 __credentials 就用 user 自己的 key 建 ad-hoc client；不帶就 fallback env-config 預設。
+        if (opts.TryGetProperty("__credentials", out var creds) && creds.ValueKind == JsonValueKind.Object)
+        {
+            var apiKey = creds.TryGetProperty("api_key", out var k) ? k.GetString() ?? "" : "";
+            var apiSecret = creds.TryGetProperty("api_secret", out var s) ? s.GetString() ?? "" : "";
+            var isDemo = creds.TryGetProperty("is_demo", out var d) && d.GetBoolean();
+            if (!string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(apiSecret))
+            {
+                c = ResolveAdhocClient(exchange, apiKey, apiSecret, isDemo);
+                err = null;
+                return c != null || (err = $"no ad-hoc support for exchange '{exchange}'") == null;
+            }
+        }
+
         if (!_clients.TryGetValue(exchange, out var found))
         {
             c = null; err = $"perpetual exchange not configured: {exchange}";
@@ -258,6 +281,33 @@ public class TradingPerpetualHandler : ICapabilityHandler
         }
         c = found; err = null;
         return true;
+    }
+
+    private IPerpetualClient? ResolveAdhocClient(string exchange, string apiKey, string apiSecret, bool isDemo)
+    {
+        // 不洩漏 api_key 完整值給 cache key——hash 一次取前 16 byte hex 就夠抗碰撞
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var keyHash = Convert.ToHexString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(apiKey)))[..16].ToLowerInvariant();
+        var cacheKey = $"{exchange.ToLowerInvariant()}:{keyHash}:{isDemo}";
+
+        return _adhocClients.GetOrAdd(cacheKey, _ => BuildAdhocClient(exchange, apiKey, apiSecret, isDemo))!;
+    }
+
+    private IPerpetualClient? BuildAdhocClient(string exchange, string apiKey, string apiSecret, bool isDemo)
+    {
+        var ex = exchange.ToLowerInvariant();
+        if (ex == "bingx")
+        {
+            // 重新 new 一個 HttpClient — BingxPerpetualClient 自己持有、不跟其他 client 共享 connection pool
+            // 是必要的（不然 cancel 一個會牽連到別人）
+            var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var logger = _loggerFactory != null
+                ? Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger<TradingWorker.Exchange.BingxPerpetualClient>(_loggerFactory)
+                : Microsoft.Extensions.Logging.Abstractions.NullLogger<TradingWorker.Exchange.BingxPerpetualClient>.Instance;
+            return new TradingWorker.Exchange.BingxPerpetualClient(http, logger, apiKey, apiSecret, isDemo);
+        }
+        // binance / alpaca: 之後實作（Phase A2.5c 之類）
+        return null;
     }
 
     private static object SerializeOrder(PerpetualOrder o) => new

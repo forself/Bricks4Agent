@@ -138,7 +138,7 @@ var host = new WorkerHost(options, logger);
 host.RegisterHandler(new TradingOrderHandler(clients, tradingDb));
 host.RegisterHandler(new TradingAccountHandler(clients, tradingDb));
 if (perpClients.Count > 0)
-    host.RegisterHandler(new TradingPerpetualHandler(perpClients));
+    host.RegisterHandler(new TradingPerpetualHandler(perpClients, loggerFactory));
 
 // ── Fill Poller（背景輪詢未成交訂單，把 fill 寫進 trades 表）──────────
 var fillPollerLogger = loggerFactory.CreateLogger<FillPollerService>();

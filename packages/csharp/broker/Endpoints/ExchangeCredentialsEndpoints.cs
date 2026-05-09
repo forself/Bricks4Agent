@@ -2,6 +2,9 @@ using System.Text.Json;
 using Broker.Helpers;
 using Broker.Middleware;
 using Broker.Services;
+using BrokerCore.Contracts;
+using BrokerCore.Services;
+using FunctionPool.Registry;
 
 namespace Broker.Endpoints;
 
@@ -123,30 +126,58 @@ public static class ExchangeCredentialsEndpoints
             catch (UnauthorizedAccessException) { return Results.Json(ApiResponseHelper.Error("Not your credential", 403), statusCode: 403); }
         });
 
-        ec.MapPost("/{entryId}/test", (ExchangeCredentialService svc, HttpContext ctx, string entryId) =>
+        ec.MapPost("/{entryId}/test", async (ExchangeCredentialService svc, IExecutionDispatcher dispatcher,
+            IWorkerRegistry registry, HttpContext ctx, string entryId, CancellationToken ct) =>
         {
-            // A2.5b 會接 trading-worker 真做 get_account 驗證；現在僅做「能解密」檢查當 placeholder
             var (pid, role) = ctx.GetCurrentUser();
             if (pid == null) return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var isAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+
+            var existing = svc.ListForViewer(pid, isAdmin).FirstOrDefault(r => r.EntryId == entryId);
+            if (existing == null)
+                return Results.NotFound(ApiResponseHelper.Error("Credential not found"));
+
+            var dec = svc.Resolve(existing.OwnerPrincipalId, existing.Exchange, existing.IsDemo);
+            if (dec == null)
+                return Results.Ok(ApiResponseHelper.Error("Decryption failed — master key may have changed"));
+
+            if (!registry.HasAvailableWorker("trading.perpetual"))
+                return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
+
+            // 真打 BingX：dispatch get_account 帶 __credentials
+            var payload = JsonSerializer.Serialize(new
+            {
+                exchange = dec.Exchange,
+                __credentials = new { api_key = dec.ApiKey, api_secret = dec.ApiSecret, is_demo = dec.IsDemo },
+            });
+            var result = await dispatcher.DispatchAsync(new ApprovedRequest
+            {
+                RequestId = Guid.NewGuid().ToString("N"),
+                CapabilityId = "trading.perpetual", Route = "get_account", Payload = payload,
+                Scope = "{}", PrincipalId = pid, TaskId = "credential-test", SessionId = "credential-test",
+            });
+            if (!result.Success)
+                return Results.Ok(ApiResponseHelper.Error("Exchange call failed: " + result.ErrorMessage));
+
             try
             {
-                var existing = svc.ListForViewer(pid, string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase))
-                    .FirstOrDefault(r => r.EntryId == entryId);
-                if (existing == null)
-                    return Results.NotFound(ApiResponseHelper.Error("Credential not found"));
-                var dec = svc.Resolve(existing.OwnerPrincipalId, existing.Exchange, existing.IsDemo);
-                if (dec == null)
-                    return Results.Ok(ApiResponseHelper.Error("Decryption failed — master key may have changed"));
+                var accDoc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
                 return Results.Ok(ApiResponseHelper.Success(new
                 {
                     decrypt_ok = true,
-                    api_key_preview = dec.ApiKey.Length > 10
-                        ? dec.ApiKey[..6] + "..." + dec.ApiKey[^4..]
-                        : "(short)",
-                    note = "Real exchange API check (get_account) wires up in A2.5b.",
+                    exchange_call_ok = true,
+                    api_key_preview = dec.ApiKey.Length > 10 ? dec.ApiKey[..6] + "..." + dec.ApiKey[^4..] : "(short)",
+                    account = new
+                    {
+                        balance       = accDoc.TryGetProperty("balance",          out var b)  ? b.GetDecimal()  : 0m,
+                        equity        = accDoc.TryGetProperty("equity",           out var eq) ? eq.GetDecimal() : 0m,
+                        available     = accDoc.TryGetProperty("available_margin", out var a)  ? a.GetDecimal()  : 0m,
+                        is_demo       = accDoc.TryGetProperty("is_demo",          out var d)  && d.GetBoolean(),
+                        positions     = accDoc.TryGetProperty("open_positions_count", out var p) ? p.GetInt32() : 0,
+                    },
                 }));
             }
-            catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error(ex.Message)); }
+            catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error("Parse failed: " + ex.Message)); }
         });
     }
 }
