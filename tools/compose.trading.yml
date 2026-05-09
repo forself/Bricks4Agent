@@ -144,6 +144,13 @@ services:
       # auto-discovering b4a-* containers spawned by compose (not by broker itself).
       # Read-only is sufficient for inspection-only usage (ListManagedAsync + GetStatsAsync).
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Docker socket 在 host 上 owned by root:docker (gid 112 on Ubuntu 24.04)，
+    # broker 容器內的 broker user (uid 10002) 不在這個 group → 讀不到 socket →
+    # ContainerManager 報「Container runtime unavailable」critical。
+    # 加 host docker GID 進來、broker 就讀得到。不同 distro GID 不同，可用 env 覆蓋：
+    #   .env.trading 加 DOCKER_GID=$(getent group docker | cut -d: -f3) 一次定義
+    group_add:
+      - "${DOCKER_GID:-112}"
     networks:
       - trading-net
     restart: unless-stopped
