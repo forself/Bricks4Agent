@@ -248,6 +248,56 @@ public static class AdminEndpoints
             if (!ok) return Results.BadRequest(ApiResponseHelper.Error("approval_id not found or already decided"));
             return Results.Ok(ApiResponseHelper.Success(new { approval_id = id, status = "rejected" }));
         });
+
+        // ── 核准 + 立刻派發（一鍵閉環）──
+        // 把「approve → caller retry」兩步合一：dispatcher 看到 status='approved' 直接放行
+        // 派發時 PrincipalId 仍用原申請者、責任歸屬正確；audit 自動寫 DISPATCH_APPROVED + STARTED + SUCCEEDED
+        admin.MapPost("/approvals/{id}/approve-and-dispatch", async (string id, HttpContext ctx,
+            IApprovalService aprSvc, BrokerCore.Services.IExecutionDispatcher dispatcher) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            var by = RequestBodyHelper.GetPrincipalId(ctx);
+
+            var apr = aprSvc.Get(id);
+            if (apr == null) return Results.BadRequest(ApiResponseHelper.Error("approval_id not found"));
+            if (apr.Status == "rejected")
+                return Results.BadRequest(ApiResponseHelper.Error("approval already rejected; cannot dispatch"));
+
+            // 還在 pending → 先 approve；若已 approved 則直接 dispatch（idempotent retry 友善）
+            if (apr.Status == "pending")
+            {
+                if (!aprSvc.Approve(id, by, reason))
+                    return Results.BadRequest(ApiResponseHelper.Error("approve failed"));
+            }
+
+            // 用原申請者的 (PrincipalId, Role, TraceId) 派發、PoolDispatcher 看到 approved 會放行
+            var req = new BrokerCore.Contracts.ApprovedRequest
+            {
+                RequestId    = Guid.NewGuid().ToString("N"),
+                CapabilityId = apr.CapabilityId,
+                Route        = apr.Route,
+                Payload      = apr.Payload,
+                Scope        = "{}",
+                PrincipalId  = apr.PrincipalId,
+                TaskId       = "approval-dispatch",
+                SessionId    = "approval-dispatch",
+                Role         = apr.Role,
+                TraceId      = apr.TraceId,   // 同 trace、Gantt 上接續
+            };
+            var result = await dispatcher.DispatchAsync(req);
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                approval_id = id,
+                status = "approved",
+                dispatch_success = result.Success,
+                dispatch_error = result.Success ? null : result.ErrorMessage,
+                trace_id = apr.TraceId,
+                result_payload = result.Success ? result.ResultPayload : null,
+            }));
+        });
     }
 
     /// <summary>

@@ -581,11 +581,15 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 <span v-else style="color:var(--td)">—</span>
               </template>
             </el-table-column>
-            <el-table-column :label="t('actions')" width="160" align="right">
+            <el-table-column :label="t('actions')" width="240" align="right">
               <template #default="{row}">
                 <template v-if="row.status==='pending'">
+                  <el-button type="success" size="small" @click="doApproveAndDispatch(row)" :title="t('aprApproveAndExec')">{{t('aprApproveAndExec')}}</el-button>
                   <el-button type="success" size="small" plain @click="doApprove(row)">{{t('aprApprove')}}</el-button>
                   <el-button type="danger" size="small" plain @click="doReject(row)">{{t('aprReject')}}</el-button>
+                </template>
+                <template v-else-if="row.status==='approved'">
+                  <el-button type="primary" size="small" plain @click="doDispatchOnly(row)">{{t('aprDispatchNow')}}</el-button>
                 </template>
                 <span v-else-if="row.decision_reason" style="font-size:11px;color:var(--td)" :title="row.decision_reason">{{row.decision_reason.slice(0,30)}}</span>
               </template>
@@ -1658,6 +1662,7 @@ const I18N={
     aprStatusFilter:'狀態',aprPending:'待審',aprApproved:'已核准',aprRejected:'已拒絕',
     aprRequestedAt:'申請時間',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'裁決者',
     aprApprove:'核准',aprReject:'拒絕',
+    aprApproveAndExec:'核准並執行',aprDispatchNow:'立刻執行',
     aprApproveReason:'核准原因（可空）：',aprRejectReason:'拒絕原因（可空）：',
     aprEmpty:'視窗內無待審請求',
     aclRules:'ACL 角色規則',
@@ -1765,6 +1770,7 @@ const I18N={
     aprStatusFilter:'Status',aprPending:'Pending',aprApproved:'Approved',aprRejected:'Rejected',
     aprRequestedAt:'Requested',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'Decided by',
     aprApprove:'Approve',aprReject:'Reject',
+    aprApproveAndExec:'Approve & run',aprDispatchNow:'Run now',
     aprApproveReason:'Approval reason (optional):',aprRejectReason:'Rejection reason (optional):',
     aprEmpty:'No approval requests in this window',
     aclRules:'Role ACL Rules',
@@ -2023,6 +2029,44 @@ const app=createApp({
     }
     function doApprove(row){decideApproval(row,'approve')}
     function doReject(row){decideApproval(row,'reject')}
+
+    // 核准並立刻派發（同一 trace_id 由 PoolDispatcher 看到 approved 直接放行）
+    async function doApproveAndDispatch(row){
+      try{
+        const reason=window.prompt(I18N[lang.value].aprApproveReason||'Reason?','')||null;
+        const r=await fetch(`/api/v1/admin/approvals/${row.approval_id}/approve-and-dispatch`,{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({reason}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.message||'failed');return}
+        if(j.data.dispatch_success){
+          ElementPlus.ElMessage.success(`approved + dispatched · trace=${j.data.trace_id?.slice(0,16)}`);
+        } else {
+          ElementPlus.ElMessage.warning(`approved (dispatch failed): ${j.data.dispatch_error||''}`);
+        }
+        loadApprovals();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    // 對已 approved 的列：純執行、不再 approve
+    async function doDispatchOnly(row){
+      try{
+        const r=await fetch(`/api/v1/admin/approvals/${row.approval_id}/approve-and-dispatch`,{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.message||'failed');return}
+        if(j.data.dispatch_success){
+          ElementPlus.ElMessage.success(`dispatched · trace=${j.data.trace_id?.slice(0,16)}`);
+        } else {
+          ElementPlus.ElMessage.warning(`dispatch failed: ${j.data.dispatch_error||''}`);
+        }
+        loadApprovals();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
 
     // ── Health Score（容器分頁 KPI 卡） ──
     const healthScore=ref(null);
@@ -2838,6 +2882,7 @@ const app=createApp({
       // Approvals + ACL
       approvals,aprLoading,aprFilter,aclRules,aclOverrides,
       loadApprovals,loadAclRules,aprStatusType,doApprove,doReject,
+      doApproveAndDispatch,doDispatchOnly,
       overrideVisible,overrideForm,openOverrideDialog,doAddOverride,removeOverride,
       // Tracing + Topology
       traces,tracesLoading,traceFilter,selectedTraceId,selectedTraceIntegrity,
