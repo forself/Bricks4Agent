@@ -37,17 +37,20 @@ public class PoolDispatcher : IExecutionDispatcher
     private readonly PoolConfig _config;
     private readonly ILogger<PoolDispatcher> _logger;
     private readonly IAuditService? _audit;
+    private readonly ICapabilityAclService? _acl;
 
     public PoolDispatcher(
         IWorkerRegistry registry,
         PoolConfig config,
         ILogger<PoolDispatcher> logger,
-        IAuditService? audit = null)
+        IAuditService? audit = null,
+        ICapabilityAclService? acl = null)
     {
         _registry = registry;
         _config = config;
         _logger = logger;
         _audit = audit;
+        _acl = acl;
     }
 
     /// <summary>是否有指定能力的可用 Worker</summary>
@@ -63,6 +66,24 @@ public class PoolDispatcher : IExecutionDispatcher
         var traceId = string.IsNullOrEmpty(request.TraceId) ? IdGen.New("trc") : request.TraceId;
         var startedAt = DateTime.UtcNow;
         var sw = Stopwatch.StartNew();
+
+        // ── ACL 檢查（fail-open by design）──
+        // role 為空 / admin / system → 永遠 allow；只有 explicit 非 admin role 走白名單檢查。
+        // 不通過 → 寫 DISPATCH_DENIED 進 audit chain、回 ExecutionResult.Fail。
+        if (_acl != null && !_acl.IsAllowed(request.Role, request.CapabilityId))
+        {
+            _logger.LogWarning(
+                "ACL denied: role='{Role}' principal='{Pid}' capability='{Cap}'",
+                request.Role, request.PrincipalId, request.CapabilityId);
+            TryAudit(traceId, "DISPATCH_DENIED", request, details: new
+            {
+                capability = request.CapabilityId,
+                role       = request.Role,
+                reason     = "Capability not allowed for role",
+            });
+            return ExecutionResult.Fail(request.RequestId,
+                $"Capability '{request.CapabilityId}' is not allowed for role '{request.Role}'");
+        }
 
         TryAudit(traceId, "DISPATCH_STARTED", request, details: new
         {

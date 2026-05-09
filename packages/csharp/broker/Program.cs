@@ -166,6 +166,9 @@ else
 builder.Services.AddSingleton<IAuditService>(sp =>
     new AuditService(sp.GetRequiredService<BrokerDb>()));
 
+// ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role） ──
+builder.Services.AddSingleton<ICapabilityAclService, CapabilityAclService>();
+
 // ── Step 5: Capability Catalog + Policy Engine ──
 builder.Services.AddSingleton<ISchemaValidator, SchemaValidator>();
 builder.Services.AddSingleton<ITaskRouter, TaskRouter>();
@@ -350,7 +353,8 @@ if (poolEnabled)
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
-                sp.GetService<IAuditService>());   // 讓 dashboard direct-dispatch 也能被 trace
+                sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
+                sp.GetService<ICapabilityAclService>());   // role-based capability allowlist
             return new StrictPoolDispatcher(
                 poolDispatcher,
                 sp.GetRequiredService<ILogger<StrictPoolDispatcher>>());
@@ -377,7 +381,8 @@ if (poolEnabled)
                 sp.GetRequiredService<IWorkerRegistry>(),
                 poolConfig,
                 sp.GetRequiredService<ILogger<PoolDispatcher>>(),
-                sp.GetService<IAuditService>());   // 讓 dashboard direct-dispatch 也能被 trace
+                sp.GetService<IAuditService>(),    // 讓 dashboard direct-dispatch 也能被 trace
+                sp.GetService<ICapabilityAclService>());   // role-based capability allowlist
             return new FallbackDispatcher(
                 poolDispatcher, inProcess, inProcess.CanHandle,
                 sp.GetRequiredService<ILogger<FallbackDispatcher>>());

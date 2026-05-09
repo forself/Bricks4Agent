@@ -136,6 +136,25 @@ public static class AdminEndpoints
             var epoch = revocationService.GetCurrentEpoch();
             return Results.Ok(ApiResponseHelper.Success(new { current_epoch = epoch }));
         });
+
+        // ── GET /api/v1/admin/acl ──
+        // dump 目前 capability ACL 規則表（給 dashboard 顯示「哪個 role 能呼叫哪些 capability」）
+        admin.MapGet("/acl", (HttpContext ctx, ICapabilityAclService aclService) =>
+        {
+            if (!RequireAdmin(ctx, out var denied)) return denied;
+
+            var rules = aclService.GetRules();
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                rules = rules.Select(kv => new
+                {
+                    role = kv.Key,
+                    patterns = kv.Value,
+                    is_admin_role = kv.Value.Any(p => p == "*"),
+                }),
+                policy = "fail-open: empty role / unknown role → allow; only known non-admin roles enforce whitelist.",
+            }));
+        });
     }
 
     /// <summary>

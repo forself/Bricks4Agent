@@ -40,6 +40,14 @@ public class ApprovedRequest
     public string SessionId { get; set; } = string.Empty;
 
     /// <summary>
+    /// 呼叫者 role（"role_admin" / "role_user" / "system" 等）。
+    /// 加在 ICapabilityAclService 上線時由 dashboard endpoint 從 cookie 寫入；
+    /// BrokerService 16-step PEP 路徑不需要設（PEP 已有自己的 grant/quota 檢查）。
+    /// 空字串 = fail-open（PoolDispatcher 視同管理員）。
+    /// </summary>
+    public string Role { get; set; } = string.Empty;
+
+    /// <summary>
     /// PEP bypass 偵測：記錄建構來源。
     /// 僅在 DEBUG build 中啟用以避免 production 效能影響。
     /// </summary>

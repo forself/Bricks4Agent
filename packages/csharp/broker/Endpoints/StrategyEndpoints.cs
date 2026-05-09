@@ -20,64 +20,64 @@ public static class StrategyEndpoints
 
         strategy.MapPost("/signal", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
 
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "evaluate", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "evaluate", body));
             return ToResponse(result);
         });
 
         strategy.MapPost("/backtest", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
 
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "backtest", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "backtest", body));
             return ToResponse(result);
         });
 
         strategy.MapPost("/optimize", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "optimize", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "optimize", body));
             return ToResponse(result);
         });
 
         strategy.MapPost("/walk-forward", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "walk_forward", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "walk_forward", body));
             return ToResponse(result);
         });
 
         // #1 通用 walk-forward backtest——對任何策略切 train/test 滑窗、給 OOS 績效 + IS-OOS gap
         strategy.MapPost("/backtest-walkforward", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
-            using var reader = new StreamReader(req.Body);
+            using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "backtest_walk_forward", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "backtest_walk_forward", body));
             return ToResponse(result);
         });
 
@@ -102,29 +102,35 @@ public static class StrategyEndpoints
 
         strategy.MapGet("/list", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("strategy.signal"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
 
-            var result = await dispatcher.DispatchAsync(BuildRequest("strategy.signal", "list"));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "list"));
             return ToResponse(result);
         });
     }
 
     private static ApprovedRequest BuildRequest(
-        string capabilityId, string route, string payload = "{}")
-        => new()
+        HttpContext ctx, string capabilityId, string route, string payload = "{}")
+    {
+        // 拿登入 user 的 (principal_id, role)；沒登入或內部呼叫 → fallback "system" / role 留空 = ACL fail-open
+        var pid = RequestBodyHelper.GetPrincipalId(ctx);
+        var role = RequestBodyHelper.GetRoleId(ctx);
+        return new()
         {
             RequestId    = Guid.NewGuid().ToString("N"),
             CapabilityId = capabilityId,
             Route        = route,
             Payload      = payload,
             Scope        = "{}",
-            PrincipalId  = "system",
+            PrincipalId  = string.IsNullOrEmpty(pid) ? "system" : pid,
             TaskId       = "dashboard",
-            SessionId    = "dashboard"
+            SessionId    = "dashboard",
+            Role         = role,
         };
+    }
 
     private static IResult ToResponse(ExecutionResult result)
     {
