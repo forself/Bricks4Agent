@@ -19,22 +19,17 @@ import { callBroker } from './broker.js';
  */
 export const TOOLS = {
   'quote.prices': {
-    description: '取得即時報價。args: {symbols: string[]}（例：["BTC-USDT", "ETH-USDT"]）',
-    dispatch: async (args) => {
-      return await callBroker('POST', '/api/v1/quote/prices', {
-        symbols: args.symbols || [],
-      });
-    },
+    description: '取得 quote-worker 在追蹤的所有 symbol 最新報價。args: {} （不接參數、回所有 watched symbols）',
+    dispatch: async () => callBroker('GET', '/api/v1/workers/quote/prices'),
   },
 
   'quote.ohlcv': {
-    description: '取得 K 線。args: {symbol: string, interval: "1h"|"4h"|"1d", limit: number(<=500)}',
+    description: '取得單一 symbol 的 K 線。args: {symbol: string (例 "BTC-USDT"), interval: "1h"|"4h"|"1d", limit: number(預設 100, max 500)}',
     dispatch: async (args) => {
-      return await callBroker('POST', '/api/v1/quote/ohlcv', {
-        symbol: args.symbol,
-        interval: args.interval || '1h',
-        limit: Math.min(args.limit || 100, 500),
-      });
+      const symbol = encodeURIComponent(args.symbol || '');
+      const interval = encodeURIComponent(args.interval || '1h');
+      const limit = Math.min(parseInt(args.limit, 10) || 100, 500);
+      return await callBroker('GET', `/api/v1/workers/quote/ohlcv/?symbol=${symbol}&interval=${interval}&limit=${limit}`);
     },
   },
 
@@ -51,20 +46,18 @@ export const TOOLS = {
   },
 
   'trading.account': {
-    description: '看 perp 帳戶餘額 + 槓桿。args: {exchange: "bingx"}',
+    description: '看 perp 帳戶餘額 + 可用保證金。args: {exchange: "bingx"}',
     dispatch: async (args) => {
-      return await callBroker('POST', '/api/v1/perpetual/account', {
-        exchange: args.exchange || 'bingx',
-      });
+      const ex = encodeURIComponent(args.exchange || 'bingx');
+      return await callBroker('GET', `/api/v1/perpetual/account?exchange=${ex}`);
     },
   },
 
   'trading.positions': {
     description: '看 perp 部位列表。args: {exchange: "bingx"}',
     dispatch: async (args) => {
-      return await callBroker('POST', '/api/v1/perpetual/positions', {
-        exchange: args.exchange || 'bingx',
-      });
+      const ex = encodeURIComponent(args.exchange || 'bingx');
+      return await callBroker('GET', `/api/v1/perpetual/positions?exchange=${ex}`);
     },
   },
 
@@ -76,7 +69,8 @@ export const TOOLS = {
   'audit.topology': {
     description: '看過去 N 分鐘 capability 派發拓撲（誰呼叫了什麼）。args: {since_minutes: number(default 60)}',
     dispatch: async (args) => {
-      return await callBroker('GET', `/api/v1/audit/topology?since_minutes=${args.since_minutes || 60}`);
+      const since = parseInt(args.since_minutes, 10) || 60;
+      return await callBroker('GET', `/api/v1/audit/topology?since_minutes=${since}`);
     },
   },
 };

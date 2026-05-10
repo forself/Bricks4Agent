@@ -25,7 +25,7 @@ USER claude-user
 
 ENV NODE_ENV=production
 ENV ACCESS_JSON_PATH=/app/access.json
-ENV BOT_PHASE=2
+ENV BOT_PHASE=3
 # 關 claude code auto-update（rootless 容器寫不進 /usr/local/lib/node_modules）
 ENV DISABLE_AUTOUPDATER=1
 
