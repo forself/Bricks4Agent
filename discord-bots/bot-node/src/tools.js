@@ -181,14 +181,27 @@ function extractBalanced(text, startIdx) {
 
 /**
  * 執行 tool call。
+ * @param {{call:string,args:object}} toolCall
+ * @param {{userId:string, isPrivileged:boolean}} caller — 訊息來源者、決定能不能 call 敏感工具
  * @returns {Promise<{ok:boolean, summary:string, data?:any, error?:string}>}
  *   summary = 給 LLM 看的精簡文字（避免塞超大 JSON）
  */
-export async function dispatchTool(toolCall) {
+export async function dispatchTool(toolCall, caller = { userId: '?', isPrivileged: true }) {
   const { call, args } = toolCall;
   const def = TOOLS[call];
   if (!def) {
     return { ok: false, summary: `unknown tool: ${call}`, error: 'unknown_tool' };
+  }
+
+  // 工具層權限：privileged tool（trading.* / audit.*）只放 privileged user 過、
+  // 唯讀 tool（quote.* / strategy.* / health.*）任何頻道成員都能 call。
+  // 這裡擋下來會給 LLM 看到 access_denied、它應該轉成「請聯絡 anthonylee 開帳號」訊息。
+  if (caller.privilegedTool && !caller.isPrivileged) {
+    return {
+      ok: false,
+      summary: `tool=${call} access_denied: this tool requires platform-account-holder privilege. The Discord user (id=${caller.userId}) lacks it. Politely tell them they need a platform account from anthonylee to use trading / audit features.`,
+      error: 'access_denied',
+    };
   }
 
   const result = await def.dispatch(args);

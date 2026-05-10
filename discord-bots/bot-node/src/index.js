@@ -8,7 +8,7 @@
 //   - trading.order 會回 "Pending admin approval, approval_id=X"、由 admin 手動 approve
 
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
-import { loadAccess, isAllowed } from './access.js';
+import { loadAccess, isAllowed, isPrivilegedUser, isPrivilegedTool } from './access.js';
 import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
@@ -129,7 +129,15 @@ client.on(Events.MessageCreate, async (msg) => {
       console.log(`[tool] turn=${turn} call=${toolCall.call} args=${JSON.stringify(toolCall.args).slice(0, 100)}`);
       messages.push({ role: 'assistant', content: result.text });
 
-      const toolResult = await dispatchTool(toolCall);
+      const caller = {
+        userId,
+        isPrivileged: isPrivilegedUser(userId),
+        privilegedTool: isPrivilegedTool(toolCall.call),
+      };
+      if (caller.privilegedTool && !caller.isPrivileged) {
+        console.log(`[acl] tool=${toolCall.call} blocked for non-privileged user=${userId}`);
+      }
+      const toolResult = await dispatchTool(toolCall, caller);
       console.log(`[tool] turn=${turn} ${toolResult.ok ? 'ok' : 'fail'} ${toolResult.error || ''}`);
       messages.push({ role: 'tool', content: toolResult.summary });
     }
