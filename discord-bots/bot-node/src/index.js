@@ -12,6 +12,7 @@ import { loadAccess, isAllowed, isPrivilegedUser, isPrivilegedTool } from './acc
 import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
+import { startApprovalPoller, handleInteraction as handleApprovalInteraction } from './approvals.js';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
@@ -39,6 +40,16 @@ const client = new Client({
 client.once(Events.ClientReady, (c) => {
   console.log(`[bot] logged in as ${c.user.tag} (id=${c.user.id})`);
   console.log(`[bot] in ${c.guilds.cache.size} guilds`);
+  // 開 approval polling — pending approval 推 Discord 按鈕、手機可審
+  startApprovalPoller(client);
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    await handleApprovalInteraction(interaction);
+  } catch (e) {
+    console.error('[interaction] handler error:', e);
+  }
 });
 
 const inFlight = new Set();

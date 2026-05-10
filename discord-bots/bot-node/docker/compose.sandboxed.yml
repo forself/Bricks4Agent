@@ -32,6 +32,11 @@ services:
       - BROKER_URL=http://broker:5000
       # phase 3+：bot 透過此 token 認證跟 broker 之間、broker 端 BOT_INTERNAL_TOKEN env 要相符
       - BOT_INTERNAL_TOKEN=${BOT_INTERNAL_TOKEN}
+      # phase 4+：手機按鈕審核專用（嚴格分離）— bot 拿這把臨時取得 role_admin、call /admin/approvals/*
+      # broker 端對應 env BOT_INTERNAL_ADMIN_TOKEN、不能跟 user token 重複
+      - BOT_INTERNAL_ADMIN_TOKEN=${BOT_INTERNAL_ADMIN_TOKEN}
+      # 把 pending approval push 到哪個頻道（含按鈕、手機點即可審核）
+      - APPROVAL_CHANNEL_ID=${APPROVAL_CHANNEL_ID}
       # claude code v2.1.126 在 rootless container 寫 /usr/local/lib/node_modules 會 EACCES、關 auto-update
       - DISABLE_AUTOUPDATER=1
 
