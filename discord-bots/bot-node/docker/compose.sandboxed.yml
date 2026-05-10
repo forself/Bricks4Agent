@@ -41,9 +41,13 @@ services:
       # Claude Code 訂閱憑證 + plugin cache（吃你 Max 訂閱、不另外付 token 費）
       # 用 rw 因為 claude 會更新 session 紀錄、approved pairings 等。注意：跟既有 claude bot
       # 同份檔案、不要兩個 bot 同時跑（會搶 .credentials lock）。
-      - ${USERPROFILE}/.claude:/home/claude-user/.claude
-      # 種子 .claude.json（如果存在的話）
-      - ${USERPROFILE}/.claude.json:/home/claude-user/.claude.json:ro
+      #
+      # 路徑解析：
+      #   Windows: $env:USERPROFILE = C:\Users\USER (host)
+      #   Linux:   設 BOT_CLAUDE_HOME_DIR=/opt/b4a/data/bot-claude-home（owner uid 10001）
+      #            預設 fallback /opt/b4a/data/bot-claude-home（VPS 標準位置）
+      - ${BOT_CLAUDE_HOME_DIR:-${USERPROFILE:-/opt/b4a/data/bot-claude-home}}/.claude:/home/claude-user/.claude
+      - ${BOT_CLAUDE_HOME_DIR:-${USERPROFILE:-/opt/b4a/data/bot-claude-home}}/.claude.json:/home/claude-user/.claude.json:ro
 
     networks:
       - b4a-trading-net
