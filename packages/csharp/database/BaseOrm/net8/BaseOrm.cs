@@ -64,8 +64,15 @@ public class BaseDb : IDisposable, IAsyncDisposable
     private readonly DbProviderFactory _factory;
     private readonly DbType _dbType;
     private readonly DbDialect _dialect;
-    private DbConnection? _transactionConnection;
-    private DbTransaction? _transaction;
+    // Transaction state per async-call-chain（不能用普通 instance field、會在多個 thread/task
+    // 之間互踩）。Race demo（修之前的 bug）：
+    //   1. Thread A BeginTransaction() 設 _transaction
+    //   2. Thread B Query() 看到 _transaction != null、把 A 的 transaction assign 給自己 command
+    //   3. Thread A Commit() dispose 那個 transaction
+    //   4. Thread B 執行 → "transaction object is not associated with the same connection object"
+    // AsyncLocal<T> 跨 await 仍正確、且每個邏輯 call chain 各自獨立、沒有 lock 也不會互看。
+    private readonly AsyncLocal<DbConnection?> _transactionConnection = new();
+    private readonly AsyncLocal<DbTransaction?> _transaction = new();
 
     public BaseDb(string connectionString)
         : this(connectionString, GetSqliteFactory(), DbType.SQLite)
@@ -237,10 +244,12 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     private DbConnection GetConnection(out bool ownsConnection)
     {
-        if (_transaction != null && _transactionConnection != null)
+        var tx = _transaction.Value;
+        var txConn = _transactionConnection.Value;
+        if (tx != null && txConn != null)
         {
             ownsConnection = false;
-            return _transactionConnection;
+            return txConn;
         }
 
         ownsConnection = true;
@@ -250,9 +259,11 @@ public class BaseDb : IDisposable, IAsyncDisposable
     private async Task<(DbConnection Connection, bool OwnsConnection)> GetConnectionAsync(
         CancellationToken cancellationToken)
     {
-        if (_transaction != null && _transactionConnection != null)
+        var tx = _transaction.Value;
+        var txConn = _transactionConnection.Value;
+        if (tx != null && txConn != null)
         {
-            return (_transactionConnection, false);
+            return (txConn, false);
         }
 
         return (await CreateConnectionAsync(cancellationToken).ConfigureAwait(false), true);
@@ -268,9 +279,10 @@ public class BaseDb : IDisposable, IAsyncDisposable
         var command = connection.CreateCommand();
         command.CommandText = sql;
 
-        if (_transaction != null)
+        var tx = _transaction.Value;
+        if (tx != null)
         {
-            command.Transaction = _transaction;
+            command.Transaction = tx;
         }
 
         if (parameters != null)
@@ -290,9 +302,10 @@ public class BaseDb : IDisposable, IAsyncDisposable
         var command = connection.CreateCommand();
         command.CommandText = sql;
 
-        if (_transaction != null)
+        var tx = _transaction.Value;
+        if (tx != null)
         {
-            command.Transaction = _transaction;
+            command.Transaction = tx;
         }
 
         if (parameters != null)
@@ -946,7 +959,7 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public void BeginTransaction()
     {
-        if (_transaction != null || _transactionConnection != null)
+        if (_transaction.Value != null || _transactionConnection.Value != null)
         {
             throw new InvalidOperationException("A transaction is already active.");
         }
@@ -954,21 +967,21 @@ public class BaseDb : IDisposable, IAsyncDisposable
         var connection = CreateConnection();
         try
         {
-            _transactionConnection = connection;
-            _transaction = connection.BeginTransaction();
+            _transactionConnection.Value = connection;
+            _transaction.Value = connection.BeginTransaction();
         }
         catch
         {
             connection.Dispose();
-            _transactionConnection = null;
-            _transaction = null;
+            _transactionConnection.Value = null;
+            _transaction.Value = null;
             throw;
         }
     }
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
-        if (_transaction != null || _transactionConnection != null)
+        if (_transaction.Value != null || _transactionConnection.Value != null)
         {
             throw new InvalidOperationException("A transaction is already active.");
         }
@@ -976,28 +989,29 @@ public class BaseDb : IDisposable, IAsyncDisposable
         var connection = await CreateConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _transactionConnection = connection;
-            _transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            _transactionConnection.Value = connection;
+            _transaction.Value = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
             await connection.DisposeAsync().ConfigureAwait(false);
-            _transactionConnection = null;
-            _transaction = null;
+            _transactionConnection.Value = null;
+            _transaction.Value = null;
             throw;
         }
     }
 
     public void Commit()
     {
-        if (_transaction == null)
+        var tx = _transaction.Value;
+        if (tx == null)
         {
             return;
         }
 
         try
         {
-            _transaction.Commit();
+            tx.Commit();
         }
         finally
         {
@@ -1007,14 +1021,15 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public async Task CommitAsync(CancellationToken cancellationToken = default)
     {
-        if (_transaction == null)
+        var tx = _transaction.Value;
+        if (tx == null)
         {
             return;
         }
 
         try
         {
-            await _transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -1024,14 +1039,15 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public void Rollback()
     {
-        if (_transaction == null)
+        var tx = _transaction.Value;
+        if (tx == null)
         {
             return;
         }
 
         try
         {
-            _transaction.Rollback();
+            tx.Rollback();
         }
         finally
         {
@@ -1041,14 +1057,15 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public async Task RollbackAsync(CancellationToken cancellationToken = default)
     {
-        if (_transaction == null)
+        var tx = _transaction.Value;
+        if (tx == null)
         {
             return;
         }
 
         try
         {
-            await _transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -1058,24 +1075,26 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     private void CleanupTransaction()
     {
-        _transaction?.Dispose();
-        _transaction = null;
-        _transactionConnection?.Dispose();
-        _transactionConnection = null;
+        _transaction.Value?.Dispose();
+        _transaction.Value = null;
+        _transactionConnection.Value?.Dispose();
+        _transactionConnection.Value = null;
     }
 
     private async Task CleanupTransactionAsync()
     {
-        if (_transaction != null)
+        var tx = _transaction.Value;
+        if (tx != null)
         {
-            await _transaction.DisposeAsync().ConfigureAwait(false);
-            _transaction = null;
+            await tx.DisposeAsync().ConfigureAwait(false);
+            _transaction.Value = null;
         }
 
-        if (_transactionConnection != null)
+        var conn = _transactionConnection.Value;
+        if (conn != null)
         {
-            await _transactionConnection.DisposeAsync().ConfigureAwait(false);
-            _transactionConnection = null;
+            await conn.DisposeAsync().ConfigureAwait(false);
+            _transactionConnection.Value = null;
         }
     }
 
@@ -1234,11 +1253,12 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public void Dispose()
     {
-        if (_transaction != null)
+        var tx = _transaction.Value;
+        if (tx != null)
         {
             try
             {
-                _transaction.Rollback();
+                tx.Rollback();
             }
             catch
             {
@@ -1250,11 +1270,12 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_transaction != null)
+        var tx = _transaction.Value;
+        if (tx != null)
         {
             try
             {
-                await _transaction.RollbackAsync().ConfigureAwait(false);
+                await tx.RollbackAsync().ConfigureAwait(false);
             }
             catch
             {
