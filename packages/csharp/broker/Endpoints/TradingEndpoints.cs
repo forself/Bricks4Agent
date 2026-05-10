@@ -1,4 +1,5 @@
 using Broker.Helpers;
+using Broker.Middleware;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
 using FunctionPool.Registry;
@@ -38,7 +39,7 @@ public static class TradingEndpoints
 
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync(ct);
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.order", "place_order", body));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.order", "place_order", body));
             return ToResponse(result);
         });
 
@@ -52,20 +53,20 @@ public static class TradingEndpoints
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
             var payload = JsonSerializer.Serialize(new { exchange, external_id = externalId });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.order", "cancel_order", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.order", "cancel_order", payload));
             return ToResponse(result);
         });
 
         trading.MapGet("/order/{orderId}", async (
             string orderId,
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.order"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var payload = JsonSerializer.Serialize(new { order_id = orderId });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.order", "get_order", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "trading.order", "get_order", payload));
             return ToResponse(result);
         });
 
@@ -82,7 +83,7 @@ public static class TradingEndpoints
                 status = req.Query.TryGetValue("status", out var st) ? st.ToString() : (string?)null,
                 limit  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50,
             });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.order", "list_orders", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.order", "list_orders", payload));
             return ToResponse(result);
         });
 
@@ -97,7 +98,7 @@ public static class TradingEndpoints
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
             var payload = JsonSerializer.Serialize(new { exchange });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.account", "get_account", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_account", payload));
             return ToResponse(result);
         });
 
@@ -110,7 +111,7 @@ public static class TradingEndpoints
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
             var payload = JsonSerializer.Serialize(new { exchange });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.account", "get_positions", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_positions", payload));
             return ToResponse(result);
         });
 
@@ -127,37 +128,50 @@ public static class TradingEndpoints
                 symbol   = req.Query.TryGetValue("symbol",   out var s)  ? s.ToString()  : (string?)null,
                 limit    = req.Query.TryGetValue("limit",    out var l) && int.TryParse(l, out var n) ? n : 50,
             });
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.account", "get_trades", payload));
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_trades", payload));
             return ToResponse(result);
         });
 
         trading.MapGet("/exchanges", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            CancellationToken ct) =>
+            HttpContext ctx, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
-            var result = await dispatcher.DispatchAsync(BuildRequest("trading.account", "list_exchanges"));
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "trading.account", "list_exchanges"));
             return ToResponse(result);
         });
     }
 
     // ── 輔助 ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// 從 HttpContext 抓真實的 principal/role（由 BrokerAuthMiddleware /
+    /// InternalBotAuthMiddleware 注入）。硬寫 PrincipalId="system" 會讓
+    /// PoolDispatcher approval gate 直接放行（system 是內部背景任務 exemption）、
+    /// 任何走 HTTP 進來的單就繞過 admin 核准了——絕對不行。
+    /// </summary>
     private static ApprovedRequest BuildRequest(
-        string capabilityId, string route, string payload = "{}")
-        => new()
+        HttpContext ctx, string capabilityId, string route, string payload = "{}")
+    {
+        var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
+        var roleId      = ctx.Items[BrokerAuthMiddleware.RoleIdKey]      as string ?? "system";
+        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]      as string ?? "dashboard";
+        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey]   as string ?? "dashboard";
+        return new ApprovedRequest
         {
             RequestId    = Guid.NewGuid().ToString("N"),
             CapabilityId = capabilityId,
             Route        = route,
             Payload      = payload,
             Scope        = "{}",
-            PrincipalId  = "system",
-            TaskId       = "dashboard",
-            SessionId    = "dashboard"
+            PrincipalId  = principalId,
+            Role         = roleId,
+            TaskId       = taskId,
+            SessionId    = sessionId,
         };
+    }
 
     private static IResult ToResponse(ExecutionResult result)
     {

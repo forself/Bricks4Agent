@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Broker.Helpers;
+using Broker.Middleware;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
 using FunctionPool.Registry;
@@ -30,11 +31,11 @@ public static class PerpetualEndpoints
     {
         var p = group.MapGroup("/perpetual");
 
-        p.MapGet("/exchanges", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher) =>
+        p.MapGet("/exchanges", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpContext ctx) =>
         {
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected (or perpetual not enabled)"));
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "list_exchanges", "{}"));
+            var r = await dispatcher.DispatchAsync(Build(ctx, "trading.perpetual", "list_exchanges", "{}"));
             return ToResponse(r);
         });
 
@@ -43,7 +44,7 @@ public static class PerpetualEndpoints
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "get_account", JsonSerializer.Serialize(new { exchange = ex })));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "get_account", JsonSerializer.Serialize(new { exchange = ex })));
             return ToResponse(r);
         });
 
@@ -52,7 +53,7 @@ public static class PerpetualEndpoints
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "get_positions", JsonSerializer.Serialize(new { exchange = ex })));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "get_positions", JsonSerializer.Serialize(new { exchange = ex })));
             return ToResponse(r);
         });
 
@@ -62,7 +63,7 @@ public static class PerpetualEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "place_order", body));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "place_order", body));
             return ToResponse(r);
         });
 
@@ -74,7 +75,7 @@ public static class PerpetualEndpoints
             var sym = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : "";
             var oid = req.Query.TryGetValue("order_id", out var o) ? o.ToString() : "";
             var payload = JsonSerializer.Serialize(new { exchange = ex, symbol = sym, order_id = oid });
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "cancel_order", payload));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "cancel_order", payload));
             return ToResponse(r);
         });
 
@@ -86,7 +87,7 @@ public static class PerpetualEndpoints
             var sym = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : "";
             var oid = req.Query.TryGetValue("order_id", out var o) ? o.ToString() : "";
             var payload = JsonSerializer.Serialize(new { exchange = ex, symbol = sym, order_id = oid });
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "get_order", payload));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "get_order", payload));
             return ToResponse(r);
         });
 
@@ -97,7 +98,7 @@ public static class PerpetualEndpoints
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
             var sym = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : null;
             var payload = JsonSerializer.Serialize(new { exchange = ex, symbol = sym });
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "get_open_orders", payload));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "get_open_orders", payload));
             return ToResponse(r);
         });
 
@@ -107,7 +108,7 @@ public static class PerpetualEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "set_leverage", body));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "set_leverage", body));
             return ToResponse(r);
         });
 
@@ -118,18 +119,33 @@ public static class PerpetualEndpoints
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
             var sym = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : "";
             var payload = JsonSerializer.Serialize(new { exchange = ex, symbol = sym });
-            var r = await dispatcher.DispatchAsync(Build("trading.perpetual", "get_mark_price", payload));
+            var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "get_mark_price", payload));
             return ToResponse(r);
         });
     }
 
-    private static ApprovedRequest Build(string capability, string route, string payload) => new()
+    /// <summary>
+    /// 從 HttpContext 抓真實的 principal/role/task/session（由 BrokerAuthMiddleware /
+    /// InternalBotAuthMiddleware 注入）。
+    /// 重要：絕對不能硬寫 PrincipalId="system"——PoolDispatcher 的 approval gate 對
+    /// "system" 完全放行（讓 AutoTrader 等內部背景任務跑），任何走 HTTP 進來的單都
+    /// 必須帶真實身份、否則 admin 核准就被繞過了。
+    /// 沒帶 auth 的 case（極少、純內部測試）才 fallback "system"。
+    /// </summary>
+    private static ApprovedRequest Build(HttpContext ctx, string capability, string route, string payload)
     {
-        RequestId = Guid.NewGuid().ToString("N"),
-        CapabilityId = capability, Route = route, Payload = payload,
-        Scope = "{}", PrincipalId = "system",
-        TaskId = "perpetual-api", SessionId = "perpetual-api",
-    };
+        var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
+        var roleId      = ctx.Items[BrokerAuthMiddleware.RoleIdKey]      as string ?? "system";
+        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]      as string ?? "perpetual-api";
+        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey]   as string ?? "perpetual-api";
+        return new ApprovedRequest
+        {
+            RequestId = Guid.NewGuid().ToString("N"),
+            CapabilityId = capability, Route = route, Payload = payload,
+            Scope = "{}", PrincipalId = principalId, Role = roleId,
+            TaskId = taskId, SessionId = sessionId,
+        };
+    }
 
     private static IResult ToResponse(BrokerCore.Contracts.ExecutionResult result)
     {
