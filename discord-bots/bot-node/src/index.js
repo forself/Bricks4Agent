@@ -1,12 +1,11 @@
 // B4A Discord Bot — Node.js implementation
 //
-// Phase 3: tool calling via text protocol
+// Phase 4: tool calling via text protocol + trading.order through approval gate
 //   - LLM 在回應裡輸出 ```json {"call": "...", "args": {...}} ``` 形式的 tool_call
 //   - bot 抓到 → dispatch broker capability → 結果包成 [tool_result] 餵下一輪
 //   - max 5 輪 防無限 loop
 //   - 純文字回應 = final answer、送 Discord
-//
-// 後續 phase 4 加 trading.order + approval workflow。
+//   - trading.order 會回 "Pending admin approval, approval_id=X"、由 admin 手動 approve
 
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { loadAccess, isAllowed } from './access.js';
@@ -16,7 +15,7 @@ import { getHistory, pushTurn, clearHistory, stats as histStats } from './histor
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
-const PHASE = process.env.BOT_PHASE || '3';
+const PHASE = process.env.BOT_PHASE || '4';
 const MAX_TOOL_TURNS = 5;
 
 if (!TOKEN) {

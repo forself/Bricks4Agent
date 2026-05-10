@@ -1,4 +1,4 @@
-# B4A bot-node — Phase 2: discord.js + claude --print headless
+# B4A bot-node — Phase 4: discord.js + claude --print headless + trading.order via approval
 #
 # 用 debian-slim 而非 alpine：claude-code npm package 在 alpine glibc 不全的環境
 # 偶爾會 spawn 失敗（subprocess 連 dynamic link 都進不去），slim 比較穩。
@@ -25,7 +25,7 @@ USER claude-user
 
 ENV NODE_ENV=production
 ENV ACCESS_JSON_PATH=/app/access.json
-ENV BOT_PHASE=3
+ENV BOT_PHASE=4
 # 關 claude code auto-update（rootless 容器寫不進 /usr/local/lib/node_modules）
 ENV DISABLE_AUTOUPDATER=1
 

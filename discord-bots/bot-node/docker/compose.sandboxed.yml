@@ -28,7 +28,7 @@ services:
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - ACCESS_JSON_PATH=/app/access.json
-      - BOT_PHASE=3
+      - BOT_PHASE=4
       - BROKER_URL=http://broker:5000
       # phase 3+：bot 透過此 token 認證跟 broker 之間、broker 端 BOT_INTERNAL_TOKEN env 要相符
       - BOT_INTERNAL_TOKEN=${BOT_INTERNAL_TOKEN}
