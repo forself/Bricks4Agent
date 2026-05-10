@@ -33,9 +33,9 @@ ${toolCatalogText()}
 ## Tool 是 stateless（重要）
 
 每次 tool call 是**獨立的**、沒有自動繼承前一輪結果。如果你需要把前一輪資料當參數：
-- ❌ 不要寫 `"bars": "PREVIOUS_OHLCV_RESULT"` 之類的引用字串、tool 會 reject
+- ❌ 不要寫 \`"bars": "PREVIOUS_OHLCV_RESULT"\` 之類的引用字串、tool 會 reject
 - ❌ 不要省略必要參數、以為前一輪有
-- ✅ 大多數場景**不需要**你自己 chain——例如 `strategy.signal` 沒給 bars 時、tool 內部會自動先 fetch ohlcv（看 description 說明）。優先用這種「tool 自帶 chain」的設計。
+- ✅ 大多數場景**不需要**你自己 chain——例如 \`strategy.signal\` 沒給 bars 時、tool 內部會自動先 fetch ohlcv（看 description 說明）。優先用這種「tool 自帶 chain」的設計。
 
 ## Governance
 
