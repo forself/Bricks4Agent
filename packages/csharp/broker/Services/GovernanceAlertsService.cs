@@ -144,7 +144,9 @@ public class GovernanceAlertsService : BackgroundService
                     body: $"`{p.PrincipalId}` ({p.Role}) requested `{p.CapabilityId}` route=`{p.Route}`\napproval_id=`{p.ApprovalId}` · 到 dashboard /待審 分頁裁決",
                     severity: "warn",
                     color: 0xE6A23C,
-                    ct: ct);
+                    ct: ct,
+                    // Discord 推播跳過——bot-node 自己會在 Discord 頻道發按鈕訊息、走互動式審核
+                    skipDiscord: true);
             }
         }
 
@@ -160,12 +162,16 @@ public class GovernanceAlertsService : BackgroundService
     };
 
     /// <summary>同時推 Discord webhook + LINE capability dispatch，best-effort。</summary>
-    private async Task PushAlertAsync(string title, string body, string severity, int color, CancellationToken ct)
+    /// <param name="skipDiscord">true → 跳過 Discord 推播。Approval 類用 true、因為 bot-node
+    /// 自己在 Discord 頻道發互動式按鈕訊息、broker 不必再推一次純文字訊息（重複通知）。</param>
+    private async Task PushAlertAsync(
+        string title, string body, string severity, int color, CancellationToken ct,
+        bool skipDiscord = false)
     {
         _logger.LogInformation("Governance alert: [{S}] {T}", severity, title);
 
         // Discord
-        if (DiscordEnabled)
+        if (DiscordEnabled && !skipDiscord)
         {
             try
             {

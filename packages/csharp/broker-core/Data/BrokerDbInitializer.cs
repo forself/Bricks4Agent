@@ -190,6 +190,64 @@ public class BrokerDbInitializer
         // ApprovalRequest 派發冪等：避免「立刻執行」按一次下一單真錢、按 N 次下 N 單
         TryExecute("ALTER TABLE approval_requests ADD COLUMN dispatched_at TEXT");
         TryExecute("ALTER TABLE approval_requests ADD COLUMN dispatched_by TEXT");
+
+        // approval_id schema 從 INTEGER 修成 TEXT 的單次 migration。
+        // 既有 schema 寫成 INTEGER PRIMARY KEY AUTOINCREMENT、但 model 是 string ApprovalId
+        // = IdGen.New("apr") 產生的 "apr_xxx" 字串。INSERT 時 SQLite 把 string coerce 成 NULL
+        // → autoincrement 給個 int、變兩個 ID（記憶體一個、DB 一個）的 split-brain。
+        // 這個 migration 只在偵測到 INTEGER 型別時跑、跑完就改 TEXT、舊 row 的 int ID 改寫成
+        // "apr_legacy_<n>"、新 row 走正常 IdGen.New 流程。
+        MigrateApprovalIdToText();
+    }
+
+    private void MigrateApprovalIdToText()
+    {
+        // pragma_table_info('approval_requests') 回 cid/name/type/...、找 approval_id 那欄
+        string colType;
+        try
+        {
+            colType = _db.Scalar<string>(
+                "SELECT type FROM pragma_table_info('approval_requests') WHERE name = 'approval_id'") ?? "";
+        }
+        catch
+        {
+            // 表還不存在（fresh DB、EnsureTable 還沒跑）→ 跳過、這次啟動之後 schema 會走 model 路徑
+            return;
+        }
+        if (string.IsNullOrEmpty(colType)) return;
+        if (colType.Equals("TEXT", StringComparison.OrdinalIgnoreCase)) return;  // 已是新 schema
+
+        // SQLite ALTER TABLE 不支援改 column 型別、走 rename + create + copy + drop
+        TryExecute("ALTER TABLE approval_requests RENAME TO approval_requests_legacy_int");
+        TryExecute(@"
+            CREATE TABLE approval_requests (
+                approval_id TEXT PRIMARY KEY,
+                trace_id TEXT NOT NULL,
+                capability_id TEXT NOT NULL,
+                route TEXT,
+                payload TEXT,
+                principal_id TEXT,
+                role TEXT,
+                requested_at TEXT,
+                status TEXT NOT NULL,
+                decided_by TEXT,
+                decided_at TEXT,
+                decision_reason TEXT,
+                dispatched_at TEXT,
+                dispatched_by TEXT
+            )");
+        TryExecute(@"
+            INSERT INTO approval_requests (
+                approval_id, trace_id, capability_id, route, payload,
+                principal_id, role, requested_at, status, decided_by, decided_at,
+                decision_reason, dispatched_at, dispatched_by
+            )
+            SELECT
+                'apr_legacy_' || approval_id, trace_id, capability_id, route, payload,
+                principal_id, role, requested_at, status, decided_by, decided_at,
+                decision_reason, dispatched_at, dispatched_by
+            FROM approval_requests_legacy_int");
+        TryExecute("DROP TABLE approval_requests_legacy_int");
     }
 
     /// <summary>

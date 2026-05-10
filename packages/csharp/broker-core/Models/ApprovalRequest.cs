@@ -20,7 +20,10 @@ namespace BrokerCore.Models;
 [Table("approval_requests")]
 public class ApprovalRequest
 {
-    [Key, MaxLength(64)]
+    // [Key] 預設 AutoIncrement=true、SQLite 會強行做 INTEGER PRIMARY KEY、把 IdGen.New("apr")
+    // 產的 string 吃掉換成 int 自動編號（split-brain：記憶體跑 string、DB 存 int）。
+    // 跟其他 string-key model（Principal 等）對齊、明寫 AutoIncrement=false。
+    [Key(AutoIncrement = false), MaxLength(64)]
     [Column("approval_id")]
     public string ApprovalId { get; set; } = string.Empty;
 
