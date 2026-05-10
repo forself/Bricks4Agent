@@ -40,6 +40,13 @@ public interface IApprovalService
 
     /// <summary>標 rejected</summary>
     bool Reject(string approvalId, string decidedBy, string? reason = null);
+
+    /// <summary>
+    /// 標記為已派發（冪等鎖）。回 false 代表已被別人 set 過、caller 不該再派。
+    /// 設計選擇：在 dispatch 前 set、避免 race / 多次 click 重複下單。
+    /// 即使 dispatch 後續失敗也不 reset——admin 想 retry 必須手動排查、避免雙倒單。
+    /// </summary>
+    bool MarkDispatched(string approvalId, string dispatchedBy);
 }
 
 /// <summary>
@@ -138,6 +145,17 @@ public class ApprovalService : IApprovalService
         existing.DecidedBy = decidedBy;
         existing.DecidedAt = DateTime.UtcNow;
         existing.DecisionReason = reason;
+        _db.Update(existing);
+        return true;
+    }
+
+    public bool MarkDispatched(string approvalId, string dispatchedBy)
+    {
+        var existing = Get(approvalId);
+        if (existing == null) return false;
+        if (existing.DispatchedAt != null) return false;  // 已派過、冪等鎖：拒絕再派
+        existing.DispatchedAt = DateTime.UtcNow;
+        existing.DispatchedBy = dispatchedBy;
         _db.Update(existing);
         return true;
     }

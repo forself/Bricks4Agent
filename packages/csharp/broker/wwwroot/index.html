@@ -588,7 +588,14 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                     :title="t('aprApproveAndExecHint')">{{t('aprApproveAndExec')}}</el-button>
                   <el-button type="danger" size="small" @click="doReject(row)">{{t('aprReject')}}</el-button>
                 </template>
+                <template v-else-if="row.status==='approved' && row.dispatched_at">
+                  <!-- 已派發、冪等鎖定、不再給 retry 按鈕（避免重複下單）-->
+                  <el-tag type="info" size="small" :title="(row.dispatched_by||'?') + ' @ ' + fmtDate(row.dispatched_at)">
+                    {{t('aprDispatched')}}
+                  </el-tag>
+                </template>
                 <template v-else-if="row.status==='approved'">
+                  <!-- approved 但 dispatched_at 還沒寫 → dispatch 失敗、可重試 -->
                   <el-button type="primary" size="small" plain @click="doDispatchOnly(row)">{{t('aprDispatchNow')}}</el-button>
                 </template>
                 <span v-else-if="row.decision_reason" style="font-size:11px;color:var(--td)" :title="row.decision_reason">{{row.decision_reason.slice(0,30)}}</span>
@@ -1663,6 +1670,7 @@ const I18N={
     aprRequestedAt:'申請時間',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'裁決者',
     aprApprove:'核准',aprReject:'拒絕',
     aprApproveAndExec:'核准並執行',aprApproveAndExecHint:'標記為已核准並立刻派發到 worker（單一鍵閉環）',aprDispatchNow:'立刻執行',
+    aprDispatched:'已執行',
     aprApproveReason:'核准原因（可空）：',aprRejectReason:'拒絕原因（可空）：',
     aprEmpty:'視窗內無待審請求',
     aclRules:'ACL 角色規則',
@@ -1771,6 +1779,7 @@ const I18N={
     aprRequestedAt:'Requested',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'Decided by',
     aprApprove:'Approve',aprReject:'Reject',
     aprApproveAndExec:'Approve & run',aprApproveAndExecHint:'Mark approved and dispatch immediately (single-click close-loop)',aprDispatchNow:'Run now',
+    aprDispatched:'Dispatched',
     aprApproveReason:'Approval reason (optional):',aprRejectReason:'Rejection reason (optional):',
     aprEmpty:'No approval requests in this window',
     aclRules:'Role ACL Rules',

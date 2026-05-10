@@ -224,6 +224,8 @@ public static class AdminEndpoints
                 decided_by      = a.DecidedBy,
                 decided_at      = a.DecidedAt,
                 decision_reason = a.DecisionReason,
+                dispatched_at   = a.DispatchedAt,
+                dispatched_by   = a.DispatchedBy,
             })));
         });
 
@@ -265,12 +267,24 @@ public static class AdminEndpoints
             if (apr.Status == "rejected")
                 return Results.BadRequest(ApiResponseHelper.Error("approval already rejected; cannot dispatch"));
 
+            // 冪等鎖：已派過就不能再派——避免「立刻執行」被多按或被重複 curl、害 admin 真錢真單下兩次
+            if (apr.DispatchedAt != null)
+                return Results.BadRequest(ApiResponseHelper.Error(
+                    $"approval already dispatched at {apr.DispatchedAt:yyyy-MM-dd HH:mm:ss} UTC by {apr.DispatchedBy ?? "?"}; refuse to re-dispatch"));
+
             // 還在 pending → 先 approve；若已 approved 則直接 dispatch（idempotent retry 友善）
             if (apr.Status == "pending")
             {
                 if (!aprSvc.Approve(id, by, reason))
                     return Results.BadRequest(ApiResponseHelper.Error("approve failed"));
             }
+
+            // dispatch 之**前**就 set DispatchedAt（pessimistic lock）。
+            // 若 dispatch 後續失敗、admin 看「已執行」+ dispatch_error 自己判斷要不要排查、不會自動 retry。
+            // 比起 dispatch 後才 set 的 race 風險（這次踩到的：第一次 click 真下單但 SQL 例外讓
+            // dispatched_at 沒寫進、第二次 click 又下了一單），這個方向對真錢更安全。
+            if (!aprSvc.MarkDispatched(id, by))
+                return Results.BadRequest(ApiResponseHelper.Error("failed to acquire dispatch lock; another caller may be dispatching"));
 
             // 用原申請者的 (PrincipalId, Role, TraceId) 派發、PoolDispatcher 看到 approved 會放行
             var req = new BrokerCore.Contracts.ApprovedRequest
@@ -295,6 +309,7 @@ public static class AdminEndpoints
                 dispatch_success = result.Success,
                 dispatch_error = result.Success ? null : result.ErrorMessage,
                 trace_id = apr.TraceId,
+                dispatched_at = DateTime.UtcNow,
                 result_payload = result.Success ? result.ResultPayload : null,
             }));
         });

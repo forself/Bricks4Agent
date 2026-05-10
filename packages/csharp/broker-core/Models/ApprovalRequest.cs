@@ -70,4 +70,19 @@ public class ApprovalRequest
     [Column("decision_reason")]
     [MaxLength(500)]
     public string? DecisionReason { get; set; }
+
+    /// <summary>
+    /// 真正派發到 worker 的時間。null = 還沒派過、可派；非 null = 已派過、禁止再派。
+    /// 為什麼要分開記、不直接看 status='approved'：approve-and-dispatch 是兩步、
+    /// approve 寫進 DB 後 dispatch 可能失敗、admin 想 retry。但如果 admin 看到
+    /// status='approved' 就能無限按「立刻執行」、每按一次就真下一單到交易所、損失真錢。
+    /// 寫 DispatchedAt 之後 endpoint 會擋掉重複派發、admin 真要 retry 必須先排查清楚。
+    /// </summary>
+    [Column("dispatched_at")]
+    public DateTime? DispatchedAt { get; set; }
+
+    /// <summary>誰按下派發的（通常 = DecidedBy、但分開記允許多人協作 audit）</summary>
+    [Column("dispatched_by")]
+    [MaxLength(64)]
+    public string? DispatchedBy { get; set; }
 }
