@@ -46,6 +46,14 @@ services:
       AUTOTRADER_BREAKEVEN_TRIGGER_PCT: "${AUTOTRADER_BREAKEVEN_TRIGGER_PCT:-}"
       AUTOTRADER_BREAKEVEN_BUFFER_PCT: "${AUTOTRADER_BREAKEVEN_BUFFER_PCT:-}"
 
+      # A2 ATR-based SL（opt-in）— >0 啟用、0 / 沒設 → 走 fixed AUTOTRADER_INITIAL_SL_PCT
+      AUTOTRADER_ATR_SL_MULTIPLIER: "${AUTOTRADER_ATR_SL_MULTIPLIER:-}"
+      AUTOTRADER_ATR_PERIOD: "${AUTOTRADER_ATR_PERIOD:-}"
+      AUTOTRADER_ATR_INTERVAL: "${AUTOTRADER_ATR_INTERVAL:-}"
+
+      # Internal bot auth：bot-node container 帶 X-Internal-Bot-Token 認證、broker 比對此 env
+      BOT_INTERNAL_TOKEN: "${BOT_INTERNAL_TOKEN:-}"
+
       # SL flush freeze（B3）——滑動視窗內若 SL hit ≥ threshold 次，自動 disable auto-trader、
       # 強制 user 手動按 /sl-flush/reset 復原。預設 3 次/60 分。
       AUTOTRADER_SL_FLUSH_THRESHOLD: "${AUTOTRADER_SL_FLUSH_THRESHOLD:-}"
