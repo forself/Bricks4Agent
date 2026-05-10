@@ -581,12 +581,12 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 <span v-else style="color:var(--td)">—</span>
               </template>
             </el-table-column>
-            <el-table-column :label="t('actions')" width="240" align="right">
+            <el-table-column :label="t('actions')" width="220" align="right" fixed="right">
               <template #default="{row}">
                 <template v-if="row.status==='pending'">
-                  <el-button type="success" size="small" @click="doApproveAndDispatch(row)" :title="t('aprApproveAndExec')">{{t('aprApproveAndExec')}}</el-button>
-                  <el-button type="success" size="small" plain @click="doApprove(row)">{{t('aprApprove')}}</el-button>
-                  <el-button type="danger" size="small" plain @click="doReject(row)">{{t('aprReject')}}</el-button>
+                  <el-button type="success" size="small" @click="doApproveAndDispatch(row)"
+                    :title="t('aprApproveAndExecHint')">{{t('aprApproveAndExec')}}</el-button>
+                  <el-button type="danger" size="small" @click="doReject(row)">{{t('aprReject')}}</el-button>
                 </template>
                 <template v-else-if="row.status==='approved'">
                   <el-button type="primary" size="small" plain @click="doDispatchOnly(row)">{{t('aprDispatchNow')}}</el-button>
@@ -1662,7 +1662,7 @@ const I18N={
     aprStatusFilter:'狀態',aprPending:'待審',aprApproved:'已核准',aprRejected:'已拒絕',
     aprRequestedAt:'申請時間',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'裁決者',
     aprApprove:'核准',aprReject:'拒絕',
-    aprApproveAndExec:'核准並執行',aprDispatchNow:'立刻執行',
+    aprApproveAndExec:'核准並執行',aprApproveAndExecHint:'標記為已核准並立刻派發到 worker（單一鍵閉環）',aprDispatchNow:'立刻執行',
     aprApproveReason:'核准原因（可空）：',aprRejectReason:'拒絕原因（可空）：',
     aprEmpty:'視窗內無待審請求',
     aclRules:'ACL 角色規則',
@@ -1770,7 +1770,7 @@ const I18N={
     aprStatusFilter:'Status',aprPending:'Pending',aprApproved:'Approved',aprRejected:'Rejected',
     aprRequestedAt:'Requested',aprRoute:'route',aprPayload:'payload',aprDecidedBy:'Decided by',
     aprApprove:'Approve',aprReject:'Reject',
-    aprApproveAndExec:'Approve & run',aprDispatchNow:'Run now',
+    aprApproveAndExec:'Approve & run',aprApproveAndExecHint:'Mark approved and dispatch immediately (single-click close-loop)',aprDispatchNow:'Run now',
     aprApproveReason:'Approval reason (optional):',aprRejectReason:'Rejection reason (optional):',
     aprEmpty:'No approval requests in this window',
     aclRules:'Role ACL Rules',

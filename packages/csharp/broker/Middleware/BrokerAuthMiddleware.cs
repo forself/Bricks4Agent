@@ -50,7 +50,9 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/lab/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auth/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/exchange-credentials", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)
+            // dashboard cookie-auth admin endpoints（approvals / acl / overrides / users 等）
+            // 用 cookie session 認、不帶 scoped_token——統一放行整片 admin/
+            || path.StartsWith("/api/v1/admin/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase)

@@ -54,7 +54,10 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/lab/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auth/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/exchange-credentials", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)
+            // dashboard cookie-auth admin endpoints（approvals / acl / overrides / users 等）
+            // 全部走 plain JSON、不走 ECDH——之前只列 /admin/users、結果 reject button 跳
+            // "Missing session_id or client_ephemeral_pub" 因為 POST 進了加密路徑
+            || path.StartsWith("/api/v1/admin/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/strategy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/risk/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/auto-trader/", StringComparison.OrdinalIgnoreCase)
