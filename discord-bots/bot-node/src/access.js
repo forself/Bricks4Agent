@@ -1,14 +1,14 @@
-// Access control — 讀 access.json 決定要不要回應某個 Discord user / channel。
+// Access control — 讀 access.json 決定要不要回應某個 Discord / LINE user / channel。
 // 預設 deny：access.json 不存在或格式錯都當「不回應」處理、避免新部署時 bot 對所有人開放。
 //
-// 兩層權限：
-//   1. 頻道層（isAllowed）—— 訊息進不進來
-//      - DM：user 必須在 allowed_user_ids（陌生人密 bot 直接擋）
-//      - 群組：頻道在 allowed_channel_ids 或 guild 在 allowed_guild_ids → 任何成員可用
-//   2. 工具層（isPrivileged）—— 訊息進來後、敏感工具還要再卡
-//      - 預設敏感前綴 = trading.* + audit.*（下單 / 倉位 / 內部拓樸）
-//      - 只有 privileged_user_ids 內的人能 trigger 這些工具
-//      - 沒設 privileged_user_ids → fallback allowed_user_ids（向下相容）
+// 兩層權限（兩個平台各自一份白名單、不共用 namespace）：
+//   1. 頻道層（isAllowed / isLineAllowed）—— 訊息進不進來
+//      Discord: DM 看 allowed_user_ids；群組看 allowed_channel_ids / allowed_guild_ids
+//      LINE:    1-1 訊息看 line_allowed_user_ids（LINE OA 沒群組頻道的概念）
+//   2. 工具層（isPrivileged*User）—— 訊息進來後、敏感工具還要再卡
+//      預設敏感前綴 = trading.* + audit.*
+//      Discord 看 privileged_user_ids、LINE 看 line_privileged_user_ids
+//      沒設 → 各自 fallback 對應的 allowed list（向下相容）
 
 import { readFileSync, existsSync } from 'node:fs';
 
@@ -27,17 +27,21 @@ export function loadAccess(path) {
   try {
     const raw = readFileSync(path, 'utf-8');
     const parsed = JSON.parse(raw);
-    const allowedUsers = Array.isArray(parsed.allowed_user_ids) ? parsed.allowed_user_ids : [];
+    const allowedUsers       = Array.isArray(parsed.allowed_user_ids)        ? parsed.allowed_user_ids        : [];
+    const allowedLineUsers   = Array.isArray(parsed.line_allowed_user_ids)   ? parsed.line_allowed_user_ids   : [];
     cached = {
+      // Discord
       allowed_user_ids:           allowedUsers,
       allowed_channel_ids:        Array.isArray(parsed.allowed_channel_ids) ? parsed.allowed_channel_ids : [],
       allowed_guild_ids:          Array.isArray(parsed.allowed_guild_ids)   ? parsed.allowed_guild_ids   : [],
-      // privileged_user_ids 沒設 → fallback allowed_user_ids（單人部署的舊行為）
       privileged_user_ids:        Array.isArray(parsed.privileged_user_ids) ? parsed.privileged_user_ids : allowedUsers,
       privileged_tool_prefixes:   Array.isArray(parsed.privileged_tool_prefixes) ? parsed.privileged_tool_prefixes : DEFAULT_PRIVILEGED_PREFIXES,
+      // LINE
+      line_allowed_user_ids:      allowedLineUsers,
+      line_privileged_user_ids:   Array.isArray(parsed.line_privileged_user_ids) ? parsed.line_privileged_user_ids : allowedLineUsers,
     };
     cachedPath = path;
-    console.log(`[access] loaded from ${path}: ${cached.allowed_user_ids.length} users, ${cached.allowed_channel_ids.length} channels, ${cached.allowed_guild_ids.length} guilds, ${cached.privileged_user_ids.length} privileged, prefixes=[${cached.privileged_tool_prefixes.join(',')}]`);
+    console.log(`[access] loaded from ${path}: discord(${cached.allowed_user_ids.length} users, ${cached.allowed_channel_ids.length} channels, ${cached.privileged_user_ids.length} privileged) line(${cached.line_allowed_user_ids.length} users, ${cached.line_privileged_user_ids.length} privileged) prefixes=[${cached.privileged_tool_prefixes.join(',')}]`);
     return cached;
   } catch (e) {
     console.error(`[access] parse error: ${e.message}`);
@@ -51,6 +55,7 @@ function emptyAccess() {
   return {
     allowed_user_ids: [], allowed_channel_ids: [], allowed_guild_ids: [],
     privileged_user_ids: [], privileged_tool_prefixes: DEFAULT_PRIVILEGED_PREFIXES,
+    line_allowed_user_ids: [], line_privileged_user_ids: [],
   };
 }
 
@@ -95,4 +100,21 @@ export function isPrivilegedTool(toolName) {
   if (!cached) throw new Error('access.json not loaded; call loadAccess() first');
   if (!toolName) return false;
   return cached.privileged_tool_prefixes.some(p => toolName.startsWith(p));
+}
+
+/**
+ * LINE 訊息能不能被 bot 處理。LINE OA 沒群組頻道概念、只有 1-1 訊息、
+ * 所以單純看 user_id 在不在 line_allowed_user_ids。
+ */
+export function isLineAllowed(lineUserId) {
+  if (!cached) throw new Error('access.json not loaded; call loadAccess() first');
+  return !!lineUserId && cached.line_allowed_user_ids.includes(lineUserId);
+}
+
+/**
+ * 這個 LINE user 能不能 call 敏感工具（trading.* / audit.*）。
+ */
+export function isLinePrivilegedUser(lineUserId) {
+  if (!cached) throw new Error('access.json not loaded; call loadAccess() first');
+  return !!lineUserId && cached.line_privileged_user_ids.includes(lineUserId);
 }

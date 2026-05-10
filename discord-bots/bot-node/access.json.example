@@ -17,5 +17,13 @@
   "privileged_tool_prefixes": [
     "trading.",
     "audit."
+  ],
+
+  "_line_explain": "LINE Messaging API 是另一個 namespace（U + 32 hex chars 開頭、跟 Discord ID 不同）。LINE OA 沒群組頻道概念、只看 user 白名單。沒設 line_privileged_user_ids → fallback line_allowed_user_ids（單人模式）。",
+  "line_allowed_user_ids": [
+    "U_YOUR_LINE_USER_ID"
+  ],
+  "line_privileged_user_ids": [
+    "U_YOUR_LINE_USER_ID"
   ]
 }

@@ -37,8 +37,17 @@ services:
       - BOT_INTERNAL_ADMIN_TOKEN=${BOT_INTERNAL_ADMIN_TOKEN}
       # 把 pending approval push 到哪個頻道（含按鈕、手機點即可審核）
       - APPROVAL_CHANNEL_ID=${APPROVAL_CHANNEL_ID}
+      # LINE Messaging API webhook（user → bot）
+      # LINE_CHANNEL_SECRET 沒設 → bot-node 跳過 LINE webhook server、純 Discord 模式
+      # 設了 → 起 :5358 listener、收 LINE webhook（外面要靠 cloudflared / reverse proxy 接 HTTPS）
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}
+      - LINE_WEBHOOK_PORT=${LINE_WEBHOOK_PORT:-5358}
       # claude code v2.1.126 在 rootless container 寫 /usr/local/lib/node_modules 會 EACCES、關 auto-update
       - DISABLE_AUTOUPDATER=1
+
+    ports:
+      # bind to 127.0.0.1 only — 公網 HTTPS 由 cloudflared / nginx 在容器外接、別直接外露
+      - "127.0.0.1:5358:5358"
 
     volumes:
       # access.json 唯讀 mount、bot 改不了自己的權限白名單

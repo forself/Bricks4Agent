@@ -13,6 +13,7 @@ import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
 import { startApprovalPoller, handleInteraction as handleApprovalInteraction } from './approvals.js';
+import { startLineWebhookServer } from './line-webhook.js';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
@@ -26,6 +27,10 @@ if (!TOKEN) {
 
 console.log(`[bot] B4A bot-node starting, phase=${PHASE}`);
 loadAccess(ACCESS_PATH);
+
+// LINE webhook server 在 Discord client 之外獨立跑、跟 Discord client 共用 LLM/tools/access
+// 沒設 LINE_CHANNEL_SECRET 會 graceful skip、不影響 Discord 那邊
+startLineWebhookServer();
 
 const client = new Client({
   intents: [
