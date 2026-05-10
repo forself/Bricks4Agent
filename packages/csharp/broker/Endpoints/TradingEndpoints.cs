@@ -155,10 +155,13 @@ public static class TradingEndpoints
     private static ApprovedRequest BuildRequest(
         HttpContext ctx, string capabilityId, string route, string payload = "{}")
     {
-        var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
-        var roleId      = ctx.Items[BrokerAuthMiddleware.RoleIdKey]      as string ?? "system";
-        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]      as string ?? "dashboard";
-        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey]   as string ?? "dashboard";
+        // 用 RequestBodyHelper 統一兩套 auth：scoped_token + cookie session 都認
+        var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+        var roleId      = RequestBodyHelper.GetRoleId(ctx);
+        if (string.IsNullOrEmpty(principalId)) principalId = "system";
+        if (string.IsNullOrEmpty(roleId))      roleId      = "system";
+        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]    as string ?? "dashboard";
+        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? "dashboard";
         return new ApprovedRequest
         {
             RequestId    = Guid.NewGuid().ToString("N"),

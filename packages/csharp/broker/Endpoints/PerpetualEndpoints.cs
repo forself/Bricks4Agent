@@ -134,10 +134,13 @@ public static class PerpetualEndpoints
     /// </summary>
     private static ApprovedRequest Build(HttpContext ctx, string capability, string route, string payload)
     {
-        var principalId = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "system";
-        var roleId      = ctx.Items[BrokerAuthMiddleware.RoleIdKey]      as string ?? "system";
-        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]      as string ?? "perpetual-api";
-        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey]   as string ?? "perpetual-api";
+        // 用 RequestBodyHelper 統一兩套 auth：scoped_token + cookie session 都認
+        var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+        var roleId      = RequestBodyHelper.GetRoleId(ctx);
+        if (string.IsNullOrEmpty(principalId)) principalId = "system";
+        if (string.IsNullOrEmpty(roleId))      roleId      = "system";
+        var taskId      = ctx.Items[BrokerAuthMiddleware.TaskIdKey]    as string ?? "perpetual-api";
+        var sessionId   = ctx.Items[BrokerAuthMiddleware.SessionIdKey] as string ?? "perpetual-api";
         return new ApprovedRequest
         {
             RequestId = Guid.NewGuid().ToString("N"),

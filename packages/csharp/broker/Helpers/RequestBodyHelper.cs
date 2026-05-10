@@ -33,16 +33,34 @@ public static class RequestBodyHelper
     }
 
     /// <summary>
-    /// 從 HttpContext.Items 取得已驗證的 role_id（由 BrokerAuthMiddleware 注入）
+    /// 取得已驗證的 role_id（"role_admin" / "role_user"）。
+    /// 支援兩套 auth 來源：
+    ///   1. BrokerAuthMiddleware（POST + scoped_token、值已是 "role_admin"/"role_user"）
+    ///   2. CurrentUserMiddleware（cookie session、值是 "admin"/"user"、需要前綴 "role_"）
+    /// 之前只看第一套、cookie 進來的 dashboard admin 永遠當成沒角色、admin 端點全 403。
     /// </summary>
     public static string GetRoleId(HttpContext ctx)
-        => ctx.Items[BrokerAuthMiddleware.RoleIdKey] as string ?? "";
+    {
+        var brokerRole = ctx.Items[BrokerAuthMiddleware.RoleIdKey] as string;
+        if (!string.IsNullOrEmpty(brokerRole)) return brokerRole;
+
+        // cookie 路徑：current_role = "admin"/"user" → 加前綴與 token path 對齊
+        var cookieRole = ctx.Items[CurrentUserMiddleware.RoleKey] as string;
+        if (string.IsNullOrEmpty(cookieRole)) return "";
+        return cookieRole.StartsWith("role_", StringComparison.OrdinalIgnoreCase)
+            ? cookieRole
+            : $"role_{cookieRole}";
+    }
 
     /// <summary>
-    /// 從 HttpContext.Items 取得已驗證的 principal_id
+    /// 取得已驗證的 principal_id（兩套 auth 來源都看）。
     /// </summary>
     public static string GetPrincipalId(HttpContext ctx)
-        => ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string ?? "";
+    {
+        var brokerPid = ctx.Items[BrokerAuthMiddleware.PrincipalIdKey] as string;
+        if (!string.IsNullOrEmpty(brokerPid)) return brokerPid;
+        return ctx.Items[CurrentUserMiddleware.PrincipalKey] as string ?? "";
+    }
 
     /// <summary>
     /// 從 HttpContext.Items 取得已驗證的 session_id
@@ -57,7 +75,7 @@ public static class RequestBodyHelper
         => ctx.Items[BrokerAuthMiddleware.TaskIdKey] as string ?? "";
 
     /// <summary>
-    /// 檢查呼叫者角色是否為管理員
+    /// 檢查呼叫者角色是否為管理員（兩套 auth 來源都認）。
     /// </summary>
     public static bool IsAdmin(HttpContext ctx)
         => GetRoleId(ctx) == "role_admin";
