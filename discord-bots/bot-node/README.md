@@ -10,9 +10,47 @@ keep all governance (ACL / Approval / Risk rules / Audit chain) intact.
 | Phase | What | Status |
 | --- | --- | --- |
 | 1 | Echo bot — Discord connect + access.json filter, no LLM | done |
-| 2 | Wire `claude --print` headless for chat | active |
-| 3 | Tool calling via text protocol — read-only capabilities | pending |
+| 2 | Wire `claude --print` headless for chat | done |
+| 3 | Tool calling via text protocol — read-only capabilities | active |
 | 4 | Trading capabilities + approval workflow integration | pending |
+
+## Phase 3 setup
+
+Phase 3 connects bot ↔ broker via shared secret. Both sides need
+`BOT_INTERNAL_TOKEN` set to the SAME random string.
+
+1. Generate a random token (any random hex/base64 string is fine):
+
+   ```powershell
+   # PowerShell: 32-char hex
+   -join ((48..57) + (97..102) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
+   ```
+
+2. Add to `bot-node/.env`:
+
+   ```text
+   BOT_INTERNAL_TOKEN=<paste here>
+   ```
+
+3. Add the SAME value to `tools/.env.trading` (broker side):
+
+   ```text
+   BOT_INTERNAL_TOKEN=<paste here>
+   ```
+
+4. Rebuild + restart broker AND bot-node so both pick up the env:
+
+   ```powershell
+   # broker side
+   docker compose -f tools\compose.trading.yml --env-file tools\.env.trading up -d --build broker
+   # bot side (after running setup once already)
+   docker compose -f docker\compose.sandboxed.yml --env-file .env up -d --build
+   ```
+
+5. Test in Discord:
+   - `@bot 現在 BTC 多少錢` → bot calls `quote.prices`, replies with current price
+   - `@bot 我的 perp 帳戶餘額` → bot calls `trading.account`, replies
+   - `@bot 你能幫我下單嗎` → bot says no (ACL denies trading.order, by design)
 
 ## Setup
 

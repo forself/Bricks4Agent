@@ -1,20 +1,23 @@
 // B4A Discord Bot — Node.js implementation
 //
-// Phase 2: claude --print headless integration
-//   - Discord.js 收訊息、access.json 過濾
-//   - 對話送 claude --print subprocess、拿 text 回應
-//   - per-user 多輪歷史（in-memory）
-//   - Discord typing indicator 蓋掉 cold start 延遲
-//   - 純對話、無 tool calling（phase 3 才接 broker capability）
+// Phase 3: tool calling via text protocol
+//   - LLM 在回應裡輸出 ```json {"call": "...", "args": {...}} ``` 形式的 tool_call
+//   - bot 抓到 → dispatch broker capability → 結果包成 [tool_result] 餵下一輪
+//   - max 5 輪 防無限 loop
+//   - 純文字回應 = final answer、送 Discord
+//
+// 後續 phase 4 加 trading.order + approval workflow。
 
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { loadAccess, isAllowed } from './access.js';
 import { callClaude } from './llm.js';
+import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
-const PHASE = process.env.BOT_PHASE || '2';
+const PHASE = process.env.BOT_PHASE || '3';
+const MAX_TOOL_TURNS = 5;
 
 if (!TOKEN) {
   console.error('[fatal] DISCORD_BOT_TOKEN env var not set');
@@ -39,7 +42,6 @@ client.once(Events.ClientReady, (c) => {
   console.log(`[bot] in ${c.guilds.cache.size} guilds`);
 });
 
-// 簡單 dispatch：每個 user × channel 同時間只跑一條 LLM 呼叫、避免 spam 同時送多條訊息撞炸
 const inFlight = new Set();
 
 client.on(Events.MessageCreate, async (msg) => {
@@ -50,18 +52,17 @@ client.on(Events.MessageCreate, async (msg) => {
   if (!isMention && !isDm) return;
 
   if (!isAllowed(msg)) {
-    console.log(`[access] rejected msg from user=${msg.author.id} channel=${msg.channelId} guild=${msg.guildId}`);
+    console.log(`[access] rejected msg from user=${msg.author.id} channel=${msg.channelId}`);
     return;
   }
 
   let content = msg.content || '';
   content = content.replace(/<@!?\d+>/g, '').trim();
   if (!content) {
-    await msg.reply('(空訊息、phase 2 助理不會處理)').catch(() => {});
+    await msg.reply('(空訊息)').catch(() => {});
     return;
   }
 
-  // 內建簡單指令、不送 LLM
   if (content === '/reset' || content === '/clear') {
     clearHistory(msg.author.id, msg.channelId);
     await msg.reply('✓ 對話歷史已清空');
@@ -82,7 +83,6 @@ client.on(Events.MessageCreate, async (msg) => {
 
   console.log(`[msg] from ${msg.author.username} (${msg.author.id}): ${content.slice(0, 100)}`);
 
-  // 顯示 typing indicator 直到回應送出（Discord 自動 10s timeout、我們 LLM 跑超過再續一次）
   let typingTimer = null;
   try {
     if (msg.channel.sendTyping) {
@@ -90,21 +90,10 @@ client.on(Events.MessageCreate, async (msg) => {
       typingTimer = setInterval(() => msg.channel.sendTyping().catch(() => {}), 8000);
     }
 
-    const history = getHistory(msg.author.id, msg.channelId);
-    const startMs = Date.now();
-    const result = await callClaude(content, history);
-    const durationMs = Date.now() - startMs;
-    console.log(`[llm] ${result.ok ? 'ok' : 'fail'} ${durationMs}ms hist=${history.length}`);
-
-    if (!result.ok) {
-      await msg.reply(`⚠ LLM 呼叫失敗：${result.error.slice(0, 300)}`).catch(() => {});
-      return;
-    }
-
-    // Discord 單訊息上限 2000 字、超過要分段
-    const text = result.text;
-    pushTurn(msg.author.id, msg.channelId, content, text);
-    await sendChunked(msg, text);
+    const finalText = await runMultiTurn(msg.author.id, msg.channelId, content);
+    if (finalText == null) return;  // 已 reply 錯誤訊息
+    pushTurn(msg.author.id, msg.channelId, content, finalText);
+    await sendChunked(msg, finalText);
   } catch (e) {
     console.error('[handler] error:', e);
     await msg.reply(`⚠ 內部錯誤：${e.message}`).catch(() => {});
@@ -112,9 +101,45 @@ client.on(Events.MessageCreate, async (msg) => {
     if (typingTimer) clearInterval(typingTimer);
     inFlight.delete(lockKey);
   }
+
+  // ── multi-turn 主邏輯 ──
+  // 失敗時用 msg.reply、回 null 表示「已自己 reply 過、外層不要再送」
+  async function runMultiTurn(userId, channelId, userMsg) {
+    const messages = [
+      ...getHistory(userId, channelId),
+      { role: 'user', content: userMsg },
+    ];
+
+    for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+      const startMs = Date.now();
+      const result = await callClaude(messages);
+      const dur = Date.now() - startMs;
+      console.log(`[llm] turn=${turn} ${result.ok ? 'ok' : 'fail'} ${dur}ms`);
+
+      if (!result.ok) {
+        await msg.reply(`⚠ LLM 失敗：${result.error.slice(0, 300)}`).catch(() => {});
+        return null;
+      }
+
+      const toolCall = extractToolCall(result.text);
+      if (!toolCall) {
+        // 沒 tool_call → 純文字回答、結束 multi-turn
+        return result.text;
+      }
+
+      console.log(`[tool] turn=${turn} call=${toolCall.call} args=${JSON.stringify(toolCall.args).slice(0, 100)}`);
+      messages.push({ role: 'assistant', content: result.text });
+
+      const toolResult = await dispatchTool(toolCall);
+      console.log(`[tool] turn=${turn} ${toolResult.ok ? 'ok' : 'fail'} ${toolResult.error || ''}`);
+      messages.push({ role: 'tool', content: toolResult.summary });
+    }
+
+    // 跑滿 MAX_TOOL_TURNS 還沒給最終答案——強制收尾
+    return `（已嘗試 ${MAX_TOOL_TURNS} 輪 tool 仍無最終答案、可能訊息過於複雜、請拆成幾條問。）`;
+  }
 });
 
-/** Discord 訊息上限 2000 字、超過分段送 */
 async function sendChunked(msg, text) {
   const MAX = 1900;
   if (text.length <= MAX) {
@@ -124,12 +149,8 @@ async function sendChunked(msg, text) {
   let first = true;
   for (let i = 0; i < text.length; i += MAX) {
     const chunk = text.slice(i, i + MAX);
-    if (first) {
-      await msg.reply(chunk);
-      first = false;
-    } else {
-      await msg.channel.send(chunk).catch(() => {});
-    }
+    if (first) { await msg.reply(chunk); first = false; }
+    else       { await msg.channel.send(chunk).catch(() => {}); }
   }
 }
 

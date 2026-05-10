@@ -28,8 +28,10 @@ services:
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - ACCESS_JSON_PATH=/app/access.json
-      - BOT_PHASE=2
+      - BOT_PHASE=3
       - BROKER_URL=http://broker:5000
+      # phase 3+：bot 透過此 token 認證跟 broker 之間、broker 端 BOT_INTERNAL_TOKEN env 要相符
+      - BOT_INTERNAL_TOKEN=${BOT_INTERNAL_TOKEN}
       # claude code v2.1.126 在 rootless container 寫 /usr/local/lib/node_modules 會 EACCES、關 auto-update
       - DISABLE_AUTOUPDATER=1
 

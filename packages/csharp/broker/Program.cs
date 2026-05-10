@@ -670,6 +670,10 @@ app.UseStaticFiles();
 // [0] BodySizeLimitMiddleware（H-10 修復：防止 DoS 超大 payload）
 var maxBodyBytes = builder.Configuration.GetValue<long>("Broker:MaxRequestBodyBytes", 1_048_576); // 1MB default
 app.UseBodySizeLimit(maxBodyBytes);
+
+// Internal bot auth：在 encryption / cookie 之前先比對 X-Internal-Bot-Token、設 identity。
+// 沒帶 header 走原流程；帶錯 header 直接 401（不靜默 fall-through）。
+app.UseInternalBotAuth();
 // [1] ExceptionMiddleware（全域例外）— TODO: Phase 5
 // [2] IpRateLimiter（限流）— TODO: Phase 5
 // [3] EncryptionMiddleware（信封解密/加密）
