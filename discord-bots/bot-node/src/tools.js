@@ -39,9 +39,30 @@ export const TOOLS = {
   },
 
   'strategy.signal': {
-    description: '對給定 K 線跑單一策略產生訊號。args: {strategy: string, symbol: string, interval: string, bars: array}。注意 bars 一般要先 quote.ohlcv 拿。',
+    description: '對 K 線跑單一策略產生訊號。args: {strategy: string, symbol: string, interval: string, bars?: array, bars_limit?: number(預設 100, max 500)}。**bars 沒給的話 tool 會自動先 quote.ohlcv 拿、不用你 chain 兩次 call**——只給 {strategy, symbol, interval} 就夠。要自帶 bars 也支援。',
     dispatch: async (args) => {
-      return await callBroker('POST', '/api/v1/strategy/signal', args);
+      let bars = args.bars;
+      // 沒帶 bars / 空 / 不是陣列 → tool 自己先抓 ohlcv
+      if (!Array.isArray(bars) || bars.length < 2) {
+        const limit = Math.min(parseInt(args.bars_limit, 10) || 100, 500);
+        const symbol = encodeURIComponent(args.symbol || '');
+        const interval = encodeURIComponent(args.interval || '1h');
+        const ohlcv = await callBroker('GET',
+          `/api/v1/workers/quote/ohlcv/?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+        if (!ohlcv.ok) {
+          return { ok: false, status: ohlcv.status, error: `auto ohlcv fetch failed: ${ohlcv.error}` };
+        }
+        bars = ohlcv.data?.bars;
+        if (!Array.isArray(bars) || bars.length < 2) {
+          return { ok: false, status: 400, error: `auto-fetched only ${bars?.length || 0} bars, need >= 2` };
+        }
+      }
+      return await callBroker('POST', '/api/v1/strategy/signal', {
+        strategy: args.strategy,
+        symbol: args.symbol,
+        interval: args.interval,
+        bars,
+      });
     },
   },
 
