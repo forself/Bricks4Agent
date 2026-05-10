@@ -82,6 +82,25 @@ export const TOOLS = {
     },
   },
 
+  'trading.order': {
+    description: '下 perp 單（**會走 admin 核准流程**——你 call 完幾乎一定會收到 "Pending admin approval, approval_id=apr_..." 的錯誤訊息、那是正常的、不是失敗、把 approval_id 轉達使用者請他到 dashboard 「待審」分頁裁決即可、不要重試）。args: {symbol: string(例 "BTC-USDT"), side: "buy"|"sell", position_side: "long"|"short", quantity: number, order_type?: "market"|"limit"(預設 market), limit_price?: number(限價單必填), leverage?: number(預設 1, 開倉用), reduce_only?: bool(平倉設 true), exchange?: "bingx"}',
+    dispatch: async (args) => {
+      const payload = {
+        exchange: args.exchange || 'bingx',
+        symbol: args.symbol,
+        side: args.side,
+        position_side: args.position_side,
+        order_type: args.order_type || 'market',
+        quantity: args.quantity,
+      };
+      if (args.limit_price != null) payload.limit_price = args.limit_price;
+      if (args.stop_price != null) payload.stop_price = args.stop_price;
+      if (args.leverage != null) payload.leverage = args.leverage;
+      if (args.reduce_only != null) payload.reduce_only = args.reduce_only;
+      return await callBroker('POST', '/api/v1/perpetual/order', payload);
+    },
+  },
+
   'health.score': {
     description: '看平台整體健康分數（0-100）+ 每 worker breakdown。args: {}',
     dispatch: async () => callBroker('GET', '/api/v1/health/score'),
