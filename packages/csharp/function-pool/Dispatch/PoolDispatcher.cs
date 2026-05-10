@@ -105,11 +105,14 @@ public class PoolDispatcher : IExecutionDispatcher
                 $"Capability '{request.CapabilityId}' is not allowed for role '{request.Role}'");
         }
 
-        // ── Approval gate（policy by capability）──
-        // 高風險 capability（trading.order）需要 admin 在 dashboard 點 approve 才放行。
-        // 沒設 approval service 或 capability 不在受控集合 → skip。
+        // ── Approval gate（policy by capability + route）──
+        // 高風險 capability/route 需要 admin 在 dashboard 點 approve 才放行：
+        //   - capability 級：trading.order（整個 capability 都受控）
+        //   - route 級：trading.perpetual::place_order/cancel_order/set_leverage
+        //     （讓同 capability 內讀寫分離：account/positions 仍可讀、寫操作需審）
+        // 沒設 approval service 或 (capability,route) 不在受控集合 → skip。
         // system principal 跳過 approval（內部背景任務、AutoTrader 等不會被擋）。
-        if (_approval != null && _approval.RequiresApproval(request.CapabilityId)
+        if (_approval != null && _approval.RequiresApproval(request.CapabilityId, request.Route)
             && !string.Equals(request.PrincipalId, "system", StringComparison.OrdinalIgnoreCase))
         {
             var apr = _approval.GetOrCreatePending(

@@ -15,9 +15,11 @@ namespace BrokerCore.Services;
 public interface IApprovalService
 {
     /// <summary>
-    /// 查 capability 是否需要 approve（policy）。null = 不需要；non-null = 走 approve 流程。
+    /// 查 (capability, route) 組合是否需要 approve。
+    /// 兩種匹配：capability-level（整個 capability 都受控）或 capability::route 精確匹配。
+    /// 後者用於同 capability 內讀寫分離（例 trading.perpetual 讀 OK、place_order/cancel_order 受控）。
     /// </summary>
-    bool RequiresApproval(string capabilityId);
+    bool RequiresApproval(string capabilityId, string route);
 
     /// <summary>
     /// 對給定 trace_id 取得 / 建立 approval。
@@ -54,13 +56,30 @@ public class ApprovalService : IApprovalService
 {
     private readonly BrokerDb _db;
 
-    private static readonly HashSet<string> RequiringApproval =
+    /// <summary>整個 capability 都受控（任何 route 都要 approve）</summary>
+    private static readonly HashSet<string> RequiringApprovalCapabilities =
         new(StringComparer.OrdinalIgnoreCase) { "trading.order" };
+
+    /// <summary>
+    /// 特定 capability::route 受控；用於同 capability 內讀寫分離。
+    /// 格式 "capability::route" 全 lowercase。
+    /// </summary>
+    private static readonly HashSet<string> RequiringApprovalRoutes =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        "trading.perpetual::place_order",
+        "trading.perpetual::cancel_order",
+        "trading.perpetual::set_leverage",
+    };
 
     public ApprovalService(BrokerDb db) { _db = db; }
 
-    public bool RequiresApproval(string capabilityId)
-        => RequiringApproval.Contains(capabilityId);
+    public bool RequiresApproval(string capabilityId, string route)
+    {
+        if (RequiringApprovalCapabilities.Contains(capabilityId)) return true;
+        var key = $"{capabilityId}::{route}";
+        return RequiringApprovalRoutes.Contains(key);
+    }
 
     public ApprovalRequest GetOrCreatePending(
         string traceId, string capabilityId, string route, string payload,
