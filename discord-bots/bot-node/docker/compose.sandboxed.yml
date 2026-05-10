@@ -28,12 +28,20 @@ services:
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - ACCESS_JSON_PATH=/app/access.json
-      - BOT_PHASE=1
+      - BOT_PHASE=2
       - BROKER_URL=http://broker:5000
+      # claude code v2.1.126 在 rootless container 寫 /usr/local/lib/node_modules 會 EACCES、關 auto-update
+      - DISABLE_AUTOUPDATER=1
 
     volumes:
       # access.json 唯讀 mount、bot 改不了自己的權限白名單
       - ../access.json:/app/access.json:ro
+      # Claude Code 訂閱憑證 + plugin cache（吃你 Max 訂閱、不另外付 token 費）
+      # 用 rw 因為 claude 會更新 session 紀錄、approved pairings 等。注意：跟既有 claude bot
+      # 同份檔案、不要兩個 bot 同時跑（會搶 .credentials lock）。
+      - ${USERPROFILE}/.claude:/home/claude-user/.claude
+      # 種子 .claude.json（如果存在的話）
+      - ${USERPROFILE}/.claude.json:/home/claude-user/.claude.json:ro
 
     networks:
       - b4a-trading-net
@@ -46,9 +54,9 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m
+    # 不開 read_only：claude code 會寫一些 cache 到 home（不是訂閱 token 那個檔）、
+    # 全 readonly 會讓它 silent fail。cap_drop ALL + no-new-privileges + 網路隔離已經是
+    # 現有 claude bot 同套防護等級。
 
 networks:
   b4a-trading-net:

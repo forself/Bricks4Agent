@@ -1,19 +1,20 @@
 // B4A Discord Bot — Node.js implementation
 //
-// Phase 1: echo bot
-//   - Discord.js client 連 Gateway
-//   - 收到 @mention 或 DM、access.json 過濾後回覆 "echo: <text>"
-//   - 不接 LLM、純為了確認 sandbox + 連線 + 權限過濾 OK
-//
-// Phase 2 之後加：claude --print 接 LLM、tool calling、broker 派發等。
+// Phase 2: claude --print headless integration
+//   - Discord.js 收訊息、access.json 過濾
+//   - 對話送 claude --print subprocess、拿 text 回應
+//   - per-user 多輪歷史（in-memory）
+//   - Discord typing indicator 蓋掉 cold start 延遲
+//   - 純對話、無 tool calling（phase 3 才接 broker capability）
 
 import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { loadAccess, isAllowed } from './access.js';
-import path from 'node:path';
+import { callClaude } from './llm.js';
+import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
-const PHASE = process.env.BOT_PHASE || '1';
+const PHASE = process.env.BOT_PHASE || '2';
 
 if (!TOKEN) {
   console.error('[fatal] DISCORD_BOT_TOKEN env var not set');
@@ -30,7 +31,6 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
   ],
-  // DM 訊息預設不會被 cache、要明確 partial 才收得到
   partials: [Partials.Channel, Partials.Message],
 });
 
@@ -39,38 +39,99 @@ client.once(Events.ClientReady, (c) => {
   console.log(`[bot] in ${c.guilds.cache.size} guilds`);
 });
 
+// 簡單 dispatch：每個 user × channel 同時間只跑一條 LLM 呼叫、避免 spam 同時送多條訊息撞炸
+const inFlight = new Set();
+
 client.on(Events.MessageCreate, async (msg) => {
-  // 不回應自己 / 其他 bot
   if (msg.author.bot) return;
 
-  // 公開頻道訊息：必須 @mention 才回；DM 訊息：直接回
   const isMention = msg.mentions.users.has(client.user.id);
   const isDm = !msg.guildId;
   if (!isMention && !isDm) return;
 
-  // access.json 過濾
   if (!isAllowed(msg)) {
     console.log(`[access] rejected msg from user=${msg.author.id} channel=${msg.channelId} guild=${msg.guildId}`);
     return;
   }
 
-  // 取乾淨內容（去掉 mention prefix）
   let content = msg.content || '';
   content = content.replace(/<@!?\d+>/g, '').trim();
   if (!content) {
-    await msg.reply('(empty message — phase 1 echo bot 不會處理空訊息)');
+    await msg.reply('(空訊息、phase 2 助理不會處理)').catch(() => {});
     return;
   }
 
+  // 內建簡單指令、不送 LLM
+  if (content === '/reset' || content === '/clear') {
+    clearHistory(msg.author.id, msg.channelId);
+    await msg.reply('✓ 對話歷史已清空');
+    return;
+  }
+  if (content === '/stats') {
+    const s = histStats();
+    await msg.reply(`📊 sessions=${s.sessions} total_turns=${s.total_turns} phase=${PHASE}`);
+    return;
+  }
+
+  const lockKey = `${msg.author.id}:${msg.channelId}`;
+  if (inFlight.has(lockKey)) {
+    await msg.reply('（前一條訊息還在處理、稍候）').catch(() => {});
+    return;
+  }
+  inFlight.add(lockKey);
+
   console.log(`[msg] from ${msg.author.username} (${msg.author.id}): ${content.slice(0, 100)}`);
 
-  // Phase 1：echo
+  // 顯示 typing indicator 直到回應送出（Discord 自動 10s timeout、我們 LLM 跑超過再續一次）
+  let typingTimer = null;
   try {
-    await msg.reply(`echo (phase ${PHASE}): ${content}`);
+    if (msg.channel.sendTyping) {
+      await msg.channel.sendTyping().catch(() => {});
+      typingTimer = setInterval(() => msg.channel.sendTyping().catch(() => {}), 8000);
+    }
+
+    const history = getHistory(msg.author.id, msg.channelId);
+    const startMs = Date.now();
+    const result = await callClaude(content, history);
+    const durationMs = Date.now() - startMs;
+    console.log(`[llm] ${result.ok ? 'ok' : 'fail'} ${durationMs}ms hist=${history.length}`);
+
+    if (!result.ok) {
+      await msg.reply(`⚠ LLM 呼叫失敗：${result.error.slice(0, 300)}`).catch(() => {});
+      return;
+    }
+
+    // Discord 單訊息上限 2000 字、超過要分段
+    const text = result.text;
+    pushTurn(msg.author.id, msg.channelId, content, text);
+    await sendChunked(msg, text);
   } catch (e) {
-    console.error('[reply] failed:', e.message);
+    console.error('[handler] error:', e);
+    await msg.reply(`⚠ 內部錯誤：${e.message}`).catch(() => {});
+  } finally {
+    if (typingTimer) clearInterval(typingTimer);
+    inFlight.delete(lockKey);
   }
 });
+
+/** Discord 訊息上限 2000 字、超過分段送 */
+async function sendChunked(msg, text) {
+  const MAX = 1900;
+  if (text.length <= MAX) {
+    await msg.reply(text);
+    return;
+  }
+  let first = true;
+  for (let i = 0; i < text.length; i += MAX) {
+    const chunk = text.slice(i, i + MAX);
+    if (first) {
+      await msg.reply(chunk);
+      first = false;
+    } else {
+      await msg.channel.send(chunk).catch(() => {});
+    }
+  }
+}
 
 client.on(Events.Error, (e) => console.error('[client error]', e));
 client.on(Events.Warn, (w) => console.warn('[client warn]', w));

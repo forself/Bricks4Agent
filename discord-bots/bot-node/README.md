@@ -8,9 +8,9 @@ keep all governance (ACL / Approval / Risk rules / Audit chain) intact.
 ## Phase roadmap
 
 | Phase | What | Status |
-|---|---|---|
-| 1 | Echo bot — Discord connect + access.json filter, no LLM | active |
-| 2 | Wire `claude --print` headless for chat | pending |
+| --- | --- | --- |
+| 1 | Echo bot — Discord connect + access.json filter, no LLM | done |
+| 2 | Wire `claude --print` headless for chat | active |
 | 3 | Tool calling via text protocol — read-only capabilities | pending |
 | 4 | Trading capabilities + approval workflow integration | pending |
 
@@ -37,6 +37,7 @@ docker compose -f compose.sandboxed.yml logs -f
 ```
 
 **重要**：同時只能有一個 bot 連同個 Discord token。啟動 bot-node 之前先 stop claude bot：
+
 ```bash
 docker compose -f ../../claude/docker/compose.sandboxed.yml down
 ```
@@ -46,16 +47,16 @@ docker compose -f ../../claude/docker/compose.sandboxed.yml down
 跟既有 claude bot 同套 hardening：
 
 - `cap_drop: [ALL]` + `no-new-privileges`
-- `read_only: true` rootfs + `/tmp` ephemeral
 - `b4a-trading-net` only → 進不了 host LAN
 - `host.docker.internal` 改指 127.0.0.1 → 防 host port escape
 - access.json mount `:ro` → bot 不能改自己的權限白名單
-- 容器內非 root user（`botuser:10001`）
+- 容器內非 root user（`claude-user:10001`）
+- 不開 `read_only`：claude code 會寫 `~/.cache` 等位置、全 readonly 會 silent fail；上面四項已等同既有 claude bot 防護等級
 
 ## 跟既有 claude bot 的差異
 
 | 維度 | claude bot | bot-node |
-|---|---|---|
+| --- | --- | --- |
 | LLM 入口 | claude code `--channels` plugin（blocked） | `claude --print` subprocess（phase 2+） |
 | Tool calling | MCP（接不通） | text protocol via broker dispatch（phase 3+） |
 | Discord token | 同一個（不能同時跑） | 同一個 |
@@ -65,7 +66,7 @@ docker compose -f ../../claude/docker/compose.sandboxed.yml down
 
 ## Architecture（phase 4 final）
 
-```
+```text
 Discord 訊息（access.json 過濾）
   ↓
 discord.js client（容器內）
