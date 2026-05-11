@@ -61,6 +61,25 @@ public class LineApiClient : IDisposable
         return await PostAsync($"{ApiBase}/message/push", body, ct);
     }
 
+    /// <summary>Push 預先組好的完整 body JSON（給 Flex / 任意富訊息用、避免 Deserialize/Reserialize round-trip 弄壞結構）</summary>
+    public async Task<(bool Success, string? Error)> PushRawJsonAsync(
+        string bodyJson, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+            var response = await _http.PostAsync($"{ApiBase}/message/push", content, ct);
+            if (response.IsSuccessStatusCode)
+                return (true, null);
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            return (false, $"LINE API error {response.StatusCode}: {errorBody}");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"LINE API call failed: {ex.Message}");
+        }
+    }
+
     /// <summary>Push 音訊訊息</summary>
     public async Task<(bool Success, string? Error)> PushAudioMessageAsync(
         string recipientId, string audioUrl, int durationMs, CancellationToken ct = default)

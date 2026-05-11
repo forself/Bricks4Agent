@@ -45,17 +45,21 @@ public class SendMessageHandler : ICapabilityHandler
                 return (false, null, "No recipient specified and no default recipient configured.");
 
             // messages 陣列分支：直接 forward 給 LINE Push API（給 Flex 等富訊息用）
+            // 故意不 Deserialize<object[]> 再 reserialize——那條路會踩到 PropertyNamingPolicy
+            // 跟 nested JsonElement 處理的 Dictionary lookup 例外。直接組 body JSON、結構原樣轉發。
             if (root.TryGetProperty("messages", out var messagesEl) && messagesEl.ValueKind == JsonValueKind.Array)
             {
-                if (messagesEl.GetArrayLength() == 0)
+                var msgCount = messagesEl.GetArrayLength();
+                if (msgCount == 0)
                     return (false, null, "messages array is empty.");
-                if (messagesEl.GetArrayLength() > 5)
+                if (msgCount > 5)
                     return (false, null, "messages array exceeds LINE limit of 5 per push.");
 
-                // 反序列化成 object[]、由 LineApiClient.PushMessagesAsync 拿去 JSON 序列化送出
-                var rawMessages = JsonSerializer.Deserialize<object[]>(messagesEl.GetRawText())
-                                  ?? Array.Empty<object>();
-                var (sentOk, sendErr) = await _lineApi.PushMessagesAsync(to, rawMessages, ct);
+                // 內嵌原始 JSON 片段、用 JsonSerializer.Serialize 處理 to 字串的跳脫（含中文 / 引號 / 反斜線）
+                var toJsonLiteral = JsonSerializer.Serialize(to);
+                var bodyJson = $"{{\"to\":{toJsonLiteral},\"messages\":{messagesEl.GetRawText()}}}";
+
+                var (sentOk, sendErr) = await _lineApi.PushRawJsonAsync(bodyJson, ct);
                 if (!sentOk)
                     return (false, null, sendErr);
 
@@ -63,7 +67,7 @@ public class SendMessageHandler : ICapabilityHandler
                 {
                     sent = true,
                     to,
-                    messageCount = rawMessages.Length,
+                    messageCount = msgCount,
                     format = "rich"
                 });
                 return (true, richResult, null);
