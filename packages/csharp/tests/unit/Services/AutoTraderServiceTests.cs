@@ -564,6 +564,103 @@ public class AutoTraderServiceTests
         d.PnlPct.Should().Be(1.5m);
     }
 
+    // ── Peak-based BE：學自對照組 commit 6f11aac──────────────────
+    // 既有的「BE 用 current pnl」會在「曾經 +5% 但回檔 +0.5%」場景漏鎖、又跌回 -X% 全賠。
+    // 改成 peak-based 後、只要 peak 曾達門檻、BE 就鎖、不再被回檔欺騙。
+
+    [Fact]
+    public void Protection_PeakBasedBe_TriggersEvenAfterPullback()
+    {
+        // Entry 100、peak 曾達 105 (+5%)、current 已回到 101 (+1%)
+        // 舊 logic: current 1% < BE trigger 3% → 不觸發 → 將來繼續跌會慘賠
+        // 新 logic: peak 5% ≥ BE trigger 3% → 觸發、SL 鎖到 100.5
+        var state = MakeState(entry: 100m, sl: 95m, peak: 105m);
+        var d = AutoTraderService.EvaluateProtection(state, 101m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove,
+            "peak +5% 曾達 BE trigger、即使現在只剩 +1% 仍該鎖獲利");
+        d.NewSlPrice.Should().Be(100.5m);
+    }
+
+    [Fact]
+    public void Protection_EffectivePeakFallback_HandlesUnInitializedPeak()
+    {
+        // peak 沒先 update（測試常見場景）、current=103；防禦性 max(peak, current) 仍能正確算 BE
+        var state = MakeState(entry: 100m, sl: 95m, peak: 100m);  // peak=entry
+        var d = AutoTraderService.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove,
+            "Evaluate 應自己 max(stored peak, current) 為 effective peak、不靠呼叫端先 update");
+    }
+
+    // ── Trailing Lock：學自對照組 commit 40abeae──────────────────
+
+    private static AutoTraderService.ProtectionConfig WithTrailing(decimal trigger, decimal distance) => new()
+    {
+        InitialSlPct        = 5m,
+        PartialExitPct      = 100m,   // 設高、本組測試不關心 partial
+        PartialExitRatio    = 0.5m,
+        BreakevenTriggerPct = 100m,   // 設高、本組測試聚焦 trailing
+        BreakevenBufferPct  = 0.5m,
+        TrailingTriggerPct  = trigger,
+        TrailingDistancePct = distance,
+    };
+
+    [Fact]
+    public void Protection_TrailingLock_FiresAtPeakThreshold()
+    {
+        // Entry 100、peak 110 (+10%)、SL 95、config: trigger=5%, distance=2%
+        // peak 達 5% 門檻 → SL 應拖到 110 × 0.98 = 107.8
+        var state = MakeState(entry: 100m, sl: 95m, peak: 110m);
+        var cfg   = WithTrailing(trigger: 5m, distance: 2m);
+
+        var d = AutoTraderService.EvaluateProtection(state, 110m, 10m, cfg);
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.TrailingLock);
+        d.NewSlPrice.Should().Be(107.8m, "110 × (1 - 2%) = 107.8");
+    }
+
+    [Fact]
+    public void Protection_TrailingLock_OnlyMovesSlUp()
+    {
+        // peak 達 5% 觸發 trailing、但算出的新 SL 反而比現有 SL 低 → 不動
+        // 場景：entry 100、peak 105、distance 5%（過大）→ trail SL = 99.75、比既有 SL 100.5 還低 → no-op
+        var state = MakeState(entry: 100m, sl: 100.5m, beMoved: true, peak: 105m);  // BE 已挪過
+        var cfg   = WithTrailing(trigger: 3m, distance: 5m);                          // distance 太大
+
+        var d = AutoTraderService.EvaluateProtection(state, 105m, 10m, cfg);
+
+        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.TrailingLock,
+            "trailing 算出的 SL 必須 > 現有 SL 才動、否則無事發生");
+    }
+
+    [Fact]
+    public void Protection_TrailingLock_Disabled_WhenTriggerIsZero()
+    {
+        // TrailingTriggerPct = 0 → trailing 機制關閉（向下相容預設值）
+        var state = MakeState(entry: 100m, sl: 95m, peak: 130m);  // peak 30%、超 trigger 一般也會
+        var cfg   = WithTrailing(trigger: 0m, distance: 2m);
+
+        var d = AutoTraderService.EvaluateProtection(state, 130m, 10m, cfg);
+
+        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.TrailingLock);
+    }
+
+    [Fact]
+    public void Protection_TrailingLock_UsesEffectivePeakNotJustStored()
+    {
+        // peak field 還沒更新到當前高、但 current 已突破前 peak
+        // effectivePeak 應取 max(stored peak, current) = 112
+        var state = MakeState(entry: 100m, sl: 95m, peak: 105m);    // 過去 peak 105
+        var cfg   = WithTrailing(trigger: 5m, distance: 2m);
+
+        // current 突破到 112、但 state.PeakPrice 還是 105
+        var d = AutoTraderService.EvaluateProtection(state, 112m, 10m, cfg);
+
+        d.Action.Should().Be(AutoTraderService.ProtectionAction.TrailingLock);
+        d.NewSlPrice.Should().Be(109.76m, "effective peak 112 × 0.98 = 109.76、不是 105 × 0.98");
+    }
+
     [Fact]
     public void Protection_InvalidInputs_ReturnsNone()
     {
@@ -902,6 +999,62 @@ public class AutoTraderServiceTests
 
         d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
         d.NewSlPrice.Should().Be(99.5m, "short BE: entry × (1 - buffer/100)");
+    }
+
+    // ── Perp Trailing Lock + peak-based BE ──────────────────────
+
+    [Fact]
+    public void PerpProtection_LongTrailingLock_FiresAtPeakThreshold()
+    {
+        // Long entry 100, peak 110 (+10%), SL 95; trailing trigger=5%, distance=2%
+        // → SL 拖到 110 × 0.98 = 107.8
+        var state = MakePerpState("long", entry: 100m, sl: 95m);
+        state.PeakMark = 110m;
+        var cfg = new AutoTraderService.ProtectionConfig
+        {
+            InitialSlPct = 5m, PartialExitPct = 100m, PartialExitRatio = 0.5m,
+            BreakevenTriggerPct = 100m, BreakevenBufferPct = 0.5m,
+            TrailingTriggerPct = 5m, TrailingDistancePct = 2m,
+        };
+
+        var d = AutoTraderService.EvaluatePerpetualProtection(state, 110m, 10m, 50m, cfg, liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.TrailingLock);
+        d.NewSlPrice.Should().Be(107.8m);
+    }
+
+    [Fact]
+    public void PerpProtection_ShortTrailingLock_FiresWithReversedMath()
+    {
+        // Short entry 100, peak (min) mark 90 (= +10% pnl), SL 105; trigger=5%, distance=2%
+        // → SL 拖到 90 × 1.02 = 91.8 (short: SL 在 peak 上方、且應 < 現 SL 才動)
+        var state = MakePerpState("short", entry: 100m, sl: 105m);
+        state.PeakMark = 90m;
+        var cfg = new AutoTraderService.ProtectionConfig
+        {
+            InitialSlPct = 5m, PartialExitPct = 100m, PartialExitRatio = 0.5m,
+            BreakevenTriggerPct = 100m, BreakevenBufferPct = 0.5m,
+            TrailingTriggerPct = 5m, TrailingDistancePct = 2m,
+        };
+
+        var d = AutoTraderService.EvaluatePerpetualProtection(state, 90m, 10m, 50m, cfg, liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.TrailingLock);
+        d.NewSlPrice.Should().Be(91.8m, "short trailing: SL = peak × (1 + distance/100) = 90 × 1.02");
+    }
+
+    [Fact]
+    public void PerpProtection_PeakBasedBe_LongTriggersAfterPullback()
+    {
+        // Long entry 100、PeakMark 曾達 105 (+5%)、current mark 回到 101 (+1%)
+        // 舊 logic 用 pnlPct 1% → 不觸發；新 logic 用 peakPct 5% → 觸發
+        var state = MakePerpState("long", entry: 100m, sl: 95m);
+        state.PeakMark = 105m;
+        var d = AutoTraderService.EvaluatePerpetualProtection(
+            state, 101m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+
+        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.NewSlPrice.Should().Be(100.5m);
     }
 
     [Fact]

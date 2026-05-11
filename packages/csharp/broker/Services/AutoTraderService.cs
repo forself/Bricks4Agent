@@ -122,6 +122,20 @@ public class AutoTraderService : BackgroundService
         public decimal BreakevenBufferPct  { get; init; }  // BE 上方留多少 buffer（避免價差掃損）
 
         /// <summary>
+        /// Trailing lock：peak gain 達此 % 後啟動拖移停損鎖獲利。
+        /// 跟 BE 互補——BE 只把 SL 移到開倉價、trailing 是把 SL 隨 peak 上移、鎖住更多獲利。
+        /// 0 = 關閉（純 BE 模式、向下相容）。預設 0。
+        /// 推薦 5%：浮盈 5% 後開始拖移、配合 TrailingDistancePct 2-3%。
+        /// </summary>
+        public decimal TrailingTriggerPct  { get; init; }
+
+        /// <summary>
+        /// Trailing 距離：啟動後 SL = PeakPrice × (1 - TrailingDistancePct/100)。
+        /// 預設 2%——peak 回檔 2% 即出。太緊容易被噪音掃損、太鬆白給利潤。
+        /// </summary>
+        public decimal TrailingDistancePct { get; init; }
+
+        /// <summary>
         /// ATR-based SL multiplier。&gt; 0 啟用 ATR 模式：SL = entry ± multiplier × ATR；
         /// 同時把 effective SL% clamp 在 [InitialSlPct × 0.5, InitialSlPct × 3] 之間（ATR 太小被太緊、太大被慘賠保護）。
         /// 0 / 沒設 → 維持原 InitialSlPct fixed mode。預設 0（向後相容）。
@@ -193,7 +207,7 @@ public class AutoTraderService : BackgroundService
     private readonly Dictionary<string, decimal> _declaredCapitalByExchange;
     public IReadOnlyDictionary<string, decimal> DeclaredCapital => _declaredCapitalByExchange;
 
-    public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency }
+    public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency, TrailingLock }
 
     public class PerpProtectionDecision
     {
@@ -233,6 +247,13 @@ public class AutoTraderService : BackgroundService
         var pnlPct = isLong
             ? (markPrice - state.EntryPrice) / state.EntryPrice * 100m
             : (state.EntryPrice - markPrice) / state.EntryPrice * 100m;
+        // Effective peak: long 取最高 mark、short 取最低 mark；防禦性 max/min。
+        var effectivePeak = isLong
+            ? Math.Max(state.PeakMark, markPrice)
+            : (state.PeakMark > 0m ? Math.Min(state.PeakMark, markPrice) : markPrice);
+        var peakPct = isLong
+            ? (effectivePeak  - state.EntryPrice) / state.EntryPrice * 100m
+            : (state.EntryPrice - effectivePeak)  / state.EntryPrice * 100m;
 
         // 1) Liquidation emergency — 不論方向、距離過近就先平
         if (state.LiquidationPrice > 0m && liqDistancePct > 0m && liqDistancePct <= liqEmergencyPct)
@@ -272,8 +293,8 @@ public class AutoTraderService : BackgroundService
             }
         }
 
-        // 4) BE SL move
-        if (!state.BeMoved && pnlPct >= config.BreakevenTriggerPct)
+        // 4) BE SL move (peak-based、學自對照組 commit 6f11aac)
+        if (!state.BeMoved && peakPct >= config.BreakevenTriggerPct)
         {
             var newSl = isLong
                 ? state.EntryPrice * (1m + config.BreakevenBufferPct / 100m)
@@ -286,7 +307,26 @@ public class AutoTraderService : BackgroundService
                 {
                     Action = PerpProtectionAction.BeMove,
                     NewSlPrice = newSl, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
-                    Reason = $"SL → BE ({state.Side}) {(isLong ? "+" : "−")}{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at +{pnlPct:F2}%",
+                    Reason = $"SL → BE ({state.Side}) {(isLong ? "+" : "−")}{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at peak +{peakPct:F2}%",
+                };
+            }
+        }
+
+        // 5) Trailing lock — peak gain 達門檻後、把 SL 拖移到 peak ± distance%
+        if (config.TrailingTriggerPct > 0m && peakPct >= config.TrailingTriggerPct)
+        {
+            var trailSl = isLong
+                ? effectivePeak * (1m - config.TrailingDistancePct / 100m)   // long: SL 在 peak 下方
+                : effectivePeak * (1m + config.TrailingDistancePct / 100m);  // short: SL 在 peak 上方
+            // 只往「縮小風險」方向動
+            var moves = isLong ? trailSl > state.SlPrice : trailSl < state.SlPrice;
+            if (moves)
+            {
+                return new PerpProtectionDecision
+                {
+                    Action = PerpProtectionAction.TrailingLock,
+                    NewSlPrice = trailSl, PnlPct = pnlPct, LiqDistancePct = liqDistancePct,
+                    Reason = $"Trailing lock ({state.Side}): SL {state.SlPrice:F4} → {trailSl:F4} (peak {effectivePeak:F4} {(isLong ? "−" : "+")}{config.TrailingDistancePct}%) at peak +{peakPct:F2}%",
                 };
             }
         }
@@ -317,7 +357,7 @@ public class AutoTraderService : BackgroundService
     public DateTime? SlFlushTriggeredAt => _slFlushTriggeredAt;
     public IReadOnlyList<SlHitRecord> RecentSlHits => _recentSlHits.ToArray();
 
-    public enum ProtectionAction { None, SlHit, PartialExit, BeMove }
+    public enum ProtectionAction { None, SlHit, PartialExit, BeMove, TrailingLock }
 
     public class ProtectionDecision
     {
@@ -333,8 +373,13 @@ public class AutoTraderService : BackgroundService
     /// 不下單、不改 state、不依賴 dispatcher，方便單元測試。
     /// 呼叫端拿到 decision 後再決定怎麼執行（下單 / 改 state）。
     ///
-    /// 優先順序：SL hit > Partial exit > BE move > None
-    /// 一次只回一個 action（同 cycle 不會既 partial 又 BE）；下次 sweep 自然會接著走。
+    /// 優先順序：SL hit > Partial exit > BE move > Trailing lock > None
+    /// 一次只回一個 action（同 cycle 不會既 partial 又 BE 又 trail）；下次 sweep 自然接著走。
+    ///
+    /// 設計重點（學自 ai-quant-starter2 commit 6f11aac、40abeae）：
+    ///   - BE 跟 trailing 都用 **peak gain** 判斷（從歷史 peak 計算）、不用 current pnl。
+    ///     避免「曾經 +5% 但回檔 +0.5%、BE 沒鎖到、又跌回 -X% 全賠」的悲劇。
+    ///   - Trailing distance 算法：SL = peak × (1 - distancePct/100)、只往上動、不下移。
     /// </summary>
     public static ProtectionDecision EvaluateProtection(
         PositionProtectionState state, decimal currentPrice, decimal qty, ProtectionConfig config)
@@ -342,9 +387,13 @@ public class AutoTraderService : BackgroundService
         if (state.EntryPrice <= 0m || qty <= 0m || currentPrice <= 0m)
             return new ProtectionDecision { Action = ProtectionAction.None, Reason = "invalid inputs" };
 
-        var pnlPct = (currentPrice - state.EntryPrice) / state.EntryPrice * 100m;
+        var pnlPct  = (currentPrice    - state.EntryPrice) / state.EntryPrice * 100m;
+        // Effective peak: max(stored peak, current)——防禦性算法、即使呼叫端忘了在 Evaluate
+        // 前更新 state.PeakPrice、本函式仍正確。production handler 已會先 update。
+        var effectivePeak = Math.Max(state.PeakPrice, currentPrice);
+        var peakPct = (effectivePeak - state.EntryPrice) / state.EntryPrice * 100m;
 
-        // 1) SL hit (含 BE 後挪過的 SL)
+        // 1) SL hit (含 BE 後挪過的 SL / trailing 上移過的 SL)
         if (currentPrice <= state.SlPrice)
         {
             return new ProtectionDecision
@@ -372,8 +421,8 @@ public class AutoTraderService : BackgroundService
             }
         }
 
-        // 3) BE SL move
-        if (!state.BeMoved && pnlPct >= config.BreakevenTriggerPct)
+        // 3) BE SL move (peak-based、不是 current pnl)
+        if (!state.BeMoved && peakPct >= config.BreakevenTriggerPct)
         {
             var newSl = state.EntryPrice * (1m + config.BreakevenBufferPct / 100m);
             if (newSl > state.SlPrice)
@@ -383,7 +432,23 @@ public class AutoTraderService : BackgroundService
                     Action = ProtectionAction.BeMove,
                     NewSlPrice = newSl,
                     PnlPct = pnlPct,
-                    Reason = $"SL → BE +{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at +{pnlPct:F2}%",
+                    Reason = $"SL → BE +{config.BreakevenBufferPct}% (was {state.SlPrice:F4}, now {newSl:F4}) at peak +{peakPct:F2}%",
+                };
+            }
+        }
+
+        // 4) Trailing lock：peak gain 達門檻後、把 SL 拖移到 peak × (1 - distance%)
+        if (config.TrailingTriggerPct > 0m && peakPct >= config.TrailingTriggerPct)
+        {
+            var trailSl = effectivePeak * (1m - config.TrailingDistancePct / 100m);
+            if (trailSl > state.SlPrice)
+            {
+                return new ProtectionDecision
+                {
+                    Action = ProtectionAction.TrailingLock,
+                    NewSlPrice = trailSl,
+                    PnlPct = pnlPct,
+                    Reason = $"Trailing lock: SL {state.SlPrice:F4} → {trailSl:F4} (peak {effectivePeak:F4} −{config.TrailingDistancePct}%) at peak +{peakPct:F2}%",
                 };
             }
         }
@@ -505,6 +570,8 @@ public class AutoTraderService : BackgroundService
         PartialExitRatio    = ParseRatioEnv("AUTOTRADER_PARTIAL_EXIT_RATIO",  defaultValue: 0.5m),
         BreakevenTriggerPct = ParsePctEnv("AUTOTRADER_BREAKEVEN_TRIGGER_PCT", defaultValue: 3m,    min: 0.5m, max: 100m),
         BreakevenBufferPct  = ParsePctEnv("AUTOTRADER_BREAKEVEN_BUFFER_PCT",  defaultValue: 0.5m,  min: 0m,   max: 10m),
+        TrailingTriggerPct  = ParsePctEnv("AUTOTRADER_TRAILING_TRIGGER_PCT",  defaultValue: 0m,    min: 0m,   max: 100m),  // 0 = 關閉
+        TrailingDistancePct = ParsePctEnv("AUTOTRADER_TRAILING_DISTANCE_PCT", defaultValue: 2m,    min: 0.1m, max: 50m),
         AtrSlMultiplier     = ParsePctEnv("AUTOTRADER_ATR_SL_MULTIPLIER",     defaultValue: 0m,    min: 0m,   max: 10m),
         AtrPeriod           = (int)ParsePctEnv("AUTOTRADER_ATR_PERIOD",       defaultValue: 14m,   min: 5m,   max: 100m),
         AtrInterval         = Environment.GetEnvironmentVariable("AUTOTRADER_ATR_INTERVAL") ?? "1h",
@@ -1037,6 +1104,13 @@ public class AutoTraderService : BackgroundService
                     AddLog(wi, "protect", decision.Reason);
                 break;
 
+            case ProtectionAction.TrailingLock:
+                _logger.LogInformation("Trailing lock for {Key}: {Reason}", key, decision.Reason);
+                state.SlPrice = decision.NewSlPrice;  // 只往上、由 EvaluateProtection 保證
+                if (_watchList.TryGetValue(key, out var wiTrail))
+                    AddLog(wiTrail, "protect", decision.Reason);
+                break;
+
             case ProtectionAction.None:
             default:
                 break;
@@ -1230,6 +1304,13 @@ public class AutoTraderService : BackgroundService
                 state.BeMoved = true;
                 if (_watchList.TryGetValue($"{exchange}:{symbol}", out var wi))
                     AddLog(wi, "protect", decision.Reason);
+                break;
+
+            case PerpProtectionAction.TrailingLock:
+                _logger.LogInformation("Perp trailing lock for {Key}: {Reason}", key, decision.Reason);
+                state.SlPrice = decision.NewSlPrice;  // EvaluatePerpetualProtection 已保證單向移動
+                if (_watchList.TryGetValue($"{exchange}:{symbol}", out var wiTrail))
+                    AddLog(wiTrail, "protect", decision.Reason);
                 break;
 
             case PerpProtectionAction.None:
