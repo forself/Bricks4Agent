@@ -425,6 +425,97 @@ public class RiskEngineNewRulesTests
         rule.Enabled.Should().BeTrue();
     }
 
+    // ── Scope 過濾：r14 (perp) / r17 (spot) 同 Type 不該重複觸發 ─────
+
+    [Fact]
+    public void Scope_PerpRule_NotFiredOnSpotPath()
+    {
+        // Scope="perp" 的規則不該在 spot Check() 路徑觸發、避免 r14 r17 同 Type 在 spot 跑兩次
+        var perpRule = new RiskRule
+        {
+            RuleId = "r14", Name = "Max Loss Per Trade %",
+            Type = "max_loss_per_trade_pct", Threshold = 2m, Enabled = true, Scope = "perp",
+        };
+        var engine = new RiskEngine(new() { perpRule });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        // 5000 名目 × 5% SL = 250 = 2.5% > 2%、若 perp 規則錯誤套上 spot 路徑就會擋
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 5m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Passed.Should().BeTrue("Scope=perp 規則必須在 spot 路徑被略過");
+        r.Violations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Scope_SpotRule_NotFiredOnPerpPath()
+    {
+        // 對稱檢查：Scope="spot" 的規則不該在 perp CheckPerp() 路徑觸發
+        var spotRule = new RiskRule
+        {
+            RuleId = "r17", Name = "Spot Max Loss Per Trade %",
+            Type = "max_loss_per_trade_pct", Threshold = 2m, Enabled = true, Scope = "spot",
+        };
+        var engine = new RiskEngine(new() { spotRule });
+        var snap = new PerpetualSnapshot { Balance = 100m };
+
+        // 50 名目 × 5% = 2.5 = 2.5% > 2%、若 spot 規則錯誤套上 perp 就會擋
+        var r = engine.CheckPerp(
+            symbol: "BTCUSDT", exchange: "bingx", side: "BUY", positionSide: "LONG",
+            quantity: 0.001m, estimatedPrice: 50000m, leverage: 5, snap, initialSlPct: 5m);
+
+        r.Passed.Should().BeTrue("Scope=spot 規則必須在 perp 路徑被略過");
+        r.Violations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Scope_NullOrAny_FiresOnBothPaths_Backward()
+    {
+        // 向後相容：未設 Scope（null）的舊規則應該照舊在 spot 跟 perp 兩條路徑都套
+        var rule = Rule("legacy", "max_loss_per_trade_pct", 2m); // helper 不設 Scope = null
+        var spotEngine = new RiskEngine(new() { rule });
+        var perpEngine = new RiskEngine(new() { rule });
+
+        var spotR = spotEngine.Check("AAPL", "alpaca", "buy",
+            quantity: 5m, estimatedPrice: 1000m,
+            new PortfolioSnapshot { PortfolioValue = 10000m }, initialSlPct: 5m);
+        var perpR = perpEngine.CheckPerp("BTCUSDT", "bingx", "BUY", "LONG",
+            quantity: 0.001m, estimatedPrice: 50000m, leverage: 5,
+            new PerpetualSnapshot { Balance = 100m }, initialSlPct: 5m);
+
+        spotR.Passed.Should().BeFalse("Scope=null 仍套用於 spot");
+        perpR.Passed.Should().BeFalse("Scope=null 仍套用於 perp");
+    }
+
+    [Fact]
+    public void DefaultRules_R14_HasPerpScope()
+    {
+        var r14 = RiskEngine.DefaultRules().Single(r => r.RuleId == "r14");
+        r14.Scope.Should().Be("perp");
+    }
+
+    [Fact]
+    public void DefaultRules_R17_HasSpotScope()
+    {
+        var r17 = RiskEngine.DefaultRules().Single(r => r.RuleId == "r17");
+        r17.Scope.Should().Be("spot");
+    }
+
+    [Fact]
+    public void DefaultRules_SpotCheckOnly_R17Fires_R14Skipped()
+    {
+        // 整套預設規則在 spot 路徑、r17 應該觸發、r14 必須被 Scope 過濾掉、violations 不重複
+        var engine = new RiskEngine(RiskEngine.DefaultRules());
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        // 5000 USD × 5% SL = 250 = 2.5% > 2% threshold → max_loss_per_trade_pct 觸發
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 5m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Passed.Should().BeFalse();
+        var lossViolations = r.Violations.Where(v => v.RuleId == "r14" || v.RuleId == "r17").ToList();
+        lossViolations.Should().HaveCount(1, "spot 路徑只能有一條 max_loss_per_trade_pct violation");
+        lossViolations[0].RuleId.Should().Be("r17");
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private static RiskRule Rule(string id, string type, decimal threshold, string? paramsJson = null)

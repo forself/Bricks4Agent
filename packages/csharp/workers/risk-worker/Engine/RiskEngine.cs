@@ -56,6 +56,9 @@ public class RiskEngine
 
         foreach (var rule in _rules.Where(r => r.Enabled))
         {
+            // Scope filter：perp-only 規則跳過 spot 路徑、避免 r14/r17 同名 Type 重複觸發
+            if (string.Equals(rule.Scope, "perp", StringComparison.OrdinalIgnoreCase))
+                continue;
             // 檢查規則是否適用於此 symbol/exchange
             if (rule.Symbol != null && !rule.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -358,6 +361,9 @@ public class RiskEngine
 
         foreach (var rule in _rules.Where(r => r.Enabled))
         {
+            // Scope filter：spot-only 規則跳過 perp 路徑
+            if (string.Equals(rule.Scope, "spot", StringComparison.OrdinalIgnoreCase))
+                continue;
             if (rule.Symbol != null && !rule.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (rule.Exchange != null && !rule.Exchange.Equals(exchange, StringComparison.OrdinalIgnoreCase))
@@ -538,7 +544,8 @@ public class RiskEngine
                 Params = "{\"start_hm\":\"13:30\",\"end_hm\":\"20:00\"}" },
         // r17: spot 端的 account-risk-per-trade rule（業界 Van Tharp 2% rule）。
         // 跟 perp r14 同名同邏輯、equity 用 portfolio_value、SL 距離由 broker 傳 initial_sl_pct。
-        new() { RuleId = "r17", Name = "Spot Max Loss Per Trade %", Type = "max_loss_per_trade_pct", Threshold = 2 },
+        // Scope="spot"：只在 Check() 路徑套、避免在 perp 路徑被當 max_loss_per_trade_pct 重複觸發。
+        new() { RuleId = "r17", Name = "Spot Max Loss Per Trade %", Type = "max_loss_per_trade_pct", Threshold = 2, Scope = "spot" },
 
         // ── 永續合約規則（給 BingX perp 用、走 CheckPerp 路徑、平倉永遠放行）────
         // r11: 槓桿上限 10x——對 30 USDT 起步帳戶這已經很激進，但留空間給之後調大
@@ -548,7 +555,8 @@ public class RiskEngine
         // r13: 最低距離爆倉 5%——10x 預估 ~9.5% 過、20x ~4.5% 擋。算保守。
         new() { RuleId = "r13", Name = "Min Liquidation Distance",  Type = "max_liquidation_distance",Threshold = 5 },
         // r14: 單筆預估損 ≤ 合約資金 2%（用 InitialSlPct 線性估、保守）
-        new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = 2 },
+        // Scope="perp"：只在 CheckPerp() 路徑套、配對 r17 的 spot scope。
+        new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = 2, Scope = "perp" },
         // r15: 同方向最多 5 倉；對沖時放寬到 5+反向倉數
         new() { RuleId = "r15", Name = "Max Positions Per Side",    Type = "max_positions_per_side",  Threshold = 5 },
         // r16: 當日 perp 帳戶虧損 > 6% → 整天熔斷不再開新倉。
