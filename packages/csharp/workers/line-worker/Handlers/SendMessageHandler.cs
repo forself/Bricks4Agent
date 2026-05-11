@@ -4,12 +4,14 @@ using WorkerSdk;
 namespace LineWorker.Handlers;
 
 /// <summary>
-/// line.message.send 能力處理器 — 發送文字訊息至 LINE
+/// line.message.send 能力處理器 — 發送 LINE 訊息（文字或 Flex / 任意 message 物件陣列）
 ///
-/// payload:
-///   to       (string, optional) — 接收者 LINE userId，省略則用預設接收者
-///   text     (string, required) — 訊息內容
-///   format   (string, optional) — "plain" (預設) 或 "flex"
+/// payload （二擇一）：
+///   { to, text }                    — 文字訊息（預設）
+///   { to, messages: [ ... ] }       — 任意 LINE message object 陣列（最多 5 則）
+///                                      用來推 Flex Message（含 postback 按鈕）等富訊息
+///   to     (string, optional)        — 接收者 LINE userId，省略則用預設接收者
+/// 注意：messages 陣列直接 forward 到 LINE Push API、不做欄位重整、由呼叫端確保格式正確
 /// </summary>
 public class SendMessageHandler : ICapabilityHandler
 {
@@ -41,6 +43,31 @@ public class SendMessageHandler : ICapabilityHandler
 
             if (string.IsNullOrEmpty(to))
                 return (false, null, "No recipient specified and no default recipient configured.");
+
+            // messages 陣列分支：直接 forward 給 LINE Push API（給 Flex 等富訊息用）
+            if (root.TryGetProperty("messages", out var messagesEl) && messagesEl.ValueKind == JsonValueKind.Array)
+            {
+                if (messagesEl.GetArrayLength() == 0)
+                    return (false, null, "messages array is empty.");
+                if (messagesEl.GetArrayLength() > 5)
+                    return (false, null, "messages array exceeds LINE limit of 5 per push.");
+
+                // 反序列化成 object[]、由 LineApiClient.PushMessagesAsync 拿去 JSON 序列化送出
+                var rawMessages = JsonSerializer.Deserialize<object[]>(messagesEl.GetRawText())
+                                  ?? Array.Empty<object>();
+                var (sentOk, sendErr) = await _lineApi.PushMessagesAsync(to, rawMessages, ct);
+                if (!sentOk)
+                    return (false, null, sendErr);
+
+                var richResult = JsonSerializer.Serialize(new
+                {
+                    sent = true,
+                    to,
+                    messageCount = rawMessages.Length,
+                    format = "rich"
+                });
+                return (true, richResult, null);
+            }
 
             var text = root.GetProperty("text").GetString() ?? "";
             if (string.IsNullOrWhiteSpace(text))

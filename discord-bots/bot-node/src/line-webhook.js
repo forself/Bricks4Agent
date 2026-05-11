@@ -20,6 +20,7 @@ import { callBroker } from './broker.js';
 import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn } from './history.js';
+import { handleLinePostback } from './approvals.js';
 
 const PORT = parseInt(process.env.LINE_WEBHOOK_PORT || '5358', 10);
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || '';
@@ -104,7 +105,24 @@ function verifySignature(body, signature) {
 }
 
 async function processEvent(evt) {
-  if (evt.type !== 'message') return;          // 暫不處理 follow / unfollow / postback
+  // postback：審核按鈕回來、不走 LLM、直接派 approve/reject
+  if (evt.type === 'postback') {
+    const userId = evt.source?.userId;
+    const data = evt.postback?.data || '';
+    if (!userId) return;
+    if (!isLineAllowed(userId)) {
+      console.log(`[line postback] rejected user=${userId.slice(0, 8)}…`);
+      return;
+    }
+    const result = await handleLinePostback(userId, data);
+    if (!result.handled) return;   // 不是我們的 prefix、忽略
+    if (result.replyText) {
+      await sendLine(userId, result.replyText).catch(() => {});
+    }
+    return;
+  }
+
+  if (evt.type !== 'message') return;          // follow / unfollow 暫不處理
   if (evt.message?.type !== 'text') return;    // audio/image/sticker 暫略
 
   const userId = evt.source?.userId;

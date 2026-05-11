@@ -65,7 +65,9 @@ public static class NotificationEndpoints
         });
 
         // bot-node LINE webhook 收到 user 訊息、跑 LLM、用這條 endpoint 把回覆 push 回 user。
-        // body: { "to": "U...", "text": "..." }
+        // body 二擇一：
+        //   { "to": "U...", "text": "..." }                  → 文字訊息
+        //   { "to": "U...", "messages": [ {...}, ... ] }     → 任意 LINE message 陣列（給 Flex 用）
         // 走 system principal 派發 line.message.send capability、繞過 ACL（caller 已過 bot token auth）。
         // line.message.send **不在** approval gate 受控集合、不會被 admin 攔下。
         n.MapPost("/line/send", async (HttpRequest req, IExecutionDispatcher dispatcher, IWorkerRegistry registry) =>
@@ -76,18 +78,28 @@ public static class NotificationEndpoints
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
             string to = "", text = "";
+            JsonElement? messagesEl = null;
             try
             {
                 var doc = JsonDocument.Parse(body).RootElement;
                 to   = doc.TryGetProperty("to",   out var t)  ? (t.GetString()  ?? "") : "";
                 text = doc.TryGetProperty("text", out var tx) ? (tx.GetString() ?? "") : "";
+                if (doc.TryGetProperty("messages", out var m) && m.ValueKind == JsonValueKind.Array)
+                    messagesEl = m.Clone();
             }
             catch { /* 空 body / 壞 JSON 一律當錯誤 */ }
 
-            if (string.IsNullOrWhiteSpace(to) || string.IsNullOrWhiteSpace(text))
-                return Results.BadRequest(ApiResponseHelper.Error("`to` and `text` required"));
+            if (string.IsNullOrWhiteSpace(to))
+                return Results.BadRequest(ApiResponseHelper.Error("`to` required"));
+            if (messagesEl == null && string.IsNullOrWhiteSpace(text))
+                return Results.BadRequest(ApiResponseHelper.Error("`text` or `messages` required"));
 
-            var argsPayload = JsonSerializer.Serialize(new { args = new { to, text } });
+            // forward 整段 args 物件給 worker 端、由 SendMessageHandler 自行決定走 text 還是 messages 路徑
+            object argsObj = messagesEl.HasValue
+                ? new { to, messages = JsonDocument.Parse(messagesEl.Value.GetRawText()).RootElement }
+                : (object)new { to, text };
+
+            var argsPayload = JsonSerializer.Serialize(new { args = argsObj });
             var dispatchReq = new ApprovedRequest
             {
                 RequestId    = Guid.NewGuid().ToString("N"),
