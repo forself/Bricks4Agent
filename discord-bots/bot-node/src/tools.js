@@ -9,6 +9,7 @@
 // 故意只放唯讀 tool。phase 4 再加會動帳戶的（trading.order）+ approval workflow 串接。
 
 import { callBroker } from './broker.js';
+import { planPositionIntent, findPosition } from './position_intent.js';
 
 /**
  * Tool catalog：每個 tool 對應一個 broker endpoint。
@@ -101,6 +102,29 @@ export const TOOLS = {
     },
   },
 
+  'trading.position_intent': {
+    description: '高階部位管理意圖：ADD（加碼）/ HOLD（保留不動）/ TRIM（部分平倉）/ EXIT（全部平倉）。本工具會自動翻譯成 reduce_only 反向單（TRIM/EXIT）或同向開倉（ADD）、再走 approval gate。**跟 trading.order 一樣會收到 "Pending admin approval, approval_id=..." 是正常的**、把 ID 轉達使用者。比 trading.order 更安全：TRIM/EXIT 不會翻倉、強制 reduce_only=true。args: {intent: "ADD"|"HOLD"|"TRIM"|"EXIT", symbol: string, position_side: "long"|"short", add_qty?: number(ADD 必填), trim_pct?: number(TRIM 用、1-99、預設 50), exchange?: "bingx"}',
+    dispatch: async (args) => {
+      const intent = String(args?.intent || '').toUpperCase();
+
+      // HOLD / 純錯誤：不用 fetch 部位、直接 plan
+      if (intent === 'HOLD' || intent === 'ADD') {
+        const plan = planPositionIntent(args, null);
+        return planResultToBroker(plan);
+      }
+
+      // TRIM / EXIT：先查現有部位
+      const ex = encodeURIComponent(args?.exchange || 'bingx');
+      const positionsResp = await callBroker('GET', `/api/v1/perpetual/positions?exchange=${ex}`);
+      if (!positionsResp.ok) {
+        return { ok: false, status: positionsResp.status, error: `position lookup failed: ${positionsResp.error}` };
+      }
+      const current = findPosition(positionsResp.data?.positions, args?.symbol, args?.position_side);
+      const plan = planPositionIntent(args, current);
+      return planResultToBroker(plan);
+    },
+  },
+
   'health.score': {
     description: '看平台整體健康分數（0-100）+ 每 worker breakdown。args: {}',
     dispatch: async () => callBroker('GET', '/api/v1/health/score'),
@@ -114,6 +138,17 @@ export const TOOLS = {
     },
   },
 };
+
+// 把 planPositionIntent 的結果包成 broker 風格回應；HOLD/error 直接收尾、order 才轉發。
+async function planResultToBroker(plan) {
+  if (plan.kind === 'error') {
+    return { ok: false, status: 400, error: plan.error };
+  }
+  if (plan.kind === 'noop') {
+    return { ok: true, status: 200, data: { intent: 'HOLD', action: 'no-op', message: plan.message } };
+  }
+  return await callBroker('POST', '/api/v1/perpetual/order', plan.payload);
+}
 
 /**
  * 給 system prompt 用的 tool 描述列表。
