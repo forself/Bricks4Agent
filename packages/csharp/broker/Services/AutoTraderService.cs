@@ -1531,6 +1531,8 @@ public class AutoTraderService : BackgroundService
                     {
                         symbol, exchange, side = action,
                         quantity = item.Quantity, price,
+                        // 給 risk.check 的 max_loss_per_trade_pct rule 用、protection_config 共用同一個 SL
+                        initial_sl_pct = _protectionConfig.InitialSlPct,
                         portfolio = new
                         {
                             cash = acc.TryGetProperty("cash", out var cash) ? cash.GetDecimal() : 0,

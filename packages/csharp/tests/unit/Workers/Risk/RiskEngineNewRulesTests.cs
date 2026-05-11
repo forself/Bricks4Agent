@@ -333,6 +333,98 @@ public class RiskEngineNewRulesTests
         rule.Params.Should().Contain("start_hm").And.Contain("end_hm");
     }
 
+    // ── max_loss_per_trade_pct (spot)：學自 ai-quant-starter2 commit 449398a─
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_BuySmallEnough_Passes()
+    {
+        // Equity 10000, SL 5%, threshold 2% → 最大可損 200 USD → 最大名目 = 200/5% = 4000
+        // 下單 1000 USD（1 share × $1000）→ 預估損 50 = 0.5% ≤ 2% → 過
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 1m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Passed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_BuyTooLarge_Fails()
+    {
+        // Equity 10000、SL 5%、threshold 2% → 最大可損 200、最大名目 4000
+        // 下單 5000 USD（5 × $1000）→ 預估損 250 = 2.5% > 2% → 擋
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 5m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Passed.Should().BeFalse();
+        r.Violations.Should().ContainSingle(v => v.RuleId == "r17");
+        r.Violations[0].Message.Should().Contain("account risk limit");
+    }
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_Sell_NotChecked()
+    {
+        // 賣 = 平倉、不該被 account-risk 卡（即使單筆預估損 > 2%）
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        var r = engine.Check("AAPL", "alpaca", "sell", quantity: 100m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Violations.Should().NotContain(v => v.RuleId == "r17");
+    }
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_ZeroEquity_SkipRule()
+    {
+        // 零 equity 算不出比例（除零）→ 跳過、不算違規（讓其他規則決定）
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 0m };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 1m, estimatedPrice: 1000m, portfolio, initialSlPct: 5m);
+
+        r.Violations.Should().NotContain(v => v.RuleId == "r17");
+    }
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_TighterSl_AllowsLargerSize()
+    {
+        // SL 較緊（2%）→ 同 threshold 下、可下更大名目
+        // Equity 10000、SL 2%、threshold 2% → 最大可損 200、最大名目 = 200/2% = 10000
+        // 下單 8000 USD → 預估損 160 = 1.6% ≤ 2% → 過
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 8m, estimatedPrice: 1000m, portfolio, initialSlPct: 2m);
+
+        r.Passed.Should().BeTrue("SL 較緊 → 等同 risk 下允許更大倉");
+    }
+
+    [Fact]
+    public void MaxLossPerTradePctSpot_DefaultSlPct_FallbackTo5()
+    {
+        // 不傳 initialSlPct → 預設 5%（match perp default）
+        var engine = new RiskEngine(new() { Rule("r17", "max_loss_per_trade_pct", 2m) });
+        var portfolio = new PortfolioSnapshot { PortfolioValue = 10000m };
+
+        // 5000 USD × 5% = 250 = 2.5% > 2% → 應該擋
+        var r = engine.Check("AAPL", "alpaca", "buy", quantity: 5m, estimatedPrice: 1000m, portfolio);
+
+        r.Passed.Should().BeFalse();
+        r.Violations.Should().ContainSingle(v => v.RuleId == "r17");
+    }
+
+    [Fact]
+    public void DefaultRules_IncludesSpotMaxLossPerTradePct()
+    {
+        // r17 預設啟用、2% threshold（業界 Van Tharp）
+        var rule = RiskEngine.DefaultRules().Single(r => r.RuleId == "r17");
+        rule.Type.Should().Be("max_loss_per_trade_pct");
+        rule.Threshold.Should().Be(2m);
+        rule.Enabled.Should().BeTrue();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private static RiskRule Rule(string id, string type, decimal threshold, string? paramsJson = null)

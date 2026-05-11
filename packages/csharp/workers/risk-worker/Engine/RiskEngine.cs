@@ -16,6 +16,8 @@ namespace RiskWorker.Engine;
 /// - max_position_count:  最多同時持有幾個不同標的（避免過度分散 / 防呆）
 /// - cooldown_seconds:    同一 (exchange,symbol) 兩次成交之間的最短間隔，防 signal 抖動連續開單
 /// - time_window:         只允許在指定 UTC 時段下單（Params: {"start_hm":"HH:mm","end_hm":"HH:mm"}）
+/// - max_loss_per_trade_pct: 業界標準「account risk per trade」—預估單筆最大損失（名目×SL距離%）
+///                          不能超過總投組價值的 N%；對齊 perp 端同名規則。預設 2%（業界 Van Tharp 標準）
 ///
 /// 規則類型（perp, 走 CheckPerp 路徑）：
 /// - max_leverage:              開倉允許的最高槓桿倍數
@@ -46,7 +48,8 @@ public class RiskEngine
         string side,
         decimal quantity,
         decimal estimatedPrice,
-        PortfolioSnapshot portfolio)
+        PortfolioSnapshot portfolio,
+        decimal initialSlPct = 5m)   // 給 max_loss_per_trade_pct 用、broker 端 protection_config 傳進
     {
         var violations = new List<RiskViolation>();
         var orderValue = quantity * estimatedPrice;
@@ -71,6 +74,7 @@ public class RiskEngine
                 "max_position_count"  => CheckMaxPositionCount(rule, symbol, side, portfolio),
                 "cooldown_seconds"    => CheckCooldown(rule, symbol, exchange, portfolio),
                 "time_window"         => CheckTimeWindow(rule),
+                "max_loss_per_trade_pct" => CheckMaxLossPerTradePctSpot(rule, orderValue, side, initialSlPct, portfolio),
                 _ => null
             };
 
@@ -217,6 +221,33 @@ public class RiskEngine
             RuleName = rule.Name,
             Message  = $"Buy would leave cash at ${projectedCash:N0}, below reserve floor ${rule.Threshold:N0}",
             Current  = projectedCash,
+            Limit    = rule.Threshold,
+        };
+    }
+
+    /// <summary>
+    /// 業界標準「account risk per trade」——預估單筆最大損失（orderValue × InitialSlPct）
+    /// 不能超過總投組價值 × Threshold%。Van Tharp / Kelly 衍生的 2% rule 是經典安全值。
+    /// 跟 perp 端 CheckMaxLossPerTradePct 同邏輯、portfolio_value 用 spot 路徑的等效欄位。
+    ///
+    /// 只擋 buy（賣 = 平倉 / 取回現金、不會「新增風險」）。
+    /// </summary>
+    private RiskViolation? CheckMaxLossPerTradePctSpot(
+        RiskRule rule, decimal orderValue, string side, decimal initialSlPct, PortfolioSnapshot portfolio)
+    {
+        if (side != "buy") return null;                      // 平倉不卡
+        if (portfolio.PortfolioValue <= 0m || initialSlPct <= 0m) return null;  // 沒 equity 算不出比例、跳過避免除零
+
+        var estimatedLoss = orderValue * initialSlPct / 100m;
+        var lossPct = estimatedLoss / portfolio.PortfolioValue * 100m;
+        if (lossPct <= rule.Threshold) return null;
+
+        return new RiskViolation
+        {
+            RuleId   = rule.RuleId,
+            RuleName = rule.Name,
+            Message  = $"Estimated loss ${estimatedLoss:F2} ({lossPct:F2}% of portfolio ${portfolio.PortfolioValue:F2}, SL {initialSlPct}%) exceeds account risk limit {rule.Threshold:F2}%",
+            Current  = lossPct,
             Limit    = rule.Threshold,
         };
     }
@@ -505,6 +536,9 @@ public class RiskEngine
         // {"start_hm":"13:30","end_hm":"20:00"} 對應 NYSE 9:30-16:00 ET（DST 期間 UTC-4）
         new() { RuleId = "r10", Name = "Trading Hours Window",    Type = "time_window",        Threshold = 0, Enabled = false,
                 Params = "{\"start_hm\":\"13:30\",\"end_hm\":\"20:00\"}" },
+        // r17: spot 端的 account-risk-per-trade rule（業界 Van Tharp 2% rule）。
+        // 跟 perp r14 同名同邏輯、equity 用 portfolio_value、SL 距離由 broker 傳 initial_sl_pct。
+        new() { RuleId = "r17", Name = "Spot Max Loss Per Trade %", Type = "max_loss_per_trade_pct", Threshold = 2 },
 
         // ── 永續合約規則（給 BingX perp 用、走 CheckPerp 路徑、平倉永遠放行）────
         // r11: 槓桿上限 10x——對 30 USDT 起步帳戶這已經很激進，但留空間給之後調大

@@ -118,6 +118,8 @@ public class RiskCheckHandler : ICapabilityHandler
         var side     = doc.TryGetProperty("side",      out var sd) ? sd.GetString() ?? ""  : "";
         var quantity = doc.TryGetProperty("quantity",   out var q)  ? q.GetDecimal()        : 0;
         var price    = doc.TryGetProperty("price",      out var p)  ? p.GetDecimal()        : 0;
+        // 給 max_loss_per_trade_pct rule 用、broker 端 protection_config 帶來。沒帶用 5% 預設。
+        var initialSlPct = doc.TryGetProperty("initial_sl_pct", out var isp) ? isp.GetDecimal() : 5m;
 
         if (string.IsNullOrEmpty(symbol) || quantity <= 0 || price <= 0)
             return (false, null, "Missing required: symbol, quantity, price (all > 0)");
@@ -162,7 +164,7 @@ public class RiskCheckHandler : ICapabilityHandler
             }
         }
 
-        var checkResult = _engine.Check(symbol, exchange, side, quantity, price, portfolio);
+        var checkResult = _engine.Check(symbol, exchange, side, quantity, price, portfolio, initialSlPct);
 
         var json = JsonSerializer.Serialize(new
         {
