@@ -54,6 +54,8 @@ var strategies = new Dictionary<string, IStrategy>
     ["ichimoku"]        = new IchimokuStrategy(),
     ["rsi_stoch"]       = new StochasticStrategy(),
     ["vwap"]            = new VwapStrategy(),
+    // Batch B：Price Action 形態學（6 K 線型態加權成 buy/sell/hold）
+    ["price_action"]    = new PriceActionStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model
