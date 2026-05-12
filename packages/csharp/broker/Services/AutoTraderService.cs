@@ -192,6 +192,7 @@ public class AutoTraderService : BackgroundService
 
     private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
     private readonly decimal _perpLiqEmergencyPct;
+    private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
     /// <summary>
     /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
     /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
@@ -487,6 +488,9 @@ public class AutoTraderService : BackgroundService
         _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
         // Perp 強平距離保護：低於此 % 觸發 emergency close（不論 SL 是否到）。預設 5%
         _perpLiqEmergencyPct = ParsePctEnv("AUTOTRADER_PERP_LIQ_EMERGENCY_PCT", defaultValue: 5m, min: 0.5m, max: 50m);
+        // 動態開倉本金：開倉前以「max_loss = balance × N% / SL%」算出 notional、再 / mark_price = qty
+        // 預設 2% = 對齊 r14 max_loss_per_trade_pct。0 = 關閉（向後相容、用 watch.Quantity 固定值）
+        _dynamicRiskPct = ParsePctEnv("AUTOTRADER_DYNAMIC_RISK_PCT", defaultValue: 2m, min: 0m, max: 10m);
         // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
         var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
         _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
@@ -1948,6 +1952,33 @@ public class AutoTraderService : BackgroundService
             var anchoredBalance = balance;
             if (_declaredCapitalByExchange.TryGetValue(item.Exchange, out var declared) && declared > 0m)
                 anchoredBalance = Math.Min(balance, declared);
+
+            // ★ Dynamic position sizing（user request）：開倉時動態算 qty 讓 max_loss = balance × risk%
+            //
+            //   formula：max_loss = balance × _dynamicRiskPct% = notional × InitialSlPct%
+            //          → notional = balance × (_dynamicRiskPct / InitialSlPct)
+            //          → qty = notional / markPrice
+            //
+            // 只對「開倉 + scale_in」生效；close / scale_out 維持既有 qty（要平多少平多少）。
+            // markPrice 或 balance = 0 時 fallback 到 watch.Quantity 避免 broker 卡住。
+            if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            {
+                if (anchoredBalance > 0m && markPrice > 0m && _protectionConfig.InitialSlPct > 0m)
+                {
+                    var maxNotional = anchoredBalance * (_dynamicRiskPct / _protectionConfig.InitialSlPct);
+                    var dynamicQty = maxNotional / markPrice;
+                    _logger.LogInformation(
+                        "AutoTrader dynamic sizing {Symbol}: balance={Bal:F2} risk={Risk}% sl={Sl}% mark={Mark:F4} lev={Lev}x → notional={Not:F2} qty={Qty:F6} margin={Margin:F2} (watch.Quantity was {Watch:F6})",
+                        item.Symbol, anchoredBalance, _dynamicRiskPct, _protectionConfig.InitialSlPct, markPrice,
+                        item.Leverage, maxNotional, dynamicQty, maxNotional / Math.Max(item.Leverage, 1), item.Quantity);
+                    qtyToUse = dynamicQty;
+                }
+                else
+                {
+                    _logger.LogWarning("AutoTrader dynamic sizing skipped {Symbol}: balance={Bal} mark={Mark} sl={Sl} (using watch.Quantity {Qty})",
+                        item.Symbol, anchoredBalance, markPrice, _protectionConfig.InitialSlPct, qtyToUse);
+                }
+            }
 
             // r16 daily loss circuit breaker：取「今日 UTC 開盤 balance」、算當日 PnL%
             var dayPnlPct = ComputePerpDayPnlPct(item.Exchange, balance);
