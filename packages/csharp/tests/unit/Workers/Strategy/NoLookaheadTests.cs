@@ -448,4 +448,78 @@ public class NoLookaheadTests
         var vw2 = Vwap.Compute(bars);
         vw1!.Value.Should().Be(vw2!.Value);
     }
+
+    // ── Tier 3 indicators（5 個來自對標朋友 starter2 的新指標）─────────────
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Roc_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var rFull = Roc.Compute(full.Take(truncAt + 1).ToList());
+        var rSub  = Roc.Compute(sub);
+        rFull.Should().NotBeNull(); rSub.Should().NotBeNull();
+        AssertClose(rFull!.Value, rSub!.Value, "Roc");
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void WilliamsR_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var wFull = WilliamsR.Compute(full.Take(truncAt + 1).ToList());
+        var wSub  = WilliamsR.Compute(sub);
+        wFull.Should().NotBeNull(); wSub.Should().NotBeNull();
+        AssertClose(wFull!.Value, wSub!.Value, "WilliamsR");
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Trix_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var tFull = Trix.Compute(full.Take(truncAt + 1).ToList());
+        var tSub  = Trix.Compute(sub);
+        tFull.Should().NotBeNull(); tSub.Should().NotBeNull();
+        AssertClose(tFull!.Value, tSub!.Value, "Trix", tol: 1e-7m);
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Ppo_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var pFull = Ppo.Compute(full.Take(truncAt + 1).ToList());
+        var pSub  = Ppo.Compute(sub);
+        pFull.Should().NotBeNull(); pSub.Should().NotBeNull();
+        AssertClose(pFull!.Value,     pSub!.Value,     "Ppo.Value",     tol: 1e-7m);
+        AssertClose(pFull.Signal,     pSub.Signal,     "Ppo.Signal",    tol: 1e-7m);
+        AssertClose(pFull.Histogram,  pSub.Histogram,  "Ppo.Histogram", tol: 1e-7m);
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Dpo_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var dFull = Dpo.Compute(full.Take(truncAt + 1).ToList());
+        var dSub  = Dpo.Compute(sub);
+        dFull.Should().NotBeNull(); dSub.Should().NotBeNull();
+        AssertClose(dFull!.Value, dSub!.Value, "Dpo");
+    }
 }
