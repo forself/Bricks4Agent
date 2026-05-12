@@ -59,22 +59,18 @@ public class StrategySignalHandler : ICapabilityHandler
         if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
             return (false, null, "Missing or invalid 'bars' array");
 
-        var bars = new List<BarData>();
-        foreach (var b in barsEl.EnumerateArray())
-        {
-            bars.Add(new BarData
-            {
-                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
-                Open     = b.TryGetProperty("open",  out var o)  ? o.GetDecimal()  : 0,
-                High     = b.TryGetProperty("high",  out var h)  ? h.GetDecimal()  : 0,
-                Low      = b.TryGetProperty("low",   out var l)  ? l.GetDecimal()  : 0,
-                Close    = b.TryGetProperty("close", out var c)  ? c.GetDecimal()  : 0,
-                Volume   = b.TryGetProperty("volume", out var v) ? v.GetDecimal()  : 0,
-            });
-        }
+        var bars = ParseBars(barsEl);
 
         if (bars.Count < 2)
             return (false, null, "Need at least 2 bars");
+
+        // 解析 HTF bars（Batch C+++、影片大週期優先）
+        List<BarData>? htfBars = null;
+        if (doc.TryGetProperty("htf_bars", out var htfEl) && htfEl.ValueKind == JsonValueKind.Array)
+        {
+            var parsed = ParseBars(htfEl);
+            if (parsed.Count >= 2) htfBars = parsed;
+        }
 
         // 解析設定
         var config = new StrategyConfig
@@ -83,6 +79,8 @@ public class StrategySignalHandler : ICapabilityHandler
             Symbol   = doc.TryGetProperty("symbol",   out var sym)  ? sym.GetString() ?? ""   : "",
             Exchange = doc.TryGetProperty("exchange",  out var exg)  ? exg.GetString() ?? ""   : "",
             Interval = doc.TryGetProperty("interval",  out var iv)   ? iv.GetString() ?? "1d"  : "1d",
+            HtfBars  = htfBars,
+            HtfInterval = doc.TryGetProperty("htf_interval", out var hi) ? hi.GetString() : null,
             SmaFast  = doc.TryGetProperty("sma_fast",  out var sf)   ? sf.GetInt32()           : 10,
             SmaSlow  = doc.TryGetProperty("sma_slow",  out var ss)   ? ss.GetInt32()           : 30,
             RsiPeriod     = doc.TryGetProperty("rsi_period",     out var rp) ? rp.GetInt32() : 14,
@@ -109,6 +107,25 @@ public class StrategySignalHandler : ICapabilityHandler
             indicators = signal.Indicators,
         });
         return (true, json, null);
+    }
+
+    // 共用 K 線陣列 → List<BarData> 解析（避免每個 route 重複貼）
+    private static List<BarData> ParseBars(System.Text.Json.JsonElement barsEl)
+    {
+        var bars = new List<BarData>();
+        foreach (var b in barsEl.EnumerateArray())
+        {
+            bars.Add(new BarData
+            {
+                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
+                Open     = b.TryGetProperty("open",  out var o)  ? o.GetDecimal()  : 0,
+                High     = b.TryGetProperty("high",  out var h)  ? h.GetDecimal()  : 0,
+                Low      = b.TryGetProperty("low",   out var l)  ? l.GetDecimal()  : 0,
+                Close    = b.TryGetProperty("close", out var c)  ? c.GetDecimal()  : 0,
+                Volume   = b.TryGetProperty("volume", out var v) ? v.GetDecimal()  : 0,
+            });
+        }
+        return bars;
     }
 
     private (bool, string?, string?) Backtest(string payload)

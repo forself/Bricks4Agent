@@ -1,3 +1,5 @@
+using StrategyWorker.Engine;
+
 namespace StrategyWorker.Models;
 
 /// <summary>
@@ -9,6 +11,17 @@ public class StrategyConfig
     public string Symbol   { get; set; } = string.Empty;
     public string Exchange { get; set; } = string.Empty;
     public string Interval { get; set; } = "1d";
+
+    /// <summary>
+    /// 大週期 K 線（Batch C+++ 新增、影片重點「大週期優先」）。
+    /// 給支援 multi-timeframe 的策略（目前是 HarmonicStrategy）用、確認大週期方向是否一致。
+    /// 其他策略可忽略不用。null = caller 沒提供 HTF 資料、跳過 HTF 確認流程。
+    /// 慣例：HTF 通常是 LTF 的 4 倍（1h ↔ 4h）或 1d。
+    /// </summary>
+    public List<BarData>? HtfBars { get; set; }
+
+    /// <summary>HTF 的時間級別文字（例如 "4h"、"1d"）。給策略寫 reason 用、不影響運算。</summary>
+    public string? HtfInterval { get; set; }
 
     // SMA Cross
     public int SmaFast { get; set; } = 10;

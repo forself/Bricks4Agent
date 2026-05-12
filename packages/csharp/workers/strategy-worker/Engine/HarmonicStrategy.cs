@@ -40,6 +40,33 @@ public class HarmonicStrategy : IStrategy
         if (det.PatternName == "none" || det.PatternName == "")
             return Hold(config, "No harmonic pattern detected in last 5 pivots");
 
+        // Batch C+++：大週期確認（影片重點「大週期優先、小週期輔助」）
+        // 若 caller 提供 HtfBars、跑同樣 detect 在 HTF；方向衝突 → Hold；方向一致 → 信心加分
+        // 沒 HTF 資料就跳過此檢查、行為跟之前一樣
+        HarmonicPatterns.Detection? htfDet = null;
+        var htfStatus = "skipped";
+        if (config.HtfBars != null && config.HtfBars.Count >= 30)
+        {
+            htfDet = HarmonicPatterns.Detect(config.HtfBars, PivotWindow);
+            if (htfDet.PatternName != "none" && !string.IsNullOrEmpty(htfDet.PatternName))
+            {
+                if (htfDet.Direction == det.Direction) htfStatus = "aligned";
+                else                                    htfStatus = "conflict";
+            }
+            else
+            {
+                htfStatus = "no_pattern";
+            }
+
+            // 大週期跟小週期方向衝突 → 不進場
+            if (htfStatus == "conflict")
+            {
+                return Hold(config, $"{det.PatternName} ({det.Direction}) on LTF " +
+                    $"conflicts with HTF{(config.HtfInterval != null ? $" {config.HtfInterval}" : "")} " +
+                    $"{htfDet.PatternName} ({htfDet.Direction}) — 大週期反向、跳過");
+            }
+        }
+
         // D 點接近度
         var distRatio = det.Dp == 0 ? 1m : Math.Abs(price - det.Dp) / det.Dp;
 
@@ -65,7 +92,9 @@ public class HarmonicStrategy : IStrategy
             // Batch C++：candle 跟 RSI 各自獨立 +0.10、最多 +0.20、cap 0.95
             if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.10m);
             if (det.HasRsiDivergence)      confidence = Math.Min(0.95m, confidence + 0.10m);
-            reason = BuildReason("Bullish", det, price);
+            // Batch C+++：HTF 方向一致 +0.10
+            if (htfStatus == "aligned")    confidence = Math.Min(0.95m, confidence + 0.10m);
+            reason = BuildReason("Bullish", det, price, htfStatus, htfDet, config.HtfInterval);
         }
         else if (det.Direction == "bearish")
         {
@@ -73,7 +102,8 @@ public class HarmonicStrategy : IStrategy
             confidence = Math.Clamp(det.Confidence * (1m - distRatio * 20m), 0.5m, 0.95m);
             if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.10m);
             if (det.HasRsiDivergence)      confidence = Math.Min(0.95m, confidence + 0.10m);
-            reason = BuildReason("Bearish", det, price);
+            if (htfStatus == "aligned")    confidence = Math.Min(0.95m, confidence + 0.10m);
+            reason = BuildReason("Bearish", det, price, htfStatus, htfDet, config.HtfInterval);
         }
         else
         {
@@ -127,23 +157,43 @@ public class HarmonicStrategy : IStrategy
                 ["has_rsi_divergence"] = det.HasRsiDivergence ? 1m : 0m,
                 ["rsi_at_b"] = det.RsiAtB,
                 ["rsi_at_d"] = det.RsiAtD,
+                // Batch C+++ HTF 確認
+                ["htf_status"] = htfStatus switch
+                {
+                    "aligned"    => 1m,
+                    "conflict"   => -1m,
+                    "no_pattern" => 0.5m,
+                    _ => 0m,    // skipped
+                },
             },
         };
     }
 
-    private static string BuildReason(string sideLabel, HarmonicPatterns.Detection det, decimal price)
+    private static string BuildReason(
+        string sideLabel, HarmonicPatterns.Detection det, decimal price,
+        string htfStatus = "skipped", HarmonicPatterns.Detection? htfDet = null, string? htfInterval = null)
     {
         var confirmParts = new List<string>();
         if (det.HasCandleConfirmation) confirmParts.Add($"K：{det.ConfirmationSignals}");
         if (det.HasRsiDivergence)      confirmParts.Add($"RSI 背離 (B={det.RsiAtB:F1} → D={det.RsiAtD:F1})");
+        if (htfStatus == "aligned" && htfDet != null)
+            confirmParts.Add($"HTF{(htfInterval != null ? $" {htfInterval}" : "")} 同向 ({htfDet.PatternName})");
         var confirmStr = confirmParts.Count > 0
             ? $" ✓ {string.Join(" + ", confirmParts)}"
             : " (尚無確認訊號)";
 
+        var htfNote = htfStatus switch
+        {
+            "aligned"    => "",   // 已併入 confirmParts
+            "no_pattern" => $" · HTF{(htfInterval != null ? $" {htfInterval}" : "")} 無同形態",
+            "skipped"    => "",
+            _ => "",
+        };
+
         return $"{sideLabel} {det.PatternName} @ D={det.Dp}；現價 {price}。" +
                $" PRZ=[{det.PrzLow}, {det.PrzHigh}]。" +
                $" TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}。" +
-               confirmStr;
+               confirmStr + htfNote;
     }
 
     private static Signal Hold(StrategyConfig c, string reason) => new()

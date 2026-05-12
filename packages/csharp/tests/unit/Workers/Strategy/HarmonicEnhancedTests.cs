@@ -444,6 +444,69 @@ public class HarmonicEnhancedTests
         dets.Should().NotBeNull();
     }
 
+    // ── HTF 大週期確認（Batch C+++ 影片重點 #4）──────────────
+
+    [Fact]
+    public void StrategyConfig_HtfFields_AreSettable()
+    {
+        var htfBars = MakeSynthetic(40, seed: 99);
+        var config = new StrategyWorker.Models.StrategyConfig
+        {
+            HtfBars = htfBars,
+            HtfInterval = "4h",
+        };
+        config.HtfBars.Should().NotBeNull();
+        config.HtfBars!.Count.Should().Be(40);
+        config.HtfInterval.Should().Be("4h");
+    }
+
+    [Fact]
+    public void HarmonicStrategy_HtfBarsNull_NoCrash_HoldOrSignal()
+    {
+        var bars = MakeSynthetic(150);
+        var config = new StrategyWorker.Models.StrategyConfig
+        {
+            Symbol = "TEST", Exchange = "test", Interval = "1h",
+            HtfBars = null,
+        };
+        var strategy = new HarmonicStrategy();
+        var sig = strategy.Evaluate(bars, config);
+        sig.Should().NotBeNull();
+        sig.Strategy.Should().Be("harmonic_pattern");
+        // 沒崩就過、Action 是什麼依合成資料而定
+    }
+
+    [Fact]
+    public void HarmonicStrategy_HtfBarsProvided_NoCrash()
+    {
+        var bars    = MakeSynthetic(150, seed: 42);
+        var htfBars = MakeSynthetic(80,  seed: 99);
+        var config = new StrategyWorker.Models.StrategyConfig
+        {
+            Symbol = "TEST", Exchange = "test", Interval = "1h",
+            HtfBars = htfBars, HtfInterval = "4h",
+        };
+        var strategy = new HarmonicStrategy();
+        var sig = strategy.Evaluate(bars, config);
+        sig.Should().NotBeNull();
+        // 不管最終 action 為何、有跑通就證明 HTF wiring 沒掛
+    }
+
+    [Fact]
+    public void HarmonicStrategy_HtfBarsTooSmall_StillRunsAsIfSkipped()
+    {
+        var bars    = MakeSynthetic(150);
+        var htfBars = MakeSynthetic(10);   // < 30、會被內部當 skipped
+        var config = new StrategyWorker.Models.StrategyConfig
+        {
+            Symbol = "TEST", Interval = "1h",
+            HtfBars = htfBars, HtfInterval = "4h",
+        };
+        var strategy = new HarmonicStrategy();
+        var sig = strategy.Evaluate(bars, config);
+        sig.Should().NotBeNull();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private static BarData Bar(decimal open, decimal high, decimal low, decimal close, int day = 1)
