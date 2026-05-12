@@ -587,6 +587,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('perp')">永續</a>
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
+    <a onclick="switchTab('mtf')">MTF</a>
     <a onclick="switchTab('stratperf')">策略績效</a>
     <a onclick="switchTab('lab')">Lab</a>
     <a onclick="switchTab('me')">我的</a>
@@ -1215,6 +1216,40 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- Multi-Timeframe Signal Matrix：對每個 watch 跑 1h/4h/1d 的訊號 -->
+<div class="panel" id="panel-mtf">
+  <div class="form-row" style="margin-bottom:12px">
+    <div class="fg">
+      <label>時段組合</label>
+      <select id="mtf-intervals" onchange="loadMtfMatrix()">
+        <option value="1h,4h,1d" selected>1h / 4h / 1d（標準）</option>
+        <option value="15m,1h,4h">15m / 1h / 4h（短線）</option>
+        <option value="4h,1d,1w">4h / 1d / 1w（波段）</option>
+      </select>
+    </div>
+    <button class="btn btn-o btn-sm" onclick="loadMtfMatrix()">重新整理</button>
+    <span style="font-size:11px;color:var(--text3);align-self:center">同 (symbol, strategy) 在多時段的訊號一致性 + 各時段 regime</span>
+  </div>
+
+  <div class="card">
+    <h3>📊 跨時段訊號矩陣（按 watch）</h3>
+    <table style="font-size:12px">
+      <thead><tr id="mtf-thead">
+        <th>Symbol / 策略</th>
+        <th>verdict</th>
+        <th>1h</th><th>4h</th><th>1d</th>
+      </tr></thead>
+      <tbody id="mtf-tbody"><tr><td colspan="5" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+    </table>
+  </div>
+
+  <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.6">
+    顏色說明：<span style="color:var(--up)">綠=buy</span>　<span style="color:var(--down)">紅=sell</span>　灰=hold　黃=資料不足。
+    verdict：all_bullish（三段全多）、mixed_bullish（多空雜訊但偏多）、neutral、mixed_bearish、all_bearish、no_data。
+    cell 上滑會顯示 regime + confidence。
+  </div>
+</div>
+
 <!-- 策略績效比較：以 watchlist 配對 + pnl-summary 聚合 -->
 <div class="panel" id="panel-stratperf">
   <div class="form-row" style="margin-bottom:12px">
@@ -1717,7 +1752,7 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach(a=>{const t=a.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];a.classList.toggle('active',t===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='stratperf')loadStrategyPerf();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='mtf')loadMtfMatrix();if(name==='stratperf')loadStrategyPerf();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
 startAutoRefresh(name);}
 
 // ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
@@ -1730,6 +1765,7 @@ const _tabRefresh = {
   auto:     { fn: () => fetchAutoStatus(),ms: 5000  },
   perp:     { fn: () => loadPerpAll(),    ms: 5000  },
   pnl:      { fn: () => loadPnlReport(),  ms: 30000 },
+  mtf:      { fn: () => loadMtfMatrix(),  ms: 60000 },
   stratperf:{ fn: () => loadStrategyPerf(),ms: 30000 },
   lab:      { fn: () => loadLab(),         ms: 60000 },  // 1 分鐘刷一次、實際 schedule 是日級
   health:   { fn: () => fetchHealth(),    ms: 10000 },
@@ -3334,6 +3370,87 @@ setInterval(async () => {
     }
   }
 }, 10000);
+
+// ── Multi-Timeframe Signal Matrix ─────────────────────────────
+// 為每個 watch 平行打 /trading/mtf-matrix；後端每個 watch 已平行跑 3 個 interval。
+// 顯示「同 (symbol, strategy) 在 1h/4h/1d 訊號是否一致」+ verdict。
+async function loadMtfMatrix(){
+  const ivList = document.getElementById('mtf-intervals').value;
+  const intervals = ivList.split(',').map(s => s.trim()).filter(Boolean);
+  // 動態調整 table 表頭以對應選的時段組
+  const theadRow = document.getElementById('mtf-thead');
+  theadRow.innerHTML = `<th>Symbol / 策略</th><th>verdict</th>` + intervals.map(iv => `<th>${iv}</th>`).join('');
+  const tbody = document.getElementById('mtf-tbody');
+  tbody.innerHTML = `<tr><td colspan="${2+intervals.length}" style="color:var(--text2);text-align:center">— 載入中 —</td></tr>`;
+
+  let watches;
+  try {
+    const at = await api('/api/v1/autotrader/status');
+    watches = (at?.data?.watch_list) || [];
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="${2+intervals.length}" style="color:var(--down)">無法取得 watch list：${e.message||e}</td></tr>`;
+    return;
+  }
+  if (watches.length === 0){
+    tbody.innerHTML = `<tr><td colspan="${2+intervals.length}" style="color:var(--text2);text-align:center;padding:24px">— 沒有 watch —</td></tr>`;
+    return;
+  }
+
+  const verdictColor = v => ({
+    'all_bullish':   'color:var(--up);font-weight:600',
+    'mixed_bullish': 'color:var(--up)',
+    'neutral':       'color:var(--text2)',
+    'mixed_bearish': 'color:var(--down)',
+    'all_bearish':   'color:var(--down);font-weight:600',
+    'no_data':       'color:var(--text3)',
+  }[v] || '');
+  const cellStyle = action => ({
+    buy:  'background:rgba(14,203,129,0.18);color:var(--up);font-weight:600',
+    sell: 'background:rgba(246,70,93,0.18);color:var(--down);font-weight:600',
+    hold: 'color:var(--text2)',
+  }[action] || 'color:var(--text3)');
+
+  const qs = (w) => {
+    const p = new URLSearchParams({
+      symbol: w.symbol, strategy: w.strategy || 'harmonic',
+      exchange: w.exchange || 'bingx', intervals: intervals.join(','),
+    });
+    return p.toString();
+  };
+  const results = await Promise.all(watches.map(async w => {
+    try {
+      const r = await api('/api/v1/trading/mtf-matrix?' + qs(w));
+      return { watch: w, data: r?.data || null, error: r?.error || null };
+    } catch(e) {
+      return { watch: w, data: null, error: e.message || String(e) };
+    }
+  }));
+
+  tbody.innerHTML = results.map(r => {
+    const w = r.watch;
+    if (!r.data){
+      return `<tr><td>${w.symbol} / ${w.strategy||'—'}</td>
+        <td colspan="${1+intervals.length}" style="color:var(--down)">err: ${r.error || '?'}</td></tr>`;
+    }
+    const rowMap = {};
+    (r.data.rows || []).forEach(row => { rowMap[row.interval] = row; });
+
+    const cells = intervals.map(iv => {
+      const row = rowMap[iv];
+      if (!row || !row.ok) {
+        return `<td style="color:#dbab09;text-align:center" title="${row?.error||'no data'}">⚠</td>`;
+      }
+      const tip = `regime=${row.regime||'?'} conf=${(row.confidence*100).toFixed(0)}% — ${row.reason||''}`.replace(/"/g,'&quot;');
+      return `<td style="${cellStyle(row.action)};text-align:center" title="${tip}">${row.action || '—'}</td>`;
+    }).join('');
+
+    return `<tr>
+      <td><b>${w.symbol}</b> / ${w.strategy||'—'}</td>
+      <td style="${verdictColor(r.data.verdict)}">${r.data.verdict || '—'}</td>
+      ${cells}
+    </tr>`;
+  }).join('') || `<tr><td colspan="${2+intervals.length}" style="color:var(--text2)">—</td></tr>`;
+}
 
 // ── 策略績效比較 ──────────────────────────────────────────────
 // 邏輯：拿 autotrader/status 的 watch_list、按 strategy 分組，對每個 (symbol)

@@ -230,6 +230,97 @@ public static class TradingEndpoints
             }));
         });
 
+        // ── Multi-Timeframe Signal Matrix ──
+        // 對 (exchange, symbol, strategy) 平行跑 1h / 4h / 1d 三個 evaluate、回成矩陣。
+        // 給 dashboard MTF tab 用、避免前端要打 3 次來回。
+        // intervals 可用 query 覆寫（comma 分隔）；預設 "1h,4h,1d"。
+        trading.MapGet("/mtf-matrix", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal") || !registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("strategy-worker or quote-worker not connected"));
+
+            var symbol = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : "";
+            var strategy = req.Query.TryGetValue("strategy", out var st) ? st.ToString() : "harmonic";
+            var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "bingx";
+            var intervalsRaw = req.Query.TryGetValue("intervals", out var iv) ? iv.ToString() : "1h,4h,1d";
+            if (string.IsNullOrEmpty(symbol))
+                return Results.Ok(ApiResponseHelper.Error("missing: symbol"));
+
+            var intervals = intervalsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(5).ToArray();
+
+            async Task<object> EvalAtIntervalAsync(string interval)
+            {
+                var barsPayload = JsonSerializer.Serialize(new { symbol, interval, limit = 200 });
+                var barsRes = await dispatcher.DispatchAsync(BuildRequest(ctx, "quote.ohlcv", "get_bars", barsPayload));
+                if (!barsRes.Success) return new { interval, ok = false, error = "bars fetch failed: " + barsRes.ErrorMessage };
+
+                var barsDoc = JsonDocument.Parse(barsRes.ResultPayload ?? "{}").RootElement;
+                if (!barsDoc.TryGetProperty("bars", out var barsArr) || barsArr.GetArrayLength() < 50)
+                    return new { interval, ok = false, error = $"bars too few ({barsArr.GetArrayLength()})" };
+
+                var sigPayload = JsonSerializer.Serialize(new
+                {
+                    strategy, symbol, exchange, interval,
+                    bars = barsArr,
+                });
+                var sigRes = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "evaluate", sigPayload));
+                if (!sigRes.Success) return new { interval, ok = false, error = "evaluate failed: " + sigRes.ErrorMessage };
+
+                var sig = JsonDocument.Parse(sigRes.ResultPayload ?? "{}").RootElement;
+                string? regimeType = null;
+                decimal? slope = null, atrPct = null;
+                if (sig.TryGetProperty("regime", out var reg) && reg.ValueKind == JsonValueKind.Object)
+                {
+                    if (reg.TryGetProperty("type", out var rtEl)) regimeType = rtEl.GetString();
+                    if (reg.TryGetProperty("sma50_slope", out var sl) && sl.ValueKind == JsonValueKind.Number) slope = sl.GetDecimal();
+                    if (reg.TryGetProperty("atr_pct", out var ap) && ap.ValueKind == JsonValueKind.Number) atrPct = ap.GetDecimal();
+                }
+                return new
+                {
+                    interval,
+                    ok = true,
+                    action      = sig.TryGetProperty("action", out var a) ? a.GetString() : "hold",
+                    confidence  = sig.TryGetProperty("confidence", out var c) ? c.GetDecimal() : 0m,
+                    reason      = sig.TryGetProperty("reason", out var rr) ? rr.GetString() : "",
+                    regime      = regimeType,
+                    sma50_slope = slope,
+                    atr_pct     = atrPct,
+                };
+            }
+
+            // 平行跑、最慢的 interval 決定總延遲
+            var tasks = intervals.Select(EvalAtIntervalAsync).ToArray();
+            var rows = await Task.WhenAll(tasks);
+
+            // 算出 "bullish/mixed/bearish/unclear" overall verdict（dashboard 直接顯示）
+            int up = 0, dn = 0, ok = 0;
+            foreach (var rObj in rows)
+            {
+                // 用 reflection 避免再次反序列化
+                var okProp = rObj.GetType().GetProperty("ok")?.GetValue(rObj) as bool?;
+                if (okProp != true) continue;
+                ok++;
+                var actObj = rObj.GetType().GetProperty("action")?.GetValue(rObj) as string;
+                if (actObj == "buy") up++;
+                else if (actObj == "sell") dn++;
+            }
+            var verdict = ok == 0 ? "no_data"
+                : (up == ok ? "all_bullish"
+                    : dn == ok ? "all_bearish"
+                    : (up > dn ? "mixed_bullish" : (dn > up ? "mixed_bearish" : "neutral")));
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                symbol, strategy, exchange,
+                intervals = intervals,
+                verdict,
+                rows,
+            }));
+        });
+
         trading.MapGet("/exchanges", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, CancellationToken ct) =>
