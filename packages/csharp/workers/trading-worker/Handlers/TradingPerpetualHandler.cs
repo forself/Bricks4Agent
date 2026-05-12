@@ -348,7 +348,11 @@ public class TradingPerpetualHandler : ICapabilityHandler
         var keyHash = Convert.ToHexString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(apiKey)))[..16].ToLowerInvariant();
         var cacheKey = $"{exchange.ToLowerInvariant()}:{keyHash}:{isDemo}";
 
-        return _adhocClients.GetOrAdd(cacheKey, _ => BuildAdhocClient(exchange, apiKey, apiSecret, isDemo))!;
+        // Cache hit 直接回；未命中才 build。未知交易所 build 會回 null、不快取（避免之後永遠拿到 null）
+        if (_adhocClients.TryGetValue(cacheKey, out var hit)) return hit;
+        var built = BuildAdhocClient(exchange, apiKey, apiSecret, isDemo);
+        if (built == null) return null;
+        return _adhocClients.GetOrAdd(cacheKey, built);
     }
 
     private IPerpetualClient? BuildAdhocClient(string exchange, string apiKey, string apiSecret, bool isDemo)
