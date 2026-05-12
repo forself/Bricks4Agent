@@ -44,4 +44,11 @@ public interface IPerpetualClient
     /// 公開端點、無 auth；broker 啟動 + 每 12h 自動 refresh、之後本地 cache 命中。
     /// </summary>
     Task<List<PerpetualContract>> GetContractsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 取「收入流水」——含 REALIZED_PNL / COMMISSION / FUNDING_FEE 等。
+    /// FillPoller 用它撈最近 30 分鐘的 realized_pnl 回填 trades 表。
+    /// 私人端點、需簽名。sinceUtc 是 server-side filter；null 就用交易所預設（通常 7 天）。
+    /// </summary>
+    Task<List<PerpetualIncome>> GetIncomeHistoryAsync(string? symbol, DateTime? sinceUtc, CancellationToken ct = default);
 }

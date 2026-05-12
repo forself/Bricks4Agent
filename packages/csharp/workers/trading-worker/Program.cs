@@ -143,8 +143,8 @@ if (perpClients.Count > 0)
 // ── Fill Poller（背景輪詢未成交訂單，把 fill 寫進 trades 表）──────────
 var fillPollerLogger = loggerFactory.CreateLogger<FillPollerService>();
 var fillPollerInterval = config.GetValue("Worker:Trading:FillPollIntervalSec", 30);
-var fillPoller = new FillPollerService(clients, tradingDb, fillPollerLogger, fillPollerInterval);
-var fillPollerTask = clients.Count > 0
+var fillPoller = new FillPollerService(clients, tradingDb, fillPollerLogger, fillPollerInterval, perpClients);
+var fillPollerTask = (clients.Count > 0 || perpClients.Count > 0)
     ? Task.Run(() => fillPoller.RunAsync(cts.Token), cts.Token)
     : Task.CompletedTask;  // 沒任何 exchange 設定就不啟動
 

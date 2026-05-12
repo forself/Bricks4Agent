@@ -21,17 +21,25 @@ namespace TradingWorker.Services;
 public class FillPollerService
 {
     private readonly Dictionary<string, IExchangeClient> _clients;
+    private readonly Dictionary<string, IPerpetualClient> _perpClients;
     private readonly TradingDbStorage _db;
     private readonly ILogger<FillPollerService> _logger;
     private readonly int _pollIntervalSec;
+
+    // 每個 perp exchange 紀錄上次 income poll 的 cursor、避免重撈 + 抓 race window。
+    // 預設第一次撈 30 分鐘——夠涵蓋 broker / worker 同時 deploy 的 gap。
+    private readonly Dictionary<string, DateTime> _perpIncomeSince = new();
+    private readonly TimeSpan _perpFirstLookback = TimeSpan.FromMinutes(30);
 
     public FillPollerService(
         Dictionary<string, IExchangeClient> clients,
         TradingDbStorage db,
         ILogger<FillPollerService> logger,
-        int pollIntervalSec = 30)
+        int pollIntervalSec = 30,
+        Dictionary<string, IPerpetualClient>? perpClients = null)
     {
         _clients = clients;
+        _perpClients = perpClients ?? new Dictionary<string, IPerpetualClient>();
         _db = db;
         _logger = logger;
         _pollIntervalSec = Math.Max(10, pollIntervalSec);
@@ -58,6 +66,12 @@ public class FillPollerService
     }
 
     internal async Task PollOnceAsync(CancellationToken ct)
+    {
+        await PollSpotFillsAsync(ct);
+        await PollPerpIncomeAsync(ct);
+    }
+
+    private async Task PollSpotFillsAsync(CancellationToken ct)
     {
         var openOrders = _db.GetOpenOrders();
         if (openOrders.Count == 0) return;
@@ -111,6 +125,68 @@ public class FillPollerService
             {
                 _logger.LogWarning(ex, "FillPoller: failed to refresh {OrderId} ({Ext})",
                     order.OrderId, order.ExternalId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 撈每個 perp exchange 的 realized_pnl income、寫進 trades 表。
+    /// 用 _perpIncomeSince[exchange] 當 cursor、SaveTrade 因 tradeId 主鍵冪等、即使 cursor
+    /// overlap 也不會雙寫。trade_id 格式 "perp-income-{exchange}-{tradeId}"。
+    /// </summary>
+    private async Task PollPerpIncomeAsync(CancellationToken ct)
+    {
+        if (_perpClients.Count == 0) return;
+
+        foreach (var (exchange, client) in _perpClients)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var since = _perpIncomeSince.TryGetValue(exchange, out var s)
+                ? s
+                : DateTime.UtcNow - _perpFirstLookback;
+
+            try
+            {
+                var incomes = await client.GetIncomeHistoryAsync(symbol: null, sinceUtc: since, ct);
+                if (incomes.Count == 0) continue;
+
+                int written = 0;
+                DateTime maxTime = since;
+                foreach (var inc in incomes)
+                {
+                    if (inc.Time > maxTime) maxTime = inc.Time;
+
+                    // 只關心 realized_pnl（commission / funding 之後可開另一張表觀察）
+                    if (inc.IncomeType != "realized_pnl") continue;
+                    if (string.IsNullOrEmpty(inc.TradeId)) continue;
+
+                    _db.SaveTrade(new TradeRecord
+                    {
+                        TradeId     = $"perp-income-{exchange}-{inc.TradeId}",
+                        OrderId     = string.Empty,
+                        Symbol      = inc.Symbol,
+                        Exchange    = exchange,
+                        Side        = "close",   // realized_pnl 只在平倉時產生
+                        Quantity    = 0m,        // income 端點沒給 qty、僅能拿 PnL
+                        Price       = 0m,
+                        Fee         = null,
+                        RealizedPnl = inc.Income,
+                        ExecutedAt  = inc.Time,
+                    });
+                    written++;
+                }
+
+                // cursor 推進一毫秒、避免下次重撈最後那筆
+                _perpIncomeSince[exchange] = maxTime.AddMilliseconds(1);
+
+                if (written > 0)
+                    _logger.LogInformation("FillPoller(perp/{Exchange}): wrote {N} realized_pnl rows, cursor={Cursor:o}",
+                        exchange, written, _perpIncomeSince[exchange]);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "FillPoller(perp/{Exchange}): income fetch failed", exchange);
             }
         }
     }

@@ -286,6 +286,61 @@ public class BingxPerpetualClient : IPerpetualClient
         return ParseDec(data, "markPrice");
     }
 
+    public async Task<List<PerpetualIncome>> GetIncomeHistoryAsync(string? symbol, DateTime? sinceUtc, CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/user/income
+        // 回 array of { symbol, incomeType, income, asset, info, time, tranId, tradeId }
+        // incomeType 包含：REALIZED_PNL / COMMISSION / FUNDING_FEE / TRANSFER 等
+        var qs = new List<string>();
+        if (!string.IsNullOrEmpty(symbol)) qs.Add($"symbol={Uri.EscapeDataString(symbol)}");
+        if (sinceUtc.HasValue)
+            qs.Add($"startTime={new DateTimeOffset(sinceUtc.Value, TimeSpan.Zero).ToUnixTimeMilliseconds()}");
+        qs.Add("limit=1000");
+
+        var json = await SignedGetAsync("/openApi/swap/v2/user/income", string.Join("&", qs), ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        var result = new List<PerpetualIncome>();
+        if (!IsOk(doc)) return result;
+
+        // BingX 偶爾把 data 包成 { rows: [...] }、偶爾直接 array、兩種都接
+        JsonElement arr;
+        if (!doc.TryGetProperty("data", out var data)) return result;
+        if (data.ValueKind == JsonValueKind.Array) arr = data;
+        else if (data.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array) arr = rows;
+        else return result;
+
+        foreach (var r in arr.EnumerateArray())
+        {
+            var sym = r.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+            var typeRaw = (r.TryGetProperty("incomeType", out var it) ? it.GetString() ?? "" : "").ToUpperInvariant();
+            var type = typeRaw switch
+            {
+                "REALIZED_PNL" => "realized_pnl",
+                "COMMISSION"   => "commission",
+                "FUNDING_FEE"  => "funding_fee",
+                "TRANSFER"     => "transfer",
+                _              => string.IsNullOrEmpty(typeRaw) ? "other" : typeRaw.ToLowerInvariant(),
+            };
+            var income = ParseDec(r, "income");
+            var asset = r.TryGetProperty("asset", out var a) ? a.GetString() ?? "USDT" : "USDT";
+            var tradeId = r.TryGetProperty("tradeId", out var tid) ? tid.ToString() : null;
+            var tranId  = r.TryGetProperty("tranId",  out var trn) ? trn.ToString() : null;
+            var time = r.TryGetProperty("time", out var t) && t.TryGetInt64(out var ms)
+                ? DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime
+                : DateTime.UtcNow;
+
+            result.Add(new PerpetualIncome
+            {
+                Symbol = sym, Exchange = ExchangeName,
+                IncomeType = type, Income = income, Asset = asset,
+                TradeId = string.IsNullOrEmpty(tradeId) ? null : tradeId,
+                TranId  = string.IsNullOrEmpty(tranId)  ? null : tranId,
+                Time = time,
+            });
+        }
+        return result;
+    }
+
     public async Task<List<PerpetualContract>> GetContractsAsync(CancellationToken ct = default)
     {
         // GET /openApi/swap/v2/quote/contracts （public、不需簽）
