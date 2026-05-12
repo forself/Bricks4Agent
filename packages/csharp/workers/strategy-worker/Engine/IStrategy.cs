@@ -39,14 +39,15 @@ public interface IStrategy
 
 public enum StrategyCategory
 {
-    Trend,           // sma_cross, vegas_tunnel
-    MeanReversion,   // rsi_oversold, bollinger_bands
-    Breakout,        // 之後加
-    Momentum,        // macd_divergence
-    Pattern,         // harmonic_pattern, fibonacci_retracement
+    Trend,           // sma_cross, vegas_tunnel, super_trend, parabolic_sar
+    MeanReversion,   // rsi_oversold, bollinger_bands, cci, keltner, mfi
+    Breakout,        // donchian
+    Momentum,        // macd_divergence, rsi_stoch
+    Pattern,         // harmonic_pattern, fibonacci_retracement, price_action
     MultiTimeframe,  // multi_timeframe
     Composite,       // composite, ensemble, auto_select
     Sentiment,       // llm, news_sentiment
+    Volume,          // obv, chaikin_mf — 量價類獨立、便於 dashboard 過濾
     Other,
 }
 

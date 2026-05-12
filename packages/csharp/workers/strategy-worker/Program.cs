@@ -56,6 +56,14 @@ var strategies = new Dictionary<string, IStrategy>
     ["vwap"]            = new VwapStrategy(),
     // Batch B：Price Action 形態學（6 K 線型態加權成 buy/sell/hold）
     ["price_action"]    = new PriceActionStrategy(),
+    // Tier 2 batch：再 7 個 indicator-as-strategy
+    ["donchian"]        = new DonchianStrategy(),
+    ["keltner"]         = new KeltnerStrategy(),
+    ["parabolic_sar"]   = new ParabolicSarStrategy(),
+    ["cci"]             = new CciStrategy(),
+    ["obv"]             = new ObvStrategy(),
+    ["mfi"]             = new MfiStrategy(),
+    ["chaikin_mf"]      = new ChaikinMfStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model

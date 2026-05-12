@@ -293,6 +293,114 @@ public class NoLookaheadTests
         AssertClose(vFull.DeviationPct,  vSub.DeviationPct,  "Vwap.DeviationPct");
     }
 
+    // ── Tier 2 indicators（Donchian / Keltner / ParabolicSAR / CCI / OBV / MFI / ChaikinMF）
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Donchian_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var dFull = Donchian.Compute(full.Take(truncAt + 1).ToList());
+        var dSub  = Donchian.Compute(sub);
+        dFull.Should().NotBeNull(); dSub.Should().NotBeNull();
+        AssertClose(dFull!.Upper, dSub!.Upper, "Donchian.Upper");
+        AssertClose(dFull.Lower, dSub.Lower, "Donchian.Lower");
+        AssertClose(dFull.Mid,   dSub.Mid,   "Donchian.Mid");
+        AssertClose(dFull.PrevUpper, dSub.PrevUpper, "Donchian.PrevUpper");
+        AssertClose(dFull.PrevLower, dSub.PrevLower, "Donchian.PrevLower");
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Keltner_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var kFull = Keltner.Compute(full.Take(truncAt + 1).ToList());
+        var kSub  = Keltner.Compute(sub);
+        kFull.Should().NotBeNull(); kSub.Should().NotBeNull();
+        AssertClose(kFull!.Upper, kSub!.Upper, "Keltner.Upper");
+        AssertClose(kFull.Mid,    kSub.Mid,    "Keltner.Mid");
+        AssertClose(kFull.Lower,  kSub.Lower,  "Keltner.Lower");
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void ParabolicSar_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var sFull = ParabolicSar.Compute(full.Take(truncAt + 1).ToList());
+        var sSub  = ParabolicSar.Compute(sub);
+        sFull.Should().NotBeNull(); sSub.Should().NotBeNull();
+        AssertClose(sFull!.Sar, sSub!.Sar, "ParabolicSar.Sar");
+        sFull.IsBullish.Should().Be(sSub.IsBullish, $"SAR 方向 @{truncAt} 截斷後不一致");
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Cci_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var cFull = Cci.Compute(full.Take(truncAt + 1).ToList());
+        var cSub  = Cci.Compute(sub);
+        cFull.Should().NotBeNull(); cSub.Should().NotBeNull();
+        AssertClose(cFull!.Value, cSub!.Value, "Cci");
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Obv_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var oFull = Obv.Compute(full.Take(truncAt + 1).ToList());
+        var oSub  = Obv.Compute(sub);
+        oFull.Should().NotBeNull(); oSub.Should().NotBeNull();
+        AssertClose(oFull!.Obv, oSub!.Obv, "Obv.Value");
+        AssertClose(oFull.Sma,  oSub.Sma,  "Obv.Sma");
+    }
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void Mfi_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var mFull = Mfi.Compute(full.Take(truncAt + 1).ToList());
+        var mSub  = Mfi.Compute(sub);
+        mFull.Should().NotBeNull(); mSub.Should().NotBeNull();
+        AssertClose(mFull!.Value, mSub!.Value, "Mfi");
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(249)]
+    public void ChaikinMf_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+        var cFull = ChaikinMf.Compute(full.Take(truncAt + 1).ToList());
+        var cSub  = ChaikinMf.Compute(sub);
+        cFull.Should().NotBeNull(); cSub.Should().NotBeNull();
+        AssertClose(cFull!.Value, cSub!.Value, "ChaikinMf");
+    }
+
     // ── Meta: 同 input 多次呼叫一致性 ───────────────────────────
     // 補捉「indicator 內部用全域狀態」這種隱性 bug（Compute 第二次跟第一次回不同值）
 
