@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
+using BrokerCore.Trading;
 using FunctionPool.Registry;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -87,7 +88,14 @@ public class DailyReportService : BackgroundService
     public async Task<(bool Ok, string Summary)> BuildAndPushAsync(int periodHours, CancellationToken ct)
     {
         var since = DateTime.UtcNow.AddHours(-periodHours);
-        var stats = await GatherPnlStatsAsync(_exchange, since, ct);
+        var fetched = await FetchTradesAsync(_exchange, since, ct);
+        var stats = PnlAggregator.Aggregate(fetched.Select(t => t.Pnl));
+        var byStrategy = fetched
+            .GroupBy(t => string.IsNullOrEmpty(t.Strategy) ? "(無)" : t.Strategy!)
+            .Select(g => new { Name = g.Key, Stats = PnlAggregator.Aggregate(g.Select(x => x.Pnl)) })
+            .OrderByDescending(x => x.Stats.RealizedPnlSum)
+            .ToList();
+
         var watchSnapshot = _autoTrader.WatchList.Values
             .Where(w => w.Active)
             .Select(w => $"{w.Symbol}={w.Strategy} ({w.LastSignal ?? "?"}@{w.LastConfidence:P0})")
@@ -102,6 +110,19 @@ public class DailyReportService : BackgroundService
         sb.AppendLine($"成交筆數：{stats.TradeCount}  勝率：{stats.WinRatePct:F1}%  Profit Factor：{stats.ProfitFactor:F2}");
         sb.AppendLine($"已實現 PnL：**{pnlSign}{stats.RealizedPnlSum:F2}** USDT");
         sb.AppendLine($"勝/敗：{stats.WinCount}/{stats.LoseCount}  平均勝：+{stats.AvgWin:F2}  平均敗：{stats.AvgLoss:F2}");
+
+        if (byStrategy.Count > 0 && byStrategy.Any(x => x.Stats.TradeCount > 0))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"**按策略（{byStrategy.Count} 組）**");
+            foreach (var s in byStrategy.Take(6))
+            {
+                if (s.Stats.TradeCount == 0) continue;
+                var sign = s.Stats.RealizedPnlSum >= 0 ? "+" : "";
+                sb.AppendLine($"・{s.Name}: {s.Stats.TradeCount}筆 勝率{s.Stats.WinRatePct:F0}% PnL **{sign}{s.Stats.RealizedPnlSum:F2}** PF {s.Stats.ProfitFactor:F2}");
+            }
+        }
+
         sb.AppendLine();
         sb.AppendLine($"**AutoTrader watch ({watchSnapshot.Count} active)**");
         foreach (var w in watchSnapshot.Take(8)) sb.AppendLine($"・{w}");
@@ -114,15 +135,16 @@ public class DailyReportService : BackgroundService
             level: stats.RealizedPnlSum >= 0 ? "success" : "warning", ct);
 
         var ok = dr.ok || lr.ok;
-        _logger.LogInformation("DailyReport pushed: discord={D} line={L} pnl={Pnl:F2} trades={N}",
-            dr.ok, lr.ok, stats.RealizedPnlSum, stats.TradeCount);
+        _logger.LogInformation("DailyReport pushed: discord={D} line={L} pnl={Pnl:F2} trades={N} strategies={S}",
+            dr.ok, lr.ok, stats.RealizedPnlSum, stats.TradeCount, byStrategy.Count);
         return (ok, body);
     }
 
-    private async Task<PnlStats> GatherPnlStatsAsync(string exchange, DateTime sinceUtc, CancellationToken ct)
+    private async Task<List<(decimal Pnl, string? Strategy)>> FetchTradesAsync(
+        string exchange, DateTime sinceUtc, CancellationToken ct)
     {
-        if (!_registry.HasAvailableWorker("trading.account"))
-            return new PnlStats();   // worker 沒連、回 zero 不要 crash
+        var empty = new List<(decimal, string?)>();
+        if (!_registry.HasAvailableWorker("trading.account")) return empty;
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -142,45 +164,22 @@ public class DailyReportService : BackgroundService
             SessionId = "daily-report",
         };
         var result = await _dispatcher.DispatchAsync(req);
-        if (!result.Success) return new PnlStats();
+        if (!result.Success) return empty;
 
         var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
         if (!doc.TryGetProperty("trades", out var trades) || trades.ValueKind != JsonValueKind.Array)
-            return new PnlStats();
+            return empty;
 
-        int total = 0, wins = 0, loses = 0;
-        decimal pnlSum = 0m, winSum = 0m, lossSum = 0m;
+        var list = new List<(decimal, string?)>();
         foreach (var t in trades.EnumerateArray())
         {
             if (!t.TryGetProperty("realized_pnl", out var p) || p.ValueKind != JsonValueKind.Number) continue;
             var pnl = p.GetDecimal();
-            total++; pnlSum += pnl;
-            if (pnl > 0m) { wins++;  winSum  += pnl; }
-            else if (pnl < 0m) { loses++; lossSum += pnl; }
+            var strategy = t.TryGetProperty("strategy", out var sg) && sg.ValueKind == JsonValueKind.String
+                ? sg.GetString() : null;
+            list.Add((pnl, strategy));
         }
-        return new PnlStats
-        {
-            TradeCount = total,
-            WinCount = wins,
-            LoseCount = loses,
-            RealizedPnlSum = Math.Round(pnlSum, 4),
-            WinRatePct = total > 0 ? Math.Round(100m * wins / total, 1) : 0m,
-            AvgWin = wins > 0 ? Math.Round(winSum / wins, 4) : 0m,
-            AvgLoss = loses > 0 ? Math.Round(lossSum / loses, 4) : 0m,
-            ProfitFactor = lossSum < 0m ? Math.Round(winSum / Math.Abs(lossSum), 3) : (winSum > 0m ? 99.99m : 0m),
-        };
-    }
-
-    private class PnlStats
-    {
-        public int TradeCount { get; set; }
-        public int WinCount { get; set; }
-        public int LoseCount { get; set; }
-        public decimal RealizedPnlSum { get; set; }
-        public decimal WinRatePct { get; set; }
-        public decimal AvgWin { get; set; }
-        public decimal AvgLoss { get; set; }
-        public decimal ProfitFactor { get; set; }
+        return list;
     }
 
     private static int ParseIntEnv(string name, int defaultValue, int min, int max)

@@ -171,43 +171,30 @@ public static class TradingEndpoints
                     avg_win = 0m, avg_loss = 0m, profit_factor = 0m,
                 }));
 
-            int total = 0, wins = 0, loses = 0;
-            decimal pnlSum = 0m, winSum = 0m, lossSum = 0m;
+            // since 客戶端再過濾一次（worker 端也有但保險）+ 抽 realized_pnl 給 aggregator
+            var pnls = new List<decimal>();
             foreach (var t in tradesEl.EnumerateArray())
             {
                 if (since.HasValue && t.TryGetProperty("executed_at", out var ea) &&
                     DateTime.TryParse(ea.GetString() ?? "", out var execDt) && execDt < since.Value)
                     continue;
-
-                decimal? pnl = null;
-                if (t.TryGetProperty("realized_pnl", out var p) && p.ValueKind == JsonValueKind.Number)
-                    pnl = p.GetDecimal();
-                if (pnl == null) continue;   // 跳過沒有 realized_pnl 的（如：純開倉、未對沖）
-
-                total++;
-                pnlSum += pnl.Value;
-                if (pnl.Value > 0m) { wins++;  winSum  += pnl.Value; }
-                else if (pnl.Value < 0m) { loses++; lossSum += pnl.Value; }
+                if (!t.TryGetProperty("realized_pnl", out var p) || p.ValueKind != JsonValueKind.Number) continue;
+                pnls.Add(p.GetDecimal());
             }
 
-            var winRate     = total > 0 ? Math.Round(100m * wins / total, 1) : 0m;
-            var avgWin      = wins > 0 ? Math.Round(winSum / wins, 4) : 0m;
-            var avgLoss     = loses > 0 ? Math.Round(lossSum / loses, 4) : 0m;
-            // profit factor = 總獲利 / |總損失|；無損失時回 ∞ 用 99.99 代表
-            var profitFactor = lossSum < 0m ? Math.Round(winSum / Math.Abs(lossSum), 3) : (winSum > 0m ? 99.99m : 0m);
-
+            var stats = BrokerCore.Trading.PnlAggregator.Aggregate(pnls);
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 exchange, symbol,
                 since = since?.ToString("o"),
-                trade_count = total,
-                win_count = wins,
-                lose_count = loses,
-                realized_pnl_sum = Math.Round(pnlSum, 4),
-                win_rate_pct = winRate,
-                avg_win = avgWin,
-                avg_loss = avgLoss,
-                profit_factor = profitFactor,
+                trade_count = stats.TradeCount,
+                win_count = stats.WinCount,
+                lose_count = stats.LoseCount,
+                realized_pnl_sum = stats.RealizedPnlSum,
+                win_rate_pct = stats.WinRatePct,
+                avg_win = stats.AvgWin,
+                avg_loss = stats.AvgLoss,
+                profit_factor = stats.ProfitFactor,
             }));
         });
 
