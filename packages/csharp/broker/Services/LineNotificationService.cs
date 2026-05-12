@@ -137,22 +137,38 @@ public class LineNotificationService : BackgroundService
             _seenLogKeys.Add(key);
 
             var action = l.Action.ToLowerInvariant();
-            // 跟 Discord 用同一組 filter——只推會引起部位變動或需要注意的 action
-            var (prefix, level) = action switch
-            {
-                "buy"      => ("Auto-Trader 買入", "success"),
-                "sell"     => ("Auto-Trader 賣出", "info"),
-                "error"    => ("Auto-Trader 錯誤", "error"),
-                "blocked"  => ("Auto-Trader 被風控擋下", "warning"),
-                "adjusted" => ("Auto-Trader 數量調整", "warning"),
-                _          => ("", ""),
-            };
+            // 跟 Discord ClassifyAction 同一套：perp 與 spot 都涵蓋、skip/hold/dedup 不推
+            var (prefix, level) = ClassifyAction(action);
             if (string.IsNullOrEmpty(prefix)) continue;
 
             var title = $"{prefix} · {l.Symbol}";
             var body = $"{l.Symbol} @ {l.Exchange}\n動作：{action}\n{l.Message}";
             await SendNotificationAsync(title, body, level, ct);
         }
+    }
+
+    // 跟 DiscordNotificationService.ClassifyAction 對齊（無 emoji/color、回 (中文標題, level)）。
+    // perp action key 變體用 StartsWith；scale_in / protect / halt 都會推。
+    private static (string Prefix, string Level) ClassifyAction(string action)
+    {
+        if (action.StartsWith("scale_in_long"))  return ("Auto-Trader 加碼多", "info");
+        if (action.StartsWith("scale_in_short")) return ("Auto-Trader 加碼空", "info");
+
+        return action switch
+        {
+            "buy"         => ("Auto-Trader 買入",      "success"),
+            "sell"        => ("Auto-Trader 賣出",      "info"),
+            "open_long"   => ("Auto-Trader 開多",      "success"),
+            "open_short"  => ("Auto-Trader 開空",      "info"),
+            "close_long"  => ("Auto-Trader 平多",      "warning"),
+            "close_short" => ("Auto-Trader 平空",      "warning"),
+            "protect"     => ("Auto-Trader 保護單",    "warning"),
+            "halt"        => ("Auto-Trader 熔斷",      "error"),
+            "error"       => ("Auto-Trader 錯誤",      "error"),
+            "blocked"     => ("Auto-Trader 被風控擋下", "warning"),
+            "adjusted"    => ("Auto-Trader 數量調整",  "warning"),
+            _             => ("", ""),
+        };
     }
 
     private async Task CheckHeartbeatAsync(CancellationToken ct)

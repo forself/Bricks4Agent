@@ -136,15 +136,7 @@ public class DiscordNotificationService : BackgroundService
             // 只推「會導致部位變動 / 需要注意」的事件，一般 skip/hold/dedup 不推，避免訊息爆量
             // （dedup = trading-worker 端 idempotency 命中、沒打交易所，跟 hold 一樣是 no-op 不需通知）
             var action = l.Action.ToLowerInvariant();
-            var (emoji, color, prefix) = action switch
-            {
-                "buy"      => ("🟢", 0x0ECB81, "Auto-Trader 買入"),
-                "sell"     => ("🔴", 0xF6465D, "Auto-Trader 賣出"),
-                "error"    => ("⚠️", 0xFCD535, "Auto-Trader 錯誤"),
-                "blocked"  => ("🛑", 0xF6465D, "Auto-Trader 被風控擋下"),
-                "adjusted" => ("✂️", 0xFCD535, "Auto-Trader 數量調整"),
-                _          => ("", 0, ""),
-            };
+            var (emoji, color, prefix) = ClassifyAction(action);
             if (emoji == "") continue;
 
             var fields = new[]
@@ -258,6 +250,32 @@ public class DiscordNotificationService : BackgroundService
                 timestamp:   now,
                 ct:          ct);
         }
+    }
+
+    // 把 AutoTrader 多樣 action key 歸類成 (emoji, color, 中文 prefix)。
+    // perp 端 (open_long / close_short / scale_in_* / protect / halt) 跟 spot 端 (buy/sell) 都要涵蓋；
+    // hold / skip / dedup / warn / force 之類噪音事件不推（emoji 留空 → caller continue）。
+    private static (string Emoji, int Color, string Prefix) ClassifyAction(string action)
+    {
+        // 變體前綴：scale_in_long_xxx 之類用 StartsWith 抓
+        if (action.StartsWith("scale_in_long"))  return ("➕", 0x3B82F6, "Auto-Trader 加碼多");
+        if (action.StartsWith("scale_in_short")) return ("➕", 0x3B82F6, "Auto-Trader 加碼空");
+
+        return action switch
+        {
+            "buy"         => ("🟢", 0x0ECB81, "Auto-Trader 買入"),
+            "sell"        => ("🔴", 0xF6465D, "Auto-Trader 賣出"),
+            "open_long"   => ("🟢", 0x0ECB81, "Auto-Trader 開多"),
+            "open_short"  => ("🔴", 0xF6465D, "Auto-Trader 開空"),
+            "close_long"  => ("🟡", 0xFCD535, "Auto-Trader 平多"),
+            "close_short" => ("🟡", 0xFCD535, "Auto-Trader 平空"),
+            "protect"     => ("🛡", 0xFCD535, "Auto-Trader 保護單"),
+            "halt"        => ("⛔", 0xF6465D, "Auto-Trader 熔斷"),
+            "error"       => ("⚠️", 0xFCD535, "Auto-Trader 錯誤"),
+            "blocked"     => ("🛑", 0xF6465D, "Auto-Trader 被風控擋下"),
+            "adjusted"    => ("✂️", 0xFCD535, "Auto-Trader 數量調整"),
+            _             => ("", 0, ""),
+        };
     }
 
     // ── 底層 webhook ─────────────────────────────────────────────────
