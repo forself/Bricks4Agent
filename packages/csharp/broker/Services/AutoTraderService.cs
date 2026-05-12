@@ -204,6 +204,22 @@ public class AutoTraderService : BackgroundService
     /// </summary>
     private readonly int _minEntryIntervalSec;
     private readonly ConcurrentDictionary<string, DateTime> _lastEntryAt = new();
+
+    /// <summary>
+    /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
+    /// 模式：
+    ///   "off"    — 完全不檢查（向後相容、預設）
+    ///   "soft"   — 違反規則只 log warning、不擋單；給觀察期用
+    ///   "strict" — 違反規則直接 skip、不開倉
+    /// 規則：
+    ///   HighVol     → 任何 open_* 都 skip（ATR &gt; 4%、易吃 SL）
+    ///   Squeeze     → 任何 open_* 都 skip（BB 過窄、方向未明）
+    ///   TrendingUp  → 只允許 open_long / scale_in_long、擋 open_short
+    ///   TrendingDown→ 只允許 open_short / scale_in_short、擋 open_long
+    ///   RangeBound / Unclear → 不擋（震盪策略 + 不明就交給 confidence 決定）
+    /// env: AUTOTRADER_REGIME_GATE_MODE
+    /// </summary>
+    private readonly string _regimeGateMode;
     /// <summary>
     /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
     /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
@@ -509,6 +525,9 @@ public class AutoTraderService : BackgroundService
         _maxOpenPositions = (int)ParsePctEnv("AUTOTRADER_MAX_OPEN_POSITIONS", defaultValue: 3m, min: 0m, max: 20m);
         // Per-symbol 連續開倉冷卻：避免訊號反翻 churn、預設 30 分鐘
         _minEntryIntervalSec = (int)ParsePctEnv("AUTOTRADER_MIN_ENTRY_INTERVAL_SEC", defaultValue: 1800m, min: 0m, max: 86400m);
+        // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
+        var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
+        _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
         // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
         var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
         _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
@@ -1491,6 +1510,9 @@ public class AutoTraderService : BackgroundService
         var action = signal.TryGetProperty("action", out var a) ? a.GetString() ?? "hold" : "hold";
         var confidence = signal.TryGetProperty("confidence", out var c) ? c.GetDecimal() : 0;
         var reason = signal.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
+        // strategy-worker 從 0a48xx 版起 evaluate response 多帶 regime side-channel；舊 worker 就是空字串
+        var regimeType = signal.TryGetProperty("regime", out var regEl) && regEl.ValueKind == JsonValueKind.Object
+            && regEl.TryGetProperty("type", out var rt) ? rt.GetString() ?? "" : "";
 
         item.LastSignal = action;
         item.LastConfidence = confidence;
@@ -1648,7 +1670,7 @@ public class AutoTraderService : BackgroundService
         // Step 5: 下單 — spot 走 trading.order；perp_* 走 trading.perpetual 並做 signal→open/close 映射
         if (item.Mode == "perp_long_only" || item.Mode == "perp_both")
         {
-            await PlacePerpOrderForSignalAsync(item, action, confidence, ct);
+            await PlacePerpOrderForSignalAsync(item, action, confidence, regimeType, ct);
         }
         else
         {
@@ -1839,7 +1861,7 @@ public class AutoTraderService : BackgroundService
         }
     }
 
-    private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, decimal confidence, CancellationToken ct)
+    private async Task PlacePerpOrderForSignalAsync(WatchItem item, string action, decimal confidence, string regimeType, CancellationToken ct)
     {
         if (!_registry.HasAvailableWorker("trading.perpetual"))
         {
@@ -2003,6 +2025,32 @@ public class AutoTraderService : BackgroundService
             //
             // 只對「開倉 + scale_in」生效；close / scale_out 維持既有 qty（要平多少平多少）。
             // markPrice 或 balance = 0 時 fallback 到 watch.Quantity 避免 broker 卡住。
+            // ── Regime filter gate（HighVol / Squeeze 全擋、Trending 擋反向）─
+            // 模式 off=不擋；soft=只 log；strict=擋並 return。只對開倉 / 加倉生效；平倉不受影響。
+            if (_regimeGateMode != "off" && !string.IsNullOrEmpty(regimeType) &&
+                (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            {
+                var rt = regimeType.ToLowerInvariant();
+                string? blockReason = rt switch
+                {
+                    "highvol" => $"regime=HighVol ATR 過大、{perpAction} 易被掃 SL",
+                    "squeeze" => $"regime=Squeeze BB 過窄、{perpAction} 方向未明",
+                    "trendingup"   when perpAction.Contains("short") => "regime=TrendingUp 趨勢向上、不開空",
+                    "trendingdown" when perpAction.Contains("long")  => "regime=TrendingDown 趨勢向下、不開多",
+                    _ => null,   // rangebound / unclear / 同方向趨勢都放行
+                };
+                if (blockReason != null)
+                {
+                    if (_regimeGateMode == "strict")
+                    {
+                        AddLog(item, "skip", $"regime-gate(strict): {blockReason}");
+                        return;
+                    }
+                    // soft：只觀察、不擋
+                    AddLog(item, "warn", $"regime-gate(soft): {blockReason} — 仍放行");
+                }
+            }
+
             // ── Per-symbol entry cooldown（避免訊號反翻 churn）─
             // 對 open_* / scale_in_* 都生效；close / protect / reduce_only 由 perpAction 不以 open_ 起頭排除。
             var cdKey = $"{item.Exchange}:{item.Symbol}";

@@ -94,6 +94,10 @@ public class StrategySignalHandler : ICapabilityHandler
 
         var signal = strategy.Evaluate(bars, config);
 
+        // Regime side-channel：跟 signal 同一份 bars 算一次 regime、broker AutoTrader 用它做 gate。
+        // 算一次 ~微秒等級、不增加感知延遲；放在 response 比讓 broker 自己再 call detect_regime 省一個 round trip。
+        var regime = StrategyWorker.Engine.Indicators.RegimeDetector.Detect(bars);
+
         var json = JsonSerializer.Serialize(new
         {
             signal_id  = signal.SignalId,
@@ -106,6 +110,15 @@ public class StrategySignalHandler : ICapabilityHandler
             interval   = signal.Interval,
             timestamp  = signal.Timestamp,
             indicators = signal.Indicators,
+            regime = new
+            {
+                type         = regime.Type.ToString().ToLowerInvariant(),  // unclear/trendingup/trendingdown/rangebound/squeeze/highvol
+                sma50_slope  = regime.Sma50Slope,
+                atr_pct      = regime.AtrPct,
+                bb_width     = regime.BbWidth,
+                above_sma50  = regime.AboveSma50,
+                description  = regime.Description,
+            },
         });
         return (true, json, null);
     }
