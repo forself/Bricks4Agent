@@ -193,6 +193,7 @@ public class AutoTraderService : BackgroundService
     private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
     private readonly decimal _perpLiqEmergencyPct;
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
+    private readonly decimal _maxPortfolioRiskPct;  // 所有開倉 combined max_loss 上限（預設 6%、對齊 r16）
     /// <summary>
     /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
     /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
@@ -491,6 +492,9 @@ public class AutoTraderService : BackgroundService
         // 動態開倉本金：開倉前以「max_loss = balance × N% / SL%」算出 notional、再 / mark_price = qty
         // 預設 2% = 對齊 r14 max_loss_per_trade_pct。0 = 關閉（向後相容、用 watch.Quantity 固定值）
         _dynamicRiskPct = ParsePctEnv("AUTOTRADER_DYNAMIC_RISK_PCT", defaultValue: 2m, min: 0m, max: 10m);
+        // Portfolio-level 累計風險上限。Per-trade 2% × 4 倉 = 8%、但只算單筆會破日損預算。
+        // 預設 6% = 對齊 r16；新開倉若會推超這個總額、qty 自動縮（或縮到 0 略過）。
+        _maxPortfolioRiskPct = ParsePctEnv("AUTOTRADER_MAX_PORTFOLIO_RISK_PCT", defaultValue: 6m, min: 0m, max: 30m);
         // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
         var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
         _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
@@ -1955,9 +1959,14 @@ public class AutoTraderService : BackgroundService
 
             // ★ Dynamic position sizing（user request）：開倉時動態算 qty 讓 max_loss = balance × risk%
             //
-            //   formula：max_loss = balance × _dynamicRiskPct% = notional × InitialSlPct%
-            //          → notional = balance × (_dynamicRiskPct / InitialSlPct)
-            //          → qty = notional / markPrice
+            //   per-trade   max_loss = balance × _dynamicRiskPct%       (預設 2%、對齊 r14)
+            //   portfolio   max_loss = balance × _maxPortfolioRiskPct%  (預設 6%、對齊 r16)
+            //
+            //   existing_risk = Σ (已開倉 notional × InitialSlPct%)
+            //   remaining_budget = portfolio_max - existing_risk
+            //   allowed = min(per_trade, remaining_budget)
+            //   notional = allowed / SL%
+            //   qty = notional / markPrice
             //
             // 只對「開倉 + scale_in」生效；close / scale_out 維持既有 qty（要平多少平多少）。
             // markPrice 或 balance = 0 時 fallback 到 watch.Quantity 避免 broker 卡住。
@@ -1965,12 +1974,36 @@ public class AutoTraderService : BackgroundService
             {
                 if (anchoredBalance > 0m && markPrice > 0m && _protectionConfig.InitialSlPct > 0m)
                 {
-                    var maxNotional = anchoredBalance * (_dynamicRiskPct / _protectionConfig.InitialSlPct);
+                    // 已開倉的累計風險：每倉 notional × SL%
+                    decimal existingRisk = 0m;
+                    foreach (var pp in perpPositions)
+                    {
+                        var notionalAnonProp = pp.GetType().GetProperty("notional")?.GetValue(pp);
+                        if (notionalAnonProp is decimal n)
+                            existingRisk += n * (_protectionConfig.InitialSlPct / 100m);
+                    }
+
+                    var perTradeMax = anchoredBalance * (_dynamicRiskPct / 100m);
+                    var portfolioMax = _maxPortfolioRiskPct > 0m
+                        ? anchoredBalance * (_maxPortfolioRiskPct / 100m)
+                        : decimal.MaxValue;
+                    var remainingBudget = portfolioMax - existingRisk;
+                    var allowedRisk = Math.Min(perTradeMax, Math.Max(0m, remainingBudget));
+
+                    if (allowedRisk <= 0m)
+                    {
+                        AddLog(item, "skip",
+                            $"portfolio risk budget exhausted: existing_risk={existingRisk:F2} ≥ portfolio_max={portfolioMax:F2} ({_maxPortfolioRiskPct}% of ${anchoredBalance:F2})");
+                        return;
+                    }
+
+                    var maxNotional = allowedRisk / (_protectionConfig.InitialSlPct / 100m);
                     var dynamicQty = maxNotional / markPrice;
                     _logger.LogInformation(
-                        "AutoTrader dynamic sizing {Symbol}: balance={Bal:F2} risk={Risk}% sl={Sl}% mark={Mark:F4} lev={Lev}x → notional={Not:F2} qty={Qty:F6} margin={Margin:F2} (watch.Quantity was {Watch:F6})",
-                        item.Symbol, anchoredBalance, _dynamicRiskPct, _protectionConfig.InitialSlPct, markPrice,
-                        item.Leverage, maxNotional, dynamicQty, maxNotional / Math.Max(item.Leverage, 1), item.Quantity);
+                        "AutoTrader dynamic sizing {Symbol}: balance={Bal:F2} existing_risk={Exist:F2} budget={Budget:F2} allowed={All:F2} (per-trade {Pt:F2}, portfolio max {Pm:F2}) sl={Sl}% mark={Mark:F4} lev={Lev}x → notional={Not:F2} qty={Qty:F6} margin={Margin:F2}",
+                        item.Symbol, anchoredBalance, existingRisk, remainingBudget, allowedRisk,
+                        perTradeMax, portfolioMax, _protectionConfig.InitialSlPct, markPrice,
+                        item.Leverage, maxNotional, dynamicQty, maxNotional / Math.Max(item.Leverage, 1));
                     qtyToUse = dynamicQty;
                 }
                 else
