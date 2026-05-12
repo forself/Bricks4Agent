@@ -220,6 +220,29 @@ public static class TradingEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { pushed = ok, summary }));
         });
 
+        // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
+        trading.MapPost("/symbol-specs/refresh", async (
+            Broker.Services.SymbolSpecsService svc, CancellationToken ct) =>
+        {
+            var (ok, count, error) = await svc.RefreshNowAsync(ct);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                ok, count, error,
+                cache_count = BrokerCore.Trading.SymbolSpecs.CacheCount,
+                cache_updated_at = BrokerCore.Trading.SymbolSpecs.CacheUpdatedAt,
+            }));
+        });
+
+        // 查 cache 狀態（不觸發 refresh）
+        trading.MapGet("/symbol-specs/status", () =>
+        {
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                cache_count = BrokerCore.Trading.SymbolSpecs.CacheCount,
+                cache_updated_at = BrokerCore.Trading.SymbolSpecs.CacheUpdatedAt,
+            }));
+        });
+
         trading.MapGet("/exchanges", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, CancellationToken ct) =>

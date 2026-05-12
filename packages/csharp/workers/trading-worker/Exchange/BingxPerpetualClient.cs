@@ -286,6 +286,51 @@ public class BingxPerpetualClient : IPerpetualClient
         return ParseDec(data, "markPrice");
     }
 
+    public async Task<List<PerpetualContract>> GetContractsAsync(CancellationToken ct = default)
+    {
+        // GET /openApi/swap/v2/quote/contracts （public、不需簽）
+        // 回 array of { symbol, tradeMinQuantity, tradeMinUSDT, quantityPrecision,
+        // maxLongLeverage, maxShortLeverage, currency, status, ... }
+        var result = new List<PerpetualContract>();
+        var resp = await _http.GetAsync($"{_baseUrl}/openApi/swap/v2/quote/contracts", ct);
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        var doc = JsonDocument.Parse(json).RootElement;
+        if (!IsOk(doc) || !doc.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return result;
+
+        var now = DateTime.UtcNow;
+        foreach (var item in data.EnumerateArray())
+        {
+            var sym = item.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(sym)) continue;
+
+            var qtyPrecision = item.TryGetProperty("quantityPrecision", out var qp) && qp.TryGetInt32(out var qpI) ? qpI : 4;
+            var qtyStep = (decimal)Math.Pow(10, -qtyPrecision);
+
+            var maxLong  = item.TryGetProperty("maxLongLeverage",  out var mll) && mll.TryGetInt32(out var ml)  ? ml  : 0;
+            var maxShort = item.TryGetProperty("maxShortLeverage", out var msl) && msl.TryGetInt32(out var ms)  ? ms  : 0;
+            var maxLev   = Math.Max(maxLong, maxShort);
+            if (maxLev <= 0) maxLev = 50;  // 保守 fallback、避免 cache 拿到 0
+
+            // status: 1 = trading, 5 = pre-launch, etc. 只當 1 為 trading。
+            var trading = !item.TryGetProperty("status", out var st) || (st.TryGetInt32(out var stI) ? stI == 1 : true);
+
+            result.Add(new PerpetualContract
+            {
+                Symbol        = sym,
+                MinQty        = ParseDec(item, "tradeMinQuantity"),
+                QtyStep       = qtyStep,
+                MinNotional   = ParseDec(item, "tradeMinUSDT"),
+                MaxLeverage   = maxLev,
+                QuoteCurrency = item.TryGetProperty("currency", out var cur) ? cur.GetString() ?? "USDT" : "USDT",
+                Trading       = trading,
+                SnapshotAt    = now,
+            });
+        }
+        return result;
+    }
+
     public async Task<List<PerpetualTicker24h>> GetTickers24hAsync(CancellationToken ct = default)
     {
         // GET /openApi/swap/v2/quote/ticker （省略 symbol 參數 = 全部 USDT-M perp）

@@ -334,6 +334,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Li
 // Singleton 版本給 manual trigger endpoint 用、HostedService 共用同一個 instance（避免兩份狀態）
 builder.Services.AddSingleton<Broker.Services.DailyReportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DailyReportService>());
+// 動態合約規格 cache，啟動 + 每 12h 從 trading-worker 拉、灌進 BrokerCore.Trading.SymbolSpecs
+builder.Services.AddSingleton<Broker.Services.SymbolSpecsService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.SymbolSpecsService>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）

@@ -61,6 +61,7 @@ public class TradingPerpetualHandler : ICapabilityHandler
             "set_leverage"     => await SetLeverage(opts, ct),
             "get_mark_price"   => await GetMarkPrice(opts, ct),
             "get_tickers_24h"  => await GetTickers24h(opts, ct),
+            "get_contracts"    => await GetContracts(opts, ct),
             "list_exchanges"   => ListExchanges(),
             _ => (false, null, $"Unknown route: {route}")
         };
@@ -87,6 +88,32 @@ public class TradingPerpetualHandler : ICapabilityHandler
                     quote_volume = t.QuoteVolume,
                     price_change = t.PriceChange,
                     price_change_pct = t.PriceChangePercent,
+                })
+            });
+            return (true, json, null);
+        }
+        catch (Exception ex) { return (false, null, ex.Message); }
+    }
+
+    private async Task<(bool, string?, string?)> GetContracts(JsonElement opts, CancellationToken ct)
+    {
+        if (!TryGetClient(opts, out var c, out var err)) return (false, null, err);
+        try
+        {
+            var list = await c!.GetContractsAsync(ct);
+            var json = JsonSerializer.Serialize(new
+            {
+                count = list.Count,
+                snapshot_at = list.FirstOrDefault()?.SnapshotAt ?? DateTime.UtcNow,
+                contracts = list.Select(p => new
+                {
+                    symbol         = p.Symbol,
+                    min_qty        = p.MinQty,
+                    qty_step       = p.QtyStep,
+                    min_notional   = p.MinNotional,
+                    max_leverage   = p.MaxLeverage,
+                    quote_currency = p.QuoteCurrency,
+                    trading        = p.Trading,
                 })
             });
             return (true, json, null);

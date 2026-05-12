@@ -46,9 +46,43 @@ public static class SymbolSpecs
         ["UNI-USDT"]    = new() { MinQty = 0.1m,    QtyStep = 0.1m,    MinNotional = 5m, MaxLeverage = 75  },
     };
 
+    // Phase 2：dynamic cache（key = "{exchange}:{symbol}"、case-insensitive）。
+    // 由 SymbolSpecsService 啟動 + 每 12h 從 trading-worker 拉、用 ReplaceCache 整批替換。
+    // 沒命中就 fallback 到 hardcoded BingxSpecs，所以新上架的小幣不會被誤擋。
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Spec> _dynamicCache
+        = new(StringComparer.OrdinalIgnoreCase);
+    private static DateTime _cacheUpdatedAt = DateTime.MinValue;
+
+    public static DateTime CacheUpdatedAt => _cacheUpdatedAt;
+    public static int CacheCount => _dynamicCache.Count;
+
+    /// <summary>整批替換某交易所的 spec 快取。傳空 list 等於清空該交易所。</summary>
+    public static void ReplaceCache(string exchange, IEnumerable<(string Symbol, Spec Spec)> entries)
+    {
+        if (string.IsNullOrEmpty(exchange)) return;
+        var prefix = $"{exchange.ToLowerInvariant()}:";
+
+        // 先移除該交易所的舊條目
+        foreach (var key in _dynamicCache.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            _dynamicCache.TryRemove(key, out _);
+
+        foreach (var (sym, spec) in entries)
+        {
+            if (string.IsNullOrEmpty(sym) || spec == null) continue;
+            _dynamicCache[$"{prefix}{sym}"] = spec;
+        }
+        _cacheUpdatedAt = DateTime.UtcNow;
+    }
+
     public static Spec? GetSpec(string exchange, string symbol)
     {
         if (string.IsNullOrEmpty(exchange) || string.IsNullOrEmpty(symbol)) return null;
+
+        // Cache 優先（動態 fetch、跟著交易所上下架）
+        if (_dynamicCache.TryGetValue($"{exchange.ToLowerInvariant()}:{symbol}", out var cached))
+            return cached;
+
+        // 沒命中、回 hardcoded fallback（保證 BTC/ETH 等主流仍能 pre-flight）
         if (exchange.Equals("bingx", StringComparison.OrdinalIgnoreCase))
             return BingxSpecs.TryGetValue(symbol, out var s) ? s : null;
         return null;

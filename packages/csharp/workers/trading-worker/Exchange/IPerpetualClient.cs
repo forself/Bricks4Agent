@@ -38,4 +38,10 @@ public interface IPerpetualClient
     /// 公開端點、不需 auth、流量便宜。
     /// </summary>
     Task<List<PerpetualTicker24h>> GetTickers24hAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 取所有合約規格（min qty / qty step / min notional / max leverage）。給 broker 端 pre-flight 用。
+    /// 公開端點、無 auth；broker 啟動 + 每 12h 自動 refresh、之後本地 cache 命中。
+    /// </summary>
+    Task<List<PerpetualContract>> GetContractsAsync(CancellationToken ct = default);
 }
