@@ -128,6 +128,13 @@ public class LineNotificationService : BackgroundService
         }
     }
 
+    // 錯誤訊息 dedup（跟 Discord 同樣機制、30 分鐘 cooldown）
+    private readonly Dictionary<string, DateTime> _errorSignatureLastSentAt = new();
+    private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
+
+    private static bool IsErrorAction(string action) =>
+        action == "error" || action == "blocked" || action == "halt" || action.Contains("fail");
+
     private async Task CheckTradeLogsAsync(CancellationToken ct)
     {
         foreach (var l in _autoTrader.RecentLogs)
@@ -137,9 +144,21 @@ public class LineNotificationService : BackgroundService
             _seenLogKeys.Add(key);
 
             var action = l.Action.ToLowerInvariant();
-            // 跟 Discord ClassifyAction 同一套：perp 與 spot 都涵蓋、skip/hold/dedup 不推
             var (prefix, level) = ClassifyAction(action);
             if (string.IsNullOrEmpty(prefix)) continue;
+
+            // 錯誤類 dedup：30 分鐘內相同 signature 不重推
+            if (IsErrorAction(action))
+            {
+                var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
+                var sig = $"{action}|{l.Symbol}|{msgPrefix}";
+                if (_errorSignatureLastSentAt.TryGetValue(sig, out var lastAt) &&
+                    DateTime.UtcNow - lastAt < ErrorDedupWindow)
+                {
+                    continue;
+                }
+                _errorSignatureLastSentAt[sig] = DateTime.UtcNow;
+            }
 
             var title = $"{prefix} · {l.Symbol}";
             var body = $"{l.Symbol} @ {l.Exchange}\n動作：{action}\n{l.Message}";

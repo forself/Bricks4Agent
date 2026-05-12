@@ -993,6 +993,21 @@ public class AutoTraderService : BackgroundService
             {
                 if (!item.Active || ct.IsCancellationRequested) continue;
 
+                // ★ Failure backoff：同 watch 連續 N 次錯誤 → 暫停 1 小時
+                if (_watchFailureState.TryGetValue(key, out var fs) &&
+                    fs.ConsecutiveErrors >= MaxConsecutiveErrors)
+                {
+                    var sinceLastErr = DateTime.UtcNow - fs.LastErrorAt;
+                    if (sinceLastErr < FailureBackoffWindow)
+                    {
+                        // 仍在 cooldown、靜默 skip（不再 AddLog 否則自循環）
+                        continue;
+                    }
+                    // backoff 結束、試一次（fs 不清掉、若這次又錯仍累計）
+                    _logger.LogInformation("AutoTrader retry after backoff: {Key} (errors={N}, last={Reason})",
+                        key, fs.ConsecutiveErrors, fs.LastReason);
+                }
+
                 try
                 {
                     await ProcessSymbolAsync(item, ct);
@@ -2148,7 +2163,46 @@ public class AutoTraderService : BackgroundService
             Action = action, Message = message,
         });
         while (_tradeLog.Count > MaxLogEntries) _tradeLog.TryDequeue(out _);
+
+        // ★ 失敗 backoff state：連續錯誤 N 次 → 外層 sweep skip 1 小時、避免狂洗 log + 通知
+        var key = $"{item.Exchange}:{item.Symbol}";
+        if (action == "error" || action == "blocked")
+        {
+            _watchFailureState.AddOrUpdate(key,
+                _ => new FailureState { ConsecutiveErrors = 1, LastErrorAt = DateTime.UtcNow, LastReason = message },
+                (_, fs) =>
+                {
+                    fs.ConsecutiveErrors++;
+                    fs.LastErrorAt = DateTime.UtcNow;
+                    fs.LastReason  = message;
+                    return fs;
+                });
+        }
+        else if (IsSuccessfulOrderAction(action))
+        {
+            // 成功下單就清掉之前累積的失敗
+            _watchFailureState.TryRemove(key, out _);
+        }
     }
+
+    private static bool IsSuccessfulOrderAction(string action)
+    {
+        if (string.IsNullOrEmpty(action)) return false;
+        return action == "buy" || action == "sell" || action == "adjusted"
+            || action.StartsWith("open_") || action.StartsWith("close_")
+            || action.StartsWith("scale_in_") || action == "protect";
+    }
+
+    private class FailureState
+    {
+        public int ConsecutiveErrors { get; set; }
+        public DateTime LastErrorAt  { get; set; }
+        public string LastReason     { get; set; } = "";
+    }
+
+    private readonly ConcurrentDictionary<string, FailureState> _watchFailureState = new();
+    private const int      MaxConsecutiveErrors = 3;
+    private static readonly TimeSpan FailureBackoffWindow = TimeSpan.FromHours(1);
 
     private static string TruncateReason(string reason)
         => reason.Length > 120 ? reason[..120] + "…" : reason;

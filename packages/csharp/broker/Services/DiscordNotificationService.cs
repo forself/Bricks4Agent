@@ -125,6 +125,14 @@ public class DiscordNotificationService : BackgroundService
         }
     }
 
+    // 錯誤類訊息的 dedup state（避免相同錯誤每 5 分鐘重炸通知）
+    // key = "{action}|{symbol}|{message 前 60 字}"、value = 最後推送時間
+    private readonly Dictionary<string, DateTime> _errorSignatureLastSentAt = new();
+    private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
+
+    private static bool IsErrorAction(string action) =>
+        action == "error" || action == "blocked" || action == "halt" || action.Contains("fail");
+
     private async Task CheckTradeLogsAsync(CancellationToken ct)
     {
         foreach (var l in _autoTrader.RecentLogs)
@@ -134,10 +142,22 @@ public class DiscordNotificationService : BackgroundService
             _seenLogKeys.Add(key);
 
             // 只推「會導致部位變動 / 需要注意」的事件，一般 skip/hold/dedup 不推，避免訊息爆量
-            // （dedup = trading-worker 端 idempotency 命中、沒打交易所，跟 hold 一樣是 no-op 不需通知）
             var action = l.Action.ToLowerInvariant();
             var (emoji, color, prefix) = ClassifyAction(action);
             if (emoji == "") continue;
+
+            // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過、避免相同錯每 5 分 sweep 一次重炸
+            if (IsErrorAction(action))
+            {
+                var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
+                var sig = $"{action}|{l.Symbol}|{msgPrefix}";
+                if (_errorSignatureLastSentAt.TryGetValue(sig, out var lastAt) &&
+                    DateTime.UtcNow - lastAt < ErrorDedupWindow)
+                {
+                    continue;   // 30 分鐘 cooldown 內、不重推
+                }
+                _errorSignatureLastSentAt[sig] = DateTime.UtcNow;
+            }
 
             var fields = new[]
             {
@@ -148,7 +168,7 @@ public class DiscordNotificationService : BackgroundService
 
             await SendEmbedAsync(
                 title:       $"{emoji} {prefix} · {l.Symbol}",
-                description: l.Message,
+                description: l.Message ?? "",
                 color:       color,
                 fields:      fields,
                 timestamp:   l.Time,
