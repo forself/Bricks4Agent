@@ -174,6 +174,125 @@ public class HarmonicEnhancedTests
         sim.Note.Should().NotBeNullOrEmpty();
     }
 
+    // ── PRZ 區間計算（Batch C+ 影片重點） ──────────────────────
+
+    [Fact]
+    public void CalcPrz_Bullish_AaboveX_PrzBelowA()
+    {
+        // bullish: X=100, A=150, |XA|=50
+        // Gartley AD ∈ [0.747, 0.825] → PRZ = [150 - 0.825*50, 150 - 0.747*50] = [108.75, 112.65]
+        var (low, high) = HarmonicPatterns.CalcPrz("bullish", Xp: 100m, Ap: 150m, adMin: 0.747m, adMax: 0.825m);
+        low.Should().BeApproximately(108.75m, 0.01m);
+        high.Should().BeApproximately(112.65m, 0.01m);
+        low.Should().BeLessThan(high, "PrzLow 必須小於 PrzHigh");
+    }
+
+    [Fact]
+    public void CalcPrz_Bearish_AbelowX_PrzAboveA()
+    {
+        // bearish: X=150, A=100, |XA|=50
+        // PRZ = [100 + 0.747*50, 100 + 0.825*50] = [137.35, 141.25]
+        var (low, high) = HarmonicPatterns.CalcPrz("bearish", Xp: 150m, Ap: 100m, adMin: 0.747m, adMax: 0.825m);
+        low.Should().BeApproximately(137.35m, 0.01m);
+        high.Should().BeApproximately(141.25m, 0.01m);
+    }
+
+    // ── Invalidated 狀態（PRZ break before SL/TP） ─────────────
+
+    [Fact]
+    public void EvaluateStatus_Bullish_PrzBreak_BeforeSl_Invalidated()
+    {
+        // D=110, SL=99 (X*0.99), TP1=125, PRZ=[108.75, 112.65]
+        // bar 7 low = 107 → 不破 SL(99)、但破 PRZ low(108.75) → Invalidated
+        var bars = new List<BarData>();
+        for (int i = 0; i < 10; i++) bars.Add(Bar(110m, 111m, 109m, 110m, i + 1));
+        bars[6] = Bar(110m, 111m, 107m, 109m, 7);   // bar 6 (after D=5) 跌到 107、破 PRZ
+
+        var (status, since) = HarmonicPatterns.EvaluateStatus(
+            "bullish", bars, dIndex: 5, entry: 110m, sl: 99m, tp1: 125m, tp2: 135m,
+            przLow: 108.75m, przHigh: 112.65m);
+
+        status.Should().Be(PatternStatus.Invalidated);
+        since.Should().Be(1);
+    }
+
+    [Fact]
+    public void EvaluateStatus_Bullish_SlBeforePrz_SlWins()
+    {
+        // bar low 跌到 95、SL=99、PRZ low=108.75
+        // SL 應該先觸（更深的損失優先）
+        var bars = new List<BarData>();
+        for (int i = 0; i < 10; i++) bars.Add(Bar(110m, 111m, 109m, 110m, i + 1));
+        bars[6] = Bar(108m, 110m, 95m, 96m, 7);
+
+        var (status, _) = HarmonicPatterns.EvaluateStatus(
+            "bullish", bars, dIndex: 5, entry: 110m, sl: 99m, tp1: 125m, tp2: 135m,
+            przLow: 108.75m, przHigh: 112.65m);
+
+        status.Should().Be(PatternStatus.SlHit);
+    }
+
+    [Fact]
+    public void EvaluateStatus_Bullish_Tp1BeforePrzBreak_Tp1Wins()
+    {
+        // bar 6 高點 130 觸 TP1 (125)；不看 PRZ break（不會發生）
+        var bars = new List<BarData>();
+        for (int i = 0; i < 10; i++) bars.Add(Bar(110m, 111m, 109m, 110m, i + 1));
+        bars[6] = Bar(110m, 130m, 110m, 128m, 7);
+
+        var (status, _) = HarmonicPatterns.EvaluateStatus(
+            "bullish", bars, dIndex: 5, entry: 110m, sl: 99m, tp1: 125m, tp2: 135m,
+            przLow: 108.75m, przHigh: 112.65m);
+
+        status.Should().Be(PatternStatus.Tp1Hit);
+    }
+
+    // ── DetectCandleConfirmation：D 後燭線確認 ─────────────────
+
+    [Fact]
+    public void DetectCandleConfirmation_BullishD_HammerAfter_Confirmed()
+    {
+        // 在 bar 6 加入一個合格 Hammer：實體 1、下影線 4、上影線 ≤ 實體
+        // open=100 close=101 → body 1；high=101.1（上影 0.1 ≤ body）；low=96（下影 4 ≥ 2×body）
+        var bars = new List<BarData>();
+        for (int i = 0; i < 10; i++) bars.Add(Bar(100m, 101m, 99m, 100m, i + 1));
+        bars[6] = Bar(open: 100m, high: 101.1m, low: 96m, close: 101m, day: 7);
+
+        var (hasConf, signals) = HarmonicPatterns.DetectCandleConfirmation(
+            bars, dIndex: 5, direction: "bullish", window: 5);
+
+        hasConf.Should().BeTrue();
+        signals.Should().Contain("Hammer@6");
+    }
+
+    [Fact]
+    public void DetectCandleConfirmation_BearishD_HammerAfter_NotConfirmed()
+    {
+        // 同樣有 Hammer、但形態方向是 bearish → 不該被當 confirm
+        var bars = new List<BarData>();
+        for (int i = 0; i < 10; i++) bars.Add(Bar(100m, 101m, 99m, 100m, i + 1));
+        bars[6] = Bar(100m, 101.1m, 96m, 101m, 7);
+
+        var (hasConf, _) = HarmonicPatterns.DetectCandleConfirmation(
+            bars, dIndex: 5, direction: "bearish", window: 5);
+
+        hasConf.Should().BeFalse();
+    }
+
+    [Fact]
+    public void DetectCandleConfirmation_OutsideWindow_NotConfirmed()
+    {
+        // Hammer 出現在 D+10、window=5 → 不算 confirm
+        var bars = new List<BarData>();
+        for (int i = 0; i < 20; i++) bars.Add(Bar(100m, 101m, 99m, 100m, i + 1));
+        bars[15] = Bar(100m, 101.1m, 96m, 101m, 16);  // bar 15 Hammer
+
+        var (hasConf, _) = HarmonicPatterns.DetectCandleConfirmation(
+            bars, dIndex: 5, direction: "bullish", window: 5);
+
+        hasConf.Should().BeFalse("Hammer @ bar 15 距 D 10 根、超過 window=5");
+    }
+
     // ── 既有 Detect() 仍能用、回最新 / "none" ──────────────────
 
     [Fact]

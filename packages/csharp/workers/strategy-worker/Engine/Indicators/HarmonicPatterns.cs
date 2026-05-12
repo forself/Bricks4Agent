@@ -36,10 +36,11 @@ public static class HarmonicPatterns
 
     public enum PatternStatus
     {
-        Open,        // 形態剛形成、未觸 TP 或 SL
-        Tp1Hit,      // 觸到第一目標
-        Tp2Hit,      // 觸到第二目標
-        SlHit,       // 觸到停損
+        Open,         // 形態剛形成、在 PRZ 區間內、未觸 TP/SL/失效
+        Tp1Hit,       // 觸到第一目標
+        Tp2Hit,       // 觸到第二目標
+        SlHit,        // 觸到停損（硬性、超過 X 一段）
+        Invalidated,  // 突破 PRZ 區間但未到 SL（軟性失效、影片提到的較早期退場訊號）
     }
 
     public class Pivot
@@ -85,6 +86,16 @@ public static class HarmonicPatterns
         // 狀態（Batch C 新增）— 從 D 後續 K 線判定
         public PatternStatus Status { get; init; }
         public int BarsSinceD { get; init; }
+
+        // PRZ 區間（Batch C+ 新增、影片提到「PRZ 是區間不是單點」）
+        // 用 pattern 自己的 AD 比率範圍從 A 投影、bullish 兩值都在 D 附近、低值是「最深可接受 D」
+        public decimal PrzLow { get; init; }
+        public decimal PrzHigh { get; init; }
+
+        // 確認進場訊號（Batch C+ 新增、影片提到 PRZ + 反轉 K 才進）
+        // 掃 D 後 N 根 K 線、找與形態方向相符的 Hammer/Engulfing（呼叫 PriceActionPatterns）
+        public bool HasCandleConfirmation { get; init; }
+        public string ConfirmationSignals { get; init; } = "";    // "Hammer@45,BullEngulf@47" 之類
     }
 
     public class SimulationResult
@@ -224,6 +235,8 @@ public static class HarmonicPatterns
         }
         if (best == null) return null;
 
+        var (przLow, przHigh) = CalcPrz(direction, X.Price, A.Price, best.Ad.Min, best.Ad.Max);
+
         return new Detection
         {
             PatternName = best.Name,
@@ -235,6 +248,8 @@ public static class HarmonicPatterns
             BcRatio = Math.Round(bcAb, 4),
             CdRatio = Math.Round(cdBc, 4),
             AdRatio = Math.Round(adXa, 4),
+            PrzLow = przLow,
+            PrzHigh = przHigh,
         };
     }
 
@@ -277,15 +292,93 @@ public static class HarmonicPatterns
         );
     }
 
-    // ── Status 評估（Batch C 新增） ─────────────────────────────
+    // ── PRZ 區間計算（Batch C+ 新增、影片重點 #1） ───────────────
+
+    /// <summary>
+    /// 用 pattern 的 AD 比率範圍從 A 投影出潛在反轉區（Potential Reversal Zone）。
+    ///
+    /// bullish: A 是高點、PRZ 在 A 下方
+    ///   PrzLow  = A - adMax × |XA|   （最深可接受 D）
+    ///   PrzHigh = A - adMin × |XA|   （最淺可接受 D）
+    ///   D 正常落在 PrzLow ≤ D ≤ PrzHigh
+    /// bearish 對稱（PRZ 在 A 上方）。
+    ///
+    /// 用途：
+    ///   1. 偵測時驗證 D 是否真的在 PRZ（健全性檢查）
+    ///   2. 偵測後判斷 invalidation：價突破 PrzLow（bullish） / PrzHigh（bearish）視為失效
+    /// </summary>
+    public static (decimal Low, decimal High) CalcPrz(
+        string direction, decimal Xp, decimal Ap, decimal adMin, decimal adMax)
+    {
+        var xaLen = Math.Abs(Ap - Xp);
+        if (direction == "bullish")
+        {
+            return (
+                Math.Round(Ap - adMax * xaLen, 4),
+                Math.Round(Ap - adMin * xaLen, 4)
+            );
+        }
+        else
+        {
+            return (
+                Math.Round(Ap + adMin * xaLen, 4),
+                Math.Round(Ap + adMax * xaLen, 4)
+            );
+        }
+    }
+
+    // ── Candle Confirmation 掃描（Batch C+ 新增、影片重點 #2） ────
+
+    /// <summary>
+    /// 從 D 後 [1, window] 根 K 線中、找與形態方向一致的反轉燭線確認訊號。
+    /// bullish：Hammer / Bullish_Engulfing
+    /// bearish：Shooting_Star / Bearish_Engulfing
+    /// 用既有 PriceActionPatterns 偵測器、保持模組對稱。
+    ///
+    /// 註：RSI divergence 留下批；目前只做燭線層。
+    /// </summary>
+    public static (bool HasConfirm, string Signals) DetectCandleConfirmation(
+        List<BarData> bars, int dIndex, string direction, int window = 5)
+    {
+        var maxIdx = Math.Min(bars.Count - 1, dIndex + window);
+        if (maxIdx <= dIndex) return (false, "");
+
+        var pins    = PriceActionPatterns.DetectPinBar(bars);
+        var engulfs = PriceActionPatterns.DetectEngulfing(bars);
+        var signals = new List<string>();
+
+        foreach (var p in pins)
+        {
+            if (p.BarIndex <= dIndex || p.BarIndex > maxIdx) continue;
+            if (direction == "bullish"  && p.Type == "Hammer")        signals.Add($"Hammer@{p.BarIndex}");
+            if (direction == "bearish" && p.Type == "Shooting_Star")  signals.Add($"ShootingStar@{p.BarIndex}");
+        }
+        foreach (var e in engulfs)
+        {
+            if (e.BarIndex <= dIndex || e.BarIndex > maxIdx) continue;
+            if (direction == "bullish" && e.Type == "Bullish_Engulfing") signals.Add($"BullEngulf@{e.BarIndex}");
+            if (direction == "bearish" && e.Type == "Bearish_Engulfing") signals.Add($"BearEngulf@{e.BarIndex}");
+        }
+        return (signals.Count > 0, string.Join(",", signals));
+    }
+
+    // ── Status 評估（Batch C 新增、Batch C+ 加 Invalidated/PRZ） ─
 
     /// <summary>
     /// 從 D 那根 K 線之後到當下、看 high/low 哪個先觸發、回傳 status 跟距 D 過了幾根。
-    /// SL > TP2 > TP1 的優先序：先觸到 SL 就 SL_HIT；同根內 TP 跟 SL 都觸發、保守當 SL_HIT。
+    ///
+    /// 優先順序（先到的為準）：
+    ///   1. SL hit （硬性停損、超過 X 一段、最壞情況）
+    ///   2. TP2 hit
+    ///   3. TP1 hit
+    ///   4. Invalidated （價突破 PRZ 區間但未到 SL、影片重點 #3 軟失效）
+    ///
+    /// PRZ 參數選填、不傳就只做 SL/TP 判定（向後相容）。
     /// </summary>
     public static (PatternStatus Status, int BarsSinceD) EvaluateStatus(
         string direction, List<BarData> bars, int dIndex,
-        decimal entry, decimal sl, decimal tp1, decimal tp2)
+        decimal entry, decimal sl, decimal tp1, decimal tp2,
+        decimal? przLow = null, decimal? przHigh = null)
     {
         var n = bars.Count;
         var barsSince = Math.Max(0, n - 1 - dIndex);
@@ -296,15 +389,17 @@ public static class HarmonicPatterns
             var b = bars[k];
             if (direction == "bullish")
             {
-                if (b.Low <= sl)      return (PatternStatus.SlHit,  k - dIndex);
-                if (b.High >= tp2)    return (PatternStatus.Tp2Hit, k - dIndex);
-                if (b.High >= tp1)    return (PatternStatus.Tp1Hit, k - dIndex);
+                if (b.Low  <= sl)                                       return (PatternStatus.SlHit,       k - dIndex);
+                if (b.High >= tp2)                                      return (PatternStatus.Tp2Hit,      k - dIndex);
+                if (b.High >= tp1)                                      return (PatternStatus.Tp1Hit,      k - dIndex);
+                if (przLow.HasValue && b.Low <= przLow.Value)           return (PatternStatus.Invalidated, k - dIndex);
             }
             else
             {
-                if (b.High >= sl)     return (PatternStatus.SlHit,  k - dIndex);
-                if (b.Low  <= tp2)    return (PatternStatus.Tp2Hit, k - dIndex);
-                if (b.Low  <= tp1)    return (PatternStatus.Tp1Hit, k - dIndex);
+                if (b.High >= sl)                                       return (PatternStatus.SlHit,       k - dIndex);
+                if (b.Low  <= tp2)                                      return (PatternStatus.Tp2Hit,      k - dIndex);
+                if (b.Low  <= tp1)                                      return (PatternStatus.Tp1Hit,      k - dIndex);
+                if (przHigh.HasValue && b.High >= przHigh.Value)        return (PatternStatus.Invalidated, k - dIndex);
             }
         }
         return (PatternStatus.Open, barsSince);
@@ -354,9 +449,12 @@ public static class HarmonicPatterns
             if (det == null) continue;
             seenDIdx.Add(D.Index);
 
-            // 填 TP/SL + status
+            // 填 TP/SL + status（含 PRZ Invalidated 判定）+ candle confirmation
             var (entry, sl, tp1, tp2, rr) = CalcTpSl(det.Direction, det.Xp, det.Cp, det.Dp);
-            var (status, barsSince) = EvaluateStatus(det.Direction, bars, det.DIdx, entry, sl, tp1, tp2);
+            var (status, barsSince) = EvaluateStatus(
+                det.Direction, bars, det.DIdx, entry, sl, tp1, tp2,
+                przLow: det.PrzLow, przHigh: det.PrzHigh);
+            var (hasConfirm, confirmSignals) = DetectCandleConfirmation(bars, det.DIdx, det.Direction);
 
             result.Add(new Detection
             {
@@ -368,6 +466,8 @@ public static class HarmonicPatterns
                 AbRatio = det.AbRatio, BcRatio = det.BcRatio, CdRatio = det.CdRatio, AdRatio = det.AdRatio,
                 Entry = entry, StopLoss = sl, Tp1 = tp1, Tp2 = tp2, RiskReward = rr,
                 Status = status, BarsSinceD = barsSince,
+                PrzLow = det.PrzLow, PrzHigh = det.PrzHigh,
+                HasCandleConfirmation = hasConfirm, ConfirmationSignals = confirmSignals,
             });
         }
 
@@ -518,6 +618,8 @@ public static class HarmonicPatterns
             AbRatio = d.AbRatio, BcRatio = d.BcRatio, CdRatio = d.CdRatio, AdRatio = d.AdRatio,
             Entry = entry, StopLoss = sl, Tp1 = tp1, Tp2 = tp2, RiskReward = rr,
             Status = d.Status, BarsSinceD = d.BarsSinceD,
+            PrzLow = d.PrzLow, PrzHigh = d.PrzHigh,
+            HasCandleConfirmation = d.HasCandleConfirmation, ConfirmationSignals = d.ConfirmationSignals,
         };
     }
 }

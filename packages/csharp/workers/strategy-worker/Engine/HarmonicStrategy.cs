@@ -47,6 +47,13 @@ public class HarmonicStrategy : IStrategy
         decimal confidence = 0.5m;
         string reason;
 
+        // Batch C+：形態若已失效（突破 PRZ 區間或觸 SL）就不再給訊號
+        if (det.Status == HarmonicPatterns.PatternStatus.Invalidated ||
+            det.Status == HarmonicPatterns.PatternStatus.SlHit)
+        {
+            return Hold(config, $"{det.PatternName} ({det.Direction}) status={det.Status} — 已失效、不進場");
+        }
+
         if (distRatio > MaxDistanceFromD)
         {
             reason = $"Detected {det.PatternName} ({det.Direction}) but price {price} is {distRatio:P1} away from D-point {det.Dp} — waiting";
@@ -55,13 +62,18 @@ public class HarmonicStrategy : IStrategy
         {
             action = "buy";
             confidence = Math.Clamp(det.Confidence * (1m - distRatio * 20m), 0.5m, 0.95m);
-            reason = $"Bullish {det.PatternName} complete @ D={det.Dp}; current {price}. Ratios: AB={det.AbRatio} BC={det.BcRatio} CD={det.CdRatio} AD={det.AdRatio}. Stop below X={det.Xp}";
+            // Batch C+：confirmed by Hammer/Engulfing → 信心 +0.15、cap 0.95
+            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.15m);
+            reason = $"Bullish {det.PatternName} @ D={det.Dp}; price {price}. PRZ=[{det.PrzLow}, {det.PrzHigh}]. TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}." +
+                     (det.HasCandleConfirmation ? $" ✓ Confirm: {det.ConfirmationSignals}" : " (no candle confirm yet)");
         }
         else if (det.Direction == "bearish")
         {
             action = "sell";
             confidence = Math.Clamp(det.Confidence * (1m - distRatio * 20m), 0.5m, 0.95m);
-            reason = $"Bearish {det.PatternName} complete @ D={det.Dp}; current {price}. Ratios: AB={det.AbRatio} BC={det.BcRatio} CD={det.CdRatio} AD={det.AdRatio}. Stop above X={det.Xp}";
+            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.15m);
+            reason = $"Bearish {det.PatternName} @ D={det.Dp}; price {price}. PRZ=[{det.PrzLow}, {det.PrzHigh}]. TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}." +
+                     (det.HasCandleConfirmation ? $" ✓ Confirm: {det.ConfirmationSignals}" : " (no candle confirm yet)");
         }
         else
         {
@@ -93,6 +105,24 @@ public class HarmonicStrategy : IStrategy
                 ["cd_ratio"] = det.CdRatio,
                 ["ad_ratio"] = det.AdRatio,
                 ["distance_from_d_pct"] = Math.Round(distRatio * 100m, 4),
+                // Batch C+ 新欄位（PRZ + 進場確認 + TP/SL）
+                ["prz_low"]   = det.PrzLow,
+                ["prz_high"]  = det.PrzHigh,
+                ["tp1"]       = det.Tp1,
+                ["tp2"]       = det.Tp2,
+                ["stop_loss"] = det.StopLoss,
+                ["risk_reward"] = det.RiskReward,
+                ["status"] = det.Status switch
+                {
+                    HarmonicPatterns.PatternStatus.Open        => 0m,
+                    HarmonicPatterns.PatternStatus.Tp1Hit      => 1m,
+                    HarmonicPatterns.PatternStatus.Tp2Hit      => 2m,
+                    HarmonicPatterns.PatternStatus.SlHit       => -1m,
+                    HarmonicPatterns.PatternStatus.Invalidated => -2m,
+                    _ => 0m,
+                },
+                ["bars_since_d"] = det.BarsSinceD,
+                ["has_candle_confirm"] = det.HasCandleConfirmation ? 1m : 0m,
             },
         };
     }
