@@ -2041,6 +2041,21 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
+            // ── Pre-flight：dynamic sizing 完才知 qty、在這裡查 BingX min order / leverage spec
+            // user request：條件不過直接擋下、不要走完整鏈才爆
+            if (!reduceOnly)
+            {
+                var (preOk, preErr, preWarn) = BrokerCore.Trading.SymbolSpecs.PreflightOrder(
+                    item.Exchange, item.Symbol, qtyToUse, item.Leverage, markPrice > 0m ? markPrice : null);
+                if (!preOk)
+                {
+                    AddLog(item, "skip", $"pre-flight rejected: {preErr}");
+                    return;
+                }
+                if (!string.IsNullOrEmpty(preWarn))
+                    _logger.LogInformation("AutoTrader pre-flight warning {Sym}: {Warn}", item.Symbol, preWarn);
+            }
+
             // r16 daily loss circuit breaker：取「今日 UTC 開盤 balance」、算當日 PnL%
             var dayPnlPct = ComputePerpDayPnlPct(item.Exchange, balance);
 

@@ -63,6 +63,28 @@ public static class PerpetualEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
+
+            // ★ Pre-flight：在 approval / dispatch 前先擋掉違反 symbol 規格的單。
+            // 之前的流程是「approval → 派發 → 交易所拒」整條路徑都跑、user 收到的是「approved 但失敗」訊息。
+            // 改成這裡就 400、不創建 approval、不打交易所。
+            try
+            {
+                var doc = JsonDocument.Parse(body).RootElement;
+                var exch  = doc.TryGetProperty("exchange",  out var e) ? e.GetString() ?? "" : "";
+                var sym   = doc.TryGetProperty("symbol",    out var s) ? s.GetString() ?? "" : "";
+                var qty   = doc.TryGetProperty("quantity",  out var q) ? q.GetDecimal() : 0m;
+                var lev   = doc.TryGetProperty("leverage",  out var lv) && lv.TryGetInt32(out var lvi) ? lvi : 1;
+                var reduceOnly = doc.TryGetProperty("reduce_only", out var ro) && ro.GetBoolean();
+                // reduce_only = 平倉，不檢查 min（要平多少平多少）
+                if (!reduceOnly)
+                {
+                    var (ok, err, _) = BrokerCore.Trading.SymbolSpecs.PreflightOrder(exch, sym, qty, lev);
+                    if (!ok)
+                        return Results.BadRequest(ApiResponseHelper.Error($"pre-flight: {err}"));
+                }
+            }
+            catch (JsonException) { /* body parse 失敗 → 讓 worker 端處理 */ }
+
             var r = await dispatcher.DispatchAsync(Build(req.HttpContext, "trading.perpetual", "place_order", body));
             return ToResponse(r);
         });
