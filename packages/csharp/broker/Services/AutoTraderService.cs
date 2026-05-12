@@ -695,6 +695,7 @@ public class AutoTraderService : BackgroundService
                     Mode = string.IsNullOrEmpty(e.Mode) ? "spot" : e.Mode,
                     Leverage = e.Leverage > 0 ? e.Leverage : 5,
                     OwnerPrincipalId = string.IsNullOrEmpty(e.OwnerPrincipalId) ? "prn_dashboard" : e.OwnerPrincipalId,
+                    HtfInterval = string.IsNullOrEmpty(e.HtfInterval) ? null : e.HtfInterval,
                 };
             }
             if (entries.Count > 0)
@@ -722,6 +723,7 @@ public class AutoTraderService : BackgroundService
                     LastSignal = item.LastSignal, LastConfidence = item.LastConfidence, LastCheck = item.LastCheck,
                     Mode = item.Mode, Leverage = item.Leverage,
                     OwnerPrincipalId = item.OwnerPrincipalId,
+                    HtfInterval = item.HtfInterval,
                     CreatedAt = now, UpdatedAt = now,
                 });
             }
@@ -732,6 +734,7 @@ public class AutoTraderService : BackgroundService
                 existing.LastSignal = item.LastSignal; existing.LastConfidence = item.LastConfidence; existing.LastCheck = item.LastCheck;
                 existing.Mode = item.Mode; existing.Leverage = item.Leverage;
                 existing.OwnerPrincipalId = item.OwnerPrincipalId;
+                existing.HtfInterval = item.HtfInterval;
                 existing.UpdatedAt = now;
                 _db.Update(existing);
             }
@@ -879,22 +882,27 @@ public class AutoTraderService : BackgroundService
     public void SetInterval(int seconds) { _intervalSeconds = Math.Max(60, seconds); PersistSettings(); }
 
     public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1,
-        string mode = "spot", int leverage = 5, string ownerPrincipalId = "prn_dashboard")
+        string mode = "spot", int leverage = 5, string ownerPrincipalId = "prn_dashboard",
+        string? htfInterval = null)
     {
         var key = $"{exchange}:{symbol}";
         var validModes = new[] { "spot", "perp_long_only", "perp_both" };
         if (!validModes.Contains(mode)) mode = "spot";
         leverage = Math.Max(1, Math.Min(125, leverage));
+        // 過濾 HTF 字串：明顯不合法（過長 / 控制字元）就吃成 null
+        var cleanedHtf = string.IsNullOrWhiteSpace(htfInterval) ? null : htfInterval.Trim();
+        if (cleanedHtf != null && cleanedHtf.Length > 10) cleanedHtf = null;
         var item = new WatchItem
         {
             Symbol = symbol, Exchange = exchange, Strategy = strategy,
             Quantity = quantity, Active = true, Mode = mode, Leverage = leverage,
             OwnerPrincipalId = string.IsNullOrEmpty(ownerPrincipalId) ? "prn_dashboard" : ownerPrincipalId,
+            HtfInterval = cleanedHtf,
         };
         _watchList[key] = item;
         PersistWatch(key, item);
-        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x owner={Owner}",
-            key, strategy, quantity, mode, leverage, item.OwnerPrincipalId);
+        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x htf={Htf} owner={Owner}",
+            key, strategy, quantity, mode, leverage, cleanedHtf ?? "-", item.OwnerPrincipalId);
     }
 
     /// <summary>
@@ -1396,14 +1404,41 @@ public class AutoTraderService : BackgroundService
             return;
         }
 
-        var signalPayload = JsonSerializer.Serialize(new
+        // Batch C+++ Phase 2：若 watch entry 有 htf_interval、額外 fetch HTF bars 一併傳給策略
+        // strategy-worker 端 HarmonicStrategy 會用 HtfBars 做大週期方向確認
+        var payloadDict = new Dictionary<string, object?>
         {
-            strategy = item.Strategy,
-            symbol,
-            exchange,
-            interval = "1d",
-            bars = barsArr,
-        });
+            ["strategy"] = item.Strategy,
+            ["symbol"]   = symbol,
+            ["exchange"] = exchange,
+            ["interval"] = "1d",
+            ["bars"]     = barsArr,
+        };
+        if (!string.IsNullOrEmpty(item.HtfInterval))
+        {
+            var htfBarsPayload = JsonSerializer.Serialize(new { symbol, interval = item.HtfInterval, limit = 100 });
+            var htfResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", htfBarsPayload));
+            if (htfResult.Success)
+            {
+                var htfDoc = JsonDocument.Parse(htfResult.ResultPayload ?? "{}");
+                if (htfDoc.RootElement.TryGetProperty("bars", out var htfBarsArr) &&
+                    htfBarsArr.GetArrayLength() >= 30)
+                {
+                    payloadDict["htf_interval"] = item.HtfInterval;
+                    payloadDict["htf_bars"]     = htfBarsArr;
+                }
+                else
+                {
+                    AddLog(item, "warn", $"HTF {item.HtfInterval} bars insufficient ({htfBarsArr.GetArrayLength()}); 退化成單週期");
+                }
+            }
+            else
+            {
+                AddLog(item, "warn", $"HTF {item.HtfInterval} fetch failed: {htfResult.ErrorMessage}; 退化成單週期");
+            }
+        }
+
+        var signalPayload = JsonSerializer.Serialize(payloadDict);
         var signalResult = await _dispatcher.DispatchAsync(BuildRequest("strategy.signal", "evaluate", signalPayload));
         if (!signalResult.Success)
         {
@@ -2060,6 +2095,13 @@ public class WatchItem
     public int Leverage    { get; set; } = 5;
     /// <summary>Phase A2：擁有者 principal_id。admin 看全部、user 看自己這個 == 自己 principal 的。</summary>
     public string OwnerPrincipalId { get; set; } = "prn_dashboard";
+
+    /// <summary>
+    /// HTF 大週期確認週期、例如 "4h"、"1d"、"1w"。
+    /// 設定後 sweep 會額外 fetch 對應級別 K 線、傳給 strategy.signal 做大週期方向確認。
+    /// 預設 null = 不做 HTF、保留既有行為。
+    /// </summary>
+    public string? HtfInterval { get; set; }
 }
 
 public class TradeLog

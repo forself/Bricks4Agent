@@ -28,6 +28,13 @@ public static class AutoTraderDbMigrations
             column: "leverage",
             sqlType: "INTEGER NOT NULL DEFAULT 5");
 
+        // Batch C+++ Phase 2：HTF（higher timeframe）大週期確認週期
+        // null = 不做 HTF 確認、跟既有 watch entry 行為一致
+        AddColumnIfMissing(db, logger,
+            table: "auto_trade_watchlist",
+            column: "htf_interval",
+            sqlType: "TEXT NULL");
+
         // Phase A2: 加 owner 欄位、既有資料一律標 prn_dashboard（admin）。
         // 之後 user 自己加的 watch 會用各自 principal_id；admin 看全部、user 看自己。
         AddColumnIfMissing(db, logger,

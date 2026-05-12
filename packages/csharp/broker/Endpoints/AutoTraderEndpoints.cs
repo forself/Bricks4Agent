@@ -52,6 +52,7 @@ public static class AutoTraderEndpoints
                 active = w.Active,
                 mode = w.Mode,
                 leverage = w.Leverage,
+                htf_interval = w.HtfInterval,
                 owner_principal_id = w.OwnerPrincipalId,
                 last_signal = w.LastSignal,
                 last_confidence = w.LastConfidence,
@@ -121,6 +122,8 @@ public static class AutoTraderEndpoints
             var quantity = doc.TryGetProperty("quantity",   out var q) ? q.GetDecimal() : 1m;
             var mode     = doc.TryGetProperty("mode",      out var m)  ? m.GetString() ?? "spot" : "spot";
             var leverage = doc.TryGetProperty("leverage",  out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 5;
+            // Batch C+++ Phase 2：HTF（大週期）確認週期、空字串/null = 不做 HTF
+            var htfInterval = doc.TryGetProperty("htf_interval", out var hi) ? hi.GetString() : null;
 
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
@@ -129,8 +132,12 @@ public static class AutoTraderEndpoints
             var (pid, _) = ctx.GetCurrentUser();
             var owner = pid ?? "prn_dashboard";
 
-            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner);
-            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, strategy, quantity, mode, leverage, owner_principal_id = owner }));
+            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner, htfInterval);
+            return Results.Ok(ApiResponseHelper.Success(new {
+                symbol, exchange, strategy, quantity, mode, leverage,
+                htf_interval = htfInterval,
+                owner_principal_id = owner,
+            }));
         });
 
         at.MapDelete("/watch", async (AutoTraderService svc, HttpContext ctx) =>

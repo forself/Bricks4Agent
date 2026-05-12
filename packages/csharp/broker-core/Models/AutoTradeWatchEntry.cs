@@ -57,6 +57,16 @@ public class AutoTradeWatchEntry
     [Column("leverage")]
     public int Leverage { get; set; } = 5;
 
+    /// <summary>
+    /// HTF（higher timeframe）大週期確認週期文字、例如 "4h"、"1d"、"1w"。
+    /// 設定後：AutoTrader sweep 會額外 fetch 這個級別的 K 線、傳給 strategy.signal 做大週期方向確認。
+    /// 預設 null = 不做 HTF 確認、保持單一週期判斷的既有行為。
+    /// 目前只有 HarmonicStrategy 用、其他策略忽略。
+    /// </summary>
+    [Column("htf_interval")]
+    [MaxLength(10)]
+    public string? HtfInterval { get; set; }
+
     [Column("last_signal")]
     [MaxLength(20)]
     public string? LastSignal { get; set; }
