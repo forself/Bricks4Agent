@@ -181,7 +181,7 @@ public static class WorkerEndpoints
             var tailLines = body.TryGetProperty("tail", out var t) ? t.GetInt32() : 50;
             var summarize = body.TryGetProperty("summarize", out var sm) && sm.GetBoolean();
 
-            var rawLogs = await containerMgr.GetLogsAsync(containerId, tailLines, ct);
+            var rawLogs = await containerMgr.GetLogsAsync(containerId, tailLines, ct: ct);
             var cleanLogs = ErrorCatalog.StripAnsi(rawLogs ?? "");
 
             object? summary = null;

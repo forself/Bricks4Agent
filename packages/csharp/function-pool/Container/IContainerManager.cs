@@ -27,8 +27,11 @@ public interface IContainerManager
     /// <summary>List all managed containers</summary>
     Task<List<ManagedContainer>> ListManagedAsync(CancellationToken ct = default);
 
-    /// <summary>Get container logs (last N lines)</summary>
-    Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default);
+    /// <summary>
+    /// 取 container log。`sinceMinutes` &gt; 0 時加上 `docker logs --since Nm` flag、
+    /// 只回最近 N 分鐘的內容、避免 stale 條目（之前部署留下的錯誤訊息）被當成當下 critical 問題重複觸發告警。
+    /// </summary>
+    Task<string> GetLogsAsync(string containerId, int tailLines = 50, int sinceMinutes = 0, CancellationToken ct = default);
 
     /// <summary>Check if the container runtime is available</summary>
     Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default);

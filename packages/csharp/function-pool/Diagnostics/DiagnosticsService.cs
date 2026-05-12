@@ -144,13 +144,17 @@ public class DiagnosticsService : IDiagnosticsService
         };
     }
 
+    // log scan 只看最近 N 分鐘、避免 stale 條目（已過去的 deploy / restart 留下的錯訊）
+    // 被當成「當下的 critical 問題」每次掃描都重複觸發。
+    private const int LogSinceMinutes = 30;
+
     private async Task<List<DiagnosticIssue>> ScanLogsAsync(
         string containerId, string workerType, CancellationToken ct)
     {
         var issues = new List<DiagnosticIssue>();
         try
         {
-            var logs = await _containerMgr.GetLogsAsync(containerId, LogTailLines, ct);
+            var logs = await _containerMgr.GetLogsAsync(containerId, LogTailLines, LogSinceMinutes, ct);
             foreach (var raw in logs.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 if (issues.Count >= MaxLogIssuesPerCt) break;

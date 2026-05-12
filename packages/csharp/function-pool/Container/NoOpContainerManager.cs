@@ -28,7 +28,7 @@ public class NoOpContainerManager : IContainerManager
     public Task<List<ManagedContainer>> ListManagedAsync(CancellationToken ct = default)
         => Task.FromResult(new List<ManagedContainer>());
 
-    public Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default)
+    public Task<string> GetLogsAsync(string containerId, int tailLines = 50, int sinceMinutes = 0, CancellationToken ct = default)
         => Task.FromResult("Container management is not enabled.");
 
     public Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default)

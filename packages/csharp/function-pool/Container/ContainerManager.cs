@@ -274,10 +274,11 @@ public class ContainerManager : IContainerManager
         }
     }
 
-    public async Task<string> GetLogsAsync(string containerId, int tailLines = 50, CancellationToken ct = default)
+    public async Task<string> GetLogsAsync(string containerId, int tailLines = 50, int sinceMinutes = 0, CancellationToken ct = default)
     {
+        var sinceFlag = sinceMinutes > 0 ? $"--since {sinceMinutes}m " : "";
         var (_, stdout, stderr) = await RunCommandAsync(
-            _config.Runtime, $"logs --tail {tailLines} {containerId}",
+            _config.Runtime, $"logs --tail {tailLines} {sinceFlag}{containerId}",
             TimeSpan.FromSeconds(10), ct);
         return string.IsNullOrEmpty(stdout) ? stderr : stdout;
     }
