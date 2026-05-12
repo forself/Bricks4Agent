@@ -211,6 +211,15 @@ public static class TradingEndpoints
             }));
         });
 
+        // 手動觸發每日彙整（測試用 / 需要立刻看 X 小時績效時）
+        trading.MapPost("/push-daily-summary", async (
+            Broker.Services.DailyReportService daily, HttpRequest req, CancellationToken ct) =>
+        {
+            var hours = req.Query.TryGetValue("hours", out var h) && int.TryParse(h.ToString(), out var n) ? n : 24;
+            var (ok, summary) = await daily.BuildAndPushAsync(hours, ct);
+            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok, summary }));
+        });
+
         trading.MapGet("/exchanges", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, CancellationToken ct) =>

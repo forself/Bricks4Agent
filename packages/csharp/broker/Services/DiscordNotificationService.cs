@@ -178,6 +178,22 @@ public class DiscordNotificationService : BackgroundService
 
     // ── 對外 API（供 Endpoint 呼叫）───────────────────────────────────
 
+    /// <summary>
+    /// 推一則任意 embed（給 DailyReportService 等內部服務組好文字後呼叫）。
+    /// 不走 dedup / RecentLogs、直接送、由 caller 控制節流。
+    /// </summary>
+    public async Task<(bool ok, string? error)> SendAdHocAsync(
+        string title, string body, int color = 0x2B6CB0, CancellationToken ct = default)
+    {
+        if (!IsEnabled) return (false, "Webhook URL not configured");
+        try
+        {
+            await SendEmbedAsync(title, body, color, fields: null, timestamp: DateTime.UtcNow, ct: ct);
+            return (true, null);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTestAsync(string? customMessage = null)
     {
         if (!IsEnabled) return (false, "Webhook URL not configured");

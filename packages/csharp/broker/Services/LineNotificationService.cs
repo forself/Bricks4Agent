@@ -229,6 +229,22 @@ public class LineNotificationService : BackgroundService
 
     // ── 對外（給 NotificationEndpoints 的 /test 用）──
 
+    /// <summary>
+    /// 推一則任意通知（給 DailyReportService 等內部服務用）。
+    /// 不過 dedup、由 caller 控制節流。
+    /// </summary>
+    public async Task<(bool ok, string? error)> SendAdHocAsync(
+        string title, string body, string level = "info", CancellationToken ct = default)
+    {
+        if (!_enabledInConfig) return (false, "LINE notifications disabled in config");
+        try
+        {
+            await SendNotificationAsync(title, body, level, ct);
+            return (true, null);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTestAsync(string? customMessage = null)
     {
         if (!_enabledInConfig) return (false, "LINE notifications disabled in config");
