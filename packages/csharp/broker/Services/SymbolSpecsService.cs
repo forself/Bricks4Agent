@@ -1,44 +1,46 @@
 using System.Text.Json;
-using BrokerCore.Contracts;
-using BrokerCore.Services;
 using BrokerCore.Trading;
-using FunctionPool.Registry;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Broker.Services;
 
 /// <summary>
-/// 從 trading-worker 拉永續合約規格、每 12h 自動 refresh、灌進 BrokerCore.Trading.SymbolSpecs 動態快取。
+/// 從 BingX public endpoint 拉永續合約規格、每 12h 自動 refresh、灌進 BrokerCore.Trading.SymbolSpecs。
 ///
-/// 取代「硬編表年級數據維護」這個成本——新上架的小幣自動跟著進來、下架的會被 trading=false 過濾。
-/// 失敗就保持上次的快取（或 fallback 到 SymbolSpecs 內的 hardcoded BingxSpecs）、不阻塞 broker 啟動。
+/// **直接走 broker → BingX HTTP**、不繞 trading-worker：
+///   - contracts endpoint 是 public、不需簽名 / API key
+///   - 跳過 worker dispatch 避免在 trading.perpetual capability 沒 register 時 30s timeout
+///   - broker 跑 SymbolSpecs cache、trading-worker 是否上線完全不相關
 ///
-/// 觸發來源：BackgroundService 啟動 + 固定 12h interval。也提供 RefreshNowAsync 給 admin endpoint。
+/// 失敗就保持上次快取（或 fallback 到 SymbolSpecs 硬編表）、不阻塞 broker 啟動。
+/// 觸發來源：BackgroundService 啟動 + 12h interval。也提供 RefreshNowAsync 給 admin endpoint。
 /// </summary>
 public class SymbolSpecsService : BackgroundService
 {
-    private readonly IExecutionDispatcher _dispatcher;
-    private readonly IWorkerRegistry _registry;
+    private readonly IHttpClientFactory? _httpFactory;
+    private readonly HttpClient _http;
     private readonly ILogger<SymbolSpecsService> _logger;
     private readonly TimeSpan _refreshInterval = TimeSpan.FromHours(12);
     private readonly TimeSpan _startupDelay = TimeSpan.FromSeconds(20);
     private readonly string _exchange;
+    private readonly string _bingxBaseUrl;
 
-    public SymbolSpecsService(
-        IExecutionDispatcher dispatcher,
-        IWorkerRegistry registry,
-        ILogger<SymbolSpecsService> logger)
+    public SymbolSpecsService(ILogger<SymbolSpecsService> logger, IHttpClientFactory? httpFactory = null)
     {
-        _dispatcher = dispatcher;
-        _registry = registry;
         _logger = logger;
+        _httpFactory = httpFactory;
+        _http = _httpFactory?.CreateClient("symbol-specs") ?? new HttpClient();
+        _http.Timeout = TimeSpan.FromSeconds(10);
         _exchange = Environment.GetEnvironmentVariable("SYMBOL_SPECS_EXCHANGE") ?? "bingx";
+
+        // BingX VST demo vs live 走的合約規格是一致的（只是帳戶端不同），用 production endpoint 即可
+        _bingxBaseUrl = Environment.GetEnvironmentVariable("BINGX_PUBLIC_BASE_URL") ?? "https://open-api.bingx.com";
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        // 給 trading-worker 一點時間連上、避免 broker 一開機就拉撲空
+        // 給 broker / cron 一點 warmup time、避免一啟動就打外網
         try { await Task.Delay(_startupDelay, ct); }
         catch (OperationCanceledException) { return; }
 
@@ -54,53 +56,67 @@ public class SymbolSpecsService : BackgroundService
 
     public async Task<(bool Ok, int Count, string? Error)> RefreshNowAsync(CancellationToken ct)
     {
-        if (!_registry.HasAvailableWorker("trading.perpetual"))
+        if (!_exchange.Equals("bingx", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("SymbolSpecs: trading-worker not connected, skip refresh");
-            return (false, 0, "trading-worker not connected");
+            _logger.LogInformation("SymbolSpecs: exchange={Exchange} not supported by direct fetch (only bingx)", _exchange);
+            return (false, 0, $"exchange '{_exchange}' direct fetch not supported");
         }
 
-        var req = new ApprovedRequest
+        try
         {
-            RequestId = Guid.NewGuid().ToString("N"),
-            CapabilityId = "trading.perpetual",
-            Route = "get_contracts",
-            Payload = JsonSerializer.Serialize(new { exchange = _exchange }),
-            Scope = "{}",
-            PrincipalId = "system",
-            TaskId = "symbol-specs-refresh",
-            SessionId = "symbol-specs-refresh",
-        };
+            var resp = await _http.GetAsync($"{_bingxBaseUrl}/openApi/swap/v2/quote/contracts", ct);
+            if (!resp.IsSuccessStatusCode)
+                return (false, 0, $"http {(int)resp.StatusCode}");
 
-        var result = await _dispatcher.DispatchAsync(req);
-        if (!result.Success) return (false, 0, result.ErrorMessage ?? "dispatch failed");
-
-        var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-        if (!doc.TryGetProperty("contracts", out var arr) || arr.ValueKind != JsonValueKind.Array)
-            return (false, 0, "no contracts in response");
-
-        var entries = new List<(string, SymbolSpecs.Spec)>();
-        foreach (var c in arr.EnumerateArray())
-        {
-            // trading=false（已下架 / 暫停）就不入快取——pre-flight 會 fallback 到 hardcoded 或 unknown warning
-            var trading = !c.TryGetProperty("trading", out var t) || t.GetBoolean();
-            if (!trading) continue;
-
-            var sym = c.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
-            if (string.IsNullOrEmpty(sym)) continue;
-
-            entries.Add((sym, new SymbolSpecs.Spec
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            var doc = JsonDocument.Parse(json).RootElement;
+            if (!doc.TryGetProperty("code", out var codeEl) || codeEl.GetInt32() != 0)
             {
-                MinQty       = GetDecimal(c, "min_qty"),
-                QtyStep      = GetDecimal(c, "qty_step"),
-                MinNotional  = GetDecimal(c, "min_notional"),
-                MaxLeverage  = c.TryGetProperty("max_leverage", out var ml) && ml.TryGetInt32(out var mlI) ? mlI : 50,
-            }));
-        }
+                var msg = doc.TryGetProperty("msg", out var m) ? m.GetString() : "?";
+                return (false, 0, $"BingX code={(codeEl.ValueKind == JsonValueKind.Number ? codeEl.GetInt32().ToString() : "?")} msg={msg}");
+            }
+            if (!doc.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                return (false, 0, "no data array");
 
-        SymbolSpecs.ReplaceCache(_exchange, entries);
-        _logger.LogInformation("SymbolSpecs refreshed: exchange={Exchange} count={Count}", _exchange, entries.Count);
-        return (true, entries.Count, null);
+            var entries = new List<(string, SymbolSpecs.Spec)>();
+            foreach (var c in data.EnumerateArray())
+            {
+                // status: 1 = trading, 其他 = 已下架/暫停。用 status 過濾、避免把下架的東西放進 cache
+                var trading = !c.TryGetProperty("status", out var st) || (st.ValueKind == JsonValueKind.Number && st.GetInt32() == 1);
+                if (!trading) continue;
+
+                var sym = c.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+                if (string.IsNullOrEmpty(sym)) continue;
+
+                // BingX 欄位：tradeMinQuantity / tradeMinUSDT / quantityPrecision / maxLongLeverage / maxShortLeverage
+                var qtyPrecision = c.TryGetProperty("quantityPrecision", out var qp) && qp.TryGetInt32(out var qpI) ? qpI : 4;
+                var qtyStep = (decimal)Math.Pow(10, -qtyPrecision);
+                var maxLong  = c.TryGetProperty("maxLongLeverage",  out var mll) && mll.TryGetInt32(out var ml)  ? ml  : 0;
+                var maxShort = c.TryGetProperty("maxShortLeverage", out var msl) && msl.TryGetInt32(out var ms)  ? ms  : 0;
+                var maxLev = Math.Max(maxLong, maxShort);
+                if (maxLev <= 0) maxLev = 50;
+
+                entries.Add((sym, new SymbolSpecs.Spec
+                {
+                    MinQty       = GetDecimal(c, "tradeMinQuantity"),
+                    QtyStep      = qtyStep,
+                    MinNotional  = GetDecimal(c, "tradeMinUSDT"),
+                    MaxLeverage  = maxLev,
+                }));
+            }
+
+            SymbolSpecs.ReplaceCache(_exchange, entries);
+            _logger.LogInformation("SymbolSpecs refreshed: exchange={Exchange} count={Count}", _exchange, entries.Count);
+            return (true, entries.Count, null);
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, 0, "timeout (10s)");
+        }
+        catch (Exception ex)
+        {
+            return (false, 0, ex.Message);
+        }
     }
 
     private static decimal GetDecimal(JsonElement obj, string prop)

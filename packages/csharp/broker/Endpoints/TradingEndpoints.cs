@@ -242,7 +242,7 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker or quote-worker not connected"));
 
             var symbol = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : "";
-            var strategy = req.Query.TryGetValue("strategy", out var st) ? st.ToString() : "harmonic";
+            var strategy = req.Query.TryGetValue("strategy", out var st) ? st.ToString() : "harmonic_pattern";
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "bingx";
             var intervalsRaw = req.Query.TryGetValue("intervals", out var iv) ? iv.ToString() : "1h,4h,1d";
             if (string.IsNullOrEmpty(symbol))
