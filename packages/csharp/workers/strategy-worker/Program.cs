@@ -48,6 +48,12 @@ var strategies = new Dictionary<string, IStrategy>
     ["bollinger_bands"] = new BollingerStrategy(),
     ["harmonic_pattern"] = new HarmonicStrategy(),
     ["vegas_tunnel"] = new VegasTunnelStrategy(),
+    // Batch A 從朋友 ai-quant-starter2 移植的 5 個 indicator-as-strategy
+    ["super_trend"]     = new SuperTrendStrategy(),
+    ["adx_di"]          = new AdxDiStrategy(),
+    ["ichimoku"]        = new IchimokuStrategy(),
+    ["rsi_stoch"]       = new StochasticStrategy(),
+    ["vwap"]            = new VwapStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model

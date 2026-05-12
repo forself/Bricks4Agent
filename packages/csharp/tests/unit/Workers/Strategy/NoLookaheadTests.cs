@@ -186,6 +186,113 @@ public class NoLookaheadTests
             $"Harmonic.PatternName @{truncAt} 截斷後不一致 — 有 look-ahead bias");
     }
 
+    // ── SuperTrend（Batch A 移植） ──────────────────────────────
+    // path-dependent indicator——以 close[i-1] 跨越前一根 final 軌判方向。
+    // 截斷後第 t 根值必須跟全量第 t 根值相同。
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(200)]
+    [InlineData(249)]
+    public void SuperTrend_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var stFull = SuperTrend.Compute(full.Take(truncAt + 1).ToList());
+        var stSub  = SuperTrend.Compute(sub);
+        stFull.Should().NotBeNull();
+        stSub.Should().NotBeNull();
+        AssertClose(stFull!.Value, stSub!.Value, "SuperTrend.Value");
+        stFull.Trend.Should().Be(stSub.Trend, $"SuperTrend.Trend @{truncAt} 截斷後方向不一致");
+        AssertClose(stFull.DistancePct, stSub.DistancePct, "SuperTrend.DistancePct");
+    }
+
+    // ── ADX + DI（Batch A 移植） ────────────────────────────────
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(200)]
+    [InlineData(249)]
+    public void AdxDi_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var aFull = AdxDi.Compute(full.Take(truncAt + 1).ToList());
+        var aSub  = AdxDi.Compute(sub);
+        if (aFull == null || aSub == null) return;  // 兩邊 bars 不足都會 null、不算違反
+        AssertClose(aFull.Adx,     aSub.Adx,     "AdxDi.Adx");
+        AssertClose(aFull.PlusDi,  aSub.PlusDi,  "AdxDi.PlusDi");
+        AssertClose(aFull.MinusDi, aSub.MinusDi, "AdxDi.MinusDi");
+    }
+
+    // ── Ichimoku（Batch A 移植） ────────────────────────────────
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(120)]
+    [InlineData(200)]
+    [InlineData(249)]
+    public void Ichimoku_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var iFull = Ichimoku.Compute(full.Take(truncAt + 1).ToList());
+        var iSub  = Ichimoku.Compute(sub);
+        iFull.Should().NotBeNull();
+        iSub.Should().NotBeNull();
+        AssertClose(iFull!.Tenkan,      iSub!.Tenkan,      "Ichimoku.Tenkan");
+        AssertClose(iFull.Kijun,        iSub.Kijun,        "Ichimoku.Kijun");
+        AssertClose(iFull.SenkouSpanA,  iSub.SenkouSpanA,  "Ichimoku.SenkouSpanA");
+        AssertClose(iFull.SenkouSpanB,  iSub.SenkouSpanB,  "Ichimoku.SenkouSpanB");
+        iFull.PricePosition.Should().Be(iSub.PricePosition);
+        iFull.TkCross.Should().Be(iSub.TkCross);
+    }
+
+    // ── Stochastic（Batch A 移植） ──────────────────────────────
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(200)]
+    [InlineData(249)]
+    public void Stochastic_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var sFull = Stochastic.Compute(full.Take(truncAt + 1).ToList());
+        var sSub  = Stochastic.Compute(sub);
+        sFull.Should().NotBeNull();
+        sSub.Should().NotBeNull();
+        AssertClose(sFull!.K, sSub!.K, "Stochastic.K");
+        AssertClose(sFull.D,  sSub.D,  "Stochastic.D");
+    }
+
+    // ── VWAP（Batch A 移植） ────────────────────────────────────
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    [InlineData(200)]
+    [InlineData(249)]
+    public void Vwap_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var vFull = Vwap.Compute(full.Take(truncAt + 1).ToList());
+        var vSub  = Vwap.Compute(sub);
+        vFull.Should().NotBeNull();
+        vSub.Should().NotBeNull();
+        AssertClose(vFull!.Value,        vSub!.Value,        "Vwap.Value");
+        AssertClose(vFull.DeviationPct,  vSub.DeviationPct,  "Vwap.DeviationPct");
+    }
+
     // ── Meta: 同 input 多次呼叫一致性 ───────────────────────────
     // 補捉「indicator 內部用全域狀態」這種隱性 bug（Compute 第二次跟第一次回不同值）
 
@@ -210,5 +317,27 @@ public class NoLookaheadTests
         var h1 = HarmonicPatterns.Detect(bars);
         var h2 = HarmonicPatterns.Detect(bars);
         h1.PatternName.Should().Be(h2.PatternName);
+
+        // Batch A 新增的 5 個 indicator 也驗 determinism
+        var st1 = SuperTrend.Compute(bars);
+        var st2 = SuperTrend.Compute(bars);
+        st1!.Value.Should().Be(st2!.Value);
+        st1.Trend.Should().Be(st2.Trend);
+
+        var ad1 = AdxDi.Compute(bars);
+        var ad2 = AdxDi.Compute(bars);
+        ad1!.Adx.Should().Be(ad2!.Adx);
+
+        var ic1 = Ichimoku.Compute(bars);
+        var ic2 = Ichimoku.Compute(bars);
+        ic1!.Tenkan.Should().Be(ic2!.Tenkan);
+
+        var so1 = Stochastic.Compute(bars);
+        var so2 = Stochastic.Compute(bars);
+        so1!.K.Should().Be(so2!.K);
+
+        var vw1 = Vwap.Compute(bars);
+        var vw2 = Vwap.Compute(bars);
+        vw1!.Value.Should().Be(vw2!.Value);
     }
 }
