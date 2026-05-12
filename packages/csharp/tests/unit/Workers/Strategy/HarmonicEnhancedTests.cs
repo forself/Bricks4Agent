@@ -444,6 +444,43 @@ public class HarmonicEnhancedTests
         dets.Should().NotBeNull();
     }
 
+    // ── ComputeAggregateStats（Batch EV：策略級統計）─────────
+
+    [Fact]
+    public void AggregateStats_NoDetections_ReturnsZeros()
+    {
+        var bars = MakeSynthetic(40);   // 太少、不太可能形成 5 pivot pattern
+        var stats = HarmonicPatterns.ComputeAggregateStats(bars);
+        stats.Should().NotBeNull();
+        // total 0 → 其他都 0、不該 crash
+        stats.TotalDetections.Should().BeGreaterThanOrEqualTo(0);
+        if (stats.TotalDetections == 0)
+        {
+            stats.ClosedDetections.Should().Be(0);
+            stats.ExpectedReturnPctTp1Only.Should().Be(0m);
+            stats.ExpectedReturnPctTp2Only.Should().Be(0m);
+        }
+    }
+
+    [Fact]
+    public void AggregateStats_WithDetections_FieldsConsistent()
+    {
+        var bars = MakeSynthetic(300);
+        var stats = HarmonicPatterns.ComputeAggregateStats(bars);
+        // closed + open = total
+        (stats.Tp1HitCount + stats.Tp2HitCount + stats.SlHitCount
+         + stats.InvalidatedCount + stats.OpenCount).Should().Be(stats.TotalDetections);
+        // closed = sum of non-open
+        (stats.Tp1HitCount + stats.Tp2HitCount + stats.SlHitCount + stats.InvalidatedCount)
+            .Should().Be(stats.ClosedDetections);
+        // pct 加總 ≈ 100（rounding 允許 0.5%）
+        if (stats.ClosedDetections > 0)
+        {
+            var totalPct = stats.Tp1HitPct + stats.Tp2HitPct + stats.SlHitPct + stats.InvalidatedPct;
+            totalPct.Should().BeInRange(99m, 101m);
+        }
+    }
+
     // ── HTF 大週期確認（Batch C+++ 影片重點 #4）──────────────
 
     [Fact]

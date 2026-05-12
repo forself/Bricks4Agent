@@ -56,13 +56,18 @@ public class BacktestEngine
 
     /// <summary>
     /// 執行回測。
+    ///
+    /// htfBars（選用、Batch HTF backtest 新增）：給支援多時間框架的策略
+    /// （目前是 HarmonicStrategy）用。每個 step 引擎會以 LTF[i].OpenTime 為界、
+    /// 將 htfBars 切到對應位置塞回 config.HtfBars。沒提供就跟既有單時間框架行為一致。
     /// </summary>
     public static BacktestResult Run(
         IStrategy strategy,
         List<BarData> bars,
         StrategyConfig config,
         decimal initialCash = 100_000,
-        decimal commission = 0.001m) // 0.1% 手續費
+        decimal commission = 0.001m, // 0.1% 手續費
+        List<BarData>? htfBars = null)
     {
         var result = new BacktestResult
         {
@@ -87,9 +92,30 @@ public class BacktestEngine
 
         // 從第 50 根 bar 開始（確保有足夠歷史做指標計算）
         int lookback = Math.Max(config.SmaSlow + 5, 50);
+
+        // HTF 指標：保留原 config.HtfBars，每步覆寫成截至當前 LTF 時間的 HTF 切片、結束後還原
+        var originalHtf = config.HtfBars;
+        bool useHtf = htfBars != null && htfBars.Count >= 2;
+        int htfPtr = 0;   // htfBars 中最後一個 OpenTime ≤ 當前 LTF 時間的 index
+
+        try
+        {
         for (int i = lookback; i < bars.Count; i++)
         {
             var windowBars = bars.GetRange(0, i + 1);
+
+            // 把 HTF 切到對應時間（HTF 通常更稀疏、scan 比 binary search 簡單且 monotonic）
+            if (useHtf)
+            {
+                var ltfTime = bars[i].OpenTime;
+                while (htfPtr < htfBars!.Count - 1 && htfBars[htfPtr + 1].OpenTime <= ltfTime)
+                    htfPtr++;
+                // 至少要 2 根才有意義；少於就傳 null（策略會略過 HTF 邏輯）
+                config.HtfBars = htfPtr >= 1
+                    ? htfBars.GetRange(0, htfPtr + 1)
+                    : null;
+            }
+
             var signal = strategy.Evaluate(windowBars, config);
             var currentPrice = bars[i].Close;
             var equity = cash + position * currentPrice;
@@ -141,6 +167,12 @@ public class BacktestEngine
                 position = 0;
                 entryPrice = 0;
             }
+        }
+        }
+        finally
+        {
+            // 還原 caller 傳進來的原始 HtfBars、避免污染外部 config 物件
+            config.HtfBars = originalHtf;
         }
 
         // 如果還有持倉，用最後收盤價平倉

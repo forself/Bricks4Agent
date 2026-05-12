@@ -35,6 +35,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "optimize"     => Optimize(payload),
             "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
+            "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -170,7 +171,16 @@ public class StrategySignalHandler : ICapabilityHandler
         var initialCash = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
         var commission  = doc.TryGetProperty("commission",   out var cm) ? cm.GetDecimal() : 0.001m;
 
-        var result = BacktestEngine.Run(strategy, bars, config, initialCash, commission);
+        // Batch HTF backtest：可選 htf_bars[] + htf_interval（HarmonicStrategy 等多時間框架策略用）
+        List<BarData>? htfBars = null;
+        if (doc.TryGetProperty("htf_bars", out var htfElB) && htfElB.ValueKind == JsonValueKind.Array)
+        {
+            var parsed = ParseBars(htfElB);
+            if (parsed.Count >= 2) htfBars = parsed;
+        }
+        if (doc.TryGetProperty("htf_interval", out var hiB)) config.HtfInterval = hiB.GetString();
+
+        var result = BacktestEngine.Run(strategy, bars, config, initialCash, commission, htfBars);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -393,6 +403,44 @@ public class StrategySignalHandler : ICapabilityHandler
                 test_trades     = f.Test?.TotalTrades ?? 0,
                 test_equity_curve = f.Test?.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
             }),
+        });
+        return (true, json, null);
+    }
+
+    // 跨 pattern 策略級 EV 統計（dashboard / API 看 harmonic_pattern 歷史表現）
+    private (bool, string?, string?) HarmonicAggregate(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = System.Text.Json.JsonDocument.Parse(payload).RootElement;
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+
+        var bars = ParseBars(barsEl);
+        if (bars.Count < 30) return (false, null, $"Need ≥ 30 bars for harmonic detection (got {bars.Count})");
+
+        var pivotWindow = doc.TryGetProperty("pivot_window", out var pw) ? pw.GetInt32() : 3;
+        var stats = StrategyWorker.Engine.Indicators.HarmonicPatterns.ComputeAggregateStats(bars, pivotWindow);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            total_detections    = stats.TotalDetections,
+            closed_detections   = stats.ClosedDetections,
+            tp1_hit_count       = stats.Tp1HitCount,
+            tp2_hit_count       = stats.Tp2HitCount,
+            sl_hit_count        = stats.SlHitCount,
+            invalidated_count   = stats.InvalidatedCount,
+            open_count          = stats.OpenCount,
+            tp1_hit_pct         = stats.Tp1HitPct,
+            tp2_hit_pct         = stats.Tp2HitPct,
+            sl_hit_pct          = stats.SlHitPct,
+            invalidated_pct     = stats.InvalidatedPct,
+            avg_gain_on_tp1     = stats.AvgGainOnTp1,
+            avg_gain_on_tp2     = stats.AvgGainOnTp2,
+            avg_loss_on_sl      = stats.AvgLossOnSl,
+            avg_loss_on_invalid = stats.AvgLossOnInvalid,
+            expected_return_pct_tp1_only = stats.ExpectedReturnPctTp1Only,
+            expected_return_pct_tp2_only = stats.ExpectedReturnPctTp2Only,
+            avg_risk_reward     = stats.AvgRiskReward,
         });
         return (true, json, null);
     }

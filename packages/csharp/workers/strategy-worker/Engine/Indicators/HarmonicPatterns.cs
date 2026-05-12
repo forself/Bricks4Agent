@@ -121,6 +121,134 @@ public static class HarmonicPatterns
         public int Samples { get; init; }
     }
 
+    /// <summary>
+    /// 跨 pattern 的策略級統計（Batch EV：影片重點 #6 的延伸）。
+    ///
+    /// SimulatePath 只能對「給定的 target」算未來路徑跟命中率。本類別反過來：
+    /// 把 bars 內**所有歷史 pattern** 拿來看實際結果分布、給策略整體 EV / RR 視圖。
+    ///
+    /// 用途：dashboard 上「harmonic_pattern 過去 N 個月平均 EV = +0.8%、勝率 55%、
+    /// avg RR 1.8」這種 strategy-level KPI、做策略間比較。
+    /// </summary>
+    public class AggregateStats
+    {
+        public int TotalDetections   { get; init; }    // DetectAll 找到的 pattern 數
+        public int ClosedDetections  { get; init; }    // 已有 outcome（非 Open）
+        public int Tp1HitCount       { get; init; }
+        public int Tp2HitCount       { get; init; }
+        public int SlHitCount        { get; init; }
+        public int InvalidatedCount  { get; init; }
+        public int OpenCount         { get; init; }
+
+        // 已 closed 樣本的命中率（%）
+        public decimal Tp1HitPct        { get; init; }
+        public decimal Tp2HitPct        { get; init; }
+        public decimal SlHitPct         { get; init; }
+        public decimal InvalidatedPct   { get; init; }
+
+        // 平均報酬（已 closed 樣本）— 以 % 報酬計
+        public decimal AvgGainOnTp1     { get; init; }
+        public decimal AvgGainOnTp2     { get; init; }
+        public decimal AvgLossOnSl      { get; init; }
+        public decimal AvgLossOnInvalid { get; init; }
+
+        /// <summary>
+        /// 整體期望報酬（%）— 用「TP1 為唯一目標」假設算：
+        ///   EV = P(tp1)×avg_gain_tp1 + P(sl)×avg_loss_sl + P(invalid)×avg_loss_invalid
+        ///   （Open 視為 0、不算進來）
+        /// </summary>
+        public decimal ExpectedReturnPctTp1Only { get; init; }
+        public decimal ExpectedReturnPctTp2Only { get; init; }
+
+        public decimal AvgRiskReward { get; init; }
+    }
+
+    /// <summary>
+    /// 對 bars 內所有歷史 pattern 算策略級 EV 統計、給 dashboard / API 做策略比較用。
+    /// </summary>
+    public static AggregateStats ComputeAggregateStats(
+        List<BarData> bars,
+        int pivotWindow = 3,
+        int minBarsXa   = 3)
+    {
+        var all = DetectAll(bars, pivotWindow, minBarsXa, maxAgeBars: int.MaxValue);
+        if (all.Count == 0)
+        {
+            return new AggregateStats { TotalDetections = 0 };
+        }
+
+        int tp1 = 0, tp2 = 0, sl = 0, inv = 0, open = 0;
+        decimal sumGainTp1 = 0m, sumGainTp2 = 0m, sumLossSl = 0m, sumLossInv = 0m, sumRr = 0m;
+        int rrCount = 0;
+
+        foreach (var d in all)
+        {
+            // 算每筆的單位 gain / loss %（用該 pattern 自身的 entry / tp / sl）
+            decimal gainTp1 = 0m, gainTp2 = 0m, lossSl = 0m;
+            if (d.Entry > 0m)
+            {
+                if (d.Direction == "bullish")
+                {
+                    gainTp1 = (d.Tp1 - d.Entry) / d.Entry * 100m;
+                    gainTp2 = (d.Tp2 - d.Entry) / d.Entry * 100m;
+                    lossSl  = (d.StopLoss - d.Entry) / d.Entry * 100m;  // 負
+                }
+                else
+                {
+                    gainTp1 = (d.Entry - d.Tp1) / d.Entry * 100m;
+                    gainTp2 = (d.Entry - d.Tp2) / d.Entry * 100m;
+                    lossSl  = (d.Entry - d.StopLoss) / d.Entry * 100m;  // 負
+                }
+            }
+
+            switch (d.Status)
+            {
+                case PatternStatus.Tp1Hit:      tp1++; sumGainTp1 += gainTp1; break;
+                case PatternStatus.Tp2Hit:      tp2++; sumGainTp2 += gainTp2; break;
+                case PatternStatus.SlHit:       sl++;  sumLossSl  += lossSl;  break;
+                case PatternStatus.Invalidated: inv++; sumLossInv += lossSl * 0.5m; break;  // 軟失效假設半損
+                case PatternStatus.Open:        open++; break;
+            }
+            if (d.RiskReward != 0m) { sumRr += d.RiskReward; rrCount++; }
+        }
+
+        var closed = tp1 + tp2 + sl + inv;
+        decimal avgTp1 = tp1 > 0 ? sumGainTp1 / tp1 : 0m;
+        decimal avgTp2 = tp2 > 0 ? sumGainTp2 / tp2 : 0m;
+        decimal avgSl  = sl  > 0 ? sumLossSl  / sl  : 0m;
+        decimal avgInv = inv > 0 ? sumLossInv / inv : 0m;
+
+        decimal pTp1 = closed > 0 ? (decimal)tp1 / closed : 0m;
+        decimal pTp2 = closed > 0 ? (decimal)tp2 / closed : 0m;
+        decimal pSl  = closed > 0 ? (decimal)sl  / closed : 0m;
+        decimal pInv = closed > 0 ? (decimal)inv / closed : 0m;
+
+        var evTp1 = pTp1 * avgTp1 + pSl * avgSl + pInv * avgInv;
+        var evTp2 = pTp2 * avgTp2 + pSl * avgSl + pInv * avgInv;
+
+        return new AggregateStats
+        {
+            TotalDetections    = all.Count,
+            ClosedDetections   = closed,
+            Tp1HitCount        = tp1,
+            Tp2HitCount        = tp2,
+            SlHitCount         = sl,
+            InvalidatedCount   = inv,
+            OpenCount          = open,
+            Tp1HitPct          = closed > 0 ? Math.Round(100m * tp1 / closed, 1) : 0m,
+            Tp2HitPct          = closed > 0 ? Math.Round(100m * tp2 / closed, 1) : 0m,
+            SlHitPct           = closed > 0 ? Math.Round(100m * sl  / closed, 1) : 0m,
+            InvalidatedPct     = closed > 0 ? Math.Round(100m * inv / closed, 1) : 0m,
+            AvgGainOnTp1       = Math.Round(avgTp1, 4),
+            AvgGainOnTp2       = Math.Round(avgTp2, 4),
+            AvgLossOnSl        = Math.Round(avgSl, 4),
+            AvgLossOnInvalid   = Math.Round(avgInv, 4),
+            ExpectedReturnPctTp1Only = Math.Round(evTp1, 4),
+            ExpectedReturnPctTp2Only = Math.Round(evTp2, 4),
+            AvgRiskReward      = rrCount > 0 ? Math.Round(sumRr / rrCount, 3) : 0m,
+        };
+    }
+
     public class SimulationStats
     {
         public int Samples { get; init; }
