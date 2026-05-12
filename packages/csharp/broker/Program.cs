@@ -331,7 +331,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Di
 builder.Services.AddSingleton<Broker.Services.LineNotificationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.LineNotificationService>());
 // 每日交易彙整、UTC 00:00（或 DAILY_REPORT_AT_UTC_HOUR）推 Discord + LINE
-builder.Services.AddHostedService<Broker.Services.DailyReportService>();
+// Singleton 版本給 manual trigger endpoint 用、HostedService 共用同一個 instance（避免兩份狀態）
+builder.Services.AddSingleton<Broker.Services.DailyReportService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DailyReportService>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
