@@ -194,6 +194,7 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _perpLiqEmergencyPct;
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
     private readonly decimal _maxPortfolioRiskPct;  // 所有開倉 combined max_loss 上限（預設 6%、對齊 r16）
+    private readonly int     _maxOpenPositions;  // 同時開倉硬上限（預設 3、user request 「3 倉不會再多」）
     /// <summary>
     /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
     /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
@@ -495,6 +496,8 @@ public class AutoTraderService : BackgroundService
         // Portfolio-level 累計風險上限。Per-trade 2% × 4 倉 = 8%、但只算單筆會破日損預算。
         // 預設 6% = 對齊 r16；新開倉若會推超這個總額、qty 自動縮（或縮到 0 略過）。
         _maxPortfolioRiskPct = ParsePctEnv("AUTOTRADER_MAX_PORTFOLIO_RISK_PCT", defaultValue: 6m, min: 0m, max: 30m);
+        // 同時最多幾個 open position（user request 「2+2+1~2%、3 倉不會再多」）。0 = 不限制（向後相容）
+        _maxOpenPositions = (int)ParsePctEnv("AUTOTRADER_MAX_OPEN_POSITIONS", defaultValue: 3m, min: 0m, max: 20m);
         // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
         var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
         _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
@@ -1970,6 +1973,16 @@ public class AutoTraderService : BackgroundService
             //
             // 只對「開倉 + scale_in」生效；close / scale_out 維持既有 qty（要平多少平多少）。
             // markPrice 或 balance = 0 時 fallback 到 watch.Quantity 避免 broker 卡住。
+            // ── Hard cap on simultaneous open positions（user request 「3 倉不會再多」）─
+            // 只擋全新 open；scale_in 是加碼同向同 symbol、不增加 unique position count
+            if (_maxOpenPositions > 0 && perpAction!.StartsWith("open_") &&
+                perpPositions.Count >= _maxOpenPositions)
+            {
+                AddLog(item, "skip",
+                    $"max {_maxOpenPositions} open positions reached ({perpPositions.Count} existing). New symbol open blocked.");
+                return;
+            }
+
             if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
                 if (anchoredBalance > 0m && markPrice > 0m && _protectionConfig.InitialSlPct > 0m)
