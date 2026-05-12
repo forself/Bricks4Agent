@@ -587,6 +587,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <a onclick="switchTab('perp')">永續</a>
     <a onclick="switchTab('risk')">風控</a>
     <a onclick="switchTab('pnl')">資產</a>
+    <a onclick="switchTab('stratperf')">策略績效</a>
     <a onclick="switchTab('lab')">Lab</a>
     <a onclick="switchTab('me')">我的</a>
     <a onclick="switchTab('admin')" id="nav-admin" style="display:none">管理</a>
@@ -1214,6 +1215,62 @@ tr:hover { background:rgba(240,185,11,0.02); }
   </div>
 </div>
 
+<!-- 策略績效比較：以 watchlist 配對 + pnl-summary 聚合 -->
+<div class="panel" id="panel-stratperf">
+  <div class="form-row" style="margin-bottom:12px">
+    <div class="fg">
+      <label>時段</label>
+      <select id="sp-period" onchange="loadStrategyPerf()">
+        <option value="24">過去 24h</option>
+        <option value="72">過去 3 天</option>
+        <option value="168" selected>過去 7 天</option>
+        <option value="720">過去 30 天</option>
+        <option value="0">全部</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>交易所</label>
+      <select id="sp-exchange" onchange="loadStrategyPerf()">
+        <option value="bingx" selected>BingX (perp)</option>
+        <option value="alpaca">Alpaca</option>
+        <option value="binance">Binance</option>
+      </select>
+    </div>
+    <button class="btn btn-o btn-sm" onclick="loadStrategyPerf()">重新整理</button>
+    <span style="font-size:11px;color:var(--text3);align-self:center">資料來源：watch 上的 (symbol, strategy) 配對 × /trading/pnl-summary 聚合</span>
+  </div>
+
+  <!-- Tier-1: 各策略總覽 -->
+  <div class="card" style="margin-bottom:12px">
+    <h3>📊 各策略總覽（按 strategy 分組）</h3>
+    <table style="font-size:12px">
+      <thead><tr>
+        <th>策略</th><th>標的數</th><th>成交筆</th><th>勝率</th>
+        <th>已實現 PnL</th><th>平均勝</th><th>平均敗</th><th>利潤因子</th><th>每筆均 PnL</th>
+      </tr></thead>
+      <tbody id="sp-by-strategy"><tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Tier-2: 各 (symbol, strategy) 明細 -->
+  <div class="card">
+    <h3>🔎 各標的 × 策略 明細</h3>
+    <table style="font-size:11px">
+      <thead><tr>
+        <th>Symbol</th><th>策略</th><th>active</th>
+        <th>成交筆</th><th>勝/敗</th><th>勝率</th>
+        <th>已實現 PnL</th><th>利潤因子</th><th>最近訊號</th>
+      </tr></thead>
+      <tbody id="sp-by-pair"><tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+    </table>
+  </div>
+
+  <div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">
+    註：PnL 來自 trading.account/get_trade_history（本地 DB）。perp 真實 realized_pnl 由 FillPoller 每 30 秒從 BingX income 端點同步寫入。
+    策略對應以「目前 watch 上的設定」為準；watch 換策略後、舊 trades 仍歸新策略名下。
+  </div>
+</div>
+
 <!-- Strategy Lab：自動回測推薦 -->
 <div class="panel" id="panel-lab">
   <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1256,6 +1313,55 @@ tr:hover { background:rgba(240,185,11,0.02); }
     <span style="font-size:13px;font-weight:600">我的帳戶 — Exchange API 憑證</span>
     <span id="me-viewer" style="color:var(--text2);font-size:11px">—</span>
     <button class="btn btn-o btn-sm" onclick="loadMe()" style="margin-left:auto">重新整理</button>
+  </div>
+
+  <!-- 兩步驗證（TOTP）─────────────────────────────────────────────── -->
+  <div class="card" style="margin-bottom:12px">
+    <h3>🔐 兩步驗證（TOTP）</h3>
+    <div id="totp-status" style="font-size:12px;color:var(--text2);margin-bottom:8px">— 載入中 —</div>
+
+    <!-- 啟用流程 step 1：點按鈕呼 /2fa/setup -->
+    <div id="totp-enable-area" style="display:none">
+      <button class="btn btn-y btn-sm" onclick="totpStartEnroll()">啟用兩步驗證</button>
+      <div style="font-size:11px;color:var(--text2);margin-top:6px">啟用後登入需 6 位數動態碼。建議使用 Google Authenticator / Authy / 1Password。</div>
+    </div>
+
+    <!-- 啟用流程 step 2：顯示 otpauth_url + secret + backup codes -->
+    <div id="totp-enroll-area" style="display:none">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">1️⃣ 在 authenticator app 加入新帳號</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+        <input id="totp-otpauth" readonly style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace;font-size:11px" />
+        <button class="btn btn-o btn-sm" onclick="copyText('totp-otpauth')">複製 URL</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px">或手動輸入 secret：
+        <code id="totp-secret" style="background:var(--bg3);padding:2px 6px;border-radius:2px;font-family:monospace"></code>
+        <button class="btn btn-o" style="font-size:10px;padding:2px 8px;margin-left:4px" onclick="copyText('totp-secret', true)">複製</button>
+      </div>
+
+      <div style="font-size:12px;font-weight:600;margin:12px 0 6px">2️⃣ 收好 backup codes（只顯示一次）</div>
+      <div id="totp-backup-codes" style="background:var(--bg3);padding:8px;border-radius:4px;font-family:monospace;font-size:11px;line-height:1.8"></div>
+      <button class="btn btn-o btn-sm" onclick="copyBackupCodes()" style="margin-top:6px">複製全部 backup codes</button>
+
+      <div style="font-size:12px;font-weight:600;margin:12px 0 6px">3️⃣ 輸入 app 顯示的 6 位數驗證碼以正式啟用</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="totp-enroll-code" placeholder="123456" maxlength="6" autocomplete="off" inputmode="numeric"
+          style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace;font-size:14px;letter-spacing:4px;width:120px" />
+        <button class="btn btn-y btn-sm" onclick="totpVerifyEnroll()">驗證並啟用</button>
+        <button class="btn btn-o btn-sm" onclick="totpCancelEnroll()">取消</button>
+      </div>
+      <div id="totp-enroll-msg" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+    </div>
+
+    <!-- 已啟用：顯示停用入口 -->
+    <div id="totp-disable-area" style="display:none">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">停用需要當前的 6 位數驗證碼或未使用的 backup code。</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="totp-disable-code" placeholder="TOTP 或 backup code" autocomplete="off"
+          style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-family:monospace;font-size:13px;width:200px" />
+        <button class="btn btn-r btn-sm" onclick="totpDisable()">停用兩步驗證</button>
+      </div>
+      <div id="totp-disable-msg" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+    </div>
   </div>
 
   <div class="card" style="margin-bottom:12px">
@@ -1611,7 +1717,7 @@ updateChartIntervals('stock');
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach(a=>{const t=a.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];a.classList.toggle('active',t===name);});
 document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
-if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
+if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='stratperf')loadStrategyPerf();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
 startAutoRefresh(name);}
 
 // ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
@@ -1624,6 +1730,7 @@ const _tabRefresh = {
   auto:     { fn: () => fetchAutoStatus(),ms: 5000  },
   perp:     { fn: () => loadPerpAll(),    ms: 5000  },
   pnl:      { fn: () => loadPnlReport(),  ms: 30000 },
+  stratperf:{ fn: () => loadStrategyPerf(),ms: 30000 },
   lab:      { fn: () => loadLab(),         ms: 60000 },  // 1 分鐘刷一次、實際 schedule 是日級
   health:   { fn: () => fetchHealth(),    ms: 10000 },
 };
@@ -3228,6 +3335,105 @@ setInterval(async () => {
   }
 }, 10000);
 
+// ── 策略績效比較 ──────────────────────────────────────────────
+// 邏輯：拿 autotrader/status 的 watch_list、按 strategy 分組，對每個 (symbol)
+//      呼 /trading/pnl-summary 抓本地 DB 聚合，最後算 group-level totals。
+// 為什麼前端聚合不寫 server endpoint：watch ↔ strategy 對應只在記憶體中、
+// 寫到後端 endpoint 反而要重複 expose autotrader internals，前端聚合更乾淨。
+async function loadStrategyPerf(){
+  const periodH = parseInt(document.getElementById('sp-period').value || '168', 10);
+  const exchange = document.getElementById('sp-exchange').value;
+  const since = periodH > 0 ? new Date(Date.now() - periodH * 3600 * 1000).toISOString() : null;
+
+  const tbStrat = document.getElementById('sp-by-strategy');
+  const tbPair  = document.getElementById('sp-by-pair');
+  tbStrat.innerHTML = '<tr><td colspan="9" style="color:var(--text2);text-align:center">— 載入中 —</td></tr>';
+  tbPair.innerHTML  = '<tr><td colspan="9" style="color:var(--text2);text-align:center">— 載入中 —</td></tr>';
+
+  let watches;
+  try {
+    const at = await api('/api/v1/autotrader/status');
+    watches = (at?.data?.watch_list) || [];
+  } catch(e){
+    tbStrat.innerHTML = `<tr><td colspan="9" style="color:var(--red)">無法取得 watch list：${e.message||e}</td></tr>`;
+    return;
+  }
+
+  if (watches.length === 0){
+    tbStrat.innerHTML = '<tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 目前沒有 watch 紀錄 —</td></tr>';
+    tbPair.innerHTML  = '<tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 目前沒有 watch 紀錄 —</td></tr>';
+    return;
+  }
+
+  // 平行 fetch 每個 watch 的 pnl-summary
+  const qs = (sym) => {
+    const p = new URLSearchParams({ exchange, symbol: sym, limit: '500' });
+    if (since) p.set('since', since);
+    return p.toString();
+  };
+  const results = await Promise.all(watches.map(async w => {
+    try {
+      const r = await api('/api/v1/trading/pnl-summary?' + qs(w.symbol));
+      return { watch: w, stats: r?.data || null, error: r?.error || null };
+    } catch(e){
+      return { watch: w, stats: null, error: e.message || String(e) };
+    }
+  }));
+
+  // (1) 各 (symbol × strategy) 明細
+  const fmtPnl = v => (v == null || isNaN(v)) ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(2);
+  const cls = v => v == null ? '' : (v > 0 ? 'up' : (v < 0 ? 'down' : ''));
+  tbPair.innerHTML = results.map(r => {
+    const w = r.watch, s = r.stats || {};
+    return `<tr>
+      <td>${w.symbol}</td>
+      <td>${w.strategy || '—'}</td>
+      <td>${w.active ? '✓' : '—'}</td>
+      <td>${s.trade_count ?? 0}</td>
+      <td>${(s.win_count ?? 0)}/${(s.lose_count ?? 0)}</td>
+      <td>${s.win_rate_pct != null ? s.win_rate_pct + '%' : '—'}</td>
+      <td class="${cls(s.realized_pnl_sum)}">${fmtPnl(s.realized_pnl_sum)}</td>
+      <td>${s.profit_factor != null ? Number(s.profit_factor).toFixed(2) : '—'}</td>
+      <td style="color:var(--text2)">${w.last_signal || '—'} ${w.last_confidence != null ? '(' + (w.last_confidence*100).toFixed(0) + '%)' : ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="9" style="color:var(--text2)">—</td></tr>';
+
+  // (2) 按 strategy 聚合
+  const groups = {};
+  for (const r of results){
+    const k = r.watch.strategy || '(未指定)';
+    if (!groups[k]) groups[k] = { symbols: new Set(), trades: 0, wins: 0, loses: 0, winSum: 0, lossSum: 0, pnlSum: 0 };
+    groups[k].symbols.add(r.watch.symbol);
+    const s = r.stats;
+    if (!s) continue;
+    groups[k].trades += (s.trade_count || 0);
+    groups[k].wins   += (s.win_count   || 0);
+    groups[k].loses  += (s.lose_count  || 0);
+    groups[k].pnlSum += Number(s.realized_pnl_sum || 0);
+    groups[k].winSum += (Number(s.avg_win  || 0)) * (s.win_count  || 0);
+    groups[k].lossSum+= (Number(s.avg_loss || 0)) * (s.lose_count || 0);
+  }
+  const rows = Object.entries(groups).sort((a,b) => b[1].pnlSum - a[1].pnlSum).map(([name, g]) => {
+    const winRate = g.trades > 0 ? (100 * g.wins / g.trades).toFixed(1) + '%' : '—';
+    const avgWin  = g.wins  > 0 ? (g.winSum  / g.wins ).toFixed(2) : '—';
+    const avgLoss = g.loses > 0 ? (g.lossSum / g.loses).toFixed(2) : '—';
+    const pf = g.lossSum < 0 ? (g.winSum / Math.abs(g.lossSum)).toFixed(2) : (g.winSum > 0 ? '∞' : '—');
+    const avgPerTrade = g.trades > 0 ? (g.pnlSum / g.trades).toFixed(2) : '—';
+    return `<tr>
+      <td><b>${name}</b></td>
+      <td>${g.symbols.size}</td>
+      <td>${g.trades}</td>
+      <td>${winRate}</td>
+      <td class="${cls(g.pnlSum)}">${fmtPnl(g.pnlSum)}</td>
+      <td class="up">${avgWin === '—' ? '—' : '+' + avgWin}</td>
+      <td class="down">${avgLoss}</td>
+      <td>${pf}</td>
+      <td class="${cls(g.pnlSum)}">${avgPerTrade === '—' ? '—' : (Number(avgPerTrade) >= 0 ? '+' : '') + avgPerTrade}</td>
+    </tr>`;
+  }).join('');
+  tbStrat.innerHTML = rows || '<tr><td colspan="9" style="color:var(--text2)">—</td></tr>';
+}
+
 // ── Strategy Lab：自動回測推薦 ─────────────────────────────────
 async function loadLab(){
   const tf = document.getElementById('lab-tf-filter')?.value || '';
@@ -3311,7 +3517,110 @@ async function _authFetch(path, opts={}){
   return await r.json().catch(()=>({success:false,message:'Invalid JSON'}));
 }
 
+// ── 兩步驗證（TOTP）────────────────────────────────────────────
+function copyText(elId, isText=false){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const val = isText ? el.textContent : el.value;
+  navigator.clipboard.writeText(val).then(() => {/* silent ok */});
+}
+function copyBackupCodes(){
+  const div = document.getElementById('totp-backup-codes');
+  if (!div) return;
+  const codes = Array.from(div.querySelectorAll('code')).map(c => c.textContent).join('\n');
+  navigator.clipboard.writeText(codes);
+}
+async function refreshTotpStatus(){
+  const r = await _authFetch('/api/v1/auth/me');
+  const statusEl  = document.getElementById('totp-status');
+  const enableA   = document.getElementById('totp-enable-area');
+  const enrollA   = document.getElementById('totp-enroll-area');
+  const disableA  = document.getElementById('totp-disable-area');
+  if (!statusEl) return;
+
+  if (!r?.success){
+    statusEl.textContent = '— 未登入 —';
+    enableA.style.display = enrollA.style.display = disableA.style.display = 'none';
+    return;
+  }
+  const enabled = !!r.data?.two_fa_enabled;
+  if (enabled){
+    statusEl.innerHTML = '✅ <span style="color:var(--up)">已啟用</span>　登入需驗證 6 位數動態碼。';
+    enableA.style.display = 'none';
+    enrollA.style.display = 'none';
+    disableA.style.display = '';
+  } else {
+    statusEl.innerHTML = '⚠️ <span style="color:var(--text2)">未啟用</span>　建議啟用以保護帳戶（管理 / 真錢操作）。';
+    enableA.style.display = '';
+    enrollA.style.display = 'none';
+    disableA.style.display = 'none';
+  }
+}
+async function totpStartEnroll(){
+  const r = await _authFetch('/api/v1/auth/2fa/setup', {method:'POST', body:'{}'});
+  if (!r?.success){
+    alert('啟用流程失敗：' + (r?.message || 'unknown'));
+    return;
+  }
+  document.getElementById('totp-otpauth').value = r.data.otpauth_url;
+  document.getElementById('totp-secret').textContent = r.data.secret;
+  document.getElementById('totp-backup-codes').innerHTML =
+    (r.data.backup_codes || []).map(c => `<code style="background:transparent;color:var(--text)">${c}</code>`).join('　');
+  document.getElementById('totp-enable-area').style.display = 'none';
+  document.getElementById('totp-enroll-area').style.display = '';
+  document.getElementById('totp-enroll-code').value = '';
+  document.getElementById('totp-enroll-msg').textContent = '';
+}
+async function totpVerifyEnroll(){
+  const code = (document.getElementById('totp-enroll-code').value || '').trim();
+  const msg = document.getElementById('totp-enroll-msg');
+  if (!/^\d{6}$/.test(code)){
+    msg.style.color = 'var(--down)';
+    msg.textContent = '請輸入 6 位數驗證碼';
+    return;
+  }
+  const r = await _authFetch('/api/v1/auth/2fa/verify-enroll', {
+    method:'POST', body: JSON.stringify({ totp_code: code })
+  });
+  if (!r?.success){
+    msg.style.color = 'var(--down)';
+    msg.textContent = '驗證失敗：' + (r?.message || 'TOTP 不正確');
+    return;
+  }
+  msg.style.color = 'var(--up)';
+  msg.textContent = '✅ 兩步驗證已啟用';
+  await refreshTotpStatus();
+}
+function totpCancelEnroll(){
+  // setup 已寫進 DB 但 enrolled_at 仍 null；下次點啟用會覆蓋 secret，不會殘留
+  document.getElementById('totp-enroll-area').style.display = 'none';
+  document.getElementById('totp-enable-area').style.display = '';
+}
+async function totpDisable(){
+  const code = (document.getElementById('totp-disable-code').value || '').trim();
+  const msg = document.getElementById('totp-disable-msg');
+  if (!code){
+    msg.style.color = 'var(--down)';
+    msg.textContent = '請輸入當前 TOTP 或 backup code';
+    return;
+  }
+  if (!confirm('確定停用兩步驗證？停用後登入只剩密碼。')) return;
+  const r = await _authFetch('/api/v1/auth/2fa/disable', {
+    method:'POST', body: JSON.stringify({ proof_code: code })
+  });
+  if (!r?.success){
+    msg.style.color = 'var(--down)';
+    msg.textContent = '停用失敗：' + (r?.message || 'proof code 不正確');
+    return;
+  }
+  msg.style.color = 'var(--up)';
+  msg.textContent = '已停用';
+  document.getElementById('totp-disable-code').value = '';
+  await refreshTotpStatus();
+}
+
 async function loadMe(){
+  refreshTotpStatus();   // 並行不 await、不擋憑證表載入
   const r = await _authFetch('/api/v1/exchange-credentials/');
   const v = document.getElementById('me-viewer');
   const tb = document.querySelector('#me-cred-table tbody');
