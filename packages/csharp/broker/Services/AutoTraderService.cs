@@ -195,6 +195,15 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
     private readonly decimal _maxPortfolioRiskPct;  // 所有開倉 combined max_loss 上限（預設 6%、對齊 r16）
     private readonly int     _maxOpenPositions;  // 同時開倉硬上限（預設 3、user request 「3 倉不會再多」）
+
+    /// <summary>
+    /// Per-symbol 連續開倉冷卻時間（秒）。Strategy 訊號在門檻附近反翻時、會造成「進場-反向-再進場」
+    /// 的 churn，commission + 滑價會吃光小利。預設 1800 (30 min)；
+    /// env AUTOTRADER_MIN_ENTRY_INTERVAL_SEC 可調、設 0 完全關閉冷卻。
+    /// 只擋 open_long / open_short（含 scale_in）；close / protect / reduce_only 不受影響。
+    /// </summary>
+    private readonly int _minEntryIntervalSec;
+    private readonly ConcurrentDictionary<string, DateTime> _lastEntryAt = new();
     /// <summary>
     /// Perp 同方向 scale-in 門檻遞增步幅。已有 N 個同方向倉時、加倉需要 confidence ≥
     /// MinConfidence + N × Step。env AUTOTRADER_PERP_SCALE_IN_STEP 可調、預設 0.15。
@@ -498,6 +507,8 @@ public class AutoTraderService : BackgroundService
         _maxPortfolioRiskPct = ParsePctEnv("AUTOTRADER_MAX_PORTFOLIO_RISK_PCT", defaultValue: 6m, min: 0m, max: 30m);
         // 同時最多幾個 open position（user request 「2+2+1~2%、3 倉不會再多」）。0 = 不限制（向後相容）
         _maxOpenPositions = (int)ParsePctEnv("AUTOTRADER_MAX_OPEN_POSITIONS", defaultValue: 3m, min: 0m, max: 20m);
+        // Per-symbol 連續開倉冷卻：避免訊號反翻 churn、預設 30 分鐘
+        _minEntryIntervalSec = (int)ParsePctEnv("AUTOTRADER_MIN_ENTRY_INTERVAL_SEC", defaultValue: 1800m, min: 0m, max: 86400m);
         // Scale-in 步幅：每多 1 個同方向倉、required confidence 上升 N（預設 15%）
         var stepRaw = Environment.GetEnvironmentVariable("AUTOTRADER_PERP_SCALE_IN_STEP");
         _perpScaleInStep = decimal.TryParse(stepRaw, out var step) && step >= 0m && step <= 1m ? step : 0.15m;
@@ -1368,16 +1379,20 @@ public class AutoTraderService : BackgroundService
         var watchKey = $"{exchange}:{symbol}";
         // 帶 user 自己的 credential、平倉才會打到 user 自己的帳戶（沒設則 fallback env 預設）
         var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
+        // 平倉也把該 watch 的 strategy 帶上、SaveTrade 才能把這筆 close trade 歸到原策略
+        var watchStrategy = _watchList.TryGetValue(watchKey, out var wWatch) ? wWatch.Strategy : null;
         var orderPayload = creds == null
             ? JsonSerializer.Serialize(new
             {
                 exchange, symbol, side = orderSide, position_side = side,
                 order_type = "market", quantity = qty, reduce_only = true,
+                strategy = watchStrategy,
             })
             : JsonSerializer.Serialize(new
             {
                 exchange, symbol, side = orderSide, position_side = side,
                 order_type = "market", quantity = qty, reduce_only = true,
+                strategy = watchStrategy,
                 __credentials = creds,
             });
         var result = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", orderPayload));
@@ -1988,6 +2003,22 @@ public class AutoTraderService : BackgroundService
             //
             // 只對「開倉 + scale_in」生效；close / scale_out 維持既有 qty（要平多少平多少）。
             // markPrice 或 balance = 0 時 fallback 到 watch.Quantity 避免 broker 卡住。
+            // ── Per-symbol entry cooldown（避免訊號反翻 churn）─
+            // 對 open_* / scale_in_* 都生效；close / protect / reduce_only 由 perpAction 不以 open_ 起頭排除。
+            var cdKey = $"{item.Exchange}:{item.Symbol}";
+            if (_minEntryIntervalSec > 0 &&
+                (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")) &&
+                _lastEntryAt.TryGetValue(cdKey, out var lastEntry))
+            {
+                var elapsed = (DateTime.UtcNow - lastEntry).TotalSeconds;
+                if (elapsed < _minEntryIntervalSec)
+                {
+                    AddLog(item, "skip",
+                        $"entry cooldown: last {(int)elapsed}s ago < {_minEntryIntervalSec}s. Action {perpAction} suppressed.");
+                    return;
+                }
+            }
+
             // ── Hard cap on simultaneous open positions（user request 「3 倉不會再多」）─
             // 只擋全新 open；scale_in 是加碼同向同 symbol、不增加 unique position count
             if (_maxOpenPositions > 0 && perpAction!.StartsWith("open_") &&
@@ -2094,6 +2125,7 @@ public class AutoTraderService : BackgroundService
         }
 
         // 真開單——帶 user credential 才會走到 user 自己的帳戶
+        // strategy: 不論開倉或平倉都帶上 watch 的 strategy；同一倉位平倉的 trade row 才能對應回原策略
         var perpPayload = creds == null
             ? JsonSerializer.Serialize(new
             {
@@ -2105,6 +2137,7 @@ public class AutoTraderService : BackgroundService
                 quantity = qtyToUse,
                 leverage = item.Leverage,
                 reduce_only = reduceOnly,
+                strategy = item.Strategy,
             })
             : JsonSerializer.Serialize(new
             {
@@ -2116,6 +2149,7 @@ public class AutoTraderService : BackgroundService
                 quantity = qtyToUse,
                 leverage = item.Leverage,
                 reduce_only = reduceOnly,
+                strategy = item.Strategy,
                 __credentials = creds,
             });
         var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", perpPayload));
@@ -2127,6 +2161,11 @@ public class AutoTraderService : BackgroundService
             AddLog(item, perpAction!, $"PERP {perpAction!.ToUpper()}: {extId} {perpSide} {qtyToUse} {item.Symbol} {item.Leverage}x → {status}");
             _logger.LogInformation("AutoTrader perp: {PerpAction} {Side} {Qty} {Symbol} on {Exchange} {Lev}x → {Status}",
                 perpAction, perpSide, qtyToUse, item.Symbol, item.Exchange, item.Leverage, status);
+
+            // Cooldown 紀錄：只在「成功開倉 / scale_in」更新時間戳；close / reduce-only 不更新
+            // （平倉後立即反向開倉是合理場景、不該被 cooldown 擋）
+            if (!reduceOnly && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+                _lastEntryAt[$"{item.Exchange}:{item.Symbol}"] = DateTime.UtcNow;
         }
         else
         {

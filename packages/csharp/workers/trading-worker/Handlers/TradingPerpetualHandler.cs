@@ -192,6 +192,7 @@ public class TradingPerpetualHandler : ICapabilityHandler
         var qty          = opts.TryGetProperty("quantity", out var q)     ? q.GetDecimal() : 0m;
         var leverage     = opts.TryGetProperty("leverage", out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 1;
         var reduceOnly   = opts.TryGetProperty("reduce_only", out var ro) && ro.GetBoolean();
+        var strategy     = opts.TryGetProperty("strategy", out var stg) && stg.ValueKind == JsonValueKind.String ? stg.GetString() : null;
         decimal? limitPrice = opts.TryGetProperty("limit_price", out var lp) && lp.ValueKind == JsonValueKind.Number ? lp.GetDecimal() : null;
         decimal? stopPrice  = opts.TryGetProperty("stop_price", out var sp) && sp.ValueKind == JsonValueKind.Number ? sp.GetDecimal() : null;
 
@@ -233,8 +234,9 @@ public class TradingPerpetualHandler : ICapabilityHandler
                         Quantity   = result.FilledQty,
                         Price      = result.FilledPrice.Value,
                         Fee        = null,                 // BingX 預設不在 place_order response 帶 fee
-                        RealizedPnl = reduceOnly ? null : null,  // realized PnL 通常要從 /user/positions/closeAll 或單 fill detail 拿、不在 place 回傳
+                        RealizedPnl = null,                // realized PnL 在 FillPoller 從 income endpoint 補抓
                         ExecutedAt = result.FilledAt ?? DateTime.UtcNow,
+                        Strategy   = strategy,             // AutoTrader 開倉時帶、手動為 null；之後 perp-income row 會 inherit
                     });
                 }
                 catch { /* persist 失敗別影響 caller */ }

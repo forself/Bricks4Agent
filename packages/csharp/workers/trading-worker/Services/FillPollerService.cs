@@ -142,9 +142,22 @@ public class FillPollerService
         {
             if (ct.IsCancellationRequested) break;
 
-            var since = _perpIncomeSince.TryGetValue(exchange, out var s)
-                ? s
-                : DateTime.UtcNow - _perpFirstLookback;
+            // Cursor 來源優先序：
+            // 1. 本 process 已記憶的 _perpIncomeSince（hot path）
+            // 2. DB 最後一筆 perp-income 時間 + 1ms（broker 重啟後仍有續抓能力）
+            // 3. fallback：30 分鐘 lookback（DB 全空 / 首次啟用）
+            DateTime since;
+            if (_perpIncomeSince.TryGetValue(exchange, out var s))
+            {
+                since = s;
+            }
+            else
+            {
+                var lastDb = _db.GetLatestPerpIncomeTime(exchange);
+                since = lastDb?.AddMilliseconds(1) ?? (DateTime.UtcNow - _perpFirstLookback);
+                _logger.LogInformation("FillPoller(perp/{Exchange}): bootstrap cursor from {Source} → {Since:o}",
+                    exchange, lastDb.HasValue ? "DB" : "fallback-30min", since);
+            }
 
             try
             {

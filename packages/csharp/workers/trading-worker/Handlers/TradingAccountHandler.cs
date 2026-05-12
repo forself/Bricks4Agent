@@ -70,6 +70,7 @@ public class TradingAccountHandler : ICapabilityHandler
                 trade_id = t.TradeId, order_id = t.OrderId, symbol = t.Symbol, exchange = t.Exchange,
                 side = t.Side, quantity = t.Quantity, price = t.Price,
                 fee = t.Fee, realized_pnl = t.RealizedPnl, executed_at = t.ExecutedAt,
+                strategy = t.Strategy,
             })
         });
         return (true, json, null);
@@ -174,6 +175,7 @@ public class TradingAccountHandler : ICapabilityHandler
                     trade_id = t.TradeId, order_id = t.OrderId, symbol = t.Symbol,
                     side = t.Side, quantity = t.Quantity, price = t.Price,
                     fee = t.Fee, realized_pnl = t.RealizedPnl, executed_at = t.ExecutedAt,
+                    strategy = t.Strategy,
                 })
             });
             return (true, json, null);

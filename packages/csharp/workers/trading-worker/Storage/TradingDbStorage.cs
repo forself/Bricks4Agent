@@ -59,10 +59,12 @@ public class TradingDbStorage : IDisposable
                 fee          REAL,
                 realized_pnl REAL,
                 executed_at  TEXT NOT NULL,
+                strategy     TEXT,
                 FOREIGN KEY (order_id) REFERENCES orders(order_id)
             );
 
             CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
+            CREATE INDEX IF NOT EXISTS idx_trades_exchange_executed ON trades(exchange, executed_at);
 
             CREATE TABLE IF NOT EXISTS account_snapshots (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +81,24 @@ public class TradingDbStorage : IDisposable
             );
             """;
         cmd.ExecuteNonQuery();
+
+        // 舊 DB 增量遷移：trades.strategy 欄位（idempotent、欄位已存在會吃掉例外）
+        TryAddColumn("trades", "strategy", "TEXT");
+    }
+
+    private void TryAddColumn(string table, string column, string typeDecl)
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {typeDecl}";
+            cmd.ExecuteNonQuery();
+            _logger.LogInformation("Migrated: ALTER TABLE {Table} ADD COLUMN {Col}", table, column);
+        }
+        catch (SqliteException ex) when (ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase))
+        {
+            // 欄位已存在、不是錯
+        }
     }
 
     // ── Orders ──────────────────────────────────────────────────────
@@ -163,12 +183,20 @@ public class TradingDbStorage : IDisposable
 
     public void SaveTrade(TradeRecord trade)
     {
+        // Best-effort：strategy 沒填 + 是 perp-income 補抓的 row，從同 (exchange, symbol) 最近一筆有
+        // strategy 的紀錄繼承過來，讓策略績效歸屬有依據。手動下單沒給也保持 null。
+        var strategy = trade.Strategy;
+        if (string.IsNullOrEmpty(strategy) && trade.TradeId.StartsWith("perp-income-", StringComparison.Ordinal))
+        {
+            strategy = InferStrategy(trade.Exchange, trade.Symbol, trade.ExecutedAt);
+        }
+
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO trades
-                (trade_id, order_id, symbol, exchange, side, quantity, price, fee, realized_pnl, executed_at)
+                (trade_id, order_id, symbol, exchange, side, quantity, price, fee, realized_pnl, executed_at, strategy)
             VALUES
-                ($tradeId, $orderId, $symbol, $exchange, $side, $qty, $price, $fee, $pnl, $executedAt)
+                ($tradeId, $orderId, $symbol, $exchange, $side, $qty, $price, $fee, $pnl, $executedAt, $strategy)
             """;
         cmd.Parameters.AddWithValue("$tradeId",    trade.TradeId);
         cmd.Parameters.AddWithValue("$orderId",    trade.OrderId);
@@ -180,7 +208,44 @@ public class TradingDbStorage : IDisposable
         cmd.Parameters.AddWithValue("$fee",        trade.Fee.HasValue ? (object)(double)trade.Fee.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$pnl",        trade.RealizedPnl.HasValue ? (object)(double)trade.RealizedPnl.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$executedAt", trade.ExecutedAt.ToString("o"));
+        cmd.Parameters.AddWithValue("$strategy",   string.IsNullOrEmpty(strategy) ? DBNull.Value : (object)strategy);
         cmd.ExecuteNonQuery();
+    }
+
+    private string? InferStrategy(string exchange, string symbol, DateTime beforeUtc)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT strategy FROM trades
+            WHERE exchange = $exchange AND symbol = $symbol AND strategy IS NOT NULL
+              AND executed_at <= $before
+            ORDER BY executed_at DESC LIMIT 1
+            """;
+        cmd.Parameters.AddWithValue("$exchange", exchange);
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        cmd.Parameters.AddWithValue("$before", beforeUtc.ToString("o"));
+        var v = cmd.ExecuteScalar();
+        return v == null || v == DBNull.Value ? null : v.ToString();
+    }
+
+    /// <summary>
+    /// 取某交易所最後一筆 perp-income (FillPoller backfill) 寫入時間。
+    /// 用來在啟動時把 income poll 的 cursor 推到正確位置、避免重撈 / 漏抓。
+    /// 沒有任何紀錄就回 null、caller fallback 預設 lookback 視窗。
+    /// </summary>
+    public DateTime? GetLatestPerpIncomeTime(string exchange)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT MAX(executed_at) FROM trades
+            WHERE exchange = $exchange AND trade_id LIKE 'perp-income-%'
+            """;
+        cmd.Parameters.AddWithValue("$exchange", exchange);
+        var v = cmd.ExecuteScalar();
+        if (v == null || v == DBNull.Value) return null;
+        var s = v.ToString();
+        if (string.IsNullOrEmpty(s)) return null;
+        return DateTime.Parse(s, null, System.Globalization.DateTimeStyles.RoundtripKind);
     }
 
     /// <summary>
@@ -235,20 +300,23 @@ public class TradingDbStorage : IDisposable
 
         var list = new List<TradeRecord>();
         using var r = cmd.ExecuteReader();
+        // 用欄位名拿值、不依賴 ordinal——舊 DB 沒 strategy 欄、新 DB 有，欄位順序穩定
+        var strategyOrd = r.GetOrdinal("strategy");
         while (r.Read())
         {
             list.Add(new TradeRecord
             {
-                TradeId     = r.GetString(0),
-                OrderId     = r.GetString(1),
-                Symbol      = r.GetString(2),
-                Exchange    = r.GetString(3),
-                Side        = r.GetString(4),
-                Quantity    = (decimal)r.GetDouble(5),
-                Price       = (decimal)r.GetDouble(6),
-                Fee         = r.IsDBNull(7) ? null : (decimal)r.GetDouble(7),
-                RealizedPnl = r.IsDBNull(8) ? null : (decimal)r.GetDouble(8),
-                ExecutedAt  = DateTime.Parse(r.GetString(9)),
+                TradeId     = r.GetString(r.GetOrdinal("trade_id")),
+                OrderId     = r.GetString(r.GetOrdinal("order_id")),
+                Symbol      = r.GetString(r.GetOrdinal("symbol")),
+                Exchange    = r.GetString(r.GetOrdinal("exchange")),
+                Side        = r.GetString(r.GetOrdinal("side")),
+                Quantity    = (decimal)r.GetDouble(r.GetOrdinal("quantity")),
+                Price       = (decimal)r.GetDouble(r.GetOrdinal("price")),
+                Fee         = r.IsDBNull(r.GetOrdinal("fee")) ? null : (decimal)r.GetDouble(r.GetOrdinal("fee")),
+                RealizedPnl = r.IsDBNull(r.GetOrdinal("realized_pnl")) ? null : (decimal)r.GetDouble(r.GetOrdinal("realized_pnl")),
+                ExecutedAt  = DateTime.Parse(r.GetString(r.GetOrdinal("executed_at"))),
+                Strategy    = r.IsDBNull(strategyOrd) ? null : r.GetString(strategyOrd),
             });
         }
         return list;
