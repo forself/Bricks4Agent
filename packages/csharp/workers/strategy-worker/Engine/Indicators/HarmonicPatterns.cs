@@ -96,6 +96,13 @@ public static class HarmonicPatterns
         // 掃 D 後 N 根 K 線、找與形態方向相符的 Hammer/Engulfing（呼叫 PriceActionPatterns）
         public bool HasCandleConfirmation { get; init; }
         public string ConfirmationSignals { get; init; } = "";    // "Hammer@45,BullEngulf@47" 之類
+
+        // RSI 背離確認（Batch C++ 新增、影片重點 #2）
+        // bullish：D 處 RSI > B 處 RSI（價創新低、RSI 走高 = 動能轉強）
+        // bearish：D 處 RSI < B 處 RSI（價創新高、RSI 走弱 = 動能轉弱）
+        public bool HasRsiDivergence { get; init; }
+        public decimal RsiAtB { get; init; }
+        public decimal RsiAtD { get; init; }
     }
 
     public class SimulationResult
@@ -123,6 +130,14 @@ public static class HarmonicPatterns
         public decimal? AvgBarsToTp1 { get; init; }
         public decimal? AvgBarsToTp2 { get; init; }
         public decimal? AvgBarsToSl  { get; init; }
+
+        // Batch C++ 新增（影片重點 #6：勝率不是絕對、要看 RR 加權的期望報酬）
+        // 用兩種出場假設：純 TP1 出場 / 純 TP2 出場、各自算 P(win)×gain + P(loss)×loss
+        // 沒命中也沒 SL 的 outcome（OPEN）視作 0 PnL（保守）
+        public decimal RiskRewardTp1            { get; init; }   // (tp1-entry)/(entry-sl) 或對稱式 bearish
+        public decimal RiskRewardTp2            { get; init; }
+        public decimal ExpectedReturnPctTp1Only { get; init; }   // %、單純以 TP1 為唯一目標的期望報酬
+        public decimal ExpectedReturnPctTp2Only { get; init; }
     }
 
     // ── Pivot 偵測（fractal：前後 window 都比這根低/高） ──────────
@@ -253,21 +268,43 @@ public static class HarmonicPatterns
         };
     }
 
-    // ── TP / SL 計算（Batch C 新增） ────────────────────────────
+    // ── TP / SL 計算（Batch C 新增、Batch C++ Shark/Cypher 特化） ─
 
     /// <summary>
-    /// Entry = D 的價格
-    /// SL    = 過 X 點外側一點點（buffer）
-    /// TP1   = CD 段 38.2% retracement（從 D 朝 C 反方向）
-    /// TP2   = CD 段 61.8% retracement
+    /// Entry = D 的價格、SL = 過 X 點外側一點點（buffer）。
+    ///
+    /// TP 計算分兩套：
+    ///   標準（Gartley/Bat/Butterfly/Crab/Deep_*）：
+    ///     從 D 對 CD 段做 retracement
+    ///     TP1 = D 沿 CD 反方向走 38.2%
+    ///     TP2 = D 沿 CD 反方向走 61.8%
+    ///   Shark / Cypher（影片重點 #5、transcript: 「XC 的位置」）：
+    ///     從 D 對 XC 段做投影
+    ///     TP1 = D + xcSigned × 0.382
+    ///     TP2 = D + xcSigned × 0.618
+    ///   （xcSigned = C - X，正負由方向決定；bullish 時 D + positive → 上方）
+    ///
+    /// patternName 預設空字串 → 用標準（CD）方法；明確傳 "shark" / "cypher" → 用 XC。
     /// </summary>
     public static (decimal Entry, decimal StopLoss, decimal Tp1, decimal Tp2, decimal Rr)
-        CalcTpSl(string direction, decimal Xp, decimal Cp, decimal Dp, decimal slBufferPct = 0.005m)
+        CalcTpSl(string direction, decimal Xp, decimal Cp, decimal Dp,
+                 decimal slBufferPct = 0.005m, string patternName = "")
     {
         var entry = Dp;
-        var cdSigned = Dp - Cp;
-        var tp1 = Dp - cdSigned * 0.382m;
-        var tp2 = Dp - cdSigned * 0.618m;
+        decimal tp1, tp2;
+        var isXcPattern = patternName == "shark" || patternName == "cypher";
+        if (isXcPattern)
+        {
+            var xcSigned = Cp - Xp;
+            tp1 = Dp + xcSigned * 0.382m;
+            tp2 = Dp + xcSigned * 0.618m;
+        }
+        else
+        {
+            var cdSigned = Dp - Cp;
+            tp1 = Dp - cdSigned * 0.382m;
+            tp2 = Dp - cdSigned * 0.618m;
+        }
 
         decimal sl, risk, reward;
         if (direction == "bullish")
@@ -325,6 +362,52 @@ public static class HarmonicPatterns
                 Math.Round(Ap + adMax * xaLen, 4)
             );
         }
+    }
+
+    // ── RSI 背離（Batch C++ 新增、影片重點 #2）─────────────────
+
+    /// <summary>
+    /// 在指定 index 算 SMA 版 RSI（period 預設 14）。沒足夠歷史回 50（中性）。
+    /// </summary>
+    public static decimal CalcRsiAt(List<BarData> bars, int endIdx, int period = 14)
+    {
+        if (endIdx < period || endIdx >= bars.Count) return 50m;
+        decimal gains = 0m, losses = 0m;
+        for (int i = endIdx - period + 1; i <= endIdx; i++)
+        {
+            var diff = bars[i].Close - bars[i - 1].Close;
+            if (diff > 0) gains += diff;
+            else losses -= diff;
+        }
+        var avgGain = gains / period;
+        var avgLoss = losses / period;
+        if (avgLoss == 0m) return 100m;
+        var rs = avgGain / avgLoss;
+        return Math.Round(100m - (100m / (1m + rs)), 4);
+    }
+
+    /// <summary>
+    /// 偵測 D 跟 B 之間的 RSI 規則背離（regular divergence）。
+    /// bullish 形態（B/D 都是低）：
+    ///   價：D.low &lt; B.low（創新低）
+    ///   RSI：RSI(D) &gt; RSI(B)（動能轉強）
+    /// bearish（B/D 都是高）：
+    ///   價：D.high &gt; B.high
+    ///   RSI：RSI(D) &lt; RSI(B)
+    /// </summary>
+    public static (bool HasDivergence, decimal RsiB, decimal RsiD) DetectRsiDivergence(
+        List<BarData> bars, int bIndex, int dIndex, string direction, int rsiPeriod = 14)
+    {
+        if (bIndex < rsiPeriod || dIndex >= bars.Count || dIndex <= bIndex)
+            return (false, 50m, 50m);
+        var rsiB = CalcRsiAt(bars, bIndex, rsiPeriod);
+        var rsiD = CalcRsiAt(bars, dIndex, rsiPeriod);
+        bool has;
+        if (direction == "bullish")
+            has = bars[dIndex].Low  < bars[bIndex].Low  && rsiD > rsiB;
+        else
+            has = bars[dIndex].High > bars[bIndex].High && rsiD < rsiB;
+        return (has, rsiB, rsiD);
     }
 
     // ── Candle Confirmation 掃描（Batch C+ 新增、影片重點 #2） ────
@@ -449,12 +532,15 @@ public static class HarmonicPatterns
             if (det == null) continue;
             seenDIdx.Add(D.Index);
 
-            // 填 TP/SL + status（含 PRZ Invalidated 判定）+ candle confirmation
-            var (entry, sl, tp1, tp2, rr) = CalcTpSl(det.Direction, det.Xp, det.Cp, det.Dp);
+            // 填 TP/SL + status（含 PRZ Invalidated）+ candle 確認 + RSI 背離
+            // CalcTpSl 帶 patternName、Shark/Cypher 自動走 XC 路徑
+            var (entry, sl, tp1, tp2, rr) = CalcTpSl(
+                det.Direction, det.Xp, det.Cp, det.Dp, patternName: det.PatternName);
             var (status, barsSince) = EvaluateStatus(
                 det.Direction, bars, det.DIdx, entry, sl, tp1, tp2,
                 przLow: det.PrzLow, przHigh: det.PrzHigh);
             var (hasConfirm, confirmSignals) = DetectCandleConfirmation(bars, det.DIdx, det.Direction);
+            var (hasDiv, rsiB, rsiD) = DetectRsiDivergence(bars, det.BIdx, det.DIdx, det.Direction);
 
             result.Add(new Detection
             {
@@ -468,6 +554,7 @@ public static class HarmonicPatterns
                 Status = status, BarsSinceD = barsSince,
                 PrzLow = det.PrzLow, PrzHigh = det.PrzHigh,
                 HasCandleConfirmation = hasConfirm, ConfirmationSignals = confirmSignals,
+                HasRsiDivergence = hasDiv, RsiAtB = rsiB, RsiAtD = rsiD,
             });
         }
 
@@ -587,6 +674,45 @@ public static class HarmonicPatterns
         }
 
         var nExamples = examples.Count;
+
+        // RR 跟期望報酬（影片重點 #6：勝率不是絕對、要看 RR）
+        // 用 target 自身 entry/tp/sl 算 gain / loss 百分比，再用樣本機率加權出 EV%
+        decimal rrTp1 = 0m, rrTp2 = 0m;
+        decimal gainTp1Pct = 0m, gainTp2Pct = 0m, lossSlPct = 0m;
+        if (targetEntry > 0m)
+        {
+            if (target.Direction == "bullish")
+            {
+                var risk = targetEntry - target.StopLoss;
+                if (risk > 0m)
+                {
+                    rrTp1 = Math.Round((target.Tp1 - targetEntry) / risk, 3);
+                    rrTp2 = Math.Round((target.Tp2 - targetEntry) / risk, 3);
+                }
+                gainTp1Pct = (target.Tp1 - targetEntry) / targetEntry * 100m;
+                gainTp2Pct = (target.Tp2 - targetEntry) / targetEntry * 100m;
+                lossSlPct  = (target.StopLoss - targetEntry) / targetEntry * 100m;   // 負
+            }
+            else
+            {
+                var risk = target.StopLoss - targetEntry;
+                if (risk > 0m)
+                {
+                    rrTp1 = Math.Round((targetEntry - target.Tp1) / risk, 3);
+                    rrTp2 = Math.Round((targetEntry - target.Tp2) / risk, 3);
+                }
+                gainTp1Pct = (targetEntry - target.Tp1) / targetEntry * 100m;
+                gainTp2Pct = (targetEntry - target.Tp2) / targetEntry * 100m;
+                lossSlPct  = (targetEntry - target.StopLoss) / targetEntry * 100m;   // 負
+            }
+        }
+        var pTp1 = nExamples == 0 ? 0m : (decimal)tp1HitBars.Count / nExamples;
+        var pTp2 = nExamples == 0 ? 0m : (decimal)tp2HitBars.Count / nExamples;
+        var pSl  = nExamples == 0 ? 0m : (decimal)slHitBars.Count  / nExamples;
+        // 純 TP1 出場：sample 命中 TP1 = +tp1_gain；命中 SL = -sl_loss；其他 = 0
+        var evTp1 = pTp1 * gainTp1Pct + pSl * lossSlPct;
+        var evTp2 = pTp2 * gainTp2Pct + pSl * lossSlPct;
+
         var stats = new SimulationStats
         {
             Samples = nExamples,
@@ -596,6 +722,10 @@ public static class HarmonicPatterns
             AvgBarsToTp1 = tp1HitBars.Count == 0 ? null : Math.Round((decimal)tp1HitBars.Sum() / tp1HitBars.Count, 1),
             AvgBarsToTp2 = tp2HitBars.Count == 0 ? null : Math.Round((decimal)tp2HitBars.Sum() / tp2HitBars.Count, 1),
             AvgBarsToSl  = slHitBars.Count  == 0 ? null : Math.Round((decimal)slHitBars.Sum()  / slHitBars.Count,  1),
+            RiskRewardTp1 = rrTp1,
+            RiskRewardTp2 = rrTp2,
+            ExpectedReturnPctTp1Only = Math.Round(evTp1, 3),
+            ExpectedReturnPctTp2Only = Math.Round(evTp2, 3),
         };
 
         return new SimulationResult
@@ -620,6 +750,7 @@ public static class HarmonicPatterns
             Status = d.Status, BarsSinceD = d.BarsSinceD,
             PrzLow = d.PrzLow, PrzHigh = d.PrzHigh,
             HasCandleConfirmation = d.HasCandleConfirmation, ConfirmationSignals = d.ConfirmationSignals,
+            HasRsiDivergence = d.HasRsiDivergence, RsiAtB = d.RsiAtB, RsiAtD = d.RsiAtD,
         };
     }
 }

@@ -62,18 +62,18 @@ public class HarmonicStrategy : IStrategy
         {
             action = "buy";
             confidence = Math.Clamp(det.Confidence * (1m - distRatio * 20m), 0.5m, 0.95m);
-            // Batch C+：confirmed by Hammer/Engulfing → 信心 +0.15、cap 0.95
-            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.15m);
-            reason = $"Bullish {det.PatternName} @ D={det.Dp}; price {price}. PRZ=[{det.PrzLow}, {det.PrzHigh}]. TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}." +
-                     (det.HasCandleConfirmation ? $" ✓ Confirm: {det.ConfirmationSignals}" : " (no candle confirm yet)");
+            // Batch C++：candle 跟 RSI 各自獨立 +0.10、最多 +0.20、cap 0.95
+            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.10m);
+            if (det.HasRsiDivergence)      confidence = Math.Min(0.95m, confidence + 0.10m);
+            reason = BuildReason("Bullish", det, price);
         }
         else if (det.Direction == "bearish")
         {
             action = "sell";
             confidence = Math.Clamp(det.Confidence * (1m - distRatio * 20m), 0.5m, 0.95m);
-            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.15m);
-            reason = $"Bearish {det.PatternName} @ D={det.Dp}; price {price}. PRZ=[{det.PrzLow}, {det.PrzHigh}]. TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}." +
-                     (det.HasCandleConfirmation ? $" ✓ Confirm: {det.ConfirmationSignals}" : " (no candle confirm yet)");
+            if (det.HasCandleConfirmation) confidence = Math.Min(0.95m, confidence + 0.10m);
+            if (det.HasRsiDivergence)      confidence = Math.Min(0.95m, confidence + 0.10m);
+            reason = BuildReason("Bearish", det, price);
         }
         else
         {
@@ -123,8 +123,27 @@ public class HarmonicStrategy : IStrategy
                 },
                 ["bars_since_d"] = det.BarsSinceD,
                 ["has_candle_confirm"] = det.HasCandleConfirmation ? 1m : 0m,
+                // Batch C++ 新欄位（RSI 背離）
+                ["has_rsi_divergence"] = det.HasRsiDivergence ? 1m : 0m,
+                ["rsi_at_b"] = det.RsiAtB,
+                ["rsi_at_d"] = det.RsiAtD,
             },
         };
+    }
+
+    private static string BuildReason(string sideLabel, HarmonicPatterns.Detection det, decimal price)
+    {
+        var confirmParts = new List<string>();
+        if (det.HasCandleConfirmation) confirmParts.Add($"K：{det.ConfirmationSignals}");
+        if (det.HasRsiDivergence)      confirmParts.Add($"RSI 背離 (B={det.RsiAtB:F1} → D={det.RsiAtD:F1})");
+        var confirmStr = confirmParts.Count > 0
+            ? $" ✓ {string.Join(" + ", confirmParts)}"
+            : " (尚無確認訊號)";
+
+        return $"{sideLabel} {det.PatternName} @ D={det.Dp}；現價 {price}。" +
+               $" PRZ=[{det.PrzLow}, {det.PrzHigh}]。" +
+               $" TP1={det.Tp1} TP2={det.Tp2} SL={det.StopLoss} RR={det.RiskReward}。" +
+               confirmStr;
     }
 
     private static Signal Hold(StrategyConfig c, string reason) => new()
