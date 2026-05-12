@@ -39,11 +39,40 @@ public class TradingAccountHandler : ICapabilityHandler
             "get_account"        => await GetAccount(opts, ct),
             "get_positions"      => await GetPositions(opts, ct),
             "get_trades"         => await GetTrades(opts, ct),
+            "get_trade_history"  => GetTradeHistory(opts),    // 純讀本地 DB、支援所有 exchange（含 perp）
             "list_exchanges"     => ListExchanges(),
             "daily_trade_count"  => DailyTradeCount(opts),
             "last_trade_times"   => LastTradeTimes(),
             _ => (false, null, $"Unknown route: {route}")
         };
+    }
+
+    // 純讀本地 DB 的成交歷史（不打交易所、不需要 exchange client）。
+    // 給 pnl-summary 用、解鎖 BingX perp（perp 走 _perpClients、不在 _clients 裡、get_trades 不認）。
+    // 支援 symbol / exchange / since(UTC ISO) / limit filter、按 executed_at DESC 排。
+    private (bool, string?, string?) GetTradeHistory(JsonElement opts)
+    {
+        var symbol   = opts.TryGetProperty("symbol",    out var s)  ? s.GetString() : null;
+        var exchange = opts.TryGetProperty("exchange",  out var ex) ? ex.GetString() : null;
+        var limit    = opts.TryGetProperty("limit",     out var l)  ? l.GetInt32() : 500;
+        DateTime? since = null;
+        if (opts.TryGetProperty("since", out var sn) && sn.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(sn.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var snDt))
+            since = snDt.ToUniversalTime();
+
+        var trades = _db.GetTrades(symbol: symbol, limit: limit, exchange: exchange, sinceUtc: since);
+        var json = JsonSerializer.Serialize(new
+        {
+            count = trades.Count,
+            symbol, exchange, since, limit,
+            trades = trades.Select(t => new
+            {
+                trade_id = t.TradeId, order_id = t.OrderId, symbol = t.Symbol, exchange = t.Exchange,
+                side = t.Side, quantity = t.Quantity, price = t.Price,
+                fee = t.Fee, realized_pnl = t.RealizedPnl, executed_at = t.ExecutedAt,
+            })
+        });
+        return (true, json, null);
     }
 
     private (bool, string?, string?) LastTradeTimes()

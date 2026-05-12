@@ -222,11 +222,14 @@ public class TradingDbStorage : IDisposable
         return raw == null ? 0 : Convert.ToInt32(raw);
     }
 
-    public List<TradeRecord> GetTrades(string? symbol = null, int limit = 100)
+    public List<TradeRecord> GetTrades(string? symbol = null, int limit = 100, string? exchange = null, DateTime? sinceUtc = null)
     {
         using var cmd = _conn.CreateCommand();
-        var clause = symbol != null ? "WHERE symbol = $symbol" : "";
-        if (symbol != null) cmd.Parameters.AddWithValue("$symbol", symbol);
+        var conditions = new List<string>();
+        if (symbol   != null) { conditions.Add("symbol = $symbol");      cmd.Parameters.AddWithValue("$symbol", symbol); }
+        if (exchange != null) { conditions.Add("exchange = $exchange");  cmd.Parameters.AddWithValue("$exchange", exchange); }
+        if (sinceUtc.HasValue){ conditions.Add("executed_at >= $since"); cmd.Parameters.AddWithValue("$since", sinceUtc.Value.ToString("o")); }
+        var clause = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
         cmd.CommandText = $"SELECT * FROM trades {clause} ORDER BY executed_at DESC LIMIT $limit";
         cmd.Parameters.AddWithValue("$limit", limit);
 

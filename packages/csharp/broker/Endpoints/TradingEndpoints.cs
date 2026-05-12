@@ -149,10 +149,16 @@ public static class TradingEndpoints
                 since = snDt.ToUniversalTime();
             var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 500;
 
-            var payload = JsonSerializer.Serialize(new { exchange, symbol, limit });
-            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_trades", payload));
+            // get_trade_history 純讀本地 DB、不挑 exchange client、支援 BingX perp。
+            // 跟 get_trades（live exchange API）對比：history 從上次 sync 起的歷史快取、含 realized_pnl。
+            var payload = JsonSerializer.Serialize(new
+            {
+                exchange, symbol, limit,
+                since = since?.ToString("o"),
+            });
+            var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_trade_history", payload));
             if (!result.Success)
-                return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trades failed"));
+                return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trade_history failed"));
 
             // 解析 trades + 聚合
             var tradesDoc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;

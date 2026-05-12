@@ -1,6 +1,7 @@
 using System.Text.Json;
 using TradingWorker.Exchange;
 using TradingWorker.Models;
+using TradingWorker.Storage;
 using WorkerSdk;
 
 namespace TradingWorker.Handlers;
@@ -23,6 +24,7 @@ namespace TradingWorker.Handlers;
 public class TradingPerpetualHandler : ICapabilityHandler
 {
     private readonly Dictionary<string, IPerpetualClient> _clients;
+    private readonly TradingDbStorage? _db;
     private readonly Microsoft.Extensions.Logging.ILoggerFactory? _loggerFactory;
 
     // ── ad-hoc per-user client cache（A2.5b 2026-05-10）──
@@ -33,10 +35,12 @@ public class TradingPerpetualHandler : ICapabilityHandler
     public string CapabilityId => "trading.perpetual";
 
     public TradingPerpetualHandler(Dictionary<string, IPerpetualClient> clients,
-        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null,
+        TradingDbStorage? db = null)
     {
         _clients = clients;
         _loggerFactory = loggerFactory;
+        _db = db;
     }
 
     public async Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -184,6 +188,31 @@ public class TradingPerpetualHandler : ICapabilityHandler
             };
 
             var result = await c.PlaceOrderAsync(order, ct);
+
+            // Persist 永續成交到 local DB（給 get_trade_history / pnl-summary 用）。
+            // BingX market order 通常即時成交、result 會帶 FilledQty + FilledPrice。
+            // 開倉只有手續費沒 realized_pnl；reduce_only 平倉才有 realized_pnl。
+            if (_db != null && result.Status == "filled" && result.FilledQty > 0 && result.FilledPrice.HasValue)
+            {
+                try
+                {
+                    _db.SaveTrade(new TradeRecord
+                    {
+                        TradeId    = $"perp-{result.ExternalId}",
+                        OrderId    = result.OrderId,
+                        Symbol     = result.Symbol,
+                        Exchange   = result.Exchange,
+                        Side       = result.Side,
+                        Quantity   = result.FilledQty,
+                        Price      = result.FilledPrice.Value,
+                        Fee        = null,                 // BingX 預設不在 place_order response 帶 fee
+                        RealizedPnl = reduceOnly ? null : null,  // realized PnL 通常要從 /user/positions/closeAll 或單 fill detail 拿、不在 place 回傳
+                        ExecutedAt = result.FilledAt ?? DateTime.UtcNow,
+                    });
+                }
+                catch { /* persist 失敗別影響 caller */ }
+            }
+
             var json = JsonSerializer.Serialize(SerializeOrder(result));
             return (true, json, null);
         }
