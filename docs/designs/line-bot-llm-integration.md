@@ -2,7 +2,21 @@
 
 **寫於**：2026-05-10 深夜（連續 14h debug session 結尾）
 **目的**：把 Discord bot-node「自然語言提需求 → tool calling → broker」的能力複製到 LINE OA、讓使用者手機 LINE 就能查行情/下單/審核
-**狀態**：研究完、選路、未動工（明天接續）
+
+**狀態更新（2026-05-13）**：原設計選 Path B（平行 bot-line 容器、走 claude --print + Max 訂閱）。但實際驗收發現 **Path A 部分已可用**：
+
+- ✅ line-worker WebhookReceiver + InboundDispatcher 已連到 broker `/api/v1/high-level/line/process`
+- ✅ HighLevelCoordinator 接 inbound 訊息、走既有 RAG / drafts / project interview / LLM proxy（Claude 等大模型）回覆
+- ✅ user 實測「跟 claude 差不多」的對話品質
+- ⚠️ Tool calling（trading.* / strategy.* 等）仍未接到 LINE 路徑 — Discord bot-node 是有 tool calling 的、LINE 端仍是「對話 only」
+- ⚠️ Outbound notification（DailyReport / Discord approval 結果推 LINE）在 broker rebuild 期間會撞 transient `Connection refused`、已修成短 warning（commit TBD）
+
+**結論**：Path A 跟 Path B 不是二選一、變成兩階段：
+
+1. **Phase 1（已上線）** — Path A 對話路徑、使用 broker 既有 LLM proxy。生活助理 / 查詢 / RAG 等高階功能 LINE 上可用。
+2. **Phase 2（待動工）** — 給 LINE coordinator 加 tool calling（用 Path A 的擴展、不另開 bot-line 容器）、讓 LINE 也能下單 / 走 approval flow。
+
+下面舊版盤點保留作歷史紀錄。
 
 ---
 

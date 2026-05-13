@@ -445,6 +445,16 @@ public class InboundDispatcher
         catch (OperationCanceledException)
         {
         }
+        catch (HttpRequestException ex) when (
+            ex.InnerException is System.Net.Sockets.SocketException sockEx &&
+            (sockEx.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused
+             || sockEx.SocketErrorCode == System.Net.Sockets.SocketError.HostUnreachable
+             || sockEx.SocketErrorCode == System.Net.Sockets.SocketError.NetworkUnreachable))
+        {
+            // Broker rebuild / restart 瞬間的 transient error——broker 一回來 retry 會成功
+            // 印簡短 warning 即可、避免 full stack trace 洗 log（每 2 秒 retry × N 行 stack）
+            _logger.LogWarning("Pending notifications poll: broker temporarily unreachable ({Error})", sockEx.SocketErrorCode);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to dispatch pending LINE notifications.");
