@@ -232,8 +232,22 @@ public class AutoTraderService : BackgroundService
     public decimal PerpScaleInStep => _perpScaleInStep;
 
     /// <summary>申報資金錨定（per exchange）。risk gate 用 min(declared, live) 算 equity。</summary>
-    private readonly Dictionary<string, decimal> _declaredCapitalByExchange;
+    private readonly ConcurrentDictionary<string, decimal> _declaredCapitalByExchange;
     public IReadOnlyDictionary<string, decimal> DeclaredCapital => _declaredCapitalByExchange;
+
+    /// <summary>
+    /// 由 BalanceAnchorService 偵測到 deposit / withdraw 後呼叫，原子更新該交易所的 anchor。
+    /// 不在這裡決定要不要更新——caller 自己判斷 unexplained_delta 是否超過 threshold。
+    /// 回傳前後值供 caller log + 推通知。
+    /// </summary>
+    public (decimal Old, decimal New) UpdateDeclaredCapital(string exchange, decimal newAnchor)
+    {
+        var key = exchange.ToLowerInvariant();
+        var oldVal = _declaredCapitalByExchange.TryGetValue(key, out var v) ? v : 0m;
+        _declaredCapitalByExchange[key] = newAnchor;
+        _logger.LogInformation("RiskAnchor updated: {Exchange} {Old:F2} → {New:F2}", key, oldVal, newAnchor);
+        return (oldVal, newAnchor);
+    }
 
     public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency, TrailingLock }
 
@@ -536,7 +550,7 @@ public class AutoTraderService : BackgroundService
         // 跌會收緊（正確）、漲不會放寬（user 要求）。0 = 不啟用、用實際 balance（向後相容）。
         // env 設定例：Risk__DeclaredCapital__Bingx=100 → BingX 即使後來賺到 200、risk 仍按 100 算。
         // 直到 user 主動調高、賺到的部分都不計入風控基底。
-        _declaredCapitalByExchange = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        _declaredCapitalByExchange = new ConcurrentDictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         foreach (var ex in new[] { "Bingx", "Binance", "Alpaca" })
         {
             var raw = Environment.GetEnvironmentVariable($"Risk__DeclaredCapital__{ex}");
