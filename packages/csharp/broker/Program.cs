@@ -47,6 +47,7 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Auto-trader 監控清單持久化（2026-05-02）— 取代 ConcurrentDictionary in-memory 設計
     initDb.EnsureTable<AutoTradeWatchEntry>();
     initDb.EnsureTable<RiskAnchorState>();
+    initDb.EnsureTable<LlmReasoningAuditEntry>();
     // Auto-trader 全域設定 + 永續部位保護狀態（2026-05-08 補完）
     // 設定：enabled / interval_seconds 重啟保留；perp 部位狀態：SL / peak / be_moved 重啟保留
     initDb.EnsureTable<AutoTraderSettingsEntry>();

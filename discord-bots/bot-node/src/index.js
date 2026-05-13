@@ -11,6 +11,7 @@ import { Client, GatewayIntentBits, Events, Partials } from 'discord.js';
 import { loadAccess, isAllowed, isPrivilegedUser, isPrivilegedTool } from './access.js';
 import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
+import { pushLlmReasoning } from './audit.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
 import { startApprovalPoller, handleInteraction as handleApprovalInteraction } from './approvals.js';
 import { startLineWebhookServer } from './line-webhook.js';
@@ -153,6 +154,19 @@ client.on(Events.MessageCreate, async (msg) => {
       if (caller.privilegedTool && !caller.isPrivileged) {
         console.log(`[acl] tool=${toolCall.call} blocked for non-privileged user=${userId}`);
       }
+      // W13: 把 LLM reasoning + tool_call 同步推 broker audit
+      // fire-and-forget、不 await（避免延遲 dispatch、但記得在這 await 才是 audit 順序對）
+      // 實作上：await 確保 audit 順序正確（reasoning 在 dispatch 前落表）、即使 broker 慢也只多 ~100ms
+      await pushLlmReasoning({
+        source: 'discord',
+        userId,
+        channelId: msg.channel?.id || '',
+        turn,
+        llmReasoning: result.text,
+        toolName: toolCall.call,
+        toolArgs: toolCall.args,
+        aclAllowed: !caller.privilegedTool || caller.isPrivileged,
+      });
       const toolResult = await dispatchTool(toolCall, caller);
       console.log(`[tool] turn=${turn} ${toolResult.ok ? 'ok' : 'fail'} ${toolResult.error || ''}`);
       messages.push({ role: 'tool', content: toolResult.summary });

@@ -1,5 +1,8 @@
 using Broker.Helpers;
+using BrokerCore.Data;
+using BrokerCore.Models;
 using BrokerCore.Services;
+using System.Text.Json;
 
 namespace Broker.Endpoints;
 
@@ -182,6 +185,67 @@ public static class AuditEndpoints
                     failed = e.CallsFailed,
                 }),
             }));
+        });
+
+        // ── W13：bot-node hybrid LLM reasoning audit ──
+        // bot-node 在 client side spawn `claude --print`、broker 看不到 reasoning。
+        // 這條 endpoint 讓 bot-node 在 dispatch 前同步推 LLM 完整 response、broker 落表。
+        // 僅供 audit/forensics、不參與 dispatch 決策。
+        // Auth：要 X-Internal-Bot-Token（bot-node 本來就有）、不開 cookie session。
+        audit.MapPost("/llm-reasoning", (HttpContext ctx, BrokerDb db) =>
+        {
+            // bot-node 拿 X-Internal-Bot-Token 過 InternalBotAuthMiddleware 後 role 是 "user" 或 "admin"
+            // 沒過 middleware 的話 GetRoleId 回空字串、就拒絕
+            var role = RequestBodyHelper.GetRoleId(ctx);
+            if (string.IsNullOrEmpty(role) || (role != "role_user" && role != "role_admin"))
+            {
+                return Results.Json(ApiResponseHelper.Error("internal bot token required", 401), statusCode: 401);
+            }
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            var entry = new LlmReasoningAuditEntry
+            {
+                OccurredAt   = DateTime.UtcNow,
+                Source       = body.TryGetProperty("source",        out var s)  ? s.GetString()  ?? "discord" : "discord",
+                UserId       = body.TryGetProperty("user_id",       out var u)  ? u.GetString()  ?? ""        : "",
+                ChannelId    = body.TryGetProperty("channel_id",    out var c)  ? c.GetString()  ?? ""        : "",
+                Turn         = body.TryGetProperty("turn",          out var t) && t.TryGetInt32(out var tv) ? tv : 0,
+                LlmReasoning = body.TryGetProperty("llm_reasoning", out var r)  ? r.GetString()  ?? ""        : "",
+                ToolName     = body.TryGetProperty("tool_name",     out var tn) ? tn.GetString() ?? ""        : "",
+                ToolArgs     = body.TryGetProperty("tool_args",     out var ta) ? ta.GetRawText()             : "{}",
+                AclAllowed   = body.TryGetProperty("acl_allowed",   out var al) && al.GetBoolean(),
+                DispatchResult = body.TryGetProperty("dispatch_result", out var dr) ? dr.GetString() ?? "pending" : "pending",
+            };
+
+            // 防 DoS：reasoning 字串截到 8 KB（足夠 LLM 一輪 response、不會撐爆 DB）
+            if (entry.LlmReasoning.Length > 8192) entry.LlmReasoning = entry.LlmReasoning[..8192] + "…[truncated]";
+            if (entry.ToolArgs.Length > 4096) entry.ToolArgs = entry.ToolArgs[..4096] + "…[truncated]";
+
+            db.Insert(entry);
+            return Results.Ok(ApiResponseHelper.Success(new { entry_id = entry.EntryId }));
+        });
+
+        // 查詢用：admin / user 各自只看到自己 user_id 的紀錄
+        audit.MapGet("/llm-reasoning", (HttpContext ctx, BrokerDb db, HttpRequest req) =>
+        {
+            var callerPrincipalId = RequestBodyHelper.GetPrincipalId(ctx);
+            var isAdmin = RequestBodyHelper.IsAdmin(ctx);
+            var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var lv) ? Math.Min(lv, 200) : 50;
+            var filterUser = req.Query.TryGetValue("user_id", out var u) ? u.ToString() : null;
+            if (!isAdmin) filterUser = callerPrincipalId;
+
+            var sql = "SELECT * FROM llm_reasoning_audit WHERE 1=1";
+            var args = new Dictionary<string, object>();
+            if (!string.IsNullOrEmpty(filterUser))
+            {
+                sql += " AND user_id = $uid";
+                args["$uid"] = filterUser;
+            }
+            sql += " ORDER BY entry_id DESC LIMIT $limit";
+            args["$limit"] = limit;
+
+            var rows = db.Query<LlmReasoningAuditEntry>(sql, args);
+            return Results.Ok(ApiResponseHelper.Success(new { count = rows.Count, entries = rows }));
         });
     }
 }
