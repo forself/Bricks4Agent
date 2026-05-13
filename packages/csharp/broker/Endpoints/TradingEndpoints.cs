@@ -220,6 +220,56 @@ public static class TradingEndpoints
             }));
         });
 
+        // ── Trade journal CSV export ──
+        // 把本地 DB 的 trades 表（含 strategy attribution）匯成 CSV、給離線分析 / 報告附錄用。
+        // 不過 ApprovalGate（純讀 + audit）、但要 X-Internal-Bot-Token 或 cookie session。
+        trading.MapGet("/trades/export.csv", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("trading.account"))
+                return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
+
+            var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "bingx";
+            var symbol = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null;
+            var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 1000;
+            DateTime? since = null;
+            if (req.Query.TryGetValue("since", out var sn) && DateTime.TryParse(sn.ToString(), out var snDt))
+                since = snDt.ToUniversalTime();
+
+            var payload = JsonSerializer.Serialize(new { exchange, symbol, limit, since = since?.ToString("o") });
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "trading.account", "get_trade_history", payload));
+            if (!result.Success)
+                return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trade_history failed"));
+
+            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            if (!doc.TryGetProperty("trades", out var tradesEl) || tradesEl.ValueKind != JsonValueKind.Array)
+                return Results.Text("trade_id,order_id,symbol,exchange,side,quantity,price,fee,realized_pnl,strategy,executed_at\n",
+                    "text/csv");
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("trade_id,order_id,symbol,exchange,side,quantity,price,fee,realized_pnl,strategy,executed_at");
+            foreach (var t in tradesEl.EnumerateArray())
+            {
+                string Esc(string? v) => v == null ? "" : (v.Contains(',') || v.Contains('"') ? $"\"{v.Replace("\"", "\"\"")}\"" : v);
+                string Get(string p) => t.TryGetProperty(p, out var x) ? (x.ValueKind == JsonValueKind.Null ? "" : x.ToString()) : "";
+                sb.AppendLine(string.Join(",",
+                    Esc(Get("trade_id")),
+                    Esc(Get("order_id")),
+                    Esc(Get("symbol")),
+                    Esc(Get("exchange")),
+                    Esc(Get("side")),
+                    Get("quantity"),
+                    Get("price"),
+                    Get("fee"),
+                    Get("realized_pnl"),
+                    Esc(Get("strategy")),
+                    Esc(Get("executed_at"))));
+            }
+            var filename = $"trades-{exchange}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv", filename);
+        });
+
         // 查 cache 狀態（不觸發 refresh）
         trading.MapGet("/symbol-specs/status", () =>
         {

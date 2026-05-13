@@ -1190,6 +1190,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
   <div class="form-row" style="margin-bottom:12px">
     <div class="fg"><select id="pnl-exchange" onchange="loadPnlReport()"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
     <button class="btn btn-o btn-sm" onclick="loadPnlReport()">重新整理</button>
+    <button class="btn btn-o btn-sm" onclick="exportTradesCsv()" title="匯出本地 DB 全部 trades（含 strategy attribution）">📥 匯出 CSV</button>
     <span style="font-size:11px;color:var(--text3);align-self:center">資料來自 /api/v1/portfolio/metrics（FIFO 配對 + 即時 P&L）</span>
   </div>
   <!-- Tier-1 stats (6 cards): 帳戶 / 現金 / 已實現 / 未實現 / 勝率 / Sharpe -->
@@ -3146,6 +3147,14 @@ async function setRiskAnchor(exchange = 'bingx'){
 }
 
 let _pnlEquityChart=null;
+// 匯出本地 DB trades 成 CSV、瀏覽器自動下載
+function exportTradesCsv(){
+  const ex = document.getElementById('pnl-exchange').value || 'bingx';
+  // anchor click 觸發 browser 下載；endpoint 帶 X-Internal-Bot-Token 不行（要 cookie）→ 走 plain GET 由 cookie session 認
+  const url = `${API}/api/v1/trading/trades/export.csv?exchange=${encodeURIComponent(ex)}&limit=5000`;
+  window.open(url, '_blank');
+}
+
 async function loadPnlReport(){
   loadRiskAnchor();   // 順便刷 anchor 區塊（同 tab 統一刷新）
   const ex=document.getElementById('pnl-exchange').value;

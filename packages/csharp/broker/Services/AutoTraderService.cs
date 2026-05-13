@@ -206,6 +206,39 @@ public class AutoTraderService : BackgroundService
     private readonly ConcurrentDictionary<string, DateTime> _lastEntryAt = new();
 
     /// <summary>
+    /// 新倉 symbol 跟「已開倉 symbol」最大允許 30-day daily-return correlation。
+    /// > threshold 視為「實質同向、3 倉變 1 倉」、拒絕開新倉。
+    /// 0 或負值 = 關閉檢查。預設 0.85（crypto major 之間 > 0.85 很常見、抓掉最嚴重的）。
+    /// env: AUTOTRADER_MAX_CORRELATION
+    /// </summary>
+    private readonly decimal _maxCorrelation;
+
+    /// <summary>
+    /// 開倉前對 BingX funding rate 做 sanity check：
+    ///   funding > +threshold% / 8h → 拒絕 LONG（持 long 要付 funding、太貴）
+    ///   funding < -threshold% / 8h → 拒絕 SHORT（持 short 要付、太貴）
+    /// 預設 threshold 0.05%（年化 ±54%）；0 = 關閉。env: AUTOTRADER_MAX_FUNDING_RATE_PCT
+    /// </summary>
+    private readonly decimal _maxFundingRatePct;
+    private static readonly HttpClient _publicHttp = new() { Timeout = TimeSpan.FromSeconds(5) };
+
+    /// <summary>
+    /// Liquidation warning threshold — distance &lt; this 推 Discord/LINE 但不平倉。
+    /// 比 _perpLiqEmergencyPct（強制平倉）更早一階、給 user 手動 add margin 的機會。
+    /// 預設 10%；0 = 關閉。env: AUTOTRADER_LIQ_ALERT_PCT
+    /// </summary>
+    private readonly decimal _liqAlertPct;
+
+    /// <summary>
+    /// Slippage audit threshold（% of mark price at signal time）。
+    /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn（不擋）。
+    /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
+    /// </summary>
+    private readonly decimal _slippageAlertPct;
+    private readonly ConcurrentDictionary<string, DateTime> _lastLiqAlertAt = new();
+    private static readonly TimeSpan _liqAlertCooldown = TimeSpan.FromHours(1);
+
+    /// <summary>
     /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
     /// 模式：
     ///   "off"    — 完全不檢查（向後相容、預設）
@@ -500,18 +533,25 @@ public class AutoTraderService : BackgroundService
 
     private readonly ExchangeCredentialService? _credentials;
 
+    private readonly DiscordNotificationService? _discordNotification;
+    private readonly LineNotificationService? _lineNotification;
+
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
         BrokerDb db,
         ILogger<AutoTraderService> logger,
-        ExchangeCredentialService? credentials = null)
+        ExchangeCredentialService? credentials = null,
+        DiscordNotificationService? discordNotification = null,
+        LineNotificationService? lineNotification = null)
     {
         _dispatcher = dispatcher;
         _registry   = registry;
         _db         = db;
         _logger     = logger;
         _credentials = credentials;
+        _discordNotification = discordNotification;
+        _lineNotification = lineNotification;
 
         var forceRaw = Environment.GetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION")?.Trim().ToLowerInvariant();
         if (forceRaw == "buy" || forceRaw == "sell")
@@ -539,6 +579,16 @@ public class AutoTraderService : BackgroundService
         _maxOpenPositions = (int)ParsePctEnv("AUTOTRADER_MAX_OPEN_POSITIONS", defaultValue: 3m, min: 0m, max: 20m);
         // Per-symbol 連續開倉冷卻：避免訊號反翻 churn、預設 30 分鐘
         _minEntryIntervalSec = (int)ParsePctEnv("AUTOTRADER_MIN_ENTRY_INTERVAL_SEC", defaultValue: 1800m, min: 0m, max: 86400m);
+        // 30-day correlation cap：新倉 symbol 跟已開倉 symbol 高度同向就拒（防 3 倉變 1 倉）
+        // 0 = 關閉、預設 0.85（crypto major 普遍 > 0.85、抓掉最嚴重的同 beta）
+        _maxCorrelation = ParsePctEnv("AUTOTRADER_MAX_CORRELATION", defaultValue: 0.85m, min: 0m, max: 1m);
+        // funding rate 上限（% / 8h）：超過此 abs 值拒絕對應方向開倉
+        // 0 = 關閉、預設 0.05% (年化 ~±54%、捕捉 funding 異常擠擁)
+        _maxFundingRatePct = ParsePctEnv("AUTOTRADER_MAX_FUNDING_RATE_PCT", defaultValue: 0.05m, min: 0m, max: 5m);
+        // Liquidation warning（比 emergency 早一階、push 不平倉）
+        _liqAlertPct = ParsePctEnv("AUTOTRADER_LIQ_ALERT_PCT", defaultValue: 10m, min: 0m, max: 50m);
+        // Slippage audit threshold（filled_price vs signal-time markPrice）
+        _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
         // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
         var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
         _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
@@ -1359,6 +1409,27 @@ public class AutoTraderService : BackgroundService
         state.LiquidationPrice = liqPrice;
         state.UpdatedAt = now;
 
+        // ── Liquidation warning push（比 emergency 早一階、不平倉、給人工 add margin 機會）─
+        if (_liqAlertPct > 0m && liqDistPct > 0m && liqDistPct < _liqAlertPct
+            && liqDistPct > _perpLiqEmergencyPct)  // 已進 emergency 範圍由下面 case 處理、不再 push
+        {
+            var alertKey = $"{exchange}:{symbol}:{side}";
+            var now2 = DateTime.UtcNow;
+            var lastAlert = _lastLiqAlertAt.TryGetValue(alertKey, out var la) ? la : DateTime.MinValue;
+            if (now2 - lastAlert > _liqAlertCooldown)
+            {
+                _lastLiqAlertAt[alertKey] = now2;
+                var title = $"⚠ 強平距離警告 · {symbol} {side.ToUpper()}";
+                var body = $"距離強平僅 **{liqDistPct:F2}%**（threshold {_liqAlertPct}%）\n" +
+                           $"Mark: {markPrice:F4}  Liq: {state.LiquidationPrice:F4}\n" +
+                           $"建議手動加保證金或減倉。Emergency 平倉門檻：{_perpLiqEmergencyPct}%";
+                try { if (_discordNotification != null) await _discordNotification.SendAdHocAsync(title, body, color: 0xF6465D, ct); } catch { }
+                try { if (_lineNotification != null) await _lineNotification.SendAdHocAsync(title, body, level: "warning", ct); } catch { }
+                AddLog(_watchList.TryGetValue($"{exchange}:{symbol}", out var wAlert) ? wAlert : new WatchItem { Symbol = symbol, Exchange = exchange },
+                    "warn", $"liq alert pushed: distance {liqDistPct:F2}% < {_liqAlertPct}%");
+            }
+        }
+
         var decision = EvaluatePerpetualProtection(state, markPrice, qty, liqDistPct, _protectionConfig, _perpLiqEmergencyPct);
         switch (decision.Action)
         {
@@ -1975,9 +2046,10 @@ public class AutoTraderService : BackgroundService
         // ── Risk gate（只擋開倉、平倉永遠放行）──
         // 平倉（reduceOnly=true）必須一律允許——擋出場才是真風險。
         // 開倉前 fetch mark price 估名目、把現有 positions 一起餵給 risk-worker 的 pre_perp_order。
+        // 提到 method scope、給後面 slippage audit 用
+        decimal markPrice = 0m;
         if (!reduceOnly && _registry.HasAvailableWorker("risk.check"))
         {
-            decimal markPrice = 0m;
             var mpResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "get_mark_price",
                 JsonSerializer.Serialize(new { exchange = item.Exchange, symbol = item.Symbol })));
             if (mpResult.Success)
@@ -2089,6 +2161,51 @@ public class AutoTraderService : BackgroundService
                 AddLog(item, "skip",
                     $"max {_maxOpenPositions} open positions reached ({perpPositions.Count} existing). New symbol open blocked.");
                 return;
+            }
+
+            // ── 30-day correlation cap（防 BTC/ETH/SOL 同向 3 倉 = 1 倉 beta）─
+            // 只對「全新 open」啟用；scale_in 是同 symbol、自然 corr=1.0 不該擋自己
+            if (_maxCorrelation > 0m && perpAction!.StartsWith("open_") && perpPositions.Count > 0)
+            {
+                var corrResult = await CheckCorrelationCap(item, perpPositions, ct);
+                if (corrResult.shouldBlock)
+                {
+                    AddLog(item, "skip",
+                        $"correlation cap: |r|={corrResult.maxCorr:F3} vs {corrResult.mostCorrelated} > {_maxCorrelation:F2} (3 倉變 1 倉風險)");
+                    return;
+                }
+                else if (corrResult.maxCorr > 0m)
+                {
+                    // 沒擋但記錄、給 dashboard / 之後 thesis 評估
+                    AddLog(item, "info",
+                        $"correlation OK: |r|={corrResult.maxCorr:F3} vs {corrResult.mostCorrelated} (threshold {_maxCorrelation:F2})");
+                }
+            }
+
+            // ── Funding rate cap（cost-aware sizing、擠擁 funding 直接拒絕對應方向）─
+            // 拉 BingX premiumIndex public endpoint、看 lastFundingRate。
+            // funding > +threshold → 拒 long；funding < -threshold → 拒 short
+            // 只對 open_ 啟用、不限制 scale_in（避免半路被 funding spike 趕出場）
+            if (_maxFundingRatePct > 0m && perpAction!.StartsWith("open_") && item.Exchange.Equals("bingx", StringComparison.OrdinalIgnoreCase))
+            {
+                var fr = await FetchFundingRate(item.Symbol, ct);
+                if (fr.HasValue)
+                {
+                    var frPct = fr.Value * 100m;   // BingX 回 raw decimal、× 100 變百分比
+                    var isLong = perpAction.Contains("long");
+                    if (isLong && frPct > _maxFundingRatePct)
+                    {
+                        AddLog(item, "skip",
+                            $"funding cap: rate={frPct:F4}% / 8h > +{_maxFundingRatePct:F2}% → 開多太貴、拒絕");
+                        return;
+                    }
+                    if (!isLong && frPct < -_maxFundingRatePct)
+                    {
+                        AddLog(item, "skip",
+                            $"funding cap: rate={frPct:F4}% / 8h < -{_maxFundingRatePct:F2}% → 開空太貴、拒絕");
+                        return;
+                    }
+                }
             }
 
             if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
@@ -2224,6 +2341,20 @@ public class AutoTraderService : BackgroundService
             _logger.LogInformation("AutoTrader perp: {PerpAction} {Side} {Qty} {Symbol} on {Exchange} {Lev}x → {Status}",
                 perpAction, perpSide, qtyToUse, item.Symbol, item.Exchange, item.Leverage, status);
 
+            // ── Slippage audit（filled_price vs signal markPrice）─
+            // 不擋 dispatch（已成交）、純 audit；超過 threshold 推 alert 給 user 知道執行品質
+            if (_slippageAlertPct > 0m && markPrice > 0m && ord.TryGetProperty("filled_price", out var fp)
+                && fp.ValueKind == JsonValueKind.Number && fp.GetDecimal() > 0m)
+            {
+                var filled = fp.GetDecimal();
+                var slippagePct = Math.Abs(filled - markPrice) / markPrice * 100m;
+                if (slippagePct > _slippageAlertPct)
+                {
+                    AddLog(item, "warn",
+                        $"slippage {slippagePct:F3}% > {_slippageAlertPct:F2}% (signal mark {markPrice:F4} → filled {filled:F4})");
+                }
+            }
+
             // Cooldown 紀錄：只在「成功開倉 / scale_in」更新時間戳；close / reduce-only 不更新
             // （平倉後立即反向開倉是合理場景、不該被 cooldown 擋）
             if (!reduceOnly && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
@@ -2248,6 +2379,81 @@ public class AutoTraderService : BackgroundService
     {
         var rawKey = $"auto-{exchange}-{symbol}-{action}-{quantity:G}-{bucket}".Replace('.', '_');
         return rawKey.Length > 36 ? rawKey[..36] : rawKey;
+    }
+
+    /// <summary>
+    /// 算「新 symbol vs 已開倉 symbols」的 30-day daily-return max |correlation|。
+    /// fetch 失敗或樣本不足 → maxCorr=0、不擋（保守、避免 false block）。
+    /// </summary>
+    private async Task<(bool shouldBlock, decimal maxCorr, string? mostCorrelated)> CheckCorrelationCap(
+        WatchItem newItem, List<object> perpPositions, CancellationToken ct)
+    {
+        // 抽出已開倉 symbol（用 reflection、跟現有 anonymous-object pattern 一致）
+        var existingSymbols = new List<string>();
+        foreach (var pp in perpPositions)
+        {
+            var sym = pp.GetType().GetProperty("symbol")?.GetValue(pp) as string;
+            if (!string.IsNullOrEmpty(sym) && sym != newItem.Symbol) existingSymbols.Add(sym);
+        }
+        if (existingSymbols.Count == 0) return (false, 0m, null);
+
+        // fetch 新 symbol 的 30-day daily K 線
+        var newCloses = await FetchDailyCloses(newItem.Exchange, newItem.Symbol, 35, ct);
+        if (newCloses == null || newCloses.Count < 11) return (false, 0m, null);
+
+        // 每個已開倉 symbol 都 fetch、塞 dict 給 CorrelationGuard
+        var existingClosesMap = new Dictionary<string, IReadOnlyList<decimal>>();
+        foreach (var sym in existingSymbols)
+        {
+            var closes = await FetchDailyCloses(newItem.Exchange, sym, 35, ct);
+            if (closes != null && closes.Count >= 11) existingClosesMap[sym] = closes;
+        }
+        if (existingClosesMap.Count == 0) return (false, 0m, null);
+
+        var (maxCorr, mostCorrelated) = BrokerCore.Trading.CorrelationGuard.ComputeMaxCorrelation(
+            newCloses, existingClosesMap);
+        return (maxCorr > _maxCorrelation, maxCorr, mostCorrelated);
+    }
+
+    /// <summary>
+    /// BingX premiumIndex 公開 endpoint、拉指定 symbol 當前 funding rate（8h period）。
+    /// 失敗回 null（保守不擋）；不快取（每 5 min sweep 才用一次、流量很小）。
+    /// </summary>
+    private async Task<decimal?> FetchFundingRate(string symbol, CancellationToken ct)
+    {
+        try
+        {
+            var resp = await _publicHttp.GetAsync(
+                $"https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex?symbol={symbol}", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            var doc = JsonDocument.Parse(json).RootElement;
+            if (!doc.TryGetProperty("code", out var code) || code.GetInt32() != 0) return null;
+            if (!doc.TryGetProperty("data", out var data)) return null;
+            // BingX 可能回單筆 object 或 array、兩種都接
+            var item = data.ValueKind == JsonValueKind.Array ? data[0] : data;
+            if (!item.TryGetProperty("lastFundingRate", out var fr)) return null;
+            if (fr.ValueKind == JsonValueKind.Number) return fr.GetDecimal();
+            if (fr.ValueKind == JsonValueKind.String && decimal.TryParse(fr.GetString(), out var d)) return d;
+            return null;
+        }
+        catch { return null; }
+    }
+
+    private async Task<List<decimal>?> FetchDailyCloses(string exchange, string symbol, int limit, CancellationToken ct)
+    {
+        var payload = JsonSerializer.Serialize(new { symbol, exchange, interval = "1d", limit });
+        var result = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", payload));
+        if (!result.Success) return null;
+        var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+        if (!doc.TryGetProperty("bars", out var bars) || bars.ValueKind != JsonValueKind.Array) return null;
+        var closes = new List<decimal>();
+        foreach (var b in bars.EnumerateArray())
+        {
+            if (b.TryGetProperty("close", out var c) && c.ValueKind == JsonValueKind.Number)
+                closes.Add(c.GetDecimal());
+        }
+        return closes;
     }
 
     private static ApprovedRequest BuildRequest(string capabilityId, string route, string payload = "{}")

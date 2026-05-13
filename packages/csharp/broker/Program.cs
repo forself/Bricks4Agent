@@ -342,6 +342,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Sy
 // 偵測 user 主動劃轉/充值/提領、自動更新 risk anchor（5 min interval / 5 USDT threshold）
 builder.Services.AddSingleton<Broker.Services.BalanceAnchorService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.BalanceAnchorService>());
+// 偵測表現差的策略 watch、連虧 5 筆或 win_rate<30% 自動 pause + 通知（self-healing）
+builder.Services.AddSingleton<Broker.Services.StrategyHealthMonitor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.StrategyHealthMonitor>());
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）

@@ -70,9 +70,21 @@ public class DailyReportService : BackgroundService
             try { await Task.Delay(delay, ct); }
             catch (OperationCanceledException) { break; }
 
+            // 每天都跑 24h；週日加跑 weekly (168h)、月初 1 號加跑 monthly (30d ≈ 720h)
+            var fired = DateTime.UtcNow;
             try
             {
                 await BuildAndPushAsync(periodHours: 24, ct);
+
+                if (fired.DayOfWeek == DayOfWeek.Sunday)
+                {
+                    await BuildAndPushAsync(periodHours: 24 * 7, ct);
+                }
+                if (fired.Day == 1)
+                {
+                    // 月初 1 號：粗略用 30 天當「上個月」、不用真實天數（差 1-2 天 narrative 可接受）
+                    await BuildAndPushAsync(periodHours: 24 * 30, ct);
+                }
             }
             catch (Exception ex)
             {
