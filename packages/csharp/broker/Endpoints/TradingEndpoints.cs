@@ -230,6 +230,50 @@ public static class TradingEndpoints
             }));
         });
 
+        // ── Risk Anchor 狀態 + manual override ──
+        // GET：dashboard 顯示當前 anchor + 最近變動原因
+        // POST：admin 手動指定 anchor（bypass deposit/withdraw 偵測）
+        trading.MapGet("/risk-anchor/{exchange}", (
+            string exchange, Broker.Services.BalanceAnchorService svc, Broker.Services.AutoTraderService at) =>
+        {
+            var state = svc.GetState(exchange);
+            var inMemory = at.DeclaredCapital.TryGetValue(exchange.ToLowerInvariant(), out var v) ? v : 0m;
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                exchange = exchange.ToLowerInvariant(),
+                in_memory_anchor = inMemory,
+                persisted = state == null ? null : new
+                {
+                    current_anchor = state.CurrentAnchor,
+                    last_seen_balance = state.LastSeenBalance,
+                    last_check_at = state.LastCheckAt,
+                    last_change_reason = state.LastChangeReason,
+                    last_change_at = state.LastChangeAt,
+                },
+            }));
+        });
+
+        trading.MapPost("/risk-anchor/{exchange}", async (
+            string exchange, HttpRequest req, Broker.Services.BalanceAnchorService svc, CancellationToken ct) =>
+        {
+            using var reader = new StreamReader(req.Body);
+            var body = await reader.ReadToEndAsync();
+            decimal newAnchor;
+            try
+            {
+                var doc = JsonDocument.Parse(body).RootElement;
+                if (!doc.TryGetProperty("new_anchor", out var na) || na.ValueKind != JsonValueKind.Number)
+                    return Results.Ok(ApiResponseHelper.Error("missing or non-numeric: new_anchor"));
+                newAnchor = na.GetDecimal();
+            }
+            catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error("invalid JSON: " + ex.Message)); }
+
+            if (newAnchor < 0m) return Results.Ok(ApiResponseHelper.Error("new_anchor must be >= 0"));
+
+            var (oldVal, newVal) = await svc.SetAnchorManualAsync(exchange, newAnchor, ct);
+            return Results.Ok(ApiResponseHelper.Success(new { exchange, old_anchor = oldVal, new_anchor = newVal }));
+        });
+
         // ── Multi-Timeframe Signal Matrix ──
         // 對 (exchange, symbol, strategy) 平行跑 1h / 4h / 1d 三個 evaluate、回成矩陣。
         // 給 dashboard MTF tab 用、避免前端要打 3 次來回。

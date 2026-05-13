@@ -102,6 +102,61 @@ public class BalanceAnchorService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Manual override：dashboard / admin 直接設新 anchor 值（bypass deposit/withdraw 偵測）。
+    /// 同步寫 AutoTrader + DB + 推通知。給「想把過去 unattributed balance 認列進 anchor」用。
+    /// </summary>
+    public async Task<(decimal Old, decimal New)> SetAnchorManualAsync(
+        string exchange, decimal newAnchor, CancellationToken ct = default)
+    {
+        if (newAnchor < 0m) throw new ArgumentException("anchor must be >= 0");
+        var key = exchange.ToLowerInvariant();
+
+        // 1) update in-memory (AutoTrader 立即生效)
+        var (oldVal, newVal) = _autoTrader.UpdateDeclaredCapital(key, newAnchor);
+
+        // 2) update DB
+        var state = _db.Get<RiskAnchorState>(key);
+        if (state == null)
+        {
+            // 還沒 init 過：用當下 live 當 last_seen，避免下個 cycle 把 (live - 0) 全當 transfer
+            var live = await FetchLiveBalanceAsync(key, ct) ?? newAnchor;
+            state = new RiskAnchorState
+            {
+                Exchange = key,
+                CurrentAnchor = newAnchor,
+                LastSeenBalance = live,
+                LastCheckAt = DateTime.UtcNow,
+                LastChangeReason = "manual",
+                LastChangeAt = DateTime.UtcNow,
+            };
+            _db.Insert(state);
+        }
+        else
+        {
+            state.CurrentAnchor = newAnchor;
+            state.LastChangeReason = "manual";
+            state.LastChangeAt = DateTime.UtcNow;
+            _db.Update(state);
+        }
+
+        // 3) push notification
+        var sign = newVal - oldVal >= 0m ? "+" : "";
+        var emoji = newVal > oldVal ? "📈" : (newVal < oldVal ? "📉" : "🔧");
+        var title = $"{emoji} Risk anchor 手動設定 · {key.ToUpper()}";
+        var body = $"管理員直接設定（bypass deposit/withdraw 偵測）\n" +
+                   $"Anchor: {oldVal:F2} → **{newVal:F2}** USDT（delta {sign}{newVal - oldVal:F2}）";
+        var color = newVal >= oldVal ? 0x0ECB81 : 0xF6465D;
+        try { await _discord.SendAdHocAsync(title, body, color, ct); } catch { }
+        try { await _line.SendAdHocAsync(title, body, level: "info", ct); } catch { }
+
+        return (oldVal, newVal);
+    }
+
+    /// <summary>查當前 anchor + 最近一次變動資訊。給 dashboard 顯示用。</summary>
+    public RiskAnchorState? GetState(string exchange)
+        => _db.Get<RiskAnchorState>(exchange.ToLowerInvariant());
+
     private void LoadPersistedAnchors()
     {
         var rows = _db.GetAll<RiskAnchorState>();

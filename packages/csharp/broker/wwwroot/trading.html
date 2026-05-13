@@ -1164,6 +1164,29 @@ tr:hover { background:rgba(240,185,11,0.02); }
 
 <!-- 資產 -->
 <div class="panel" id="panel-pnl">
+  <!-- Risk Anchor 狀態 + manual override（BalanceAnchorService 偵測 deposit/withdraw 自動更新；
+       手動入口給「想把過去 unattributed balance 認列進 anchor」用）-->
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">⚓ Risk Anchor（BingX）</h3>
+      <button class="btn btn-o btn-sm" onclick="loadRiskAnchor()">重新整理</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:8px">
+      <div class="stat"><div class="stat-label">當前 anchor</div><div class="stat-value" id="ra-current">—</div></div>
+      <div class="stat"><div class="stat-label">最近看到 balance</div><div class="stat-value" id="ra-last-seen" style="font-size:18px">—</div></div>
+      <div class="stat"><div class="stat-label">最後變動原因</div><div class="stat-value" id="ra-reason" style="font-size:14px">—</div></div>
+      <div class="stat"><div class="stat-label">最後變動時間</div><div class="stat-value" id="ra-when" style="font-size:13px">—</div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2)">手動指定 anchor：</span>
+      <input type="number" id="ra-input" placeholder="USDT" min="0" step="0.01"
+        style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-family:monospace;width:120px" />
+      <button class="btn btn-y btn-sm" onclick="setRiskAnchor()">套用</button>
+      <span style="font-size:11px;color:var(--text3)">⚠ bypass deposit/withdraw 偵測、AutoTrader sizing 立刻按新值算</span>
+    </div>
+    <div id="ra-msg" style="font-size:11px;color:var(--text2);margin-top:8px"></div>
+  </div>
+
   <div class="form-row" style="margin-bottom:12px">
     <div class="fg"><select id="pnl-exchange" onchange="loadPnlReport()"><option value="alpaca">Alpaca</option><option value="binance">Binance</option></select></div>
     <button class="btn btn-o btn-sm" onclick="loadPnlReport()">重新整理</button>
@@ -3074,8 +3097,57 @@ async function runWalkForwardBacktest(){
 // ── P&L ─────────────────────────────────────────────────────────
 // 走 /portfolio/metrics（已包含 FIFO round-trip 配對 + win rate / Sharpe / 利潤因子 /
 // equity curve / per-symbol 績效）+ 補拉 trades fills 給原始成交列表。
+// ── Risk Anchor widget（資產 tab 頂部）────────────────────────
+async function loadRiskAnchor(exchange = 'bingx'){
+  const r = await api('/api/v1/trading/risk-anchor/' + encodeURIComponent(exchange));
+  const d = r?.data;
+  const el = id => document.getElementById(id);
+  if (!d){
+    el('ra-current').textContent = '—'; el('ra-last-seen').textContent = '—';
+    el('ra-reason').textContent = '—'; el('ra-when').textContent = '—';
+    return;
+  }
+  el('ra-current').textContent = d.in_memory_anchor != null ? Number(d.in_memory_anchor).toFixed(2) + ' USDT' : '—';
+  if (d.persisted){
+    el('ra-last-seen').textContent = Number(d.persisted.last_seen_balance).toFixed(2) + ' USDT';
+    el('ra-reason').textContent = d.persisted.last_change_reason || '—';
+    el('ra-when').textContent = d.persisted.last_change_at
+      ? new Date(d.persisted.last_change_at).toLocaleString('zh-TW')
+      : '—';
+  } else {
+    el('ra-last-seen').textContent = '尚未 init';
+    el('ra-reason').textContent = '—'; el('ra-when').textContent = '—';
+  }
+}
+async function setRiskAnchor(exchange = 'bingx'){
+  const raw = (document.getElementById('ra-input').value || '').trim();
+  const val = parseFloat(raw);
+  const msg = document.getElementById('ra-msg');
+  if (!Number.isFinite(val) || val < 0){
+    msg.style.color = 'var(--down)';
+    msg.textContent = '請輸入 ≥ 0 的數字';
+    return;
+  }
+  if (!confirm(`確定把 ${exchange.toUpperCase()} anchor 改成 ${val} USDT？AutoTrader sizing 會立刻按新值算。`))
+    return;
+  const r = await api('/api/v1/trading/risk-anchor/' + encodeURIComponent(exchange), {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ new_anchor: val }),
+  });
+  if (r?.success){
+    msg.style.color = 'var(--up)';
+    msg.textContent = `✓ Anchor: ${r.data.old_anchor} → ${r.data.new_anchor}`;
+    document.getElementById('ra-input').value = '';
+    loadRiskAnchor(exchange);
+  } else {
+    msg.style.color = 'var(--down)';
+    msg.textContent = '✗ 失敗：' + (r?.message || r?.error || 'unknown');
+  }
+}
+
 let _pnlEquityChart=null;
 async function loadPnlReport(){
+  loadRiskAnchor();   // 順便刷 anchor 區塊（同 tab 統一刷新）
   const ex=document.getElementById('pnl-exchange').value;
   const [acc,pos,metrics,trades]=await Promise.all([
     api('/api/v1/trading/account?exchange='+ex),
