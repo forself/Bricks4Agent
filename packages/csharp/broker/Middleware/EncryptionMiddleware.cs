@@ -76,7 +76,11 @@ public class EncryptionMiddleware
             // [whitelist add: 2026-05-01 AnthonyLee] Agent Exec（MVP-2）—
             // agent 容器透過此端點執行被授予的 capability（記憶/網路/檔案 等），
             // capability_grants 本身就是授權證明（spawn 時 PEP 已審核），不再走 ECDH。
-            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-13] Audit endpoints — bot-node 透過 X-Internal-Bot-Token
+            // POST /audit/llm-reasoning 推 LLM reasoning audit（W13）；走 internal trust path、
+            // 不走 ECDH。dashboard 端用 cookie session 走同 endpoint 也適用同 plain-JSON 流。
+            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
