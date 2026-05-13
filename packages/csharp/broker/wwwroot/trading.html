@@ -1015,6 +1015,20 @@ tr:hover { background:rgba(240,185,11,0.02); }
     </div>
     <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描，按「開始掃描」跑 composite 策略</div></div>
   </div>
+  <!-- Gate 觸發統計：前端解析 auto-trader/logs、按 message prefix 分類、count -->
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">🛡 Gate 觸發統計</h3>
+      <span style="font-size:11px;color:var(--text3)">從 in-memory log 解析、broker 重啟會 reset</span>
+    </div>
+    <table style="font-size:12px">
+      <thead><tr>
+        <th>Gate</th><th>觸發次數</th><th>最近一次</th><th>最近 symbol</th>
+      </tr></thead>
+      <tbody id="auto-gate-stats"><tr><td colspan="4" style="color:var(--text2);text-align:center">— 載入中 —</td></tr></tbody>
+    </table>
+  </div>
+
   <div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">交易日誌</h3><button class="btn btn-o btn-sm" onclick="fetchAutoLogs()">重新整理</button></div>
     <div id="auto-logs" class="log" style="max-height:250px">—</div>
   </div>
@@ -2410,7 +2424,7 @@ if(r?.data?.rules)tb.innerHTML=r.data.rules.map(rule=>`<tr><td style="font-famil
 else tb.innerHTML='<tr><td colspan="5" style="color:var(--text2)">未連線</td></tr>';}
 
 // ── Auto trader ─────────────────────────────────────────────────
-async function fetchAutoStatus(){const r=await api('/api/v1/auto-trader/status');if(!r?.data)return;const d=r.data;
+async function fetchAutoStatus(){fetchAutoLogs();const r=await api('/api/v1/auto-trader/status');if(!r?.data)return;const d=r.data;
 const st=document.getElementById('auto-status-text'),btn=document.getElementById('auto-toggle-btn');
 st.textContent=d.enabled?'運行中':'已停止';st.style.color=d.enabled?'var(--green)':'var(--text2)';btn.textContent=d.enabled?'停止':'啟用';btn.className=d.enabled?'btn btn-r btn-sm':'btn btn-g btn-sm';
 document.getElementById('auto-interval').value=d.interval_seconds;
@@ -2711,8 +2725,59 @@ async function addAutoWatch(){
   }
 }
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
-async function fetchAutoLogs(){const r=await api('/api/v1/auto-trader/logs?limit=100');const el=document.getElementById('auto-logs');
-if(r?.data?.logs?.length>0)el.textContent=r.data.logs.map(l=>{const t=new Date(l.time).toLocaleTimeString('zh-TW');return`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;}).join('\n');else el.textContent='無日誌';}
+async function fetchAutoLogs(){
+  const r=await api('/api/v1/auto-trader/logs?limit=100');
+  const el=document.getElementById('auto-logs');
+  const logs = r?.data?.logs || [];
+  if(logs.length>0) el.textContent = logs.map(l=>{const t=new Date(l.time).toLocaleTimeString('zh-TW');return`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;}).join('\n');
+  else el.textContent='無日誌';
+  renderGateStats(logs);
+}
+
+// 從 AutoTrader logs 解析 gate 觸發次數（純前端 prefix match）
+function renderGateStats(logs){
+  const tbody = document.getElementById('auto-gate-stats');
+  if (!tbody) return;
+  const gates = [
+    { name: 'Pre-flight (min qty / leverage)', test: m => m.includes('pre-flight rejected') },
+    { name: 'Correlation cap', test: m => m.startsWith('correlation cap:') || m.includes('correlation cap:') },
+    { name: 'Funding rate cap', test: m => m.startsWith('funding cap:') || m.includes('funding cap:') },
+    { name: 'Entry cooldown', test: m => m.includes('entry cooldown:') },
+    { name: 'Regime gate (strict)', test: m => m.includes('regime-gate(strict)') },
+    { name: 'Regime gate (soft warn)', test: m => m.includes('regime-gate(soft)') },
+    { name: 'Scale-in confidence threshold', test: m => m.includes('skip:already-') && m.includes('scale-in threshold') },
+    { name: 'Portfolio risk budget exhausted', test: m => m.includes('portfolio risk budget exhausted') },
+    { name: 'Max simultaneous positions', test: m => m.includes('max ') && m.includes('open positions reached') },
+    { name: 'Liq distance alert', test: m => m.includes('liq alert pushed') },
+    { name: 'Slippage warn', test: m => m.startsWith('slippage ') || m.includes('slippage ') },
+  ];
+  const counts = gates.map(g => ({ name: g.name, count: 0, latestAt: null, latestSym: null }));
+  for (const l of logs){
+    const msg = l.message || '';
+    for (let i = 0; i < gates.length; i++){
+      if (gates[i].test(msg)){
+        counts[i].count++;
+        if (!counts[i].latestAt){
+          counts[i].latestAt = l.time;
+          counts[i].latestSym = l.symbol;
+        }
+        break;
+      }
+    }
+  }
+  const fmt = t => t ? new Date(t).toLocaleString('zh-TW', { hour12: false }).slice(5) : '—';
+  const rows = counts.filter(c => c.count > 0).sort((a,b) => b.count - a.count);
+  if (rows.length === 0){
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2);text-align:center;padding:12px">— 過去 100 筆 log 沒觸發任何 gate —</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(c => `<tr>
+    <td>${c.name}</td>
+    <td><b>${c.count}</b></td>
+    <td style="font-size:11px;color:var(--text2)">${fmt(c.latestAt)}</td>
+    <td style="font-size:11px">${c.latestSym || '—'}</td>
+  </tr>`).join('');
+}
 
 // ── Chart ───────────────────────────────────────────────────────
 let chartInstance=null;
