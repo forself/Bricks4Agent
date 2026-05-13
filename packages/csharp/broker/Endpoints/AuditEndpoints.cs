@@ -234,17 +234,18 @@ public static class AuditEndpoints
             var filterUser = req.Query.TryGetValue("user_id", out var u) ? u.ToString() : null;
             if (!isAdmin) filterUser = callerPrincipalId;
 
+            // BaseOrm SQLite dialect 用 @prefix（不是 $、那是直接 SqliteConnection 用的）
             List<LlmReasoningAuditEntry> rows;
             if (!string.IsNullOrEmpty(filterUser))
             {
                 rows = db.Query<LlmReasoningAuditEntry>(
-                    "SELECT * FROM llm_reasoning_audit WHERE user_id = $uid ORDER BY entry_id DESC LIMIT $limit",
+                    "SELECT * FROM llm_reasoning_audit WHERE user_id = @uid ORDER BY entry_id DESC LIMIT @limit",
                     new { uid = filterUser, limit });
             }
             else
             {
                 rows = db.Query<LlmReasoningAuditEntry>(
-                    "SELECT * FROM llm_reasoning_audit ORDER BY entry_id DESC LIMIT $limit",
+                    "SELECT * FROM llm_reasoning_audit ORDER BY entry_id DESC LIMIT @limit",
                     new { limit });
             }
             return Results.Ok(ApiResponseHelper.Success(new { count = rows.Count, entries = rows }));
