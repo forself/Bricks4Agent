@@ -9,8 +9,11 @@ namespace StrategyWorker.Engine.Indicators;
 ///    X ──→ A ──→ B ──→ C ──→ D
 ///   由 Fibonacci 比率定義每段之間的比例。
 ///
-/// 本版實作 8 種形態（Batch C 從朋友 ai-quant-starter2/harmonic_engine.py 擴充）：
-///   Gartley / Bat / Butterfly / Crab / Deep_Crab / Deep_Gartley / Cypher / Shark。
+/// 本版實作 10 種形態：
+///   Batch C  (從朋友 ai-quant-starter2/harmonic_engine.py 擴充)：
+///     Gartley / Bat / Butterfly / Crab / Deep_Crab / Deep_Gartley / Cypher / Shark
+///   Batch C+++ (對標 Trader-Alex「Ultimate Auto Harmonic Patterns」 TradingView script、看 description)：
+///     Alt_Bat (AB=0.382 嚴格、AD=1.13 X 延伸) / Five_O (CD=0.5 BC 中點 reversal)
 ///
 /// 偵測有「看多」（bullish）跟「看空」（bearish）兩個方向——
 ///   bullish: X 低、A 高、B 低、C 高、D 低（D 進場買）
@@ -309,6 +312,12 @@ public static class HarmonicPatterns
         new PatternSpec("deep_gartley", (0.841m, 0.931m), (0.382m, 0.886m), (1.272m, 1.618m), (0.747m, 0.825m)),
         new PatternSpec("cypher",       (0.382m, 0.618m), (1.130m, 1.414m), (0.382m, 0.886m), (0.747m, 0.825m)),
         new PatternSpec("shark",        (1.130m, 1.618m), (0.500m, 0.886m), (1.618m, 2.240m), (0.886m, 1.130m)),
+        // 對標 Trader-Alex「Ultimate Auto Harmonic Patterns」(invite-only TradingView script、看 description not source)：
+        // Alt Bat — Carney 2010 變體；AB=0.382 嚴格、AD 完成在 1.13 X 延伸（不是 Bat 的 0.886 retrace）
+        new PatternSpec("alt_bat",      (0.362m, 0.402m), (0.382m, 0.886m), (2.000m, 3.618m), (1.100m, 1.180m)),
+        // 5-0 Pattern — Carney 設計、5-point reversal；特徵 CD = 0.5 BC（D 落 BC 中點）。
+        // ad/xa 給寬範圍（5-0 結構不依賴 AD/XA、實際區別靠 CD/BC=0.5 鎖死）
+        new PatternSpec("five_o",       (1.130m, 1.618m), (1.618m, 2.240m), (0.450m, 0.550m), (0.500m, 3.000m)),
     };
 
     // ── 比率區間檢查（朋友 _check_pattern 邏輯） ────────────────────
