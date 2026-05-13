@@ -609,7 +609,8 @@ public class AutoTraderService : BackgroundService
                 _declaredCapitalByExchange[ex.ToLowerInvariant()] = amt;
         }
         if (_declaredCapitalByExchange.Count > 0)
-            _logger.LogInformation("Risk capital anchors: {Anchors}",
+            _logger.LogInformation(
+                "Risk capital anchors (from env, may be overridden by BalanceAnchorService DB restore): {Anchors}",
                 string.Join(", ", _declaredCapitalByExchange.Select(kv => $"{kv.Key}={kv.Value:F2}")));
         _logger.LogInformation(
             "AutoTrader thresholds: confidence={Conf:P0} portfolio_dd={Dd}% sl_flush={Flush}/{Window}min · " +
