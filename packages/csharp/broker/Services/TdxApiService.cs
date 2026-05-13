@@ -22,6 +22,7 @@ public sealed class TdxApiService
 
     private string? _accessToken;
     private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastNotConfiguredWarnAt = DateTimeOffset.MinValue;
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_options.ClientId) &&
@@ -38,7 +39,16 @@ public sealed class TdxApiService
     public async Task<string?> GetAccessTokenAsync(CancellationToken ct = default)
     {
         if (!IsConfigured)
+        {
+            // 首次每 30 分鐘 warn 一次、避免每次 hsr/rail/bus query 都洗 log
+            // 但起碼可診斷「為何 transport 整合永遠回空」這個 silent failure
+            if (DateTimeOffset.UtcNow - _lastNotConfiguredWarnAt > TimeSpan.FromMinutes(30))
+            {
+                _logger.LogWarning("TDX integration disabled: Tdx__ClientId / Tdx__ClientSecret env vars missing — transport queries (hsr/rail/bus/flight) will always return empty");
+                _lastNotConfiguredWarnAt = DateTimeOffset.UtcNow;
+            }
             return null;
+        }
 
         if (_accessToken != null && DateTimeOffset.UtcNow < _tokenExpiresAt.AddMinutes(-5))
             return _accessToken;
