@@ -234,17 +234,19 @@ public static class AuditEndpoints
             var filterUser = req.Query.TryGetValue("user_id", out var u) ? u.ToString() : null;
             if (!isAdmin) filterUser = callerPrincipalId;
 
-            var sql = "SELECT * FROM llm_reasoning_audit WHERE 1=1";
-            var args = new Dictionary<string, object>();
+            List<LlmReasoningAuditEntry> rows;
             if (!string.IsNullOrEmpty(filterUser))
             {
-                sql += " AND user_id = $uid";
-                args["$uid"] = filterUser;
+                rows = db.Query<LlmReasoningAuditEntry>(
+                    "SELECT * FROM llm_reasoning_audit WHERE user_id = $uid ORDER BY entry_id DESC LIMIT $limit",
+                    new { uid = filterUser, limit });
             }
-            sql += " ORDER BY entry_id DESC LIMIT $limit";
-            args["$limit"] = limit;
-
-            var rows = db.Query<LlmReasoningAuditEntry>(sql, args);
+            else
+            {
+                rows = db.Query<LlmReasoningAuditEntry>(
+                    "SELECT * FROM llm_reasoning_audit ORDER BY entry_id DESC LIMIT $limit",
+                    new { limit });
+            }
             return Results.Ok(ApiResponseHelper.Success(new { count = rows.Count, entries = rows }));
         });
     }
