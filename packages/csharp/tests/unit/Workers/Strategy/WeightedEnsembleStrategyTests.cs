@@ -288,4 +288,80 @@ public class WeightedEnsembleStrategyTests
         public Signal? Arbitrate(IReadOnlyList<Signal> sigs, decimal agreementRatio, List<BarData> bars, StrategyConfig config)
             => throw new InvalidOperationException("simulated LLM proxy failure");
     }
+
+    // ── Audit indicators (#audit-gap mitigation) ────────────────────
+    // 學術防禦：當 LLM arbitrator 覆蓋加權投票時，broker 要看得到「LLM 改了什麼」，
+    // 不是只看到最終 action。下面三個 test 鎖住 fallback_would_be / changed_decision
+    // 兩個 indicator、確保 dashboard 可以算「LLM 仲裁覆蓋率」。
+
+    [Fact]
+    public void Arbitration_RecordsFallbackAndChange_WhenLlmFlipsDecision()
+    {
+        // 加權投票會選 sell（3 票 sell vs 1 票 buy）；LLM 強制翻成 buy
+        // → fallback_would_be=sell(-1)、changed_decision=1
+        var override_ = new Signal
+        {
+            SignalId = "arb", Strategy = "ensemble", Symbol = "AAPL", Exchange = "alpaca",
+            Action = "buy", Confidence = 0.85m, Reason = "LLM flips", Interval = "1d",
+        };
+        var stub = new StubArbitrator(0.8m, toReturn: override_);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "sell", 0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        sig.Indicators["arbitration.invoked"].Should().Be(1m);
+        sig.Indicators["arbitration.fallback_would_be"].Should().Be(-1m, "weighted vote was sell");
+        sig.Indicators.Should().ContainKey("arbitration.fallback_confidence");
+        sig.Indicators["arbitration.changed_decision"].Should().Be(1m, "LLM flipped sell→buy");
+        sig.Indicators["arbitration.result_action"].Should().Be(1m);
+    }
+
+    [Fact]
+    public void Arbitration_ChangedDecisionZero_WhenLlmAgreesWithVote()
+    {
+        // 加權投票會選 sell；LLM 也回 sell（沒翻轉）→ changed_decision=0
+        var sameDir = new Signal
+        {
+            SignalId = "arb", Strategy = "ensemble", Symbol = "AAPL", Exchange = "alpaca",
+            Action = "sell", Confidence = 0.9m, Reason = "LLM concurs", Interval = "1d",
+        };
+        var stub = new StubArbitrator(0.8m, toReturn: sameDir);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "sell", 0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        sig.Indicators["arbitration.fallback_would_be"].Should().Be(-1m);
+        sig.Indicators["arbitration.changed_decision"].Should().Be(0m, "LLM concurred with weighted vote");
+    }
+
+    [Fact]
+    public void Arbitration_ChangedDecisionZero_WhenLlmReturnsNull()
+    {
+        // arbitrator 回 null（拒絕意見）→ fallback indicator 仍要寫入、changed=0
+        var stub = new StubArbitrator(0.8m, toReturn: null);
+        var ensemble = new WeightedEnsembleStrategy(new List<IStrategy>
+        {
+            new StubStrategy("a", "sell", 0.7m),
+            new StubStrategy("b", "sell", 0.7m),
+            new StubStrategy("c", "sell", 0.6m),
+            new StubStrategy("d", "buy",  0.5m),
+        }, arbitrator: stub);
+
+        var sig = ensemble.Evaluate(MakeBars(), Cfg());
+
+        sig.Indicators["arbitration.fallback_would_be"].Should().Be(-1m);
+        sig.Indicators["arbitration.changed_decision"].Should().Be(0m, "arbitrator declined");
+    }
 }

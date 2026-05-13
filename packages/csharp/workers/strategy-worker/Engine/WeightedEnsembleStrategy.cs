@@ -173,9 +173,22 @@ public class WeightedEnsembleStrategy : IStrategy
 
         // Step 5.5: 衝突仲裁——只有「有 arbitrator 註冊 + agreement 不足」才 fallthrough 到 LLM
         // 一致時直接走加權投票結果（省 cost / 延遲）。
+        //
+        // Audit gap mitigation：記錄「LLM 仲裁前的加權投票結果」+「仲裁是否改變了決策」，
+        // 讓 dashboard 可量化「LLM 在多少比例的衝突中翻轉了規則 ensemble」、避免被學術質疑
+        // broker 變 rubber stamp（看不到 LLM 改了什麼）。
         if (_arbitrator != null && agreementRatio < _arbitrator.Threshold)
         {
             indicators["arbitration.invoked"] = 1m;
+            // capture pre-arbitration state for audit
+            var preArbAction = action;
+            var preArbConfidence = confidence;
+            indicators["arbitration.fallback_would_be"] = preArbAction switch
+            {
+                "buy" => 1m, "sell" => -1m, _ => 0m,
+            };
+            indicators["arbitration.fallback_confidence"] = Math.Round(preArbConfidence, 4);
+
             try
             {
                 var arbitrated = _arbitrator.Arbitrate(
@@ -188,15 +201,23 @@ public class WeightedEnsembleStrategy : IStrategy
                         "buy" => 1m, "sell" => -1m, _ => 0m,
                     };
                     indicators["arbitration.result_confidence"] = arbitrated.Confidence;
+                    // 量化 LLM 改了多少：1 = 翻轉決策、0 = LLM 跟加權投票同向
+                    indicators["arbitration.changed_decision"] = (arbitrated.Action != preArbAction) ? 1m : 0m;
                     action = arbitrated.Action;
                     confidence = arbitrated.Confidence;
                     reasonParts.Insert(0, $"[arbitrator] {arbitrated.Reason}");
+                }
+                else
+                {
+                    // arbitrator 回 null = 沒意見、走加權投票；標記 changed=0 方便 dashboard 算覆蓋率
+                    indicators["arbitration.changed_decision"] = 0m;
                 }
             }
             catch
             {
                 // 仲裁失敗不影響主流程——保留原本的加權投票結果
                 indicators["arbitration.failed"] = 1m;
+                indicators["arbitration.changed_decision"] = 0m;
             }
         }
 
