@@ -67,7 +67,10 @@ public class BrokerAuthMiddleware
             // [whitelist add: 2026-05-01 AnthonyLee] Agent Inbox（MVP-1）— 同上 EncryptionMiddleware 的理由。
             || path.StartsWith("/api/v1/agents/inbox/", StringComparison.OrdinalIgnoreCase)
             // [whitelist add: 2026-05-01 AnthonyLee] Agent Exec（MVP-2）— 同上理由。
-            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-13] Audit — bot-node 走 X-Internal-Bot-Token、dashboard 走 cookie；
+            // 不需要 scoped_token。已在 EncryptionMiddleware 同步開白名單。
+            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(
