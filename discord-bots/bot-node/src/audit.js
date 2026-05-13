@@ -22,9 +22,12 @@ import { callBroker } from './broker.js';
  * @param {string} entry.toolName     解析出的 capability name（e.g. trading.perpetual/place_order）
  * @param {object} entry.toolArgs     tool 參數（會 JSON.stringify）
  * @param {boolean} entry.aclAllowed  該 user 對該 tool 是否有 ACL allowance
+ * @param {object} [deps]             unit test 注入用、prod 端永遠走 module-level callBroker
  * @returns {Promise<void>}
  */
-export async function pushLlmReasoning(entry) {
+export async function pushLlmReasoning(entry, deps = {}) {
+  // ESM namespace 不能用 t.mock.method 攔截、用 DI 讓 test 可換 fake callBroker
+  const _callBroker = deps.callBroker || callBroker;
   try {
     const payload = {
       source:        entry.source        || 'discord',
@@ -37,7 +40,7 @@ export async function pushLlmReasoning(entry) {
       acl_allowed:   !!entry.aclAllowed,
       dispatch_result: 'pending',
     };
-    const r = await callBroker('POST', '/api/v1/audit/llm-reasoning', payload);
+    const r = await _callBroker('POST', '/api/v1/audit/llm-reasoning', payload);
     if (!r.ok) {
       console.warn(`[audit] push reasoning failed: ${r.error}`);
     }
