@@ -533,25 +533,26 @@ public class AutoTraderService : BackgroundService
 
     private readonly ExchangeCredentialService? _credentials;
 
-    private readonly DiscordNotificationService? _discordNotification;
-    private readonly LineNotificationService? _lineNotification;
+    // Lazy resolve 避免 circular DI：DiscordNotificationService 已依賴 AutoTraderService（snapshot），
+    // 不能反向直接 inject、改透過 IServiceProvider runtime 拿。
+    private readonly IServiceProvider _serviceProvider;
+    private DiscordNotificationService? DiscordNotify => _serviceProvider.GetService<DiscordNotificationService>();
+    private LineNotificationService? LineNotify => _serviceProvider.GetService<LineNotificationService>();
 
     public AutoTraderService(
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
         BrokerDb db,
         ILogger<AutoTraderService> logger,
-        ExchangeCredentialService? credentials = null,
-        DiscordNotificationService? discordNotification = null,
-        LineNotificationService? lineNotification = null)
+        IServiceProvider serviceProvider,
+        ExchangeCredentialService? credentials = null)
     {
         _dispatcher = dispatcher;
         _registry   = registry;
         _db         = db;
         _logger     = logger;
         _credentials = credentials;
-        _discordNotification = discordNotification;
-        _lineNotification = lineNotification;
+        _serviceProvider = serviceProvider;
 
         var forceRaw = Environment.GetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION")?.Trim().ToLowerInvariant();
         if (forceRaw == "buy" || forceRaw == "sell")
@@ -1423,8 +1424,8 @@ public class AutoTraderService : BackgroundService
                 var body = $"距離強平僅 **{liqDistPct:F2}%**（threshold {_liqAlertPct}%）\n" +
                            $"Mark: {markPrice:F4}  Liq: {state.LiquidationPrice:F4}\n" +
                            $"建議手動加保證金或減倉。Emergency 平倉門檻：{_perpLiqEmergencyPct}%";
-                try { if (_discordNotification != null) await _discordNotification.SendAdHocAsync(title, body, color: 0xF6465D, ct); } catch { }
-                try { if (_lineNotification != null) await _lineNotification.SendAdHocAsync(title, body, level: "warning", ct); } catch { }
+                try { var d = DiscordNotify; if (d != null) await d.SendAdHocAsync(title, body, color: 0xF6465D, ct); } catch { }
+                try { var l = LineNotify; if (l != null) await l.SendAdHocAsync(title, body, level: "warning", ct); } catch { }
                 AddLog(_watchList.TryGetValue($"{exchange}:{symbol}", out var wAlert) ? wAlert : new WatchItem { Symbol = symbol, Exchange = exchange },
                     "warn", $"liq alert pushed: distance {liqDistPct:F2}% < {_liqAlertPct}%");
             }
