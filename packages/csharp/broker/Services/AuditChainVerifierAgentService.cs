@@ -119,8 +119,9 @@ public class AuditChainVerifierAgentService : BackgroundService
             catch { /* ignore parse errors，用 default */ }
 
             var sinceStr = DateTime.UtcNow.AddHours(-windowHours).ToString("o");
+            // AS alias 必要 —— BaseOrm 對 inline DTO 不自動做 snake → PascalCase 映射
             var distinctTraces = db.Query<TraceIdRow>(
-                "SELECT DISTINCT trace_id FROM audit_events WHERE occurred_at >= @sinceStr ORDER BY trace_id",
+                "SELECT DISTINCT trace_id AS TraceId FROM audit_events WHERE occurred_at >= @sinceStr ORDER BY trace_id",
                 new { sinceStr });
 
             int total = distinctTraces.Count;
