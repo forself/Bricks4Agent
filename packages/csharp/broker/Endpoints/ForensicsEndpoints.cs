@@ -35,32 +35,32 @@ public static class ForensicsEndpoints
             string? traceId, string? symbol, int limit,
             string? callerPrincipalId, bool isAdmin)
     {
-        var sinceStr = since.ToString("o");
-        var untilStr = until.ToString("o");
+        // 直接傳 DateTime、讓 BaseOrm 處理 SQLite TEXT 表示——避免 .ToString("o")
+        // 在不同環境（test in-memory vs production）產出不同字串、BETWEEN 失配的問題
         var symbolLike = symbol != null ? $"%{symbol}%" : null;
 
-        var auditSql = "SELECT * FROM audit_events WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
+        var auditSql = "SELECT * FROM audit_events WHERE occurred_at BETWEEN @since AND @until";
         if (!string.IsNullOrEmpty(traceId)) auditSql += " AND trace_id = @traceId";
         if (!string.IsNullOrEmpty(symbol))  auditSql += " AND (COALESCE(resource_ref,'') LIKE @symbolLike OR details LIKE @symbolLike)";
         if (!isAdmin)                       auditSql += " AND principal_id = @caller";
         auditSql += " ORDER BY occurred_at DESC LIMIT @limit";
         var auditEvents = db.Query<AuditEvent>(auditSql,
-            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
+            new { since, until, traceId, symbolLike, caller = callerPrincipalId, limit });
 
-        var aprSql = "SELECT * FROM approval_requests WHERE requested_at BETWEEN @sinceStr AND @untilStr";
+        var aprSql = "SELECT * FROM approval_requests WHERE requested_at BETWEEN @since AND @until";
         if (!string.IsNullOrEmpty(traceId)) aprSql += " AND trace_id = @traceId";
         if (!string.IsNullOrEmpty(symbol))  aprSql += " AND (route LIKE @symbolLike OR payload LIKE @symbolLike)";
         if (!isAdmin)                       aprSql += " AND principal_id = @caller";
         aprSql += " ORDER BY requested_at DESC LIMIT @limit";
         var approvals = db.Query<ApprovalRequest>(aprSql,
-            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
+            new { since, until, traceId, symbolLike, caller = callerPrincipalId, limit });
 
-        var llmSql = "SELECT * FROM llm_reasoning_audit WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
+        var llmSql = "SELECT * FROM llm_reasoning_audit WHERE occurred_at BETWEEN @since AND @until";
         if (!string.IsNullOrEmpty(symbol))  llmSql += " AND (tool_args LIKE @symbolLike OR llm_reasoning LIKE @symbolLike)";
         if (!isAdmin)                       llmSql += " AND user_id = @caller";
         llmSql += " ORDER BY occurred_at DESC LIMIT @limit";
         var llmReasoning = db.Query<LlmReasoningAuditEntry>(llmSql,
-            new { sinceStr, untilStr, symbolLike, caller = callerPrincipalId, limit });
+            new { since, until, symbolLike, caller = callerPrincipalId, limit });
 
         var events = new List<TimelineEvent>();
         foreach (var e in auditEvents)
@@ -114,7 +114,7 @@ public static class ForensicsEndpoints
 
         var queryEcho = new
         {
-            since = sinceStr, until = untilStr, trace_id = traceId, symbol, limit,
+            since = since.ToString("o"), until = until.ToString("o"), trace_id = traceId, symbol, limit,
             scope = isAdmin ? "all" : "self"
         };
         return (sorted, summary, queryEcho);

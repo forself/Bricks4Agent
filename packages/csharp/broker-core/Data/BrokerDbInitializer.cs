@@ -66,6 +66,11 @@ public class BrokerDbInitializer
         // ── 向量嵌入（1 張） ──
         _db.EnsureTable<VectorEntry>();
 
+        // ── Trading / W13 audit （2 張）— 之前在 Program.cs 才 ensure、移進來確保
+        // test in-memory DB 也有同一張 schema、避免 dev/test 跟 prod 對不上 ──
+        _db.EnsureTable<RiskAnchorState>();
+        _db.EnsureTable<LlmReasoningAuditEntry>();
+
         EnsureColumns();
 
         // FTS5 全文檢索虛擬表（BM25）
