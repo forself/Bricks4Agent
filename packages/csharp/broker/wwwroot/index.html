@@ -1180,8 +1180,10 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 </div>
               </template>
             </el-table-column>
-            <el-table-column :label="t('time')" width="170">
-              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.ts)}}</span></template>
+            <el-table-column :label="t('time')" width="130">
+              <template #default="{row}">
+                <span style="font-size:11px;color:var(--td)" :title="fmtDate(row.ts)">{{relTime(row.ts)}}</span>
+              </template>
             </el-table-column>
             <el-table-column :label="t('llmStatusCol')" width="80" align="center">
               <template #default="{row}">
@@ -1191,10 +1193,10 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             <el-table-column :label="t('llmModel')" min-width="160">
               <template #default="{row}"><code style="font-size:11px">{{row.model||'—'}}</code></template>
             </el-table-column>
-            <el-table-column :label="t('llmTask')" min-width="160">
+            <el-table-column :label="t('llmTask')" min-width="200">
               <template #default="{row}">
-                <code style="font-size:11px;color:var(--td)">{{row.task_id||'—'}}</code>
-                <span v-if="row.task_type" style="font-size:10px;color:var(--td);margin-left:6px">[{{row.task_type}}]</span>
+                <code style="font-size:11px;color:var(--td)">{{(row.task_id||'').slice(0,28)||'—'}}</code>
+                <el-tag v-if="row.task_type" size="small" effect="plain" style="margin-left:6px;font-size:10px">{{row.task_type}}</el-tag>
               </template>
             </el-table-column>
             <el-table-column :label="t('llmTools')" width="80" align="center">
@@ -1231,7 +1233,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </template>
           <el-table :data="botReasoning" :empty-text="t('llmNoW13')" stripe>
             <el-table-column :label="t('time')" width="170">
-              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.occurredAt)}}</span></template>
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)" :title="fmtDate(row.occurredAt)">{{relTime(row.occurredAt)}}</span></template>
             </el-table-column>
             <el-table-column :label="t('llmW13Source')" width="110">
               <template #default="{row}"><el-tag size="small">{{row.source}}</el-tag></template>
