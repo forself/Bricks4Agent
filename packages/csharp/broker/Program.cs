@@ -1028,6 +1028,7 @@ BrowserBindingEndpoints.Map(api);
 DeploymentAdminEndpoints.Map(api);
 AuditEndpoints.Map(api);
 ForensicsEndpoints.Map(api);
+DataBrowserEndpoints.Map(api);
 AdminEndpoints.Map(api);
 ContextEndpoints.Map(api);
 PlanEndpoints.Map(api);

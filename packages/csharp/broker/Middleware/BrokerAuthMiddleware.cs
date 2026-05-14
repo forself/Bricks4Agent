@@ -72,7 +72,10 @@ public class BrokerAuthMiddleware
             // 不需要 scoped_token。已在 EncryptionMiddleware 同步開白名單。
             || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase)
             // [whitelist add: 2026-05-14] Forensics —— 同 audit 一樣 cookie/scoped 二選一
-            || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-14] DataBrowser —— admin SQLite 查詢 + 錯誤聚合
+            || path.StartsWith("/api/v1/errors/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/db/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(

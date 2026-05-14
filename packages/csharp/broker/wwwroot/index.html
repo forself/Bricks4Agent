@@ -818,6 +818,119 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── Diagnostics ── -->
+      <!-- ── 🗄 資料瀏覽（demo 用：A=錯誤聚合、B=SQL 查詢）── -->
+      <el-tab-pane :label="t('dataBrowser')" name="data">
+        <!-- A. 錯誤聚合 -->
+        <el-card style="margin-bottom:14px;border-left:3px solid #f56c6c">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">A · 錯誤紀錄聚合</span>
+              <span style="font-size:11px;color:var(--td)">從 broker.db 三張表合併：approval rejected / agent task failed / audit event ERROR</span>
+              <el-button size="small" @click="loadErrorAggregate" :loading="errAggLoading" style="margin-left:auto">↻ 刷新</el-button>
+            </div>
+          </template>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <span style="font-size:12px;color:var(--td)">時間範圍：</span>
+            <el-radio-group v-model="errAggHours" size="small" @change="loadErrorAggregate">
+              <el-radio-button :value="1">1h</el-radio-button>
+              <el-radio-button :value="6">6h</el-radio-button>
+              <el-radio-button :value="24">24h</el-radio-button>
+              <el-radio-button :value="168">7d</el-radio-button>
+            </el-radio-group>
+            <span style="font-size:12px;color:var(--td);margin-left:10px">來源：</span>
+            <el-radio-group v-model="errAggSource" size="small" @change="loadErrorAggregate">
+              <el-radio-button value="">全部</el-radio-button>
+              <el-radio-button value="approval">approval rejected</el-radio-button>
+              <el-radio-button value="agent">agent failed</el-radio-button>
+              <el-radio-button value="audit">audit error</el-radio-button>
+            </el-radio-group>
+            <span v-if="errAggResult" style="margin-left:auto;font-size:11px;color:var(--td)">
+              {{errAggResult.count}} 筆 ·
+              <span v-for="(c,k) in errAggResult.summary.by_source" :key="k" style="margin-left:6px">
+                <code style="font-size:10px">{{k}}</code>: {{c}}
+              </span>
+            </span>
+          </div>
+          <el-table v-if="errAggResult" :data="errAggResult.rows" :empty-text="'此條件下無錯誤紀錄'" stripe>
+            <el-table-column label="時間" width="140">
+              <template #default="{row}">
+                <div style="font-size:11px" :title="fmtDate(row.ts)">{{relTime(row.ts)}}</div>
+                <div style="font-size:10px;color:var(--td);font-family:monospace">{{fmtDate(row.ts)}}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="來源" width="120">
+              <template #default="{row}">
+                <el-tag :type="row.source==='approval'?'warning':row.source==='agent_task'?'danger':'info'" size="small">{{row.source}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="嚴重度" width="80" align="center">
+              <template #default="{row}">
+                <el-tag :type="row.severity==='error'?'danger':row.severity==='warning'?'warning':'info'" size="small" effect="plain">{{row.severity}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="實體" min-width="200">
+              <template #default="{row}"><code style="font-size:11px;color:var(--t)">{{row.entity}}</code></template>
+            </el-table-column>
+            <el-table-column label="摘要" min-width="320">
+              <template #default="{row}">
+                <span style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word">{{row.summary}}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Related ID" min-width="200">
+              <template #default="{row}"><code style="font-size:10px;color:var(--td);word-break:break-all">{{row.relatedId}}</code></template>
+            </el-table-column>
+          </el-table>
+          <div v-else-if="!errAggLoading" style="text-align:center;padding:30px;color:var(--td);font-size:12px">
+            按上方時間 / 來源篩選會自動載入、或點右上「↻ 刷新」
+          </div>
+        </el-card>
+
+        <!-- B. SQL 查詢 -->
+        <el-card style="border-left:3px solid #409eff">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">B · SQL 查詢（broker.db, admin only, read-only）</span>
+              <span style="font-size:11px;color:var(--td)">只允許 SELECT、500 row cap、5s timeout、SQLite ReadOnly mode</span>
+            </div>
+          </template>
+          <!-- preset chips -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+            <span style="font-size:12px;color:var(--td);margin-right:4px">範本：</span>
+            <el-tag v-for="(p,i) in sqlPresets" :key="i" @click="applySqlPreset(p)" size="small" effect="plain" style="cursor:pointer">{{p.label}}</el-tag>
+          </div>
+          <el-input type="textarea" v-model="sqlInput" :autosize="{minRows:3, maxRows:8}" style="font-family:Consolas,monospace;font-size:12px" placeholder="SELECT * FROM audit_events LIMIT 10"/>
+          <div style="margin-top:8px;text-align:right">
+            <el-button type="primary" size="small" @click="runSql" :loading="sqlLoading">▶ 執行</el-button>
+          </div>
+          <!-- result -->
+          <div v-if="sqlResult" style="margin-top:14px">
+            <div v-if="!sqlResult.success" style="background:rgba(245,108,108,0.08);border:1px solid rgba(245,108,108,0.3);padding:10px;border-radius:4px;color:#f56c6c;font-family:Consolas,monospace;font-size:12px">
+              ⚠ {{sqlResult.message}}
+            </div>
+            <div v-else>
+              <div style="font-size:11px;color:var(--td);margin-bottom:6px">
+                {{sqlResult.data.row_count}} 列<span v-if="sqlResult.data.truncated" style="color:#e6a23c">（已截到 500）</span>
+                · 欄位: <code style="font-size:11px">{{sqlResult.data.columns.join(', ')}}</code>
+              </div>
+              <div style="max-height:500px;overflow:auto;border:1px solid var(--bd);border-radius:4px">
+                <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Consolas,monospace">
+                  <thead>
+                    <tr style="background:var(--s2)">
+                      <th v-for="c in sqlResult.data.columns" :key="c" style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--bd);position:sticky;top:0;background:var(--s2)">{{c}}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(r,ri) in sqlResult.data.rows" :key="ri" :style="ri%2?'background:var(--s2)':''">
+                      <td v-for="c in sqlResult.data.columns" :key="c" style="padding:4px 10px;border-bottom:1px solid var(--bd);word-break:break-all;max-width:400px">{{r[c]==null?'NULL':String(r[c])}}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-tab-pane>
+
       <el-tab-pane :label="t('diagnostics')" name="diagnostics">
         <!-- Controls -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
@@ -2034,6 +2147,7 @@ const I18N={
     llmTools:'工具',llmToolCallsHeader:'此次回覆要求的 tool calls',llmNoToolCalls:'此次回覆沒有 tool calls（純文字輸出）',
     llmLoadFailed:'無法載入 LLM 代理狀態（broker 未啟用 LlmProxy？）',
     console:'🎛 控制台',
+    dataBrowser:'🗄 資料',
     consoleChat:'A · 高階協調器聊天',
     consoleChatHint:'直接打字 → broker LlmProxy 解析意圖 → workflow 驗 → 派 worker → 回覆。這條走 Benson 設計的 HighLevelCoordinator + LineChatGateway、不是 bot-node。',
     consoleChatPlaceholder:'例：幫我看 BTC 現在走勢 / 我的帳戶餘額 / 推薦三檔加密',
@@ -2152,6 +2266,7 @@ const I18N={
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
     llmProxy:'🧠 LLM',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
     console:'🎛 Console',
+    dataBrowser:'🗄 Data',
     consoleChat:'A · HighLevel Coordinator chat',
     consoleChatHint:'Type → broker LlmProxy parses intent → workflow validates → dispatch to worker → reply. This path uses Benson-designed HighLevelCoordinator + LineChatGateway, not bot-node.',
     consoleChatPlaceholder:'e.g. show me BTC trend / my account balance / recommend 3 cryptos',
@@ -2754,6 +2869,7 @@ const app=createApp({
     function onTabChange(tab){
       if(tab==='containers'){refreshContainers();loadHealthScore();loadAutoScale();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='agents'){loadAgents();loadInboxAgentStats();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='data'){loadErrorAggregate();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='traces'){loadTraces();startTracesAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTopologyAutoRefresh()}
@@ -3337,6 +3453,51 @@ const app=createApp({
     const forensicResult=ref(null);
     const forensicLoading=ref(false);
 
+    // ── 🗄 資料瀏覽 ──────────────────────────────────────────────
+    // A. 錯誤聚合
+    const errAggResult = ref(null);
+    const errAggLoading = ref(false);
+    const errAggSource = ref('');   // '' / 'approval' / 'agent' / 'audit'
+    const errAggHours = ref(24);
+    async function loadErrorAggregate(){
+      errAggLoading.value = true;
+      try{
+        const since = new Date(Date.now() - errAggHours.value*3600*1000).toISOString();
+        const params = new URLSearchParams({ since, limit:'200' });
+        if(errAggSource.value) params.set('source', errAggSource.value);
+        const r = await getPlain('/api/v1/errors/aggregate?'+params.toString());
+        errAggResult.value = r?.success ? r.data : null;
+      }catch(e){
+        ElementPlus.ElMessage.error('錯誤聚合失敗：'+e.message);
+        errAggResult.value = null;
+      }
+      errAggLoading.value = false;
+    }
+    // B. SQL 查詢
+    const sqlInput = ref('SELECT trace_id, event_type, principal_id, occurred_at FROM audit_events ORDER BY occurred_at DESC LIMIT 20');
+    const sqlResult = ref(null);
+    const sqlLoading = ref(false);
+    const sqlPresets = [
+      { label:'最近 20 筆 audit_events', sql:'SELECT trace_id, event_type, principal_id, resource_ref, occurred_at FROM audit_events ORDER BY occurred_at DESC LIMIT 20' },
+      { label:'最近 10 筆 agent_inbox_tasks', sql:'SELECT seq, agent_id, status, model, latency_ms, created_at FROM agent_inbox_tasks ORDER BY seq DESC LIMIT 10' },
+      { label:'最近 10 筆 approval_requests', sql:'SELECT approval_id, capability_id, route, status, requested_at, decided_by FROM approval_requests ORDER BY requested_at DESC LIMIT 10' },
+      { label:'按 event_type 分群（24h）', sql:"SELECT event_type, COUNT(*) AS cnt FROM audit_events WHERE occurred_at >= datetime('now', '-1 day') GROUP BY event_type ORDER BY cnt DESC LIMIT 30" },
+      { label:'按 agent_id 分群 inbox 任務', sql:'SELECT agent_id, status, COUNT(*) AS cnt FROM agent_inbox_tasks GROUP BY agent_id, status ORDER BY agent_id, status' },
+      { label:'每日 LLM reasoning 數', sql:"SELECT DATE(occurred_at) AS day, COUNT(*) AS cnt FROM llm_reasoning_audit GROUP BY day ORDER BY day DESC LIMIT 14" },
+      { label:'broker_db 所有表', sql:"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name" },
+    ];
+    function applySqlPreset(p){ sqlInput.value = p.sql; }
+    async function runSql(){
+      sqlLoading.value = true;
+      try{
+        const r = await postPlain('/api/v1/db/query', { sql: sqlInput.value });
+        sqlResult.value = r;
+      }catch(e){
+        sqlResult.value = { success:false, message:e.message };
+      }
+      sqlLoading.value = false;
+    }
+
     // ── Inbox-driven agents（顯示我的 7 個 agent + 任務統計）──────────────
     // 跟 AgentSpawnService.ListAgents()（Agents tab 的「所有代理」）互補：
     // 後者是 spawn-based container agent、前者是 inbox-driven background service
@@ -3713,6 +3874,9 @@ const app=createApp({
       chatUserId,chatInput,chatHistory,chatLoading,sendChat,clearChat,
       agentDispatchSelect,agentDispatchPrompt,agentDispatchLoading,agentDispatchResult,
       consoleAgents,onAgentChange,pushAgentTask,
+      // 🗄 資料瀏覽
+      errAggResult,errAggLoading,errAggSource,errAggHours,loadErrorAggregate,
+      sqlInput,sqlResult,sqlLoading,sqlPresets,applySqlPreset,runSql,
       // Container restart
       restartContainer,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
