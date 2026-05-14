@@ -449,15 +449,66 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 <span v-else style="color:var(--td);font-size:11px">—</span>
               </template>
             </el-table-column>
-            <el-table-column label="模型 / 延遲" min-width="160">
+            <el-table-column label="模型 / 延遲" min-width="140">
               <template #default="{row}">
                 <code v-if="row.latest_model" style="font-size:11px">{{row.latest_model}}</code>
                 <span v-if="row.latest_latency" style="font-size:11px;color:var(--td);margin-left:6px">{{row.latest_latency}} ms</span>
                 <span v-if="!row.latest_model && !row.latest_latency" style="color:var(--td);font-size:11px">—</span>
               </template>
             </el-table-column>
+            <el-table-column label="操作" width="180" align="center">
+              <template #default="{row}">
+                <el-button size="small" text type="primary" @click="openInboxInspector(row)">📋 歷史</el-button>
+                <el-button size="small" text type="success" @click="triggerInboxAgent(row)">▶ 觸發</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
+
+        <!-- Inbox Inspector modal：點 agent row 看最近 10 筆 task -->
+        <el-dialog v-model="inboxInspectorVisible" :title="inboxInspectorAgent ? (inboxInspectorAgent.label + ' · 任務歷史') : '任務歷史'" width="860px">
+          <div v-if="inboxInspectorAgent" style="display:flex;align-items:center;gap:10px;font-size:11px;color:var(--td);margin-bottom:10px">
+            <code>{{inboxInspectorAgent.id}}</code>
+            <el-tag :type="inboxInspectorAgent.mode==='auto'?'success':'warning'" size="small" effect="plain">{{inboxInspectorAgent.mode}}</el-tag>
+            <el-button size="small" text type="success" @click="triggerInboxAgent(inboxInspectorAgent)" style="margin-left:auto">▶ 立即觸發一筆</el-button>
+            <el-button size="small" text @click="openInboxInspector(inboxInspectorAgent)">↻ 重新整理</el-button>
+          </div>
+          <div v-if="inboxInspectorLoading" style="text-align:center;padding:30px;color:var(--td)">載入中…</div>
+          <div v-else-if="inboxInspectorTasks.length===0" style="text-align:center;padding:30px;color:var(--td)">
+            尚無任務。按上方「立即觸發一筆」push 一筆 task 進 inbox。
+          </div>
+          <el-collapse v-else accordion>
+            <el-collapse-item v-for="t in inboxInspectorTasks" :key="t.task_id" :name="t.task_id">
+              <template #title>
+                <div style="display:flex;align-items:center;gap:10px;flex:1">
+                  <span style="font-family:monospace;font-size:11px;color:var(--td)">#{{t.seq}}</span>
+                  <el-tag v-if="t.status==='done'" type="success" size="small">done</el-tag>
+                  <el-tag v-else-if="t.status==='processing'" type="info" size="small">processing</el-tag>
+                  <el-tag v-else-if="t.status==='failed'" type="danger" size="small">failed</el-tag>
+                  <el-tag v-else size="small">{{t.status}}</el-tag>
+                  <span style="font-size:11px;color:var(--td)">{{relTime(t.created_at)}}</span>
+                  <span v-if="t.latency_ms" style="font-size:11px;color:var(--td)">{{t.latency_ms}} ms</span>
+                  <span v-if="t.model" style="font-size:11px;color:var(--td);font-family:monospace">{{t.model}}</span>
+                  <span v-if="t.requested_by" style="font-size:10px;color:var(--td);margin-left:auto">by {{t.requested_by}}</span>
+                </div>
+              </template>
+              <!-- prompt -->
+              <div style="font-size:11px;color:var(--td);margin-bottom:4px">Prompt：</div>
+              <pre style="margin:0 0 12px;background:var(--s2);padding:8px;border-radius:4px;font-size:11px;font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow:auto">{{t.prompt}}</pre>
+              <!-- reply -->
+              <div v-if="t.reply">
+                <div style="font-size:11px;color:var(--td);margin-bottom:4px">Reply：</div>
+                <pre style="margin:0;background:var(--s2);padding:10px;border-radius:4px;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;font-family:inherit;max-height:400px;overflow:auto">{{t.reply}}</pre>
+              </div>
+              <div v-else-if="t.error" style="background:rgba(245,108,108,0.08);border:1px solid rgba(245,108,108,0.3);padding:10px;border-radius:4px;color:#f56c6c;font-size:12px">
+                ⚠️ {{t.error}}
+              </div>
+              <div v-else style="color:var(--td);font-size:12px;text-align:center;padding:20px">
+                {{t.status==='processing' ? '⏳ 處理中…' : '(no reply yet)'}}
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </el-dialog>
 
         <el-card>
           <template #header>
@@ -3269,6 +3320,49 @@ const app=createApp({
     // 跟 AgentSpawnService.ListAgents()（Agents tab 的「所有代理」）互補：
     // 後者是 spawn-based container agent、前者是 inbox-driven background service
     const inboxAgentStats = ref([]);  // [{ id, label, mode, total, latest_status, latest_at, latest_model, latest_latency }]
+    // Inspector modal：點 agent row → 看最近 10 筆 task
+    const inboxInspectorVisible = ref(false);
+    const inboxInspectorAgent = ref(null);   // { id, label, ... }
+    const inboxInspectorTasks = ref([]);
+    const inboxInspectorLoading = ref(false);
+    async function openInboxInspector(agent){
+      inboxInspectorAgent.value = agent;
+      inboxInspectorVisible.value = true;
+      inboxInspectorLoading.value = true;
+      inboxInspectorTasks.value = [];
+      try{
+        const r = await getPlain('/api/v1/agents/inbox/list?agent_id='+encodeURIComponent(agent.id)+'&limit=10');
+        inboxInspectorTasks.value = r?.data?.tasks || [];
+      }catch(e){
+        ElementPlus.ElMessage.error('查詢 inbox 失敗：'+e.message);
+      }
+      inboxInspectorLoading.value = false;
+    }
+    // 直接觸發一筆 default task（auto agent: 用 trigger:manual / manual agent: 用 console template）
+    async function triggerInboxAgent(agent){
+      const defaultPrompts = {
+        agent_strategy_research: '{"symbol":"AAPL","family":"sma_cross","generations":2,"data_limit":200}',
+        agent_risk_stress_test:  '{"drop_pct":15}',
+      };
+      const prompt = defaultPrompts[agent.id] || '{"trigger":"manual","note":"triggered from Agents tab"}';
+      try{
+        const r = await postPlain('/api/v1/agents/inbox/push', {
+          agent_id: agent.id, prompt, requested_by: 'agents-tab-trigger'
+        });
+        if(r?.success){
+          ElementPlus.ElMessage.success('已推 task → '+agent.label+'（task_id='+r.data.task_id+'）');
+          // 重新載 stats、且如果 inspector 開著就重新查 task list
+          loadInboxAgentStats();
+          if(inboxInspectorVisible.value && inboxInspectorAgent.value?.id === agent.id){
+            setTimeout(()=>openInboxInspector(agent), 500);
+          }
+        } else {
+          ElementPlus.ElMessage.error('Push 失敗：'+(r?.message||'unknown'));
+        }
+      }catch(e){
+        ElementPlus.ElMessage.error('Push 例外：'+e.message);
+      }
+    }
     async function loadInboxAgentStats(){
       const list = [
         { id:'agent_forensics_hourly',          label:'🔍 鑑識（1h）',    mode:'auto'   },
@@ -3572,6 +3666,8 @@ const app=createApp({
       issueFilter,issueGroups,transientBannerInfo,relTime,entityLabel,
       // Inbox-driven agents (顯示 7 個 BackgroundService agent + 任務統計)
       inboxAgentStats,loadInboxAgentStats,
+      inboxInspectorVisible,inboxInspectorAgent,inboxInspectorTasks,inboxInspectorLoading,
+      openInboxInspector,triggerInboxAgent,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
