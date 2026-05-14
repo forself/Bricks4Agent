@@ -6,11 +6,68 @@
 <title>B4A Trading</title>
 <style>
 :root {
+  /* === Color：階層背景 + 文字 3 階 + accent + status === */
   --bg: #0b0e11; --bg2: #181a20; --bg3: #1e2329; --bg4: #2b3139;
   --border: #2b3139; --text: #eaecef; --text2: #848e9c; --text3: #5e6673;
   --accent: #f0b90b; --accent2: #c99d09;
   --green: #0ecb81; --red: #f6465d; --greenBg: rgba(14,203,129,0.1); --redBg: rgba(246,70,93,0.1);
+
+  /* === Semantic status（給 widgets / alert badge 用、不要再用 raw hex） === */
+  --success: #0ecb81;   /* = green、語意化 alias */
+  --danger:  #f6465d;   /* = red */
+  --warn:    #f0b90b;   /* = accent (amber) */
+  --info:    #4d8aff;   /* 新加：藍、給「中性提示」用 */
+  --successBg: rgba(14,203,129,0.10);
+  --dangerBg:  rgba(246,70,93,0.10);
+  --warnBg:    rgba(240,185,11,0.10);
+  --infoBg:    rgba(77,138,255,0.10);
+
+  /* === Spacing scale（一致 padding / margin、避免散值） === */
+  --sp-xs: 4px;  --sp-sm: 8px;  --sp-md: 12px;  --sp-lg: 16px;  --sp-xl: 24px;
+
+  /* === Radius / Shadow / Transition === */
+  --r-sm: 3px; --r-md: 4px; --r-lg: 6px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.2);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.35);
+  --t-fast: .1s ease-out;  --t-base: .2s ease-out;
+
+  /* === Font-size scale === */
+  --fs-xs: 10px;  --fs-sm: 11px;  --fs-md: 13px;  --fs-lg: 15px;  --fs-xl: 18px;
 }
+
+/* === Utility：Empty state placeholder（取代各 tab 散落的「—」/「無資料」） === */
+.empty-state {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:var(--sp-sm); padding:var(--sp-xl) var(--sp-md);
+  color:var(--text3); text-align:center;
+}
+.empty-state .es-icon { font-size:28px; opacity:.5; line-height:1; }
+.empty-state .es-title { font-size:var(--fs-md); color:var(--text2); }
+.empty-state .es-hint { font-size:var(--fs-sm); color:var(--text3); max-width:320px; line-height:1.5; }
+
+/* === Utility：Loading skeleton（取代「— 載入中 —」文字） === */
+@keyframes skeleton-pulse {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+.skeleton {
+  display:inline-block; height:14px; min-width:60px;
+  background: linear-gradient(90deg, var(--bg3) 0%, var(--bg4) 50%, var(--bg3) 100%);
+  background-size: 200% 100%;
+  border-radius: var(--r-sm);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.skeleton.skel-row { display:block; height:12px; margin:var(--sp-xs) 0; }
+.skeleton.skel-lg  { height:24px; }
+.skeleton-stack { display:flex; flex-direction:column; gap:var(--sp-xs); padding:var(--sp-md); }
+
+/* === Utility：Status badge（給 widget 內顯示 ok/warn/error 用） === */
+.badge { display:inline-block; padding:2px 6px; border-radius:var(--r-sm); font-size:var(--fs-xs); font-weight:600; line-height:1.4; }
+.badge.b-success { background:var(--successBg); color:var(--success); }
+.badge.b-warn    { background:var(--warnBg);    color:var(--warn); }
+.badge.b-danger  { background:var(--dangerBg);  color:var(--danger); }
+.badge.b-info    { background:var(--infoBg);    color:var(--info); }
+.badge.b-muted   { background:var(--bg3);       color:var(--text2); }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
 
@@ -997,7 +1054,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
     </div>
     <div class="card"><h3>監控清單</h3>
       <table><thead><tr><th>Symbol</th><th>Exchange</th><th>模式</th><th>策略</th><th>數量</th><th>訊號</th><th>信心</th><th>檢查</th><th></th></tr></thead>
-      <tbody id="auto-watch-table"><tr><td colspan="9" style="color:var(--text2)">無</td></tr></tbody></table>
+      <tbody id="auto-watch-table"><tr><td colspan="9" style="padding:0"><div class="empty-state"><div class="es-icon">📡</div><div class="es-title">尚無監控標的</div><div class="es-hint">用上方「新增監控」加入第一個 symbol、或從「市場掃描器」一鍵批次加入候選</div></div></td></tr></tbody></table>
     </div>
   </div>
   <!-- Cut C: 市場掃描器 — 一籃子 symbol 跑 composite、按信心 + 動作篩選、勾選後一鍵加入監控 -->
@@ -1025,7 +1082,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
       <thead><tr>
         <th>Gate</th><th>觸發次數</th><th>最近一次</th><th>最近 symbol</th>
       </tr></thead>
-      <tbody id="auto-gate-stats"><tr><td colspan="4" style="color:var(--text2);text-align:center">— 載入中 —</td></tr></tbody>
+      <tbody id="auto-gate-stats"><tr><td colspan="4" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:80%"></div><div class="skeleton skel-row" style="width:50%"></div></div></td></tr></tbody>
     </table>
   </div>
 
@@ -1235,11 +1292,11 @@ tr:hover { background:rgba(240,185,11,0.02); }
   <div class="g g2">
     <div class="card"><h3>持倉明細</h3>
       <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>損益</th><th>%</th></tr></thead>
-      <tbody id="pnl-positions-table"><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody></table>
+      <tbody id="pnl-positions-table"><tr><td colspan="7" style="padding:0"><div class="empty-state"><div class="es-icon">💼</div><div class="es-title">尚無持倉</div><div class="es-hint">下單成交後會在此顯示；FIFO 配對 + 即時 P&L</div></div></td></tr></tbody></table>
     </div>
     <div class="card"><h3>各 Symbol 績效</h3>
       <table style="font-size:11px"><thead><tr><th>Symbol</th><th>交易數</th><th>勝率</th><th>已實現 P&L</th><th>利潤因子</th></tr></thead>
-      <tbody id="pnl-by-symbol-table"><tr><td colspan="5" style="color:var(--text2)">—</td></tr></tbody></table>
+      <tbody id="pnl-by-symbol-table"><tr><td colspan="5" style="padding:0"><div class="empty-state"><div class="es-icon">📊</div><div class="es-title">尚無已實現交易</div><div class="es-hint">至少完成一筆 round-trip 才會出現各 symbol 績效</div></div></td></tr></tbody></table>
     </div>
   </div>
   <div class="g g2" style="margin-top:12px">
@@ -1277,7 +1334,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
         <th>verdict</th>
         <th>1h</th><th>4h</th><th>1d</th>
       </tr></thead>
-      <tbody id="mtf-tbody"><tr><td colspan="5" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+      <tbody id="mtf-tbody"><tr><td colspan="5" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div><div class="skeleton skel-row" style="width:55%"></div></div></td></tr></tbody>
     </table>
   </div>
 
@@ -1321,7 +1378,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
         <th>策略</th><th>標的數</th><th>成交筆</th><th>勝率</th>
         <th>已實現 PnL</th><th>平均勝</th><th>平均敗</th><th>利潤因子</th><th>每筆均 PnL</th>
       </tr></thead>
-      <tbody id="sp-by-strategy"><tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+      <tbody id="sp-by-strategy"><tr><td colspan="9" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:55%"></div><div class="skeleton skel-row" style="width:75%"></div><div class="skeleton skel-row" style="width:65%"></div></div></td></tr></tbody>
     </table>
   </div>
 
@@ -1334,7 +1391,7 @@ tr:hover { background:rgba(240,185,11,0.02); }
         <th>成交筆</th><th>勝/敗</th><th>勝率</th>
         <th>已實現 PnL</th><th>利潤因子</th><th>最近訊號</th>
       </tr></thead>
-      <tbody id="sp-by-pair"><tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 載入中 —</td></tr></tbody>
+      <tbody id="sp-by-pair"><tr><td colspan="9" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:50%"></div><div class="skeleton skel-row" style="width:80%"></div><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:70%"></div></div></td></tr></tbody>
     </table>
   </div>
 
@@ -1881,6 +1938,26 @@ document.addEventListener('keydown',e=>{
 async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
 function fmt(n,d=2){return n!=null?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';}
 function fmtUsd(n){return n!=null?'$'+fmt(n):'—';}
+
+// ── UX Utilities：empty state + skeleton（取代散落的 td「—」「無」）─────
+/** 產一個 empty-state td、給 table tbody 用：emptyRow(colspan, '📊', '標題', '提示').outerHTML */
+function emptyRow(colspan, icon, title, hint){
+  return `<tr><td colspan="${colspan}" style="padding:0">
+    <div class="empty-state">
+      <div class="es-icon">${icon||'∅'}</div>
+      <div class="es-title">${title||'尚無資料'}</div>
+      ${hint ? `<div class="es-hint">${hint}</div>` : ''}
+    </div>
+  </td></tr>`;
+}
+/** 產 N 行 skeleton row、給 fetch loading 時用：skeletonRows(colspan, 3) */
+function skeletonRows(colspan, rows = 3){
+  let s = '';
+  for (let i = 0; i < rows; i++){
+    s += `<tr><td colspan="${colspan}" style="padding:6px 12px"><div class="skeleton skel-row" style="width:${50+Math.floor(Math.random()*40)}%"></div></td></tr>`;
+  }
+  return s;
+}
 function pnlClass(n){return n>0?'up':n<0?'down':'';}
 function timeStr(t){return t?new Date(t).toLocaleString('zh-TW'):'—';}
 
@@ -2768,15 +2845,31 @@ function renderGateStats(logs){
   const fmt = t => t ? new Date(t).toLocaleString('zh-TW', { hour12: false }).slice(5) : '—';
   const rows = counts.filter(c => c.count > 0).sort((a,b) => b.count - a.count);
   if (rows.length === 0){
-    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2);text-align:center;padding:12px">— 過去 100 筆 log 沒觸發任何 gate —</td></tr>';
+    tbody.innerHTML = emptyRow(4, '🛡', '所有 gate 都沒觸發', '過去 100 筆 log 內、AutoTrader 沒被任何 risk gate 攔下；表示策略訊號都通過審核');
     return;
   }
-  tbody.innerHTML = rows.map(c => `<tr>
-    <td>${c.name}</td>
-    <td><b>${c.count}</b></td>
-    <td style="font-size:11px;color:var(--text2)">${fmt(c.latestAt)}</td>
-    <td style="font-size:11px">${c.latestSym || '—'}</td>
-  </tr>`).join('');
+  // inline bar chart：相對頻率 + 嚴重度上色（>50% red、>25% warn、其他 info）
+  const maxCount = Math.max(...rows.map(c => c.count));
+  const severityColor = c => {
+    const r = c / maxCount;
+    return r > 0.5 ? 'var(--danger)' : r > 0.25 ? 'var(--warn)' : 'var(--info)';
+  };
+  tbody.innerHTML = rows.map(c => {
+    const widthPct = Math.round(100 * c.count / maxCount);
+    return `<tr>
+      <td>${c.name}</td>
+      <td style="min-width:140px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:8px;background:var(--bg3);border-radius:var(--r-sm);overflow:hidden">
+            <div style="width:${widthPct}%;height:100%;background:${severityColor(c.count)};border-radius:var(--r-sm);transition:width var(--t-base)"></div>
+          </div>
+          <b style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums">${c.count}</b>
+        </div>
+      </td>
+      <td style="font-size:11px;color:var(--text2)">${fmt(c.latestAt)}</td>
+      <td style="font-size:11px">${c.latestSym || '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Chart ───────────────────────────────────────────────────────
@@ -3538,7 +3631,7 @@ async function loadMtfMatrix(){
     return;
   }
   if (watches.length === 0){
-    tbody.innerHTML = `<tr><td colspan="${2+intervals.length}" style="color:var(--text2);text-align:center;padding:24px">— 沒有 watch —</td></tr>`;
+    tbody.innerHTML = emptyRow(2+intervals.length, '📡', '尚無監控標的', '到「自動」tab 加入第一個 watch、即可在此看到跨時段訊號矩陣');
     return;
   }
 
@@ -3550,11 +3643,19 @@ async function loadMtfMatrix(){
     'all_bearish':   'color:var(--down);font-weight:600',
     'no_data':       'color:var(--text3)',
   }[v] || '');
-  const cellStyle = action => ({
-    buy:  'background:rgba(14,203,129,0.18);color:var(--up);font-weight:600',
-    sell: 'background:rgba(246,70,93,0.18);color:var(--down);font-weight:600',
-    hold: 'color:var(--text2)',
-  }[action] || 'color:var(--text3)');
+  // Heatmap-style cell：buy/sell 用 confidence 控制飽和度（0.5→0.18 alpha、1.0→0.55 alpha）
+  // 視覺上「越強的訊號顏色越深」、user 一眼掃就能挑出強訊號
+  const cellStyle = (action, confidence) => {
+    const conf = Math.max(0.3, Math.min(1, confidence ?? 0.5));
+    const alpha = (0.18 + (conf - 0.5) * 0.74).toFixed(2);   // 0.5 → 0.18、1.0 → 0.55
+    if (action === 'buy')
+      return `background:rgba(14,203,129,${alpha});color:var(--up);font-weight:600`;
+    if (action === 'sell')
+      return `background:rgba(246,70,93,${alpha});color:var(--down);font-weight:600`;
+    if (action === 'hold')
+      return 'color:var(--text2);background:var(--bg3)';
+    return 'color:var(--text3)';
+  };
 
   const qs = (w) => {
     const p = new URLSearchParams({
@@ -3587,7 +3688,8 @@ async function loadMtfMatrix(){
         return `<td style="color:#dbab09;text-align:center" title="${row?.error||'no data'}">⚠</td>`;
       }
       const tip = `regime=${row.regime||'?'} conf=${(row.confidence*100).toFixed(0)}% — ${row.reason||''}`.replace(/"/g,'&quot;');
-      return `<td style="${cellStyle(row.action)};text-align:center" title="${tip}">${row.action || '—'}</td>`;
+      const confLabel = row.confidence ? `<span style="font-size:9px;opacity:.7;margin-left:3px">${Math.round(row.confidence*100)}%</span>` : '';
+      return `<td style="${cellStyle(row.action, row.confidence)};text-align:center;padding:6px 4px" title="${tip}">${row.action || '—'}${confLabel}</td>`;
     }).join('');
 
     return `<tr>
@@ -3623,8 +3725,8 @@ async function loadStrategyPerf(){
   }
 
   if (watches.length === 0){
-    tbStrat.innerHTML = '<tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 目前沒有 watch 紀錄 —</td></tr>';
-    tbPair.innerHTML  = '<tr><td colspan="9" style="color:var(--text2);text-align:center;padding:24px">— 目前沒有 watch 紀錄 —</td></tr>';
+    tbStrat.innerHTML = emptyRow(9, '📈', '尚無策略績效資料', '到「自動」tab 加 watch、累積實際成交後此處會出現策略分組統計');
+    tbPair.innerHTML  = emptyRow(9, '📈', '尚無策略績效資料', '到「自動」tab 加 watch、累積實際成交後此處會出現策略分組統計');
     return;
   }
 
