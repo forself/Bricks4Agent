@@ -160,7 +160,7 @@ public class StrategyHealthInspectorAgentService : BackgroundService
     }
 
     /// <summary>掃 WatchList、回 (markdown snapshot, anomalies)</summary>
-    private static (string Snapshot, List<string> Anomalies) BuildHealthSnapshot(AutoTraderService autoTrader)
+    internal static (string Snapshot, List<string> Anomalies) BuildHealthSnapshot(AutoTraderService autoTrader)
     {
         var sb = new StringBuilder();
         var anomalies = new List<string>();

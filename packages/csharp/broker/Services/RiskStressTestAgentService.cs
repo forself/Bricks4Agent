@@ -141,7 +141,7 @@ public class RiskStressTestAgentService : BackgroundService
     /// 從 prompt JSON 抽 scenario。
     /// 回 (uniformDropPct, perSymbolDrops)：兩者擇一、uniform 是 fallback。
     /// </summary>
-    private static (decimal? UniformDrop, Dictionary<string, decimal> PerSymbol) ParsePrompt(string prompt)
+    internal static (decimal? UniformDrop, Dictionary<string, decimal> PerSymbol) ParsePrompt(string prompt)
     {
         try
         {
@@ -181,7 +181,7 @@ public class RiskStressTestAgentService : BackgroundService
     /// 不知道精確 qty、用 leverage × notional 估算（這個 demo 演示用、不是真執行）。
     /// 主要看「mark 是否觸發 SL / liq」這個離散事件。
     /// </summary>
-    private static string BuildStressReport(
+    internal static string BuildStressReport(
         AutoTraderService autoTrader, decimal? uniformDrop, Dictionary<string, decimal> perSymbol)
     {
         var sb = new StringBuilder();

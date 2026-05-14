@@ -152,7 +152,7 @@ public class DailyMarketReportAgentService : BackgroundService
     }
 
     /// <summary>把帳戶 + 監控 + 持倉壓成 markdown snapshot；prompt 跟 reply 都會用到</summary>
-    private static string BuildSnapshot(AutoTraderService autoTrader, BalanceAnchorService anchor)
+    internal static string BuildSnapshot(AutoTraderService autoTrader, BalanceAnchorService anchor)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"## 帳戶 (anchor 服務)");
@@ -207,7 +207,7 @@ public class DailyMarketReportAgentService : BackgroundService
         return sb.ToString();
     }
 
-    private static (string, string) BuildPrompts(string snapshot)
+    internal static (string, string) BuildPrompts(string snapshot)
     {
         var systemPrompt =
             "你是 Bricks4Agent 平台的「每日市場日報」助手。給你當前帳戶 + 監控 + 持倉的 markdown snapshot、" +

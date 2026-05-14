@@ -131,7 +131,7 @@ public class StrategyResearchAgentService : BackgroundService
         }
     }
 
-    private static (string Symbol, string Family, int Generations, int DataLimit) ParsePrompt(string prompt)
+    internal static (string Symbol, string Family, int Generations, int DataLimit) ParsePrompt(string prompt)
     {
         try
         {
@@ -156,7 +156,7 @@ public class StrategyResearchAgentService : BackgroundService
     }
 
     /// <summary>把 ResearchRun 結果壓成 markdown 報告塞進 inbox.reply</summary>
-    private static string FormatReport(ResearchRun run)
+    internal static string FormatReport(ResearchRun run)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# 策略研究結果 — {run.Family} on {run.Symbol}");
