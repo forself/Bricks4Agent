@@ -104,8 +104,16 @@ public class AuditService : IAuditService
             if (ev.PreviousEventHash != expectedPrevHash)
                 return false;
 
-            // 重新計算 hash 並驗證
-            var hashInput = $"{ev.PreviousEventHash}|{ev.TraceId}|{ev.TraceSeq}|{ev.EventType}|{ev.PayloadDigest}|{ev.OccurredAt:O}";
+            // [whitelist add: 2026-05-14 AnthonyLee] DateTime.Kind round-trip fix
+            // 寫入時 occurredAt = DateTime.UtcNow (Kind=Utc) → 「:O」格式產生 "...Z"
+            // 從 SQLite 讀回時 BaseOrm 給 Kind=Unspecified → 「:O」產生不帶 Z 的字串
+            // 兩字串不同 → SHA256 不同 → 永遠 verify fail。
+            // 這個 bug 因為 production 沒有定期 verify 一直沒被抓到、AuditChainVerifierAgent
+            // 上線後第一輪就抓到。修法：format 前先強制轉成 Utc Kind、跟寫入端對齊。
+            var occurredAtUtc = ev.OccurredAt.Kind == DateTimeKind.Utc
+                ? ev.OccurredAt
+                : DateTime.SpecifyKind(ev.OccurredAt, DateTimeKind.Utc);
+            var hashInput = $"{ev.PreviousEventHash}|{ev.TraceId}|{ev.TraceSeq}|{ev.EventType}|{ev.PayloadDigest}|{occurredAtUtc:O}";
             var expectedHash = ComputeSha256(hashInput);
             if (ev.EventHash != expectedHash)
                 return false;
