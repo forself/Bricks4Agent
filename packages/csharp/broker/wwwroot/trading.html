@@ -156,6 +156,18 @@ tr:hover { background:rgba(240,185,11,0.02); }
 /* 純文字欄位（symbol、策略名）關掉 tabular-nums 用 .td-text；數字欄位預設就是 tabular */
 td.td-text { font-variant-numeric:normal; }
 
+/* Filter chips（log / 任何 list 的 quick-filter） */
+.chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { display:inline-flex; align-items:center; padding:4px 10px; font-size:11px; border-radius:14px; border:1px solid var(--border); background:transparent; color:var(--text2); cursor:pointer; transition:.15s; user-select:none; }
+.chip:hover { color:var(--text); border-color:var(--text3); }
+.chip.active { background:rgba(240,185,11,0.10); border-color:var(--accent); color:var(--accent); font-weight:600; }
+
+/* Footer status bar（固定底、所有 tab 可見） */
+.footer-bar { position:fixed; left:0; right:0; bottom:0; height:22px; background:var(--bg2); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 14px; gap:18px; font-size:10.5px; color:var(--text3); z-index:50; }
+.footer-bar b { color:var(--text2); font-weight:500; font-variant-numeric:tabular-nums; }
+.footer-bar .ft-sep { width:1px; height:10px; background:var(--border); }
+body { padding-bottom:22px; } /* footer 不蓋住內容 */
+
 /* Badges */
 .badge { padding:2px 6px; border-radius:2px; font-size:10px; font-weight:700; text-transform:uppercase; }
 .badge.buy,.badge.filled { background:var(--greenBg); color:var(--green); }
@@ -833,7 +845,7 @@ td.td-text { font-variant-numeric:normal; }
     <main>
       <div class="card"><h3>持倉</h3>
         <table><thead><tr><th>Symbol</th><th>數量</th><th>成本</th><th>現價</th><th>市值</th><th>未實現損益</th><th></th></tr></thead>
-        <tbody id="ov-positions"><tr><td colspan="6" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+        <tbody id="ov-positions"><tr><td colspan="6" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:65%"></div><div class="skeleton skel-row" style="width:80%"></div><div class="skeleton skel-row" style="width:55%"></div></div></td></tr></tbody></table>
       </div>
     </main>
     <!-- 右 rail：Auto-trade feed + status -->
@@ -880,7 +892,7 @@ td.td-text { font-variant-numeric:normal; }
   </div>
   <div class="card"><h3>即時報價</h3>
     <table><thead><tr><th>Symbol</th><th>名稱</th><th>類型</th><th>價格</th><th>漲跌</th><th>漲跌%</th><th>市值</th><th>更新時間</th></tr></thead>
-    <tbody id="quote-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+    <tbody id="quote-table"><tr><td colspan="8" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:70%"></div><div class="skeleton skel-row" style="width:80%"></div><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div></div></td></tr></tbody></table>
   </div>
 </div>
 
@@ -945,7 +957,7 @@ td.td-text { font-variant-numeric:normal; }
     <div class="card"><h3>帳戶</h3><div id="trade-account" style="color:var(--text2)">載入中…</div>
       <div style="margin-top:12px"><h3>最近訂單</h3>
         <table><thead><tr><th>Symbol</th><th>方向</th><th>數量</th><th>狀態</th><th>時間</th></tr></thead>
-        <tbody id="trade-recent-orders"><tr><td colspan="5" style="color:var(--text2)">—</td></tr></tbody></table>
+        <tbody id="trade-recent-orders"><tr><td colspan="5" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div></div></td></tr></tbody></table>
       </div>
       <!-- 持倉分析卡 — 加碼/續抱/減碼/出場 AI 建議 -->
       <div class="card pos-analysis">
@@ -985,7 +997,7 @@ td.td-text { font-variant-numeric:normal; }
   <div style="margin-bottom:10px"><button class="btn btn-o btn-sm" onclick="fetchOrders()">重新整理</button></div>
   <div class="card"><h3>訂單紀錄</h3>
     <table><thead><tr><th>OrderID</th><th>Symbol</th><th>Exchange</th><th>方向</th><th>數量</th><th>成交價</th><th>狀態</th><th>時間</th></tr></thead>
-    <tbody id="order-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+    <tbody id="order-table"><tr><td colspan="8" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:55%"></div><div class="skeleton skel-row" style="width:75%"></div><div class="skeleton skel-row" style="width:65%"></div></div></td></tr></tbody></table>
   </div>
 </div>
 
@@ -1139,6 +1151,13 @@ td.td-text { font-variant-numeric:normal; }
   </div>
 
   <div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">交易日誌</h3><button class="btn btn-o btn-sm" onclick="fetchAutoLogs()">重新整理</button></div>
+    <div class="chip-row" id="auto-log-filter" style="margin-bottom:8px">
+      <span class="chip active" data-filter="all">全部</span>
+      <span class="chip" data-filter="entry">進場</span>
+      <span class="chip" data-filter="exit">出場</span>
+      <span class="chip" data-filter="reject">Gate 攔下</span>
+      <span class="chip" data-filter="risk">風控/告警</span>
+    </div>
     <div id="auto-logs" class="log" style="max-height:250px">—</div>
   </div>
 </div>
@@ -1177,7 +1196,7 @@ td.td-text { font-variant-numeric:normal; }
           <button class="btn btn-o btn-sm" onclick="loadPerpOpenOrders()">↻</button>
         </div>
         <table style="font-size:11px"><thead><tr><th>Symbol</th><th>方向</th><th>類型</th><th>數量</th><th>已成</th><th>狀態</th><th></th></tr></thead>
-        <tbody id="perp-orders-table"><tr><td colspan="7" style="color:var(--text2)">—</td></tr></tbody></table>
+        <tbody id="perp-orders-table"><tr><td colspan="7" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:55%"></div><div class="skeleton skel-row" style="width:70%"></div></div></td></tr></tbody></table>
       </div>
     </div>
 
@@ -1229,7 +1248,7 @@ td.td-text { font-variant-numeric:normal; }
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0">風控規則</h3><button class="btn btn-o btn-sm" onclick="fetchRules()">重新整理</button></div>
       <table><thead><tr><th>ID</th><th>名稱</th><th>類型</th><th>閾值</th><th>狀態</th></tr></thead>
-      <tbody id="risk-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+      <tbody id="risk-table"><tr><td colspan="5" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div></div></td></tr></tbody></table>
     </div>
     <div class="card">
       <h3>價格告警</h3>
@@ -1269,7 +1288,7 @@ td.td-text { font-variant-numeric:normal; }
       <button class="btn btn-y btn-sm" onclick="createAlertRule()">建立</button>
     </div>
     <table style="margin-top:10px"><thead><tr><th>名稱</th><th>條件</th><th>Symbol</th><th>閾值</th><th>Cooldown</th><th>上次觸發</th><th>狀態</th><th></th></tr></thead>
-      <tbody id="ar-table"><tr><td colspan="8" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+      <tbody id="ar-table"><tr><td colspan="8" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:80%"></div><div class="skeleton skel-row" style="width:55%"></div></div></td></tr></tbody></table>
     <h3 style="margin-top:14px;display:flex;justify-content:space-between;align-items:center"><span>觸發事件</span>
       <span style="font-size:11px;font-weight:400;color:var(--text3)">
         <label style="cursor:pointer"><input type="checkbox" id="ar-events-unack" onchange="fetchAlertEvents()" checked> 只看未處理</label>
@@ -1354,11 +1373,11 @@ td.td-text { font-variant-numeric:normal; }
   <div class="g g2" style="margin-top:12px">
     <div class="card"><h3>最近完成 round-trips（FIFO 配對）</h3>
       <table style="font-size:11px"><thead><tr><th>Symbol</th><th>進場</th><th>出場</th><th>數量</th><th>進場價</th><th>出場價</th><th>持有</th><th>P&L</th><th>%</th></tr></thead>
-      <tbody id="pnl-rt-table"><tr><td colspan="9" style="color:var(--text2)">—</td></tr></tbody></table>
+      <tbody id="pnl-rt-table"><tr><td colspan="9" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:55%"></div><div class="skeleton skel-row" style="width:75%"></div><div class="skeleton skel-row" style="width:65%"></div></div></td></tr></tbody></table>
     </div>
     <div class="card"><h3>最近成交（原始 fills）</h3>
       <table style="font-size:11px"><thead><tr><th>Symbol</th><th>方向</th><th>數量</th><th>價格</th><th>手續費</th><th>時間</th></tr></thead>
-      <tbody id="pnl-trades-table"><tr><td colspan="6" style="color:var(--text2)">—</td></tr></tbody></table>
+      <tbody id="pnl-trades-table"><tr><td colspan="6" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div></div></td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -1623,7 +1642,7 @@ td.td-text { font-variant-numeric:normal; }
   <div class="g g4" style="margin-bottom:12px" id="health-summary"></div>
   <div class="card"><h3>Worker 狀態</h3>
     <table><thead><tr><th>Worker</th><th>Capability</th><th>狀態</th><th>延遲</th><th>錯誤</th></tr></thead>
-    <tbody id="health-table"><tr><td colspan="5" style="color:var(--text2)">載入中…</td></tr></tbody></table>
+    <tbody id="health-table"><tr><td colspan="5" style="padding:0"><div class="skeleton-stack"><div class="skeleton skel-row" style="width:60%"></div><div class="skeleton skel-row" style="width:75%"></div><div class="skeleton skel-row" style="width:55%"></div></div></td></tr></tbody></table>
   </div>
 </div>
 
@@ -1987,7 +2006,7 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── API helper ──────────────────────────────────────────────────
-async function api(path,opts){try{const r=await fetch(API+path,opts);return await r.json();}catch(e){return{ok:false,error:e.message};}}
+async function api(path,opts){try{const r=await fetch(API+path,opts);const j=await r.json();window._lastApiTs=Date.now();window._apiOk=true;return j;}catch(e){window._apiOk=false;return{ok:false,error:e.message};}}
 function fmt(n,d=2){return n!=null?Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';}
 function fmtUsd(n){return n!=null?'$'+fmt(n):'—';}
 
@@ -2052,7 +2071,8 @@ function timeStr(t){return t?new Date(t).toLocaleString('zh-TW'):'—';}
 
 // ── Workers ─────────────────────────────────────────────────────
 async function checkWorkers(){const checks=[{id:'dot-quote',path:'/api/v1/workers/quote/prices'},{id:'dot-strategy',path:'/api/v1/strategy/list'},{id:'dot-risk',path:'/api/v1/risk/rules'},{id:'dot-trading',path:'/api/v1/trading/exchanges'}];
-for(const c of checks){const r=await api(c.path);document.getElementById(c.id).className='dot '+(r&&r.ok!==false&&!r.error?'on':'off');}}
+let online=0;for(const c of checks){const r=await api(c.path);const ok=r&&r.ok!==false&&!r.error;if(ok)online++;document.getElementById(c.id).className='dot '+(ok?'on':'off');}
+window._workerStatus={total:checks.length,online};refreshFooterWorkers();}
 
 // ── Overview ────────────────────────────────────────────────────
 // 帳戶清單：name = dropdown 顯示、value = exchange API 名稱、type = spot/perp、live = 是否為實盤
@@ -2893,10 +2913,13 @@ async function addAutoWatch(){
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
 async function fetchAutoLogs(){
   const r=await api('/api/v1/auto-trader/logs?limit=100');
-  const el=document.getElementById('auto-logs');
   const logs = r?.data?.logs || [];
-  if(logs.length>0) el.textContent = logs.map(l=>{const t=new Date(l.time).toLocaleTimeString('zh-TW');return`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}`;}).join('\n');
-  else el.textContent='無日誌';
+  // 緩存原始行（含結構化 fields），filter chip 改變時不重打 API
+  window._autoLogsRaw = logs.map(l=>{
+    const t=new Date(l.time).toLocaleTimeString('zh-TW');
+    return { ...l, text:`[${t}] ${l.exchange}:${l.symbol} ${l.action.toUpperCase()} — ${l.message}` };
+  });
+  renderFilteredAutoLogs();
   renderGateStats(logs);
 }
 
@@ -4418,6 +4441,54 @@ async function addBatchToWatch(){
   fetchAutoStatus();
 }
 
+// ── Footer status bar ───────────────────────────────────────────
+function refreshFooter(){
+  const last=document.getElementById('ftr-last'); const dot=document.getElementById('ftr-dot');
+  if(last){
+    if(window._lastApiTs){
+      const sec=Math.floor((Date.now()-window._lastApiTs)/1000);
+      last.textContent = sec<5?'just now':sec<60?sec+'s ago':sec<3600?Math.floor(sec/60)+'m ago':Math.floor(sec/3600)+'h ago';
+    } else last.textContent='—';
+  }
+  if(dot){
+    const ok = window._apiOk!==false && window._lastApiTs && (Date.now()-window._lastApiTs)<120000;
+    dot.className = 'dot '+(ok?'on':'off');
+  }
+}
+function refreshFooterWorkers(){
+  const w=document.getElementById('ftr-workers'); if(!w)return;
+  const tot=window._workerStatus?.total, on=window._workerStatus?.online;
+  w.textContent = (tot!=null) ? `${on??'?'}/${tot}` : '—';
+}
+setInterval(refreshFooter,1000);
+
+// ── Auto-log filter chips ───────────────────────────────────────
+window._autoLogsRaw = [];   // 緩存 fetchAutoLogs 拿到的 logs
+window._autoLogFilter = 'all';
+function _logMatchesFilter(line, f){
+  if(f==='all') return true;
+  const s = (line||'').toLowerCase();
+  if(f==='entry')  return /entered|opened|entry|placed/.test(s);
+  if(f==='exit')   return /closed|exit|tp|sl|reduceonly|平倉/.test(s);
+  if(f==='reject') return /reject|cap:|cooldown|gate|threshold|exhausted|reached/.test(s);
+  if(f==='risk')   return /alert|liq|slippage|warn|風控|告警/.test(s);
+  return true;
+}
+function renderFilteredAutoLogs(){
+  const el=document.getElementById('auto-logs');if(!el)return;
+  const lines=window._autoLogsRaw||[];
+  const f=window._autoLogFilter||'all';
+  const out=lines.filter(l=>_logMatchesFilter(l.text,f));
+  el.textContent = out.length>0 ? out.map(l=>l.text).join('\n') : (f==='all'?'無日誌':`此篩選（${f}）下無相符日誌`);
+}
+document.addEventListener('click', e=>{
+  const chip = e.target.closest('#auto-log-filter .chip'); if(!chip) return;
+  document.querySelectorAll('#auto-log-filter .chip').forEach(c=>c.classList.remove('active'));
+  chip.classList.add('active');
+  window._autoLogFilter = chip.dataset.filter || 'all';
+  renderFilteredAutoLogs();
+});
+
 // ── Init ────────────────────────────────────────────────────────
 checkWorkers();loadOverview();loadLiveQuotes();connectWs();loadProtectionMap();_ensurePmapTimer();updateModeBadge();
 // 初始化全域 symbol 狀態 + 推到所有 tab 的輸入框（讓首次載入時所有 tab 都已預填 AAPL）
@@ -4426,5 +4497,16 @@ setCurrentSymbol('AAPL','alpaca','stock');
 setInterval(updateModeBadge,30000);
 setInterval(checkWorkers,30000);setInterval(loadLiveQuotes,60000);
 </script>
+
+<!-- Footer status bar：固定底、所有 tab 可見 -->
+<div class="footer-bar">
+  <span><span class="dot on" id="ftr-dot"></span> &nbsp;broker</span>
+  <span class="ft-sep"></span>
+  <span>workers · <b id="ftr-workers">—</b></span>
+  <span class="ft-sep"></span>
+  <span>last API · <b id="ftr-last">—</b></span>
+  <span class="ft-sep"></span>
+  <span style="margin-left:auto;color:var(--text3)">⌨ press <b style="color:var(--text2)">?</b> for shortcuts</span>
+</div>
 </body>
 </html>
