@@ -789,6 +789,69 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </div>
         </el-card>
 
+        <!-- FORENSIC INVESTIGATION: broker 把 audit timeline 餵 LlmProxy 組敘述、現場展示 propose/validate/record 三段 -->
+        <el-card style="margin-bottom:14px;border-left:3px solid #409eff">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">🔍 鑑識調查 / Forensic Investigation</span>
+              <span style="font-size:11px;color:var(--td)">broker 自己拉 audit + W13 + approval 時間軸 → 走 LlmProxy 組敘述 → 這次 LLM 呼叫也會被自己稽核（出現在下方 recent calls）</span>
+            </div>
+          </template>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <!-- 時間 preset + 自訂 -->
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--td)">時間範圍：</span>
+              <el-button size="small" @click="setForensicPreset(1)">過去 1h</el-button>
+              <el-button size="small" @click="setForensicPreset(6)">過去 6h</el-button>
+              <el-button size="small" @click="setForensicPreset(24)">過去 24h</el-button>
+              <el-button size="small" @click="setForensicPreset(72)">過去 3d</el-button>
+              <el-input v-model="forensicQuery.since" size="small" style="width:200px" placeholder="since (ISO, 留空=1h)"/>
+              <span style="color:var(--td)">~</span>
+              <el-input v-model="forensicQuery.until" size="small" style="width:200px" placeholder="until (ISO, 留空=now)"/>
+            </div>
+            <!-- 篩選 -->
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--td)">Symbol 篩選（選填）：</span>
+              <el-input v-model="forensicQuery.symbol" size="small" style="width:160px" placeholder="BTC-USDT"/>
+              <span style="font-size:12px;color:var(--td);margin-left:14px">問題：</span>
+              <el-input v-model="forensicQuery.question" size="small" style="flex:1;min-width:240px"/>
+              <el-button type="primary" size="small" @click="runForensicInvestigation" :loading="forensicLoading">🔍 開始鑑識</el-button>
+            </div>
+          </div>
+
+          <!-- 結果 -->
+          <div v-if="forensicResult" style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">
+            <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:var(--td);margin-bottom:10px;flex-wrap:wrap">
+              <span>🧠 model: <code>{{forensicResult.llm_model||'—'}}</code></span>
+              <span>⏱ {{forensicResult.llm_duration_ms||'—'}} ms</span>
+              <span>📊 events: <b>{{forensicResult.count}}</b></span>
+              <span>audit: {{forensicResult.summary?.AuditCount ?? forensicResult.summary?.auditCount ?? 0}}</span>
+              <span>approvals: {{forensicResult.summary?.ApprovalCount ?? forensicResult.summary?.approvalCount ?? 0}}</span>
+              <span>llm_reasoning: {{forensicResult.summary?.LlmCount ?? forensicResult.summary?.llmCount ?? 0}}</span>
+            </div>
+            <div v-if="forensicResult.narrative" style="background:var(--s2);padding:14px;border-radius:6px;border-left:3px solid #67c23a">
+              <div style="font-size:12px;color:var(--td);margin-bottom:8px">📝 Narrative（broker LlmProxy 組）</div>
+              <pre style="margin:0;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit">{{forensicResult.narrative}}</pre>
+            </div>
+            <div v-else-if="forensicResult.narrative_error" style="background:rgba(245,108,108,0.08);border:1px solid rgba(245,108,108,0.3);padding:10px;border-radius:4px;color:#f56c6c">
+              ⚠️ {{forensicResult.narrative_error}}
+            </div>
+
+            <!-- timeline events 折疊區 -->
+            <el-collapse style="margin-top:10px">
+              <el-collapse-item title="📋 完整時間軸（前 {{forensicResult.events?.length||0}} 筆）" name="tl">
+                <div style="max-height:300px;overflow:auto;font-size:11px;font-family:Consolas,monospace">
+                  <div v-for="(e,i) in forensicResult.events" :key="i" style="padding:3px 0;border-bottom:1px solid var(--bd)">
+                    <span style="color:var(--td)">{{fmtDate(e.ts)}}</span>
+                    <el-tag size="small" style="margin:0 6px">{{e.type}}</el-tag>
+                    <span>{{e.summary}}</span>
+                  </div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+        </el-card>
+
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
           <el-button size="small" @click="loadLlmStatus" :loading="llmStatusLoading">{{t('refresh')}}</el-button>
           <el-button size="small" type="primary" @click="runLlmHealthCheck" :loading="llmHealthLoading">🩺 {{t('llmHealthcheck')}}</el-button>
@@ -2892,6 +2955,33 @@ const app=createApp({
       }catch(e){ ElementPlus.ElMessage.error('copy failed'); }
     }
 
+    async function runForensicInvestigation(){
+      forensicLoading.value=true;
+      forensicResult.value=null;
+      try{
+        const q=forensicQuery.value;
+        const body={ question:q.question||undefined, limit:80 };
+        if(q.since) body.since=q.since;
+        if(q.until) body.until=q.until;
+        if(q.symbol) body.symbol=q.symbol;
+        const r=await postPlain('/api/v1/forensics/investigate', body);
+        if(r?.success){
+          forensicResult.value=r.data;
+          // 跑完順便 refresh LLM 全景 — 這次 LLM 呼叫應該已經進 recent calls
+          setTimeout(()=>{ loadLlmRecent(); loadLlmStatus(); }, 500);
+        } else {
+          ElementPlus.ElMessage.error(r?.message||'investigate failed');
+        }
+      }catch(e){ ElementPlus.ElMessage.error(e.message||'investigate failed'); }
+      forensicLoading.value=false;
+    }
+    function setForensicPreset(hours){
+      const now=new Date();
+      const since=new Date(now.getTime()-hours*3600*1000);
+      forensicQuery.value.since=since.toISOString().slice(0,19);
+      forensicQuery.value.until=now.toISOString().slice(0,19);
+    }
+
     async function loadAvailableTypes(){
       availableTypesLoading.value=true;
       availableTypesNote.value='';
@@ -2944,6 +3034,10 @@ const app=createApp({
     // W13：bot-node LLM reasoning audit（client-side LLM 推 broker 的 mitigation）
     const botReasoning=ref([]);
     const botReasoningLoading=ref(false);
+    // Forensics agent — broker 把 audit timeline 餵 LlmProxy 組敘述
+    const forensicQuery=ref({ since:'', until:'', symbol:'', question:'請說明這段時間 broker 做了什麼、有哪些 gate 觸發、是否異常' });
+    const forensicResult=ref(null);
+    const forensicLoading=ref(false);
     // 通用 detail modal（LlmProxy recent 或 W13 row 都共用）
     const llmDetailVisible=ref(false);
     const llmDetail=ref(null);   // { source, model, ts, latency_ms, tokens, reasoning, tool_calls, error, raw }
@@ -3117,6 +3211,8 @@ const app=createApp({
       // LLM 全景擴充
       llmPaths,botReasoning,botReasoningLoading,loadBotReasoning,
       llmDetailVisible,llmDetail,showLlmDetail,copyLlmDetail,
+      // Forensic investigation agent
+      forensicQuery,forensicResult,forensicLoading,runForensicInvestigation,setForensicPreset,
       // Container restart
       restartContainer,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
