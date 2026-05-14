@@ -345,6 +345,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Ba
 // 偵測表現差的策略 watch、連虧 5 筆或 win_rate<30% 自動 pause + 通知（self-healing）
 builder.Services.AddSingleton<Broker.Services.StrategyHealthMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.StrategyHealthMonitor>());
+// Forensics agent — Bricks4Agent 第一個真正用 agent_inbox abstraction 的 BackgroundService
+// 每分鐘 poll 自己 inbox、每小時 auto-push 一筆「過去 1h 鑑識」task；走 broker LlmProxy 組敘述
+builder.Services.AddHostedService<Broker.Services.ForensicsAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）

@@ -20,13 +20,127 @@ namespace Broker.Endpoints;
 /// </summary>
 public static class ForensicsEndpoints
 {
-    private record TimelineEvent(
+    /// <summary>Timeline 條目（internal、給 ForensicsAgentService 共用）</summary>
+    internal record TimelineEvent(
         DateTime Ts,
         string Type,
         string? TraceId,
         string? PrincipalId,
         string Summary,
         object Raw);
+
+    /// <summary>給 ForensicsAgentService 用的純資料聚合（不需要 HttpContext）</summary>
+    internal static (List<TimelineEvent> Events, TimelineSummary Summary, object Query)
+        BuildTimelineCore(BrokerDb db, DateTime since, DateTime until,
+            string? traceId, string? symbol, int limit,
+            string? callerPrincipalId, bool isAdmin)
+    {
+        var sinceStr = since.ToString("o");
+        var untilStr = until.ToString("o");
+        var symbolLike = symbol != null ? $"%{symbol}%" : null;
+
+        var auditSql = "SELECT * FROM audit_events WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
+        if (!string.IsNullOrEmpty(traceId)) auditSql += " AND trace_id = @traceId";
+        if (!string.IsNullOrEmpty(symbol))  auditSql += " AND (COALESCE(resource_ref,'') LIKE @symbolLike OR details LIKE @symbolLike)";
+        if (!isAdmin)                       auditSql += " AND principal_id = @caller";
+        auditSql += " ORDER BY occurred_at DESC LIMIT @limit";
+        var auditEvents = db.Query<AuditEvent>(auditSql,
+            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
+
+        var aprSql = "SELECT * FROM approval_requests WHERE requested_at BETWEEN @sinceStr AND @untilStr";
+        if (!string.IsNullOrEmpty(traceId)) aprSql += " AND trace_id = @traceId";
+        if (!string.IsNullOrEmpty(symbol))  aprSql += " AND (route LIKE @symbolLike OR payload LIKE @symbolLike)";
+        if (!isAdmin)                       aprSql += " AND principal_id = @caller";
+        aprSql += " ORDER BY requested_at DESC LIMIT @limit";
+        var approvals = db.Query<ApprovalRequest>(aprSql,
+            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
+
+        var llmSql = "SELECT * FROM llm_reasoning_audit WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
+        if (!string.IsNullOrEmpty(symbol))  llmSql += " AND (tool_args LIKE @symbolLike OR llm_reasoning LIKE @symbolLike)";
+        if (!isAdmin)                       llmSql += " AND user_id = @caller";
+        llmSql += " ORDER BY occurred_at DESC LIMIT @limit";
+        var llmReasoning = db.Query<LlmReasoningAuditEntry>(llmSql,
+            new { sinceStr, untilStr, symbolLike, caller = callerPrincipalId, limit });
+
+        var events = new List<TimelineEvent>();
+        foreach (var e in auditEvents)
+        {
+            events.Add(new TimelineEvent(
+                e.OccurredAt, "audit", e.TraceId, e.PrincipalId,
+                $"{e.EventType}{(string.IsNullOrEmpty(e.ResourceRef) ? "" : " · " + e.ResourceRef)}",
+                e));
+        }
+        foreach (var a in approvals)
+        {
+            events.Add(new TimelineEvent(
+                a.RequestedAt, "approval_requested", a.TraceId, a.PrincipalId,
+                $"approval requested: {a.CapabilityId} · {a.Route}",
+                new { a.ApprovalId, a.Status, a.CapabilityId, a.Route, payload_brief = TrimPayload(a.Payload) }));
+            if (a.DecidedAt.HasValue)
+            {
+                events.Add(new TimelineEvent(
+                    a.DecidedAt.Value, $"approval_{a.Status}", a.TraceId, a.DecidedBy,
+                    $"approval {a.Status} by {a.DecidedBy ?? "(unknown)"}: {a.DecisionReason ?? "(no reason)"}",
+                    new { a.ApprovalId, a.Status, a.DecidedBy, a.DecisionReason }));
+            }
+            if (a.DispatchedAt.HasValue)
+            {
+                events.Add(new TimelineEvent(
+                    a.DispatchedAt.Value, "approval_dispatched", a.TraceId, a.DispatchedBy,
+                    $"dispatched to worker by {a.DispatchedBy ?? "(unknown)"}",
+                    new { a.ApprovalId, a.DispatchedBy }));
+            }
+        }
+        foreach (var lr in llmReasoning)
+        {
+            events.Add(new TimelineEvent(
+                lr.OccurredAt, "llm_reasoning", null, lr.UserId,
+                $"[{lr.Source}] LLM → {lr.ToolName} (acl: {(lr.AclAllowed ? "allow" : "block")}, dispatch: {lr.DispatchResult})",
+                lr));
+        }
+
+        var sorted = events.OrderByDescending(e => e.Ts).Take(limit).ToList();
+        var typesAgg = sorted.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.Count());
+
+        var summary = new TimelineSummary
+        {
+            Types = typesAgg,
+            UniqueTraces = sorted.Select(e => e.TraceId).Where(s => !string.IsNullOrEmpty(s)).Distinct().Count(),
+            UniquePrincipals = sorted.Select(e => e.PrincipalId).Where(s => !string.IsNullOrEmpty(s)).Distinct().Count(),
+            AuditCount = auditEvents.Count,
+            ApprovalCount = approvals.Count,
+            LlmCount = llmReasoning.Count
+        };
+
+        var queryEcho = new
+        {
+            since = sinceStr, until = untilStr, trace_id = traceId, symbol, limit,
+            scope = isAdmin ? "all" : "self"
+        };
+        return (sorted, summary, queryEcho);
+    }
+
+    /// <summary>給 ForensicsAgentService 用的 prompt 組裝（跟 endpoint 同一模板）</summary>
+    internal static (string SystemPrompt, string UserPrompt) BuildLlmPrompts(
+        List<TimelineEvent> timeline, TimelineSummary summary, string question)
+    {
+        var timelineLines = timeline.Take(60).Select(e =>
+            $"- [{e.Ts:HH:mm:ss}] {e.Type} · {e.Summary}").ToList();
+        var timelineText = string.Join("\n", timelineLines);
+        var systemPrompt =
+            "你是 Bricks4Agent 平台的鑑識分析助手。給你一段 broker audit 時間軸（含 audit / approval / llm_reasoning 事件）、你要：\n" +
+            "1. 識別這段時間發生的主要事件鏈（先信號 → gate 檢查 → approval → dispatch）\n" +
+            "2. 用繁體中文寫一段 6–10 句的敘述、按時間順序、引用具體時間戳跟事件類型\n" +
+            "3. 結尾標出任何異常（gate 攔下 / approval 拒絕 / LLM 失敗 / dispatch 重試）\n" +
+            "4. **不要編造事件**、只用提供的時間軸資料\n\n" +
+            "輸出用 markdown bullet list、結尾另開一段「⚠️ 觀察到的異常」（若無就寫「無」）。";
+        var userPrompt =
+            $"問題: {question}\n\n" +
+            $"時間軸事件（共 {timeline.Count} 筆、顯示前 60 筆）:\n{timelineText}\n\n" +
+            $"統計: audit={summary.AuditCount}, approvals={summary.ApprovalCount}, llm_reasoning={summary.LlmCount}, " +
+            $"unique_traces={summary.UniqueTraces}";
+        return (systemPrompt, userPrompt);
+    }
 
     public static void Map(RouteGroupBuilder group)
     {
@@ -87,24 +201,7 @@ public static class ForensicsEndpoints
                 queryDict.ToDictionary(kv => kv.Key, kv => kv.Value));
             var (timeline, statSummary, queryEcho) = BuildTimeline(ctx, db, queryCollection);
 
-            // 把 timeline 壓成 LLM-friendly 短列表（防止 prompt 超長）
-            var timelineLines = timeline.Take(60).Select(e =>
-                $"- [{e.Ts:HH:mm:ss}] {e.Type} · {e.Summary}").ToList();
-            var timelineText = string.Join("\n", timelineLines);
-
-            var systemPrompt =
-                "你是 Bricks4Agent 平台的鑑識分析助手。給你一段 broker audit 時間軸（含 audit / approval / llm_reasoning 事件）、你要：\n" +
-                "1. 識別這段時間發生的主要事件鏈（先信號 → gate 檢查 → approval → dispatch）\n" +
-                "2. 用繁體中文寫一段 6–10 句的敘述、按時間順序、引用具體時間戳跟事件類型\n" +
-                "3. 結尾標出任何異常（gate 攔下 / approval 拒絕 / LLM 失敗 / dispatch 重試）\n" +
-                "4. **不要編造事件**、只用提供的時間軸資料\n\n" +
-                "輸出用 markdown bullet list、結尾另開一段「⚠️ 觀察到的異常」（若無就寫「無」）。";
-
-            var userPrompt =
-                $"問題: {question}\n\n" +
-                $"時間軸事件（共 {timeline.Count} 筆、顯示前 60 筆）:\n{timelineText}\n\n" +
-                $"統計: audit={statSummary.AuditCount}, approvals={statSummary.ApprovalCount}, llm_reasoning={statSummary.LlmCount}, " +
-                $"unique_traces={statSummary.UniqueTraces}";
+            var (systemPrompt, userPrompt) = BuildLlmPrompts(timeline, statSummary, question ?? "");
 
             // 走 OpenAI-compatible body 餵 LlmProxy。LlmProxyService.ChatAsync 接 JsonElement、
             // 直接走 MeteredLlmProxyService 包一層 → 進 ring buffer + LLM 全景表
@@ -161,7 +258,7 @@ public static class ForensicsEndpoints
         });
     }
 
-    /// <summary>共用聚合邏輯。回 (sorted timeline, summary stats, echoed query)</summary>
+    /// <summary>從 HttpContext 抽出 caller 後 delegate 到 BuildTimelineCore</summary>
     private static (List<TimelineEvent> Events, TimelineSummary Summary, object Query) BuildTimeline(
         HttpContext ctx, BrokerDb db, IQueryCollection query)
     {
@@ -177,95 +274,7 @@ public static class ForensicsEndpoints
         var limit   = query.TryGetValue("limit", out var l) && int.TryParse(l, out var lv)
             ? Math.Min(lv, 500) : 200;
 
-        var sinceStr = since.ToString("o");
-        var untilStr = until.ToString("o");
-        var symbolLike = symbol != null ? $"%{symbol}%" : null;
-
-        // audit_events
-        var auditSql = "SELECT * FROM audit_events WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
-        if (!string.IsNullOrEmpty(traceId)) auditSql += " AND trace_id = @traceId";
-        if (!string.IsNullOrEmpty(symbol))  auditSql += " AND (COALESCE(resource_ref,'') LIKE @symbolLike OR details LIKE @symbolLike)";
-        if (!isAdmin)                       auditSql += " AND principal_id = @caller";
-        auditSql += " ORDER BY occurred_at DESC LIMIT @limit";
-        var auditEvents = db.Query<AuditEvent>(auditSql,
-            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
-
-        // approval_requests
-        var aprSql = "SELECT * FROM approval_requests WHERE requested_at BETWEEN @sinceStr AND @untilStr";
-        if (!string.IsNullOrEmpty(traceId)) aprSql += " AND trace_id = @traceId";
-        if (!string.IsNullOrEmpty(symbol))  aprSql += " AND (route LIKE @symbolLike OR payload LIKE @symbolLike)";
-        if (!isAdmin)                       aprSql += " AND principal_id = @caller";
-        aprSql += " ORDER BY requested_at DESC LIMIT @limit";
-        var approvals = db.Query<ApprovalRequest>(aprSql,
-            new { sinceStr, untilStr, traceId, symbolLike, caller = callerPrincipalId, limit });
-
-        // llm_reasoning_audit
-        var llmSql = "SELECT * FROM llm_reasoning_audit WHERE occurred_at BETWEEN @sinceStr AND @untilStr";
-        if (!string.IsNullOrEmpty(symbol))  llmSql += " AND (tool_args LIKE @symbolLike OR llm_reasoning LIKE @symbolLike)";
-        if (!isAdmin)                       llmSql += " AND user_id = @caller";
-        llmSql += " ORDER BY occurred_at DESC LIMIT @limit";
-        var llmReasoning = db.Query<LlmReasoningAuditEntry>(llmSql,
-            new { sinceStr, untilStr, symbolLike, caller = callerPrincipalId, limit });
-
-        // 合併 timeline
-        var events = new List<TimelineEvent>();
-        foreach (var e in auditEvents)
-        {
-            events.Add(new TimelineEvent(
-                e.OccurredAt, "audit", e.TraceId, e.PrincipalId,
-                $"{e.EventType}{(string.IsNullOrEmpty(e.ResourceRef) ? "" : " · " + e.ResourceRef)}",
-                e));
-        }
-        foreach (var a in approvals)
-        {
-            events.Add(new TimelineEvent(
-                a.RequestedAt, "approval_requested", a.TraceId, a.PrincipalId,
-                $"approval requested: {a.CapabilityId} · {a.Route}",
-                new { a.ApprovalId, a.Status, a.CapabilityId, a.Route, payload_brief = TrimPayload(a.Payload) }));
-            if (a.DecidedAt.HasValue)
-            {
-                events.Add(new TimelineEvent(
-                    a.DecidedAt.Value, $"approval_{a.Status}", a.TraceId, a.DecidedBy,
-                    $"approval {a.Status} by {a.DecidedBy ?? "(unknown)"}: {a.DecisionReason ?? "(no reason)"}",
-                    new { a.ApprovalId, a.Status, a.DecidedBy, a.DecisionReason }));
-            }
-            if (a.DispatchedAt.HasValue)
-            {
-                events.Add(new TimelineEvent(
-                    a.DispatchedAt.Value, "approval_dispatched", a.TraceId, a.DispatchedBy,
-                    $"dispatched to worker by {a.DispatchedBy ?? "(unknown)"}",
-                    new { a.ApprovalId, a.DispatchedBy }));
-            }
-        }
-        foreach (var lr in llmReasoning)
-        {
-            events.Add(new TimelineEvent(
-                lr.OccurredAt, "llm_reasoning", null, lr.UserId,
-                $"[{lr.Source}] LLM → {lr.ToolName} (acl: {(lr.AclAllowed ? "allow" : "block")}, dispatch: {lr.DispatchResult})",
-                lr));
-        }
-
-        var sorted = events.OrderByDescending(e => e.Ts).Take(limit).ToList();
-        var typesAgg = sorted.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.Count());
-        var uniqueTraces = sorted.Select(e => e.TraceId).Where(s => !string.IsNullOrEmpty(s)).Distinct().Count();
-
-        var summary = new TimelineSummary
-        {
-            Types = typesAgg,
-            UniqueTraces = uniqueTraces,
-            UniquePrincipals = sorted.Select(e => e.PrincipalId).Where(s => !string.IsNullOrEmpty(s)).Distinct().Count(),
-            AuditCount = auditEvents.Count,
-            ApprovalCount = approvals.Count,
-            LlmCount = llmReasoning.Count
-        };
-
-        var queryEcho = new
-        {
-            since = sinceStr, until = untilStr, trace_id = traceId, symbol, limit,
-            scope = isAdmin ? "all" : "self"
-        };
-
-        return (sorted, summary, queryEcho);
+        return BuildTimelineCore(db, since, until, traceId, symbol, limit, callerPrincipalId, isAdmin);
     }
 
     /// <summary>截短 payload JSON 字串、避免時間軸太肥</summary>
