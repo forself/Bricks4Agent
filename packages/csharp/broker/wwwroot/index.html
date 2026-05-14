@@ -218,10 +218,10 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </div>
 
         <div class="ct-summary" style="margin-bottom:10px">
-          <div class="ct-kpi" style="border-left-color:#909399">
+          <div class="ct-kpi" style="border-left-color:#909399" title="代理總數 = spawn-based container agent + inbox-driven background service agent">
             <div class="lbl">{{t('totalAgents')}}</div>
-            <div class="val">{{agents.length}}</div>
-            <div class="sub">{{t('activeAgents')}}: {{activeAgentCount}}</div>
+            <div class="val">{{agents.length + (inboxAgentStats?.length || 0)}}</div>
+            <div class="sub">spawn: {{agents.length}} · inbox: {{inboxAgentStats?.length || 0}}</div>
           </div>
           <div class="ct-kpi" style="border-left-color:#909399">
             <div class="lbl">{{t('capabilities')}}</div>
@@ -308,9 +308,20 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         <!-- Auto-scale 狀態卡（只在 ContainerManager enabled 時顯示）-->
         <el-card v-if="autoScale && autoScale.enabled" style="margin-bottom:12px">
           <template #header>
-            <div style="display:flex;align-items:center">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
               <span style="font-weight:600">{{t('autoScaleStatus')}}</span>
-              <span style="color:var(--td);font-size:12px;margin-left:8px">
+              <el-tooltip placement="bottom" effect="dark">
+                <template #content>
+                  broker 自動依負載增減 worker 容器。<br>
+                  · utilization = active / max worker per type<br>
+                  · 超過 {{(autoScale.scale_up_threshold*100).toFixed(0)}}% 連續取樣後 spawn 新容器<br>
+                  · 每種 worker 上限 {{autoScale.max_per_type}}（防爆成本）<br>
+                  · cooldown {{autoScale.cooldown_seconds}}s 防連續 trigger<br>
+                  · 樣本空 = 當前流量低、單一容器處理得來、不用 scale
+                </template>
+                <span style="color:var(--td);cursor:help">ℹ️</span>
+              </el-tooltip>
+              <span style="color:var(--td);font-size:12px;margin-left:4px">
                 {{t('autoScaleParams')}}: max/type={{autoScale.max_per_type}} ·
                 threshold={{(autoScale.scale_up_threshold*100).toFixed(0)}}% ·
                 cooldown={{autoScale.cooldown_seconds}}s
