@@ -103,7 +103,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 @media(max-width:1100px) { .hdr-search { max-width:240px; } .hdr nav a { padding:6px 8px; font-size:12px; } }
 .hdr .hdr-right { display:flex; align-items:center; gap:12px; }
 .hdr .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
-.dot.on { background:var(--green); } .dot.off { background:var(--red); }
+.dot.on { background:var(--green); box-shadow:0 0 0 0 rgba(14,203,129,0.6); animation:pulseDot 2s ease-out infinite; }
+.dot.off { background:var(--red); }
+@keyframes pulseDot { 0% { box-shadow:0 0 0 0 rgba(14,203,129,0.55); } 70% { box-shadow:0 0 0 6px rgba(14,203,129,0); } 100% { box-shadow:0 0 0 0 rgba(14,203,129,0); } }
+@media (prefers-reduced-motion: reduce) { .dot.on { animation:none; } }
 .hdr .status-group { display:flex; gap:10px; font-size:11px; color:var(--text2); }
 .hdr .status-group span { display:flex; align-items:center; gap:3px; }
 
@@ -120,7 +123,15 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 
 /* Content */
 .content { padding:16px 20px; }
-.panel { display:none; } .panel.active { display:block; }
+.panel { display:none; } .panel.active { display:block; animation:panelFade .18s ease-out; }
+@keyframes panelFade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .panel.active { animation:none; } }
+/* Scrollbar 主題化（webkit / firefox 雙系統） */
+* { scrollbar-width:thin; scrollbar-color:var(--bg3) transparent; }
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--bg3); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background:var(--border); }
 
 /* Cards */
 .card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px; transition:border-color .15s, box-shadow .15s; }
@@ -139,9 +150,11 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 
 /* Table */
 table { width:100%; border-collapse:collapse; font-size:12px; }
-th { text-align:left; padding:8px 10px; color:var(--text3); font-weight:500; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; }
-td { padding:7px 10px; border-bottom:1px solid rgba(43,49,57,0.5); }
+th { text-align:left; padding:8px 10px; color:var(--text3); font-weight:500; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; position:sticky; top:0; background:var(--bg2); z-index:2; }
+td { padding:7px 10px; border-bottom:1px solid rgba(43,49,57,0.5); font-variant-numeric:tabular-nums; }
 tr:hover { background:rgba(240,185,11,0.02); }
+/* 純文字欄位（symbol、策略名）關掉 tabular-nums 用 .td-text；數字欄位預設就是 tabular */
+td.td-text { font-variant-numeric:normal; }
 
 /* Badges */
 .badge { padding:2px 6px; border-radius:2px; font-size:10px; font-weight:700; text-transform:uppercase; }
