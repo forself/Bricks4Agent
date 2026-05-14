@@ -563,14 +563,39 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
       <!-- ── Capabilities ── -->
       <el-tab-pane :label="t('capabilities')" name="caps">
+        <!-- 能力風險分佈摘要（給 Benson 一眼看 broker 管的能力光譜） -->
+        <div v-if="caps.length>0" class="ct-summary" style="margin-bottom:14px">
+          <div class="ct-kpi" style="border-left-color:#909399">
+            <div class="lbl">能力總數</div>
+            <div class="val">{{caps.length}}</div>
+            <div class="sub">broker 管的 capability</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#67c23a">
+            <div class="lbl">低風險</div>
+            <div class="val" style="color:#67c23a">{{capsByRisk.low}}</div>
+            <div class="sub">read-only / 純查詢</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#e6a23c">
+            <div class="lbl">中風險</div>
+            <div class="val" style="color:#e6a23c">{{capsByRisk.medium}}</div>
+            <div class="sub">有狀態變更</div>
+          </div>
+          <div class="ct-kpi" style="border-left-color:#f56c6c">
+            <div class="lbl">高/嚴重風險</div>
+            <div class="val" style="color:#f56c6c">{{capsByRisk.high + capsByRisk.critical}}</div>
+            <div class="sub">必過 approval gate</div>
+          </div>
+        </div>
+
         <el-card>
           <template #header>
-            <div style="display:flex;align-items:center">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-weight:600">{{t('capList')}}</span>
-              <el-tag round size="small" style="margin-left:8px">{{caps.length}}</el-tag>
+              <el-tag round size="small">{{filteredCaps.length}}/{{caps.length}}</el-tag>
+              <el-input v-model="capFilter" size="small" style="width:200px;margin-left:auto" clearable placeholder="搜尋 capability_id / route…"/>
             </div>
           </template>
-          <el-table :data="caps" stripe :empty-text="t('noData')">
+          <el-table :data="filteredCaps" stripe :empty-text="t('noData')">
             <el-table-column prop="capabilityId" label="ID" min-width="180"><template #default="{row}"><code>{{row.capabilityId}}</code></template></el-table-column>
             <el-table-column prop="route" :label="t('route')" min-width="160"><template #default="{row}"><code>{{row.route}}</code></template></el-table-column>
             <el-table-column :label="t('category')" width="130">
@@ -1514,18 +1539,23 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           <el-button size="small" type="primary" @click="loadTraces" :loading="tracesLoading">{{t('apply')}}</el-button>
           <el-switch v-model="traceFilter.includeHttp" size="small" @change="loadTraces" style="margin-left:10px"/>
           <span style="color:var(--td);font-size:12px">{{t('includeHttp')}}</span>
-          <span style="color:var(--td);font-size:12px;margin-left:8px">{{traces.length}} {{t('entries')}}</span>
+          <el-switch v-model="onlyFailedTraces" size="small" style="margin-left:10px"/>
+          <span style="color:var(--td);font-size:12px">只看失敗</span>
+          <span style="color:var(--td);font-size:12px;margin-left:8px">{{displayedTraces.length}} / {{traces.length}} {{t('entries')}}</span>
         </div>
 
         <el-card style="margin-bottom:14px">
           <template #header><span style="font-weight:600">{{t('traceList')}}</span> <span style="color:var(--td);font-size:12px;margin-left:8px">{{t('tracesSubtitle')}}</span></template>
-          <el-table :data="traces" stripe :empty-text="t('noTracesYet')" highlight-current-row
+          <el-table :data="displayedTraces" stripe :empty-text="t('noTracesYet')" highlight-current-row
                     @row-click="row=>selectTrace(row.trace_id)" style="cursor:pointer">
             <el-table-column :label="t('traceId')" min-width="140">
               <template #default="{row}"><code style="font-size:11px">{{(row.trace_id||'').slice(0,18)}}</code></template>
             </el-table-column>
-            <el-table-column :label="t('time')" width="170">
-              <template #default="{row}">{{fmtDate(row.first_at)}}</template>
+            <el-table-column :label="t('time')" width="140">
+              <template #default="{row}">
+                <div style="font-size:12px" :title="fmtDate(row.first_at)">{{relTime(row.first_at)}}</div>
+                <div style="font-size:10px;color:var(--td);font-family:monospace">{{fmtDate(row.first_at)}}</div>
+              </template>
             </el-table-column>
             <el-table-column :label="t('duration')" width="100">
               <template #default="{row}"><span style="color:#a374ff;font-family:Consolas,monospace">{{fmtDur(row.duration_ms)}}</span></template>
@@ -1592,7 +1622,9 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             <el-radio-button :value="1440">{{t('sinceMin1440')}}</el-radio-button>
           </el-radio-group>
           <el-button size="small" @click="loadTopology" :loading="topologyLoading">{{t('refresh')}}</el-button>
-          <span style="color:var(--td);font-size:11px;margin-left:8px" v-if="topology">@{{fmtDate(topology.generated_at)}}</span>
+          <span v-if="topology" style="color:var(--td);font-size:11px;margin-left:8px" :title="fmtDate(topology.generated_at)">
+            {{relTime(topology.generated_at)}} 產生
+          </span>
         </div>
 
         <div v-if="!topology && !topologyLoading" class="ct-empty">
@@ -2400,6 +2432,23 @@ const app=createApp({
 
     const activeTab=ref('containers');const refreshing=ref(false);
     const agents=ref([]);const caps=ref([]);const defaultCaps=ref([]);
+    const capFilter=ref('');
+    const filteredCaps=computed(()=>{
+      const q=capFilter.value.trim().toLowerCase();
+      if(!q) return caps.value;
+      return caps.value.filter(c => (c.capabilityId||'').toLowerCase().includes(q) || (c.route||'').toLowerCase().includes(q));
+    });
+    const capsByRisk=computed(()=>{
+      const r={low:0,medium:0,high:0,critical:0};
+      for(const c of caps.value){
+        const lv=(c.riskLevel||'').toLowerCase();
+        if(lv==='low') r.low++;
+        else if(lv==='medium') r.medium++;
+        else if(lv==='high') r.high++;
+        else if(lv==='critical') r.critical++;
+      }
+      return r;
+    });
 
     const createVisible=ref(false);const creating=ref(false);
     const createForm=reactive({name:'',taskType:'analysis',selected:new Set()});
@@ -2693,6 +2742,12 @@ const app=createApp({
     // ── Traces + Topology（觀察性分頁） ──
     const traces=ref([]);const tracesLoading=ref(false);
     const traceFilter=reactive({principal:'',capability:'',limit:50,includeHttp:false});
+    const onlyFailedTraces=ref(false);
+    const displayedTraces=computed(()=>
+      onlyFailedTraces.value
+        ? traces.value.filter(t => (t.status||'').toLowerCase() !== 'completed' && (t.status||'').toLowerCase() !== 'ok')
+        : traces.value
+    );
     const selectedTraceId=ref(null);const selectedTraceEvents=ref([]);
     const selectedTraceIntegrity=ref(null);
     const topology=ref(null);const topologyLoading=ref(false);
@@ -3842,6 +3897,10 @@ const app=createApp({
     return{lang,t,toggleLang,localized,loggedIn,loginLoading,loginError,cryptoInfo,loginForm,doLogin,doLogout,
       changePwdDialog,changePwdLoading,changePwdError,changePwdForm,doChangePassword,cancelChangePassword,
       activeTab,refreshing,agents,caps,activeAgentCount,refreshAll,onTabChange,riskType,formatTaskType,fmtDate,capSlice,capExtra,
+      // Capabilities tab polish
+      capFilter,filteredCaps,capsByRisk,
+      // Traces tab polish
+      onlyFailedTraces,displayedTraces,
       createVisible,creating,createForm,openCreate,toggleCap,selDefaults,selAll,selNone,doCreate,doStop,
       dispatchVisible,dispatching,dispatchAgent,dispatchPrompt,dispatchHistory,dispatchHistoryLoading,
       dispatchAgentOptions,switchDispatchAgent,
