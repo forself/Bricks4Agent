@@ -606,6 +606,96 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
         </el-card>
       </el-tab-pane>
 
+      <!-- ── 🎛 Command Console（demo 用、A + B 兩塊）── -->
+      <el-tab-pane :label="t('console')" name="console">
+        <!-- A. HighLevelCoordinator chat — 走 Benson 設計的 LINE chat path -->
+        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">{{t('consoleChat')}}</span>
+              <span style="font-size:11px;color:var(--td)">{{t('consoleChatHint')}}</span>
+              <el-button size="small" @click="clearChat" style="margin-left:auto">{{t('consoleClear')}}</el-button>
+            </div>
+          </template>
+          <!-- 聊天歷史區 -->
+          <div id="console-chat-scroll" style="max-height:380px;overflow:auto;background:var(--s2);border-radius:6px;padding:10px;margin-bottom:10px">
+            <div v-if="chatHistory.length===0" style="color:var(--td);text-align:center;padding:30px;font-size:12px">
+              💬 沒有訊息、下面打字送出
+            </div>
+            <div v-for="(m,i) in chatHistory" :key="i" :style="'margin-bottom:10px;display:flex;'+(m.role==='user'?'justify-content:flex-end':'justify-content:flex-start')">
+              <div :style="'max-width:75%;padding:8px 12px;border-radius:8px;'+(m.role==='user'?'background:#409eff;color:#fff':'background:var(--bg);border:1px solid var(--bd)')">
+                <div style="font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word">{{m.text}}</div>
+                <div v-if="m.role==='broker'" style="font-size:10px;color:var(--td);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+                  <span v-if="m.mode">mode: <code>{{m.mode}}</code></span>
+                  <span v-if="m.history_count!=null">turn: {{m.history_count}}</span>
+                  <span v-if="m.decision_reason">why: {{m.decision_reason}}</span>
+                  <span v-if="m.created_task">→ task created</span>
+                  <span v-if="m.rag_snippets && m.rag_snippets.length">📚 {{m.rag_snippets.length}} RAG</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 輸入區 -->
+          <div style="display:flex;gap:8px">
+            <el-input v-model="chatInput" :placeholder="t('consoleChatPlaceholder')" @keyup.enter="sendChat" style="flex:1" :disabled="chatLoading"/>
+            <el-button type="primary" @click="sendChat" :loading="chatLoading">{{t('consoleSend')}}</el-button>
+          </div>
+          <div style="font-size:10px;color:var(--td);margin-top:6px">
+            user_id: <code>{{chatUserId}}</code>（page reload 會換一個、history reset）
+          </div>
+        </el-card>
+
+        <!-- B. 7-agent dispatcher -->
+        <el-card style="border-left:3px solid #409eff">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">{{t('consoleDispatcher')}}</span>
+              <span style="font-size:11px;color:var(--td)">{{t('consoleDispatcherHint')}}</span>
+            </div>
+          </template>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--td);min-width:90px">{{t('consoleAgentSelect')}}：</span>
+              <el-select v-model="agentDispatchSelect" @change="onAgentChange" size="small" style="width:300px">
+                <el-option v-for="a in agents" :key="a.id" :value="a.id">
+                  <span>{{a.label}}</span>
+                  <el-tag size="small" :type="a.mode==='auto'?'success':'warning'" effect="plain" style="margin-left:8px">{{a.mode}}</el-tag>
+                </el-option>
+              </el-select>
+              <el-button type="primary" size="small" @click="pushAgentTask" :loading="agentDispatchLoading" style="margin-left:auto">{{t('consolePush')}}</el-button>
+            </div>
+            <div>
+              <div style="font-size:12px;color:var(--td);margin-bottom:4px">{{t('consolePromptLabel')}}</div>
+              <el-input type="textarea" v-model="agentDispatchPrompt" :autosize="{minRows:2, maxRows:6}" style="font-family:Consolas,monospace;font-size:12px"/>
+            </div>
+          </div>
+
+          <!-- 任務狀態 / 結果 -->
+          <div v-if="agentDispatchResult" style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+              <span style="font-size:11px;color:var(--td)">{{t('consoleTaskStatus')}}：</span>
+              <el-tag :type="agentDispatchResult.status==='done'?'success':agentDispatchResult.status==='failed'||agentDispatchResult.status==='timeout'?'danger':'info'" size="small">
+                {{agentDispatchResult.status}}
+              </el-tag>
+              <code style="font-size:11px">{{agentDispatchResult.task_id||'—'}}</code>
+              <span v-if="agentDispatchResult.model" style="font-size:11px;color:var(--td)">model: <code>{{agentDispatchResult.model}}</code></span>
+              <span v-if="agentDispatchResult.latency_ms" style="font-size:11px;color:var(--td)">{{agentDispatchResult.latency_ms}} ms</span>
+              <span v-if="agentDispatchResult.eval_tokens" style="font-size:11px;color:var(--td)">{{agentDispatchResult.eval_tokens}} tokens</span>
+            </div>
+            <div v-if="agentDispatchResult.error" style="background:rgba(245,108,108,0.08);border:1px solid rgba(245,108,108,0.3);padding:10px;border-radius:4px;color:#f56c6c;font-size:12px;font-family:Consolas,monospace">
+              {{agentDispatchResult.error}}
+            </div>
+            <div v-else-if="agentDispatchResult.reply" style="background:var(--s2);padding:14px;border-radius:6px">
+              <div style="font-size:12px;color:var(--td);margin-bottom:8px">{{t('consoleReply')}}</div>
+              <pre style="margin:0;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-family:inherit">{{agentDispatchResult.reply}}</pre>
+            </div>
+            <div v-else-if="agentDispatchResult.status==='pending'||agentDispatchResult.status==='processing'" style="padding:14px;text-align:center;color:var(--td);font-size:12px">
+              ⏳ broker 處理中…（每 2 秒輪詢一次、最多 60 秒）
+            </div>
+          </div>
+        </el-card>
+      </el-tab-pane>
+
       <!-- ── Diagnostics ── -->
       <el-tab-pane :label="t('diagnostics')" name="diagnostics">
         <!-- Controls -->
@@ -1803,6 +1893,19 @@ const I18N={
     llmStatusCol:'狀態',llmTask:'任務',llmError:'錯誤訊息（截短）',
     llmTools:'工具',llmToolCallsHeader:'此次回覆要求的 tool calls',llmNoToolCalls:'此次回覆沒有 tool calls（純文字輸出）',
     llmLoadFailed:'無法載入 LLM 代理狀態（broker 未啟用 LlmProxy？）',
+    console:'🎛 控制台',
+    consoleChat:'A · 高階協調器聊天',
+    consoleChatHint:'直接打字 → broker LlmProxy 解析意圖 → workflow 驗 → 派 worker → 回覆。這條走 Benson 設計的 HighLevelCoordinator + LineChatGateway、不是 bot-node。',
+    consoleChatPlaceholder:'例：幫我看 BTC 現在走勢 / 我的帳戶餘額 / 推薦三檔加密',
+    consoleSend:'送出',
+    consoleClear:'清空',
+    consoleDispatcher:'B · 7-agent 派發中心',
+    consoleDispatcherHint:'選一條 agent + push prompt → broker 接 → agent 自己 poll inbox → 走 LlmProxy 組 reply → 寫回 inbox table。整條閉環全在 broker 內。',
+    consoleAgentSelect:'選擇 agent',
+    consolePromptLabel:'Prompt（JSON 或文字、template 已預填）',
+    consolePush:'Push task',
+    consoleTaskStatus:'任務狀態',
+    consoleReply:'Reply',
     llmPathsTitle:'4 條 subordinate LLM 路徑（Benson 規範對齊狀態）',
     llmPathsHint:'broker is control plane, not autonomous planner — 任何 subordinate LLM 都應透過 broker 集中稽核 (propose/validate/record)',
     llmPathRole:'職責',llmPathFiles:'檔案',llmPathRoute:'route',
@@ -1908,6 +2011,17 @@ const I18N={
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
     llmProxy:'🧠 LLM',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
+    console:'🎛 Console',
+    consoleChat:'A · HighLevel Coordinator chat',
+    consoleChatHint:'Type → broker LlmProxy parses intent → workflow validates → dispatch to worker → reply. This path uses Benson-designed HighLevelCoordinator + LineChatGateway, not bot-node.',
+    consoleChatPlaceholder:'e.g. show me BTC trend / my account balance / recommend 3 cryptos',
+    consoleSend:'Send', consoleClear:'Clear',
+    consoleDispatcher:'B · 7-agent dispatcher',
+    consoleDispatcherHint:'Pick agent + push prompt → broker accepts → agent polls inbox → goes through LlmProxy → reply written to inbox table. Full loop inside broker.',
+    consoleAgentSelect:'Select agent',
+    consolePromptLabel:'Prompt (JSON or text, template prefilled)',
+    consolePush:'Push task',
+    consoleTaskStatus:'Task status', consoleReply:'Reply',
     llmPathsTitle:'4 subordinate-LLM paths (Benson-compliance status)',
     llmPathsHint:'broker is control plane, not autonomous planner — every subordinate LLM should go through broker for centralized propose/validate/record audit',
     llmPathRole:'Role',llmPathFiles:'Files',llmPathRoute:'route',
@@ -3038,6 +3152,124 @@ const app=createApp({
     const forensicQuery=ref({ since:'', until:'', symbol:'', question:'請說明這段時間 broker 做了什麼、有哪些 gate 觸發、是否異常' });
     const forensicResult=ref(null);
     const forensicLoading=ref(false);
+
+    // ── 🎛 Command Console（demo 用：A=HighLevelCoordinator 聊天、B=7-agent 派發） ─────
+    // Section A: HighLevelCoordinator chat（走 Benson 原設計：LLM 解析意圖 → broker validate → broker dispatch）
+    const chatUserId = ref('prn_dashboard_demo_' + Date.now().toString(36));
+    const chatInput = ref('');
+    const chatHistory = ref([]);    // [{ role:'user'|'broker', text, mode, decision_reason, ... }]
+    const chatLoading = ref(false);
+    async function sendChat(){
+      const text = (chatInput.value||'').trim();
+      if(!text) return;
+      chatLoading.value = true;
+      chatHistory.value.push({ role:'user', text, ts:new Date().toISOString() });
+      chatInput.value = '';
+      try{
+        const r = await postPlain('/api/v1/high-level/line/process', {
+          user_id: chatUserId.value,
+          message: text
+        });
+        if(r?.success){
+          const d = r.data || {};
+          chatHistory.value.push({
+            role:'broker',
+            text: d.reply || '(broker 沒回覆內容)',
+            mode: d.mode,
+            decision_reason: d.decision_reason,
+            history_count: d.history_count,
+            created_task: d.created_task,
+            created_plan: d.created_plan,
+            rag_snippets: d.rag_snippets,
+            ts: new Date().toISOString()
+          });
+        } else {
+          chatHistory.value.push({ role:'broker', text:'⚠ 失敗：'+(r?.message||'unknown'), error:true, ts:new Date().toISOString() });
+        }
+      }catch(e){
+        chatHistory.value.push({ role:'broker', text:'⚠ 例外：'+e.message, error:true, ts:new Date().toISOString() });
+      }
+      chatLoading.value = false;
+      // 自動滾到底
+      setTimeout(()=>{ const el=document.getElementById('console-chat-scroll'); if(el)el.scrollTop=el.scrollHeight; }, 50);
+    }
+    function clearChat(){ chatHistory.value = []; }
+
+    // Section B: 7-agent dispatcher
+    // 每條 agent 一個 quick-action template；user 可改 prompt 再 push。
+    const agentDispatchSelect = ref('agent_forensics_hourly');
+    const agentDispatchPrompt = ref('');
+    const agentDispatchLoading = ref(false);
+    const agentDispatchResult = ref(null);  // 最近 push 的 task 結果
+    const agentDispatchPollTimer = ref(null);
+    const agents = [
+      { id:'agent_forensics_hourly',         label:'🔍 鑑識（1h）',     mode:'auto',   prompt:'{"since":"'+ new Date(Date.now()-3600*1000).toISOString() +'","until":"'+ new Date().toISOString() +'","question":"請說明過去 1 小時的事件鏈、有沒有 gate 觸發異常"}' },
+      { id:'agent_market_report_6h',         label:'📊 6h 營運報告',     mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_anomaly_detector_15m',     label:'🚨 異常偵測（15m）', mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_daily_market_report',      label:'📝 市場日報',        mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_strategy_health_inspector',label:'🏥 watch 健康巡檢', mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_strategy_research',        label:'🎯 策略研究',        mode:'manual', prompt:'{"symbol":"AAPL","family":"sma_cross","generations":2,"data_limit":200}' },
+      { id:'agent_risk_stress_test',         label:'⚠️ 風控壓測 -15%',   mode:'manual', prompt:'{"drop_pct":15}' },
+    ];
+    function onAgentChange(){
+      const a = agents.find(x => x.id === agentDispatchSelect.value);
+      if(a) agentDispatchPrompt.value = a.prompt;
+    }
+    // 一次初始化
+    onAgentChange();
+
+    async function pushAgentTask(){
+      const aid = agentDispatchSelect.value;
+      const prompt = agentDispatchPrompt.value;
+      if(!prompt.trim()){ ElementPlus.ElMessage.warning('prompt 不可空'); return; }
+
+      agentDispatchLoading.value = true;
+      agentDispatchResult.value = { status:'pushing', agent_id:aid, prompt };
+
+      try{
+        const r = await postPlain('/api/v1/agents/inbox/push', {
+          agent_id: aid, prompt, requested_by: 'dashboard-console'
+        });
+        if(!r?.success){
+          agentDispatchResult.value = { status:'failed', error: r?.message || 'push failed', agent_id:aid };
+          agentDispatchLoading.value = false;
+          return;
+        }
+        const taskId = r.data.task_id;
+        agentDispatchResult.value = { status:'pending', task_id:taskId, agent_id:aid, prompt };
+
+        // 開始 poll inbox list、找 task_id 看狀態
+        if(agentDispatchPollTimer.value) clearInterval(agentDispatchPollTimer.value);
+        let attempts = 0;
+        agentDispatchPollTimer.value = setInterval(async ()=>{
+          attempts++;
+          // 60 秒上限（30 次 × 2s）
+          if(attempts > 30){
+            clearInterval(agentDispatchPollTimer.value);
+            agentDispatchPollTimer.value = null;
+            agentDispatchResult.value = Object.assign({}, agentDispatchResult.value, { status:'timeout', error:'60s 內未完成、可手動到 Agents tab 看' });
+            agentDispatchLoading.value = false;
+            return;
+          }
+          try{
+            const lr = await getPlain('/api/v1/agents/inbox/list?agent_id='+encodeURIComponent(aid)+'&limit=10');
+            const list = lr?.data?.tasks || [];
+            const t = list.find(x => x.task_id === taskId);
+            if(t){
+              agentDispatchResult.value = Object.assign({}, t, { status: t.status });
+              if(t.status === 'done' || t.status === 'failed'){
+                clearInterval(agentDispatchPollTimer.value);
+                agentDispatchPollTimer.value = null;
+                agentDispatchLoading.value = false;
+              }
+            }
+          }catch{ /* poll 偶爾失敗、繼續 */ }
+        }, 2000);
+      }catch(e){
+        agentDispatchResult.value = { status:'failed', error:e.message };
+        agentDispatchLoading.value = false;
+      }
+    }
     // 通用 detail modal（LlmProxy recent 或 W13 row 都共用）
     const llmDetailVisible=ref(false);
     const llmDetail=ref(null);   // { source, model, ts, latency_ms, tokens, reasoning, tool_calls, error, raw }
@@ -3213,6 +3445,10 @@ const app=createApp({
       llmDetailVisible,llmDetail,showLlmDetail,copyLlmDetail,
       // Forensic investigation agent
       forensicQuery,forensicResult,forensicLoading,runForensicInvestigation,setForensicPreset,
+      // 🎛 Command Console (chat + dispatcher)
+      chatUserId,chatInput,chatHistory,chatLoading,sendChat,clearChat,
+      agentDispatchSelect,agentDispatchPrompt,agentDispatchLoading,agentDispatchResult,
+      agents,onAgentChange,pushAgentTask,
       // Container restart
       restartContainer,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
