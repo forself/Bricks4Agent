@@ -172,6 +172,24 @@ td.td-text { font-variant-numeric:normal; }
 .footer-bar .ft-sep { width:1px; height:10px; background:var(--border); }
 body { padding-bottom:22px; } /* footer 不蓋住內容 */
 
+/* Section divider：卡片群之間的視覺分隔（含可選 label） */
+.section-divider { display:flex; align-items:center; gap:10px; margin:16px 0 8px; color:var(--text3); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+.section-divider::before, .section-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+.section-divider.flush::before { display:none; }
+
+/* Print（用於 thesis 螢幕截圖 / PDF 匯出） */
+@media print {
+  body { background:#fff; color:#000; padding-bottom:0; }
+  .footer-bar, .kpi-bar, .ticker, .toast-stack, .kbd-overlay, .chip-row, .hdr nav, .btn { display:none !important; }
+  .card { background:#fff; border:1px solid #ccc; box-shadow:none !important; break-inside:avoid; }
+  .card:hover { box-shadow:none !important; border-color:#ccc !important; }
+  .panel { display:block !important; animation:none !important; }
+  th { background:#fff !important; color:#000 !important; }
+  .up, .positive { color:#15803d !important; }
+  .down, .negative { color:#b91c1c !important; }
+  table, tr, td, th { color:#000 !important; }
+}
+
 /* Badges */
 .badge { padding:2px 6px; border-radius:2px; font-size:10px; font-weight:700; text-transform:uppercase; }
 .badge.buy,.badge.filled { background:var(--greenBg); color:var(--green); }
@@ -1125,8 +1143,9 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
       <tbody id="auto-watch-table"><tr><td colspan="9" style="padding:0"><div class="empty-state"><div class="es-icon">📡</div><div class="es-title">尚無監控標的</div><div class="es-hint">用上方「新增監控」加入第一個 symbol、或從「市場掃描器」一鍵批次加入候選</div></div></td></tr></tbody></table>
     </div>
   </div>
+  <div class="section-divider">掃描 / 候選</div>
   <!-- Cut C: 市場掃描器 — 一籃子 symbol 跑 composite、按信心 + 動作篩選、勾選後一鍵加入監控 -->
-  <div class="card" style="margin-top:12px">
+  <div class="card">
     <h3>🔍 市場掃描器 — 一鍵建立監控</h3>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px">對全部 symbol 跑 composite 策略、按信心 + 動作篩出候選、勾選後一鍵加入監控清單（用 上方「新增監控」的數量）</div>
     <div class="scan-form">
@@ -1140,8 +1159,9 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
     </div>
     <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描，按「開始掃描」跑 composite 策略</div></div>
   </div>
+  <div class="section-divider">觀測 / 日誌</div>
   <!-- Gate 觸發統計：前端解析 auto-trader/logs、按 message prefix 分類、count -->
-  <div class="card" style="margin-top:12px">
+  <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h3 style="margin:0">🛡 Gate 觸發統計</h3>
       <span style="font-size:11px;color:var(--text3)">從 in-memory log 解析、broker 重啟會 reset</span>
@@ -1264,7 +1284,7 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
         <button class="btn btn-y btn-sm" onclick="addAlert()">新增</button>
       </div>
       <table><thead><tr><th>Symbol</th><th>條件</th><th>目標</th><th>備註</th><th></th></tr></thead>
-      <tbody id="alert-table"><tr><td colspan="5" style="color:var(--text2)">無告警</td></tr></tbody></table>
+      <tbody id="alert-table"><tr><td colspan="5" style="padding:0"><div class="empty-state"><div class="es-icon">🔕</div><div class="es-title">無價格告警</div><div class="es-hint">下方表單新增「BTC 高於 70000」之類規則；觸發時會在頂端 toast 通知</div></div></td></tr></tbody></table>
       <h3 style="margin-top:12px">已觸發</h3>
       <div id="alert-triggered" style="font-size:11px;color:var(--text2)">無</div>
     </div>
