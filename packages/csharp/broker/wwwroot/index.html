@@ -207,7 +207,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px">
             <span style="color:#67c23a">✓ 4 條 LLM 路徑走 broker 集中代理</span>
-            <span style="color:#67c23a">✓ 7 個 inbox-driven agent 跑著</span>
+            <span style="color:#67c23a">✓ 8 個 inbox-driven agent 跑著</span>
             <span style="color:#67c23a">✓ 14 條 AutoTrader risk gate 啟用</span>
             <span style="color:#67c23a">✓ Approval gate 攔真錢寫操作</span>
             <span style="color:#67c23a">✓ W13 LLM reasoning audit pipeline 寫入</span>
@@ -3391,6 +3391,7 @@ const app=createApp({
         { id:'agent_anomaly_detector_15m',      label:'🚨 異常偵測（15m）',mode:'auto'  },
         { id:'agent_daily_market_report',       label:'📝 市場日報',      mode:'auto'   },
         { id:'agent_strategy_health_inspector', label:'🏥 watch 健康巡檢',mode:'auto'  },
+        { id:'agent_audit_chain_verifier',      label:'🔐 Audit chain 驗證',mode:'auto' },
         { id:'agent_strategy_research',         label:'🎯 策略研究',      mode:'manual' },
         { id:'agent_risk_stress_test',          label:'⚠️ 風控壓測',     mode:'manual' },
       ];
@@ -3466,6 +3467,7 @@ const app=createApp({
       { id:'agent_anomaly_detector_15m',     label:'🚨 異常偵測（15m）', mode:'auto',   prompt:'{"trigger":"manual"}' },
       { id:'agent_daily_market_report',      label:'📝 市場日報',        mode:'auto',   prompt:'{"trigger":"manual"}' },
       { id:'agent_strategy_health_inspector',label:'🏥 watch 健康巡檢', mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_audit_chain_verifier',     label:'🔐 Audit chain 驗證',mode:'auto',   prompt:'{"window_hours":1}' },
       { id:'agent_strategy_research',        label:'🎯 策略研究',        mode:'manual', prompt:'{"symbol":"AAPL","family":"sma_cross","generations":2,"data_limit":200}' },
       { id:'agent_risk_stress_test',         label:'⚠️ 風控壓測 -15%',   mode:'manual', prompt:'{"drop_pct":15}' },
     ];

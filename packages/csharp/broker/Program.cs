@@ -358,6 +358,8 @@ builder.Services.AddHostedService<Broker.Services.DailyMarketReportAgentService>
 builder.Services.AddHostedService<Broker.Services.StrategyHealthInspectorAgentService>();
 // Manual-push only — 風控壓測、模擬 mark price 跌 X% 看每倉是否觸發 SL/Liq
 builder.Services.AddHostedService<Broker.Services.RiskStressTestAgentService>();
+// 30 min auto — 驗證 Benson 設計的 audit_events hash chain 完整性（防篡改、純規則檢查無 LLM）
+builder.Services.AddHostedService<Broker.Services.AuditChainVerifierAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
