@@ -751,13 +751,29 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               </el-radio-group>
             </div>
           </template>
+          <!-- Transient error banner：broker 剛重啟之類、所有 error 都集中在最近、且都是 Connection / Reconnect 類 -->
+          <el-alert v-if="transientBannerInfo"
+            :title="'⏱ '+transientBannerInfo.count+' 筆暫時性連線錯誤（不需動作）'"
+            :description="transientBannerInfo.label"
+            type="info" :closable="false" show-icon style="margin-bottom:10px"/>
+
           <el-table :data="issueGroups" :empty-text="diagReport?t('noIssues'):(scanning?t('scanning'):t('scanNow'))" stripe>
             <el-table-column type="expand" width="42">
               <template #default="{row}">
-                <div style="padding:6px 16px 10px 50px">
-                  <div style="font-size:11px;color:var(--m);margin-bottom:6px">{{t('issueOccurrences')}}（{{row.count}}）</div>
-                  <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto">
-                    <code v-for="(ts,i) in row.timestamps" :key="i" style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--td)">{{fmtDate(ts)}}</code>
+                <div style="padding:6px 16px 10px 50px;display:flex;flex-direction:column;gap:10px">
+                  <!-- 不同的 message 列表（dedup 後 distinct） -->
+                  <div>
+                    <div style="font-size:11px;color:var(--m);margin-bottom:6px">不同訊息（{{row.unique_messages.length}}）</div>
+                    <div style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
+                      <code v-for="(msg,i) in row.unique_messages" :key="i" style="font-size:11px;background:var(--s2);padding:4px 8px;border-radius:3px;color:var(--td);word-break:break-all">{{msg}}</code>
+                    </div>
+                  </div>
+                  <!-- 時間戳 -->
+                  <div>
+                    <div style="font-size:11px;color:var(--m);margin-bottom:6px">{{t('issueOccurrences')}}（{{row.count}}、最新 →）</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto">
+                      <code v-for="(ts,i) in row.timestamps" :key="i" :title="fmtDate(ts)" style="font-size:11px;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--td)">{{relTime(ts)}}</code>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -767,20 +783,26 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 <el-tag :type="sevType(row.severity)" size="small">{{t(row.severity)||row.severity}}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="category" :label="t('category')" width="140"/>
-            <el-table-column prop="entity_id" :label="t('entity')" width="140">
-              <template #default="{row}"><code style="font-size:11px">{{row.entity_id}}</code></template>
+            <el-table-column prop="category" :label="t('category')" width="120"/>
+            <el-table-column :label="t('entity')" width="160">
+              <template #default="{row}">
+                <code style="font-size:11px;color:var(--t)">{{entityLabel(row.entity_id)}}</code>
+                <div style="font-size:10px;color:var(--td);font-family:monospace">{{row.entity_id}}</div>
+              </template>
             </el-table-column>
-            <el-table-column prop="message" :label="t('description')" min-width="320">
-              <template #default="{row}"><span style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all">{{row.message}}</span></template>
+            <el-table-column :label="t('description')" min-width="320">
+              <template #default="{row}">
+                <span style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all">{{row.message}}</span>
+                <el-tag v-if="row.unique_messages.length>1" size="small" round style="margin-left:6px;font-weight:400" effect="plain">+{{row.unique_messages.length-1}} 種變體</el-tag>
+              </template>
             </el-table-column>
-            <el-table-column :label="t('issueCount')" width="80" align="center">
+            <el-table-column :label="t('issueCount')" width="70" align="center">
               <template #default="{row}">
                 <el-tag round size="small" :type="row.count>5?'danger':row.count>1?'warning':'info'">×{{row.count}}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column :label="t('issueLastSeen')" width="170">
-              <template #default="{row}"><span style="font-size:11px;color:var(--td);font-family:monospace">{{fmtDate(row.last_seen)}}</span></template>
+            <el-table-column label="最近一次" width="100">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)" :title="fmtDate(row.last_seen)">{{relTime(row.last_seen)}}</span></template>
             </el-table-column>
           </el-table>
         </el-card>
@@ -2706,6 +2728,24 @@ const app=createApp({
     }
 
     function fmtDate(d){if(!d)return'';try{return new Date(d).toLocaleString()}catch{return d}}
+    // 相對時間（給 diagnostics / agent 等高頻刷新的視圖用）：< 1min 秒、< 1h 分、< 24h 小時、其它 fmtDate
+    function relTime(d){
+      if(!d) return '—';
+      const t = new Date(d).getTime();
+      if(!isFinite(t)) return fmtDate(d);
+      const diff = Date.now() - t;
+      if(diff < 0) return '剛才';
+      if(diff < 60_000) return Math.max(1, Math.floor(diff/1000)) + ' 秒前';
+      if(diff < 3600_000) return Math.floor(diff/60_000) + ' 分鐘前';
+      if(diff < 86400_000) return Math.floor(diff/3600_000) + ' 小時前';
+      return fmtDate(d);
+    }
+    // 把 12-char container_id 解析成 worker_type（'strategy-worker' 等），沒對到就回原值
+    function entityLabel(entityId){
+      if(!entityId) return '—';
+      const c = (containers.value || []).find(x => x.container_id && x.container_id.startsWith(entityId));
+      return c ? c.worker_type : entityId.slice(0, 12);
+    }
 
     // ── Diagnostics ──────────────────────────────────────────────
     const diagReport=ref(null);
@@ -2715,6 +2755,10 @@ const app=createApp({
     let autoScanTimer=null;
     const issueFilter=ref('');
     // 把同 severity + category + entity + message 的重複 issue 收攏成一筆，避免「Connection closed by broker」霸佔整個畫面
+    // dedup key 改成 (severity + category + entity_id)、不含 message
+    // 因為 Connection refused / Connection closed by broker / Reconnecting in 5.8s / 10.2s 都是同一根因
+    // （worker 跟 broker 短暫失聯後重連），分太細反而看不懂。
+    // message 變成 sub-list、用 expand row 展開看細節。
     const issueGroups=computed(()=>{
       if(!diagReport.value?.issues)return[];
       const filtered=issueFilter.value
@@ -2722,20 +2766,41 @@ const app=createApp({
         : diagReport.value.issues;
       const map=new Map();
       for(const i of filtered){
-        const key=i.severity+'|'+i.category+'|'+i.entity_id+'|'+i.message;
+        const key=i.severity+'|'+i.category+'|'+i.entity_id;
         const ex=map.get(key);
         if(ex){
           ex.count++;
           ex.timestamps.push(i.detected_at);
+          ex.messages.push(i.message);
+          if(!ex.unique_messages.includes(i.message)) ex.unique_messages.push(i.message);
           if(i.detected_at>ex.last_seen)ex.last_seen=i.detected_at;
           if(i.detected_at<ex.first_seen)ex.first_seen=i.detected_at;
         }else{
-          map.set(key,{severity:i.severity,category:i.category,entity_id:i.entity_id,message:i.message,count:1,first_seen:i.detected_at,last_seen:i.detected_at,timestamps:[i.detected_at]});
+          map.set(key,{
+            severity:i.severity, category:i.category, entity_id:i.entity_id,
+            message:i.message,            // 第一條（代表）
+            unique_messages:[i.message],  // 同 group 內所有 distinct message
+            count:1,
+            first_seen:i.detected_at, last_seen:i.detected_at,
+            timestamps:[i.detected_at],
+            messages:[i.message],
+          });
         }
       }
-      // 嚴重度權重 + 次數排序：critical 優先、同 severity 再按次數遞減
       const sevW={critical:3,error:2,warning:1};
       return[...map.values()].sort((a,b)=>(sevW[b.severity]||0)-(sevW[a.severity]||0)||b.count-a.count);
+    });
+
+    // Transient banner：若所有 issue 都是「剛剛發生」、且都跟 ContainerLog 連線錯誤有關、broker 應該是剛重啟、暫時性
+    const transientBannerInfo=computed(()=>{
+      const issues=diagReport.value?.issues;
+      if(!issues || issues.length===0) return null;
+      const now=Date.now();
+      const allRecent=issues.every(i => (now - new Date(i.detected_at).getTime()) < 5*60*1000);
+      const allConnection=issues.every(i => /(Connection|Reconnect|Socket)/i.test(i.message || ''));
+      if(allRecent && allConnection)
+        return { count: issues.length, label:'broker 剛重啟、worker 短暫失聯後自動重連、預期會在 1-2 分鐘內自動消化、不需要動作' };
+      return null;
     });
 
     async function runScan(){
@@ -3426,7 +3491,7 @@ const app=createApp({
       dispatchAgentOptions,switchDispatchAgent,
       openDispatch,doDispatch,loadDispatchHistory,dispatchStatusType,
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagSummaryText,diagNumStyle,
-      issueFilter,issueGroups,
+      issueFilter,issueGroups,transientBannerInfo,relTime,entityLabel,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
