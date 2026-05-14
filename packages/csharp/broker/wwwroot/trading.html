@@ -92,6 +92,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 .hdr nav a:hover { color:var(--text); background:var(--bg3); }
 .hdr nav a.active { color:var(--accent); background:rgba(240,185,11,0.10); font-weight:600; }
 .hdr nav a.active::after { content:''; position:absolute; left:14px; right:14px; bottom:1px; height:2px; background:var(--accent); border-radius:1px; box-shadow:0 0 6px rgba(240,185,11,0.5); }
+/* Nav badge：data-badge="!" 顯示紅點脈動（gate 觸發等需注意的情境） */
+.hdr nav a[data-badge="!"]::before { content:''; position:absolute; top:4px; right:6px; width:6px; height:6px; border-radius:50%; background:var(--red); box-shadow:0 0 0 0 rgba(246,70,93,.6); animation:pulseBadge 1.8s ease-out infinite; }
+@keyframes pulseBadge { 0% { box-shadow:0 0 0 0 rgba(246,70,93,.55); } 70% { box-shadow:0 0 0 5px rgba(246,70,93,0); } 100% { box-shadow:0 0 0 0 rgba(246,70,93,0); } }
+@media (prefers-reduced-motion: reduce) { .hdr nav a[data-badge="!"]::before { animation:none; } }
 
 /* 全域 symbol search bar */
 .hdr-search { display:flex; align-items:center; gap:6px; flex:1; max-width:420px; min-width:200px; position:relative; }
@@ -1917,9 +1921,9 @@ updateChartIntervals('stock');
 
 // ── Tab switch ──────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll('#main-nav a').forEach(a=>{const t=a.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];a.classList.toggle('active',t===name);});
-document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.getElementById('panel-'+name).classList.add('active');
+document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));const pan=document.getElementById('panel-'+name);if(!pan){console.warn('panel not found:',name);return;}pan.classList.add('active');
 if(name==='overview'){loadOverview();loadTerminalHero();}if(name==='quotes')fetchQuotes();if(name==='orders')fetchOrders();if(name==='risk'){fetchRules();fetchAlerts();fetchAlertRules();fetchAlertEvents();}if(name==='auto')fetchAutoStatus();if(name==='perp')loadPerpAll();if(name==='pnl')loadPnlReport();if(name==='mtf')loadMtfMatrix();if(name==='stratperf')loadStrategyPerf();if(name==='lab')loadLab();if(name==='me')loadMe();if(name==='admin')loadAdmin();if(name==='health')fetchHealth();
-startAutoRefresh(name);}
+startAutoRefresh(name);try{localStorage.setItem('b4a.lastTab',name);}catch(e){}}
 
 // ── Per-tab auto-refresh（B 模式：當前分頁刷、切走暫停、文件不可見也暫停）────────
 // 沒列表 = 不刷（chart/strategy/trade/backtest 是手動操作頁、自動刷反而打亂）。
@@ -1953,12 +1957,22 @@ document.addEventListener('visibilitychange', () => {
   else startAutoRefresh(_currentTab);
 });
 // 啟動時 bootstrap（預設 active panel = overview）
-window.addEventListener('DOMContentLoaded', () => startAutoRefresh('overview'));
+window.addEventListener('DOMContentLoaded', () => {
+  // Restore last tab from localStorage（F5 後不被踢回 overview）
+  let restored = 'overview';
+  try {
+    const saved = localStorage.getItem('b4a.lastTab');
+    if (saved && document.getElementById('panel-' + saved)) restored = saved;
+  } catch (e) {}
+  if (restored !== 'overview') switchTab(restored);
+  else startAutoRefresh('overview');
+});
 
 // ── Toast 通知 ──────────────────────────────────────────────────
 // 取代 alert() 的非阻塞通知；type 影響 border-left 顏色（ok/warn/err/info）
 function toast(message,type='info',title='',ttlMs=3500){
-  const stack=document.getElementById('toast-stack');if(!stack)return;
+  const stack=document.getElementById('toast-stack');
+  if(!stack){console.warn('[toast]',type,title,message);return;}
   const div=document.createElement('div');div.className='toast t-'+type;
   const safeTitle=title?`<div class="toast-title">${title}</div>`:'';
   div.innerHTML=safeTitle+`<div class="toast-body">${message}</div>`;
@@ -4440,6 +4454,25 @@ async function addBatchToWatch(){
   else toastErr(`全部失敗：${fail} 個`);
   fetchAutoStatus();
 }
+
+// ── Auto-tab gate-trigger badge ─────────────────────────────────
+// 60s 一次輕量 poll、過去 1 小時內任一 gate 觸發 → 自動 nav 出紅點脈動
+async function pollAutoBadge(){
+  try{
+    const r = await api('/api/v1/auto-trader/logs?limit=50');
+    const logs = r?.data?.logs || [];
+    const oneHourAgo = Date.now() - 3600 * 1000;
+    const gateRe = /reject|cap:|cooldown|threshold|exhausted|reached|liq alert|slippage/i;
+    const hit = logs.some(l => {
+      const t = new Date(l.time).getTime();
+      return t >= oneHourAgo && gateRe.test(l.message || '');
+    });
+    const a = document.querySelector('#main-nav a[onclick*="switchTab(\'auto\')"]');
+    if (a) a.setAttribute('data-badge', hit ? '!' : '');
+  } catch(e){ /* fire-and-forget */ }
+}
+setInterval(pollAutoBadge, 60000);
+setTimeout(pollAutoBadge, 2000);
 
 // ── Footer status bar ───────────────────────────────────────────
 function refreshFooter(){
