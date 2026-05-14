@@ -44,12 +44,15 @@ public sealed class HighLevelQueryToolMediator
         }
 
         var googleResult = await SearchWebWithToolAsync(GoogleToolId, query);
-        if (googleResult.Success)
+        // [whitelist add: 2026-05-14 AnthonyLee] 加一條 fallback 條件：Google scrape 從 data center IP
+        // 經常被 bot-detect、回 200 + 空 HTML body、Parser 解出 0 結果。原邏輯只看 Success=true 就 return、
+        // 不會走 DuckDuckGo fallback。多檢查 Results.Count > 0、讓「空結果」也走後路。
+        if (googleResult.Success && googleResult.Results.Count > 0)
             return googleResult;
 
         _logger.LogWarning(
-            "High-level Google web search failed with {Error}; falling back to DuckDuckGo.",
-            googleResult.Error ?? "unknown_error");
+            "High-level Google web search returned no results ({Status}); falling back to DuckDuckGo.",
+            googleResult.Success ? "0_results" : (googleResult.Error ?? "unknown_error"));
 
         var fallbackResult = await SearchWebWithToolAsync(DuckDuckGoToolId, query);
         if (!fallbackResult.Success)
