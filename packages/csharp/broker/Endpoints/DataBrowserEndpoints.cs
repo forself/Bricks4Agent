@@ -142,24 +142,9 @@ public static class DataBrowserEndpoints
                 return Results.BadRequest(ApiResponseHelper.Error("missing 'sql' string"));
 
             var sql = (sqlNode.GetString() ?? "").Trim();
-            if (string.IsNullOrEmpty(sql))
-                return Results.BadRequest(ApiResponseHelper.Error("empty sql"));
-
-            // ── Allowlist：只允許 SELECT 開頭、且不含寫操作關鍵字 ──
-            var sqlUpper = sql.ToUpperInvariant();
-            if (!sqlUpper.StartsWith("SELECT") && !sqlUpper.StartsWith("WITH"))
-                return Results.BadRequest(ApiResponseHelper.Error("only SELECT (or CTE WITH) queries allowed"));
-
-            string[] forbidden = { "INSERT ", "UPDATE ", "DELETE ", "DROP ", "CREATE ", "ALTER ",
-                                   "PRAGMA ", "ATTACH ", "DETACH ", "VACUUM", "REINDEX", "REPLACE ",
-                                   "--", "/*" };
-            foreach (var kw in forbidden)
-            {
-                if (sqlUpper.Contains(kw))
-                    return Results.BadRequest(ApiResponseHelper.Error($"forbidden keyword/comment: {kw.Trim()}"));
-            }
-            if (sql.Contains(';'))
-                return Results.BadRequest(ApiResponseHelper.Error("semicolons not allowed (single statement only)"));
+            var validation = ValidateReadOnlySql(sql);
+            if (!validation.Ok)
+                return Results.BadRequest(ApiResponseHelper.Error(validation.Error!));
 
             // 用 ReadOnly mode 連 broker.db —— 多一層 SQLite-level write protection
             var dbPath = config.GetValue<string>("Database:Path") ?? "broker.db";
@@ -243,6 +228,39 @@ public static class DataBrowserEndpoints
 
     private static string Truncate(string s, int max)
         => string.IsNullOrEmpty(s) ? "" : (s.Length > max ? s.Substring(0, max) + "…" : s);
+
+    /// <summary>
+    /// Read-only SQL allowlist 驗證——抽出來給 Unit.Tests 直接覆蓋。
+    /// 防護層次：
+    ///   1. 非空
+    ///   2. 必以 SELECT / WITH 開頭（其他關鍵字直接拒）
+    ///   3. 黑名單寫操作關鍵字
+    ///   4. 禁 `;`（單 statement only）
+    ///   5. 禁 `--` / `/*`（防 comment-based bypass）
+    /// </summary>
+    internal static (bool Ok, string? Error) ValidateReadOnlySql(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return (false, "empty sql");
+
+        sql = sql.Trim();
+        var sqlUpper = sql.ToUpperInvariant();
+        if (!sqlUpper.StartsWith("SELECT") && !sqlUpper.StartsWith("WITH"))
+            return (false, "only SELECT (or CTE WITH) queries allowed");
+
+        string[] forbidden = { "INSERT ", "UPDATE ", "DELETE ", "DROP ", "CREATE ", "ALTER ",
+                               "PRAGMA ", "ATTACH ", "DETACH ", "VACUUM", "REINDEX", "REPLACE ",
+                               "--", "/*" };
+        foreach (var kw in forbidden)
+        {
+            if (sqlUpper.Contains(kw))
+                return (false, $"forbidden keyword/comment: {kw.Trim()}");
+        }
+        if (sql.Contains(';'))
+            return (false, "semicolons not allowed (single statement only)");
+
+        return (true, null);
+    }
 
     private class ErrorRow
     {

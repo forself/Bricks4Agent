@@ -204,7 +204,7 @@ public abstract class ScheduledForensicsAgentBase : BackgroundService
         db.Update(task);
     }
 
-    private (DateTime since, DateTime until, string? symbol, string question) ParsePrompt(string prompt)
+    internal (DateTime since, DateTime until, string? symbol, string question) ParsePrompt(string prompt)
     {
         try
         {
