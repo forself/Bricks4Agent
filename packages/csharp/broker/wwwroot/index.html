@@ -657,7 +657,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <span style="font-size:12px;color:var(--td);min-width:90px">{{t('consoleAgentSelect')}}：</span>
               <el-select v-model="agentDispatchSelect" @change="onAgentChange" size="small" style="width:300px">
-                <el-option v-for="a in agents" :key="a.id" :value="a.id">
+                <el-option v-for="a in consoleAgents" :key="a.id" :value="a.id">
                   <span>{{a.label}}</span>
                   <el-tag size="small" :type="a.mode==='auto'?'success':'warning'" effect="plain" style="margin-left:8px">{{a.mode}}</el-tag>
                 </el-option>
@@ -3202,7 +3202,7 @@ const app=createApp({
     const agentDispatchLoading = ref(false);
     const agentDispatchResult = ref(null);  // 最近 push 的 task 結果
     const agentDispatchPollTimer = ref(null);
-    const agents = [
+    const consoleAgents = [
       { id:'agent_forensics_hourly',         label:'🔍 鑑識（1h）',     mode:'auto',   prompt:'{"since":"'+ new Date(Date.now()-3600*1000).toISOString() +'","until":"'+ new Date().toISOString() +'","question":"請說明過去 1 小時的事件鏈、有沒有 gate 觸發異常"}' },
       { id:'agent_market_report_6h',         label:'📊 6h 營運報告',     mode:'auto',   prompt:'{"trigger":"manual"}' },
       { id:'agent_anomaly_detector_15m',     label:'🚨 異常偵測（15m）', mode:'auto',   prompt:'{"trigger":"manual"}' },
@@ -3212,7 +3212,7 @@ const app=createApp({
       { id:'agent_risk_stress_test',         label:'⚠️ 風控壓測 -15%',   mode:'manual', prompt:'{"drop_pct":15}' },
     ];
     function onAgentChange(){
-      const a = agents.find(x => x.id === agentDispatchSelect.value);
+      const a = consoleAgents.find(x => x.id === agentDispatchSelect.value);
       if(a) agentDispatchPrompt.value = a.prompt;
     }
     // 一次初始化
@@ -3448,7 +3448,7 @@ const app=createApp({
       // 🎛 Command Console (chat + dispatcher)
       chatUserId,chatInput,chatHistory,chatLoading,sendChat,clearChat,
       agentDispatchSelect,agentDispatchPrompt,agentDispatchLoading,agentDispatchResult,
-      agents,onAgentChange,pushAgentTask,
+      consoleAgents,onAgentChange,pushAgentTask,
       // Container restart
       restartContainer,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
