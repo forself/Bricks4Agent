@@ -21,6 +21,7 @@ import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
 import { getHistory, pushTurn } from './history.js';
 import { handleLinePostback } from './approvals.js';
+import { isStatusTrigger, buildStatusSnapshot } from './status.js';
 
 const PORT = parseInt(process.env.LINE_WEBHOOK_PORT || '5358', 10);
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || '';
@@ -137,6 +138,16 @@ async function processEvent(evt) {
   const lockKey = `line:${userId}`;
   if (inFlight.has(lockKey)) {
     await sendLine(userId, '（前一條訊息還在處理、稍候）').catch(() => {});
+    return;
+  }
+  // 快捷狀態指令：跟 dashboard KPI bar 同一組數字、不走 LLM（不佔 lock）
+  if (isStatusTrigger(text)) {
+    try {
+      const snap = await buildStatusSnapshot();
+      await sendLine(userId, snap);
+    } catch (e) {
+      await sendLine(userId, `⚠ 狀態查詢失敗：${e.message}`).catch(() => {});
+    }
     return;
   }
   inFlight.add(lockKey);

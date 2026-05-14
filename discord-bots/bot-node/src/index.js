@@ -15,6 +15,7 @@ import { pushLlmReasoning } from './audit.js';
 import { getHistory, pushTurn, clearHistory, stats as histStats } from './history.js';
 import { startApprovalPoller, handleInteraction as handleApprovalInteraction } from './approvals.js';
 import { startLineWebhookServer } from './line-webhook.js';
+import { isStatusTrigger, buildStatusSnapshot } from './status.js';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const ACCESS_PATH = process.env.ACCESS_JSON_PATH || '/app/access.json';
@@ -87,6 +88,17 @@ client.on(Events.MessageCreate, async (msg) => {
   if (content === '/stats') {
     const s = histStats();
     await msg.reply(`📊 sessions=${s.sessions} total_turns=${s.total_turns} phase=${PHASE}`);
+    return;
+  }
+  // 快捷狀態指令：跟 dashboard KPI bar 同一組數字、不走 LLM
+  if (isStatusTrigger(content)) {
+    try {
+      const snap = await buildStatusSnapshot();
+      // Discord 用 ``` 包成 code block、固定寬字、好讀
+      await msg.reply('```\n' + snap + '\n```');
+    } catch (e) {
+      await msg.reply(`⚠ 狀態查詢失敗：${e.message}`).catch(() => {});
+    }
     return;
   }
 
