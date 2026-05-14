@@ -9,6 +9,14 @@ public sealed class HighLevelCommandParser
         "s",
         "\u641c\u5c0b"
     };
+    // [whitelist add: 2026-05-14 AnthonyLee] Wiki \u5b50\u6307\u4ee4\u2014\u2014tool \u5df2\u5beb\u597d\uff08HighLevelQueryToolMediator.SearchWikipediaAsync\uff09\u3001
+    // \u88dc\u4e0a\u5c0d\u61c9 ?wiki \u89f8\u767c\u8a5e\u3002Wikipedia public API \u4e0d\u8981 key\u3001\u7acb\u523b\u53ef\u7528\u3002
+    private static readonly HashSet<string> QueryWikiCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wiki",
+        "w",
+        "\u7dad\u57fa"
+    };
     private static readonly HashSet<string> QueryRailCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "rail",
@@ -237,6 +245,12 @@ public sealed class HighLevelCommandParser
         {
             var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
             return ("search", argument);
+        }
+        // [whitelist add: 2026-05-14 AnthonyLee] ?wiki 觸發
+        if (QueryWikiCommands.Contains(candidate))
+        {
+            var argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            return ("wiki", argument);
         }
 
         if (QueryRailCommands.Contains(candidate))

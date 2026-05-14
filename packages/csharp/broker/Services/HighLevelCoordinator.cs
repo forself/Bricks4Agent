@@ -438,6 +438,32 @@ public class HighLevelCoordinator
             });
         }
 
+        // [whitelist add: 2026-05-14 AnthonyLee] ?wiki handler——平行 search 寫法、走 SearchWikipediaAsync。
+        if (decision.Mode == HighLevelRouteMode.Query &&
+            string.Equals(parsed.QueryCommand, "wiki", StringComparison.OrdinalIgnoreCase))
+        {
+            var wikiResult = await _queryToolMediator.SearchWikipediaAsync(channel, userId, parsed.QueryArgument, cancellationToken);
+            var wikiReplyBody = wikiResult.Reply;
+            if (wikiResult.Success && wikiResult.Results.Count > 0)
+            {
+                var synthesized = await _lineChatGateway.SummarizeQueryResultsAsync(
+                    userId, "wikipedia", parsed.QueryArgument, wikiResult.Results, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(synthesized))
+                    wikiReplyBody = synthesized;
+            }
+            var wikiReply = PrepareReplySafe(profile, trimmed, wikiReplyBody);
+            SaveUserProfile(channel, userId, profile);
+            return FinalizeResult(channel, userId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Query,
+                Reply = wikiReply,
+                Error = wikiResult.Error,
+                DecisionReason = wikiResult.Success
+                    ? "wiki subcommand mediated by broker tool"
+                    : "wiki subcommand failed during broker tool mediation"
+            });
+        }
+
         if (decision.Mode == HighLevelRouteMode.Query &&
             TransportModes.TryGetValue(parsed.QueryCommand ?? "", out var transportMode))
         {
