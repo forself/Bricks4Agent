@@ -352,6 +352,12 @@ builder.Services.AddHostedService<Broker.Services.MarketReportAgentService>();  
 builder.Services.AddHostedService<Broker.Services.AnomalyDetectorAgentService>(); // 15min  / 15m window — 異常偵測
 // Manual-push only：策略研究 agent — push 一筆 JSON 就跑 StrategyResearchLoopService（LLM 生成 + walk-forward 回測迭代）
 builder.Services.AddHostedService<Broker.Services.StrategyResearchAgentService>();
+// Daily 24h auto — 帳戶 + 監控 + 持倉 snapshot 組成市場日報
+builder.Services.AddHostedService<Broker.Services.DailyMarketReportAgentService>();
+// Every 6h auto — 掃 watch list 健康度、列異常
+builder.Services.AddHostedService<Broker.Services.StrategyHealthInspectorAgentService>();
+// Manual-push only — 風控壓測、模擬 mark price 跌 X% 看每倉是否觸發 SL/Liq
+builder.Services.AddHostedService<Broker.Services.RiskStressTestAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）

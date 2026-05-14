@@ -47,9 +47,10 @@ public abstract class ScheduledForensicsAgentBase : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Principal 立刻 register（不等 StartupDelay）；不然啟動瞬間 push 會找不到 agent
+        EnsureAgentExists();
         await Task.Delay(TimeSpan.FromSeconds(StartupDelaySeconds), stoppingToken);
 
-        EnsureAgentExists();
         _logger.LogInformation(
             "[{Agent}] started — poll={P}s, auto-push={A}s, window={W}",
             AgentId, PollIntervalSeconds, AutoPushIntervalSeconds, DefaultWindow);

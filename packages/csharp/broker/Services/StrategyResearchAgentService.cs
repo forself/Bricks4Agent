@@ -38,8 +38,8 @@ public class StrategyResearchAgentService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         EnsureAgentExists();
+        await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
         _logger.LogInformation(
             "[{Agent}] started — manual-push only, poll={P}s",
             AgentIdConst, PollIntervalSeconds);
