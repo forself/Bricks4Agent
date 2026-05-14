@@ -1933,7 +1933,14 @@ public class InProcessDispatcher : IExecutionDispatcher
             or "rag_import" or "rag_import_web"
             or "transport_query"
             or "web_search" or "web_search_google" or "web_search_duckduckgo" or "web_fetch"
-            or "deploy_azure_vm_iis" => true,
+            or "deploy_azure_vm_iis"
+            // [whitelist add: 2026-05-15 AnthonyLee] 補齊 CanHandle 跟 DispatchAsync 不一致：
+            // 這 5 個 route 在 DispatchAsync line 109-114 + 119 有 case、但 CanHandle 沒列、
+            // FallbackDispatcher 看 false 直接拒、抓到於 ?wiki demo。
+            or "knowledge_wikipedia_search"
+            or "travel_rail_search" or "travel_hsr_search"
+            or "travel_bus_search" or "travel_flight_search"
+            or "delivery_google_drive_share" => true,
         _ => false
     };
 
