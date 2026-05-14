@@ -1315,7 +1315,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 v-for="(b,i) in llmTrend.buckets"
                 :key="i"
                 :title="trendBucketTooltip(b)"
-                style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;cursor:default;min-width:6px"
+                style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;cursor:default;min-width:6px;height:100%"
               >
                 <div v-if="b.failure_calls>0"
                   :style="'height:'+ trendBarPct(b.failure_calls) +'%;background:#f56c6c;border-top-left-radius:2px;border-top-right-radius:2px'"></div>
