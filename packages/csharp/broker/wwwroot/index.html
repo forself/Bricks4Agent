@@ -3081,16 +3081,24 @@ const app=createApp({
       return[...map.values()].sort((a,b)=>(sevW[b.severity]||0)-(sevW[a.severity]||0)||b.count-a.count);
     });
 
-    // Transient banner：若所有 issue 都是「剛剛發生」、且都跟 ContainerLog 連線錯誤有關、broker 應該是剛重啟、暫時性
+    // Transient banner：偵測「全部都是連線重置類錯誤」 → 標為暫時性。
+    // 條件鬆綁：不再要求 < 5 min、只要全部都是 Connection/Reconnect/Socket 類就 mark。
+    // 為什麼：worker container log 是 ring buffer、broker 重啟時的失聯錯誤會留 30+ 分鐘、
+    // 嚴格 5 min 條件會讓真正暫時的問題被當「持續異常」。
     const transientBannerInfo=computed(()=>{
       const issues=diagReport.value?.issues;
       if(!issues || issues.length===0) return null;
+      const allConnection=issues.every(i => /(Connection|Reconnect|Socket|temporarily unavailable)/i.test(i.message || ''));
+      if(!allConnection) return null;
       const now=Date.now();
-      const allRecent=issues.every(i => (now - new Date(i.detected_at).getTime()) < 5*60*1000);
-      const allConnection=issues.every(i => /(Connection|Reconnect|Socket)/i.test(i.message || ''));
-      if(allRecent && allConnection)
-        return { count: issues.length, label:'broker 剛重啟、worker 短暫失聯後自動重連、預期會在 1-2 分鐘內自動消化、不需要動作' };
-      return null;
+      const recentCount=issues.filter(i => (now - new Date(i.detected_at).getTime()) < 5*60*1000).length;
+      const isFresh=recentCount === issues.length;
+      return {
+        count: issues.length,
+        label: isFresh
+          ? 'broker 剛重啟、worker 短暫失聯後自動重連、預期會在 1-2 分鐘內自動消化、不需要動作'
+          : 'broker 之前重啟過幾次、worker 早已重連、這些是 container log 還留著的舊 error 訊息（worker 持續輸出穩定狀態後會被新 log 蓋掉）'
+      };
     });
 
     async function runScan(){
