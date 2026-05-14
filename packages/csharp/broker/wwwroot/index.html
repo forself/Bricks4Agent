@@ -869,54 +869,49 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </div>
           </template>
           <div v-show="schedRuns.length===0"><el-empty :description="t('noHistory')"/></div>
-          <div v-show="schedRuns.length>0"><el-table :data="schedRuns" stripe>
-            <el-table-column prop="runId" label="Run ID" width="200">
-              <template #default="{row}"><code style="font-size:11px">{{row.runId}}</code></template>
-            </el-table-column>
-            <el-table-column :label="t('state')" width="80">
-              <template #default="{row}">
-                <el-tag :type="row.healthy?'success':'danger'" size="small">{{row.healthy?'OK':'FAIL'}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('created')" width="170">
-              <template #default="{row}">{{fmtDate(row.scannedAt)}}</template>
-            </el-table-column>
-            <el-table-column :label="t('reason')" min-width="260">
-              <template #default="{row}">
-                <span v-if="row.healthy" style="color:#67c23a">✓ {{t('healthy')}}</span>
-                <span v-else style="font-size:12px">
-                  <span v-if="!row.runtimeAvailable" style="color:#f56c6c;font-weight:600">⚠ {{t('runtimeDown')}}</span>
-                  <span v-else>
-                    <span v-if="row.criticalCount>0" style="color:#f56c6c;font-weight:600">{{row.criticalCount}} {{t('critical')}}</span>
-                    <span v-if="row.criticalCount>0&&row.errorCount>0"> · </span>
-                    <span v-if="row.errorCount>0" style="color:#f56c6c">{{row.errorCount}} {{t('error')}}</span>
-                    <span v-if="(row.criticalCount>0||row.errorCount>0)&&row.warningCount>0"> · </span>
-                    <span v-if="row.warningCount>0" style="color:#e6a23c">{{row.warningCount}} {{t('warning')}}</span>
+          <div v-show="schedRuns.length>0">
+            <!-- 提示：歷史 FAIL 多半是 broker 重啟那一瞬間的快照、不代表現在 -->
+            <div style="font-size:11px;color:var(--td);margin-bottom:8px;padding:6px 10px;background:var(--s2);border-radius:4px;border-left:3px solid #909399">
+              💡 歷史紀錄是每次掃描當下的快照、不是「持續的問題」。broker 重啟那幾秒 worker 失聯、會被當下記成 FAIL；現在頂端「系統健康」才是真實當下狀態。
+            </div>
+            <el-table :data="schedRuns" stripe>
+              <el-table-column prop="runId" label="Run ID" min-width="200">
+                <template #default="{row, $index}">
+                  <code style="font-size:11px">{{row.runId}}</code>
+                  <el-tag v-if="$index===0" size="small" type="info" effect="plain" style="margin-left:6px">最新</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column :label="t('state')" width="80" align="center">
+                <template #default="{row}">
+                  <el-tag :type="row.healthy?'success':'danger'" size="small">{{row.healthy?'OK':'FAIL'}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="掃描時間" width="200">
+                <template #default="{row}">
+                  <div style="font-size:12px">{{relTime(row.scannedAt)}}</div>
+                  <div style="font-size:10px;color:var(--td);font-family:monospace">{{fmtDate(row.scannedAt)}}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="資源 (執行/就緒)" width="140" align="center">
+                <template #default="{row}">
+                  <span style="font-family:monospace">{{row.runningContainers}} / {{row.readyWorkers}}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="問題 (嚴/錯/警)" width="160" align="center">
+                <template #default="{row}">
+                  <span v-if="row.healthy" style="color:#67c23a">✓ 全綠</span>
+                  <span v-else-if="!row.runtimeAvailable" style="color:#f56c6c;font-weight:600">⚠ 容器執行環境異常</span>
+                  <span v-else style="font-family:monospace;font-size:13px">
+                    <span :style="row.criticalCount>0?'color:#f56c6c;font-weight:600':'color:var(--td)'">{{row.criticalCount}}</span>
+                    <span style="color:var(--td)"> / </span>
+                    <span :style="row.errorCount>0?'color:#f56c6c':'color:var(--td)'">{{row.errorCount}}</span>
+                    <span style="color:var(--td)"> / </span>
+                    <span :style="row.warningCount>0?'color:#e6a23c':'color:var(--td)'">{{row.warningCount}}</span>
                   </span>
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('runningContainers')" width="110" align="center" prop="runningContainers"/>
-            <el-table-column :label="t('readyWorkers')" width="130" align="center" prop="readyWorkers"/>
-            <el-table-column :label="t('critical')" width="70" align="center">
-              <template #default="{row}">
-                <span v-show="row.criticalCount>0" style="color:#f56c6c;font-weight:600">{{row.criticalCount}}</span>
-                <span v-show="row.criticalCount===0">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('error')" width="70" align="center">
-              <template #default="{row}">
-                <span v-show="row.errorCount>0" style="color:#f56c6c;font-weight:600">{{row.errorCount}}</span>
-                <span v-show="row.errorCount===0">0</span>
-              </template>
-            </el-table-column>
-            <el-table-column :label="t('warning')" width="70" align="center">
-              <template #default="{row}">
-                <span v-show="row.warningCount>0" style="color:#e6a23c">{{row.warningCount}}</span>
-                <span v-show="row.warningCount===0">0</span>
-              </template>
-            </el-table-column>
-          </el-table></div>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </el-card>
       </el-tab-pane>
 
