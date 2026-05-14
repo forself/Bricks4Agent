@@ -411,10 +411,59 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
       <!-- ── Agents ── -->
       <el-tab-pane :label="t('agents')" name="agents">
+        <!-- Inbox-driven agents (新增、跑在 broker BackgroundService、用 agent_inbox_tasks) -->
+        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">📥 Inbox-driven agents</span>
+              <span style="font-size:11px;color:var(--td)">跑在 broker BackgroundService、走 ScheduledForensicsAgentBase / 自己 service。任務透過 agent_inbox_tasks 表驅動、所有 LLM 走 broker LlmProxy。</span>
+              <el-button size="small" @click="loadInboxAgentStats" style="margin-left:auto">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="inboxAgentStats" stripe :empty-text="'(載入中…)'">
+            <el-table-column label="Agent" min-width="180">
+              <template #default="{row}">
+                <div style="font-weight:600">{{row.label}}</div>
+                <code style="font-size:10px;color:var(--td)">{{row.id}}</code>
+              </template>
+            </el-table-column>
+            <el-table-column label="模式" width="80" align="center">
+              <template #default="{row}">
+                <el-tag :type="row.mode==='auto'?'success':'warning'" size="small" effect="plain">{{row.mode}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="任務累計" width="90" align="center">
+              <template #default="{row}"><el-tag round size="small" :type="row.total>0?'info':''">{{row.total}}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="最後狀態" width="100" align="center">
+              <template #default="{row}">
+                <el-tag v-if="row.latest_status==='done'" type="success" size="small">done</el-tag>
+                <el-tag v-else-if="row.latest_status==='processing'" type="info" size="small">processing</el-tag>
+                <el-tag v-else-if="row.latest_status==='failed'" type="danger" size="small">failed</el-tag>
+                <span v-else style="color:var(--td);font-size:11px">{{row.latest_status}}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最後跑" width="120">
+              <template #default="{row}">
+                <span v-if="row.latest_at" style="font-size:11px;color:var(--td)" :title="fmtDate(row.latest_at)">{{relTime(row.latest_at)}}</span>
+                <span v-else style="color:var(--td);font-size:11px">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="模型 / 延遲" min-width="160">
+              <template #default="{row}">
+                <code v-if="row.latest_model" style="font-size:11px">{{row.latest_model}}</code>
+                <span v-if="row.latest_latency" style="font-size:11px;color:var(--td);margin-left:6px">{{row.latest_latency}} ms</span>
+                <span v-if="!row.latest_model && !row.latest_latency" style="color:var(--td);font-size:11px">—</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
         <el-card>
           <template #header>
             <div style="display:flex;align-items:center">
               <span style="font-weight:600">{{t('allAgents')}}</span>
+              <span style="font-size:11px;color:var(--td);margin-left:6px">（spawn-based container agent — 跟上方 inbox-driven 互補）</span>
               <el-button type="primary" size="small" style="margin-left:auto" @click="openCreate">+ {{t('createAgent')}}</el-button>
             </div>
           </template>
@@ -2635,6 +2684,7 @@ const app=createApp({
 
     function onTabChange(tab){
       if(tab==='containers'){refreshContainers();loadHealthScore();loadAutoScale();if(autoRefresh.value)startAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
+      else if(tab==='agents'){loadAgents();loadInboxAgentStats();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='diagnostics'){runScan();loadSchedHistory();if(autoScan.value)startAutoScan();stopAutoRefresh();stopLlmAutoRefresh();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='llmproxy'){loadLlmStatus();if(llmAutoRefresh.value)startLlmAutoRefresh();stopAutoRefresh();stopAutoScan();stopTracesAutoRefresh();stopTopologyAutoRefresh()}
       else if(tab==='traces'){loadTraces();startTracesAutoRefresh();stopAutoRefresh();stopAutoScan();stopLlmAutoRefresh();stopTopologyAutoRefresh()}
@@ -3218,6 +3268,37 @@ const app=createApp({
     const forensicResult=ref(null);
     const forensicLoading=ref(false);
 
+    // ── Inbox-driven agents（顯示我的 7 個 agent + 任務統計）──────────────
+    // 跟 AgentSpawnService.ListAgents()（Agents tab 的「所有代理」）互補：
+    // 後者是 spawn-based container agent、前者是 inbox-driven background service
+    const inboxAgentStats = ref([]);  // [{ id, label, mode, total, latest_status, latest_at, latest_model, latest_latency }]
+    async function loadInboxAgentStats(){
+      const list = [
+        { id:'agent_forensics_hourly',          label:'🔍 鑑識（1h）',    mode:'auto'   },
+        { id:'agent_market_report_6h',          label:'📊 6h 營運報告',   mode:'auto'   },
+        { id:'agent_anomaly_detector_15m',      label:'🚨 異常偵測（15m）',mode:'auto'  },
+        { id:'agent_daily_market_report',       label:'📝 市場日報',      mode:'auto'   },
+        { id:'agent_strategy_health_inspector', label:'🏥 watch 健康巡檢',mode:'auto'  },
+        { id:'agent_strategy_research',         label:'🎯 策略研究',      mode:'manual' },
+        { id:'agent_risk_stress_test',          label:'⚠️ 風控壓測',     mode:'manual' },
+      ];
+      const promises = list.map(async a => {
+        try{
+          const r = await getPlain('/api/v1/agents/inbox/list?agent_id='+encodeURIComponent(a.id)+'&limit=1');
+          const t = r?.data?.tasks?.[0];
+          return {
+            ...a,
+            total: r?.data?.count ?? 0,
+            latest_status: t?.status ?? '—',
+            latest_at: t?.created_at ?? null,
+            latest_model: t?.model ?? null,
+            latest_latency: t?.latency_ms ?? null,
+          };
+        }catch{ return { ...a, total:0, latest_status:'—', latest_at:null }; }
+      });
+      inboxAgentStats.value = await Promise.all(promises);
+    }
+
     // ── 🎛 Command Console（demo 用：A=HighLevelCoordinator 聊天、B=7-agent 派發） ─────
     // Section A: HighLevelCoordinator chat（走 Benson 原設計：LLM 解析意圖 → broker validate → broker dispatch）
     const chatUserId = ref('prn_dashboard_demo_' + Date.now().toString(36));
@@ -3492,6 +3573,8 @@ const app=createApp({
       openDispatch,doDispatch,loadDispatchHistory,dispatchStatusType,
       diagReport,scanning,autoScan,scanInterval,runScan,onAutoScanChange,sevType,diagAlertType,diagSummaryText,diagNumStyle,
       issueFilter,issueGroups,transientBannerInfo,relTime,entityLabel,
+      // Inbox-driven agents (顯示 7 個 BackgroundService agent + 任務統計)
+      inboxAgentStats,loadInboxAgentStats,
       schedRuns,diagSpace,loadSchedHistory,
       containers,containerStats,containerRefreshing,mergedContainers,runningCount,issueCount,displayedContainers,
       containerFilter,containerSort,ctStateType,ctIconClass,ctIconGlyph,ctBarClass,ctUptime,fmtBytes,canStop,canStart,startContainer,
