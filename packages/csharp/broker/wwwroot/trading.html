@@ -88,9 +88,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 .hdr { background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; height:48px; gap:12px; }
 .hdr .logo { font-size:16px; font-weight:700; color:var(--accent); letter-spacing:1px; flex-shrink:0; }
 .hdr nav { display:flex; gap:4px; flex-shrink:0; }
-.hdr nav a { color:var(--text2); padding:6px 14px; border-radius:4px; cursor:pointer; font-size:13px; text-decoration:none; transition:.15s; }
+.hdr nav a { color:var(--text2); padding:6px 14px; border-radius:4px 4px 0 0; cursor:pointer; font-size:13px; text-decoration:none; transition:color .15s, background .15s; position:relative; }
 .hdr nav a:hover { color:var(--text); background:var(--bg3); }
-.hdr nav a.active { color:var(--accent); background:rgba(240,185,11,0.08); }
+.hdr nav a.active { color:var(--accent); background:rgba(240,185,11,0.10); font-weight:600; }
+.hdr nav a.active::after { content:''; position:absolute; left:14px; right:14px; bottom:1px; height:2px; background:var(--accent); border-radius:1px; box-shadow:0 0 6px rgba(240,185,11,0.5); }
 
 /* 全域 symbol search bar */
 .hdr-search { display:flex; align-items:center; gap:6px; flex:1; max-width:420px; min-width:200px; position:relative; }
@@ -122,7 +123,8 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background:var(--bg);
 .panel { display:none; } .panel.active { display:block; }
 
 /* Cards */
-.card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:16px; transition:border-color .15s, box-shadow .15s; }
+.card:hover { border-color:rgba(240,185,11,0.35); box-shadow:0 2px 12px rgba(0,0,0,0.35), 0 0 0 1px rgba(240,185,11,0.08); }
 .card h3 { font-size:12px; color:var(--text2); margin-bottom:10px; font-weight:500; text-transform:uppercase; letter-spacing:.5px; }
 
 /* Grid */
@@ -3998,7 +4000,7 @@ async function refreshTotpStatus(){
 async function totpStartEnroll(){
   const r = await _authFetch('/api/v1/auth/2fa/setup', {method:'POST', body:'{}'});
   if (!r?.success){
-    alert('啟用流程失敗：' + (r?.message || 'unknown'));
+    toastErr('啟用流程失敗：' + (r?.message || 'unknown'), '2FA');
     return;
   }
   document.getElementById('totp-otpauth').value = r.data.otpauth_url;
