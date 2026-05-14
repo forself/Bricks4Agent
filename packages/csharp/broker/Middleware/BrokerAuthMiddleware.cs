@@ -70,7 +70,9 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/agents/exec", StringComparison.OrdinalIgnoreCase)
             // [whitelist add: 2026-05-13] Audit — bot-node 走 X-Internal-Bot-Token、dashboard 走 cookie；
             // 不需要 scoped_token。已在 EncryptionMiddleware 同步開白名單。
-            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-14] Forensics —— 同 audit 一樣 cookie/scoped 二選一
+            || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(

@@ -80,7 +80,9 @@ public class EncryptionMiddleware
             // [whitelist add: 2026-05-13] Audit endpoints — bot-node 透過 X-Internal-Bot-Token
             // POST /audit/llm-reasoning 推 LLM reasoning audit（W13）；走 internal trust path、
             // 不走 ECDH。dashboard 端用 cookie session 走同 endpoint 也適用同 plain-JSON 流。
-            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/audit/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-14] Forensics — dashboard 走 cookie session、純 GET、跟 audit 同性質
+            || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
