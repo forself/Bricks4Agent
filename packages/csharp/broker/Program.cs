@@ -350,6 +350,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.St
 builder.Services.AddHostedService<Broker.Services.ForensicsAgentService>();       // hourly  / 1h window — 事件鏈鑑識
 builder.Services.AddHostedService<Broker.Services.MarketReportAgentService>();    // 6-hour / 6h window — 營運總結
 builder.Services.AddHostedService<Broker.Services.AnomalyDetectorAgentService>(); // 15min  / 15m window — 異常偵測
+// Manual-push only：策略研究 agent — push 一筆 JSON 就跑 StrategyResearchLoopService（LLM 生成 + walk-forward 回測迭代）
+builder.Services.AddHostedService<Broker.Services.StrategyResearchAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
