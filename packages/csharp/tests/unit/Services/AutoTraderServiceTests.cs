@@ -22,7 +22,10 @@ public class AutoTraderServiceTests
     {
         var dispatcher = Substitute.For<IExecutionDispatcher>();
         var registry = Substitute.For<IWorkerRegistry>();
-        return new AutoTraderService(dispatcher, registry, db, NullLogger<AutoTraderService>.Instance);
+        // serviceProvider 必填、 broker container 用來 lazy resolve DiscordNotify/LineNotify
+        // 避開 circular DI。test 沒用 notification、null! 即可
+        var serviceProvider = Substitute.For<IServiceProvider>();
+        return new AutoTraderService(dispatcher, registry, db, NullLogger<AutoTraderService>.Instance, serviceProvider);
     }
 
     // ── BuildAutoOrderKey（純函式，cut 2a 的核心邏輯）─────────────────
