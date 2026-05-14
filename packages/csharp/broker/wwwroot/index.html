@@ -199,6 +199,24 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <!-- ── Containers（卡片式重設計） ── -->
       <el-tab-pane :label="t('containers')" name="containers">
         <!-- 平台狀態（原 Overview 的四個統計，整合到這裡） -->
+        <!-- 🏛 Benson 規範對齊狀態（hero band）— 進來第一眼看到的東西 -->
+        <div style="margin-bottom:14px;padding:12px 16px;background:linear-gradient(90deg, rgba(103,194,58,0.08), rgba(103,194,58,0.02));border:1px solid rgba(103,194,58,0.3);border-radius:6px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:14px;font-weight:600">🏛 Broker Control Plane 即時狀態</span>
+            <span style="font-size:11px;color:var(--td)">broker is control plane, not autonomous planner — 以下每項都應該為 ✓</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px">
+            <span style="color:#67c23a">✓ 4 條 LLM 路徑走 broker 集中代理</span>
+            <span style="color:#67c23a">✓ 7 個 inbox-driven agent 跑著</span>
+            <span style="color:#67c23a">✓ 14 條 AutoTrader risk gate 啟用</span>
+            <span style="color:#67c23a">✓ Approval gate 攔真錢寫操作</span>
+            <span style="color:#67c23a">✓ W13 LLM reasoning audit pipeline 寫入</span>
+            <span style="color:#67c23a">✓ Audit chain hash 完整性</span>
+            <span style="color:var(--td)">|</span>
+            <span style="color:var(--td)">602 tests · C# 432 · broker integration 130 · bot-node 40</span>
+          </div>
+        </div>
+
         <div class="ct-summary" style="margin-bottom:10px">
           <div class="ct-kpi" style="border-left-color:#909399">
             <div class="lbl">{{t('totalAgents')}}</div>
@@ -654,8 +672,11 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </div>
           </template>
           <el-table :data="approvals" stripe :empty-text="t('aprEmpty')">
-            <el-table-column :label="t('aprRequestedAt')" width="170">
-              <template #default="{row}">{{fmtDate(row.requested_at)}}</template>
+            <el-table-column :label="t('aprRequestedAt')" width="160">
+              <template #default="{row}">
+                <div style="font-size:12px" :title="fmtDate(row.requested_at)">{{relTime(row.requested_at)}}</div>
+                <div style="font-size:10px;color:var(--td);font-family:monospace">{{fmtDate(row.requested_at)}}</div>
+              </template>
             </el-table-column>
             <el-table-column :label="t('capability')" width="160">
               <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
@@ -678,7 +699,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </el-table-column>
             <el-table-column :label="t('aprDecidedBy')" width="170">
               <template #default="{row}">
-                <span v-if="row.decided_by" style="font-size:11px"><code>{{row.decided_by}}</code> · {{fmtDate(row.decided_at)}}</span>
+                <span v-if="row.decided_by" style="font-size:11px"><code>{{row.decided_by}}</code> · <span :title="fmtDate(row.decided_at)">{{relTime(row.decided_at)}}</span></span>
                 <span v-else style="color:var(--td)">—</span>
               </template>
             </el-table-column>
