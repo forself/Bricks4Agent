@@ -401,6 +401,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
             <div class="actions">
               <el-button size="small" @click="viewLogs(c.container_id)">📜 {{t('logs')}}</el-button>
+              <el-button v-if="canStop(c.state)" size="small" plain @click="restartContainer(c.container_id)">🔄 {{t('restart')}}</el-button>
               <el-button v-if="canStop(c.state)" type="danger" size="small" plain @click="stopContainer(c.container_id)">⏹ {{t('stop')}}</el-button>
               <el-button v-if="canStart(c.state)" type="success" size="small" plain @click="startContainer(c.container_id)">▶ {{t('start')}}</el-button>
             </div>
@@ -760,6 +761,34 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
       <!-- ── LLM 代理（觀測 LlmProxyService） ── -->
       <el-tab-pane :label="t('llmProxy')" name="llmproxy">
+        <!-- ARCHITECTURE OVERVIEW: 4 條 subordinate LLM 路徑（Benson 規範對齊狀態） -->
+        <el-card style="margin-bottom:14px">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">{{t('llmPathsTitle')}}</span>
+              <span style="font-size:11px;color:var(--td)">{{t('llmPathsHint')}}</span>
+            </div>
+          </template>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
+            <div v-for="p in llmPaths" :key="p.id"
+                 :style="'padding:10px 12px;border-radius:6px;border:1px solid var(--bd);background:var(--s2);border-left:3px solid '+(p.goesViaBroker?'#67c23a':'#e6a23c')">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:18px">{{p.icon}}</span>
+                <span style="font-weight:600;font-size:13px">{{p.name}}</span>
+              </div>
+              <div style="font-size:11px;color:var(--td);margin-bottom:6px">{{t('llmPathRole')}}：{{p.role}}</div>
+              <div style="font-size:11px;line-height:1.55;color:var(--t);margin-bottom:6px">{{p.desc}}</div>
+              <div style="font-size:10px;font-family:monospace;color:var(--td);word-break:break-all">
+                <div>{{t('llmPathRoute')}}: {{p.proxyRoute}}</div>
+                <div>{{t('llmPathFiles')}}: {{p.files}}</div>
+              </div>
+              <el-tag :type="p.goesViaBroker?'success':'warning'" size="small" effect="plain" style="margin-top:8px">
+                {{p.goesViaBroker ? '✓ '+t('llmPathViaBroker') : t('llmPathClient')}}
+              </el-tag>
+            </div>
+          </div>
+        </el-card>
+
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
           <el-button size="small" @click="loadLlmStatus" :loading="llmStatusLoading">{{t('refresh')}}</el-button>
           <el-button size="small" type="primary" @click="runLlmHealthCheck" :loading="llmHealthLoading">🩺 {{t('llmHealthcheck')}}</el-button>
@@ -964,8 +993,102 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
                 <span v-if="row.error_brief" style="font-size:11px;color:#f56c6c;font-family:monospace">{{row.error_brief}}</span>
               </template>
             </el-table-column>
+            <el-table-column label="" width="60" align="center">
+              <template #default="{row}">
+                <el-button size="small" text type="primary" @click="showLlmDetail(row,'broker')">🔍</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
+
+        <!-- W13: bot-node LLM reasoning audit -->
+        <el-card style="margin-top:14px;border-left:3px solid #e6a23c">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600">{{t('llmBotW13')}}</span>
+              <span style="font-size:11px;color:var(--td)">{{t('llmBotW13Hint')}}</span>
+              <el-button size="small" @click="loadBotReasoning" :loading="botReasoningLoading" style="margin-left:auto">{{t('refresh')}}</el-button>
+            </div>
+          </template>
+          <el-table :data="botReasoning" :empty-text="t('llmNoW13')" stripe>
+            <el-table-column :label="t('time')" width="170">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{fmtDate(row.occurredAt)}}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('llmW13Source')" width="110">
+              <template #default="{row}"><el-tag size="small">{{row.source}}</el-tag></template>
+            </el-table-column>
+            <el-table-column :label="t('llmW13User')" min-width="120">
+              <template #default="{row}"><code style="font-size:11px">{{(row.userId||'').slice(0,16)}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('llmW13Tool')" min-width="180">
+              <template #default="{row}"><code style="font-size:11px;color:var(--t)">{{row.toolName||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column :label="t('llmDetailReasoning')" min-width="280">
+              <template #default="{row}">
+                <span style="font-size:11px;color:var(--td);font-family:monospace">
+                  {{(row.llmReasoning||'').slice(0,80)}}<span v-if="(row.llmReasoning||'').length>80">…</span>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmW13Acl')" width="70" align="center">
+              <template #default="{row}">
+                <el-tag :type="row.aclAllowed?'success':'danger'" size="small">{{row.aclAllowed?'✓':'✗'}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('llmW13Dispatch')" width="100" align="center">
+              <template #default="{row}"><span style="font-size:11px">{{row.dispatchResult}}</span></template>
+            </el-table-column>
+            <el-table-column label="" width="60" align="center">
+              <template #default="{row}">
+                <el-button size="small" text type="primary" @click="showLlmDetail(row,'botnode')">🔍</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <!-- 通用 LLM detail modal —— 點 🔍 觸發、showLlmDetail() 攤平內容 -->
+        <el-dialog v-model="llmDetailVisible" :title="t('llmDetailTitle')" width="780px">
+          <div v-if="llmDetail" style="display:flex;flex-direction:column;gap:14px">
+            <!-- Metadata grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+              <div><span style="color:var(--td)">Source：</span><code>{{llmDetail.source}}</code></div>
+              <div><span style="color:var(--td)">Time：</span>{{fmtDate(llmDetail.ts)}}</div>
+              <div v-if="llmDetail.model"><span style="color:var(--td)">Model：</span><code>{{llmDetail.model}}</code></div>
+              <div v-if="llmDetail.latency_ms!=null"><span style="color:var(--td)">Latency：</span>{{llmDetail.latency_ms}} ms</div>
+              <div v-if="llmDetail.tokens!=null"><span style="color:var(--td)">Tokens：</span>{{llmDetail.tokens}}</div>
+              <div v-if="llmDetail.task"><span style="color:var(--td)">Task：</span><code>{{llmDetail.task}}</code></div>
+              <div v-if="llmDetail.user_id"><span style="color:var(--td)">User：</span><code>{{llmDetail.user_id}}</code></div>
+              <div v-if="llmDetail.channel_id"><span style="color:var(--td)">Channel：</span><code>{{llmDetail.channel_id}}</code></div>
+              <div v-if="llmDetail.dispatch_result"><span style="color:var(--td)">Dispatch：</span>{{llmDetail.dispatch_result}}</div>
+              <div v-if="llmDetail.acl_allowed!=null">
+                <span style="color:var(--td)">ACL：</span>
+                <el-tag :type="llmDetail.acl_allowed?'success':'danger'" size="small">{{llmDetail.acl_allowed?'allowed':'blocked'}}</el-tag>
+              </div>
+            </div>
+            <!-- Reasoning -->
+            <div>
+              <div style="font-size:12px;color:var(--td);margin-bottom:6px">{{t('llmDetailReasoning')}}</div>
+              <pre style="background:var(--s2);padding:10px;border-radius:4px;font-size:12px;line-height:1.55;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace">{{llmDetail.reasoning}}</pre>
+            </div>
+            <!-- Tool calls -->
+            <div v-if="llmDetail.tool_calls && llmDetail.tool_calls.length>0">
+              <div style="font-size:12px;color:var(--td);margin-bottom:6px">{{t('llmDetailToolCalls')}} ({{llmDetail.tool_calls.length}})</div>
+              <div v-for="(tc,i) in llmDetail.tool_calls" :key="i" style="background:var(--s2);border-left:3px solid #67c23a;border-radius:4px;padding:8px 12px;margin-bottom:6px">
+                <div style="font-family:monospace;font-weight:600;font-size:12px">{{tc.name}}</div>
+                <pre style="margin:4px 0 0;font-family:monospace;font-size:11px;color:var(--td);white-space:pre-wrap;word-break:break-all">{{tc.args || tc.args_brief || '(no args)'}}</pre>
+              </div>
+            </div>
+            <!-- Error -->
+            <div v-if="llmDetail.error">
+              <div style="font-size:12px;color:var(--td);margin-bottom:6px">{{t('llmDetailError')}}</div>
+              <pre style="background:rgba(245,108,108,0.08);border:1px solid rgba(245,108,108,0.3);padding:10px;border-radius:4px;font-size:12px;color:#f56c6c;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace">{{llmDetail.error}}</pre>
+            </div>
+          </div>
+          <template #footer>
+            <el-button @click="llmDetailVisible=false">Close</el-button>
+            <el-button type="primary" @click="copyLlmDetail">📋 {{t('llmDetailCopy')}}</el-button>
+          </template>
+        </el-dialog>
 
         <div v-if="!llmStatus && !llmStatusLoading" class="ct-empty" style="margin-top:20px">
           <div class="big">🔌</div>
@@ -1601,7 +1724,7 @@ const I18N={
     workerTypeLabel:'Worker 類型',workerIdOpt:'Worker ID（選填）',
     selectType:'請選擇 worker 類型',loading:'載入中',noWorkerImages:'尚未設定可用的 worker 鏡像（FunctionPool:ContainerManager:WorkerImages 為空）',
     logsLive:'即時日誌',logsHistory:'歷史錯誤',noLogHistory:'此容器尚無錯誤紀錄（或採集服務未啟動）',entries:'筆紀錄',
-    llmProxy:'LLM Proxy',llmStatus:'狀態',llmEnabled:'已啟用',llmDisabled:'未啟用',
+    llmProxy:'🧠 LLM 全景',llmStatus:'狀態',llmEnabled:'已啟用',llmDisabled:'未啟用',
     llmTrend:'呼叫趨勢',llmTrendWindow:'視窗',llmTrendTotal:'呼叫',llmTrendFail:'失敗',
     llmTrendBucket10:'10 分/格',llmTrendBucket30:'30 分/格',llmTrendBucket60:'60 分/格',
     llmTrendEmpty:'視窗內沒有 LLM 呼叫紀錄',llmTrendNow:'現在',llmTrendHover:'滑鼠 hover 看每格細節',
@@ -1617,6 +1740,17 @@ const I18N={
     llmStatusCol:'狀態',llmTask:'任務',llmError:'錯誤訊息（截短）',
     llmTools:'工具',llmToolCallsHeader:'此次回覆要求的 tool calls',llmNoToolCalls:'此次回覆沒有 tool calls（純文字輸出）',
     llmLoadFailed:'無法載入 LLM 代理狀態（broker 未啟用 LlmProxy？）',
+    llmPathsTitle:'4 條 subordinate LLM 路徑（Benson 規範對齊狀態）',
+    llmPathsHint:'broker is control plane, not autonomous planner — 任何 subordinate LLM 都應透過 broker 集中稽核 (propose/validate/record)',
+    llmPathRole:'職責',llmPathFiles:'檔案',llmPathRoute:'route',
+    llmPathViaBroker:'走 broker 集中代理',llmPathClient:'⚠ client-side、有 W13 mitigation',
+    llmBotW13:'🤖 bot-node LLM Reasoning Audit (W13)',
+    llmBotW13Hint:'bot-node 在 client-side 跑 LLM、但每次 dispatch 前把完整 reasoning POST 進 broker；解灰區 2',
+    llmW13Source:'來源',llmW13User:'User',llmW13Channel:'Channel',llmW13Tool:'Tool call',llmW13Dispatch:'Dispatch',llmW13Acl:'ACL',
+    llmNoW13:'尚無 W13 audit 紀錄（bot-node 還沒被觸發或才剛 deploy）',
+    llmDetailTitle:'LLM 呼叫詳細',llmDetailReasoning:'Reasoning / Response',llmDetailToolCalls:'Tool calls',llmDetailError:'錯誤訊息',
+    llmDetailMeta:'Metadata',llmDetailCopy:'複製 JSON',
+    restart:'重啟',confirmRestartCt:'確認重啟容器「{id}」？這會 stop → start，會中斷正在進行的工作',
     uptime:'運行時間',time:'時間',
     logViewMode:'顯示模式',logModeRaw:'原始',logModeSummary:'中文摘要',
     noSummary:'目前沒有可摘要的內容（容器無輸出或全部已被分類為一般訊息但 0 行）',
@@ -1710,7 +1844,18 @@ const I18N={
     workerTypeLabel:'Worker Type',workerIdOpt:'Worker ID (optional)',
     selectType:'Select a worker type',loading:'Loading',noWorkerImages:'No worker images configured (FunctionPool:ContainerManager:WorkerImages is empty)',
     logsLive:'Live Logs',logsHistory:'Error History',noLogHistory:'No error entries recorded for this container (or tail service disabled)',entries:'entries',
-    llmProxy:'LLM Proxy',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
+    llmProxy:'🧠 LLM',llmStatus:'Status',llmEnabled:'Enabled',llmDisabled:'Disabled',
+    llmPathsTitle:'4 subordinate-LLM paths (Benson-compliance status)',
+    llmPathsHint:'broker is control plane, not autonomous planner — every subordinate LLM should go through broker for centralized propose/validate/record audit',
+    llmPathRole:'Role',llmPathFiles:'Files',llmPathRoute:'route',
+    llmPathViaBroker:'goes via broker',llmPathClient:'⚠ client-side, with W13 mitigation',
+    llmBotW13:'🤖 bot-node LLM Reasoning Audit (W13)',
+    llmBotW13Hint:'bot-node runs LLM client-side but POSTs full reasoning to broker before dispatch; resolves gray area 2',
+    llmW13Source:'Source',llmW13User:'User',llmW13Channel:'Channel',llmW13Tool:'Tool call',llmW13Dispatch:'Dispatch',llmW13Acl:'ACL',
+    llmNoW13:'No W13 audit entries yet (bot-node not triggered or just deployed)',
+    llmDetailTitle:'LLM call detail',llmDetailReasoning:'Reasoning / Response',llmDetailToolCalls:'Tool calls',llmDetailError:'Error message',
+    llmDetailMeta:'Metadata',llmDetailCopy:'Copy JSON',
+    restart:'Restart',confirmRestartCt:'Restart container "{id}"? This will stop → start, interrupting in-flight work',
     llmTrend:'Call trend',llmTrendWindow:'Window',llmTrendTotal:'Calls',llmTrendFail:'Failures',
     llmTrendBucket10:'10 min/bucket',llmTrendBucket30:'30 min/bucket',llmTrendBucket60:'60 min/bucket',
     llmTrendEmpty:'No LLM calls in window',llmTrendNow:'Now',llmTrendHover:'Hover for bucket details',
@@ -2726,6 +2871,27 @@ const app=createApp({
       }
     }
 
+    async function restartContainer(containerId){
+      try{
+        await ElementPlus.ElMessageBox.confirm(t('confirmRestartCt').replace('{id}',containerId.slice(0,12)),t('confirmTitle'),{type:'warning'});
+        // stop → start chain；中間錯誤就退出、不留下 stopped 容器
+        const stopR=await api('/api/v1/workers/stop',{container_id:containerId});
+        if(!stopR.success){ ElementPlus.ElMessage.error('stop: '+(stopR.message||'failed')); return; }
+        const startR=await api('/api/v1/workers/start',{container_id:containerId});
+        if(!startR.success){ ElementPlus.ElMessage.error('start: '+(startR.message||'failed')); return; }
+        ElementPlus.ElMessage.success(lang.value==='zh'?'容器已重啟':'Container restarted');
+        await refreshContainers();
+      }catch{}
+    }
+
+    function copyLlmDetail(){
+      if(!llmDetail.value)return;
+      try{
+        navigator.clipboard.writeText(JSON.stringify(llmDetail.value,null,2));
+        ElementPlus.ElMessage.success(lang.value==='zh'?'已複製':'Copied');
+      }catch(e){ ElementPlus.ElMessage.error('copy failed'); }
+    }
+
     async function loadAvailableTypes(){
       availableTypesLoading.value=true;
       availableTypesNote.value='';
@@ -2774,6 +2940,28 @@ const app=createApp({
     const llmStatusLoading=ref(false);
     const llmRecentLoading=ref(false);
     const llmHealthLoading=ref(false);
+
+    // W13：bot-node LLM reasoning audit（client-side LLM 推 broker 的 mitigation）
+    const botReasoning=ref([]);
+    const botReasoningLoading=ref(false);
+    // 通用 detail modal（LlmProxy recent 或 W13 row 都共用）
+    const llmDetailVisible=ref(false);
+    const llmDetail=ref(null);   // { source, model, ts, latency_ms, tokens, reasoning, tool_calls, error, raw }
+    // Architecture overview（hand-curated、跟 Benson 規範一一對應）
+    const llmPaths = [
+      { id:'strategy',   icon:'🎯', name:'LlmStrategy', role:'交易訊號 LLM', goesViaBroker:true,
+        proxyRoute:'/api/v1/llm-proxy/chat', files:'workers/strategy-worker/Engine/LlmStrategy.cs',
+        desc:'strategy-worker 跑 LLM 出買賣訊號；走 MeteredLlmProxyService、broker 全程記錄 model/latency/tokens；circuit breaker + fallback 到 CompositeStrategy。' },
+      { id:'arbitrator', icon:'⚖️', name:'LlmEnsembleArbitrator', role:'集成衝突仲裁', goesViaBroker:true,
+        proxyRoute:'/api/v1/llm-proxy/chat', files:'workers/strategy-worker/Engine/LlmEnsembleArbitrator.cs',
+        desc:'WeightedEnsemble 成員 agreement<0.6 才觸發；同走 MeteredLlmProxy、共用 audit；arbitration.invoked indicator 記錄頻率。' },
+      { id:'coordinator', icon:'📞', name:'HighLevelCoordinator / LineChatGateway', role:'LINE 意圖解析', goesViaBroker:true,
+        proxyRoute:'/api/v1/llm-proxy/chat', files:'broker/Services/HighLevelCoordinator.cs',
+        desc:'broker 內建 LINE 處理；LLM 只 parse 意圖、不下單；propose/validate/record 三段都在 broker container 內、不可能 bypass。' },
+      { id:'botnode', icon:'🤖', name:'bot-node Discord/LINE', role:'對話 chatbot', goesViaBroker:false,
+        proxyRoute:'/api/v1/audit/llm-reasoning (W13)', files:'discord-bots/bot-node/src/llm.js',
+        desc:'⚠️ 灰區 2：LLM 在 client side（bot-node Node.js 進程）spawn `claude --print`；每次 dispatch 前先 POST 完整 reasoning 到 broker W13 audit table、validate + record 兩段對齊。' },
+    ];
     const llmHealthResult=ref(null);
     const llmAutoRefresh=ref(false);
     const llmRefreshInterval=ref(15000);
@@ -2789,9 +2977,10 @@ const app=createApp({
         console.error('llm status load failed:',e);
       }
       llmStatusLoading.value=false;
-      // 順便把 recent + trend 也拉一下
+      // 順便把 recent + trend + W13 audit 也拉一下
       loadLlmRecent();
       loadLlmTrend();
+      loadBotReasoning();
     }
     async function loadLlmTrend(){
       llmTrendLoading.value=true;
@@ -2828,6 +3017,49 @@ const app=createApp({
         llmRecent.value=(r.success&&r.data?.entries)?r.data.entries:[];
       }catch{ llmRecent.value=[]; }
       llmRecentLoading.value=false;
+    }
+    // W13：bot-node LLM reasoning audit
+    async function loadBotReasoning(){
+      botReasoningLoading.value=true;
+      try{
+        const r=await getPlain('/api/v1/audit/llm-reasoning?limit=50');
+        botReasoning.value=(r.success&&r.data?.entries)?r.data.entries:[];
+      }catch{ botReasoning.value=[]; }
+      botReasoningLoading.value=false;
+    }
+    // 通用 detail modal — 把任一 LLM 路徑的單筆 row 攤平 + 顯示完整內容
+    function showLlmDetail(row, source){
+      if(source==='botnode'){
+        llmDetail.value={
+          source:'bot-node (W13 audit)',
+          ts:row.occurredAt,
+          model:'claude-print (subprocess)',
+          latency_ms:null, tokens:null,
+          task: row.source+' · '+(row.toolName||'(no tool)'),
+          reasoning: row.llmReasoning||'(empty)',
+          tool_calls: row.toolName?[{name:row.toolName, args:row.toolArgs}]:[],
+          error: null,
+          dispatch_result: row.dispatchResult,
+          acl_allowed: row.aclAllowed,
+          user_id: row.userId,
+          channel_id: row.channelId,
+          turn: row.turn,
+        };
+      } else {
+        llmDetail.value={
+          source:'broker LlmProxy',
+          ts:row.ts,
+          model:row.model,
+          latency_ms:row.latency_ms,
+          tokens:row.eval_tokens,
+          task: row.task_id+(row.task_type?(' ['+row.task_type+']'):''),
+          reasoning: row.response_brief || row.assistant_text || '(no reasoning recorded)',
+          tool_calls: row.tool_calls || [],
+          error: row.error_brief || null,
+          success: row.success,
+        };
+      }
+      llmDetailVisible.value=true;
     }
     async function runLlmHealthCheck(){
       llmHealthLoading.value=true;
@@ -2882,6 +3114,11 @@ const app=createApp({
       availableTypes,availableTypesLoading,availableTypesNote,spawnRuntimeNote,selectedWorkerImage,
       llmStatus,llmRecent,llmTrend,llmTrendBucket,llmTrendLoading,llmStatusLoading,llmRecentLoading,llmHealthLoading,llmHealthResult,
       llmAutoRefresh,llmRefreshInterval,loadLlmStatus,loadLlmRecent,loadLlmTrend,runLlmHealthCheck,onLlmAutoRefreshChange,
+      // LLM 全景擴充
+      llmPaths,botReasoning,botReasoningLoading,loadBotReasoning,
+      llmDetailVisible,llmDetail,showLlmDetail,copyLlmDetail,
+      // Container restart
+      restartContainer,
       trendBarPct,trendBucketTooltip,trendAxisLabel,
       fmtNumberShort,fmtUptime, Math,
       // Health Score
