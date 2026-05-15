@@ -360,6 +360,16 @@ builder.Services.AddHostedService<Broker.Services.StrategyHealthInspectorAgentSe
 builder.Services.AddHostedService<Broker.Services.RiskStressTestAgentService>();
 // 30 min auto — 驗證 Benson 設計的 audit_events hash chain 完整性（防篡改、純規則檢查無 LLM）
 builder.Services.AddHostedService<Broker.Services.AuditChainVerifierAgentService>();
+// E1 1h auto — KPI bar 數值 snapshot、未來可拉歷史畫趨勢
+builder.Services.AddHostedService<Broker.Services.DashboardSnapshotAgentService>();
+// E2 6h auto — capability 使用統計（補 LLM 全景看不到的 dispatch 維度）
+builder.Services.AddHostedService<Broker.Services.CapabilityUsageReporterAgentService>();
+// E3 manual — 給 symbol+time 寫該 trade post-mortem
+builder.Services.AddHostedService<Broker.Services.TradeJournalAgentService>();
+// E4 manual — 給 query/urls 走 RAG ingest 進 vector_entries
+builder.Services.AddHostedService<Broker.Services.RagIngestAgentService>();
+// E5 7d auto — 週級事件總結
+builder.Services.AddHostedService<Broker.Services.WeeklyDigestAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
