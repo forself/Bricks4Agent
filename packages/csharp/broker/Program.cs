@@ -52,6 +52,13 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // 設定：enabled / interval_seconds 重啟保留；perp 部位狀態：SL / peak / be_moved 重啟保留
     initDb.EnsureTable<AutoTraderSettingsEntry>();
     initDb.EnsureTable<PerpetualPositionStateEntry>();
+    // H3 — Approval template（命中規則自動 approve、降低 approval 疲勞）
+    initDb.EnsureTable<Broker.Models.ApprovalTemplate>();
+    // H2 — Time-windowed ACL rule
+    initDb.EnsureTable<Broker.Models.TimeAclRule>();
+    // I1 — Multi-sig rules + per-approver decisions
+    initDb.EnsureTable<Broker.Models.MultiSigRule>();
+    initDb.EnsureTable<Broker.Models.ApprovalDecisionRecord>();
     // Strategy Lab 自動回測（2026-05-09）— 每日批次跑、結果存 DB、API 查推薦
     initDb.EnsureTable<BacktestRunEntry>();
     initDb.EnsureTable<BacktestResultEntry>();
@@ -165,11 +172,24 @@ else
 }
 
 // ── Step 4: Audit Trail ──
+// G2 — AuditEventBus + BroadcastingAuditService 包在 Benson 的 AuditService 外層、
+// 所有 IAuditService caller 自動走廣播。Benson 原作（broker-core/AuditService.cs）一行不改。
+builder.Services.AddSingleton<Broker.Services.AuditEventBus>();
 builder.Services.AddSingleton<IAuditService>(sp =>
-    new AuditService(sp.GetRequiredService<BrokerDb>()));
+{
+    var inner = new AuditService(sp.GetRequiredService<BrokerDb>());
+    var bus = sp.GetRequiredService<Broker.Services.AuditEventBus>();
+    var logger = sp.GetRequiredService<ILogger<Broker.Services.BroadcastingAuditService>>();
+    return new Broker.Services.BroadcastingAuditService(inner, bus, logger);
+});
 
 // ── Step 4.4.5: Shutdown 旗標（給 PoolDispatcher 拒絕 broker 關閉中的新派發） ──
 builder.Services.AddSingleton<IShutdownState, ShutdownState>();
+
+// W14 P1+P5：緊急停機 / 唯讀鎖定旗標
+builder.Services.AddSingleton<Broker.Services.IEmergencyState, Broker.Services.EmergencyStateService>();
+// W14 P2：bot 呼叫速率限制（per-Discord-user sliding window）
+builder.Services.AddSingleton<Broker.Services.BotRateLimitService>();
 
 // ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role + principal override） ──
 builder.Services.AddSingleton<ICapabilityAclService>(sp =>
@@ -186,8 +206,30 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.He
 builder.Services.AddHostedService<Broker.Services.GovernanceAlertsService>();
 
 // ── Step 4.7: Approve-before-execute（高風險 capability 需 admin 點按 approve） ──
+// H3 — Approval template matcher（在 IApprovalService 註冊前先註冊、底下 decorator 會用到）
+builder.Services.AddSingleton<Broker.Services.ApprovalTemplateMatcher>();
+// H2 — Time-windowed ACL service
+builder.Services.AddSingleton<Broker.Services.TimeAclService>();
+
+// 四層裝飾鏈：MultiSig → Time → Template → 原 ApprovalService
 builder.Services.AddSingleton<IApprovalService>(sp =>
-    new ApprovalService(sp.GetRequiredService<BrokerDb>()));
+{
+    var inner = new ApprovalService(sp.GetRequiredService<BrokerDb>());
+    var templateAware = new Broker.Services.TemplateAwareApprovalService(
+        inner,
+        sp.GetRequiredService<Broker.Services.ApprovalTemplateMatcher>(),
+        sp.GetRequiredService<IAuditService>(),
+        sp.GetRequiredService<ILogger<Broker.Services.TemplateAwareApprovalService>>());
+    var timeAware = new Broker.Services.TimeAwareApprovalService(
+        templateAware,
+        sp.GetRequiredService<Broker.Services.TimeAclService>(),
+        sp.GetRequiredService<ILogger<Broker.Services.TimeAwareApprovalService>>());
+    return new Broker.Services.MultiSigApprovalService(
+        timeAware,
+        sp.GetRequiredService<BrokerDb>(),
+        sp.GetRequiredService<IAuditService>(),
+        sp.GetRequiredService<ILogger<Broker.Services.MultiSigApprovalService>>());
+});
 
 // ── Step 5: Capability Catalog + Policy Engine ──
 builder.Services.AddSingleton<ISchemaValidator, SchemaValidator>();
@@ -220,12 +262,20 @@ if (!string.IsNullOrEmpty(llmApiKeyFromSecret))
     llmProxyOptions.ApiKey = llmApiKeyFromSecret;
 builder.Services.AddSingleton(llmProxyOptions);
 builder.Services.AddSingleton<LlmProxyMetrics>();
-// HttpClient + 內部 LlmProxyService 註冊在 keyed name "raw"，外面用 MeteredLlmProxyService 包起來
+// HttpClient + 內部 LlmProxyService 註冊在 keyed name "raw"、外面 Metered → Quota 雙裝飾器包起來
 builder.Services.AddHttpClient<LlmProxyService>();
+// H1 — per-principal LLM token quota（in-memory、daily reset、預設 soft mode）
+builder.Services.AddSingleton<Broker.Services.IPrincipalQuotaService, Broker.Services.PrincipalQuotaService>();
 builder.Services.AddSingleton<ILlmProxyService>(sp =>
-    new MeteredLlmProxyService(
+{
+    var metered = new MeteredLlmProxyService(
         sp.GetRequiredService<LlmProxyService>(),
-        sp.GetRequiredService<LlmProxyMetrics>()));
+        sp.GetRequiredService<LlmProxyMetrics>());
+    return new Broker.Services.QuotaEnforcedLlmProxyService(
+        metered,
+        sp.GetRequiredService<Broker.Services.IPrincipalQuotaService>(),
+        sp.GetRequiredService<ILogger<Broker.Services.QuotaEnforcedLlmProxyService>>());
+});
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
@@ -370,6 +420,8 @@ builder.Services.AddHostedService<Broker.Services.TradeJournalAgentService>();
 builder.Services.AddHostedService<Broker.Services.RagIngestAgentService>();
 // E5 7d auto — 週級事件總結
 builder.Services.AddHostedService<Broker.Services.WeeklyDigestAgentService>();
+// W14 P4 1h auto — File Integrity Monitor（hash sensitive files、變動寫 audit + dashboard 警告）
+builder.Services.AddHostedService<Broker.Services.FileIntegrityAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
 // Phase 3: 功能池（條件式啟用）
@@ -726,6 +778,8 @@ app.UseBrokerAuth();
 app.UseBrokerAudit();
 // [7] CurrentUserMiddleware（Phase A2：把 cookie session 解出來、塞 HttpContext.Items 給 endpoint 用）
 app.UseCurrentUser();
+// [8] EmergencyGateMiddleware（W14 P1+P5：read-only / kill-switch 寫入閘）— 必須在 auth 之後、endpoint 之前
+app.UseEmergencyGate();
 
 // ── Dashboard（靜態 HTML，由 UseStaticFiles 提供） ──
 // Dashboard JS 內建完整 ECDH+AES-GCM 加密客戶端，所有 API 呼叫走加密 POST
@@ -1064,6 +1118,14 @@ if (poolEnabled)
     StrategyEndpoints.Map(api);
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
+    EmergencyEndpoints.Map(api);   // W14 P1+P5
+    CapabilityGraphEndpoints.Map(api);   // G3 — capability registry graph
+    PolicyReplayEndpoints.Map(api);      // G1 — sandbox PolicyEngine replay
+    QuotaEndpoints.Map(api);             // H1 — per-principal LLM token / dispatch quota
+    ApprovalTemplateEndpoints.Map(api);  // H3 — approval template CRUD
+    TimeAclEndpoints.Map(api);           // H2 — time-windowed ACL CRUD
+    AuditRagEndpoints.Map(api);          // H4 — audit search + LLM RAG summary
+    MultiSigEndpoints.Map(api);          // I1 — multi-sig N-of-M approval rules
     AlertEndpoints.Map(api);
     AlertRulesEndpoints.Map(api);
     PerpetualEndpoints.Map(api);
@@ -1081,6 +1143,7 @@ if (poolEnabled)
     KellyEndpoints.Map(api);
 }
 QuoteWebSocketEndpoints.Map(app);
+AuditStreamEndpoints.Map(app);   // G2 — live audit event stream
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)

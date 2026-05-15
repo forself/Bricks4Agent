@@ -207,13 +207,33 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px">
             <span style="color:#67c23a">✓ 4 條 LLM 路徑走 broker 集中代理</span>
-            <span style="color:#67c23a">✓ 13 個 inbox-driven agent 跑著</span>
+            <span style="color:#67c23a">✓ 14 個 inbox-driven agent 跑著</span>
             <span style="color:#67c23a">✓ 14 條 AutoTrader risk gate 啟用</span>
             <span style="color:#67c23a">✓ Approval gate 攔真錢寫操作</span>
             <span style="color:#67c23a">✓ W13 LLM reasoning audit pipeline 寫入</span>
             <span style="color:#67c23a">✓ Audit chain hash 完整性</span>
             <span style="color:var(--td)">|</span>
             <span style="color:var(--td)">602 tests · C# 432 · broker integration 130 · bot-node 40</span>
+          </div>
+          <!-- W14 P1+P5：緊急狀態 + 控制按鈕 -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;flex-wrap:wrap">
+            <span v-if="emergencyState?.kill_switch?.active"
+                  style="background:#f56c6c;color:white;padding:2px 8px;border-radius:10px;font-weight:600">
+              🛑 KILL SWITCH ACTIVE — {{emergencyState.kill_switch.by||'?'}} @ {{emergencyState.kill_switch.at?.slice(11,16)||'?'}}
+            </span>
+            <span v-if="emergencyState?.read_only?.active"
+                  style="background:#e6a23c;color:white;padding:2px 8px;border-radius:10px;font-weight:600">
+              🔒 READ-ONLY — {{emergencyState.read_only.by||'?'}} @ {{emergencyState.read_only.at?.slice(11,16)||'?'}}
+            </span>
+            <span v-if="!emergencyState?.kill_switch?.active && !emergencyState?.read_only?.active"
+                  style="color:#67c23a">✓ 緊急狀態：normal</span>
+            <span style="flex:1"></span>
+            <el-button v-if="!emergencyState?.kill_switch?.active"
+                       type="danger" size="small" plain @click="onEmergencyStop">🛑 緊急停機</el-button>
+            <el-button v-else type="success" size="small" plain @click="onEmergencyClear">✓ 解除停機</el-button>
+            <el-button v-if="!emergencyState?.read_only?.active"
+                       type="warning" size="small" plain @click="onLockdownToggle(true)">🔒 唯讀鎖定</el-button>
+            <el-button v-else type="success" size="small" plain @click="onLockdownToggle(false)">🔓 解除鎖定</el-button>
           </div>
         </div>
 
@@ -725,12 +745,24 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </el-table-column>
             <el-table-column :label="t('aprPayload')" min-width="280">
               <template #default="{row}">
-                <code style="font-size:10px;color:var(--td);max-height:48px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{row.payload}}</code>
+                <!-- W14 P3 — 第一行 risk hint（高風險紅色高亮）、第二行原 payload -->
+                <div v-if="row.risk_hint" style="font-size:11px;font-weight:600;margin-bottom:2px"
+                     :style="{color: (row.risk_hint||'').startsWith('⚠') ? '#f56c6c' : '#67c23a'}"
+                     :title="row.risk_hint">{{row.risk_hint}}</div>
+                <code style="font-size:10px;color:var(--td);max-height:36px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{row.payload}}</code>
               </template>
             </el-table-column>
-            <el-table-column :label="t('status')" width="110">
+            <el-table-column :label="t('status')" width="140">
               <template #default="{row}">
                 <el-tag :type="aprStatusType(row.status)" size="small">{{row.status}}</el-tag>
+                <!-- I1: multi-sig 進度條（只有 pending 且有 decisions 才顯示）-->
+                <div v-if="row.msig && row.msig.total_decisions>0" style="margin-top:4px">
+                  <el-tag size="small" effect="plain"
+                          :type="row.msig.rejected_count>0?'danger':'warning'"
+                          :title="`${row.msig.approved_count} approved, ${row.msig.rejected_count} rejected`">
+                    ✍ {{row.msig.approved_count}}/{{row.msig.approved_count + row.msig.rejected_count}} sigs
+                  </el-tag>
+                </div>
               </template>
             </el-table-column>
             <el-table-column :label="t('aprDecidedBy')" width="170">
@@ -1549,6 +1581,41 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 
       <!-- ── Traces（dispatch trace + audit hash chain） ── -->
       <el-tab-pane :label="t('traces')" name="traces">
+        <!-- G2 — Live audit event stream（WebSocket、admin only） -->
+        <el-card style="margin-bottom:14px;border-left:3px solid #f56c6c">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">
+                <span :style="{color: liveStreamConnected?'#f56c6c':'#909399'}">●</span>
+                Live audit event stream
+              </span>
+              <span style="font-size:11px;color:var(--td)">
+                {{liveStreamConnected ? `connected · ${liveEvents.length} events` : 'disconnected'}}
+              </span>
+              <span style="flex:1"></span>
+              <el-button v-if="!liveStreamConnected" size="small" type="primary" plain @click="liveStreamConnect">📡 Connect</el-button>
+              <el-button v-else size="small" type="warning" plain @click="liveStreamDisconnect">⏸ Disconnect</el-button>
+              <el-button size="small" plain @click="liveEvents=[]">🗑 Clear</el-button>
+            </div>
+          </template>
+          <div style="max-height:240px;overflow-y:auto;font-family:Consolas,monospace;font-size:11px;background:#1e1e1e;color:#d4d4d4;padding:8px;border-radius:4px"
+               v-if="liveEvents.length>0">
+            <div v-for="(ev,i) in liveEvents" :key="ev.event_id || i"
+                 :style="{borderLeft:'3px solid '+liveEventColor(ev.event_type), paddingLeft:'8px', marginBottom:'4px'}">
+              <span style="color:#909399">[{{ev.occurred_at?.slice(11,19)}}]</span>
+              <span :style="{color:liveEventColor(ev.event_type),fontWeight:'600'}">{{ev.event_type}}</span>
+              <span style="color:#67c23a"> trace=</span><span style="color:#d4d4d4">{{(ev.trace_id||'').slice(0,18)}}</span>
+              <span style="color:#67c23a"> seq=</span><span style="color:#d4d4d4">{{ev.trace_seq}}</span>
+              <span v-if="ev.principal_id" style="color:#67c23a"> by=</span>
+              <span v-if="ev.principal_id" style="color:#d4d4d4">{{ev.principal_id}}</span>
+              <span style="color:#909399"> hash=</span><span style="color:#909399">{{(ev.event_hash||'').slice(0,8)}}…</span>
+            </div>
+          </div>
+          <div v-else style="color:var(--td);font-size:12px;text-align:center;padding:20px">
+            {{liveStreamConnected ? '等待新事件…(觸發 emergency stop / approval 等動作會立刻冒上來)' : '點 Connect 訂閱即時 audit_events 廣播'}}
+          </div>
+        </el-card>
+
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
           <span style="color:var(--td);font-size:12px">{{t('filterPrincipal')}}：</span>
           <el-input v-model="traceFilter.principal" size="small" style="width:160px" clearable placeholder="prn_..."/>
@@ -1629,6 +1696,501 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </div>
           </div>
         </el-card>
+      </el-tab-pane>
+
+      <!-- ── G1 — Policy Replay Debugger ── -->
+      <el-tab-pane label="🔬 Policy Replay" name="replay">
+        <el-card style="margin-bottom:14px;border-left:3px solid #a374ff">
+          <template #header>
+            <div>
+              <span style="font-weight:600">🔬 Policy Replay Debugger</span>
+              <span style="color:var(--td);font-size:12px;margin-left:8px">
+                跑 Benson 的 PolicyEngine（sandbox、不真派發、不寫 audit）— 看當前規則對 capability + payload 的判決
+              </span>
+            </div>
+          </template>
+          <el-row :gutter="14">
+            <el-col :span="12">
+              <div style="font-size:12px;color:var(--td);margin-bottom:4px">capability_id</div>
+              <el-input v-model="replayCap" size="small" placeholder="e.g. trading.order"/>
+
+              <div style="font-size:12px;color:var(--td);margin-bottom:4px;margin-top:10px">principal_id（optional）</div>
+              <el-input v-model="replayPrincipal" size="small" placeholder="prn_replay"/>
+
+              <div style="font-size:12px;color:var(--td);margin-bottom:4px;margin-top:10px">payload (JSON)</div>
+              <el-input v-model="replayPayload" type="textarea" :rows="6" size="small"
+                placeholder='{"route":"...","args":{...}}'/>
+
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <el-button type="primary" size="small" @click="doReplayEvaluate" :loading="replayLoading">▶ Evaluate</el-button>
+                <el-button size="small" @click="replayCap='';replayPayload='';replayResult=null">Clear</el-button>
+              </div>
+
+              <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--bd)">
+                <div style="font-size:12px;color:var(--td);margin-bottom:4px">或從既有 trace_id 撈 payload：</div>
+                <div style="display:flex;gap:6px">
+                  <el-input v-model="replayTraceId" size="small" placeholder="trc_..." style="flex:1"/>
+                  <el-button size="small" @click="loadReplayFromTrace" :loading="replayTraceLoading">📥 Load</el-button>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="12">
+              <div v-if="!replayResult" style="color:var(--td);font-size:12px;text-align:center;padding:30px">
+                填 capability + payload、按 Evaluate
+              </div>
+              <div v-else>
+                <div style="margin-bottom:10px">
+                  <el-tag :type="replayResult.decision==='Allow'?'success':'danger'" size="large">
+                    {{replayResult.decision}}
+                  </el-tag>
+                  <span v-if="replayResult.gate_failed" style="margin-left:8px;font-size:11px;color:#f56c6c">
+                    failed at: {{replayResult.gate_failed}}
+                  </span>
+                </div>
+                <div style="font-size:12px;background:#f5f5f5;padding:8px;border-radius:4px;margin-bottom:10px;color:#222">
+                  <strong>Reason：</strong>{{replayResult.reason}}
+                </div>
+                <details v-if="replayResult.capability_snapshot" style="margin-bottom:10px;font-size:11px">
+                  <summary style="cursor:pointer;color:var(--td)">capability snapshot</summary>
+                  <pre style="font-size:10px;background:#1e1e1e;color:#d4d4d4;padding:8px;border-radius:4px;overflow-x:auto">{{JSON.stringify(replayResult.capability_snapshot,null,2)}}</pre>
+                </details>
+                <details v-if="replayResult.gates_walked" open style="font-size:11px">
+                  <summary style="cursor:pointer;color:var(--td)">PolicyEngine 7 條 gate</summary>
+                  <ol style="font-size:11px;color:var(--td);margin:6px 0;padding-left:24px">
+                    <li v-for="(g,i) in replayResult.gates_walked" :key="i" style="margin-bottom:4px">
+                      <code>{{g.gate}}</code>：{{g.check}}
+                    </li>
+                  </ol>
+                </details>
+                <div v-if="replayResult.note" style="font-size:10px;color:var(--td);margin-top:8px;font-style:italic">
+                  {{replayResult.note}}
+                </div>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── I1 — Multi-Sig Rules（N-of-M approval thresholds） ── -->
+      <el-tab-pane label="✍ Multi-Sig" name="multisig">
+        <el-card style="margin-bottom:14px;border-left:3px solid #f56c6c">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">✍ Multi-sig N-of-M rules</span>
+              <span style="color:var(--td);font-size:11px">某 capability 要 N 個 admin 都按 approve 才放行（兩人覆核制）</span>
+              <span style="flex:1"></span>
+              <el-button size="small" type="primary" @click="msigDialogVisible=true">+ New rule</el-button>
+              <el-button size="small" @click="loadMsig" :loading="msigLoading">Refresh</el-button>
+            </div>
+          </template>
+          <el-table :data="msigRules" stripe :empty-text="'尚無 multi-sig rule'">
+            <el-table-column label="enabled" width="80">
+              <template #default="{row}">
+                <el-tag :type="row.enabled?'success':'info'" size="small">{{row.enabled?'on':'off'}}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="capability_id" min-width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+            </el-table-column>
+            <el-table-column label="min approvers" width="120" align="center">
+              <template #default="{row}">
+                <el-tag size="small" :type="row.min_approvers>=3?'danger':row.min_approvers===2?'warning':''">
+                  {{row.min_approvers}}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="description" min-width="200">
+              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+            </el-table-column>
+            <el-table-column label="created" width="140">
+              <template #default="{row}">
+                <div style="font-size:11px" :title="fmtDate(row.created_at)">{{relTime(row.created_at)}}</div>
+                <div style="font-size:10px;color:var(--td)">{{row.created_by||'—'}}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="actions" width="80" align="right">
+              <template #default="{row}">
+                <el-button type="danger" size="small" plain @click="deleteMsig(row)">delete</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <el-dialog v-model="msigDialogVisible" title="New multi-sig rule" width="520px">
+          <el-form label-width="120px" label-position="left">
+            <el-form-item label="capability_id">
+              <el-input v-model="msigForm.capability_id" placeholder="e.g. trading.order"/>
+            </el-form-item>
+            <el-form-item label="min approvers">
+              <el-input-number v-model="msigForm.min_approvers" :min="1" :max="10" style="width:120px"/>
+              <span style="margin-left:8px;font-size:10px;color:var(--td)">2 = 兩人覆核、3 = 三人覆核</span>
+            </el-form-item>
+            <el-form-item label="description">
+              <el-input v-model="msigForm.description" placeholder="說明為什麼這個 cap 需要多人簽核"/>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="msigDialogVisible=false">Cancel</el-button>
+            <el-button type="primary" @click="upsertMsig">Save</el-button>
+          </template>
+        </el-dialog>
+      </el-tab-pane>
+
+      <!-- ── H4 — Audit RAG（search + LLM summary） ── -->
+      <el-tab-pane label="🔎 Audit RAG" name="auditrag">
+        <el-card style="margin-bottom:14px;border-left:3px solid #a374ff">
+          <template #header>
+            <div>
+              <span style="font-weight:600">🔎 Audit search + LLM summary</span>
+              <span style="color:var(--td);font-size:11px;margin-left:8px">
+                自然語言問問題、broker 從 audit_events 撈相關事件、再請 LLM 用人話回答
+              </span>
+            </div>
+          </template>
+          <el-row :gutter="14">
+            <el-col :span="12">
+              <div style="font-size:12px;color:var(--td);margin-bottom:4px">問題</div>
+              <el-input v-model="ragQuery" type="textarea" :rows="3"
+                placeholder="例：上週誰按過 KILL_SWITCH？/ 哪些 capability 最常被擋？"/>
+              <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                <span style="font-size:12px;color:var(--td)">時間窗 (h)：</span>
+                <el-input-number v-model="ragSinceHours" :min="1" :max="720" size="small" style="width:120px"/>
+                <span style="font-size:12px;color:var(--td);margin-left:8px">limit：</span>
+                <el-input-number v-model="ragLimit" :min="5" :max="200" size="small" style="width:120px"/>
+              </div>
+              <div style="margin-top:10px">
+                <el-button type="primary" size="small" @click="doRagSearch" :loading="ragSearchLoading">🔎 Search</el-button>
+                <el-button size="small" @click="doRagSummary" :loading="ragSummaryLoading"
+                           :disabled="!ragSearchResult||ragSearchResult.events.length===0">🤖 Summarize with LLM</el-button>
+                <el-button size="small" @click="ragQuery='';ragSearchResult=null;ragSummary=null">Clear</el-button>
+              </div>
+            </el-col>
+            <el-col :span="12">
+              <div v-if="ragSummary" style="background:#f5f5f5;padding:12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#222">
+                <div style="font-weight:600;margin-bottom:6px">🤖 LLM summary</div>
+                <div style="white-space:pre-wrap">{{ragSummary.summary}}</div>
+                <div style="font-size:10px;color:#909399;margin-top:6px">
+                  model={{ragSummary.model}} · {{ragSummary.duration_ms}}ms · tokens={{ragSummary.eval_tokens}}
+                </div>
+              </div>
+              <div v-else-if="ragSearchResult" style="font-size:12px;color:var(--td)">
+                找到 {{ragSearchResult.count}} 筆事件、tokens=[{{ragSearchResult.tokens.join(', ')}}]
+              </div>
+              <div v-else style="color:var(--td);font-size:12px;text-align:center;padding:20px">
+                填問題、按 Search → Summarize
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+
+        <el-card v-if="ragSearchResult" style="margin-bottom:14px">
+          <template #header>
+            <span style="font-weight:600">Hits ({{ragSearchResult.count}})</span>
+          </template>
+          <el-table :data="ragSearchResult.events" stripe :max-height="320" :empty-text="'無命中'">
+            <el-table-column label="time" width="160">
+              <template #default="{row}">
+                <div style="font-size:11px" :title="row.occurred_at">{{relTime(row.occurred_at)}}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="event_type" width="200">
+              <template #default="{row}"><code style="font-size:11px;color:#a374ff">{{row.event_type}}</code></template>
+            </el-table-column>
+            <el-table-column label="trace_id" width="180">
+              <template #default="{row}"><code style="font-size:11px">{{(row.trace_id||'').slice(0,18)}}</code></template>
+            </el-table-column>
+            <el-table-column label="principal" width="140">
+              <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.principal_id||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column label="ref" width="160">
+              <template #default="{row}"><code style="font-size:10px;color:var(--td)">{{row.resource_ref||'—'}}</code></template>
+            </el-table-column>
+            <el-table-column label="details" min-width="240">
+              <template #default="{row}"><code style="font-size:10px;color:var(--td)">{{row.details_preview||''}}</code></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── H2 — Time ACL rules ── -->
+      <el-tab-pane label="⏰ Time ACL" name="tacl">
+        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">⏰ Time-windowed ACL rules</span>
+              <span style="color:var(--td);font-size:11px">時段外強制 require_approval、覆蓋原 ACL</span>
+              <span style="flex:1"></span>
+              <el-button size="small" type="primary" @click="taclDialogVisible=true">+ New rule</el-button>
+              <el-button size="small" @click="loadTacl" :loading="taclLoading">Refresh</el-button>
+            </div>
+          </template>
+          <el-table :data="taclRules" stripe :empty-text="'尚無規則'">
+            <el-table-column label="enabled" width="80">
+              <template #default="{row}">
+                <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleTacl(row,v)"/>
+              </template>
+            </el-table-column>
+            <el-table-column label="capability_id" min-width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+            </el-table-column>
+            <el-table-column label="auto window" width="160">
+              <template #default="{row}">
+                <code style="font-size:11px">{{String(row.start_hour).padStart(2,'0')}}:00 - {{String(row.end_hour).padStart(2,'0')}}:00</code>
+                <div style="font-size:10px;color:var(--td)">{{row.timezone}}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="weekdays" width="160">
+              <template #default="{row}"><span style="font-size:11px">{{row.weekday_label}}</span></template>
+            </el-table-column>
+            <el-table-column label="now in window?" width="120">
+              <template #default="{row}">
+                <el-tag :type="row.in_window_now?'success':'warning'" size="small">
+                  {{row.in_window_now?'YES (auto)':'NO (force approve)'}}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="desc" min-width="160">
+              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+            </el-table-column>
+            <el-table-column label="actions" width="80" align="right">
+              <template #default="{row}">
+                <el-button type="danger" size="small" plain @click="deleteTacl(row)">delete</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <el-dialog v-model="taclDialogVisible" title="New time ACL rule" width="560px">
+          <el-form label-width="120px" label-position="left">
+            <el-form-item label="capability_id">
+              <el-input v-model="taclForm.capability_id" placeholder="e.g. agent.spawn"/>
+            </el-form-item>
+            <el-form-item label="start hour">
+              <el-input-number v-model="taclForm.start_hour" :min="0" :max="23" style="width:120px"/>
+            </el-form-item>
+            <el-form-item label="end hour">
+              <el-input-number v-model="taclForm.end_hour" :min="0" :max="23" style="width:120px"/>
+              <span style="margin-left:8px;font-size:10px;color:var(--td)">end &lt; start = 跨日</span>
+            </el-form-item>
+            <el-form-item label="weekday mask">
+              <el-input-number v-model="taclForm.weekday_mask" :min="0" :max="127" style="width:120px"/>
+              <span style="margin-left:8px;font-size:10px;color:var(--td)">62 = Mon-Fri、127 = 全週</span>
+            </el-form-item>
+            <el-form-item label="timezone">
+              <el-input v-model="taclForm.timezone" placeholder="UTC / Asia/Taipei / America/New_York"/>
+            </el-form-item>
+            <el-form-item label="description">
+              <el-input v-model="taclForm.description"/>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="taclDialogVisible=false">Cancel</el-button>
+            <el-button type="primary" @click="createTacl">Create</el-button>
+          </template>
+        </el-dialog>
+      </el-tab-pane>
+
+      <!-- ── H3 — Approval Templates（auto-approve rules） ── -->
+      <el-tab-pane label="📋 Approval Templates" name="aptpl">
+        <el-card style="margin-bottom:14px;border-left:3px solid #e6a23c">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">📋 Pre-approved patterns</span>
+              <span style="color:var(--td);font-size:11px">命中規則的 approval 自動 approve、不入 pending；解決「approval 疲勞 → 全按 approve」</span>
+              <span style="flex:1"></span>
+              <el-button size="small" type="primary" @click="aptplDialogVisible=true">+ New template</el-button>
+              <el-button size="small" @click="loadApTemplates" :loading="aptplLoading">Refresh</el-button>
+            </div>
+          </template>
+          <el-table :data="apTemplates" stripe :empty-text="'尚無 template、按 + New 建一條'">
+            <el-table-column label="enabled" width="80">
+              <template #default="{row}">
+                <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleApTpl(row,v)"/>
+              </template>
+            </el-table-column>
+            <el-table-column label="capability_id" min-width="140">
+              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+            </el-table-column>
+            <el-table-column label="route" width="120">
+              <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.route||'(any)'}}</code></template>
+            </el-table-column>
+            <el-table-column label="payload_match" min-width="280">
+              <template #default="{row}">
+                <code style="font-size:10px;color:var(--td)">{{row.payload_match}}</code>
+              </template>
+            </el-table-column>
+            <el-table-column label="max/day" width="90">
+              <template #default="{row}"><span style="font-size:11px">{{row.max_uses_per_day || '∞'}}</span></template>
+            </el-table-column>
+            <el-table-column label="hits today" width="100">
+              <template #default="{row}"><span style="font-size:11px;color:#67c23a">{{aptplHits[row.template_id]||0}}</span></template>
+            </el-table-column>
+            <el-table-column label="desc" min-width="160">
+              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+            </el-table-column>
+            <el-table-column label="actions" width="80" align="right">
+              <template #default="{row}">
+                <el-button type="danger" size="small" plain @click="deleteApTpl(row)">delete</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <el-dialog v-model="aptplDialogVisible" title="New approval template" width="640px">
+          <el-form label-width="120px" label-position="left">
+            <el-form-item label="capability_id">
+              <el-input v-model="aptplForm.capability_id" placeholder="e.g. trading.order"/>
+            </el-form-item>
+            <el-form-item label="route">
+              <el-input v-model="aptplForm.route" placeholder="(空 = 任何 route)"/>
+            </el-form-item>
+            <el-form-item label="payload_match">
+              <el-input v-model="aptplForm.payload_match" type="textarea" :rows="5"
+                placeholder='{"args.symbol":"BTC-USDT","args.quantity":{"$lte":0.01}}'/>
+              <div style="font-size:10px;color:var(--td);margin-top:4px">
+                支援運算子：<code>$eq / $lte / $lt / $gte / $gt / $in</code>。dot-path 取值（args.symbol）
+              </div>
+            </el-form-item>
+            <el-form-item label="max uses / day">
+              <el-input-number v-model="aptplForm.max_uses_per_day" :min="0" :max="9999" style="width:120px"/>
+              <span style="font-size:10px;color:var(--td);margin-left:8px">0 = 不限</span>
+            </el-form-item>
+            <el-form-item label="description">
+              <el-input v-model="aptplForm.description" placeholder="說明為什麼這條規則自動放行 OK"/>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="aptplDialogVisible=false">Cancel</el-button>
+            <el-button type="primary" @click="createApTpl" :loading="aptplLoading">Create</el-button>
+          </template>
+        </el-dialog>
+      </el-tab-pane>
+
+      <!-- ── H1 — Per-principal Quota dashboard ── -->
+      <el-tab-pane label="📊 Quota" name="quota">
+        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
+          <template #header>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">📊 Per-principal LLM token / dispatch quota</span>
+              <span v-if="quotaConfig" style="font-size:11px"
+                    :style="{color: quotaConfig.enforce_mode?'#f56c6c':'#909399'}">
+                {{quotaConfig.enforce_mode ? 'ENFORCE mode（超 quota 直接 throw）' : 'SOFT mode（超 quota 只 log + audit）'}}
+              </span>
+              <span style="flex:1"></span>
+              <el-button size="small" @click="loadQuota" :loading="quotaLoading">Refresh</el-button>
+            </div>
+          </template>
+          <div v-if="quotaConfig" style="margin-bottom:10px;font-size:11px;color:var(--td)">
+            預設 {{quotaConfig.default_llm_per_day.toLocaleString()}} LLM tokens/day · {{quotaConfig.default_dispatch_per_day.toLocaleString()}} dispatches/day · UTC midnight reset
+          </div>
+          <el-table v-if="quotaSnapshot" :data="quotaSnapshot.principals" stripe :empty-text="'(尚無使用紀錄、有 LLM 呼叫後才會出現)'">
+            <el-table-column label="principal" min-width="160">
+              <template #default="{row}"><code style="font-size:11px">{{row.principal_id}}</code></template>
+            </el-table-column>
+            <el-table-column label="LLM tokens" min-width="220">
+              <template #default="{row}">
+                <div style="font-size:11px">{{row.llm_tokens_used.toLocaleString()}} / {{row.llm_tokens_limit.toLocaleString()}} ({{row.llm_pct}}%)</div>
+                <el-progress :percentage="Math.min(100,row.llm_pct)" :status="row.llm_over_limit?'exception':row.llm_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"/>
+              </template>
+            </el-table-column>
+            <el-table-column label="dispatches" min-width="180">
+              <template #default="{row}">
+                <div style="font-size:11px">{{row.dispatches_used}} / {{row.dispatches_limit}} ({{row.dispatch_pct}}%)</div>
+                <el-progress :percentage="Math.min(100,row.dispatch_pct)" :status="row.dispatch_over_limit?'exception':row.dispatch_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"/>
+              </template>
+            </el-table-column>
+            <el-table-column label="UTC day" width="120">
+              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{(row.day_utc||'').slice(0,10)}}</span></template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- ── G3 — Capability Registry（static design view） ── -->
+      <el-tab-pane label="🗺 Capability Registry" name="capgraph">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <span style="color:var(--td);font-size:12px">Benson 設計的 Capability 框架（白名單 + 風險 + approval policy + schema）跟 worker 註冊狀態的 mapping。</span>
+          <span style="flex:1"></span>
+          <el-button size="small" @click="loadCapGraph" :loading="capGraphLoading">Refresh</el-button>
+        </div>
+
+        <div v-if="!capGraph && !capGraphLoading" class="ct-empty">
+          <p>點 Refresh 載入 capability registry graph</p>
+        </div>
+        <template v-else-if="capGraph">
+          <div class="ct-summary" style="margin-bottom:12px">
+            <div class="ct-kpi"><div class="lbl">capabilities</div><div class="val">{{capGraph.stats.total_capabilities}}</div></div>
+            <div class="ct-kpi"><div class="lbl">workers online</div><div class="val">{{capGraph.stats.total_workers}}</div></div>
+            <div class="ct-kpi" :style="capGraph.stats.unbacked_capabilities>0?'border-left-color:#e6a23c':'border-left-color:#67c23a'">
+              <div class="lbl">unbacked caps</div>
+              <div class="val">{{capGraph.stats.unbacked_capabilities}}</div>
+              <div class="sub">沒 worker 服務的 capability 數</div>
+            </div>
+            <div class="ct-kpi">
+              <div class="lbl">by risk</div>
+              <div class="val" style="font-size:13px;line-height:1.6">
+                <span v-for="(v,k) in capGraph.stats.by_risk" :key="k" style="margin-right:8px">
+                  <span :style="{color: capRiskColor(k)}">●</span> {{k}}: {{v}}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <el-card>
+            <template #header>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-weight:600">Capability list</span>
+                <el-input v-model="capGraphFilter" size="small" placeholder="filter capability_id / route" style="width:240px" clearable/>
+                <span style="color:var(--td);font-size:11px">
+                  {{filteredCapGraph.length}} / {{capGraph.capabilities.length}}
+                </span>
+              </div>
+            </template>
+            <el-table :data="filteredCapGraph" stripe style="font-size:12px">
+              <el-table-column label="risk" width="80">
+                <template #default="{row}">
+                  <el-tag :type="capRiskTagType(row.risk_level)" size="small">{{row.risk_level}}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="capability_id" min-width="180">
+                <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+              </el-table-column>
+              <el-table-column label="route" min-width="160">
+                <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.route||'—'}}</code></template>
+              </el-table-column>
+              <el-table-column label="resource" width="110">
+                <template #default="{row}"><code style="font-size:11px">{{row.resource_type||'—'}}</code></template>
+              </el-table-column>
+              <el-table-column label="action" width="80">
+                <template #default="{row}"><code style="font-size:11px">{{row.action_type}}</code></template>
+              </el-table-column>
+              <el-table-column label="approval" width="140">
+                <template #default="{row}">
+                  <el-tag :type="row.approval_policy==='auto'?'success':row.approval_policy==='deny'?'danger':'warning'" size="small">
+                    {{row.approval_policy}}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="audit" width="80">
+                <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{row.audit_level}}</span></template>
+              </el-table-column>
+              <el-table-column label="ttl" width="80">
+                <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{row.ttl_seconds}}s</span></template>
+              </el-table-column>
+              <el-table-column label="workers" min-width="160">
+                <template #default="{row}">
+                  <div v-if="row.has_worker">
+                    <el-tag v-for="w in row.backing_workers" :key="w.worker_id"
+                            size="small" type="success" effect="plain" style="margin-right:4px">
+                      {{w.worker_id}}
+                    </el-tag>
+                  </div>
+                  <span v-else style="color:#e6a23c;font-size:11px">⚠ no worker</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </template>
       </el-tab-pane>
 
       <!-- ── Topology（capability dispatch flow） ── -->
@@ -2582,7 +3144,7 @@ const app=createApp({
       catch(e){console.error('[loadCaps:defaults]',e.message||e)}
     }
 
-    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers(),loadHealthScore(),loadAutoScale()]);refreshing.value=false}
+    async function refreshAll(){refreshing.value=true;await Promise.all([loadAgents(),loadCaps(),refreshContainers(),loadHealthScore(),loadAutoScale(),loadEmergencyState()]);refreshing.value=false}
 
     // ── Auto-scale state ──
     const autoScale=ref(null);
@@ -2614,7 +3176,14 @@ const app=createApp({
         qs.set('limit','100');
         const r=await fetch('/api/v1/admin/approvals?'+qs.toString(),{credentials:'include'});
         const j=await r.json();
-        approvals.value=j.success?(j.data||[]):[];
+        const list=j.success?(j.data||[]):[];
+        // I1：給每筆 pending 撈 multi-sig 簽核進度（順道、不影響其他狀態的渲染）
+        const enriched=await Promise.all(list.map(async row=>{
+          if(row.status!=='pending') return row;
+          const dec=await loadMsigDecisions(row.approval_id);
+          return {...row, msig:dec};
+        }));
+        approvals.value=enriched;
       }catch(e){console.error('[loadApprovals]',e);approvals.value=[]}
       aprLoading.value=false;
     }
@@ -2666,6 +3235,79 @@ const app=createApp({
         loadAclRules();
       }catch(e){ElementPlus.ElMessage.error(e.message)}
     }
+    // ─── W14 P1+P5：緊急停機 / 唯讀鎖定 ──────────────────────────────
+    const emergencyState=ref(null);
+    async function loadEmergencyState(){
+      try{
+        const r=await fetch('/api/v1/emergency/status',{credentials:'include'});
+        const j=await r.json();
+        if(j.success) emergencyState.value=j.data;
+      }catch(e){console.warn('[loadEmergencyState]',e)}
+    }
+    async function onEmergencyStop(){
+      try{
+        await ElementPlus.ElMessageBox.confirm(
+          '會立刻停掉 AutoTrader、把所有 watch 設成 inactive、阻擋 trading.* 寫入。確定？',
+          '🛑 緊急停機', {type:'warning',confirmButtonText:'停機',cancelButtonText:'算了'});
+      }catch{return}
+      let reason='';
+      try{
+        const p=await ElementPlus.ElMessageBox.prompt('原因（會寫進 audit）','緊急停機原因',
+          {confirmButtonText:'OK',cancelButtonText:'Cancel',inputValue:'manual stop'});
+        reason=p.value||'';
+      }catch{return}
+      try{
+        const r=await fetch('/api/v1/emergency/stop-all',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({reason}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||j.message||'failed');return}
+        ElementPlus.ElMessage.success(`緊急停機已觸發、${j.data.watches_paused} 個 watch 已 pause`);
+        loadEmergencyState();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function onEmergencyClear(){
+      try{
+        await ElementPlus.ElMessageBox.confirm(
+          '解除 KillSwitch 後、trading.* 寫入會恢復。AutoTrader 仍是 disabled、要手動 enable。確定？',
+          '✓ 解除停機', {type:'info'});
+      }catch{return}
+      try{
+        const r=await fetch('/api/v1/emergency/clear',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({reason:'manual clear'}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||j.message||'failed');return}
+        ElementPlus.ElMessage.success('KillSwitch 解除');
+        loadEmergencyState();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function onLockdownToggle(enable){
+      try{
+        await ElementPlus.ElMessageBox.confirm(
+          enable
+            ? '唯讀模式 ON：所有 POST/PUT/DELETE 全擋（除 emergency/auth/health）。dashboard 還可以看、不能改。'
+            : '解除唯讀模式？',
+          enable?'🔒 唯讀鎖定':'🔓 解除鎖定',
+          {type:enable?'warning':'info'});
+      }catch{return}
+      try{
+        const r=await fetch('/api/v1/emergency/lockdown',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({enable, reason: enable?'manual lockdown':'manual unlock'}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||j.message||'failed');return}
+        ElementPlus.ElMessage.success(enable?'唯讀模式 ON':'唯讀模式 OFF');
+        loadEmergencyState();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+
     function aprStatusType(s){return({pending:'warning',approved:'success',rejected:'danger',expired:'info'})[s]||''}
     async function decideApproval(row, action){
       const promptKey=action==='approve'?'aprApproveReason':'aprRejectReason';
@@ -2781,6 +3423,349 @@ const app=createApp({
       return Math.floor(ms/60000)+'m '+Math.floor((ms%60000)/1000)+'s';
     }
     function traceStatusType(s){return({SUCCEEDED:'success',FAILED:'danger',DENIED:'danger',IN_PROGRESS:'info'})[s]||''}
+
+    // ─── G2 — Live audit event stream（WebSocket） ───────────────────
+    const liveEvents=ref([]);
+    const liveStreamConnected=ref(false);
+    let liveWs=null;
+    const LIVE_MAX=200;  // 上限、超過從頭丟（dashboard 不要無限長）
+    function liveEventColor(t){
+      if(!t) return '#909399';
+      if(t.startsWith('KILL_SWITCH')||t==='FILE_INTEGRITY_CHANGED') return '#f56c6c';
+      if(t.startsWith('READONLY_LOCKDOWN')||t.startsWith('APPROVAL')) return '#e6a23c';
+      if(t.startsWith('DISPATCH')||t.startsWith('EXECUTION')) return '#67c23a';
+      if(t==='API_REQUEST') return '#909399';
+      return '#a374ff';
+    }
+    function liveStreamConnect(){
+      if(liveWs) return;
+      const proto=location.protocol==='https:'?'wss:':'ws:';
+      const url=`${proto}//${location.host}/ws/audit/stream`;
+      try{
+        liveWs=new WebSocket(url);
+      }catch(e){ElementPlus.ElMessage.error('WS open failed: '+e.message);return}
+      liveWs.onopen=()=>{liveStreamConnected.value=true; ElementPlus.ElMessage.success('Audit stream connected')};
+      liveWs.onmessage=(m)=>{
+        try{
+          const j=JSON.parse(m.data);
+          if(j.type==='hello') return;
+          if(j.type==='event'){
+            liveEvents.value.unshift(j);
+            if(liveEvents.value.length>LIVE_MAX) liveEvents.value.length=LIVE_MAX;
+          }
+        }catch{}
+      };
+      liveWs.onclose=()=>{liveStreamConnected.value=false; liveWs=null};
+      liveWs.onerror=(e)=>{console.warn('[live ws]',e); liveStreamConnected.value=false};
+    }
+    function liveStreamDisconnect(){
+      if(liveWs){try{liveWs.close()}catch{} liveWs=null}
+      liveStreamConnected.value=false;
+    }
+
+    // ─── G3 — Capability Registry graph ──────────────────────────
+    const capGraph=ref(null);
+    const capGraphLoading=ref(false);
+    const capGraphFilter=ref('');
+    const filteredCapGraph=computed(()=>{
+      if(!capGraph.value) return [];
+      const f=(capGraphFilter.value||'').toLowerCase().trim();
+      if(!f) return capGraph.value.capabilities;
+      return capGraph.value.capabilities.filter(c=>{
+        return (c.capability_id||'').toLowerCase().includes(f)
+          || (c.route||'').toLowerCase().includes(f)
+          || (c.resource_type||'').toLowerCase().includes(f);
+      });
+    });
+    async function loadCapGraph(){
+      capGraphLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/capabilities/graph',{credentials:'include'});
+        const j=await r.json();
+        capGraph.value=j.success?j.data:null;
+      }catch(e){console.error('[loadCapGraph]',e);capGraph.value=null}
+      capGraphLoading.value=false;
+    }
+    function capRiskColor(r){return({Low:'#67c23a',Medium:'#e6a23c',High:'#f56c6c',Critical:'#ff0000'})[r]||'#909399'}
+    function capRiskTagType(r){return({Low:'success',Medium:'warning',High:'danger',Critical:'danger'})[r]||''}
+
+    // ─── G1 — Policy Replay Debugger ─────────────────────────────
+    const replayCap=ref('');
+    const replayPrincipal=ref('prn_replay');
+    const replayPayload=ref('{"route":"read_file","args":{"path":"/workspace/test.txt"}}');
+    const replayResult=ref(null);
+    const replayLoading=ref(false);
+    const replayTraceId=ref('');
+    const replayTraceLoading=ref(false);
+    async function doReplayEvaluate(){
+      if(!replayCap.value){ElementPlus.ElMessage.warning('capability_id required');return}
+      replayLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/replay/evaluate',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            capability_id:replayCap.value,
+            principal_id:replayPrincipal.value||'prn_replay',
+            payload:replayPayload.value||'{}',
+          }),
+        });
+        const j=await r.json();
+        replayResult.value=j.success?j.data:{decision:'Error',reason:j.error||j.message||'failed'};
+      }catch(e){replayResult.value={decision:'Error',reason:e.message}}
+      replayLoading.value=false;
+    }
+    // ─── I1 — Multi-sig rules ────────────────────────────────────
+    const msigRules=ref([]);
+    const msigLoading=ref(false);
+    const msigDialogVisible=ref(false);
+    const msigForm=reactive({capability_id:'',min_approvers:2,description:''});
+    async function loadMsig(){
+      msigLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/multi-sig',{credentials:'include'});
+        const j=await r.json();
+        msigRules.value=j.success?j.data:[];
+      }catch(e){console.error('[loadMsig]',e)}
+      msigLoading.value=false;
+    }
+    async function upsertMsig(){
+      if(!msigForm.capability_id){ElementPlus.ElMessage.warning('capability_id required');return}
+      try{
+        const r=await fetch('/api/v1/multi-sig',{
+          method:'PUT',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({...msigForm, enabled:true}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('rule saved');
+        msigDialogVisible.value=false;
+        Object.assign(msigForm,{capability_id:'',min_approvers:2,description:''});
+        loadMsig();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function deleteMsig(row){
+      try{
+        await ElementPlus.ElMessageBox.confirm(`刪除 ${row.capability_id} 的 multi-sig rule？`,'confirm',{type:'warning'});
+      }catch{return}
+      try{
+        const r=await fetch(`/api/v1/multi-sig/${encodeURIComponent(row.capability_id)}`,{
+          method:'DELETE',credentials:'include',
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('deleted');
+        loadMsig();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function loadMsigDecisions(approvalId){
+      try{
+        const r=await fetch(`/api/v1/multi-sig/decisions/${encodeURIComponent(approvalId)}`,{credentials:'include'});
+        const j=await r.json();
+        return j.success?j.data:null;
+      }catch(e){console.warn('[loadMsigDecisions]',e);return null}
+    }
+
+    // ─── H4 — Audit RAG ──────────────────────────────────────────
+    const ragQuery=ref('');
+    const ragSinceHours=ref(168);
+    const ragLimit=ref(30);
+    const ragSearchResult=ref(null);
+    const ragSummary=ref(null);
+    const ragSearchLoading=ref(false);
+    const ragSummaryLoading=ref(false);
+    async function doRagSearch(){
+      if(!ragQuery.value){ElementPlus.ElMessage.warning('query required');return}
+      ragSearchLoading.value=true;
+      ragSummary.value=null;
+      try{
+        const r=await fetch('/api/v1/audit/search',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({query:ragQuery.value, since_hours:ragSinceHours.value, limit:ragLimit.value}),
+        });
+        const j=await r.json();
+        ragSearchResult.value=j.success?j.data:null;
+        if(!j.success) ElementPlus.ElMessage.error(j.error||'search failed');
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      ragSearchLoading.value=false;
+    }
+    async function doRagSummary(){
+      if(!ragSearchResult.value || ragSearchResult.value.events.length===0){
+        ElementPlus.ElMessage.warning('先 Search 拿事件');return;
+      }
+      ragSummaryLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/audit/rag-summary',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({query:ragQuery.value, events:ragSearchResult.value.events}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'LLM failed');return}
+        ragSummary.value=j.data;
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      ragSummaryLoading.value=false;
+    }
+
+    // ─── H2 — Time ACL ───────────────────────────────────────────
+    const taclRules=ref([]);
+    const taclLoading=ref(false);
+    const taclDialogVisible=ref(false);
+    const taclForm=reactive({capability_id:'',start_hour:9,end_hour:17,weekday_mask:62,timezone:'Asia/Taipei',description:''});
+    async function loadTacl(){
+      taclLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/time-acl',{credentials:'include'});
+        const j=await r.json();
+        taclRules.value=j.success?j.data.rules:[];
+      }catch(e){console.error('[loadTacl]',e)}
+      taclLoading.value=false;
+    }
+    async function createTacl(){
+      if(!taclForm.capability_id){ElementPlus.ElMessage.warning('capability_id required');return}
+      try{
+        const r=await fetch('/api/v1/time-acl',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({...taclForm}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('rule created');
+        taclDialogVisible.value=false;
+        loadTacl();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function toggleTacl(row, enable){
+      try{
+        const r=await fetch(`/api/v1/time-acl/${row.ruleId||row.rule_id}/enable`,{
+          method:'PATCH',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({enable}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        loadTacl();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function deleteTacl(row){
+      try{
+        await ElementPlus.ElMessageBox.confirm(`刪除 rule？`,'confirm',{type:'warning'});
+      }catch{return}
+      try{
+        const r=await fetch(`/api/v1/time-acl/${row.ruleId||row.rule_id}`,{
+          method:'DELETE',credentials:'include',
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('deleted');
+        loadTacl();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+
+    // ─── H3 — Approval templates ─────────────────────────────────
+    const apTemplates=ref([]);
+    const aptplHits=ref({});
+    const aptplLoading=ref(false);
+    const aptplDialogVisible=ref(false);
+    const aptplForm=reactive({capability_id:'',route:'',payload_match:'{}',max_uses_per_day:0,description:''});
+    async function loadApTemplates(){
+      aptplLoading.value=true;
+      try{
+        const [list,hits]=await Promise.all([
+          fetch('/api/v1/approval-templates',{credentials:'include'}).then(r=>r.json()),
+          fetch('/api/v1/approval-templates/hits',{credentials:'include'}).then(r=>r.json()),
+        ]);
+        apTemplates.value=list.success?list.data:[];
+        aptplHits.value={};
+        if(hits.success){for(const h of (hits.data.hits||[])) aptplHits.value[h.template_id]=h.count}
+      }catch(e){console.error('[loadApTemplates]',e)}
+      aptplLoading.value=false;
+    }
+    async function createApTpl(){
+      if(!aptplForm.capability_id){ElementPlus.ElMessage.warning('capability_id required');return}
+      try{
+        const r=await fetch('/api/v1/approval-templates',{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            capability_id:aptplForm.capability_id,
+            route:aptplForm.route||'',
+            payload_match:JSON.parse(aptplForm.payload_match||'{}'),
+            max_uses_per_day:aptplForm.max_uses_per_day||0,
+            description:aptplForm.description||'',
+          }),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('Template created');
+        aptplDialogVisible.value=false;
+        Object.assign(aptplForm,{capability_id:'',route:'',payload_match:'{}',max_uses_per_day:0,description:''});
+        loadApTemplates();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function toggleApTpl(row, enable){
+      try{
+        const r=await fetch(`/api/v1/approval-templates/${row.template_id}/enable`,{
+          method:'PATCH',credentials:'include',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({enable}),
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        loadApTemplates();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+    async function deleteApTpl(row){
+      try{
+        await ElementPlus.ElMessageBox.confirm(`刪除 template ${row.template_id}？`,'confirm',{type:'warning'});
+      }catch{return}
+      try{
+        const r=await fetch(`/api/v1/approval-templates/${row.template_id}`,{
+          method:'DELETE',credentials:'include',
+        });
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'failed');return}
+        ElementPlus.ElMessage.success('deleted');
+        loadApTemplates();
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+    }
+
+    // ─── H1 — Quota dashboard ────────────────────────────────────
+    const quotaSnapshot=ref(null);
+    const quotaConfig=ref(null);
+    const quotaLoading=ref(false);
+    async function loadQuota(){
+      quotaLoading.value=true;
+      try{
+        const [s,c]=await Promise.all([
+          fetch('/api/v1/quota/snapshot',{credentials:'include'}).then(r=>r.json()),
+          fetch('/api/v1/quota/config',{credentials:'include'}).then(r=>r.json()),
+        ]);
+        quotaSnapshot.value=s.success?s.data:null;
+        quotaConfig.value=c.success?c.data:null;
+      }catch(e){console.error('[loadQuota]',e)}
+      quotaLoading.value=false;
+    }
+
+    async function loadReplayFromTrace(){
+      if(!replayTraceId.value){ElementPlus.ElMessage.warning('trace_id required');return}
+      replayTraceLoading.value=true;
+      try{
+        const r=await fetch('/api/v1/replay/from-trace?trace_id='+encodeURIComponent(replayTraceId.value),
+          {credentials:'include'});
+        const j=await r.json();
+        if(!j.success){ElementPlus.ElMessage.error(j.error||'not found');return}
+        const s=j.data.suggested||{};
+        if(s.capability_id) replayCap.value=s.capability_id;
+        if(s.payload) replayPayload.value=s.payload;
+        if(s.principal_id) replayPrincipal.value=s.principal_id;
+        ElementPlus.ElMessage.success(`Loaded from trace · ${j.data.event_count} events`);
+      }catch(e){ElementPlus.ElMessage.error(e.message)}
+      replayTraceLoading.value=false;
+    }
 
     async function loadTraces(){
       tracesLoading.value=true;
@@ -3639,6 +4624,7 @@ const app=createApp({
         { id:'agent_dashboard_snapshot',         label:'📸 KPI snapshot（1h）', mode:'auto' },
         { id:'agent_capability_usage_reporter',  label:'📐 Capability 統計（6h）', mode:'auto' },
         { id:'agent_weekly_digest',              label:'📅 Weekly digest（7d）', mode:'auto' },
+        { id:'agent_file_integrity',             label:'🛡 File integrity（1h）', mode:'auto' },
         { id:'agent_strategy_research',          label:'🎯 策略研究',           mode:'manual' },
         { id:'agent_risk_stress_test',           label:'⚠️ 風控壓測',          mode:'manual' },
         { id:'agent_trade_journal',              label:'📖 Trade journal',     mode:'manual' },
@@ -3720,6 +4706,7 @@ const app=createApp({
       { id:'agent_dashboard_snapshot',       label:'📸 KPI snapshot',    mode:'auto',   prompt:'{"trigger":"manual"}' },
       { id:'agent_capability_usage_reporter',label:'📐 Capability 統計', mode:'auto',   prompt:'{"window_hours":6}' },
       { id:'agent_weekly_digest',            label:'📅 Weekly digest',   mode:'auto',   prompt:'{"trigger":"manual"}' },
+      { id:'agent_file_integrity',           label:'🛡 File integrity',  mode:'auto',   prompt:'{"trigger":"manual"}' },
       { id:'agent_strategy_research',        label:'🎯 策略研究',        mode:'manual', prompt:'{"symbol":"AAPL","family":"sma_cross","generations":2,"data_limit":200}' },
       { id:'agent_risk_stress_test',         label:'⚠️ 風控壓測 -15%',   mode:'manual', prompt:'{"drop_pct":15}' },
       { id:'agent_trade_journal',            label:'📖 Trade journal',  mode:'manual', prompt:'{"symbol":"BTC-USDT","time":"'+new Date(Date.now()-3600000).toISOString()+'","window_min":60}' },
@@ -3987,6 +4974,27 @@ const app=createApp({
       loadApprovals,loadAclRules,aprStatusType,doApprove,doReject,
       doApproveAndDispatch,doDispatchOnly,
       overrideVisible,overrideForm,openOverrideDialog,doAddOverride,removeOverride,
+      // W14 P1+P5 緊急停機 / 唯讀鎖定
+      emergencyState,loadEmergencyState,onEmergencyStop,onEmergencyClear,onLockdownToggle,
+      // G2 live audit event stream
+      liveEvents,liveStreamConnected,liveEventColor,liveStreamConnect,liveStreamDisconnect,
+      // G3 capability registry graph
+      capGraph,capGraphLoading,capGraphFilter,filteredCapGraph,loadCapGraph,capRiskColor,capRiskTagType,
+      // G1 policy replay debugger
+      replayCap,replayPrincipal,replayPayload,replayResult,replayLoading,replayTraceId,replayTraceLoading,
+      doReplayEvaluate,loadReplayFromTrace,JSON,
+      // H1 quota dashboard
+      quotaSnapshot,quotaConfig,quotaLoading,loadQuota,
+      // H3 approval templates
+      apTemplates,aptplHits,aptplLoading,aptplDialogVisible,aptplForm,
+      loadApTemplates,createApTpl,toggleApTpl,deleteApTpl,
+      // H2 time ACL
+      taclRules,taclLoading,taclDialogVisible,taclForm,loadTacl,createTacl,toggleTacl,deleteTacl,
+      // H4 audit RAG
+      ragQuery,ragSinceHours,ragLimit,ragSearchResult,ragSummary,ragSearchLoading,ragSummaryLoading,
+      doRagSearch,doRagSummary,
+      // I1 multi-sig
+      msigRules,msigLoading,msigDialogVisible,msigForm,loadMsig,upsertMsig,deleteMsig,loadMsigDecisions,
       // Tracing + Topology
       traces,tracesLoading,traceFilter,selectedTraceId,selectedTraceIntegrity,
       loadTraces,selectTrace,fmtDur,traceStatusType,

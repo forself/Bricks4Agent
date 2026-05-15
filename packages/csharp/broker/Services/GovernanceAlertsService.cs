@@ -139,9 +139,11 @@ public class GovernanceAlertsService : BackgroundService
             {
                 if (_seenPendingIds.Contains(p.ApprovalId)) continue;
                 _seenPendingIds.Add(p.ApprovalId);
+                // W14 P3：把 risk hint 一起推、admin 一眼看出風險量級
+                var riskHint = ApprovalRiskHintHelper.Hint(p.CapabilityId, p.Payload);
                 await PushAlertAsync(
                     title: $"🔐 Pending approval: {p.CapabilityId}",
-                    body: $"`{p.PrincipalId}` ({p.Role}) requested `{p.CapabilityId}` route=`{p.Route}`\napproval_id=`{p.ApprovalId}` · 到 dashboard /待審 分頁裁決",
+                    body: $"`{p.PrincipalId}` ({p.Role}) requested `{p.CapabilityId}` route=`{p.Route}`\n{riskHint}\napproval_id=`{p.ApprovalId}` · 到 dashboard /待審 分頁裁決",
                     severity: "warn",
                     color: 0xE6A23C,
                     ct: ct,

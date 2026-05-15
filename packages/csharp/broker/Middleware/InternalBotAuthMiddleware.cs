@@ -1,4 +1,5 @@
 using Broker.Helpers;
+using Broker.Services;
 
 namespace Broker.Middleware;
 
@@ -30,14 +31,17 @@ public class InternalBotAuthMiddleware
     private readonly RequestDelegate _next;
     private readonly string _expectedToken;
     private readonly string _expectedAdminToken;
+    private readonly BotRateLimitService _rateLimit;
     private readonly ILogger<InternalBotAuthMiddleware> _logger;
 
     public InternalBotAuthMiddleware(
         RequestDelegate next,
         IConfiguration config,
+        BotRateLimitService rateLimit,
         ILogger<InternalBotAuthMiddleware> logger)
     {
         _next = next;
+        _rateLimit = rateLimit;
         _logger = logger;
         // user-role token：BOT_INTERNAL_TOKEN env 優先、退而 appsettings
         var fromEnv = Environment.GetEnvironmentVariable("BOT_INTERNAL_TOKEN");
@@ -70,6 +74,7 @@ public class InternalBotAuthMiddleware
             if (!string.IsNullOrEmpty(providedStr)
                 && CryptographicEquals(providedStr, _expectedAdminToken))
             {
+                if (!CheckRateLimit(context)) return;
                 InjectIdentity(context, BotAdminRoleId, currentUserRole: "admin");
                 _logger.LogDebug("Internal bot ADMIN authenticated for {Path}", context.Request.Path);
                 await _next(context);
@@ -91,6 +96,7 @@ public class InternalBotAuthMiddleware
             if (!string.IsNullOrEmpty(providedStr)
                 && CryptographicEquals(providedStr, _expectedToken))
             {
+                if (!CheckRateLimit(context)) return;
                 InjectIdentity(context, BotRoleId, currentUserRole: "user");
                 _logger.LogDebug("Internal bot authenticated for {Path}", context.Request.Path);
             }
@@ -116,6 +122,27 @@ public class InternalBotAuthMiddleware
         context.Items[BrokerAuthMiddleware.TaskIdKey]      = "dc-bot";
         context.Items[CurrentUserMiddleware.PrincipalKey]  = BotPrincipalId;
         context.Items[CurrentUserMiddleware.RoleKey]       = currentUserRole;
+    }
+
+    /// <summary>
+    /// W14 P2 — bot rate limit。bot-node 應在每個 forward request 帶 X-Bot-User-Id（Discord user ID），
+    /// 沒帶 fallback 「(unknown)」共用桶。被擋的請求回 429 + 寫 warning log。
+    /// 回 false 表示已 short-circuit（caller 不該再 await _next）。
+    /// </summary>
+    private bool CheckRateLimit(HttpContext context)
+    {
+        var userId = context.Request.Headers.TryGetValue(BotRateLimitService.UserIdHeader, out var v)
+            ? v.ToString() : "";
+        var (allowed, count) = _rateLimit.TryRecord(userId);
+        if (allowed) return true;
+
+        _logger.LogWarning("Bot rate limit exceeded: user={UserId} count={Count}/{Max} window={Window}s ip={Ip} path={Path}",
+            string.IsNullOrEmpty(userId) ? "(unknown)" : userId,
+            count, _rateLimit.MaxRequests, _rateLimit.WindowSeconds,
+            context.Connection.RemoteIpAddress, context.Request.Path);
+        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.Response.Headers["Retry-After"] = _rateLimit.WindowSeconds.ToString();
+        return false;
     }
 
     /// <summary>常數時間比對、防 timing attack。</summary>

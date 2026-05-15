@@ -69,3 +69,6 @@ packages/csharp/workers/line-worker/.last-tunnel-url
 packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/
 *.webp
 .tmp-*
+
+# Build cache
+*.lscache
