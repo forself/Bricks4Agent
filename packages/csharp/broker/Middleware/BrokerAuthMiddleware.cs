@@ -75,7 +75,15 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase)
             // [whitelist add: 2026-05-14] DataBrowser —— admin SQLite 查詢 + 錯誤聚合
             || path.StartsWith("/api/v1/errors/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/db/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/db/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-16 W14/G/H/I 治理深化] cookie-auth、不要 scoped_token
+            || path.StartsWith("/api/v1/emergency", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/multi-sig", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/time-acl", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/approval-templates", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/quota", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/replay", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(
