@@ -3533,7 +3533,7 @@ const app=createApp({
       if(!msigForm.capability_id){ElementPlus.ElMessage.warning('capability_id required');return}
       try{
         const r=await fetch('/api/v1/multi-sig',{
-          method:'PUT',credentials:'include',
+          method:'POST',credentials:'include',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({...msigForm, enabled:true}),
         });
@@ -3641,7 +3641,7 @@ const app=createApp({
     async function toggleTacl(row, enable){
       try{
         const r=await fetch(`/api/v1/time-acl/${row.ruleId||row.rule_id}/enable`,{
-          method:'PATCH',credentials:'include',
+          method:'POST',credentials:'include',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({enable}),
         });
@@ -3709,7 +3709,7 @@ const app=createApp({
     async function toggleApTpl(row, enable){
       try{
         const r=await fetch(`/api/v1/approval-templates/${row.template_id}/enable`,{
-          method:'PATCH',credentials:'include',
+          method:'POST',credentials:'include',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({enable}),
         });

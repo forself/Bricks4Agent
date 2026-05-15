@@ -70,7 +70,8 @@ public static class ApprovalTemplateEndpoints
             return Results.Ok(ApiResponseHelper.Success(t));
         });
 
-        ap.MapPatch("/{id}/enable", (string id, HttpContext ctx, BrokerDb db) =>
+        // POST 而非 PATCH：EncryptionMiddleware 只處理 POST，PATCH 會 bypass body 解密
+        ap.MapPost("/{id}/enable", (string id, HttpContext ctx, BrokerDb db) =>
         {
             if (!RequireAdmin(ctx, out var denied)) return denied;
             var body = RequestBodyHelper.GetBody(ctx);

@@ -78,7 +78,8 @@ public static class TimeAclEndpoints
             return Results.Ok(ApiResponseHelper.Success(rule));
         });
 
-        t.MapPatch("/{id}/enable", (string id, HttpContext ctx, BrokerDb db) =>
+        // POST 而非 PATCH：EncryptionMiddleware 只處理 POST、PATCH 會 bypass body 解密
+        t.MapPost("/{id}/enable", (string id, HttpContext ctx, BrokerDb db) =>
         {
             if (!RequireAdmin(ctx, out var d)) return d;
             var body = RequestBodyHelper.GetBody(ctx);

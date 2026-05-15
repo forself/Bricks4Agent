@@ -8,9 +8,12 @@ namespace Broker.Endpoints;
 /// I1 — Multi-sig rule + approval decisions（admin only）
 ///
 /// GET    /api/v1/multi-sig                — 列規則
-/// PUT    /api/v1/multi-sig                — upsert（capability_id, min_approvers, enabled, description）
+/// POST   /api/v1/multi-sig                — upsert（capability_id, min_approvers, enabled, description）
 /// DELETE /api/v1/multi-sig/{capability_id} — 移除
 /// GET    /api/v1/multi-sig/decisions/{approval_id} — 看單一 approval 的所有簽核決定
+///
+/// 注意：用 POST 而非 PUT、因為 EncryptionMiddleware 只處理 POST、PUT/PATCH 會 bypass
+/// 而導致 RequestBodyHelper.GetBody 拿到空 "{}"。同樣理由 enable toggle 也是 POST。
 /// </summary>
 public static class MultiSigEndpoints
 {
@@ -26,7 +29,7 @@ public static class MultiSigEndpoints
             return Results.Ok(ApiResponseHelper.Success(rules));
         });
 
-        ms.MapPut("", (HttpContext ctx, BrokerDb db) =>
+        ms.MapPost("", (HttpContext ctx, BrokerDb db) =>
         {
             if (!RequireAdmin(ctx, out var d)) return d;
             var body = RequestBodyHelper.GetBody(ctx);
