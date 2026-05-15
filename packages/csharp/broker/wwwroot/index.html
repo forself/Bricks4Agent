@@ -792,6 +792,15 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               </div>
             </div>
           </div>
+          <!-- Quick-action chips：點擊填到輸入框、不直接送、user 可改後再送 -->
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <span style="font-size:11px;color:var(--td);margin-right:4px">範本：</span>
+            <el-tag size="small" effect="plain" style="cursor:pointer" @click="chatInput='?search 比特幣'">?search 比特幣</el-tag>
+            <el-tag size="small" effect="plain" style="cursor:pointer" @click="chatInput='?wiki 比特幣'">?wiki 比特幣</el-tag>
+            <el-tag size="small" effect="plain" style="cursor:pointer" @click="chatInput='?help'">?help</el-tag>
+            <el-tag size="small" effect="plain" type="warning" style="cursor:pointer" @click="chatInput='/proj'">/proj 啟動專題訪談 (Benson 設計)</el-tag>
+            <el-tag size="small" effect="plain" style="cursor:pointer" @click="chatInput='你好'">你好</el-tag>
+          </div>
           <!-- 輸入區 -->
           <div style="display:flex;gap:8px">
             <el-input v-model="chatInput" :placeholder="t('consoleChatPlaceholder')" @keyup.enter="sendChat" style="flex:1" :disabled="chatLoading"/>
