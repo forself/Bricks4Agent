@@ -85,7 +85,15 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/forensics/", StringComparison.OrdinalIgnoreCase)
             // [whitelist add: 2026-05-14] DataBrowser — dashboard 看 SQLite 錯誤紀錄 + admin SQL 查詢、走 cookie
             || path.StartsWith("/api/v1/errors/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/db/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/db/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-16 W14/G/H/I 治理深化] 全部走 cookie-auth、跟 /admin 同性質、不走 ECDH
+            || path.StartsWith("/api/v1/emergency", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/multi-sig", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/time-acl", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/approval-templates", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/quota", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/replay", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
