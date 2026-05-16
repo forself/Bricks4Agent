@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bricks4Agent — Docker 上手 (給組員 1+2)</title>
+<title>Bricks4Agent — Docker 上手 (Benson canonical)</title>
 <style>
   :root {
     --bg:#0a0d14; --card:#121622; --card2:#1a1f2e; --bd:#2a3142;
@@ -76,7 +76,7 @@
 
 <header>
   <h1>🐋 Bricks4Agent · Docker 上手</h1>
-  <div class="sub">給沒碰過 Docker 的組員：30 分鐘把 broker 跑起來</div>
+  <div class="sub">給新組員：30 分鐘把 broker 跑起來、開始讀 source code</div>
 </header>
 
 <main>
@@ -84,287 +84,309 @@
 <div class="toc">
   <h3>📋 路線圖</h3>
   <ol>
-    <li><a href="#s1">0. 心智模型：Docker 是什麼</a></li>
-    <li><a href="#s2">1. 裝 Docker Desktop</a> · 10min</li>
-    <li><a href="#s3">2. 拿 source code (Git clone)</a> · 5min</li>
-    <li><a href="#s4">3. 設定環境變數 .env.trading</a> · 10min</li>
-    <li><a href="#s5">4. 一鍵啟動 broker stack</a> · 5min</li>
-    <li><a href="#s6">5. 開瀏覽器確認 dashboard</a> · 2min</li>
-    <li><a href="#s7">6. 常用 Docker 指令速查</a></li>
-    <li><a href="#s8">7. 我卡住了怎麼辦</a></li>
+    <li><a href="#s0">0. Bricks4Agent 是什麼</a></li>
+    <li><a href="#s1">1. Docker 心智模型</a></li>
+    <li><a href="#s2">2. 裝 Docker Desktop</a> · 10min</li>
+    <li><a href="#s3">3. Clone repo + .NET SDK</a> · 5min</li>
+    <li><a href="#s4">4. 設定環境變數</a> · 10min</li>
+    <li><a href="#s5">5. 啟動 broker</a> · 5min</li>
+    <li><a href="#s6">6. 確認 dashboard + 跑測試</a> · 5min</li>
+    <li><a href="#s7">7. 常用 Docker 指令速查</a></li>
+    <li><a href="#s8">8. 卡住怎麼辦</a></li>
+    <li><a href="#s9">9. 讀什麼接著上手</a></li>
   </ol>
 </div>
 
 <!-- 0 -->
-<section id="s1">
-  <h2><span class="num">0</span> 心智模型：Docker 是什麼</h2>
+<section id="s0">
+  <h2><span class="num">0</span> Bricks4Agent 是什麼</h2>
+
+  <p>一句話：<strong>broker-centered governed AI operations platform</strong>（broker 中介的、受治理的 AI operation 平台）。</p>
 
   <div class="concept">
-    <h4>類比一</h4>
-    <p>Docker container ≈ <strong>一個獨立的迷你電腦</strong>。你可以在你的 Windows 上跑 N 個迷你 Linux、每個跑不同程式、互不影響。關掉迷你電腦不會影響你 Windows 桌面。</p>
+    <h4>三層架構</h4>
+    <p><strong>1. 高階模型層（high-level）</strong>：負責對話、釐清、查詢改寫、意圖判斷。可以「解讀」、不可以自己執行 side effect。</p>
+    <p style="margin-top:6px"><strong>2. broker / control plane</strong>：核心、負責 workflow gating、ACL/capability 授權、稽核鏈、artifact 派發、管理介面。<strong>不該像自主 planner、它的價值是約束行為、讓行為可審計可重現</strong>。</p>
+    <p style="margin-top:6px"><strong>3. execution layer</strong>：被治理的 agent runtime、worker process、tool 路由、deploy 執行、browser 執行。消費「結構化意圖」、不是原始對話。</p>
   </div>
 
-  <div class="concept">
-    <h4>類比二</h4>
-    <p>Image ≈ 「<strong>裝好系統 + 軟體的光碟</strong>」、Container = 「<strong>把光碟塞進去開機後的那台機器</strong>」。Image 是模板、container 是 instance。</p>
+  <h3>主入口流程（canonical live path）</h3>
+  <pre><code>LINE webhook
+  → line-worker
+  → broker /api/v1/high-level/line/process
+  → HighLevelCoordinator</code></pre>
+
+  <p>所有 LINE 對話走這條。其他 entry（例如 dashboard 直接戳）也經 broker、但 LINE 是 design 的主場景。</p>
+
+  <div class="info">
+    詳細架構讀 <code>docs/reports/CurrentArchitectureAndProgress-2026-03-26.md</code>（組長最近一次完整 architecture writeup）。
   </div>
-
-  <h3>為什麼這個專案用 Docker？</h3>
-  <ul class="compact">
-    <li>broker（C# / .NET 8）+ worker（Python / Node）+ SQLite + cache — 一堆服務、本機裝會搞死</li>
-    <li>給其他組員一份 docker-compose.yml、他們敲一行 <code>docker compose up</code> 就跟你跑一樣的環境</li>
-    <li>部署到 VPS 也是同一個 image、本機跑得起來＝VPS 跑得起來</li>
-  </ul>
-
-  <h3>你需要懂的 3 個名詞</h3>
-  <table>
-    <tr><th>名詞</th><th>白話</th></tr>
-    <tr><td><code>image</code></td><td>「光碟」、不可變的軟體包</td></tr>
-    <tr><td><code>container</code></td><td>「開機後的迷你電腦」、用 image 起動的執行 instance</td></tr>
-    <tr><td><code>docker compose</code></td><td>「樂高說明書」、定義 N 個 container 怎麼相互連線、變數怎麼塞、volume 怎麼掛</td></tr>
-  </table>
 </section>
 
 <!-- 1 -->
-<section id="s2">
-  <h2><span class="num">1</span> 裝 Docker Desktop <span class="time">10min</span></h2>
+<section id="s1">
+  <h2><span class="num">1</span> Docker 心智模型</h2>
 
-  <div class="step">下載 <a href="https://www.docker.com/products/docker-desktop/" style="color:var(--info)">Docker Desktop for Windows</a></div>
-  <div class="step">安裝、重開機（一定要重開、不然 WSL2 沒生效）</div>
-  <div class="step">打開 Docker Desktop、左下角看到綠色「Engine running」</div>
-
-  <div class="check">PowerShell / cmd 跑 <code>docker --version</code> 應該回 <code>Docker version 27.x.x ...</code></div>
-
-  <div class="warn">
-    Windows 家用版要先啟用 WSL 2 + Hyper-V。Docker Desktop 安裝時會自動引導、跟著做就好。如果跳「WSL 2 installation is incomplete」、跟提示連結裝個 <code>wsl --update</code> 後重開。
+  <div class="concept">
+    <h4>類比</h4>
+    <p>Docker container ≈ 一台<strong>獨立的迷你電腦</strong>。在你 Windows 跑 N 個迷你 Linux、每個跑不同 service、互不影響、關掉不影響桌面。</p>
+    <p style="margin-top:6px">Image = 「裝好系統的光碟」；container = 「塞光碟開機後的那台機器」。Image 是模板、container 是 instance。</p>
   </div>
+
+  <h3>為什麼 broker 用 Docker</h3>
+  <ul class="compact">
+    <li>broker（C# / .NET 8）+ worker（多個獨立 process）+ SQLite + cache — 多 service、本機裝會打架</li>
+    <li>給新組員 docker-compose.yml、敲一行就跑起來、跟你環境一致</li>
+    <li>部署 VPS 跟本機同一份 image、reproducible</li>
+  </ul>
+
+  <h3>3 個需要懂的詞</h3>
+  <table>
+    <tr><th>名詞</th><th>白話</th></tr>
+    <tr><td><code>image</code></td><td>「光碟」、不可變的軟體包</td></tr>
+    <tr><td><code>container</code></td><td>「開機後的迷你電腦」、image 的 runtime instance</td></tr>
+    <tr><td><code>docker compose</code></td><td>「樂高說明書」、多 container 怎麼相互連線、env / volume / port</td></tr>
+  </table>
 </section>
 
 <!-- 2 -->
-<section id="s3">
-  <h2><span class="num">2</span> 拿 source code <span class="time">5min</span></h2>
+<section id="s2">
+  <h2><span class="num">2</span> 裝 Docker Desktop <span class="time">10min</span></h2>
 
-  <div class="step">先裝 Git（如果還沒有）→ <a href="https://git-scm.com/download/win" style="color:var(--info)">git-scm.com</a></div>
+  <div class="step">下載 <a href="https://www.docker.com/products/docker-desktop/" style="color:var(--info)">Docker Desktop for Windows</a></div>
+  <div class="step">安裝、重開機（一定要、WSL2 才會生效）</div>
+  <div class="step">打開 Docker Desktop、左下角綠燈「Engine running」</div>
 
-  <div class="step">PowerShell 開到你想放專案的資料夾（例 Desktop）：
-    <pre><code>cd C:\Users\你\Desktop
-git clone https://github.com/forself/Bricks4Agent.git
-cd Bricks4Agent</code></pre>
-  </div>
+  <div class="check">PowerShell 跑 <code>docker --version</code> 回 <code>Docker version 27.x ...</code></div>
 
-  <div class="check">應該看到一堆檔案、特別是 <code>packages/csharp/broker/</code>、<code>tools/compose.trading.yml</code></div>
-
-  <div class="info">
-    如果 GitHub 要登入、可以用個人帳號（fork 過更好、push 不會打架）。
+  <div class="warn">
+    Windows 家用版要先啟用 WSL 2 + Hyper-V、Docker Desktop 安裝時會引導。跳「WSL 2 installation is incomplete」就跑 <code>wsl --update</code> 再重開。
   </div>
 </section>
 
 <!-- 3 -->
-<section id="s4">
-  <h2><span class="num">3</span> 設定環境變數 <code>.env.trading</code> <span class="time">10min</span></h2>
+<section id="s3">
+  <h2><span class="num">3</span> Clone repo + .NET SDK <span class="time">5min</span></h2>
 
-  <p>compose 啟動需要一些密鑰跟設定。先複製範例檔：</p>
+  <div class="step">裝 Git → <a href="https://git-scm.com/download/win" style="color:var(--info)">git-scm.com</a></div>
 
   <div class="step">PowerShell：
-    <pre><code>cd tools
-copy .env.trading.example .env.trading</code></pre>
-    （如果 example 不存在、跟組長拿一份）
+    <pre><code>cd C:\Users\你\Desktop
+git clone &lt;組長給的 repo URL&gt;
+cd Bricks4Agent</code></pre>
   </div>
 
-  <h3>最少要設這 3 個（用 notepad 開 <code>.env.trading</code>）</h3>
+  <div class="check">看到 <code>packages/csharp/broker/</code>、<code>tools/compose.trading.yml</code>、<code>docs/</code>、<code>packages/csharp/ControlPlane.slnx</code></div>
 
-  <pre><code># 1. Broker master key — 32 byte 隨機字串、base64 編碼
-#    PowerShell 產一組：
-#    [Convert]::ToBase64String((1..32 | %{Get-Random -Max 256}))
-BROKER_MASTER_KEY_BASE64=（貼上面產的）
+  <h3>裝 .NET 8 SDK（要在本機跑單元測試 / build 時用）</h3>
 
-# 2. Scoped token secret — 同樣方法產
-BROKER_SCOPED_TOKEN_SECRET=（貼上面產的）
-
-# 3. LLM API key — 給 broker 內部 LLM 呼叫用、可以先用 Gemini free tier
-#    https://aistudio.google.com/apikey 拿
-LLM_API_KEY=（貼 Gemini key）</code></pre>
-
-  <div class="warn">
-    這個檔案<strong>絕對不要 commit 進 git</strong>。<code>.gitignore</code> 已經排除、但確認一下。
-  </div>
+  <div class="step">下載 <a href="https://dotnet.microsoft.com/download/dotnet/8.0" style="color:var(--info)">.NET 8 SDK</a></div>
+  <div class="check"><code>dotnet --version</code> 回 <code>8.0.x</code></div>
 
   <div class="info">
-    其他像 BingX / Alpaca API key 是進階用、暫時可不填、bot 那邊會 disable。
+    如果你只要跑 broker container、不寫 code，可以不裝 SDK（image 內已有 runtime）。但要 build / test / 開發、本機 SDK 必要。
   </div>
 </section>
 
 <!-- 4 -->
-<section id="s5">
-  <h2><span class="num">4</span> 一鍵啟動 broker stack <span class="time">5min</span></h2>
+<section id="s4">
+  <h2><span class="num">4</span> 設定環境變數 <span class="time">10min</span></h2>
 
-  <p>在 <code>tools/</code> 資料夾、PowerShell 跑：</p>
+  <p>broker 啟動需要密鑰跟設定。在 <code>tools/</code> 建一份 <code>.env.trading</code>：</p>
 
-  <pre><code>docker compose --env-file .env.trading -f compose.trading.yml up -d broker</code></pre>
+  <div class="step">複製範例（如果 repo 有 <code>.env.trading.example</code>）、或直接建新檔</div>
 
-  <p>解析每段：</p>
-  <ul class="compact">
-    <li><code>docker compose</code> — 用 compose 工具</li>
-    <li><code>--env-file .env.trading</code> — 載入你剛改的環境變數（<strong>絕對不能漏</strong>）</li>
-    <li><code>-f compose.trading.yml</code> — 用哪個說明書</li>
-    <li><code>up -d</code> — 起動、<code>-d</code> 是 detach（背景跑）</li>
-    <li><code>broker</code> — 只起 broker 這一個 service、不起其他附屬</li>
-  </ul>
+  <h3>最少要設這 3 個</h3>
 
-  <div class="check">
-    <code>docker ps</code> 應該看到一行 <code>b4a-broker</code>、status <code>Up X seconds</code>
-  </div>
+  <pre><code># 1. Broker master key (32 byte base64) — at-rest 加密用
+#    PowerShell 產一組：
+#    [Convert]::ToBase64String((1..32 | %{Get-Random -Max 256}))
+BROKER_MASTER_KEY_BASE64=（貼上面產的）
+
+# 2. Scoped token secret (隨機長字串、HMAC 用)
+BROKER_SCOPED_TOKEN_SECRET=（貼另一組）
+
+# 3. LLM API key (gpt-5.4-mini / Gemini / 任何 openai-compatible)
+LLM_API_KEY=（你的 key）</code></pre>
 
   <div class="warn">
-    第一次跑會慢（要 build image、10-15 分鐘下載 + 編譯）。後面再跑都是秒開。
+    <code>.env.trading</code> <strong>絕對不要 commit 進 git</strong>。已在 <code>.gitignore</code> 排除、push 前確認。
   </div>
+
+  <h3>其他選填</h3>
+  <ul class="compact">
+    <li><code>HIGH_LEVEL_LLM_API_KEY</code> — HighLevelCoordinator 用、gpt-5.4-mini 預設</li>
+    <li>LINE channel access token / secret — 跑 line-worker 才需要</li>
+  </ul>
 </section>
 
 <!-- 5 -->
-<section id="s6">
-  <h2><span class="num">5</span> 開瀏覽器確認 dashboard <span class="time">2min</span></h2>
+<section id="s5">
+  <h2><span class="num">5</span> 啟動 broker <span class="time">5min</span></h2>
 
-  <div class="step">瀏覽器網址列輸入：
-    <pre><code>http://localhost:5100</code></pre>
-  </div>
+  <p>進 <code>tools/</code> 跑：</p>
+
+  <pre><code>docker compose --env-file .env.trading -f compose.trading.yml up -d broker</code></pre>
+
+  <p>各段：</p>
+  <ul class="compact">
+    <li><code>docker compose</code> — 用 compose 工具</li>
+    <li><code>--env-file .env.trading</code> — 載入剛改的環境變數（<strong>絕對不能漏</strong>）</li>
+    <li><code>-f compose.trading.yml</code> — 哪個 compose 檔</li>
+    <li><code>up -d</code> — 起動、<code>-d</code> 是背景跑</li>
+    <li><code>broker</code> — 只起 broker 一個 service</li>
+  </ul>
 
   <div class="check">
-    看到 <strong>「B4A Broker」</strong> 登入頁面、預設帳號 <code>prn_dashboard</code> / 密碼 <code>admin</code>
+    <code>docker ps</code> 看到一行 <code>broker</code>、status <code>Up X seconds</code>
   </div>
 
-  <div class="step">登入後、第一次會強制改密碼、改一個你記得的</div>
-
-  <div class="check">
-    切到 <strong>📊 儀錶板</strong> tab、應該看到大型 health gauge + 14 個 agent 燈陣
+  <div class="warn">
+    第一次跑會慢（要 build image + 下載 NuGet + 編譯 C#、10-15 分鐘）。後面再跑都秒開。
   </div>
 
-  <div class="info">
-    如果瀏覽器跳「無法連線」、container 還沒起來、等 1 分鐘再試。<code>docker logs b4a-broker --tail 30</code> 看 log 確認。
-  </div>
+  <h3>要起完整 stack（line-worker + 其他 service）</h3>
+  <pre><code># 直接 up、不指定 service 名 = 起所有 service
+docker compose --env-file .env.trading -f compose.trading.yml up -d</code></pre>
 </section>
 
 <!-- 6 -->
-<section id="s7">
-  <h2><span class="num">6</span> 常用 Docker 指令速查</h2>
+<section id="s6">
+  <h2><span class="num">6</span> 確認 dashboard + 跑測試 <span class="time">5min</span></h2>
 
-  <table>
-    <tr><th>場景</th><th>指令</th></tr>
-    <tr>
-      <td>看哪些 container 在跑</td>
-      <td><code>docker ps</code></td>
-    </tr>
-    <tr>
-      <td>看所有 container（包含停掉的）</td>
-      <td><code>docker ps -a</code></td>
-    </tr>
-    <tr>
-      <td>看 container log（最近 50 行）</td>
-      <td><code>docker logs b4a-broker --tail 50</code></td>
-    </tr>
-    <tr>
-      <td>持續看 log（Ctrl+C 離開）</td>
-      <td><code>docker logs b4a-broker -f</code></td>
-    </tr>
-    <tr>
-      <td>進 container 內 bash 看裡面（debug 用）</td>
-      <td><code>docker exec -it b4a-broker bash</code></td>
-    </tr>
-    <tr>
-      <td>停掉某個 container</td>
-      <td><code>docker stop b4a-broker</code></td>
-    </tr>
-    <tr>
-      <td>重啟某個 container</td>
-      <td><code>docker restart b4a-broker</code></td>
-    </tr>
-    <tr>
-      <td>停掉所有 stack 的 container</td>
-      <td><code>docker compose -f compose.trading.yml down</code></td>
-    </tr>
-    <tr>
-      <td>code 改了、要重 build broker image</td>
-      <td><code>docker compose --env-file .env.trading -f compose.trading.yml build broker</code></td>
-    </tr>
-    <tr>
-      <td>build 完套用新 image</td>
-      <td><code>docker compose --env-file .env.trading -f compose.trading.yml up -d --no-deps broker</code></td>
-    </tr>
-  </table>
+  <div class="step">瀏覽器開：
+    <pre><code>http://localhost:5100</code></pre>
+  </div>
+
+  <div class="check">看到 B4A Broker 登入頁、預設 <code>prn_dashboard</code> / <code>admin</code>（第一次登入強制改密碼）</div>
+
+  <h3>跑單元測試（local SDK）</h3>
+
+  <pre><code># 在 repo 根
+dotnet build packages/csharp/ControlPlane.slnx
+
+# 跑單元測試
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+
+# 整合測試（要 broker 在跑）
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5100</code></pre>
+
+  <div class="check">build 0 警告 0 錯誤、test 全 pass</div>
 
   <div class="warn">
-    <strong>記住：「<code>--env-file .env.trading</code> 不能漏」</strong>。漏了 broker 啟動會 crash（master key blank、抓不到 secret）。每次跑 compose 指令都加。
+    <strong>測試後清掉 artifacts</strong>（<code>CLAUDE.md</code> 規定）：
+    <pre><code># 先停 broker
+taskkill //F //IM dotnet.exe
+
+# 刪測試 DB（已 gitignored、不要 commit）
+rm -f packages/csharp/broker/broker.db packages/csharp/broker/broker.db-shm packages/csharp/broker/broker.db-wal</code></pre>
   </div>
 </section>
 
 <!-- 7 -->
+<section id="s7">
+  <h2><span class="num">7</span> 常用 Docker 指令速查</h2>
+
+  <table>
+    <tr><th>場景</th><th>指令</th></tr>
+    <tr><td>看哪些 container 在跑</td><td><code>docker ps</code></td></tr>
+    <tr><td>看全部（含停的）</td><td><code>docker ps -a</code></td></tr>
+    <tr><td>看 broker log（最近 50）</td><td><code>docker logs broker --tail 50</code></td></tr>
+    <tr><td>持續看（Ctrl+C 離）</td><td><code>docker logs broker -f</code></td></tr>
+    <tr><td>進 container 內 bash</td><td><code>docker exec -it broker bash</code></td></tr>
+    <tr><td>停 container</td><td><code>docker stop broker</code></td></tr>
+    <tr><td>重啟</td><td><code>docker restart broker</code></td></tr>
+    <tr><td>停全部 stack</td><td><code>docker compose -f compose.trading.yml down</code></td></tr>
+    <tr><td>code 改完重 build</td><td><code>docker compose --env-file .env.trading -f compose.trading.yml build broker</code></td></tr>
+    <tr><td>build 完套用</td><td><code>docker compose --env-file .env.trading -f compose.trading.yml up -d --no-deps broker</code></td></tr>
+  </table>
+
+  <div class="warn">
+    <strong>「<code>--env-file .env.trading</code> 不能漏」</strong> — 漏了 broker 啟動會 crash（master key blank）。每次 compose 指令都加。
+  </div>
+</section>
+
+<!-- 8 -->
 <section id="s8">
-  <h2><span class="num">7</span> 我卡住了怎麼辦</h2>
+  <h2><span class="num">8</span> 卡住怎麼辦</h2>
 
   <h3>狀況 A：<code>docker ps</code> 顯示 <code>Restarting (139)</code></h3>
   <ol class="compact">
-    <li><code>docker logs b4a-broker --tail 50</code> 看錯訊息</li>
+    <li><code>docker logs broker --tail 50</code> 看錯訊息</li>
     <li>八成是 <code>Broker master key must be configured</code> → 漏了 <code>--env-file</code></li>
-    <li>停掉 + 重起時記得帶 <code>--env-file .env.trading</code></li>
+    <li>停掉重起、記得帶 <code>--env-file .env.trading</code></li>
   </ol>
 
-  <h3>狀況 B：build 失敗、抓不到 NuGet package</h3>
+  <h3>狀況 B：build 失敗、抓不到 NuGet</h3>
   <ol class="compact">
-    <li>檢查網路：<code>ping nuget.org</code></li>
-    <li>如果用 VPN、暫時關掉</li>
-    <li>清 build cache 重來：<code>docker compose ... build --no-cache broker</code></li>
+    <li>檢查網路 / 關 VPN</li>
+    <li>清 cache 重來：<code>docker compose ... build --no-cache broker</code></li>
   </ol>
 
-  <h3>狀況 C：登入頁出來但帳號密碼錯</h3>
+  <h3>狀況 C：登入帳號密碼錯</h3>
   <ol class="compact">
-    <li>預設是 <code>prn_dashboard</code> / <code>admin</code></li>
-    <li>第一次登入會強制改密碼、改完才能用</li>
-    <li>如果忘記密碼、刪 volume 重來：
+    <li>預設 <code>prn_dashboard</code> / <code>admin</code>、第一次登入強制改</li>
+    <li>忘記？刪 volume 重來（會清資料）：
       <pre><code>docker compose -f compose.trading.yml down
-docker volume rm b4a-trading_broker-data
-# 然後重新 up</code></pre>
-      （注意：會清掉所有資料、包含 audit chain）
+docker volume rm $(docker volume ls -q | grep broker-data)
+# 重新 up</code></pre>
     </li>
   </ol>
 
-  <h3>狀況 D：dashboard 上 KPI 全顯示「—」</h3>
-  <ol class="compact">
-    <li>broker 沒接到資料源（worker 沒起來 / health endpoint fail）— 正常、單獨跑 broker 不會有 worker</li>
-    <li>不影響你看 dashboard / admin panel UI</li>
-    <li>之後要全 stack 跑：<code>docker compose ... up -d</code>（不指定 service 名稱）</li>
-  </ol>
+  <h3>狀況 D：dashboard KPI 全顯示「—」</h3>
+  <p>broker 沒接到資料源（worker 沒起 / health endpoint fail）。單獨跑 broker 不會有 worker、屬正常。要全 stack 跑 <code>docker compose ... up -d</code>（不指定 service）。</p>
 
   <h3>狀況 E：完全動不了、想砍掉重來</h3>
-  <pre><code># 停掉所有相關 container
-docker compose -f compose.trading.yml down
-
-# 砍掉 volume（會清資料）
-docker volume rm b4a-trading_broker-data
-
-# 砍掉 image
-docker rmi b4a-broker:latest
-
-# 重新 build + 起
+  <pre><code>docker compose -f compose.trading.yml down
+docker volume rm $(docker volume ls -q | grep broker-data)
+docker rmi $(docker images -q | head -5)  # 砍 image (可選)
 docker compose --env-file .env.trading -f compose.trading.yml up -d broker</code></pre>
 
   <h3>還是不行？</h3>
   <ul class="compact">
-    <li>把 <code>docker ps</code> + <code>docker logs b4a-broker --tail 50</code> 的截圖丟群組</li>
-    <li>講清楚你卡在哪一個 step（文件編號）</li>
-    <li>絕對不要貼 <code>.env.trading</code> 內容（密鑰會外洩）</li>
+    <li>截圖 <code>docker ps</code> + <code>docker logs broker --tail 50</code> 丟群組</li>
+    <li>講清楚卡在第幾章節</li>
+    <li><strong>絕對不要貼 <code>.env.trading</code> 內容</strong>（密鑰會外洩）</li>
   </ul>
 </section>
 
-<section>
-  <h2>🎯 下一步</h2>
+<!-- 9 -->
+<section id="s9">
+  <h2><span class="num">9</span> 讀什麼接著上手</h2>
+
+  <h3>必讀（10 分鐘）</h3>
   <ul class="compact">
-    <li>跑通了 → 看一下 dashboard 各 tab、知道 broker 在幹嘛</li>
-    <li>讀 <code>docs/reports/CurrentArchitectureAndProgress-2026-03-26.md</code>（broker 大架構）</li>
-    <li>跟組長要你能改的小任務（fix typo / 加個 endpoint / 寫個 unit test 都好、最快上手）</li>
+    <li><code>CLAUDE.md</code>（repo root）— 開發規範、build 指令</li>
+    <li><code>docs/reports/CurrentArchitectureAndProgress-2026-03-26.md</code> — 完整架構說明</li>
+  </ul>
+
+  <h3>選讀</h3>
+  <ul class="compact">
+    <li><code>docs/reports/PlatformArchitecture-2026-04-24.md</code> — 平台演進</li>
+    <li><code>docs/reports/Thesis-Ch3-SystemDesign.md</code> — 論文系統設計章</li>
+    <li><code>docs/designs/</code> — 各 component 設計細節</li>
+  </ul>
+
+  <h3>核心 source code（從這 5 個檔開始）</h3>
+  <ul class="compact">
+    <li><code>packages/csharp/broker-core/Services/PolicyEngine.cs</code> — 7 條治理規則（最重要、200 行）</li>
+    <li><code>packages/csharp/broker-core/Services/CapabilityCatalog.cs</code> — 能力 / 授權框架</li>
+    <li><code>packages/csharp/broker-core/Services/AuditService.cs</code> — hash chain 稽核</li>
+    <li><code>packages/csharp/broker-core/Services/LlmProxyService.cs</code> — LLM 集中代理</li>
+    <li><code>packages/csharp/broker/Services/HighLevelCoordinator.cs</code> — LINE chat 主邏輯</li>
+  </ul>
+
+  <h3>第一個任務建議</h3>
+  <p>跟組長要小任務、最快上手的：</p>
+  <ul class="compact">
+    <li>修一個 typo / 文件錯字（熟悉 git workflow）</li>
+    <li>加一個小 unit test（熟悉測試結構）</li>
+    <li>加一個 read-only endpoint（熟悉 broker / endpoint pattern）</li>
   </ul>
 </section>
 
 <footer>
-  Bricks4Agent · Docker onboarding · 給組員 1+2 · 2026-05-16
+  Bricks4Agent · Docker onboarding · 2026-05-16
 </footer>
 
 </main>

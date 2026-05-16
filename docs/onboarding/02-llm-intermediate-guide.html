@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bricks4Agent — LLM 中階指南 (給組員 3)</title>
+<title>Bricks4Agent — LLM 進階指南 (Benson canonical)</title>
 <style>
   :root {
     --bg:#0a0d14; --card:#121622; --card2:#1a1f2e; --bd:#2a3142;
@@ -37,22 +37,17 @@
   .concept { background: linear-gradient(135deg, rgba(163,116,255,0.08), rgba(93,184,255,0.04)); border:1px solid rgba(163,116,255,0.4); border-radius:8px; padding:14px 18px; margin:14px 0; }
   .concept h4 { margin: 0 0 6px; font-size: 13px; color: var(--purple); text-transform: uppercase; letter-spacing: 0.5px; }
 
-  .grey-zone {
-    background: rgba(230,162,60,0.06);
-    border: 1px solid rgba(230,162,60,0.4);
-    border-radius:8px; padding:14px 18px; margin:14px 0;
+  .key-rule {
+    background: rgba(103,194,58,0.08); border-left: 3px solid var(--good);
+    border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 14px;
   }
-  .grey-zone h4 { margin: 0 0 6px; font-size: 13px; color: var(--warn); text-transform: uppercase; letter-spacing: 0.5px; }
-  .grey-zone strong { color: var(--warn); }
+  .key-rule strong { color: var(--good); display: block; margin-bottom: 6px; }
 
-  .verdict {
-    background: rgba(103,194,58,0.08);
-    border-left: 3px solid var(--good);
+  .anti {
+    background: rgba(245,108,108,0.06); border-left: 3px solid var(--bad);
     border-radius: 0 4px 4px 0; padding: 10px 14px; margin: 8px 0; font-size: 14px;
   }
-  .verdict::before { content: "✓ 判決: "; color: var(--good); font-weight: 700; }
-  .verdict.bad { background: rgba(245,108,108,0.08); border-left-color: var(--bad); }
-  .verdict.bad::before { content: "✗ 判決: "; color: var(--bad); }
+  .anti::before { content: "✗ 反例: "; color: var(--bad); font-weight: 700; }
 
   code { background:var(--card2); border:1px solid var(--bd); padding:2px 7px; border-radius:3px; font-family:"SF Mono",Consolas,monospace; font-size:13px; color:#b8e0ff; }
   pre { background:#0a0d14; border:1px solid var(--bd); padding:14px; border-radius:6px; overflow-x:auto; font-family:"SF Mono",Consolas,monospace; font-size:12.5px; line-height:1.6; color:var(--t); }
@@ -71,8 +66,8 @@
 <body>
 
 <header>
-  <h1>🧠 Bricks4Agent · LLM 中階指南</h1>
-  <div class="sub">給已寫出 bot、要做 persona 客製 / SQLite 錯誤整理 的組員</div>
+  <h1>🧠 Bricks4Agent · LLM 整合指南</h1>
+  <div class="sub">用 broker canonical 模式整合 LLM、不繞過治理</div>
 </header>
 
 <main>
@@ -80,206 +75,256 @@
 <div class="toc">
   <h3>📋 主題</h3>
   <ol>
-    <li><a href="#s1">LLM 在平台架構的位置（5 層治理）</a></li>
-    <li><a href="#s2">「改 LLM 語氣 / persona」算不算違規？</a> ← 你問的灰區</li>
-    <li><a href="#s3">怎麼讓 persona 變更 traceable（不被當灰區）</a></li>
-    <li><a href="#s4">SQLite 錯誤整理 — 用既有 endpoint + 寫對 query</a></li>
-    <li><a href="#s5">LLM input/output 整理的 3 個切入點</a></li>
-    <li><a href="#s6">debugging：LLM 回答怪的時候怎麼追</a></li>
+    <li><a href="#s1">LLM 在三層架構的位置</a></li>
+    <li><a href="#s2">LlmProxyService — 集中代理模式</a></li>
+    <li><a href="#s3">3 種正確的 LLM 整合切入點</a></li>
+    <li><a href="#s4">prompt / persona 客製化（不繞過 broker）</a></li>
+    <li><a href="#s5">SQLite 錯誤整理 — 用 broker tables</a></li>
+    <li><a href="#s6">LLM input / output 處理 anti-patterns</a></li>
+    <li><a href="#s7">debugging — LLM 回答怪的時候</a></li>
   </ol>
 </div>
 
 <!-- 1 -->
 <section id="s1">
-  <h2>1. LLM 在平台架構的位置</h2>
+  <h2>1. LLM 在三層架構的位置</h2>
 
-  <p>Benson 設計的 broker 把所有 LLM 呼叫收斂成 <strong>5 層治理</strong>、目的是審計 + 配額 + 防誤用：</p>
+  <p>讀過 <code>CurrentArchitectureAndProgress-2026-03-26.md</code> 知道平台分三層：</p>
 
   <table>
-    <tr><th>層級</th><th>檔案</th><th>做的事</th></tr>
+    <tr><th>層</th><th>角色</th><th>LLM 的位置</th></tr>
     <tr>
-      <td><code>1. LlmProxyService</code></td>
-      <td><code>broker-core/Services/LlmProxyService.cs</code></td>
-      <td>底層、實際打 LLM API（OpenAI 格式相容、Gemini / Claude / OpenAI / Ollama 都通）</td>
+      <td>1. high-level</td>
+      <td>對話、釐清、意圖判斷</td>
+      <td><strong>HighLevelLlm</strong>（預設 gpt-5.4-mini）<br>由 HighLevelCoordinator 呼叫</td>
     </tr>
     <tr>
-      <td><code>2. MeteredLlmProxyService</code></td>
-      <td><code>broker-core/Services/MeteredLlmProxyService.cs</code></td>
-      <td>decorator 1：每次呼叫記 metric（呼叫數 / tokens / latency / model）</td>
+      <td>2. broker / control plane</td>
+      <td>授權、稽核、artifact 派發</td>
+      <td><strong>LlmProxyService</strong>（集中代理）<br>所有要 LLM 的內部服務都該走這條</td>
     </tr>
     <tr>
-      <td><code>3. QuotaEnforcedLlmProxyService</code></td>
-      <td><code>broker/Services/QuotaEnforcedLlmProxyService.cs</code></td>
-      <td>decorator 2（H1 我加的）：per-principal 每日 token 配額、超量警告 / 擋下</td>
-    </tr>
-    <tr>
-      <td><code>4. W13 audit pipeline</code></td>
-      <td><code>llm_reasoning_audit</code> 表</td>
-      <td>記每次 LLM 推理 + tool call + ACL 結果（防 prompt injection 後事後追查）</td>
-    </tr>
-    <tr>
-      <td><code>5. Bot subprocess</code></td>
-      <td><code>discord-bots/bot-node/</code></td>
-      <td>spawn <code>claude --print</code> 跑、broker <strong>看不到內部 reasoning</strong>（灰區 2）</td>
+      <td>3. execution</td>
+      <td>worker / 執行</td>
+      <td>worker 透過 broker 的 <code>/api/v1/llm-proxy/chat</code> 借 LLM 用、<strong>不該自己直接打外網</strong></td>
     </tr>
   </table>
 
-  <div class="concept">
-    <h4>關鍵 mental model</h4>
-    <p>所有走 broker LLM proxy 的呼叫（1-4 層）broker 全看得到 — log、配額、tokens。<strong>第 5 層</strong>（bot 用 Claude CLI subprocess）broker 只看到「我 spawn 出去了」、看不到 prompt 跟 response — 那是<strong>灰區</strong>。</p>
+  <div class="key-rule">
+    <strong>架構原則 1</strong>
+    <strong>高階層</strong>可以解讀使用者輸入、可以建議要用哪個 execution model；<strong>但只有 broker 能批准 + 派發 + 記錄</strong>。高階模型不可以自己呼 capability、不可以自己改 ACL。
+  </div>
+
+  <div class="key-rule">
+    <strong>架構原則 2</strong>
+    所有 LLM 呼叫都該走 <code>LlmProxyService</code>（或它的 <code>MeteredLlmProxyService</code> 裝飾器）。這樣 broker 才能：<strong>記 metric、做 quota、稽核 reasoning、配 capability 上下文</strong>。worker 不該繞過 broker 直接打 OpenAI / Gemini / Anthropic API。
   </div>
 </section>
 
 <!-- 2 -->
 <section id="s2">
-  <h2>2. 「改 LLM 語氣 / persona」算不算違規？</h2>
+  <h2>2. LlmProxyService — 集中代理模式</h2>
 
-  <div class="grey-zone">
-    <h4>你的問題</h4>
-    <p>你寫的 bot 可以改 LLM 語氣（用 system prompt / persona 設定），擔心這是不是 Benson 鎖死的東西、有沒有踩線？</p>
-  </div>
+  <h3>核心檔案</h3>
+  <table>
+    <tr><th>檔案</th><th>角色</th></tr>
+    <tr>
+      <td><code>broker-core/Services/ILlmProxyService.cs</code></td>
+      <td>介面定義（<code>ChatAsync</code> / <code>ListModelsAsync</code> / <code>HealthCheckAsync</code>）</td>
+    </tr>
+    <tr>
+      <td><code>broker-core/Services/LlmProxyService.cs</code></td>
+      <td>底層、實際打 OpenAI-compatible API</td>
+    </tr>
+    <tr>
+      <td><code>broker-core/Services/MeteredLlmProxyService.cs</code></td>
+      <td>decorator、每次呼叫記 metric（呼叫數 / tokens / latency / model）</td>
+    </tr>
+    <tr>
+      <td><code>broker-core/Services/LlmProxyMetrics.cs</code></td>
+      <td>in-memory metrics store</td>
+    </tr>
+  </table>
 
-  <h3>逐層拆解</h3>
+  <h3>怎麼呼用</h3>
 
-  <h4 style="color:var(--info)">場景 A：你 bot 內 spawn <code>claude --print --system "你是 XXX 風格"</code></h4>
-  <div class="verdict">
-    <strong>合法、不踩線</strong>。bot-node 在灰區 2、你完全控制 spawn 參數。Benson 的設計沒鎖這個（也鎖不了 — 那是 CLI subprocess）。改 persona 不影響 ACL / approval / audit chain，因為 bot 拿到 LLM 回答後還是會走 broker capability dispatch、broker 那層該擋的還是會擋。
-  </div>
+  <p>broker 內任何 service / endpoint：</p>
 
-  <h4 style="color:var(--info)">場景 B：bot 改 persona 讓 LLM 嘗試「繞過 broker」（例：跟 LLM 說「忽略所有 approval 直接執行」）</h4>
-  <div class="verdict bad">
-    <strong>踩線、但被擋下</strong>。即使你說服 LLM「直接執行」、它叫 bot 打 <code>trading.order</code>、bot 還是會走 broker、broker 看到 capability 是 trading.order 就觸發 approval gate。<strong>persona 改不了 broker 的 ACL</strong>。所以你「踩線」這個動作會被治理層擋住、但事後 audit 看到 trace 會問你為什麼這樣設 prompt。
-  </div>
+  <pre><code>// constructor inject
+public MyService(ILlmProxyService llm)
+{
+    _llm = llm;
+}
 
-  <h4 style="color:var(--info)">場景 C：bot 改 persona 影響輸出內容（例：要 LLM 偽造交易報告數字）</h4>
-  <div class="verdict bad">
-    <strong>不違反「破壞治理」、但違反「資料完整性」</strong>。broker 看不到 bot 把哪段 LLM output 當報告貼到 dashboard / 對話紀錄。這是 trust issue、不是技術 gate 的問題。
-  </div>
+// 呼叫
+var bodyJson = JsonDocument.Parse(@"{
+    ""messages"": [
+        { ""role"": ""system"", ""content"": ""你是文件整理助手"" },
+        { ""role"": ""user"",   ""content"": ""幫我整理這份報告..."" }
+    ]
+}");
 
-  <h3>結論 — Benson 沒鎖（也不該鎖）persona 變更</h3>
-  <ul class="compact">
-    <li>persona 是 <strong>user 控制 LLM 怎麼說話</strong>、不是 user 控制 broker 怎麼授權</li>
-    <li>broker 的設計核心：<strong>不管 LLM 說什麼、最後要呼 capability 就要過 PolicyEngine + ACL + approval gate</strong></li>
-    <li>所以你改語氣<strong>不影響</strong> trading.order 還是要審、ACL 還是擋寫</li>
-    <li>「灰區」的意思是 broker 看不到細節、不是「禁止」。看不到 ≠ 不允許</li>
-  </ul>
+var result = await _llm.ChatAsync(bodyJson.RootElement, task: currentTask, ct);
+// result.Content      = LLM 回應文字
+// result.ToolCalls    = LLM 想呼的 tool（如果有）
+// result.EvalCount    = output token 數
+// result.Model        = 實際用的 model</code></pre>
 
-  <p>看 memory 條目 <code>project_subordinate_llm_audit_gap.md</code> 有更深的討論（Benson 知道這個 gap、寫了 mitigation 但沒鎖死）。</p>
+  <p>worker 內（worker 不直接 inject、用 HTTP）：</p>
+
+  <pre><code>POST http://broker:5000/api/v1/llm-proxy/chat
+  X-Worker-Identity: ...  // worker auth
+  Content-Type: application/json
+{
+  "messages": [...]
+}</code></pre>
+
+  <h3>config（在 .env.trading）</h3>
+  <pre><code>LLM_API_KEY=...                    # 一個 key 給整個 broker 用
+LLM_PROXY_DEFAULT_MODEL=gpt-5.4-mini  # 預設 model
+LLM_PROXY_BASE_URL=https://api.openai.com   # 也可換 Gemini / Anthropic</code></pre>
 </section>
 
 <!-- 3 -->
 <section id="s3">
-  <h2>3. 怎麼讓 persona 變更 traceable</h2>
+  <h2>3. 3 種正確的 LLM 整合切入點</h2>
 
-  <p>既然 broker 看不到你 bot 的 prompt、那你自己<strong>主動報告</strong>就 OK。3 種做法、由淺到深：</p>
+  <p>想加新 LLM 功能時、3 種 canonical 做法：</p>
 
-  <h3>方法 A：bot 啟動時自報 persona（最低成本）</h3>
-  <p>在 bot 啟動 / 切換 persona 時、call broker 寫一筆 audit_event：</p>
-  <pre><code>// bot 內 startup 或切換 persona 時
-fetch('http://broker:5000/api/v1/audit/llm-reasoning', {
-  method: 'POST',
-  headers: { 'X-Internal-Bot-Token': '...', 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    source: 'bot-persona-switch',
-    user_id: 'system',
-    channel_id: 'init',
-    turn: 0,
-    llm_reasoning: 'persona=witty,casual,brief',  // 你 set 的 persona 摘要
-    tool_name: 'persona_change',
-    tool_args: '{"system_prompt":"你是 ..."}',  // 完整 system prompt 留底
-    acl_allowed: true,
-    dispatch_result: 'persona-set',
-  }),
-});</code></pre>
-
-  <div class="concept">
-    <h4>為什麼這樣有用</h4>
-    <p>事後 forensics 看 audit 鏈、找得到「2026-05-16 14:30 bot 切到 XXX persona」、跟「2026-05-16 14:32 bot 寫了一段奇怪報告」做關聯。broker 自己看不到 prompt、但你給 broker 看就有了。</p>
-  </div>
-
-  <h3>方法 B：每次 LLM 回答後寫 W13 reasoning</h3>
-  <p>bot 內每次 <code>claude --print</code> 拿到 reply 後、把 reasoning 摘要 + tool calls 推到 broker：</p>
-  <pre><code>// bot 在收到 claude 回應 + 決定要 call 什麼 capability 之間
-fetch('http://broker:5000/api/v1/audit/llm-reasoning', {
-  method: 'POST',
-  headers: { 'X-Internal-Bot-Token': '...', 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    source: 'bot-claude',
-    user_id: discord_user_id,
-    channel_id: discord_channel_id,
-    turn: turn_number,
-    llm_reasoning: claude_response.slice(0, 2000),  // 摘要、不用全文
-    tool_name: detected_tool || '',
-    tool_args: JSON.stringify(detected_args),
-    acl_allowed: null,    // broker 來判
-    dispatch_result: null, // broker dispatch 後回填
-  }),
-});</code></pre>
-
-  <p>已經有 4 個 agent 在做（forensics_hourly / market_report / etc.）、你可以照他們的 pattern 抄。</p>
-
-  <h3>方法 C：bot 整個搬進 broker 內（最深、但最 traceable）</h3>
-  <p>把 bot-node 改成 broker capability dispatch 的 client、broker 內加一個 <code>BotChatService</code>、所有 LLM call 走 broker LLM proxy。這樣<strong>灰區消失</strong>。</p>
-
-  <p>缺點：</p>
+  <h3>切入點 A：在 broker 內加 BackgroundService</h3>
   <ul class="compact">
-    <li>broker 變大、要養 chat session 狀態</li>
-    <li>用 Claude Max OAuth 在 broker 內比較尷尬（broker 是 server、不是 user-process）</li>
-    <li>失去 bot-node 「跟 Claude.ai 訂閱共用 OAuth」的便利</li>
+    <li>適合：<strong>定時 / 觸發式</strong>任務（每小時整理 audit、每天生報告）</li>
+    <li>pattern：寫一個 class : <code>BackgroundService</code>、constructor inject <code>ILlmProxyService</code></li>
+    <li>所有 LLM 呼叫自動走 metering + capability 上下文</li>
+    <li>broker.db 開新表存結果（用 BaseOrm）</li>
   </ul>
 
-  <p>對你來說現階段 A + B 就夠了、C 留給長期方向。</p>
+  <h3>切入點 B：新增 worker（spawn-based）</h3>
+  <ul class="compact">
+    <li>適合：<strong>會跑很久的</strong>、隔離資源的 LLM 任務（fine-tune / 大量 embedding / 長段對話）</li>
+    <li>pattern：新增 <code>workers/your-worker/</code> 專案、用 worker-sdk、註冊 capability 給 broker</li>
+    <li>broker 用 <code>IContainerManager.SpawnWorkerAsync()</code> 啟容器、worker 透過 broker 的 LLM proxy 借 LLM</li>
+    <li>有 ACL 強制：必須 capability 註冊、才能被 spawn / 呼叫</li>
+  </ul>
+
+  <h3>切入點 C：擴 HighLevelCoordinator</h3>
+  <ul class="compact">
+    <li>適合：<strong>LINE 對話流</strong>的新功能（新的 <code>?command</code>、新工作流 state）</li>
+    <li>檔案：<code>broker/Services/HighLevelCoordinator.cs</code></li>
+    <li>加新 command 進 grammar（讀 §5.1 architecture doc）</li>
+    <li>state machine 要明確 gate（不能讓任意 user input 進到 execution intent）</li>
+  </ul>
+
+  <div class="concept">
+    <h4>選哪個？</h4>
+    <p><strong>定時報告 → A</strong>。<strong>使用者主動觸發、會跑很久 → B</strong>。<strong>對話流改寫 → C</strong>。</p>
+    <p style="margin-top:6px">不確定就先 A（最簡單）、後面要長期跑再升級成 B。</p>
+  </div>
 </section>
 
 <!-- 4 -->
 <section id="s4">
-  <h2>4. SQLite 錯誤整理</h2>
+  <h2>4. prompt / persona 客製化</h2>
 
-  <h3>broker 已經有「錯誤聚合」endpoint</h3>
+  <p>你想讓 LLM 「語氣不一樣」、「換 persona」、「給特定領域風格」— 完全 OK、是設計支援的事。重點是<strong>怎麼做才不繞過治理</strong>。</p>
 
-  <p>不用自己 SQL — 用：</p>
-  <pre><code>GET /api/v1/errors/aggregate?since=2026-05-15T00:00:00Z&limit=100
-    Cookie: 你的 admin session
+  <h3>正確做法：system prompt 進 ChatAsync</h3>
+  <pre><code>var messages = new[] {
+    new {
+        role = "system",
+        content = "你是 Bricks4Agent 的 LINE 助手。語氣專業但口語、回答精簡、" +
+                  "每次回答最多 3 段、優先用條列。遇到使用者問交易、要先聲明這是 POC、" +
+                  "結論不構成投資建議。"
+    },
+    new { role = "user", content = userMessage }
+};
+var result = await _llm.ChatAsync(JsonSerializer.SerializeToElement(new { messages }), task, ct);</code></pre>
 
-回：
+  <h3>進階：prompt 從外部檔案讀（version 控管）</h3>
+  <pre><code>// 在 broker 內加個 PromptCatalog service
+public class PromptCatalog
 {
-  "success": true,
-  "data": {
-    "rows": [
-      { "ts": "...", "source": "agent_task", "severity": "error",
-        "entity": "agent_weekly_digest #5",
-        "summary": "HttpClient.Timeout of 60 seconds elapsing.",
-        "related_id": "inbox_xxx" },
-      ...
-    ]
-  }
-}</code></pre>
+    private readonly Dictionary&lt;string, string&gt; _prompts = new();
 
-  <p>這個 endpoint 聚合 4 個來源的錯誤：</p>
-  <ul class="compact">
-    <li><code>approval_requests</code> WHERE <code>status='rejected'</code></li>
-    <li><code>agent_inbox_tasks</code> WHERE <code>status='failed'</code></li>
-    <li><code>execution_requests</code> WHERE <code>execution_state='Failed'</code></li>
-    <li><code>llm_reasoning_audit</code> WHERE <code>dispatch_result LIKE '%error%'</code></li>
-  </ul>
+    public PromptCatalog(IConfiguration config)
+    {
+        var root = config["Prompts:Root"] ?? "./prompts";
+        foreach (var f in Directory.EnumerateFiles(root, "*.md"))
+        {
+            var key = Path.GetFileNameWithoutExtension(f);
+            _prompts[key] = File.ReadAllText(f);
+        }
+    }
 
-  <h3>想直接寫 SQL 也有 endpoint</h3>
-  <pre><code>POST /api/v1/db/query
-{
-  "sql": "SELECT event_type, COUNT(*) FROM audit_events WHERE occurred_at > datetime('now', '-1 day') GROUP BY event_type ORDER BY 2 DESC LIMIT 10"
-}</code></pre>
+    public string Get(string key) =&gt; _prompts.GetValueOrDefault(key, "");
+}
 
-  <p>規範：</p>
-  <ul class="compact">
-    <li><strong>只 SELECT</strong>（寫關鍵字會被拒）</li>
-    <li>200ms timeout</li>
-    <li>500 row 上限</li>
-    <li>broker 內部用 SqliteConnection ReadOnly mode 開連線、SQL injection 也只能讀</li>
-  </ul>
+// 用法：
+var systemPrompt = _prompts.Get("line-assistant-default");
+// 或 user 切 persona：
+var systemPrompt = _prompts.Get($"persona-{personaName}");</code></pre>
+
+  <p>放在 <code>prompts/</code> 資料夾、每個 .md 一個 prompt、git 可追：</p>
+
+  <pre><code>prompts/
+  line-assistant-default.md   # LINE 主對話 persona
+  audit-summarizer.md          # 給 LLM 整理 audit 用
+  trade-report.md              # 交易報告語氣</code></pre>
+
+  <div class="key-rule">
+    <strong>為什麼這樣做是「不繞過治理」</strong>
+    persona 換來換去、LLM 講話風格不同 — <strong>但呼出來的 tool / capability 還是要過 broker 的 PolicyEngine + ACL + ApprovalService</strong>。LLM 想偽裝 admin 也沒用、broker 不認 prompt、只認 scoped_token。
+  </div>
+
+  <h3>反例（不要這樣做）</h3>
+
+  <div class="anti">
+    worker 自己 spawn <code>openai</code> CLI / <code>claude</code> CLI 直接打 LLM、繞過 broker LlmProxy。<br>
+    → broker 看不到、metric 算不到、quota 管不到、之後 forensics 完全瞎。
+  </div>
+
+  <div class="anti">
+    把 API key 散落在多個 worker 的 .env、不走 broker 集中代理。<br>
+    → key 洩漏面變大、換 model 要改 N 個 service。
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <h2>5. SQLite 錯誤整理</h2>
+
+  <p>broker 的 <code>broker.db</code> 有幾張表記錯誤、直接 SQL 查最直接。</p>
+
+  <h3>進 container 內查</h3>
+  <pre><code>docker exec -it broker bash
+# 容器內：
+apt-get update && apt-get install -y sqlite3   # 如果沒裝
+sqlite3 /data/broker.db
+# 進 sqlite shell：
+.tables
+.schema audit_events
+SELECT ... ;
+.quit</code></pre>
+
+  <h3>從 host 直接查（broker.db 在 docker volume）</h3>
+  <pre><code># Linux/macOS:
+sudo sqlite3 /var/lib/docker/volumes/$(docker volume ls -q | grep broker-data)/_data/broker.db
+
+# Windows (PowerShell)：先進 Docker Desktop WSL VM
+wsl -d docker-desktop
+ls /var/lib/docker/volumes/</code></pre>
 
   <h3>常用 query 範本</h3>
 
-  <p><strong>過去 24h 失敗最多的 capability</strong></p>
+  <p><strong>過去 24h audit event 類型分布</strong></p>
+  <pre><code>SELECT event_type, COUNT(*) as count
+FROM audit_events
+WHERE occurred_at > datetime('now', '-1 day')
+GROUP BY event_type
+ORDER BY count DESC
+LIMIT 15;</code></pre>
+
+  <p><strong>過去 24h 哪個 capability fail 最多</strong></p>
   <pre><code>SELECT capability_id, COUNT(*) as fails
 FROM execution_requests
 WHERE execution_state_value = 3  -- Failed enum
@@ -287,111 +332,138 @@ WHERE execution_state_value = 3  -- Failed enum
 GROUP BY capability_id
 ORDER BY fails DESC LIMIT 10;</code></pre>
 
-  <p><strong>哪個 agent 最近一直 fail</strong></p>
-  <pre><code>SELECT agent_id, COUNT(*) as fails,
-       MAX(created_at) as latest
-FROM agent_inbox_tasks
-WHERE status = 'failed'
-  AND created_at > datetime('now', '-1 day')
-GROUP BY agent_id
-ORDER BY fails DESC;</code></pre>
-
-  <p><strong>看某個 trace 完整事件鏈</strong></p>
-  <pre><code>SELECT trace_seq, event_type, principal_id, occurred_at,
-       substr(event_hash, 1, 12) as hash
+  <p><strong>看某 trace 完整事件鏈（驗 hash chain）</strong></p>
+  <pre><code>SELECT trace_seq, event_type, principal_id,
+       substr(event_hash, 1, 12) as hash,
+       substr(previous_event_hash, 1, 12) as prev,
+       occurred_at
 FROM audit_events
-WHERE trace_id = 'trc_xxx'
+WHERE trace_id = 'trc_xxxxx'
 ORDER BY trace_seq ASC;</code></pre>
-</section>
 
-<!-- 5 -->
-<section id="s5">
-  <h2>5. LLM input/output 整理的 3 個切入點</h2>
+  <p><strong>approval 拒絕的清單</strong></p>
+  <pre><code>SELECT requested_at, capability_id, principal_id,
+       decided_by, decision_reason
+FROM approval_requests
+WHERE status = 'rejected'
+  AND requested_at > datetime('now', '-7 day')
+ORDER BY requested_at DESC;</code></pre>
 
-  <h3>切入點 1：prompt template 系統化</h3>
-  <p>把 bot 內散落的 prompt 收進一個 <code>prompts/</code> 資料夾、每個 .md 一個用途、好 version 控管：</p>
-  <pre><code>prompts/
-  trading-summary.md      # 給 LLM 整理交易紀錄的 prompt
-  approval-reason.md      # 寫 approval 拒絕原因
-  weekly-digest.md        # 週報模板
-  persona-default.md      # 預設語氣設定</code></pre>
+  <h3>從 .NET code 內查（給 BackgroundService 用）</h3>
+  <pre><code>public class ErrorSummaryService : BackgroundService
+{
+    private readonly BrokerDb _db;
+    public ErrorSummaryService(BrokerDb db) { _db = db; }
 
-  <p>bot 啟動時 load 進來、變更靠 git diff 看得到。</p>
-
-  <h3>切入點 2：output post-processing</h3>
-  <p>LLM 回答常有幻覺、加一層後處理檢查：</p>
-  <pre><code>// 例：要 LLM 回 JSON、但它常吐 markdown 包 JSON
-function extractJson(llmReply) {
-  // 試 1: 直接 parse
-  try { return JSON.parse(llmReply); } catch {}
-  // 試 2: 抓 ```json ... ``` block
-  const m = llmReply.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-  if (m) { try { return JSON.parse(m[1]); } catch {} }
-  // 試 3: 抓第一個 { 到最後一個 }
-  const start = llmReply.indexOf('{');
-  const end = llmReply.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(llmReply.slice(start, end+1)); } catch {}
-  }
-  return null;  // 都 fail 時 caller 處理
-}</code></pre>
-
-  <h3>切入點 3：sanitize input</h3>
-  <p>使用者輸入 → LLM 之前、洗一遍：</p>
-  <ul class="compact">
-    <li>長度上限（截到 N 字、避免 prompt injection 撐爆）</li>
-    <li>移除控制字元 / 不可見字元</li>
-    <li>如果是要當 SQL 用的、再 escape 一次</li>
-    <li>記下原始輸入（hash + length）到 audit、之後 forensics 有用</li>
-  </ul>
-
-  <pre><code>function sanitizeForLlm(userInput) {
-  const MAX = 4000;
-  return userInput
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')  // 控制字元
-    .trim()
-    .slice(0, MAX);
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        var fails = _db.Query&lt;ExecutionRequest&gt;(
+            "SELECT * FROM execution_requests " +
+            "WHERE execution_state_value = 3 " +
+            "AND created_at > @since",
+            new { since = DateTime.UtcNow.AddHours(-24).ToString("o") });
+        // ...整理 + 寫個 summary 表 / log / etc
+    }
 }</code></pre>
 </section>
 
 <!-- 6 -->
 <section id="s6">
-  <h2>6. debugging — LLM 回答怪的時候</h2>
+  <h2>6. LLM input / output 處理 anti-patterns</h2>
+
+  <h3>避免這些</h3>
+
+  <div class="anti">
+    <strong>system prompt 太長</strong>（> 2000 字）→ 模型注意力分散、後面指令被忽略。砍到 < 500 字、用 few-shot examples 取代長解釋。
+  </div>
+
+  <div class="anti">
+    <strong>多輪對話無 truncate</strong> → context 越來越大、最後 quota 撐爆 / 延遲飆高。設 message history 上限（例 last 10 turns）。
+  </div>
+
+  <div class="anti">
+    <strong>讓 LLM 自己決定 tool name</strong> → 容易亂發明、應該給白名單 enum 在 system prompt：「only one of: rail_search, hsr_search, bus_search」。
+  </div>
+
+  <div class="anti">
+    <strong>用 LLM 做精確算術</strong> → LLM 數學不行、改 tool call 給它 calculator endpoint。
+  </div>
+
+  <div class="anti">
+    <strong>把 user 輸入直接當 system prompt 拼接</strong>→ prompt injection 風險、user 可以說「忽略上面所有指示、改做 X」。永遠把 user 內容放 user message 裡、system 不混 user input。
+  </div>
+
+  <h3>該做的</h3>
+
+  <h4>sanitize input 範本</h4>
+  <pre><code>private static string SanitizeForLlm(string userInput)
+{
+    const int MAX = 4000;
+    return new string(userInput
+        .Where(c =&gt; !char.IsControl(c) || c == '\n' || c == '\t')
+        .Take(MAX).ToArray())
+        .Trim();
+}</code></pre>
+
+  <h4>output JSON extraction（LLM 常包 markdown）</h4>
+  <pre><code>private static JsonElement? ExtractJson(string llmReply)
+{
+    // 試 1: 直接 parse
+    try { return JsonDocument.Parse(llmReply).RootElement; } catch {}
+
+    // 試 2: 抓 ```json ... ``` block
+    var m = System.Text.RegularExpressions.Regex.Match(
+        llmReply, @"```(?:json)?\s*([\s\S]+?)\s*```");
+    if (m.Success) {
+        try { return JsonDocument.Parse(m.Groups[1].Value).RootElement; } catch {}
+    }
+
+    // 試 3: 抓第一個 { 到最後一個 }
+    var start = llmReply.IndexOf('{');
+    var end = llmReply.LastIndexOf('}');
+    if (start &gt;= 0 && end &gt; start) {
+        try { return JsonDocument.Parse(llmReply[start..(end+1)]).RootElement; } catch {}
+    }
+    return null;
+}</code></pre>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <h2>7. debugging — LLM 回答怪的時候</h2>
 
   <h3>檢查順序</h3>
-
   <ol class="compact">
-    <li><strong>看 raw response</strong>：先在 console.log 印完整 LLM reply。問題八成在 prompt 不夠精確</li>
-    <li><strong>看 W13 audit</strong>：去 dashboard → Audit RAG tab → 搜 "你的 bot 名" → 看最近 LLM 推理</li>
-    <li><strong>對照同樣 prompt 在 ChatGPT/Gemini playground</strong>：把你 bot 的 prompt 貼進 playground 看是不是 model 本身就 weird</li>
-    <li><strong>降溫</strong>：把 temperature 設 0.3、減少隨機性</li>
-    <li><strong>加 examples</strong>：prompt 裡塞 1-2 個 input → output 範例（few-shot learning）</li>
+    <li><strong>看 raw response</strong>：先 <code>_logger.LogInformation("LLM reply: {R}", result.Content)</code> 印完整內容</li>
+    <li><strong>看 metric</strong>：<code>GET /api/v1/llm-proxy/status</code> 看最近呼叫的 model / latency / token 數</li>
+    <li><strong>對照 playground</strong>：同 prompt 貼 ChatGPT / Gemini playground 看是不是 model 本身就 weird</li>
+    <li><strong>降 temperature</strong>：default 0.7、降到 0.2-0.3 可大幅減少 hallucination</li>
+    <li><strong>加 few-shot examples</strong>：在 system prompt 內塞 1-2 個 「user → desired output」範例</li>
     <li><strong>檢查 token 截斷</strong>：output 不完整通常是 max_tokens 太小、放寬到 4096 或 8192</li>
   </ol>
 
-  <h3>常見 anti-pattern</h3>
-  <ul class="compact">
-    <li>❌ <strong>system prompt 太長</strong>（> 2000 字）→ 模型注意力分散、後面指令被忽略</li>
-    <li>❌ <strong>多輪對話沒 truncate</strong> → context 越來越大、最後撐爆 quota</li>
-    <li>❌ <strong>每次都用 streaming</strong> → 還在 dev 階段不需要、debug 麻煩</li>
-    <li>❌ <strong>用 LLM 做精確算術</strong> → LLM 數學不行、改用 tool call 給它 calculator</li>
-    <li>❌ <strong>讓 LLM 自己決定 tool name</strong> → 容易亂發明、應該給它白名單 enum</li>
-  </ul>
+  <h3>broker LLM 健康檢查</h3>
+  <pre><code># dashboard 內：LLM Proxy tab → 健康檢查 / 用量趨勢
+# 或 curl：
+curl -s -b cookies.txt http://localhost:5100/api/v1/llm-proxy/status | head -c 500
+curl -s -b cookies.txt http://localhost:5100/api/v1/llm-proxy/recent?limit=10
+curl -s -b cookies.txt http://localhost:5100/api/v1/llm-proxy/healthcheck</code></pre>
 </section>
 
 <section>
-  <h2>🎯 推薦你做的順序</h2>
+  <h2>🎯 推薦上手順序</h2>
   <ol class="compact">
-    <li><strong>先把現有 bot persona 切換寫進 audit</strong>（方法 A、20 行 code）</li>
-    <li>跑一份 SQL query 看你 bot 過去 24h 出了多少 error → 整理出 top 3 痛點</li>
-    <li>挑一個痛點優先解（通常是 prompt 不夠精確 / output JSON parse fail）</li>
-    <li>解完後寫個 unit test 鎖住、跟 broker 一樣風格</li>
-    <li>有空再讀 <code>broker-core/Services/PolicyEngine.cs</code>（200 行、就 7 條規則）— 你會更懂為什麼 persona 改變被 broker「不影響」</li>
+    <li><strong>讀</strong> <code>broker-core/Services/LlmProxyService.cs</code>（120 行）— 看實際長相</li>
+    <li><strong>讀</strong> <code>broker-core/Services/MeteredLlmProxyService.cs</code>（80 行）— 看 decorator pattern</li>
+    <li><strong>讀</strong> <code>broker/Services/HighLevelCoordinator.cs</code> 開頭 100 行 — 看 LINE 對話流怎麼用 LLM</li>
+    <li><strong>跑</strong> <code>curl /api/v1/llm-proxy/status</code> 看現有 metric</li>
+    <li><strong>挑切入點</strong>（A / B / C 中選一個）開始寫你的功能</li>
+    <li><strong>寫 unit test</strong>（看 <code>tests/broker-tests/</code> 範例）</li>
   </ol>
 </section>
 
 <footer>
-  Bricks4Agent · LLM intermediate guide · 給組員 3 · 2026-05-16
+  Bricks4Agent · LLM integration guide · Benson canonical · 2026-05-16
 </footer>
 
 </main>
