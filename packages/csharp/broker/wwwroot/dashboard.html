@@ -337,10 +337,18 @@
 
   <!-- Live event stream -->
   <section id="liveBlock">
-    <div class="sec-title"><span class="dot"></span> Live Audit Stream</div>
+    <div class="sec-title">
+      <span class="dot"></span> Live Audit Stream
+      <span style="flex:1"></span>
+      <label style="font-size:11px;color:var(--td);font-weight:400;text-transform:none;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="liveShowApi" style="margin:0">
+        <span>show API noise</span>
+      </label>
+    </div>
     <div class="live-status">
       <span id="liveConnStatus" class="ldis">● disconnected</span>
-      · <span id="liveCount">0</span> events buffered
+      · <span id="liveCount">0</span> events
+      · <span id="liveFilteredCount" style="color:var(--td)">0 hidden</span>
     </div>
     <div class="live-feed" id="liveFeed">
       <div style="color:var(--td);text-align:center;padding:20px;font-size:11px">connecting…</div>
@@ -452,9 +460,27 @@ const AGENT_DEFS = [
 
 // ─────── Health gauge (ECharts) ───────
 const gaugeChart = echarts.init(document.getElementById('healthGauge'));
+const healthHistory = [];  // last 60 samples ≈ 5min @ 5s refresh
 function renderGauge(score) {
   const color = score >= 80 ? '#67c23a' : score >= 50 ? '#e6a23c' : '#f56c6c';
+  // delta vs 5min ago
+  const old = healthHistory.length >= 12 ? healthHistory[healthHistory.length - 12] : null;
+  const delta = old != null ? score - old : null;
+  const deltaTxt = delta == null ? '' : (delta > 0 ? `▲ +${delta}` : delta < 0 ? `▼ ${delta}` : '◆ 0');
+  const deltaColor = delta == null ? '#6b7388' : delta > 0 ? '#67c23a' : delta < 0 ? '#f56c6c' : '#6b7388';
   gaugeChart.setOption({
+    graphic: delta == null ? [] : [{
+      type: 'text',
+      left: 'center',
+      bottom: '18%',
+      style: {
+        text: `${deltaTxt} vs 5min ago`,
+        fill: deltaColor,
+        fontSize: 14,
+        fontWeight: 600,
+        font: 'bold 14px "SF Mono", Consolas, monospace',
+      },
+    }],
     series: [{
       type: 'gauge',
       startAngle: 200,
@@ -593,8 +619,35 @@ function updateTicker() {
 }
 setInterval(updateTicker, 250);
 
+// ─────── Audio alert（Web Audio API、不需檔案）───────
+let audioCtx = null;
+function beep(freq = 880, ms = 200, vol = 0.15) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = vol;
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    setTimeout(() => { osc.stop(); }, ms);
+  } catch {}
+}
+function alertSiren() {
+  // 3 短 beep 模擬警示
+  beep(1000, 150); setTimeout(() => beep(800, 150), 200); setTimeout(() => beep(1000, 200), 400);
+}
+let lastKillState = null;
+let lastRoState = null;
+
 // ─────── Banner (kill switch / readonly) ───────
 function setBanner(kill, ro) {
+  // edge-trigger audio when state flips OFF → ON
+  if (lastKillState === false && kill === true) alertSiren();
+  if (lastRoState === false && ro === true) beep(660, 300, 0.10);
+  lastKillState = kill;
+  lastRoState = ro;
   const b = document.getElementById('banner');
   if (kill) {
     b.className = 'banner kill';
@@ -622,15 +675,87 @@ function renderAgents(statusMap) {
 
     const card = document.createElement('div');
     card.className = 'agent-card ' + cls;
-    card.title = `${a.id}\nstatus: ${s.status}\nlast: ${s.latest_at || '(none)'}`;
+    card.style.cursor = 'pointer';
+    card.title = `${a.id} · click for last 3 tasks`;
     card.innerHTML = `
       <div class="agent-icon">${a.icon}</div>
       <div class="agent-name">${a.label}</div>
       <div class="agent-light"></div>
     `;
+    card.addEventListener('click', () => showAgentPopover(a));
     grid.appendChild(card);
   });
 }
+
+// Popover with last 3 tasks for clicked agent
+async function showAgentPopover(agent) {
+  let pop = document.getElementById('agentPopover');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'agentPopover';
+    pop.style.cssText = `
+      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      background:var(--card);border:1px solid var(--bd);border-radius:10px;
+      padding:18px;z-index:200;width:90%;max-width:640px;max-height:80vh;overflow-y:auto;
+      box-shadow:0 20px 60px rgba(0,0,0,0.6);
+    `;
+    document.body.appendChild(pop);
+    // backdrop
+    const bd = document.createElement('div');
+    bd.id = 'agentPopoverBd';
+    bd.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:199;backdrop-filter:blur(2px)';
+    bd.onclick = closeAgentPopover;
+    document.body.appendChild(bd);
+  } else {
+    pop.style.display = 'block';
+    document.getElementById('agentPopoverBd').style.display = 'block';
+  }
+  pop.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:24px">${agent.icon}</span>
+      <span style="font-size:16px;font-weight:600">${agent.label}</span>
+      <code style="font-size:11px;color:var(--td);background:var(--card2);padding:2px 6px;border-radius:3px">${agent.id}</code>
+      <span style="flex:1"></span>
+      <button onclick="closeAgentPopover()" style="background:transparent;border:1px solid var(--bd);color:var(--td);padding:4px 10px;border-radius:4px;cursor:pointer">✕</button>
+    </div>
+    <div style="color:var(--td);font-size:12px;padding:20px;text-align:center">載入最近 3 筆任務…</div>
+  `;
+  try {
+    const r = await fetch(`/api/v1/agents/inbox/list?agent_id=${encodeURIComponent(agent.id)}&limit=3`, { credentials: 'include' });
+    const j = await r.json();
+    const tasks = j?.data?.tasks || [];
+    if (tasks.length === 0) {
+      pop.querySelector('div:last-child').innerHTML = '<div style="color:var(--td);text-align:center;padding:20px;font-size:12px">尚無任務紀錄</div>';
+      return;
+    }
+    pop.querySelector('div:last-child').outerHTML = tasks.map((t,i) => {
+      const cls = t.status === 'done' ? '#67c23a' : t.status === 'failed' ? '#f56c6c' : '#e6a23c';
+      const reply = (t.reply || t.error || '(no output)').toString();
+      const replyTrim = reply.length > 400 ? reply.substring(0, 400) + '…' : reply;
+      return `
+        <div style="background:var(--card2);border:1px solid var(--bd);border-left:3px solid ${cls};border-radius:6px;padding:12px;margin-bottom:8px">
+          <div style="display:flex;gap:10px;font-size:11px;color:var(--td);margin-bottom:6px">
+            <span style="color:${cls};font-weight:600">#${t.seq||'?'} ${t.status}</span>
+            <span>${(t.completed_at||t.created_at||'').replace('T',' ').slice(0,19)}</span>
+            ${t.latency_ms ? `<span>${t.latency_ms}ms</span>` : ''}
+            ${t.model ? `<span style="font-family:monospace">${t.model}</span>` : ''}
+          </div>
+          <pre style="margin:0;font-size:11px;font-family:-apple-system,system-ui,sans-serif;white-space:pre-wrap;color:var(--t);line-height:1.5;max-height:200px;overflow-y:auto">${replyTrim}</pre>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    pop.querySelector('div:last-child').innerHTML = `<div style="color:var(--bad);text-align:center;padding:20px;font-size:12px">load failed: ${e.message}</div>`;
+  }
+}
+function closeAgentPopover() {
+  const pop = document.getElementById('agentPopover');
+  const bd = document.getElementById('agentPopoverBd');
+  if (pop) pop.style.display = 'none';
+  if (bd) bd.style.display = 'none';
+}
+// ESC to close
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAgentPopover(); });
 
 // ─────── Auth check — redirect to login if no valid session ───────
 async function checkAuth() {
@@ -655,6 +780,8 @@ async function loadAll() {
     const j = await r.json();
     if (j.success) {
       const score = j.data.overall_score || 0;
+      healthHistory.push(score);
+      if (healthHistory.length > 60) healthHistory.shift();
       renderGauge(score);
       pushSpark('health', score);
     }
@@ -727,6 +854,7 @@ async function loadAll() {
   ticker.classList.remove('refreshing');
 }
 
+const dockerHistory = {};  // container name → [{cpu, mem}, ...]
 function renderDocker(containers) {
   const list = document.getElementById('dockerList');
   const sub = document.getElementById('dockerSub');
@@ -735,6 +863,12 @@ function renderDocker(containers) {
     sub.textContent = '0 containers';
     return;
   }
+  // push history per container
+  containers.forEach(c => {
+    if (!dockerHistory[c.name]) dockerHistory[c.name] = [];
+    dockerHistory[c.name].push({ cpu: c.cpu_pct || 0, mem: c.mem_pct || 0 });
+    if (dockerHistory[c.name].length > 30) dockerHistory[c.name].shift();
+  });
   const sorted = containers.slice().sort((a,b) => (b.cpu_pct||0) - (a.cpu_pct||0)).slice(0, 12);
   const totalCpu = containers.reduce((s,c) => s + (c.cpu_pct||0), 0);
   sub.textContent = `${containers.length} containers · total CPU ${totalCpu.toFixed(1)}%`;
@@ -744,30 +878,56 @@ function renderDocker(containers) {
     const cls = cpu > 80 || mem > 80 ? 'high' : cpu > 40 || mem > 50 ? 'med' : 'ok';
     const cpuColor = cpu > 80 ? '#f56c6c' : cpu > 40 ? '#e6a23c' : '#67c23a';
     const memColor = mem > 80 ? '#f56c6c' : mem > 50 ? '#e6a23c' : '#5db8ff';
+    const history = dockerHistory[c.name] || [];
+    const cpuSpark = miniSparkPath(history.map(h => h.cpu));
+    const memSpark = miniSparkPath(history.map(h => h.mem));
     return `
       <div class="container-card ${cls}" title="${c.name}\nID: ${c.container_id}\nMem: ${c.mem_usage||'—'}\nNet IO: ${c.net_io||'—'}\nBlock IO: ${c.block_io||'—'}">
         <div class="cname">${c.name}</div>
         <div class="crow"><span>CPU</span><span style="color:${cpuColor};font-weight:600">${cpu.toFixed(1)}%</span></div>
-        <div class="cbar"><div style="width:${Math.min(100,cpu)}%;background:${cpuColor}"></div></div>
+        <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="width:100%;height:14px;margin-top:2px">${cpuSpark ? `<polyline points="${cpuSpark}" fill="none" stroke="${cpuColor}" stroke-width="1.5" stroke-opacity="0.8"/>` : ''}</svg>
         <div class="crow"><span>MEM</span><span style="color:${memColor};font-weight:600">${mem.toFixed(1)}%</span></div>
-        <div class="cbar"><div style="width:${Math.min(100,mem)}%;background:${memColor}"></div></div>
+        <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="width:100%;height:14px;margin-top:2px">${memSpark ? `<polyline points="${memSpark}" fill="none" stroke="${memColor}" stroke-width="1.5" stroke-opacity="0.8"/>` : ''}</svg>
       </div>
     `;
   }).join('');
 }
 
+// Helper: convert number array to SVG polyline points string (0-100 width × 0-14 height)
+function miniSparkPath(values) {
+  if (values.length < 2) return '';
+  const w = 100, h = 14;
+  const max = Math.max(...values, 1);
+  const step = w / Math.max(1, values.length - 1);
+  return values.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`).join(' ');
+}
+
+const netHistory = {};  // target name → [latency_ms, ...]
 function renderNetwork(targets) {
   const list = document.getElementById('netList');
   const sub = document.getElementById('netSub');
+  // push history
+  targets.forEach(t => {
+    if (!netHistory[t.name]) netHistory[t.name] = [];
+    netHistory[t.name].push(t.status === 'up' ? t.latency_ms : 0);
+    if (netHistory[t.name].length > 24) netHistory[t.name].shift();
+  });
   const upCount = targets.filter(t => t.status === 'up').length;
   sub.textContent = `${upCount}/${targets.length} up`;
-  list.innerHTML = targets.map(t => `
-    <div class="net-row ${t.status}" title="${t.url}${t.error ? '\n' + t.error : ''}">
-      <span class="nlight"></span>
-      <span class="nname">${t.name}</span>
-      <span class="nlat">${t.status === 'up' ? t.latency_ms + 'ms' : 'down'}</span>
-    </div>
-  `).join('');
+  list.innerHTML = targets.map(t => {
+    const hist = netHistory[t.name] || [];
+    const spark = miniSparkPath(hist);
+    const lat = t.status === 'up' ? `${t.latency_ms}ms` : 'down';
+    const color = t.status === 'up' ? (t.latency_ms > 500 ? '#e6a23c' : '#67c23a') : '#f56c6c';
+    return `
+      <div class="net-row ${t.status}" title="${t.url}${t.error ? '\n' + t.error : ''}">
+        <span class="nlight"></span>
+        <span class="nname">${t.name}</span>
+        <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="width:60px;height:12px">${spark ? `<polyline points="${spark}" fill="none" stroke="${color}" stroke-width="1.2" stroke-opacity="0.8"/>` : ''}</svg>
+        <span class="nlat">${lat}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 // initial check + first load
@@ -784,9 +944,16 @@ renderAgents({});
 // ─────── Live event stream (G2 WebSocket) ───────
 let liveWs = null;
 let liveCount = 0;
+let liveFilteredCount = 0;
 const liveFeed = document.getElementById('liveFeed');
 const liveConnStatus = document.getElementById('liveConnStatus');
 const liveCountEl = document.getElementById('liveCount');
+const liveFilteredEl = document.getElementById('liveFilteredCount');
+const liveShowApi = document.getElementById('liveShowApi');
+
+// Noise events to filter by default (the 88% bulk that's just dashboard polling)
+const NOISE_TYPES = new Set(['API_REQUEST', 'API_RESPONSE']);
+function isNoise(t) { return NOISE_TYPES.has(t); }
 
 function eventColor(type) {
   if (!type) return '#6b7388';
@@ -831,9 +998,17 @@ function connectLive() {
 }
 
 function addEvent(ev) {
+  // Filter noise unless toggle ON
+  if (isNoise(ev.event_type) && !liveShowApi.checked) {
+    liveFilteredCount++;
+    liveFilteredEl.textContent = `${liveFilteredCount} hidden`;
+    return;
+  }
   const row = document.createElement('div');
   row.className = 'feed-row';
   row.style.borderLeftColor = eventColor(ev.event_type);
+  // dim API events even when shown
+  if (isNoise(ev.event_type)) row.style.opacity = '0.45';
   const t = (ev.occurred_at || '').slice(11, 19);
   row.innerHTML = `
     <span class="feed-time">${t}</span>
@@ -848,6 +1023,10 @@ function addEvent(ev) {
     liveFeed.removeChild(liveFeed.lastChild);
   }
 }
+// Reset filtered counter when toggle changes
+liveShowApi.addEventListener('change', () => {
+  if (liveShowApi.checked) { liveFilteredCount = 0; liveFilteredEl.textContent = '0 hidden'; }
+});
 connectLive();
 
 // Resize handler
