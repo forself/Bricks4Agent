@@ -69,66 +69,7 @@ public static class MetricsEndpoints
                 sb.AppendLine();
             }
 
-            // ── AutoTrader state ──────────────────────────────────
-            var autoTrader = sp.GetService<AutoTraderService>();
-            if (autoTrader != null)
-            {
-                EmitGauge(sb, "b4a_auto_trader_enabled", "Auto-trader main loop enabled (0/1)",
-                    autoTrader.IsEnabled ? 1d : 0d);
-                EmitGauge(sb, "b4a_auto_trader_watch_count", "Number of symbols on auto-trader watch list",
-                    (double)autoTrader.WatchList.Count);
-                EmitGauge(sb, "b4a_auto_trader_position_count", "Number of positions with active protection state",
-                    (double)autoTrader.PositionStates.Count);
-
-                // Heartbeat：距上次 cycle 開始的秒數。null = 從未跑過、報 -1 讓 Grafana 顯示異常
-                var sinceCycle = autoTrader.LastCycleAt is { } at
-                    ? (DateTime.UtcNow - at).TotalSeconds
-                    : -1d;
-                EmitGauge(sb, "b4a_auto_trader_seconds_since_cycle",
-                    "Seconds since last auto-trader cycle started (-1 = never ran)", sinceCycle);
-
-                // Circuit breaker per exchange
-                sb.AppendLine("# HELP b4a_circuit_breaker_dd_pct Current intraday drawdown % per exchange");
-                sb.AppendLine("# TYPE b4a_circuit_breaker_dd_pct gauge");
-                sb.AppendLine("# HELP b4a_circuit_breaker_triggered 1 if circuit breaker is currently active");
-                sb.AppendLine("# TYPE b4a_circuit_breaker_triggered gauge");
-                foreach (var (exchange, snapshot) in autoTrader.CircuitBreakerSnapshot)
-                {
-                    var s = snapshot;  // anonymous object; use reflection or known props
-                    var props = s.GetType().GetProperties();
-                    decimal dd = 0; bool triggered = false;
-                    foreach (var p in props)
-                    {
-                        if (p.Name == "dd_pct") dd = (decimal)(p.GetValue(s) ?? 0m);
-                        else if (p.Name == "triggered") triggered = (bool)(p.GetValue(s) ?? false);
-                    }
-                    sb.Append("b4a_circuit_breaker_dd_pct{exchange=\"").Append(EscapeLabel(exchange)).Append("\"} ").Append(dd).AppendLine();
-                    sb.Append("b4a_circuit_breaker_triggered{exchange=\"").Append(EscapeLabel(exchange)).Append("\"} ").Append(triggered ? 1 : 0).AppendLine();
-                }
-                sb.AppendLine();
-
-                EmitGauge(sb, "b4a_sl_flush_triggered", "SL flush freeze active state (0/1)",
-                    autoTrader.SlFlushTriggered ? 1d : 0d);
-                EmitGauge(sb, "b4a_sl_flush_recent_count", "SL hits within sliding window",
-                    (double)autoTrader.RecentSlHits.Count);
-            }
-
-            // ── Alert rules / events ──────────────────────────────
-            var alertRules = sp.GetService<AlertRulesService>();
-            if (alertRules != null)
-            {
-                var enabled = alertRules.Rules.Values.Count(r => r.Enabled);
-                var disabled = alertRules.Rules.Count - enabled;
-                sb.AppendLine("# HELP b4a_alert_rules Number of alert rules by enabled state");
-                sb.AppendLine("# TYPE b4a_alert_rules gauge");
-                sb.Append("b4a_alert_rules{enabled=\"true\"} ").Append(enabled).AppendLine();
-                sb.Append("b4a_alert_rules{enabled=\"false\"} ").Append(disabled).AppendLine();
-                sb.AppendLine();
-
-                var unack = alertRules.GetEvents(limit: 500, unacknowledgedOnly: true).Count;
-                EmitGauge(sb, "b4a_alert_events_unacknowledged",
-                    "Alert events still pending user acknowledgement", (double)unack);
-            }
+            // (AutoTrader + Alert metrics removed in benson-mergeable — trading-only)
 
             return Results.Text(sb.ToString(), "text/plain; version=0.0.4; charset=utf-8");
         });

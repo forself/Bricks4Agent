@@ -226,8 +226,6 @@ public static class AdminEndpoints
                 decision_reason = a.DecisionReason,
                 dispatched_at   = a.DispatchedAt,
                 dispatched_by   = a.DispatchedBy,
-                // W14 P3 — admin 一眼看出風險量級
-                risk_hint       = Broker.Services.ApprovalRiskHintHelper.Hint(a.CapabilityId, a.Payload),
             })));
         });
 

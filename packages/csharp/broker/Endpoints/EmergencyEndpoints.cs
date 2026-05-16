@@ -25,7 +25,6 @@ public static class EmergencyEndpoints
 
         em.MapPost("/stop-all", (HttpContext ctx,
             IEmergencyState state,
-            AutoTraderService autoTrader,
             IAuditService audit) =>
         {
             if (!RequireAdmin(ctx, out var denied)) return denied;
@@ -33,42 +32,20 @@ public static class EmergencyEndpoints
             var body = RequestBodyHelper.GetBody(ctx);
             var reason = body.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
 
-            // 1. 立刻停 AutoTrader 主迴圈
-            autoTrader.Disable();
-
-            // 2. 把所有 watch 設成 inactive（避免 admin 點 enable 後又自動下單）
-            var paused = 0;
-            foreach (var (key, item) in autoTrader.WatchList)
-            {
-                if (item.Active)
-                {
-                    var parts = key.Split(':', 2);
-                    if (parts.Length == 2)
-                    {
-                        autoTrader.PauseWatch(parts[1], parts[0]);
-                        paused++;
-                    }
-                }
-            }
-
-            // 3. 設旗標（後續任何 trading.* dispatch 也會被擋）
+            // 設旗標：middleware 攔截後續寫操作
             state.TriggerKillSwitch(pid, reason);
 
-            // 4. 寫稽核
             var traceId = IdGen.New("trc");
             audit.RecordEvent(traceId, "KILL_SWITCH",
                 principalId: pid,
                 resourceRef: "broker.emergency",
                 details: JsonSerializer.Serialize(new {
-                    reason, paused_watches = paused,
-                    auto_trader_was = "disabled",
-                    triggered_at = DateTime.UtcNow,
+                    reason, triggered_at = DateTime.UtcNow,
                 }));
 
             return Results.Ok(ApiResponseHelper.Success(new {
                 kill_switch = true,
-                auto_trader_disabled = true,
-                watches_paused = paused,
+                watches_paused = 0,
                 trace_id = traceId,
                 message = "Emergency stop triggered. Trading capability blocked. Manual /emergency/clear required to resume.",
             }));

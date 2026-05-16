@@ -37,9 +37,6 @@
   <Folder Name="/tests/unit/">
     <Project Path="tests/unit/Unit.Tests.csproj" />
   </Folder>
-  <Folder Name="/tests/trading-worker-tests/">
-    <Project Path="tests/trading-worker-tests/TradingWorker.Tests.csproj" />
-  </Folder>
   <Folder Name="/worker-sdk/">
     <Project Path="worker-sdk/WorkerSdk.csproj" />
   </Folder>
@@ -53,20 +50,6 @@
   <Folder Name="/workers/transport-tdx-worker/">
     <Project Path="workers/transport-tdx-worker/TransportTdxWorker.csproj" />
   </Folder>
-  <Folder Name="/workers/quote-worker/">
-    <Project Path="workers/quote-worker/QuoteWorker.csproj" />
-  </Folder>
-  <Folder Name="/workers/trading-worker/">
-    <Project Path="workers/trading-worker/TradingWorker.csproj" />
-  </Folder>
-  <Folder Name="/workers/strategy-worker/">
-    <Project Path="workers/strategy-worker/StrategyWorker.csproj" />
-  </Folder>
-  <Folder Name="/workers/risk-worker/">
-    <Project Path="workers/risk-worker/RiskWorker.csproj" />
-  </Folder>
-  <!-- [whitelist add: 2026-05-01 AnthonyLee] Agent runtime worker（MVP-0）—
-       純新增 project entry，不動 Benson 的既有 solution 結構。 -->
   <Folder Name="/workers/agent-worker/">
     <Project Path="workers/agent-worker/AgentWorker.csproj" />
   </Folder>

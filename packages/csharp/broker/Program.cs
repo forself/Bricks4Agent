@@ -44,14 +44,6 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Agent Inbox 表（MVP-1 2026-05-01）— 不動 BrokerDbInitializer.cs（Benson 的）。
     // EnsureTable 是 idempotent，補在初始化區段尾巴最乾淨。
     initDb.EnsureTable<AgentInboxTask>();
-    // Auto-trader 監控清單持久化（2026-05-02）— 取代 ConcurrentDictionary in-memory 設計
-    initDb.EnsureTable<AutoTradeWatchEntry>();
-    initDb.EnsureTable<RiskAnchorState>();
-    initDb.EnsureTable<LlmReasoningAuditEntry>();
-    // Auto-trader 全域設定 + 永續部位保護狀態（2026-05-08 補完）
-    // 設定：enabled / interval_seconds 重啟保留；perp 部位狀態：SL / peak / be_moved 重啟保留
-    initDb.EnsureTable<AutoTraderSettingsEntry>();
-    initDb.EnsureTable<PerpetualPositionStateEntry>();
     // H3 — Approval template（命中規則自動 approve、降低 approval 疲勞）
     initDb.EnsureTable<Broker.Models.ApprovalTemplate>();
     // H2 — Time-windowed ACL rule
@@ -59,19 +51,9 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // I1 — Multi-sig rules + per-approver decisions
     initDb.EnsureTable<Broker.Models.MultiSigRule>();
     initDb.EnsureTable<Broker.Models.ApprovalDecisionRecord>();
-    // Strategy Lab 自動回測（2026-05-09）— 每日批次跑、結果存 DB、API 查推薦
-    initDb.EnsureTable<BacktestRunEntry>();
-    initDb.EnsureTable<BacktestResultEntry>();
     // Principal 多用戶帳密 + cookie session（Phase A1 2026-05-10）
     initDb.EnsureTable<PrincipalCredential>();
     initDb.EnsureTable<PrincipalSession>();
-    // 用戶交易所 API 憑證（Phase A2.5a 2026-05-10）— at-rest AES-GCM 加密、AAD 綁 entry_id
-    initDb.EnsureTable<ExchangeCredential>();
-    // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
-    Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
-    // Alert system（#2 2026-05-07）—— 規則 + 事件
-    initDb.EnsureTable<AlertRuleEntry>();
-    initDb.EnsureTable<AlertEventEntry>();
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -188,8 +170,6 @@ builder.Services.AddSingleton<IShutdownState, ShutdownState>();
 
 // W14 P1+P5：緊急停機 / 唯讀鎖定旗標
 builder.Services.AddSingleton<Broker.Services.IEmergencyState, Broker.Services.EmergencyStateService>();
-// W14 P2：bot 呼叫速率限制（per-Discord-user sliding window）
-builder.Services.AddSingleton<Broker.Services.BotRateLimitService>();
 
 // ── Step 4.5: Capability ACL（PoolDispatcher 派發前查 role + principal override） ──
 builder.Services.AddSingleton<ICapabilityAclService>(sp =>
@@ -351,15 +331,6 @@ builder.Services.AddHttpClient<Broker.Services.BrowserExecutionRuntimeService>(c
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserRuntime/1.0");
 });
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
-builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
-builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
-builder.Services.AddSingleton<Broker.Services.AlertRulesService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AlertRulesService>());
-builder.Services.AddSingleton<Broker.Services.SymbolScreenerService>();
-builder.Services.AddSingleton<Broker.Services.ScheduledBacktestService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.ScheduledBacktestService>());
 builder.Services.AddSingleton<Broker.Services.PrincipalAuthService>();
 builder.Services.AddSingleton<BrokerCore.Crypto.AtRestSecretCrypto>(sp =>
 {
@@ -368,59 +339,19 @@ builder.Services.AddSingleton<BrokerCore.Crypto.AtRestSecretCrypto>(sp =>
     var key = cfg.GetSecret("Broker:Encryption:MasterKeyBase64") ?? "";
     return new BrokerCore.Crypto.AtRestSecretCrypto(key);
 });
-builder.Services.AddSingleton<Broker.Services.ExchangeCredentialService>();
-builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
-builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
-builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
-builder.Services.AddSingleton<Broker.Services.StrategyComparisonService>();
-builder.Services.AddSingleton<Broker.Services.StrategyCandidateRepository>();
-builder.Services.AddSingleton<Broker.Services.StrategyGeneratorService>();
-builder.Services.AddSingleton<Broker.Services.StrategyResearchLoopService>();
-builder.Services.AddSingleton<Broker.Services.KellyPositionSizingService>();
-builder.Services.AddHttpClient("discord-webhook");
-builder.Services.AddSingleton<Broker.Services.DiscordNotificationService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DiscordNotificationService>());
-builder.Services.AddSingleton<Broker.Services.LineNotificationService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.LineNotificationService>());
-// 每日交易彙整、UTC 00:00（或 DAILY_REPORT_AT_UTC_HOUR）推 Discord + LINE
-// Singleton 版本給 manual trigger endpoint 用、HostedService 共用同一個 instance（避免兩份狀態）
-builder.Services.AddSingleton<Broker.Services.DailyReportService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DailyReportService>());
-// 動態合約規格 cache，啟動 + 每 12h 從 trading-worker 拉、灌進 BrokerCore.Trading.SymbolSpecs
-builder.Services.AddSingleton<Broker.Services.SymbolSpecsService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.SymbolSpecsService>());
-// 偵測 user 主動劃轉/充值/提領、自動更新 risk anchor（5 min interval / 5 USDT threshold）
-builder.Services.AddSingleton<Broker.Services.BalanceAnchorService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.BalanceAnchorService>());
-// 偵測表現差的策略 watch、連虧 5 筆或 win_rate<30% 自動 pause + 通知（self-healing）
-builder.Services.AddSingleton<Broker.Services.StrategyHealthMonitor>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.StrategyHealthMonitor>());
-// 3 條 agent_inbox-driven BackgroundService、共用 ScheduledForensicsAgentBase 基底、
-// 走 broker LlmProxy 走 MeteredLlmProxyService → 完全對齊 Benson broker-as-control-plane
-builder.Services.AddHostedService<Broker.Services.ForensicsAgentService>();       // hourly  / 1h window — 事件鏈鑑識
+// 3 條 governance-only agent_inbox BackgroundService、走 broker LlmProxy → 對齊 control-plane
+builder.Services.AddHostedService<Broker.Services.ForensicsAgentService>();       // hourly / 1h window — 事件鏈鑑識
 builder.Services.AddHostedService<Broker.Services.MarketReportAgentService>();    // 6-hour / 6h window — 營運總結
-builder.Services.AddHostedService<Broker.Services.AnomalyDetectorAgentService>(); // 15min  / 15m window — 異常偵測
-// Manual-push only：策略研究 agent — push 一筆 JSON 就跑 StrategyResearchLoopService（LLM 生成 + walk-forward 回測迭代）
-builder.Services.AddHostedService<Broker.Services.StrategyResearchAgentService>();
-// Daily 24h auto — 帳戶 + 監控 + 持倉 snapshot 組成市場日報
-builder.Services.AddHostedService<Broker.Services.DailyMarketReportAgentService>();
-// Every 6h auto — 掃 watch list 健康度、列異常
-builder.Services.AddHostedService<Broker.Services.StrategyHealthInspectorAgentService>();
-// Manual-push only — 風控壓測、模擬 mark price 跌 X% 看每倉是否觸發 SL/Liq
-builder.Services.AddHostedService<Broker.Services.RiskStressTestAgentService>();
-// 30 min auto — 驗證 Benson 設計的 audit_events hash chain 完整性（防篡改、純規則檢查無 LLM）
+builder.Services.AddHostedService<Broker.Services.AnomalyDetectorAgentService>(); // 15min / 15m window — 異常偵測
+// 30 min auto — hash chain integrity verifier
 builder.Services.AddHostedService<Broker.Services.AuditChainVerifierAgentService>();
-// E1 1h auto — KPI bar 數值 snapshot、未來可拉歷史畫趨勢
-builder.Services.AddHostedService<Broker.Services.DashboardSnapshotAgentService>();
-// E2 6h auto — capability 使用統計（補 LLM 全景看不到的 dispatch 維度）
+// 6h auto — capability usage stats
 builder.Services.AddHostedService<Broker.Services.CapabilityUsageReporterAgentService>();
-// E3 manual — 給 symbol+time 寫該 trade post-mortem
-builder.Services.AddHostedService<Broker.Services.TradeJournalAgentService>();
-// E4 manual — 給 query/urls 走 RAG ingest 進 vector_entries
+// manual — RAG ingest
 builder.Services.AddHostedService<Broker.Services.RagIngestAgentService>();
-// E5 7d auto — 週級事件總結
+// 7d auto — weekly digest
 builder.Services.AddHostedService<Broker.Services.WeeklyDigestAgentService>();
-// W14 P4 1h auto — File Integrity Monitor（hash sensitive files、變動寫 audit + dashboard 警告）
+// W14 P4 1h auto — File Integrity Monitor
 builder.Services.AddHostedService<Broker.Services.FileIntegrityAgentService>();
 
 // ── Step 6 + 7: BrokerService + ExecutionDispatcher ──
@@ -763,9 +694,7 @@ app.UseStaticFiles();
 var maxBodyBytes = builder.Configuration.GetValue<long>("Broker:MaxRequestBodyBytes", 1_048_576); // 1MB default
 app.UseBodySizeLimit(maxBodyBytes);
 
-// Internal bot auth：在 encryption / cookie 之前先比對 X-Internal-Bot-Token、設 identity。
-// 沒帶 header 走原流程；帶錯 header 直接 401（不靜默 fall-through）。
-app.UseInternalBotAuth();
+// (Internal bot auth removed in benson-mergeable — was for Discord bot only)
 // [1] ExceptionMiddleware（全域例外）— TODO: Phase 5
 // [2] IpRateLimiter（限流）— TODO: Phase 5
 // [3] EncryptionMiddleware（信封解密/加密）
@@ -1112,12 +1041,6 @@ if (poolEnabled)
 {
     WorkerEndpoints.Map(api);
     DiagnosticsEndpoints.Map(api);
-    QuoteWorkerEndpoints.Map(api);
-    QuoteOhlcvEndpoints.Map(api);
-    TradingEndpoints.Map(api);
-    StrategyEndpoints.Map(api);
-    RiskEndpoints.Map(api);
-    AutoTraderEndpoints.Map(api);
     EmergencyEndpoints.Map(api);   // W14 P1+P5
     CapabilityGraphEndpoints.Map(api);   // G3 — capability registry graph
     PolicyReplayEndpoints.Map(api);      // G1 — sandbox PolicyEngine replay
@@ -1127,23 +1050,11 @@ if (poolEnabled)
     AuditRagEndpoints.Map(api);          // H4 — audit search + LLM RAG summary
     MultiSigEndpoints.Map(api);          // I1 — multi-sig N-of-M approval rules
     DashboardEndpoints.Map(api);         // docker-stats / network-status / system-info
-    AlertEndpoints.Map(api);
-    AlertRulesEndpoints.Map(api);
-    PerpetualEndpoints.Map(api);
-    ScreenerEndpoints.Map(api);
-    LabEndpoints.Map(api);
     AuthEndpoints.Map(api);
-    ExchangeCredentialsEndpoints.Map(api);
     AdminUsersEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
-    BacktestHistoryEndpoints.Map(api);
-    PortfolioEndpoints.Map(api);
-    NotificationEndpoints.Map(api);
-    ResearchEndpoints.Map(api);
-    KellyEndpoints.Map(api);
 }
-QuoteWebSocketEndpoints.Map(app);
 AuditStreamEndpoints.Map(app);   // G2 — live audit event stream
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
