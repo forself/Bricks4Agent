@@ -1772,68 +1772,270 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── I1 — Multi-Sig Rules（N-of-M approval thresholds） ── -->
-      <el-tab-pane label="✍ 多簽" name="multisig">
-        <el-card style="margin-bottom:14px;border-left:3px solid #f56c6c">
-          <template #header>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-weight:600">✍ Multi-sig N-of-M rules</span>
-              <span style="color:var(--td);font-size:11px">某 capability 要 N 個 admin 都按 approve 才放行（兩人覆核制）</span>
-              <span style="flex:1"></span>
-              <el-button size="small" type="primary" @click="msigDialogVisible=true">+ New rule</el-button>
-              <el-button size="small" @click="loadMsig" :loading="msigLoading">Refresh</el-button>
-            </div>
-          </template>
-          <el-table :data="msigRules" stripe :empty-text="'尚無 multi-sig rule'">
-            <el-table-column label="enabled" width="80">
-              <template #default="{row}">
-                <el-tag :type="row.enabled?'success':'info'" size="small">{{row.enabled?'on':'off'}}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="capability_id" min-width="160">
-              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
-            </el-table-column>
-            <el-table-column label="min approvers" width="120" align="center">
-              <template #default="{row}">
-                <el-tag size="small" :type="row.min_approvers>=3?'danger':row.min_approvers===2?'warning':''">
-                  {{row.min_approvers}}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="description" min-width="200">
-              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
-            </el-table-column>
-            <el-table-column label="created" width="140">
-              <template #default="{row}">
-                <div style="font-size:11px" :title="fmtDate(row.created_at)">{{relTime(row.created_at)}}</div>
-                <div style="font-size:10px;color:var(--td)">{{row.created_by||'—'}}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="actions" width="80" align="right">
-              <template #default="{row}">
-                <el-button type="danger" size="small" plain @click="deleteMsig(row)">delete</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
+      <!-- ── 🛡 治理規則（合併 4 條：多簽 / 核准範本 / 時段 ACL / 配額） ── -->
+      <el-tab-pane label="🛡 治理規則" name="governance">
+        <el-tabs v-model="govSubTab" type="border-card" style="margin-top:-8px">
 
-        <el-dialog v-model="msigDialogVisible" title="New multi-sig rule" width="520px">
-          <el-form label-width="120px" label-position="left">
-            <el-form-item label="capability_id">
-              <el-input v-model="msigForm.capability_id" placeholder="e.g. trading.order"/>
-            </el-form-item>
-            <el-form-item label="min approvers">
-              <el-input-number v-model="msigForm.min_approvers" :min="1" :max="10" style="width:120px"/>
-              <span style="margin-left:8px;font-size:10px;color:var(--td)">2 = 兩人覆核、3 = 三人覆核</span>
-            </el-form-item>
-            <el-form-item label="description">
-              <el-input v-model="msigForm.description" placeholder="說明為什麼這個 cap 需要多人簽核"/>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="msigDialogVisible=false">Cancel</el-button>
-            <el-button type="primary" @click="upsertMsig">Save</el-button>
-          </template>
-        </el-dialog>
+          <!-- I1 — Multi-sig -->
+          <el-tab-pane label="✍ 多簽" name="multisig">
+            <el-card style="border-left:3px solid #f56c6c">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-weight:600">✍ Multi-sig N-of-M rules</span>
+                  <span style="color:var(--td);font-size:11px">某 capability 要 N 個 admin 都按 approve 才放行（兩人覆核制）</span>
+                  <span style="flex:1"></span>
+                  <el-button size="small" type="primary" @click="msigDialogVisible=true">+ New rule</el-button>
+                  <el-button size="small" @click="loadMsig" :loading="msigLoading">Refresh</el-button>
+                </div>
+              </template>
+              <el-table :data="msigRules" stripe :empty-text="'尚無 multi-sig rule'">
+                <el-table-column label="enabled" width="80">
+                  <template #default="{row}">
+                    <el-tag :type="row.enabled?'success':'info'" size="small">{{row.enabled?'on':'off'}}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="capability_id" min-width="160">
+                  <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+                </el-table-column>
+                <el-table-column label="min approvers" width="120" align="center">
+                  <template #default="{row}">
+                    <el-tag size="small" :type="row.min_approvers>=3?'danger':row.min_approvers===2?'warning':''">
+                      {{row.min_approvers}}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="description" min-width="200">
+                  <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+                </el-table-column>
+                <el-table-column label="created" width="140">
+                  <template #default="{row}">
+                    <div style="font-size:11px" :title="fmtDate(row.created_at)">{{relTime(row.created_at)}}</div>
+                    <div style="font-size:10px;color:var(--td)">{{row.created_by||'—'}}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="actions" width="80" align="right">
+                  <template #default="{row}">
+                    <el-button type="danger" size="small" plain @click="deleteMsig(row)">delete</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+
+            <el-dialog v-model="msigDialogVisible" title="New multi-sig rule" width="520px">
+              <el-form label-width="120px" label-position="left">
+                <el-form-item label="capability_id">
+                  <el-input v-model="msigForm.capability_id" placeholder="e.g. trading.order"></el-input>
+                </el-form-item>
+                <el-form-item label="min approvers">
+                  <el-input-number v-model="msigForm.min_approvers" :min="1" :max="10" style="width:120px"></el-input-number>
+                  <span style="margin-left:8px;font-size:10px;color:var(--td)">2 = 兩人覆核、3 = 三人覆核</span>
+                </el-form-item>
+                <el-form-item label="description">
+                  <el-input v-model="msigForm.description" placeholder="說明為什麼這個 cap 需要多人簽核"></el-input>
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="msigDialogVisible=false">Cancel</el-button>
+                <el-button type="primary" @click="upsertMsig">Save</el-button>
+              </template>
+            </el-dialog>
+          </el-tab-pane>
+
+          <!-- H3 — Approval templates -->
+          <el-tab-pane label="📋 核准範本" name="aptpl">
+            <el-card style="border-left:3px solid #e6a23c">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-weight:600">📋 Pre-approved patterns</span>
+                  <span style="color:var(--td);font-size:11px">命中規則的 approval 自動 approve、不入 pending；解 approval 疲勞</span>
+                  <span style="flex:1"></span>
+                  <el-button size="small" type="primary" @click="aptplDialogVisible=true">+ New template</el-button>
+                  <el-button size="small" @click="loadApTemplates" :loading="aptplLoading">Refresh</el-button>
+                </div>
+              </template>
+              <el-table :data="apTemplates" stripe :empty-text="'尚無 template、按 + New 建一條'">
+                <el-table-column label="enabled" width="80">
+                  <template #default="{row}">
+                    <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleApTpl(row,v)"></el-switch>
+                  </template>
+                </el-table-column>
+                <el-table-column label="capability_id" min-width="140">
+                  <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+                </el-table-column>
+                <el-table-column label="route" width="120">
+                  <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.route||'(any)'}}</code></template>
+                </el-table-column>
+                <el-table-column label="payload_match" min-width="280">
+                  <template #default="{row}">
+                    <code style="font-size:10px;color:var(--td)">{{row.payload_match}}</code>
+                  </template>
+                </el-table-column>
+                <el-table-column label="max/day" width="90">
+                  <template #default="{row}"><span style="font-size:11px">{{row.max_uses_per_day || '∞'}}</span></template>
+                </el-table-column>
+                <el-table-column label="hits today" width="100">
+                  <template #default="{row}"><span style="font-size:11px;color:#67c23a">{{aptplHits[row.template_id]||0}}</span></template>
+                </el-table-column>
+                <el-table-column label="desc" min-width="160">
+                  <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+                </el-table-column>
+                <el-table-column label="actions" width="80" align="right">
+                  <template #default="{row}">
+                    <el-button type="danger" size="small" plain @click="deleteApTpl(row)">delete</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+
+            <el-dialog v-model="aptplDialogVisible" title="New approval template" width="640px">
+              <el-form label-width="120px" label-position="left">
+                <el-form-item label="capability_id">
+                  <el-input v-model="aptplForm.capability_id" placeholder="e.g. trading.order"></el-input>
+                </el-form-item>
+                <el-form-item label="route">
+                  <el-input v-model="aptplForm.route" placeholder="(空 = 任何 route)"></el-input>
+                </el-form-item>
+                <el-form-item label="payload_match">
+                  <el-input v-model="aptplForm.payload_match" type="textarea" :rows="5"
+                    placeholder='{"args.symbol":"BTC-USDT","args.quantity":{"$lte":0.01}}'></el-input>
+                  <div style="font-size:10px;color:var(--td);margin-top:4px">
+                    支援運算子：<code>$eq / $lte / $lt / $gte / $gt / $in</code>。dot-path 取值（args.symbol）
+                  </div>
+                </el-form-item>
+                <el-form-item label="max uses / day">
+                  <el-input-number v-model="aptplForm.max_uses_per_day" :min="0" :max="9999" style="width:120px"></el-input-number>
+                  <span style="font-size:10px;color:var(--td);margin-left:8px">0 = 不限</span>
+                </el-form-item>
+                <el-form-item label="description">
+                  <el-input v-model="aptplForm.description" placeholder="說明為什麼這條規則自動放行 OK"></el-input>
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="aptplDialogVisible=false">Cancel</el-button>
+                <el-button type="primary" @click="createApTpl" :loading="aptplLoading">Create</el-button>
+              </template>
+            </el-dialog>
+          </el-tab-pane>
+
+          <!-- H2 — Time ACL -->
+          <el-tab-pane label="⏰ 時段 ACL" name="tacl">
+            <el-card style="border-left:3px solid #67c23a">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-weight:600">⏰ Time-windowed ACL rules</span>
+                  <span style="color:var(--td);font-size:11px">時段外強制 require_approval、覆蓋原 ACL</span>
+                  <span style="flex:1"></span>
+                  <el-button size="small" type="primary" @click="taclDialogVisible=true">+ New rule</el-button>
+                  <el-button size="small" @click="loadTacl" :loading="taclLoading">Refresh</el-button>
+                </div>
+              </template>
+              <el-table :data="taclRules" stripe :empty-text="'尚無規則'">
+                <el-table-column label="enabled" width="80">
+                  <template #default="{row}">
+                    <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleTacl(row,v)"></el-switch>
+                  </template>
+                </el-table-column>
+                <el-table-column label="capability_id" min-width="160">
+                  <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
+                </el-table-column>
+                <el-table-column label="auto window" width="160">
+                  <template #default="{row}">
+                    <code style="font-size:11px">{{String(row.start_hour).padStart(2,'0')}}:00 - {{String(row.end_hour).padStart(2,'0')}}:00</code>
+                    <div style="font-size:10px;color:var(--td)">{{row.timezone}}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="weekdays" width="160">
+                  <template #default="{row}"><span style="font-size:11px">{{row.weekday_label}}</span></template>
+                </el-table-column>
+                <el-table-column label="now in window?" width="120">
+                  <template #default="{row}">
+                    <el-tag :type="row.in_window_now?'success':'warning'" size="small">
+                      {{row.in_window_now?'YES (auto)':'NO (force approve)'}}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="desc" min-width="160">
+                  <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
+                </el-table-column>
+                <el-table-column label="actions" width="80" align="right">
+                  <template #default="{row}">
+                    <el-button type="danger" size="small" plain @click="deleteTacl(row)">delete</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+
+            <el-dialog v-model="taclDialogVisible" title="New time ACL rule" width="560px">
+              <el-form label-width="120px" label-position="left">
+                <el-form-item label="capability_id">
+                  <el-input v-model="taclForm.capability_id" placeholder="e.g. agent.spawn"></el-input>
+                </el-form-item>
+                <el-form-item label="start hour">
+                  <el-input-number v-model="taclForm.start_hour" :min="0" :max="23" style="width:120px"></el-input-number>
+                </el-form-item>
+                <el-form-item label="end hour">
+                  <el-input-number v-model="taclForm.end_hour" :min="0" :max="23" style="width:120px"></el-input-number>
+                  <span style="margin-left:8px;font-size:10px;color:var(--td)">end &lt; start = 跨日</span>
+                </el-form-item>
+                <el-form-item label="weekday mask">
+                  <el-input-number v-model="taclForm.weekday_mask" :min="0" :max="127" style="width:120px"></el-input-number>
+                  <span style="margin-left:8px;font-size:10px;color:var(--td)">62 = Mon-Fri、127 = 全週</span>
+                </el-form-item>
+                <el-form-item label="timezone">
+                  <el-input v-model="taclForm.timezone" placeholder="UTC / Asia/Taipei / America/New_York"></el-input>
+                </el-form-item>
+                <el-form-item label="description">
+                  <el-input v-model="taclForm.description"></el-input>
+                </el-form-item>
+              </el-form>
+              <template #footer>
+                <el-button @click="taclDialogVisible=false">Cancel</el-button>
+                <el-button type="primary" @click="createTacl">Create</el-button>
+              </template>
+            </el-dialog>
+          </el-tab-pane>
+
+          <!-- H1 — Quota -->
+          <el-tab-pane label="📊 配額" name="quota">
+            <el-card style="border-left:3px solid #67c23a">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-weight:600">📊 Per-principal LLM token / dispatch quota</span>
+                  <span v-if="quotaConfig" style="font-size:11px"
+                        :style="{color: quotaConfig.enforce_mode?'#f56c6c':'#909399'}">
+                    {{quotaConfig.enforce_mode ? 'ENFORCE mode（超 quota 直接 throw）' : 'SOFT mode（超 quota 只 log + audit）'}}
+                  </span>
+                  <span style="flex:1"></span>
+                  <el-button size="small" @click="loadQuota" :loading="quotaLoading">Refresh</el-button>
+                </div>
+              </template>
+              <div v-if="quotaConfig" style="margin-bottom:10px;font-size:11px;color:var(--td)">
+                預設 {{quotaConfig.default_llm_per_day.toLocaleString()}} LLM tokens/day · {{quotaConfig.default_dispatch_per_day.toLocaleString()}} dispatches/day · UTC midnight reset
+              </div>
+              <el-table v-if="quotaSnapshot" :data="quotaSnapshot.principals" stripe :empty-text="'(尚無使用紀錄、有 LLM 呼叫後才會出現)'">
+                <el-table-column label="principal" min-width="160">
+                  <template #default="{row}"><code style="font-size:11px">{{row.principal_id}}</code></template>
+                </el-table-column>
+                <el-table-column label="LLM tokens" min-width="220">
+                  <template #default="{row}">
+                    <div style="font-size:11px">{{row.llm_tokens_used.toLocaleString()}} / {{row.llm_tokens_limit.toLocaleString()}} ({{row.llm_pct}}%)</div>
+                    <el-progress :percentage="Math.min(100,row.llm_pct)" :status="row.llm_over_limit?'exception':row.llm_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"></el-progress>
+                  </template>
+                </el-table-column>
+                <el-table-column label="dispatches" min-width="180">
+                  <template #default="{row}">
+                    <div style="font-size:11px">{{row.dispatches_used}} / {{row.dispatches_limit}} ({{row.dispatch_pct}}%)</div>
+                    <el-progress :percentage="Math.min(100,row.dispatch_pct)" :status="row.dispatch_over_limit?'exception':row.dispatch_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"></el-progress>
+                  </template>
+                </el-table-column>
+                <el-table-column label="UTC day" width="120">
+                  <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{(row.day_utc||'').slice(0,10)}}</span></template>
+                </el-table-column>
+              </el-table>
+            </el-card>
+          </el-tab-pane>
+
+        </el-tabs>
       </el-tab-pane>
 
       <!-- ── H4 — Audit RAG（search + LLM summary） ── -->
@@ -1912,200 +2114,6 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
             </el-table-column>
             <el-table-column label="details" min-width="240">
               <template #default="{row}"><code style="font-size:10px;color:var(--td)">{{row.details_preview||''}}</code></template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-
-      <!-- ── H2 — Time ACL rules ── -->
-      <el-tab-pane label="⏰ 時段 ACL" name="tacl">
-        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
-          <template #header>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-weight:600">⏰ Time-windowed ACL rules</span>
-              <span style="color:var(--td);font-size:11px">時段外強制 require_approval、覆蓋原 ACL</span>
-              <span style="flex:1"></span>
-              <el-button size="small" type="primary" @click="taclDialogVisible=true">+ New rule</el-button>
-              <el-button size="small" @click="loadTacl" :loading="taclLoading">Refresh</el-button>
-            </div>
-          </template>
-          <el-table :data="taclRules" stripe :empty-text="'尚無規則'">
-            <el-table-column label="enabled" width="80">
-              <template #default="{row}">
-                <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleTacl(row,v)"/>
-              </template>
-            </el-table-column>
-            <el-table-column label="capability_id" min-width="160">
-              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
-            </el-table-column>
-            <el-table-column label="auto window" width="160">
-              <template #default="{row}">
-                <code style="font-size:11px">{{String(row.start_hour).padStart(2,'0')}}:00 - {{String(row.end_hour).padStart(2,'0')}}:00</code>
-                <div style="font-size:10px;color:var(--td)">{{row.timezone}}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="weekdays" width="160">
-              <template #default="{row}"><span style="font-size:11px">{{row.weekday_label}}</span></template>
-            </el-table-column>
-            <el-table-column label="now in window?" width="120">
-              <template #default="{row}">
-                <el-tag :type="row.in_window_now?'success':'warning'" size="small">
-                  {{row.in_window_now?'YES (auto)':'NO (force approve)'}}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="desc" min-width="160">
-              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
-            </el-table-column>
-            <el-table-column label="actions" width="80" align="right">
-              <template #default="{row}">
-                <el-button type="danger" size="small" plain @click="deleteTacl(row)">delete</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-
-        <el-dialog v-model="taclDialogVisible" title="New time ACL rule" width="560px">
-          <el-form label-width="120px" label-position="left">
-            <el-form-item label="capability_id">
-              <el-input v-model="taclForm.capability_id" placeholder="e.g. agent.spawn"/>
-            </el-form-item>
-            <el-form-item label="start hour">
-              <el-input-number v-model="taclForm.start_hour" :min="0" :max="23" style="width:120px"/>
-            </el-form-item>
-            <el-form-item label="end hour">
-              <el-input-number v-model="taclForm.end_hour" :min="0" :max="23" style="width:120px"/>
-              <span style="margin-left:8px;font-size:10px;color:var(--td)">end &lt; start = 跨日</span>
-            </el-form-item>
-            <el-form-item label="weekday mask">
-              <el-input-number v-model="taclForm.weekday_mask" :min="0" :max="127" style="width:120px"/>
-              <span style="margin-left:8px;font-size:10px;color:var(--td)">62 = Mon-Fri、127 = 全週</span>
-            </el-form-item>
-            <el-form-item label="timezone">
-              <el-input v-model="taclForm.timezone" placeholder="UTC / Asia/Taipei / America/New_York"/>
-            </el-form-item>
-            <el-form-item label="description">
-              <el-input v-model="taclForm.description"/>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="taclDialogVisible=false">Cancel</el-button>
-            <el-button type="primary" @click="createTacl">Create</el-button>
-          </template>
-        </el-dialog>
-      </el-tab-pane>
-
-      <!-- ── H3 — Approval Templates（auto-approve rules） ── -->
-      <el-tab-pane label="📋 核准範本" name="aptpl">
-        <el-card style="margin-bottom:14px;border-left:3px solid #e6a23c">
-          <template #header>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-weight:600">📋 Pre-approved patterns</span>
-              <span style="color:var(--td);font-size:11px">命中規則的 approval 自動 approve、不入 pending；解決「approval 疲勞 → 全按 approve」</span>
-              <span style="flex:1"></span>
-              <el-button size="small" type="primary" @click="aptplDialogVisible=true">+ New template</el-button>
-              <el-button size="small" @click="loadApTemplates" :loading="aptplLoading">Refresh</el-button>
-            </div>
-          </template>
-          <el-table :data="apTemplates" stripe :empty-text="'尚無 template、按 + New 建一條'">
-            <el-table-column label="enabled" width="80">
-              <template #default="{row}">
-                <el-switch :model-value="row.enabled" size="small" @change="(v)=>toggleApTpl(row,v)"/>
-              </template>
-            </el-table-column>
-            <el-table-column label="capability_id" min-width="140">
-              <template #default="{row}"><code style="font-size:11px">{{row.capability_id}}</code></template>
-            </el-table-column>
-            <el-table-column label="route" width="120">
-              <template #default="{row}"><code style="font-size:11px;color:var(--td)">{{row.route||'(any)'}}</code></template>
-            </el-table-column>
-            <el-table-column label="payload_match" min-width="280">
-              <template #default="{row}">
-                <code style="font-size:10px;color:var(--td)">{{row.payload_match}}</code>
-              </template>
-            </el-table-column>
-            <el-table-column label="max/day" width="90">
-              <template #default="{row}"><span style="font-size:11px">{{row.max_uses_per_day || '∞'}}</span></template>
-            </el-table-column>
-            <el-table-column label="hits today" width="100">
-              <template #default="{row}"><span style="font-size:11px;color:#67c23a">{{aptplHits[row.template_id]||0}}</span></template>
-            </el-table-column>
-            <el-table-column label="desc" min-width="160">
-              <template #default="{row}"><span style="font-size:11px">{{row.description||'—'}}</span></template>
-            </el-table-column>
-            <el-table-column label="actions" width="80" align="right">
-              <template #default="{row}">
-                <el-button type="danger" size="small" plain @click="deleteApTpl(row)">delete</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-
-        <el-dialog v-model="aptplDialogVisible" title="New approval template" width="640px">
-          <el-form label-width="120px" label-position="left">
-            <el-form-item label="capability_id">
-              <el-input v-model="aptplForm.capability_id" placeholder="e.g. trading.order"/>
-            </el-form-item>
-            <el-form-item label="route">
-              <el-input v-model="aptplForm.route" placeholder="(空 = 任何 route)"/>
-            </el-form-item>
-            <el-form-item label="payload_match">
-              <el-input v-model="aptplForm.payload_match" type="textarea" :rows="5"
-                placeholder='{"args.symbol":"BTC-USDT","args.quantity":{"$lte":0.01}}'/>
-              <div style="font-size:10px;color:var(--td);margin-top:4px">
-                支援運算子：<code>$eq / $lte / $lt / $gte / $gt / $in</code>。dot-path 取值（args.symbol）
-              </div>
-            </el-form-item>
-            <el-form-item label="max uses / day">
-              <el-input-number v-model="aptplForm.max_uses_per_day" :min="0" :max="9999" style="width:120px"/>
-              <span style="font-size:10px;color:var(--td);margin-left:8px">0 = 不限</span>
-            </el-form-item>
-            <el-form-item label="description">
-              <el-input v-model="aptplForm.description" placeholder="說明為什麼這條規則自動放行 OK"/>
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="aptplDialogVisible=false">Cancel</el-button>
-            <el-button type="primary" @click="createApTpl" :loading="aptplLoading">Create</el-button>
-          </template>
-        </el-dialog>
-      </el-tab-pane>
-
-      <!-- ── H1 — Per-principal Quota dashboard ── -->
-      <el-tab-pane label="📊 配額" name="quota">
-        <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
-          <template #header>
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-weight:600">📊 Per-principal LLM token / dispatch quota</span>
-              <span v-if="quotaConfig" style="font-size:11px"
-                    :style="{color: quotaConfig.enforce_mode?'#f56c6c':'#909399'}">
-                {{quotaConfig.enforce_mode ? 'ENFORCE mode（超 quota 直接 throw）' : 'SOFT mode（超 quota 只 log + audit）'}}
-              </span>
-              <span style="flex:1"></span>
-              <el-button size="small" @click="loadQuota" :loading="quotaLoading">Refresh</el-button>
-            </div>
-          </template>
-          <div v-if="quotaConfig" style="margin-bottom:10px;font-size:11px;color:var(--td)">
-            預設 {{quotaConfig.default_llm_per_day.toLocaleString()}} LLM tokens/day · {{quotaConfig.default_dispatch_per_day.toLocaleString()}} dispatches/day · UTC midnight reset
-          </div>
-          <el-table v-if="quotaSnapshot" :data="quotaSnapshot.principals" stripe :empty-text="'(尚無使用紀錄、有 LLM 呼叫後才會出現)'">
-            <el-table-column label="principal" min-width="160">
-              <template #default="{row}"><code style="font-size:11px">{{row.principal_id}}</code></template>
-            </el-table-column>
-            <el-table-column label="LLM tokens" min-width="220">
-              <template #default="{row}">
-                <div style="font-size:11px">{{row.llm_tokens_used.toLocaleString()}} / {{row.llm_tokens_limit.toLocaleString()}} ({{row.llm_pct}}%)</div>
-                <el-progress :percentage="Math.min(100,row.llm_pct)" :status="row.llm_over_limit?'exception':row.llm_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"/>
-              </template>
-            </el-table-column>
-            <el-table-column label="dispatches" min-width="180">
-              <template #default="{row}">
-                <div style="font-size:11px">{{row.dispatches_used}} / {{row.dispatches_limit}} ({{row.dispatch_pct}}%)</div>
-                <el-progress :percentage="Math.min(100,row.dispatch_pct)" :status="row.dispatch_over_limit?'exception':row.dispatch_pct>80?'warning':'success'" :stroke-width="6" :show-text="false"/>
-              </template>
-            </el-table-column>
-            <el-table-column label="UTC day" width="120">
-              <template #default="{row}"><span style="font-size:11px;color:var(--td)">{{(row.day_utc||'').slice(0,10)}}</span></template>
             </el-table-column>
           </el-table>
         </el-card>
@@ -3493,6 +3501,9 @@ const app=createApp({
     }
     function capRiskColor(r){return({Low:'#67c23a',Medium:'#e6a23c',High:'#f56c6c',Critical:'#ff0000'})[r]||'#909399'}
     function capRiskTagType(r){return({Low:'success',Medium:'warning',High:'danger',Critical:'danger'})[r]||''}
+
+    // 🛡 治理規則 sub-tab（4 in 1：multi-sig / aptpl / tacl / quota）
+    const govSubTab=ref('multisig');
 
     // ─── G1 — Policy Replay Debugger ─────────────────────────────
     const replayCap=ref('');
@@ -4985,6 +4996,7 @@ const app=createApp({
       liveEvents,liveStreamConnected,liveEventColor,liveStreamConnect,liveStreamDisconnect,
       // G3 capability registry graph
       capGraph,capGraphLoading,capGraphFilter,filteredCapGraph,loadCapGraph,capRiskColor,capRiskTagType,
+      govSubTab,
       // G1 policy replay debugger
       replayCap,replayPrincipal,replayPayload,replayResult,replayLoading,replayTraceId,replayTraceLoading,
       doReplayEvaluate,loadReplayFromTrace,JSON,
