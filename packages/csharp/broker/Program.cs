@@ -1126,6 +1126,7 @@ if (poolEnabled)
     TimeAclEndpoints.Map(api);           // H2 — time-windowed ACL CRUD
     AuditRagEndpoints.Map(api);          // H4 — audit search + LLM RAG summary
     MultiSigEndpoints.Map(api);          // I1 — multi-sig N-of-M approval rules
+    DashboardEndpoints.Map(api);         // docker-stats / network-status / system-info
     AlertEndpoints.Map(api);
     AlertRulesEndpoints.Map(api);
     PerpetualEndpoints.Map(api);

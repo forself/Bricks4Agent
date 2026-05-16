@@ -61,14 +61,15 @@
   .nav .active { color: var(--info); border-color: var(--info); }
   .clock { color: var(--td); font-size: 12px; margin-left: 16px; font-family: "SF Mono", Consolas, monospace; }
 
-  /* ─────── Layout ─────── */
+  /* ─────── Layout — 3 rows ─────── */
   .main {
-    height: calc(100vh - 50px);
+    min-height: calc(100vh - 50px);
     display: grid;
     grid-template-columns: 1.4fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: minmax(280px, 1fr) minmax(280px, 1fr) minmax(220px, auto);
     gap: 14px;
     padding: 14px;
+    overflow-y: auto;
   }
   .main > section {
     background: var(--card);
@@ -314,7 +315,85 @@
     </div>
   </section>
 
+  <!-- Docker container resource usage -->
+  <section id="dockerBlock" style="grid-column:1;grid-row:3">
+    <div class="sec-title">
+      <span class="dot"></span> Docker Containers
+      <span style="flex:1"></span>
+      <span id="dockerSub" style="color:var(--td);font-size:11px;font-weight:400;text-transform:none">—</span>
+    </div>
+    <div id="dockerList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+      <div style="color:var(--td);text-align:center;padding:20px;font-size:11px;grid-column:1/-1">loading…</div>
+    </div>
+  </section>
+
+  <!-- Network connectivity to external services -->
+  <section id="netBlock" style="grid-column:2;grid-row:3">
+    <div class="sec-title">
+      <span class="dot"></span> Network Status
+      <span style="flex:1"></span>
+      <span id="netSub" style="color:var(--td);font-size:11px;font-weight:400;text-transform:none">—</span>
+    </div>
+    <div id="netList" style="display:flex;flex-direction:column;gap:4px">
+      <div style="color:var(--td);text-align:center;padding:20px;font-size:11px">loading…</div>
+    </div>
+  </section>
+
 </div>
+
+<style>
+  .container-card {
+    background: var(--card2);
+    border: 1px solid var(--bd);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    position: relative;
+  }
+  .container-card .cname {
+    color: var(--t);
+    font-weight: 600;
+    font-size: 12px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .container-card .crow {
+    display: flex;
+    justify-content: space-between;
+    color: var(--td);
+    margin-top: 3px;
+    font-size: 10px;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .container-card .cbar {
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .container-card .cbar > div { height: 100%; transition: width .4s; }
+  .container-card.high { border-left: 3px solid var(--bad); }
+  .container-card.med { border-left: 3px solid var(--warn); }
+  .container-card.ok { border-left: 3px solid var(--good); }
+
+  .net-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: var(--card2);
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .net-row .nname { flex: 1; color: var(--t); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .net-row .nlight { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .net-row.up .nlight { background: var(--good); box-shadow: 0 0 4px var(--good); }
+  .net-row.down .nlight { background: var(--bad); box-shadow: 0 0 6px var(--bad); animation: pulse 1.5s infinite; }
+  .net-row .nlat { color: var(--td); font-family: "SF Mono", Consolas, monospace; font-size: 10px; min-width: 50px; text-align: right; }
+</style>
 
 <script>
 // ─────── Config ───────
@@ -529,7 +608,65 @@ async function loadAll() {
   } catch (e) {
     setKpi('kpiAgents', AGENT_DEFS.length, '—', 'info');
   }
+
+  // 5. Docker container stats
+  try {
+    const r = await fetch('/api/v1/dashboard/docker-stats', { credentials: 'include' });
+    const j = await r.json();
+    if (j.success) renderDocker(j.data.containers || []);
+  } catch (e) { console.warn('docker', e); }
+
+  // 6. Network status
+  try {
+    const r = await fetch('/api/v1/dashboard/network-status', { credentials: 'include' });
+    const j = await r.json();
+    if (j.success) renderNetwork(j.data.targets || []);
+  } catch (e) { console.warn('net', e); }
 }
+
+function renderDocker(containers) {
+  const list = document.getElementById('dockerList');
+  const sub = document.getElementById('dockerSub');
+  if (!containers.length) {
+    list.innerHTML = '<div style="color:var(--td);text-align:center;padding:20px;font-size:11px;grid-column:1/-1">no containers (broker 不是 docker 模式 / docker.sock 未掛載)</div>';
+    sub.textContent = '0 containers';
+    return;
+  }
+  const sorted = containers.slice().sort((a,b) => (b.cpu_pct||0) - (a.cpu_pct||0)).slice(0, 12);
+  const totalCpu = containers.reduce((s,c) => s + (c.cpu_pct||0), 0);
+  sub.textContent = `${containers.length} containers · total CPU ${totalCpu.toFixed(1)}%`;
+  list.innerHTML = sorted.map(c => {
+    const cpu = c.cpu_pct || 0;
+    const mem = c.mem_pct || 0;
+    const cls = cpu > 80 || mem > 80 ? 'high' : cpu > 40 || mem > 50 ? 'med' : 'ok';
+    const cpuColor = cpu > 80 ? '#f56c6c' : cpu > 40 ? '#e6a23c' : '#67c23a';
+    const memColor = mem > 80 ? '#f56c6c' : mem > 50 ? '#e6a23c' : '#5db8ff';
+    return `
+      <div class="container-card ${cls}" title="${c.name}\nID: ${c.container_id}\nMem: ${c.mem_usage||'—'}\nNet IO: ${c.net_io||'—'}\nBlock IO: ${c.block_io||'—'}">
+        <div class="cname">${c.name}</div>
+        <div class="crow"><span>CPU</span><span style="color:${cpuColor};font-weight:600">${cpu.toFixed(1)}%</span></div>
+        <div class="cbar"><div style="width:${Math.min(100,cpu)}%;background:${cpuColor}"></div></div>
+        <div class="crow"><span>MEM</span><span style="color:${memColor};font-weight:600">${mem.toFixed(1)}%</span></div>
+        <div class="cbar"><div style="width:${Math.min(100,mem)}%;background:${memColor}"></div></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderNetwork(targets) {
+  const list = document.getElementById('netList');
+  const sub = document.getElementById('netSub');
+  const upCount = targets.filter(t => t.status === 'up').length;
+  sub.textContent = `${upCount}/${targets.length} up`;
+  list.innerHTML = targets.map(t => `
+    <div class="net-row ${t.status}" title="${t.url}${t.error ? '\n' + t.error : ''}">
+      <span class="nlight"></span>
+      <span class="nname">${t.name}</span>
+      <span class="nlat">${t.status === 'up' ? t.latency_ms + 'ms' : 'down'}</span>
+    </div>
+  `).join('');
+}
+
 // initial check + first load
 (async () => {
   const ok = await checkAuth();

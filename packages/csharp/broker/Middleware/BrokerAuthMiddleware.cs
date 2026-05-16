@@ -83,7 +83,8 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/approval-templates", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/quota", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/replay", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase);
+            || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/dashboard/", StringComparison.OrdinalIgnoreCase);
     }
 
     public BrokerAuthMiddleware(

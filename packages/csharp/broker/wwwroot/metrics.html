@@ -229,6 +229,26 @@
     </div>
   </div>
 
+  <!-- 9. Error log + export -->
+  <div class="card wide" id="errCard">
+    <div class="card-title">
+      <span class="main">🚨 Errors (last 24h)</span>
+      <span class="sub">
+        <span id="errSub">—</span>
+        <button onclick="exportErrors()" style="background:transparent;border:1px solid var(--bd);color:var(--td);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-left:8px">📥 Export</button>
+        <button onclick="loadErrors()" style="background:transparent;border:1px solid var(--bd);color:var(--td);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">↻</button>
+      </span>
+    </div>
+    <div id="errList" style="overflow-y:auto;max-height:360px">
+      <table>
+        <thead>
+          <tr><th style="width:130px">time</th><th style="width:90px">source</th><th style="width:80px">severity</th><th>entity / summary</th></tr>
+        </thead>
+        <tbody id="errTBody"><tr><td colspan="4" style="text-align:center;color:var(--td);padding:20px">loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -542,9 +562,55 @@ async function checkAuth() {
   return true;
 }
 
+// ─────── 9. Error log ───────
+let lastErrorData = null;
+async function loadErrors() {
+  try {
+    const r = await fetch('/api/v1/errors/aggregate?limit=200', { credentials: 'include' });
+    const j = await r.json();
+    if (!j.success) return;
+    lastErrorData = j.data;
+    const rows = j.data.rows || j.data || [];
+    document.getElementById('errSub').textContent = `${rows.length} errors`;
+    const tbody = document.getElementById('errTBody');
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--good);padding:20px">✓ no errors</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.slice(0, 80).map(r => {
+      const sev = r.severity || r.Severity || 'info';
+      const cls = sev === 'critical' || sev === 'error' ? 'bad' : sev === 'warning' || sev === 'warn' ? 'warn' : 'info';
+      const ts = (r.ts || r.Ts || '').toString().slice(0, 19).replace('T', ' ');
+      const src = r.source || r.Source || '?';
+      const ent = (r.entity || r.Entity || '').slice(0, 40);
+      const sum = (r.summary || r.Summary || '').slice(0, 120);
+      return `<tr>
+        <td style="color:var(--td)">${ts}</td>
+        <td style="color:var(--td)">${src}</td>
+        <td><span class="pill ${cls}">${sev}</span></td>
+        <td><div style="color:var(--t);font-size:11px">${ent}</div><div style="color:var(--td);font-size:10px;margin-top:2px">${sum}</div></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { console.warn('errors', e); }
+}
+
+function exportErrors() {
+  if (!lastErrorData) { alert('沒有錯誤資料、按 ↻ 載入'); return; }
+  const blob = new Blob([JSON.stringify(lastErrorData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `b4a-errors-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // ─────── Master refresh ───────
 async function loadAll() {
-  await Promise.all([loadHealth(), loadApr(), loadEvents(), loadTopo(), loadQuota(), loadRisk(), loadLat(), loadAgents()]);
+  await Promise.all([loadHealth(), loadApr(), loadEvents(), loadTopo(), loadQuota(), loadRisk(), loadLat(), loadAgents(), loadErrors()]);
 }
 (async () => {
   const ok = await checkAuth();
