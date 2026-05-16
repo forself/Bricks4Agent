@@ -183,8 +183,14 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 <!-- ── Main ── -->
 <div v-else>
   <div class="hdr">
-    <h1><em>B4A</em> Broker Dashboard</h1>
+    <h1><em>B4A</em> Admin Panel</h1>
     <div class="hdr-r">
+      <a href="dashboard.html" style="text-decoration:none">
+        <el-button size="small" type="primary" plain>📊 儀錶板</el-button>
+      </a>
+      <a href="metrics.html" style="text-decoration:none">
+        <el-button size="small" plain>📈 細部圖表</el-button>
+      </a>
       <el-tag type="success" effect="dark" size="small" round>
         <el-icon style="margin-right:4px"><i class="el-icon-circle-check"></i></el-icon>
         {{t('encrypted')}}
