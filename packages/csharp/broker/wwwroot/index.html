@@ -1699,7 +1699,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── G1 — Policy Replay Debugger ── -->
-      <el-tab-pane label="🔬 Policy Replay" name="replay">
+      <el-tab-pane label="🔬 Replay" name="replay">
         <el-card style="margin-bottom:14px;border-left:3px solid #a374ff">
           <template #header>
             <div>
@@ -1772,7 +1772,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── I1 — Multi-Sig Rules（N-of-M approval thresholds） ── -->
-      <el-tab-pane label="✍ Multi-Sig" name="multisig">
+      <el-tab-pane label="✍ 多簽" name="multisig">
         <el-card style="margin-bottom:14px;border-left:3px solid #f56c6c">
           <template #header>
             <div style="display:flex;align-items:center;gap:10px">
@@ -1837,7 +1837,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── H4 — Audit RAG（search + LLM summary） ── -->
-      <el-tab-pane label="🔎 Audit RAG" name="auditrag">
+      <el-tab-pane label="🔎 稽核問答" name="auditrag">
         <el-card style="margin-bottom:14px;border-left:3px solid #a374ff">
           <template #header>
             <div>
@@ -1847,40 +1847,45 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
               </span>
             </div>
           </template>
-          <el-row :gutter="14">
-            <el-col :span="12">
-              <div style="font-size:12px;color:var(--td);margin-bottom:4px">問題</div>
-              <el-input v-model="ragQuery" type="textarea" :rows="3"
-                placeholder="例：上週誰按過 KILL_SWITCH？/ 哪些 capability 最常被擋？"/>
-              <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-                <span style="font-size:12px;color:var(--td)">時間窗 (h)：</span>
-                <el-input-number v-model="ragSinceHours" :min="1" :max="720" size="small" style="width:120px"/>
-                <span style="font-size:12px;color:var(--td);margin-left:8px">limit：</span>
-                <el-input-number v-model="ragLimit" :min="5" :max="200" size="small" style="width:120px"/>
-              </div>
-              <div style="margin-top:10px">
-                <el-button type="primary" size="small" @click="doRagSearch" :loading="ragSearchLoading">🔎 Search</el-button>
-                <el-button size="small" @click="doRagSummary" :loading="ragSummaryLoading"
-                           :disabled="!ragSearchResult||ragSearchResult.events.length===0">🤖 Summarize with LLM</el-button>
-                <el-button size="small" @click="ragQuery='';ragSearchResult=null;ragSummary=null">Clear</el-button>
-              </div>
-            </el-col>
-            <el-col :span="12">
-              <div v-if="ragSummary" style="background:#f5f5f5;padding:12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#222">
-                <div style="font-weight:600;margin-bottom:6px">🤖 LLM summary</div>
-                <div style="white-space:pre-wrap">{{ragSummary.summary}}</div>
-                <div style="font-size:10px;color:#909399;margin-top:6px">
-                  model={{ragSummary.model}} · {{ragSummary.duration_ms}}ms · tokens={{ragSummary.eval_tokens}}
-                </div>
-              </div>
-              <div v-else-if="ragSearchResult" style="font-size:12px;color:var(--td)">
-                找到 {{ragSearchResult.count}} 筆事件、tokens=[{{ragSearchResult.tokens.join(', ')}}]
-              </div>
-              <div v-else style="color:var(--td);font-size:12px;text-align:center;padding:20px">
-                填問題、按 Search → Summarize
-              </div>
-            </el-col>
-          </el-row>
+
+          <!-- Single column layout: question + inline controls + buttons stay visible -->
+          <div style="font-size:12px;color:var(--t);margin-bottom:6px;font-weight:600">問題</div>
+          <el-input v-model="ragQuery" type="textarea" :rows="3"
+            placeholder="例：上週誰按過 KILL_SWITCH？/ 哪些 capability 最常被擋？"></el-input>
+
+          <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--td)">時間窗 (h)：</span>
+            <el-input-number v-model="ragSinceHours" :min="1" :max="720" size="small" style="width:110px"></el-input-number>
+            <span style="font-size:12px;color:var(--td)">limit：</span>
+            <el-input-number v-model="ragLimit" :min="5" :max="200" size="small" style="width:110px"></el-input-number>
+            <span style="flex:1"></span>
+            <el-button type="primary" size="small" @click="doRagSearch" :loading="ragSearchLoading">🔎 Search</el-button>
+            <el-button size="small" type="success" @click="doRagSummary" :loading="ragSummaryLoading"
+                       :disabled="!ragSearchResult||ragSearchResult.events.length===0">🤖 Summarize</el-button>
+            <el-button size="small" @click="ragQuery='';ragSearchResult=null;ragSummary=null">Clear</el-button>
+          </div>
+
+          <!-- LLM summary block -->
+          <div v-if="ragSummary"
+               style="margin-top:14px;background:#0f1117;border:1px solid #a374ff;padding:14px;border-radius:6px;font-size:13px;color:#e4e7f0;line-height:1.65">
+            <div style="font-weight:600;margin-bottom:8px;color:#a374ff">🤖 LLM summary</div>
+            <div style="white-space:pre-wrap">{{ragSummary.summary}}</div>
+            <div style="font-size:10px;color:#909399;margin-top:8px">
+              model={{ragSummary.model}} · {{ragSummary.duration_ms}}ms · tokens={{ragSummary.eval_tokens}}
+            </div>
+          </div>
+
+          <!-- Search hit count -->
+          <div v-else-if="ragSearchResult"
+               style="margin-top:14px;font-size:12px;color:var(--td);padding:10px;background:#0f1117;border-radius:4px">
+            ✓ 找到 {{ragSearchResult.count}} 筆事件、tokens=[{{ragSearchResult.tokens.join(', ')}}]
+          </div>
+
+          <!-- Empty state -->
+          <div v-else
+               style="margin-top:14px;color:var(--td);font-size:12px;text-align:center;padding:20px;background:#0f1117;border-radius:4px">
+            填問題、按 Search → Summarize
+          </div>
         </el-card>
 
         <el-card v-if="ragSearchResult" style="margin-bottom:14px">
@@ -1913,7 +1918,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── H2 — Time ACL rules ── -->
-      <el-tab-pane label="⏰ Time ACL" name="tacl">
+      <el-tab-pane label="⏰ 時段 ACL" name="tacl">
         <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
           <template #header>
             <div style="display:flex;align-items:center;gap:10px">
@@ -1991,7 +1996,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── H3 — Approval Templates（auto-approve rules） ── -->
-      <el-tab-pane label="📋 Approval Templates" name="aptpl">
+      <el-tab-pane label="📋 核准範本" name="aptpl">
         <el-card style="margin-bottom:14px;border-left:3px solid #e6a23c">
           <template #header>
             <div style="display:flex;align-items:center;gap:10px">
@@ -2067,7 +2072,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── H1 — Per-principal Quota dashboard ── -->
-      <el-tab-pane label="📊 Quota" name="quota">
+      <el-tab-pane label="📊 配額" name="quota">
         <el-card style="margin-bottom:14px;border-left:3px solid #67c23a">
           <template #header>
             <div style="display:flex;align-items:center;gap:10px">
@@ -2107,7 +2112,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       </el-tab-pane>
 
       <!-- ── G3 — Capability Registry（static design view） ── -->
-      <el-tab-pane label="🗺 Capability Registry" name="capgraph">
+      <el-tab-pane label="🗺 能力註冊" name="capgraph">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
           <span style="color:var(--td);font-size:12px">Benson 設計的 Capability 框架（白名單 + 風險 + approval policy + schema）跟 worker 註冊狀態的 mapping。</span>
           <span style="flex:1"></span>
