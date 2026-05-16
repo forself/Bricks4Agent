@@ -141,6 +141,34 @@
   .kpi.warn .kpi-dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
   .kpi.bad .kpi-dot { background: var(--bad); box-shadow: 0 0 8px var(--bad); animation: pulse 1s infinite; }
   .kpi.info .kpi-dot { background: var(--info); box-shadow: 0 0 8px var(--info); }
+  .kpi-spark { display: block; width: 100%; height: 22px; margin-top: 6px; opacity: 0.85; }
+
+  /* Refresh ticker (top-right of clock area) */
+  .ticker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--td);
+    font-size: 11px;
+    font-family: "SF Mono", Consolas, monospace;
+    margin-left: 12px;
+  }
+  .ticker .ring {
+    width: 10px; height: 10px;
+    border: 2px solid var(--bd);
+    border-top-color: var(--info);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: none;
+  }
+  .ticker.refreshing .ring { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Presentation mode — hide nav, larger fonts */
+  body.present .topbar { height: 30px; }
+  body.present .nav a, body.present .nav button:not(.refresh) { display: none; }
+  body.present .main { padding: 8px; }
+  body.present .kpi-value { font-size: 48px; }
 
   /* Agent grid — bottom-left */
   #agentBlock { grid-column: 1; grid-row: 2; }
@@ -253,6 +281,8 @@
     <a href="dashboard.html" class="active">📊 儀錶板</a>
     <a href="metrics.html">📈 細部圖表</a>
     <a href="index.html">🛠 Admin</a>
+    <button class="refresh" onclick="togglePresent()" title="投影模式 / 全螢幕、隱藏 nav">⛶</button>
+    <span class="ticker" id="ticker"><span class="ring"></span><span id="tickerText">—</span></span>
     <span class="clock" id="clock">--:--:--</span>
   </div>
 </div>
@@ -275,12 +305,14 @@
         <div class="kpi-label">Agents</div>
         <div class="kpi-value skel">—</div>
         <div class="kpi-sub">inbox-driven</div>
+        <svg class="kpi-spark" id="sparkAgents" viewBox="0 0 100 20" preserveAspectRatio="none"></svg>
       </div>
       <div class="kpi info" id="kpiApprovals">
         <div class="kpi-dot"></div>
         <div class="kpi-label">Pending Approvals</div>
         <div class="kpi-value skel">—</div>
         <div class="kpi-sub">需 admin 裁決</div>
+        <svg class="kpi-spark" id="sparkApprovals" viewBox="0 0 100 20" preserveAspectRatio="none"></svg>
       </div>
       <div class="kpi good" id="kpiKill">
         <div class="kpi-dot"></div>
@@ -505,6 +537,62 @@ function setKpi(id, value, sub, status) {
   card.classList.add(status);
 }
 
+// ─────── Sparkline (in-memory ring buffer per metric, 60 points = ~5 min @ 5s refresh) ───────
+const SPARK_LEN = 60;
+const sparkBuffer = {};  // key → [v, v, v, ...]
+function pushSpark(key, val) {
+  if (!sparkBuffer[key]) sparkBuffer[key] = [];
+  sparkBuffer[key].push(Number(val) || 0);
+  if (sparkBuffer[key].length > SPARK_LEN) sparkBuffer[key].shift();
+}
+function renderSpark(svgId, key, color) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const data = sparkBuffer[key] || [];
+  if (data.length < 2) { svg.innerHTML = ''; return; }
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = Math.max(1, max - min);
+  const w = 100, h = 20;
+  const step = w / (SPARK_LEN - 1);
+  const pts = data.map((v, i) => {
+    const x = (i + (SPARK_LEN - data.length)) * step;
+    const y = h - ((v - min) / range) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastX = ((data.length - 1) + (SPARK_LEN - data.length)) * step;
+  const lastY = h - ((data[data.length-1] - min) / range) * h;
+  // Filled area + line + last-point dot
+  svg.innerHTML = `
+    <polygon points="${pts} ${lastX.toFixed(1)},${h} 0,${h}" fill="${color}" fill-opacity="0.12"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2" fill="${color}"/>
+  `;
+}
+
+// ─────── Presentation mode toggle ───────
+function togglePresent() {
+  document.body.classList.toggle('present');
+  if (document.body.classList.contains('present')) {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(()=>{});
+    }
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+  }
+  setTimeout(() => { gaugeChart.resize(); }, 100);
+}
+
+// ─────── Refresh ticker (visual countdown) ───────
+const ticker = document.getElementById('ticker');
+const tickerText = document.getElementById('tickerText');
+let lastLoadAt = Date.now();
+function updateTicker() {
+  const ms = Date.now() - lastLoadAt;
+  const remainSec = Math.max(0, Math.ceil((REFRESH_MS - ms) / 1000));
+  tickerText.textContent = `next ${remainSec}s`;
+}
+setInterval(updateTicker, 250);
+
 // ─────── Banner (kill switch / readonly) ───────
 function setBanner(kill, ro) {
   const b = document.getElementById('banner');
@@ -558,11 +646,18 @@ async function checkAuth() {
 
 // ─────── Pull data ───────
 async function loadAll() {
+  ticker.classList.add('refreshing');
+  lastLoadAt = Date.now();
+
   // 1. Health
   try {
     const r = await fetch('/api/v1/health/score', { credentials: 'include' });
     const j = await r.json();
-    if (j.success) renderGauge(j.data.overall_score || 0);
+    if (j.success) {
+      const score = j.data.overall_score || 0;
+      renderGauge(score);
+      pushSpark('health', score);
+    }
   } catch (e) {
     renderGauge(0);
   }
@@ -587,6 +682,8 @@ async function loadAll() {
     if (j.success) {
       const n = (j.data || []).length;
       setKpi('kpiApprovals', n, n === 0 ? '無待審' : '需 admin 裁決', n === 0 ? 'good' : n > 5 ? 'bad' : 'warn');
+      pushSpark('approvals', n);
+      renderSpark('sparkApprovals', 'approvals', n === 0 ? '#67c23a' : n > 5 ? '#f56c6c' : '#e6a23c');
     }
   } catch (e) {}
 
@@ -605,9 +702,13 @@ async function loadAll() {
     const goodCount = Object.values(statusMap).filter(s => s.status === 'done').length;
     setKpi('kpiAgents', AGENT_DEFS.length, `${goodCount} done · ${AGENT_DEFS.length - goodCount} other`,
       goodCount === AGENT_DEFS.length ? 'good' : goodCount >= AGENT_DEFS.length - 2 ? 'info' : 'warn');
+    pushSpark('agents', goodCount);
   } catch (e) {
     setKpi('kpiAgents', AGENT_DEFS.length, '—', 'info');
   }
+  // sparkline for agents (count of done)
+  const lastAgentSpark = sparkBuffer['agents'] ? sparkBuffer['agents'][sparkBuffer['agents'].length-1] : 0;
+  renderSpark('sparkAgents', 'agents', '#5db8ff');
 
   // 5. Docker container stats
   try {
@@ -622,6 +723,8 @@ async function loadAll() {
     const j = await r.json();
     if (j.success) renderNetwork(j.data.targets || []);
   } catch (e) { console.warn('net', e); }
+
+  ticker.classList.remove('refreshing');
 }
 
 function renderDocker(containers) {
