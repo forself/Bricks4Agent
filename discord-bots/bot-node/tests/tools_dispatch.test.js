@@ -30,7 +30,44 @@ test('dispatchTool: success → status=success, ok=true', async () => {
   } finally { restore(); }
 });
 
-test('dispatchTool: pending_approval (broker error mentions approval_id=apr_) → status=pending_approval, ok=true', async () => {
+test('dispatchTool: structured pending_approval (broker回 data.status="pending_approval") → status=pending_approval, ok=true', async () => {
+  // 新版 broker 走 ApprovalAwareResponseHelper、回 success + data.status="pending_approval"
+  // bot 必須在 success 判斷前先攔、否則會被當成「真成功」回 status='success'
+  const restore = stubTool('trading.order', {
+    ok: true,
+    status: 200,
+    data: { status: 'pending_approval', approval_id: 'apr_new789', note: 'Awaiting admin approval.' },
+  });
+  try {
+    const r = await dispatchTool(
+      { call: 'trading.order', args: { symbol: 'BTC-USDT', side: 'buy' } },
+      { userId: 'u', isPrivileged: true, privilegedTool: true },
+    );
+    assert.equal(r.ok, true);
+    assert.equal(r.status, 'pending_approval');
+    assert.match(r.summary, /approval_id=apr_new789/);
+    assert.equal(r.data.approval_id, 'apr_new789');
+  } finally { restore(); }
+});
+
+test('dispatchTool: structured success (no pending status) → status=success', async () => {
+  // 真成功（data 沒有 pending_approval 標記）不該被當成 pending
+  const restore = stubTool('trading.account', {
+    ok: true,
+    status: 200,
+    data: { exchange: 'bingx', balance: 1000.5 },
+  });
+  try {
+    const r = await dispatchTool(
+      { call: 'trading.account', args: { exchange: 'bingx' } },
+      { userId: 'u', isPrivileged: true, privilegedTool: true },
+    );
+    assert.equal(r.ok, true);
+    assert.equal(r.status, 'success', 'data.status 不存在就是真成功、不該被攔成 pending');
+  } finally { restore(); }
+});
+
+test('dispatchTool: legacy pending_approval (broker error mentions approval_id=apr_) → status=pending_approval, ok=true', async () => {
   // broker 走 W14 P5 approval gate 時、callBroker 收到 4xx + error 訊息含 "approval_id=apr_..."
   const restore = stubTool('trading.order', {
     ok: false,

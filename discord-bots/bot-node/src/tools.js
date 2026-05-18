@@ -241,10 +241,24 @@ export async function dispatchTool(toolCall, caller = { userId: '?', isPrivilege
   }
 
   const result = await def.dispatch(args);
+
+  // 結構化 pending_approval 偵測（broker `ApprovalAwareResponseHelper` 統一格式）：
+  // approval gate 卡住的單 broker 回 success + data.status='pending_approval' + data.approval_id。
+  // 必須在 success 判斷前先攔、否則會被當成「真成功」回 status='success'。
+  if (result.ok && result.data && result.data.status === 'pending_approval') {
+    const aid = result.data.approval_id || 'unknown';
+    return {
+      ok: true,
+      status: 'pending_approval',
+      summary: `tool=${call} pending_approval: approval_id=${aid}. ${result.data.note || 'Awaiting admin approval.'}`,
+      data: result.data,
+    };
+  }
+
   if (!result.ok) {
-    // broker 把「需 admin approval」的訊息塞在 error string 裡（HTTP 也回非 2xx）、
-    // 對 dispatch 來說不是失敗、是暫緩、要 surface 給 LLM 「請告知使用者去 dashboard 審核」。
-    // 用 approval_id=apr_ 當特徵字串、避免誤判其它含 "approval" 的真錯誤。
+    // Legacy fallback：舊版 broker / 沒走 ApprovalAwareResponseHelper 的 endpoint 可能還是把
+    // approval 訊息塞在 error string 裡（HTTP 也回非 2xx）。用 approval_id=apr_ regex 抓、
+    // 避免誤判其它含 "approval" 的真錯誤。新版 broker 不會走到這條。
     const isPendingApproval = !!result.error && /approval_id=apr_/i.test(result.error);
     if (isPendingApproval) {
       return {

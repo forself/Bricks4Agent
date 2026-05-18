@@ -2620,6 +2620,14 @@ async function placeOrder(side){const ex=document.getElementById('ord-exchange')
 const body={exchange:ex,symbol:sym,side,quantity:qty,order_type:type};if(type==='limit'&&!isNaN(lim))body.limit_price=lim;
 const el=document.getElementById('order-result');el.style.display='block';el.textContent='下單中…';
 const r=await api('/api/v1/trading/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+// broker 對受 approval gate 控制的 capability 回 data.status === 'pending_approval'
+// （ApprovalAwareResponseHelper 統一格式）。把它當成「已送出待審」綠色提示、不是失敗。
+if(r?.data?.status==='pending_approval'){
+  el.style.color='var(--green)';
+  el.textContent=`✓ 已送出待審單 ${r.data.approval_id}\n請到「待審」分頁點 Approve / Reject 裁決。\n${r.data.note||''}`;
+  return;
+}
+el.style.color='';
 if(r?.data){el.textContent=`Order: ${r.data.order_id}\nStatus: ${r.data.status}\n${r.data.side} ${r.data.quantity} ${r.data.symbol}`;
 const tp=parseFloat(document.getElementById('ord-tp').value),sl=parseFloat(document.getElementById('ord-sl').value);
 if((tp>0||sl>0)&&side==='buy')placeTPSL(ex,sym,qty,tp,sl).then(()=>el.textContent+='\nTP/SL orders placed');}
@@ -2881,6 +2889,16 @@ async function placePerpOrder(side,positionSide,reduceOnly){
   if(stopPrice!==null)body.stop_price=stopPrice;
   const r=await api('/api/v1/perpetual/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const out=document.getElementById('perp-order-result');out.style.display='block';
+  // broker 對 trading.perpetual::place_order 在 approval gate 卡住會回 data.status='pending_approval'
+  // （ApprovalAwareResponseHelper 統一格式）。每次下單都會建新的 approval_id、跟上一單是不同筆。
+  if(r?.success && r?.data?.status==='pending_approval'){
+    const action=reduceOnly?'平倉':'開倉';
+    out.style.color='var(--green)';
+    out.textContent=`✓ 已送出新待審單 ${r.data.approval_id}\n${action} ${symbol} ${side} qty=${qty}\n請到「待審」分頁裁決。`;
+    toastOk(`${action}已送出待審 ${r.data.approval_id}`);
+    return;
+  }
+  out.style.color='';
   if(r?.success){
     out.textContent=JSON.stringify(r.data,null,2);
     const action=reduceOnly?'平倉':'開倉';

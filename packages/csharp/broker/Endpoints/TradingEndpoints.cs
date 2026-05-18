@@ -459,19 +459,8 @@ public static class TradingEndpoints
         };
     }
 
+    // 走 ApprovalAwareResponseHelper：approval gate 卡住的單會被重塑成 status="pending_approval"
+    // 結構化回應、不是「失敗 + 字串」、讓 dashboard / bot 兩端都能分得出「真失敗 vs 卡審」。
     private static IResult ToResponse(ExecutionResult result)
-    {
-        if (!result.Success)
-            return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "dispatch failed"));
-
-        try
-        {
-            var data = JsonDocument.Parse(result.ResultPayload ?? "{}");
-            return Results.Ok(ApiResponseHelper.Success(data.RootElement));
-        }
-        catch
-        {
-            return Results.Ok(ApiResponseHelper.Success(result.ResultPayload ?? "{}"));
-        }
-    }
+        => ApprovalAwareResponseHelper.Shape(result);
 }
