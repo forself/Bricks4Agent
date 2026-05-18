@@ -248,6 +248,17 @@ public class AutoTraderService : BackgroundService
     private readonly ConcurrentDictionary<string, DateTime> _slippageBackoffUntil = new();
 
     /// <summary>
+    /// C2 — Confidence-aware position sizing。strategy.signal 回的 confidence (0-1) 拿來
+    /// 縮放 qty：高信心拿原 qty、低信心縮成 qty × max(floor, confidence)、確保最壞情況不縮到 0。
+    /// 不影響 reduceOnly 平倉。預設 off、向後相容。
+    /// env: AUTOTRADER_CONFIDENCE_SIZING_ENABLED（預設 false） / AUTOTRADER_CONFIDENCE_SIZING_FLOOR（預設 0.3）。
+    /// Kelly fraction 整合預留 ApplyAdaptiveSizing(kellyFraction) 介面、目前固定 1.0、
+    /// 待後續加 KellyPositionSizingService 的 6h cache 後再串。
+    /// </summary>
+    private readonly bool _confidenceSizingEnabled;
+    private readonly decimal _confidenceSizingFloor;
+
+    /// <summary>
     /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
     /// 模式：
     ///   "off"    — 完全不檢查（向後相容、預設）
@@ -601,6 +612,11 @@ public class AutoTraderService : BackgroundService
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
         // C1 — slippage backoff cooldown 分鐘（0 = 關 backoff、只 audit；預設 30 min）
         _slippageBackoffMin = ParseIntEnv("AUTOTRADER_SLIPPAGE_BACKOFF_MIN", defaultValue: 30, min: 0, max: 720);
+        // C2 — confidence-aware sizing（opt-in、預設 off 不破壞既有行為）
+        _confidenceSizingEnabled = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_CONFIDENCE_SIZING_ENABLED") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
+        _confidenceSizingFloor = ParsePctEnv("AUTOTRADER_CONFIDENCE_SIZING_FLOOR", defaultValue: 0.3m, min: 0.05m, max: 1m);
         // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
         var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
         _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
@@ -2277,6 +2293,29 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
+            // ── C2 — Adaptive sizing（confidence × Kelly multiplier）─
+            // 只對 open / scale-in 套用、平倉不縮（出場永遠用足量）。
+            // 預設 disabled 純向後相容；env enable 後低信心訊號自動縮 qty。
+            // Kelly 整合介面預留、目前永遠傳 1.0、待 KellyPositionSizingService cache 串好。
+            if (_confidenceSizingEnabled && !reduceOnly &&
+                (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            {
+                var before = qtyToUse;
+                qtyToUse = ApplyAdaptiveSizing(
+                    baseQty: qtyToUse, confidence: confidence,
+                    confidenceFloor: _confidenceSizingFloor,
+                    kellyFraction: 1m,              // TODO: 接 Kelly cache 後從這餵 fraction
+                    confidenceEnabled: true,
+                    kellyEnabled: false);
+                if (qtyToUse != before)
+                {
+                    var factorPct = before > 0m ? qtyToUse / before : 1m;
+                    AddLog(item, "info",
+                        $"adaptive sizing: confidence={confidence:P0} factor={factorPct:P0} " +
+                        $"qty {before:F6} → {qtyToUse:F6}");
+                }
+            }
+
             // ── Pre-flight：dynamic sizing 完才知 qty、在這裡查 BingX min order / leverage spec
             // user request：條件不過直接擋下、不要走完整鏈才爆
             if (!reduceOnly)
@@ -2404,6 +2443,33 @@ public class AutoTraderService : BackgroundService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// C2 — Adaptive position sizing 公式（pure function、好測）。
+    ///   factor = (confidenceEnabled ? max(floor, clamp(confidence, 0, 1)) : 1)
+    ///          × (kellyEnabled     ? clamp(kellyFraction, 0, 1)            : 1)
+    ///   sized = baseQty × factor
+    ///
+    /// 設計：兩個 multiplier 互乘、各自 opt-in、可分別 enable/disable。
+    /// Kelly 整合介面預留——目前 PlacePerpOrderForSignalAsync 永遠傳 1.0、
+    /// 待後續加 KellyPositionSizingService 6h cache 後再從 cache 餵 kellyFraction 進來。
+    /// </summary>
+    internal static decimal ApplyAdaptiveSizing(
+        decimal baseQty, decimal confidence, decimal confidenceFloor,
+        decimal kellyFraction, bool confidenceEnabled, bool kellyEnabled)
+    {
+        var factor = 1m;
+        if (confidenceEnabled)
+        {
+            var conf = Math.Max(0m, Math.Min(1m, confidence));
+            factor *= Math.Max(confidenceFloor, conf);
+        }
+        if (kellyEnabled)
+        {
+            factor *= Math.Clamp(kellyFraction, 0m, 1m);
+        }
+        return baseQty * factor;
+    }
 
     /// <summary>
     /// C1 gate — 判斷某 (exchange:symbol) 是否仍在 slippage backoff cooldown 中。
