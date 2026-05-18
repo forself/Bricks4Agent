@@ -196,5 +196,143 @@ public static class LabEndpoints
             }
             catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error(ex.Message)); }
         });
+
+        // ── A2：strategy review analytics ─────────────────────────────────
+        // Phase 1 已擴張到 24 條策略、Phase 2 review 要拉這些 endpoint 看哪些策略真的拿過
+        // recommended、哪些從沒、哪些過擬合。dashboard 之後可掛 chart。
+
+        /// /api/v1/lab/strategy-stats?days=7 — per-strategy aggregate 過去 N 天
+        /// 列每條策略：跑了幾次 / 拿過幾次 recommended / 平均 score / 在哪些 regime 贏過
+        /// → 識別「常勝者」「從未推薦」「適合特定 regime」
+        lab.MapGet("/strategy-stats", (BrokerDb db, HttpRequest req) =>
+        {
+            var days = req.Query.TryGetValue("days", out var d) && int.TryParse(d, out var dv)
+                ? Math.Clamp(dv, 1, 90) : 7;
+            var since = DateTime.UtcNow.AddDays(-days);
+
+            var rows = db.Query<BacktestResultEntry>(
+                "SELECT * FROM backtest_results WHERE finished_at >= @since AND error IS NULL",
+                new { since });
+
+            // C# 端 aggregate（BaseOrm 無 GROUP BY support、且 7 天資料量 ~5k rows 算得動）
+            var stats = rows.GroupBy(r => r.Strategy)
+                .Select(g => new
+                {
+                    strategy           = g.Key,
+                    total_results      = g.Count(),
+                    recommended_count  = g.Count(r => r.Recommended),
+                    recommended_rate   = g.Any() ? Math.Round((decimal)g.Count(r => r.Recommended) / g.Count(), 3) : 0m,
+                    avg_score          = g.Any() ? Math.Round(g.Average(r => r.Score), 4) : 0m,
+                    avg_sharpe         = g.Any() ? Math.Round(g.Average(r => r.Sharpe), 3) : 0m,
+                    avg_return_pct     = g.Any() ? Math.Round(g.Average(r => r.TotalReturnPct), 2) : 0m,
+                    avg_trades         = g.Any() ? Math.Round(g.Average(r => (decimal)r.Trades), 1) : 0m,
+                    // 過擬合警示：WF 跑成功的子集、平均 |IS-OOS gap|
+                    avg_oos_gap_abs    = g.Where(r => r.WfFolds > 0).Any()
+                                         ? Math.Round(g.Where(r => r.WfFolds > 0).Average(r => Math.Abs(r.IsOosGap)), 3)
+                                         : 0m,
+                    // 哪些 regime 贏過（recommended=true 的 regime distinct）
+                    regimes_won_in     = g.Where(r => r.Recommended)
+                                          .Select(r => r.Regime ?? "unknown")
+                                          .Distinct().OrderBy(x => x).ToList(),
+                })
+                .OrderByDescending(s => s.recommended_rate)
+                .ThenByDescending(s => s.avg_score)
+                .ToList();
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                window_days = days,
+                since,
+                total_strategies = stats.Count,
+                never_recommended = stats.Count(s => s.recommended_count == 0),
+                strategies = stats,
+            }));
+        });
+
+        /// /api/v1/lab/leaderboard?limit=20 — 最新 run 的 top-N by score
+        /// 不限 recommended、單純看分數、用來抓「分數高但因 oos gap 沒被推薦」這類邊緣案例
+        lab.MapGet("/leaderboard", (BrokerDb db, HttpRequest req) =>
+        {
+            var limit = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var lv)
+                ? Math.Clamp(lv, 1, 100) : 20;
+
+            var latest = db.Query<BacktestRunEntry>(
+                "SELECT * FROM backtest_runs WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 1")
+                .FirstOrDefault();
+            if (latest == null)
+                return Results.Ok(ApiResponseHelper.Success(new { run = (object?)null, count = 0, entries = Array.Empty<object>() }));
+
+            var top = db.Query<BacktestResultEntry>(
+                "SELECT * FROM backtest_results WHERE run_id = @rid AND error IS NULL " +
+                "ORDER BY score DESC LIMIT @lim",
+                new { rid = latest.RunId, lim = limit });
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                run = new { run_id = latest.RunId, started_at = latest.StartedAt },
+                count = top.Count,
+                entries = top.Select(r => new
+                {
+                    r.Symbol, r.Timeframe, r.Strategy, regime = r.Regime ?? "unknown",
+                    r.Score, r.Sharpe, total_return_pct = r.TotalReturnPct,
+                    win_rate = r.WinRate, max_dd_pct = r.MaxDdPct, r.Trades,
+                    wf_folds = r.WfFolds, is_oos_gap = r.IsOosGap,
+                    recommended = r.Recommended,
+                    // 解釋為什麼分數高但沒被推薦
+                    excluded_reason = !r.Recommended ? ExclusionReason(r) : null,
+                }),
+            }));
+        });
+
+        /// /api/v1/lab/overfit?gap=0.5&days=7 — 過擬合警示清單
+        /// WfFolds>0 且 |IsOosGap|>=gap 的 entries、按 gap 大到小排
+        /// dashboard 用來高亮「IS 很漂亮但 OOS 崩了」的危險策略
+        lab.MapGet("/overfit", (BrokerDb db, HttpRequest req) =>
+        {
+            var gap = req.Query.TryGetValue("gap", out var g) && decimal.TryParse(g, out var gv)
+                ? Math.Clamp(gv, 0.1m, 1m) : 0.5m;
+            var days = req.Query.TryGetValue("days", out var d) && int.TryParse(d, out var dv)
+                ? Math.Clamp(dv, 1, 90) : 7;
+            var since = DateTime.UtcNow.AddDays(-days);
+
+            // BaseOrm SQLite ABS() 支援、但 IS-OOS gap 可能負（OOS 比 IS 好、罕見但有效）
+            // 取絕對值 >= gap 才算過擬合警示
+            var rows = db.Query<BacktestResultEntry>(
+                "SELECT * FROM backtest_results " +
+                "WHERE finished_at >= @since AND wf_folds > 0 AND error IS NULL " +
+                "AND ABS(is_oos_gap) >= @gap " +
+                "ORDER BY ABS(is_oos_gap) DESC LIMIT 100",
+                new { since, gap });
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                window_days = days,
+                gap_threshold = gap,
+                count = rows.Count,
+                entries = rows.Select(r => new
+                {
+                    r.Symbol, r.Timeframe, r.Strategy, regime = r.Regime ?? "unknown",
+                    is_return_pct = r.TotalReturnPct,
+                    oos_return_pct = r.OosReturnPct,
+                    is_oos_gap = r.IsOosGap,
+                    abs_gap = Math.Abs(r.IsOosGap),
+                    wf_folds = r.WfFolds,
+                    sharpe = r.Sharpe,
+                    finished_at = r.FinishedAt,
+                }),
+            }));
+        });
+    }
+
+    /// <summary>
+    /// 解釋一個 entry 為什麼沒被標 recommended（給 /leaderboard 用、debug + thesis 透明度）。
+    /// 對應 MarkRecommendedPerRegime 三層 filter 邏輯。
+    /// </summary>
+    private static string ExclusionReason(BacktestResultEntry r)
+    {
+        if (!string.IsNullOrEmpty(r.Error)) return "error: " + r.Error;
+        if (r.Trades < 3) return $"low_trades ({r.Trades} < 3)";
+        if (r.WfFolds > 0 && Math.Abs(r.IsOosGap) >= 0.7m) return $"overfit (|gap|={Math.Abs(r.IsOosGap):F2} >= 0.7)";
+        return "not top score in (symbol, timeframe, regime) group";
     }
 }
