@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using BrokerCore.Contracts;
 using BrokerCore.Data;
@@ -6,6 +7,18 @@ using BrokerCore.Services;
 using FunctionPool.Registry;
 
 namespace Broker.Services;
+
+/// <summary>
+/// Composite ranking 權重。預設值跟 W14 demo 用的一樣、保留向後相容。
+/// 想 tune 排名邏輯 → `Lab:Score:Sharpe`、`Lab:Score:Return` 等 config 個別覆寫、
+/// 不用改 code 重 deploy。各權重不強制正規化到 1（讓人可加重某一面、再依結果調）。
+/// </summary>
+public record ScoreWeights(
+    decimal Sharpe = 0.35m,
+    decimal Return = 0.25m,
+    decimal WinRate = 0.15m,
+    decimal DrawdownPenalty = 0.1m,
+    decimal Oos = 0.15m);
 
 /// <summary>
 /// 自動排程的批次回測服務——每天醒來一次、把所有 watched perpetual symbols 跨多 timeframe
@@ -73,6 +86,17 @@ public class ScheduledBacktestService : BackgroundService
     /// </summary>
     private readonly int _minTrades;
 
+    /// <summary>Composite score 權重（A1：外露 config、tune 排名不用改 code）</summary>
+    private readonly ScoreWeights _scoreWeights;
+
+    /// <summary>
+    /// 同 (symbol, timeframe) 內、平行跑 N 個 strategy 的 max concurrency（A3）。
+    /// 預設 4 — 對 strategy-worker dispatch（local CPU compute）算保守。
+    /// 1 = 退回 sequential（demo / debug 用）。可用 `Lab:MaxParallel` 覆寫。
+    /// 已配 ConcurrentBag + Interlocked.Increment，allResults / errors 寫入安全。
+    /// </summary>
+    private readonly int _maxParallel;
+
     // 從 200 拉到 500、訊號穩定度提升、low-sample tag 會大幅減少。
     // BingX 1h/4h 都有 500+ 根、1d 看歷史長度但 quote-worker 已經抓 365 根 daily、夠用。
     private const int BarsPerBacktest = 500;
@@ -96,6 +120,8 @@ public class ScheduledBacktestService : BackgroundService
 
         _strategies = ResolveStrategies(config, DefaultStrategies);
         _minTrades = ResolveMinTrades(config);
+        _scoreWeights = ResolveScoreWeights(config);
+        _maxParallel = ResolveMaxParallel(config);
     }
 
     /// <summary>
@@ -114,6 +140,30 @@ public class ScheduledBacktestService : BackgroundService
     /// </summary>
     internal static int ResolveMinTrades(IConfiguration config)
         => Math.Max(1, config.GetValue("Lab:MinTrades", 3));
+
+    /// <summary>
+    /// 從 config 解 ScoreWeights、未設用預設值（向後相容、跟 W14 demo 那版分數相同）。
+    /// 各權重設負數視為 0（防誤設變懲罰）。
+    /// </summary>
+    internal static ScoreWeights ResolveScoreWeights(IConfiguration config)
+    {
+        var d = new ScoreWeights();
+        decimal Clamp(string key, decimal def)
+            => Math.Max(0m, config.GetValue($"Lab:Score:{key}", def));
+        return new ScoreWeights(
+            Sharpe:          Clamp("Sharpe", d.Sharpe),
+            Return:          Clamp("Return", d.Return),
+            WinRate:         Clamp("WinRate", d.WinRate),
+            DrawdownPenalty: Clamp("DrawdownPenalty", d.DrawdownPenalty),
+            Oos:             Clamp("Oos", d.Oos));
+    }
+
+    /// <summary>
+    /// Max parallelism：預設 4、clamp [1, 16]。1 = sequential、16 上限是避免有人寫 999
+    /// 把 strategy-worker 灌爆。
+    /// </summary>
+    internal static int ResolveMaxParallel(IConfiguration config)
+        => Math.Clamp(config.GetValue("Lab:MaxParallel", 4), 1, 16);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -193,15 +243,23 @@ public class ScheduledBacktestService : BackgroundService
                 // 為這個 (symbol, timeframe) 對應的 bars 窗口算一次 regime、所有策略共用
                 var regime = ClassifyRegime(barsOpt.Value);
 
-                foreach (var strat in _strategies)
-                {
-                    if (ct.IsCancellationRequested) break;
-                    var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, traceId, ct);
-                    entry.Regime = regime;
-                    entry.OwnerPrincipalId = string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId;
-                    if (!string.IsNullOrEmpty(entry.Error)) errors++;
-                    allResults.Add(entry);
-                }
+                // A3：同 (symbol, tf) 內所有策略平行跑（策略間互不影響、共用 bars）。
+                // _maxParallel=1 退回 sequential、4 = ~1/4 時間、可調 1-16。
+                // ConcurrentBag + Interlocked 保證 multi-thread 寫入安全。
+                var batchBag = new ConcurrentBag<BacktestResultEntry>();
+                int batchErrors = 0;
+                await Parallel.ForEachAsync(_strategies,
+                    new ParallelOptions { MaxDegreeOfParallelism = _maxParallel, CancellationToken = ct },
+                    async (strat, innerCt) =>
+                    {
+                        var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, traceId, innerCt);
+                        entry.Regime = regime;
+                        entry.OwnerPrincipalId = string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId;
+                        if (!string.IsNullOrEmpty(entry.Error)) Interlocked.Increment(ref batchErrors);
+                        batchBag.Add(entry);
+                    });
+                allResults.AddRange(batchBag);
+                errors += batchErrors;
             }
         }
 
@@ -326,7 +384,7 @@ public class ScheduledBacktestService : BackgroundService
                 entry.MaxDdPct = doc.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
                 entry.Trades = doc.TryGetProperty("total_trades", out var t) ? t.GetInt32() : 0;
             }
-            entry.Score = ComputeScore(entry);
+            entry.Score = ComputeScore(entry, _scoreWeights);
         }
         catch (Exception ex)
         {
@@ -340,7 +398,7 @@ public class ScheduledBacktestService : BackgroundService
         {
             await RunWalkForwardAsync(entry, symbol, exchange, tf, strategy, bars, traceId, ct);
             // 跑成功 → 用 IS+OOS 重新算 score
-            entry.Score = ComputeScore(entry);
+            entry.Score = ComputeScore(entry, _scoreWeights);
         }
         catch (Exception ex)
         {
@@ -387,11 +445,16 @@ public class ScheduledBacktestService : BackgroundService
     }
 
     /// <summary>
-    /// composite ranking: 0.35·sharpe + 0.25·return_norm + 0.15·win_rate − 0.1·dd_penalty + 0.15·oos_quality
-    /// （OOS 沒跑 → oos_quality=0、退化成 IS-only。Walk-forward 跑成功時納入過擬合懲罰）
+    /// composite ranking: Sharpe·sharpe_norm + Return·return_norm + WinRate·win_rate_norm
+    ///                  − DrawdownPenalty·dd_penalty + Oos·oos_quality
+    /// 預設 ScoreWeights = (0.35, 0.25, 0.15, 0.1, 0.15) 跟 W14 demo 時相同、向後相容。
+    /// 想 tune：appsettings.json `Lab:Score:Sharpe = 0.5` 等個別覆寫、不用改 code。
+    ///
+    /// OOS 沒跑 → oos_quality=0、退化成 IS-only。Walk-forward 跑成功時納入過擬合懲罰。
     /// 沒交易直接 0 分（拒列入 recommended）。
+    /// internal static 給 unit test 用 + ScoreWeights 注入。
     /// </summary>
-    private static decimal ComputeScore(BacktestResultEntry r)
+    internal static decimal ComputeScore(BacktestResultEntry r, ScoreWeights w)
     {
         if (r.Trades == 0) return 0m;
         var sharpeNorm = Math.Clamp((r.Sharpe + 2m) / 7m, 0m, 1m);
@@ -399,22 +462,22 @@ public class ScheduledBacktestService : BackgroundService
         var winRateNorm = Math.Clamp(r.WinRate / 100m, 0m, 1m);
         var ddPenalty = Math.Clamp(r.MaxDdPct / 50m, 0m, 1m);
 
-        var baseScore = 0.35m * sharpeNorm + 0.25m * returnNorm + 0.15m * winRateNorm - 0.1m * ddPenalty;
+        var baseScore = w.Sharpe * sharpeNorm + w.Return * returnNorm
+                      + w.WinRate * winRateNorm - w.DrawdownPenalty * ddPenalty;
 
-        // B3 OOS quality factor：walk-forward 跑成功才加分
-        // - 高 IS-OOS gap（>= 0.5）→ 紅旗、加負分
-        // - 低 gap + 正 OOS sharpe → 加正分
-        // 沒跑（WfFolds=0）→ 不加不扣
+        // OOS quality factor：walk-forward 跑成功才加分
+        //   高 IS-OOS gap (>= 0.5) → 紅旗、加負分
+        //   低 gap + 正 OOS sharpe → 加正分
+        //   沒跑 (WfFolds=0) → 不加不扣
         decimal oosQuality = 0m;
         if (r.WfFolds > 0)
         {
             var oosSharpeNorm = Math.Clamp((r.OosSharpe + 2m) / 7m, 0m, 1m);
             var gapPenalty    = Math.Clamp(Math.Abs(r.IsOosGap), 0m, 1m);
-            // -0.5 ~ +0.5 區間後乘 0.15 權重
             oosQuality = (oosSharpeNorm - 0.5m) - gapPenalty * 0.5m;
         }
 
-        return Math.Round(baseScore + 0.15m * oosQuality, 4);
+        return Math.Round(baseScore + w.Oos * oosQuality, 4);
     }
 
     /// <summary>
