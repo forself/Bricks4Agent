@@ -471,7 +471,7 @@ public class AutoTraderServiceTests
 
     // ── B4a Position protection (pure decision) ───────────────────
 
-    private static AutoTraderService.ProtectionConfig DefaultProtConfig() => new()
+    private static ProtectionConfig DefaultProtConfig() => new()
     {
         InitialSlPct        = 5m,
         PartialExitPct      = 5m,
@@ -480,7 +480,7 @@ public class AutoTraderServiceTests
         BreakevenBufferPct  = 0.5m,
     };
 
-    private static AutoTraderService.PositionProtectionState MakeState(
+    private static PositionProtectionState MakeState(
         decimal entry = 100m, decimal? sl = null, bool partialExited = false, bool beMoved = false, decimal? peak = null) => new()
     {
         Exchange = "alpaca", Symbol = "AAPL",
@@ -494,9 +494,9 @@ public class AutoTraderServiceTests
     public void Protection_PriceAtSL_TriggersSlHit()
     {
         // Entry 100, SL 95；當前 95 → SL hit
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 95m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 95m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit);
+        d.Action.Should().Be(ProtectionAction.SlHit);
         d.PartialQty.Should().Be(10m);
         d.Reason.Should().Contain("SL hit");
     }
@@ -504,17 +504,17 @@ public class AutoTraderServiceTests
     [Fact]
     public void Protection_PriceBelowSL_TriggersSlHit()
     {
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 90m, 10m, DefaultProtConfig());
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit);
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 90m, 10m, DefaultProtConfig());
+        d.Action.Should().Be(ProtectionAction.SlHit);
     }
 
     [Fact]
     public void Protection_PnlAtPartialExitThreshold_TriggersPartialExit()
     {
         // Entry 100, +5% = 105 → partial exit
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m), 105m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.Action.Should().Be(ProtectionAction.PartialExit);
         d.PartialQty.Should().Be(5m, "10 × 0.5 ratio = 5");
     }
 
@@ -523,19 +523,19 @@ public class AutoTraderServiceTests
     {
         // Already exited, +10% — should not trigger partial again
         var state = MakeState(entry: 100m, partialExited: true);
-        var d = AutoTraderService.EvaluateProtection(state, 110m, 5m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 110m, 5m, DefaultProtConfig());
 
-        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.PartialExit);
+        d.Action.Should().NotBe(ProtectionAction.PartialExit);
     }
 
     [Fact]
     public void Protection_PnlAtBreakevenThreshold_TriggersBeMove()
     {
         // Entry 100, +3% = 103，BE trigger=3% → SL 移到 entry × 1.005 = 100.5
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 103m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m, sl: 95m), 103m, 10m, DefaultProtConfig());
 
         // 注意：3% 也滿足 partial exit 條件嗎？partial=5%、3<5 所以這裡 partial 不會觸發、走 BE
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove);
+        d.Action.Should().Be(ProtectionAction.BeMove);
         d.NewSlPrice.Should().Be(100.5m, "entry 100 × (1 + 0.5%) = 100.5");
     }
 
@@ -543,9 +543,9 @@ public class AutoTraderServiceTests
     public void Protection_AfterBeMoveDone_DoesNotReTrigger()
     {
         var state = MakeState(entry: 100m, sl: 100.5m, beMoved: true);
-        var d = AutoTraderService.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
 
-        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.BeMove);
+        d.Action.Should().NotBe(ProtectionAction.BeMove);
     }
 
     [Fact]
@@ -555,18 +555,18 @@ public class AutoTraderServiceTests
         // 雖然這 case 物理上少見（當前價 < SL 但 PnL > +5% 不可能），但邏輯保險還是先 SL。
         // 實際模擬：entry=100, sl=110（已 BE 後挪上去），current=109（破 sl）
         var state = MakeState(entry: 100m, sl: 110m, beMoved: true);
-        var d = AutoTraderService.EvaluateProtection(state, 109m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 109m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.SlHit, "BE 後挪上的 SL 被打到 = 鎖小利、優先觸發");
+        d.Action.Should().Be(ProtectionAction.SlHit, "BE 後挪上的 SL 被打到 = 鎖小利、優先觸發");
     }
 
     [Fact]
     public void Protection_BetweenThresholds_ReturnsNone()
     {
         // +1.5% 在 BE trigger (3%) 之下 → 沒事
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 101.5m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m), 101.5m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.None);
+        d.Action.Should().Be(ProtectionAction.None);
         d.PnlPct.Should().Be(1.5m);
     }
 
@@ -581,9 +581,9 @@ public class AutoTraderServiceTests
         // 舊 logic: current 1% < BE trigger 3% → 不觸發 → 將來繼續跌會慘賠
         // 新 logic: peak 5% ≥ BE trigger 3% → 觸發、SL 鎖到 100.5
         var state = MakeState(entry: 100m, sl: 95m, peak: 105m);
-        var d = AutoTraderService.EvaluateProtection(state, 101m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 101m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove,
+        d.Action.Should().Be(ProtectionAction.BeMove,
             "peak +5% 曾達 BE trigger、即使現在只剩 +1% 仍該鎖獲利");
         d.NewSlPrice.Should().Be(100.5m);
     }
@@ -593,15 +593,15 @@ public class AutoTraderServiceTests
     {
         // peak 沒先 update（測試常見場景）、current=103；防禦性 max(peak, current) 仍能正確算 BE
         var state = MakeState(entry: 100m, sl: 95m, peak: 100m);  // peak=entry
-        var d = AutoTraderService.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 103m, 10m, DefaultProtConfig());
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.BeMove,
+        d.Action.Should().Be(ProtectionAction.BeMove,
             "Evaluate 應自己 max(stored peak, current) 為 effective peak、不靠呼叫端先 update");
     }
 
     // ── Trailing Lock：學自對照組 commit 40abeae──────────────────
 
-    private static AutoTraderService.ProtectionConfig WithTrailing(decimal trigger, decimal distance) => new()
+    private static ProtectionConfig WithTrailing(decimal trigger, decimal distance) => new()
     {
         InitialSlPct        = 5m,
         PartialExitPct      = 100m,   // 設高、本組測試不關心 partial
@@ -620,9 +620,9 @@ public class AutoTraderServiceTests
         var state = MakeState(entry: 100m, sl: 95m, peak: 110m);
         var cfg   = WithTrailing(trigger: 5m, distance: 2m);
 
-        var d = AutoTraderService.EvaluateProtection(state, 110m, 10m, cfg);
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 110m, 10m, cfg);
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.TrailingLock);
+        d.Action.Should().Be(ProtectionAction.TrailingLock);
         d.NewSlPrice.Should().Be(107.8m, "110 × (1 - 2%) = 107.8");
     }
 
@@ -634,9 +634,9 @@ public class AutoTraderServiceTests
         var state = MakeState(entry: 100m, sl: 100.5m, beMoved: true, peak: 105m);  // BE 已挪過
         var cfg   = WithTrailing(trigger: 3m, distance: 5m);                          // distance 太大
 
-        var d = AutoTraderService.EvaluateProtection(state, 105m, 10m, cfg);
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 105m, 10m, cfg);
 
-        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.TrailingLock,
+        d.Action.Should().NotBe(ProtectionAction.TrailingLock,
             "trailing 算出的 SL 必須 > 現有 SL 才動、否則無事發生");
     }
 
@@ -647,9 +647,9 @@ public class AutoTraderServiceTests
         var state = MakeState(entry: 100m, sl: 95m, peak: 130m);  // peak 30%、超 trigger 一般也會
         var cfg   = WithTrailing(trigger: 0m, distance: 2m);
 
-        var d = AutoTraderService.EvaluateProtection(state, 130m, 10m, cfg);
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 130m, 10m, cfg);
 
-        d.Action.Should().NotBe(AutoTraderService.ProtectionAction.TrailingLock);
+        d.Action.Should().NotBe(ProtectionAction.TrailingLock);
     }
 
     [Fact]
@@ -661,9 +661,9 @@ public class AutoTraderServiceTests
         var cfg   = WithTrailing(trigger: 5m, distance: 2m);
 
         // current 突破到 112、但 state.PeakPrice 還是 105
-        var d = AutoTraderService.EvaluateProtection(state, 112m, 10m, cfg);
+        var d = ProtectionDecisionEngine.EvaluateProtection(state, 112m, 10m, cfg);
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.TrailingLock);
+        d.Action.Should().Be(ProtectionAction.TrailingLock);
         d.NewSlPrice.Should().Be(109.76m, "effective peak 112 × 0.98 = 109.76、不是 105 × 0.98");
     }
 
@@ -671,9 +671,9 @@ public class AutoTraderServiceTests
     public void Protection_InvalidInputs_ReturnsNone()
     {
         var cfg = DefaultProtConfig();
-        AutoTraderService.EvaluateProtection(MakeState(entry: 0m), 100m, 10m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
-        AutoTraderService.EvaluateProtection(MakeState(), 0m, 10m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
-        AutoTraderService.EvaluateProtection(MakeState(), 100m, 0m, cfg).Action.Should().Be(AutoTraderService.ProtectionAction.None);
+        ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 0m), 100m, 10m, cfg).Action.Should().Be(ProtectionAction.None);
+        ProtectionDecisionEngine.EvaluateProtection(MakeState(), 0m, 10m, cfg).Action.Should().Be(ProtectionAction.None);
+        ProtectionDecisionEngine.EvaluateProtection(MakeState(), 100m, 0m, cfg).Action.Should().Be(ProtectionAction.None);
     }
 
     [Fact]
@@ -681,11 +681,11 @@ public class AutoTraderServiceTests
     {
         // qty=0.001、ratio=0.5 → 0.0005 round 到小數 4 位 = 0.0005，但 ToZero 模式下保留 0
         // 確認小量倉位 partial 時不會因 round-up 賣超過實際 qty
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 0.001m, DefaultProtConfig());
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m), 105m, 0.001m, DefaultProtConfig());
 
         // partialQty = round(0.001 * 0.5, 4, ToZero) = 0.0005
         // 0.0005 > 0 且 < 0.001 → partial exit OK
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.Action.Should().Be(ProtectionAction.PartialExit);
         d.PartialQty.Should().Be(0.0005m);
     }
 
@@ -693,15 +693,15 @@ public class AutoTraderServiceTests
     public void Protection_HighRatio_StillLeavesQty()
     {
         // ratio = 0.9：qty 5、賣 0.9 → 4.5 留 0.5
-        var customCfg = new AutoTraderService.ProtectionConfig
+        var customCfg = new ProtectionConfig
         {
             InitialSlPct = 5m, PartialExitPct = 5m, PartialExitRatio = 0.9m,
             BreakevenTriggerPct = 3m, BreakevenBufferPct = 0.5m,
         };
 
-        var d = AutoTraderService.EvaluateProtection(MakeState(entry: 100m), 105m, 5m, customCfg);
+        var d = ProtectionDecisionEngine.EvaluateProtection(MakeState(entry: 100m), 105m, 5m, customCfg);
 
-        d.Action.Should().Be(AutoTraderService.ProtectionAction.PartialExit);
+        d.Action.Should().Be(ProtectionAction.PartialExit);
         d.PartialQty.Should().Be(4.5m);
     }
 
@@ -927,7 +927,7 @@ public class AutoTraderServiceTests
 
     // ── Phase 4: Perpetual protection (pure decision) ─────────────
 
-    private static AutoTraderService.PerpetualPositionState MakePerpState(
+    private static PerpetualPositionState MakePerpState(
         string side = "long", decimal entry = 100m, decimal? sl = null,
         bool partialExited = false, bool beMoved = false, decimal liqPrice = 0m) => new()
     {
@@ -944,10 +944,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_LongPriceAtSL_TriggersSlHit()
     {
         // Long entry 100, SL 95；mark 95 → SL hit (mark ≤ sl)
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("long", entry: 100m, sl: 95m), 95m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+        d.Action.Should().Be(PerpProtectionAction.SlHit);
         d.PartialQty.Should().Be(10m);
         d.Reason.Should().Contain("SL hit (long)");
     }
@@ -956,10 +956,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_ShortPriceAtSL_TriggersSlHit()
     {
         // Short entry 100, SL 105；mark 105 → SL hit (mark ≥ sl 才是反向)
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("short", entry: 100m, sl: 105m), 105m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+        d.Action.Should().Be(PerpProtectionAction.SlHit);
         d.Reason.Should().Contain("SL hit (short)");
     }
 
@@ -967,10 +967,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_LongPnlAtPartialThreshold_TriggersPartial()
     {
         // Long entry 100, mark 105 → +5% pnl → partial exit
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("long", entry: 100m), 105m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.PartialExit);
+        d.Action.Should().Be(PerpProtectionAction.PartialExit);
         d.PartialQty.Should().Be(5m);
     }
 
@@ -978,10 +978,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_ShortPnlAtPartialThreshold_TriggersPartial()
     {
         // Short entry 100, mark 95 → +5% pnl (entry-mark 算)
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("short", entry: 100m), 95m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.PartialExit);
+        d.Action.Should().Be(PerpProtectionAction.PartialExit);
         d.PartialQty.Should().Be(5m);
     }
 
@@ -989,10 +989,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_LongBeMove_NewSlAboveEntry()
     {
         // Long entry 100, mark 103 → +3% pnl → BE move with 0.5% buffer = 100.5
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("long", entry: 100m, sl: 95m), 103m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.Action.Should().Be(PerpProtectionAction.BeMove);
         d.NewSlPrice.Should().Be(100.5m, "long BE: entry × (1 + buffer/100)");
     }
 
@@ -1000,10 +1000,10 @@ public class AutoTraderServiceTests
     public void PerpProtection_ShortBeMove_NewSlBelowEntry()
     {
         // Short entry 100, mark 97 → +3% pnl → BE move with 0.5% buffer = 99.5
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("short", entry: 100m, sl: 105m), 97m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.Action.Should().Be(PerpProtectionAction.BeMove);
         d.NewSlPrice.Should().Be(99.5m, "short BE: entry × (1 - buffer/100)");
     }
 
@@ -1016,16 +1016,16 @@ public class AutoTraderServiceTests
         // → SL 拖到 110 × 0.98 = 107.8
         var state = MakePerpState("long", entry: 100m, sl: 95m);
         state.PeakMark = 110m;
-        var cfg = new AutoTraderService.ProtectionConfig
+        var cfg = new ProtectionConfig
         {
             InitialSlPct = 5m, PartialExitPct = 100m, PartialExitRatio = 0.5m,
             BreakevenTriggerPct = 100m, BreakevenBufferPct = 0.5m,
             TrailingTriggerPct = 5m, TrailingDistancePct = 2m,
         };
 
-        var d = AutoTraderService.EvaluatePerpetualProtection(state, 110m, 10m, 50m, cfg, liqEmergencyPct: 5m);
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(state, 110m, 10m, 50m, cfg, liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.TrailingLock);
+        d.Action.Should().Be(PerpProtectionAction.TrailingLock);
         d.NewSlPrice.Should().Be(107.8m);
     }
 
@@ -1036,16 +1036,16 @@ public class AutoTraderServiceTests
         // → SL 拖到 90 × 1.02 = 91.8 (short: SL 在 peak 上方、且應 < 現 SL 才動)
         var state = MakePerpState("short", entry: 100m, sl: 105m);
         state.PeakMark = 90m;
-        var cfg = new AutoTraderService.ProtectionConfig
+        var cfg = new ProtectionConfig
         {
             InitialSlPct = 5m, PartialExitPct = 100m, PartialExitRatio = 0.5m,
             BreakevenTriggerPct = 100m, BreakevenBufferPct = 0.5m,
             TrailingTriggerPct = 5m, TrailingDistancePct = 2m,
         };
 
-        var d = AutoTraderService.EvaluatePerpetualProtection(state, 90m, 10m, 50m, cfg, liqEmergencyPct: 5m);
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(state, 90m, 10m, 50m, cfg, liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.TrailingLock);
+        d.Action.Should().Be(PerpProtectionAction.TrailingLock);
         d.NewSlPrice.Should().Be(91.8m, "short trailing: SL = peak × (1 + distance/100) = 90 × 1.02");
     }
 
@@ -1056,10 +1056,10 @@ public class AutoTraderServiceTests
         // 舊 logic 用 pnlPct 1% → 不觸發；新 logic 用 peakPct 5% → 觸發
         var state = MakePerpState("long", entry: 100m, sl: 95m);
         state.PeakMark = 105m;
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             state, 101m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.BeMove);
+        d.Action.Should().Be(PerpProtectionAction.BeMove);
         d.NewSlPrice.Should().Be(100.5m);
     }
 
@@ -1069,10 +1069,10 @@ public class AutoTraderServiceTests
         // 距強平 3%（< 5% 預設）→ emergency close、即使 SL 還沒到、partial / BE 也不重要
         var state = MakePerpState("long", entry: 100m, sl: 95m, liqPrice: 92m);
         state.PeakMark = 110m;  // 已賺很多、partial 跟 BE 應該都會 trigger，但 liq 優先
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             state, 110m, 10m, liqDistancePct: 3m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.LiquidationEmergency);
+        d.Action.Should().Be(PerpProtectionAction.LiquidationEmergency);
         d.PartialQty.Should().Be(10m, "emergency closes full position");
         d.Reason.Should().Contain("liquidation emergency");
     }
@@ -1081,39 +1081,39 @@ public class AutoTraderServiceTests
     public void PerpProtection_LiquidationFar_NoEmergency()
     {
         // 距強平 20%（> 5%）→ 不觸發
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("long", entry: 100m, sl: 95m, liqPrice: 80m), 100m, 10m, 20m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().NotBe(AutoTraderService.PerpProtectionAction.LiquidationEmergency);
+        d.Action.Should().NotBe(PerpProtectionAction.LiquidationEmergency);
     }
 
     [Fact]
     public void PerpProtection_AfterBeAndShortFalls_SlHitOnNewSl()
     {
         // Short entry 100、BE 後 SL 移到 99.5、mark 突破 99.5 → SL hit (short 反向：mark ≥ sl)
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("short", entry: 100m, sl: 99.5m, beMoved: true), 99.5m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit);
+        d.Action.Should().Be(PerpProtectionAction.SlHit);
     }
 
     [Fact]
     public void PerpProtection_AfterPartialExited_DoesNotRePartial()
     {
         var state = MakePerpState("long", entry: 100m, partialExited: true);
-        var d = AutoTraderService.EvaluatePerpetualProtection(state, 110m, 5m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(state, 110m, 5m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().NotBe(AutoTraderService.PerpProtectionAction.PartialExit);
+        d.Action.Should().NotBe(PerpProtectionAction.PartialExit);
     }
 
     [Fact]
     public void PerpProtection_BetweenThresholds_ReturnsNone()
     {
         // Long entry 100, mark 101.5 → +1.5% pnl，partial 5%、BE 3% 都沒到
-        var d = AutoTraderService.EvaluatePerpetualProtection(
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(
             MakePerpState("long", entry: 100m), 101.5m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+        d.Action.Should().Be(PerpProtectionAction.None);
         d.PnlPct.Should().Be(1.5m);
     }
 
@@ -1121,9 +1121,9 @@ public class AutoTraderServiceTests
     public void PerpProtection_InvalidInputs_ReturnsNone()
     {
         var cfg = DefaultProtConfig();
-        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(entry: 0m), 100m, 10m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
-        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(), 0m, 10m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
-        AutoTraderService.EvaluatePerpetualProtection(MakePerpState(), 100m, 0m, 50m, cfg, 5m).Action.Should().Be(AutoTraderService.PerpProtectionAction.None);
+        ProtectionDecisionEngine.EvaluatePerpetualProtection(MakePerpState(entry: 0m), 100m, 10m, 50m, cfg, 5m).Action.Should().Be(PerpProtectionAction.None);
+        ProtectionDecisionEngine.EvaluatePerpetualProtection(MakePerpState(), 0m, 10m, 50m, cfg, 5m).Action.Should().Be(PerpProtectionAction.None);
+        ProtectionDecisionEngine.EvaluatePerpetualProtection(MakePerpState(), 100m, 0m, 50m, cfg, 5m).Action.Should().Be(PerpProtectionAction.None);
     }
 
     [Fact]
@@ -1133,8 +1133,8 @@ public class AutoTraderServiceTests
         // 用 SL 100 已經 BE 後挪上來的 case：mark 100 = SL hit (≤ sl)
         var state = MakePerpState("long", entry: 90m, sl: 100m, beMoved: true);
         // mark 100 = SL hit, but pnl = (100-90)/90 = 11.1% 滿足 partial 條件
-        var d = AutoTraderService.EvaluatePerpetualProtection(state, 100m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
+        var d = ProtectionDecisionEngine.EvaluatePerpetualProtection(state, 100m, 10m, 50m, DefaultProtConfig(), liqEmergencyPct: 5m);
 
-        d.Action.Should().Be(AutoTraderService.PerpProtectionAction.SlHit, "SL hit should win when both apply");
+        d.Action.Should().Be(PerpProtectionAction.SlHit, "SL hit should win when both apply");
     }
 }

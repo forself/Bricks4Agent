@@ -113,51 +113,9 @@ public class AutoTraderService : BackgroundService
     // SL 是 broker 端「軟 SL」——不打交易所的 stop-loss order，每 cycle 拉 current_price
     // 比對 sl_price 自己決定要不要平倉。好處：可動態調整、不用管 exchange 的 SL 規格差異。
     // 風險：cycle 間隔 5 分鐘期間若有 flash crash，會錯過。配 B1 circuit breaker 為兜底。
-    public class ProtectionConfig
-    {
-        public decimal InitialSlPct        { get; init; }  // 進場時 SL 距離 entry 的 %（fixed fallback）
-        public decimal PartialExitPct      { get; init; }  // 漲 ≥ 此 % 觸發部分平倉
-        public decimal PartialExitRatio    { get; init; }  // 部分平倉的數量比例 [0, 1]
-        public decimal BreakevenTriggerPct { get; init; }  // 漲 ≥ 此 % SL 移到 BE
-        public decimal BreakevenBufferPct  { get; init; }  // BE 上方留多少 buffer（避免價差掃損）
-
-        /// <summary>
-        /// Trailing lock：peak gain 達此 % 後啟動拖移停損鎖獲利。
-        /// 跟 BE 互補——BE 只把 SL 移到開倉價、trailing 是把 SL 隨 peak 上移、鎖住更多獲利。
-        /// 0 = 關閉（純 BE 模式、向下相容）。預設 0。
-        /// 推薦 5%：浮盈 5% 後開始拖移、配合 TrailingDistancePct 2-3%。
-        /// </summary>
-        public decimal TrailingTriggerPct  { get; init; }
-
-        /// <summary>
-        /// Trailing 距離：啟動後 SL = PeakPrice × (1 - TrailingDistancePct/100)。
-        /// 預設 2%——peak 回檔 2% 即出。太緊容易被噪音掃損、太鬆白給利潤。
-        /// </summary>
-        public decimal TrailingDistancePct { get; init; }
-
-        /// <summary>
-        /// ATR-based SL multiplier。&gt; 0 啟用 ATR 模式：SL = entry ± multiplier × ATR；
-        /// 同時把 effective SL% clamp 在 [InitialSlPct × 0.5, InitialSlPct × 3] 之間（ATR 太小被太緊、太大被慘賠保護）。
-        /// 0 / 沒設 → 維持原 InitialSlPct fixed mode。預設 0（向後相容）。
-        /// 推薦值 2.0-2.5：14-period ATR 在多數 regime 下、2× ATR 約等於 fixed 5%。
-        /// </summary>
-        public decimal AtrSlMultiplier     { get; init; }
-        public int     AtrPeriod           { get; init; }
-        public string  AtrInterval         { get; init; } = "1h";
-    }
-
-    public class PositionProtectionState
-    {
-        public string Exchange      { get; set; } = "";
-        public string Symbol        { get; set; } = "";
-        public decimal EntryPrice   { get; set; }
-        public decimal PeakPrice    { get; set; }
-        public decimal SlPrice      { get; set; }
-        public bool PartialExited   { get; set; }
-        public bool BeMoved         { get; set; }
-        public DateTime CreatedAt   { get; set; }
-        public DateTime UpdatedAt   { get; set; }
-    }
+    // D1 Phase 2 — ProtectionConfig / PositionProtectionState / PerpetualPositionState /
+    // ProtectionAction / ProtectionDecision / PerpProtectionAction / PerpProtectionDecision /
+    // SlHitRecord 已抽到 ProtectionDecisionEngine.cs（同 namespace、引用不變）。
 
     private readonly ProtectionConfig _protectionConfig;
     private readonly ConcurrentDictionary<string, PositionProtectionState> _positionState = new();
@@ -165,31 +123,8 @@ public class AutoTraderService : BackgroundService
     public ProtectionConfig PositionProtectionConfig => _protectionConfig;
     public IReadOnlyDictionary<string, PositionProtectionState> PositionStates => _positionState;
 
-    // ── Phase 4: Perpetual position protection（雙向 + 強平距離）──
-    //
-    // 跟 spot 的 PositionProtectionState 故意分開：
-    //   - Side: long / short — SL math 完全反向（long: mark ≤ sl 觸發 / short: mark ≥ sl 觸發）
-    //   - PnL%: long = (mark-entry)/entry, short = (entry-mark)/entry
-    //   - PeakMark: long 看最高 mark、short 看最低 mark（保護「漲過再跌」/「跌過再漲」）
-    //   - LiquidationPrice: 強平價（從交易所即時拉），距離過近觸發 emergency close
-    public class PerpetualPositionState
-    {
-        /// <summary>A2.5b PASS 2：擁有者 principal_id。state key = {owner}:{exchange}:{symbol}:{side}</summary>
-        public string OwnerPrincipalId { get; set; } = "prn_dashboard";
-        public string Exchange      { get; set; } = "";
-        public string Symbol        { get; set; } = "";
-        public string Side          { get; set; } = "long";  // "long" | "short"
-        public decimal EntryPrice   { get; set; }
-        public decimal PeakMark     { get; set; }            // long: max mark seen; short: min mark seen
-        public decimal SlPrice      { get; set; }            // long: 在 entry 下方; short: 在 entry 上方
-        public decimal LiquidationPrice { get; set; }
-        public int Leverage         { get; set; } = 1;
-        public bool PartialExited   { get; set; }
-        public bool BeMoved         { get; set; }
-        public DateTime CreatedAt   { get; set; }
-        public DateTime UpdatedAt   { get; set; }
-    }
-
+    // ── Phase 4: Perpetual position protection — PerpetualPositionState 移到
+    //    ProtectionDecisionEngine.cs（同 namespace、引用不變）
     private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
     private readonly decimal _perpLiqEmergencyPct;
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
@@ -289,35 +224,9 @@ public class AutoTraderService : BackgroundService
         return (oldVal, newAnchor);
     }
 
-    public enum PerpProtectionAction { None, SlHit, PartialExit, BeMove, LiquidationEmergency, TrailingLock }
-
-    public class PerpProtectionDecision
-    {
-        public PerpProtectionAction Action { get; init; }
-        public decimal PartialQty       { get; init; }
-        public decimal NewSlPrice       { get; init; }
-        public decimal PnlPct           { get; init; }
-        public decimal LiqDistancePct   { get; init; }
-        public string Reason            { get; init; } = "";
-    }
-
-    /// <summary>
-    /// Pure decision——給 perpetual position state + mark + qty + config 回傳該做什麼。
-    /// 同樣不下單、不改 state、不依賴 dispatcher，方便單元測試。
-    ///
-    /// 優先順序：LiquidationEmergency > SlHit > PartialExit > BeMove > None
-    /// 強平距離保護排第一：即使 SL 還沒到、若離強平太近也要先平
-    ///
-    /// 雙向 SL math：
-    ///   long  SlHit:  mark ≤ sl_price
-    ///   short SlHit:  mark ≥ sl_price
-    /// 雙向 PnL%:
-    ///   long  pnlPct = (mark - entry) / entry × 100
-    ///   short pnlPct = (entry - mark) / entry × 100
-    /// 雙向 BE:
-    ///   long  newSl = entry × (1 + buffer/100)
-    ///   short newSl = entry × (1 - buffer/100)
-    /// </summary>
+    // D1 Phase 2 — PerpProtectionAction / PerpProtectionDecision / EvaluatePerpetualProtection
+    // 移到 ProtectionDecisionEngine.cs。Callsite 改用 ProtectionDecisionEngine.EvaluatePerpetualProtection。
+#if D1_PHASE2_REMOVED_BODY  // 留 marker、不會編譯、之後找方便
     public static PerpProtectionDecision EvaluatePerpetualProtection(
         PerpetualPositionState state, decimal markPrice, decimal qty,
         decimal liqDistancePct, ProtectionConfig config, decimal liqEmergencyPct)
@@ -415,19 +324,14 @@ public class AutoTraderService : BackgroundService
 
         return new PerpProtectionDecision { Action = PerpProtectionAction.None, PnlPct = pnlPct, LiqDistancePct = liqDistancePct };
     }
+#endif
 
     // ── B3 SL flush freeze ─────────────────────────────────────────
     //
     // 連環 SL 觸發 = 訊號斷崖式失敗（策略當下抓不住行情、或極端 regime）。
     // 滑動視窗看最近 N 分鐘的 SL hit 次數，超過閾值就把 _enabled 翻 false、
     // 強制讓使用者手動 reset。避免「演算法亂跑、user 還沒注意到、損失越滾越大」。
-    public class SlHitRecord
-    {
-        public string Exchange { get; init; } = "";
-        public string Symbol   { get; init; } = "";
-        public DateTime At     { get; init; }
-    }
-
+    // SlHitRecord 已移到 ProtectionDecisionEngine.cs（同 namespace 引用不變）。
     private readonly int _slFlushThreshold;
     private readonly int _slFlushWindowMinutes;
     private readonly ConcurrentQueue<SlHitRecord> _recentSlHits = new();
@@ -439,30 +343,9 @@ public class AutoTraderService : BackgroundService
     public DateTime? SlFlushTriggeredAt => _slFlushTriggeredAt;
     public IReadOnlyList<SlHitRecord> RecentSlHits => _recentSlHits.ToArray();
 
-    public enum ProtectionAction { None, SlHit, PartialExit, BeMove, TrailingLock }
-
-    public class ProtectionDecision
-    {
-        public ProtectionAction Action { get; init; }
-        public decimal PartialQty      { get; init; }
-        public decimal NewSlPrice      { get; init; }
-        public decimal PnlPct          { get; init; }
-        public string Reason           { get; init; } = "";
-    }
-
-    /// <summary>
-    /// Pure decision——給 state + 當前 price/qty + config 回傳該做什麼動作。
-    /// 不下單、不改 state、不依賴 dispatcher，方便單元測試。
-    /// 呼叫端拿到 decision 後再決定怎麼執行（下單 / 改 state）。
-    ///
-    /// 優先順序：SL hit > Partial exit > BE move > Trailing lock > None
-    /// 一次只回一個 action（同 cycle 不會既 partial 又 BE 又 trail）；下次 sweep 自然接著走。
-    ///
-    /// 設計重點（學自 ai-quant-starter2 commit 6f11aac、40abeae）：
-    ///   - BE 跟 trailing 都用 **peak gain** 判斷（從歷史 peak 計算）、不用 current pnl。
-    ///     避免「曾經 +5% 但回檔 +0.5%、BE 沒鎖到、又跌回 -X% 全賠」的悲劇。
-    ///   - Trailing distance 算法：SL = peak × (1 - distancePct/100)、只往上動、不下移。
-    /// </summary>
+    // D1 Phase 2 — ProtectionAction / ProtectionDecision / EvaluateProtection
+    // 移到 ProtectionDecisionEngine.cs。Callsite 改用 ProtectionDecisionEngine.EvaluateProtection。
+#if D1_PHASE2_REMOVED_BODY  // marker、不會編譯
     public static ProtectionDecision EvaluateProtection(
         PositionProtectionState state, decimal currentPrice, decimal qty, ProtectionConfig config)
     {
@@ -537,6 +420,7 @@ public class AutoTraderService : BackgroundService
 
         return new ProtectionDecision { Action = ProtectionAction.None, PnlPct = pnlPct };
     }
+#endif
 
     private readonly ExchangeCredentialService? _credentials;
 
@@ -574,7 +458,7 @@ public class AutoTraderService : BackgroundService
 
         _minConfidence = ParseMinConfidence(Environment.GetEnvironmentVariable("AUTOTRADER_MIN_CONFIDENCE"));
         _maxPortfolioDdPct = ParseMaxPortfolioDdPct(Environment.GetEnvironmentVariable("AUTOTRADER_MAX_PORTFOLIO_DD_PCT"));
-        _protectionConfig = ParseProtectionConfig();
+        _protectionConfig = ProtectionDecisionEngine.ParseConfig();
         _slFlushThreshold = ParseIntEnv("AUTOTRADER_SL_FLUSH_THRESHOLD", defaultValue: 3, min: 1, max: 100);
         _slFlushWindowMinutes = ParseIntEnv("AUTOTRADER_SL_FLUSH_WINDOW_MINUTES", defaultValue: 60, min: 1, max: 1440);
         // Perp 強平距離保護：低於此 % 觸發 emergency close（不論 SL 是否到）。預設 5%
@@ -681,19 +565,8 @@ public class AutoTraderService : BackgroundService
         _logger.LogInformation("SL flush state reset (queue cleared, trigger flag cleared)");
     }
 
-    private static ProtectionConfig ParseProtectionConfig() => new()
-    {
-        InitialSlPct        = ParsePctEnv("AUTOTRADER_INITIAL_SL_PCT",        defaultValue: 5m,    min: 0.5m, max: 50m),
-        PartialExitPct      = ParsePctEnv("AUTOTRADER_PARTIAL_EXIT_PCT",      defaultValue: 5m,    min: 0.5m, max: 100m),
-        PartialExitRatio    = ParseRatioEnv("AUTOTRADER_PARTIAL_EXIT_RATIO",  defaultValue: 0.5m),
-        BreakevenTriggerPct = ParsePctEnv("AUTOTRADER_BREAKEVEN_TRIGGER_PCT", defaultValue: 3m,    min: 0.5m, max: 100m),
-        BreakevenBufferPct  = ParsePctEnv("AUTOTRADER_BREAKEVEN_BUFFER_PCT",  defaultValue: 0.5m,  min: 0m,   max: 10m),
-        TrailingTriggerPct  = ParsePctEnv("AUTOTRADER_TRAILING_TRIGGER_PCT",  defaultValue: 0m,    min: 0m,   max: 100m),  // 0 = 關閉
-        TrailingDistancePct = ParsePctEnv("AUTOTRADER_TRAILING_DISTANCE_PCT", defaultValue: 2m,    min: 0.1m, max: 50m),
-        AtrSlMultiplier     = ParsePctEnv("AUTOTRADER_ATR_SL_MULTIPLIER",     defaultValue: 0m,    min: 0m,   max: 10m),
-        AtrPeriod           = (int)ParsePctEnv("AUTOTRADER_ATR_PERIOD",       defaultValue: 14m,   min: 5m,   max: 100m),
-        AtrInterval         = Environment.GetEnvironmentVariable("AUTOTRADER_ATR_INTERVAL") ?? "1h",
-    };
+    // D1 Phase 2 — ParseProtectionConfig 移到 ProtectionDecisionEngine.ParseConfig()。
+    // 內部 ctor 改 ProtectionDecisionEngine.ParseConfig() 呼叫、env 名稱不變。
 
     internal static decimal ParsePctEnv(string envName, decimal defaultValue, decimal min, decimal max)
     {
@@ -1220,7 +1093,7 @@ public class AutoTraderService : BackgroundService
         if (currentPrice > state.PeakPrice) state.PeakPrice = currentPrice;
         state.UpdatedAt = now;
 
-        var decision = EvaluateProtection(state, currentPrice, qty, _protectionConfig);
+        var decision = ProtectionDecisionEngine.EvaluateProtection(state, currentPrice, qty, _protectionConfig);
         switch (decision.Action)
         {
             case ProtectionAction.SlHit:
@@ -1443,7 +1316,7 @@ public class AutoTraderService : BackgroundService
             }
         }
 
-        var decision = EvaluatePerpetualProtection(state, markPrice, qty, liqDistPct, _protectionConfig, _perpLiqEmergencyPct);
+        var decision = ProtectionDecisionEngine.EvaluatePerpetualProtection(state, markPrice, qty, liqDistPct, _protectionConfig, _perpLiqEmergencyPct);
         switch (decision.Action)
         {
             case PerpProtectionAction.LiquidationEmergency:
