@@ -39,7 +39,40 @@ public class ScheduledBacktestService : BackgroundService
     private readonly bool _runOnStart;
 
     private static readonly string[] Timeframes = { "1h", "4h", "1d" };
-    private static readonly string[] Strategies = { "sma_cross", "rsi_oversold", "macd_divergence", "composite" };
+
+    /// <summary>
+    /// 預設 24 條 — strategy-worker 註冊的所有 deterministic + meta 策略，排除：
+    ///   - "llm"            燒 LLM token、貴、單獨用 manual /optimize 跑
+    ///   - "news_sentiment"  同上、且依賴外部新聞 API
+    /// 為什麼全部納入：之前寫死 4 條（sma_cross/rsi_oversold/macd_divergence/composite）、
+    /// 其它 20 條從未進入 recommended pool —— dashboard 推薦永遠只能在 4 條裡選、看不出新策略表現。
+    /// 行情 / 標的會變、最佳策略也跟著變、batch 應該掃全套讓 ranking 真實。
+    ///
+    /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
+    /// </summary>
+    private static readonly string[] DefaultStrategies = {
+        // 3 條有 grid search optimizer（/optimize 路徑、tune 過 params）
+        "sma_cross", "rsi_oversold", "macd_divergence",
+        // Meta / combined（值得單獨追蹤是否真的超越成員）
+        "composite", "ensemble", "auto_select",
+        // 標準技術指標
+        "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
+        "harmonic_pattern", "vegas_tunnel", "price_action",
+        // Batch A 從朋友 ai-quant-starter2 移植
+        "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
+        // Tier 2 batch
+        "donchian", "keltner", "parabolic_sar",
+        "cci", "obv", "mfi", "chaikin_mf",
+    };
+    private readonly string[] _strategies;
+
+    /// <summary>
+    /// recommendation gate：trades 少於這數的策略不算入 recommended pool。
+    /// 避免 1-2 筆 lucky trade 拿超高 sharpe / win_rate 被誤推薦、實際樣本不足。
+    /// 預設 3 — 跟 walk-forward 5 folds 對齊。可用 `Lab:MinTrades` 覆寫。
+    /// </summary>
+    private readonly int _minTrades;
+
     // 從 200 拉到 500、訊號穩定度提升、low-sample tag 會大幅減少。
     // BingX 1h/4h 都有 500+ 根、1d 看歷史長度但 quote-worker 已經抓 365 根 daily、夠用。
     private const int BarsPerBacktest = 500;
@@ -60,7 +93,27 @@ public class ScheduledBacktestService : BackgroundService
         var hours = Math.Max(1, config.GetValue("Lab:ScheduledIntervalHours", 24));
         _interval = TimeSpan.FromHours(hours);
         _runOnStart = config.GetValue("Lab:RunOnStart", false);
+
+        _strategies = ResolveStrategies(config, DefaultStrategies);
+        _minTrades = ResolveMinTrades(config);
     }
+
+    /// <summary>
+    /// 從 config 解 Lab:Strategies、空 / 未設都退回 defaults（防誤設 [] 變零策略）。
+    /// internal 給 unit test 用、不用真的 new 整個 service。
+    /// </summary>
+    internal static string[] ResolveStrategies(IConfiguration config, string[] defaults)
+    {
+        var configured = config.GetSection("Lab:Strategies").Get<string[]>();
+        return (configured != null && configured.Length > 0) ? configured : defaults;
+    }
+
+    /// <summary>
+    /// Min trades gate：預設 3、可下修到 1（demo / dev 想看小樣本結果）。
+    /// 0 / 負數 / 未設 → clamp 到合理範圍、避免「全 fan」推薦。
+    /// </summary>
+    internal static int ResolveMinTrades(IConfiguration config)
+        => Math.Max(1, config.GetValue("Lab:MinTrades", 3));
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -127,7 +180,7 @@ public class ScheduledBacktestService : BackgroundService
                 var barsCount = barsOpt.HasValue ? barsOpt.Value.GetArrayLength() : 0;
                 if (!barsOpt.HasValue || barsCount < 50)
                 {
-                    foreach (var strat in Strategies)
+                    foreach (var strat in _strategies)
                         allResults.Add(new BacktestResultEntry
                         {
                             RunId = runId, Symbol = w.Symbol, Exchange = w.Exchange,
@@ -140,7 +193,7 @@ public class ScheduledBacktestService : BackgroundService
                 // 為這個 (symbol, timeframe) 對應的 bars 窗口算一次 regime、所有策略共用
                 var regime = ClassifyRegime(barsOpt.Value);
 
-                foreach (var strat in Strategies)
+                foreach (var strat in _strategies)
                 {
                     if (ct.IsCancellationRequested) break;
                     var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, traceId, ct);
@@ -153,10 +206,12 @@ public class ScheduledBacktestService : BackgroundService
         }
 
         // ranking：每 (symbol, timeframe) 找 score 最高的標 recommended
-        // B3 OOS gate：WfFolds>0 且 |IsOosGap|>=0.7 → 排除（過擬合紅線、不論 IS 多漂亮都不該被推薦）
-        // WfFolds=0（沒跑成功）→ 不擋（向後相容、bars 不夠也能用 IS-only ranking）
+        // 三層過濾：
+        //   1. 沒 error 且 Trades >= MinTrades（樣本不足拒推薦、防 lucky 1-trade）
+        //   2. WfFolds>0 且 |IsOosGap|>=0.7 → 排除（過擬合紅線、不論 IS 多漂亮都不該被推薦）
+        //   3. WfFolds=0（沒跑成功）→ 不擋（向後相容、bars 不夠也能用 IS-only ranking）
         var grouped = allResults
-            .Where(r => string.IsNullOrEmpty(r.Error) && r.Trades > 0)
+            .Where(r => string.IsNullOrEmpty(r.Error) && r.Trades >= _minTrades)
             .Where(r => r.WfFolds == 0 || Math.Abs(r.IsOosGap) < 0.7m)
             .GroupBy(r => (r.Symbol, r.Timeframe));
         foreach (var g in grouped)
@@ -176,7 +231,7 @@ public class ScheduledBacktestService : BackgroundService
         _db.Update(run);
 
         _logger.LogInformation("Backtest run {RunId} done: {Symbols} symbols × {Tf} tf × {Strat} strat = {Total} results, {Errors} errors, {Ms}ms",
-            runId, perpWatches.Count, Timeframes.Length, Strategies.Length, allResults.Count, errors, run.DurationMs);
+            runId, perpWatches.Count, Timeframes.Length, _strategies.Length, allResults.Count, errors, run.DurationMs);
         return runId;
     }
 
