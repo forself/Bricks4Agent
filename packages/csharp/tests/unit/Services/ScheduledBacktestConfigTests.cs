@@ -195,4 +195,97 @@ public class ScheduledBacktestConfigTests
         ScheduledBacktestService.ResolveMaxParallel(
             BuildConfig(new() { ["Lab:MaxParallel"] = "8" })).Should().Be(8);
     }
+
+    // ── B：Per-regime ranking ───────────────────────────────────────────
+
+    private static BacktestResultEntry Row(string sym, string tf, string regime, string strat,
+        decimal score, int trades = 10, int wfFolds = 0, decimal gap = 0m, string? error = null)
+        => new() {
+            Symbol = sym, Timeframe = tf, Regime = regime, Strategy = strat,
+            Score = score, Trades = trades, WfFolds = wfFolds, IsOosGap = gap,
+            Error = error,
+        };
+
+    [Fact]
+    public void MarkRecommendedPerRegime_PicksBestPerRegimeBucket()
+    {
+        // 同 (BTC, 1h) 有 trending 跟 ranging 兩個 regime（跨 run 累積）
+        // 每個 regime 應該有自己的 recommended 贏家
+        var list = new List<BacktestResultEntry>
+        {
+            Row("BTC", "1h", "trending",  "super_trend", 0.8m),
+            Row("BTC", "1h", "trending",  "sma_cross",   0.5m),
+            Row("BTC", "1h", "ranging",   "bollinger",   0.7m),  // ranging 贏家
+            Row("BTC", "1h", "ranging",   "rsi_oversold",0.6m),
+        };
+        ScheduledBacktestService.MarkRecommendedPerRegime(list, minTrades: 3);
+
+        list.Where(r => r.Recommended).Should().HaveCount(2,
+            "trending + ranging 各一個贏家、不是只有 overall 最高");
+        list.First(r => r.Regime == "trending" && r.Recommended).Strategy.Should().Be("super_trend");
+        list.First(r => r.Regime == "ranging" && r.Recommended).Strategy.Should().Be("bollinger");
+    }
+
+    [Fact]
+    public void MarkRecommendedPerRegime_FiltersOutLowTrades()
+    {
+        // sharpe 高但只 2 trades 不該被推薦（lucky sample）
+        var list = new List<BacktestResultEntry>
+        {
+            Row("ETH", "4h", "trending", "lucky_strat", 0.9m, trades: 2),
+            Row("ETH", "4h", "trending", "boring",       0.5m, trades: 50),
+        };
+        ScheduledBacktestService.MarkRecommendedPerRegime(list, minTrades: 3);
+
+        list.First(r => r.Strategy == "lucky_strat").Recommended.Should().BeFalse(
+            "Trades=2 < minTrades=3、不該入 pool");
+        list.First(r => r.Strategy == "boring").Recommended.Should().BeTrue(
+            "唯一過 gate 的就是它、即使分數較低也該推薦");
+    }
+
+    [Fact]
+    public void MarkRecommendedPerRegime_FiltersOutOverfit()
+    {
+        // WfFolds>0 + |IsOosGap|>=0.7 → 過擬合紅線、再高分都拒推薦
+        var list = new List<BacktestResultEntry>
+        {
+            Row("SOL", "1d", "ranging", "overfit",  0.95m, wfFolds: 5, gap: 0.8m),
+            Row("SOL", "1d", "ranging", "robust",   0.6m,  wfFolds: 5, gap: 0.1m),
+        };
+        ScheduledBacktestService.MarkRecommendedPerRegime(list, minTrades: 3);
+
+        list.First(r => r.Strategy == "overfit").Recommended.Should().BeFalse();
+        list.First(r => r.Strategy == "robust").Recommended.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MarkRecommendedPerRegime_TreatsNullRegimeAsUnknown()
+    {
+        // 舊 row 沒填 Regime（向後相容）、應該歸類 "unknown" bucket、仍能參與排名
+        var list = new List<BacktestResultEntry>
+        {
+            Row("DOGE", "1h", null!, "old_strat", 0.7m),
+            Row("DOGE", "1h", null!, "older_strat", 0.5m),
+        };
+        list[0].Regime = null;
+        list[1].Regime = null;
+        ScheduledBacktestService.MarkRecommendedPerRegime(list, minTrades: 3);
+
+        list.Where(r => r.Recommended).Should().HaveCount(1);
+        list.First(r => r.Recommended).Strategy.Should().Be("old_strat");
+    }
+
+    [Fact]
+    public void MarkRecommendedPerRegime_SkipsErroredRows()
+    {
+        var list = new List<BacktestResultEntry>
+        {
+            Row("BTC", "1h", "trending", "errored", 0.9m, error: "bars insufficient"),
+            Row("BTC", "1h", "trending", "ok",       0.5m),
+        };
+        ScheduledBacktestService.MarkRecommendedPerRegime(list, minTrades: 3);
+
+        list.First(r => r.Strategy == "errored").Recommended.Should().BeFalse();
+        list.First(r => r.Strategy == "ok").Recommended.Should().BeTrue();
+    }
 }

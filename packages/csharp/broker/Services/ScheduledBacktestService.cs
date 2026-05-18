@@ -165,6 +165,32 @@ public class ScheduledBacktestService : BackgroundService
     internal static int ResolveMaxParallel(IConfiguration config)
         => Math.Clamp(config.GetValue("Lab:MaxParallel", 4), 1, 16);
 
+    /// <summary>
+    /// B：per-regime ranking。每 (symbol, timeframe, regime) 找 score 最高的標 Recommended=true。
+    /// （之前 per (symbol, timeframe)、不分行情、震盪市贏家會壓過趨勢市贏家）
+    ///
+    /// 過濾條件：
+    ///   1. 沒 error 且 Trades >= minTrades（樣本不足拒推薦、防 lucky 1-trade）
+    ///   2. WfFolds>0 且 |IsOosGap|>=0.7 → 排除（過擬合紅線）
+    ///   3. WfFolds=0（沒跑成功）→ 不擋（向後相容、bars 不夠也能用 IS-only ranking）
+    ///
+    /// 同 run 內 ClassifyRegime 對每 (symbol, tf) 跑一次共用、所以單 run 仍每 (symbol, tf)
+    /// 一個 recommended；跨 run 不同行情會逐步累積各 regime 的贏家。
+    /// In-place mutate input list（避免 copy 大量 entry）。
+    /// </summary>
+    internal static void MarkRecommendedPerRegime(List<BacktestResultEntry> results, int minTrades)
+    {
+        var grouped = results
+            .Where(r => string.IsNullOrEmpty(r.Error) && r.Trades >= minTrades)
+            .Where(r => r.WfFolds == 0 || Math.Abs(r.IsOosGap) < 0.7m)
+            .GroupBy(r => (r.Symbol, r.Timeframe, Regime: r.Regime ?? "unknown"));
+        foreach (var g in grouped)
+        {
+            var best = g.OrderByDescending(r => r.Score).FirstOrDefault();
+            if (best != null) best.Recommended = true;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         _logger.LogInformation("ScheduledBacktest service started, interval={Hours}h, runOnStart={RunOnStart}",
@@ -263,20 +289,7 @@ public class ScheduledBacktestService : BackgroundService
             }
         }
 
-        // ranking：每 (symbol, timeframe) 找 score 最高的標 recommended
-        // 三層過濾：
-        //   1. 沒 error 且 Trades >= MinTrades（樣本不足拒推薦、防 lucky 1-trade）
-        //   2. WfFolds>0 且 |IsOosGap|>=0.7 → 排除（過擬合紅線、不論 IS 多漂亮都不該被推薦）
-        //   3. WfFolds=0（沒跑成功）→ 不擋（向後相容、bars 不夠也能用 IS-only ranking）
-        var grouped = allResults
-            .Where(r => string.IsNullOrEmpty(r.Error) && r.Trades >= _minTrades)
-            .Where(r => r.WfFolds == 0 || Math.Abs(r.IsOosGap) < 0.7m)
-            .GroupBy(r => (r.Symbol, r.Timeframe));
-        foreach (var g in grouped)
-        {
-            var best = g.OrderByDescending(r => r.Score).FirstOrDefault();
-            if (best != null) best.Recommended = true;
-        }
+        MarkRecommendedPerRegime(allResults, _minTrades);
 
         // 全部寫入
         foreach (var r in allResults) _db.Insert(r);
