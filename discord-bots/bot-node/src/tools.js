@@ -225,7 +225,7 @@ export async function dispatchTool(toolCall, caller = { userId: '?', isPrivilege
   const { call, args } = toolCall;
   const def = TOOLS[call];
   if (!def) {
-    return { ok: false, summary: `unknown tool: ${call}`, error: 'unknown_tool' };
+    return { ok: false, status: 'failed', summary: `unknown tool: ${call}`, error: 'unknown_tool' };
   }
 
   // 工具層權限：privileged tool（trading.* / audit.*）只放 privileged user 過、
@@ -234,6 +234,7 @@ export async function dispatchTool(toolCall, caller = { userId: '?', isPrivilege
   if (caller.privilegedTool && !caller.isPrivileged) {
     return {
       ok: false,
+      status: 'denied',
       summary: `tool=${call} access_denied: this tool requires platform-account-holder privilege. The Discord user (id=${caller.userId}) lacks it. Politely tell them they need a platform account from anthonylee to use trading / audit features.`,
       error: 'access_denied',
     };
@@ -241,8 +242,22 @@ export async function dispatchTool(toolCall, caller = { userId: '?', isPrivilege
 
   const result = await def.dispatch(args);
   if (!result.ok) {
+    // broker 把「需 admin approval」的訊息塞在 error string 裡（HTTP 也回非 2xx）、
+    // 對 dispatch 來說不是失敗、是暫緩、要 surface 給 LLM 「請告知使用者去 dashboard 審核」。
+    // 用 approval_id=apr_ 當特徵字串、避免誤判其它含 "approval" 的真錯誤。
+    const isPendingApproval = !!result.error && /approval_id=apr_/i.test(result.error);
+    if (isPendingApproval) {
+      return {
+        ok: true,
+        status: 'pending_approval',
+        summary: `tool=${call} pending_approval: ${result.error}`,
+        data: { pending: true, message: result.error },
+        error: result.error,
+      };
+    }
     return {
       ok: false,
+      status: 'failed',
       summary: `tool=${call} failed: ${result.error}`,
       error: result.error,
     };
@@ -256,6 +271,7 @@ export async function dispatchTool(toolCall, caller = { userId: '?', isPrivilege
 
   return {
     ok: true,
+    status: 'success',
     summary: `tool=${call} ok\n${truncated}`,
     data: result.data,
   };

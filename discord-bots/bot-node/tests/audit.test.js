@@ -104,6 +104,49 @@ test('pushLlmReasoning swallows network exceptions (fire-and-forget)', async () 
   );
 });
 
+test('pushLlmReasoning writes dispatchResult verbatim when provided', async () => {
+  const stub = makeFakeBroker();
+  await pushLlmReasoning({
+    source: 'discord', userId: 'u', channelId: 'c', turn: 0,
+    llmReasoning: 'x', toolName: 't', toolArgs: {}, aclAllowed: true,
+    dispatchResult: 'success',
+  }, { callBroker: stub.fn });
+  assert.equal(stub.calls[0].body.dispatch_result, 'success');
+});
+
+test('pushLlmReasoning pending_approval status round-trips', async () => {
+  const stub = makeFakeBroker();
+  await pushLlmReasoning({
+    source: 'discord', userId: 'u', channelId: 'c', turn: 0,
+    llmReasoning: 'x', toolName: 'trading.order', toolArgs: {}, aclAllowed: true,
+    dispatchResult: 'pending_approval',
+  }, { callBroker: stub.fn });
+  assert.equal(stub.calls[0].body.dispatch_result, 'pending_approval');
+});
+
+test('pushLlmReasoning appends errorBrief to dispatch_result (failure capture)', async () => {
+  const stub = makeFakeBroker();
+  await pushLlmReasoning({
+    source: 'discord', userId: 'u', channelId: 'c', turn: 0,
+    llmReasoning: 'x', toolName: 't', toolArgs: {}, aclAllowed: true,
+    dispatchResult: 'failed',
+    errorBrief: 'broker returned 500: db connection lost',
+  }, { callBroker: stub.fn });
+  assert.equal(stub.calls[0].body.dispatch_result, 'failed: broker returned 500: db connection lost');
+});
+
+test('pushLlmReasoning truncates errorBrief to 200 chars (DoS guard)', async () => {
+  const stub = makeFakeBroker();
+  const longErr = 'x'.repeat(500);
+  await pushLlmReasoning({
+    source: 'discord', userId: 'u', channelId: 'c', turn: 0,
+    llmReasoning: 'x', toolName: 't', toolArgs: {}, aclAllowed: true,
+    dispatchResult: 'failed', errorBrief: longErr,
+  }, { callBroker: stub.fn });
+  // "failed: " (8) + 200 chars = 208
+  assert.equal(stub.calls[0].body.dispatch_result.length, 208);
+});
+
 test('pushLlmReasoning preserves multi-source field (LINE vs Discord)', async () => {
   const stub = makeFakeBroker();
   await pushLlmReasoning({

@@ -22,6 +22,8 @@ import { callBroker } from './broker.js';
  * @param {string} entry.toolName     解析出的 capability name（e.g. trading.perpetual/place_order）
  * @param {object} entry.toolArgs     tool 參數（會 JSON.stringify）
  * @param {boolean} entry.aclAllowed  該 user 對該 tool 是否有 ACL allowance
+ * @param {string} [entry.dispatchResult] 'pending'(default)/'success'/'pending_approval'/'failed'/'denied'
+ * @param {string} [entry.errorBrief] 失敗時的簡短描述（限 200 字、給 forensics 用）
  * @param {object} [deps]             unit test 注入用、prod 端永遠走 module-level callBroker
  * @returns {Promise<void>}
  */
@@ -29,6 +31,8 @@ export async function pushLlmReasoning(entry, deps = {}) {
   // ESM namespace 不能用 t.mock.method 攔截、用 DI 讓 test 可換 fake callBroker
   const _callBroker = deps.callBroker || callBroker;
   try {
+    const result = entry.dispatchResult || 'pending';
+    const errBrief = (entry.errorBrief || '').slice(0, 200);
     const payload = {
       source:        entry.source        || 'discord',
       user_id:       entry.userId        || '',
@@ -38,7 +42,7 @@ export async function pushLlmReasoning(entry, deps = {}) {
       tool_name:     entry.toolName      || '',
       tool_args:     entry.toolArgs      ?? {},
       acl_allowed:   !!entry.aclAllowed,
-      dispatch_result: 'pending',
+      dispatch_result: errBrief ? `${result}: ${errBrief}` : result,
     };
     const r = await _callBroker('POST', '/api/v1/audit/llm-reasoning', payload);
     if (!r.ok) {

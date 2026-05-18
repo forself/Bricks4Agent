@@ -19,6 +19,7 @@ import { isLineAllowed, isLinePrivilegedUser, isPrivilegedTool } from './access.
 import { callBroker } from './broker.js';
 import { callClaude } from './llm.js';
 import { extractToolCall, dispatchTool } from './tools.js';
+import { pushLlmReasoning } from './audit.js';
 import { getHistory, pushTurn } from './history.js';
 import { handleLinePostback } from './approvals.js';
 import { isStatusTrigger, buildStatusSnapshot } from './status.js';
@@ -194,7 +195,22 @@ async function runMultiTurn(userId, userMsg) {
       console.log(`[line acl] tool=${toolCall.call} blocked for line user=${userId.slice(0, 8)}…`);
     }
     const toolResult = await dispatchTool(toolCall, caller);
-    console.log(`[line tool] turn=${turn} call=${toolCall.call} ${toolResult.ok ? 'ok' : 'fail'}`);
+    const statusLabel = toolResult.status || (toolResult.ok ? 'success' : 'failed');
+    console.log(`[line tool] turn=${turn} call=${toolCall.call} ${statusLabel}`);
+
+    // W13: dispatch 完才推 audit、帶真實結果（pending_approval / success / failed / denied）
+    await pushLlmReasoning({
+      source: 'line',
+      userId: `line:${userId}`,
+      channelId: 'dm',
+      turn,
+      llmReasoning: result.text,
+      toolName: toolCall.call,
+      toolArgs: toolCall.args,
+      aclAllowed: !caller.privilegedTool || caller.isPrivileged,
+      dispatchResult: statusLabel,
+      errorBrief: toolResult.error || '',
+    });
     messages.push({ role: 'tool', content: toolResult.summary });
   }
 
