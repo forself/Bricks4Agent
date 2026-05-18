@@ -47,6 +47,18 @@ public static class AutoTraderDbMigrations
             column: "owner_principal_id",
             sqlType: "TEXT NOT NULL DEFAULT 'prn_dashboard'");
 
+        // B3 walk-forward：補 OOS 過擬合監測欄位。早期 VPS broker.db 在這 5 欄位加進
+        // BacktestResultEntry model 前就建好 backtest_results 表了、ALTER 才能補齊。
+        // 不補：/lab/overfit 查 ABS(is_oos_gap) 直接 'no such column: wf_folds' 500。
+        AddColumnIfMissing(db, logger, "backtest_results", "wf_folds",       "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing(db, logger, "backtest_results", "oos_return_pct", "TEXT NOT NULL DEFAULT '0'");
+        AddColumnIfMissing(db, logger, "backtest_results", "oos_sharpe",     "TEXT NOT NULL DEFAULT '0'");
+        AddColumnIfMissing(db, logger, "backtest_results", "oos_win_rate",   "TEXT NOT NULL DEFAULT '0'");
+        AddColumnIfMissing(db, logger, "backtest_results", "is_oos_gap",     "TEXT NOT NULL DEFAULT '0'");
+
+        // B 後加的 regime 欄位（per-regime ranking 用）— 同樣可能舊表沒有
+        AddColumnIfMissing(db, logger, "backtest_results", "regime", "TEXT NULL");
+
         // A2.5b PASS 2：perp_position_state 加 owner、讓不同 user 同 (exchange, symbol, side) 部位獨立
         AddColumnIfMissing(db, logger,
             table: "perp_position_state",
