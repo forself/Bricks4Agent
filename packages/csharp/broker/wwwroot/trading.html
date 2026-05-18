@@ -1500,7 +1500,7 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
 <div class="panel" id="panel-lab">
   <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span style="font-size:13px;font-weight:600">Strategy Lab — 自動回測推薦</span>
-    <span style="color:var(--text2);font-size:11px">每 24h schedule、跨 4 標的 × 3 時段 × 4 策略</span>
+    <span style="color:var(--text2);font-size:11px">每 24h schedule、跨 perp 標的 × 3 時段 × 24 策略、per-regime ranking</span>
     <select id="lab-tf-filter" onchange="loadLab()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px">
       <option value="">所有時段</option>
       <option value="1h">1h</option>
@@ -1523,6 +1523,67 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
       <tbody><tr><td colspan="14" style="color:var(--text2)">—</td></tr></tbody>
     </table>
   </div>
+  <!-- 策略 review（A2：吃 /lab/strategy-stats + /lab/leaderboard + /lab/overfit）─────────── -->
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">📊 策略表現 review</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--text2)">窗口</span>
+        <select id="lab-review-days" onchange="loadStrategyReview()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:3px;font-size:11px">
+          <option value="3">3 天</option>
+          <option value="7" selected>7 天</option>
+          <option value="14">14 天</option>
+          <option value="30">30 天</option>
+        </select>
+      </div>
+    </div>
+    <div id="lab-review-summary" style="font-size:11px;color:var(--text2);margin-bottom:10px">—</div>
+    <table id="lab-strategy-stats-table" style="font-size:11px">
+      <thead><tr>
+        <th>策略</th><th>跑次</th><th>推薦 / 跑次</th><th>推薦率</th>
+        <th>平均分</th><th>平均 Sharpe</th><th>平均報酬</th><th>平均 trades</th>
+        <th>平均 |OOS gap|</th><th>贏過的 regime</th>
+      </tr></thead>
+      <tbody><tr><td colspan="10" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">🏆 最新 run leaderboard（top 20）</h3>
+      <span style="font-size:11px;color:var(--text2)">分數高但被排除的會列 excluded_reason</span>
+    </div>
+    <table id="lab-leaderboard-table" style="font-size:11px">
+      <thead><tr>
+        <th>標的</th><th>時段</th><th>策略</th><th>行情</th>
+        <th>分數</th><th>Sharpe</th><th>勝率</th><th>DD</th><th>trades</th>
+        <th>OOS gap</th><th>狀態</th>
+      </tr></thead>
+      <tbody><tr><td colspan="11" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">⚠️ 過擬合警示</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--text2)">|IS-OOS gap| ≥</span>
+        <select id="lab-overfit-gap" onchange="loadStrategyReview()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:3px;font-size:11px">
+          <option value="0.3">0.3</option>
+          <option value="0.5" selected>0.5</option>
+          <option value="0.7">0.7</option>
+        </select>
+      </div>
+    </div>
+    <table id="lab-overfit-table" style="font-size:11px">
+      <thead><tr>
+        <th>標的</th><th>時段</th><th>策略</th><th>行情</th>
+        <th>IS 報酬</th><th>OOS 報酬</th><th>|gap|</th><th>WF folds</th><th>時間</th>
+      </tr></thead>
+      <tbody><tr><td colspan="9" style="color:var(--text2)">—</td></tr></tbody>
+    </table>
+  </div>
+
   <div class="card" style="margin-top:12px">
     <h3>歷史 run</h3>
     <table id="lab-runs-table" style="font-size:11px">
@@ -4025,6 +4086,109 @@ async function loadLab(){
   } else {
     runsTbody.innerHTML = '<tr><td colspan="7" style="color:var(--text2)">—</td></tr>';
   }
+  // 順帶刷策略 review（吃新的 A2 三個 analytics endpoint）
+  loadStrategyReview();
+}
+
+// 策略 review — 3 endpoint parallel fetch、各填一張表
+// 不阻塞 loadLab 主表、有錯只 log + 顯示「—」、不擋 user 看 recommendations
+async function loadStrategyReview(){
+  const days = parseInt(document.getElementById('lab-review-days')?.value || '7', 10);
+  const gap  = parseFloat(document.getElementById('lab-overfit-gap')?.value || '0.5');
+  // 三條 endpoint 平行打、await all
+  const [statsR, lbR, ofR] = await Promise.all([
+    api(`/api/v1/lab/strategy-stats?days=${days}`),
+    api(`/api/v1/lab/leaderboard?limit=20`),
+    api(`/api/v1/lab/overfit?gap=${gap}&days=${days}`),
+  ]);
+  renderStrategyStats(statsR);
+  renderLeaderboard(lbR);
+  renderOverfit(ofR);
+}
+
+function renderStrategyStats(r){
+  const tbody = document.querySelector('#lab-strategy-stats-table tbody');
+  const summary = document.getElementById('lab-review-summary');
+  const stats = r?.data?.strategies || [];
+  if (stats.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--text2)">— 無資料（broker 尚未跑過 batch）</td></tr>';
+    summary.textContent = '—';
+    return;
+  }
+  summary.innerHTML = `過去 <strong>${r.data.window_days}</strong> 天、共 <strong>${r.data.total_strategies}</strong> 條策略、其中 <span style="color:var(--down)">${r.data.never_recommended}</span> 條從未被推薦`;
+  tbody.innerHTML = stats.map(s => {
+    // 高推薦率 = 綠、零 = 紅、其他 = 預設
+    const rateColor = s.recommended_rate >= 0.5 ? 'var(--up)' :
+                      s.recommended_count === 0 ? 'var(--down)' : 'var(--text)';
+    // 高 oos gap = 紅警示
+    const gapColor = s.avg_oos_gap_abs >= 0.5 ? 'var(--down)' :
+                     s.avg_oos_gap_abs >= 0.3 ? '#ff9933' : 'var(--text)';
+    const regimes = (s.regimes_won_in || []).map(g =>
+      `<span style="background:var(--bg3);padding:1px 4px;border-radius:2px;font-size:10px;margin-right:2px">${g}</span>`).join('');
+    return `<tr>
+      <td><strong>${s.strategy}</strong></td>
+      <td>${s.total_results}</td>
+      <td>${s.recommended_count}</td>
+      <td style="color:${rateColor}"><strong>${(s.recommended_rate * 100).toFixed(1)}%</strong></td>
+      <td>${s.avg_score.toFixed(3)}</td>
+      <td>${s.avg_sharpe.toFixed(2)}</td>
+      <td class="${s.avg_return_pct >= 0 ? 'up' : 'down'}">${s.avg_return_pct.toFixed(2)}%</td>
+      <td>${s.avg_trades.toFixed(1)}</td>
+      <td style="color:${gapColor}">${s.avg_oos_gap_abs.toFixed(3)}</td>
+      <td>${regimes || '<span style="color:var(--text2)">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderLeaderboard(r){
+  const tbody = document.querySelector('#lab-leaderboard-table tbody');
+  const entries = r?.data?.entries || [];
+  if (entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="color:var(--text2)">— 尚無資料</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(e => {
+    const status = e.recommended
+      ? '<span style="background:rgba(14,203,129,0.15);color:var(--up);padding:1px 6px;border-radius:2px;font-size:10px">✓ recommended</span>'
+      : `<span style="color:var(--text2);font-size:10px" title="${e.excluded_reason || ''}">⊘ ${(e.excluded_reason || 'excluded').substring(0, 30)}</span>`;
+    const gap = e.wf_folds > 0 ? e.is_oos_gap.toFixed(2) : '<span style="color:var(--text2)">—</span>';
+    return `<tr>
+      <td><strong>${e.symbol}</strong></td>
+      <td>${e.timeframe}</td>
+      <td>${e.strategy}</td>
+      <td>${e.regime}</td>
+      <td><strong>${e.score.toFixed(3)}</strong></td>
+      <td>${e.sharpe.toFixed(2)}</td>
+      <td>${e.win_rate.toFixed(1)}%</td>
+      <td>${e.max_dd_pct.toFixed(1)}%</td>
+      <td>${e.trades}</td>
+      <td>${gap}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderOverfit(r){
+  const tbody = document.querySelector('#lab-overfit-table tbody');
+  const entries = r?.data?.entries || [];
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="color:var(--up)">✓ 過去 ${r?.data?.window_days || '?'} 天無 |gap| ≥ ${r?.data?.gap_threshold || '?'} 的過擬合警示</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = entries.map(e => {
+    const ts = new Date(e.finished_at).toLocaleString();
+    return `<tr>
+      <td><strong>${e.symbol}</strong></td>
+      <td>${e.timeframe}</td>
+      <td>${e.strategy}</td>
+      <td>${e.regime}</td>
+      <td class="${e.is_return_pct >= 0 ? 'up' : 'down'}">${e.is_return_pct.toFixed(2)}%</td>
+      <td class="${e.oos_return_pct >= 0 ? 'up' : 'down'}">${e.oos_return_pct.toFixed(2)}%</td>
+      <td style="color:var(--down)"><strong>${e.abs_gap.toFixed(3)}</strong></td>
+      <td>${e.wf_folds}</td>
+      <td style="font-size:10px;color:var(--text2)">${ts}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function runLabNow(){
