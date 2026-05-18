@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bricks4Agent — Worker 開發指南 (Benson canonical)</title>
+<style>
+  :root {
+    --bg:#0a0d14; --card:#121622; --card2:#1a1f2e; --bd:#2a3142;
+    --t:#e8ebf2; --td:#7a8197; --info:#5db8ff; --good:#67c23a;
+    --warn:#e6a23c; --bad:#f56c6c; --teal:#3eb6c9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--t);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    font-size: 16px; line-height: 1.75;
+  }
+  header {
+    background: linear-gradient(135deg, #1a1f2e, #242836);
+    padding: 22px 18px; border-bottom: 3px solid var(--teal);
+    position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px);
+  }
+  header h1 { margin:0; font-size: 22px; color:var(--teal); }
+  header .sub { font-size: 13px; color: var(--td); margin-top: 4px; }
+  main { padding: 20px; max-width: 820px; margin: 0 auto; }
+
+  .toc { background: var(--card); border:1px solid var(--bd); border-radius:8px; padding: 14px 18px; margin-bottom: 24px; }
+  .toc h3 { margin: 0 0 8px; font-size: 13px; color: var(--td); text-transform: uppercase; letter-spacing: 0.5px; }
+  .toc ol { margin: 0; padding-left: 26px; font-size: 15px; }
+  .toc a { color: var(--teal); text-decoration: none; }
+
+  section { background: var(--card); border:1px solid var(--bd); border-radius:8px; padding: 18px 20px; margin-bottom: 16px; }
+  section h2 { margin: 0 0 12px; font-size: 19px; color: var(--teal); }
+  section h3 { font-size: 15px; color: var(--td); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .concept { background: linear-gradient(135deg, rgba(62,182,201,0.08), rgba(93,184,255,0.04)); border:1px solid rgba(62,182,201,0.4); border-radius:8px; padding:14px 18px; margin:14px 0; }
+  .concept h4 { margin: 0 0 6px; font-size: 13px; color: var(--teal); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .key-rule {
+    background: rgba(103,194,58,0.08); border-left: 3px solid var(--good);
+    border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 14px;
+  }
+  .key-rule strong { color: var(--good); display: block; margin-bottom: 6px; }
+
+  .anti {
+    background: rgba(245,108,108,0.06); border-left: 3px solid var(--bad);
+    border-radius: 0 4px 4px 0; padding: 10px 14px; margin: 8px 0; font-size: 14px;
+  }
+  .anti::before { content: "✗ 反例: "; color: var(--bad); font-weight: 700; }
+
+  .warn-box {
+    background: rgba(230,162,60,0.06); border-left: 3px solid var(--warn);
+    border-radius: 0 4px 4px 0; padding: 10px 14px; margin: 8px 0; font-size: 14px;
+  }
+  .warn-box::before { content: "⚠ 注意: "; color: var(--warn); font-weight: 700; }
+
+  code { background:var(--card2); border:1px solid var(--bd); padding:2px 7px; border-radius:3px; font-family:"SF Mono",Consolas,monospace; font-size:13px; color:#b8e0ff; }
+  pre { background:#0a0d14; border:1px solid var(--bd); padding:14px; border-radius:6px; overflow-x:auto; font-family:"SF Mono",Consolas,monospace; font-size:12.5px; line-height:1.6; color:var(--t); }
+  pre code { background:none; border:none; padding:0; color:var(--t); }
+
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+  th, td { padding: 8px 12px; border-bottom: 1px solid var(--bd); text-align: left; vertical-align: top; }
+  th { color: var(--td); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+
+  ul.compact, ol.compact { margin: 8px 0; padding-left: 26px; }
+  ul.compact li, ol.compact li { margin: 6px 0; font-size: 14px; line-height: 1.65; }
+
+  .step-header { color: var(--teal); font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
+  .file-path { color: var(--info); font-size: 13px; font-family: "SF Mono",Consolas,monospace; }
+
+  footer { text-align: center; padding: 30px; color: var(--td); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧱 Bricks4Agent · Worker 開發指南</h1>
+  <div class="sub">用 worker-sdk 寫一個新 capability worker、註冊到 broker、容器化部署</div>
+</header>
+
+<main>
+
+<div class="toc">
+  <h3>📋 主題</h3>
+  <ol>
+    <li><a href="#s1">Worker 在三層架構的位置</a></li>
+    <li><a href="#s2">worker-sdk 的兩個核心元件</a></li>
+    <li><a href="#s3">寫第一個 Handler：ICapabilityHandler</a></li>
+    <li><a href="#s4">組裝 Worker Program.cs（5 步驟）</a></li>
+    <li><a href="#s5">Containerfile 與 compose 註冊</a></li>
+    <li><a href="#s6">驗證：broker 看得到嗎？</a></li>
+    <li><a href="#s7">3 個常見踩雷</a></li>
+    <li><a href="#s8">推薦讀的 5 個 Benson canonical 檔案</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2>1. Worker 在三層架構的位置</h2>
+
+  <div class="concept">
+    <h4>Benson canonical 三層</h4>
+    <p style="margin:0; font-size:14px;">
+      <strong>High-level coordinator</strong>（LLM 規劃）→
+      <strong>Broker</strong>（control plane、capability registry、approve gate）→
+      <strong>Worker</strong>（執行 capability、實際做事）
+    </p>
+  </div>
+
+  <p>Worker 是<strong>執行層</strong>—— broker 把任務派下來、worker 跑、回結果。
+  broker 不直接連外部 API、不算 K 線、不下單，<em>全部</em>透過 worker。這個分離讓：</p>
+  <ul class="compact">
+    <li>外部 API key 只在 worker container 裡（broker 不需要交易所密碼）</li>
+    <li>worker 可以單獨升級 / scale / 重啟、不影響 broker</li>
+    <li>broker 可以同時掛多種 worker（quote / strategy / risk / trading…）</li>
+    <li>worker crash 不會炸 broker、broker 看 worker disconnect 自動切備援</li>
+  </ul>
+
+  <div class="key-rule">
+    <strong>判斷你該不該寫 worker 而不是 broker endpoint</strong>
+    需要呼叫外部 API、跑 CPU 重計算、跑長時間 job、或要連 GPU / 特殊硬體 → 寫 worker。
+    純查 broker DB / 算 metric / 回 dashboard 用 → 寫 broker endpoint。
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2>2. worker-sdk 的兩個核心元件</h2>
+
+  <p>看 <span class="file-path">packages/csharp/worker-sdk/</span>，整個 SDK 就兩個檔：</p>
+
+  <table>
+    <tr><th>檔案</th><th>角色</th></tr>
+    <tr>
+      <td><code>WorkerHost.cs</code></td>
+      <td>負責跟 broker 建 TCP 長連線、heartbeat、收任務、派給 handler、回結果。你不用碰它。</td>
+    </tr>
+    <tr>
+      <td><code>ICapabilityHandler.cs</code></td>
+      <td>你<em>實作</em>的介面、每個 capability 一個 handler。</td>
+    </tr>
+  </table>
+
+  <h3>ICapabilityHandler 介面（就 2 個成員）</h3>
+  <pre><code>public interface ICapabilityHandler
+{
+    string CapabilityId { get; }
+
+    Task&lt;(bool Success, string? ResultPayload, string? Error)&gt; ExecuteAsync(
+        string requestId, string route, string payload, string scope, CancellationToken ct);
+}</code></pre>
+
+  <ul class="compact">
+    <li><code>CapabilityId</code>：broker 用這個名字 lookup 你（例：<code>"quote.prices"</code>、<code>"trading.account"</code>）</li>
+    <li><code>route</code>：同一 capability 內的子操作（例：<code>"read_file"</code> vs <code>"list_dir"</code>）</li>
+    <li><code>payload</code>：broker 傳來的 JSON 字串、你自己 parse</li>
+    <li><code>scope</code>：操作範圍 JSON（user_id / channel 等 metadata、目前多數 worker 沒用）</li>
+    <li>回傳：<code>(true, jsonResult, null)</code> 成功；<code>(false, null, "錯誤描述")</code> 失敗</li>
+  </ul>
+
+  <div class="warn-box">
+    <strong>命名慣例</strong>：CapabilityId 用 <code>domain.action</code> 形式、小寫 + 點分隔。例：
+    <code>quote.prices</code>、<code>strategy.signal</code>、<code>trading.account</code>、<code>file.read</code>。
+    這個 ID 全 broker 唯一、之後 high-level coordinator 也是用它呼叫你。
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2>3. 寫第一個 Handler</h2>
+
+  <p>看實際的範例：<span class="file-path">packages/csharp/workers/quote-worker/Handlers/QuotePricesHandler.cs</span></p>
+
+  <pre><code>using System.Text.Json;
+using WorkerSdk;
+using QuoteWorker.Queue;
+
+namespace QuoteWorker.Handlers;
+
+public class QuotePricesHandler : ICapabilityHandler
+{
+    private readonly QuoteJobQueue _queue;
+    public string CapabilityId =&gt; "quote.prices";
+
+    public QuotePricesHandler(QuoteJobQueue queue) =&gt; _queue = queue;
+
+    public Task&lt;(bool Success, string? ResultPayload, string? Error)&gt; ExecuteAsync(
+        string requestId, string route, string payload, string scope, CancellationToken ct)
+    {
+        var prices = _queue.GetLatestPrices();
+        var json = JsonSerializer.Serialize(new { count = prices.Count, quotes = prices });
+        return Task.FromResult&lt;(bool, string?, string?)&gt;((true, json, null));
+    }
+}</code></pre>
+
+  <div class="key-rule">
+    <strong>Handler 設計三原則</strong>
+    1. Handler 只負責「翻譯 payload → 呼叫業務邏輯 → 序列化結果」、業務邏輯放別的 class。<br>
+    2. 回 JSON、不回 C# object。broker 那端是 string-based protocol。<br>
+    3. <code>requestId</code> 拿來寫 log 就好（要 audit 是 broker 的事、不是 worker）。
+  </div>
+
+  <div class="anti">
+    Handler 裡直接 <code>new HttpClient()</code>、寫死 API URL、不接 CancellationToken。
+    結果：connection leak、無法測、shutdown 卡住。<strong>正確做法</strong>：把外部依賴（HttpClient、DB、Queue）用建構子注入、handler 純做翻譯。
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2>4. 組裝 Worker Program.cs（5 步驟）</h2>
+
+  <p>看 <span class="file-path">packages/csharp/workers/quote-worker/Program.cs</span>，骨架是這 5 步：</p>
+
+  <div class="step-header">Step 1 — 讀設定</div>
+  <pre><code>var config = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddEnvironmentVariables("WORKER_")   // 例如 WORKER_BrokerHost=broker
+    .AddCommandLine(args)
+    .Build();</code></pre>
+
+  <div class="step-header">Step 2 — Logger</div>
+  <pre><code>using var loggerFactory = LoggerFactory.Create(b =&gt;
+{
+    b.AddConsole();
+    b.SetMinimumLevel(LogLevel.Information);
+});
+var logger = loggerFactory.CreateLogger&lt;WorkerHost&gt;();</code></pre>
+
+  <div class="step-header">Step 3 — WorkerHostOptions</div>
+  <pre><code>var options = new WorkerHostOptions
+{
+    BrokerHost               = config.GetValue&lt;string&gt;("Worker:BrokerHost") ?? "broker",
+    BrokerPort               = config.GetValue("Worker:BrokerPort", 7000),
+    WorkerId                 = $"my-wkr-{Guid.NewGuid():N}"[..20],
+    MaxConcurrent            = 4,
+    HeartbeatIntervalSeconds = 5,
+    WorkerType               = "my-worker",
+    WorkerAuthKeyId          = config.GetValue&lt;string&gt;("Worker:Auth:KeyId") ?? "",
+    WorkerAuthSharedSecret   = config.GetValue&lt;string&gt;("Worker:Auth:SharedSecret") ?? "",
+};</code></pre>
+
+  <div class="warn-box">
+    <strong>WorkerAuth 必填</strong>：broker 走 HMAC 驗證 worker、KeyId + SharedSecret 兩個必須跟 broker 那邊的
+    <code>Worker:Auth:Workers</code> 設定對得起來。沒設 worker 連得上 broker 但 broker 會直接 reject。
+  </div>
+
+  <div class="step-header">Step 4 — 建 host、註冊 handlers</div>
+  <pre><code>var host = new WorkerHost(options, logger);
+host.RegisterHandler(new MyCapabilityHandler(dep1, dep2));
+host.RegisterHandler(new MyOtherHandler(dep3));
+// 你一個 worker 可以掛多個 capability、有共用 dep 才一起放</code></pre>
+
+  <div class="step-header">Step 5 — 跑</div>
+  <pre><code>using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =&gt; { e.Cancel = true; cts.Cancel(); };
+
+await host.RunAsync(cts.Token);
+// RunAsync 會 block 到 ct 取消為止、TCP 斷線自動重連</code></pre>
+
+  <p style="font-size:14px; color:var(--td);">完整的 Program.cs 約 100 行（含註解）、看 quote-worker 那份照抄就行。</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2>5. Containerfile 與 compose 註冊</h2>
+
+  <p>Worker 都是獨立 container。看 <span class="file-path">packages/csharp/workers/quote-worker/Containerfile</span> 抄一份，
+  改 csproj 路徑跟 entry：</p>
+
+  <pre><code>FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY packages/csharp/ .
+RUN dotnet publish workers/my-worker/MyWorker.csproj -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/runtime:8.0
+WORKDIR /app
+COPY --from=build /app .
+ENTRYPOINT ["dotnet", "MyWorker.dll"]</code></pre>
+
+  <h3>掛進 compose</h3>
+  <p>編輯 <span class="file-path">deploy/compose.yml</span>（或對應 stack），加一個 service：</p>
+  <pre><code>my-worker:
+  build:
+    context: ../..
+    dockerfile: packages/csharp/workers/my-worker/Containerfile
+  environment:
+    WORKER_BrokerHost: broker
+    WORKER_BrokerPort: 7000
+    WORKER_Worker__Auth__KeyId:        "my-wkr-key-01"
+    WORKER_Worker__Auth__SharedSecret: "${MY_WORKER_SECRET}"   # 從 .env 帶
+  depends_on:
+    - broker
+  restart: unless-stopped</code></pre>
+
+  <h3>broker 那邊註冊允許的 KeyId / Secret</h3>
+  <p>編輯 <span class="file-path">packages/csharp/broker/appsettings.json</span>（或環境變數）：</p>
+  <pre><code>"Worker": {
+  "Auth": {
+    "Workers": [
+      { "KeyId": "my-wkr-key-01", "SharedSecret": "${MY_WORKER_SECRET}" }
+    ]
+  }
+}</code></pre>
+
+  <div class="anti">
+    把 SharedSecret 硬寫在 appsettings.json 推上 git。<strong>正確做法</strong>：寫
+    <code>${MY_WORKER_SECRET}</code> 占位符、實際值放 <code>.env</code> 或 docker secret。
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+  <h2>6. 驗證：broker 看得到嗎？</h2>
+
+  <ol class="compact">
+    <li><strong>看 worker log</strong>：<code>docker logs -f my-worker</code>，應該看到「Connected to broker」+ 定時 heartbeat</li>
+    <li><strong>看 broker log</strong>：<code>docker logs -f broker | grep my-wkr</code>，應該看到 register 成功</li>
+    <li><strong>查 broker API</strong>：<code>curl http://localhost:5100/api/v1/workers</code>，列表應該有你</li>
+    <li><strong>查 capability registry</strong>：<code>curl http://localhost:5100/api/v1/capabilities</code>，你的 CapabilityId 應該在裡面</li>
+    <li><strong>實際 dispatch 試一次</strong>：<code>curl -X POST http://localhost:5100/api/v1/workers/my-worker/my.capability -d '{"key":"value"}'</code></li>
+  </ol>
+
+  <div class="key-rule">
+    <strong>跑不起來的 debug 順序</strong>
+    1. Worker log 有沒有「Connected」？沒 → 網路 / port / WorkerAuth 三個檢查。<br>
+    2. Broker log 有沒有「Worker registered」？沒 → KeyId/SharedSecret 對不上。<br>
+    3. <code>/api/v1/capabilities</code> 有沒有你？沒 → handler 沒 RegisterHandler。<br>
+    4. Dispatch 200 但結果空 → handler ExecuteAsync 邏輯有 bug、看 worker log。
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2>7. 3 個常見踩雷</h2>
+
+  <h3>① BrokerHost 寫成 <code>localhost</code></h3>
+  <p>本機開發 OK、進 compose 就掛——container 裡的 <code>localhost</code> 是<em>自己</em>不是 broker。寫 service name
+  <code>broker</code>、靠 compose internal DNS 解析。</p>
+
+  <h3>② 多副本 worker 但 WorkerId 寫死</h3>
+  <p>broker 用 WorkerId 區分連線、寫死的話第二副本上線會踢掉第一副本。對的做法：用
+  <code>$"my-wkr-{Guid.NewGuid():N}"[..20]</code> 每次啟動隨機生。</p>
+
+  <h3>③ Handler 不接 CancellationToken</h3>
+  <p>shutdown 時 broker 會傳 cancel，handler 沒 honor 的話跑滿 timeout 才被砍、整個 graceful shutdown 卡 30 秒。
+  長 task / HTTP call 都記得 pass <code>ct</code>：</p>
+  <pre><code>// 對
+await _httpClient.GetAsync(url, ct);
+// 錯
+await _httpClient.GetAsync(url);</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2>8. 推薦讀的 5 個 Benson canonical 檔案</h2>
+
+  <table>
+    <tr><th>檔案</th><th>看什麼</th></tr>
+    <tr>
+      <td><span class="file-path">packages/csharp/worker-sdk/ICapabilityHandler.cs</span></td>
+      <td>SDK 唯一要實作的介面、25 行</td>
+    </tr>
+    <tr>
+      <td><span class="file-path">packages/csharp/worker-sdk/WorkerHost.cs</span></td>
+      <td>連線 + heartbeat + dispatch loop 的所有邏輯</td>
+    </tr>
+    <tr>
+      <td><span class="file-path">packages/csharp/workers/quote-worker/Program.cs</span></td>
+      <td>最完整、最值得照抄的 worker 範例</td>
+    </tr>
+    <tr>
+      <td><span class="file-path">packages/csharp/workers/file-worker/</span></td>
+      <td>最簡單的 worker、單一 handler、容易看懂</td>
+    </tr>
+    <tr>
+      <td><span class="file-path">packages/csharp/function-pool/Registry/WorkerRegistry.cs</span></td>
+      <td>broker 端怎麼管你 — 看完才知道為什麼 WorkerId 不能寫死</td>
+    </tr>
+  </table>
+
+  <div class="concept">
+    <h4>下一步</h4>
+    <ol class="compact">
+      <li>挑一個簡單 capability（例：呼叫某個 free API 回 JSON）</li>
+      <li>抄 file-worker、改名、改 handler</li>
+      <li>跑起來、用 curl 試 dispatch</li>
+      <li>容器化、進 compose</li>
+      <li>第一個 worker 上線後再來談 retry / circuit breaker / metrics 那些 advanced topic</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  Bricks4Agent · Worker 開發指南 · Benson canonical · v1.0
+</footer>
+
+</main>
+
+</body>
+</html>
