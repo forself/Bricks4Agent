@@ -20,7 +20,7 @@ public class SlippageBackoffTests
     public void NoEntry_NotInBackoff_AllowsThrough()
     {
         var map = new ConcurrentDictionary<string, DateTime>();
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "bingx:BTC-USDT", DateTime.UtcNow, out var remain);
         skip.Should().BeFalse("無紀錄 = 沒觸發過 slippage backoff");
         remain.Should().Be(0);
@@ -31,7 +31,7 @@ public class SlippageBackoffTests
     {
         var map = new ConcurrentDictionary<string, DateTime>();
         map["bingx:BTC-USDT"] = DateTime.UtcNow.AddMinutes(-5); // 已過期 5min
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "bingx:BTC-USDT", DateTime.UtcNow, out var remain);
         skip.Should().BeFalse("過期 cooldown 不該再擋");
         remain.Should().Be(0);
@@ -43,7 +43,7 @@ public class SlippageBackoffTests
         var map = new ConcurrentDictionary<string, DateTime>();
         var now = new DateTime(2026, 5, 18, 12, 0, 0, DateTimeKind.Utc);
         map["bingx:BTC-USDT"] = now.AddMinutes(20);  // 還剩 20 min
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "bingx:BTC-USDT", now, out var remain);
         skip.Should().BeTrue();
         remain.Should().Be(20);
@@ -56,7 +56,7 @@ public class SlippageBackoffTests
         var map = new ConcurrentDictionary<string, DateTime>();
         var now = new DateTime(2026, 5, 18, 12, 0, 0, DateTimeKind.Utc);
         map["bingx:BTC-USDT"] = now.AddSeconds(9 * 60 + 15);
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "bingx:BTC-USDT", now, out var remain);
         skip.Should().BeTrue();
         remain.Should().Be(10);
@@ -68,7 +68,7 @@ public class SlippageBackoffTests
         // BTC backoff 不影響 ETH 下單
         var map = new ConcurrentDictionary<string, DateTime>();
         map["bingx:BTC-USDT"] = DateTime.UtcNow.AddMinutes(30);
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "bingx:ETH-USDT", DateTime.UtcNow, out var _);
         skip.Should().BeFalse("backoff per (exchange:symbol) 隔離、不該影響其它 symbol");
     }
@@ -79,7 +79,7 @@ public class SlippageBackoffTests
         // 同 symbol 不同交易所也隔離
         var map = new ConcurrentDictionary<string, DateTime>();
         map["bingx:BTC-USDT"] = DateTime.UtcNow.AddMinutes(30);
-        var skip = AutoTraderService.ShouldSkipForSlippageBackoff(
+        var skip = AutoTraderSizingService.ShouldSkipForSlippageBackoff(
             map, "binance:BTC-USDT", DateTime.UtcNow, out var _);
         skip.Should().BeFalse("不同交易所、流動性不同、backoff 不該跨交易所");
     }

@@ -351,6 +351,8 @@ builder.Services.AddHttpClient<Broker.Services.BrowserExecutionRuntimeService>(c
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Bricks4Agent-BrowserRuntime/1.0");
 });
 builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>();
+// D1 Phase 1 — sizing service 必須在 AutoTraderService 前註冊（後者依賴它）
+builder.Services.AddSingleton<Broker.Services.AutoTraderSizingService>();
 builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
 builder.Services.AddSingleton<Broker.Services.PriceAlertService>();

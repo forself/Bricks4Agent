@@ -239,34 +239,11 @@ public class AutoTraderService : BackgroundService
     private static readonly TimeSpan _liqAlertCooldown = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// C1 — 同 (exchange:symbol) 觀察到 slippage &gt; alertPct 後、cooldown 期內 skip 同 symbol 新單。
-    /// 「self-healing」：執行品質 degraded 就自動退場讓市場恢復、避免在 thin liquidity 連續打單。
-    /// 平倉（reduceOnly）不受影響、擋出場才是真風險。
-    /// env: AUTOTRADER_SLIPPAGE_BACKOFF_MIN（預設 30 min、0 = 關閉 backoff、只保留 audit warn）。
+    /// D1 Phase 1 — sizing 邏輯（confidence multiplier / Kelly cache / slippage backoff state）
+    /// 抽到 AutoTraderSizingService。AutoTrader 透過 _sizing 呼叫。slippage observation 仍在
+    /// AutoTrader（因為要寫 per-watch AddLog），但 backoff cache 在 _sizing。
     /// </summary>
-    private readonly int _slippageBackoffMin;
-    private readonly ConcurrentDictionary<string, DateTime> _slippageBackoffUntil = new();
-
-    /// <summary>
-    /// C2 — Confidence-aware position sizing。strategy.signal 回的 confidence (0-1) 拿來
-    /// 縮放 qty：高信心拿原 qty、低信心縮成 qty × max(floor, confidence)、確保最壞情況不縮到 0。
-    /// 不影響 reduceOnly 平倉。預設 off、向後相容。
-    /// env: AUTOTRADER_CONFIDENCE_SIZING_ENABLED（預設 false） / AUTOTRADER_CONFIDENCE_SIZING_FLOOR（預設 0.3）。
-    /// </summary>
-    private readonly bool _confidenceSizingEnabled;
-    private readonly decimal _confidenceSizingFloor;
-
-    /// <summary>
-    /// C2 follow-up — Kelly fraction cache（接 KellyPositionSizingService、normalize [0, 0.25] → [0, 1]）。
-    /// Lazy compute：cache miss/stale 時 fire-and-forget 算、目前 sweep 用上次的 fraction
-    /// （或 1.0 if 還沒算過）。避免 KellyPositionSizingService 的 ~hundreds ms backtest IO 阻塞 sweep。
-    /// Inflight dedup 防 thundering herd（多 sweep 同時為同 key 觸發 refresh）。
-    /// env: AUTOTRADER_KELLY_SIZING_ENABLED（預設 false） / AUTOTRADER_KELLY_CACHE_HOURS（預設 6）。
-    /// </summary>
-    private readonly bool _kellySizingEnabled;
-    private readonly int _kellyCacheHours;
-    private readonly ConcurrentDictionary<string, (decimal EffectiveFraction, DateTime ComputedAt)> _kellyCache = new();
-    private readonly ConcurrentDictionary<string, byte> _kellyRefreshing = new();
+    private readonly AutoTraderSizingService _sizing;
 
     /// <summary>
     /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
@@ -575,6 +552,7 @@ public class AutoTraderService : BackgroundService
         BrokerDb db,
         ILogger<AutoTraderService> logger,
         IServiceProvider serviceProvider,
+        AutoTraderSizingService sizing,
         ExchangeCredentialService? credentials = null)
     {
         _dispatcher = dispatcher;
@@ -583,6 +561,7 @@ public class AutoTraderService : BackgroundService
         _logger     = logger;
         _credentials = credentials;
         _serviceProvider = serviceProvider;
+        _sizing = sizing;
 
         var forceRaw = Environment.GetEnvironmentVariable("AUTOTRADER_DEV_FORCE_ACTION")?.Trim().ToLowerInvariant();
         if (forceRaw == "buy" || forceRaw == "sell")
@@ -620,18 +599,8 @@ public class AutoTraderService : BackgroundService
         _liqAlertPct = ParsePctEnv("AUTOTRADER_LIQ_ALERT_PCT", defaultValue: 10m, min: 0m, max: 50m);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
-        // C1 — slippage backoff cooldown 分鐘（0 = 關 backoff、只 audit；預設 30 min）
-        _slippageBackoffMin = ParseIntEnv("AUTOTRADER_SLIPPAGE_BACKOFF_MIN", defaultValue: 30, min: 0, max: 720);
-        // C2 — confidence-aware sizing（opt-in、預設 off 不破壞既有行為）
-        _confidenceSizingEnabled = string.Equals(
-            Environment.GetEnvironmentVariable("AUTOTRADER_CONFIDENCE_SIZING_ENABLED") ?? "false",
-            "true", StringComparison.OrdinalIgnoreCase);
-        _confidenceSizingFloor = ParsePctEnv("AUTOTRADER_CONFIDENCE_SIZING_FLOOR", defaultValue: 0.3m, min: 0.05m, max: 1m);
-        // C2 follow-up — Kelly fraction integration（opt-in、6h cache）
-        _kellySizingEnabled = string.Equals(
-            Environment.GetEnvironmentVariable("AUTOTRADER_KELLY_SIZING_ENABLED") ?? "false",
-            "true", StringComparison.OrdinalIgnoreCase);
-        _kellyCacheHours = ParseIntEnv("AUTOTRADER_KELLY_CACHE_HOURS", defaultValue: 6, min: 1, max: 168);
+        // D1 Phase 1: slippage backoff + confidence sizing + Kelly cache 全部移到 AutoTraderSizingService
+        // （從 _sizing 讀回顯：env 各自有預設、constructor 已綁定）
         // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
         var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
         _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
@@ -2199,10 +2168,10 @@ public class AutoTraderService : BackgroundService
 
             // ── C1 — Slippage backoff gate（上一筆執行品質差就 cooldown 同 symbol 新單）─
             // 平倉（reduceOnly）不擋 — 出場永遠優先；只對 open_*/scale_in_* 生效。
-            // 觸發後預設 30 min cooldown、env AUTOTRADER_SLIPPAGE_BACKOFF_MIN 可調。
-            if (_slippageBackoffMin > 0 && !reduceOnly &&
+            // gate state 移到 AutoTraderSizingService、觸發在後面 slippage observation 寫進去。
+            if (!reduceOnly &&
                 (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")) &&
-                ShouldSkipForSlippageBackoff(_slippageBackoffUntil, cdKey, DateTime.UtcNow, out var remainMin))
+                _sizing.IsInSlippageBackoff(item.Exchange, item.Symbol, out var remainMin))
             {
                 AddLog(item, "skip",
                     $"slippage backoff: last fill slippage > {_slippageAlertPct:F2}%, " +
@@ -2308,28 +2277,18 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
-            // ── C2 — Adaptive sizing（confidence × Kelly multiplier）─
-            // 只對 open / scale-in 套用、平倉不縮（出場永遠用足量）。
-            // 預設兩 feature 都 disabled、純向後相容；env enable 個別啟動。
-            // Kelly fraction 從 6h cache 取、cache miss/stale → 觸發 background refresh、本 sweep 用 1.0。
-            if ((_confidenceSizingEnabled || _kellySizingEnabled) && !reduceOnly &&
-                (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            // ── C2 — Adaptive sizing（delegate to AutoTraderSizingService）─
+            // 只對 open / scale-in 套用、平倉不縮（出場永遠用足量）。Service 內部判斷是否啟用。
+            if (!reduceOnly && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
                 var before = qtyToUse;
-                var kellyFactor = GetKellyFactorOrTrigger(item.Exchange, item.Symbol, item.Strategy);
-                qtyToUse = ApplyAdaptiveSizing(
-                    baseQty: qtyToUse, confidence: confidence,
-                    confidenceFloor: _confidenceSizingFloor,
-                    kellyFraction: kellyFactor,
-                    confidenceEnabled: _confidenceSizingEnabled,
-                    kellyEnabled: _kellySizingEnabled);
+                var (sized, tags) = _sizing.ApplyForSignal(qtyToUse, confidence, item.Exchange, item.Symbol, item.Strategy);
+                qtyToUse = sized;
                 if (qtyToUse != before)
                 {
                     var factorPct = before > 0m ? qtyToUse / before : 1m;
-                    var tags = (_confidenceSizingEnabled ? $"conf={confidence:P0} " : "")
-                             + (_kellySizingEnabled ? $"kelly={kellyFactor:P0}" : "");
                     AddLog(item, "info",
-                        $"adaptive sizing: {tags.Trim()} factor={factorPct:P0} " +
+                        $"adaptive sizing: {tags} factor={factorPct:P0} " +
                         $"qty {before:F6} → {qtyToUse:F6}");
                 }
             }
@@ -2437,13 +2396,12 @@ public class AutoTraderService : BackgroundService
                     AddLog(item, "warn",
                         $"slippage {slippagePct:F3}% > {_slippageAlertPct:F2}% (signal mark {markPrice:F4} → filled {filled:F4})");
 
-                    if (_slippageBackoffMin > 0 && !reduceOnly)
+                    if (_sizing.SlippageBackoffMin > 0 && !reduceOnly)
                     {
-                        var cooldownKey = $"{item.Exchange}:{item.Symbol}";
-                        var until = DateTime.UtcNow.AddMinutes(_slippageBackoffMin);
-                        _slippageBackoffUntil[cooldownKey] = until;
+                        _sizing.ArmSlippageBackoff(item.Exchange, item.Symbol);
+                        var until = DateTime.UtcNow.AddMinutes(_sizing.SlippageBackoffMin);
                         AddLog(item, "warn",
-                            $"slippage backoff armed for {_slippageBackoffMin} min on {cooldownKey} " +
+                            $"slippage backoff armed for {_sizing.SlippageBackoffMin} min on {item.Exchange}:{item.Symbol} " +
                             $"(next open signal will skip until {until:HH:mm} UTC).");
                     }
                 }
@@ -2461,114 +2419,6 @@ public class AutoTraderService : BackgroundService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// C2 follow-up — 拿 cached Kelly fraction、normalize 到 [0, 1] 給 ApplyAdaptiveSizing。
-    /// Kelly EffectiveFraction 範圍 [0, 0.25]、normalize by 0.25 → [0, 1]、語意：
-    ///   0   = 策略歷史 EV 負、qty 縮為 0
-    ///   0.5 = Kelly 12.5% 建議、qty 縮一半
-    ///   1.0 = Kelly 達 25% 上限、qty 不縮
-    ///
-    /// Cache miss / stale → 回 1.0（保守不縮）、fire-and-forget refresh、下個 sweep 拿到新值。
-    /// Inflight dedup 防多 sweep 同 key 並發 refresh。
-    /// </summary>
-    internal decimal GetKellyFactorOrTrigger(string exchange, string symbol, string strategy)
-    {
-        if (!_kellySizingEnabled) return 1m;
-        var key = $"{exchange}:{symbol}:{strategy}";
-        if (_kellyCache.TryGetValue(key, out var entry) &&
-            (DateTime.UtcNow - entry.ComputedAt).TotalHours < _kellyCacheHours)
-        {
-            return NormalizeKellyToFactor(entry.EffectiveFraction);
-        }
-        TriggerKellyRefresh(exchange, symbol, strategy);
-        return 1m;  // 還沒算過 / 剛 expire → 不縮、等 background 算完下個 sweep 才縮
-    }
-
-    /// <summary>把 KellyPositionSizingService 的 EffectiveFraction [0, 0.25] 攤平到 [0, 1]。</summary>
-    internal static decimal NormalizeKellyToFactor(decimal effectiveFraction)
-        => Math.Min(1m, Math.Max(0m, effectiveFraction) / 0.25m);
-
-    private void TriggerKellyRefresh(string exchange, string symbol, string strategy)
-    {
-        var key = $"{exchange}:{symbol}:{strategy}";
-        if (!_kellyRefreshing.TryAdd(key, 0)) return;  // 已有 inflight refresh、不重複觸發
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var kelly = _serviceProvider.GetService<KellyPositionSizingService>();
-                if (kelly == null) return;
-                var sugg = await kelly.SuggestAsync(strategy, symbol, capital: 1000m, fraction: 0.5m);
-                if (sugg.Success)
-                {
-                    _kellyCache[key] = (sugg.EffectiveFraction, DateTime.UtcNow);
-                    _logger.LogInformation(
-                        "Kelly cache updated {Key}: effective={Frac:F4} (normalized factor={Factor:F2})",
-                        key, sugg.EffectiveFraction, NormalizeKellyToFactor(sugg.EffectiveFraction));
-                }
-                else
-                {
-                    _logger.LogDebug("Kelly compute returned no suggestion for {Key}: {Err}", key, sugg.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Kelly refresh failed for {Key}", key);
-            }
-            finally
-            {
-                _kellyRefreshing.TryRemove(key, out _);
-            }
-        });
-    }
-
-    /// <summary>
-    /// C2 — Adaptive position sizing 公式（pure function、好測）。
-    ///   factor = (confidenceEnabled ? max(floor, clamp(confidence, 0, 1)) : 1)
-    ///          × (kellyEnabled     ? clamp(kellyFraction, 0, 1)            : 1)
-    ///   sized = baseQty × factor
-    ///
-    /// 設計：兩個 multiplier 互乘、各自 opt-in、可分別 enable/disable。
-    /// Kelly 整合介面預留——目前 PlacePerpOrderForSignalAsync 永遠傳 1.0、
-    /// 待後續加 KellyPositionSizingService 6h cache 後再從 cache 餵 kellyFraction 進來。
-    /// </summary>
-    internal static decimal ApplyAdaptiveSizing(
-        decimal baseQty, decimal confidence, decimal confidenceFloor,
-        decimal kellyFraction, bool confidenceEnabled, bool kellyEnabled)
-    {
-        var factor = 1m;
-        if (confidenceEnabled)
-        {
-            var conf = Math.Max(0m, Math.Min(1m, confidence));
-            factor *= Math.Max(confidenceFloor, conf);
-        }
-        if (kellyEnabled)
-        {
-            factor *= Math.Clamp(kellyFraction, 0m, 1m);
-        }
-        return baseQty * factor;
-    }
-
-    /// <summary>
-    /// C1 gate — 判斷某 (exchange:symbol) 是否仍在 slippage backoff cooldown 中。
-    /// internal static 給單測用、不用 new 整個 AutoTraderService。
-    /// </summary>
-    /// <param name="backoffUntil">cooldown 到期時間表（key = "exchange:symbol"）</param>
-    /// <param name="key">要檢查的 key</param>
-    /// <param name="nowUtc">現在時間（測試可注入）</param>
-    /// <param name="remainMinutes">剩餘冷卻分鐘（向上取整），不在 backoff 內回 0</param>
-    /// <returns>true = 應該 skip 此單；false = 可放行</returns>
-    internal static bool ShouldSkipForSlippageBackoff(
-        ConcurrentDictionary<string, DateTime> backoffUntil, string key, DateTime nowUtc,
-        out int remainMinutes)
-    {
-        remainMinutes = 0;
-        if (!backoffUntil.TryGetValue(key, out var until)) return false;
-        if (nowUtc >= until) return false;
-        remainMinutes = (int)Math.Ceiling((until - nowUtc).TotalMinutes);
-        return true;
-    }
 
     /// <summary>
     /// 算 deterministic client_order_id —— 拆出來方便單測 + 文檔化合約規則：
