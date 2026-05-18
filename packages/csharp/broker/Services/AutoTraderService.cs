@@ -231,12 +231,21 @@ public class AutoTraderService : BackgroundService
 
     /// <summary>
     /// Slippage audit threshold（% of mark price at signal time）。
-    /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn（不擋）。
+    /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn + 觸發 backoff（C1）。
     /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
     /// </summary>
     private readonly decimal _slippageAlertPct;
     private readonly ConcurrentDictionary<string, DateTime> _lastLiqAlertAt = new();
     private static readonly TimeSpan _liqAlertCooldown = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// C1 — 同 (exchange:symbol) 觀察到 slippage &gt; alertPct 後、cooldown 期內 skip 同 symbol 新單。
+    /// 「self-healing」：執行品質 degraded 就自動退場讓市場恢復、避免在 thin liquidity 連續打單。
+    /// 平倉（reduceOnly）不受影響、擋出場才是真風險。
+    /// env: AUTOTRADER_SLIPPAGE_BACKOFF_MIN（預設 30 min、0 = 關閉 backoff、只保留 audit warn）。
+    /// </summary>
+    private readonly int _slippageBackoffMin;
+    private readonly ConcurrentDictionary<string, DateTime> _slippageBackoffUntil = new();
 
     /// <summary>
     /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
@@ -590,6 +599,8 @@ public class AutoTraderService : BackgroundService
         _liqAlertPct = ParsePctEnv("AUTOTRADER_LIQ_ALERT_PCT", defaultValue: 10m, min: 0m, max: 50m);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
+        // C1 — slippage backoff cooldown 分鐘（0 = 關 backoff、只 audit；預設 30 min）
+        _slippageBackoffMin = ParseIntEnv("AUTOTRADER_SLIPPAGE_BACKOFF_MIN", defaultValue: 30, min: 0, max: 720);
         // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
         var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
         _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
@@ -2155,6 +2166,19 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
+            // ── C1 — Slippage backoff gate（上一筆執行品質差就 cooldown 同 symbol 新單）─
+            // 平倉（reduceOnly）不擋 — 出場永遠優先；只對 open_*/scale_in_* 生效。
+            // 觸發後預設 30 min cooldown、env AUTOTRADER_SLIPPAGE_BACKOFF_MIN 可調。
+            if (_slippageBackoffMin > 0 && !reduceOnly &&
+                (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")) &&
+                ShouldSkipForSlippageBackoff(_slippageBackoffUntil, cdKey, DateTime.UtcNow, out var remainMin))
+            {
+                AddLog(item, "skip",
+                    $"slippage backoff: last fill slippage > {_slippageAlertPct:F2}%, " +
+                    $"cooling down {remainMin} more min (self-healing on poor execution quality).");
+                return;
+            }
+
             // ── Hard cap on simultaneous open positions（user request 「3 倉不會再多」）─
             // 只擋全新 open；scale_in 是加碼同向同 symbol、不增加 unique position count
             if (_maxOpenPositions > 0 && perpAction!.StartsWith("open_") &&
@@ -2343,8 +2367,9 @@ public class AutoTraderService : BackgroundService
             _logger.LogInformation("AutoTrader perp: {PerpAction} {Side} {Qty} {Symbol} on {Exchange} {Lev}x → {Status}",
                 perpAction, perpSide, qtyToUse, item.Symbol, item.Exchange, item.Leverage, status);
 
-            // ── Slippage audit（filled_price vs signal markPrice）─
-            // 不擋 dispatch（已成交）、純 audit；超過 threshold 推 alert 給 user 知道執行品質
+            // ── Slippage audit + C1 backoff trigger（filled_price vs signal markPrice）─
+            // 當下單 — 已成交不可逆、不擋 dispatch；但同 symbol 下一個 open signal 進 backoff cooldown。
+            // _slippageBackoffMin=0 退化成純 audit warn（向後相容）。
             if (_slippageAlertPct > 0m && markPrice > 0m && ord.TryGetProperty("filled_price", out var fp)
                 && fp.ValueKind == JsonValueKind.Number && fp.GetDecimal() > 0m)
             {
@@ -2354,6 +2379,16 @@ public class AutoTraderService : BackgroundService
                 {
                     AddLog(item, "warn",
                         $"slippage {slippagePct:F3}% > {_slippageAlertPct:F2}% (signal mark {markPrice:F4} → filled {filled:F4})");
+
+                    if (_slippageBackoffMin > 0 && !reduceOnly)
+                    {
+                        var cooldownKey = $"{item.Exchange}:{item.Symbol}";
+                        var until = DateTime.UtcNow.AddMinutes(_slippageBackoffMin);
+                        _slippageBackoffUntil[cooldownKey] = until;
+                        AddLog(item, "warn",
+                            $"slippage backoff armed for {_slippageBackoffMin} min on {cooldownKey} " +
+                            $"(next open signal will skip until {until:HH:mm} UTC).");
+                    }
                 }
             }
 
@@ -2369,6 +2404,26 @@ public class AutoTraderService : BackgroundService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// C1 gate — 判斷某 (exchange:symbol) 是否仍在 slippage backoff cooldown 中。
+    /// internal static 給單測用、不用 new 整個 AutoTraderService。
+    /// </summary>
+    /// <param name="backoffUntil">cooldown 到期時間表（key = "exchange:symbol"）</param>
+    /// <param name="key">要檢查的 key</param>
+    /// <param name="nowUtc">現在時間（測試可注入）</param>
+    /// <param name="remainMinutes">剩餘冷卻分鐘（向上取整），不在 backoff 內回 0</param>
+    /// <returns>true = 應該 skip 此單；false = 可放行</returns>
+    internal static bool ShouldSkipForSlippageBackoff(
+        ConcurrentDictionary<string, DateTime> backoffUntil, string key, DateTime nowUtc,
+        out int remainMinutes)
+    {
+        remainMinutes = 0;
+        if (!backoffUntil.TryGetValue(key, out var until)) return false;
+        if (nowUtc >= until) return false;
+        remainMinutes = (int)Math.Ceiling((until - nowUtc).TotalMinutes);
+        return true;
+    }
 
     /// <summary>
     /// 算 deterministic client_order_id —— 拆出來方便單測 + 文檔化合約規則：
