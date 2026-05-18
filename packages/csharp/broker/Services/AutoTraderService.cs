@@ -252,11 +252,21 @@ public class AutoTraderService : BackgroundService
     /// 縮放 qty：高信心拿原 qty、低信心縮成 qty × max(floor, confidence)、確保最壞情況不縮到 0。
     /// 不影響 reduceOnly 平倉。預設 off、向後相容。
     /// env: AUTOTRADER_CONFIDENCE_SIZING_ENABLED（預設 false） / AUTOTRADER_CONFIDENCE_SIZING_FLOOR（預設 0.3）。
-    /// Kelly fraction 整合預留 ApplyAdaptiveSizing(kellyFraction) 介面、目前固定 1.0、
-    /// 待後續加 KellyPositionSizingService 的 6h cache 後再串。
     /// </summary>
     private readonly bool _confidenceSizingEnabled;
     private readonly decimal _confidenceSizingFloor;
+
+    /// <summary>
+    /// C2 follow-up — Kelly fraction cache（接 KellyPositionSizingService、normalize [0, 0.25] → [0, 1]）。
+    /// Lazy compute：cache miss/stale 時 fire-and-forget 算、目前 sweep 用上次的 fraction
+    /// （或 1.0 if 還沒算過）。避免 KellyPositionSizingService 的 ~hundreds ms backtest IO 阻塞 sweep。
+    /// Inflight dedup 防 thundering herd（多 sweep 同時為同 key 觸發 refresh）。
+    /// env: AUTOTRADER_KELLY_SIZING_ENABLED（預設 false） / AUTOTRADER_KELLY_CACHE_HOURS（預設 6）。
+    /// </summary>
+    private readonly bool _kellySizingEnabled;
+    private readonly int _kellyCacheHours;
+    private readonly ConcurrentDictionary<string, (decimal EffectiveFraction, DateTime ComputedAt)> _kellyCache = new();
+    private readonly ConcurrentDictionary<string, byte> _kellyRefreshing = new();
 
     /// <summary>
     /// 根據 strategy-worker 帶回的 regime 訊號做進場 gate。
@@ -617,6 +627,11 @@ public class AutoTraderService : BackgroundService
             Environment.GetEnvironmentVariable("AUTOTRADER_CONFIDENCE_SIZING_ENABLED") ?? "false",
             "true", StringComparison.OrdinalIgnoreCase);
         _confidenceSizingFloor = ParsePctEnv("AUTOTRADER_CONFIDENCE_SIZING_FLOOR", defaultValue: 0.3m, min: 0.05m, max: 1m);
+        // C2 follow-up — Kelly fraction integration（opt-in、6h cache）
+        _kellySizingEnabled = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_KELLY_SIZING_ENABLED") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
+        _kellyCacheHours = ParseIntEnv("AUTOTRADER_KELLY_CACHE_HOURS", defaultValue: 6, min: 1, max: 168);
         // Regime filter gate（HighVol / Squeeze / 方向錯誤 → skip）。預設 off 不破壞既有行為。
         var modeRaw = (Environment.GetEnvironmentVariable("AUTOTRADER_REGIME_GATE_MODE") ?? "off").Trim().ToLowerInvariant();
         _regimeGateMode = modeRaw is "soft" or "strict" ? modeRaw : "off";
@@ -2295,23 +2310,26 @@ public class AutoTraderService : BackgroundService
 
             // ── C2 — Adaptive sizing（confidence × Kelly multiplier）─
             // 只對 open / scale-in 套用、平倉不縮（出場永遠用足量）。
-            // 預設 disabled 純向後相容；env enable 後低信心訊號自動縮 qty。
-            // Kelly 整合介面預留、目前永遠傳 1.0、待 KellyPositionSizingService cache 串好。
-            if (_confidenceSizingEnabled && !reduceOnly &&
+            // 預設兩 feature 都 disabled、純向後相容；env enable 個別啟動。
+            // Kelly fraction 從 6h cache 取、cache miss/stale → 觸發 background refresh、本 sweep 用 1.0。
+            if ((_confidenceSizingEnabled || _kellySizingEnabled) && !reduceOnly &&
                 (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
                 var before = qtyToUse;
+                var kellyFactor = GetKellyFactorOrTrigger(item.Exchange, item.Symbol, item.Strategy);
                 qtyToUse = ApplyAdaptiveSizing(
                     baseQty: qtyToUse, confidence: confidence,
                     confidenceFloor: _confidenceSizingFloor,
-                    kellyFraction: 1m,              // TODO: 接 Kelly cache 後從這餵 fraction
-                    confidenceEnabled: true,
-                    kellyEnabled: false);
+                    kellyFraction: kellyFactor,
+                    confidenceEnabled: _confidenceSizingEnabled,
+                    kellyEnabled: _kellySizingEnabled);
                 if (qtyToUse != before)
                 {
                     var factorPct = before > 0m ? qtyToUse / before : 1m;
+                    var tags = (_confidenceSizingEnabled ? $"conf={confidence:P0} " : "")
+                             + (_kellySizingEnabled ? $"kelly={kellyFactor:P0}" : "");
                     AddLog(item, "info",
-                        $"adaptive sizing: confidence={confidence:P0} factor={factorPct:P0} " +
+                        $"adaptive sizing: {tags.Trim()} factor={factorPct:P0} " +
                         $"qty {before:F6} → {qtyToUse:F6}");
                 }
             }
@@ -2443,6 +2461,67 @@ public class AutoTraderService : BackgroundService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// C2 follow-up — 拿 cached Kelly fraction、normalize 到 [0, 1] 給 ApplyAdaptiveSizing。
+    /// Kelly EffectiveFraction 範圍 [0, 0.25]、normalize by 0.25 → [0, 1]、語意：
+    ///   0   = 策略歷史 EV 負、qty 縮為 0
+    ///   0.5 = Kelly 12.5% 建議、qty 縮一半
+    ///   1.0 = Kelly 達 25% 上限、qty 不縮
+    ///
+    /// Cache miss / stale → 回 1.0（保守不縮）、fire-and-forget refresh、下個 sweep 拿到新值。
+    /// Inflight dedup 防多 sweep 同 key 並發 refresh。
+    /// </summary>
+    internal decimal GetKellyFactorOrTrigger(string exchange, string symbol, string strategy)
+    {
+        if (!_kellySizingEnabled) return 1m;
+        var key = $"{exchange}:{symbol}:{strategy}";
+        if (_kellyCache.TryGetValue(key, out var entry) &&
+            (DateTime.UtcNow - entry.ComputedAt).TotalHours < _kellyCacheHours)
+        {
+            return NormalizeKellyToFactor(entry.EffectiveFraction);
+        }
+        TriggerKellyRefresh(exchange, symbol, strategy);
+        return 1m;  // 還沒算過 / 剛 expire → 不縮、等 background 算完下個 sweep 才縮
+    }
+
+    /// <summary>把 KellyPositionSizingService 的 EffectiveFraction [0, 0.25] 攤平到 [0, 1]。</summary>
+    internal static decimal NormalizeKellyToFactor(decimal effectiveFraction)
+        => Math.Min(1m, Math.Max(0m, effectiveFraction) / 0.25m);
+
+    private void TriggerKellyRefresh(string exchange, string symbol, string strategy)
+    {
+        var key = $"{exchange}:{symbol}:{strategy}";
+        if (!_kellyRefreshing.TryAdd(key, 0)) return;  // 已有 inflight refresh、不重複觸發
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var kelly = _serviceProvider.GetService<KellyPositionSizingService>();
+                if (kelly == null) return;
+                var sugg = await kelly.SuggestAsync(strategy, symbol, capital: 1000m, fraction: 0.5m);
+                if (sugg.Success)
+                {
+                    _kellyCache[key] = (sugg.EffectiveFraction, DateTime.UtcNow);
+                    _logger.LogInformation(
+                        "Kelly cache updated {Key}: effective={Frac:F4} (normalized factor={Factor:F2})",
+                        key, sugg.EffectiveFraction, NormalizeKellyToFactor(sugg.EffectiveFraction));
+                }
+                else
+                {
+                    _logger.LogDebug("Kelly compute returned no suggestion for {Key}: {Err}", key, sugg.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Kelly refresh failed for {Key}", key);
+            }
+            finally
+            {
+                _kellyRefreshing.TryRemove(key, out _);
+            }
+        });
+    }
 
     /// <summary>
     /// C2 — Adaptive position sizing 公式（pure function、好測）。

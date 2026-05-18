@@ -105,4 +105,42 @@ public class AdaptiveSizingTests
             kellyFraction: 5m, confidenceEnabled: false, kellyEnabled: true);
         sized.Should().Be(100m);
     }
+
+    // ── NormalizeKellyToFactor ─────────────────────────────────────────
+    // KellyPositionSizingService.EffectiveFraction 範圍 [0, 0.25]、
+    // normalize to [0, 1] 才適合餵 ApplyAdaptiveSizing（後者把 > 1 clamp 掉）。
+
+    [Fact]
+    public void NormalizeKelly_MaxFraction_ReturnsOne()
+    {
+        // EffectiveFraction = 0.25 (Kelly's max cap) → factor 1.0（不縮）
+        AutoTraderService.NormalizeKellyToFactor(0.25m).Should().Be(1m);
+    }
+
+    [Fact]
+    public void NormalizeKelly_HalfMax_ReturnsHalf()
+    {
+        // EffectiveFraction = 0.125 → factor 0.5（縮半）
+        AutoTraderService.NormalizeKellyToFactor(0.125m).Should().Be(0.5m);
+    }
+
+    [Fact]
+    public void NormalizeKelly_Zero_ReturnsZero()
+    {
+        // EffectiveFraction = 0 (策略 EV 負) → factor 0（完全不下單）
+        AutoTraderService.NormalizeKellyToFactor(0m).Should().Be(0m);
+    }
+
+    [Fact]
+    public void NormalizeKelly_AboveMax_ClampsToOne()
+    {
+        // Sanity：理論上 KellyPositionSizingService 不會回 > 0.25、但防呆
+        AutoTraderService.NormalizeKellyToFactor(0.5m).Should().Be(1m);
+    }
+
+    [Fact]
+    public void NormalizeKelly_Negative_ClampsToZero()
+    {
+        AutoTraderService.NormalizeKellyToFactor(-0.1m).Should().Be(0m);
+    }
 }
