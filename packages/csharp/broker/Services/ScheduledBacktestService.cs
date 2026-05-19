@@ -63,12 +63,24 @@ public class ScheduledBacktestService : BackgroundService
     ///
     /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
     /// </summary>
-    // DIAGNOSTIC：暫時縮到 1 strategy、隔離 concurrent dispatch issue
-    // 之前 24 條 × parallel 4 + walk-forward = 286/288 fail（framing / connection drop）
-    // 若 1 strategy 仍 fail = 系統性問題；若 1 strategy 0 error = 並發是觸發點
-    // 真正擴回 24 條前要先修 cache-protocol multi-packet frame
+    // 24 條策略 batch — 5/19 診斷確認 concurrent dispatch 是 framing bug 觸發點：
+    //   1 strategy → 100% success (12/12, 1.2s)
+    //   24 strategies × parallel=4 → 0.7% success (2/288)
+    // 修法：MaxParallel default 改 1（序列）、24 條策略可全部跑、預估 30s 完成。
+    // 待 cache-protocol layer 修好 multi-packet frame 後才能恢復並行。
     private static readonly string[] DefaultStrategies = {
-        "sma_cross",
+        // 3 條有 grid search optimizer
+        "sma_cross", "rsi_oversold", "macd_divergence",
+        // Meta / combined
+        "composite", "ensemble", "auto_select",
+        // 標準技術指標
+        "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
+        "harmonic_pattern", "vegas_tunnel", "price_action",
+        // Batch A ai-quant-starter2 移植
+        "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
+        // Tier 2 batch
+        "donchian", "keltner", "parabolic_sar",
+        "cci", "obv", "mfi", "chaikin_mf",
     };
     private readonly string[] _strategies;
 
@@ -157,11 +169,16 @@ public class ScheduledBacktestService : BackgroundService
     }
 
     /// <summary>
-    /// Max parallelism：預設 4、clamp [1, 16]。1 = sequential、16 上限是避免有人寫 999
-    /// 把 strategy-worker 灌爆。
+    /// Max parallelism：預設 1（序列）、clamp [1, 16]。
+    /// 5/19 診斷確認：parallel>1 觸發 cache-protocol framing bug（multi-packet frame 處理
+    /// 在並發 dispatch 下解析錯位、worker 收到 "Invalid magic bytes" 主動斷連）。1 strategy
+    /// 0 errors / 24 strategies × parallel=4 → 286/288 fail = clean signal。
+    ///
+    /// 預估 24 條 × N watches × 3 tf 序列跑 30-60 秒、24h auto batch 完全可接受。
+    /// 待 cache-protocol layer 修好後才能恢復並行（拉 default 回 4）。
     /// </summary>
     internal static int ResolveMaxParallel(IConfiguration config)
-        => Math.Clamp(config.GetValue("Lab:MaxParallel", 4), 1, 16);
+        => Math.Clamp(config.GetValue("Lab:MaxParallel", 1), 1, 16);
 
     /// <summary>
     /// B：per-regime ranking。每 (symbol, timeframe, regime) 找 score 最高的標 Recommended=true。

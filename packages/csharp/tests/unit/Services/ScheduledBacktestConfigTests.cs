@@ -167,9 +167,10 @@ public class ScheduledBacktestConfigTests
     // ── A3：MaxParallel 配置解析 ─────────────────────────────────────────
 
     [Fact]
-    public void ResolveMaxParallel_NoConfig_DefaultsTo4()
+    public void ResolveMaxParallel_NoConfig_DefaultsTo1_SequentialDueToFramingBug()
     {
-        ScheduledBacktestService.ResolveMaxParallel(BuildConfig(new())).Should().Be(4);
+        // Default 從 4 → 1 (5/19) — cache-protocol framing 在 parallel>1 下崩；待修。
+        ScheduledBacktestService.ResolveMaxParallel(BuildConfig(new())).Should().Be(1);
     }
 
     [Fact]
