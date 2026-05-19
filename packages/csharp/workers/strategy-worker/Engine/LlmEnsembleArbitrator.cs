@@ -26,6 +26,16 @@ public class LlmEnsembleArbitrator : IEnsembleArbitrator
     private readonly decimal _threshold;
     private static readonly TimeSpan PerCallTimeout = TimeSpan.FromSeconds(8);
 
+    // ── Circuit breaker（5/19 加入、防 walk-forward 內上百次仲裁觸發 LLM 502 連環）
+    // 連續失敗 >= _breakerThreshold 或單一視窗呼叫 > _breakerCallCap → 接下來全 fallback null
+    // 跟 LlmStrategy 相同 pattern、避免 LLM upstream 死掉時整個 ensemble batch 卡死。
+    private int _consecutiveFailures = 0;
+    private int _callCount = 0;
+    private DateTime _breakerResetAt = DateTime.UtcNow;
+    private const int BreakerFailureThreshold = 3;
+    private const int BreakerCallCap = 20;           // 仲裁本來就稀少、20 次/min 已超合理
+    private const int BreakerCooldownSeconds = 60;
+
     public decimal Threshold => _threshold;
 
     public LlmEnsembleArbitrator(
@@ -49,17 +59,53 @@ public class LlmEnsembleArbitrator : IEnsembleArbitrator
         StrategyConfig config)
     {
         if (constituentSignals.Count == 0) return null;
+
+        // Circuit breaker check — 短路、不打 HTTP（避免 LLM 死掉時 connection pool 耗盡 +
+        // 連環 502 exception 把 worker 連線狀態搞糊）
+        if (IsBreakerOpen(out var breakerReason))
+        {
+            _logger.LogDebug("LLM arbitrator breaker open ({Reason}), fallback for {Sym}", breakerReason, config.Symbol);
+            return null;
+        }
+
+        _callCount++;
         try
         {
             using var cts = new CancellationTokenSource(PerCallTimeout);
-            return ArbitrateAsync(constituentSignals, agreementRatio, bars, config, cts.Token)
+            var result = ArbitrateAsync(constituentSignals, agreementRatio, bars, config, cts.Token)
                 .GetAwaiter().GetResult();
+            _consecutiveFailures = 0;
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM arbitrator failed for {Symbol}, fallback to weighted vote", config.Symbol);
+            _consecutiveFailures++;
+            _logger.LogWarning(ex, "LLM arbitrator failed ({Consec}/{Thresh}) for {Symbol}, fallback to weighted vote",
+                _consecutiveFailures, BreakerFailureThreshold, config.Symbol);
             return null;
         }
+    }
+
+    private bool IsBreakerOpen(out string reason)
+    {
+        if ((DateTime.UtcNow - _breakerResetAt).TotalSeconds >= BreakerCooldownSeconds)
+        {
+            _breakerResetAt = DateTime.UtcNow;
+            _callCount = 0;
+            _consecutiveFailures = 0;
+        }
+        if (_consecutiveFailures >= BreakerFailureThreshold)
+        {
+            reason = $"{_consecutiveFailures} consecutive failures";
+            return true;
+        }
+        if (_callCount >= BreakerCallCap)
+        {
+            reason = $"call cap {BreakerCallCap}/min reached — probably in backtest/walk-forward loop";
+            return true;
+        }
+        reason = "";
+        return false;
     }
 
     private async Task<Signal?> ArbitrateAsync(

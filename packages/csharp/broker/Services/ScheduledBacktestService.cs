@@ -63,25 +63,23 @@ public class ScheduledBacktestService : BackgroundService
     ///
     /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
     /// </summary>
-    // 21 條 pure-deterministic 策略 — 5/19 診斷確認真正 root cause：
-    //   ensemble 策略觸發 LlmEnsembleArbitrator → HTTP call broker LLM proxy → upstream Gemini
-    //   502 → strategy-worker exception → connection state corruption →
-    //   後續 23 strategies dispatch fall 全 fail（"Invalid magic bytes: 0x5C 0x75" = "\u")
+    // 24 條策略 — 5/19 修法歷程：
+    //   1. 原本 24 條跑 286/288 fail（ensemble 觸發 LLM 502 → worker connection 崩）
+    //   2. 縮 21 條排除 LLM-deps（commit a67d866、252/252 success 但 ensemble 不見了）
+    //   3. 加 circuit breaker 到 LlmEnsembleArbitrator（這個 commit）
+    //      → LLM 連續 3 次失敗 / 1 min 內 20 次呼叫上限 → 短路 fallback null
+    //      → ensemble 永遠有 weighted-vote fallback、不會卡死整批
     //
-    // 證據：sequential 跑、前 4 條 deterministic strategy 全 success、第 5 條 "ensemble"
-    // 觸發 502 後連線崩、剩 19 條 100% fail。
-    //
-    // 排除 LLM-依賴的：ensemble、auto_select、harmonic_pattern（可能也有外部 dep）
-    // 留 21 條 pure technical indicator-based 策略。
-    // ensemble / auto_select 之後修好 LLM proxy / cache-protocol 再加回。
+    // 現在 24 條全跑、LLM 死掉只影響 ensemble 自己（fallback 加權投票），
+    // 不會污染 worker connection 拖累其它策略。
     private static readonly string[] DefaultStrategies = {
         // 3 條有 grid search optimizer
         "sma_cross", "rsi_oversold", "macd_divergence",
-        // Meta / combined（沒 LLM）
-        "composite",
+        // Meta / combined
+        "composite", "ensemble", "auto_select",
         // 標準技術指標
         "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
-        "vegas_tunnel", "price_action",
+        "harmonic_pattern", "vegas_tunnel", "price_action",
         // Batch A ai-quant-starter2 移植
         "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
         // Tier 2 batch
