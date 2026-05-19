@@ -63,19 +63,12 @@ public class ScheduledBacktestService : BackgroundService
     ///
     /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
     /// </summary>
+    // DIAGNOSTIC：暫時縮到 1 strategy、隔離 concurrent dispatch issue
+    // 之前 24 條 × parallel 4 + walk-forward = 286/288 fail（framing / connection drop）
+    // 若 1 strategy 仍 fail = 系統性問題；若 1 strategy 0 error = 並發是觸發點
+    // 真正擴回 24 條前要先修 cache-protocol multi-packet frame
     private static readonly string[] DefaultStrategies = {
-        // 3 條有 grid search optimizer（/optimize 路徑、tune 過 params）
-        "sma_cross", "rsi_oversold", "macd_divergence",
-        // Meta / combined（值得單獨追蹤是否真的超越成員）
-        "composite", "ensemble", "auto_select",
-        // 標準技術指標
-        "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
-        "harmonic_pattern", "vegas_tunnel", "price_action",
-        // Batch A 從朋友 ai-quant-starter2 移植
-        "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
-        // Tier 2 batch
-        "donchian", "keltner", "parabolic_sar",
-        "cci", "obv", "mfi", "chaikin_mf",
+        "sma_cross",
     };
     private readonly string[] _strategies;
 
