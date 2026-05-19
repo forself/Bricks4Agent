@@ -97,9 +97,14 @@ public class ScheduledBacktestService : BackgroundService
     /// </summary>
     private readonly int _maxParallel;
 
-    // 從 200 拉到 500、訊號穩定度提升、low-sample tag 會大幅減少。
-    // BingX 1h/4h 都有 500+ 根、1d 看歷史長度但 quote-worker 已經抓 365 根 daily、夠用。
-    private const int BarsPerBacktest = 500;
+    // 200 bars：在訊號穩定度跟 dispatch payload 大小之間折衷。
+    // 之前 500 bars × 24 strategies × parallel=4 觸發 function-pool 大 frame 處理 bug
+    // （strategy-worker 收到大 payload 後 "Invalid magic bytes" / "Connection closing"、
+    //  broker→worker 派發鏈崩、batch 286/288 fail）。
+    // 200 bars 仍夠 SMA(30) / RSI(14) / MACD(26+9) 算指標、payload ~20KB 不會炸 framing。
+    // walk-forward params 也跟著從 180+60+30=270 改 120+40+20=180、配 200 bars。
+    // 真正修法是 packages/csharp/cache-protocol/FrameCodec.cs 大 frame 處理、之後一個 session 做。
+    private const int BarsPerBacktest = 200;
 
     public ScheduledBacktestService(
         IExecutionDispatcher dispatcher,
@@ -424,7 +429,8 @@ public class ScheduledBacktestService : BackgroundService
 
     /// <summary>
     /// 跑 strategy.signal 的 backtest_walk_forward route、把 OOS 數據填回 entry。
-    /// 預設 train=180 / test=60 / stride=30。500 bars 大概切出 5 個 fold。
+    /// train=120 / test=40 / stride=20、配 200 bars 切出 4-5 個 fold。
+    /// 之前 180/60/30 配 500 bars 切 5 fold、但 500 bars dispatch 觸發 framing bug、降規模。
     /// </summary>
     private async Task RunWalkForwardAsync(
         BacktestResultEntry entry, string symbol, string exchange, string tf,
@@ -434,9 +440,9 @@ public class ScheduledBacktestService : BackgroundService
         {
             strategy, symbol, exchange, interval = tf, bars,
             initial_cash = 1000.0,
-            train_bars = 180,
-            test_bars = 60,
-            stride = 30,
+            train_bars = 120,
+            test_bars = 40,
+            stride = 20,
         });
         var req = new ApprovedRequest
         {
