@@ -25,6 +25,7 @@ public class DiscordNotificationService : BackgroundService
     private readonly PriceAlertService _alerts;
     private readonly AutoTraderService _autoTrader;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly NotificationDedupRepo _dedup;
     private readonly ILogger<DiscordNotificationService> _logger;
     private readonly string _webhookUrl;
     private readonly int _intervalSeconds;
@@ -43,12 +44,14 @@ public class DiscordNotificationService : BackgroundService
         PriceAlertService alerts,
         AutoTraderService autoTrader,
         IHttpClientFactory httpFactory,
+        NotificationDedupRepo dedup,
         IConfiguration config,
         ILogger<DiscordNotificationService> logger)
     {
         _alerts = alerts;
         _autoTrader = autoTrader;
         _httpFactory = httpFactory;
+        _dedup = dedup;
         _logger = logger;
         _webhookUrl = config["Notifications:Discord:WebhookUrl"] ?? "";
         _intervalSeconds = Math.Max(10, config.GetValue("Notifications:Discord:IntervalSeconds", 15));
@@ -125,9 +128,9 @@ public class DiscordNotificationService : BackgroundService
         }
     }
 
-    // 錯誤類訊息的 dedup state（避免相同錯誤每 5 分鐘重炸通知）
-    // key = "{action}|{symbol}|{message 前 60 字}"、value = 最後推送時間
-    private readonly Dictionary<string, DateTime> _errorSignatureLastSentAt = new();
+    // 5/19 改：dedup state 從 in-memory Dictionary 搬到 NotificationDedupRepo（持久化）。
+    // 之前 broker rebuild 後 in-memory 字典清空、同樣訊息每次重啟都推一次（一天 rebuild 7+
+    // 次 = 用戶收到 9 條 spam）。現在 SQLite 表記得跨重啟。
     private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
 
     private static bool IsErrorAction(string action) =>
@@ -146,17 +149,14 @@ public class DiscordNotificationService : BackgroundService
             var (emoji, color, prefix) = ClassifyAction(action);
             if (emoji == "") continue;
 
-            // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過、避免相同錯每 5 分 sweep 一次重炸
+            // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過（5/19 持久化）
             if (IsErrorAction(action))
             {
                 var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
                 var sig = $"{action}|{l.Symbol}|{msgPrefix}";
-                if (_errorSignatureLastSentAt.TryGetValue(sig, out var lastAt) &&
-                    DateTime.UtcNow - lastAt < ErrorDedupWindow)
-                {
-                    continue;   // 30 分鐘 cooldown 內、不重推
-                }
-                _errorSignatureLastSentAt[sig] = DateTime.UtcNow;
+                if (_dedup.IsRecentlySent("discord", sig, ErrorDedupWindow))
+                    continue;
+                _dedup.MarkSent("discord", sig);
             }
 
             var fields = new[]

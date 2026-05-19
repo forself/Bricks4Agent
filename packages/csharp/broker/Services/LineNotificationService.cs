@@ -41,12 +41,14 @@ public class LineNotificationService : BackgroundService
     private readonly HashSet<string> _seenAlertKeys = new();
     private readonly HashSet<string> _seenLogKeys = new();
     private bool _heartbeatStaleNotified;
+    private readonly NotificationDedupRepo _dedup;
 
     public LineNotificationService(
         PriceAlertService alerts,
         AutoTraderService autoTrader,
         IExecutionDispatcher dispatcher,
         IWorkerRegistry registry,
+        NotificationDedupRepo dedup,
         IConfiguration config,
         ILogger<LineNotificationService> logger)
     {
@@ -54,6 +56,7 @@ public class LineNotificationService : BackgroundService
         _autoTrader = autoTrader;
         _dispatcher = dispatcher;
         _registry = registry;
+        _dedup = dedup;
         _logger = logger;
         _enabledInConfig = config.GetValue("Notifications:Line:Enabled", false);
         _recipientOverride = config["Notifications:Line:RecipientId"];
@@ -129,7 +132,7 @@ public class LineNotificationService : BackgroundService
     }
 
     // 錯誤訊息 dedup（跟 Discord 同樣機制、30 分鐘 cooldown）
-    private readonly Dictionary<string, DateTime> _errorSignatureLastSentAt = new();
+    // 5/19 改：搬到 NotificationDedupRepo 持久化、broker rebuild 不再清空 dedup state
     private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
 
     private static bool IsErrorAction(string action) =>
@@ -152,12 +155,9 @@ public class LineNotificationService : BackgroundService
             {
                 var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
                 var sig = $"{action}|{l.Symbol}|{msgPrefix}";
-                if (_errorSignatureLastSentAt.TryGetValue(sig, out var lastAt) &&
-                    DateTime.UtcNow - lastAt < ErrorDedupWindow)
-                {
+                if (_dedup.IsRecentlySent("line", sig, ErrorDedupWindow))
                     continue;
-                }
-                _errorSignatureLastSentAt[sig] = DateTime.UtcNow;
+                _dedup.MarkSent("line", sig);
             }
 
             var title = $"{prefix} · {l.Symbol}";

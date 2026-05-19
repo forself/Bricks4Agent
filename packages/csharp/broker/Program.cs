@@ -72,6 +72,9 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Alert system（#2 2026-05-07）—— 規則 + 事件
     initDb.EnsureTable<AlertRuleEntry>();
     initDb.EnsureTable<AlertEventEntry>();
+    // Notification dedup（5/19 修：broker rebuild 重啟後 in-memory dedup state 丟失、
+    // 同樣 risk-blocked 訊息被連環推 9 次到 Discord/LINE。改持久化、跨重啟記得 30 min 內已推過）
+    initDb.EnsureTable<NotificationDedupEntry>();
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -380,6 +383,9 @@ builder.Services.AddSingleton<Broker.Services.StrategyGeneratorService>();
 builder.Services.AddSingleton<Broker.Services.StrategyResearchLoopService>();
 builder.Services.AddSingleton<Broker.Services.KellyPositionSizingService>();
 builder.Services.AddHttpClient("discord-webhook");
+// Notification dedup repo（5/19、防 broker rebuild 後相同 risk-blocked 訊息重推 N 次）
+// 必須在 Discord / LineNotificationService 之前註冊（後者依賴它）
+builder.Services.AddSingleton<Broker.Services.NotificationDedupRepo>();
 builder.Services.AddSingleton<Broker.Services.DiscordNotificationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DiscordNotificationService>());
 builder.Services.AddSingleton<Broker.Services.LineNotificationService>();
