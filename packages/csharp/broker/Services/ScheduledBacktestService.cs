@@ -63,19 +63,25 @@ public class ScheduledBacktestService : BackgroundService
     ///
     /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
     /// </summary>
-    // 24 條策略 batch — 5/19 診斷確認 concurrent dispatch 是 framing bug 觸發點：
-    //   1 strategy → 100% success (12/12, 1.2s)
-    //   24 strategies × parallel=4 → 0.7% success (2/288)
-    // 修法：MaxParallel default 改 1（序列）、24 條策略可全部跑、預估 30s 完成。
-    // 待 cache-protocol layer 修好 multi-packet frame 後才能恢復並行。
+    // 21 條 pure-deterministic 策略 — 5/19 診斷確認真正 root cause：
+    //   ensemble 策略觸發 LlmEnsembleArbitrator → HTTP call broker LLM proxy → upstream Gemini
+    //   502 → strategy-worker exception → connection state corruption →
+    //   後續 23 strategies dispatch fall 全 fail（"Invalid magic bytes: 0x5C 0x75" = "\u")
+    //
+    // 證據：sequential 跑、前 4 條 deterministic strategy 全 success、第 5 條 "ensemble"
+    // 觸發 502 後連線崩、剩 19 條 100% fail。
+    //
+    // 排除 LLM-依賴的：ensemble、auto_select、harmonic_pattern（可能也有外部 dep）
+    // 留 21 條 pure technical indicator-based 策略。
+    // ensemble / auto_select 之後修好 LLM proxy / cache-protocol 再加回。
     private static readonly string[] DefaultStrategies = {
         // 3 條有 grid search optimizer
         "sma_cross", "rsi_oversold", "macd_divergence",
-        // Meta / combined
-        "composite", "ensemble", "auto_select",
+        // Meta / combined（沒 LLM）
+        "composite",
         // 標準技術指標
         "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
-        "harmonic_pattern", "vegas_tunnel", "price_action",
+        "vegas_tunnel", "price_action",
         // Batch A ai-quant-starter2 移植
         "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
         // Tier 2 batch
