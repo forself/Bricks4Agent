@@ -174,6 +174,33 @@ public class BingxPerpetualClient : IPerpetualClient
         // SELL+LONG = 平多、BUY+SHORT = 平空。傳了會回 code=109400。
         // ReduceOnly 旗標仍保留在 PerpetualOrder 上、給 caller 表達意圖、但不送到 BingX。
 
+        // C3 — Bracket order：開倉時帶 TP/SL JSON、BingX 自動 attach 到 position（server-side）。
+        // broker crash 不會留裸位、SL 在 exchange 端保護到 broker 重啟。
+        // 兩條都只在「真開倉」（非平倉）才送、否則 BingX 會拒絕。
+        if (!order.ReduceOnly)
+        {
+            if (order.TakeProfitPrice.HasValue && order.TakeProfitPrice.Value > 0m)
+            {
+                var tpJson = JsonSerializer.Serialize(new
+                {
+                    type = "TAKE_PROFIT_MARKET",
+                    stopPrice = order.TakeProfitPrice.Value,
+                    workingType = "MARK_PRICE",
+                });
+                qs["takeProfit"] = tpJson;
+            }
+            if (order.StopLossPrice.HasValue && order.StopLossPrice.Value > 0m)
+            {
+                var slJson = JsonSerializer.Serialize(new
+                {
+                    type = "STOP_MARKET",
+                    stopPrice = order.StopLossPrice.Value,
+                    workingType = "MARK_PRICE",
+                });
+                qs["stopLoss"] = slJson;
+            }
+        }
+
         var json = await SignedPostAsync("/openApi/swap/v2/trade/order", BuildQuery(qs), ct);
         var doc = JsonDocument.Parse(json).RootElement;
         EnsureOk(doc, "PlaceOrder");

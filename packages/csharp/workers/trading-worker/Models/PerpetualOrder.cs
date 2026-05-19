@@ -27,6 +27,16 @@ public class PerpetualOrder
     public int Leverage         { get; set; } = 1;                   // 開倉時用的槓桿
     public string TimeInForce   { get; set; } = "gtc";               // "gtc" | "ioc" | "fok"
     public bool ReduceOnly      { get; set; } = false;               // 平倉用、不會反向開新倉
+
+    /// <summary>
+    /// C3 Bracket order — 開倉時帶 TP/SL、BingX 自動 attach 到 position（atomic）。
+    /// broker crash 中間不會留裸位、SL 在 exchange 端、就算 broker downtime 也有保護。
+    /// 兩個都 nullable、null = 不送 bracket params（傳統流程）。
+    /// 設了會在 BingxPerpetualClient.PlaceOrderAsync 組成 BingX `takeProfit` / `stopLoss` JSON
+    /// 參數一併送出、不另發 order。
+    /// </summary>
+    public decimal? TakeProfitPrice { get; set; }
+    public decimal? StopLossPrice   { get; set; }
     public string Status        { get; set; } = "pending";
     public decimal FilledQty    { get; set; }
     public decimal? FilledPrice { get; set; }

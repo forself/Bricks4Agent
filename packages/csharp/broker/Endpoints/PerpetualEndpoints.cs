@@ -18,7 +18,11 @@ namespace Broker.Endpoints;
 ///   GET  /api/v1/perpetual/exchanges            列出已連線的 perpetual exchanges
 ///   GET  /api/v1/perpetual/account?exchange=bingx
 ///   GET  /api/v1/perpetual/positions?exchange=bingx
-///   POST /api/v1/perpetual/order                {exchange, symbol, side, position_side, order_type, quantity, leverage, ...}
+///   POST /api/v1/perpetual/order                {exchange, symbol, side, position_side, order_type, quantity, leverage,
+///                                                 take_profit_price?, stop_loss_price?, ...}
+///     C3 — 若帶 take_profit_price / stop_loss_price 會走 bracket order（BingX 自動 attach
+///     TP/SL 到 position、atomic）、broker crash 不會留裸位。
+///     兩個都 nullable、null = 不送 bracket、走原本流程。
 ///   DELETE /api/v1/perpetual/order              ?exchange=bingx&symbol=BTC-USDT&order_id=12345
 ///   GET  /api/v1/perpetual/order                ?exchange&symbol&order_id (status query)
 ///   GET  /api/v1/perpetual/open-orders?exchange=bingx[&symbol=BTC-USDT]

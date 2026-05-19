@@ -1255,6 +1255,12 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
       <div class="form-row" id="perp-stop-row" style="display:none">
         <div class="fg" style="flex:1"><label>停損/停利價</label><input id="perp-stop-price" type="number" step="any" placeholder="—"></div>
       </div>
+      <!-- C3 Bracket order：開倉時帶 TP/SL、BingX 自動 attach 到 position（atomic）。
+           broker crash 不會留裸位、SL 永遠在 exchange 端保護。平倉時不送（reduce_only 跳過）。 -->
+      <div class="form-row" style="background:rgba(14,203,129,0.04);padding:6px;border-radius:4px;border-left:2px solid var(--up)">
+        <div class="fg" style="flex:1"><label style="color:var(--up)">🔒 TP（止盈、可選）</label><input id="perp-tp-price" type="number" step="any" placeholder="開倉自動 attach、broker crash 也有保護"></div>
+        <div class="fg" style="flex:1"><label style="color:var(--down)">🔒 SL（止損、可選）</label><input id="perp-sl-price" type="number" step="any" placeholder="開倉自動 attach"></div>
+      </div>
       <div class="perp-side-grid" style="margin-top:8px">
         <button class="btn-side open-long"  onclick="placePerpOrder('buy','long',false)">📈 開多 Open Long</button>
         <button class="btn-side open-short" onclick="placePerpOrder('sell','short',false)">📉 開空 Open Short</button>
@@ -2940,14 +2946,20 @@ async function placePerpOrder(side,positionSide,reduceOnly){
   const leverage=parseInt(document.getElementById('perp-leverage').value)||1;
   const limitPrice=parseFloat(document.getElementById('perp-limit-price').value)||null;
   const stopPrice=parseFloat(document.getElementById('perp-stop-price').value)||null;
+  // C3 — Bracket TP/SL，只在開倉送（reduce_only 平倉跳過、BingX 也會拒）
+  const tpPrice = reduceOnly ? null : (parseFloat(document.getElementById('perp-tp-price')?.value)||null);
+  const slPrice = reduceOnly ? null : (parseFloat(document.getElementById('perp-sl-price')?.value)||null);
   if(!qty||qty<=0){toastWarn('請輸入有效數量');return;}
   // open 確認 modal、close 直接送（風險低）
   if(!reduceOnly){
-    if(!confirm(`確認 ${positionSide==='long'?'📈 開多':'📉 開空'} ${symbol} qty=${qty} 槓桿 ${leverage}x?`))return;
+    const bracketHint = (tpPrice||slPrice) ? `\n🔒 Bracket: TP=${tpPrice||'-'} / SL=${slPrice||'-'}` : '';
+    if(!confirm(`確認 ${positionSide==='long'?'📈 開多':'📉 開空'} ${symbol} qty=${qty} 槓桿 ${leverage}x?${bracketHint}`))return;
   }
   const body={exchange:ex,symbol,side,position_side:positionSide,order_type:orderType,quantity:qty,leverage,reduce_only:reduceOnly};
   if(limitPrice!==null)body.limit_price=limitPrice;
   if(stopPrice!==null)body.stop_price=stopPrice;
+  if(tpPrice!==null)body.take_profit_price=tpPrice;
+  if(slPrice!==null)body.stop_loss_price=slPrice;
   const r=await api('/api/v1/perpetual/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const out=document.getElementById('perp-order-result');out.style.display='block';
   // broker 對 trading.perpetual::place_order 在 approval gate 卡住會回 data.status='pending_approval'

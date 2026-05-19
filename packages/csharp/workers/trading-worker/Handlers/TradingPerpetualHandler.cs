@@ -195,6 +195,10 @@ public class TradingPerpetualHandler : ICapabilityHandler
         var strategy     = opts.TryGetProperty("strategy", out var stg) && stg.ValueKind == JsonValueKind.String ? stg.GetString() : null;
         decimal? limitPrice = opts.TryGetProperty("limit_price", out var lp) && lp.ValueKind == JsonValueKind.Number ? lp.GetDecimal() : null;
         decimal? stopPrice  = opts.TryGetProperty("stop_price", out var sp) && sp.ValueKind == JsonValueKind.Number ? sp.GetDecimal() : null;
+        // C3 — Bracket order：開倉時可選擇帶 TP/SL、BingX 自動 attach 到 position（atomic）。
+        // payload field: take_profit_price / stop_loss_price。null 視為不送、走傳統流程。
+        decimal? tpPrice = opts.TryGetProperty("take_profit_price", out var tp) && tp.ValueKind == JsonValueKind.Number ? tp.GetDecimal() : null;
+        decimal? slPrice = opts.TryGetProperty("stop_loss_price",   out var sl) && sl.ValueKind == JsonValueKind.Number ? sl.GetDecimal() : null;
 
         if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(side) || string.IsNullOrEmpty(positionSide) || qty <= 0m)
             return (false, null, "missing required: symbol/side/position_side/quantity");
@@ -211,6 +215,7 @@ public class TradingPerpetualHandler : ICapabilityHandler
                 Symbol = symbol, Exchange = c!.ExchangeName, Side = side, PositionSide = positionSide,
                 OrderType = orderType, Quantity = qty,
                 LimitPrice = limitPrice, StopPrice = stopPrice,
+                TakeProfitPrice = tpPrice, StopLossPrice = slPrice,
                 Leverage = leverage, ReduceOnly = reduceOnly,
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             };
