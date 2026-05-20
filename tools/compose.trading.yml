@@ -74,6 +74,10 @@ services:
       # 0 / 沒設 → 關（讓利潤跑、走 trailing）。跟 trailing 並存，誰先到誰先平。
       AUTOTRADER_BRACKET_TP_PCT: "${AUTOTRADER_BRACKET_TP_PCT:-}"
 
+      # Bracket SL sync（#1）：true = broker 移動軟 SL（BE/trailing）時，把 exchange 端 stop 也 cancel+replace
+      # 到新價，downtime 也鎖利潤。**真錢危險：先在 demo 驗證 BingX stop 取代行為再開**。空 / 非 true → 關。
+      AUTOTRADER_BRACKET_SL_SYNC_ENABLED: "${AUTOTRADER_BRACKET_SL_SYNC_ENABLED:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"

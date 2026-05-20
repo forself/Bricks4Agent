@@ -183,6 +183,13 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _bracketTpPct;
 
     /// <summary>
+    /// #1 — Bracket SL sync（opt-in、預設 off）：broker 把軟 SL 移到 BE/trailing 時，順手把 exchange 端
+    /// 的 stop 也 cancel+replace 到新價，downtime 期間也能鎖住已實現的利潤（而不是凍在開倉 entry−SL）。
+    /// **真錢危險、必須先在 demo 帳號驗證 BingX 的 stop 取代行為再開**。env: AUTOTRADER_BRACKET_SL_SYNC_ENABLED=true
+    /// </summary>
+    private readonly bool _bracketSlSyncEnabled;
+
+    /// <summary>
     /// Slippage audit threshold（% of mark price at signal time）。
     /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn + 觸發 backoff（C1）。
     /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
@@ -505,6 +512,10 @@ public class AutoTraderService : BackgroundService
             "true", StringComparison.OrdinalIgnoreCase);
         // C — Bracket TP（opt-in、預設 0 = 關，讓利潤跑）
         _bracketTpPct = ParsePctEnv("AUTOTRADER_BRACKET_TP_PCT", defaultValue: 0m, min: 0m, max: 500m);
+        // #1 — Bracket SL sync（opt-in、預設 off；真錢危險、demo 驗證後再開）
+        _bracketSlSyncEnabled = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_BRACKET_SL_SYNC_ENABLED") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
         // D1 Phase 1: slippage backoff + confidence sizing + Kelly cache 全部移到 AutoTraderSizingService
@@ -1366,6 +1377,7 @@ public class AutoTraderService : BackgroundService
                 state.BeMoved = true;
                 if (_watchList.TryGetValue($"{exchange}:{symbol}", out var wi))
                     AddLog(wi, "protect", decision.Reason);
+                await SyncExchangeStopAsync(ownerPrincipalId, exchange, symbol, side, qty, decision.NewSlPrice, "BE", ct);
                 break;
 
             case PerpProtectionAction.TrailingLock:
@@ -1373,6 +1385,7 @@ public class AutoTraderService : BackgroundService
                 state.SlPrice = decision.NewSlPrice;  // EvaluatePerpetualProtection 已保證單向移動
                 if (_watchList.TryGetValue($"{exchange}:{symbol}", out var wiTrail))
                     AddLog(wiTrail, "protect", decision.Reason);
+                await SyncExchangeStopAsync(ownerPrincipalId, exchange, symbol, side, qty, decision.NewSlPrice, "trailing", ct);
                 break;
 
             case PerpProtectionAction.None:
@@ -1426,6 +1439,46 @@ public class AutoTraderService : BackgroundService
         if (_watchList.TryGetValue(watchKey, out var wi2))
             AddLog(wi2, "error", $"perp protection close failed: {result.ErrorMessage}");
         return false;
+    }
+
+    /// <summary>
+    /// #1 — broker 移動軟 SL（BE/trailing）時，把 exchange 端的 stop 也 cancel+replace 到新價，
+    /// 讓 downtime 期間也鎖在已實現的利潤、而非開倉 entry−SL。預設 off（_bracketSlSyncEnabled）。
+    /// 失敗只 log + AddLog warn、不擋 protection 主流程（broker 軟 SL 仍生效）。
+    /// </summary>
+    private async Task SyncExchangeStopAsync(
+        string ownerPrincipalId, string exchange, string symbol, string side, decimal qty, decimal newSlPrice, string label, CancellationToken ct)
+    {
+        if (!_bracketSlSyncEnabled || qty <= 0m || newSlPrice <= 0m) return;
+        var watchKey = $"{exchange}:{symbol}";
+        // 平多用 SELL+LONG、平空用 BUY+SHORT，跟平倉同一套方向規則
+        var closeSide = side == "long" ? "sell" : "buy";
+        var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
+        var payloadObj = new Dictionary<string, object?>
+        {
+            ["exchange"]       = exchange,
+            ["symbol"]         = symbol,
+            ["position_side"]  = side,
+            ["close_side"]     = closeSide,
+            ["quantity"]       = qty,
+            ["stop_loss_price"] = Math.Round(newSlPrice, 6),
+        };
+        if (creds != null) payloadObj["__credentials"] = creds;
+        var result = await _dispatcher.DispatchAsync(
+            BuildRequest("trading.perpetual", "set_position_sl", JsonSerializer.Serialize(payloadObj)));
+        if (result.Success)
+        {
+            _logger.LogInformation("🛡 Exchange SL synced ({Label}) {Symbol} {Side} → {Sl:F4}", label, symbol, side, newSlPrice);
+            if (_watchList.TryGetValue(watchKey, out var wi))
+                AddLog(wi, "protect", $"exchange SL synced ({label}) → {newSlPrice:F4}");
+        }
+        else
+        {
+            _logger.LogWarning("Exchange SL sync failed ({Label}) {Symbol} {Side} → {Sl:F4}: {Error}",
+                label, symbol, side, newSlPrice, result.ErrorMessage);
+            if (_watchList.TryGetValue(watchKey, out var wi))
+                AddLog(wi, "warn", $"exchange SL sync failed ({label}): {result.ErrorMessage} (軟 SL 仍生效)");
+        }
     }
 
     private async Task ProcessSymbolAsync(WatchItem item, CancellationToken ct)

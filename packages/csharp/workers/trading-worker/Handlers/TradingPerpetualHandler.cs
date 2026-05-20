@@ -14,6 +14,7 @@ namespace TradingWorker.Handlers;
 ///   - get_account     -> exchange's perpetual balance + margin + unrealized
 ///   - get_positions   -> open positions（雙向、含 leverage / liq price）
 ///   - place_order     -> 下單（open/close long/short）
+///   - set_position_sl -> 移動 position 的 exchange-side stop（broker BE/trailing 同步用）
 ///   - cancel_order    -> 取消未成交
 ///   - get_order       -> 查詢單筆訂單
 ///   - get_open_orders -> 列出 open orders
@@ -55,6 +56,7 @@ public class TradingPerpetualHandler : ICapabilityHandler
             "get_account"      => await GetAccount(opts, ct),
             "get_positions"    => await GetPositions(opts, ct),
             "place_order"      => await PlaceOrder(opts, ct),
+            "set_position_sl"  => await SetPositionSl(opts, ct),
             "cancel_order"     => await CancelOrder(opts, ct),
             "get_order"        => await GetOrder(opts, ct),
             "get_open_orders"  => await GetOpenOrders(opts, ct),
@@ -248,6 +250,66 @@ public class TradingPerpetualHandler : ICapabilityHandler
             }
 
             var json = JsonSerializer.Serialize(SerializeOrder(result));
+            return (true, json, null);
+        }
+        catch (Exception ex) { return (false, null, ex.Message); }
+    }
+
+    /// <summary>
+    /// #1 — broker BE/trailing 同步：把 position 的 exchange-side stop 移到新價。
+    /// 安全順序：先 snapshot 既有 stop → 先下新 stop（避免 cancel 後 place 失敗留裸位）→ 再 cancel 舊 stop。
+    /// 只動 STOP 類 reduce 單、不碰 TAKE_PROFIT。失敗回 error 由 broker 端 log（軟 SL 仍生效）。
+    /// </summary>
+    private async Task<(bool, string?, string?)> SetPositionSl(JsonElement opts, CancellationToken ct)
+    {
+        if (!TryGetClient(opts, out var c, out var err)) return (false, null, err);
+
+        var symbol       = opts.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+        var positionSide = opts.TryGetProperty("position_side", out var ps) ? ps.GetString() ?? "" : "";
+        var closeSide    = opts.TryGetProperty("close_side", out var cs) ? cs.GetString() ?? "" : "";
+        var qty          = opts.TryGetProperty("quantity", out var q) ? q.GetDecimal() : 0m;
+        var slPrice      = opts.TryGetProperty("stop_loss_price", out var sl) && sl.ValueKind == JsonValueKind.Number ? sl.GetDecimal() : 0m;
+
+        if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(positionSide) || string.IsNullOrEmpty(closeSide) || qty <= 0m || slPrice <= 0m)
+            return (false, null, "missing required: symbol/position_side/close_side/quantity/stop_loss_price");
+
+        try
+        {
+            // 1) snapshot 既有 STOP 類 reduce 單（同 positionSide）——之後 cancel 這批
+            var existing = await c!.GetOpenOrdersAsync(symbol, ct);
+            var oldStopIds = existing
+                .Where(o => !string.IsNullOrEmpty(o.ExternalId)
+                    && o.OrderType.Contains("stop", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(o.PositionSide, positionSide, StringComparison.OrdinalIgnoreCase))
+                .Select(o => o.ExternalId!)
+                .ToList();
+
+            // 2) 先下新 stop（reduce-only STOP_MARKET）——失敗就直接回 error、不動舊單（位仍有舊 stop 保護）
+            var newStop = new PerpetualOrder
+            {
+                OrderId = $"perp-{Guid.NewGuid():N}"[..16],
+                Symbol = symbol, Exchange = c!.ExchangeName, Side = closeSide, PositionSide = positionSide,
+                OrderType = "stop_market", Quantity = qty, StopPrice = slPrice, ReduceOnly = true,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            };
+            var placed = await c.PlaceOrderAsync(newStop, ct);
+
+            // 3) 再 cancel 舊 stop（排除剛下的那張）——cancel 失敗只記、不影響「新 stop 已就位」的結果
+            var cancelled = new List<string>();
+            var cancelErrors = new List<string>();
+            foreach (var id in oldStopIds)
+            {
+                if (id == placed.ExternalId) continue;
+                try { await c.CancelOrderAsync(symbol, id, ct); cancelled.Add(id); }
+                catch (Exception cex) { cancelErrors.Add($"{id}: {cex.Message}"); }
+            }
+
+            var json = JsonSerializer.Serialize(new
+            {
+                symbol, position_side = positionSide, stop_loss_price = slPrice,
+                new_stop_id = placed.ExternalId, new_stop_status = placed.Status,
+                cancelled_old = cancelled, cancel_errors = cancelErrors,
+            });
             return (true, json, null);
         }
         catch (Exception ex) { return (false, null, ex.Message); }
