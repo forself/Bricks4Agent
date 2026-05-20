@@ -197,6 +197,14 @@ public class AutoTraderService : BackgroundService
     private readonly bool _bracketSlSyncEnabled;
 
     /// <summary>
+    /// #2 — 裸倉自動補 SL（opt-in、預設 off）：保護迴圈每 cycle 檢查、若某倉「交易所端沒掛任何 STOP」，
+    /// 自動補一張到 broker 當前的軟 SL 價（state.SlPrice、已被 protection pass 驗過不會立即觸發）。
+    /// 補丁對象包含「feature 上線前就開的裸倉」（如 XRP）跟「開倉時 bracket SL 沒掛成功」的漏網倉。
+    /// **開啟會動到現有裸倉（含 XRP）**。env: AUTOTRADER_RETROFIT_NAKED_SL=true
+    /// </summary>
+    private readonly bool _retrofitNakedSl;
+
+    /// <summary>
     /// Slippage audit threshold（% of mark price at signal time）。
     /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn + 觸發 backoff（C1）。
     /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
@@ -524,6 +532,10 @@ public class AutoTraderService : BackgroundService
         // #1 — Bracket SL sync（opt-in、預設 off；真錢危險、demo 驗證後再開）
         _bracketSlSyncEnabled = string.Equals(
             Environment.GetEnvironmentVariable("AUTOTRADER_BRACKET_SL_SYNC_ENABLED") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
+        // #2 — 裸倉自動補 SL（opt-in、預設 off；開啟會動到現有裸倉含 XRP）
+        _retrofitNakedSl = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_RETROFIT_NAKED_SL") ?? "false",
             "true", StringComparison.OrdinalIgnoreCase);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
@@ -1259,6 +1271,11 @@ public class AutoTraderService : BackgroundService
                 {
                     await ProcessPerpProtectionAsync(owner, exchange, symbol, side, qty, entryPrice, markPrice,
                         liqPrice, liqDist, leverage, ct);
+
+                    // #2 — 裸倉自動補 SL：用 protection pass 算好的軟 SL 價（state.SlPrice）。
+                    // 放在 ProcessPerpProtection 之後、state 已建立/更新；倉若已被平掉就不在 _perpPositionState。
+                    if (_retrofitNakedSl && _perpPositionState.TryGetValue(key, out var st) && st.SlPrice > 0m)
+                        await RetrofitNakedStopAsync(owner, exchange, symbol, side, qty, st.SlPrice, ct);
                 }
                 catch (Exception ex)
                 {
@@ -1458,7 +1475,18 @@ public class AutoTraderService : BackgroundService
     private async Task SyncExchangeStopAsync(
         string ownerPrincipalId, string exchange, string symbol, string side, decimal qty, decimal newSlPrice, string label, CancellationToken ct)
     {
-        if (!_bracketSlSyncEnabled || qty <= 0m || newSlPrice <= 0m) return;
+        if (!_bracketSlSyncEnabled) return;
+        await DispatchSetPositionSlAsync(ownerPrincipalId, exchange, symbol, side, qty, newSlPrice, label, ct);
+    }
+
+    /// <summary>
+    /// 真正打 set_position_sl 的共用實作（被 #1 sync 跟 #2 retrofit 共用）。flag 檢查由 caller 負責。
+    /// 失敗只 log + AddLog warn、不擋 protection 主流程（broker 軟 SL 仍生效）。
+    /// </summary>
+    private async Task DispatchSetPositionSlAsync(
+        string ownerPrincipalId, string exchange, string symbol, string side, decimal qty, decimal newSlPrice, string label, CancellationToken ct)
+    {
+        if (qty <= 0m || newSlPrice <= 0m) return;
         var watchKey = $"{exchange}:{symbol}";
         // 平多用 SELL+LONG、平空用 BUY+SHORT，跟平倉同一套方向規則
         var closeSide = side == "long" ? "sell" : "buy";
@@ -1477,17 +1505,62 @@ public class AutoTraderService : BackgroundService
             BuildRequest("trading.perpetual", "set_position_sl", JsonSerializer.Serialize(payloadObj)));
         if (result.Success)
         {
-            _logger.LogInformation("🛡 Exchange SL synced ({Label}) {Symbol} {Side} → {Sl:F4}", label, symbol, side, newSlPrice);
+            _logger.LogInformation("🛡 Exchange SL set ({Label}) {Symbol} {Side} → {Sl:F4}", label, symbol, side, newSlPrice);
             if (_watchList.TryGetValue(watchKey, out var wi))
-                AddLog(wi, "protect", $"exchange SL synced ({label}) → {newSlPrice:F4}");
+                AddLog(wi, "protect", $"exchange SL set ({label}) → {newSlPrice:F4}");
         }
         else
         {
-            _logger.LogWarning("Exchange SL sync failed ({Label}) {Symbol} {Side} → {Sl:F4}: {Error}",
+            _logger.LogWarning("Exchange SL set failed ({Label}) {Symbol} {Side} → {Sl:F4}: {Error}",
                 label, symbol, side, newSlPrice, result.ErrorMessage);
             if (_watchList.TryGetValue(watchKey, out var wi))
-                AddLog(wi, "warn", $"exchange SL sync failed ({label}): {result.ErrorMessage} (軟 SL 仍生效)");
+                AddLog(wi, "warn", $"exchange SL set failed ({label}): {result.ErrorMessage} (軟 SL 仍生效)");
         }
+    }
+
+    /// <summary>
+    /// #2 — 裸倉自動補 SL：若某倉交易所端「沒掛任何 STOP」，補一張到 broker 當前軟 SL 價。
+    /// 預設 off（_retrofitNakedSl）。每 cycle 查 open orders 判斷裸倉、補完下次就不再補（已有 STOP）。
+    /// </summary>
+    private async Task RetrofitNakedStopAsync(
+        string ownerPrincipalId, string exchange, string symbol, string side, decimal qty, decimal slPrice, CancellationToken ct)
+    {
+        if (!_retrofitNakedSl || qty <= 0m || slPrice <= 0m) return;
+        var hasStop = await HasExchangeStopAsync(ownerPrincipalId, exchange, symbol, side, ct);
+        if (hasStop == null) return;          // 查 open orders 失敗 → 不確定、保守不補（避免重複下）
+        if (hasStop == true) return;          // 已有 STOP → 不是裸倉、跳過
+        _logger.LogInformation("🩹 Naked perp position detected {Exchange}:{Symbol} {Side} — retrofitting SL @ {Sl:F4}", exchange, symbol, side, slPrice);
+        await DispatchSetPositionSlAsync(ownerPrincipalId, exchange, symbol, side, qty, slPrice, "retrofit", ct);
+    }
+
+    /// <summary>
+    /// 查某 (exchange, symbol, side) 在交易所端有沒有 STOP 類 reduce 單。
+    /// 回 null = 查詢失敗（不確定）；true/false = 有/沒有。給 #2 retrofit 判斷裸倉用。
+    /// </summary>
+    private async Task<bool?> HasExchangeStopAsync(
+        string ownerPrincipalId, string exchange, string symbol, string side, CancellationToken ct)
+    {
+        var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
+        var payloadObj = new Dictionary<string, object?> { ["exchange"] = exchange, ["symbol"] = symbol };
+        if (creds != null) payloadObj["__credentials"] = creds;
+        var result = await _dispatcher.DispatchAsync(
+            BuildRequest("trading.perpetual", "get_open_orders", JsonSerializer.Serialize(payloadObj)));
+        if (!result.Success) return null;
+        try
+        {
+            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            if (!doc.TryGetProperty("orders", out var arr) || arr.ValueKind != JsonValueKind.Array) return false;
+            foreach (var o in arr.EnumerateArray())
+            {
+                var type = o.TryGetProperty("order_type", out var t) ? t.GetString() ?? "" : "";
+                var posSide = o.TryGetProperty("position_side", out var ps) ? ps.GetString() ?? "" : "";
+                if (type.Contains("stop", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(posSide, side, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+        catch { return null; }
     }
 
     private async Task ProcessSymbolAsync(WatchItem item, CancellationToken ct)

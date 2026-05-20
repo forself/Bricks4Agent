@@ -81,6 +81,10 @@ services:
       # 到新價，downtime 也鎖利潤。**真錢危險：先在 demo 驗證 BingX stop 取代行為再開**。空 / 非 true → 關。
       AUTOTRADER_BRACKET_SL_SYNC_ENABLED: "${AUTOTRADER_BRACKET_SL_SYNC_ENABLED:-}"
 
+      # 裸倉自動補 SL（#2）：true = 保護迴圈偵測「交易所沒掛任何 STOP」的倉、自動補一張到當前軟 SL 價。
+      # **開啟會動到現有裸倉（含手動開的舊倉）**。空 / 非 true → 關。
+      AUTOTRADER_RETROFIT_NAKED_SL: "${AUTOTRADER_RETROFIT_NAKED_SL:-}"
+
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64}"
