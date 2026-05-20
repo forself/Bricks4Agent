@@ -176,6 +176,13 @@ public class AutoTraderService : BackgroundService
     private readonly bool _bracketSlEnabled;
 
     /// <summary>
+    /// C — Bracket TP（opt-in）：開倉時帶 exchange-side take_profit_price，到價自動止盈。
+    /// TP 價 = entry × (1 ± TpPct/100)（long 上方 / short 下方）。0 / 沒設 → 關（讓利潤跑、走 trailing）。
+    /// 跟 trailing 並存：trailing 鎖回撤、TP 鎖絕對目標、誰先到誰先平。env: AUTOTRADER_BRACKET_TP_PCT
+    /// </summary>
+    private readonly decimal _bracketTpPct;
+
+    /// <summary>
     /// Slippage audit threshold（% of mark price at signal time）。
     /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn + 觸發 backoff（C1）。
     /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
@@ -496,6 +503,8 @@ public class AutoTraderService : BackgroundService
         _bracketSlEnabled = string.Equals(
             Environment.GetEnvironmentVariable("AUTOTRADER_BRACKET_SL_ENABLED") ?? "false",
             "true", StringComparison.OrdinalIgnoreCase);
+        // C — Bracket TP（opt-in、預設 0 = 關，讓利潤跑）
+        _bracketTpPct = ParsePctEnv("AUTOTRADER_BRACKET_TP_PCT", defaultValue: 0m, min: 0m, max: 500m);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
         // D1 Phase 1: slippage backoff + confidence sizing + Kelly cache 全部移到 AutoTraderSizingService
@@ -1266,7 +1275,9 @@ public class AutoTraderService : BackgroundService
         if (_perpPositionState.ContainsKey(key))
             effectiveSlPct = _protectionConfig.InitialSlPct;  // 不會用到、僅為 lambda capture
         else
-            effectiveSlPct = await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct);
+            // 槓桿感知：軟 SL 也要收緊到強平距離以內，否則高槓桿時 SL 掛在強平價之後、broker 先看到也來不及
+            effectiveSlPct = LeverageAwareSlPct(
+                await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage);
 
         var state = _perpPositionState.GetOrAdd(key, _ =>
         {
@@ -1295,7 +1306,8 @@ public class AutoTraderService : BackgroundService
         {
             // 加倉路徑要重新算（因為新 entry、ATR cache 還在）
             if (_protectionConfig.AtrSlMultiplier > 0)
-                effectiveSlPct = await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct);
+                effectiveSlPct = LeverageAwareSlPct(
+                    await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage);
             _logger.LogInformation("Perp entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL ({Pct:F2}%)", key, state.EntryPrice, entryPrice, effectiveSlPct);
             state.EntryPrice = entryPrice;
             state.SlPrice = isLong
@@ -2266,6 +2278,18 @@ public class AutoTraderService : BackgroundService
                     $"bracket SL attached: entry≈{markPrice:F4} SL={slPrice.Value:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x" +
                     (tightened ? $", tightened from {_protectionConfig.InitialSlPct}% to stay inside liq distance)" : ")"));
             }
+
+            // C — Bracket TP（opt-in）：_bracketTpPct>0 才帶；跟 trailing 並存、誰先到誰先平。
+            if (_bracketTpPct > 0m)
+            {
+                var tpPrice = ComputeBracketTpPrice(markPrice, _bracketTpPct, isLong);
+                if (tpPrice.HasValue)
+                {
+                    perpDict["take_profit_price"] = tpPrice.Value;
+                    AddLog(item, "info",
+                        $"bracket TP attached: entry≈{markPrice:F4} TP={tpPrice.Value:F4} ({_bracketTpPct:0.##}% {(isLong ? "above" : "below")})");
+                }
+            }
         }
 
         var perpPayload = JsonSerializer.Serialize(perpDict);
@@ -2357,6 +2381,21 @@ public class AutoTraderService : BackgroundService
         if (leverage <= 1m) return configuredSlPct;
         var liqDistanceCap = 100m / leverage * 0.6m;
         return Math.Min(configuredSlPct, liqDistanceCap);
+    }
+
+    /// <summary>
+    /// C — 算開倉時帶的 exchange-side bracket TP 價格（SL 的鏡像）。
+    ///   long  → entry × (1 + tpPct/100)  （TP 在進場價上方）
+    ///   short → entry × (1 − tpPct/100)  （TP 在進場價下方）
+    /// 回 null = 不該帶（entry/tpPct 無效）。pure static、好測。
+    /// </summary>
+    internal static decimal? ComputeBracketTpPrice(decimal entryPrice, decimal tpPct, bool isLong)
+    {
+        if (entryPrice <= 0m || tpPct <= 0m) return null;
+        var tp = isLong
+            ? entryPrice * (1m + tpPct / 100m)
+            : entryPrice * (1m - tpPct / 100m);
+        return tp > 0m ? Math.Round(tp, 6) : null;
     }
 
     /// <summary>

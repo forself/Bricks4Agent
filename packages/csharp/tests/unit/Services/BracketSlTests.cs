@@ -133,4 +133,48 @@ public class BracketSlTests
         var sl = AutoTraderService.ComputeBracketSlPrice(100m, slPct, isLong: true);
         sl.Should().Be(97m);
     }
+
+    // ── ComputeBracketTpPrice：TP 方向跟 SL 相反 ──
+
+    [Fact]
+    public void Tp_Long_AboveEntry()
+    {
+        // entry 100, tp 10% → long TP = 110（進場價上方）
+        AutoTraderService.ComputeBracketTpPrice(100m, 10m, isLong: true).Should().Be(110m);
+    }
+
+    [Fact]
+    public void Tp_Short_BelowEntry()
+    {
+        // entry 100, tp 10% → short TP = 90（進場價下方）
+        AutoTraderService.ComputeBracketTpPrice(100m, 10m, isLong: false).Should().Be(90m);
+    }
+
+    [Fact]
+    public void Tp_ZeroPct_ReturnsNull()
+    {
+        AutoTraderService.ComputeBracketTpPrice(100m, 0m, isLong: true).Should().BeNull();
+    }
+
+    [Fact]
+    public void Tp_ZeroEntry_ReturnsNull()
+    {
+        AutoTraderService.ComputeBracketTpPrice(0m, 10m, isLong: true).Should().BeNull();
+    }
+
+    [Fact]
+    public void Tp_RoundsTo6Decimals()
+    {
+        var tp = AutoTraderService.ComputeBracketTpPrice(0.123456789m, 10m, isLong: true);
+        tp.Should().NotBeNull();
+        var decimals = BitConverter.GetBytes(decimal.GetBits(tp!.Value)[3])[2];
+        decimals.Should().BeLessThanOrEqualTo(6);
+    }
+
+    [Fact]
+    public void Tp_Short_NeverGoesNegative()
+    {
+        // tpPct ≥ 100 的 short 會把價格打到 0 或負 → 回 null（不送無效 TP）
+        AutoTraderService.ComputeBracketTpPrice(100m, 100m, isLong: false).Should().BeNull();
+    }
 }

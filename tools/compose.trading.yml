@@ -67,8 +67,12 @@ services:
       AUTOTRADER_PERP_LIQ_EMERGENCY_PCT: "${AUTOTRADER_PERP_LIQ_EMERGENCY_PCT:-}"
 
       # Bracket SL（C）：true = 自動開倉時把 exchange-side stop_loss 直接 attach 到 BingX 部位，
-      # broker downtime 也有保護。SL 距離用 AUTOTRADER_INITIAL_SL_PCT。空 / 非 true → 關（走軟 SL）。
+      # broker downtime 也有保護。SL 距離用 AUTOTRADER_INITIAL_SL_PCT、高槓桿自動收緊。空 / 非 true → 關（走軟 SL）。
       AUTOTRADER_BRACKET_SL_ENABLED: "${AUTOTRADER_BRACKET_SL_ENABLED:-}"
+
+      # Bracket TP（C）：開倉時帶 exchange-side take_profit 的距離 %（long 上方 / short 下方）。
+      # 0 / 沒設 → 關（讓利潤跑、走 trailing）。跟 trailing 並存，誰先到誰先平。
+      AUTOTRADER_BRACKET_TP_PCT: "${AUTOTRADER_BRACKET_TP_PCT:-}"
 
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64}"
