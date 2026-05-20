@@ -273,4 +273,52 @@ public class BracketSlTests
         var raw = AutoTraderService.ComputeBracketSlPrice(2.4434m, slPct, isLong: false);
         AutoTraderService.RoundPrice(raw!.Value, 4).Should().Be(2.5167m);
     }
+
+    // ── RoundQtyToStep：開倉數量必須對齊 QtyStep、且往下取（不超預算）──
+
+    [Fact]
+    public void RoundQty_Step01_FloorsDown()
+    {
+        AutoTraderService.RoundQtyToStep(3.728m, 0.1m).Should().Be(3.7m);
+    }
+
+    [Fact]
+    public void RoundQty_Step1_FloorsToInteger()
+    {
+        AutoTraderService.RoundQtyToStep(3.728m, 1m).Should().Be(3m);
+    }
+
+    [Fact]
+    public void RoundQty_NeverRoundsUp_StaysWithinBudget()
+    {
+        // 3.79 step 0.1 → 3.7（不是 3.8）：寧可略小、不超 notional
+        AutoTraderService.RoundQtyToStep(3.79m, 0.1m).Should().Be(3.7m);
+    }
+
+    [Fact]
+    public void RoundQty_SmallStep()
+    {
+        AutoTraderService.RoundQtyToStep(0.00037m, 0.0001m).Should().Be(0.0003m);
+    }
+
+    [Fact]
+    public void RoundQty_BelowOneStep_GoesToZero()
+    {
+        // 小於一個 step → 0，後續 pre-flight MinQty 會擋下
+        AutoTraderService.RoundQtyToStep(0.00005m, 0.0001m).Should().Be(0m);
+    }
+
+    [Fact]
+    public void RoundQty_ZeroOrNegativeStep_ReturnsUnchanged()
+    {
+        AutoTraderService.RoundQtyToStep(3.728m, 0m).Should().Be(3.728m);
+        AutoTraderService.RoundQtyToStep(3.728m, -1m).Should().Be(3.728m);
+    }
+
+    [Fact]
+    public void RoundQty_AlreadyAligned_Unchanged()
+    {
+        AutoTraderService.RoundQtyToStep(5m, 1m).Should().Be(5m);
+        AutoTraderService.RoundQtyToStep(2.5m, 0.1m).Should().Be(2.5m);
+    }
 }

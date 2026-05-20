@@ -2329,6 +2329,20 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
+            // ── 數量精度對齊：開倉 qty round DOWN 到 QtyStep（跟 price tick 同一類、避免 BingX 拒單）。
+            // 平倉不動（用交易所回報的實際 position qty、本來就合法精度）。在 pre-flight 前做、查的是 rounded qty。
+            if (!reduceOnly)
+            {
+                var qspec = BrokerCore.Trading.SymbolSpecs.GetSpec(item.Exchange, item.Symbol);
+                if (qspec != null && qspec.QtyStep > 0m)
+                {
+                    var beforeQ = qtyToUse;
+                    qtyToUse = RoundQtyToStep(qtyToUse, qspec.QtyStep);
+                    if (qtyToUse != beforeQ)
+                        AddLog(item, "info", $"qty rounded to step {qspec.QtyStep}: {beforeQ:F6} → {qtyToUse:F6}");
+                }
+            }
+
             // ── Pre-flight：dynamic sizing 完才知 qty、在這裡查 BingX min order / leverage spec
             // user request：條件不過直接擋下、不要走完整鏈才爆
             if (!reduceOnly)
@@ -2557,6 +2571,17 @@ public class AutoTraderService : BackgroundService
     /// </summary>
     internal static decimal RoundPrice(decimal price, int? pricePrecision)
         => (pricePrecision is int p && p >= 0 && p <= 8) ? Math.Round(price, p) : Math.Round(price, 6);
+
+    /// <summary>
+    /// 把開倉數量 round DOWN 到 symbol 的 QtyStep——BingX 對精度過長的 qty 也會拒單。
+    /// 往下取（floor）而非四捨五入：寧可略小、不要超出 notional / risk 預算。
+    /// qtyStep ≤ 0（沒資料）→ 原樣回。pure static、好測。
+    /// </summary>
+    internal static decimal RoundQtyToStep(decimal qty, decimal qtyStep)
+    {
+        if (qtyStep <= 0m || qty <= 0m) return qty;
+        return Math.Floor(qty / qtyStep) * qtyStep;
+    }
 
     /// <summary>
     /// 算「新 symbol vs 已開倉 symbols」的 30-day daily-return max |correlation|。
