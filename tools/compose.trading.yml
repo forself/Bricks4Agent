@@ -73,6 +73,9 @@ services:
       # Bracket TP（C）：開倉時帶 exchange-side take_profit 的距離 %（long 上方 / short 下方）。
       # 0 / 沒設 → 關（讓利潤跑、走 trailing）。跟 trailing 並存，誰先到誰先平。
       AUTOTRADER_BRACKET_TP_PCT: "${AUTOTRADER_BRACKET_TP_PCT:-}"
+      # Bracket TP R:R 倍數（opt-in、優先於 TP_PCT）：TP 距離 = RR × 槓桿感知 SL 距離。
+      # 例 2 = 賺賠比 2:1。0 / 沒設 → 退回固定 TP_PCT。
+      AUTOTRADER_BRACKET_TP_RR: "${AUTOTRADER_BRACKET_TP_RR:-}"
 
       # Bracket SL sync（#1）：true = broker 移動軟 SL（BE/trailing）時，把 exchange 端 stop 也 cancel+replace
       # 到新價，downtime 也鎖利潤。**真錢危險：先在 demo 驗證 BingX stop 取代行為再開**。空 / 非 true → 關。

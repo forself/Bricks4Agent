@@ -177,4 +177,55 @@ public class BracketSlTests
         // tpPct ≥ 100 的 short 會把價格打到 0 或負 → 回 null（不送無效 TP）
         AutoTraderService.ComputeBracketTpPrice(100m, 100m, isLong: false).Should().BeNull();
     }
+
+    // ── ResolveBracketTpPct：R:R 模式優先、否則固定 % ──
+
+    [Fact]
+    public void TpResolve_RrMode_TpIsRrTimesSl()
+    {
+        // RR=2、SL 距離 3%（20x 收緊後）→ TP 距離 6%。賺賠比 2:1。
+        AutoTraderService.ResolveBracketTpPct(tpRr: 2m, tpPct: 0m, effectiveSlPct: 3m).Should().Be(6m);
+    }
+
+    [Fact]
+    public void TpResolve_RrMode_ScalesWithLeverageTightenedSl()
+    {
+        // SL 隨槓桿縮 → TP 自動跟著縮，賺賠比恆定。50x SL=1.2% → RR=2 → TP=2.4%。
+        AutoTraderService.ResolveBracketTpPct(tpRr: 2m, tpPct: 99m, effectiveSlPct: 1.2m).Should().Be(2.4m);
+    }
+
+    [Fact]
+    public void TpResolve_RrTakesPrecedenceOverFixed()
+    {
+        // 兩個都設 → R:R 贏（更合理）
+        AutoTraderService.ResolveBracketTpPct(tpRr: 3m, tpPct: 10m, effectiveSlPct: 2m).Should().Be(6m);
+    }
+
+    [Fact]
+    public void TpResolve_NoRr_FallsBackToFixed()
+    {
+        AutoTraderService.ResolveBracketTpPct(tpRr: 0m, tpPct: 10m, effectiveSlPct: 3m).Should().Be(10m);
+    }
+
+    [Fact]
+    public void TpResolve_NoRrNoFixed_ReturnsZeroOff()
+    {
+        AutoTraderService.ResolveBracketTpPct(tpRr: 0m, tpPct: 0m, effectiveSlPct: 3m).Should().Be(0m);
+    }
+
+    [Fact]
+    public void TpResolve_RrButNoSl_FallsBackToFixed()
+    {
+        // SL 距離無效（0）→ R:R 算不出來、退回固定 %
+        AutoTraderService.ResolveBracketTpPct(tpRr: 2m, tpPct: 8m, effectiveSlPct: 0m).Should().Be(8m);
+    }
+
+    [Fact]
+    public void TpResolve_ComposesWithPrice_20xLong()
+    {
+        // 端到端：20x long、SL 收緊 3%、RR=2 → TP 6% → entry 100 → TP 價 106
+        var slPct = AutoTraderService.LeverageAwareSlPct(5m, 20m);            // 3
+        var tpPct = AutoTraderService.ResolveBracketTpPct(2m, 0m, slPct);     // 6
+        AutoTraderService.ComputeBracketTpPrice(100m, tpPct, isLong: true).Should().Be(106m);
+    }
 }

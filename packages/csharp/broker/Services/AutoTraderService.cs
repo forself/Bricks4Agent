@@ -183,6 +183,13 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _bracketTpPct;
 
     /// <summary>
+    /// Bracket TP 的 R:R 倍數（opt-in）：>0 時 TP 距離 = RR × 槓桿感知 SL 距離，比寫死 % 更合理、
+    /// 且因為 SL 已隨槓桿縮放、TP 也自動跟著縮。優先於 _bracketTpPct。0 / 沒設 → 退回固定 %。
+    /// env: AUTOTRADER_BRACKET_TP_RR（例 2 = 賺賠比 2:1）
+    /// </summary>
+    private readonly decimal _bracketTpRr;
+
+    /// <summary>
     /// #1 — Bracket SL sync（opt-in、預設 off）：broker 把軟 SL 移到 BE/trailing 時，順手把 exchange 端
     /// 的 stop 也 cancel+replace 到新價，downtime 期間也能鎖住已實現的利潤（而不是凍在開倉 entry−SL）。
     /// **真錢危險、必須先在 demo 帳號驗證 BingX 的 stop 取代行為再開**。env: AUTOTRADER_BRACKET_SL_SYNC_ENABLED=true
@@ -512,6 +519,8 @@ public class AutoTraderService : BackgroundService
             "true", StringComparison.OrdinalIgnoreCase);
         // C — Bracket TP（opt-in、預設 0 = 關，讓利潤跑）
         _bracketTpPct = ParsePctEnv("AUTOTRADER_BRACKET_TP_PCT", defaultValue: 0m, min: 0m, max: 500m);
+        // Bracket TP R:R 倍數（opt-in、優先於固定 %）；0 = 退回固定 %
+        _bracketTpRr = ParsePctEnv("AUTOTRADER_BRACKET_TP_RR", defaultValue: 0m, min: 0m, max: 50m);
         // #1 — Bracket SL sync（opt-in、預設 off；真錢危險、demo 驗證後再開）
         _bracketSlSyncEnabled = string.Equals(
             Environment.GetEnvironmentVariable("AUTOTRADER_BRACKET_SL_SYNC_ENABLED") ?? "false",
@@ -2332,15 +2341,17 @@ public class AutoTraderService : BackgroundService
                     (tightened ? $", tightened from {_protectionConfig.InitialSlPct}% to stay inside liq distance)" : ")"));
             }
 
-            // C — Bracket TP（opt-in）：_bracketTpPct>0 才帶；跟 trailing 並存、誰先到誰先平。
-            if (_bracketTpPct > 0m)
+            // C — Bracket TP（opt-in）：R:R 模式優先（TP 距離 = RR × SL 距離）、否則固定 %；跟 trailing 並存。
+            var tpPct = ResolveBracketTpPct(_bracketTpRr, _bracketTpPct, effectiveSlPct);
+            if (tpPct > 0m)
             {
-                var tpPrice = ComputeBracketTpPrice(markPrice, _bracketTpPct, isLong);
+                var tpPrice = ComputeBracketTpPrice(markPrice, tpPct, isLong);
                 if (tpPrice.HasValue)
                 {
                     perpDict["take_profit_price"] = tpPrice.Value;
+                    var tpMode = _bracketTpRr > 0m ? $"R:R {_bracketTpRr:0.##}×SL" : "fixed";
                     AddLog(item, "info",
-                        $"bracket TP attached: entry≈{markPrice:F4} TP={tpPrice.Value:F4} ({_bracketTpPct:0.##}% {(isLong ? "above" : "below")})");
+                        $"bracket TP attached: entry≈{markPrice:F4} TP={tpPrice.Value:F4} ({tpPct:0.##}% {(isLong ? "above" : "below")}, {tpMode})");
                 }
             }
         }
@@ -2449,6 +2460,17 @@ public class AutoTraderService : BackgroundService
             ? entryPrice * (1m + tpPct / 100m)
             : entryPrice * (1m - tpPct / 100m);
         return tp > 0m ? Math.Round(tp, 6) : null;
+    }
+
+    /// <summary>
+    /// 決定 bracket TP 的距離 %：R:R 模式優先（tpRr&gt;0 → TP 距離 = tpRr × 槓桿感知 SL 距離），
+    /// 否則退回固定 tpPct。R:R 模式下 SL 已隨槓桿縮、TP 自動跟著縮，賺賠比恆定。
+    /// 回 0 = 不帶 TP。pure static、好測。
+    /// </summary>
+    internal static decimal ResolveBracketTpPct(decimal tpRr, decimal tpPct, decimal effectiveSlPct)
+    {
+        if (tpRr > 0m && effectiveSlPct > 0m) return tpRr * effectiveSlPct;
+        return tpPct;
     }
 
     /// <summary>
