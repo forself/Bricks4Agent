@@ -107,11 +107,12 @@ public class ScheduledBacktestService : BackgroundService
     private readonly int _maxParallel;
 
     // 200 bars：在訊號穩定度跟 dispatch payload 大小之間折衷。
-    // 之前 500 bars × 24 strategies × parallel=4 觸發 function-pool 大 frame 處理 bug
-    // （strategy-worker 收到大 payload 後 "Invalid magic bytes" / "Connection closing"、
-    //  broker→worker 派發鏈崩、batch 286/288 fail）。
-    // 200 bars 仍夠 SMA(30) / RSI(14) / MACD(26+9) 算指標、payload ~20KB 不會炸 framing。
-    // walk-forward params 也跟著從 180+60+30=270 改 120+40+20=180、配 200 bars。
+    // 史記：之前 500 bars × 24 strategies × parallel=4 出現 "Invalid magic bytes" / "Connection closing"，
+    // batch 286/288 fail。真正 root cause 有兩個、都已修：
+    //   1) ensemble strategy 的 LLM 502 污染 worker connection（LlmEnsembleArbitrator circuit breaker 修）。
+    //   2) worker-sdk 並發寫 frame 沒鎖、WORKER_RESULT 跟心跳 PING 在 stream 上交錯（WorkerHost._writeLock 修）。
+    // 兩個修完 parallel 已安全、MaxParallel 預設回 4。200 bars 仍夠 SMA(30)/RSI(14)/MACD(26+9)、保留為刻意的輕量選擇。
+    // walk-forward params 配 200 bars：120+40+20=180。
     // 真正修法是 packages/csharp/cache-protocol/FrameCodec.cs 大 frame 處理、之後一個 session 做。
     private const int BarsPerBacktest = 200;
 
@@ -182,7 +183,7 @@ public class ScheduledBacktestService : BackgroundService
     /// 待 cache-protocol layer 修好後才能恢復並行（拉 default 回 4）。
     /// </summary>
     internal static int ResolveMaxParallel(IConfiguration config)
-        => Math.Clamp(config.GetValue("Lab:MaxParallel", 1), 1, 16);
+        => Math.Clamp(config.GetValue("Lab:MaxParallel", 4), 1, 16);
 
     /// <summary>
     /// B：per-regime ranking。每 (symbol, timeframe, regime) 找 score 最高的標 Recommended=true。

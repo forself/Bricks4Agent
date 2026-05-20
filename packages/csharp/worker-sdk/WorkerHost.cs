@@ -35,6 +35,11 @@ public class WorkerHost
     private Timer? _heartbeatTimer;
     private volatile bool _running;
 
+    // 序列化所有 frame 寫入：WORKER_RESULT 是 fire-and-forget 並發處理（見 ReceiveLoopAsync 的 _ = HandleExecuteAsync），
+    // 加上心跳 PING 在獨立 thread 寫，沒鎖的話兩個 WriteAsync 會在同一個 NetworkStream 上交錯 → broker
+    // 端讀到 "Invalid magic bytes"。這把鎖讓每個 frame 完整寫完才放下一個（鏡像 broker 端的 WorkerConnection._writeLock）。
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+
     public WorkerHost(WorkerHostOptions options, ILogger<WorkerHost> logger)
     {
         _options = options;
@@ -185,8 +190,7 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(registerMsg, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_REGISTER, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await WriteFrameAsync(frame, ct);
 
         // 等待 ACK
         var (ackOpCode, ackPayload) = await ReceiveFrameAsync(ct);
@@ -296,8 +300,7 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(result, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_RESULT, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await WriteFrameAsync(frame, ct);
     }
 
     /// <summary>處理 WORKER_STATUS 查詢</summary>
@@ -307,8 +310,24 @@ public class WorkerHost
         var payload = JsonSerializer.SerializeToUtf8Bytes(status, JsonOptions);
         var frame = FrameCodec.Encode(OpCodes.WORKER_STATUS_ACK, payload);
 
-        await _stream!.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+        await WriteFrameAsync(frame, ct);
+    }
+
+    /// <summary>序列化寫入一個完整 frame（write lock 保護、避免並發 frame 在 stream 上交錯）</summary>
+    private async Task WriteFrameAsync(byte[] frame, CancellationToken ct = default)
+    {
+        var stream = _stream;
+        if (stream == null) throw new InvalidOperationException("Worker stream not connected");
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await stream.WriteAsync(frame, ct);
+            await stream.FlushAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>接收一個完整 frame</summary>
@@ -373,8 +392,7 @@ public class WorkerHost
                 if (_stream != null && _tcpClient?.Connected == true)
                 {
                     var ping = FrameCodec.EncodeEmpty(OpCodes.PING);
-                    await _stream.WriteAsync(ping);
-                    await _stream.FlushAsync();
+                    await WriteFrameAsync(ping);
                 }
             }
             catch
