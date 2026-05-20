@@ -2256,12 +2256,15 @@ public class AutoTraderService : BackgroundService
             && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
         {
             var isLong = string.Equals(perpPosSide, "long", StringComparison.OrdinalIgnoreCase);
-            var slPrice = ComputeBracketSlPrice(markPrice, _protectionConfig.InitialSlPct, isLong);
+            var effectiveSlPct = LeverageAwareSlPct(_protectionConfig.InitialSlPct, item.Leverage);
+            var slPrice = ComputeBracketSlPrice(markPrice, effectiveSlPct, isLong);
             if (slPrice.HasValue)
             {
                 perpDict["stop_loss_price"] = slPrice.Value;
+                var tightened = effectiveSlPct < _protectionConfig.InitialSlPct;
                 AddLog(item, "info",
-                    $"bracket SL attached: entry≈{markPrice:F4} SL={slPrice.Value:F4} ({_protectionConfig.InitialSlPct}% {(isLong ? "below" : "above")})");
+                    $"bracket SL attached: entry≈{markPrice:F4} SL={slPrice.Value:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x" +
+                    (tightened ? $", tightened from {_protectionConfig.InitialSlPct}% to stay inside liq distance)" : ")"));
             }
         }
 
@@ -2340,6 +2343,20 @@ public class AutoTraderService : BackgroundService
             ? entryPrice * (1m - slPct / 100m)
             : entryPrice * (1m + slPct / 100m);
         return sl > 0m ? Math.Round(sl, 6) : null;
+    }
+
+    /// <summary>
+    /// C — 槓桿感知 SL 距離：高槓桿時把 SL 強制收緊到強平距離以內，避免 SL 掛在強平價之後形同虛設
+    /// （20x 用 5% SL ≈ 掛在強平價上、會先爆倉 SL 才沒救）。
+    ///   強平距離(%) ≈ 100 / leverage；SL 必須先於強平觸發，取 強平距離 × 0.6（留 40% buffer 吸收
+    ///   維持保證金 + 手續費誤差）。回 min(設定值, 強平距離 × 0.6)。leverage ≤ 1 → 不收緊（現貨/無槓桿）。
+    /// pure static、好測。
+    /// </summary>
+    internal static decimal LeverageAwareSlPct(decimal configuredSlPct, decimal leverage)
+    {
+        if (leverage <= 1m) return configuredSlPct;
+        var liqDistanceCap = 100m / leverage * 0.6m;
+        return Math.Min(configuredSlPct, liqDistanceCap);
     }
 
     /// <summary>

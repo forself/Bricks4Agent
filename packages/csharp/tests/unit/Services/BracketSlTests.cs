@@ -86,4 +86,51 @@ public class BracketSlTests
         AutoTraderService.ComputeBracketSlPrice(100m, 1m, isLong: true).Should().Be(99m);
         AutoTraderService.ComputeBracketSlPrice(100m, 1m, isLong: false).Should().Be(101m);
     }
+
+    // ── LeverageAwareSlPct：高槓桿時 SL 必須先於強平觸發、否則形同虛設 ──
+
+    [Fact]
+    public void LeverageAware_LowLeverage_KeepsConfigured()
+    {
+        // 10x：強平距離 ≈ 10%、cap = 6%。設定 5% < 6% → 不收緊、用設定值。
+        AutoTraderService.LeverageAwareSlPct(5m, 10m).Should().Be(5m);
+    }
+
+    [Fact]
+    public void LeverageAware_HighLeverage_TightensToInsideLiqDistance()
+    {
+        // 20x：強平距離 ≈ 5%、cap = 3%。設定 5% > 3% → 收緊到 3%（先於強平觸發）。
+        AutoTraderService.LeverageAwareSlPct(5m, 20m).Should().Be(3m);
+    }
+
+    [Fact]
+    public void LeverageAware_VeryHighLeverage_TightensHard()
+    {
+        // 125x：強平距離 ≈ 0.8%、cap = 0.48%。
+        AutoTraderService.LeverageAwareSlPct(5m, 125m).Should().Be(0.48m);
+    }
+
+    [Fact]
+    public void LeverageAware_NeverWidensBeyondConfigured()
+    {
+        // 設定值是上限：低槓桿不會放寬（2x cap=30% 但設定 5% → 仍 5%）。
+        AutoTraderService.LeverageAwareSlPct(5m, 2m).Should().Be(5m);
+    }
+
+    [Fact]
+    public void LeverageAware_NoLeverage_NoTightening()
+    {
+        // leverage ≤ 1（現貨/無槓桿）→ 原樣回設定值。
+        AutoTraderService.LeverageAwareSlPct(5m, 1m).Should().Be(5m);
+        AutoTraderService.LeverageAwareSlPct(5m, 0m).Should().Be(5m);
+    }
+
+    [Fact]
+    public void LeverageAware_ComposesWithBracketPrice_20x()
+    {
+        // 端到端：20x long、entry 100 → SL pct 收緊成 3% → SL 價 = 97（不是 95）。
+        var slPct = AutoTraderService.LeverageAwareSlPct(5m, 20m);
+        var sl = AutoTraderService.ComputeBracketSlPrice(100m, slPct, isLong: true);
+        sl.Should().Be(97m);
+    }
 }
