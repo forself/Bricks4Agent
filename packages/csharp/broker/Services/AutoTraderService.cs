@@ -2255,7 +2255,7 @@ public class AutoTraderService : BackgroundService
         if (_bracketSlEnabled && !reduceOnly && markPrice > 0m
             && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
         {
-            var isLong = perpPosSide.Equals("long", StringComparison.OrdinalIgnoreCase);
+            var isLong = string.Equals(perpPosSide, "long", StringComparison.OrdinalIgnoreCase);
             var slPrice = ComputeBracketSlPrice(markPrice, _protectionConfig.InitialSlPct, isLong);
             if (slPrice.HasValue)
             {
