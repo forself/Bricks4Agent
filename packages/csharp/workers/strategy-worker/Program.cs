@@ -64,6 +64,8 @@ var strategies = new Dictionary<string, IStrategy>
     ["obv"]             = new ObvStrategy(),
     ["mfi"]             = new MfiStrategy(),
     ["chaikin_mf"]      = new ChaikinMfStrategy(),
+    // SMC：機構派價格結構（BOS/CHoCH + Order Block / FVG 回測）
+    ["smc"]             = new SmcStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model

@@ -522,4 +522,28 @@ public class NoLookaheadTests
         dFull.Should().NotBeNull(); dSub.Should().NotBeNull();
         AssertClose(dFull!.Value, dSub!.Value, "Dpo");
     }
+
+    // ── SMC（Smart Money Concepts）─────────────────────────────────
+    // pivot 需前後 window 確認、break 只引用「已確認」pivot，所以截斷點的結構/訊號判定
+    // 不該因後面有沒有資料而改變。
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(150)]
+    [InlineData(240)]
+    public void Smc_NoLookahead(int truncAt)
+    {
+        var full = MakeSynthetic(250);
+        var sub  = full.Take(truncAt + 1).ToList();
+
+        var sFull = Smc.Detect(full.Take(truncAt + 1).ToList());
+        var sSub  = Smc.Detect(sub);
+
+        sFull.Trend.Should().Be(sSub.Trend, $"SMC trend @{truncAt} 截斷後應一致 — 有 look-ahead bias");
+        sFull.BreakType.Should().Be(sSub.BreakType, $"SMC break type @{truncAt} 截斷後應一致");
+        sFull.Signal.Should().Be(sSub.Signal, $"SMC signal @{truncAt} 截斷後應一致");
+        AssertClose(sFull.Confidence, sSub.Confidence, "SMC.Confidence");
+        AssertClose(sFull.ZoneLow,    sSub.ZoneLow,    "SMC.ZoneLow");
+        AssertClose(sFull.ZoneHigh,   sSub.ZoneHigh,   "SMC.ZoneHigh");
+    }
 }
