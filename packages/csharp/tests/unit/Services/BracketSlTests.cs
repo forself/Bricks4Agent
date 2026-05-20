@@ -228,4 +228,49 @@ public class BracketSlTests
         var tpPct = AutoTraderService.ResolveBracketTpPct(2m, 0m, slPct);     // 6
         AutoTraderService.ComputeBracketTpPrice(100m, tpPct, isLong: true).Should().Be(106m);
     }
+
+    // ── RoundPrice：bracket SL/TP 必須對齊 symbol price tick、否則 BingX 拒單 ──
+
+    [Fact]
+    public void RoundPrice_XrpTick4_RoundsTo4dp()
+    {
+        // XRP price precision 4 → 2.370115 必須變 2.3701、否則 BingX 拒
+        AutoTraderService.RoundPrice(2.370115m, 4).Should().Be(2.3701m);
+    }
+
+    [Fact]
+    public void RoundPrice_BtcTick1_RoundsTo1dp()
+    {
+        // BTC price precision 1 → 92269.989 → 92270.0
+        AutoTraderService.RoundPrice(92269.989m, 1).Should().Be(92270.0m);
+    }
+
+    [Fact]
+    public void RoundPrice_IntegerTick0()
+    {
+        AutoTraderService.RoundPrice(12345.67m, 0).Should().Be(12346m);
+    }
+
+    [Fact]
+    public void RoundPrice_NullPrecision_FallsBackTo6dp()
+    {
+        // 沒 tick 資料（dynamic cache 還沒 refresh）→ 維持原本 6dp 行為
+        AutoTraderService.RoundPrice(0.123456789m, null).Should().Be(0.123457m);
+    }
+
+    [Fact]
+    public void RoundPrice_OutOfRangePrecision_FallsBackTo6dp()
+    {
+        AutoTraderService.RoundPrice(0.123456789m, 20).Should().Be(0.123457m);
+        AutoTraderService.RoundPrice(0.123456789m, -3).Should().Be(0.123457m);
+    }
+
+    [Fact]
+    public void RoundPrice_ComposesWithBracketSl_Xrp20xShort()
+    {
+        // 端到端：XRP short 2.4434、20x → SL 3% above = 2.516702 → tick4 → 2.5167
+        var slPct = AutoTraderService.LeverageAwareSlPct(5m, 20m);
+        var raw = AutoTraderService.ComputeBracketSlPrice(2.4434m, slPct, isLong: false);
+        AutoTraderService.RoundPrice(raw!.Value, 4).Should().Be(2.5167m);
+    }
 }

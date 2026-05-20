@@ -88,9 +88,10 @@ public class SymbolSpecsService : BackgroundService
                 var sym = c.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
                 if (string.IsNullOrEmpty(sym)) continue;
 
-                // BingX 欄位：tradeMinQuantity / tradeMinUSDT / quantityPrecision / maxLongLeverage / maxShortLeverage
+                // BingX 欄位：tradeMinQuantity / tradeMinUSDT / quantityPrecision / pricePrecision / maxLongLeverage / maxShortLeverage
                 var qtyPrecision = c.TryGetProperty("quantityPrecision", out var qp) && qp.TryGetInt32(out var qpI) ? qpI : 4;
                 var qtyStep = (decimal)Math.Pow(10, -qtyPrecision);
+                int? pricePrecision = c.TryGetProperty("pricePrecision", out var pp) && pp.TryGetInt32(out var ppI) ? ppI : null;
                 var maxLong  = c.TryGetProperty("maxLongLeverage",  out var mll) && mll.TryGetInt32(out var ml)  ? ml  : 0;
                 var maxShort = c.TryGetProperty("maxShortLeverage", out var msl) && msl.TryGetInt32(out var ms)  ? ms  : 0;
                 var maxLev = Math.Max(maxLong, maxShort);
@@ -98,10 +99,11 @@ public class SymbolSpecsService : BackgroundService
 
                 entries.Add((sym, new SymbolSpecs.Spec
                 {
-                    MinQty       = GetDecimal(c, "tradeMinQuantity"),
-                    QtyStep      = qtyStep,
-                    MinNotional  = GetDecimal(c, "tradeMinUSDT"),
-                    MaxLeverage  = maxLev,
+                    MinQty         = GetDecimal(c, "tradeMinQuantity"),
+                    QtyStep        = qtyStep,
+                    MinNotional    = GetDecimal(c, "tradeMinUSDT"),
+                    MaxLeverage    = maxLev,
+                    PricePrecision = pricePrecision,
                 }));
             }
 

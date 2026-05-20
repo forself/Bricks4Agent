@@ -23,6 +23,9 @@ public static class SymbolSpecs
         public decimal QtyStep      { get; init; }   // 數量精度（≥ MinQty 且每次增加 ≥ QtyStep）
         public decimal MinNotional  { get; init; }   // 最小名目（USDT）
         public int     MaxLeverage  { get; init; }   // 該 symbol 容許最高槓桿
+        // 價格小數位（tick）。null = 未知（dynamic fetch 才有；hardcoded fallback 不填）。
+        // bracket SL/TP 要 round 到這個精度、否則 BingX 會因精度過長拒單、SL 靜默掛不上。
+        public int?    PricePrecision { get; init; }
     }
 
     // BingX USDT-M Perpetual 已知合約規格、依交易量排前 ~20。

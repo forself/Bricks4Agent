@@ -1490,6 +1490,7 @@ public class AutoTraderService : BackgroundService
         var watchKey = $"{exchange}:{symbol}";
         // 平多用 SELL+LONG、平空用 BUY+SHORT，跟平倉同一套方向規則
         var closeSide = side == "long" ? "sell" : "buy";
+        var pricePrecision = BrokerCore.Trading.SymbolSpecs.GetSpec(exchange, symbol)?.PricePrecision;
         var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
         var payloadObj = new Dictionary<string, object?>
         {
@@ -1498,7 +1499,7 @@ public class AutoTraderService : BackgroundService
             ["position_side"]  = side,
             ["close_side"]     = closeSide,
             ["quantity"]       = qty,
-            ["stop_loss_price"] = Math.Round(newSlPrice, 6),
+            ["stop_loss_price"] = RoundPrice(newSlPrice, pricePrecision),
         };
         if (creds != null) payloadObj["__credentials"] = creds;
         var result = await _dispatcher.DispatchAsync(
@@ -2403,14 +2404,16 @@ public class AutoTraderService : BackgroundService
             && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
         {
             var isLong = string.Equals(perpPosSide, "long", StringComparison.OrdinalIgnoreCase);
+            var pricePrecision = BrokerCore.Trading.SymbolSpecs.GetSpec(item.Exchange, item.Symbol)?.PricePrecision;
             var effectiveSlPct = LeverageAwareSlPct(_protectionConfig.InitialSlPct, item.Leverage);
             var slPrice = ComputeBracketSlPrice(markPrice, effectiveSlPct, isLong);
             if (slPrice.HasValue)
             {
-                perpDict["stop_loss_price"] = slPrice.Value;
+                var slRounded = RoundPrice(slPrice.Value, pricePrecision);
+                perpDict["stop_loss_price"] = slRounded;
                 var tightened = effectiveSlPct < _protectionConfig.InitialSlPct;
                 AddLog(item, "info",
-                    $"bracket SL attached: entry≈{markPrice:F4} SL={slPrice.Value:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x" +
+                    $"bracket SL attached: entry≈{markPrice:F4} SL={slRounded:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x" +
                     (tightened ? $", tightened from {_protectionConfig.InitialSlPct}% to stay inside liq distance)" : ")"));
             }
 
@@ -2421,10 +2424,11 @@ public class AutoTraderService : BackgroundService
                 var tpPrice = ComputeBracketTpPrice(markPrice, tpPct, isLong);
                 if (tpPrice.HasValue)
                 {
-                    perpDict["take_profit_price"] = tpPrice.Value;
+                    var tpRounded = RoundPrice(tpPrice.Value, pricePrecision);
+                    perpDict["take_profit_price"] = tpRounded;
                     var tpMode = _bracketTpRr > 0m ? $"R:R {_bracketTpRr:0.##}×SL" : "fixed";
                     AddLog(item, "info",
-                        $"bracket TP attached: entry≈{markPrice:F4} TP={tpPrice.Value:F4} ({tpPct:0.##}% {(isLong ? "above" : "below")}, {tpMode})");
+                        $"bracket TP attached: entry≈{markPrice:F4} TP={tpRounded:F4} ({tpPct:0.##}% {(isLong ? "above" : "below")}, {tpMode})");
                 }
             }
         }
@@ -2545,6 +2549,14 @@ public class AutoTraderService : BackgroundService
         if (tpRr > 0m && effectiveSlPct > 0m) return tpRr * effectiveSlPct;
         return tpPct;
     }
+
+    /// <summary>
+    /// 把 bracket SL/TP 價格 round 到 symbol 的 price tick——BingX 對精度過長的價格會直接拒單、
+    /// SL 靜默掛不上。pricePrecision 來自 SymbolSpecs（dynamic fetch）；null/超範圍 → 退回 6dp（原行為）。
+    /// pure static、好測。
+    /// </summary>
+    internal static decimal RoundPrice(decimal price, int? pricePrecision)
+        => (pricePrecision is int p && p >= 0 && p <= 8) ? Math.Round(price, p) : Math.Round(price, 6);
 
     /// <summary>
     /// 算「新 symbol vs 已開倉 symbols」的 30-day daily-return max |correlation|。
