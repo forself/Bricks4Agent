@@ -165,6 +165,17 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _liqAlertPct;
 
     /// <summary>
+    /// C — Bracket SL：開倉時帶 exchange-side stop_loss_price（BingX atomic attach 到 position）。
+    /// 解決「broker 軟 SL 在 broker downtime 時失效、20x 倉位裸奔」的風險。
+    /// SL 價格 = entry × (1 ∓ InitialSlPct/100)（long 下方 / short 上方）、用 markPrice 近似 entry。
+    ///
+    /// 跟軟 SL 並存：exchange SL 是「災難底線」（broker 掛了才靠它）、broker 軟 SL（BE/trailing）
+    /// 在正常運作時更緊、會先觸發。BingX position 平倉後會自動 cancel 附帶的 SL。
+    /// 預設 off（opt-in、不改既有行為）。env: AUTOTRADER_BRACKET_SL_ENABLED=true 開啟。
+    /// </summary>
+    private readonly bool _bracketSlEnabled;
+
+    /// <summary>
     /// Slippage audit threshold（% of mark price at signal time）。
     /// 開倉成交後 |filled - mark| / mark × 100 &gt; threshold → AddLog warn + 觸發 backoff（C1）。
     /// 0 = 關閉；預設 0.30%。env: AUTOTRADER_SLIPPAGE_ALERT_PCT
@@ -481,6 +492,10 @@ public class AutoTraderService : BackgroundService
         _maxFundingRatePct = ParsePctEnv("AUTOTRADER_MAX_FUNDING_RATE_PCT", defaultValue: 0.05m, min: 0m, max: 5m);
         // Liquidation warning（比 emergency 早一階、push 不平倉）
         _liqAlertPct = ParsePctEnv("AUTOTRADER_LIQ_ALERT_PCT", defaultValue: 10m, min: 0m, max: 50m);
+        // C — Bracket SL（opt-in、預設 off 不改既有軟 SL 行為）
+        _bracketSlEnabled = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_BRACKET_SL_ENABLED") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
         // Slippage audit threshold（filled_price vs signal-time markPrice）
         _slippageAlertPct = ParsePctEnv("AUTOTRADER_SLIPPAGE_ALERT_PCT", defaultValue: 0.30m, min: 0m, max: 10m);
         // D1 Phase 1: slippage backoff + confidence sizing + Kelly cache 全部移到 AutoTraderSizingService
@@ -2220,32 +2235,37 @@ public class AutoTraderService : BackgroundService
 
         // 真開單——帶 user credential 才會走到 user 自己的帳戶
         // strategy: 不論開倉或平倉都帶上 watch 的 strategy；同一倉位平倉的 trade row 才能對應回原策略
-        var perpPayload = creds == null
-            ? JsonSerializer.Serialize(new
+        // 用 Dictionary 而非 anonymous object、方便條件式加 bracket SL / creds。
+        var perpDict = new Dictionary<string, object?>
+        {
+            ["exchange"]      = item.Exchange,
+            ["symbol"]        = item.Symbol,
+            ["side"]          = perpSide,
+            ["position_side"] = perpPosSide,
+            ["order_type"]    = "market",
+            ["quantity"]      = qtyToUse,
+            ["leverage"]      = item.Leverage,
+            ["reduce_only"]   = reduceOnly,
+            ["strategy"]      = item.Strategy,
+        };
+        if (creds != null) perpDict["__credentials"] = creds;
+
+        // C — Bracket SL：開倉（非平倉）時帶 exchange-side stop_loss_price、broker downtime 也有保護。
+        // 用 markPrice 近似 entry、依方向算 SL。markPrice<=0（沒拿到）就 skip、不擋下單。
+        if (_bracketSlEnabled && !reduceOnly && markPrice > 0m
+            && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+        {
+            var isLong = perpPosSide.Equals("long", StringComparison.OrdinalIgnoreCase);
+            var slPrice = ComputeBracketSlPrice(markPrice, _protectionConfig.InitialSlPct, isLong);
+            if (slPrice.HasValue)
             {
-                exchange = item.Exchange,
-                symbol = item.Symbol,
-                side = perpSide,
-                position_side = perpPosSide,
-                order_type = "market",
-                quantity = qtyToUse,
-                leverage = item.Leverage,
-                reduce_only = reduceOnly,
-                strategy = item.Strategy,
-            })
-            : JsonSerializer.Serialize(new
-            {
-                exchange = item.Exchange,
-                symbol = item.Symbol,
-                side = perpSide,
-                position_side = perpPosSide,
-                order_type = "market",
-                quantity = qtyToUse,
-                leverage = item.Leverage,
-                reduce_only = reduceOnly,
-                strategy = item.Strategy,
-                __credentials = creds,
-            });
+                perpDict["stop_loss_price"] = slPrice.Value;
+                AddLog(item, "info",
+                    $"bracket SL attached: entry≈{markPrice:F4} SL={slPrice.Value:F4} ({_protectionConfig.InitialSlPct}% {(isLong ? "below" : "above")})");
+            }
+        }
+
+        var perpPayload = JsonSerializer.Serialize(perpDict);
         var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", perpPayload));
         if (orderResult.Success)
         {
@@ -2304,6 +2324,22 @@ public class AutoTraderService : BackgroundService
     {
         var rawKey = $"auto-{exchange}-{symbol}-{action}-{quantity:G}-{bucket}".Replace('.', '_');
         return rawKey.Length > 36 ? rawKey[..36] : rawKey;
+    }
+
+    /// <summary>
+    /// C — 算開倉時帶的 exchange-side bracket SL 價格。
+    ///   long  → entry × (1 − slPct/100)  （SL 在進場價下方）
+    ///   short → entry × (1 + slPct/100)  （SL 在進場價上方）
+    /// entry 用 markPrice 近似（market order 成交價接近 mark）。
+    /// 回 null = 不該帶（entry/slPct 無效）。pure static、好測。
+    /// </summary>
+    internal static decimal? ComputeBracketSlPrice(decimal entryPrice, decimal slPct, bool isLong)
+    {
+        if (entryPrice <= 0m || slPct <= 0m) return null;
+        var sl = isLong
+            ? entryPrice * (1m - slPct / 100m)
+            : entryPrice * (1m + slPct / 100m);
+        return sl > 0m ? Math.Round(sl, 6) : null;
     }
 
     /// <summary>
