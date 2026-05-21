@@ -242,6 +242,96 @@ public class HistoricalDataFetcher
         return totalSaved;
     }
 
+    // ── 永續資金費率（非價格因子）──────────────────────────────────
+
+    /// <summary>
+    /// 深度回補資金費率：分頁抓「過去 targetPoints 筆」到現在。
+    /// Binance fapi/v1/fundingRate 單次上限 1000、用 startTime 一頁頁往後抓。
+    /// SaveFundingRates 走 (symbol, funding_time) PK upsert、重疊重跑不重複。
+    /// </summary>
+    public async Task<int> FetchFundingRateDeepAsync(
+        string binanceSymbol, int targetPoints, CancellationToken ct = default)
+    {
+        var normalizedSymbol = binanceSymbol.Replace("USDT", "").ToUpper();
+        // 多數 symbol 8h 一次 → 用 8h 估起始時間;抓不到更早的就自然停（len<1000）。
+        const long fundingIntervalMs = 8 * 3_600_000L;
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long startMs = nowMs - (long)targetPoints * fundingIntervalMs;
+        int totalSaved = 0;
+        int maxPages = targetPoints / 1000 + 2;
+
+        for (int page = 0; page < maxPages; page++)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var url = $"https://fapi.binance.com/fapi/v1/fundingRate" +
+                      $"?symbol={binanceSymbol}&limit=1000&startTime={startMs}";
+            using var resp = await _http.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Binance funding returned {Code} for {Symbol} page {Page}",
+                    resp.StatusCode, binanceSymbol, page);
+                break;
+            }
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            var arr = doc.RootElement;
+            int len = arr.GetArrayLength();
+            if (len == 0) break;
+
+            var points = new List<FundingRatePoint>(len);
+            long lastTime = startMs;
+            foreach (var el in arr.EnumerateArray())
+            {
+                var ft = el.GetProperty("fundingTime").GetInt64();
+                lastTime = ft;
+                if (!decimal.TryParse(el.GetProperty("fundingRate").GetString(), out var rate)) continue;
+                points.Add(new FundingRatePoint
+                {
+                    Symbol      = normalizedSymbol,
+                    FundingTime = DateTimeOffset.FromUnixTimeMilliseconds(ft).UtcDateTime,
+                    FundingRate = rate,
+                });
+            }
+            _db.SaveFundingRates(points);
+            totalSaved += points.Count;
+
+            if (len < 1000) break;
+            startMs = lastTime + 1;
+            if (startMs >= nowMs) break;
+            await Task.Delay(250, ct).ContinueWith(_ => { });
+        }
+
+        _logger.LogInformation("Funding deep {Symbol}: saved {Count} points (target {Target})",
+            binanceSymbol, totalSaved, targetPoints);
+        return totalSaved;
+    }
+
+    /// <summary>
+    /// 當前未平倉量快照（OI history 只有 ~30 天、故只取即時值當 live 訊號、不落歷史表）。
+    /// 回 (openInterest 基幣張數, 取得時間)。失敗回 null。
+    /// </summary>
+    public async Task<(decimal OpenInterest, DateTime Time)?> FetchOpenInterestNowAsync(
+        string binanceSymbol, CancellationToken ct = default)
+    {
+        var url = $"https://fapi.binance.com/fapi/v1/openInterest?symbol={binanceSymbol}";
+        using var resp = await _http.GetAsync(url, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Binance OI returned {Code} for {Symbol}", resp.StatusCode, binanceSymbol);
+            return null;
+        }
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("openInterest", out var oiEl)) return null;
+        if (!decimal.TryParse(oiEl.GetString(), out var oi)) return null;
+        var timeMs = root.TryGetProperty("time", out var tEl) ? tEl.GetInt64()
+            : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return (oi, DateTimeOffset.FromUnixTimeMilliseconds(timeMs).UtcDateTime);
+    }
+
     private static long IntervalToMs(string interval) => interval switch
     {
         "1m"  => 60_000L,

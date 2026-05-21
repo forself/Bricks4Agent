@@ -65,6 +65,9 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             "fetch_stock"       => await FetchStock(opts, ct),
             "fetch_crypto"      => await FetchCrypto(opts, ct),
             "fetch_crypto_deep" => await FetchCryptoDeep(opts, ct),
+            "get_funding"       => GetFunding(opts),
+            "fetch_funding_deep" => await FetchFundingDeep(opts, ct),
+            "get_oi_now"        => await GetOpenInterestNow(opts, ct),
             _ => (false, null, $"Unknown route: {route}")
         };
     }
@@ -152,5 +155,76 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             symbol, binance_symbol = binanceSymbol, interval, target_bars = targetBars, bars_saved = count
         });
         return (true, json, null);
+    }
+
+    // ── 永續資金費率 + 未平倉量 ─────────────────────────────────────
+
+    /// <summary>get_funding — 查 DB 的資金費率序列（參數：symbol, limit 預設 1000）。</summary>
+    private (bool, string?, string?) GetFunding(JsonElement opts)
+    {
+        var symbol = opts.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+        var limit  = opts.TryGetProperty("limit",  out var l) ? l.GetInt32() : 1000;
+        if (string.IsNullOrEmpty(symbol))
+            return (false, null, "Missing required parameter: symbol");
+
+        var points = _db.GetFundingRates(NormalizeCryptoSymbol(symbol), limit);
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol,
+            count = points.Count,
+            funding = points.Select(p => new { funding_time = p.FundingTime, funding_rate = p.FundingRate })
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>fetch_funding_deep — 深度回補資金費率（參數：symbol, target_points 預設 1000）。</summary>
+    private async Task<(bool, string?, string?)> FetchFundingDeep(JsonElement opts, CancellationToken ct)
+    {
+        var symbol       = opts.TryGetProperty("symbol",        out var s) ? s.GetString() ?? "" : "";
+        var targetPoints = opts.TryGetProperty("target_points", out var t) ? t.GetInt32() : 1000;
+        if (string.IsNullOrEmpty(symbol))
+            return (false, null, "Missing required parameter: symbol");
+
+        var binanceSymbol = ToBinanceSymbol(symbol);
+        var count = await _fetcher.FetchFundingRateDeepAsync(binanceSymbol, targetPoints, ct);
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol, binance_symbol = binanceSymbol, target_points = targetPoints, points_saved = count
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>get_oi_now — 當前未平倉量快照（OI history 只 ~30 天、故只給即時值當 live 訊號）。</summary>
+    private async Task<(bool, string?, string?)> GetOpenInterestNow(JsonElement opts, CancellationToken ct)
+    {
+        var symbol = opts.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(symbol))
+            return (false, null, "Missing required parameter: symbol");
+
+        var binanceSymbol = ToBinanceSymbol(symbol);
+        var oi = await _fetcher.FetchOpenInterestNowAsync(binanceSymbol, ct);
+        if (oi == null)
+            return (false, null, $"open interest unavailable for {binanceSymbol}");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol, binance_symbol = binanceSymbol,
+            open_interest = oi.Value.OpenInterest, time = oi.Value.Time
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>外部 symbol（"BTC-USDT" / "bitcoin" / "BTCUSDT"）→ Binance 符號（"BTCUSDT"）。</summary>
+    private static string ToBinanceSymbol(string symbol)
+    {
+        if (symbol.Contains('-'))
+        {
+            var parts = symbol.Split('-');
+            if (parts.Length == 2 && IsCommonQuote(parts[1]))
+                return (parts[0] + parts[1]).ToUpperInvariant();
+        }
+        return CommonQuotes.Any(q => symbol.EndsWith(q, StringComparison.OrdinalIgnoreCase))
+            ? symbol.ToUpperInvariant()
+            : HistoricalDataFetcher.CoinGeckoToBinance(symbol);
     }
 }

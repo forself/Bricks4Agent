@@ -30,6 +30,9 @@ public class StartupHistoryFetcher
         ("1w", 600),    // 全段週線（幣種上線時間有限、抓得到多少算多少）
     };
 
+    // 資金費率回補目標筆數（8h 一次 → 1000 筆 ≈ 333 天)。
+    private const int FundingTarget = 1000;
+
     public bool IsFetching { get; private set; }
     public string LastStatus { get; private set; } = "idle";
 
@@ -124,6 +127,33 @@ public class StartupHistoryFetcher
                     errors.Add($"{binanceSymbol}/{interval}: {ex.Message}");
                     _logger.LogWarning(ex, "History deep fetch failed: {Symbol} {Interval}", binanceSymbol, interval);
                 }
+            }
+        }
+
+        // 資金費率深度回補（非價格因子、可回測):每幣抓 ~FundingTarget 筆(8h 一次 → ~333 天)。
+        // 已達標就 skip。OI 不在這回補(history 只 ~30 天、改走 get_oi_now 即時)。
+        foreach (var binanceSymbol in cryptoSymbols)
+        {
+            if (ct.IsCancellationRequested) break;
+            var baseSymbol = binanceSymbol.Replace("USDT", "", StringComparison.OrdinalIgnoreCase).ToUpperInvariant();
+            try
+            {
+                var have = _db.CountFundingRates(baseSymbol);
+                if (have >= FundingTarget)
+                {
+                    _logger.LogInformation("Funding deep skip {Symbol}: already {Have} ≥ {Target}",
+                        binanceSymbol, have, FundingTarget);
+                    continue;
+                }
+                var count = await _fetcher.FetchFundingRateDeepAsync(binanceSymbol, FundingTarget, ct);
+                _logger.LogInformation("Funding deep: {Symbol} → {Count} points (had {Have}, target {Target})",
+                    binanceSymbol, count, have, FundingTarget);
+                await Task.Delay(300, ct).ContinueWith(_ => { });
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{binanceSymbol}/funding: {ex.Message}");
+                _logger.LogWarning(ex, "Funding deep fetch failed: {Symbol}", binanceSymbol);
             }
         }
 

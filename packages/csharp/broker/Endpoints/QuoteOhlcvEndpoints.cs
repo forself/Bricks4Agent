@@ -104,6 +104,55 @@ public static class QuoteOhlcvEndpoints
             return ToResponse(result);
         });
 
+        // ── 永續資金費率（非價格因子）──────────────────────────────────
+        // GET /api/v1/workers/quote/ohlcv/funding?symbol=BTC-USDT&limit=1000
+        ohlcv.MapGet("/funding", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol = req.Query["symbol"].ToString(),
+                limit  = req.Query.TryGetValue("limit", out var lm) && int.TryParse(lm, out var n) ? n : 1000,
+            });
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_funding", payload));
+            return ToResponse(result);
+        });
+
+        // GET /api/v1/workers/quote/ohlcv/fetch-funding-deep?symbol=BTC-USDT&target_points=1000
+        ohlcv.MapGet("/fetch-funding-deep", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol        = req.Query["symbol"].ToString(),
+                target_points = req.Query.TryGetValue("target_points", out var tp) && int.TryParse(tp, out var n) ? n : 1000,
+            });
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "fetch_funding_deep", payload));
+            return ToResponse(result);
+        });
+
+        // 當前未平倉量快照（OI history 只 ~30 天、故只給即時值）
+        // GET /api/v1/workers/quote/ohlcv/oi-now?symbol=BTC-USDT
+        ohlcv.MapGet("/oi-now", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var payload = JsonSerializer.Serialize(new { symbol = req.Query["symbol"].ToString() });
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_oi_now", payload));
+            return ToResponse(result);
+        });
+
         // ── 批次抓取歷史 ────────────────────────────────────────────────
 
         ohlcv.MapGet("/fetch-all", async (

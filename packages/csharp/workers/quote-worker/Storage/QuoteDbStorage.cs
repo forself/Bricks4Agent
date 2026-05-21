@@ -58,6 +58,16 @@ public class QuoteDbStorage : IDisposable
 
             CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup
                 ON ohlcv(symbol, interval, open_time);
+
+            CREATE TABLE IF NOT EXISTS funding_rate (
+                symbol       TEXT NOT NULL,
+                funding_time TEXT NOT NULL,  -- ISO,Binance 多為 8h 一次
+                funding_rate REAL NOT NULL,
+                PRIMARY KEY (symbol, funding_time)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_funding_lookup
+                ON funding_rate(symbol, funding_time);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -247,6 +257,70 @@ public class QuoteDbStorage : IDisposable
         if (result is string s && DateTime.TryParse(s, out var dt))
             return dt;
         return null;
+    }
+
+    // ── 永續資金費率 ────────────────────────────────────────────────
+
+    public void SaveFundingRates(IEnumerable<FundingRatePoint> points)
+    {
+        using var tx = _conn.BeginTransaction();
+        using var cmd = _conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO funding_rate (symbol, funding_time, funding_rate)
+            VALUES ($symbol, $fundingTime, $fundingRate)
+            """;
+        var pSymbol      = cmd.Parameters.Add("$symbol",      SqliteType.Text);
+        var pFundingTime = cmd.Parameters.Add("$fundingTime", SqliteType.Text);
+        var pFundingRate = cmd.Parameters.Add("$fundingRate", SqliteType.Real);
+
+        int count = 0;
+        foreach (var p in points)
+        {
+            pSymbol.Value      = p.Symbol;
+            pFundingTime.Value = p.FundingTime.ToString("o");
+            pFundingRate.Value = (double)p.FundingRate;
+            cmd.ExecuteNonQuery();
+            count++;
+        }
+        tx.Commit();
+        _logger.LogDebug("Saved {Count} funding rate points", count);
+    }
+
+    public List<FundingRatePoint> GetFundingRates(string symbol, int limit = 1000)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT symbol, funding_time, funding_rate
+            FROM funding_rate
+            WHERE symbol = $symbol
+            ORDER BY funding_time DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var list = new List<FundingRatePoint>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new FundingRatePoint
+            {
+                Symbol      = reader.GetString(0),
+                FundingTime = DateTime.Parse(reader.GetString(1)),
+                FundingRate = (decimal)reader.GetDouble(2),
+            });
+        }
+        list.Reverse();   // 回傳由舊到新
+        return list;
+    }
+
+    public int CountFundingRates(string symbol)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM funding_rate WHERE symbol = $symbol";
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }
 
     public void Dispose()
