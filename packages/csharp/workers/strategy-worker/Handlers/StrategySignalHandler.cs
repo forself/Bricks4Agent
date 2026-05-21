@@ -36,10 +36,64 @@ public class StrategySignalHandler : ICapabilityHandler
             "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
             "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
+            "scan"         => Scan(payload),                                 // universe 掃描 → Top N 候選
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
         return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// scan — universe 掃描:對多個 symbol 各跑 harmonic + price action + SMC 評分,
+    /// 回傳依 magnitude 由大到小的 Top N 候選。
+    /// payload: { "symbols": { "BTCUSDT": [bars...], "ETHUSDT": [bars...] },
+    ///            "min_magnitude"?: 2.0, "top_n"?: 10, "pivot_window"?: 3 }
+    /// bars 格式同 evaluate;資料由呼叫端提供(worker 不抓行情)。
+    /// </summary>
+    private (bool, string?, string?) Scan(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var doc = JsonDocument.Parse(payload).RootElement;
+        if (!doc.TryGetProperty("symbols", out var symsEl) || symsEl.ValueKind != JsonValueKind.Object)
+            return (false, null, "Missing or invalid 'symbols' object (expect { symbol: [bars...] })");
+
+        var minMagnitude = doc.TryGetProperty("min_magnitude", out var mm) ? mm.GetDecimal() : 2.0m;
+        var topN         = doc.TryGetProperty("top_n", out var tn) ? tn.GetInt32() : 10;
+        var pivotWindow  = doc.TryGetProperty("pivot_window", out var pw) ? pw.GetInt32() : 3;
+
+        var universe = new List<KeyValuePair<string, List<BarData>>>();
+        foreach (var sym in symsEl.EnumerateObject())
+        {
+            if (sym.Value.ValueKind != JsonValueKind.Array) continue;
+            universe.Add(new KeyValuePair<string, List<BarData>>(sym.Name, ParseBars(sym.Value)));
+        }
+
+        var top = ScannerEngine.ScanUniverse(universe, minMagnitude, topN, pivotWindow);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            scanned       = universe.Count,
+            min_magnitude = minMagnitude,
+            top_n         = topN,
+            count         = top.Count,
+            candidates    = top.Select(r => new
+            {
+                symbol               = r.Symbol,
+                current_price        = r.CurrentPrice,
+                bull_score           = r.BullScore,
+                bear_score           = r.BearScore,
+                net_score            = r.NetScore,
+                magnitude            = r.Magnitude,
+                direction            = r.Direction,
+                bullish_signal_count = r.BullishSignalCount,
+                bearish_signal_count = r.BearishSignalCount,
+                bullish_signals      = r.BullishSignals,
+                bearish_signals      = r.BearishSignals,
+            }).ToList(),
+        });
+        return (true, json, null);
     }
 
     private (bool, string?, string?) Evaluate(string payload)
