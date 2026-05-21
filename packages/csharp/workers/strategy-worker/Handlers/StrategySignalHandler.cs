@@ -32,6 +32,7 @@ public class StrategySignalHandler : ICapabilityHandler
         {
             "evaluate"     => Evaluate(payload),
             "backtest"     => Backtest(payload),
+            "backtest_batch" => BacktestBatch(payload),                       // 一次跑多策略（bars 只送一次、worker 端跨核心平行）
             "optimize"     => Optimize(payload),
             "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
@@ -376,6 +377,92 @@ public class StrategySignalHandler : ICapabilityHandler
                 pnl = t.Pnl, pnl_pct = t.PnlPct, hold_bars = t.HoldBars,
             }),
             equity_curve = result.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>
+    /// backtest_batch — 對「同一份 bars」一次跑多個策略（每個 = backtest + walk-forward），
+    /// worker 端用 Parallel.ForEach 跨核心平行。解決 broker 把同一份 1000-bar payload 對每個策略
+    /// 重複序列化派 N 次的吞吐瓶頸：bars 只送一次、round-trip 從 N 降到 1、6 核吃滿。
+    /// payload: { bars, symbol, exchange, interval, strategies:[...], initial_cash?, commission?,
+    ///            train_bars?, test_bars?, stride?, walk_forward?(bool 預設 true) }
+    /// </summary>
+    private (bool, string?, string?) BacktestBatch(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+        var bars = ParseBars(barsEl);
+        if (bars.Count < 50) return (false, null, $"Need >= 50 bars (got {bars.Count})");
+
+        if (!doc.TryGetProperty("strategies", out var stratsEl) || stratsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'strategies' array");
+        var names = stratsEl.EnumerateArray()
+            .Select(s => s.GetString() ?? "").Where(s => s.Length > 0).Distinct().ToList();
+
+        var cfg = new StrategyConfig
+        {
+            Symbol   = doc.TryGetProperty("symbol",   out var sy) ? sy.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var ex) ? ex.GetString() ?? "" : "",
+            Interval = doc.TryGetProperty("interval", out var iv) ? iv.GetString() ?? "1d" : "1d",
+        };
+        var cash       = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 1000m;
+        var commission = doc.TryGetProperty("commission",   out var cm) ? cm.GetDecimal() : 0.001m;
+        var trainBars  = doc.TryGetProperty("train_bars",   out var tb) ? tb.GetInt32() : 365;
+        var testBars   = doc.TryGetProperty("test_bars",    out var tt) ? tt.GetInt32() : 90;
+        var stride     = doc.TryGetProperty("stride",       out var st) ? st.GetInt32() : 90;
+        var withWf     = !doc.TryGetProperty("walk_forward", out var wfv) || wfv.ValueKind != JsonValueKind.False;
+
+        var results = new System.Collections.Concurrent.ConcurrentBag<object>();
+        Parallel.ForEach(names,
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+            name =>
+            {
+                var strat = _registry.Get(name);
+                if (strat == null) { results.Add(new { strategy = name, error = "unknown strategy" }); return; }
+                try
+                {
+                    var bt = Run(strat, bars, cfg, cash, commission);
+                    int folds = 0; decimal oosRet = 0m, oosSharpe = 0m, oosWin = 0m, isOosGap = 0m;
+                    if (withWf)
+                    {
+                        try
+                        {
+                            var w = RunWalkForward(strat, bars, cfg, trainBars, testBars, stride, cash, commission);
+                            folds = w.TotalFolds; oosRet = w.AvgTestReturnPct; oosSharpe = w.AvgTestSharpe;
+                            oosWin = w.AvgTestWinRate; isOosGap = w.IsOosReturnGap;
+                        }
+                        catch { /* IS-only：walk-forward 失敗不擋主回測 */ }
+                    }
+                    results.Add(new
+                    {
+                        strategy         = name,
+                        total_return_pct = bt.TotalReturnPct,
+                        sharpe_ratio     = bt.SharpeRatio,
+                        win_rate         = bt.WinRate,
+                        max_drawdown_pct = bt.MaxDrawdownPct,
+                        total_trades     = bt.TotalTrades,
+                        wf_folds         = folds,
+                        oos_return_pct   = oosRet,
+                        oos_sharpe       = oosSharpe,
+                        oos_win_rate     = oosWin,
+                        is_oos_gap       = isOosGap,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    var msg = ex.Message?.Length > 200 ? ex.Message[..200] : ex.Message;
+                    results.Add(new { strategy = name, error = msg });
+                }
+            });
+
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol = cfg.Symbol, interval = cfg.Interval, bars_count = bars.Count,
+            count = results.Count, results = results.ToList(),
         });
         return (true, json, null);
     }

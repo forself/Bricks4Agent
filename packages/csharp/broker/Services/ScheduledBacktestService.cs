@@ -333,23 +333,16 @@ public class ScheduledBacktestService : BackgroundService
             }
         }
 
-        // Phase 2：把「所有 (symbol-tf × strategy)」攤平成單一 job 清單、一次平行跑（degree=_maxParallel）。
-        // 跟舊的「每 symbol-tf 各跑一輪內層平行」比：不同 symbol-tf 會交錯 —— 快策略先收工留下的空檔
-        // 由別的 symbol-tf 的策略補上 → 核心維持滿載。舊作法同 symbol-tf 內到後段只剩慢的 meta 在跑、塌成單核。
-        var flat = jobs.SelectMany(j => _strategies.Select(s => (Job: j, Strategy: s))).ToList();
-        var bag = new ConcurrentBag<BacktestResultEntry>();
-        await Parallel.ForEachAsync(flat,
-            new ParallelOptions { MaxDegreeOfParallelism = _maxParallel, CancellationToken = ct },
-            async (item, ict) =>
-            {
-                var j = item.Job;
-                var entry = await RunSingleBacktestAsync(runId, j.Symbol, j.Exchange, j.Tf, item.Strategy, j.Bars, traceId, ict);
-                entry.Regime = j.Regime;
-                entry.OwnerPrincipalId = j.Owner;
-                if (!string.IsNullOrEmpty(entry.Error)) Interlocked.Increment(ref errors);
-                bag.Add(entry);
-            });
-        allResults.AddRange(bag);
+        // Phase 2：每 symbol-tf 一次 batch dispatch —— bars 只送一次、worker 端用 Parallel.ForEach 跨核心
+        // 一次跑完該 symbol-tf 的全部策略。取代舊的「每策略各派一次（同份 1000-bar payload 重複序列化 N 次）」，
+        // 消掉 broker 序列化瓶頸 + round-trip 從 N×symbol-tf 降到 symbol-tf。外層維持順序（一個 batch 已吃滿 worker）。
+        foreach (var j in jobs)
+        {
+            if (ct.IsCancellationRequested) break;
+            var entries = await RunBatchAsync(runId, j.Symbol, j.Exchange, j.Owner, j.Tf, j.Bars, j.Regime, traceId, ct);
+            allResults.AddRange(entries);
+            errors += entries.Count(e => !string.IsNullOrEmpty(e.Error));
+        }
 
         MarkRecommendedPerRegime(allResults, _minTrades);
 
@@ -389,135 +382,93 @@ public class ScheduledBacktestService : BackgroundService
         catch { return null; }
     }
 
-    /// <summary>有 grid search optimizer 的策略——這些走 /optimize 找最佳 params；其他用 default 跑 /backtest。</summary>
-    private static readonly HashSet<string> OptimizableStrategies = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// 一次對某 (symbol, tf) 派發 backtest_batch：bars 送一次、worker 端跨核心跑全部 _strategies。
+    /// 回每個策略的 entry（含 OOS + score）。整批 dispatch 失敗 → 全部標 error。
+    /// </summary>
+    private async Task<List<BacktestResultEntry>> RunBatchAsync(
+        string runId, string symbol, string exchange, string owner, string tf,
+        JsonElement bars, string regime, string traceId, CancellationToken ct)
     {
-        "sma_cross", "rsi_oversold", "macd_divergence",
-    };
-
-    private async Task<BacktestResultEntry> RunSingleBacktestAsync(
-        string runId, string symbol, string exchange, string tf, string strategy, JsonElement bars, string traceId, CancellationToken ct)
-    {
-        var entry = new BacktestResultEntry
-        {
-            RunId = runId, Symbol = symbol, Exchange = exchange,
-            Timeframe = tf, Strategy = strategy, BarsCount = bars.GetArrayLength(),
-        };
-
-        var useOptimizer = OptimizableStrategies.Contains(strategy);
-        var route = useOptimizer ? "optimize" : "backtest";
+        var list = new List<BacktestResultEntry>();
+        var barsCount = bars.GetArrayLength();
 
         var payload = JsonSerializer.Serialize(new
         {
-            strategy, symbol, exchange,
-            interval = tf,
-            bars,
+            symbol, exchange, interval = tf, bars,
+            strategies = _strategies,
             initial_cash = 1000.0,
+            train_bars = 365, test_bars = 90, stride = 90,
         });
-
         var req = new ApprovedRequest
         {
             RequestId = Guid.NewGuid().ToString("N"),
-            CapabilityId = "strategy.signal", Route = route, Payload = payload,
+            CapabilityId = "strategy.signal", Route = "backtest_batch", Payload = payload,
             Scope = "{}", PrincipalId = "system",
             TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
             TraceId = traceId,
         };
-
         var result = await _dispatcher.DispatchAsync(req);
+
+        BacktestResultEntry New(string strat) => new()
+        {
+            RunId = runId, Symbol = symbol, Exchange = exchange, Timeframe = tf,
+            Strategy = strat, Regime = regime, OwnerPrincipalId = owner, BarsCount = barsCount,
+        };
+
         if (!result.Success)
         {
-            entry.Error = result.ErrorMessage?.Length > 200 ? result.ErrorMessage[..200] : result.ErrorMessage;
-            return entry;
+            var err = result.ErrorMessage?.Length > 200 ? result.ErrorMessage[..200] : result.ErrorMessage;
+            foreach (var s in _strategies) { var e = New(s); e.Error = err; list.Add(e); }
+            return list;
         }
 
         try
         {
             var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-            if (useOptimizer)
+            if (doc.TryGetProperty("bars_count", out var bc) && bc.ValueKind == JsonValueKind.Number)
+                barsCount = bc.GetInt32();
+            if (doc.TryGetProperty("results", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
-                // /optimize 回 best_params + top_results[]，取 top_results[0] 拿完整指標
-                if (doc.TryGetProperty("best_params", out var bp) && bp.ValueKind == JsonValueKind.Object)
-                    entry.ParamsJson = bp.GetRawText();
-
-                if (doc.TryGetProperty("top_results", out var tops) && tops.ValueKind == JsonValueKind.Array && tops.GetArrayLength() > 0)
+                foreach (var r in arr.EnumerateArray())
                 {
-                    var best = tops[0];
-                    entry.TotalReturnPct = best.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
-                    entry.Sharpe = best.TryGetProperty("sharpe", out var sh) ? sh.GetDecimal() : 0m;
-                    entry.WinRate = best.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
-                    entry.MaxDdPct = best.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
-                    entry.Trades = best.TryGetProperty("trades", out var t) ? t.GetInt32() : 0;
+                    var name = r.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "" : "";
+                    var entry = New(name);
+                    entry.BarsCount = barsCount;
+                    if (r.TryGetProperty("error", out var er) && er.ValueKind == JsonValueKind.String)
+                    {
+                        var em = er.GetString();
+                        entry.Error = em?.Length > 200 ? em[..200] : em;
+                    }
+                    else
+                    {
+                        entry.TotalReturnPct = GetDec(r, "total_return_pct");
+                        entry.Sharpe         = GetDec(r, "sharpe_ratio");
+                        entry.WinRate        = GetDec(r, "win_rate");
+                        entry.MaxDdPct       = GetDec(r, "max_drawdown_pct");
+                        entry.Trades         = r.TryGetProperty("total_trades", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt32() : 0;
+                        entry.WfFolds        = r.TryGetProperty("wf_folds", out var wf) && wf.ValueKind == JsonValueKind.Number ? wf.GetInt32() : 0;
+                        entry.OosReturnPct   = GetDec(r, "oos_return_pct");
+                        entry.OosSharpe      = GetDec(r, "oos_sharpe");
+                        entry.OosWinRate     = GetDec(r, "oos_win_rate");
+                        entry.IsOosGap       = GetDec(r, "is_oos_gap");
+                        entry.Score          = ComputeScore(entry, _scoreWeights);
+                    }
+                    list.Add(entry);
                 }
             }
-            else
-            {
-                // /backtest 回平面欄位、注意 sharpe_ratio / total_trades 跟 /optimize 不同
-                entry.TotalReturnPct = doc.TryGetProperty("total_return_pct", out var tr) ? tr.GetDecimal() : 0m;
-                entry.Sharpe = doc.TryGetProperty("sharpe_ratio", out var sh) ? sh.GetDecimal() : 0m;
-                entry.WinRate = doc.TryGetProperty("win_rate", out var wr) ? wr.GetDecimal() : 0m;
-                entry.MaxDdPct = doc.TryGetProperty("max_drawdown_pct", out var dd) ? dd.GetDecimal() : 0m;
-                entry.Trades = doc.TryGetProperty("total_trades", out var t) ? t.GetInt32() : 0;
-            }
-            entry.Score = ComputeScore(entry, _scoreWeights);
         }
         catch (Exception ex)
         {
-            entry.Error = ex.Message?.Length > 200 ? ex.Message[..200] : ex.Message;
-            return entry;
+            _logger.LogWarning(ex, "Batch result parse failed for {Sym}/{Tf}", symbol, tf);
+            if (list.Count == 0)
+                foreach (var s in _strategies) { var e = New(s); e.Error = "batch parse failed"; list.Add(e); }
         }
-
-        // B3：跑 walk-forward 拿 OOS 數據（額外一次 strategy.signal 呼叫）
-        // 失敗 / bars 不夠 → 維持 IS-only、WfFolds=0、OOS 欄位 = 0、不擋
-        try
-        {
-            await RunWalkForwardAsync(entry, symbol, exchange, tf, strategy, bars, traceId, ct);
-            // 跑成功 → 用 IS+OOS 重新算 score
-            entry.Score = ComputeScore(entry, _scoreWeights);
-        }
-        catch (Exception ex)
-        {
-            // 不覆寫 entry.Error（IS 已成功）、log 即可
-            _logger.LogDebug(ex, "Walk-forward extension failed for {Sym}/{Tf}/{Strat}", symbol, tf, strategy);
-        }
-
-        return entry;
+        return list;
     }
 
-    /// <summary>
-    /// 跑 strategy.signal 的 backtest_walk_forward route、把 OOS 數據填回 entry。
-    /// train=365 / test=90 / stride=90、配 1000 bars 切出 ~7 個 fold（OOS 估計更穩）。
-    /// </summary>
-    private async Task RunWalkForwardAsync(
-        BacktestResultEntry entry, string symbol, string exchange, string tf,
-        string strategy, JsonElement bars, string traceId, CancellationToken ct)
-    {
-        var payload = JsonSerializer.Serialize(new
-        {
-            strategy, symbol, exchange, interval = tf, bars,
-            initial_cash = 1000.0,
-            train_bars = 365,
-            test_bars = 90,
-            stride = 90,
-        });
-        var req = new ApprovedRequest
-        {
-            RequestId = Guid.NewGuid().ToString("N"),
-            CapabilityId = "strategy.signal", Route = "backtest_walk_forward", Payload = payload,
-            Scope = "{}", PrincipalId = "system",
-            TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
-            TraceId = traceId,
-        };
-        var result = await _dispatcher.DispatchAsync(req);
-        if (!result.Success) return;  // bars 不夠等失敗 → 略過
-
-        var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-        entry.WfFolds      = doc.TryGetProperty("total_folds",          out var tf0) ? tf0.GetInt32()    : 0;
-        entry.OosReturnPct = doc.TryGetProperty("avg_test_return_pct",  out var ar)  ? ar.GetDecimal()   : 0m;
-        entry.OosSharpe    = doc.TryGetProperty("avg_test_sharpe",      out var asr) ? asr.GetDecimal()  : 0m;
-        entry.OosWinRate   = doc.TryGetProperty("avg_test_win_rate",    out var awr) ? awr.GetDecimal()  : 0m;
-        entry.IsOosGap     = doc.TryGetProperty("is_oos_return_gap",    out var iog) ? iog.GetDecimal()  : 0m;
-    }
+    private static decimal GetDec(JsonElement el, string key)
+        => el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : 0m;
 
     /// <summary>
     /// composite ranking: Sharpe·sharpe_norm + Return·return_norm + WinRate·win_rate_norm
