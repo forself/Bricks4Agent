@@ -84,6 +84,8 @@ public class BacktestEngine
         decimal cash = initialCash;
         decimal position = 0;        // 持有數量
         decimal entryPrice = 0;
+        decimal targetPrice = 0;     // 開倉時鎖定的停利目標（0 = 未啟用、靠反向訊號平倉）
+        decimal stopPrice = 0;       // 開倉時鎖定的停損
         DateTime entryDate = DateTime.MinValue;
         decimal peakEquity = initialCash;
         decimal maxDrawdown = 0;
@@ -133,8 +135,41 @@ public class BacktestEngine
             var drawdown = peakEquity - equity;
             if (drawdown > maxDrawdown) maxDrawdown = drawdown;
 
-            // 交易邏輯
-            if (signal.Action == "buy" && signal.Confidence >= 0.6m && position == 0)
+            // 停利/停損（opt-in：只在開倉時鎖定了 target/stop 才檢查；用「本根」high/low 觸發、
+            // 倉位是前面的 bar 開的 → 無 lookahead）。同根同時觸 SL 與 TP 時保守假設先觸 SL。
+            bool exitedThisBar = false;
+            if (position > 0 && (targetPrice > 0 || stopPrice > 0))
+            {
+                decimal hi = bars[i].High, lo = bars[i].Low;
+                decimal exitPx = 0; string exitTag = "";
+                if (stopPrice > 0 && lo <= stopPrice) { exitPx = stopPrice; exitTag = "long (SL)"; }
+                else if (targetPrice > 0 && hi >= targetPrice) { exitPx = targetPrice; exitTag = "long (TP)"; }
+
+                if (exitPx > 0)
+                {
+                    var sellValue = position * exitPx;
+                    var fee = sellValue * commission;
+                    cash += sellValue - fee;
+                    var pnl = (exitPx - entryPrice) * position - (entryPrice * position * commission) - fee;
+                    var pnlPct = entryPrice > 0 ? (exitPx - entryPrice) / entryPrice * 100 : 0;
+                    result.Trades.Add(new BacktestTrade
+                    {
+                        Side = exitTag, EntryDate = entryDate, EntryPrice = entryPrice,
+                        ExitDate = bars[i].OpenTime, ExitPrice = exitPx,
+                        Quantity = position, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
+                        HoldBars = i - bars.FindIndex(b => b.OpenTime == entryDate),
+                    });
+                    position = 0; entryPrice = 0; targetPrice = 0; stopPrice = 0;
+                    exitedThisBar = true;
+                }
+            }
+
+            // 交易邏輯（本根已被 TP/SL 平掉就不再進出場、避免同根立刻回補）
+            if (exitedThisBar)
+            {
+                // no-op：本根已出場
+            }
+            else if (signal.Action == "buy" && signal.Confidence >= 0.6m && position == 0)
             {
                 // 開多倉 — 用 90% 資金
                 var orderValue = cash * 0.9m;
@@ -144,6 +179,8 @@ public class BacktestEngine
                 entryPrice = currentPrice;
                 entryDate = bars[i].OpenTime;
                 cash -= orderValue;
+                targetPrice = signal.TargetPrice ?? 0;   // 鎖定本次進場的停利/停損
+                stopPrice = signal.StopPrice ?? 0;
             }
             else if (signal.Action == "sell" && position > 0)
             {
@@ -166,6 +203,8 @@ public class BacktestEngine
 
                 position = 0;
                 entryPrice = 0;
+                targetPrice = 0;
+                stopPrice = 0;
             }
         }
         }

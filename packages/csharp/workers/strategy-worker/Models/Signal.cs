@@ -14,6 +14,12 @@ public class Signal
     public string Exchange    { get; set; } = string.Empty;  // "alpaca" | "binance"
     public decimal? SuggestedQty   { get; set; }
     public decimal? SuggestedPrice { get; set; }
+
+    /// <summary>選用停利目標。多單:後續 K 線 high 觸到此價即出場。null = 不啟用(回測引擎維持只靠反向訊號平倉)。</summary>
+    public decimal? TargetPrice { get; set; }
+    /// <summary>選用停損。多單:後續 K 線 low 觸到此價即出場。null = 不啟用。</summary>
+    public decimal? StopPrice { get; set; }
+
     public string Interval    { get; set; } = "1d";
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 

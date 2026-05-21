@@ -53,6 +53,10 @@ public class FibonacciStrategy : IStrategy
         var retRatio = FibonacciLevels.RetracementRatio(price, high, low);
         var inZone = FibonacciLevels.IsInGoldenZone(price, high, low, direction);
 
+        // 擴展位停利 + 擺動低點停損（只在多頭進場時鎖定，交給回測引擎 / 真實下單觸發）
+        var extensions = FibonacciLevels.ExtensionLevels(high, low, direction);
+        decimal? tpPrice = null, slPrice = null;
+
         // 3. 訊號判斷
         string action = "hold";
         decimal confidence = 0.5m;
@@ -70,6 +74,9 @@ public class FibonacciStrategy : IStrategy
                 var zoneFit = 1m - Math.Abs(retRatio - 0.5m) * 4m;   // 在 0.5 時 fit=1，在 0.382/0.618 時 fit=0.47
                 confidence = Math.Clamp(0.55m + zoneFit * 0.2m + Math.Min(trendStrength * 5m, 0.2m), 0.5m, 0.95m);
                 reason = $"Uptrend + price pullback to Fib {retRatio:P0} zone + bounce (close > prev)";
+                // TP = 1.272 擴展位（突破擺動高的延伸目標）；SL = 擺動低點（結構失效點）
+                tpPrice = extensions.TryGetValue(1.272m, out var ext127) ? ext127 : null;
+                slPrice = Math.Round(low, 4);
             }
             else if (direction == "down" && rejecting)
             {
@@ -102,6 +109,8 @@ public class FibonacciStrategy : IStrategy
             Confidence = Math.Round(confidence, 2),
             Reason = reason,
             Interval = config.Interval,
+            TargetPrice = tpPrice,
+            StopPrice = slPrice,
             Indicators = new()
             {
                 ["price"] = Math.Round(price, 4),

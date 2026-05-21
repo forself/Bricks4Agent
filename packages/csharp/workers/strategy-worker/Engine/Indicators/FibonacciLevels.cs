@@ -70,6 +70,22 @@ public static class FibonacciLevels
     }
 
     /// <summary>
+    /// 依方向算出每個擴展比率對應的「目標價」(突破擺動後的延伸目標、當停利用)。
+    /// direction = "up"：目標在 high 之上 → low + ratio*range（ratio≥1 故必在 high 上方）
+    /// direction = "down"：目標在 low 之下 → high - ratio*range
+    /// </summary>
+    public static Dictionary<decimal, decimal> ExtensionLevels(decimal high, decimal low, string direction)
+    {
+        var range = high - low;
+        var map = new Dictionary<decimal, decimal>();
+        if (direction == "up")
+            foreach (var r in ExtensionRatios) map[r] = Math.Round(low + r * range, 4);
+        else
+            foreach (var r in ExtensionRatios) map[r] = Math.Round(high - r * range, 4);
+        return map;
+    }
+
+    /// <summary>
     /// 回傳目前價格的「回撤比例」(0-1)。
     /// 0 = 完全在 low；1 = 完全在 high；0.5 = 正好在擺動中點。
     /// </summary>
