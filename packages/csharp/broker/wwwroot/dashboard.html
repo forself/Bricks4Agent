@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>B4A Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="echarts.min.js"></script>
 <style>
   :root {
     --bg: #0a0d14;
@@ -466,10 +466,23 @@ const AGENT_DEFS = [
 ];
 
 // ─────── Health gauge (ECharts) ───────
-const gaugeChart = echarts.init(document.getElementById('healthGauge'));
+let gaugeChart = null;
+try {
+  gaugeChart = echarts.init(document.getElementById('healthGauge'));
+} catch (e) {
+  console.warn('ECharts 不可用,健康儀表降級為純文字', e);
+}
 const healthHistory = [];  // last 60 samples ≈ 5min @ 5s refresh
 function renderGauge(score) {
   const color = score >= 80 ? '#67c23a' : score >= 50 ? '#e6a23c' : '#f56c6c';
+  // echarts 載不到時的降級:直接把分數當大字顯示,其他 dashboard 照常
+  if (!gaugeChart) {
+    const el = document.getElementById('healthGauge');
+    if (el) el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%">`
+      + `<div style="font-size:64px;font-weight:700;line-height:1;color:${color}">${Math.round(score)}</div>`
+      + `<div style="color:var(--td);font-size:11px;margin-top:6px">HEALTH(echarts 未載入)</div></div>`;
+    return;
+  }
   // delta vs 5min ago
   const old = healthHistory.length >= 12 ? healthHistory[healthHistory.length - 12] : null;
   const delta = old != null ? score - old : null;
@@ -612,7 +625,7 @@ function togglePresent() {
   } else {
     if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
   }
-  setTimeout(() => { gaugeChart.resize(); }, 100);
+  setTimeout(() => { gaugeChart && gaugeChart.resize(); }, 100);
 }
 
 // ─────── Refresh ticker (visual countdown) ───────
@@ -1067,7 +1080,7 @@ connectLive();
 
 // Resize handler
 window.addEventListener('resize', () => {
-  gaugeChart.resize();
+  if (gaugeChart) gaugeChart.resize();
 });
 </script>
 </body>
