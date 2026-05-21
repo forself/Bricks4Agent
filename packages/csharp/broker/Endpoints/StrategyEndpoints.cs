@@ -81,6 +81,45 @@ public static class StrategyEndpoints
             return ToResponse(result);
         });
 
+        // universe 掃描 → Top N 候選（harmonic + price action + SMC 加權評分）
+        strategy.MapPost("/scan", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal"))
+                return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
+            using var reader = new StreamReader(ctx.Request.Body);
+            var body = await reader.ReadToEndAsync(ct);
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "scan", body));
+            return ToResponse(result);
+        });
+
+        // 持倉決策：對已開倉位給 ADD / HOLD / TRIM / EXIT 建議 + 信心 + 目標價
+        strategy.MapPost("/position-decision", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal"))
+                return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
+            using var reader = new StreamReader(ctx.Request.Body);
+            var body = await reader.ReadToEndAsync(ct);
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "position_decision", body));
+            return ToResponse(result);
+        });
+
+        // 多維訊號雷達卡（單一 symbol、no LLM）
+        strategy.MapPost("/signal-card", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal"))
+                return Results.Ok(ApiResponseHelper.Error("strategy-worker not connected"));
+            using var reader = new StreamReader(ctx.Request.Body);
+            var body = await reader.ReadToEndAsync(ct);
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "signal_card", body));
+            return ToResponse(result);
+        });
+
         strategy.MapGet("/compare", async (
             Broker.Services.StrategyComparisonService svc, HttpRequest req) =>
         {
