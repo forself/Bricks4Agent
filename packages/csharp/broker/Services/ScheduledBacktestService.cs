@@ -14,11 +14,11 @@ namespace Broker.Services;
 /// 不用改 code 重 deploy。各權重不強制正規化到 1（讓人可加重某一面、再依結果調）。
 /// </summary>
 public record ScoreWeights(
-    decimal Sharpe = 0.35m,
-    decimal Return = 0.25m,
-    decimal WinRate = 0.15m,
+    decimal Sharpe = 0.30m,           // OOS sharpe（risk-adjusted）
+    decimal Return = 0.40m,           // OOS 報酬（真正賺不賺 = 主軸）
+    decimal WinRate = 0.05m,          // OOS 勝率（刻意降權：高勝率小賺 ≠ 好策略）
     decimal DrawdownPenalty = 0.1m,
-    decimal Oos = 0.15m);
+    decimal Oos = 0.15m);             // overfit 懲罰權重（IS-OOS gap）
 
 /// <summary>
 /// 自動排程的批次回測服務——每天醒來一次、把所有 watched perpetual symbols 跨多 timeframe
@@ -473,37 +473,39 @@ public class ScheduledBacktestService : BackgroundService
     /// <summary>
     /// composite ranking: Sharpe·sharpe_norm + Return·return_norm + WinRate·win_rate_norm
     ///                  − DrawdownPenalty·dd_penalty + Oos·oos_quality
-    /// 預設 ScoreWeights = (0.35, 0.25, 0.15, 0.1, 0.15) 跟 W14 demo 時相同、向後相容。
-    /// 想 tune：appsettings.json `Lab:Score:Sharpe = 0.5` 等個別覆寫、不用改 code。
+    /// 預設 ScoreWeights = (Sharpe 0.30, Return 0.40, WinRate 0.05, DdPenalty 0.1, Oos 0.15)。
+    /// 想 tune：appsettings.json `Lab:Score:Return = 0.5` 等個別覆寫、不用改 code。
     ///
-    /// OOS 沒跑 → oos_quality=0、退化成 IS-only。Walk-forward 跑成功時納入過擬合懲罰。
-    /// 沒交易直接 0 分（拒列入 recommended）。
-    /// internal static 給 unit test 用 + ScoreWeights 注入。
+    /// OOS-first：walk-forward 有跑（WfFolds>0）就用「OOS 報酬 / sharpe / 勝率」排名 —— 真正的樣本外
+    /// 表現,而不是被過擬合灌水的 in-sample。沒跑（bars 不夠）才退回 IS。另對 IS-OOS gap 加 overfit 懲罰。
+    /// 刻意降 WinRate 權重：高勝率小賺（均值回歸）不該壓過低勝率大賺（趨勢）。
+    /// 沒交易直接 0 分（拒列入 recommended）。internal static 給 unit test 用。
     /// </summary>
     internal static decimal ComputeScore(BacktestResultEntry r, ScoreWeights w)
     {
         if (r.Trades == 0) return 0m;
-        var sharpeNorm = Math.Clamp((r.Sharpe + 2m) / 7m, 0m, 1m);
-        var returnNorm = Math.Clamp(r.TotalReturnPct / 100m, 0m, 1m);
-        var winRateNorm = Math.Clamp(r.WinRate / 100m, 0m, 1m);
-        var ddPenalty = Math.Clamp(r.MaxDdPct / 50m, 0m, 1m);
 
-        var baseScore = w.Sharpe * sharpeNorm + w.Return * returnNorm
-                      + w.WinRate * winRateNorm - w.DrawdownPenalty * ddPenalty;
+        // walk-forward 有跑就用 OOS 指標（真樣本外）；否則退回 IS。
+        var hasOos = r.WfFolds > 0;
+        var ret    = hasOos ? r.OosReturnPct : r.TotalReturnPct;
+        var sharpe = hasOos ? r.OosSharpe    : r.Sharpe;
+        var win    = hasOos ? r.OosWinRate   : r.WinRate;
 
-        // OOS quality factor：walk-forward 跑成功才加分
-        //   高 IS-OOS gap (>= 0.5) → 紅旗、加負分
-        //   低 gap + 正 OOS sharpe → 加正分
-        //   沒跑 (WfFolds=0) → 不加不扣
-        decimal oosQuality = 0m;
-        if (r.WfFolds > 0)
-        {
-            var oosSharpeNorm = Math.Clamp((r.OosSharpe + 2m) / 7m, 0m, 1m);
-            var gapPenalty    = Math.Clamp(Math.Abs(r.IsOosGap), 0m, 1m);
-            oosQuality = (oosSharpeNorm - 0.5m) - gapPenalty * 0.5m;
-        }
+        // 報酬 /20 正規化（±20% 打滿、允許負值反映虧損）；OOS 報酬通常個位數、這個尺度才有鑑別力。
+        var returnNorm  = Math.Clamp(ret / 20m, -1m, 1m);
+        var sharpeNorm  = Math.Clamp((sharpe + 2m) / 7m, 0m, 1m);
+        var winRateNorm = Math.Clamp(win / 100m, 0m, 1m);
+        var ddPenalty   = Math.Clamp(r.MaxDdPct / 50m, 0m, 1m);
+        // overfit 懲罰：IS-OOS gap 是百分點、/10 正規化（10pp gap = 滿罰）。沒跑 OOS → 不罰。
+        var overfitPenalty = hasOos ? Math.Clamp(Math.Abs(r.IsOosGap) / 10m, 0m, 1m) : 0m;
 
-        return Math.Round(baseScore + w.Oos * oosQuality, 4);
+        var score = w.Return * returnNorm
+                  + w.Sharpe * sharpeNorm
+                  + w.WinRate * winRateNorm
+                  - w.DrawdownPenalty * ddPenalty
+                  - w.Oos * overfitPenalty;
+
+        return Math.Round(score, 4);
     }
 
     /// <summary>

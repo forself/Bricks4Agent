@@ -93,9 +93,9 @@ public class ScheduledBacktestConfigTests
     public void ResolveScoreWeights_NoConfig_UsesDemoDefaults()
     {
         var w = ScheduledBacktestService.ResolveScoreWeights(BuildConfig(new()));
-        w.Sharpe.Should().Be(0.35m);
-        w.Return.Should().Be(0.25m);
-        w.WinRate.Should().Be(0.15m);
+        w.Sharpe.Should().Be(0.30m);
+        w.Return.Should().Be(0.40m);
+        w.WinRate.Should().Be(0.05m);
         w.DrawdownPenalty.Should().Be(0.1m);
         w.Oos.Should().Be(0.15m);
     }
@@ -112,8 +112,8 @@ public class ScheduledBacktestConfigTests
         var w = ScheduledBacktestService.ResolveScoreWeights(config);
         w.Sharpe.Should().Be(0.5m);
         w.Oos.Should().Be(0.3m);
-        w.Return.Should().Be(0.25m, "未覆寫應維持預設");
-        w.WinRate.Should().Be(0.15m);
+        w.Return.Should().Be(0.40m, "未覆寫應維持預設");
+        w.WinRate.Should().Be(0.05m);
         w.DrawdownPenalty.Should().Be(0.1m);
     }
 
@@ -142,12 +142,12 @@ public class ScheduledBacktestConfigTests
         var r = new BacktestResultEntry
         {
             Trades = 10, Sharpe = 2m, TotalReturnPct = 50m,
-            WinRate = 60m, MaxDdPct = 20m, WfFolds = 0,
+            WinRate = 60m, MaxDdPct = 20m, WfFolds = 0,   // 無 OOS → 退回 IS 指標
         };
         var score = ScheduledBacktestService.ComputeScore(r, new ScoreWeights());
-        // sharpeNorm=(2+2)/7=0.5714, returnNorm=0.5, winRateNorm=0.6, ddPenalty=0.4
-        // baseScore = 0.35×0.5714 + 0.25×0.5 + 0.15×0.6 − 0.1×0.4 = 0.2 + 0.125 + 0.09 - 0.04 = 0.375
-        score.Should().BeApproximately(0.375m, 0.001m);
+        // hasOos=false → ret=50/20→clamp 1.0, sharpeNorm=(2+2)/7=0.5714, winNorm=0.6, dd=0.4, overfit=0
+        // 0.40×1.0 + 0.30×0.5714 + 0.05×0.6 − 0.10×0.4 = 0.40 + 0.17143 + 0.03 − 0.04 = 0.5614
+        score.Should().BeApproximately(0.5614m, 0.001m);
     }
 
     [Fact]
