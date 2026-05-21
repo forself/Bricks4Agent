@@ -25,7 +25,7 @@
     background: radial-gradient(ellipse at top, #161b2a 0%, var(--bg) 70%);
     color: var(--t);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", system-ui, sans-serif;
-    overflow: hidden;
+    overflow-y: auto;
   }
 
   /* ─────── Top bar ─────── */
@@ -362,7 +362,7 @@
       <span style="flex:1"></span>
       <span id="dockerSub" style="color:var(--td);font-size:11px;font-weight:400;text-transform:none">—</span>
     </div>
-    <div id="dockerList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+    <div id="dockerList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px">
       <div style="color:var(--td);text-align:center;padding:20px;font-size:11px;grid-column:1/-1">loading…</div>
     </div>
   </section>
@@ -415,6 +415,13 @@
     margin-top: 2px;
   }
   .container-card .cbar > div { height: 100%; transition: width .4s; }
+  .container-card .cmeta {
+    display: flex; justify-content: space-between; gap: 8px;
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--bd);
+    color: var(--td); font-size: 9px; font-family: "SF Mono", Consolas, monospace;
+    white-space: nowrap;
+  }
+  .container-card .cmeta span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .container-card.high { border-left: 3px solid var(--bad); }
   .container-card.med { border-left: 3px solid var(--warn); }
   .container-card.ok { border-left: 3px solid var(--good); }
@@ -774,87 +781,106 @@ async function loadAll() {
   ticker.classList.add('refreshing');
   lastLoadAt = Date.now();
 
-  // 1. Health
-  try {
-    const r = await fetch('/api/v1/health/score', { credentials: 'include' });
-    const j = await r.json();
-    if (j.success) {
-      const score = j.data.overall_score || 0;
-      healthHistory.push(score);
-      if (healthHistory.length > 60) healthHistory.shift();
-      renderGauge(score);
-      pushSpark('health', score);
-    }
-  } catch (e) {
-    renderGauge(0);
-  }
-
-  // 2. Emergency state
-  try {
-    const r = await fetch('/api/v1/emergency/status', { credentials: 'include' });
-    const j = await r.json();
-    if (j.success) {
-      const kill = j.data.kill_switch.active;
-      const ro = j.data.read_only.active;
-      setBanner(kill, ro);
-      setKpi('kpiKill', kill ? '🛑' : '●', kill ? 'ACTIVE' : 'Normal', kill ? 'bad' : 'good');
-      setKpi('kpiLock', ro ? '🔒' : '●', ro ? 'ACTIVE' : 'Normal', ro ? 'warn' : 'good');
-    }
-  } catch (e) {}
-
-  // 3. Approvals pending
-  try {
-    const r = await fetch('/api/v1/admin/approvals?status=pending&limit=50', { credentials: 'include' });
-    const j = await r.json();
-    if (j.success) {
-      const n = (j.data || []).length;
-      setKpi('kpiApprovals', n, n === 0 ? '無待審' : '需 admin 裁決', n === 0 ? 'good' : n > 5 ? 'bad' : 'warn');
-      pushSpark('approvals', n);
-      renderSpark('sparkApprovals', 'approvals', n === 0 ? '#67c23a' : n > 5 ? '#f56c6c' : '#e6a23c');
-    }
-  } catch (e) {}
-
-  // 4. Agent status
-  try {
-    const statusMap = {};
-    await Promise.all(AGENT_DEFS.map(async a => {
+  // 6 個區塊互相獨立 → 並行抓取(原本是串行、每趟等前一趟,延遲累加)
+  await Promise.all([
+    // 1. Health
+    (async () => {
       try {
-        const r = await fetch(`/api/v1/agents/inbox/list?agent_id=${encodeURIComponent(a.id)}&limit=1`, { credentials: 'include' });
+        const r = await fetch('/api/v1/health/score', { credentials: 'include' });
         const j = await r.json();
-        const t = j?.data?.tasks?.[0];
-        if (t) statusMap[a.id] = { status: t.status, latest_at: t.completed_at || t.created_at };
-      } catch {}
-    }));
-    renderAgents(statusMap);
-    const goodCount = Object.values(statusMap).filter(s => s.status === 'done').length;
-    setKpi('kpiAgents', AGENT_DEFS.length, `${goodCount} done · ${AGENT_DEFS.length - goodCount} other`,
-      goodCount === AGENT_DEFS.length ? 'good' : goodCount >= AGENT_DEFS.length - 2 ? 'info' : 'warn');
-    pushSpark('agents', goodCount);
-  } catch (e) {
-    setKpi('kpiAgents', AGENT_DEFS.length, '—', 'info');
-  }
-  // sparkline for agents (count of done)
-  const lastAgentSpark = sparkBuffer['agents'] ? sparkBuffer['agents'][sparkBuffer['agents'].length-1] : 0;
-  renderSpark('sparkAgents', 'agents', '#5db8ff');
+        if (j.success) {
+          const score = j.data.overall_score || 0;
+          healthHistory.push(score);
+          if (healthHistory.length > 60) healthHistory.shift();
+          renderGauge(score);
+          pushSpark('health', score);
+        }
+      } catch (e) {
+        renderGauge(0);
+      }
+    })(),
 
-  // 5. Docker container stats
-  try {
-    const r = await fetch('/api/v1/dashboard/docker-stats', { credentials: 'include' });
-    const j = await r.json();
-    if (j.success) renderDocker(j.data.containers || []);
-  } catch (e) { console.warn('docker', e); }
+    // 2. Emergency state
+    (async () => {
+      try {
+        const r = await fetch('/api/v1/emergency/status', { credentials: 'include' });
+        const j = await r.json();
+        if (j.success) {
+          const kill = j.data.kill_switch.active;
+          const ro = j.data.read_only.active;
+          setBanner(kill, ro);
+          setKpi('kpiKill', kill ? '🛑' : '●', kill ? 'ACTIVE' : 'Normal', kill ? 'bad' : 'good');
+          setKpi('kpiLock', ro ? '🔒' : '●', ro ? 'ACTIVE' : 'Normal', ro ? 'warn' : 'good');
+        }
+      } catch (e) {}
+    })(),
 
-  // 6. Network status
-  try {
-    const r = await fetch('/api/v1/dashboard/network-status', { credentials: 'include' });
-    const j = await r.json();
-    if (j.success) renderNetwork(j.data.targets || []);
-  } catch (e) { console.warn('net', e); }
+    // 3. Approvals pending
+    (async () => {
+      try {
+        const r = await fetch('/api/v1/admin/approvals?status=pending&limit=50', { credentials: 'include' });
+        const j = await r.json();
+        if (j.success) {
+          const n = (j.data || []).length;
+          setKpi('kpiApprovals', n, n === 0 ? '無待審' : '需 admin 裁決', n === 0 ? 'good' : n > 5 ? 'bad' : 'warn');
+          pushSpark('approvals', n);
+          renderSpark('sparkApprovals', 'approvals', n === 0 ? '#67c23a' : n > 5 ? '#f56c6c' : '#e6a23c');
+        }
+      } catch (e) {}
+    })(),
+
+    // 4. Agent status
+    (async () => {
+      try {
+        const statusMap = {};
+        await Promise.all(AGENT_DEFS.map(async a => {
+          try {
+            const r = await fetch(`/api/v1/agents/inbox/list?agent_id=${encodeURIComponent(a.id)}&limit=1`, { credentials: 'include' });
+            const j = await r.json();
+            const t = j?.data?.tasks?.[0];
+            if (t) statusMap[a.id] = { status: t.status, latest_at: t.completed_at || t.created_at };
+          } catch {}
+        }));
+        renderAgents(statusMap);
+        const goodCount = Object.values(statusMap).filter(s => s.status === 'done').length;
+        setKpi('kpiAgents', AGENT_DEFS.length, `${goodCount} done · ${AGENT_DEFS.length - goodCount} other`,
+          goodCount === AGENT_DEFS.length ? 'good' : goodCount >= AGENT_DEFS.length - 2 ? 'info' : 'warn');
+        pushSpark('agents', goodCount);
+      } catch (e) {
+        setKpi('kpiAgents', AGENT_DEFS.length, '—', 'info');
+      }
+      renderSpark('sparkAgents', 'agents', '#5db8ff');
+    })(),
+
+    // 5. Docker container stats
+    (async () => {
+      try {
+        const r = await fetch('/api/v1/dashboard/docker-stats', { credentials: 'include' });
+        const j = await r.json();
+        if (j.success) renderDocker(j.data.containers || []);
+      } catch (e) { console.warn('docker', e); }
+    })(),
+
+    // 6. Network status
+    (async () => {
+      try {
+        const r = await fetch('/api/v1/dashboard/network-status', { credentials: 'include' });
+        const j = await r.json();
+        if (j.success) renderNetwork(j.data.targets || []);
+      } catch (e) { console.warn('net', e); }
+    })(),
+  ]);
 
   ticker.classList.remove('refreshing');
 }
 
 const dockerHistory = {};  // container name → [{cpu, mem}, ...]
+// docker 的 "A / B" 字串(mem_usage / net_io / block_io)→ ["A","B"];去掉 iB 縮短給卡片緊湊顯示
+function splitIO(s) {
+  const parts = (s || '').split('/');
+  const fmt = x => (x || '').replace(/iB/g, '').trim();
+  return [fmt(parts[0]), fmt(parts[1])];
+}
 function renderDocker(containers) {
   const list = document.getElementById('dockerList');
   const sub = document.getElementById('dockerSub');
@@ -881,13 +907,21 @@ function renderDocker(containers) {
     const history = dockerHistory[c.name] || [];
     const cpuSpark = miniSparkPath(history.map(h => h.cpu));
     const memSpark = miniSparkPath(history.map(h => h.mem));
+    const [memUsed, memLim] = splitIO(c.mem_usage);
+    const [netRx, netTx] = splitIO(c.net_io);
+    const [blkR, blkW] = splitIO(c.block_io);
+    const memAbs = (memUsed && memLim) ? `${memUsed}/${memLim}` : '';
     return `
       <div class="container-card ${cls}" title="${c.name}\nID: ${c.container_id}\nMem: ${c.mem_usage||'—'}\nNet IO: ${c.net_io||'—'}\nBlock IO: ${c.block_io||'—'}">
         <div class="cname">${c.name}</div>
         <div class="crow"><span>CPU</span><span style="color:${cpuColor};font-weight:600">${cpu.toFixed(1)}%</span></div>
         <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="width:100%;height:14px;margin-top:2px">${cpuSpark ? `<polyline points="${cpuSpark}" fill="none" stroke="${cpuColor}" stroke-width="1.5" stroke-opacity="0.8"/>` : ''}</svg>
-        <div class="crow"><span>MEM</span><span style="color:${memColor};font-weight:600">${mem.toFixed(1)}%</span></div>
+        <div class="crow"><span>MEM</span><span><span style="color:var(--td);margin-right:6px">${memAbs}</span><span style="color:${memColor};font-weight:600">${mem.toFixed(1)}%</span></span></div>
         <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="width:100%;height:14px;margin-top:2px">${memSpark ? `<polyline points="${memSpark}" fill="none" stroke="${memColor}" stroke-width="1.5" stroke-opacity="0.8"/>` : ''}</svg>
+        <div class="cmeta">
+          <span title="網路 ↓收 / ↑送">NET ↓${netRx||'0'} ↑${netTx||'0'}</span>
+          <span title="磁碟 ↓讀 / ↑寫">DSK ↓${blkR||'0'} ↑${blkW||'0'}</span>
+        </div>
       </div>
     `;
   }).join('');
@@ -935,7 +969,9 @@ function renderNetwork(targets) {
   const ok = await checkAuth();
   if (!ok) return;
   loadAll();
-  setInterval(loadAll, REFRESH_MS);
+  // 分頁在背景時跳過輪詢(省下沒人看時白打的請求);切回前景立即刷新
+  setInterval(() => { if (!document.hidden) loadAll(); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadAll(); });
 })();
 
 // initial agent render (skeleton)
