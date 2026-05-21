@@ -106,15 +106,18 @@ public class ScheduledBacktestService : BackgroundService
     /// </summary>
     private readonly int _maxParallel;
 
-    // 200 bars：在訊號穩定度跟 dispatch payload 大小之間折衷。
-    // 史記：之前 500 bars × 24 strategies × parallel=4 出現 "Invalid magic bytes" / "Connection closing"，
-    // batch 286/288 fail。真正 root cause 有兩個、都已修：
-    //   1) ensemble strategy 的 LLM 502 污染 worker connection（LlmEnsembleArbitrator circuit breaker 修）。
-    //   2) worker-sdk 並發寫 frame 沒鎖、WORKER_RESULT 跟心跳 PING 在 stream 上交錯（WorkerHost._writeLock 修）。
-    // 兩個修完 parallel 已安全、MaxParallel 預設回 4。200 bars 仍夠 SMA(30)/RSI(14)/MACD(26+9)、保留為刻意的輕量選擇。
-    // walk-forward params 配 200 bars：120+40+20=180。
-    // 真正修法是 packages/csharp/cache-protocol/FrameCodec.cs 大 frame 處理、之後一個 session 做。
-    private const int BarsPerBacktest = 200;
+    /// <summary>
+    /// 回測 universe（跟即時交易 watch list 解耦）。這些 symbol 只拿來「分析回測」、不會被 AutoTrader 交易。
+    /// 跟 perp watches 取聯集。可用 `Lab:BacktestSymbols`（逗號分隔、BingX 格式 "BTC-USDT"）覆寫。
+    /// </summary>
+    private readonly string[] _backtestSymbols;
+
+    // 1000 bars：配合深度回補的歷史（1d 1500 / 4h 1500 / 1h 2000）做認真的策略篩選。
+    // 史記：曾因 framing bug 降到 200；root cause 兩個都已修：
+    //   1) ensemble 的 LLM 502 污染 worker connection（LlmEnsembleArbitrator circuit breaker）。
+    //   2) worker-sdk 並發寫 frame 沒鎖（WorkerHost._writeLock）。
+    // 修完 parallel + 大 payload 已安全。1000 bars 給 walk-forward 切出足夠 fold、又不超過任一 tf 的存量。
+    private const int BarsPerBacktest = 1000;
 
     public ScheduledBacktestService(
         IExecutionDispatcher dispatcher,
@@ -137,6 +140,7 @@ public class ScheduledBacktestService : BackgroundService
         _minTrades = ResolveMinTrades(config);
         _scoreWeights = ResolveScoreWeights(config);
         _maxParallel = ResolveMaxParallel(config);
+        _backtestSymbols = ResolveBacktestSymbols(config);
     }
 
     /// <summary>
@@ -183,7 +187,20 @@ public class ScheduledBacktestService : BackgroundService
     /// 待 cache-protocol layer 修好後才能恢復並行（拉 default 回 4）。
     /// </summary>
     internal static int ResolveMaxParallel(IConfiguration config)
-        => Math.Clamp(config.GetValue("Lab:MaxParallel", 4), 1, 16);
+        => Math.Clamp(config.GetValue("Lab:MaxParallel", 5), 1, 16);  // 6-core VPS：留 1 核給 broker/系統
+
+    /// <summary>
+    /// 回測 universe（BingX 格式 symbol）。預設 = 深度回補的 22 個流動性主流幣;跟即時交易 watch 解耦、純分析。
+    /// `Lab:BacktestSymbols` 可覆寫（逗號分隔）。空字串 → 回空陣列（只跑 watch list）。
+    /// </summary>
+    internal static string[] ResolveBacktestSymbols(IConfiguration config)
+    {
+        const string def = "BTC-USDT,ETH-USDT,SOL-USDT,BNB-USDT,XRP-USDT,ADA-USDT,AVAX-USDT,DOGE-USDT," +
+                           "DOT-USDT,LINK-USDT,LTC-USDT,TRX-USDT,ATOM-USDT,UNI-USDT,NEAR-USDT,APT-USDT," +
+                           "ARB-USDT,OP-USDT,INJ-USDT,SUI-USDT,FIL-USDT,TIA-USDT";
+        var raw = config.GetValue("Lab:BacktestSymbols", def) ?? def;
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
 
     /// <summary>
     /// B：per-regime ranking。每 (symbol, timeframe, regime) 找 score 最高的標 Recommended=true。
@@ -243,17 +260,26 @@ public class ScheduledBacktestService : BackgroundService
         var run = new BacktestRunEntry { RunId = runId, StartedAt = startedAt, RunType = runType };
         _db.Insert(run);
 
-        // 拿 perp watches（mode=perp_*）
-        var perpWatches = _autoTrader.WatchList.Values
+        // 回測 universe = perp watches（mode=perp_*）∪ 設定的分析清單（_backtestSymbols、跟即時交易解耦）。
+        // watch 帶原本 owner;純分析 symbol 用 prn_dashboard / bingx。同 symbol 以 watch 優先（保留 owner）。
+        var targets = _autoTrader.WatchList.Values
             .Where(w => w.Mode == "perp_long_only" || w.Mode == "perp_both")
+            .Select(w => (
+                Symbol: w.Symbol,
+                Exchange: string.IsNullOrEmpty(w.Exchange) ? "bingx" : w.Exchange,
+                Owner: string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId))
             .ToList();
+        var seenSymbols = new HashSet<string>(targets.Select(t => t.Symbol), StringComparer.OrdinalIgnoreCase);
+        foreach (var sym in _backtestSymbols)
+            if (seenSymbols.Add(sym))
+                targets.Add((sym, "bingx", "prn_dashboard"));
 
-        if (perpWatches.Count == 0)
+        if (targets.Count == 0)
         {
             run.FinishedAt = DateTime.UtcNow;
-            run.Notes = "No perp watches configured";
+            run.Notes = "No backtest targets (no watches, no Lab:BacktestSymbols)";
             _db.Update(run);
-            _logger.LogInformation("Backtest run {RunId}: no perp watches, skipped", runId);
+            _logger.LogInformation("Backtest run {RunId}: no targets, skipped", runId);
             return runId;
         }
 
@@ -268,18 +294,18 @@ public class ScheduledBacktestService : BackgroundService
 
         var allResults = new List<BacktestResultEntry>();
         int errors = 0;
-        foreach (var w in perpWatches)
+        foreach (var t in targets)
         {
             foreach (var tf in Timeframes)
             {
-                var barsOpt = await FetchBarsAsync(w.Symbol, tf, BarsPerBacktest, traceId, ct);
+                var barsOpt = await FetchBarsAsync(t.Symbol, tf, BarsPerBacktest, traceId, ct);
                 var barsCount = barsOpt.HasValue ? barsOpt.Value.GetArrayLength() : 0;
                 if (!barsOpt.HasValue || barsCount < 50)
                 {
                     foreach (var strat in _strategies)
                         allResults.Add(new BacktestResultEntry
                         {
-                            RunId = runId, Symbol = w.Symbol, Exchange = w.Exchange,
+                            RunId = runId, Symbol = t.Symbol, Exchange = t.Exchange,
                             Timeframe = tf, Strategy = strat, BarsCount = barsCount,
                             Error = "insufficient bars",
                         });
@@ -298,9 +324,9 @@ public class ScheduledBacktestService : BackgroundService
                     new ParallelOptions { MaxDegreeOfParallelism = _maxParallel, CancellationToken = ct },
                     async (strat, innerCt) =>
                     {
-                        var entry = await RunSingleBacktestAsync(runId, w.Symbol, w.Exchange, tf, strat, barsOpt.Value, traceId, innerCt);
+                        var entry = await RunSingleBacktestAsync(runId, t.Symbol, t.Exchange, tf, strat, barsOpt.Value, traceId, innerCt);
                         entry.Regime = regime;
-                        entry.OwnerPrincipalId = string.IsNullOrEmpty(w.OwnerPrincipalId) ? "prn_dashboard" : w.OwnerPrincipalId;
+                        entry.OwnerPrincipalId = t.Owner;
                         if (!string.IsNullOrEmpty(entry.Error)) Interlocked.Increment(ref batchErrors);
                         batchBag.Add(entry);
                     });
@@ -316,13 +342,13 @@ public class ScheduledBacktestService : BackgroundService
 
         run.FinishedAt = DateTime.UtcNow;
         run.DurationMs = (long)(run.FinishedAt.Value - run.StartedAt).TotalMilliseconds;
-        run.SymbolsCount = perpWatches.Count;
+        run.SymbolsCount = targets.Count;
         run.ResultsCount = allResults.Count;
         run.ErrorCount = errors;
         _db.Update(run);
 
         _logger.LogInformation("Backtest run {RunId} done: {Symbols} symbols × {Tf} tf × {Strat} strat = {Total} results, {Errors} errors, {Ms}ms",
-            runId, perpWatches.Count, Timeframes.Length, _strategies.Length, allResults.Count, errors, run.DurationMs);
+            runId, targets.Count, Timeframes.Length, _strategies.Length, allResults.Count, errors, run.DurationMs);
         return runId;
     }
 
@@ -444,8 +470,7 @@ public class ScheduledBacktestService : BackgroundService
 
     /// <summary>
     /// 跑 strategy.signal 的 backtest_walk_forward route、把 OOS 數據填回 entry。
-    /// train=120 / test=40 / stride=20、配 200 bars 切出 4-5 個 fold。
-    /// 之前 180/60/30 配 500 bars 切 5 fold、但 500 bars dispatch 觸發 framing bug、降規模。
+    /// train=365 / test=90 / stride=90、配 1000 bars 切出 ~7 個 fold（OOS 估計更穩）。
     /// </summary>
     private async Task RunWalkForwardAsync(
         BacktestResultEntry entry, string symbol, string exchange, string tf,
@@ -455,9 +480,9 @@ public class ScheduledBacktestService : BackgroundService
         {
             strategy, symbol, exchange, interval = tf, bars,
             initial_cash = 1000.0,
-            train_bars = 120,
-            test_bars = 40,
-            stride = 20,
+            train_bars = 365,
+            test_bars = 90,
+            stride = 90,
         });
         var req = new ApprovedRequest
         {

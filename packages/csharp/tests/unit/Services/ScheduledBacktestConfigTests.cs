@@ -167,11 +167,11 @@ public class ScheduledBacktestConfigTests
     // ── A3：MaxParallel 配置解析 ─────────────────────────────────────────
 
     [Fact]
-    public void ResolveMaxParallel_NoConfig_DefaultsTo4()
+    public void ResolveMaxParallel_NoConfig_DefaultsTo5()
     {
-        // 5/19 暫降 1（framing bug 下 parallel>1 崩）；5/20 root cause 修完（LLM circuit breaker
-        // + worker-sdk write lock）後回 4。見 WorkerHost._writeLock。
-        ScheduledBacktestService.ResolveMaxParallel(BuildConfig(new())).Should().Be(4);
+        // 5/19 暫降 1（framing bug）；5/20 root cause 修完回 4；5/21 大量回測階段拉到 5
+        // （6-core VPS 留 1 核給 broker/系統）。見 WorkerHost._writeLock。
+        ScheduledBacktestService.ResolveMaxParallel(BuildConfig(new())).Should().Be(5);
     }
 
     [Fact]
@@ -196,6 +196,32 @@ public class ScheduledBacktestConfigTests
     {
         ScheduledBacktestService.ResolveMaxParallel(
             BuildConfig(new() { ["Lab:MaxParallel"] = "8" })).Should().Be(8);
+    }
+
+    // ── 回測 universe 解析 ───────────────────────────────────────────────
+
+    [Fact]
+    public void ResolveBacktestSymbols_NoConfig_Defaults22Majors()
+    {
+        var syms = ScheduledBacktestService.ResolveBacktestSymbols(BuildConfig(new()));
+        syms.Should().HaveCount(22);
+        syms.Should().Contain("BTC-USDT").And.Contain("TIA-USDT");
+    }
+
+    [Fact]
+    public void ResolveBacktestSymbols_Custom_SplitsAndTrims()
+    {
+        var syms = ScheduledBacktestService.ResolveBacktestSymbols(
+            BuildConfig(new() { ["Lab:BacktestSymbols"] = " BTC-USDT , ETH-USDT " }));
+        syms.Should().Equal("BTC-USDT", "ETH-USDT");
+    }
+
+    [Fact]
+    public void ResolveBacktestSymbols_Empty_ReturnsEmpty()
+    {
+        var syms = ScheduledBacktestService.ResolveBacktestSymbols(
+            BuildConfig(new() { ["Lab:BacktestSymbols"] = "" }));
+        syms.Should().BeEmpty();
     }
 
     // ── B：Per-regime ranking ───────────────────────────────────────────
