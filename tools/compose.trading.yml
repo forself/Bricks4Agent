@@ -140,9 +140,11 @@ services:
       FunctionPool__ListenPort: "7000"
       FunctionPool__BindAddress: "0.0.0.0"
       FunctionPool__StrictMode: "false"
-      FunctionPool__DispatchTimeoutSeconds: "30"
+      # 大量回測：單一 backtest（meta 策略 + walk-forward × 1000 bars）可能跑 >30s；且核心被打滿時
+      # worker 一段時間沒有 frame 往返。30s 太緊會被誤判離線 → 整批 cascade。拉到 120s 容忍 compute burst。
+      FunctionPool__DispatchTimeoutSeconds: "120"
       FunctionPool__MaxWorkers: "20"
-      FunctionPool__HeartbeatTimeoutSeconds: "30"
+      FunctionPool__HeartbeatTimeoutSeconds: "120"
 
       # ContainerManager: inspection-only mode so the dashboard's
       # Containers tab can read `docker ps` / `docker stats` for the
