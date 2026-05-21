@@ -20,9 +20,14 @@ public class StartupHistoryFetcher
     // 深度回補目標根數（per interval）。CountBars 已 ≥ 目標就 skip、restart 不重抓。
     private static readonly (string Interval, int Target)[] DeepTargets =
     {
-        ("1d", 1500),   // ~4 年日線
-        ("4h", 1500),   // ~250 天
+        ("15m", 2000),  // ~21 天（短樣本、回測會自動受限於可得根數）
+        ("30m", 2000),  // ~42 天
         ("1h", 2000),   // ~83 天
+        ("2h", 2000),   // ~166 天
+        ("4h", 1500),   // ~250 天
+        ("1d", 1500),   // ~4 年日線
+        ("3d", 1000),   // ~8 年（Binance 上線後全段）
+        ("1w", 600),    // 全段週線（幣種上線時間有限、抓得到多少算多少）
     };
 
     public bool IsFetching { get; private set; }

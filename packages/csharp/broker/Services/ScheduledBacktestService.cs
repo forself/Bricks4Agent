@@ -51,7 +51,7 @@ public class ScheduledBacktestService : BackgroundService
     private readonly TimeSpan _interval;
     private readonly bool _runOnStart;
 
-    private static readonly string[] Timeframes = { "1h", "4h", "1d" };
+    private static readonly string[] Timeframes = { "15m", "30m", "1h", "2h", "4h", "1d", "3d", "1w" };
 
     /// <summary>
     /// 預設 24 條 — strategy-worker 註冊的所有 deterministic + meta 策略，排除：
