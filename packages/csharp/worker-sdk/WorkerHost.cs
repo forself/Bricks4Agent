@@ -40,6 +40,14 @@ public class WorkerHost
     // 端讀到 "Invalid magic bytes"。這把鎖讓每個 frame 完整寫完才放下一個（鏡像 broker 端的 WorkerConnection._writeLock）。
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    // 持久化接收緩衝區。一次 TCP read 可能含「多個」frame —— broker 在並發 dispatch（MaxParallel>1）時
+    // 會把多個 WORKER_EXECUTE 連續寫出、TCP 合併成一段。舊版每次 ReceiveFrameAsync 用全新 local buffer、
+    // 解析完第一個 frame 就 return、把後面的 frame bytes 丟掉 → 下次從 socket 讀到的是「下一段」、
+    // 跟被丟掉的尾段對不上 → "Invalid magic bytes" → 連線崩 → 整批 cascade。這就是長期被迫 sequential 的真因。
+    // 改成持久化 buffer + 解析後保留剩餘 bytes（鏡像 broker 端 WorkerConnection 的 H-4 修法）。
+    private byte[] _rxBuffer = new byte[4096];
+    private int _rxFilled;
+
     public WorkerHost(WorkerHostOptions options, ILogger<WorkerHost> logger)
     {
         _options = options;
@@ -153,6 +161,7 @@ public class WorkerHost
             _options.BrokerHost, _options.BrokerPort, timeoutCts.Token);
 
         _stream = _tcpClient.GetStream();
+        _rxFilled = 0;   // 新連線：清掉上條連線殘留的半截 frame bytes
     }
 
     /// <summary>發送 WORKER_REGISTER 並等待 ACK</summary>
@@ -330,52 +339,55 @@ public class WorkerHost
         }
     }
 
-    /// <summary>接收一個完整 frame</summary>
+    /// <summary>接收一個完整 frame（持久化 buffer、保留一次 read 內多餘的 frame bytes）</summary>
     private async Task<(byte OpCode, ReadOnlyMemory<byte> Payload)> ReceiveFrameAsync(
         CancellationToken ct)
     {
-        var buffer = new byte[4096];
-        int filled = 0;
-
         while (!ct.IsCancellationRequested)
         {
+            // 先試從既有 buffer 解（上次 read 可能已含 ≥1 個完整 frame）
+            var parsed = TryParseAndAdvance();
+            if (parsed.HasValue) return parsed.Value;
+
+            // 擴容
+            if (_rxFilled >= _rxBuffer.Length)
+            {
+                var newBuffer = new byte[_rxBuffer.Length * 2];
+                Buffer.BlockCopy(_rxBuffer, 0, newBuffer, 0, _rxFilled);
+                _rxBuffer = newBuffer;
+            }
+
             var bytesRead = await _stream!.ReadAsync(
-                buffer.AsMemory(filled, buffer.Length - filled), ct);
+                _rxBuffer.AsMemory(_rxFilled, _rxBuffer.Length - _rxFilled), ct);
 
             if (bytesRead == 0)
                 throw new IOException("Connection closed by broker");
 
-            filled += bytesRead;
+            _rxFilled += bytesRead;
 
-            // 同步解析（避免 Span 跨 await）
-            var result = TryParseFromBuffer(buffer, filled);
-            if (result.HasValue)
-                return result.Value;
-
-            // 擴容
-            if (filled >= buffer.Length)
-            {
-                var newBuffer = new byte[buffer.Length * 2];
-                Buffer.BlockCopy(buffer, 0, newBuffer, 0, filled);
-                buffer = newBuffer;
-            }
+            parsed = TryParseAndAdvance();
+            if (parsed.HasValue) return parsed.Value;
         }
 
         throw new OperationCanceledException();
     }
 
-    /// <summary>同步 frame 解析</summary>
-    private static (byte OpCode, ReadOnlyMemory<byte> Payload)? TryParseFromBuffer(
-        byte[] buffer, int filled)
+    /// <summary>從持久化 buffer 解一個 frame，成功後把已消耗 bytes 移除、剩餘留到開頭。</summary>
+    private (byte OpCode, ReadOnlyMemory<byte> Payload)? TryParseAndAdvance()
     {
-        if (filled < FrameCodec.HeaderSize)
-            return null;
+        if (_rxFilled < FrameCodec.HeaderSize) return null;
 
-        var span = buffer.AsSpan(0, filled);
+        var span = _rxBuffer.AsSpan(0, _rxFilled);
         if (FrameCodec.TryParse(span, out var frame))
         {
             var payload = new byte[frame.Payload.Length];
             frame.Payload.Span.CopyTo(payload);
+
+            var remaining = _rxFilled - frame.TotalLength;
+            if (remaining > 0)
+                Buffer.BlockCopy(_rxBuffer, frame.TotalLength, _rxBuffer, 0, remaining);
+            _rxFilled = remaining;
+
             return (frame.OpCode, payload);
         }
         return null;
