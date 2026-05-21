@@ -61,9 +61,10 @@ public class QuoteOhlcvHandler : ICapabilityHandler
 
         return route switch
         {
-            "get_bars"     => GetBars(opts),
-            "fetch_stock"  => await FetchStock(opts, ct),
-            "fetch_crypto" => await FetchCrypto(opts, ct),
+            "get_bars"          => GetBars(opts),
+            "fetch_stock"       => await FetchStock(opts, ct),
+            "fetch_crypto"      => await FetchCrypto(opts, ct),
+            "fetch_crypto_deep" => await FetchCryptoDeep(opts, ct),
             _ => (false, null, $"Unknown route: {route}")
         };
     }
@@ -123,6 +124,33 @@ public class QuoteOhlcvHandler : ICapabilityHandler
         var binanceSymbol = HistoricalDataFetcher.CoinGeckoToBinance(symbol);
         var count = await _fetcher.FetchCryptoHistoryAsync(binanceSymbol, interval, limit, ct);
         var json = JsonSerializer.Serialize(new { symbol, binance_symbol = binanceSymbol, interval, bars_saved = count });
+        return (true, json, null);
+    }
+
+    /// <summary>
+    /// fetch_crypto_deep — 深度回補：分頁抓過去 target_bars 根到現在。
+    /// symbol 可直接給 binance 符號（"BTCUSDT"）或 coingecko id（"bitcoin"）。
+    /// 參數：symbol, interval（預設 1d）, target_bars（預設 1500）。
+    /// </summary>
+    private async Task<(bool, string?, string?)> FetchCryptoDeep(JsonElement opts, CancellationToken ct)
+    {
+        var symbol     = opts.TryGetProperty("symbol",      out var s) ? s.GetString() ?? "" : "";
+        var interval   = opts.TryGetProperty("interval",    out var i) ? i.GetString() ?? "1d" : "1d";
+        var targetBars = opts.TryGetProperty("target_bars", out var t) ? t.GetInt32() : 1500;
+
+        if (string.IsNullOrEmpty(symbol))
+            return (false, null, "Missing required parameter: symbol");
+
+        // 已是 binance 符號（含 USDT 等 quote）就直接用；否則當 coingecko id 轉換
+        var binanceSymbol = CommonQuotes.Any(q => symbol.EndsWith(q, StringComparison.OrdinalIgnoreCase))
+            ? symbol.ToUpperInvariant()
+            : HistoricalDataFetcher.CoinGeckoToBinance(symbol);
+
+        var count = await _fetcher.FetchCryptoDeepAsync(binanceSymbol, interval, targetBars, ct);
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol, binance_symbol = binanceSymbol, interval, target_bars = targetBars, bars_saved = count
+        });
         return (true, json, null);
     }
 }

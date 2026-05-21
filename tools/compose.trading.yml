@@ -203,6 +203,9 @@ services:
       WORKER_Worker__Quote__FetchIntervalMinutes: "${QUOTE_FETCH_INTERVAL:-5}"
       WORKER_Worker__Quote__CryptoIds: "${QUOTE_CRYPTO_IDS:-bitcoin,ethereum,solana,dogecoin}"
       WORKER_Worker__Quote__StockSymbols: "${QUOTE_STOCK_SYMBOLS:-AAPL,MSFT,TSLA,NVDA,2330.TW,2317.TW,2454.TW,0050.TW}"
+      # 深度回補 universe（Binance 符號）—— 大量策略分析用的歷史 K 線。啟動時分頁抓到目標深度、
+      # 已達標就 skip（idempotent）。改這裡 + recreate quote-worker 就會自動補齊新增 symbol。
+      WORKER_Worker__Quote__BackfillSymbols: "${QUOTE_BACKFILL_SYMBOLS:-BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,DOGEUSDT,DOTUSDT,LINKUSDT,LTCUSDT,TRXUSDT,ATOMUSDT,UNIUSDT,NEARUSDT,APTUSDT,ARBUSDT,OPUSDT,INJUSDT,SUIUSDT,FILUSDT,TIAUSDT}"
       WORKER_Worker__Quote__DbPath: "/data/quote.db"
     volumes:
       - quote-data:/data

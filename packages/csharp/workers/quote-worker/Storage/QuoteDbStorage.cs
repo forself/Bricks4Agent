@@ -222,6 +222,16 @@ public class QuoteDbStorage : IDisposable
         return list;
     }
 
+    /// <summary>某 symbol+interval 目前有幾根 bar（深度回補的 skip-if-already-deep 判斷用）。</summary>
+    public int CountBars(string symbol, string interval)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM ohlcv WHERE symbol = $symbol AND interval = $interval";
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        cmd.Parameters.AddWithValue("$interval", interval);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
     /// <summary>取得某 symbol+interval 最新一根 bar 的時間，用於增量抓取。</summary>
     public DateTime? GetLatestBarTime(string symbol, string interval)
     {

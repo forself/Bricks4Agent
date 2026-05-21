@@ -168,6 +168,97 @@ public class HistoricalDataFetcher
     }
 
     /// <summary>
+    /// 深度回補：分頁抓「過去 targetBars 根」到現在（Binance 單次上限 1000、這裡 startTime 往前推、
+    /// 一頁一頁 forward 抓到現在）。用於一次性把歷史補深（既有的 forward-incremental 只能往後加新 bar、
+    /// 補不了更早的歷史）。SaveBars 走 PK upsert、重疊範圍重跑不會重複。
+    /// </summary>
+    public async Task<int> FetchCryptoDeepAsync(
+        string binanceSymbol, string interval, int targetBars, CancellationToken ct = default)
+    {
+        var normalizedSymbol = binanceSymbol.Replace("USDT", "").ToUpper();
+        var intervalMs = IntervalToMs(interval);
+        if (intervalMs <= 0)
+        {
+            _logger.LogWarning("Deep fetch: unsupported interval {Interval}", interval);
+            return 0;
+        }
+
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long startMs = nowMs - (long)targetBars * intervalMs;
+        int totalSaved = 0;
+        int maxPages = targetBars / 1000 + 2;  // 安全上限、避免無限迴圈
+
+        for (int page = 0; page < maxPages; page++)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var url = $"https://api.binance.com/api/v3/klines" +
+                      $"?symbol={binanceSymbol}&interval={interval}&limit=1000&startTime={startMs}";
+            using var resp = await _http.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Binance deep returned {Code} for {Symbol} {Interval} page {Page}",
+                    resp.StatusCode, binanceSymbol, interval, page);
+                break;
+            }
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            var arr = doc.RootElement;
+            int len = arr.GetArrayLength();
+            if (len == 0) break;
+
+            var bars = new List<OhlcvBar>(len);
+            long lastOpen = startMs;
+            foreach (var kline in arr.EnumerateArray())
+            {
+                var openMs = kline[0].GetInt64();
+                lastOpen = openMs;
+                bars.Add(new OhlcvBar
+                {
+                    Symbol    = normalizedSymbol,
+                    Type      = "crypto",
+                    Interval  = interval,
+                    OpenTime  = DateTimeOffset.FromUnixTimeMilliseconds(openMs).UtcDateTime,
+                    CloseTime = DateTimeOffset.FromUnixTimeMilliseconds(kline[6].GetInt64()).UtcDateTime,
+                    Open      = decimal.Parse(kline[1].GetString()!),
+                    High      = decimal.Parse(kline[2].GetString()!),
+                    Low       = decimal.Parse(kline[3].GetString()!),
+                    Close     = decimal.Parse(kline[4].GetString()!),
+                    Volume    = decimal.Parse(kline[5].GetString()!),
+                });
+            }
+            _db.SaveBars(bars);
+            totalSaved += bars.Count;
+
+            if (len < 1000) break;                          // 已抓到最新、沒有下一頁
+            startMs = lastOpen + intervalMs;                // 下一頁從上頁最後一根之後開始
+            if (startMs >= nowMs) break;
+            await Task.Delay(250, ct).ContinueWith(_ => { }); // 輕量 rate limit
+        }
+
+        _logger.LogInformation("Crypto deep {Symbol} {Interval}: saved {Count} bars (target {Target})",
+            binanceSymbol, interval, totalSaved, targetBars);
+        return totalSaved;
+    }
+
+    private static long IntervalToMs(string interval) => interval switch
+    {
+        "1m"  => 60_000L,
+        "5m"  => 300_000L,
+        "15m" => 900_000L,
+        "30m" => 1_800_000L,
+        "1h"  => 3_600_000L,
+        "2h"  => 7_200_000L,
+        "4h"  => 14_400_000L,
+        "6h"  => 21_600_000L,
+        "12h" => 43_200_000L,
+        "1d"  => 86_400_000L,
+        "1w"  => 604_800_000L,
+        _ => 0L,
+    };
+
+    /// <summary>
     /// CoinGecko id → Binance symbol 對應。
     /// </summary>
     public static string CoinGeckoToBinance(string coinGeckoId) => coinGeckoId.ToLower() switch

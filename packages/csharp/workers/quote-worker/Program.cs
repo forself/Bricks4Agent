@@ -45,6 +45,8 @@ var options = new WorkerHostOptions
 var fetchIntervalMinutes = config.GetValue("Worker:Quote:FetchIntervalMinutes", 5);
 var cryptoIds            = config.GetValue("Worker:Quote:CryptoIds",   "bitcoin,ethereum,solana,dogecoin")!;
 var stockSymbols         = config.GetValue("Worker:Quote:StockSymbols", "AAPL,MSFT,TSLA,NVDA")!;
+// 深度回補的 crypto universe（Binance 符號、逗號分隔）。空 = 從 cryptoIds 推導。
+var backfillSymbols      = config.GetValue("Worker:Quote:BackfillSymbols", "")!;
 
 // ── 建立元件 ──────────────────────────────────────────────────────────
 var httpClient = new HttpClient
@@ -83,7 +85,7 @@ _ = SnapshotPersistenceLoop.RunAsync(jobQueue, quoteDb, persistLogger, ct: cts.T
 
 // ── 啟動時自動抓取歷史 K 線（增量，不重複）──────────────────────────
 var startupLogger = loggerFactory.CreateLogger<StartupHistoryFetcher>();
-var startupFetcher = new StartupHistoryFetcher(histFetcher, quoteDb, startupLogger, stockSymbols, cryptoIds);
+var startupFetcher = new StartupHistoryFetcher(histFetcher, quoteDb, startupLogger, stockSymbols, cryptoIds, backfillSymbols);
 _ = startupFetcher.RunOnceAsync(cts.Token);
 
 // ── 建立 WorkerHost 並註冊能力 ────────────────────────────────────────

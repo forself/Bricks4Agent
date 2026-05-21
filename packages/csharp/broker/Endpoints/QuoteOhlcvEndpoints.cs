@@ -84,6 +84,26 @@ public static class QuoteOhlcvEndpoints
             return ToResponse(result);
         });
 
+        // ── 深度回補加密貨幣歷史（分頁抓 target_bars 根到現在）──────────────
+
+        ohlcv.MapGet("/fetch-crypto-deep", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol      = req.Query["symbol"].ToString(),
+                interval    = req.Query.TryGetValue("interval", out var iv) ? iv.ToString() : "1d",
+                target_bars = req.Query.TryGetValue("target_bars", out var tb) && int.TryParse(tb, out var n) ? n : 1500,
+            });
+
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "fetch_crypto_deep", payload));
+            return ToResponse(result);
+        });
+
         // ── 批次抓取歷史 ────────────────────────────────────────────────
 
         ohlcv.MapGet("/fetch-all", async (

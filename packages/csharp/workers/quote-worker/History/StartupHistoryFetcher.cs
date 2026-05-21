@@ -15,6 +15,15 @@ public class StartupHistoryFetcher
     private readonly ILogger<StartupHistoryFetcher> _logger;
     private readonly string[] _stockSymbols;
     private readonly string[] _cryptoIds;
+    private readonly string[] _backfillSymbols;   // Binance 符號（"BTCUSDT"…）；空 → 從 _cryptoIds 推導
+
+    // 深度回補目標根數（per interval）。CountBars 已 ≥ 目標就 skip、restart 不重抓。
+    private static readonly (string Interval, int Target)[] DeepTargets =
+    {
+        ("1d", 1500),   // ~4 年日線
+        ("4h", 1500),   // ~250 天
+        ("1h", 2000),   // ~83 天
+    };
 
     public bool IsFetching { get; private set; }
     public string LastStatus { get; private set; } = "idle";
@@ -24,13 +33,15 @@ public class StartupHistoryFetcher
         QuoteDbStorage db,
         ILogger<StartupHistoryFetcher> logger,
         string stockSymbols,
-        string cryptoIds)
+        string cryptoIds,
+        string backfillSymbols = "")
     {
         _fetcher      = fetcher;
         _db           = db;
         _logger       = logger;
         _stockSymbols = stockSymbols.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         _cryptoIds    = cryptoIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _backfillSymbols = backfillSymbols.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     /// <summary>啟動後延遲執行一次完整歷史抓取。</summary>
@@ -55,8 +66,6 @@ public class StartupHistoryFetcher
         int totalBars = 0;
         var errors = new List<string>();
 
-        var intervals = new[] { "1d", "1h", "4h" };
-
         // 美股
         foreach (var symbol in _stockSymbols)
         {
@@ -78,25 +87,37 @@ public class StartupHistoryFetcher
             }
         }
 
-        // 加密貨幣（Binance 支援多時間框架）
-        foreach (var coinId in _cryptoIds)
+        // 加密貨幣深度回補（Binance）：用 backfill 符號清單（沒設就從 _cryptoIds 推導 binance 符號）。
+        // 每個 symbol×interval 分頁抓到目標根數；已達標就 skip、restart 不重抓（idempotent upsert）。
+        var cryptoSymbols = _backfillSymbols.Length > 0
+            ? _backfillSymbols
+            : _cryptoIds.Select(HistoricalDataFetcher.CoinGeckoToBinance).ToArray();
+
+        foreach (var binanceSymbol in cryptoSymbols)
         {
             if (ct.IsCancellationRequested) break;
-            var binanceSymbol = HistoricalDataFetcher.CoinGeckoToBinance(coinId);
-            foreach (var interval in intervals)
+            var baseSymbol = binanceSymbol.Replace("USDT", "", StringComparison.OrdinalIgnoreCase).ToUpperInvariant();
+            foreach (var (interval, target) in DeepTargets)
             {
                 try
                 {
-                    var limit = interval == "1d" ? 365 : interval == "4h" ? 500 : 500;
-                    var count = await _fetcher.FetchCryptoHistoryAsync(binanceSymbol, interval, limit, ct);
+                    var have = _db.CountBars(baseSymbol, interval);
+                    if (have >= target)
+                    {
+                        _logger.LogInformation("History deep skip {Symbol} {Interval}: already {Have} ≥ {Target}",
+                            binanceSymbol, interval, have, target);
+                        continue;
+                    }
+                    var count = await _fetcher.FetchCryptoDeepAsync(binanceSymbol, interval, target, ct);
                     totalBars += count;
-                    _logger.LogInformation("History: {Symbol} {Interval} → {Count} bars", binanceSymbol, interval, count);
+                    _logger.LogInformation("History deep: {Symbol} {Interval} → {Count} bars (had {Have}, target {Target})",
+                        binanceSymbol, interval, count, have, target);
                     await Task.Delay(300, ct).ContinueWith(_ => { });
                 }
                 catch (Exception ex)
                 {
                     errors.Add($"{binanceSymbol}/{interval}: {ex.Message}");
-                    _logger.LogWarning(ex, "History fetch failed: {Symbol} {Interval}", binanceSymbol, interval);
+                    _logger.LogWarning(ex, "History deep fetch failed: {Symbol} {Interval}", binanceSymbol, interval);
                 }
             }
         }
