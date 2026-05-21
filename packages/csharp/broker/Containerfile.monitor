@@ -10,10 +10,12 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 # Install docker CLI so ContainerManager can spawn/stop/inspect worker containers
+# (sqlite3：診斷用、可直接查 broker.db 看 backtest_results.error 等欄位)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     gnupg \
+    sqlite3 \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && chmod a+r /etc/apt/keyrings/docker.gpg \
