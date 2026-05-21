@@ -308,6 +308,10 @@ public class ScheduledBacktestService : BackgroundService
 
         var allResults = new List<BacktestResultEntry>();
         int errors = 0;
+
+        // Phase 1：每 (target, tf) 抓一次 bars（順序、避免一次灌爆 quote-worker）。bars 算一次 regime、
+        // 快取給該 symbol-tf 的所有策略共用。不足的直接記 error、不進 job 清單。
+        var jobs = new List<(string Symbol, string Exchange, string Owner, string Tf, JsonElement Bars, string Regime)>();
         foreach (var t in targets)
         {
             foreach (var tf in Timeframes)
@@ -325,29 +329,27 @@ public class ScheduledBacktestService : BackgroundService
                         });
                     continue;
                 }
-
-                // 為這個 (symbol, timeframe) 對應的 bars 窗口算一次 regime、所有策略共用
-                var regime = ClassifyRegime(barsOpt.Value);
-
-                // A3：同 (symbol, tf) 內所有策略平行跑（策略間互不影響、共用 bars）。
-                // _maxParallel=1 退回 sequential、4 = ~1/4 時間、可調 1-16。
-                // ConcurrentBag + Interlocked 保證 multi-thread 寫入安全。
-                var batchBag = new ConcurrentBag<BacktestResultEntry>();
-                int batchErrors = 0;
-                await Parallel.ForEachAsync(_strategies,
-                    new ParallelOptions { MaxDegreeOfParallelism = _maxParallel, CancellationToken = ct },
-                    async (strat, innerCt) =>
-                    {
-                        var entry = await RunSingleBacktestAsync(runId, t.Symbol, t.Exchange, tf, strat, barsOpt.Value, traceId, innerCt);
-                        entry.Regime = regime;
-                        entry.OwnerPrincipalId = t.Owner;
-                        if (!string.IsNullOrEmpty(entry.Error)) Interlocked.Increment(ref batchErrors);
-                        batchBag.Add(entry);
-                    });
-                allResults.AddRange(batchBag);
-                errors += batchErrors;
+                jobs.Add((t.Symbol, t.Exchange, t.Owner, tf, barsOpt.Value, ClassifyRegime(barsOpt.Value)));
             }
         }
+
+        // Phase 2：把「所有 (symbol-tf × strategy)」攤平成單一 job 清單、一次平行跑（degree=_maxParallel）。
+        // 跟舊的「每 symbol-tf 各跑一輪內層平行」比：不同 symbol-tf 會交錯 —— 快策略先收工留下的空檔
+        // 由別的 symbol-tf 的策略補上 → 核心維持滿載。舊作法同 symbol-tf 內到後段只剩慢的 meta 在跑、塌成單核。
+        var flat = jobs.SelectMany(j => _strategies.Select(s => (Job: j, Strategy: s))).ToList();
+        var bag = new ConcurrentBag<BacktestResultEntry>();
+        await Parallel.ForEachAsync(flat,
+            new ParallelOptions { MaxDegreeOfParallelism = _maxParallel, CancellationToken = ct },
+            async (item, ict) =>
+            {
+                var j = item.Job;
+                var entry = await RunSingleBacktestAsync(runId, j.Symbol, j.Exchange, j.Tf, item.Strategy, j.Bars, traceId, ict);
+                entry.Regime = j.Regime;
+                entry.OwnerPrincipalId = j.Owner;
+                if (!string.IsNullOrEmpty(entry.Error)) Interlocked.Increment(ref errors);
+                bag.Add(entry);
+            });
+        allResults.AddRange(bag);
 
         MarkRecommendedPerRegime(allResults, _minTrades);
 
