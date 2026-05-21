@@ -63,23 +63,21 @@ public class ScheduledBacktestService : BackgroundService
     ///
     /// 想換子集 → appsettings.json `Lab:Strategies: ["sma_cross","rsi_oversold",...]` 整個覆寫。
     /// </summary>
-    // 24 條策略 — 5/19 修法歷程：
-    //   1. 原本 24 條跑 286/288 fail（ensemble 觸發 LLM 502 → worker connection 崩）
-    //   2. 縮 21 條排除 LLM-deps（commit a67d866、252/252 success 但 ensemble 不見了）
-    //   3. 加 circuit breaker 到 LlmEnsembleArbitrator（這個 commit）
-    //      → LLM 連續 3 次失敗 / 1 min 內 20 次呼叫上限 → 短路 fallback null
-    //      → ensemble 永遠有 weighted-vote fallback、不會卡死整批
-    //
-    // 現在 24 條全跑、LLM 死掉只影響 ensemble 自己（fallback 加權投票），
-    // 不會污染 worker connection 拖累其它策略。
+    // 大量回測 batch = 只跑「deterministic 純技術」策略。刻意排除會碰 LLM 的：
+    //   - "ensemble"：用 LLM 仲裁器;LLM upstream 一 503 就拖垮整條 worker connection
+    //     （"Connection closing" → 整批 cascade fail，5/21 實測 1582/1584 fail）。
+    //   - "auto_select"：meta router、對 ranking 加分有限。
+    //   - "llm" / "news_sentiment"：燒 token + 依賴外部 API + 非決定性。
+    // 這些是「live 訊號」用、不是「系統化回測排名」用。ensemble/auto_select 要評估走 manual。
+    // 換成新的決定性技術策略（smc / regime_adaptive）進 ranking pool。
     private static readonly string[] DefaultStrategies = {
         // 3 條有 grid search optimizer
         "sma_cross", "rsi_oversold", "macd_divergence",
-        // Meta / combined
-        "composite", "ensemble", "auto_select",
+        // Meta（純技術、無 LLM）
+        "composite", "regime_adaptive",
         // 標準技術指標
         "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
-        "harmonic_pattern", "vegas_tunnel", "price_action",
+        "harmonic_pattern", "vegas_tunnel", "price_action", "smc",
         // Batch A ai-quant-starter2 移植
         "super_trend", "adx_di", "ichimoku", "rsi_stoch", "vwap",
         // Tier 2 batch
