@@ -34,6 +34,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "backtest"     => Backtest(payload),
             "backtest_batch" => BacktestBatch(payload),                       // 一次跑多策略（bars 只送一次、worker 端跨核心平行）
             "optimize"     => Optimize(payload),
+            "optimize_wf"  => OptimizeWf(payload),                            // 通用 walk-forward 參數優化（任何有 ParamSchema 的策略）
             "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
             "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
@@ -463,6 +464,50 @@ public class StrategySignalHandler : ICapabilityHandler
         {
             symbol = cfg.Symbol, interval = cfg.Interval, bars_count = bars.Count,
             count = results.Count, results = results.ToList(),
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>
+    /// optimize_wf — 通用 walk-forward 參數優化：對任何「有 ParamSchema」的策略掃參數空間,
+    /// 回「優化後 OOS」vs「預設參數 OOS」對照,判斷調參能否救 OOS。
+    /// payload: { strategy, bars, symbol, exchange, interval, train_bars?, test_bars?, initial_cash? }
+    /// </summary>
+    private (bool, string?, string?) OptimizeWf(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        var strategyName = doc.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "" : "";
+        var strat = _registry.Get(strategyName);
+        if (strat == null) return (false, null, $"Unknown strategy: {strategyName}");
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+        var bars = ParseBars(barsEl);
+
+        var cfg = new StrategyConfig
+        {
+            Name = strategyName,
+            Symbol   = doc.TryGetProperty("symbol",   out var sy) ? sy.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var ex) ? ex.GetString() ?? "" : "",
+            Interval = doc.TryGetProperty("interval", out var iv) ? iv.GetString() ?? "1d" : "1d",
+        };
+        var trainBars = doc.TryGetProperty("train_bars", out var tb) ? tb.GetInt32() : 365;
+        var testBars  = doc.TryGetProperty("test_bars",  out var tt) ? tt.GetInt32() : 90;
+        var cash      = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 1000m;
+
+        var r = GenericWalkForwardOptimizer.Optimize(strat, bars, cfg, trainBars, testBars, cash);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            strategy = r.Strategy, symbol = r.Symbol,
+            grid_size = r.GridSize, window_count = r.WindowCount,
+            train_bars = r.TrainBars, test_bars = r.TestBars,
+            opt_oos_return_pct = r.OptOosReturnPct, opt_oos_sharpe = r.OptOosSharpe, opt_oos_win_rate = r.OptOosWinRate,
+            def_oos_return_pct = r.DefOosReturnPct, def_oos_sharpe = r.DefOosSharpe,
+            most_common_best_params = r.MostCommonBestParams,
+            error = r.Error,
         });
         return (true, json, null);
     }

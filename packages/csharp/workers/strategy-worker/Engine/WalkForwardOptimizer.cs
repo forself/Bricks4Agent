@@ -194,7 +194,7 @@ public static class WalkForwardOptimizer
 
     // ── 從完整 backtest 結果切出 OOS 區段的指標 ──────────────────────
 
-    private class OosMetrics
+    internal class OosMetrics
     {
         public decimal Sharpe { get; set; }
         public decimal ReturnPct { get; set; }
@@ -203,7 +203,7 @@ public static class WalkForwardOptimizer
         public int Trades { get; set; }
     }
 
-    private static OosMetrics ExtractOosMetrics(BacktestEngine.BacktestResult full, DateTime testStart)
+    internal static OosMetrics ExtractOosMetrics(BacktestEngine.BacktestResult full, DateTime testStart)
     {
         var m = new OosMetrics();
 

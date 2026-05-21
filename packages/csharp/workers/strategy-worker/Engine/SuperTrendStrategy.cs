@@ -38,7 +38,10 @@ public class SuperTrendStrategy : IStrategy
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var st = SuperTrend.Compute(bars, AtrPeriod, Multiplier);
+        // 讀 config 參數（給 walk-forward 優化器掃用）；沒設則用預設 const。
+        var atrPeriod  = config.GetParam("atr_period", AtrPeriod);
+        var multiplier = config.GetParam("multiplier", Multiplier);
+        var st = SuperTrend.Compute(bars, atrPeriod, multiplier);
         if (st == null) return Hold(config, "Not enough data for SuperTrend");
 
         var price = bars[^1].Close;
