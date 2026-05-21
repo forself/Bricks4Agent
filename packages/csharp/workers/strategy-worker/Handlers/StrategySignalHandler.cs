@@ -38,6 +38,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
             "scan"         => Scan(payload),                                 // universe 掃描 → Top N 候選
             "position_decision" => PositionDecide(payload),                  // 持倉 ADD/HOLD/TRIM/EXIT
+            "signal_card"  => SignalCard(payload),                           // 多維訊號雷達卡(no LLM)
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -163,6 +164,44 @@ public class StrategySignalHandler : ICapabilityHandler
             },
             reason   = result.Reason,
             evidence = result.Evidence,
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>
+    /// signal_card — 單一 symbol 的多維訊號雷達卡(不呼叫 LLM)。
+    /// payload: { symbol, bars: [...], mtf_bullish?, mtf_bearish?, mtf_total?, funding_score? }
+    /// </summary>
+    private (bool, string?, string?) SignalCard(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var d = JsonDocument.Parse(payload).RootElement;
+        var symbol = d.TryGetProperty("symbol", out var sy) ? sy.GetString() ?? "" : "";
+        if (!d.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing or invalid 'bars' array");
+
+        var bars = ParseBars(barsEl);
+        int? IntN(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+
+        var card = SignalFeedEngine.Build(symbol, bars,
+            IntN("mtf_bullish"), IntN("mtf_bearish"), IntN("mtf_total"), IntN("funding_score"));
+        if (card == null)
+            return (false, null, $"Need ≥ {SignalFeedEngine.MinBars} bars (got {bars.Count})");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol        = card.Symbol,
+            direction     = card.Direction,
+            confidence    = card.Confidence,
+            stars         = card.Stars,
+            tag           = card.Tag,
+            current_price = card.CurrentPrice,
+            change_pct    = card.ChangePct,
+            trigger_price = card.TriggerPrice,
+            avg_winrate   = card.AvgWinrate,
+            radar         = card.Radar,
         });
         return (true, json, null);
     }
