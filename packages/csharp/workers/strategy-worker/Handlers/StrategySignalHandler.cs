@@ -37,6 +37,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
             "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
             "scan"         => Scan(payload),                                 // universe 掃描 → Top N 候選
+            "position_decision" => PositionDecide(payload),                  // 持倉 ADD/HOLD/TRIM/EXIT
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -92,6 +93,76 @@ public class StrategySignalHandler : ICapabilityHandler
                 bullish_signals      = r.BullishSignals,
                 bearish_signals      = r.BearishSignals,
             }).ToList(),
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>
+    /// position_decision — 對已開倉位給 ADD/HOLD/TRIM/EXIT 建議 + 信心 + 目標價。
+    /// payload: { symbol, cost_basis, quantity, current_price, side?, technical_signal?, technical_score?,
+    ///            risk_level?, atr?, hold_days?, mtf_bullish?, mtf_bearish?, mtf_total?, news_score?, fundamental_score? }
+    /// </summary>
+    private (bool, string?, string?) PositionDecide(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (false, null, "Missing payload");
+
+        var d = JsonDocument.Parse(payload).RootElement;
+        decimal Dec(string k, decimal def = 0m) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : def;
+        decimal? DecN(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : null;
+        int Int(string k, int def = 0) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : def;
+        int? IntN(string k) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+        string Str(string k, string def) => d.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? def) : def;
+
+        if (Dec("cost_basis") <= 0 || Dec("quantity") <= 0 || Dec("current_price") <= 0)
+            return (false, null, "cost_basis / quantity / current_price required and must be > 0");
+
+        PositionDecisionEngine.Result result;
+        try
+        {
+            result = PositionDecisionEngine.Decide(new PositionDecisionEngine.Input
+            {
+                Symbol           = Str("symbol", ""),
+                CostBasis        = Dec("cost_basis"),
+                Quantity         = Dec("quantity"),
+                CurrentPrice     = Dec("current_price"),
+                Side             = Str("side", "long"),
+                TechnicalSignal  = Str("technical_signal", "neutral"),
+                TechnicalScore   = Dec("technical_score"),
+                RiskLevel        = Str("risk_level", "medium"),
+                Atr              = DecN("atr"),
+                HoldDays         = IntN("hold_days"),
+                MtfBullish       = Int("mtf_bullish"),
+                MtfBearish       = Int("mtf_bearish"),
+                MtfTotal         = Int("mtf_total"),
+                NewsScore        = DecN("news_score"),
+                FundamentalScore = Int("fundamental_score"),
+            });
+        }
+        catch (Exception ex)
+        {
+            return (false, null, ex.Message);
+        }
+
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol          = result.Symbol,
+            decision        = result.Decision.ToString().ToUpperInvariant(),
+            base_decision   = result.BaseDecision.ToString().ToUpperInvariant(),
+            confidence      = result.Confidence,
+            pnl             = result.Pnl,
+            pnl_pct         = result.PnlPct,
+            signal_strength = result.SignalStrength,
+            modifier_total  = result.ModifierTotal,
+            targets = new
+            {
+                stop_loss     = result.StopLoss,
+                take_profit_1 = result.TakeProfit1,
+                take_profit_2 = result.TakeProfit2,
+                add_price     = result.AddPrice,
+            },
+            reason   = result.Reason,
+            evidence = result.Evidence,
         });
         return (true, json, null);
     }
