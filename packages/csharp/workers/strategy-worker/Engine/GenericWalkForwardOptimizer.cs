@@ -75,15 +75,22 @@ public static class GenericWalkForwardOptimizer
             var fullForOos = bars.Take(trainEnd + testBars).ToList();
             var testStart = bars[trainEnd].OpenTime;
 
-            // 1. train 上 grid search 找最佳參數（by train Sharpe、需有交易）
+            // 1. train 上 grid search 找最佳參數（by train Sharpe、需有交易）。
+            // 格點互相獨立 → 跨核心平行（每個 backtest ~0.28s,105 格點序列會破 120s dispatch timeout）。
             Dictionary<string, object>? best = null;
             decimal bestSharpe = decimal.MinValue;
-            foreach (var combo in grid)
-            {
-                var bt = BacktestEngine.Run(strategy, trainSeg, WithParams(baseConfig, combo), cash, commission);
-                if (bt.TotalTrades <= 0) continue;
-                if (bt.SharpeRatio > bestSharpe) { bestSharpe = bt.SharpeRatio; best = combo; }
-            }
+            var gridLock = new object();
+            Parallel.ForEach(grid,
+                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                combo =>
+                {
+                    var bt = BacktestEngine.Run(strategy, trainSeg, WithParams(baseConfig, combo), cash, commission);
+                    if (bt.TotalTrades <= 0) return;
+                    lock (gridLock)
+                    {
+                        if (bt.SharpeRatio > bestSharpe) { bestSharpe = bt.SharpeRatio; best = combo; }
+                    }
+                });
             best ??= grid[0];
             if (bestSharpe == decimal.MinValue) bestSharpe = 0m;
 
