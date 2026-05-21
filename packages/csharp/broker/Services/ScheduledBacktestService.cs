@@ -235,6 +235,9 @@ public class ScheduledBacktestService : BackgroundService
 
         if (_runOnStart)
         {
+            // workers 連到 broker 是 broker 啟動後幾秒~幾十秒（backoff）才完成；runOnStart 立刻跑會撞到
+            // "worker offline" 被 skip。先等兩個必要 worker 上線（最多 90s）再跑。
+            await WaitForWorkersAsync(TimeSpan.FromSeconds(90), ct);
             try { await RunOnceAsync("scheduled", ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "Initial scheduled run failed"); }
         }
@@ -246,6 +249,19 @@ public class ScheduledBacktestService : BackgroundService
 
             try { await RunOnceAsync("scheduled", ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "Scheduled run failed"); }
+        }
+    }
+
+    /// <summary>等 strategy.signal + quote.ohlcv 兩個 worker 上線（最多 timeout）；給 runOnStart 用、避免撞 reconnect 窗。</summary>
+    private async Task WaitForWorkersAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+        {
+            if (_registry.HasAvailableWorker("strategy.signal") && _registry.HasAvailableWorker("quote.ohlcv"))
+                return;
+            try { await Task.Delay(TimeSpan.FromSeconds(3), ct); }
+            catch (TaskCanceledException) { return; }
         }
     }
 
