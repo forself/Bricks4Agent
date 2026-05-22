@@ -147,17 +147,27 @@ public static class GenericWalkForwardOptimizer
                 stabSum += (decimal)m.Values.Max() / r.WindowCount;
             r.ParamStability = paramHits.Count > 0 ? Math.Round(stabSum / paramHits.Count, 4) : 0m;
 
-            // 白話判語:把「OOS 有沒有救 + 參數穩不穩」一句話講完,給大量回測批次掃讀。
-            r.Verdict = r.OptOosSharpe <= 0m
-                ? "no edge:調參救不起 OOS、該策略無 OOS 優勢"
-                : r.ParamStability >= 0.6m && r.OptOosSharpe > r.DefOosSharpe
-                    ? "robust:調參有效且參數跨窗口穩定"
-                    : r.ParamStability < 0.4m
-                        ? "fragile:OOS 正但參數不穩、疑似 curve-fit"
-                        : "marginal:有改善但不夠強、需更多資料";
+            r.Verdict = ComputeVerdict(r.OptOosReturnPct, r.DefOosReturnPct, r.ParamStability);
         }
         return r;
     }
+
+    /// <summary>
+    /// 白話判語:回答「調參到底有沒有勝過預設?可不可信?」給大量回測批次掃讀。
+    /// 以「報酬」為主判據(賺不賺錢),參數穩定度為輔。關鍵是把「預設就贏、不該調」這個最常見也
+    /// 最重要的情況講出來(舊版會誤判:opt 報酬明明輸 def 卻說「有改善/robust」、且只看 sharpe 害
+    /// 負報酬被當有 edge)。internal 供單測。
+    /// </summary>
+    public static string ComputeVerdict(decimal optOosReturnPct, decimal defOosReturnPct, decimal paramStability) =>
+        optOosReturnPct <= 0m
+            ? "no-edge:調參版 OOS 不賺、調參救不起來"
+        : optOosReturnPct <= defOosReturnPct
+            ? "use-default:預設參數 OOS ≥ 調參、不需調(調參=過擬合風險)"
+        : paramStability >= 0.6m
+            ? "robust:調參勝過預設且參數跨窗口穩定"
+        : paramStability < 0.4m
+            ? "fragile:調參勝過預設但參數不穩、疑似 curve-fit"
+            : "marginal:調參略勝預設、穩定度中等、需更多資料";
 
     private static StrategyConfig WithParams(StrategyConfig b, Dictionary<string, object>? p) => new()
     {

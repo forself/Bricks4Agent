@@ -97,4 +97,21 @@ public class GenericWalkForwardOptimizerTests
         var r = GenericWalkForwardOptimizer.Optimize(new SuperTrendStrategy(), bars, cfg, 300, 90);
         r.Error.Should().NotBeNull();
     }
+
+    // ── verdict 邏輯(用實測 4 幣的真實數字鎖死;舊版會把這些誤判)──
+    [Theory]
+    // BTC 1d:opt 3.78% 遠輸 def 55% → 該講「用預設」(舊版誤判成 marginal:有改善)
+    [InlineData(3.78, 55.13, 0.81, "use-default")]
+    // ETH/SOL:調參版 OOS 虧錢 → no-edge(SOL 舊版誤判成 robust:調參有效)
+    [InlineData(-6.06, 19.58, 0.7, "no-edge")]
+    [InlineData(-19.95, -7.36, 0.7, "no-edge")]
+    // LINK:opt 75% 真的勝過 def 38% 且參數穩 → robust
+    [InlineData(75.09, 38.44, 0.7, "robust")]
+    // opt 勝 def 但參數亂跳 → fragile
+    [InlineData(10.0, 5.0, 0.3, "fragile")]
+    public void ComputeVerdict_ClassifiesByReturnFirst(double opt, double def, double stab, string expectedPrefix)
+    {
+        var v = GenericWalkForwardOptimizer.ComputeVerdict((decimal)opt, (decimal)def, (decimal)stab);
+        v.Should().StartWith(expectedPrefix);
+    }
 }
