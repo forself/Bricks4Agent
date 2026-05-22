@@ -35,6 +35,9 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
     private const decimal SkewTh = -0.5m;            // 偏度低於此 = 負偏(左尾長)
     private const decimal KurtTh = 1.0m;             // 超額峰度高於此 = 肥尾
     private const decimal TailRiskDiscount = 0.7m;   // 尾部風險高時、多頭信心打折
+    private const decimal FundingHotPct = 0.9m;      // 資金費率百分位高於此 = 多頭過熱(contrarian)
+    private const decimal FundingColdPct = 0.1m;     // 低於此 = 空頭過熱
+    private const decimal FundingDiscount = 0.8m;    // 過熱方向的信心打折
 
     private readonly List<IStrategy> _constituents;
 
@@ -147,6 +150,18 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
             if (action == "buy") confidence *= TailRiskDiscount;
         }
 
+        // 資金費率擁擠閘門:funding 在近期極端高 = 多頭過熱(contrarian)→ 砍多頭;極端低 = 空頭過熱 → 砍空頭。
+        // 與方向正交、純風控;無 perp 資料時 fb=null 自動降級(不影響行為)。
+        var fb = FundingBias.Compute(bars, HurstLookback);
+        decimal fundingGate = 0m;
+        if (fb != null)
+        {
+            if (fb.Value.FundingPercentile > FundingHotPct && action == "buy")
+            { confidence *= FundingDiscount; fundingGate = 1m; }
+            else if (fb.Value.FundingPercentile < FundingColdPct && action == "sell")
+            { confidence *= FundingDiscount; fundingGate = -1m; }
+        }
+
         // agreement 複用第一遍的 signals、不再重跑成員(回測時省一半成員 Evaluate)
         var agreements = _constituents.Count(s => signals[s.Name].Action == action);
         var agreementRatio = _constituents.Count == 0 ? 0m
@@ -158,6 +173,10 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
         indicators["skew"]            = dist?.Skew ?? 0m;
         indicators["kurtosis"]        = dist?.Kurtosis ?? 0m;
         indicators["tail_risk"]       = tailRisk;
+        indicators["funding_rate"]    = fb?.FundingRate ?? 0m;
+        indicators["funding_pctile"]  = fb?.FundingPercentile ?? -1m;
+        indicators["oi_change_pct"]   = fb?.OiChangePct ?? 0m;
+        indicators["funding_gate"]    = fundingGate;
         indicators["agreement_ratio"] = agreementRatio;
         indicators["buy_score"]       = Math.Round(buyScore, 4);
         indicators["sell_score"]      = Math.Round(sellScore, 4);
@@ -171,7 +190,7 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
             Exchange   = config.Exchange,
             Action     = action,
             Confidence = Math.Round(confidence, 2),
-            Reason     = $"[性格:{charLabel} H={(hurst.HasValue ? hurst.Value.ToString("F3") : "n/a")} vol={(volPct.HasValue ? volPct.Value.ToString("P0") : "n/a")}{(tailRisk == 1m ? " 尾部風險:砍多頭" : "")}] "
+            Reason     = $"[性格:{charLabel} H={(hurst.HasValue ? hurst.Value.ToString("F3") : "n/a")} vol={(volPct.HasValue ? volPct.Value.ToString("P0") : "n/a")}{(tailRisk == 1m ? " 尾部風險:砍多頭" : "")}{(fundingGate != 0m ? $" funding擁擠:砍{(fundingGate == 1m ? "多" : "空")}" : "")}] "
                          + string.Join(" | ", reasonParts),
             Interval   = config.Interval,
             Indicators = indicators,

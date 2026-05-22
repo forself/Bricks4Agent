@@ -78,4 +78,6 @@ public class BarData
     public decimal Low    { get; set; }
     public decimal Close  { get; set; }
     public decimal Volume { get; set; }
+    public decimal? FundingRate  { get; set; }   // 永續資金費率(perp 才有;非 perp/無資料 = null)
+    public decimal? OpenInterest { get; set; }   // 未平倉量(perp 才有;非 perp/無資料 = null)
 }

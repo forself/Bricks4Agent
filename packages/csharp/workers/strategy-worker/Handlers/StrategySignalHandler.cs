@@ -303,6 +303,8 @@ public class StrategySignalHandler : ICapabilityHandler
                 Low      = b.TryGetProperty("low",   out var l)  ? l.GetDecimal()  : 0,
                 Close    = b.TryGetProperty("close", out var c)  ? c.GetDecimal()  : 0,
                 Volume   = b.TryGetProperty("volume", out var v) ? v.GetDecimal()  : 0,
+                FundingRate  = b.TryGetProperty("funding_rate",  out var fr) && fr.ValueKind == JsonValueKind.Number ? fr.GetDecimal() : null,
+                OpenInterest = b.TryGetProperty("open_interest", out var oiv) && oiv.ValueKind == JsonValueKind.Number ? oiv.GetDecimal() : null,
             });
         }
         return bars;
@@ -323,19 +325,7 @@ public class StrategySignalHandler : ICapabilityHandler
         if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
             return (false, null, "Missing 'bars' array");
 
-        var bars = new List<BarData>();
-        foreach (var b in barsEl.EnumerateArray())
-        {
-            bars.Add(new BarData
-            {
-                OpenTime = b.TryGetProperty("open_time", out var ot) ? DateTime.Parse(ot.GetString()!) : DateTime.MinValue,
-                Open  = b.TryGetProperty("open",  out var o) ? o.GetDecimal() : 0,
-                High  = b.TryGetProperty("high",  out var h) ? h.GetDecimal() : 0,
-                Low   = b.TryGetProperty("low",   out var l) ? l.GetDecimal() : 0,
-                Close = b.TryGetProperty("close", out var c) ? c.GetDecimal() : 0,
-                Volume = b.TryGetProperty("volume", out var v) ? v.GetDecimal() : 0,
-            });
-        }
+        var bars = ParseBars(barsEl);
 
         var config = new StrategyConfig
         {

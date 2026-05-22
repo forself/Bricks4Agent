@@ -64,6 +64,20 @@ public class StrategyOrthogonalIndicatorTests
         d.Value.Kurtosis.Should().BeGreaterThan(0m);  // 極端值 → 肥尾
     }
 
+    // ── FundingBias ──────────────────────────────────────────────────────
+    [Fact]
+    public void FundingBias_NoFundingData_ReturnsNull()
+        => FundingBias.Compute(FromReturns(PersistentReturns(60, 1))).Should().BeNull();
+
+    [Fact]
+    public void FundingBias_ComputesPercentileAndOiChange()
+    {
+        var fb = FundingBias.Compute(FundingBars(120));
+        fb.Should().NotBeNull();
+        fb!.Value.FundingPercentile.Should().BeInRange(0m, 1m);
+        fb.Value.OiChangePct.Should().BeGreaterThan(0m);  // OI 遞增
+    }
+
     // ── HurstStrategy ────────────────────────────────────────────────────
     [Fact]
     public void HurstStrategy_IsOptimizable()
@@ -166,5 +180,21 @@ public class StrategyOrthogonalIndicatorTests
         for (int i = 0; i < n; i++) r[i] = 0.004;
         for (int i = 9; i < n; i += 12) r[i] = -0.06;
         return r;
+    }
+
+    /// <summary>填了遞增 funding/OI 的合成 bar(給 FundingBias 測試用)。</summary>
+    private static List<BarData> FundingBars(int n)
+    {
+        var bars = new List<BarData>();
+        var t0 = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < n; i++)
+            bars.Add(new BarData
+            {
+                OpenTime = t0.AddHours(i * 4),
+                Open = 100m, High = 101m, Low = 99m, Close = 100m, Volume = 1_000_000m,
+                FundingRate = 0.0001m * i,
+                OpenInterest = 1000m + i * 10m,
+            });
+        return bars;
     }
 }

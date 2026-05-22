@@ -41,6 +41,9 @@ public class CharacterEnsembleTests
         sig.Indicators.Should().ContainKey("skew");
         sig.Indicators.Should().ContainKey("kurtosis");
         sig.Indicators.Should().ContainKey("tail_risk");
+        sig.Indicators.Should().ContainKey("funding_rate");
+        sig.Indicators.Should().ContainKey("funding_pctile");
+        sig.Indicators.Should().ContainKey("funding_gate");
     }
 
     [Fact]
