@@ -30,6 +30,13 @@ public class FibonacciStrategy : IStrategy
     private const int SwingLookback = 50;   // 從最近 50 根 K 線找擺動
     private const int TrendSmaPeriod = 50;  // 用 SMA-50 判斷趨勢
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        // 進場區上下界(回撤 ratio)。預設 0.382–0.707(用戶 AnthonyLee 修正版:0.707 也算有效進場)。
+        ["fib_zone_low"]  = new() { Type = "decimal", Default = 0.382m, Choices = new object[] { 0.236m, 0.382m, 0.5m },           Description = "進場區下界(回撤 ratio)" },
+        ["fib_zone_high"] = new() { Type = "decimal", Default = 0.707m, Choices = new object[] { 0.618m, 0.707m, 0.786m, 0.886m }, Description = "進場區上界(0.707 為修正版預設)" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
         if (bars.Count < Math.Max(SwingLookback, TrendSmaPeriod) + 2)
@@ -51,7 +58,9 @@ public class FibonacciStrategy : IStrategy
 
         var levels = FibonacciLevels.Levels(high, low, direction);
         var retRatio = FibonacciLevels.RetracementRatio(price, high, low);
-        var inZone = FibonacciLevels.IsInGoldenZone(price, high, low, direction);
+        decimal zoneLow  = config.GetParam("fib_zone_low", 0.382m);
+        decimal zoneHigh = config.GetParam("fib_zone_high", 0.707m);
+        var inZone = retRatio >= zoneLow && retRatio <= zoneHigh;
 
         // 擴展位停利 + 擺動低點停損（只在多頭進場時鎖定，交給回測引擎 / 真實下單觸發）
         var extensions = FibonacciLevels.ExtensionLevels(high, low, direction);
@@ -90,9 +99,9 @@ public class FibonacciStrategy : IStrategy
                 reason = $"In Fib golden zone ({retRatio:P0}) but no bounce/rejection yet — waiting confirmation";
             }
         }
-        else if (retRatio < 0.382m)
+        else if (retRatio < zoneLow)
         {
-            reason = $"Below golden zone (ratio={retRatio:P0}) — too deep, waiting";
+            reason = $"Below entry zone (ratio={retRatio:P0}) — too deep, waiting";
         }
         else
         {

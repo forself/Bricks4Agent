@@ -20,11 +20,11 @@ namespace StrategyWorker.Engine.Indicators;
 /// </summary>
 public static class FibonacciLevels
 {
-    // 標準 Fibonacci 回撤比率
-    public static readonly decimal[] RetracementRatios = { 0.236m, 0.382m, 0.500m, 0.618m, 0.786m };
+    // 回撤比率 —— 用戶(AnthonyLee)修正版:在標準 Fib 上補諧波味點位 0.707 / 0.886
+    public static readonly decimal[] RetracementRatios = { 0.236m, 0.382m, 0.500m, 0.618m, 0.707m, 0.786m, 0.886m };
 
-    // 延伸比率（突破擺動後的目標）
-    public static readonly decimal[] ExtensionRatios = { 1.272m, 1.618m, 2.000m };
+    // 延伸比率(突破擺動後的目標)—— 修正版:補 1.13 / 1.33 / 1.382 / 1.5 / 2.24
+    public static readonly decimal[] ExtensionRatios = { 1.13m, 1.272m, 1.33m, 1.382m, 1.500m, 1.618m, 2.000m, 2.24m };
 
     /// <summary>
     /// 從最近 lookback 根 K 線找擺動高低點。
