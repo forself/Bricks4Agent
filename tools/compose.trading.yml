@@ -51,6 +51,15 @@ services:
       AUTOTRADER_ATR_PERIOD: "${AUTOTRADER_ATR_PERIOD:-}"
       AUTOTRADER_ATR_INTERVAL: "${AUTOTRADER_ATR_INTERVAL:-}"
 
+      # 全倉（cross margin）曝險比例 sizing（opt-in、預設關 → 走既有 risk/SL sizing）。
+      #  - EXPOSURE_PCT >0：每倉 notional = EXPOSURE_PCT% × 帳戶總資金（風控刻度=總曝險/總資金、非 per-trade SL%）
+      #  - MAX_PORTFOLIO_EXPOSURE_PCT：所有倉 notional 總和 / balance 上限（0 = 不限）
+      #  - DISABLE_LEV_SL_CAP=true：SL 不收緊到強平距離內、抱深回撤等反彈
+      #    ⚠️ 只在 BingX 該合約已設「全倉(Cross)」時才開；逐倉(Isolated)+無 SL cap = 直接爆倉。
+      AUTOTRADER_EXPOSURE_PCT: "${AUTOTRADER_EXPOSURE_PCT:-}"
+      AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT: "${AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT:-}"
+      AUTOTRADER_DISABLE_LEV_SL_CAP: "${AUTOTRADER_DISABLE_LEV_SL_CAP:-}"
+
       # Internal bot auth：bot-node container 帶 X-Internal-Bot-Token 認證、broker 比對此 env
       BOT_INTERNAL_TOKEN: "${BOT_INTERNAL_TOKEN:-}"
       # 手機按鈕審核：bot-node 對 admin endpoints 帶 X-Internal-Bot-Admin-Token、broker 認此 env 賜 role_admin
