@@ -21,24 +21,36 @@ public class BollingerStrategy : IStrategy
     public int MinBars => 25;
     public decimal MinCapitalUsdt => 100m;
 
+    // 預設值(= 不帶 Params 時的行為);可被通用 walk-forward 優化器掃描
     private const int Period = 20;
     private const decimal KSigma = 2m;
     private const decimal SqueezeThreshold = 3m;  // bandWidth < 3% 視為 squeeze，不進場
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["bb_period"]            = new() { Type = "int",     Default = Period,           Min = 10,   Max = 40,   Step = 2,    Description = "均線/標準差週期" },
+        ["bb_k_sigma"]           = new() { Type = "decimal", Default = KSigma,           Min = 1.5m, Max = 3.0m, Step = 0.5m, Description = "上下軌標準差倍數" },
+        ["bb_squeeze_threshold"] = new() { Type = "decimal", Default = SqueezeThreshold, Min = 1m,   Max = 5m,   Step = 1m,   Description = "squeeze 帶寬% 門檻(以下不進場)" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        if (bars.Count < Period + 1) return Hold(config, "Not enough data for Bollinger");
+        int period      = config.GetParam("bb_period", Period);
+        decimal kSigma  = config.GetParam("bb_k_sigma", KSigma);
+        decimal squeeze = config.GetParam("bb_squeeze_threshold", SqueezeThreshold);
+
+        if (bars.Count < period + 1) return Hold(config, "Not enough data for Bollinger");
 
         var current = bars[^1];
         var price = current.Close;
-        var b = BollingerBands.Compute(bars, price, Period, KSigma);
+        var b = BollingerBands.Compute(bars, price, period, kSigma);
         if (b == null) return Hold(config, "Failed to compute bands");
 
         string action = "hold";
         decimal confidence = 0.5m;
         string reason;
 
-        if (b.BandWidth < SqueezeThreshold)
+        if (b.BandWidth < squeeze)
         {
             reason = $"Bollinger squeeze (width={b.BandWidth:F2}%) — 波動過低，等方向確認";
         }

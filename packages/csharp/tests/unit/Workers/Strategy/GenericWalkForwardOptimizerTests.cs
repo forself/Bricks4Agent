@@ -67,12 +67,23 @@ public class GenericWalkForwardOptimizerTests
     [Fact]
     public void Optimize_NoSchema_ReturnsError()
     {
-        // 用一個沒有 ParamSchema 的策略（bollinger 沒 override）
+        // 用測試專用的空 schema stub（不綁定某個真實策略是否有 schema → 之後加 schema 也不破）
         var bars = Synthetic(400);
         var cfg = new StrategyConfig { Symbol = "X", Exchange = "bingx", Interval = "1d" };
-        var r = GenericWalkForwardOptimizer.Optimize(new BollingerStrategy(), bars, cfg, 200, 60);
+        var r = GenericWalkForwardOptimizer.Optimize(new NoSchemaStrategy(), bars, cfg, 200, 60);
         r.Error.Should().NotBeNull();
         r.WindowCount.Should().Be(0);
+    }
+
+    // 永遠無 ParamSchema(沿用 IStrategy 預設空 schema),專供「無 schema → 回 error」測試用。
+    private sealed class NoSchemaStrategy : IStrategy
+    {
+        public string Name => "_no_schema_test";
+        public Signal Evaluate(List<BarData> bars, StrategyConfig config) => new()
+        {
+            SignalId = "stub", Strategy = Name, Symbol = config.Symbol,
+            Exchange = config.Exchange, Action = "hold", Confidence = 0, Interval = config.Interval,
+        };
     }
 
     [Fact]
