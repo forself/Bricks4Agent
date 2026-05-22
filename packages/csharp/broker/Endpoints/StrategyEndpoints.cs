@@ -153,6 +153,41 @@ public static class StrategyEndpoints
             return ToResponse(result);
         });
 
+        // 組合層 walk-forward:N 條策略各半資金、合併權益 → 捕捉去相關紅利。broker 抓 funding-bars 後派 portfolio_wf。
+        // GET /api/v1/strategy/portfolio-wf?strategies=rsi_stoch,mfi&symbol=BTC-USDT&interval=1d&limit=1500&train_bars=365&test_bars=90
+        strategy.MapGet("/portfolio-wf", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpContext ctx, HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("strategy.signal") || !registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("strategy.signal or quote.ohlcv worker not connected"));
+
+            var strategies = req.Query["strategies"].ToString()
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var symbol   = req.Query["symbol"].ToString();
+            var interval = req.Query.TryGetValue("interval", out var iv) ? iv.ToString() : "1d";
+            var limit    = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 1500;
+            var train    = req.Query.TryGetValue("train_bars", out var tb) && int.TryParse(tb, out var tbi) ? tbi : 365;
+            var test     = req.Query.TryGetValue("test_bars", out var tt) && int.TryParse(tt, out var tti) ? tti : 90;
+            if (strategies.Length == 0 || string.IsNullOrEmpty(symbol))
+                return Results.Ok(ApiResponseHelper.Error("strategies + symbol query params required"));
+
+            // get_bars_funding：bars 帶 funding_rate,讓組合回測也扣資金費(誠實)
+            var barsRes = await dispatcher.DispatchAsync(BuildRequest(ctx, "quote.ohlcv", "get_bars_funding",
+                JsonSerializer.Serialize(new { symbol, interval, limit })));
+            if (!barsRes.Success) return Results.Ok(ApiResponseHelper.Error($"get_bars_funding failed: {barsRes.ErrorMessage}"));
+            var barsDoc = JsonDocument.Parse(barsRes.ResultPayload ?? "{}").RootElement;
+            if (!barsDoc.TryGetProperty("bars", out var barsArr) || barsArr.ValueKind != JsonValueKind.Array)
+                return Results.Ok(ApiResponseHelper.Error("no bars for symbol"));
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                strategies, bars = barsArr, symbol, interval, train_bars = train, test_bars = test,
+            });
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "strategy.signal", "portfolio_wf", payload));
+            return ToResponse(result);
+        });
+
         strategy.MapGet("/compare", async (
             Broker.Services.StrategyComparisonService svc, HttpRequest req) =>
         {

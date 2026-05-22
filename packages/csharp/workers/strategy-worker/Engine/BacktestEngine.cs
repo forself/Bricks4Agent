@@ -435,4 +435,112 @@ public class BacktestEngine
         int n = sorted.Count;
         return n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2m;
     }
+
+    /// <summary>
+    /// 組合層回測(portfolio layer)—— 把 N 條策略「各用 1/N 資金、獨立持倉」、逐根把權益曲線相加。
+    /// 這才能捕捉「不相關 edge 合在一起波動下降」的紅利(投票會在訊號不一致時退成 hold、反而抹掉紅利)。
+    /// 各 sub 用同一 loop 起點(lookback) → EquityCurve 對齊 index、可逐點相加。Sharpe/DD 從合併權益算。
+    /// </summary>
+    public static BacktestResult RunPortfolio(
+        List<IStrategy> strategies, List<BarData> bars, StrategyConfig config,
+        decimal initialCash = 100_000, decimal commission = 0.001m,
+        int tradeStartIndex = 0, decimal slippagePct = 0m, bool applyFunding = false)
+    {
+        var result = new BacktestResult
+        {
+            Strategy = "portfolio", Symbol = config.Symbol, InitialCash = initialCash, TotalBars = bars.Count,
+            StartDate = bars.FirstOrDefault()?.OpenTime ?? DateTime.MinValue,
+            EndDate = bars.LastOrDefault()?.OpenTime ?? DateTime.MinValue,
+        };
+        if (strategies == null || strategies.Count == 0 || bars.Count < 50) return result;
+
+        var per = initialCash / strategies.Count;
+        var subs = strategies
+            .Select(s => Run(s, bars, config, per, commission, null, tradeStartIndex, slippagePct, applyFunding))
+            .ToList();
+
+        int len = subs.Min(b => b.EquityCurve.Count);
+        if (len == 0) return result;
+
+        decimal peak = initialCash, maxDd = 0m, prev = initialCash;
+        var dailyRet = new List<decimal>();
+        for (int t = 0; t < len; t++)
+        {
+            decimal eq = 0m;
+            foreach (var b in subs) eq += b.EquityCurve[t].Value;
+            result.EquityCurve.Add(new EquityPoint { Date = subs[0].EquityCurve[t].Date, Value = eq });
+            if (prev > 0) dailyRet.Add((eq - prev) / prev);
+            prev = eq;
+            if (eq > peak) peak = eq;
+            var dd = peak - eq; if (dd > maxDd) maxDd = dd;
+        }
+        foreach (var b in subs) result.Trades.AddRange(b.Trades);
+
+        var finalValue = subs.Sum(b => b.FinalValue);
+        result.FinalValue     = finalValue;
+        result.TotalReturn    = Math.Round(finalValue - initialCash, 2);
+        result.TotalReturnPct = Math.Round((finalValue - initialCash) / initialCash * 100, 2);
+        result.TotalTrades    = result.Trades.Count;
+        result.WinTrades      = result.Trades.Count(t => t.Pnl > 0);
+        result.LoseTrades     = result.Trades.Count(t => t.Pnl <= 0);
+        result.WinRate        = result.TotalTrades > 0 ? Math.Round((decimal)result.WinTrades / result.TotalTrades * 100, 1) : 0;
+        result.MaxDrawdown    = Math.Round(maxDd, 2);
+        result.MaxDrawdownPct = peak > 0 ? Math.Round(maxDd / peak * 100, 2) : 0;
+        if (dailyRet.Count > 1)
+        {
+            var avg = dailyRet.Average();
+            var std = (decimal)Math.Sqrt((double)dailyRet.Select(r => (r - avg) * (r - avg)).Average());
+            result.SharpeRatio = std > 0 ? Math.Round(avg / std * (decimal)Math.Sqrt(252), 2) : 0;
+        }
+        return result;
+    }
+
+    /// <summary>組合層 walk-forward:同 RunWalkForward 的切窗,但每窗用 RunPortfolio(N 條各半)。</summary>
+    public static WalkForwardResult RunPortfolioWalkForward(
+        List<IStrategy> strategies, List<BarData> bars, StrategyConfig config,
+        int trainBars = 365, int testBars = 90, int stride = 90,
+        decimal initialCash = 100_000, decimal commission = 0.001m,
+        decimal slippagePct = 0m, bool applyFunding = false)
+    {
+        var result = new WalkForwardResult
+        {
+            Strategy = "portfolio", Symbol = config.Symbol,
+            TrainBars = trainBars, TestBars = testBars, Stride = stride,
+        };
+        var requiredPerFold = trainBars + testBars;
+        if (bars.Count < requiredPerFold || trainBars < 50 || testBars < 10 || stride < 1) return result;
+
+        int foldIdx = 0;
+        for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
+        {
+            var trainSlice = bars.GetRange(start, trainBars);
+            var testSlice  = bars.GetRange(start + trainBars, testBars);
+            var trainBt = RunPortfolio(strategies, trainSlice, config, initialCash, commission,
+                slippagePct: slippagePct, applyFunding: applyFunding);
+            var testWindow = bars.GetRange(start, trainBars + testBars);
+            var testBt  = RunPortfolio(strategies, testWindow, config, initialCash, commission,
+                tradeStartIndex: trainBars, slippagePct: slippagePct, applyFunding: applyFunding);
+            result.Folds.Add(new WalkForwardFold
+            {
+                FoldIndex = foldIdx++,
+                TrainStart = trainSlice.First().OpenTime, TrainEnd = trainSlice.Last().OpenTime,
+                TestStart = testSlice.First().OpenTime, TestEnd = testSlice.Last().OpenTime,
+                Train = trainBt, Test = testBt,
+            });
+        }
+        if (result.Folds.Count == 0) return result;
+
+        var testReturns = result.Folds.Select(f => f.Test!.TotalReturnPct).ToList();
+        var trainReturns = result.Folds.Select(f => f.Train!.TotalReturnPct).ToList();
+        var testSharpes = result.Folds.Select(f => f.Test!.SharpeRatio).ToList();
+        result.TotalFolds = result.Folds.Count;
+        result.PositiveTestFolds = testReturns.Count(r => r > 0);
+        result.AvgTestReturnPct = Math.Round(testReturns.Average(), 2);
+        result.MedianTestReturnPct = Math.Round(Median(testReturns), 2);
+        result.AvgTestSharpe = Math.Round(testSharpes.Average(), 2);
+        result.AvgTestWinRate = Math.Round(result.Folds.Select(f => f.Test!.WinRate).Average(), 2);
+        result.WorstTestDdPct = Math.Round(result.Folds.Select(f => f.Test!.MaxDrawdownPct).Max(), 2);
+        result.IsOosReturnGap = Math.Round(trainReturns.Average() - testReturns.Average(), 2);
+        return result;
+    }
 }

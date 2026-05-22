@@ -37,6 +37,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "optimize_wf"  => OptimizeWf(payload),                            // 通用 walk-forward 參數優化（任何有 ParamSchema 的策略）
             "walk_forward" => WalkForward(payload),                          // 既有 optimizer 用
             "backtest_walk_forward" => BacktestWalkForward(payload),         // #1 新：通用 train/test 滑窗
+            "portfolio_wf" => PortfolioWf(payload),                          // 組合層 walk-forward（N 條各半、合併權益 → 去相關紅利）
             "harmonic_aggregate" => HarmonicAggregate(payload),              // 策略級 EV / 勝率彙整
             "scan"         => Scan(payload),                                 // universe 掃描 → Top N 候選
             "position_decision" => PositionDecide(payload),                  // 持倉 ADD/HOLD/TRIM/EXIT
@@ -760,6 +761,58 @@ public class StrategySignalHandler : ICapabilityHandler
                 test_max_drawdown_pct = f.Test?.MaxDrawdownPct ?? 0,
                 test_trades     = f.Test?.TotalTrades ?? 0,
                 test_equity_curve = f.Test?.EquityCurve.Select(e => new { date = e.Date, value = e.Value }),
+            }),
+        });
+        return (true, json, null);
+    }
+
+    // ── 組合層 walk-forward（N 條各半資金、合併權益 → 捕捉去相關紅利）──
+    // payload: { strategies:[...], bars, symbol, interval, train_bars?, test_bars?, stride?,
+    //            initial_cash?, commission?, slippage_pct?, apply_funding? }
+    private (bool, string?, string?) PortfolioWf(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+
+        if (!doc.TryGetProperty("strategies", out var stratsEl) || stratsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'strategies' array");
+        var members = stratsEl.EnumerateArray().Select(s => s.GetString() ?? "").Where(s => s.Length > 0)
+            .Select(n => _registry.Get(n)).Where(s => s != null).Select(s => s!).ToList();
+        if (members.Count == 0) return (false, null, "no valid strategies resolved");
+
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+        var bars = ParseBars(barsEl);   // 帶 funding_rate → 成本模型可算資金費
+
+        var config = new StrategyConfig
+        {
+            Symbol   = doc.TryGetProperty("symbol",   out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var exg) ? exg.GetString() ?? "" : "",
+            Interval = doc.TryGetProperty("interval", out var iv)  ? iv.GetString() ?? "1d" : "1d",
+        };
+        var cash       = doc.TryGetProperty("initial_cash", out var ic) ? ic.GetDecimal() : 100_000m;
+        var commission = doc.TryGetProperty("commission",   out var cm) ? cm.GetDecimal() : 0.001m;
+        var trainBars  = doc.TryGetProperty("train_bars",   out var tb) ? tb.GetInt32() : 365;
+        var testBars   = doc.TryGetProperty("test_bars",    out var tt) ? tt.GetInt32() : 90;
+        var stride     = doc.TryGetProperty("stride",       out var st) ? st.GetInt32() : 90;
+        var slippage   = doc.TryGetProperty("slippage_pct", out var sp) ? sp.GetDecimal() : 0.0005m;
+        var funding    = !doc.TryGetProperty("apply_funding", out var afv) || afv.ValueKind != JsonValueKind.False;
+
+        var r = BacktestEngine.RunPortfolioWalkForward(members, bars, config, trainBars, testBars, stride,
+            cash, commission, slippage, funding);
+        if (r.Folds.Count == 0)
+            return (false, null, $"not enough bars: {bars.Count} train={trainBars} test={testBars}");
+
+        var json = JsonSerializer.Serialize(new
+        {
+            strategies = members.Select(m => m.Name).ToList(), symbol = r.Symbol,
+            total_folds = r.TotalFolds, positive_test_folds = r.PositiveTestFolds,
+            avg_test_return_pct = r.AvgTestReturnPct, avg_test_sharpe = r.AvgTestSharpe,
+            worst_test_dd_pct = r.WorstTestDdPct, is_oos_return_gap = r.IsOosReturnGap,
+            folds = r.Folds.Select(f => new
+            {
+                test_start = f.TestStart, test_return_pct = f.Test!.TotalReturnPct,
+                test_sharpe = f.Test!.SharpeRatio, test_max_drawdown_pct = f.Test!.MaxDrawdownPct,
             }),
         });
         return (true, json, null);
