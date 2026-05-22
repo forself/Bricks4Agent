@@ -50,6 +50,20 @@ public class StrategyOrthogonalIndicatorTests
         vr.Value.Atr.Should().BeGreaterThan(0m);
     }
 
+    // ── ReturnDistribution ───────────────────────────────────────────────
+    [Fact]
+    public void ReturnDistribution_TooFewBars_ReturnsNull()
+        => ReturnDistribution.Compute(FromReturns(AntiPersistentReturns(20, 1))).Should().BeNull();
+
+    [Fact]
+    public void ReturnDistribution_DetectsNegativeSkewAndFatTails()
+    {
+        var d = ReturnDistribution.Compute(FromReturns(CrashReturns(160)));
+        d.Should().NotBeNull();
+        d!.Value.Skew.Should().BeLessThan(0m);        // 偶發暴跌 → 負偏
+        d.Value.Kurtosis.Should().BeGreaterThan(0m);  // 極端值 → 肥尾
+    }
+
     // ── HurstStrategy ────────────────────────────────────────────────────
     [Fact]
     public void HurstStrategy_IsOptimizable()
@@ -142,6 +156,15 @@ public class StrategyOrthogonalIndicatorTests
             double mag = 0.005 + 0.01 * ((s >> 8) / (double)(1 << 24));  // 0.5%..1.5%
             r[i] = (i % 2 == 0 ? 1 : -1) * mag;
         }
+        return r;
+    }
+
+    /// <summary>平時小漲、週期性暴跌 → 負偏 + 肥尾(尾部風險典型形狀)。</summary>
+    private static double[] CrashReturns(int n)
+    {
+        var r = new double[n];
+        for (int i = 0; i < n; i++) r[i] = 0.004;
+        for (int i = 9; i < n; i += 12) r[i] = -0.06;
         return r;
     }
 }

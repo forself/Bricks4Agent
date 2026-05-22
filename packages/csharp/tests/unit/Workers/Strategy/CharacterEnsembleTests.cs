@@ -16,7 +16,7 @@ public class CharacterEnsembleTests
     [Fact]
     public void IsOptimizable()
         => CharacterAdaptiveEnsembleStrategy.DefaultFrom(Reg()).ParamSchema.Keys
-            .Should().Contain(new[] { "char_trend_th", "char_meanrev_th" });
+            .Should().Contain(new[] { "char_trend_th", "char_meanrev_th", "char_skew_th", "char_kurt_th" });
 
     [Fact]
     public void TooFewBars_Holds()
@@ -38,6 +38,9 @@ public class CharacterEnsembleTests
         sig.Indicators.Should().ContainKey("hurst");
         sig.Indicators.Should().ContainKey("vol_percentile");
         sig.Indicators.Should().ContainKey("character");
+        sig.Indicators.Should().ContainKey("skew");
+        sig.Indicators.Should().ContainKey("kurtosis");
+        sig.Indicators.Should().ContainKey("tail_risk");
     }
 
     [Fact]

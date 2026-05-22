@@ -32,6 +32,9 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
     private const decimal MeanRevTh = 0.45m;
     private const decimal HighVolPct = 0.8m;
     private const decimal SqueezePct = 0.2m;
+    private const decimal SkewTh = -0.5m;            // 偏度低於此 = 負偏(左尾長)
+    private const decimal KurtTh = 1.0m;             // 超額峰度高於此 = 肥尾
+    private const decimal TailRiskDiscount = 0.7m;   // 尾部風險高時、多頭信心打折
 
     private readonly List<IStrategy> _constituents;
 
@@ -46,6 +49,8 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
     {
         ["char_trend_th"]   = new() { Type = "decimal", Default = 0.55m, Choices = new object[] { 0.52m, 0.55m, 0.58m, 0.6m }, Description = "判定趨勢市的 Hurst 門檻(以上放大順勢類)" },
         ["char_meanrev_th"] = new() { Type = "decimal", Default = 0.45m, Choices = new object[] { 0.4m, 0.42m, 0.45m, 0.48m }, Description = "判定均值回歸市的 Hurst 門檻(以下放大回歸類)" },
+        ["char_skew_th"]    = new() { Type = "decimal", Default = -0.5m, Choices = new object[] { -0.3m, -0.5m, -0.7m, -1.0m }, Description = "判定負偏(尾部風險)的偏度門檻" },
+        ["char_kurt_th"]    = new() { Type = "decimal", Default = 1.0m, Choices = new object[] { 0.5m, 1.0m, 2.0m, 3.0m }, Description = "判定肥尾(尾部風險)的超額峰度門檻" },
     };
 
     /// <summary>
@@ -79,10 +84,13 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
 
         var trendTh   = config.GetParam("char_trend_th", TrendTh);
         var meanRevTh = config.GetParam("char_meanrev_th", MeanRevTh);
+        var skewTh    = config.GetParam("char_skew_th", SkewTh);
+        var kurtTh    = config.GetParam("char_kurt_th", KurtTh);
 
-        // meta 特徵:Hurst(性格)+ 波動率百分位。算不出來就降級成「不偏」(乘數=1)。
+        // meta 特徵:Hurst(性格)+ 波動率百分位 + 報酬分布(尾部風險)。算不出來就降級。
         var hurst  = Hurst.Compute(bars, HurstLookback);
         var volPct = VolatilityRegime.Compute(bars)?.Percentile;
+        var dist   = ReturnDistribution.Compute(bars, HurstLookback);
 
         decimal character = 0m;  // 1=趨勢、-1=回歸、0=隨機/未知
         if (hurst != null)
@@ -130,6 +138,15 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
         else if (sellScore > buyScore && sellWeight > 0m) { action = "sell"; confidence = sellScore / sellWeight; }
         else                                              { action = "hold"; confidence = 0.3m; }
 
+        // 尾部風險閘門:負偏 + 高峰 = 下行脆弱(易暴跌)。風險不對稱、做多更危險,
+        // 故只砍多頭信心(不動做空/觀望)。這是純風控維度、與方向判斷正交。
+        decimal tailRisk = 0m;
+        if (dist != null && dist.Value.Skew < skewTh && dist.Value.Kurtosis > kurtTh)
+        {
+            tailRisk = 1m;
+            if (action == "buy") confidence *= TailRiskDiscount;
+        }
+
         var agreements = _constituents.Count(s => SafeEvaluate(s, bars, config).Action == action);
         var agreementRatio = _constituents.Count == 0 ? 0m
             : Math.Round((decimal)agreements / _constituents.Count, 4);
@@ -137,6 +154,9 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
         indicators["hurst"]           = hurst ?? -1m;     // -1 = 算不出(資料不足)
         indicators["vol_percentile"]  = volPct ?? -1m;
         indicators["character"]       = character;
+        indicators["skew"]            = dist?.Skew ?? 0m;
+        indicators["kurtosis"]        = dist?.Kurtosis ?? 0m;
+        indicators["tail_risk"]       = tailRisk;
         indicators["agreement_ratio"] = agreementRatio;
         indicators["buy_score"]       = Math.Round(buyScore, 4);
         indicators["sell_score"]      = Math.Round(sellScore, 4);
@@ -150,7 +170,7 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
             Exchange   = config.Exchange,
             Action     = action,
             Confidence = Math.Round(confidence, 2),
-            Reason     = $"[性格:{charLabel} H={(hurst.HasValue ? hurst.Value.ToString("F3") : "n/a")} vol={(volPct.HasValue ? volPct.Value.ToString("P0") : "n/a")}] "
+            Reason     = $"[性格:{charLabel} H={(hurst.HasValue ? hurst.Value.ToString("F3") : "n/a")} vol={(volPct.HasValue ? volPct.Value.ToString("P0") : "n/a")}{(tailRisk == 1m ? " 尾部風險:砍多頭" : "")}] "
                          + string.Join(" | ", reasonParts),
             Interval   = config.Interval,
             Indicators = indicators,
