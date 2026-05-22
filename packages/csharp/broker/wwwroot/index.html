@@ -128,6 +128,29 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
 /* Topology — Sankey */
 .sankey-wrap svg{display:block;width:100%}
 .sankey-edge{transition:stroke-opacity .15s}
+
+/* ── 主容器寬度(原 inline，移出來讓 RWD 能覆蓋）── */
+.page-wrap{max-width:1400px;margin:0 auto;padding:20px}
+
+/* ── 響應式 / 行動端 ─────────────────────────────── */
+@media (max-width:768px){
+  .page-wrap{padding:12px}
+  .hdr{padding:10px 14px;gap:10px}
+  .hdr h1{font-size:16px}
+  .hdr-r{gap:8px}
+  .ct-summary{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .ct-kpi{padding:12px 14px}
+  .ct-kpi .val{font-size:22px}
+  .ct-grid{grid-template-columns:1fr}
+  .ct-toolbar{padding:10px 12px;gap:8px}
+  .stat-g{grid-template-columns:repeat(2,1fr)}
+  .cap-grid{grid-template-columns:1fr}
+}
+@media (max-width:480px){
+  .ct-summary,.stat-g{grid-template-columns:1fr}
+  .hdr h1{font-size:15px}
+  .ct-kpi .val{font-size:20px}
+}
 </style>
 </head>
 <body>
@@ -199,7 +222,7 @@ body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSyste
       <el-button size="small" type="danger" plain @click="doLogout">{{t('logout')}}</el-button>
     </div>
   </div>
-  <div style="max-width:1400px;margin:0 auto;padding:20px">
+  <div class="page-wrap">
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <!-- ── Containers（卡片式重設計） ── -->
       <el-tab-pane :label="t('containers')" name="containers">

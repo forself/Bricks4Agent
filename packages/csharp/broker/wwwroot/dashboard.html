@@ -102,7 +102,11 @@
 
   /* Health gauge — top-left, large */
   #healthBlock { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; }
-  #healthGauge { flex: 1; min-height: 0; }
+  #healthGauge { flex: 1; min-height: 140px; }
+  .health-detail { display: flex; justify-content: space-around; gap: 8px; padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--bd); flex-shrink: 0; }
+  .health-detail .hd-item { text-align: center; }
+  .health-detail .hd-val { font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .health-detail .hd-lbl { font-size: 10px; color: var(--td); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
 
   /* KPI grid — top-right */
   #kpiBlock { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; }
@@ -294,6 +298,12 @@
   <section id="healthBlock">
     <div class="sec-title"><span class="dot"></span> System Health</div>
     <div id="healthGauge"></div>
+    <div class="health-detail" id="healthDetail">
+      <div class="hd-item"><div class="hd-val" id="hdHealthy" style="color:var(--good)">—</div><div class="hd-lbl">Healthy</div></div>
+      <div class="hd-item"><div class="hd-val" id="hdDegraded" style="color:var(--warn)">—</div><div class="hd-lbl">Degraded</div></div>
+      <div class="hd-item"><div class="hd-val" id="hdCritical" style="color:var(--bad)">—</div><div class="hd-lbl">Critical</div></div>
+      <div class="hd-item"><div class="hd-val" id="hdStatus" style="font-size:13px">—</div><div class="hd-lbl">Status</div></div>
+    </div>
   </section>
 
   <!-- KPIs -->
@@ -802,11 +812,18 @@ async function loadAll() {
         const r = await fetch('/api/v1/health/score', { credentials: 'include' });
         const j = await r.json();
         if (j.success) {
-          const score = j.data.overall_score || 0;
+          const d = j.data;
+          const score = d.overall_score || 0;
           healthHistory.push(score);
           if (healthHistory.length > 60) healthHistory.shift();
           renderGauge(score);
           pushSpark('health', score);
+          // 健康明細(讓 health 區的大空間值回票價)
+          const setHd = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+          setHd('hdHealthy',  d.healthy_count  ?? '—');
+          setHd('hdDegraded', d.degraded_count ?? '—');
+          setHd('hdCritical', d.critical_count ?? '—');
+          setHd('hdStatus',   d.overall_status ?? '—');
         }
       } catch (e) {
         renderGauge(0);
@@ -897,11 +914,18 @@ function splitIO(s) {
 function renderDocker(containers) {
   const list = document.getElementById('dockerList');
   const sub = document.getElementById('dockerSub');
+  const dockerBlock = document.getElementById('dockerBlock');
+  const netBlock = document.getElementById('netBlock');
   if (!containers.length) {
-    list.innerHTML = '<div style="color:var(--td);text-align:center;padding:20px;font-size:11px;grid-column:1/-1">no containers (broker 不是 docker 模式 / docker.sock 未掛載)</div>';
+    // 非 docker 模式:收掉這塊死區,把整列 row3 讓給 network（不再顯示空話）
+    if (dockerBlock) dockerBlock.style.display = 'none';
+    if (netBlock) netBlock.style.gridColumn = '1 / -1';
     sub.textContent = '0 containers';
     return;
   }
+  // 有 docker:恢復版面（docker 左、network 右）
+  if (dockerBlock) dockerBlock.style.display = '';
+  if (netBlock) netBlock.style.gridColumn = '2';
   // push history per container
   containers.forEach(c => {
     if (!dockerHistory[c.name]) dockerHistory[c.name] = [];
