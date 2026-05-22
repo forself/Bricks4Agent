@@ -41,6 +41,7 @@ public class StrategySignalHandler : ICapabilityHandler
             "scan"         => Scan(payload),                                 // universe 掃描 → Top N 候選
             "position_decision" => PositionDecide(payload),                  // 持倉 ADD/HOLD/TRIM/EXIT
             "signal_card"  => SignalCard(payload),                           // 多維訊號雷達卡(no LLM)
+            "regime_attribution" => RegimeAttribution(payload),             // regime × 策略歸因:量化「分行情用對策略」改善多少
             "list"         => ListStrategies(),
             _ => (false, (string?)null, $"Unknown route: {route}")
         };
@@ -308,6 +309,57 @@ public class StrategySignalHandler : ICapabilityHandler
             });
         }
         return bars;
+    }
+
+    /// <summary>regime_attribution — 逐 bar 標 regime,算「策略 × regime」表現矩陣,對比最佳單策略 /
+    /// oracle 上限 / regime_adaptive 真實切換,量化「分行情用對策略」改善多少。
+    /// payload: { bars:[...], strategies?:[名稱...], symbol?, exchange?, interval?, warmup?(50) }</summary>
+    private (bool, string?, string?) RegimeAttribution(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (false, null, "Missing payload");
+        var doc = JsonDocument.Parse(payload).RootElement;
+        if (!doc.TryGetProperty("bars", out var barsEl) || barsEl.ValueKind != JsonValueKind.Array)
+            return (false, null, "Missing 'bars' array");
+        var bars = ParseBars(barsEl);
+
+        // 策略列表:payload 給就用;否則一組跨類別單策略 + regime_adaptive(真實切換對照)
+        var strategies = new List<IStrategy>();
+        if (doc.TryGetProperty("strategies", out var stratsEl) && stratsEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in stratsEl.EnumerateArray())
+                if (el.GetString() is { } nm && _registry.Get(nm) is { } st) strategies.Add(st);
+        }
+        else
+        {
+            foreach (var nm in new[] { "sma_cross", "super_trend", "rsi_oversold", "bollinger_bands",
+                                       "donchian", "macd_divergence", "regime_adaptive" })
+                if (_registry.Get(nm) is { } st) strategies.Add(st);
+        }
+        if (strategies.Count == 0) return (false, null, "no valid strategies");
+
+        var warmup = doc.TryGetProperty("warmup", out var w) ? w.GetInt32() : 50;
+        var config = new StrategyConfig
+        {
+            Symbol   = doc.TryGetProperty("symbol",   out var sym) ? sym.GetString() ?? "" : "",
+            Exchange = doc.TryGetProperty("exchange", out var exg) ? exg.GetString() ?? "" : "",
+            Interval = doc.TryGetProperty("interval", out var iv)  ? iv.GetString()  ?? "" : "",
+        };
+
+        var r = RegimeAttributionAnalyzer.Analyze(bars, strategies, config, warmup);
+        var json = JsonSerializer.Serialize(new
+        {
+            analyzed_bars = r.AnalyzedBars,
+            regime_bars = r.RegimeBars,
+            matrix = r.Matrix,
+            strategy_total_pct = r.StrategyTotalPct,
+            per_regime_best = r.PerRegimeBest,
+            best_single_strategy = r.BestSingleStrategy,
+            best_single_return_pct = r.BestSingleReturnPct,
+            oracle_return_pct = r.OracleReturnPct,
+            improvement_pct_vs_best_single = r.ImprovementPctVsBestSingle,
+            error = r.Error,
+        });
+        return (true, json, null);
     }
 
     private (bool, string?, string?) Backtest(string payload)
