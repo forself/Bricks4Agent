@@ -67,7 +67,8 @@ public class BacktestEngine
         StrategyConfig config,
         decimal initialCash = 100_000,
         decimal commission = 0.001m, // 0.1% 手續費
-        List<BarData>? htfBars = null)
+        List<BarData>? htfBars = null,
+        int tradeStartIndex = 0)     // 從第幾根才開始交易/計績效；前面的 bar 只當指標 warmup（walk-forward OOS 用）
     {
         var result = new BacktestResult
         {
@@ -92,8 +93,9 @@ public class BacktestEngine
         var dailyReturns = new List<decimal>();
         decimal prevEquity = initialCash;
 
-        // 從第 50 根 bar 開始（確保有足夠歷史做指標計算）
-        int lookback = Math.Max(config.SmaSlow + 5, 50);
+        // 從第 50 根 bar 開始（確保有足夠歷史做指標計算）；walk-forward OOS 時 tradeStartIndex
+        // 把進場往後推到 test 區間起點，但 Evaluate 仍吃得到前面整段 train 當 warmup（指標不被截斷）。
+        int lookback = Math.Max(Math.Max(config.SmaSlow + 5, 50), tradeStartIndex);
 
         // HTF 指標：保留原 config.HtfBars，每步覆寫成截至當前 LTF 時間的 HTF 切片、結束後還原
         var originalHtf = config.HtfBars;
@@ -344,8 +346,11 @@ public class BacktestEngine
 
             // 訓練窗：直接跑 backtest
             var trainBt = Run(strategy, trainSlice, config, initialCash, commission);
-            // 測試窗：跑 backtest 但 strategy.Evaluate 內部仍只看自己窗內 bars（pure OOS）
-            var testBt  = Run(strategy, testSlice, config, initialCash, commission);
+            // 測試窗（OOS）：餵 [train+test] 整段、但只從 test 起點開始交易（tradeStartIndex=trainBars）。
+            // 這樣指標在 test 區間有完整 train 當 warmup（不被截斷）、又不偷看 test 內未來——
+            // 修掉「bare 90 根 test slice 害 MinBars>90 的策略永遠 hold / 指標被截斷」的方法學 bug。
+            var testWindow = bars.GetRange(start, trainBars + testBars);
+            var testBt  = Run(strategy, testWindow, config, initialCash, commission, tradeStartIndex: trainBars);
 
             result.Folds.Add(new WalkForwardFold
             {

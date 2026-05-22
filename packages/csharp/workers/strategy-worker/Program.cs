@@ -69,6 +69,8 @@ var strategies = new Dictionary<string, IStrategy>
     // 正交基礎指標：Hurst 性格判斷 + 波動率擠壓突破（增加 ensemble 區別性、不跟方向型疊加）
     ["hurst_adaptive"]      = new HurstStrategy(),
     ["volatility_breakout"] = new VolatilityBreakoutStrategy(),
+    // 非價格因子（方向性）：資金費率極端反轉 — 驗證 funding 單獨有沒有 OOS edge
+    ["funding_extreme"]     = new FundingExtremeStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model

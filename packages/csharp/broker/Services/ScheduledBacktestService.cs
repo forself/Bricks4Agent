@@ -83,8 +83,8 @@ public class ScheduledBacktestService : BackgroundService
         // Tier 2 batch
         "donchian", "keltner", "parabolic_sar",
         "cci", "obv", "mfi", "chaikin_mf",
-        // 正交因子策略（Hurst 記憶性 / 波動率突破）
-        "hurst_adaptive", "volatility_breakout",
+        // 正交因子策略（Hurst 記憶性 / 波動率突破 / 資金費率方向性）
+        "hurst_adaptive", "volatility_breakout", "funding_extreme",
     };
     private readonly string[] _strategies;
 

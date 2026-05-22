@@ -161,10 +161,11 @@ public class WalkForwardBacktestTests
     }
 
     [Fact]
-    public void OnlyTrainBarsTouchedInTrainBacktest_IsolationGuarantee()
+    public void WalkForward_WindowSizes_TrainIsolated_TestHasWarmupNoFuturePeek()
     {
-        // 安全性檢查：每個 fold 的 train backtest 不能看到 test 區段的 bar
-        // RunWalkForward 內部 GetRange 切窗，這個 test 在 fold-level 確認窗大小正確
+        // 安全性檢查：train backtest 只看 180 根（不看 test 區段）；
+        // test backtest 看 [train+test]=240 根「當 warmup」但只在 test 區間交易、
+        // 且窗口止於 test 結尾（不偷看未來）。後者是 warmup 修正後的正確窗大小。
         var bars = LinearUpBars(400);
 
         var r = BacktestEngine.RunWalkForward(new AlwaysBuyStub(), bars, Cfg(),
@@ -173,9 +174,11 @@ public class WalkForwardBacktestTests
         foreach (var f in r.Folds)
         {
             f.Train.Should().NotBeNull();
-            f.Train!.TotalBars.Should().Be(180, "train backtest only sees 180 bars");
+            f.Train!.TotalBars.Should().Be(180, "train backtest only sees its 180-bar slice");
             f.Test.Should().NotBeNull();
-            f.Test!.TotalBars.Should().Be(60, "test backtest only sees 60 bars (no peek into future)");
+            f.Test!.TotalBars.Should().Be(240, "test 窗 = train(180) warmup + test(60)，止於 test 結尾、不看未來");
+            // 無未來偷看：test 窗最後一根 = 該 fold test 區段的最後一根
+            f.Test!.EndDate.Should().Be(f.TestEnd);
         }
     }
 
