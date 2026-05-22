@@ -458,6 +458,10 @@ public class StrategySignalHandler : ICapabilityHandler
         var testBars   = doc.TryGetProperty("test_bars",    out var tt) ? tt.GetInt32() : 90;
         var stride     = doc.TryGetProperty("stride",       out var st) ? st.GetInt32() : 90;
         var withWf     = !doc.TryGetProperty("walk_forward", out var wfv) || wfv.ValueKind != JsonValueKind.False;
+        // 成本模型(地基):滑價每邊預設 5bps、資金費預設開(bars 走 get_bars_funding 已帶 funding_rate)。
+        // 讓排名數字誠實——很多「回測 edge」扣成本就死。可用 payload 覆寫/關閉。
+        var slippage   = doc.TryGetProperty("slippage_pct", out var sp) ? sp.GetDecimal() : 0.0005m;
+        var funding    = !doc.TryGetProperty("apply_funding", out var af) || af.ValueKind != JsonValueKind.False;
 
         var results = new System.Collections.Concurrent.ConcurrentBag<object>();
         Parallel.ForEach(names,
@@ -468,13 +472,14 @@ public class StrategySignalHandler : ICapabilityHandler
                 if (strat == null) { results.Add(new { strategy = name, error = "unknown strategy" }); return; }
                 try
                 {
-                    var bt = Run(strat, bars, cfg, cash, commission);
+                    var bt = Run(strat, bars, cfg, cash, commission, slippagePct: slippage, applyFunding: funding);
                     int folds = 0; decimal oosRet = 0m, oosSharpe = 0m, oosWin = 0m, isOosGap = 0m;
                     if (withWf)
                     {
                         try
                         {
-                            var w = RunWalkForward(strat, bars, cfg, trainBars, testBars, stride, cash, commission);
+                            var w = RunWalkForward(strat, bars, cfg, trainBars, testBars, stride, cash, commission,
+                                slippagePct: slippage, applyFunding: funding);
                             folds = w.TotalFolds; oosRet = w.AvgTestReturnPct; oosSharpe = w.AvgTestSharpe;
                             oosWin = w.AvgTestWinRate; isOosGap = w.IsOosReturnGap;
                         }

@@ -68,8 +68,14 @@ public class BacktestEngine
         decimal initialCash = 100_000,
         decimal commission = 0.001m, // 0.1% 手續費
         List<BarData>? htfBars = null,
-        int tradeStartIndex = 0)     // 從第幾根才開始交易/計績效；前面的 bar 只當指標 warmup（walk-forward OOS 用）
+        int tradeStartIndex = 0,     // 從第幾根才開始交易/計績效；前面的 bar 只當指標 warmup（walk-forward OOS 用）
+        decimal slippagePct = 0m,    // 每邊滑價（併入成本率；0=不計、向後相容）
+        bool applyFunding = false)   // 永續資金費:持倉每根依 funding_rate 計成本/收益(需 bars 帶 FundingRate)
     {
+        // 滑價當「每邊額外成本」併入手續費(標準近似、比逐筆改成交價穩當)。
+        var costRate = commission + slippagePct;
+        // 資金費每根佔 8h funding 週期的比例(1d=3 次/天=3、1h=1/8…);算不出 interval 就當 1。
+        var fundingPeriodsPerBar = applyFunding ? IntervalToFundingPeriods(config.Interval) : 0m;
         var result = new BacktestResult
         {
             Strategy    = strategy.Name,
@@ -88,6 +94,7 @@ public class BacktestEngine
         decimal targetPrice = 0;     // 開倉時鎖定的停利目標（0 = 未啟用、靠反向訊號平倉）
         decimal stopPrice = 0;       // 開倉時鎖定的停損
         DateTime entryDate = DateTime.MinValue;
+        int entryIndex = -1;         // 進場 bar index（算資金費累計用）
         decimal peakEquity = initialCash;
         decimal maxDrawdown = 0;
         var dailyReturns = new List<decimal>();
@@ -150,9 +157,10 @@ public class BacktestEngine
                 if (exitPx > 0)
                 {
                     var sellValue = position * exitPx;
-                    var fee = sellValue * commission;
-                    cash += sellValue - fee;
-                    var pnl = (exitPx - entryPrice) * position - (entryPrice * position * commission) - fee;
+                    var fee = sellValue * costRate;
+                    var funding = ComputeFundingCost(bars, entryIndex, i, position, fundingPeriodsPerBar);
+                    cash += sellValue - fee - funding;
+                    var pnl = (exitPx - entryPrice) * position - (entryPrice * position * costRate) - fee - funding;
                     var pnlPct = entryPrice > 0 ? (exitPx - entryPrice) / entryPrice * 100 : 0;
                     result.Trades.Add(new BacktestTrade
                     {
@@ -161,7 +169,7 @@ public class BacktestEngine
                         Quantity = position, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
                         HoldBars = i - bars.FindIndex(b => b.OpenTime == entryDate),
                     });
-                    position = 0; entryPrice = 0; targetPrice = 0; stopPrice = 0;
+                    position = 0; entryPrice = 0; targetPrice = 0; stopPrice = 0; entryIndex = -1;
                     exitedThisBar = true;
                 }
             }
@@ -175,11 +183,12 @@ public class BacktestEngine
             {
                 // 開多倉 — 用 90% 資金
                 var orderValue = cash * 0.9m;
-                var fee = orderValue * commission;
+                var fee = orderValue * costRate;
                 var qty = (orderValue - fee) / currentPrice;
                 position = qty;
                 entryPrice = currentPrice;
                 entryDate = bars[i].OpenTime;
+                entryIndex = i;
                 cash -= orderValue;
                 targetPrice = signal.TargetPrice ?? 0;   // 鎖定本次進場的停利/停損
                 stopPrice = signal.StopPrice ?? 0;
@@ -188,10 +197,11 @@ public class BacktestEngine
             {
                 // 平倉
                 var sellValue = position * currentPrice;
-                var fee = sellValue * commission;
-                cash += sellValue - fee;
+                var fee = sellValue * costRate;
+                var funding = ComputeFundingCost(bars, entryIndex, i, position, fundingPeriodsPerBar);
+                cash += sellValue - fee - funding;
 
-                var pnl = (currentPrice - entryPrice) * position - (entryPrice * position * commission) - fee;
+                var pnl = (currentPrice - entryPrice) * position - (entryPrice * position * costRate) - fee - funding;
                 var pnlPct = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice * 100 : 0;
 
                 result.Trades.Add(new BacktestTrade
@@ -207,6 +217,7 @@ public class BacktestEngine
                 entryPrice = 0;
                 targetPrice = 0;
                 stopPrice = 0;
+                entryIndex = -1;
             }
         }
         }
@@ -221,10 +232,11 @@ public class BacktestEngine
         {
             var lastPrice = bars[^1].Close;
             var sellValue = position * lastPrice;
-            var fee = sellValue * commission;
-            cash += sellValue - fee;
+            var fee = sellValue * costRate;
+            var funding = ComputeFundingCost(bars, entryIndex, bars.Count - 1, position, fundingPeriodsPerBar);
+            cash += sellValue - fee - funding;
 
-            var pnl = (lastPrice - entryPrice) * position - (entryPrice * position * commission) - fee;
+            var pnl = (lastPrice - entryPrice) * position - (entryPrice * position * costRate) - fee - funding;
             result.Trades.Add(new BacktestTrade
             {
                 Side = "long (auto-close)", EntryDate = entryDate, EntryPrice = entryPrice,
@@ -263,6 +275,30 @@ public class BacktestEngine
 
         return result;
     }
+
+    /// <summary>
+    /// 持倉期間累計資金費(永續)。多單:funding_rate>0=付出(成本)、&lt;0=收取(回正自然處理)。
+    /// 從 entryIdx+1 累到 exitIdx(進場那根不收);每根 = rate × notional(position×close) × periodsPerBar。
+    /// 沒 FundingRate 的 bar 跳過(非 perp / 無資料 → 不計)。
+    /// </summary>
+    private static decimal ComputeFundingCost(
+        List<BarData> bars, int entryIdx, int exitIdx, decimal position, decimal periodsPerBar)
+    {
+        if (entryIdx < 0 || periodsPerBar <= 0m || position <= 0m) return 0m;
+        decimal total = 0m;
+        for (int k = entryIdx + 1; k <= exitIdx && k < bars.Count; k++)
+            if (bars[k].FundingRate is decimal fr)
+                total += fr * position * bars[k].Close * periodsPerBar;
+        return total;
+    }
+
+    /// <summary>每根 bar 涵蓋幾個 8h 資金費週期(1d=3、4h=0.5、1h=1/8…)。未知 interval → 當 1。</summary>
+    private static decimal IntervalToFundingPeriods(string interval) => (interval switch
+    {
+        "15m" => 0.25m, "30m" => 0.5m, "1h" => 1m, "2h" => 2m, "4h" => 4m,
+        "6h" => 6m, "12h" => 12m, "1d" => 24m, "3d" => 72m, "1w" => 168m,
+        _ => 8m,   // 未知 → 當 8h(=1 個 funding 週期)
+    }) / 8m;
 
     /// <summary>
     /// Walk-forward 回測 fold——記錄一個 train/test 切窗的結果。
@@ -322,7 +358,9 @@ public class BacktestEngine
         int testBars  = 60,
         int stride    = 30,
         decimal initialCash = 100_000,
-        decimal commission = 0.001m)
+        decimal commission = 0.001m,
+        decimal slippagePct = 0m,
+        bool applyFunding = false)
     {
         var result = new WalkForwardResult
         {
@@ -345,12 +383,14 @@ public class BacktestEngine
             var testSlice  = bars.GetRange(start + trainBars, testBars);
 
             // 訓練窗：直接跑 backtest
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission,
+                slippagePct: slippagePct, applyFunding: applyFunding);
             // 測試窗（OOS）：餵 [train+test] 整段、但只從 test 起點開始交易（tradeStartIndex=trainBars）。
             // 這樣指標在 test 區間有完整 train 當 warmup（不被截斷）、又不偷看 test 內未來——
             // 修掉「bare 90 根 test slice 害 MinBars>90 的策略永遠 hold / 指標被截斷」的方法學 bug。
             var testWindow = bars.GetRange(start, trainBars + testBars);
-            var testBt  = Run(strategy, testWindow, config, initialCash, commission, tradeStartIndex: trainBars);
+            var testBt  = Run(strategy, testWindow, config, initialCash, commission,
+                tradeStartIndex: trainBars, slippagePct: slippagePct, applyFunding: applyFunding);
 
             result.Folds.Add(new WalkForwardFold
             {
