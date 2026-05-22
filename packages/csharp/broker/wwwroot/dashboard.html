@@ -317,24 +317,23 @@
         <div class="kpi-sub">inbox-driven</div>
         <svg class="kpi-spark" id="sparkAgents" viewBox="0 0 100 20" preserveAspectRatio="none"></svg>
       </div>
-      <div class="kpi info" id="kpiApprovals">
+      <div class="kpi info" id="kpiWorkers">
         <div class="kpi-dot"></div>
-        <div class="kpi-label">Pending Approvals</div>
+        <div class="kpi-label">Workers</div>
         <div class="kpi-value skel">—</div>
-        <div class="kpi-sub">需 admin 裁決</div>
-        <svg class="kpi-spark" id="sparkApprovals" viewBox="0 0 100 20" preserveAspectRatio="none"></svg>
+        <div class="kpi-sub">spawn-based</div>
       </div>
-      <div class="kpi good" id="kpiKill">
+      <div class="kpi good" id="kpiAnomalies">
         <div class="kpi-dot"></div>
-        <div class="kpi-label">Kill Switch</div>
-        <div class="kpi-value">●</div>
-        <div class="kpi-sub" id="killSub">Normal</div>
+        <div class="kpi-label">Anomalies</div>
+        <div class="kpi-value skel">—</div>
+        <div class="kpi-sub">diagnostics</div>
       </div>
-      <div class="kpi good" id="kpiLock">
+      <div class="kpi good" id="kpiNetwork">
         <div class="kpi-dot"></div>
-        <div class="kpi-label">Read-Only</div>
-        <div class="kpi-value">●</div>
-        <div class="kpi-sub" id="lockSub">Normal</div>
+        <div class="kpi-label">Network</div>
+        <div class="kpi-value skel">—</div>
+        <div class="kpi-sub">external</div>
       </div>
     </div>
   </section>
@@ -345,23 +344,15 @@
     <div class="agent-grid" id="agentGrid"></div>
   </section>
 
-  <!-- Live event stream -->
+  <!-- Anomaly aggregation (diagnostics scan) -->
   <section id="liveBlock">
     <div class="sec-title">
-      <span class="dot"></span> Live Audit Stream
+      <span class="dot"></span> Anomalies
       <span style="flex:1"></span>
-      <label style="font-size:11px;color:var(--td);font-weight:400;text-transform:none;display:flex;align-items:center;gap:4px;cursor:pointer">
-        <input type="checkbox" id="liveShowApi" style="margin:0">
-        <span>show API noise</span>
-      </label>
+      <span id="anomSub" style="color:var(--td);font-size:11px;font-weight:400;text-transform:none">—</span>
     </div>
-    <div class="live-status">
-      <span id="liveConnStatus" class="ldis">● disconnected</span>
-      · <span id="liveCount">0</span> events
-      · <span id="liveFilteredCount" style="color:var(--td)">0 hidden</span>
-    </div>
-    <div class="live-feed" id="liveFeed">
-      <div style="color:var(--td);text-align:center;padding:20px;font-size:11px">connecting…</div>
+    <div class="live-feed" id="anomFeed">
+      <div style="color:var(--td);text-align:center;padding:20px;font-size:11px">loading…</div>
     </div>
   </section>
 
@@ -824,39 +815,38 @@ async function loadAll() {
           setHd('hdDegraded', d.degraded_count ?? '—');
           setHd('hdCritical', d.critical_count ?? '—');
           setHd('hdStatus',   d.overall_status ?? '—');
+          // Workers KPI(health/score 的 worker 健康分布;非 docker 時 worker_count=0)
+          setKpi('kpiWorkers', d.worker_count ?? 0,
+            `${d.healthy_count ?? 0} ok · ${d.degraded_count ?? 0} deg · ${d.critical_count ?? 0} crit`,
+            (d.critical_count > 0) ? 'bad' : (d.degraded_count > 0) ? 'warn' : ((d.worker_count ?? 0) > 0 ? 'good' : 'info'));
         }
       } catch (e) {
         renderGauge(0);
       }
     })(),
 
-    // 2. Emergency state
+    // 2. Emergency state — 只驅動頂部 banner(kill/readonly 時警示);KPI 卡已移除(屬交易控制)
     (async () => {
       try {
         const r = await fetch('/api/v1/emergency/status', { credentials: 'include' });
         const j = await r.json();
-        if (j.success) {
-          const kill = j.data.kill_switch.active;
-          const ro = j.data.read_only.active;
-          setBanner(kill, ro);
-          setKpi('kpiKill', kill ? '🛑' : '●', kill ? 'ACTIVE' : 'Normal', kill ? 'bad' : 'good');
-          setKpi('kpiLock', ro ? '🔒' : '●', ro ? 'ACTIVE' : 'Normal', ro ? 'warn' : 'good');
-        }
+        if (j.success) setBanner(j.data.kill_switch.active, j.data.read_only.active);
       } catch (e) {}
     })(),
 
-    // 3. Approvals pending
+    // 3. Anomalies(diagnostics scan)— ops 異常聚合,取代原 audit stream
     (async () => {
       try {
-        const r = await fetch('/api/v1/admin/approvals?status=pending&limit=50', { credentials: 'include' });
+        const r = await fetch('/api/v1/diagnostics/scan', { credentials: 'include' });
         const j = await r.json();
-        if (j.success) {
-          const n = (j.data || []).length;
-          setKpi('kpiApprovals', n, n === 0 ? '無待審' : '需 admin 裁決', n === 0 ? 'good' : n > 5 ? 'bad' : 'warn');
-          pushSpark('approvals', n);
-          renderSpark('sparkApprovals', 'approvals', n === 0 ? '#67c23a' : n > 5 ? '#f56c6c' : '#e6a23c');
-        }
-      } catch (e) {}
+        if (j.success) renderAnomalies(j.data);
+      } catch (e) {
+        console.warn('diagnostics', e);
+        const feed = document.getElementById('anomFeed');
+        const sub = document.getElementById('anomSub');
+        if (sub) sub.textContent = 'offline';
+        if (feed) feed.innerHTML = '<div style="color:var(--bad);text-align:center;padding:20px;font-size:11px">⚠ 連不到 broker</div>';
+      }
     })(),
 
     // 4. Agent status
@@ -1027,6 +1017,9 @@ function renderNetwork(targets) {
   });
   const upCount = targets.filter(t => t.status === 'up').length;
   sub.textContent = `${upCount}/${targets.length} up`;
+  setKpi('kpiNetwork', `${upCount}/${targets.length}`,
+    upCount === targets.length ? '全部正常' : `${targets.length - upCount} down`,
+    upCount === targets.length ? 'good' : (targets.length - upCount) > 1 ? 'bad' : 'warn');
   list.innerHTML = targets.map(t => {
     const hist = netHistory[t.name] || [];
     const spark = miniSparkPath(hist);
@@ -1043,6 +1036,43 @@ function renderNetwork(targets) {
   }).join('');
 }
 
+// ─────── Anomalies (diagnostics scan) ───────
+function renderAnomalies(scan) {
+  const feed = document.getElementById('anomFeed');
+  const sub = document.getElementById('anomSub');
+  let issues = Array.isArray(scan.issues) ? scan.issues : [];
+  // 非 docker 模式:容器 runtime 不可用是預期的、不算異常 → 濾掉(別重蹈 docker 死區覆轍)
+  if (scan.runtime_available === false) {
+    issues = issues.filter(i => (i.category || '').toLowerCase() !== 'runtime');
+  }
+  const crit = issues.filter(i => i.severity === 'critical').length;
+  const err  = issues.filter(i => i.severity === 'error').length;
+  const warn = issues.filter(i => i.severity === 'warning').length;
+  const total = issues.length;
+  if (sub) sub.textContent = total === 0 ? 'all clear' : `${crit} crit · ${err} err · ${warn} warn`;
+  setKpi('kpiAnomalies', total, total === 0 ? '無異常' : `${crit} crit · ${err} err`,
+    crit > 0 ? 'bad' : (err + warn) > 0 ? 'warn' : 'good');
+  if (total === 0) {
+    feed.innerHTML = '<div style="color:var(--good);text-align:center;padding:24px;font-size:12px">✓ 無異常</div>';
+    return;
+  }
+  const sevColor = s => s === 'critical' ? '#f56c6c' : (s === 'error' || s === 'warning') ? '#e6a23c' : '#6b7388';
+  const order = { critical: 0, error: 1, warning: 2 };
+  feed.innerHTML = issues.slice()
+    .sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9))
+    .map(i => {
+      const c = sevColor(i.severity);
+      const t = (i.detected_at || '').slice(11, 19);
+      return `
+        <div class="feed-row" style="border-left-color:${c}">
+          <span class="feed-time">${t}</span>
+          <span class="feed-type" style="color:${c}">${(i.severity || '').toUpperCase()}</span>
+          <span class="feed-ref" title="${(i.category||'')} · ${(i.entity_id||'')}">${i.message || ''}</span>
+        </div>
+      `;
+    }).join('');
+}
+
 // initial check + first load
 (async () => {
   const ok = await checkAuth();
@@ -1056,93 +1086,7 @@ function renderNetwork(targets) {
 // initial agent render (skeleton)
 renderAgents({});
 
-// ─────── Live event stream (G2 WebSocket) ───────
-let liveWs = null;
-let liveCount = 0;
-let liveFilteredCount = 0;
-const liveFeed = document.getElementById('liveFeed');
-const liveConnStatus = document.getElementById('liveConnStatus');
-const liveCountEl = document.getElementById('liveCount');
-const liveFilteredEl = document.getElementById('liveFilteredCount');
-const liveShowApi = document.getElementById('liveShowApi');
-
-// Noise events to filter by default (the 88% bulk that's just dashboard polling)
-const NOISE_TYPES = new Set(['API_REQUEST', 'API_RESPONSE']);
-function isNoise(t) { return NOISE_TYPES.has(t); }
-
-function eventColor(type) {
-  if (!type) return '#6b7388';
-  if (type.startsWith('KILL_SWITCH') || type === 'FILE_INTEGRITY_CHANGED') return '#f56c6c';
-  if (type.startsWith('READONLY_LOCKDOWN') || type.startsWith('APPROVAL') || type === 'MULTI_SIG_THRESHOLD_REACHED') return '#e6a23c';
-  if (type.startsWith('DISPATCH_SUCC') || type.startsWith('EXECUTION_ALLOW') || type.startsWith('AUTO_APPROVED')) return '#67c23a';
-  if (type.startsWith('DISPATCH_FAIL') || type.startsWith('EXECUTION_DENIED')) return '#f56c6c';
-  if (type === 'API_REQUEST' || type === 'API_RESPONSE') return '#6b7388';
-  return '#a374ff';
-}
-
-function connectLive() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws/audit/stream`;
-  try {
-    liveWs = new WebSocket(url);
-  } catch (e) {
-    liveConnStatus.textContent = '● error: ' + e.message;
-    liveConnStatus.className = 'ldis';
-    return;
-  }
-  liveWs.onopen = () => {
-    liveConnStatus.textContent = '● live';
-    liveConnStatus.className = 'lconn';
-    liveFeed.innerHTML = '';
-  };
-  liveWs.onmessage = (m) => {
-    try {
-      const j = JSON.parse(m.data);
-      if (j.type !== 'event') return;
-      addEvent(j);
-    } catch {}
-  };
-  liveWs.onclose = () => {
-    liveConnStatus.textContent = '● reconnecting…';
-    liveConnStatus.className = 'ldis';
-    setTimeout(connectLive, 3000);
-  };
-  liveWs.onerror = () => {
-    try { liveWs.close(); } catch {}
-  };
-}
-
-function addEvent(ev) {
-  // Filter noise unless toggle ON
-  if (isNoise(ev.event_type) && !liveShowApi.checked) {
-    liveFilteredCount++;
-    liveFilteredEl.textContent = `${liveFilteredCount} hidden`;
-    return;
-  }
-  const row = document.createElement('div');
-  row.className = 'feed-row';
-  row.style.borderLeftColor = eventColor(ev.event_type);
-  // dim API events even when shown
-  if (isNoise(ev.event_type)) row.style.opacity = '0.45';
-  const t = (ev.occurred_at || '').slice(11, 19);
-  row.innerHTML = `
-    <span class="feed-time">${t}</span>
-    <span class="feed-type" style="color:${eventColor(ev.event_type)}">${ev.event_type}</span>
-    <span class="feed-ref">${ev.resource_ref || ev.principal_id || ''}</span>
-  `;
-  liveFeed.insertBefore(row, liveFeed.firstChild);
-  liveCount++;
-  liveCountEl.textContent = liveCount;
-  // Trim to LIVE_MAX
-  while (liveFeed.children.length > LIVE_MAX) {
-    liveFeed.removeChild(liveFeed.lastChild);
-  }
-}
-// Reset filtered counter when toggle changes
-liveShowApi.addEventListener('change', () => {
-  if (liveShowApi.checked) { liveFilteredCount = 0; liveFilteredEl.textContent = '0 hidden'; }
-});
-connectLive();
+// (Live Audit Stream WebSocket 已移除 — 改用上方 Anomalies 區的 diagnostics 聚合)
 
 // Resize handler
 window.addEventListener('resize', () => {
