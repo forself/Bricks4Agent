@@ -2300,51 +2300,40 @@ public class AutoTraderService : BackgroundService
             // cross margin 無 per-position 強平 → 用「總曝險 / 總資金」當風控刻度,不靠 per-trade SL。
             if (_exposurePct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
-                if (anchoredBalance > 0m && markPrice > 0m)
+                // 已開倉曝險總和（各倉 notional 直接相加）
+                decimal existingNotional = 0m;
+                foreach (var pp in perpPositions)
                 {
-                    // 已開倉曝險總和（各倉 notional 直接相加）
-                    decimal existingNotional = 0m;
-                    foreach (var pp in perpPositions)
-                    {
-                        var notionalAnonProp = pp.GetType().GetProperty("notional")?.GetValue(pp);
-                        if (notionalAnonProp is decimal n) existingNotional += n;
-                    }
-
-                    var perTradeNotional = anchoredBalance * (_exposurePct / 100m);
-                    var portfolioMaxNotional = _maxPortfolioExposurePct > 0m
-                        ? anchoredBalance * (_maxPortfolioExposurePct / 100m)
-                        : decimal.MaxValue;
-                    var remaining = portfolioMaxNotional - existingNotional;
-                    var allowedNotional = Math.Min(perTradeNotional, Math.Max(0m, remaining));
-
-                    if (allowedNotional <= 0m)
-                    {
-                        AddLog(item, "skip",
-                            $"exposure budget exhausted: existing_notional={existingNotional:F2} ≥ portfolio_max={portfolioMaxNotional:F2} ({_maxPortfolioExposurePct}% of ${anchoredBalance:F2})");
-                        return;
-                    }
-
-                    // 保證金硬上限:即使全倉,notional 仍不能超過 balance × leverage(交易所保證金不足會拒單)。
-                    // 留 5% buffer 給手續費 / 滑價。超過就 clamp 並記錄。
-                    var marginCap = anchoredBalance * Math.Max(item.Leverage, 1) * 0.95m;
-                    if (allowedNotional > marginCap)
-                    {
-                        AddLog(item, "info",
-                            $"exposure clamped to margin cap: {allowedNotional:F2} → {marginCap:F2} (balance ${anchoredBalance:F2} × {item.Leverage}x × 0.95)");
-                        allowedNotional = marginCap;
-                    }
-
-                    var exposureQty = allowedNotional / markPrice;
-                    _logger.LogInformation(
-                        "AutoTrader exposure sizing {Symbol}: balance={Bal:F2} exposure={Exp}% existing_notional={Exist:F2} max={Max:F2} → allowed_notional={All:F2} lev={Lev}x mark={Mark:F4} qty={Qty:F6} margin={Margin:F2}",
-                        item.Symbol, anchoredBalance, _exposurePct, existingNotional, portfolioMaxNotional,
-                        allowedNotional, item.Leverage, markPrice, exposureQty, allowedNotional / Math.Max(item.Leverage, 1));
-                    qtyToUse = exposureQty;
+                    var notionalAnonProp = pp.GetType().GetProperty("notional")?.GetValue(pp);
+                    if (notionalAnonProp is decimal n) existingNotional += n;
                 }
-                else
+
+                // 純算法抽到 ComputeExposureSizing(好測、真錢路徑邊界有單測覆蓋)
+                var sizing = ComputeExposureSizing(
+                    anchoredBalance, markPrice, existingNotional,
+                    _exposurePct, _maxPortfolioExposurePct, item.Leverage);
+
+                if (!sizing.Applicable)
                 {
                     _logger.LogWarning("AutoTrader exposure sizing skipped {Symbol}: balance={Bal} mark={Mark} (using watch.Quantity {Qty})",
                         item.Symbol, anchoredBalance, markPrice, qtyToUse);
+                }
+                else if (sizing.BudgetExhausted)
+                {
+                    AddLog(item, "skip",
+                        $"exposure budget exhausted: existing_notional={existingNotional:F2} ≥ portfolio_max={sizing.PortfolioMaxNotional:F2} ({_maxPortfolioExposurePct}% of ${anchoredBalance:F2})");
+                    return;
+                }
+                else
+                {
+                    if (sizing.MarginClamped)
+                        AddLog(item, "info",
+                            $"exposure clamped to margin cap: → {sizing.AllowedNotional:F2} (balance ${anchoredBalance:F2} × {item.Leverage}x × 0.95)");
+                    _logger.LogInformation(
+                        "AutoTrader exposure sizing {Symbol}: balance={Bal:F2} exposure={Exp}% existing_notional={Exist:F2} max={Max:F2} → allowed_notional={All:F2} lev={Lev}x mark={Mark:F4} qty={Qty:F6} margin={Margin:F2}",
+                        item.Symbol, anchoredBalance, _exposurePct, existingNotional, sizing.PortfolioMaxNotional,
+                        sizing.AllowedNotional, item.Leverage, markPrice, sizing.Qty, sizing.AllowedNotional / Math.Max(item.Leverage, 1));
+                    qtyToUse = sizing.Qty;
                 }
             }
             else if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
@@ -2608,6 +2597,47 @@ public class AutoTraderService : BackgroundService
     ///   維持保證金 + 手續費誤差）。回 min(設定值, 強平距離 × 0.6)。leverage ≤ 1 → 不收緊（現貨/無槓桿）。
     /// pure static、好測。
     /// </summary>
+    /// <summary>
+    /// 全倉曝險比例 sizing 的純算法結果。Applicable=false → balance/mark 無效、caller 退回 watch.Quantity;
+    /// BudgetExhausted=true → 組合曝險預算用完、caller skip;否則用 Qty 下單(MarginClamped 表示被保證金 cap 砍過)。
+    /// </summary>
+    internal readonly record struct ExposureSizingResult(
+        bool Applicable, bool BudgetExhausted, bool MarginClamped,
+        decimal Qty, decimal AllowedNotional, decimal PortfolioMaxNotional);
+
+    /// <summary>
+    /// 全倉曝險比例 sizing(pure、好測):notional = exposurePct% × 帳戶總資金,夾在「組合曝險預算」與
+    /// 「保證金硬上限 balance × leverage × 0.95」之內。caller 已保證 exposurePct &gt; 0。
+    ///   - balance ≤ 0 或 mark ≤ 0 → Applicable=false(無法算、退回固定量)
+    ///   - 扣掉已開倉 notional 後預算 ≤ 0 → BudgetExhausted=true(略過)
+    ///   - 否則回 Qty = allowedNotional / mark;allowedNotional 超過保證金 cap 就 clamp(MarginClamped=true)
+    /// </summary>
+    internal static ExposureSizingResult ComputeExposureSizing(
+        decimal anchoredBalance, decimal markPrice, decimal existingNotional,
+        decimal exposurePct, decimal maxPortfolioExposurePct, decimal leverage)
+    {
+        if (anchoredBalance <= 0m || markPrice <= 0m)
+            return new ExposureSizingResult(Applicable: false, false, false, 0m, 0m, 0m);
+
+        var perTradeNotional = anchoredBalance * (exposurePct / 100m);
+        var portfolioMaxNotional = maxPortfolioExposurePct > 0m
+            ? anchoredBalance * (maxPortfolioExposurePct / 100m)
+            : decimal.MaxValue;
+        var remaining = portfolioMaxNotional - existingNotional;
+        var allowedNotional = Math.Min(perTradeNotional, Math.Max(0m, remaining));
+
+        if (allowedNotional <= 0m)
+            return new ExposureSizingResult(true, BudgetExhausted: true, false, 0m, 0m, portfolioMaxNotional);
+
+        // 保證金硬上限:即使全倉,notional 不能超過 balance × leverage(否則交易所保證金不足拒單)。
+        // 留 5% buffer 給手續費 / 滑價。
+        var marginCap = anchoredBalance * Math.Max(leverage, 1m) * 0.95m;
+        bool clamped = allowedNotional > marginCap;
+        if (clamped) allowedNotional = marginCap;
+
+        return new ExposureSizingResult(true, false, clamped, allowedNotional / markPrice, allowedNotional, portfolioMaxNotional);
+    }
+
     internal static decimal LeverageAwareSlPct(decimal configuredSlPct, decimal leverage, bool disableCap = false)
     {
         // 全倉模式:cross margin 無 per-position 強平,SL 不必收緊到強平距離內 →
