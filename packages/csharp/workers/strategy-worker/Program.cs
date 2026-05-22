@@ -108,6 +108,9 @@ strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
 if (strategies.TryGetValue("rsi_stoch", out var rsiStochInner))
     strategies["rsi_stoch_trend"] = new TrendGatedStrategy(rsiStochInner, "rsi_stoch_trend", trendPeriod: 50);
 
+// 專注震盪集成：只合驗證過有 edge 的 rsi_stoch/rsi_oversold/mfi/cci（盤整引擎）。要 inner 都在。
+strategies["osc_ensemble"] = OscillatorEnsembleStrategy.DefaultFrom(strategies);
+
 // RegimeAdaptive：regime → 該行情專屬策略組合（固定權重加權投票）。也要 constituents 都在後才能建。
 strategies["regime_adaptive"] = RegimeAdaptiveEnsembleStrategy.DefaultFrom(strategies);
 
