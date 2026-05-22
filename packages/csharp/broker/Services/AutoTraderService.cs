@@ -129,6 +129,12 @@ public class AutoTraderService : BackgroundService
     private readonly decimal _perpLiqEmergencyPct;
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
     private readonly decimal _maxPortfolioRiskPct;  // 所有開倉 combined max_loss 上限（預設 6%、對齊 r16）
+    // ── 全倉（cross margin）曝險比例 sizing — opt-in、預設 0 = 關（用上面的 risk/SL sizing）。
+    //    notional = exposurePct% × 帳戶總資金;判斷風險用「總曝險 / 總資金」而非 per-trade SL。
+    //    配合 cross margin：無 per-position 強平、可接受單倉 > 100% 虧損、整帳戶為後盾。
+    private readonly decimal _exposurePct;            // 每倉 notional 佔帳戶總資金比例（0 = 關、用 risk/SL sizing）
+    private readonly decimal _maxPortfolioExposurePct; // 所有倉 notional 總和 / 帳戶 上限（0 = 不限）
+    private readonly bool    _disableLevSlCap;        // true = 關掉 leverage-aware SL cap、SL 不收緊到強平距離內（全倉抱反彈）
     private readonly int     _maxOpenPositions;  // 同時開倉硬上限（預設 3、user request 「3 倉不會再多」）
 
     /// <summary>
@@ -509,6 +515,18 @@ public class AutoTraderService : BackgroundService
         // Portfolio-level 累計風險上限。Per-trade 2% × 4 倉 = 8%、但只算單筆會破日損預算。
         // 預設 6% = 對齊 r16；新開倉若會推超這個總額、qty 自動縮（或縮到 0 略過）。
         _maxPortfolioRiskPct = ParsePctEnv("AUTOTRADER_MAX_PORTFOLIO_RISK_PCT", defaultValue: 6m, min: 0m, max: 30m);
+        // ── 全倉（cross margin）曝險比例 sizing（opt-in、預設 0 = 關,用 risk/SL sizing）。
+        //    notional = exposurePct% × anchoredBalance。判斷風險改看「總曝險 / 總資金」而非 per-trade SL。
+        //    例:exposurePct=100 → 每倉 notional = 全部本金;=300 → 3 倍曝險(margin = notional/leverage)。
+        //    回測證明 rsi_stoch / mfi 是「抱到反彈」的 edge(無停損),全倉 + 此模式比 leverage-aware tight SL 更貼近驗證過的行為。
+        _exposurePct = ParsePctEnv("AUTOTRADER_EXPOSURE_PCT", defaultValue: 0m, min: 0m, max: 1000m);
+        // 全倉模式組合曝險上限(所有倉 notional 總和 / balance)。0 = 不限。
+        _maxPortfolioExposurePct = ParsePctEnv("AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT", defaultValue: 0m, min: 0m, max: 5000m);
+        // 關掉 leverage-aware SL cap(opt-in、預設 false)。
+        // 開啟後 SL 用 configured 值、不被收緊到強平距離內 —— cross margin 無 per-position 強平,可抱深回撤等反彈。
+        _disableLevSlCap = string.Equals(
+            Environment.GetEnvironmentVariable("AUTOTRADER_DISABLE_LEV_SL_CAP") ?? "false",
+            "true", StringComparison.OrdinalIgnoreCase);
         // 同時最多幾個 open position（user request 「2+2+1~2%、3 倉不會再多」）。0 = 不限制（向後相容）
         _maxOpenPositions = (int)ParsePctEnv("AUTOTRADER_MAX_OPEN_POSITIONS", defaultValue: 3m, min: 0m, max: 20m);
         // Per-symbol 連續開倉冷卻：避免訊號反翻 churn、預設 30 分鐘
@@ -571,6 +589,12 @@ public class AutoTraderService : BackgroundService
             _protectionConfig.InitialSlPct, _protectionConfig.PartialExitPct, _protectionConfig.PartialExitRatio,
             _protectionConfig.BreakevenTriggerPct, _protectionConfig.BreakevenBufferPct,
             _perpLiqEmergencyPct);
+        if (_exposurePct > 0m || _disableLevSlCap)
+            _logger.LogWarning(
+                "AutoTrader CROSS-MARGIN mode: exposure_pct={Exp}% portfolio_exposure_max={MaxExp}% disable_lev_sl_cap={Cap} " +
+                "— sizing by notional/balance ratio, NOT per-trade SL; SL cap bypass lets positions ride deep drawdowns. " +
+                "Ensure BingX margin mode is set to CROSS for these symbols.",
+                _exposurePct, _maxPortfolioExposurePct, _disableLevSlCap);
 
         LoadWatchListFromDb();
         LoadSettingsFromDb();
@@ -1313,8 +1337,9 @@ public class AutoTraderService : BackgroundService
             effectiveSlPct = _protectionConfig.InitialSlPct;  // 不會用到、僅為 lambda capture
         else
             // 槓桿感知：軟 SL 也要收緊到強平距離以內，否則高槓桿時 SL 掛在強平價之後、broker 先看到也來不及
+            // （全倉模式 _disableLevSlCap=true → 不收緊、抱反彈）
             effectiveSlPct = LeverageAwareSlPct(
-                await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage);
+                await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage, _disableLevSlCap);
 
         var state = _perpPositionState.GetOrAdd(key, _ =>
         {
@@ -1344,7 +1369,7 @@ public class AutoTraderService : BackgroundService
             // 加倉路徑要重新算（因為新 entry、ATR cache 還在）
             if (_protectionConfig.AtrSlMultiplier > 0)
                 effectiveSlPct = LeverageAwareSlPct(
-                    await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage);
+                    await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage, _disableLevSlCap);
             _logger.LogInformation("Perp entry price changed for {Key}: {Old:F4} → {New:F4} — recomputing SL ({Pct:F2}%)", key, state.EntryPrice, entryPrice, effectiveSlPct);
             state.EntryPrice = entryPrice;
             state.SlPrice = isLong
@@ -2270,7 +2295,59 @@ public class AutoTraderService : BackgroundService
                 }
             }
 
-            if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            // ── 全倉曝險比例 sizing（opt-in、優先於 risk/SL sizing）─
+            // notional = exposurePct% × 帳戶總資金;組合曝險上限用 _maxPortfolioExposurePct(notional 總和 / balance)。
+            // cross margin 無 per-position 強平 → 用「總曝險 / 總資金」當風控刻度,不靠 per-trade SL。
+            if (_exposurePct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            {
+                if (anchoredBalance > 0m && markPrice > 0m)
+                {
+                    // 已開倉曝險總和（各倉 notional 直接相加）
+                    decimal existingNotional = 0m;
+                    foreach (var pp in perpPositions)
+                    {
+                        var notionalAnonProp = pp.GetType().GetProperty("notional")?.GetValue(pp);
+                        if (notionalAnonProp is decimal n) existingNotional += n;
+                    }
+
+                    var perTradeNotional = anchoredBalance * (_exposurePct / 100m);
+                    var portfolioMaxNotional = _maxPortfolioExposurePct > 0m
+                        ? anchoredBalance * (_maxPortfolioExposurePct / 100m)
+                        : decimal.MaxValue;
+                    var remaining = portfolioMaxNotional - existingNotional;
+                    var allowedNotional = Math.Min(perTradeNotional, Math.Max(0m, remaining));
+
+                    if (allowedNotional <= 0m)
+                    {
+                        AddLog(item, "skip",
+                            $"exposure budget exhausted: existing_notional={existingNotional:F2} ≥ portfolio_max={portfolioMaxNotional:F2} ({_maxPortfolioExposurePct}% of ${anchoredBalance:F2})");
+                        return;
+                    }
+
+                    // 保證金硬上限:即使全倉,notional 仍不能超過 balance × leverage(交易所保證金不足會拒單)。
+                    // 留 5% buffer 給手續費 / 滑價。超過就 clamp 並記錄。
+                    var marginCap = anchoredBalance * Math.Max(item.Leverage, 1) * 0.95m;
+                    if (allowedNotional > marginCap)
+                    {
+                        AddLog(item, "info",
+                            $"exposure clamped to margin cap: {allowedNotional:F2} → {marginCap:F2} (balance ${anchoredBalance:F2} × {item.Leverage}x × 0.95)");
+                        allowedNotional = marginCap;
+                    }
+
+                    var exposureQty = allowedNotional / markPrice;
+                    _logger.LogInformation(
+                        "AutoTrader exposure sizing {Symbol}: balance={Bal:F2} exposure={Exp}% existing_notional={Exist:F2} max={Max:F2} → allowed_notional={All:F2} lev={Lev}x mark={Mark:F4} qty={Qty:F6} margin={Margin:F2}",
+                        item.Symbol, anchoredBalance, _exposurePct, existingNotional, portfolioMaxNotional,
+                        allowedNotional, item.Leverage, markPrice, exposureQty, allowedNotional / Math.Max(item.Leverage, 1));
+                    qtyToUse = exposureQty;
+                }
+                else
+                {
+                    _logger.LogWarning("AutoTrader exposure sizing skipped {Symbol}: balance={Bal} mark={Mark} (using watch.Quantity {Qty})",
+                        item.Symbol, anchoredBalance, markPrice, qtyToUse);
+                }
+            }
+            else if (_dynamicRiskPct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
                 if (anchoredBalance > 0m && markPrice > 0m && _protectionConfig.InitialSlPct > 0m)
                 {
@@ -2419,7 +2496,7 @@ public class AutoTraderService : BackgroundService
         {
             var isLong = string.Equals(perpPosSide, "long", StringComparison.OrdinalIgnoreCase);
             var pricePrecision = BrokerCore.Trading.SymbolSpecs.GetSpec(item.Exchange, item.Symbol)?.PricePrecision;
-            var effectiveSlPct = LeverageAwareSlPct(_protectionConfig.InitialSlPct, item.Leverage);
+            var effectiveSlPct = LeverageAwareSlPct(_protectionConfig.InitialSlPct, item.Leverage, _disableLevSlCap);
             var slPrice = ComputeBracketSlPrice(markPrice, effectiveSlPct, isLong);
             if (slPrice.HasValue)
             {
@@ -2531,8 +2608,11 @@ public class AutoTraderService : BackgroundService
     ///   維持保證金 + 手續費誤差）。回 min(設定值, 強平距離 × 0.6)。leverage ≤ 1 → 不收緊（現貨/無槓桿）。
     /// pure static、好測。
     /// </summary>
-    internal static decimal LeverageAwareSlPct(decimal configuredSlPct, decimal leverage)
+    internal static decimal LeverageAwareSlPct(decimal configuredSlPct, decimal leverage, bool disableCap = false)
     {
+        // 全倉模式:cross margin 無 per-position 強平,SL 不必收緊到強平距離內 →
+        // 用 configured 值、讓部位抱深回撤等反彈(貼近「無停損」回測過的 edge)。
+        if (disableCap) return configuredSlPct;
         if (leverage <= 1m) return configuredSlPct;
         var liqDistanceCap = 100m / leverage * 0.6m;
         return Math.Min(configuredSlPct, liqDistanceCap);

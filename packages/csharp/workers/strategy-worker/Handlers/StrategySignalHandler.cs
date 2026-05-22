@@ -729,8 +729,13 @@ public class StrategySignalHandler : ICapabilityHandler
         var trainBars  = doc.TryGetProperty("train_bars", out var tb) ? tb.GetInt32() : 180;
         var testBars   = doc.TryGetProperty("test_bars",  out var tt) ? tt.GetInt32() : 60;
         var stride     = doc.TryGetProperty("stride",     out var st) ? st.GetInt32() : 30;
+        var slippage   = doc.TryGetProperty("slippage_pct", out var sp) ? sp.GetDecimal() : 0m;
+        var applyFunding = doc.TryGetProperty("apply_funding", out var af) && af.ValueKind == JsonValueKind.True;
+        // 強制固定停損 %:對照「有停損 vs 無停損」用。0 = 無停損(rsi_stoch/mfi 抱到反向訊號=回測過的 edge)。
+        var forcedStopPct = doc.TryGetProperty("forced_stop_pct", out var fs) ? fs.GetDecimal() : 0m;
 
-        var r = BacktestEngine.RunWalkForward(strategy, bars, config, trainBars, testBars, stride, cash, commission);
+        var r = BacktestEngine.RunWalkForward(strategy, bars, config, trainBars, testBars, stride, cash, commission,
+            slippagePct: slippage, applyFunding: applyFunding, forcedStopPct: forcedStopPct);
         if (r.Folds.Count == 0)
             return (false, null,
                 $"Not enough bars or invalid params: bars={bars.Count} train={trainBars} test={testBars} stride={stride}");
@@ -738,6 +743,7 @@ public class StrategySignalHandler : ICapabilityHandler
         var json = JsonSerializer.Serialize(new
         {
             strategy = r.Strategy, symbol = r.Symbol,
+            forced_stop_pct = forcedStopPct,
             train_bars = r.TrainBars, test_bars = r.TestBars, stride = r.Stride,
             total_folds = r.TotalFolds, positive_test_folds = r.PositiveTestFolds,
             avg_test_return_pct = r.AvgTestReturnPct,

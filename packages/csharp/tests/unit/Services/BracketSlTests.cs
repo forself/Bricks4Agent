@@ -125,6 +125,23 @@ public class BracketSlTests
         AutoTraderService.LeverageAwareSlPct(5m, 0m).Should().Be(5m);
     }
 
+    // ── 全倉模式:disableCap=true 時不收緊(cross margin 無 per-position 強平、抱反彈) ──
+
+    [Fact]
+    public void LeverageAware_DisableCap_KeepsConfiguredEvenAtHighLeverage()
+    {
+        // 20x 本來會收緊到 3%、disableCap=true → 用 configured 5%(全倉抱深回撤)。
+        AutoTraderService.LeverageAwareSlPct(5m, 20m, disableCap: true).Should().Be(5m);
+        AutoTraderService.LeverageAwareSlPct(5m, 125m, disableCap: true).Should().Be(5m);
+    }
+
+    [Fact]
+    public void LeverageAware_DisableCap_DefaultsToFalse_StillTightens()
+    {
+        // 不傳 disableCap → 預設 false → 維持原收緊行為(向後相容)。
+        AutoTraderService.LeverageAwareSlPct(5m, 20m).Should().Be(3m);
+    }
+
     [Fact]
     public void LeverageAware_ComposesWithBracketPrice_20x()
     {

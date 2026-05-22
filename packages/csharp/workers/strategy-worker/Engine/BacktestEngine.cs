@@ -70,7 +70,8 @@ public class BacktestEngine
         List<BarData>? htfBars = null,
         int tradeStartIndex = 0,     // 從第幾根才開始交易/計績效；前面的 bar 只當指標 warmup（walk-forward OOS 用）
         decimal slippagePct = 0m,    // 每邊滑價（併入成本率；0=不計、向後相容）
-        bool applyFunding = false)   // 永續資金費:持倉每根依 funding_rate 計成本/收益(需 bars 帶 FundingRate)
+        bool applyFunding = false,   // 永續資金費:持倉每根依 funding_rate 計成本/收益(需 bars 帶 FundingRate)
+        decimal forcedStopPct = 0m)  // 強制固定停損 %(0=不強制、用 signal 自帶 stop);給「有停損 vs 無停損」對照用
     {
         // 滑價當「每邊額外成本」併入手續費(標準近似、比逐筆改成交價穩當)。
         var costRate = commission + slippagePct;
@@ -192,6 +193,10 @@ public class BacktestEngine
                 cash -= orderValue;
                 targetPrice = signal.TargetPrice ?? 0;   // 鎖定本次進場的停利/停損
                 stopPrice = signal.StopPrice ?? 0;
+                // 強制固定停損(對照用):signal 沒帶 stop 時、用 entry × (1 − forcedStopPct%) 套一個。
+                // 讓本來「抱到反彈」的均值回歸策略(rsi_stoch/mfi)能跑「有停損」版做比較。
+                if (forcedStopPct > 0m && stopPrice <= 0m)
+                    stopPrice = entryPrice * (1m - forcedStopPct / 100m);
             }
             else if (signal.Action == "sell" && position > 0)
             {
@@ -360,7 +365,8 @@ public class BacktestEngine
         decimal initialCash = 100_000,
         decimal commission = 0.001m,
         decimal slippagePct = 0m,
-        bool applyFunding = false)
+        bool applyFunding = false,
+        decimal forcedStopPct = 0m)  // 強制固定停損 %(對照「有停損 vs 無停損」用;0=無停損、抱到反向訊號)
     {
         var result = new WalkForwardResult
         {
@@ -384,13 +390,14 @@ public class BacktestEngine
 
             // 訓練窗：直接跑 backtest
             var trainBt = Run(strategy, trainSlice, config, initialCash, commission,
-                slippagePct: slippagePct, applyFunding: applyFunding);
+                slippagePct: slippagePct, applyFunding: applyFunding, forcedStopPct: forcedStopPct);
             // 測試窗（OOS）：餵 [train+test] 整段、但只從 test 起點開始交易（tradeStartIndex=trainBars）。
             // 這樣指標在 test 區間有完整 train 當 warmup（不被截斷）、又不偷看 test 內未來——
             // 修掉「bare 90 根 test slice 害 MinBars>90 的策略永遠 hold / 指標被截斷」的方法學 bug。
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt  = Run(strategy, testWindow, config, initialCash, commission,
-                tradeStartIndex: trainBars, slippagePct: slippagePct, applyFunding: applyFunding);
+                tradeStartIndex: trainBars, slippagePct: slippagePct, applyFunding: applyFunding,
+                forcedStopPct: forcedStopPct);
 
             result.Folds.Add(new WalkForwardFold
             {
