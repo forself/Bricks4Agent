@@ -21,6 +21,7 @@
     <ProjectReference Include="../../function-pool/FunctionPool.csproj" />
     <ProjectReference Include="../../worker-sdk/WorkerSdk.csproj" />
     <ProjectReference Include="../../workers/file-worker/FileWorker.csproj" />
+    <ProjectReference Include="../../workers/quote-worker/QuoteWorker.csproj" />
     <ProjectReference Include="../../workers/risk-worker/RiskWorker.csproj" />
     <ProjectReference Include="../../workers/strategy-worker/StrategyWorker.csproj" />
     <ProjectReference Include="../../workers/transport-tdx-worker/TransportTdxWorker.csproj" />

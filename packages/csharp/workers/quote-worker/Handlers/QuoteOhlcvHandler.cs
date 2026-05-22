@@ -1,6 +1,7 @@
 using System.Text.Json;
 using WorkerSdk;
 using QuoteWorker.History;
+using QuoteWorker.Models;
 using QuoteWorker.Storage;
 
 namespace QuoteWorker.Handlers;
@@ -68,6 +69,7 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             "get_funding"       => GetFunding(opts),
             "fetch_funding_deep" => await FetchFundingDeep(opts, ct),
             "get_oi_now"        => await GetOpenInterestNow(opts, ct),
+            "get_bars_funding"  => GetBarsFunding(opts),
             _ => (false, null, $"Unknown route: {route}")
         };
     }
@@ -99,6 +101,65 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             })
         });
         return (true, json, null);
+    }
+
+    /// <summary>get_bars_funding — OHLCV + 資金費率 as-of join,每根 bar 取 ≤ openTime 的最近 funding
+    /// (向前填充)。給 strategy-worker 的 character_ensemble funding 維度直接餵。OI history 不可得,
+    /// 故此路由只對齊 funding;OI 即時值走 get_oi_now。</summary>
+    private (bool, string?, string?) GetBarsFunding(JsonElement opts)
+    {
+        var symbol   = opts.TryGetProperty("symbol",   out var s) ? s.GetString() ?? "" : "";
+        var interval = opts.TryGetProperty("interval", out var i) ? i.GetString() ?? "1d" : "1d";
+        var limit    = opts.TryGetProperty("limit",    out var l) ? l.GetInt32() : 365;
+        if (string.IsNullOrEmpty(symbol))
+            return (false, null, "Missing required parameter: symbol");
+
+        var sym = NormalizeCryptoSymbol(symbol);
+        var bars = _db.GetBars(sym, interval, limit);
+        var fundings = _db.GetFundingRates(sym, 2000);
+        var merged = AlignFunding(bars, fundings);
+
+        var json = JsonSerializer.Serialize(new
+        {
+            symbol,
+            interval,
+            count = merged.Count,
+            funding_points = fundings.Count,
+            bars = merged.Select(m => new
+            {
+                open_time  = m.Bar.OpenTime,
+                close_time = m.Bar.CloseTime,
+                open       = m.Bar.Open,
+                high       = m.Bar.High,
+                low        = m.Bar.Low,
+                close      = m.Bar.Close,
+                volume     = m.Bar.Volume,
+                funding_rate = m.FundingRate,
+            })
+        });
+        return (true, json, null);
+    }
+
+    /// <summary>把 8h 一次的 funding 序列 as-of join 到每根 bar:取 ≤ bar.OpenTime 的最近一筆 funding
+    /// (向前填充)。早於第一筆 funding 的 bar → null(strategy 端 FundingBias 自動降級)。純函式、可測。</summary>
+    public static List<(OhlcvBar Bar, decimal? FundingRate)> AlignFunding(
+        List<OhlcvBar> bars, List<FundingRatePoint> fundings)
+    {
+        var sortedBars = bars.OrderBy(b => b.OpenTime).ToList();
+        var sortedFund = fundings.OrderBy(f => f.FundingTime).ToList();
+        var outl = new List<(OhlcvBar, decimal?)>(sortedBars.Count);
+        int fi = 0;
+        decimal? last = null;
+        foreach (var b in sortedBars)
+        {
+            while (fi < sortedFund.Count && sortedFund[fi].FundingTime <= b.OpenTime)
+            {
+                last = sortedFund[fi].FundingRate;
+                fi++;
+            }
+            outl.Add((b, last));
+        }
+        return outl;
     }
 
     private async Task<(bool, string?, string?)> FetchStock(JsonElement opts, CancellationToken ct)
