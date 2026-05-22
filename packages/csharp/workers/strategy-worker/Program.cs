@@ -104,6 +104,10 @@ strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
 // AutoSelect 也是要 constituents 都在後才能建（regime → 1 個成員執行）
 strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
 
+// 趨勢過濾版 rsi_stoch（risk-off 第一塊）：只在 close>SMA50 放行做多、跌勢不接刀。要 inner 先在。
+if (strategies.TryGetValue("rsi_stoch", out var rsiStochInner))
+    strategies["rsi_stoch_trend"] = new TrendGatedStrategy(rsiStochInner, "rsi_stoch_trend", trendPeriod: 50);
+
 // RegimeAdaptive：regime → 該行情專屬策略組合（固定權重加權投票）。也要 constituents 都在後才能建。
 strategies["regime_adaptive"] = RegimeAdaptiveEnsembleStrategy.DefaultFrom(strategies);
 
