@@ -62,6 +62,9 @@ public class GenericWalkForwardOptimizerTests
         r.Windows.Should().OnlyContain(w => w.BestParams.ContainsKey("atr_period") && w.BestParams.ContainsKey("multiplier"));
         // 最常見最佳參數有填
         r.MostCommonBestParams.Should().ContainKey("atr_period").And.ContainKey("multiplier");
+        // 參數穩定度 + 白話判語
+        r.ParamStability.Should().BeInRange(0m, 1m);
+        r.Verdict.Should().NotBeNullOrEmpty();
     }
 
     [Fact]

@@ -507,6 +507,8 @@ public class StrategySignalHandler : ICapabilityHandler
             opt_oos_return_pct = r.OptOosReturnPct, opt_oos_sharpe = r.OptOosSharpe, opt_oos_win_rate = r.OptOosWinRate,
             def_oos_return_pct = r.DefOosReturnPct, def_oos_sharpe = r.DefOosSharpe,
             most_common_best_params = r.MostCommonBestParams,
+            param_stability = r.ParamStability,
+            verdict = r.Verdict,
             error = r.Error,
         });
         return (true, json, null);

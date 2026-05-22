@@ -33,6 +33,8 @@ public static class GenericWalkForwardOptimizer
         public decimal DefOosSharpe { get; set; }
 
         public Dictionary<string, string> MostCommonBestParams { get; set; } = new();
+        public decimal ParamStability { get; set; }   // 0-1:參數跨窗口一致度(高=穩健、低=curve-fit 徵兆)
+        public string Verdict { get; set; } = "";      // 綜合 OOS + 穩定度的白話判語
         public List<WindowResult> Windows { get; set; } = new();
         public string? Error { get; set; }
     }
@@ -137,6 +139,22 @@ public static class GenericWalkForwardOptimizer
 
             foreach (var (k, m) in paramHits)
                 r.MostCommonBestParams[k] = m.OrderByDescending(kv => kv.Value).First().Key;
+
+            // 參數穩定度:每個參數「最常見值的命中率」平均。高=跨窗口一致(穩健);
+            // 低=每窗口亂跳 → curve-fit 徵兆(該組參數在 OOS 不可信)。
+            decimal stabSum = 0m;
+            foreach (var (_, m) in paramHits)
+                stabSum += (decimal)m.Values.Max() / r.WindowCount;
+            r.ParamStability = paramHits.Count > 0 ? Math.Round(stabSum / paramHits.Count, 4) : 0m;
+
+            // 白話判語:把「OOS 有沒有救 + 參數穩不穩」一句話講完,給大量回測批次掃讀。
+            r.Verdict = r.OptOosSharpe <= 0m
+                ? "no edge:調參救不起 OOS、該策略無 OOS 優勢"
+                : r.ParamStability >= 0.6m && r.OptOosSharpe > r.DefOosSharpe
+                    ? "robust:調參有效且參數跨窗口穩定"
+                    : r.ParamStability < 0.4m
+                        ? "fragile:OOS 正但參數不穩、疑似 curve-fit"
+                        : "marginal:有改善但不夠強、需更多資料";
         }
         return r;
     }
