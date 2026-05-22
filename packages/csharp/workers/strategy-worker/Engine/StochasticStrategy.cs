@@ -30,12 +30,23 @@ public class StochasticStrategy : IStrategy
     private const int StochK = 14;
     private const int StochD = 3;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["rsi_period"] = new() { Type = "int", Default = RsiPeriod, Min = 7,  Max = 21, Step = 7, Description = "RSI 週期" },
+        ["stoch_k"]    = new() { Type = "int", Default = StochK,    Min = 7,  Max = 21, Step = 7, Description = "Stochastic %K 週期" },
+        ["stoch_d"]    = new() { Type = "int", Default = StochD,    Min = 3,  Max = 5,  Step = 1, Description = "Stochastic %D 平滑" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
         if (bars.Count < MinBars) return Hold(config, "Not enough data");
 
-        var rsi = CalcRsi(bars, RsiPeriod);
-        var stoch = Stochastic.Compute(bars, StochK, StochD);
+        int rsiPeriod = config.GetParam("rsi_period", RsiPeriod);
+        int stochK    = config.GetParam("stoch_k", StochK);
+        int stochD    = config.GetParam("stoch_d", StochD);
+
+        var rsi = CalcRsi(bars, rsiPeriod);
+        var stoch = Stochastic.Compute(bars, stochK, stochD);
         if (stoch == null) return Hold(config, "Stoch compute failed");
 
         string action = "hold";

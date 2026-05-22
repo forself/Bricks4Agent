@@ -22,19 +22,32 @@ public class MfiStrategy : IStrategy
     public int MinBars => 16;
     public decimal MinCapitalUsdt => 50m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["mfi_period"]     = new() { Type = "int",     Default = 14, Min = 7,  Max = 28, Step = 7, Description = "MFI 週期" },
+        ["mfi_oversold"]   = new() { Type = "decimal", Default = 20, Min = 10, Max = 35, Step = 5, Description = "超賣門檻(買);弱訊號 +15" },
+        ["mfi_overbought"] = new() { Type = "decimal", Default = 80, Min = 65, Max = 90, Step = 5, Description = "超買門檻(賣);弱訊號 -15" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var mfi = Mfi.Compute(bars);
+        int period         = config.GetParam("mfi_period", 14);
+        decimal oversold   = config.GetParam("mfi_oversold", 20m);
+        decimal overbought = config.GetParam("mfi_overbought", 80m);
+        decimal weakLow    = oversold + 15m;
+        decimal weakHigh   = overbought - 15m;
+
+        var mfi = Mfi.Compute(bars, period);
         if (mfi == null) return Hold(config, "Not enough data for MFI");
 
         string action = "hold"; decimal conf = 0.5m; string reason;
         var v = mfi.Value;
 
-        if (v < 20m)        { action = "buy";  conf = 0.7m;  reason = $"MFI={v:F1} 資金超賣"; }
-        else if (v < 35m)   { action = "buy";  conf = 0.55m; reason = $"MFI={v:F1} 資金偏低"; }
-        else if (v > 80m)   { action = "sell"; conf = 0.7m;  reason = $"MFI={v:F1} 資金超買"; }
-        else if (v > 65m)   { action = "sell"; conf = 0.55m; reason = $"MFI={v:F1} 資金偏高"; }
-        else                                                  reason = $"MFI={v:F1} 中性";
+        if (v < oversold)        { action = "buy";  conf = 0.7m;  reason = $"MFI={v:F1} 資金超賣"; }
+        else if (v < weakLow)    { action = "buy";  conf = 0.55m; reason = $"MFI={v:F1} 資金偏低"; }
+        else if (v > overbought) { action = "sell"; conf = 0.7m;  reason = $"MFI={v:F1} 資金超買"; }
+        else if (v > weakHigh)   { action = "sell"; conf = 0.55m; reason = $"MFI={v:F1} 資金偏高"; }
+        else                                                       reason = $"MFI={v:F1} 中性";
 
         return new Signal
         {

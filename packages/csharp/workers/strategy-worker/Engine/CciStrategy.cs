@@ -23,18 +23,28 @@ public class CciStrategy : IStrategy
     public int MinBars => 25;
     public decimal MinCapitalUsdt => 50m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["cci_period"]    = new() { Type = "int",     Default = 20,  Min = 10, Max = 40,  Step = 5,  Description = "CCI 週期" },
+        ["cci_threshold"] = new() { Type = "decimal", Default = 100, Min = 80, Max = 150, Step = 10, Description = "強訊號門檻(±);弱訊號取一半" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var cci = Cci.Compute(bars);
+        int period   = config.GetParam("cci_period", 20);
+        decimal th   = config.GetParam("cci_threshold", 100m);
+        decimal weak = th / 2m;
+
+        var cci = Cci.Compute(bars, period);
         if (cci == null) return Hold(config, "Not enough data for CCI");
 
         string action = "hold"; decimal conf = 0.5m; string reason;
         var v = cci.Value;
 
-        if (v < -100m)      { action = "buy";  conf = 0.7m;  reason = $"CCI={v:F0} 超賣"; }
-        else if (v < -50m)  { action = "buy";  conf = 0.55m; reason = $"CCI={v:F0} 偏低"; }
-        else if (v > 100m)  { action = "sell"; conf = 0.7m;  reason = $"CCI={v:F0} 超買"; }
-        else if (v > 50m)   { action = "sell"; conf = 0.55m; reason = $"CCI={v:F0} 偏高"; }
+        if (v < -th)        { action = "buy";  conf = 0.7m;  reason = $"CCI={v:F0} 超賣"; }
+        else if (v < -weak) { action = "buy";  conf = 0.55m; reason = $"CCI={v:F0} 偏低"; }
+        else if (v > th)    { action = "sell"; conf = 0.7m;  reason = $"CCI={v:F0} 超買"; }
+        else if (v > weak)  { action = "sell"; conf = 0.55m; reason = $"CCI={v:F0} 偏高"; }
         else                                                   reason = $"CCI={v:F0} 中性";
 
         return new Signal

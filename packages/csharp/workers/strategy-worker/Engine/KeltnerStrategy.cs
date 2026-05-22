@@ -22,9 +22,18 @@ public class KeltnerStrategy : IStrategy
     public int MinBars => 25;
     public decimal MinCapitalUsdt => 100m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["keltner_period"]   = new() { Type = "int",     Default = 20, Min = 10,   Max = 30,   Step = 5,    Description = "EMA 中軌週期" },
+        ["keltner_atr_mult"] = new() { Type = "decimal", Default = 2,  Min = 1.5m, Max = 3.0m, Step = 0.5m, Description = "ATR 通道倍數" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var k = Keltner.Compute(bars);
+        int period   = config.GetParam("keltner_period", 20);
+        decimal mult = config.GetParam("keltner_atr_mult", 2m);
+
+        var k = Keltner.Compute(bars, period, 10, mult);
         if (k == null) return Hold(config, "Not enough data for Keltner");
 
         var price = bars[^1].Close;
