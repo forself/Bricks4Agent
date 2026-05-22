@@ -66,6 +66,9 @@ var strategies = new Dictionary<string, IStrategy>
     ["chaikin_mf"]      = new ChaikinMfStrategy(),
     // SMC：機構派價格結構（BOS/CHoCH + Order Block / FVG 回測）
     ["smc"]             = new SmcStrategy(),
+    // 正交基礎指標：Hurst 性格判斷 + 波動率擠壓突破（增加 ensemble 區別性、不跟方向型疊加）
+    ["hurst_adaptive"]      = new HurstStrategy(),
+    ["volatility_breakout"] = new VolatilityBreakoutStrategy(),
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model
@@ -101,6 +104,9 @@ strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
 
 // RegimeAdaptive：regime → 該行情專屬策略組合（固定權重加權投票）。也要 constituents 都在後才能建。
 strategies["regime_adaptive"] = RegimeAdaptiveEnsembleStrategy.DefaultFrom(strategies);
+
+// CharacterAdaptive：用 Hurst+波動率當 meta 閘門、依市場性格連續調成員權重（與 ensemble 的 Sharpe 權重正交）。也要 constituents 都在後才能建。
+strategies["character_ensemble"] = CharacterAdaptiveEnsembleStrategy.DefaultFrom(strategies);
 
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
