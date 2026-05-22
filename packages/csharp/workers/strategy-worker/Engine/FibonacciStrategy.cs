@@ -37,6 +37,14 @@ public class FibonacciStrategy : IStrategy
         ["fib_zone_high"] = new() { Type = "decimal", Default = 0.707m, Choices = new object[] { 0.618m, 0.707m, 0.786m, 0.886m }, Description = "進場區上界(0.707 為修正版預設)" },
     };
 
+    /// <summary>出場目標的擴展位:牛(TrendingUp)→2.24、熊(TrendingDown)→1.33、其他→1.618。</summary>
+    public static decimal ExitExtensionForRegime(RegimeDetector.RegimeType regime) => regime switch
+    {
+        RegimeDetector.RegimeType.TrendingUp   => 2.24m,
+        RegimeDetector.RegimeType.TrendingDown => 1.33m,
+        _ => 1.618m,
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
         if (bars.Count < Math.Max(SwingLookback, TrendSmaPeriod) + 2)
@@ -66,6 +74,10 @@ public class FibonacciStrategy : IStrategy
         var extensions = FibonacciLevels.ExtensionLevels(high, low, direction);
         decimal? tpPrice = null, slPrice = null;
 
+        // 出場目標依市況自適應(用戶設計):牛市常衝 2.24、熊市常停 1.33、其他取 1.618
+        var regime = RegimeDetector.Detect(bars).Type;
+        var tpExt = ExitExtensionForRegime(regime);
+
         // 3. 訊號判斷
         string action = "hold";
         decimal confidence = 0.5m;
@@ -83,9 +95,11 @@ public class FibonacciStrategy : IStrategy
                 var zoneFit = 1m - Math.Abs(retRatio - 0.5m) * 4m;   // 在 0.5 時 fit=1，在 0.382/0.618 時 fit=0.47
                 confidence = Math.Clamp(0.55m + zoneFit * 0.2m + Math.Min(trendStrength * 5m, 0.2m), 0.5m, 0.95m);
                 reason = $"Uptrend + price pullback to Fib {retRatio:P0} zone + bounce (close > prev)";
-                // TP = 1.272 擴展位（突破擺動高的延伸目標）；SL = 擺動低點（結構失效點）
-                tpPrice = extensions.TryGetValue(1.272m, out var ext127) ? ext127 : null;
+                // TP = 依市況選的擴展位(牛 2.24 / 熊 1.33 / 其他 1.618);SL = 擺動低點(結構失效點)
+                tpPrice = extensions.TryGetValue(tpExt, out var extTp) ? extTp
+                        : (extensions.TryGetValue(1.618m, out var ext161) ? ext161 : null);
                 slPrice = Math.Round(low, 4);
+                reason += $" · TP {tpExt}({regime})";
             }
             else if (direction == "down" && rejecting)
             {

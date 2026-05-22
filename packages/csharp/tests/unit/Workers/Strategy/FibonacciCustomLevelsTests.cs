@@ -35,4 +35,13 @@ public class FibonacciCustomLevelsTests
         new FibonacciStrategy().ParamSchema.Keys
             .Should().Contain(new[] { "fib_zone_low", "fib_zone_high" });
     }
+
+    [Fact]
+    public void ExitExtension_AdaptsToRegime()
+    {
+        // 用戶設計:牛市出場常衝 2.24、熊市常停 1.33、其他取 1.618
+        FibonacciStrategy.ExitExtensionForRegime(RegimeDetector.RegimeType.TrendingUp).Should().Be(2.24m);
+        FibonacciStrategy.ExitExtensionForRegime(RegimeDetector.RegimeType.TrendingDown).Should().Be(1.33m);
+        FibonacciStrategy.ExitExtensionForRegime(RegimeDetector.RegimeType.RangeBound).Should().Be(1.618m);
+    }
 }
