@@ -895,7 +895,18 @@ async function loadAll() {
         const statsArr = Array.isArray(sj.data) ? sj.data : [];
         const statsMap = Object.fromEntries(statsArr.map(s => [s.container_id, s]));
         renderWorkers(conts.map(c => ({ ...c, stats: statsMap[c.container_id] || null })));
-      } catch (e) { console.warn('workers', e); }
+      } catch (e) {
+        // fetch 失敗(連不到 broker / file:// 開啟):顯示離線,別卡在 loading…
+        console.warn('workers', e);
+        const list = document.getElementById('dockerList');
+        const sub = document.getElementById('dockerSub');
+        const db = document.getElementById('dockerBlock');
+        const nb = document.getElementById('netBlock');
+        if (db) db.style.display = '';
+        if (nb) nb.style.gridColumn = '2';
+        if (sub) sub.textContent = 'offline';
+        if (list) list.innerHTML = '<div style="color:var(--bad);text-align:center;padding:20px;font-size:11px;grid-column:1/-1">⚠ 連不到 broker</div>';
+      }
     })(),
 
     // 6. Network status
@@ -904,7 +915,14 @@ async function loadAll() {
         const r = await fetch('/api/v1/dashboard/network-status', { credentials: 'include' });
         const j = await r.json();
         if (j.success) renderNetwork(j.data.targets || []);
-      } catch (e) { console.warn('net', e); }
+      } catch (e) {
+        // fetch 失敗(連不到 broker / file://):顯示離線,別卡在 loading…
+        console.warn('net', e);
+        const list = document.getElementById('netList');
+        const sub = document.getElementById('netSub');
+        if (sub) sub.textContent = 'offline';
+        if (list) list.innerHTML = '<div style="color:var(--bad);text-align:center;padding:20px;font-size:11px">⚠ 連不到 broker</div>';
+      }
     })(),
   ]);
 
