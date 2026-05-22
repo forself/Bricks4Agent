@@ -480,6 +480,23 @@ try {
 } catch (e) {
   console.warn('ECharts 不可用,健康儀表降級為純文字', e);
 }
+
+// 版面自癒:hard refresh(Ctrl+Shift+R)時 echarts.init 可能在 grid 排版定案、下方非同步內容載入前
+// 就讀到「row 1 的 1fr 撐到很大」的容器尺寸 → gauge canvas 鎖死成超大 → 整列撐高、KPI 卡跟著跑掉。
+// echarts 不會自動縮,過去要靠某次 resize 事件才湊巧修好。改用 ResizeObserver:容器尺寸一變(排版
+// 一定案/內容載入後重新平衡)就 resize canvas → 每次載入都穩。再用 rAF + load 各補一次保險。
+if (gaugeChart) {
+  const gaugeEl = document.getElementById('healthGauge');
+  if (window.ResizeObserver && gaugeEl) {
+    let rafId = 0;
+    new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => { try { gaugeChart.resize(); } catch {} });
+    }).observe(gaugeEl);
+  }
+  requestAnimationFrame(() => { try { gaugeChart.resize(); } catch {} });
+  window.addEventListener('load', () => { try { gaugeChart.resize(); } catch {} });
+}
 const healthHistory = [];  // last 60 samples ≈ 5min @ 5s refresh
 function renderGauge(score) {
   const color = score >= 80 ? '#67c23a' : score >= 50 ? '#e6a23c' : '#f56c6c';
