@@ -335,6 +335,13 @@
         <div class="kpi-value skel">—</div>
         <div class="kpi-sub">external</div>
       </div>
+      <!-- 治理可見性：這平台的差異化(不只 infra 健康)。待審核 + 生效中的 ACL override。 -->
+      <div class="kpi good" id="kpiGovernance" style="grid-column:1/-1">
+        <div class="kpi-dot"></div>
+        <div class="kpi-label">Governance</div>
+        <div class="kpi-value skel">—</div>
+        <div class="kpi-sub">待審核 · ACL override</div>
+      </div>
     </div>
   </section>
 
@@ -912,6 +919,34 @@ async function loadAll() {
         const sub = document.getElementById('netSub');
         if (sub) sub.textContent = 'offline';
         if (list) list.innerHTML = '<div style="color:var(--bad);text-align:center;padding:20px;font-size:11px">⚠ 連不到 broker</div>';
+      }
+    })(),
+
+    // 7. Governance — 待審核 approvals + 生效中 ACL override（治理可見性:broker 當控制平面的證據,不只 infra）
+    (async () => {
+      try {
+        const [ar, ovr] = await Promise.all([
+          fetch('/api/v1/admin/approvals?status=pending&limit=200', { credentials: 'include' }),
+          fetch('/api/v1/admin/acl/overrides', { credentials: 'include' }),
+        ]);
+        const aj = await ar.json();
+        const oj = await ovr.json();
+        // 403 / 非 admin:body 會是 {success:false},data 為 undefined → 別誤判成「0 待審 治理暢通」
+        if (!aj.success || !oj.success) {
+          setKpi('kpiGovernance', '—', '需 admin 權限才看得到治理狀態', 'info');
+          return;
+        }
+        const pending   = Array.isArray(aj.data) ? aj.data.length : 0;
+        const overrides = Array.isArray(oj.data) ? oj.data.length : 0;
+        // 待審核>0 = 需人介入;override>0 = 治理被繞過中 → 都用 amber 提醒;皆 0 = 暢通(green)
+        const cls = (pending > 0 || overrides > 0) ? 'warn' : 'good';
+        const sub = (pending === 0 && overrides === 0)
+          ? '治理暢通 · 0 待審 · 0 override'
+          : `${pending} 待審核 · ${overrides} ACL override 生效`;
+        setKpi('kpiGovernance', pending, sub, cls);
+      } catch (e) {
+        console.warn('governance', e);
+        setKpi('kpiGovernance', '—', '需 admin 登入或連不到 broker', 'info');
       }
     })(),
   ]);
