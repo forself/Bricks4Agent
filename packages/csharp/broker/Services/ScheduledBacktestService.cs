@@ -74,7 +74,7 @@ public class ScheduledBacktestService : BackgroundService
         // 3 條有 grid search optimizer
         "sma_cross", "rsi_oversold", "macd_divergence",
         // Meta（純技術、無 LLM）
-        "composite", "regime_adaptive",
+        "composite", "regime_adaptive", "character_ensemble",
         // 標準技術指標
         "multi_timeframe", "fibonacci_retracement", "bollinger_bands",
         "harmonic_pattern", "vegas_tunnel", "price_action", "smc",
@@ -83,6 +83,8 @@ public class ScheduledBacktestService : BackgroundService
         // Tier 2 batch
         "donchian", "keltner", "parabolic_sar",
         "cci", "obv", "mfi", "chaikin_mf",
+        // 正交因子策略（Hurst 記憶性 / 波動率突破）
+        "hurst_adaptive", "volatility_breakout",
     };
     private readonly string[] _strategies;
 
@@ -364,10 +366,12 @@ public class ScheduledBacktestService : BackgroundService
     private async Task<JsonElement?> FetchBarsAsync(string symbol, string interval, int limit, string traceId, CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new { symbol, interval, limit });
+        // get_bars_funding：OHLCV + 資金費率 as-of join,每根 bar 帶 funding_rate(無 perp 資料則 null)。
+        // 讓 character_ensemble 等的 funding 閘門在批次回測裡真的吃得到資料（沒有就自動降級）。
         var req = new ApprovedRequest
         {
             RequestId = Guid.NewGuid().ToString("N"),
-            CapabilityId = "quote.ohlcv", Route = "get_bars", Payload = payload,
+            CapabilityId = "quote.ohlcv", Route = "get_bars_funding", Payload = payload,
             Scope = "{}", PrincipalId = "system",
             TaskId = "scheduled-backtest", SessionId = "scheduled-backtest",
             TraceId = traceId,
