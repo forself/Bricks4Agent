@@ -63,13 +63,12 @@
 
   /* ─────── Layout — 3 rows ─────── */
   .main {
-    min-height: calc(100vh - 50px);
     display: grid;
     grid-template-columns: 1.4fr 1fr;
-    grid-template-rows: minmax(280px, 1fr) minmax(280px, 1fr) minmax(220px, auto);
+    /* 依內容、不撐滿視窗（高螢幕上 1fr 會把 gauge/KPI 撐到超大 = 「太大了」的根因）。 */
+    grid-template-rows: auto minmax(280px, auto) minmax(220px, auto);
     gap: 14px;
     padding: 14px;
-    overflow-y: auto;
   }
   .main > section {
     background: var(--card);
@@ -102,7 +101,7 @@
 
   /* Health gauge — top-left, large */
   #healthBlock { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; }
-  #healthGauge { flex: 1; min-height: 140px; }
+  #healthGauge { height: 280px; }   /* 固定高度、不隨列高撐大；echarts 用 ResizeObserver 跟著縮放 */
   .health-detail { display: flex; justify-content: space-around; gap: 8px; padding-top: 10px; margin-top: 6px; border-top: 1px solid var(--bd); flex-shrink: 0; }
   .health-detail .hd-item { text-align: center; }
   .health-detail .hd-val { font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
