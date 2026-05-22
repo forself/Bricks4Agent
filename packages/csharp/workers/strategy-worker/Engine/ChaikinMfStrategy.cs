@@ -23,18 +23,28 @@ public class ChaikinMfStrategy : IStrategy
     public int MinBars => 25;
     public decimal MinCapitalUsdt => 50m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["cmf_period"]    = new() { Type = "int",     Default = 20,   Min = 10,    Max = 30,   Step = 5,     Description = "Chaikin MF 週期" },
+        ["cmf_threshold"] = new() { Type = "decimal", Default = 0.1m, Min = 0.05m, Max = 0.2m, Step = 0.05m, Description = "強訊號門檻(±);弱訊號取一半" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var cmf = ChaikinMf.Compute(bars);
+        int period   = config.GetParam("cmf_period", 20);
+        decimal th   = config.GetParam("cmf_threshold", 0.1m);
+        decimal weak = th / 2m;
+
+        var cmf = ChaikinMf.Compute(bars, period);
         if (cmf == null) return Hold(config, "Not enough data for Chaikin MF");
 
         string action = "hold"; decimal conf = 0.5m; string reason;
         var v = cmf.Value;
 
-        if (v > 0.1m)        { action = "buy";  conf = 0.7m;  reason = $"CMF={v:F3} 強力買盤"; }
-        else if (v > 0.05m)  { action = "buy";  conf = 0.55m; reason = $"CMF={v:F3} 溫和買盤"; }
-        else if (v < -0.1m)  { action = "sell"; conf = 0.7m;  reason = $"CMF={v:F3} 強力賣盤"; }
-        else if (v < -0.05m) { action = "sell"; conf = 0.55m; reason = $"CMF={v:F3} 溫和賣盤"; }
+        if (v > th)         { action = "buy";  conf = 0.7m;  reason = $"CMF={v:F3} 強力買盤"; }
+        else if (v > weak)  { action = "buy";  conf = 0.55m; reason = $"CMF={v:F3} 溫和買盤"; }
+        else if (v < -th)   { action = "sell"; conf = 0.7m;  reason = $"CMF={v:F3} 強力賣盤"; }
+        else if (v < -weak) { action = "sell"; conf = 0.55m; reason = $"CMF={v:F3} 溫和賣盤"; }
         else                                                   reason = $"CMF={v:F3} 中性";
 
         return new Signal

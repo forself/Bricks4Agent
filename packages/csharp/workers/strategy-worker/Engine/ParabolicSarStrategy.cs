@@ -24,9 +24,18 @@ public class ParabolicSarStrategy : IStrategy
     private const decimal MinDistancePct = 1m;
     private const decimal NearReversalPct = 0.3m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["psar_af_step"] = new() { Type = "decimal", Default = 0.02m, Min = 0.01m, Max = 0.04m, Step = 0.01m, Description = "加速因子步長(初始值同此)" },
+        ["psar_max_af"]  = new() { Type = "decimal", Default = 0.2m,  Min = 0.1m,  Max = 0.4m,  Step = 0.1m,  Description = "加速因子上限" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var s = ParabolicSar.Compute(bars);
+        decimal afStep = config.GetParam("psar_af_step", 0.02m);
+        decimal maxAf  = config.GetParam("psar_max_af", 0.2m);
+
+        var s = ParabolicSar.Compute(bars, afStep, afStep, maxAf);
         if (s == null) return Hold(config, "Not enough data for Parabolic SAR");
 
         var price = bars[^1].Close;

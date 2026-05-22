@@ -45,12 +45,22 @@ public class VegasTunnelStrategy : IStrategy
     private const int Trigger   = 12;
     private const decimal MinTunnelWidthPct = 0.3m;   // 通道寬度 < 價格 0.3% 視為糾結，不進場
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        // 主/長通道用經典 Fibonacci EMA 組(144/169/576/676)固定不調;只開放 trigger 與通道寬門檻
+        ["vegas_trigger"]          = new() { Type = "int",     Default = Trigger,           Min = 8,    Max = 16,   Step = 4,    Description = "EMA 觸發線週期" },
+        ["vegas_min_tunnel_width"] = new() { Type = "decimal", Default = MinTunnelWidthPct, Min = 0.1m, Max = 0.5m, Step = 0.2m, Description = "通道過窄門檻%(以下不進場)" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
         if (bars.Count < LongSlow)
             return Hold(config, $"Not enough data (need ≥ {LongSlow} bars, got {bars.Count})");
 
-        var snap = VegasTunnel.Compute(bars, MainFast, MainSlow, LongFast, LongSlow, Trigger);
+        int trigger          = config.GetParam("vegas_trigger", Trigger);
+        decimal minTunnelPct = config.GetParam("vegas_min_tunnel_width", MinTunnelWidthPct);
+
+        var snap = VegasTunnel.Compute(bars, MainFast, MainSlow, LongFast, LongSlow, trigger);
         if (snap == null)
             return Hold(config, "Vegas Tunnel computation returned null");
 
@@ -60,7 +70,7 @@ public class VegasTunnelStrategy : IStrategy
         decimal confidence = 0.5m;
         string reason;
 
-        if (snap.TunnelWidthPct < MinTunnelWidthPct)
+        if (snap.TunnelWidthPct < minTunnelPct)
         {
             reason = $"通道過窄（{snap.TunnelWidthPct:F2}%）— 趨勢未明，觀望";
         }

@@ -23,9 +23,20 @@ public class IchimokuStrategy : IStrategy
     public int MinBars => 52;
     public decimal MinCapitalUsdt => 100m;
 
+    public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
+    {
+        ["ichimoku_tenkan"] = new() { Type = "int", Default = 9,  Min = 6,  Max = 12, Step = 3,  Description = "轉換線(Tenkan)週期" },
+        ["ichimoku_kijun"]  = new() { Type = "int", Default = 26, Min = 20, Max = 34, Step = 7,  Description = "基準線(Kijun)週期" },
+        ["ichimoku_ssb"]    = new() { Type = "int", Default = 52, Min = 39, Max = 65, Step = 13, Description = "先行帶 B(SSB)週期" },
+    };
+
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
     {
-        var r = Ichimoku.Compute(bars);
+        int tenkan = config.GetParam("ichimoku_tenkan", 9);
+        int kijun  = config.GetParam("ichimoku_kijun", 26);
+        int ssb    = config.GetParam("ichimoku_ssb", 52);
+
+        var r = Ichimoku.Compute(bars, tenkan, kijun, ssb);
         if (r == null) return Hold(config, "Not enough data for Ichimoku (need ≥ 52 bars)");
 
         var price = bars[^1].Close;
