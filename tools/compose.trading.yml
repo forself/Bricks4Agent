@@ -85,6 +85,11 @@ services:
       # **開啟會動到現有裸倉（含手動開的舊倉）**。空 / 非 true → 關。
       AUTOTRADER_RETROFIT_NAKED_SL: "${AUTOTRADER_RETROFIT_NAKED_SL:-}"
 
+      # Regime filter gate（off / soft / strict）。strict = HighVol/Squeeze 全擋、Trending 擋反向
+      # （TrendingDown 不開多 / TrendingUp 不開空）。**全域、影響所有 watch**。只擋開倉/加倉、不擋平倉。
+      # 給逆勢均值回歸策略(rsi_stoch)在空頭少接刀;預設 off 不破壞既有行為。
+      AUTOTRADER_REGIME_GATE_MODE: "${AUTOTRADER_REGIME_GATE_MODE:-}"
+
       # Lab / 排程回測（策略分析階段）。RunOnStart=true → broker 啟動就跑一輪（驗證/觸發用、跑完設回 false）。
       # 注意：MaxParallel / BacktestSymbols 不在這裡用 ${:-} 空字串覆寫（空 int 會讓 config binding crash、
       # 空字串也會蓋掉 code 的 22-symbol 預設）。要覆寫請給「非空」值或改 code 預設。
