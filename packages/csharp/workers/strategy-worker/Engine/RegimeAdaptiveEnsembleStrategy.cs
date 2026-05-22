@@ -115,9 +115,11 @@ public class RegimeAdaptiveEnsembleStrategy : IStrategy
         var indicators = new Dictionary<string, decimal>();
         var reasonParts = new List<string>();
 
+        var sigs = new Dictionary<string, Signal>();
         foreach (var (strat, weight) in combo)
         {
             var sig = SafeEvaluate(strat, bars, config);
+            sigs[strat.Name] = sig;
             var wNorm = weight / totalWeight;
 
             switch (sig.Action)
@@ -138,7 +140,8 @@ public class RegimeAdaptiveEnsembleStrategy : IStrategy
         else if (sellScore > buyScore && sellWeight > 0m) { action = "sell"; confidence = sellScore / sellWeight; }
         else                                              { action = "hold"; confidence = 0.3m; }
 
-        var agreements = combo.Count(c => SafeEvaluate(c.Strat, bars, config).Action == action);
+        // agreement 複用第一遍 signals、不再重跑成員(回測省一半成員 Evaluate)
+        var agreements = combo.Count(c => sigs[c.Strat.Name].Action == action);
         var agreementRatio = combo.Count == 0 ? 0m : Math.Round((decimal)agreements / combo.Count, 4);
 
         indicators["regime.type"]        = (decimal)(int)regime.Type;

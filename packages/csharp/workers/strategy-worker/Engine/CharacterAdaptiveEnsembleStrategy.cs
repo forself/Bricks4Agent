@@ -49,8 +49,8 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
     {
         ["char_trend_th"]   = new() { Type = "decimal", Default = 0.55m, Choices = new object[] { 0.52m, 0.55m, 0.58m, 0.6m }, Description = "判定趨勢市的 Hurst 門檻(以上放大順勢類)" },
         ["char_meanrev_th"] = new() { Type = "decimal", Default = 0.45m, Choices = new object[] { 0.4m, 0.42m, 0.45m, 0.48m }, Description = "判定均值回歸市的 Hurst 門檻(以下放大回歸類)" },
-        ["char_skew_th"]    = new() { Type = "decimal", Default = -0.5m, Choices = new object[] { -0.3m, -0.5m, -0.7m, -1.0m }, Description = "判定負偏(尾部風險)的偏度門檻" },
-        ["char_kurt_th"]    = new() { Type = "decimal", Default = 1.0m, Choices = new object[] { 0.5m, 1.0m, 2.0m, 3.0m }, Description = "判定肥尾(尾部風險)的超額峰度門檻" },
+        // 尾部風險閘門(skew/kurt 門檻)刻意「不」放進 ParamSchema:風控閾值不該被 grid search
+        // curve-fit(會過擬合歷史崩盤),用穩健固定值;且只優化兩個核心門檻 → grid 16 組、不爆。
     };
 
     /// <summary>
@@ -84,8 +84,6 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
 
         var trendTh   = config.GetParam("char_trend_th", TrendTh);
         var meanRevTh = config.GetParam("char_meanrev_th", MeanRevTh);
-        var skewTh    = config.GetParam("char_skew_th", SkewTh);
-        var kurtTh    = config.GetParam("char_kurt_th", KurtTh);
 
         // meta 特徵:Hurst(性格)+ 波動率百分位 + 報酬分布(尾部風險)。算不出來就降級。
         var hurst  = Hurst.Compute(bars, HurstLookback);
@@ -115,9 +113,11 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
             totalWeight = _constituents.Count;
         }
 
+        var signals = new Dictionary<string, Signal>();
         foreach (var s in _constituents)
         {
             var sig  = SafeEvaluate(s, bars, config);
+            signals[s.Name] = sig;
             var wNorm = weights[s.Name] / totalWeight;
 
             switch (sig.Action)
@@ -139,15 +139,16 @@ public class CharacterAdaptiveEnsembleStrategy : IStrategy
         else                                              { action = "hold"; confidence = 0.3m; }
 
         // 尾部風險閘門:負偏 + 高峰 = 下行脆弱(易暴跌)。風險不對稱、做多更危險,
-        // 故只砍多頭信心(不動做空/觀望)。這是純風控維度、與方向判斷正交。
+        // 故只砍多頭信心(不動做空/觀望)。閾值用穩健固定值(不 curve-fit)。
         decimal tailRisk = 0m;
-        if (dist != null && dist.Value.Skew < skewTh && dist.Value.Kurtosis > kurtTh)
+        if (dist != null && dist.Value.Skew < SkewTh && dist.Value.Kurtosis > KurtTh)
         {
             tailRisk = 1m;
             if (action == "buy") confidence *= TailRiskDiscount;
         }
 
-        var agreements = _constituents.Count(s => SafeEvaluate(s, bars, config).Action == action);
+        // agreement 複用第一遍的 signals、不再重跑成員(回測時省一半成員 Evaluate)
+        var agreements = _constituents.Count(s => signals[s.Name].Action == action);
         var agreementRatio = _constituents.Count == 0 ? 0m
             : Math.Round((decimal)agreements / _constituents.Count, 4);
 
