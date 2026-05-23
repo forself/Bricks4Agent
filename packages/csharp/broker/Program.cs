@@ -747,6 +747,16 @@ app.Logger.LogInformation("Broker database path: {DbPath}", dbPath);
 // Phase A1：seed 一筆 admin（prn_dashboard / 預設密碼 admin、強制下次改）
 app.Services.GetRequiredService<Broker.Services.PrincipalAuthService>().EnsureInitialAdmin(app.Configuration);
 
+// 組合對帳(config-as-code):依 portfolio.json 補齊缺的 shadow watch。
+// 解析 AutoTraderService(其建構子已載入既有 watch)→ reconciler 只新增 shadow、不碰真錢/既有。
+try
+{
+    Broker.Services.PortfolioReconciler.Apply(
+        app.Services.GetRequiredService<Broker.Services.AutoTraderService>(),
+        app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PortfolioReconciler"));
+}
+catch (Exception ex) { app.Logger.LogWarning(ex, "PortfolioReconciler skipped"); }
+
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/dev/admin", StringComparison.OrdinalIgnoreCase) ||

@@ -237,6 +237,34 @@ public class AutoTraderServiceTests
         db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow.Should().BeTrue();
     }
 
+    // ── PortfolioReconciler（config-as-code 安全屬性:只加 shadow、不武裝真錢、不覆寫)──
+
+    [Fact]
+    public void PortfolioReconciler_AddsShadow_SkipsLive_SkipsExisting()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.AddWatch("BTC-USDT", "bingx", "smc", mode: "perp_long_only");   // 既有(模擬 live/手動)
+
+        var json = """
+        [
+          { "exchange":"bingx","symbol":"BTC-USDT","strategy":"don_trend","shadow":true,"enabled":true },
+          { "exchange":"bingx","symbol":"SOL-USDT","strategy":"don_trend","shadow":true,"enabled":true },
+          { "exchange":"bingx","symbol":"ETH-USDT","strategy":"smc","shadow":false,"enabled":true }
+        ]
+        """;
+        var (added, skippedLive, skippedExisting) =
+            Broker.Services.PortfolioReconciler.Apply(svc, json, NullLogger.Instance);
+
+        added.Should().Be(1, "只有 SOL-USDT(新增 + shadow)該被加");
+        skippedLive.Should().Be(1, "ETH smc shadow=false → 不自動武裝真錢");
+        skippedExisting.Should().Be(1, "BTC-USDT 已存在 → 不覆寫");
+        svc.WatchList["bingx:SOL-USDT"].Shadow.Should().BeTrue();
+        svc.WatchList["bingx:BTC-USDT"].Strategy.Should().Be("smc", "既有的 smc 不被 don_trend 蓋掉");
+        svc.WatchList.ContainsKey("bingx:ETH-USDT").Should().BeFalse("真錢項絕不自動建立");
+    }
+
     // ── Dev-only force action env override ────────────────────────
 
     [Fact]

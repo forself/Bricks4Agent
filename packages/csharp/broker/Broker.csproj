@@ -44,6 +44,10 @@
     <None Update="tool-specs\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 組合設定檔(config-as-code):跟著進 image、broker 啟動時 PortfolioReconciler 讀它 -->
+    <Content Update="portfolio.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
