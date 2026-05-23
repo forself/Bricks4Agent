@@ -4,14 +4,19 @@
 // key=exchange:symbol(一 symbol 一策略),所以 shadow 驗證的策略放「沒 live watch 的 symbol」。
 [
   // ── 真錢核心(備忘;reconciler 略過、由 dashboard 手動管理)──
-  // ETH-USDT mfi 為目前唯一真錢 live(shadow=false),由 dashboard 手動掛、不寫這裡(備忘性質)。
+  // 2026-05-24:使用者手動平掉 ETH/mfi 真錢倉 → 目前【零真錢倉位】、全系統 shadow。
+  //   ETH 改 shadow + ma_regime_trend(mfi 是弱配對);要再上真錢用 dashboard 的 👻↔🔴 切換鈕。
   // BTC-USDT smc:2026-05-24 從壞掉的 "BTC" key 重建到正確 symbol,目前 shadow 驗證中;
   //   驗證 OK 後在 dashboard 手動轉真錢(真錢開火留使用者手按)。
   { "exchange": "bingx", "symbol": "BTC-USDT", "strategy": "smc", "mode": "perp_long_only", "leverage": 5, "shadow": false, "enabled": true, "note": "live core 目標 — 現為 shadow 驗證中,驗證後 dashboard 手動轉真錢" },
 
   // ── 影子驗證中(reconciler 自動建;放沒 live watch 的 symbol 避免撞 key)──
-  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "don_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "海龜突破 趨勢腿 OOS 驗證" },
-  { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "rsi2_rev",  "mode": "perp_long_only", "leverage": 5, "quantity": 10,  "shadow": true, "enabled": true, "note": "RSI2 超賣回歸 均值腿" },
-  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "boll_rev",  "mode": "perp_long_only", "leverage": 5, "quantity": 50,  "shadow": true, "enabled": true, "note": "布林回歸 去相關均值腿" },
-  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "rsi_stoch", "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "rsi_stoch 從 BTC 撤下後重掛 shadow(BTC 讓給 smc);長遠走子帳戶後可回 BTC 真錢" }
+  // 2026-05-24 多時框(1h~1w)回測重排:汰換 1d-only 脆弱腿(don_trend/rsi2_rev/boll_rev/rsi_stoch),
+  //   換成跨時框較穩的 dual_mom_ls/ma_regime_trend/ts_momentum + decorr4_ls 集成。詳見 strat-validate。
+  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "雙時框動量共振 — BNB 上 5/5 時框全正(全分析最穩配對)" },
+  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 50,  "shadow": true, "enabled": true, "note": "均線 regime 趨勢 — DOGE 1d 24%/1w 14%,取代負收益的 boll_rev" },
+  { "exchange": "bingx", "symbol": "ETH-USDT",  "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 0.01,"shadow": true, "enabled": true, "note": "原 mfi 真錢已手動平;改 shadow 測 ma_regime_trend(ETH 4/5 時框正)。與 DOGE 同策略、不同標的" },
+  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "ts_momentum",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "波動率管理動量 — 最強通用趨勢;SOL 本身難搞、低期望" },
+  { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "decorr4_ls",      "mode": "perp_long_only", "leverage": 5, "quantity": 10,  "shadow": true, "enabled": true, "note": "去相關4腿集成 — XRP 單腿 edge 已證偽(那波大漲假象),改放分散化觀察" },
+  { "exchange": "bingx", "symbol": "LTC-USDT",  "strategy": "rsi_stoch",       "mode": "perp_long_only", "leverage": 5, "quantity": 1,   "shadow": true, "enabled": true, "note": "隨機指標回歸 — LTC 上 5/5 時框全正(另一個最穩配對)" }
 ]
