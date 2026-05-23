@@ -79,10 +79,25 @@ public class ApprovalService : IApprovalService
         "trading.perpetual::set_leverage",
     };
 
+    /// <summary>
+    /// 只讀 route 白名單(capability::route)——即使整個 capability 受控(如 trading.order),
+    /// 這些「純查詢、不動錢」的 route 也放行,不洗審核閘。
+    /// 安全預設:不在這裡的 route 一律照原規則受控(漏列只會多一個無害的審核彈窗、不會放過下單)。
+    /// 起因:儀表板每幾秒 poll list_orders → 每次都生審核 → Discord 洗版。
+    /// </summary>
+    private static readonly HashSet<string> ReadOnlyExemptRoutes =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        "trading.order::list_orders",
+        "trading.order::get_order",
+    };
+
     public ApprovalService(BrokerDb db) { _db = db; }
 
     public bool RequiresApproval(string capabilityId, string route)
     {
+        // 只讀白名單優先:純查詢放行(place_order / cancel_order 等 write route 不在此、仍受控)
+        if (ReadOnlyExemptRoutes.Contains($"{capabilityId}::{route}")) return false;
         if (RequiringApprovalCapabilities.Contains(capabilityId)) return true;
         var key = $"{capabilityId}::{route}";
         return RequiringApprovalRoutes.Contains(key);

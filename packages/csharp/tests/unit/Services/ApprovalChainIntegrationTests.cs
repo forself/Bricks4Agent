@@ -58,6 +58,24 @@ public class ApprovalChainIntegrationTests : IDisposable
     }
 
     [Fact]
+    public void RequiresApproval_TradingOrder_ReadOnlyRoutes_Exempt()
+    {
+        // 修:儀表板 poll list_orders 洗審核。只讀 route 放行、write route 仍受控。
+        var inner = new ApprovalService(_db);
+        inner.RequiresApproval("trading.order", "list_orders").Should().BeFalse();
+        inner.RequiresApproval("trading.order", "get_order").Should().BeFalse();
+        inner.RequiresApproval("trading.order", "place_order").Should().BeTrue();
+        inner.RequiresApproval("trading.order", "cancel_order").Should().BeTrue();
+    }
+
+    [Fact]
+    public void RequiresApproval_Chain_ListOrders_NotGated()
+    {
+        // 端到端:整條 decorator chain 也不該再擋 list_orders
+        _chain.RequiresApproval("trading.order", "list_orders").Should().BeFalse();
+    }
+
+    [Fact]
     public void RequiresApproval_LowRiskCap_NoTimeRule_False()
     {
         _chain.RequiresApproval("strategy.signal", "compute").Should().BeFalse();
