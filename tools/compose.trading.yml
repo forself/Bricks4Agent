@@ -277,6 +277,8 @@ services:
       WORKER_Worker__Risk__MaxDailyLoss: "${RISK_MAX_DAILY_LOSS:-1000}"
       WORKER_Worker__Risk__MaxDrawdownPct: "${RISK_MAX_DRAWDOWN:-10}"
       WORKER_Worker__Risk__MaxDailyTrades: "${RISK_MAX_DAILY_TRADES:-20}"
+      # 單筆最大虧損 %（r14 perp / r17 spot）。預設 2%（Van Tharp）。單人實盤想放寬在 .env.trading 設此值。
+      RISK_MAX_LOSS_PER_TRADE_PCT: "${RISK_MAX_LOSS_PER_TRADE_PCT:-2}"
     networks:
       - trading-net
     depends_on:

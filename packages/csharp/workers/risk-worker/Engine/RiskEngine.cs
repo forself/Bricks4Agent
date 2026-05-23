@@ -527,8 +527,15 @@ public class RiskEngine
     }
 
     /// <summary>預設風控規則集。</summary>
-    public static List<RiskRule> DefaultRules() => new()
+    public static List<RiskRule> DefaultRules()
     {
+        // 單筆風險上限（Van Tharp 2% rule）。預設 2% 保守；單人實盤想放寬可設
+        // env RISK_MAX_LOSS_PER_TRADE_PCT（clamp 0.5~20）。影響 r14(perp) / r17(spot)。
+        var maxLossPerTradePct =
+            decimal.TryParse(System.Environment.GetEnvironmentVariable("RISK_MAX_LOSS_PER_TRADE_PCT"), out var mlp) && mlp > 0m
+                ? System.Math.Clamp(mlp, 0.5m, 20m) : 2m;
+        return new()
+        {
         new() { RuleId = "r1", Name = "Max Position Size",        Type = "max_position",       Threshold = 10_000 },
         new() { RuleId = "r2", Name = "Max Portfolio Allocation", Type = "max_portfolio_pct",  Threshold = 25 },
         new() { RuleId = "r3", Name = "Max Single Order",         Type = "max_order_size",     Threshold = 5_000 },
@@ -545,7 +552,7 @@ public class RiskEngine
         // r17: spot 端的 account-risk-per-trade rule（業界 Van Tharp 2% rule）。
         // 跟 perp r14 同名同邏輯、equity 用 portfolio_value、SL 距離由 broker 傳 initial_sl_pct。
         // Scope="spot"：只在 Check() 路徑套、避免在 perp 路徑被當 max_loss_per_trade_pct 重複觸發。
-        new() { RuleId = "r17", Name = "Spot Max Loss Per Trade %", Type = "max_loss_per_trade_pct", Threshold = 2, Scope = "spot" },
+        new() { RuleId = "r17", Name = "Spot Max Loss Per Trade %", Type = "max_loss_per_trade_pct", Threshold = maxLossPerTradePct, Scope = "spot" },
 
         // ── 永續合約規則（給 BingX perp 用、走 CheckPerp 路徑、平倉永遠放行）────
         // r11: 槓桿上限 10x——對 30 USDT 起步帳戶這已經很激進，但留空間給之後調大
@@ -556,7 +563,7 @@ public class RiskEngine
         new() { RuleId = "r13", Name = "Min Liquidation Distance",  Type = "max_liquidation_distance",Threshold = 5 },
         // r14: 單筆預估損 ≤ 合約資金 2%（用 InitialSlPct 線性估、保守）
         // Scope="perp"：只在 CheckPerp() 路徑套、配對 r17 的 spot scope。
-        new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = 2, Scope = "perp" },
+        new() { RuleId = "r14", Name = "Max Loss Per Trade %",      Type = "max_loss_per_trade_pct",  Threshold = maxLossPerTradePct, Scope = "perp" },
         // r15: 同方向最多 5 倉；對沖時放寬到 5+反向倉數
         new() { RuleId = "r15", Name = "Max Positions Per Side",    Type = "max_positions_per_side",  Threshold = 5 },
         // r16: 當日 perp 帳戶虧損 > 6% → 整天熔斷不再開新倉。
@@ -564,5 +571,6 @@ public class RiskEngine
         // 由 AutoTraderService 維護 perp_daily_open_balance 表跨日 reset。平倉永遠放行不受影響。
         // 6% = 例如 $99 容許今日內 $5.94 虧損；3 筆 r14 約滿就觸發、留 1 筆緩衝。
         new() { RuleId = "r16", Name = "Max Perp Daily Loss %",     Type = "max_perp_daily_loss_pct", Threshold = 6 },
-    };
+        };
+    }
 }
