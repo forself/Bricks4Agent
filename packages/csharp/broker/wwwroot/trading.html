@@ -1126,7 +1126,7 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
       <div class="form-row">
         <div class="fg sym-picker"><label>Symbol</label><input id="auto-symbol" value="AAPL" placeholder="搜尋…" style="width:100px" onfocus="openSymPicker(this,'auto')" oninput="filterSymPicker(this,'auto')"><div class="sym-dropdown" id="auto-sym-dropdown"></div></div>
         <div class="fg"><label>Exchange</label><select id="auto-exchange" onchange="onAutoExchangeChange()"><option value="alpaca">Alpaca</option><option value="binance">Binance</option><option value="bingx">BingX (Perp)</option></select></div>
-        <div class="fg"><label>策略</label><select id="auto-strategy"><option value="auto_select">🎯 AutoSelect (依行情擇優)</option><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
+        <div class="fg"><label>策略</label><select id="auto-strategy"><option value="auto_select">🎯 AutoSelect (依行情擇優)</option><option value="composite">Composite</option><option value="ensemble">Ensemble (動態權重)</option><option value="multi_timeframe">Multi-TF</option><option value="smc">🧠 SMC (Smart Money・日線)</option><option value="rsi_stoch">RSI+Stoch</option><option value="mfi">MFI</option><option value="sma_cross">SMA</option><option value="rsi_oversold">RSI</option><option value="macd_divergence">MACD</option><option value="news_sentiment">News</option></select></div>
         <div class="fg"><label>數量</label><input id="auto-qty" type="number" value="1" min="0.001" step="any" style="width:70px"></div>
         <div class="fg" id="auto-mode-fg" style="display:none"><label>模式</label>
           <select id="auto-mode">
@@ -1135,6 +1135,7 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
           </select>
         </div>
         <div class="fg" id="auto-leverage-fg" style="display:none"><label>槓桿</label><input id="auto-leverage" type="number" value="5" min="1" max="125" style="width:60px"></div>
+        <div class="fg" title="影子模式:照常評估訊號、跑風控、記 log,但「絕不下真單」。新策略上線前先 shadow 跑幾週對帳。"><label>影子</label><label style="display:flex;align-items:center;gap:5px;height:30px;cursor:pointer;font-size:11px;color:var(--text2)"><input id="auto-shadow" type="checkbox" style="width:auto;margin:0">👻 只記錄不下單</label></div>
         <button class="btn btn-y btn-sm" onclick="addAutoWatch()">新增</button>
       </div>
     </div>
@@ -2727,7 +2728,9 @@ const tb=document.getElementById('auto-watch-table');
 if(d.watch_list?.length>0)tb.innerHTML=d.watch_list.map(w=>{const sc=w.last_signal==='buy'?'buy':w.last_signal==='sell'?'sell':'hold';
 const mode=w.mode||'spot';
 const modeBadge=mode==='spot'?'<span style="color:var(--text3);font-size:10px">spot</span>':mode==='perp_long_only'?`<span style="background:var(--greenBg);color:var(--green);padding:1px 5px;border-radius:2px;font-size:10px">📈 long-only ${w.leverage||5}x</span>`:`<span style="background:rgba(240,185,11,.15);color:#f0b90b;padding:1px 5px;border-radius:2px;font-size:10px">↕ both ${w.leverage||5}x</span>`;
-return`<tr><td><strong>${w.symbol}</strong></td><td>${w.exchange}</td><td>${modeBadge}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
+const shadowBadge=w.shadow?` <span title="影子模式:只記錄不下單" style="background:rgba(132,142,156,.18);color:var(--text2);padding:1px 5px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:.3px">👻 SHADOW</span>`:'';
+const rowOpacity=w.shadow?'opacity:.72':'';
+return`<tr style="${rowOpacity}"><td><strong>${w.symbol}</strong>${shadowBadge}</td><td>${w.exchange}</td><td>${modeBadge}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
 else tb.innerHTML='<tr><td colspan="9" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
 async function toggleAutoTrader(){
   const r=await api('/api/v1/auto-trader/status');const d=r?.data||{};
@@ -2755,7 +2758,8 @@ async function collectLiveWatches(watchList){
     const r=await api('/api/v1/trading/account?exchange='+ex);
     exMode[ex]=r?.data?.is_paper===false;  // is_paper:false = live
   }
-  return watchList.filter(w=>exMode[w.exchange]);
+  // shadow watch 永不下單 → 不算 live、不該觸發「真錢確認」modal
+  return watchList.filter(w=>exMode[w.exchange] && !w.shadow);
 }
 
 function showPreflight(liveWatches,status){
@@ -3027,9 +3031,10 @@ async function addAutoWatch(){
     body.mode=document.getElementById('auto-mode').value;
     body.leverage=parseInt(document.getElementById('auto-leverage').value)||5;
   }
+  body.shadow=document.getElementById('auto-shadow').checked;
   const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r?.success){
-    toastOk(`${body.symbol} 已加入監控`+(isPerp?` (${body.mode}, ${body.leverage}x)`:''));
+    toastOk(`${body.symbol} 已加入監控`+(isPerp?` (${body.mode}, ${body.leverage}x)`:'')+(body.shadow?' 👻 影子模式(不下單)':''));
     fetchAutoStatus();
   }else{
     toastErr('加入失敗：'+(r?.message||r?.error||'unknown'));
