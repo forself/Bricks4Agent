@@ -67,6 +67,14 @@ public class AutoTradeWatchEntry
     [MaxLength(10)]
     public string? HtfInterval { get; set; }
 
+    /// <summary>
+    /// Shadow（影子）模式:AutoTrader 照常評估訊號、跑風控、記 log,但「絕不下真單」。
+    /// 用途:新策略(如 SMC 日線)上線前先 shadow 跑幾週,對帳「實盤訊號 vs 回測」再決定真錢。
+    /// 預設 false = 真交易(既有 watch 全部不變)。安全關鍵:此欄位必須持久化,否則重啟會變回真交易。
+    /// </summary>
+    [Column("shadow")]
+    public bool Shadow { get; set; } = false;
+
     [Column("last_signal")]
     [MaxLength(20)]
     public string? LastSignal { get; set; }

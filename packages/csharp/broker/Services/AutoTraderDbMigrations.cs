@@ -35,6 +35,13 @@ public static class AutoTraderDbMigrations
             column: "htf_interval",
             sqlType: "TEXT NULL");
 
+        // Shadow 模式:評估訊號但「只記錄、絕不下單」。預設 0 = 既有 watch 全是真交易、行為不變。
+        // 安全關鍵:必須持久化,否則 shadow watch 重啟後會變回真交易 watch。
+        AddColumnIfMissing(db, logger,
+            table: "auto_trade_watchlist",
+            column: "shadow",
+            sqlType: "INTEGER NOT NULL DEFAULT 0");
+
         // Phase A2: 加 owner 欄位、既有資料一律標 prn_dashboard（admin）。
         // 之後 user 自己加的 watch 會用各自 principal_id；admin 看全部、user 看自己。
         AddColumnIfMissing(db, logger,

@@ -170,6 +170,73 @@ public class AutoTraderServiceTests
         item.LastConfidence.Should().Be(0.75m);
     }
 
+    // ── Shadow（影子）模式持久化:安全關鍵 ─────────────────────────
+    // 此欄位若不持久化、shadow watch 重啟後會「悄悄變回真交易」並真的下單。
+    // 這組測試是那個 worst-case 的回歸網。
+
+    [Fact]
+    public void AddWatch_DefaultsShadowFalse_RealTrading()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only");
+
+        // 記憶體 + DB 都該是 false（既有 watch 行為完全不變）
+        svc.WatchList["bingx:BTC-USDT"].Shadow.Should().BeFalse();
+        db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AddWatch_ShadowTrue_PersistsToDb()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only", shadow: true);
+
+        svc.WatchList["bingx:BTC-USDT"].Shadow.Should().BeTrue();
+        db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow
+            .Should().BeTrue("shadow 必須寫進 DB、否則重啟會丟失");
+    }
+
+    [Fact]
+    public void ShadowWatch_SurvivesRestart_DoesNotBecomeLive()
+    {
+        // 最關鍵的安全屬性:shadow watch 經過「重啟」(全新 service 從 DB reload)後仍是 shadow。
+        // 若這條失敗 = shadow watch 重啟後會開始下真單。
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+
+        // 第一個 service:加一個 shadow watch
+        var svc1 = MakeService(db);
+        svc1.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only", shadow: true);
+
+        // 模擬 broker 重啟:全新 service 從同一個 DB load
+        var svc2 = MakeService(db);
+
+        svc2.WatchList.Should().ContainKey("bingx:BTC-USDT");
+        svc2.WatchList["bingx:BTC-USDT"].Shadow
+            .Should().BeTrue("重啟後 shadow 必須維持、絕不能悄悄變回真交易");
+    }
+
+    [Fact]
+    public void AddWatch_OverwriteFlipsShadow_LiveToShadowPersists()
+    {
+        // 既有真交易 watch、再用 shadow=true 覆寫同 key → 應變 shadow 並落 DB
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only");                 // live
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only", shadow: true);   // → shadow
+
+        db.GetAll<AutoTradeWatchEntry>().Should().ContainSingle();
+        db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow.Should().BeTrue();
+    }
+
     // ── Dev-only force action env override ────────────────────────
 
     [Fact]

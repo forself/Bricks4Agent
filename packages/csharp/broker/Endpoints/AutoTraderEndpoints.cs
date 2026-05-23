@@ -124,6 +124,8 @@ public static class AutoTraderEndpoints
             var leverage = doc.TryGetProperty("leverage",  out var lv) && lv.TryGetInt32(out var lvI) ? lvI : 5;
             // Batch C+++ Phase 2：HTF（大週期）確認週期、空字串/null = 不做 HTF
             var htfInterval = doc.TryGetProperty("htf_interval", out var hi) ? hi.GetString() : null;
+            // Shadow（影子）模式：true = 評估訊號但絕不下真單。新策略上線前對帳用。預設 false = 真交易。
+            var shadow = doc.TryGetProperty("shadow", out var sh) && sh.ValueKind == JsonValueKind.True;
 
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
@@ -132,10 +134,11 @@ public static class AutoTraderEndpoints
             var (pid, _) = ctx.GetCurrentUser();
             var owner = pid ?? "prn_dashboard";
 
-            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner, htfInterval);
+            svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner, htfInterval, shadow);
             return Results.Ok(ApiResponseHelper.Success(new {
                 symbol, exchange, strategy, quantity, mode, leverage,
                 htf_interval = htfInterval,
+                shadow,
                 owner_principal_id = owner,
             }));
         });

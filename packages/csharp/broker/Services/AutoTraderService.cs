@@ -767,6 +767,7 @@ public class AutoTraderService : BackgroundService
                     Leverage = e.Leverage > 0 ? e.Leverage : 5,
                     OwnerPrincipalId = string.IsNullOrEmpty(e.OwnerPrincipalId) ? "prn_dashboard" : e.OwnerPrincipalId,
                     HtfInterval = string.IsNullOrEmpty(e.HtfInterval) ? null : e.HtfInterval,
+                    Shadow = e.Shadow,
                 };
             }
             if (entries.Count > 0)
@@ -795,6 +796,7 @@ public class AutoTraderService : BackgroundService
                     Mode = item.Mode, Leverage = item.Leverage,
                     OwnerPrincipalId = item.OwnerPrincipalId,
                     HtfInterval = item.HtfInterval,
+                    Shadow = item.Shadow,
                     CreatedAt = now, UpdatedAt = now,
                 });
             }
@@ -806,6 +808,7 @@ public class AutoTraderService : BackgroundService
                 existing.Mode = item.Mode; existing.Leverage = item.Leverage;
                 existing.OwnerPrincipalId = item.OwnerPrincipalId;
                 existing.HtfInterval = item.HtfInterval;
+                existing.Shadow = item.Shadow;
                 existing.UpdatedAt = now;
                 _db.Update(existing);
             }
@@ -954,7 +957,7 @@ public class AutoTraderService : BackgroundService
 
     public void AddWatch(string symbol, string exchange, string strategy = "composite", decimal quantity = 1,
         string mode = "spot", int leverage = 5, string ownerPrincipalId = "prn_dashboard",
-        string? htfInterval = null)
+        string? htfInterval = null, bool shadow = false)
     {
         var key = $"{exchange}:{symbol}";
         var validModes = new[] { "spot", "perp_long_only", "perp_both" };
@@ -968,12 +971,12 @@ public class AutoTraderService : BackgroundService
             Symbol = symbol, Exchange = exchange, Strategy = strategy,
             Quantity = quantity, Active = true, Mode = mode, Leverage = leverage,
             OwnerPrincipalId = string.IsNullOrEmpty(ownerPrincipalId) ? "prn_dashboard" : ownerPrincipalId,
-            HtfInterval = cleanedHtf,
+            HtfInterval = cleanedHtf, Shadow = shadow,
         };
         _watchList[key] = item;
         PersistWatch(key, item);
-        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x htf={Htf} owner={Owner}",
-            key, strategy, quantity, mode, leverage, cleanedHtf ?? "-", item.OwnerPrincipalId);
+        _logger.LogInformation("AutoTrader: watching {Key} strategy={Strategy} qty={Qty} mode={Mode} lev={Lev}x htf={Htf} shadow={Shadow} owner={Owner}",
+            key, strategy, quantity, mode, leverage, cleanedHtf ?? "-", shadow, item.OwnerPrincipalId);
     }
 
     /// <summary>
@@ -1824,6 +1827,15 @@ public class AutoTraderService : BackgroundService
                     AddLog(item, "adjusted", $"Risk reduced qty to {item.Quantity}");
                 }
             }
+        }
+
+        // Shadow（影子）守衛：訊號照評估、風控照跑、log 照記,但「絕不下任何真單」。
+        // 攔在下單分歧之前——perp / spot 兩條路都吃得到。新策略(SMC 日線)上線前
+        // 先 shadow 跑幾週對帳「實盤訊號 vs 回測」,確認後才拿掉 shadow 旗標放真錢。
+        if (item.Shadow)
+        {
+            AddLog(item, "shadow", $"[SHADOW] 本來會下單:{action} · {item.Mode} · conf={confidence:P0} — 已記錄、未下單");
+            return;
         }
 
         // Step 5: 下單 — spot 走 trading.order；perp_* 走 trading.perpetual 並做 signal→open/close 映射
@@ -2867,6 +2879,12 @@ public class WatchItem
     /// 預設 null = 不做 HTF、保留既有行為。
     /// </summary>
     public string? HtfInterval { get; set; }
+
+    /// <summary>
+    /// Shadow 模式:照常評估訊號 + 風控 + log,但「絕不下真單」。新策略上線前先 shadow 對帳用。
+    /// 預設 false = 真交易。必須持久化(見 AutoTradeWatchEntry.Shadow),否則重啟會變回真交易。
+    /// </summary>
+    public bool Shadow { get; set; } = false;
 }
 
 public class TradeLog
