@@ -1,0 +1,119 @@
+//@version=5
+// ──────────────────────────────────────────────────────────────────────────
+// B4A Fib 回撤確認助手  (半自動篩選 / 警報用,不下單)
+// 編進 18 輪回測驗證過的方法:
+//   進場 = 等回撤「底部成形(確認 pivot)」再進(不接刀);進場區 from-low 0.382-0.707
+//   TP   = 進場價 + 一個完整波段幅度 (= 對稱映射 0.382→1.382 / 0.5→1.5 / 0.618→1.618)
+//   SL   = 確認低/高點外一點點(結構失效)
+//   早出 = 價格進到 1.13 延伸後,出現「影線拒絕」(撞到被甩回) → 提醒落袋
+//   多空都做。它只「標記 + 警報」,最後一個判斷(這趨勢值不值得做)留給你。
+// 用法:Pine 編輯器貼上 → 加到圖 → 右鍵設警報「Any alert() function call」。
+// ──────────────────────────────────────────────────────────────────────────
+indicator("B4A Fib 回撤確認助手", overlay=true, max_lines_count=500, max_labels_count=300)
+
+pivLen  = input.int(4,     "Pivot 強度(左右各幾根確認)", minval=2)
+zLo     = input.float(0.382,"進場區下界(from-low)")
+zHi     = input.float(0.707,"進場區上界(from-low)")
+doLong  = input.bool(true, "多單設定")
+doShort = input.bool(true, "空單設定")
+wickThr = input.float(0.4, "影線拒絕門檻(影線/全棒)", minval=0.1, maxval=0.9)
+extLen  = input.int(15,    "畫線往右延伸根數")
+
+ph = ta.pivothigh(high, pivLen, pivLen)
+pl = ta.pivotlow(low,  pivLen, pivLen)
+f_wickUp() => (high - math.max(close, open)) / math.max(high - low, syminfo.mintick)
+f_wickDn() => (math.min(close, open) - low) / math.max(high - low, syminfo.mintick)
+
+// ============================ 多單 ============================
+var float L_lastPL = na
+var float L_legLow = na, L_legHigh = na
+var int   L_legHighBar = na
+var float L_entry = na, L_tp = na, L_sl = na, L_z1 = na
+var bool  L_armed = false
+
+if doLong
+    // pivot high → 與前一個 pivot low 組成 up-leg
+    if not na(ph) and not na(L_lastPL)
+        L_legLow := L_lastPL
+        L_legHigh := ph
+        L_legHighBar := bar_index - pivLen
+    // pivot low → 是否為「回撤底確認」的進場
+    if not na(pl)
+        B = pl
+        bbar = bar_index - pivLen
+        if not na(L_legHigh) and not na(L_legLow) and L_legHighBar < bbar and L_legHigh > L_legLow
+            rng = L_legHigh - L_legLow
+            ratio = (B - L_legLow) / rng
+            if B < L_legHigh and ratio >= zLo and ratio <= zHi
+                e = close
+                s = B * 0.997
+                t = e + rng
+                line.new(bar_index, e, bar_index + extLen, e, color=color.aqua, width=2)
+                line.new(bar_index, s, bar_index + extLen, s, color=color.red,  style=line.style_dashed)
+                line.new(bar_index, t, bar_index + extLen, t, color=color.lime, style=line.style_dashed)
+                label.new(bar_index, e, "多 進場 " + str.tostring(e, format.mintick) + "\nSL " + str.tostring(s, format.mintick) + "  TP " + str.tostring(t, format.mintick) + "\nRR " + str.tostring((t - e) / math.max(e - s, syminfo.mintick), "#.#"), style=label.style_label_up, color=color.new(color.teal, 15), textcolor=color.white, size=size.small)
+                L_entry := e
+                L_tp := t
+                L_sl := s
+                L_z1 := e + 0.13 * rng
+                L_armed := false
+                alert("B4A 多單回撤確認 " + syminfo.ticker + " 進≈" + str.tostring(e, format.mintick) + " TP " + str.tostring(t, format.mintick), alert.freq_once_per_bar)
+        L_lastPL := pl
+    // 進行中多單 → 影線拒絕早出
+    if not na(L_entry)
+        if high >= L_z1
+            L_armed := true
+        bool earlyL = L_armed and (close < open) and f_wickUp() >= wickThr
+        if earlyL
+            label.new(bar_index, high, "多 早出?\n(影線拒絕)", style=label.style_label_down, color=color.orange, textcolor=color.white, size=size.tiny)
+            alert("B4A 多單早出訊號(影線拒絕)" + syminfo.ticker, alert.freq_once_per_bar)
+        if low <= L_sl or high >= L_tp or earlyL
+            L_entry := na
+            L_armed := false
+
+// ============================ 空單 ============================
+var float S_lastPH = na
+var float S_legLow = na, S_legHigh = na
+var int   S_legLowBar = na
+var float S_entry = na, S_tp = na, S_sl = na, S_z1 = na
+var bool  S_armed = false
+
+if doShort
+    // pivot low → 與前一個 pivot high 組成 down-leg
+    if not na(pl) and not na(S_lastPH)
+        S_legHigh := S_lastPH
+        S_legLow := pl
+        S_legLowBar := bar_index - pivLen
+    // pivot high → 是否為「反彈頂確認」的放空
+    if not na(ph)
+        T = ph
+        tbar = bar_index - pivLen
+        if not na(S_legHigh) and not na(S_legLow) and S_legLowBar < tbar and S_legHigh > S_legLow
+            rng = S_legHigh - S_legLow
+            ratio = (S_legHigh - T) / rng       // 反彈幅度(從高點往下量)
+            if T > S_legLow and ratio >= zLo and ratio <= zHi
+                e = close
+                s = T * 1.003
+                t = e - rng
+                if t > 0
+                    line.new(bar_index, e, bar_index + extLen, e, color=color.fuchsia, width=2)
+                    line.new(bar_index, s, bar_index + extLen, s, color=color.red,  style=line.style_dashed)
+                    line.new(bar_index, t, bar_index + extLen, t, color=color.lime, style=line.style_dashed)
+                    label.new(bar_index, e, "空 進場 " + str.tostring(e, format.mintick) + "\nSL " + str.tostring(s, format.mintick) + "  TP " + str.tostring(t, format.mintick) + "\nRR " + str.tostring((e - t) / math.max(s - e, syminfo.mintick), "#.#"), style=label.style_label_down, color=color.new(color.purple, 15), textcolor=color.white, size=size.small)
+                    S_entry := e
+                    S_tp := t
+                    S_sl := s
+                    S_z1 := e - 0.13 * rng
+                    S_armed := false
+                    alert("B4A 空單反彈確認 " + syminfo.ticker + " 進≈" + str.tostring(e, format.mintick) + " TP " + str.tostring(t, format.mintick), alert.freq_once_per_bar)
+        S_lastPH := ph
+    if not na(S_entry)
+        if low <= S_z1
+            S_armed := true
+        bool earlyS = S_armed and (close > open) and f_wickDn() >= wickThr
+        if earlyS
+            label.new(bar_index, low, "空 早出?\n(影線拒絕)", style=label.style_label_up, color=color.orange, textcolor=color.white, size=size.tiny)
+            alert("B4A 空單早出訊號(影線拒絕)" + syminfo.ticker, alert.freq_once_per_bar)
+        if high >= S_sl or low <= S_tp or earlyS
+            S_entry := na
+            S_armed := false
