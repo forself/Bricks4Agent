@@ -201,7 +201,7 @@ public class BingxPerpetualClient : IPerpetualClient
             }
         }
 
-        var json = await SignedPostAsync("/openApi/swap/v2/trade/order", BuildQuery(qs), ct);
+        var json = await SignedPostFormAsync("/openApi/swap/v2/trade/order", qs, ct);
         var doc = JsonDocument.Parse(json).RootElement;
         EnsureOk(doc, "PlaceOrder");
 
@@ -502,8 +502,30 @@ public class BingxPerpetualClient : IPerpetualClient
         throw new InvalidOperationException($"BingX {op} failed: code={code} msg={msg}");
     }
 
-    private static string BuildQuery(Dictionary<string, string> kv)
-        => string.Join("&", kv.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+    /// <summary>
+    /// POST 下單專用：簽章用「未編碼(raw)」的值算、URL 送「已編碼」的值。
+    /// BingX 伺服器收到後是「先 url-decode 再驗章」→ 章必須對應 decode 後的字串；
+    /// 但 URL 本身的值要編碼（takeProfit/stopLoss 的 JSON 含 {}":  不編碼會破壞 URL）。
+    /// 兩者混用就會 code=100001 signature mismatch —— 正是 bracket SL/TP 開倉失敗主因。
+    /// （GET 路徑一直是 raw 簽 raw 送、簡單值沒特殊字元所以一直正常。）
+    /// 簽章與送出共用同一份順序（timestamp 殿後）；BingX 依收到順序重算、不需排序。
+    /// </summary>
+    private async Task<string> SignedPostFormAsync(string path, Dictionary<string, string> rawParams, CancellationToken ct)
+    {
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var ordered = rawParams.ToList();
+        ordered.Add(new("timestamp", ts.ToString()));
+
+        var rawStr = string.Join("&", ordered.Select(p => $"{p.Key}={p.Value}"));
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_apiSecret));
+        var sig = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(rawStr))).ToLower();
+
+        var encStr = string.Join("&", ordered.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+        var content = new StringContent("", Encoding.UTF8, "application/x-www-form-urlencoded");
+        var resp = await _http.PostAsync($"{_baseUrl}{path}?{encStr}&signature={sig}", content, ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
 
     private string Sign(string query)
     {
