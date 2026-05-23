@@ -159,6 +159,15 @@
     <div id="cMem" class="chart"></div>
   </div>
 
+  <!-- 3b. 網路 I/O by container -->
+  <div class="card wide">
+    <div class="card-title">
+      <span class="main">🌐 網路 I/O by Container <span style="font-weight:400;color:var(--td)">(累計)</span></span>
+      <span class="sub" id="netSub">—</span>
+    </div>
+    <div id="cNet" class="chart"></div>
+  </div>
+
   <!-- 4. Worker 健康度 -->
   <div class="card">
     <div class="card-title">
@@ -205,7 +214,7 @@ const CHART_THEME = {
   backgroundColor: 'transparent',
 };
 function newChart(id) { return echarts.init(document.getElementById(id), null, { renderer: 'svg' }); }
-const ch = { cpu: newChart('cCpu'), mem: newChart('cMem'), health: newChart('cHealth'), lat: newChart('cLat') };
+const ch = { cpu: newChart('cCpu'), mem: newChart('cMem'), net: newChart('cNet'), health: newChart('cHealth'), lat: newChart('cLat') };
 
 // ─────── helpers ───────
 function fmtBytes(b) {
@@ -296,9 +305,14 @@ async function loadContainers() {
   }
 
   // —— CPU / MEM 排名長條 ——
-  const named = stats.map(s => ({ name: shortName(s.container_name), cpu: s.cpu_percent || 0, mem: s.memory_percent || 0, memBytes: s.memory_usage_bytes }));
+  const named = stats.map(s => ({
+    name: shortName(s.container_name), cpu: s.cpu_percent || 0,
+    mem: s.memory_percent || 0, memBytes: s.memory_usage_bytes,
+    netIn: s.network_input_bytes || 0, netOut: s.network_output_bytes || 0,
+  }));
   document.getElementById('cpuSub').textContent = `${named.length} containers`;
   document.getElementById('memSub').textContent = `${named.length} containers`;
+  document.getElementById('netSub').textContent = `${named.length} containers`;
 
   const hbar = (chart, key, fmt) => {
     const sorted = [...named].sort((a, b) => a[key] - b[key]);
@@ -317,6 +331,27 @@ async function loadContainers() {
   };
   hbar(ch.cpu, 'cpu', x => x.cpu.toFixed(1) + '%');
   hbar(ch.mem, 'mem', x => fmtBytes(x.memBytes) + ' · ' + x.mem.toFixed(0) + '%');
+
+  // —— 網路 I/O 堆疊長條(in + out 累計 bytes)——
+  const byNet = [...named].sort((a, b) => (a.netIn + a.netOut) - (b.netIn + b.netOut));
+  ch.net.setOption({
+    ...CHART_THEME,
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: p => {
+        const d = byNet[p[0].dataIndex];
+        return `${d.name}<br>⬇ in ${fmtBytes(d.netIn)}<br>⬆ out ${fmtBytes(d.netOut)}`;
+      },
+    },
+    legend: { top: 0, right: 8, textStyle: { color: '#6b7388' }, data: ['in', 'out'] },
+    grid: { left: 8, right: 56, top: 24, bottom: 24, containLabel: true },
+    xAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10, formatter: v => fmtBytes(v) } },
+    yAxis: { type: 'category', data: byNet.map(x => x.name), axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 11 } },
+    series: [
+      { name: 'in', type: 'bar', stack: 'io', data: byNet.map(x => x.netIn), itemStyle: { color: '#5db8ff' } },
+      { name: 'out', type: 'bar', stack: 'io', data: byNet.map(x => x.netOut), itemStyle: { color: '#a374ff', borderRadius: [0, 4, 4, 0] } },
+    ],
+  });
 }
 
 // ─────── 4. Worker 健康度 donut ───────
@@ -348,11 +383,16 @@ async function loadHealth() {
 // ─────── 5. 服務延遲 p50/p95/p99 ───────
 async function loadLat() {
   try {
-    const r = await fetch('/api/v1/audit/latency?since_minutes=60', { credentials: 'include' });
+    // 修:回傳是 { capabilities:[...] }、不是裸陣列。窗口拉到 24h 避免低流量時空白。
+    const r = await fetch('/api/v1/audit/latency?since_minutes=1440', { credentials: 'include' });
     const j = await r.json();
     if (!j.success) return;
-    const arr = (j.data || []).slice(0, 10);
-    document.getElementById('latSub').textContent = `${arr.length} capabilities`;
+    const arr = ((j.data && j.data.capabilities) || []).slice(0, 10);
+    document.getElementById('latSub').textContent = arr.length ? `${arr.length} capabilities · 24h` : '24h · 暫無資料';
+    if (arr.length === 0) {
+      ch.lat.setOption({ ...CHART_THEME, title: { text: '暫無延遲資料（需服務呼叫流量）', left: 'center', top: 'middle', textStyle: { color: '#6b7388', fontSize: 13, fontWeight: 400 } } }, true);
+      return;
+    }
     ch.lat.setOption({
       ...CHART_THEME,
       tooltip: { trigger: 'axis' },
@@ -365,7 +405,7 @@ async function loadLat() {
         { name: 'p95', type: 'bar', data: arr.map(x => x.p95_ms || 0), itemStyle: { color: '#e6a23c' } },
         { name: 'p99', type: 'bar', data: arr.map(x => x.p99_ms || 0), itemStyle: { color: '#f56c6c' } },
       ],
-    });
+    }, true);   // notMerge:清掉空狀態的 title
   } catch (e) { console.warn('lat', e); }
 }
 
