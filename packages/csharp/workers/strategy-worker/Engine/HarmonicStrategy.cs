@@ -7,7 +7,9 @@ namespace StrategyWorker.Engine;
 /// 諧波形態策略。
 ///
 /// 核心邏輯：
-///   - 偵測最近 5 個 pivot 是否構成 Gartley / Butterfly / Bat / Crab
+///   - 偵測最近 5 個 pivot 是否構成 10 種諧波形態:
+///     Gartley / Bat / Butterfly / Crab / Deep_Crab / Deep_Gartley / Cypher / Shark / Alt_Bat / Five_O
+///     (比率比對 + fit_score 評分見 HarmonicPatterns.CheckPattern)
 ///   - bullish 形態 + D 點離當前價格接近 → Buy（預期 D 點反轉往上）
 ///   - bearish 形態 + D 點接近當前 → Sell
 ///   - 無形態匹配 → Hold
@@ -21,7 +23,7 @@ namespace StrategyWorker.Engine;
 public class HarmonicStrategy : IStrategy
 {
     public string Name => "harmonic_pattern";
-    public string Description => "Harmonic Patterns — 偵測 Gartley/Butterfly/Bat/Crab 5 點諧波形態";
+    public string Description => "Harmonic Patterns — 偵測 10 種 5 點諧波形態 (Gartley/Bat/Butterfly/Crab/Deep 變體/Cypher/Shark/Alt-Bat/5-0)，fit_score 評分 + HTF/RSI 背離確認";
     public StrategyCategory Category => StrategyCategory.Pattern;
     public int MinBars => 60;                  // 需 5 個 pivot ≈ 60 根
     public decimal MinCapitalUsdt => 300m;     // pattern 檢出稀有、需大本金週轉
