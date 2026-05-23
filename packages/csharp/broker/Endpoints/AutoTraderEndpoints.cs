@@ -13,6 +13,7 @@ namespace Broker.Endpoints;
 /// GET  /api/v1/auto-trader/status          — 狀態
 /// POST /api/v1/auto-trader/watch           — 新增監控 symbol
 /// DELETE /api/v1/auto-trader/watch          — 移除監控
+/// POST /api/v1/auto-trader/watch/shadow     — 切換既有 watch 的 shadow 旗標（👻 影子 ↔ 🔴 真錢）
 /// POST /api/v1/auto-trader/interval        — 設定間隔
 /// GET  /api/v1/auto-trader/logs            — 交易日誌
 /// </summary>
@@ -159,6 +160,36 @@ public static class AutoTraderEndpoints
             if (!removed && reason == "forbidden")
                 return Results.Json(ApiResponseHelper.Error("Forbidden: not your watch", 403), statusCode: 403);
             return Results.Ok(ApiResponseHelper.Success(new { removed, symbol, exchange, reason }));
+        });
+
+        // 切換既有 watch 的 shadow 旗標（👻 影子 ↔ 🔴 真錢）。
+        // shadow=false = 轉真錢「武裝」：前端跳確認框；路徑前綴 /api/v1/auto-trader/watch
+        // 已被 EmergencyGate 的 KillSwitch/ReadOnly 蓋到（StartsWith 比對）→ 緊急狀態下無法轉真錢。
+        at.MapPost("/watch/shadow", async (AutoTraderService svc, HttpContext ctx) =>
+        {
+            using var reader = new StreamReader(ctx.Request.Body);
+            var body = await reader.ReadToEndAsync();
+            var doc = JsonDocument.Parse(body).RootElement;
+
+            var symbol   = doc.TryGetProperty("symbol",   out var s) ? s.GetString() ?? "" : "";
+            var exchange = doc.TryGetProperty("exchange",  out var e) ? e.GetString() ?? "alpaca" : "alpaca";
+            // 真錢武裝端點：shadow 必須明確帶 bool，缺值不預設（避免「漏帶 → 被當 false → 誤轉真錢」）
+            if (!doc.TryGetProperty("shadow", out var sh)
+                || (sh.ValueKind != JsonValueKind.True && sh.ValueKind != JsonValueKind.False))
+                return Results.Ok(ApiResponseHelper.Error("Missing shadow boolean"));
+            var shadow = sh.ValueKind == JsonValueKind.True;
+
+            if (string.IsNullOrEmpty(symbol))
+                return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
+
+            var (pid, role) = ctx.GetCurrentUser();
+            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            var (ok, reason) = svc.SetShadow(symbol, exchange, shadow, pid, isAdminOrLegacy);
+            if (!ok && reason == "forbidden")
+                return Results.Json(ApiResponseHelper.Error("Forbidden: not your watch", 403), statusCode: 403);
+            if (!ok && reason == "not_found")
+                return Results.Ok(ApiResponseHelper.Error("Watch not found"));
+            return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, shadow }));
         });
 
         at.MapPost("/interval", async (AutoTraderService svc, HttpRequest req) =>

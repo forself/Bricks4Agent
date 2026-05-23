@@ -237,6 +237,74 @@ public class AutoTraderServiceTests
         db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow.Should().BeTrue();
     }
 
+    // ── SetShadow（dashboard 單列 👻↔🔴 切換）──────────────────────
+
+    [Fact]
+    public void SetShadow_ShadowToLive_ArmsAndPersists()
+    {
+        // 影子 → 真錢「武裝」:記憶體 + DB 都該變 false
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only", shadow: true);
+
+        var (ok, reason) = svc.SetShadow("BTC-USDT", "bingx", shadow: false);
+
+        ok.Should().BeTrue();
+        reason.Should().BeEmpty();
+        svc.WatchList["bingx:BTC-USDT"].Shadow.Should().BeFalse();
+        db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow
+            .Should().BeFalse("武裝真錢必須落 DB、否則重啟又變回 shadow、跟使用者預期不符");
+    }
+
+    [Fact]
+    public void SetShadow_LiveToShadow_DisarmsAndPersists()
+    {
+        // 真錢 → 影子(安全方向):記憶體 + DB 都該變 true
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only");   // live
+
+        var (ok, _) = svc.SetShadow("BTC-USDT", "bingx", shadow: true);
+
+        ok.Should().BeTrue();
+        svc.WatchList["bingx:BTC-USDT"].Shadow.Should().BeTrue();
+        db.Get<AutoTradeWatchEntry>("bingx:BTC-USDT")!.Shadow.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetShadow_NotFound_ReturnsNotFound()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+
+        var (ok, reason) = svc.SetShadow("NOPE-USDT", "bingx", shadow: false);
+
+        ok.Should().BeFalse();
+        reason.Should().Be("not_found");
+    }
+
+    [Fact]
+    public void SetShadow_NonOwnerNonAdmin_Forbidden()
+    {
+        // 非 owner、非 admin 不能改別人的 watch（同 RemoveWatch 權限模型）
+        using var db = TestDb.CreateInMemory();
+        db.EnsureTable<AutoTradeWatchEntry>();
+        var svc = MakeService(db);
+        svc.AddWatch("BTC-USDT", "bingx", "smc", quantity: 1m, mode: "perp_long_only",
+            ownerPrincipalId: "prn_userA", shadow: true);
+
+        var (ok, reason) = svc.SetShadow("BTC-USDT", "bingx", shadow: false,
+            requesterPrincipalId: "prn_userB", isAdmin: false);
+
+        ok.Should().BeFalse();
+        reason.Should().Be("forbidden");
+        // 被擋下後旗標不該被改
+        svc.WatchList["bingx:BTC-USDT"].Shadow.Should().BeTrue("forbidden 時不可變更 shadow");
+    }
+
     // ── PortfolioReconciler（config-as-code 安全屬性:只加 shadow、不武裝真錢、不覆寫)──
 
     [Fact]

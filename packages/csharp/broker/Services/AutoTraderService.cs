@@ -1023,6 +1023,32 @@ public class AutoTraderService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 切換既有 watch 的 shadow（影子）旗標。shadow=false = 轉真錢 live、shadow=true = 退回只記錄不下單。
+    /// 轉真錢是「真錢武裝」動作 → endpoint 端會經確認框 + 受 KillSwitch/ReadOnly 閘控管。
+    /// 權限模型同 RemoveWatch：只有 owner 或 admin 能改；requesterPrincipalId=null = legacy 視同 admin。
+    /// 回傳 (ok, reason)：reason="not_found"/"forbidden"/"" 成功。
+    /// </summary>
+    public (bool Ok, string Reason) SetShadow(string symbol, string exchange, bool shadow,
+        string? requesterPrincipalId = null, bool isAdmin = false)
+    {
+        var key = $"{exchange}:{symbol}";
+        if (!_watchList.TryGetValue(key, out var existing))
+            return (false, "not_found");
+
+        if (requesterPrincipalId != null && !isAdmin
+            && !string.Equals(existing.OwnerPrincipalId, requesterPrincipalId, StringComparison.Ordinal))
+        {
+            return (false, "forbidden");
+        }
+
+        existing.Shadow = shadow;
+        PersistWatch(key, existing);
+        _logger.LogInformation("AutoTrader: {Key} shadow -> {Shadow} (by {Req})",
+            key, shadow, requesterPrincipalId ?? "legacy");
+        return (true, "");
+    }
+
     // ── 主迴圈 ──────────────────────────────────────────────────────
 
     protected override async Task ExecuteAsync(CancellationToken ct)

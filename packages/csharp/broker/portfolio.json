@@ -4,10 +4,14 @@
 // key=exchange:symbol(一 symbol 一策略),所以 shadow 驗證的策略放「沒 live watch 的 symbol」。
 [
   // ── 真錢核心(備忘;reconciler 略過、由 dashboard 手動管理)──
-  { "exchange": "bingx", "symbol": "BTC-USDT", "strategy": "smc", "mode": "perp_long_only", "leverage": 5, "shadow": false, "enabled": true, "note": "live core — 手動管理" },
+  // ETH-USDT mfi 為目前唯一真錢 live(shadow=false),由 dashboard 手動掛、不寫這裡(備忘性質)。
+  // BTC-USDT smc:2026-05-24 從壞掉的 "BTC" key 重建到正確 symbol,目前 shadow 驗證中;
+  //   驗證 OK 後在 dashboard 手動轉真錢(真錢開火留使用者手按)。
+  { "exchange": "bingx", "symbol": "BTC-USDT", "strategy": "smc", "mode": "perp_long_only", "leverage": 5, "shadow": false, "enabled": true, "note": "live core 目標 — 現為 shadow 驗證中,驗證後 dashboard 手動轉真錢" },
 
   // ── 影子驗證中(reconciler 自動建;放沒 live watch 的 symbol 避免撞 key)──
   { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "don_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "海龜突破 趨勢腿 OOS 驗證" },
   { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "rsi2_rev",  "mode": "perp_long_only", "leverage": 5, "quantity": 10,  "shadow": true, "enabled": true, "note": "RSI2 超賣回歸 均值腿" },
-  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "boll_rev",  "mode": "perp_long_only", "leverage": 5, "quantity": 50,  "shadow": true, "enabled": true, "note": "布林回歸 去相關均值腿" }
+  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "boll_rev",  "mode": "perp_long_only", "leverage": 5, "quantity": 50,  "shadow": true, "enabled": true, "note": "布林回歸 去相關均值腿" },
+  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "rsi_stoch", "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "rsi_stoch 從 BTC 撤下後重掛 shadow(BTC 讓給 smc);長遠走子帳戶後可回 BTC 真錢" }
 ]

@@ -772,6 +772,27 @@ body { padding-bottom:22px; } /* footer 不蓋住內容 */
   </div>
 </div>
 
+<!-- 單列 watch:從「👻 影子」轉「🔴 真錢」確認(真錢武裝;退回影子不走這裡、直接切) -->
+<div class="preflight-overlay" id="shadow-arm-overlay" onclick="if(event.target.id==='shadow-arm-overlay')closeShadowArm()">
+  <div class="preflight-modal">
+    <h2>⚠️ 轉真錢:把監控標的從「👻 影子」武裝成「🔴 真錢」</h2>
+    <div style="font-size:12px;color:var(--text2);line-height:1.6">轉真錢後,auto-trader 一旦此策略出訊號,就會(經你手動審核後)下<strong>真單</strong>。請確認:</div>
+
+    <div class="pf-section">受影響標的</div>
+    <div id="sa-detail" style="font-size:13px;color:var(--text);line-height:1.8">—</div>
+
+    <label class="pf-check">
+      <input type="checkbox" id="sa-acknowledge">
+      <span>我確認要用<strong>真錢</strong>跑這個策略、了解 auto-trader 會自動產生下單請求(每筆仍需我手動審核),並接受真錢可能的損失。</span>
+    </label>
+
+    <div class="pf-buttons">
+      <button class="btn btn-o btn-sm" onclick="closeShadowArm()">取消</button>
+      <button class="btn btn-r" id="sa-confirm-btn" disabled>確定轉真錢 🔴</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ticker strip -->
 <div class="ticker" id="ticker-strip"></div>
 
@@ -2730,7 +2751,10 @@ const mode=w.mode||'spot';
 const modeBadge=mode==='spot'?'<span style="color:var(--text3);font-size:10px">spot</span>':mode==='perp_long_only'?`<span style="background:var(--greenBg);color:var(--green);padding:1px 5px;border-radius:2px;font-size:10px">📈 long-only ${w.leverage||5}x</span>`:`<span style="background:rgba(240,185,11,.15);color:#f0b90b;padding:1px 5px;border-radius:2px;font-size:10px">↕ both ${w.leverage||5}x</span>`;
 const shadowBadge=w.shadow?` <span title="影子模式:只記錄不下單" style="background:rgba(132,142,156,.18);color:var(--text2);padding:1px 5px;border-radius:2px;font-size:9px;font-weight:700;letter-spacing:.3px">👻 SHADOW</span>`:'';
 const rowOpacity=w.shadow?'opacity:.72':'';
-return`<tr style="${rowOpacity}"><td><strong>${w.symbol}</strong>${shadowBadge}</td><td>${w.exchange}</td><td>${modeBadge}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></td></tr>`;}).join('');
+const shadowToggleBtn=w.shadow
+  ?`<button class="btn btn-sm" style="background:rgba(246,70,93,.14);color:var(--red);border:1px solid rgba(246,70,93,.4)" title="從影子轉真錢(會跳確認框)" onclick="toggleShadow('${w.symbol}','${w.exchange}',true,'${w.strategy}','${mode}',${w.leverage||5})">🔴 轉真錢</button>`
+  :`<button class="btn btn-sm" style="background:rgba(132,142,156,.14);color:var(--text2);border:1px solid var(--border)" title="退回影子(只記錄不下單)" onclick="toggleShadow('${w.symbol}','${w.exchange}',false,'${w.strategy}','${mode}',${w.leverage||5})">👻 轉影子</button>`;
+return`<tr style="${rowOpacity}"><td><strong>${w.symbol}</strong>${shadowBadge}</td><td>${w.exchange}</td><td>${modeBadge}</td><td>${w.strategy}</td><td>${w.quantity}</td><td><span class="badge ${sc}">${w.last_signal||'—'}</span></td><td>${w.last_confidence?(w.last_confidence*100).toFixed(0)+'%':'—'}</td><td style="font-size:10px;color:var(--text2)">${w.last_check?timeStr(w.last_check):'—'}</td><td><div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap">${shadowToggleBtn}<button class="btn btn-r btn-sm" onclick="removeAutoWatch('${w.symbol}','${w.exchange}')">X</button></div></td></tr>`;}).join('');
 else tb.innerHTML='<tr><td colspan="9" style="color:var(--text2)">無</td></tr>';fetchAutoLogs();}
 async function toggleAutoTrader(){
   const r=await api('/api/v1/auto-trader/status');const d=r?.data||{};
@@ -3041,6 +3065,33 @@ async function addAutoWatch(){
   }
 }
 async function removeAutoWatch(s,e){await api(`/api/v1/auto-trader/watch?symbol=${s}&exchange=${e}`,{method:'DELETE'});fetchAutoStatus();}
+
+// ── 單列 shadow ↔ 真錢 切換 ──────────────────────────────────────
+// 退回影子(shadow=true)= 安全方向 → 直接切;轉真錢(shadow=false)= 武裝 → 跳確認框。
+async function toggleShadow(sym,ex,curShadow,strat,mode,lev){
+  if(curShadow){ openShadowArm(sym,ex,strat,mode,lev); }   // 👻 → 🔴:確認
+  else { await setWatchShadow(sym,ex,true); }              // 🔴 → 👻:直接退安全
+}
+let _shadowArmCtx=null;
+function openShadowArm(sym,ex,strat,mode,lev){
+  _shadowArmCtx={sym,ex};
+  document.getElementById('sa-detail').innerHTML=`<strong>${sym}</strong> · ${ex} · 策略 <strong>${strat}</strong> · ${mode} ${lev}x`;
+  const cb=document.getElementById('sa-acknowledge');cb.checked=false;
+  const btn=document.getElementById('sa-confirm-btn');btn.disabled=true;
+  cb.onchange=()=>{btn.disabled=!cb.checked;};
+  btn.onclick=()=>{const c=_shadowArmCtx;closeShadowArm();if(c)setWatchShadow(c.sym,c.ex,false);};
+  document.getElementById('shadow-arm-overlay').classList.add('show');
+}
+function closeShadowArm(){document.getElementById('shadow-arm-overlay').classList.remove('show');_shadowArmCtx=null;}
+async function setWatchShadow(sym,ex,shadow){
+  const r=await api('/api/v1/auto-trader/watch/shadow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,exchange:ex,shadow})});
+  if(r?.success){
+    toast(`${sym} 已切為 ${shadow?'👻 影子(只記錄)':'🔴 真錢 live'}`,shadow?'ok':'err',shadow?'✓ 轉影子':'🔴 已轉真錢',shadow?3500:6000);
+    fetchAutoStatus();
+  }else{
+    toast('切換失敗:'+(r?.error||r?.message||'unknown'),'err','失敗');
+  }
+}
 async function fetchAutoLogs(){
   const r=await api('/api/v1/auto-trader/logs?limit=100');
   const logs = r?.data?.logs || [];
