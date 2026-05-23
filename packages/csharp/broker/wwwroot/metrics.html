@@ -28,104 +28,82 @@
     min-height: 100vh;
   }
   .topbar {
-    height: 50px;
-    padding: 0 24px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--bd);
-    background: rgba(10,13,20,0.6);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    backdrop-filter: blur(8px);
+    height: 50px; padding: 0 24px; display: flex; align-items: center;
+    border-bottom: 1px solid var(--bd); background: rgba(10,13,20,0.6);
+    position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px);
   }
   .logo { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
   .logo .b { color: var(--info); }
   .logo-sub { color: var(--td); font-size: 12px; margin-left: 10px; font-weight: 400; }
   .nav { margin-left: auto; display: flex; gap: 6px; align-items: center; }
   .nav a {
-    color: var(--td);
-    text-decoration: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    border: 1px solid transparent;
-    transition: all .15s;
+    color: var(--td); text-decoration: none; padding: 6px 12px; border-radius: 4px;
+    font-size: 13px; border: 1px solid transparent; transition: all .15s;
   }
   .nav a:hover { color: var(--t); border-color: var(--bd); background: var(--card); }
   .nav .active { color: var(--info); border-color: var(--info); }
   .nav .refresh {
-    background: transparent;
-    border: 1px solid var(--bd);
-    color: var(--td);
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    margin-left: 6px;
+    background: transparent; border: 1px solid var(--bd); color: var(--td);
+    padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 6px;
   }
   .nav .refresh:hover { color: var(--t); }
   .clock { color: var(--td); font-size: 12px; margin-left: 16px; font-family: "SF Mono", Consolas, monospace; }
 
+  /* offline / error banner */
+  .banner {
+    margin: 14px 16px 0; padding: 10px 16px; border-radius: 8px; font-size: 13px;
+    background: rgba(245,108,108,0.12); border: 1px solid rgba(245,108,108,0.4); color: var(--bad);
+    display: none;
+  }
+
   .grid {
-    padding: 16px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-    gap: 14px;
+    padding: 16px; display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px;
   }
   .card {
-    background: var(--card);
-    border: 1px solid var(--bd);
-    border-radius: 10px;
-    padding: 14px;
-    min-height: 240px;
-    display: flex;
-    flex-direction: column;
+    background: var(--card); border: 1px solid var(--bd); border-radius: 10px;
+    padding: 14px; min-height: 240px; display: flex; flex-direction: column;
   }
   .card-title {
-    font-size: 13px;
-    color: var(--td);
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
+    font-size: 13px; color: var(--td); margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: baseline;
   }
   .card-title .main { color: var(--t); font-weight: 600; }
   .card-title .sub { font-size: 11px; color: var(--td); }
   .chart { flex: 1; min-height: 200px; }
-
   .card.wide { grid-column: span 2; }
+  .card.full { grid-column: 1 / -1; }
 
-  /* Table style */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
+  /* container status grid */
+  .ctgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .ct {
+    background: var(--card2); border: 1px solid var(--bd); border-left-width: 3px;
+    border-radius: 8px; padding: 10px 12px;
   }
+  .ct.running { border-left-color: var(--good); }
+  .ct.warn    { border-left-color: var(--warn); }
+  .ct.bad     { border-left-color: var(--bad); }
+  .ct.info    { border-left-color: var(--info); }
+  .ct-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ct-name { font-weight: 600; font-size: 13px; color: var(--t); }
+  .ct-meta { font-size: 10.5px; color: var(--td); font-family: "SF Mono", Consolas, monospace; margin-bottom: 8px; word-break: break-all; }
+  .ct-bars { display: flex; flex-direction: column; gap: 5px; }
+  .ct-bar-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--td); }
+  .ct-bar-row .k { width: 30px; }
+  .ct-bar-row .v { width: 78px; text-align: right; font-family: "SF Mono", Consolas, monospace; color: var(--t); }
+  .bar { flex: 1; height: 5px; background: rgba(42,49,66,0.6); border-radius: 3px; overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .fill.g { background: var(--good); } .fill.w { background: var(--warn); } .fill.b { background: var(--bad); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
   table th {
-    text-align: left;
-    color: var(--td);
-    font-weight: 500;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--bd);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-size: 10px;
+    text-align: left; color: var(--td); font-weight: 500; padding: 6px 8px;
+    border-bottom: 1px solid var(--bd); text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px;
   }
-  table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid rgba(42,49,66,0.5);
-    font-family: "SF Mono", Consolas, monospace;
-  }
+  table td { padding: 6px 8px; border-bottom: 1px solid rgba(42,49,66,0.5); font-family: "SF Mono", Consolas, monospace; }
   table tr:last-child td { border-bottom: 0; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .pill {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 10px;
-    font-weight: 600;
-  }
+  .pill { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600; }
   .pill.good { background: rgba(103,194,58,0.18); color: var(--good); }
   .pill.warn { background: rgba(230,162,60,0.18); color: var(--warn); }
   .pill.bad  { background: rgba(245,108,108,0.18); color: var(--bad); }
@@ -137,7 +115,7 @@
 <div class="topbar">
   <div class="logo">
     <span class="b">B4A</span> Metrics
-    <span class="logo-sub">detailed instrumentation</span>
+    <span class="logo-sub">運維監控 · 容器 / 資源 / 錯誤</span>
   </div>
   <div class="nav">
     <a href="dashboard.html">📊 儀錶板</a>
@@ -148,91 +126,61 @@
   </div>
 </div>
 
+<div class="banner" id="banner">⚠ 連不到 broker — 顯示的是最後一次成功的資料</div>
+
 <div class="grid">
 
-  <!-- 1. Worker health breakdown -->
+  <!-- 1. 容器狀態總覽（主軸）-->
+  <div class="card full">
+    <div class="card-title">
+      <span class="main">📦 容器狀態 · Container Status</span>
+      <span class="sub" id="ctSub">—</span>
+    </div>
+    <div id="ctGrid" class="ctgrid">
+      <div style="color:var(--td);padding:20px;text-align:center">loading…</div>
+    </div>
+  </div>
+
+  <!-- 2. CPU 使用率 by container -->
+  <div class="card wide">
+    <div class="card-title">
+      <span class="main">🔥 CPU 使用率 by Container</span>
+      <span class="sub" id="cpuSub">—</span>
+    </div>
+    <div id="cCpu" class="chart"></div>
+  </div>
+
+  <!-- 3. 記憶體使用率 by container -->
+  <div class="card wide">
+    <div class="card-title">
+      <span class="main">🧠 記憶體使用率 by Container</span>
+      <span class="sub" id="memSub">—</span>
+    </div>
+    <div id="cMem" class="chart"></div>
+  </div>
+
+  <!-- 4. Worker 健康度 -->
   <div class="card">
     <div class="card-title">
-      <span class="main">🩺 Worker Health</span>
+      <span class="main">🩺 Worker 健康度</span>
       <span class="sub" id="healthSub">—</span>
     </div>
     <div id="cHealth" class="chart"></div>
   </div>
 
-  <!-- 2. Approval status breakdown -->
-  <div class="card">
-    <div class="card-title">
-      <span class="main">🔐 Approval Status (last 7d)</span>
-      <span class="sub" id="aprSub">—</span>
-    </div>
-    <div id="cApr" class="chart"></div>
-  </div>
-
-  <!-- 3. Audit event types breakdown -->
+  <!-- 5. 服務延遲 p50/p95/p99 -->
   <div class="card wide">
     <div class="card-title">
-      <span class="main">📊 Audit Event Types (last 1h)</span>
-      <span class="sub" id="evtSub">—</span>
-    </div>
-    <div id="cEvents" class="chart"></div>
-  </div>
-
-  <!-- 4. Capability call topology (top 10) -->
-  <div class="card wide">
-    <div class="card-title">
-      <span class="main">🗺 Top Capabilities by Calls (last 1h)</span>
-      <span class="sub" id="topoSub">—</span>
-    </div>
-    <div id="cTopo" class="chart"></div>
-  </div>
-
-  <!-- 5. LLM quota per principal -->
-  <div class="card">
-    <div class="card-title">
-      <span class="main">📊 LLM Quota by Principal</span>
-      <span class="sub" id="quotaSub">—</span>
-    </div>
-    <div id="cQuota" class="chart"></div>
-  </div>
-
-  <!-- 6. Capability risk distribution -->
-  <div class="card">
-    <div class="card-title">
-      <span class="main">⚠ Capability Risk Distribution</span>
-      <span class="sub" id="riskSub">—</span>
-    </div>
-    <div id="cRisk" class="chart"></div>
-  </div>
-
-  <!-- 7. Latency p50/p95/p99 -->
-  <div class="card wide">
-    <div class="card-title">
-      <span class="main">⏱ Capability Latency (p50 / p95 / p99)</span>
+      <span class="main">⏱ 服務延遲 (p50 / p95 / p99)</span>
       <span class="sub" id="latSub">—</span>
     </div>
     <div id="cLat" class="chart"></div>
   </div>
 
-  <!-- 8. Agent inbox queue -->
-  <div class="card">
+  <!-- 6. 錯誤紀錄 -->
+  <div class="card full" id="errCard">
     <div class="card-title">
-      <span class="main">📥 Agent Inbox State</span>
-      <span class="sub" id="agentSub">14 agents</span>
-    </div>
-    <div id="agentList" style="overflow-y:auto;max-height:240px">
-      <table>
-        <thead>
-          <tr><th>Agent</th><th class="num">latest</th><th class="num">status</th></tr>
-        </thead>
-        <tbody id="agentTBody"><tr><td colspan="3" style="text-align:center;color:var(--td);padding:20px">loading…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- 9. Error log + export -->
-  <div class="card wide" id="errCard">
-    <div class="card-title">
-      <span class="main">🚨 Errors (last 24h)</span>
+      <span class="main">🚨 服務錯誤 (last 24h)</span>
       <span class="sub">
         <span id="errSub">—</span>
         <button onclick="exportErrors()" style="background:transparent;border:1px solid var(--bd);color:var(--td);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-left:8px">📥 Export</button>
@@ -242,7 +190,7 @@
     <div id="errList" style="overflow-y:auto;max-height:360px">
       <table>
         <thead>
-          <tr><th style="width:130px">time</th><th style="width:90px">source</th><th style="width:80px">severity</th><th>entity / summary</th></tr>
+          <tr><th style="width:130px">time</th><th style="width:110px">source</th><th style="width:80px">severity</th><th>entity / summary</th></tr>
         </thead>
         <tbody id="errTBody"><tr><td colspan="4" style="text-align:center;color:var(--td);padding:20px">loading…</td></tr></tbody>
       </table>
@@ -252,64 +200,139 @@
 </div>
 
 <script>
-const AGENT_LABELS = {
-  agent_forensics_hourly: '🔍 鑑識',
-  agent_market_report_6h: '📊 6h營運',
-  agent_anomaly_detector_15m: '🚨 異常',
-  agent_daily_market_report: '📝 市場日報',
-  agent_strategy_health_inspector: '🏥 watch健康',
-  agent_audit_chain_verifier: '🔐 Audit鏈',
-  agent_dashboard_snapshot: '📸 KPI snap',
-  agent_capability_usage_reporter: '📐 Cap統計',
-  agent_weekly_digest: '📅 週報',
-  agent_file_integrity: '🛡 檔案完整',
-  agent_strategy_research: '🎯 策略研究',
-  agent_risk_stress_test: '⚠️ 風控壓測',
-  agent_trade_journal: '📖 Trade日誌',
-  agent_rag_ingest: '📚 RAG匯入',
-};
-
 const CHART_THEME = {
   textStyle: { color: '#e8ebf2', fontFamily: '-apple-system, system-ui, sans-serif' },
   backgroundColor: 'transparent',
 };
-
 function newChart(id) { return echarts.init(document.getElementById(id), null, { renderer: 'svg' }); }
+const ch = { cpu: newChart('cCpu'), mem: newChart('cMem'), health: newChart('cHealth'), lat: newChart('cLat') };
 
-const ch = {
-  health: newChart('cHealth'),
-  apr: newChart('cApr'),
-  events: newChart('cEvents'),
-  topo: newChart('cTopo'),
-  quota: newChart('cQuota'),
-  risk: newChart('cRisk'),
-  lat: newChart('cLat'),
-};
-
-// ─────── Clock ───────
-function tickClock() {
-  document.getElementById('clock').textContent =
-    new Date().toLocaleTimeString('zh-TW', { hour12: false });
+// ─────── helpers ───────
+function fmtBytes(b) {
+  if (b == null) return '—';
+  const u = ['B','KB','MB','GB','TB']; let i = 0; let v = b;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + u[i];
 }
+function uptime(iso) {
+  if (!iso) return '—';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms) || ms < 0) return '—';
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+const shortName = n => (n || '').replace(/^b4a[-_]?/i, '');
+const shortImg  = n => (n || '').split('/').pop();
+function pctClass(p) { return p == null ? 'info' : p >= 85 ? 'b' : p >= 60 ? 'w' : 'g'; }
+function stateClass(s) {
+  s = (s || '').toLowerCase();
+  if (s === 'running') return 'running';
+  if (s === 'restarting' || s === 'paused' || s === 'created') return 'warn';
+  if (s === 'exited' || s === 'dead' || s === 'removing') return 'bad';
+  return 'info';
+}
+function statePill(s) {
+  s = (s || 'unknown').toLowerCase();
+  const cls = s === 'running' ? 'good' : (s === 'restarting' || s === 'paused' || s === 'created') ? 'warn' : (s === 'exited' || s === 'dead') ? 'bad' : 'info';
+  return `<span class="pill ${cls}">${s}</span>`;
+}
+
+function tickClock() { document.getElementById('clock').textContent = new Date().toLocaleTimeString('zh-TW', { hour12: false }); }
 setInterval(tickClock, 1000); tickClock();
 
-// ─────── 1. Worker health donut ───────
+let online = true;
+function setOnline(ok) {
+  online = ok;
+  document.getElementById('banner').style.display = ok ? 'none' : 'block';
+}
+
+// ─────── 1+2+3. 容器狀態 + CPU + 記憶體（同一組資料）───────
+async function loadContainers() {
+  let containers = [], stats = [];
+  try {
+    const [c, s] = await Promise.all([
+      fetch('/api/v1/workers/containers', { credentials: 'include' }).then(x => x.json()),
+      fetch('/api/v1/workers/stats', { credentials: 'include' }).then(x => x.json()),
+    ]);
+    containers = Array.isArray(c.data) ? c.data : [];
+    stats = Array.isArray(s.data) ? s.data : [];
+    setOnline(true);
+  } catch (e) { setOnline(false); console.warn('containers', e); return; }
+
+  const statById = {};
+  stats.forEach(s => { statById[s.container_id] = s; });
+
+  // —— 狀態卡片 ——
+  const running = containers.filter(c => (c.state || '').toLowerCase() === 'running').length;
+  document.getElementById('ctSub').textContent = `${running} running / ${containers.length} total`;
+  const grid = document.getElementById('ctGrid');
+  if (containers.length === 0) {
+    grid.innerHTML = '<div style="color:var(--td);padding:20px;text-align:center">沒有受管容器（ContainerManager 可能未啟用）</div>';
+  } else {
+    grid.innerHTML = containers.map(c => {
+      const st = statById[c.container_id];
+      const cpu = st ? st.cpu_percent : null;
+      const mem = st ? st.memory_percent : null;
+      const bar = (k, p, label) => `
+        <div class="ct-bar-row">
+          <span class="k">${k}</span>
+          <span class="bar"><span class="fill ${pctClass(p)}" style="width:${p == null ? 0 : Math.min(p, 100)}%"></span></span>
+          <span class="v">${label}</span>
+        </div>`;
+      return `<div class="ct ${stateClass(c.state)}">
+        <div class="ct-head">
+          <span class="ct-name">${shortName(c.worker_type || c.worker_id || c.container_id)}</span>
+          ${statePill(c.state)}
+        </div>
+        <div class="ct-meta">${shortImg(c.image)} · up ${uptime(c.spawned_at)}</div>
+        <div class="ct-bars">
+          ${bar('CPU', cpu, cpu == null ? '—' : cpu.toFixed(1) + '%')}
+          ${bar('MEM', mem, st ? fmtBytes(st.memory_usage_bytes) + ' (' + mem.toFixed(0) + '%)' : '—')}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // —— CPU / MEM 排名長條 ——
+  const named = stats.map(s => ({ name: shortName(s.container_name), cpu: s.cpu_percent || 0, mem: s.memory_percent || 0, memBytes: s.memory_usage_bytes }));
+  document.getElementById('cpuSub').textContent = `${named.length} containers`;
+  document.getElementById('memSub').textContent = `${named.length} containers`;
+
+  const hbar = (chart, key, fmt) => {
+    const sorted = [...named].sort((a, b) => a[key] - b[key]);
+    chart.setOption({
+      ...CHART_THEME,
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 8, right: 48, top: 12, bottom: 24, containLabel: true },
+      xAxis: { type: 'value', max: 100, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10, formatter: '{value}%' } },
+      yAxis: { type: 'category', data: sorted.map(x => x.name), axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 11 } },
+      series: [{
+        type: 'bar',
+        data: sorted.map(x => ({ value: +x[key].toFixed(1), itemStyle: { color: x[key] >= 85 ? '#f56c6c' : x[key] >= 60 ? '#e6a23c' : '#67c23a', borderRadius: [0, 4, 4, 0] } })),
+        label: { show: true, position: 'right', color: '#e8ebf2', fontSize: 10, formatter: p => fmt(sorted[p.dataIndex]) },
+      }],
+    });
+  };
+  hbar(ch.cpu, 'cpu', x => x.cpu.toFixed(1) + '%');
+  hbar(ch.mem, 'mem', x => fmtBytes(x.memBytes) + ' · ' + x.mem.toFixed(0) + '%');
+}
+
+// ─────── 4. Worker 健康度 donut ───────
 async function loadHealth() {
   try {
     const r = await fetch('/api/v1/health/score', { credentials: 'include' });
     const j = await r.json();
     if (!j.success) return;
     const d = j.data;
-    document.getElementById('healthSub').textContent =
-      `${d.overall_score}/100 · ${d.overall_status}`;
+    document.getElementById('healthSub').textContent = `${d.overall_score}/100 · ${d.overall_status}`;
     ch.health.setOption({
       ...CHART_THEME,
       tooltip: { trigger: 'item' },
       legend: { bottom: 0, textStyle: { color: '#6b7388', fontSize: 11 } },
       series: [{
-        type: 'pie',
-        radius: ['50%', '75%'],
-        avoidLabelOverlap: false,
+        type: 'pie', radius: ['50%', '75%'], avoidLabelOverlap: false,
         itemStyle: { borderRadius: 4, borderColor: '#0a0d14', borderWidth: 2 },
         label: { show: true, formatter: '{c}', color: '#e8ebf2', fontSize: 14, fontWeight: 700 },
         data: [
@@ -322,184 +345,7 @@ async function loadHealth() {
   } catch (e) { console.warn('health', e); }
 }
 
-// ─────── 2. Approval status ───────
-async function loadApr() {
-  try {
-    const [p, a, r] = await Promise.all([
-      fetch('/api/v1/admin/approvals?status=pending&limit=100', { credentials: 'include' }).then(x => x.json()),
-      fetch('/api/v1/admin/approvals?status=approved&limit=100', { credentials: 'include' }).then(x => x.json()),
-      fetch('/api/v1/admin/approvals?status=rejected&limit=100', { credentials: 'include' }).then(x => x.json()),
-    ]);
-    const pending = (p.data || []).length;
-    const approved = (a.data || []).length;
-    const rejected = (r.data || []).length;
-    const total = pending + approved + rejected;
-    document.getElementById('aprSub').textContent = `${total} total`;
-    ch.apr.setOption({
-      ...CHART_THEME,
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: '#6b7388', fontSize: 11 } },
-      series: [{
-        type: 'pie',
-        radius: ['50%', '75%'],
-        itemStyle: { borderRadius: 4, borderColor: '#0a0d14', borderWidth: 2 },
-        label: { show: true, formatter: '{c}', color: '#e8ebf2', fontSize: 14, fontWeight: 700 },
-        data: [
-          { value: pending, name: 'Pending', itemStyle: { color: '#e6a23c' } },
-          { value: approved, name: 'Approved', itemStyle: { color: '#67c23a' } },
-          { value: rejected, name: 'Rejected', itemStyle: { color: '#f56c6c' } },
-        ].filter(x => x.value > 0),
-      }],
-    });
-  } catch (e) { console.warn('apr', e); }
-}
-
-// ─────── 3. Audit event types ───────
-async function loadEvents() {
-  try {
-    // Use audit/search API to retrieve recent events and aggregate
-    const r = await fetch('/api/v1/audit/search', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: 'DISPATCH OR API OR APPROVAL', since_hours: 1, limit: 200 }),
-    });
-    const j = await r.json();
-    if (!j.success) return;
-    const events = j.data.events || [];
-    document.getElementById('evtSub').textContent = `${events.length} events`;
-    const counts = {};
-    events.forEach(e => { counts[e.event_type] = (counts[e.event_type] || 0) + 1; });
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    ch.events.setOption({
-      ...CHART_THEME,
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: { left: 8, right: 16, top: 16, bottom: 24, containLabel: true },
-      xAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10 } },
-      yAxis: {
-        type: 'category',
-        data: sorted.map(x => x[0]).reverse(),
-        axisLine: { lineStyle: { color: '#2a3142' } },
-        axisLabel: { color: '#6b7388', fontSize: 10 },
-      },
-      series: [{
-        type: 'bar',
-        data: sorted.map(x => x[1]).reverse(),
-        itemStyle: { color: '#5db8ff', borderRadius: [0, 4, 4, 0] },
-        label: { show: true, position: 'right', color: '#e8ebf2', fontSize: 10 },
-      }],
-    });
-  } catch (e) { console.warn('events', e); }
-}
-
-// ─────── 4. Topology — top capabilities by calls ───────
-async function loadTopo() {
-  try {
-    const r = await fetch('/api/v1/audit/topology?since_minutes=60', { credentials: 'include' });
-    const j = await r.json();
-    if (!j.success) return;
-    const edges = j.data.edges || [];
-    document.getElementById('topoSub').textContent = `${edges.length} edges`;
-    // Aggregate by capability
-    const byCap = {};
-    edges.forEach(e => {
-      const k = e.capability || '?';
-      if (!byCap[k]) byCap[k] = { ok: 0, fail: 0 };
-      byCap[k].ok += e.calls_succeeded || 0;
-      byCap[k].fail += e.calls_failed || 0;
-    });
-    const sorted = Object.entries(byCap)
-      .map(([cap, v]) => ({ cap, ok: v.ok, fail: v.fail }))
-      .sort((a, b) => (b.ok + b.fail) - (a.ok + a.fail))
-      .slice(0, 12);
-    ch.topo.setOption({
-      ...CHART_THEME,
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { top: 0, right: 8, textStyle: { color: '#6b7388' } },
-      grid: { left: 8, right: 16, top: 24, bottom: 24, containLabel: true },
-      xAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10 } },
-      yAxis: {
-        type: 'category',
-        data: sorted.map(x => x.cap).reverse(),
-        axisLine: { lineStyle: { color: '#2a3142' } },
-        axisLabel: { color: '#6b7388', fontSize: 10 },
-      },
-      series: [
-        { name: 'OK', type: 'bar', stack: 's', data: sorted.map(x => x.ok).reverse(), itemStyle: { color: '#67c23a' } },
-        { name: 'Fail', type: 'bar', stack: 's', data: sorted.map(x => x.fail).reverse(), itemStyle: { color: '#f56c6c' } },
-      ],
-    });
-  } catch (e) { console.warn('topo', e); }
-}
-
-// ─────── 5. Quota per principal ───────
-async function loadQuota() {
-  try {
-    const r = await fetch('/api/v1/quota/snapshot', { credentials: 'include' });
-    const j = await r.json();
-    if (!j.success) return;
-    const ps = (j.data.principals || []).slice(0, 8);
-    document.getElementById('quotaSub').textContent = `${ps.length} active`;
-    ch.quota.setOption({
-      ...CHART_THEME,
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params) => {
-          const p = params[0];
-          const data = ps[p.dataIndex];
-          return `${data.principal_id}<br>${data.llm_tokens_used.toLocaleString()} / ${data.llm_tokens_limit.toLocaleString()}<br>${data.llm_pct}%`;
-        },
-      },
-      grid: { left: 8, right: 16, top: 16, bottom: 24, containLabel: true },
-      xAxis: { type: 'value', max: 100, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10, formatter: '{value}%' } },
-      yAxis: {
-        type: 'category',
-        data: ps.map(p => p.principal_id.replace(/^prn_/, '')).reverse(),
-        axisLine: { lineStyle: { color: '#2a3142' } },
-        axisLabel: { color: '#6b7388', fontSize: 10 },
-      },
-      series: [{
-        type: 'bar',
-        data: ps.map(p => ({
-          value: p.llm_pct,
-          itemStyle: { color: p.llm_pct > 80 ? '#f56c6c' : p.llm_pct > 50 ? '#e6a23c' : '#67c23a' },
-        })).reverse(),
-        label: { show: true, position: 'right', color: '#e8ebf2', fontSize: 10, formatter: '{c}%' },
-        itemStyle: { borderRadius: [0, 4, 4, 0] },
-      }],
-    });
-  } catch (e) { console.warn('quota', e); }
-}
-
-// ─────── 6. Capability risk distribution ───────
-async function loadRisk() {
-  try {
-    const r = await fetch('/api/v1/capabilities/graph', { credentials: 'include' });
-    const j = await r.json();
-    if (!j.success) return;
-    const stats = j.data.stats;
-    document.getElementById('riskSub').textContent = `${stats.total_capabilities} total`;
-    const byRisk = stats.by_risk || {};
-    ch.risk.setOption({
-      ...CHART_THEME,
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: '#6b7388', fontSize: 11 } },
-      series: [{
-        type: 'pie',
-        radius: ['50%', '75%'],
-        itemStyle: { borderRadius: 4, borderColor: '#0a0d14', borderWidth: 2 },
-        label: { show: true, formatter: '{c}', color: '#e8ebf2', fontSize: 14, fontWeight: 700 },
-        data: [
-          { value: byRisk.Low || 0, name: 'Low', itemStyle: { color: '#67c23a' } },
-          { value: byRisk.Medium || 0, name: 'Medium', itemStyle: { color: '#e6a23c' } },
-          { value: byRisk.High || 0, name: 'High', itemStyle: { color: '#f56c6c' } },
-          { value: byRisk.Critical || 0, name: 'Critical', itemStyle: { color: '#ff0000' } },
-        ].filter(x => x.value > 0),
-      }],
-    });
-  } catch (e) { console.warn('risk', e); }
-}
-
-// ─────── 7. Latency p50/p95/p99 ───────
+// ─────── 5. 服務延遲 p50/p95/p99 ───────
 async function loadLat() {
   try {
     const r = await fetch('/api/v1/audit/latency?since_minutes=60', { credentials: 'include' });
@@ -512,17 +358,8 @@ async function loadLat() {
       tooltip: { trigger: 'axis' },
       legend: { top: 0, right: 8, textStyle: { color: '#6b7388' } },
       grid: { left: 8, right: 16, top: 30, bottom: 50, containLabel: true },
-      xAxis: {
-        type: 'category',
-        data: arr.map(x => (x.capability_id || '').split('.').pop()),
-        axisLine: { lineStyle: { color: '#2a3142' } },
-        axisLabel: { color: '#6b7388', fontSize: 10, rotate: 30 },
-      },
-      yAxis: {
-        type: 'value',
-        axisLine: { lineStyle: { color: '#2a3142' } },
-        axisLabel: { color: '#6b7388', fontSize: 10, formatter: '{value}ms' },
-      },
+      xAxis: { type: 'category', data: arr.map(x => (x.capability_id || '').split('.').pop()), axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10, rotate: 30 } },
+      yAxis: { type: 'value', axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10, formatter: '{value}ms' } },
       series: [
         { name: 'p50', type: 'bar', data: arr.map(x => x.p50_ms || 0), itemStyle: { color: '#5db8ff' } },
         { name: 'p95', type: 'bar', data: arr.map(x => x.p95_ms || 0), itemStyle: { color: '#e6a23c' } },
@@ -532,37 +369,7 @@ async function loadLat() {
   } catch (e) { console.warn('lat', e); }
 }
 
-// ─────── 8. Agent inbox state table ───────
-async function loadAgents() {
-  const tbody = document.getElementById('agentTBody');
-  const rows = await Promise.all(Object.keys(AGENT_LABELS).map(async id => {
-    try {
-      const r = await fetch(`/api/v1/agents/inbox/list?agent_id=${encodeURIComponent(id)}&limit=1`, { credentials: 'include' });
-      const j = await r.json();
-      const t = j?.data?.tasks?.[0];
-      return { id, t };
-    } catch { return { id, t: null }; }
-  }));
-  tbody.innerHTML = rows.map(({ id, t }) => {
-    const label = AGENT_LABELS[id] || id;
-    if (!t) return `<tr><td>${label}</td><td class="num" style="color:var(--td)">—</td><td class="num"><span class="pill info">unknown</span></td></tr>`;
-    const status = t.status;
-    const pillCls = status === 'done' ? 'good' : status === 'failed' ? 'bad' : 'warn';
-    const at = (t.completed_at || t.created_at || '').slice(11, 19);
-    return `<tr><td>${label}</td><td class="num" style="color:var(--td)">${at}</td><td class="num"><span class="pill ${pillCls}">${status}</span></td></tr>`;
-  }).join('');
-}
-
-// ─────── Auth check ───────
-async function checkAuth() {
-  try {
-    const r = await fetch('/api/v1/admin/approvals?limit=1', { credentials: 'include' });
-    if (r.status === 401 || r.status === 403) { location.href = '/index.html'; return false; }
-  } catch {}
-  return true;
-}
-
-// ─────── 9. Error log ───────
+// ─────── 6. 錯誤紀錄 ───────
 let lastErrorData = null;
 async function loadErrors() {
   try {
@@ -600,28 +407,32 @@ function exportErrors() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  a.download = `b4a-errors-${ts}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  a.download = `b4a-errors-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ─────── Auth check ───────
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/v1/admin/approvals?limit=1', { credentials: 'include' });
+    if (r.status === 401 || r.status === 403) { location.href = '/index.html'; return false; }
+  } catch {}
+  return true;
 }
 
 // ─────── Master refresh ───────
 async function loadAll() {
-  await Promise.all([loadHealth(), loadApr(), loadEvents(), loadTopo(), loadQuota(), loadRisk(), loadLat(), loadAgents(), loadErrors()]);
+  await Promise.all([loadContainers(), loadHealth(), loadLat(), loadErrors()]);
 }
 (async () => {
   const ok = await checkAuth();
   if (!ok) return;
   loadAll();
-  setInterval(loadAll, 15000);   // 15s — slower than wall (heavy queries)
+  setInterval(loadAll, 10000);   // 10s — 資源監控要稍快
 })();
 
-window.addEventListener('resize', () => {
-  Object.values(ch).forEach(c => c.resize());
-});
+window.addEventListener('resize', () => { Object.values(ch).forEach(c => c.resize()); });
 </script>
 </body>
 </html>
