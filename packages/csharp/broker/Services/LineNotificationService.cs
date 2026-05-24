@@ -150,10 +150,12 @@ public class LineNotificationService : BackgroundService
             var (prefix, level) = ClassifyAction(action);
             if (string.IsNullOrEmpty(prefix)) continue;
 
-            // 錯誤類 dedup：30 分鐘內相同 signature 不重推
+            // 錯誤類 dedup：30 分鐘內相同 signature 不重推。
+            // ⚠ 簽章抽掉數字(隨行情變的 1039 等)、否則去重失效、同一則失敗每輪洗版(5/24 修)。
             if (IsErrorAction(action))
             {
-                var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
+                var msgStable = System.Text.RegularExpressions.Regex.Replace(l.Message ?? "", @"[\d.]+", "#");
+                var msgPrefix = msgStable.Length > 60 ? msgStable[..60] : msgStable;
                 var sig = $"{action}|{l.Symbol}|{msgPrefix}";
                 if (_dedup.IsRecentlySent("line", sig, ErrorDedupWindow))
                     continue;

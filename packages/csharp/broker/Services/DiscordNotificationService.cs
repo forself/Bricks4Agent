@@ -149,10 +149,13 @@ public class DiscordNotificationService : BackgroundService
             var (emoji, color, prefix) = ClassifyAction(action);
             if (emoji == "") continue;
 
-            // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過（5/19 持久化）
+            // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過（5/19 持久化）。
+            // ⚠ 簽章必須抽掉訊息裡的數字 —— 否則像「Net perp notional 1039 …」的 1039 每輪隨行情變動
+            // → 簽章每次不同 → 去重失效 → 同一則失敗每 5 分鐘洗版一次（5/24 修)。
             if (IsErrorAction(action))
             {
-                var msgPrefix = l.Message?.Length > 60 ? l.Message[..60] : (l.Message ?? "");
+                var msgStable = System.Text.RegularExpressions.Regex.Replace(l.Message ?? "", @"[\d.]+", "#");
+                var msgPrefix = msgStable.Length > 60 ? msgStable[..60] : msgStable;
                 var sig = $"{action}|{l.Symbol}|{msgPrefix}";
                 if (_dedup.IsRecentlySent("discord", sig, ErrorDedupWindow))
                     continue;
