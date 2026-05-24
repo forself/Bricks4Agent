@@ -89,6 +89,29 @@ public class TradingOrderHandler : ICapabilityHandler
         {
             var result = await client.PlaceOrderAsync(order, ct);
             _db.SaveOrder(result);
+
+            // 成交 → 記一筆 trade(含 strategy)給 per-strategy forward P&L 用。
+            // spot realized_pnl 留 null(由 broker strategy-pnl endpoint 用 FIFO 成本基礎算)。
+            if (result.FilledQty > 0m && (result.FilledPrice ?? 0m) > 0m
+                && (result.Status == "filled" || result.Status == "partial"))
+            {
+                var strategy = opts.TryGetProperty("strategy", out var stg) && stg.ValueKind == JsonValueKind.String
+                    ? stg.GetString() : null;
+                _db.SaveTrade(new Models.TradeRecord
+                {
+                    TradeId     = $"spot-{result.OrderId}",
+                    OrderId     = result.OrderId,
+                    Symbol      = result.Symbol,
+                    Exchange    = result.Exchange,
+                    Side        = result.Side,
+                    Quantity    = result.FilledQty,
+                    Price       = result.FilledPrice ?? 0m,
+                    Fee         = null,
+                    RealizedPnl = null,
+                    ExecutedAt  = result.FilledAt ?? DateTime.UtcNow,
+                    Strategy    = strategy,
+                });
+            }
             return (true, SerializeOrder(result), null);
         }
         catch (Exception orderEx)

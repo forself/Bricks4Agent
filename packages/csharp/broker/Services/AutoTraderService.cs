@@ -1898,6 +1898,7 @@ public class AutoTraderService : BackgroundService
             exchange, symbol, side = action,
             quantity = item.Quantity, order_type = "market",
             client_order_id = clientOrderId,
+            strategy = item.Strategy,   // 標策略 → spot 成交 trade 才能 per-strategy 歸屬(forward P&L)
         });
 
         var orderResult = await _dispatcher.DispatchAsync(BuildRequest("trading.order", "place_order", orderPayload));
