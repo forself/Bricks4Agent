@@ -365,6 +365,27 @@ if (loEq.Count >= 2 && loEq.Values.Any(v => v.ContainsKey("BTCUSDT")))
     }
 }
 
+// (7) 參數調校實驗:grid search + walk-forward,驗證「調參到底有沒有讓 OOS 變好」。
+// degradation = OOS Sharpe / IS Sharpe;接近 1=參數穩健,遠<1 或負 = IS 漂亮 OOS 垃圾 = 過擬合。
+// 只有 sma_cross / rsi_oversold 有 ParameterOptimizer grid;用它們示範原理(其餘策略本就單一固定參數、不調)。
+Console.WriteLine("\n=== 參數調校實驗(anchored walk-forward;IS 找最佳參數 → OOS 驗證)===");
+Console.WriteLine($"  {"strategy",-14}{"IS Sharpe",11}{"OOS Sharpe",12}{"degradation",13}{"OOS ret%",10}");
+void WfOpt(string label, Func<List<BarData>, StrategyConfig, WalkForwardOptimizer.WalkForwardResult> run)
+{
+    var isS = new List<decimal>(); var oosS = new List<decimal>(); var oosR = new List<decimal>();
+    foreach (var kv in data)
+        try { var r = run(kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" });
+              if (r.WindowCount > 0) { isS.Add(r.AvgInSampleSharpe); oosS.Add(r.AvgOutOfSampleSharpe); oosR.Add(r.AggregateOosReturnPct); } }
+        catch { }
+    if (isS.Count == 0) { Console.WriteLine($"  {label,-14}(無資料)"); return; }
+    var avgIs = isS.Average(); var avgOos = oosS.Average();
+    var deg = avgIs != 0 ? avgOos / avgIs : 0;
+    Console.WriteLine($"  {label,-14}{avgIs,11:F2}{avgOos,12:F2}{deg,13:F2}{oosR.Average(),10:F1}");
+}
+WfOpt("sma_cross",    (b, c) => WalkForwardOptimizer.RunSma(b, c, 250, 90));
+WfOpt("rsi_oversold", (b, c) => WalkForwardOptimizer.RunRsi(b, c, 250, 90));
+Console.WriteLine("  → degradation 遠<1 = IS 找的最佳參數 OOS 站不住 = 調參=過擬合 → 印證「單一固定參數、不調參」是對的。");
+
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
 {
