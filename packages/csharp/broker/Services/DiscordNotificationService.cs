@@ -133,6 +133,13 @@ public class DiscordNotificationService : BackgroundService
     // 次 = 用戶收到 9 條 spam）。現在 SQLite 表記得跨重啟。
     private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
 
+    // paper 實驗場交易所:不推真錢告警頻道(避免淹沒真錢訊號 + 保護單 422 噪音);paper 看 dashboard。
+    // env NOTIFY_SUPPRESS_EXCHANGES 可覆寫(要在 compose 接線才吃 env);預設 alpaca,binance。
+    private static readonly HashSet<string> PaperExchanges =
+        (Environment.GetEnvironmentVariable("NOTIFY_SUPPRESS_EXCHANGES") ?? "alpaca,binance")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(s => s.ToLowerInvariant()).ToHashSet();
+
     private static bool IsErrorAction(string action) =>
         action == "error" || action == "blocked" || action == "halt" || action.Contains("fail");
 
@@ -143,6 +150,9 @@ public class DiscordNotificationService : BackgroundService
             var key = LogKey(l);
             if (_seenLogKeys.Contains(key)) continue;
             _seenLogKeys.Add(key);
+
+            // paper 實驗場(alpaca/binance)不推真錢頻道 —— 真錢頻道只留 bingx,paper 看 dashboard
+            if (PaperExchanges.Contains((l.Exchange ?? "").ToLowerInvariant())) continue;
 
             // 只推「會導致部位變動 / 需要注意」的事件，一般 skip/hold/dedup 不推，避免訊息爆量
             var action = l.Action.ToLowerInvariant();

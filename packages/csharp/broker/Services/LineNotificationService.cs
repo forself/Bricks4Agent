@@ -135,6 +135,12 @@ public class LineNotificationService : BackgroundService
     // 5/19 改：搬到 NotificationDedupRepo 持久化、broker rebuild 不再清空 dedup state
     private static readonly TimeSpan ErrorDedupWindow = TimeSpan.FromMinutes(30);
 
+    // paper 實驗場交易所:不推真錢頻道(env NOTIFY_SUPPRESS_EXCHANGES、預設 alpaca,binance)
+    private static readonly HashSet<string> PaperExchanges =
+        (Environment.GetEnvironmentVariable("NOTIFY_SUPPRESS_EXCHANGES") ?? "alpaca,binance")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(s => s.ToLowerInvariant()).ToHashSet();
+
     private static bool IsErrorAction(string action) =>
         action == "error" || action == "blocked" || action == "halt" || action.Contains("fail");
 
@@ -145,6 +151,9 @@ public class LineNotificationService : BackgroundService
             var key = LogKey(l);
             if (_seenLogKeys.Contains(key)) continue;
             _seenLogKeys.Add(key);
+
+            // paper 實驗場(alpaca/binance)不推真錢頻道 —— 只留 bingx 真錢
+            if (PaperExchanges.Contains((l.Exchange ?? "").ToLowerInvariant())) continue;
 
             var action = l.Action.ToLowerInvariant();
             var (prefix, level) = ClassifyAction(action);
