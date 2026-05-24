@@ -16,7 +16,7 @@
   { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "雙時框動量共振 — BNB 上 5/5 時框全正(全分析最穩配對)" },
   { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 50,  "shadow": true, "enabled": true, "note": "均線 regime 趨勢 — DOGE 1d 24%/1w 14%,取代負收益的 boll_rev" },
   { "exchange": "bingx", "symbol": "ETH-USDT",  "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 0.01,"shadow": true, "enabled": true, "note": "原 mfi 真錢已手動平;改 shadow 測 ma_regime_trend(ETH 4/5 時框正)。與 DOGE 同策略、不同標的" },
-  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "ts_momentum",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "波動率管理動量 — 最強通用趨勢;SOL 本身難搞、低期望" },
-  { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "decorr4_ls",      "mode": "perp_long_only", "leverage": 5, "quantity": 10,  "shadow": true, "enabled": true, "note": "去相關4腿集成 — XRP 單腿 edge 已證偽(那波大漲假象),改放分散化觀察" },
+  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "auto_select",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1, "shadow": true, "enabled": true, "note": "auto_select 試水溫 — SOL 無穩健 edge,改讓 regime detector 每根 K 棒自挑策略" },
+  { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "auto_select",     "mode": "perp_long_only", "leverage": 5, "quantity": 10,  "shadow": true, "enabled": true, "note": "auto_select 試水溫 — XRP 單腿 edge 已證偽,改讓 regime detector 自挑策略" },
   { "exchange": "bingx", "symbol": "LTC-USDT",  "strategy": "rsi_stoch",       "mode": "perp_long_only", "leverage": 5, "quantity": 1,   "shadow": true, "enabled": true, "note": "隨機指標回歸 — LTC 上 5/5 時框全正(另一個最穩配對)" }
 ]
