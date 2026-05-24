@@ -768,6 +768,7 @@ public class AutoTraderService : BackgroundService
                     OwnerPrincipalId = string.IsNullOrEmpty(e.OwnerPrincipalId) ? "prn_dashboard" : e.OwnerPrincipalId,
                     HtfInterval = string.IsNullOrEmpty(e.HtfInterval) ? null : e.HtfInterval,
                     Shadow = e.Shadow,
+                    BudgetPct = e.BudgetPct,
                 };
             }
             if (entries.Count > 0)
@@ -797,6 +798,7 @@ public class AutoTraderService : BackgroundService
                     OwnerPrincipalId = item.OwnerPrincipalId,
                     HtfInterval = item.HtfInterval,
                     Shadow = item.Shadow,
+                    BudgetPct = item.BudgetPct,
                     CreatedAt = now, UpdatedAt = now,
                 });
             }
@@ -809,6 +811,7 @@ public class AutoTraderService : BackgroundService
                 existing.OwnerPrincipalId = item.OwnerPrincipalId;
                 existing.HtfInterval = item.HtfInterval;
                 existing.Shadow = item.Shadow;
+                existing.BudgetPct = item.BudgetPct;
                 existing.UpdatedAt = now;
                 _db.Update(existing);
             }
@@ -2336,7 +2339,9 @@ public class AutoTraderService : BackgroundService
             // ── 全倉曝險比例 sizing（opt-in、優先於 risk/SL sizing）─
             // notional = exposurePct% × 帳戶總資金;組合曝險上限用 _maxPortfolioExposurePct(notional 總和 / balance)。
             // cross margin 無 per-position 強平 → 用「總曝險 / 總資金」當風控刻度,不靠 per-trade SL。
-            if (_exposurePct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
+            // 資金預算制:per-watch budget_pct > 0 覆蓋全域 exposure_pct(多倉各配固定額度、不先出訊號先搶光)
+            var effExposurePct = item.BudgetPct > 0m ? item.BudgetPct : _exposurePct;
+            if (effExposurePct > 0m && (perpAction!.StartsWith("open_") || perpAction.StartsWith("scale_in_")))
             {
                 // 已開倉曝險總和（各倉 notional 直接相加）
                 decimal existingNotional = 0m;
@@ -2349,7 +2354,7 @@ public class AutoTraderService : BackgroundService
                 // 純算法抽到 ComputeExposureSizing(好測、真錢路徑邊界有單測覆蓋)
                 var sizing = ComputeExposureSizing(
                     anchoredBalance, markPrice, existingNotional,
-                    _exposurePct, _maxPortfolioExposurePct, item.Leverage);
+                    effExposurePct, _maxPortfolioExposurePct, item.Leverage);
 
                 if (!sizing.Applicable)
                 {
@@ -2368,8 +2373,8 @@ public class AutoTraderService : BackgroundService
                         AddLog(item, "info",
                             $"exposure clamped to margin cap: → {sizing.AllowedNotional:F2} (balance ${anchoredBalance:F2} × {item.Leverage}x × 0.95)");
                     _logger.LogInformation(
-                        "AutoTrader exposure sizing {Symbol}: balance={Bal:F2} exposure={Exp}% existing_notional={Exist:F2} max={Max:F2} → allowed_notional={All:F2} lev={Lev}x mark={Mark:F4} qty={Qty:F6} margin={Margin:F2}",
-                        item.Symbol, anchoredBalance, _exposurePct, existingNotional, sizing.PortfolioMaxNotional,
+                        "AutoTrader exposure sizing {Symbol}: balance={Bal:F2} exposure={Exp}%{BudgetTag} existing_notional={Exist:F2} max={Max:F2} → allowed_notional={All:F2} lev={Lev}x mark={Mark:F4} qty={Qty:F6} margin={Margin:F2}",
+                        item.Symbol, anchoredBalance, effExposurePct, item.BudgetPct > 0m ? "(budget)" : "", existingNotional, sizing.PortfolioMaxNotional,
                         sizing.AllowedNotional, item.Leverage, markPrice, sizing.Qty, sizing.AllowedNotional / Math.Max(item.Leverage, 1));
                     qtyToUse = sizing.Qty;
                 }
@@ -2911,6 +2916,9 @@ public class WatchItem
     /// 預設 false = 真交易。必須持久化(見 AutoTradeWatchEntry.Shadow),否則重啟會變回真交易。
     /// </summary>
     public bool Shadow { get; set; } = false;
+
+    /// <summary>資金預算制:本 watch 開倉名目佔餘額 %。&gt;0 覆蓋全域 exposure_pct(多倉各配額度、不先搶先贏);0=用全域。</summary>
+    public decimal BudgetPct { get; set; } = 0m;
 }
 
 public class TradeLog

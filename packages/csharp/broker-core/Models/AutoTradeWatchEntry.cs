@@ -58,6 +58,14 @@ public class AutoTradeWatchEntry
     public int Leverage { get; set; } = 5;
 
     /// <summary>
+    /// 資金預算制(per-watch、2026-05-24):本 watch 開倉名目佔帳戶餘額的 %。
+    /// &gt;0 時覆蓋全域 AUTOTRADER_EXPOSURE_PCT → 讓多倉「各配固定額度、不先出訊號先搶光」。
+    /// 0 = 用全域值(既有行為、向後相容)。組合總額仍受 AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT 上限約束。
+    /// </summary>
+    [Column("budget_pct")]
+    public decimal BudgetPct { get; set; } = 0m;
+
+    /// <summary>
     /// HTF（higher timeframe）大週期確認週期文字、例如 "4h"、"1d"、"1w"。
     /// 設定後：AutoTrader sweep 會額外 fetch 這個級別的 K 線、傳給 strategy.signal 做大週期方向確認。
     /// 預設 null = 不做 HTF 確認、保持單一週期判斷的既有行為。
