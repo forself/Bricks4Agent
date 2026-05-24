@@ -5,7 +5,8 @@
 // 2026-05-24 整併:7 支瘦 watch → 3 個有意義的倉(全真錢 live、全自動 2x)。
 //   理由:小本金(~350U)+ 2x 名目上限 → 實際只跑得動 ~3 倉,7 支是假象(先出訊號先搶資金)。
 //   收斂成「顯著 + full-period 正 + 互相去相關」的核心三腿。移除的 SOL/XRP/DOGE/LTC 可隨本金長大再加回。
-//   ⏳ 下一步:資金預算制(每倉配固定資金額度、不先搶先贏)+ 自訂顯著集成策略(動 sizing/strategy 程式碼)。
+//   ✅ 資金預算制已上線(budget_pct,DB 管理):BTC 80% / BNB 70% / ETH 50%(合 200%=組合上限)。
+//      每倉名目 = budget_pct% × 餘額,不再先出訊號先搶光。設定用 DB UPDATE budget_pct(reconciler 不碰 live)。
 [
   { "exchange": "bingx", "symbol": "BTC-USDT", "strategy": "decorr4_ls",  "mode": "perp_long_only", "leverage": 5, "quantity": 0.001, "shadow": false, "enabled": true, "note": "4 策略 ensemble — 多策略在單倉內共存(coexistence 的核心解);年化 32%、t=2.71" },
   { "exchange": "bingx", "symbol": "BNB-USDT", "strategy": "dual_mom_ls", "mode": "perp_long_only", "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "雙時框動量 — BNB 5/5 全正、年化 28%、t=2.57(有倉)" },
