@@ -13,8 +13,8 @@
   { "exchange": "bingx", "symbol": "BTC-USDT",  "strategy": "decorr4_ls",       "mode": "perp_long_only", "leverage": 5, "quantity": 0.001, "shadow": false, "enabled": true, "note": "去相關4腿集成 — 顯著(t=2.71)、最佳組合腿;取代不顯著的 smc" },
   { "exchange": "bingx", "symbol": "ETH-USDT",  "strategy": "mfi",              "mode": "perp_long_only", "leverage": 5, "quantity": 0.01,  "shadow": false, "enabled": true, "note": "資金流 — 統計最穩(t=3.72、低 vol),最佳組合最高權重腿" },
   { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",      "mode": "perp_long_only", "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "雙時框動量 — BNB 5/5 時框全正、顯著(t=2.57)" },
-  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "donchian_fade_ls", "mode": "perp_long_only", "leverage": 5, "quantity": 50,    "shadow": false, "enabled": true, "note": "通道 fade — DOGE 最佳幣、去相關腿、顯著(t=2.02)" },
-  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "ts_momentum",      "mode": "perp_long_only", "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "波動率管理動量 — 顯著(t=2.55)、跨幣中位最高" },
+  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "accel_momentum",   "mode": "perp_long_only", "leverage": 5, "quantity": 50,    "shadow": false, "enabled": true, "note": "動量加速 — full-period 年化 25%、DOGE 上 +23;換掉 full-period 虧的 donchian_fade" },
+  { "exchange": "bingx", "symbol": "SOL-USDT",  "strategy": "supertrend_ls",    "mode": "perp_long_only", "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "SuperTrend — SOL 上最不爛(+8)、full-period +15%;⚠ SOL 本身無強 edge、最不顯著的一支" },
   { "exchange": "bingx", "symbol": "XRP-USDT",  "strategy": "ma_regime_trend",  "mode": "perp_long_only", "leverage": 5, "quantity": 10,    "shadow": false, "enabled": true, "note": "均線 regime 趨勢 — 顯著(t=2.45)" },
   { "exchange": "bingx", "symbol": "LTC-USDT",  "strategy": "rsi_stoch",        "mode": "perp_long_only", "leverage": 5, "quantity": 1,     "shadow": false, "enabled": true, "note": "隨機指標回歸 — LTC 5/5 時框全正、顯著(t=2.77)" }
 ]
