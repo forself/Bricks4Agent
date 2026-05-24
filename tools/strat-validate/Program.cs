@@ -47,6 +47,11 @@ var symbols = new[]
           (new BollingerRevertLsStrategy(), 0.19m), (new FibRetraceLsStrategy(), 0.10m) }, name: "decorr4_ls")),
 };
 
+// ── --allocate:穩健配置引擎(獨立快速模式,不跑完整報告)──────────────
+// 4 步:① 入場閘(顯著 + full 正 + sharpe>0) ② edge×逆波動 raw 權重 ③ 朝等權收縮(λ=T/T*)
+//        + 相關 haircut + 單腿上限 ④ vol-target 算整體曝險。輸出每腿 budget_pct + N_eff + 畢業判定。
+if (args.Contains("--allocate")) { await RunAllocate(); return; }
+
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
     var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit=1000";
@@ -580,3 +585,202 @@ if (strats.Any(x => x.name == "decorr4_ls"))
 }
 
 Console.WriteLine("\n判定 = OOS 中位報酬>0 且 ≥60% 檔 OOS 正報酬 且 全期連續 Sharpe>0。組合層比較單腿:Sharpe 升 / maxDD 降 = 去相關紅利。");
+
+// ════════════════════════════════════════════════════════════════════════════
+// --allocate 配置引擎:把候選策略池跑成「可直接部署的權重」
+//   每腿 = (策略 → 它的最佳幣);跨腿做穩健配重。全用 long-short 引擎 + realistic 成本。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunAllocate()
+{
+    decimal EnvD(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    decimal targetVol = EnvD("ALLOC_TARGET_VOL_ANNUAL", 0.40m);  // 目標組合年化波動(40%、crypto 多策略合理)
+    decimal maxExp    = EnvD("ALLOC_MAX_EXPOSURE", 3.0m);         // 整體曝險上限(對齊真錢 3x)
+    double  capW      = (double)EnvD("ALLOC_MAX_WEIGHT", 0.35m);  // 單腿權重上限
+    double  shrinkT   = (double)EnvD("ALLOC_SHRINK_TRADES", 100m);// 收縮基準 T*(OOS fold 數達此才完全信最佳化)
+
+    Console.WriteLine("=== 配置引擎 --allocate ===");
+    Console.WriteLine($"  參數:目標年化波動 {targetVol:P0} · 曝險上限 {maxExp:F1}x · 單腿上限 {capW:P0} · 收縮基準 T*={shrinkT:F0} folds");
+    Console.WriteLine("  (env 可調:ALLOC_TARGET_VOL_ANNUAL / ALLOC_MAX_EXPOSURE / ALLOC_MAX_WEIGHT / ALLOC_SHRINK_TRADES)\n");
+
+    // 1. 抓 1d 資料
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    Console.WriteLine($"資料就緒:{dat.Count}/{symbols.Length} 檔 1d\n");
+    if (dat.Count == 0) { Console.WriteLine("無資料、中止。"); return; }
+
+    // 2. 每策略 → 選它的最佳幣(full-period Sharpe 最高)當部署腿;收集 sharpe/vol/curve/OOS folds
+    var rngA = new Random(7);
+    (decimal mean, decimal lo, decimal hi, double t) Boot(List<decimal> xs)
+    {
+        if (xs.Count < 5) return (xs.Count > 0 ? xs.Average() : 0, 0, 0, 0);
+        double mean = (double)xs.Average();
+        double sd = Math.Sqrt(xs.Select(x => ((double)x - mean) * ((double)x - mean)).Sum() / (xs.Count - 1));
+        double se = sd / Math.Sqrt(xs.Count);
+        double tStat = se > 0 ? mean / se : 0;
+        var means = new double[2000];
+        for (int b = 0; b < 2000; b++) { double sum = 0; for (int i = 0; i < xs.Count; i++) sum += (double)xs[rngA.Next(xs.Count)]; means[b] = sum / xs.Count; }
+        Array.Sort(means);
+        return ((decimal)mean, (decimal)means[50], (decimal)means[1950], tStat);
+    }
+    List<double> DailyRets(List<decimal> curve, int take)
+    {
+        var c = curve.Skip(Math.Max(0, curve.Count - take)).ToList();
+        var r = new List<double>();
+        for (int t = 1; t < c.Count; t++) r.Add(c[t - 1] > 0 ? (double)((c[t] - c[t - 1]) / c[t - 1]) : 0);
+        return r;
+    }
+    double AnnVol(List<decimal> curve)
+    {
+        var r = DailyRets(curve, curve.Count);
+        if (r.Count < 2) return 0;
+        var a = r.Average();
+        return Math.Sqrt(r.Select(x => (x - a) * (x - a)).Average()) * Math.Sqrt(252);
+    }
+
+    var legs = new List<Leg>();
+    foreach (var (name, s) in strats)
+    {
+        string? bestCoin = null; decimal bestSh = decimal.MinValue;
+        List<decimal> bestCurve = new(); decimal bestRet = 0, bestDd = 0;
+        foreach (var kv in dat)
+        {
+            try
+            {
+                var bt = LongShortBacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+                if (bt.TotalBars < 100) continue;
+                if (bt.SharpeRatio > bestSh)
+                { bestSh = bt.SharpeRatio; bestCoin = kv.Key; bestCurve = bt.EquityCurve.Select(e => e.Value).ToList(); bestRet = bt.TotalReturnPct; bestDd = bt.MaxDrawdownPct; }
+            }
+            catch { }
+        }
+        if (bestCoin == null) continue;
+        var folds = new List<decimal>();
+        try
+        {
+            var wf = LongShortBacktestEngine.RunWalkForward(s, dat[bestCoin], new StrategyConfig { Symbol = bestCoin, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+            foreach (var f in wf.Folds.Where(f => f.Test != null)) folds.Add(f.Test!.TotalReturnPct);
+        }
+        catch { }
+        var (m, lo, hi, tstat) = Boot(folds);
+        legs.Add(new Leg(name, bestCoin, bestSh, (decimal)AnnVol(bestCurve), bestCurve, folds.Count, lo, tstat, bestRet, bestDd));
+    }
+
+    // 3. 入場閘:full Sharpe>0 且 顯著(bootstrap CI 下界>0)且 full 報酬>0
+    bool Pass(Leg l) => l.Sharpe > 0m && l.CiLo > 0m && l.Ret > 0m && l.Folds >= 5;
+    var pool = legs.Where(Pass).OrderByDescending(l => l.T).ToList();
+    var rejected = legs.Where(l => !Pass(l)).ToList();
+
+    Console.WriteLine($"=== 入場閘:{legs.Count} 候選 → {pool.Count} 通過(顯著 + full正 + Sharpe>0)===");
+    foreach (var l in rejected.OrderByDescending(l => l.Sharpe))
+    {
+        var why = l.Folds < 5 ? "fold<5" : l.CiLo <= 0m ? "不顯著(CI含0)" : l.Sharpe <= 0m ? "Sharpe≤0" : l.Ret <= 0m ? "full賠" : "?";
+        Console.WriteLine($"   ✗ {l.Name,-16}@{Sh(l.Coin),-5} Sharpe {l.Sharpe,5:F2}  CI下界 {l.CiLo,5:F1}  — 剔除:{why}");
+    }
+    if (pool.Count == 0) { Console.WriteLine("\n無腿通過入場閘 → 不建議配置任何真錢。先回 paper 累積樣本。"); return; }
+
+    // 4a. 對齊腿權益曲線(共同尾長),算相關 + 日報酬(給 vol-target 共變異)
+    int N = pool.Count;
+    int L = pool.Min(l => l.Curve.Count);
+    var rets = pool.Select(l => DailyRets(l.Curve, L)).ToList();
+    int RL = rets.Min(r => r.Count);
+    for (int i = 0; i < N; i++) rets[i] = rets[i].Skip(rets[i].Count - RL).ToList();
+    double[,] rho = new double[N, N];
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+            rho[i, j] = (double)CorrelationGuard.PearsonOfReturns(
+                pool[i].Curve.Skip(pool[i].Curve.Count - L).ToList(),
+                pool[j].Curve.Skip(pool[j].Curve.Count - L).ToList());
+
+    // 4b. raw = max(0,Sharpe)/Vol → 相關 haircut(被一堆腿相關 = 降權)→ tilt 權重
+    var raw = new double[N];
+    for (int i = 0; i < N; i++) raw[i] = pool[i].Vol > 0m ? Math.Max(0, (double)pool[i].Sharpe) / (double)pool[i].Vol : 0;
+    var haircut = new double[N];
+    for (int i = 0; i < N; i++)
+    {
+        double corrSum = 0;
+        for (int j = 0; j < N; j++) if (j != i) corrSum += Math.Max(0, rho[i, j]);
+        haircut[i] = 1.0 / (1.0 + corrSum);
+    }
+    var tilt = new double[N];
+    for (int i = 0; i < N; i++) tilt[i] = raw[i] * haircut[i];
+    double tsum = tilt.Sum();
+    var w = new double[N];
+    for (int i = 0; i < N; i++) w[i] = tsum > 0 ? tilt[i] / tsum : 1.0 / N;
+
+    // 4c. 朝等權收縮(每腿 λ=min(1,T/T*),資料少就靠等權)→ 重新正規化
+    for (int i = 0; i < N; i++) { double lam = Math.Min(1.0, pool[i].Folds / shrinkT); w[i] = lam * w[i] + (1 - lam) * (1.0 / N); }
+    double ws = w.Sum(); for (int i = 0; i < N; i++) w[i] /= ws;
+
+    // 4d. 單腿上限 + 多餘量按比例分給未封頂者(迭代);最後正規化
+    for (int iter = 0; iter < 12; iter++)
+    {
+        double over = 0; var free = new List<int>();
+        for (int i = 0; i < N; i++) { if (w[i] > capW + 1e-9) { over += w[i] - capW; w[i] = capW; } else free.Add(i); }
+        if (over < 1e-9) break;
+        double freeSum = free.Sum(i => w[i]);
+        if (freeSum < 1e-9) break;
+        foreach (var i in free) w[i] += over * (w[i] / freeSum);
+    }
+    double ws2 = w.Sum(); for (int i = 0; i < N; i++) w[i] /= ws2;
+
+    // 4e. vol-target:組合年化波動 = sqrt(w'Σw)·sqrt(252);曝險 = min(maxExp, targetVol/組合波動)
+    double portDailyVar = 0;
+    for (int i = 0; i < N; i++)
+        for (int j = 0; j < N; j++)
+        {
+            var ai = rets[i].Average(); var aj = rets[j].Average();
+            double cov = 0; for (int t = 0; t < RL; t++) cov += (rets[i][t] - ai) * (rets[j][t] - aj);
+            cov /= Math.Max(1, RL - 1);
+            portDailyVar += w[i] * w[j] * cov;
+        }
+    double portAnnVol = Math.Sqrt(Math.Max(0, portDailyVar)) * Math.Sqrt(252);
+    double exposure = portAnnVol > 1e-9 ? Math.Min((double)maxExp, (double)targetVol / portAnnVol) : (double)maxExp;
+
+    // 4f. N_eff(有效獨立押注數)+ 平均相關
+    double sumSq = w.Sum(x => x * x);
+    double nEff = sumSq > 0 ? 1.0 / sumSq : 0;
+    double offDiag = 0; int cnt = 0;
+    for (int i = 0; i < N; i++) for (int j = i + 1; j < N; j++) { offDiag += rho[i, j]; cnt++; }
+    double avgRho = cnt > 0 ? offDiag / cnt : 0;
+
+    // ── 輸出 ──
+    Console.WriteLine($"\n=== 建議配置({N} 腿;total exposure {exposure:F2}x)===");
+    Console.WriteLine($"  {"strategy@coin",-22}{"Sharpe",8}{"annVol",8}{"folds",7}{"weight",8}{"budget_pct",12}");
+    var budgets = new List<(string coin, string strat, decimal bp)>();
+    for (int i = 0; i < N; i++)
+    {
+        decimal bp = Math.Round((decimal)(w[i] * exposure) * 100m, 0);
+        budgets.Add((pool[i].Coin, pool[i].Name, bp));
+        Console.WriteLine($"  {pool[i].Name + "@" + Sh(pool[i].Coin),-22}{pool[i].Sharpe,8:F2}{pool[i].Vol,7:P0}{pool[i].Folds,7}{w[i],8:P0}{bp,11:F0}%");
+    }
+    Console.WriteLine($"  {"合計",-22}{"",8}{"",8}{"",7}{w.Sum(),8:P0}{w.Sum() * exposure * 100,11:F0}%");
+    Console.WriteLine($"\n  組合年化波動 {portAnnVol:P0} → 為打到目標 {targetVol:P0}、整體曝險 = {exposure:F2}x(上限 {maxExp:F1}x)");
+    Console.WriteLine($"  有效獨立押注數 N_eff = {nEff:F1} / {N} 腿   平均兩兩相關 ρ̄ = {avgRho:F2}   " +
+        (nEff < N * 0.6 ? "⚠ N_eff 遠低於腿數 = 假分散(腿太像)" : "✓ 分散有效"));
+
+    // 相關矩陣
+    Console.WriteLine("\n=== 選中腿 相關矩陣(全期權益日報酬)===");
+    Console.WriteLine("  " + new string(' ', 18) + string.Join("", pool.Select(l => $"{Sh(l.Coin),8}")));
+    for (int i = 0; i < N; i++)
+        Console.WriteLine($"  {pool[i].Name + "@" + Sh(pool[i].Coin),-18}" + string.Join("", Enumerable.Range(0, N).Select(j => $"{rho[i, j],8:F2}")));
+
+    // 畢業判定(paper→真錢):通過入場閘 = 統計上夠格;再標出跟組內其他腿最大相關(>0.6 = 上真錢前要再想)
+    Console.WriteLine("\n=== 畢業判定(paper → 真錢)===");
+    Console.WriteLine("  通過入場閘 = 統計上夠格上真錢。max ρ = 跟其他選中腿的最高相關(>0.6 = 加它紅利低、考慮替換):");
+    for (int i = 0; i < N; i++)
+    {
+        double maxR = 0; int who = -1;
+        for (int j = 0; j < N; j++) if (j != i && rho[i, j] > maxR) { maxR = rho[i, j]; who = j; }
+        string flag = maxR > 0.6 ? $"⚠ 與 {pool[who].Name}@{Sh(pool[who].Coin)} ρ={maxR:F2}" : $"✓ 獨立(max ρ {maxR:F2})";
+        Console.WriteLine($"   {pool[i].Name,-16}@{Sh(pool[i].Coin),-5} → {flag}");
+    }
+
+    // 可直接貼的 SQL(budget_pct 寫回 watchlist;預設印 bingx、實際看你部署在哪交易所)
+    Console.WriteLine("\n=== 可貼 SQL(把 budget_pct 寫回真錢 watchlist;交易所/symbol 格式自行對應)===");
+    foreach (var (coin, strat, bp) in budgets)
+        Console.WriteLine($"   UPDATE auto_trade_watchlist SET budget_pct={bp} WHERE strategy='{strat}'; -- {strat}@{Sh(coin)}");
+    Console.WriteLine("\n   ⚠ 真錢 budget 改完必須立刻 restart broker(否則跑動的 PersistWatch 會用記憶體舊值覆蓋回去)。");
+}
+
+// --allocate 用:一條部署腿(策略 → 它的最佳幣)的統計
+record Leg(string Name, string Coin, decimal Sharpe, decimal Vol, System.Collections.Generic.List<decimal> Curve, int Folds, decimal CiLo, double T, decimal Ret, decimal Dd);
