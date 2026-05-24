@@ -605,6 +605,11 @@ async Task RunAllocate()
     bool    btcCore   = EnvB("ALLOC_BTC_CORE", true);
     double  btcCoreW  = (double)EnvD("ALLOC_BTC_CORE_WEIGHT", 0.40m); // BTC 核心固定佔書比重(拉高)
     string  btcStrat  = EnvS("ALLOC_BTC_CORE_STRATEGY", "decorr4_ls");// 集成策略(多策略共識下注大小)
+    // forward 證據:抓 broker 的實盤 per-strategy P&L、當回測之外的第二證據。
+    // 實盤(≥min 筆)實際賠 → 否決該腿(回測過但實盤垮 = 過擬合/regime 破)。沒設 URL → 純回測(向後相容)。
+    string  fwdUrl    = EnvS("ALLOC_FORWARD_URL", "");
+    string  fwdFile   = EnvS("ALLOC_FORWARD_FILE", "");   // 本地 JSON(cron 用 docker exec curl 產出、繞過 loopback 守衛)
+    int     fwdMin    = (int)EnvD("ALLOC_FORWARD_MIN_TRADES", 10m);
 
     Console.WriteLine("=== 配置引擎 --allocate ===");
     Console.WriteLine($"  參數:目標年化波動 {targetVol:P0} · 曝險上限 {maxExp:F1}x · 單腿上限 {capW:P0} · 收縮基準 T*={shrinkT:F0} folds");
@@ -615,6 +620,33 @@ async Task RunAllocate()
     var dat = new Dictionary<string, List<BarData>>();
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
     Console.WriteLine($"資料就緒:{dat.Count}/{symbols.Length} 檔 1d\n");
+
+    // forward 實盤證據(per-strategy:成交數 / 已實現 P&L / 勝率)
+    var fwd = new Dictionary<string, (int n, decimal pnl, decimal wr)>(StringComparer.OrdinalIgnoreCase);
+    if (!string.IsNullOrEmpty(fwdFile) || !string.IsNullOrEmpty(fwdUrl))
+    {
+        try
+        {
+            string fjson = !string.IsNullOrEmpty(fwdFile) && File.Exists(fwdFile)
+                ? File.ReadAllText(fwdFile)
+                : await http.GetStringAsync(fwdUrl);
+            using var fdoc = JsonDocument.Parse(fjson);
+            var root = fdoc.RootElement;
+            var dataEl = root.TryGetProperty("data", out var de) ? de : root;   // 兼容 ApiResponse 包裝
+            if (dataEl.TryGetProperty("strategies", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                foreach (var s in arr.EnumerateArray())
+                {
+                    var nm = s.TryGetProperty("strategy", out var sn) ? sn.GetString() ?? "" : "";
+                    if (string.IsNullOrEmpty(nm)) continue;
+                    fwd[nm] = (
+                        s.TryGetProperty("trades", out var tn) ? tn.GetInt32() : 0,
+                        s.TryGetProperty("realized_pnl", out var pp) ? pp.GetDecimal() : 0m,
+                        s.TryGetProperty("win_rate", out var ww) ? ww.GetDecimal() : 0m);
+                }
+            Console.WriteLine($"forward 實盤證據:{fwd.Count} 策略有成交;否決門檻 = 實盤 ≥{fwdMin} 筆且賠錢\n");
+        }
+        catch (Exception ex) { Console.WriteLine($"⚠ forward 抓取失敗、退回純回測:{ex.Message}\n"); }
+    }
     if (dat.Count == 0) { Console.WriteLine("無資料、中止。"); return; }
 
     // 2. 每策略 → 選它的最佳幣(full-period Sharpe 最高)當部署腿;收集 sharpe/vol/curve/OOS folds
@@ -694,6 +726,22 @@ async Task RunAllocate()
         var bc = c.PerCoin.OrderByDescending(p => p.Value.sh).First().Key;
         var why = c.Folds < minPoolFolds ? $"fold<{minPoolFolds}" : c.CiLo <= 0m ? "不顯著(CI含0)" : c.Breadth < breadthMin ? $"廣度低({c.Breadth:P0}幣正)" : c.BestSharpe <= 0m ? "Sharpe≤0" : c.BestRet <= 0m ? "full賠" : "?";
         Console.WriteLine($"   ✗ {c.Name,-16}@{Sh(bc),-5} Sharpe {c.BestSharpe,5:F2} 廣度 {c.Breadth,4:P0} CI下界 {c.CiLo,6:F1} fold {c.Folds,3} — 剔除:{why}");
+    }
+    // 3.5 forward 否決:回測過、但實盤 ≥fwdMin 筆且實際賠錢 → 剔除(過擬合/regime 破的鐵證)
+    if (fwd.Count > 0)
+    {
+        var fwdVetoed = new List<(Cand c, int n, decimal pnl)>();
+        passed = passed.Where(c =>
+        {
+            if (fwd.TryGetValue(c.Name, out var f) && f.n >= fwdMin && f.pnl < 0m) { fwdVetoed.Add((c, f.n, f.pnl)); return false; }
+            return true;
+        }).ToList();
+        if (fwdVetoed.Count > 0)
+        {
+            Console.WriteLine($"=== forward 否決:{fwdVetoed.Count} 支回測過、但實盤賠錢被剔 ===");
+            foreach (var (c, n, pnl) in fwdVetoed)
+                Console.WriteLine($"   ⛔ {c.Name,-16} 實盤 {n} 筆、已實現 {pnl:F2} USDT — 回測過但實盤垮、不上真錢");
+        }
     }
     if (passed.Count == 0) { Console.WriteLine("\n無腿通過入場閘 → 不建議配置任何真錢。先回 paper 累積樣本。"); return; }
 
@@ -853,7 +901,12 @@ async Task RunAllocate()
         double maxR = 0; int who = -1;
         for (int j = 0; j < N; j++) if (j != i && rho[i, j] > maxR) { maxR = rho[i, j]; who = j; }
         string flag = maxR > 0.6 ? $"⚠ 與 {pool[who].Name}@{Sh(pool[who].Coin)} ρ={maxR:F2}" : $"✓ 獨立(max ρ {maxR:F2})";
-        Console.WriteLine($"   {pool[i].Name,-16}@{Sh(pool[i].Coin),-5} → {flag}");
+        // forward 實盤確認狀態
+        string live = "live —(無 forward 資料)";
+        if (fwd.TryGetValue(pool[i].Name, out var f))
+            live = f.n >= fwdMin ? (f.pnl > 0m ? $"live ✓ 確認({f.n}筆 +{f.pnl:F1} 勝率{f.wr:P0})" : $"live ⚠ {f.n}筆 {f.pnl:F1}")
+                                 : $"live …{f.n}筆(<{fwdMin}、樣本不足、暫看回測)";
+        Console.WriteLine($"   {pool[i].Name,-16}@{Sh(pool[i].Coin),-5} → {flag} · {live}");
     }
 
     // 可直接貼的 SQL(budget_pct 寫回 watchlist;預設印 bingx、實際看你部署在哪交易所)

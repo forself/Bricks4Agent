@@ -14,9 +14,14 @@ OUT="$REPORTS/allocate-$TS.txt"
 # Discord webhook(從 env 讀、不 echo 出來)
 WEBHOOK=$(grep -E '^DISCORD_WEBHOOK_URL=' "$ENVF" 2>/dev/null | head -1 | cut -d= -f2-)
 
-# 跑 allocate(ALLOC_TARGET_VOL_ANNUAL=1.0 → 曝險頂 3x、對齊真錢書)
+# forward 實盤證據:在 broker 容器內 curl(loopback 守衛只認容器內)→ 暫存檔 → 餵給 --allocate。
+# paper(alpaca/binance)當主驗證源;回測過但實盤賠的腿會被 forward 否決。
+FWD=/tmp/b4a-forward.json
+docker exec b4a-broker sh -c "curl -s -m 10 'http://localhost:5000/api/v1/trading/strategy-pnl?days=30&exchanges=alpaca,binance'" > "$FWD" 2>/dev/null || true
+
+# 跑 allocate(ALLOC_TARGET_VOL_ANNUAL=1.0 → 曝險頂 3x、對齊真錢書;ALLOC_FORWARD_FILE → 接實盤證據)
 cd /opt/b4a
-ALLOC_TARGET_VOL_ANNUAL=1.0 "$BIN" --allocate > "$OUT" 2>&1 || true
+ALLOC_TARGET_VOL_ANNUAL=1.0 ALLOC_FORWARD_FILE="$FWD" "$BIN" --allocate > "$OUT" 2>&1 || true
 
 # 通過腿集合(strategy@coin,從可貼 SQL 的註解抽)
 CURR=$(grep -oE '\-\- [a-z0-9_]+@[A-Z0-9]+' "$OUT" | sed 's/-- //' | sort -u)

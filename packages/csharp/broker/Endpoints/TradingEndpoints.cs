@@ -270,6 +270,66 @@ public static class TradingEndpoints
             return Results.File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv", filename);
         });
 
+        // ── Per-strategy 實盤 P&L 聚合（--allocate 的 forward 證據源）──
+        // loopback-only（純讀聚合 stats、給 VPS 上的 --allocate / cron 用、不對外）。
+        // 從本地 trades 表（含 strategy + realized_pnl）按策略聚合過去 N 天的實盤成交。
+        // 用途：把「實盤 forward 表現」當回測之外的第二證據 → 回測過但實盤賠 = 過擬合/regime 破。
+        trading.MapGet("/strategy-pnl", async (
+            IExecutionDispatcher dispatcher, HttpContext ctx, HttpRequest req, CancellationToken ct) =>
+        {
+            if (!System.Net.IPAddress.IsLoopback(ctx.Connection.RemoteIpAddress ?? System.Net.IPAddress.None))
+                return Results.StatusCode(403);
+
+            var days = req.Query.TryGetValue("days", out var d) && int.TryParse(d, out var dv)
+                ? Math.Clamp(dv, 1, 365) : 30;
+            var since = DateTime.UtcNow.AddDays(-days);
+            HashSet<string>? exFilter = null;
+            if (req.Query.TryGetValue("exchanges", out var exq))
+            {
+                var list = exq.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (list.Length > 0) exFilter = new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
+            }
+
+            var payload = JsonSerializer.Serialize(new { exchange = (string?)null, since = since.ToString("o"), limit = 100000 });
+            var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "trading.account", "get_trade_history", payload));
+            if (!result.Success)
+                return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trade_history failed"));
+
+            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            var agg = new Dictionary<string, (int n, decimal pnl, int wins, HashSet<string> ex)>(StringComparer.OrdinalIgnoreCase);
+            if (doc.TryGetProperty("trades", out var trades) && trades.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var t in trades.EnumerateArray())
+                {
+                    var strat = t.TryGetProperty("strategy", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+                    if (string.IsNullOrEmpty(strat)) continue;
+                    if (!t.TryGetProperty("realized_pnl", out var rp) || rp.ValueKind != JsonValueKind.Number) continue;
+                    var ex = t.TryGetProperty("exchange", out var exv) ? exv.GetString() ?? "" : "";
+                    if (exFilter != null && !exFilter.Contains(ex)) continue;
+                    var pnl = rp.GetDecimal();
+                    (int n, decimal pnl, int wins, HashSet<string> ex) cur = agg.TryGetValue(strat, out var c)
+                        ? c : (0, 0m, 0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                    cur.n++; cur.pnl += pnl; if (pnl > 0m) cur.wins++; cur.ex.Add(ex);
+                    agg[strat] = cur;
+                }
+            }
+            var outp = agg.Select(kv => new
+            {
+                strategy = kv.Key,
+                trades = kv.Value.n,
+                realized_pnl = Math.Round(kv.Value.pnl, 4),
+                wins = kv.Value.wins,
+                win_rate = kv.Value.n > 0 ? Math.Round((decimal)kv.Value.wins / kv.Value.n, 3) : 0m,
+                exchanges = kv.Value.ex.OrderBy(x => x).ToList(),
+            }).OrderByDescending(s => s.trades).ToList();
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                window_days = days, since, exchanges = exFilter?.OrderBy(x => x).ToList(),
+                count = outp.Count, strategies = outp,
+            }));
+        });
+
         // 查 cache 狀態（不觸發 refresh）
         trading.MapGet("/symbol-specs/status", () =>
         {
