@@ -421,12 +421,17 @@ public class RiskEngine
             }
             netSum += Math.Abs(symLong - symShort);
         }
-        if (netSum <= rule.Threshold) return null;
+        // r12 改成「跟著本金放大」:淨名目上限 = 餘額 × 倍數(env RISK_MAX_PERP_NOTIONAL_X_BALANCE、
+        // 預設 3.5,略高於 AutoTrader 的 3x 曝險上限、當 backstop;隨本金自動放大、每月加碼不必手調)。
+        // balance ≤ 0(拿不到餘額)退回 rule.Threshold 絕對值當保險。
+        var notionalMult = decimal.TryParse(Environment.GetEnvironmentVariable("RISK_MAX_PERP_NOTIONAL_X_BALANCE"), out var nm) && nm > 0 ? nm : 3.5m;
+        var effectiveLimit = snap.Balance > 0 ? snap.Balance * notionalMult : rule.Threshold;
+        if (netSum <= effectiveLimit) return null;
         return new RiskViolation
         {
             RuleId = rule.RuleId, RuleName = rule.Name,
-            Message = $"Net perp notional {netSum:F0} USDT (after this order, hedge-aware) exceeds limit {rule.Threshold:F0}",
-            Current = netSum, Limit = rule.Threshold,
+            Message = $"Net perp notional {netSum:F0} USDT (after this order, hedge-aware) exceeds limit {effectiveLimit:F0} (= balance {snap.Balance:F0} × {notionalMult})",
+            Current = netSum, Limit = effectiveLimit,
         };
     }
 
@@ -557,7 +562,8 @@ public class RiskEngine
         // ── 永續合約規則（給 BingX perp 用、走 CheckPerp 路徑、平倉永遠放行）────
         // r11: 槓桿上限 10x——對 30 USDT 起步帳戶這已經很激進，但留空間給之後調大
         new() { RuleId = "r11", Name = "Max Perp Leverage",         Type = "max_leverage",            Threshold = 10 },
-        // r12: 所有開倉名目（含本筆）≤ 1000 USDT——首次實盤期保守設小，accustomed 後再放
+        // r12: 淨開倉名目 ≤ 餘額 × RISK_MAX_PERP_NOTIONAL_X_BALANCE(預設 3.5、見 CheckMaxTotalNotional)。
+        // 隨本金自動放大、不必每月手調;下面這個 1000 只在「拿不到餘額(balance≤0)」時當 fallback floor。
         new() { RuleId = "r12", Name = "Max Perp Total Notional",   Type = "max_total_notional",      Threshold = 1000 },
         // r13: 最低距離爆倉 5%——10x 預估 ~9.5% 過、20x ~4.5% 擋。算保守。
         new() { RuleId = "r13", Name = "Min Liquidation Distance",  Type = "max_liquidation_distance",Threshold = 5 },
