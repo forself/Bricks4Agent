@@ -595,14 +595,21 @@ Console.WriteLine("\n判定 = OOS 中位報酬>0 且 ≥60% 檔 OOS 正報酬 �
 async Task RunAllocate()
 {
     decimal EnvD(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    bool EnvB(string k, bool def) => bool.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    string EnvS(string k, string def) => Environment.GetEnvironmentVariable(k) is { Length: > 0 } s ? s : def;
     decimal targetVol = EnvD("ALLOC_TARGET_VOL_ANNUAL", 0.40m);  // 目標組合年化波動(40%、crypto 多策略合理)
     decimal maxExp    = EnvD("ALLOC_MAX_EXPOSURE", 3.0m);         // 整體曝險上限(對齊真錢 3x)
     double  capW      = (double)EnvD("ALLOC_MAX_WEIGHT", 0.35m);  // 單腿權重上限
     double  shrinkT   = (double)EnvD("ALLOC_SHRINK_TRADES", 100m);// 收縮基準 T*(OOS fold 數達此才完全信最佳化)
+    // BTC 核心腿:固定幣種 BTC、用集成(多策略共識 + confidence-sizing 依共識大小下注)、比例拉高、獨立碳出。
+    bool    btcCore   = EnvB("ALLOC_BTC_CORE", true);
+    double  btcCoreW  = (double)EnvD("ALLOC_BTC_CORE_WEIGHT", 0.40m); // BTC 核心固定佔書比重(拉高)
+    string  btcStrat  = EnvS("ALLOC_BTC_CORE_STRATEGY", "decorr4_ls");// 集成策略(多策略共識下注大小)
 
     Console.WriteLine("=== 配置引擎 --allocate ===");
     Console.WriteLine($"  參數:目標年化波動 {targetVol:P0} · 曝險上限 {maxExp:F1}x · 單腿上限 {capW:P0} · 收縮基準 T*={shrinkT:F0} folds");
-    Console.WriteLine("  (env 可調:ALLOC_TARGET_VOL_ANNUAL / ALLOC_MAX_EXPOSURE / ALLOC_MAX_WEIGHT / ALLOC_SHRINK_TRADES)\n");
+    if (btcCore) Console.WriteLine($"  BTC 核心腿:開(固定 BTC、策略 {btcStrat} 多策略共識、佔書 {btcCoreW:P0}、獨立於衛星配置)");
+    Console.WriteLine("  (env 可調:ALLOC_TARGET_VOL_ANNUAL / ALLOC_MAX_EXPOSURE / ALLOC_MAX_WEIGHT / ALLOC_SHRINK_TRADES / ALLOC_BTC_CORE[_WEIGHT/_STRATEGY])\n");
 
     // 1. 抓 1d 資料
     var dat = new Dictionary<string, List<BarData>>();
@@ -690,18 +697,35 @@ async Task RunAllocate()
     }
     if (passed.Count == 0) { Console.WriteLine("\n無腿通過入場閘 → 不建議配置任何真錢。先回 paper 累積樣本。"); return; }
 
-    // 3b. 部署腿指派:保證每腿不同幣(真錢 watchlist 一 symbol 一策略 + 真去相關)。
+    // 3a. BTC 核心腿:固定幣 BTC、用集成策略(多策略共識 + confidence-sizing 依共識大小下注)碳出,
+    //     獨立於下面的衛星 Sharpe 最大化;它的策略 + BTC 幣都不進衛星指派。
+    Leg? core = null;
+    var btcBackers = cands.Where(c => c.PerCoin.TryGetValue("BTCUSDT", out var v) && v.sh > 0m)
+                          .OrderByDescending(c => c.PerCoin["BTCUSDT"].sh).ToList();
+    if (btcCore)
+    {
+        var cc = cands.FirstOrDefault(c => c.Name == btcStrat);
+        if (cc != null && cc.PerCoin.TryGetValue("BTCUSDT", out var bv) && bv.sh > 0m)
+            core = new Leg(cc.Name, "BTCUSDT", bv.sh, (decimal)AnnVol(bv.curve), bv.curve, cc.Folds, cc.CiLo, cc.T, bv.ret, bv.dd, cc.Breadth);
+        else { Console.WriteLine($"   ⚠ BTC 核心策略 {btcStrat} 在 BTC 無正 edge → 本次停用核心腿"); btcCore = false; }
+    }
+
+    // 3b. 衛星指派:每腿不同幣(真錢一 symbol 一策略 + 真去相關);核心開時排除 BTC 幣 + 核心策略。
     //     t 高的先選它的最佳「可用」幣(需 Sharpe>0 且 full 正);撞到已佔的幣就退而選次佳。
     var taken = new HashSet<string>();
+    if (btcCore) taken.Add("BTCUSDT");
     var pool = new List<Leg>();
     foreach (var c in passed)
     {
+        if (btcCore && c.Name == btcStrat) continue;   // 核心策略已碳出到 BTC
         var pick = c.PerCoin.Where(p => !taken.Contains(p.Key) && p.Value.sh > 0m && p.Value.ret > 0m)
                             .OrderByDescending(p => p.Value.sh).Select(p => (k: p.Key, v: p.Value)).FirstOrDefault();
         if (pick.k == null) { Console.WriteLine($"   ⚠ {c.Name} 無剩餘可用幣可指派(都被佔/負)→ 跳過"); continue; }
         taken.Add(pick.k);
         pool.Add(new Leg(c.Name, pick.k, pick.v.sh, (decimal)AnnVol(pick.v.curve), pick.v.curve, c.Folds, c.CiLo, c.T, pick.v.ret, pick.v.dd, c.Breadth));
     }
+    int coreIdx = -1;
+    if (core != null) { pool.Insert(0, core); coreIdx = 0; }   // 核心腿放第一
     if (pool.Count == 0) { Console.WriteLine("\n指派後無可部署腿。"); return; }
 
     // 4a. 對齊腿權益曲線(共同尾長),算相關 + 日報酬(給 vol-target 共變異)
@@ -749,6 +773,16 @@ async Task RunAllocate()
     }
     double ws2 = w.Sum(); for (int i = 0; i < N; i++) w[i] /= ws2;
 
+    // 4d-2. BTC 核心腿:把它的權重固定/拉高到 btcCoreW,其餘按比例縮放(獨立於 Sharpe 最大化、可超單腿上限)。
+    if (coreIdx >= 0 && N > 1)
+    {
+        double cw = Math.Min(0.9, btcCoreW);
+        double othersOld = 1.0 - w[coreIdx];
+        double othersNew = 1.0 - cw;
+        if (othersOld > 1e-9) for (int i = 0; i < N; i++) if (i != coreIdx) w[i] *= othersNew / othersOld;
+        w[coreIdx] = cw;
+    }
+
     // 4e. vol-target:組合年化波動 = sqrt(w'Σw)·sqrt(252);曝險 = min(maxExp, targetVol/組合波動)
     double portDailyVar = 0;
     for (int i = 0; i < N; i++)
@@ -770,16 +804,21 @@ async Task RunAllocate()
     double avgRho = cnt > 0 ? offDiag / cnt : 0;
 
     // ── 輸出 ──
-    Console.WriteLine($"\n=== 建議配置({N} 腿;total exposure {exposure:F2}x)===");
-    Console.WriteLine($"  {"strategy@coin",-22}{"Sharpe",8}{"annVol",8}{"廣度",7}{"folds",7}{"weight",8}{"budget_pct",12}");
+    Console.WriteLine($"\n=== 建議配置({N} 腿;total exposure {exposure:F2}x;◆=BTC 核心腿)===");
+    Console.WriteLine($"  {"strategy@coin",-24}{"Sharpe",8}{"annVol",8}{"廣度",7}{"folds",7}{"weight",8}{"budget_pct",12}");
     var budgets = new List<(string coin, string strat, decimal bp)>();
     for (int i = 0; i < N; i++)
     {
         decimal bp = Math.Round((decimal)(w[i] * exposure) * 100m, 0);
         budgets.Add((pool[i].Coin, pool[i].Name, bp));
-        Console.WriteLine($"  {pool[i].Name + "@" + Sh(pool[i].Coin),-22}{pool[i].Sharpe,8:F2}{pool[i].Vol,7:P0}{pool[i].Breadth,7:P0}{pool[i].Folds,7}{w[i],8:P0}{bp,11:F0}%");
+        string tag = (i == coreIdx ? "◆ " : "  ") + pool[i].Name + "@" + Sh(pool[i].Coin);
+        Console.WriteLine($"  {tag,-24}{pool[i].Sharpe,8:F2}{pool[i].Vol,7:P0}{pool[i].Breadth,7:P0}{pool[i].Folds,7}{w[i],8:P0}{bp,11:F0}%");
     }
-    Console.WriteLine($"  {"合計",-22}{"",8}{"",8}{"",7}{"",7}{w.Sum(),8:P0}{w.Sum() * exposure * 100,11:F0}%");
+    Console.WriteLine($"  {"合計",-24}{"",8}{"",8}{"",7}{"",7}{w.Sum(),8:P0}{w.Sum() * exposure * 100,11:F0}%");
+    if (coreIdx >= 0)
+        Console.WriteLine($"\n  ◆ BTC 核心:{pool[coreIdx].Name}(多策略集成、confidence-sizing 依共識大小下注)固定佔書 {btcCoreW:P0}。" +
+            $"\n     撐腰共識 — {btcBackers.Count} 支策略在 BTC 上有正 edge:" +
+            string.Join("、", btcBackers.Take(8).Select(c => $"{c.Name}({c.PerCoin["BTCUSDT"].sh:F2})")));
     Console.WriteLine($"\n  組合年化波動 {portAnnVol:P0} → 為打到目標 {targetVol:P0}、整體曝險 = {exposure:F2}x(上限 {maxExp:F1}x)");
     Console.WriteLine($"  有效獨立押注數 N_eff = {nEff:F1} / {N} 腿   平均兩兩相關 ρ̄ = {avgRho:F2}   " +
         (nEff < N * 0.6 ? "⚠ N_eff 遠低於腿數 = 假分散(腿太像)" : "✓ 分散有效"));
@@ -787,16 +826,18 @@ async Task RunAllocate()
     // 為什麼沒選 BTC?把每條腿「選中幣 vs BTC」的回測 Sharpe/報酬攤出來。
     // 引擎選的是「策略主動交易 edge 最強的幣」(Sharpe),不是「最有價值的資產」(buy&hold)——
     // BTC 最有效率/最被研究透 → 主動策略 edge 通常最薄;alt 沒效率、波動大 → edge 反而高。
-    Console.WriteLine("\n=== 為什麼沒選 BTC?(各腿 選中幣 vs BTC 回測 Sharpe;引擎挑的是 edge 不是資產價值)===");
-    foreach (var l in pool)
+    Console.WriteLine("\n=== 衛星腿 選中幣 vs BTC 回測 Sharpe(引擎挑的是 edge 不是資產價值;BTC 已另由核心腿持有)===");
+    for (int i = 0; i < N; i++)
     {
-        var c = passed.First(x => x.Name == l.Name);
+        if (i == coreIdx) continue;   // 核心腿本身就是 BTC、不比
+        var l = pool[i];
+        var c = cands.First(x => x.Name == l.Name);
         bool hasBtc = c.PerCoin.TryGetValue("BTCUSDT", out var bv);
         string btcCol = hasBtc ? $"BTC Sh {bv.sh,5:F2} (ret {bv.ret,5:F0}%)" : "BTC 無資料";
         string verdict = !hasBtc ? "" : bv.sh >= l.Sharpe ? " ⚠ BTC 其實更強?!" : bv.sh <= 0m ? " → BTC 上此策略賠錢/無 edge" : " → BTC edge 較弱";
         Console.WriteLine($"   {l.Name,-16} 選 {Sh(l.Coin),-5} Sh {l.Sharpe,5:F2}  ·  {btcCol}{verdict}");
     }
-    Console.WriteLine("   註:這量的是『策略在該幣上的主動 edge』。BTC edge 薄 ≠ BTC 不值得長抱;若要『核心持有 BTC』那是 buy&hold/被動配置、不是這引擎的範疇。");
+    Console.WriteLine("   註:量的是『策略在該幣上的主動 edge』。BTC edge 薄 ≠ BTC 不值得 → 故另設核心腿用多策略集成下注 BTC。");
 
     // 相關矩陣
     Console.WriteLine("\n=== 選中腿 相關矩陣(全期權益日報酬)===");
