@@ -102,8 +102,24 @@ public class DailyReportService : BackgroundService
         var since = DateTime.UtcNow.AddHours(-periodHours);
         var fetched = await FetchTradesAsync(_exchange, since, ct);
         var stats = PnlAggregator.Aggregate(fetched.Select(t => t.Pnl));
+
+        // perp 平倉 income 沒帶 strategy(交易所 income 只給 symbol)→ 用 AutoTrader watchlist 的
+        // symbol→策略補上(正規化去 - / 大寫,避免 BNB-USDT vs BNBUSDT 對不上)。
+        // 用「當前」對照:同幣日後換策略,舊紀錄歸屬會跟著動(現行穩定配置下可接受)。
+        static string Norm(string s) => s.Replace("-", "").Replace("/", "").ToUpperInvariant();
+        var symToStrat = _autoTrader.WatchList.Values
+            .Where(w => !string.IsNullOrEmpty(w.Strategy))
+            .GroupBy(w => Norm(w.Symbol))
+            .ToDictionary(g => g.Key, g => g.First().Strategy!);
+        string ResolveStrat((decimal Pnl, string? Strategy, string? Symbol) t)
+        {
+            if (!string.IsNullOrEmpty(t.Strategy)) return t.Strategy!;
+            if (!string.IsNullOrEmpty(t.Symbol) && symToStrat.TryGetValue(Norm(t.Symbol!), out var st)) return st;
+            return "(無)";
+        }
+
         var byStrategy = fetched
-            .GroupBy(t => string.IsNullOrEmpty(t.Strategy) ? "(無)" : t.Strategy!)
+            .GroupBy(ResolveStrat)
             .Select(g => new { Name = g.Key, Stats = PnlAggregator.Aggregate(g.Select(x => x.Pnl)) })
             .OrderByDescending(x => x.Stats.RealizedPnlSum)
             .ToList();
@@ -152,10 +168,10 @@ public class DailyReportService : BackgroundService
         return (ok, body);
     }
 
-    private async Task<List<(decimal Pnl, string? Strategy)>> FetchTradesAsync(
+    private async Task<List<(decimal Pnl, string? Strategy, string? Symbol)>> FetchTradesAsync(
         string exchange, DateTime sinceUtc, CancellationToken ct)
     {
-        var empty = new List<(decimal, string?)>();
+        var empty = new List<(decimal, string?, string?)>();
         if (!_registry.HasAvailableWorker("trading.account")) return empty;
 
         var payload = JsonSerializer.Serialize(new
@@ -182,14 +198,16 @@ public class DailyReportService : BackgroundService
         if (!doc.TryGetProperty("trades", out var trades) || trades.ValueKind != JsonValueKind.Array)
             return empty;
 
-        var list = new List<(decimal, string?)>();
+        var list = new List<(decimal, string?, string?)>();
         foreach (var t in trades.EnumerateArray())
         {
             if (!t.TryGetProperty("realized_pnl", out var p) || p.ValueKind != JsonValueKind.Number) continue;
             var pnl = p.GetDecimal();
             var strategy = t.TryGetProperty("strategy", out var sg) && sg.ValueKind == JsonValueKind.String
                 ? sg.GetString() : null;
-            list.Add((pnl, strategy));
+            var symbol = t.TryGetProperty("symbol", out var sy) && sy.ValueKind == JsonValueKind.String
+                ? sy.GetString() : null;
+            list.Add((pnl, strategy, symbol));
         }
         return list;
     }
