@@ -277,6 +277,44 @@ foreach (var (name, s) in strats)
 }
 Console.WriteLine("  → real+fund = realistic 再加 funding;realistic 正但 real+fund 轉負 = 被資金費(長抱)拖垮。");
 
+// (5) 統計顯著性(1d、realistic 成本):pool 跨幣×fold 的 OOS 報酬,bootstrap 95% CI。
+// CI 下界 > 0 才算「edge 跟 0 有顯著差異」(不是運氣);否則就是 noise。
+List<decimal> PoolOosFolds(IStrategy s)
+{
+    var r = new List<decimal>();
+    foreach (var kv in data)
+        try { var w = BacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+              foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
+        catch { }
+    return r;
+}
+var rng = new Random(42);
+(decimal mean, decimal lo, decimal hi, double t) BootCI(List<decimal> xs)
+{
+    if (xs.Count < 5) return (0, 0, 0, 0);
+    double mean = (double)xs.Average();
+    double sd = Math.Sqrt(xs.Select(x => ((double)x - mean) * ((double)x - mean)).Sum() / (xs.Count - 1));
+    double se = sd / Math.Sqrt(xs.Count);
+    double tStat = se > 0 ? mean / se : 0;
+    var means = new double[2000];
+    for (int b = 0; b < 2000; b++) { double sum = 0; for (int i = 0; i < xs.Count; i++) sum += (double)xs[rng.Next(xs.Count)]; means[b] = sum / xs.Count; }
+    Array.Sort(means);
+    return ((decimal)mean, (decimal)means[(int)(0.025 * 2000)], (decimal)means[(int)(0.975 * 2000)], tStat);
+}
+Console.WriteLine("\n=== 統計顯著性(1d、realistic 成本;pool 跨幣×fold OOS%、bootstrap 95% CI)===");
+Console.WriteLine($"  {"strategy",-16}{"n",5}{"mean%",8}   {"95% CI",16}{"t",7}  判定");
+int sigTested = 0, sigPassed = 0;
+foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x.s); return p.Count > 0 ? p.Average() : -999m; }))
+{
+    var pool = PoolOosFolds(s);
+    var (m, lo, hi, t) = BootCI(pool);
+    bool sig = lo > 0m && pool.Count >= 5;
+    sigTested++; if (sig) sigPassed++;
+    Console.WriteLine($"  {name,-16}{pool.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
+}
+Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠ 但 folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;");
+Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
+
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
 {
