@@ -394,6 +394,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Li
 // Singleton 版本給 manual trigger endpoint 用、HostedService 共用同一個 instance（避免兩份狀態）
 builder.Services.AddSingleton<Broker.Services.DailyReportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DailyReportService>());
+// AutoTrader 心跳看門狗 — sweep 卡住(真錢無人看管)就推 Discord/LINE 告警、恢復再推一則
+builder.Services.AddHostedService<Broker.Services.AutoTraderHeartbeatService>();
 // 動態合約規格 cache，啟動 + 每 12h 從 trading-worker 拉、灌進 BrokerCore.Trading.SymbolSpecs
 builder.Services.AddSingleton<Broker.Services.SymbolSpecsService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.SymbolSpecsService>());
