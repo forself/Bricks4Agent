@@ -15,9 +15,10 @@ OUT="$REPORTS/allocate-$TS.txt"
 WEBHOOK=$(grep -E '^DISCORD_WEBHOOK_URL=' "$ENVF" 2>/dev/null | head -1 | cut -d= -f2-)
 
 # forward 實盤證據:在 broker 容器內 curl(loopback 守衛只認容器內)→ 暫存檔 → 餵給 --allocate。
-# paper(alpaca/binance)當主驗證源;回測過但實盤賠的腿會被 forward 否決。
+# ⚠ 全交易所(不濾):目前只有 bingx 真錢有 realized_pnl,paper 現貨不記已實現損益。
+# 真錢實際在賠的腿(≥ALLOC_FORWARD_MIN_TRADES 筆)會被 forward 否決。
 FWD=/tmp/b4a-forward.json
-docker exec b4a-broker sh -c "curl -s -m 10 'http://localhost:5000/api/v1/trading/strategy-pnl?days=30&exchanges=alpaca,binance'" > "$FWD" 2>/dev/null || true
+docker exec b4a-broker sh -c "curl -s -m 10 'http://localhost:5000/api/v1/trading/strategy-pnl?days=30'" > "$FWD" 2>/dev/null || true
 
 # 跑 allocate(ALLOC_TARGET_VOL_ANNUAL=1.0 → 曝險頂 3x、對齊真錢書;ALLOC_FORWARD_FILE → 接實盤證據)
 cd /opt/b4a
