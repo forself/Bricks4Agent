@@ -95,6 +95,11 @@ var strategies = new Dictionary<string, IStrategy>
     ["don_trend"]        = new DonTrendStrategy(),   // 海龜突破(趨勢腿)
     ["rsi2_rev"]         = new Rsi2RevStrategy(),    // RSI-2 超賣回歸(均值回歸腿)
     ["boll_rev"]         = new BollRevStrategy(),    // 布林下軌回歸(去相關均值回歸)
+
+    // [2026-05-25 Claude] 3 條新策略,先在 paper 場(美股/Binance)驗證 edge 再考慮真錢:
+    ["squeeze_breakout"] = new SqueezeBreakoutStrategy(),  // 布林擠壓 → 突破
+    ["rsi_divergence"]   = new RsiDivergenceStrategy(),    // RSI 背離反轉
+    ["volume_breakout"]  = new VolumeBreakoutStrategy(),   // 通道突破 + 量能確認
 };
 
 // LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model
