@@ -8,6 +8,9 @@ using System.Globalization;
 using System.Text.Json;
 
 var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+// 固定 funding 假設(long 付正值):env FUNDING_RATE_PER_8H、預設 0.01%/8h(=0.03%/日)。
+// 多頭實際常 3-5x;engine 按實際持有期累計(持越久咬越多)。灌進每根 bar、只在 applyFunding 時生效。
+decimal fundingPer8h = decimal.TryParse(Environment.GetEnvironmentVariable("FUNDING_RATE_PER_8H"), out var fpr) && fpr >= 0 ? fpr : 0.0001m;
 var symbols = new[]
 {
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -59,6 +62,7 @@ async Task<List<BarData>> Fetch(string sym, string interval = "1d")
             Low = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
             Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
             Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
+            FundingRate = fundingPer8h,   // 固定假設;只在 applyFunding=true 的回測生效
         });
     return bars;
 }
@@ -244,11 +248,11 @@ foreach (var kv in stratScore.OrderByDescending(x => x.Value.posTf).ThenByDescen
 // 上面矩陣已含預設 0.1%/邊手續費;這裡明列三種成本看 edge 衰減。
 // 註:資金費(funding)未計 — Binance K 線不帶 funding_rate;多單在多頭通常「付」funding,
 //     故真實淨值還會比下表 realistic 再差一點(尤其長抱)。
-decimal MedOos1d(IStrategy s, decimal comm, decimal slip)
+decimal MedOos1d(IStrategy s, decimal comm, decimal slip, bool funding = false)
 {
     var oos = new List<decimal>();
     foreach (var kv in data)
-        try { var w = BacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: comm, slippagePct: slip); if (w.TotalFolds > 0) oos.Add(w.AvgTestReturnPct); }
+        try { var w = BacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: comm, slippagePct: slip, applyFunding: funding); if (w.TotalFolds > 0) oos.Add(w.AvgTestReturnPct); }
         catch { }
     return oos.Count > 0 ? Median(oos) : 0;
 }
@@ -260,17 +264,18 @@ decimal AvgTrades1k(IStrategy s)
         catch { }
     return tr.Count > 0 ? Math.Round(tr.Average(), 1) : 0;
 }
-Console.WriteLine("\n=== 成本敏感度(1d、跨幣中位 OOS%)===");
-Console.WriteLine($"  {"strategy",-16}{"gross",8}{"realistic",11}{"pessim",9}{"trades/千根",13}");
-Console.WriteLine($"  {"",-16}{"(0)",8}{"(.05費+.03滑)",11}{"(.15/邊)",9}");
+Console.WriteLine($"\n=== 成本敏感度(1d、跨幣中位 OOS%;funding 假設 long 付 {fundingPer8h:P3}/8h)===");
+Console.WriteLine($"  {"strategy",-16}{"gross",8}{"realistic",11}{"real+fund",11}{"pessim",9}{"trades/千根",13}");
+Console.WriteLine($"  {"",-16}{"(0)",8}{"(.05費+.03滑)",11}{"(+funding)",11}{"(.15/邊)",9}");
 foreach (var (name, s) in strats)
 {
-    var g = MedOos1d(s, 0m, 0m);
-    var r = MedOos1d(s, 0.0005m, 0.0003m);
-    var p = MedOos1d(s, 0.0008m, 0.0007m);
-    Console.WriteLine($"  {name,-16}{g,8:F1}{r,11:F1}{p,9:F1}{AvgTrades1k(s),13:F1}");
+    var g  = MedOos1d(s, 0m, 0m);
+    var r  = MedOos1d(s, 0.0005m, 0.0003m);
+    var rf = MedOos1d(s, 0.0005m, 0.0003m, funding: true);
+    var p  = MedOos1d(s, 0.0008m, 0.0007m);
+    Console.WriteLine($"  {name,-16}{g,8:F1}{r,11:F1}{rf,11:F1}{p,9:F1}{AvgTrades1k(s),13:F1}");
 }
-Console.WriteLine("  → realistic 仍正 = edge 撐得過成本;gross 正但 realistic 轉負 = 被手續費吃光(常見高頻)。");
+Console.WriteLine("  → real+fund = realistic 再加 funding;realistic 正但 real+fund 轉負 = 被資金費(長抱)拖垮。");
 
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
