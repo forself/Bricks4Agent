@@ -7,8 +7,8 @@
 //   資金預算制(budget_pct,DB 管理,合計=300%=上限):BTC 70 / BNB 65 / DOGE 60 / ETH 55 / LTC 50。
 //   全 5 支統計顯著 + full-period 正;leverage 5x;env AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT=300。
 [
-  { "exchange": "bingx", "symbol": "BTC-USDT",  "strategy": "decorr4_ls",      "mode": "perp_long_only", "leverage": 5, "quantity": 0.001, "shadow": false, "enabled": true, "note": "4 策略集成(淨加權曝險)、年化 32%、t=2.71 / budget 70%" },
-  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",     "mode": "perp_long_only", "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "雙時框動量、年化 28%、t=2.57 / budget 65%(有倉)" },
+  { "exchange": "bingx", "symbol": "BTC-USDT",  "strategy": "decorr4_ls",      "mode": "perp_both",      "leverage": 5, "quantity": 0.001, "shadow": false, "enabled": true, "note": "4 策略集成、年化 32%、t=2.71 / budget 70% / perp_both 雙向(_ls 可做空、跌勢翻空)" },
+  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",     "mode": "perp_both",      "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "雙時框動量、年化 28%、t=2.57 / budget 65% / perp_both 雙向(有倉、sell 先平多再開空)" },
   { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 50,    "shadow": false, "enabled": true, "note": "均線 regime 趨勢、DOGE 上 +24、年化 29%、t=2.45 / budget 60%" },
   { "exchange": "bingx", "symbol": "ETH-USDT",  "strategy": "mfi",             "mode": "perp_long_only", "leverage": 5, "quantity": 0.01,  "shadow": false, "enabled": true, "note": "資金流、統計最穩 t=3.72、maxDD 最低 / budget 55%" },
   { "exchange": "bingx", "symbol": "LTC-USDT",  "strategy": "rsi_stoch",       "mode": "perp_long_only", "leverage": 5, "quantity": 1,     "shadow": false, "enabled": true, "note": "隨機指標回歸、LTC 5/5 全正、t=2.77 / budget 50%" }
