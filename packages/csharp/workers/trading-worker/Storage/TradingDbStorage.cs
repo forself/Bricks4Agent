@@ -15,7 +15,10 @@ public class TradingDbStorage : IDisposable
     public TradingDbStorage(string dbPath, ILogger<TradingDbStorage> logger)
     {
         _logger = logger;
-        _conn = new SqliteConnection($"Data Source={dbPath}");
+        // Foreign Keys=False:perp realized_pnl income 補抓的 trade「沒有對應本地 order」(order_id 為空),
+        // FK(trades.order_id → orders.order_id)會讓這些 row 全部 INSERT 失敗(SQLite Error 19)→
+        // 平倉 PnL 一筆都記不進去 → 每日彙整永遠 0 筆。本表是本地觀察快取、FK 無實益,關掉強制。
+        _conn = new SqliteConnection($"Data Source={dbPath};Foreign Keys=False");
         _conn.Open();
         InitSchema();
         _logger.LogInformation("TradingDbStorage opened: {Path}", dbPath);

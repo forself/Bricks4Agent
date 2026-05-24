@@ -27,9 +27,10 @@ public class FillPollerService
     private readonly int _pollIntervalSec;
 
     // 每個 perp exchange 紀錄上次 income poll 的 cursor、避免重撈 + 抓 race window。
-    // 預設第一次撈 30 分鐘——夠涵蓋 broker / worker 同時 deploy 的 gap。
+    // 首次回補視窗(DB 無 perp-income 紀錄時的 fallback):env FILLPOLLER_PERP_LOOKBACK_MIN、
+    // 預設 4320 分(3 天)——夠把近期平倉 realized_pnl 一次補齊;成功寫入後改吃 DB cursor、不再重撈。
     private readonly Dictionary<string, DateTime> _perpIncomeSince = new();
-    private readonly TimeSpan _perpFirstLookback = TimeSpan.FromMinutes(30);
+    private readonly TimeSpan _perpFirstLookback;
 
     public FillPollerService(
         Dictionary<string, IExchangeClient> clients,
@@ -43,6 +44,9 @@ public class FillPollerService
         _db = db;
         _logger = logger;
         _pollIntervalSec = Math.Max(10, pollIntervalSec);
+        var lookbackMin = int.TryParse(Environment.GetEnvironmentVariable("FILLPOLLER_PERP_LOOKBACK_MIN"), out var lb) && lb > 0
+            ? lb : 4320;
+        _perpFirstLookback = TimeSpan.FromMinutes(lookbackMin);
     }
 
     public async Task RunAsync(CancellationToken ct)
