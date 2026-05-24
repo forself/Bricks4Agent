@@ -15,6 +15,8 @@ var symbols = new[]
 {
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
     "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "DOTUSDT", "ATOMUSDT",
+    // 2026-05-25 擴幣宇宙 12→20(堆樣本:更多幣 = pooling 後 fold 更多、廣度濾網更有力)
+    "TRXUSDT", "UNIUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "SUIUSDT", "INJUSDT",
 };
 
 (string name, IStrategy s)[] strats =
@@ -637,46 +639,70 @@ async Task RunAllocate()
         return Math.Sqrt(r.Select(x => (x - a) * (x - a)).Average()) * Math.Sqrt(252);
     }
 
-    var legs = new List<Leg>();
+    // 顯著性改用「跨幣 pooling」(每支策略池化所有幣的 OOS folds → fold 數 ×N倍、CI 才有統計力);
+    // 但 pooling 會因幣高相關高估顯著 → 另加「廣度濾網」:≥60% 幣 OOS 為正,防單一暴漲幣灌假顯著。
+    // 部署腿仍取「最佳幣」(Sharpe 最高);vol/相關/權重用該腿曲線。
+    decimal breadthMin = EnvD("ALLOC_BREADTH_MIN", 0.60m);
+    int minPoolFolds = (int)EnvD("ALLOC_MIN_POOL_FOLDS", 30m);
+    var cands = new List<Cand>();
     foreach (var (name, s) in strats)
     {
-        string? bestCoin = null; decimal bestSh = decimal.MinValue;
-        List<decimal> bestCurve = new(); decimal bestRet = 0, bestDd = 0;
+        var perCoin = new Dictionary<string, (decimal sh, List<decimal> curve, decimal ret, decimal dd)>();
+        var poolFolds = new List<decimal>();   // 跨幣池化的 OOS test-fold 報酬
+        int coinsTested = 0, coinsPos = 0;     // 廣度:幾個幣 OOS 為正
         foreach (var kv in dat)
         {
             try
             {
                 var bt = LongShortBacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
-                if (bt.TotalBars < 100) continue;
-                if (bt.SharpeRatio > bestSh)
-                { bestSh = bt.SharpeRatio; bestCoin = kv.Key; bestCurve = bt.EquityCurve.Select(e => e.Value).ToList(); bestRet = bt.TotalReturnPct; bestDd = bt.MaxDrawdownPct; }
+                if (bt.TotalBars >= 100) perCoin[kv.Key] = (bt.SharpeRatio, bt.EquityCurve.Select(e => e.Value).ToList(), bt.TotalReturnPct, bt.MaxDrawdownPct);
+            }
+            catch { }
+            try
+            {
+                var wf = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                if (wf.TotalFolds == 0) continue;
+                coinsTested++;
+                if (wf.AvgTestReturnPct > 0) coinsPos++;
+                foreach (var f in wf.Folds.Where(f => f.Test != null)) poolFolds.Add(f.Test!.TotalReturnPct);
             }
             catch { }
         }
-        if (bestCoin == null) continue;
-        var folds = new List<decimal>();
-        try
-        {
-            var wf = LongShortBacktestEngine.RunWalkForward(s, dat[bestCoin], new StrategyConfig { Symbol = bestCoin, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
-            foreach (var f in wf.Folds.Where(f => f.Test != null)) folds.Add(f.Test!.TotalReturnPct);
-        }
-        catch { }
-        var (m, lo, hi, tstat) = Boot(folds);
-        legs.Add(new Leg(name, bestCoin, bestSh, (decimal)AnnVol(bestCurve), bestCurve, folds.Count, lo, tstat, bestRet, bestDd));
+        if (perCoin.Count == 0 || coinsTested == 0) continue;
+        var (m, lo, hi, tstat) = Boot(poolFolds);
+        decimal breadth = (decimal)coinsPos / coinsTested;
+        var best = perCoin.OrderByDescending(p => p.Value.sh).First();
+        cands.Add(new Cand(name, perCoin, poolFolds.Count, lo, tstat, breadth, best.Value.sh, best.Value.ret));
     }
 
-    // 3. 入場閘:full Sharpe>0 且 顯著(bootstrap CI 下界>0)且 full 報酬>0
-    bool Pass(Leg l) => l.Sharpe > 0m && l.CiLo > 0m && l.Ret > 0m && l.Folds >= 5;
-    var pool = legs.Where(Pass).OrderByDescending(l => l.T).ToList();
-    var rejected = legs.Where(l => !Pass(l)).ToList();
+    // 3. 入場閘:① pooled CI 下界>0(顯著)② 廣度 ≥60% 幣正(防單幣灌水)③ 最佳幣 Sharpe>0 + 報酬正 ④ pool fold 夠
+    bool Pass(Cand c) => c.CiLo > 0m && c.Breadth >= breadthMin && c.BestSharpe > 0m && c.BestRet > 0m && c.Folds >= minPoolFolds;
+    var passed = cands.Where(Pass).OrderByDescending(c => c.T).ToList();
+    var rejected = cands.Where(c => !Pass(c)).ToList();
 
-    Console.WriteLine($"=== 入場閘:{legs.Count} 候選 → {pool.Count} 通過(顯著 + full正 + Sharpe>0)===");
-    foreach (var l in rejected.OrderByDescending(l => l.Sharpe))
+    Console.WriteLine($"=== 入場閘:{cands.Count} 候選 → {passed.Count} 通過(跨幣顯著 + 廣度≥{breadthMin:P0} + full正)===");
+    Console.WriteLine($"  (env 可調:ALLOC_BREADTH_MIN={breadthMin:F2} · ALLOC_MIN_POOL_FOLDS={minPoolFolds})");
+    foreach (var c in rejected.OrderByDescending(c => c.BestSharpe))
     {
-        var why = l.Folds < 5 ? "fold<5" : l.CiLo <= 0m ? "不顯著(CI含0)" : l.Sharpe <= 0m ? "Sharpe≤0" : l.Ret <= 0m ? "full賠" : "?";
-        Console.WriteLine($"   ✗ {l.Name,-16}@{Sh(l.Coin),-5} Sharpe {l.Sharpe,5:F2}  CI下界 {l.CiLo,5:F1}  — 剔除:{why}");
+        var bc = c.PerCoin.OrderByDescending(p => p.Value.sh).First().Key;
+        var why = c.Folds < minPoolFolds ? $"fold<{minPoolFolds}" : c.CiLo <= 0m ? "不顯著(CI含0)" : c.Breadth < breadthMin ? $"廣度低({c.Breadth:P0}幣正)" : c.BestSharpe <= 0m ? "Sharpe≤0" : c.BestRet <= 0m ? "full賠" : "?";
+        Console.WriteLine($"   ✗ {c.Name,-16}@{Sh(bc),-5} Sharpe {c.BestSharpe,5:F2} 廣度 {c.Breadth,4:P0} CI下界 {c.CiLo,6:F1} fold {c.Folds,3} — 剔除:{why}");
     }
-    if (pool.Count == 0) { Console.WriteLine("\n無腿通過入場閘 → 不建議配置任何真錢。先回 paper 累積樣本。"); return; }
+    if (passed.Count == 0) { Console.WriteLine("\n無腿通過入場閘 → 不建議配置任何真錢。先回 paper 累積樣本。"); return; }
+
+    // 3b. 部署腿指派:保證每腿不同幣(真錢 watchlist 一 symbol 一策略 + 真去相關)。
+    //     t 高的先選它的最佳「可用」幣(需 Sharpe>0 且 full 正);撞到已佔的幣就退而選次佳。
+    var taken = new HashSet<string>();
+    var pool = new List<Leg>();
+    foreach (var c in passed)
+    {
+        var pick = c.PerCoin.Where(p => !taken.Contains(p.Key) && p.Value.sh > 0m && p.Value.ret > 0m)
+                            .OrderByDescending(p => p.Value.sh).Select(p => (k: p.Key, v: p.Value)).FirstOrDefault();
+        if (pick.k == null) { Console.WriteLine($"   ⚠ {c.Name} 無剩餘可用幣可指派(都被佔/負)→ 跳過"); continue; }
+        taken.Add(pick.k);
+        pool.Add(new Leg(c.Name, pick.k, pick.v.sh, (decimal)AnnVol(pick.v.curve), pick.v.curve, c.Folds, c.CiLo, c.T, pick.v.ret, pick.v.dd, c.Breadth));
+    }
+    if (pool.Count == 0) { Console.WriteLine("\n指派後無可部署腿。"); return; }
 
     // 4a. 對齊腿權益曲線(共同尾長),算相關 + 日報酬(給 vol-target 共變異)
     int N = pool.Count;
@@ -745,15 +771,15 @@ async Task RunAllocate()
 
     // ── 輸出 ──
     Console.WriteLine($"\n=== 建議配置({N} 腿;total exposure {exposure:F2}x)===");
-    Console.WriteLine($"  {"strategy@coin",-22}{"Sharpe",8}{"annVol",8}{"folds",7}{"weight",8}{"budget_pct",12}");
+    Console.WriteLine($"  {"strategy@coin",-22}{"Sharpe",8}{"annVol",8}{"廣度",7}{"folds",7}{"weight",8}{"budget_pct",12}");
     var budgets = new List<(string coin, string strat, decimal bp)>();
     for (int i = 0; i < N; i++)
     {
         decimal bp = Math.Round((decimal)(w[i] * exposure) * 100m, 0);
         budgets.Add((pool[i].Coin, pool[i].Name, bp));
-        Console.WriteLine($"  {pool[i].Name + "@" + Sh(pool[i].Coin),-22}{pool[i].Sharpe,8:F2}{pool[i].Vol,7:P0}{pool[i].Folds,7}{w[i],8:P0}{bp,11:F0}%");
+        Console.WriteLine($"  {pool[i].Name + "@" + Sh(pool[i].Coin),-22}{pool[i].Sharpe,8:F2}{pool[i].Vol,7:P0}{pool[i].Breadth,7:P0}{pool[i].Folds,7}{w[i],8:P0}{bp,11:F0}%");
     }
-    Console.WriteLine($"  {"合計",-22}{"",8}{"",8}{"",7}{w.Sum(),8:P0}{w.Sum() * exposure * 100,11:F0}%");
+    Console.WriteLine($"  {"合計",-22}{"",8}{"",8}{"",7}{"",7}{w.Sum(),8:P0}{w.Sum() * exposure * 100,11:F0}%");
     Console.WriteLine($"\n  組合年化波動 {portAnnVol:P0} → 為打到目標 {targetVol:P0}、整體曝險 = {exposure:F2}x(上限 {maxExp:F1}x)");
     Console.WriteLine($"  有效獨立押注數 N_eff = {nEff:F1} / {N} 腿   平均兩兩相關 ρ̄ = {avgRho:F2}   " +
         (nEff < N * 0.6 ? "⚠ N_eff 遠低於腿數 = 假分散(腿太像)" : "✓ 分散有效"));
@@ -782,5 +808,8 @@ async Task RunAllocate()
     Console.WriteLine("\n   ⚠ 真錢 budget 改完必須立刻 restart broker(否則跑動的 PersistWatch 會用記憶體舊值覆蓋回去)。");
 }
 
-// --allocate 用:一條部署腿(策略 → 它的最佳幣)的統計
-record Leg(string Name, string Coin, decimal Sharpe, decimal Vol, System.Collections.Generic.List<decimal> Curve, int Folds, decimal CiLo, double T, decimal Ret, decimal Dd);
+// --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
+record Leg(string Name, string Coin, decimal Sharpe, decimal Vol, System.Collections.Generic.List<decimal> Curve, int Folds, decimal CiLo, double T, decimal Ret, decimal Dd, decimal Breadth);
+
+// --allocate 候選:一支策略跨所有幣的成績(PerCoin)+ 池化顯著性,供入場閘 + 唯一幣指派
+record Cand(string Name, System.Collections.Generic.Dictionary<string, (decimal sh, System.Collections.Generic.List<decimal> curve, decimal ret, decimal dd)> PerCoin, int Folds, decimal CiLo, double T, decimal Breadth, decimal BestSharpe, decimal BestRet);
