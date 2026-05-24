@@ -386,6 +386,40 @@ WfOpt("sma_cross",    (b, c) => WalkForwardOptimizer.RunSma(b, c, 250, 90));
 WfOpt("rsi_oversold", (b, c) => WalkForwardOptimizer.RunRsi(b, c, 250, 90));
 Console.WriteLine("  → degradation 遠<1 = IS 找的最佳參數 OOS 站不住 = 調參=過擬合 → 印證「單一固定參數、不調參」是對的。");
 
+// (8) 策略績效總表(1d、realistic 成本、full-period;跨幣中位)——年化報酬等白話指標
+var liveStrats = new HashSet<string> { "decorr4_ls", "mfi", "dual_mom_ls", "donchian_fade_ls", "ts_momentum", "ma_regime_trend", "rsi_stoch" };
+decimal Annualize(decimal totalRetPct, DateTime start, DateTime end)
+{
+    var days = (end - start).TotalDays;
+    if (days < 30) return 0m;
+    var basev = 1.0 + (double)totalRetPct / 100.0;
+    if (basev <= 0) return -100m;
+    return (decimal)((Math.Pow(basev, 365.0 / days) - 1.0) * 100.0);
+}
+var perfRows = new List<(string name, decimal ann, decimal sh, decimal dd, decimal wr, decimal pf, decimal tpy, bool live)>();
+foreach (var (name, s) in strats)
+{
+    var anns = new List<decimal>(); var shs = new List<decimal>(); var dds = new List<decimal>();
+    var wrs = new List<decimal>(); var pfs = new List<decimal>(); var tpys = new List<decimal>();
+    foreach (var kv in data)
+        try {
+            var bt = BacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+            if (bt.TotalBars < 100) continue;
+            anns.Add(Annualize(bt.TotalReturnPct, bt.StartDate, bt.EndDate));
+            shs.Add(bt.SharpeRatio); dds.Add(bt.MaxDrawdownPct); wrs.Add(bt.WinRate); pfs.Add(bt.ProfitFactor);
+            var yrs = (bt.EndDate - bt.StartDate).TotalDays / 365.0;
+            tpys.Add(yrs > 0 ? (decimal)(bt.TotalTrades / yrs) : 0m);
+        } catch { }
+    if (anns.Count == 0) continue;
+    perfRows.Add((name, Median(anns), Math.Round(shs.Average(), 2), Math.Round(dds.Average(), 0),
+        Math.Round(wrs.Average(), 0), Math.Round(pfs.Average(), 2), Math.Round(tpys.Average(), 0), liveStrats.Contains(name)));
+}
+Console.WriteLine("\n=== 策略績效總表(1d、realistic 成本、full-period;跨幣中位;★=現行 live)===");
+Console.WriteLine($"  {"strategy",-16}{"年化%",8}{"Sharpe",8}{"maxDD%",8}{"勝率%",7}{"PF",7}{"交易/年",9}");
+foreach (var r in perfRows.OrderByDescending(x => x.ann))
+    Console.WriteLine($"  {(r.live ? "★" : " ")}{r.name,-15}{r.ann,8:F0}{r.sh,8:F2}{r.dd,8:F0}{r.wr,7:F0}{r.pf,7:F2}{r.tpy,9:F0}");
+Console.WriteLine("  註:無槓桿 / long-only / 跨幣中位 / 含 realistic 成本。實際 5x ≈ 年化×~5(maxDD 也×5、且有強平風險)。");
+
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
 {
