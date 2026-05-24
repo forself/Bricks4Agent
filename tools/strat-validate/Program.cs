@@ -148,7 +148,7 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
     return eqAll;
 }
 
-PrintTable("Long-only(Benson 引擎)", (s, b, c) => BacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => BacktestEngine.Run(s, b, c));
+var loEq = PrintTable("Long-only(Benson 引擎)", (s, b, c) => BacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => BacktestEngine.Run(s, b, c));
 var lsEq = PrintTable("Long-short(新引擎)", (s, b, c) => LongShortBacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => LongShortBacktestEngine.Run(s, b, c));
 
 // ── 多時框 策略 × 幣 分析(預設 1h~1w,找跨時框穩健最優解)──────────────
@@ -304,16 +304,66 @@ var rng = new Random(42);
 Console.WriteLine("\n=== 統計顯著性(1d、realistic 成本;pool 跨幣×fold OOS%、bootstrap 95% CI)===");
 Console.WriteLine($"  {"strategy",-16}{"n",5}{"mean%",8}   {"95% CI",16}{"t",7}  判定");
 int sigTested = 0, sigPassed = 0;
+var sigNames = new HashSet<string>();
+var sigT = new Dictionary<string, double>();
 foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x.s); return p.Count > 0 ? p.Average() : -999m; }))
 {
     var pool = PoolOosFolds(s);
     var (m, lo, hi, t) = BootCI(pool);
     bool sig = lo > 0m && pool.Count >= 5;
+    sigT[name] = t; if (sig) sigNames.Add(name);
     sigTested++; if (sig) sigPassed++;
     Console.WriteLine($"  {name,-16}{pool.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
 }
 Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠ 但 folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;");
 Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
+
+// (6) 顯著策略的最佳組合(只用統計顯著那群、去相關 |ρ|<0.4、反波動率配重)
+// 全程用 long-only 權益(loEq)→ 跟顯著性(long-only OOS)+ 實際 perp_long_only 部署一致。
+if (loEq.Count >= 2 && loEq.Values.Any(v => v.ContainsKey("BTCUSDT")))
+{
+    var members = sigNames.Where(n => loEq.ContainsKey(n) && loEq[n].ContainsKey("BTCUSDT")).ToList();
+    if (members.Count >= 2)
+    {
+        // 相關用跨幣平均(不只 BTC)→ 對 long-only 更有代表性
+        decimal Corr2(string a, string b)
+        {
+            var coins = loEq[a].Keys.Intersect(loEq[b].Keys).ToList();
+            var cs = new List<decimal>();
+            foreach (var co in coins)
+            {
+                int n = Math.Min(loEq[a][co].Count, loEq[b][co].Count);
+                if (n < 3) continue;
+                cs.Add(CorrelationGuard.PearsonOfReturns(loEq[a][co].Take(n).ToList(), loEq[b][co].Take(n).ToList()));
+            }
+            return cs.Count > 0 ? cs.Average() : 0m;
+        }
+        decimal AvgVol2(string n)
+        {
+            var vs = new List<decimal>();
+            foreach (var c in loEq[n].Values)
+            {
+                if (c.Count < 3) continue;
+                var rr = new List<decimal>();
+                for (int t = 1; t < c.Count; t++) if (c[t - 1] > 0) rr.Add((c[t] - c[t - 1]) / c[t - 1]);
+                if (rr.Count < 2) continue;
+                var a = rr.Average();
+                vs.Add((decimal)Math.Sqrt((double)rr.Select(x => (x - a) * (x - a)).Average()));
+            }
+            return vs.Count > 0 ? vs.Average() : 0m;
+        }
+        var ranked = members.OrderByDescending(n => sigT.GetValueOrDefault(n)).ToList();   // t 高的先選
+        var picked = new List<string> { ranked[0] };
+        foreach (var c in ranked.Skip(1))
+            if (picked.All(p => Math.Abs(Corr2(c, p)) < 0.4m)) picked.Add(c);
+        var invVol = picked.ToDictionary(n => n, n => { var v = AvgVol2(n); return v > 0 ? 1m / v : 0m; });
+        var wsum = invVol.Values.Sum();
+        Console.WriteLine("\n=== 顯著策略最佳組合(long-only、去相關精選 + 反波動率配重)===");
+        Console.WriteLine($"  顯著候選({ranked.Count}): {string.Join(", ", ranked)}");
+        Console.WriteLine($"  去相關精選({picked.Count}): {string.Join(", ", picked)}");
+        Console.WriteLine("  建議配重(反波動率): " + string.Join("  ", picked.Select(n => $"{n} {(wsum > 0 ? invVol[n] / wsum : 0m):P0}")));
+    }
+}
 
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
