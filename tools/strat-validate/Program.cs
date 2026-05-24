@@ -240,6 +240,38 @@ Console.WriteLine("\n=== 穩健策略總排名(正時框數 → 平均中位 OOS
 foreach (var kv in stratScore.OrderByDescending(x => x.Value.posTf).ThenByDescending(x => x.Value.avgMed))
     Console.WriteLine($"    {kv.Key,-16} 正時框 {kv.Value.posTf}/{intervals.Length}  平均中位 {kv.Value.avgMed,5:F1}%");
 
+// (4) 成本敏感度(1d):edge 扣手續費+滑點後還剩多少 + 交易頻率(頻率高=被成本磨更兇)
+// 上面矩陣已含預設 0.1%/邊手續費;這裡明列三種成本看 edge 衰減。
+// 註:資金費(funding)未計 — Binance K 線不帶 funding_rate;多單在多頭通常「付」funding,
+//     故真實淨值還會比下表 realistic 再差一點(尤其長抱)。
+decimal MedOos1d(IStrategy s, decimal comm, decimal slip)
+{
+    var oos = new List<decimal>();
+    foreach (var kv in data)
+        try { var w = BacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: comm, slippagePct: slip); if (w.TotalFolds > 0) oos.Add(w.AvgTestReturnPct); }
+        catch { }
+    return oos.Count > 0 ? Median(oos) : 0;
+}
+decimal AvgTrades1k(IStrategy s)
+{
+    var tr = new List<decimal>();
+    foreach (var kv in data)
+        try { var bt = BacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }); tr.Add(bt.TotalTrades / (decimal)kv.Value.Count * 1000m); }
+        catch { }
+    return tr.Count > 0 ? Math.Round(tr.Average(), 1) : 0;
+}
+Console.WriteLine("\n=== 成本敏感度(1d、跨幣中位 OOS%)===");
+Console.WriteLine($"  {"strategy",-16}{"gross",8}{"realistic",11}{"pessim",9}{"trades/千根",13}");
+Console.WriteLine($"  {"",-16}{"(0)",8}{"(.05費+.03滑)",11}{"(.15/邊)",9}");
+foreach (var (name, s) in strats)
+{
+    var g = MedOos1d(s, 0m, 0m);
+    var r = MedOos1d(s, 0.0005m, 0.0003m);
+    var p = MedOos1d(s, 0.0008m, 0.0007m);
+    Console.WriteLine($"  {name,-16}{g,8:F1}{r,11:F1}{p,9:F1}{AvgTrades1k(s),13:F1}");
+}
+Console.WriteLine("  → realistic 仍正 = edge 撐得過成本;gross 正但 realistic 轉負 = 被手續費吃光(常見高頻)。");
+
 // 相關矩陣(long-short, BTC 全期權益報酬)
 if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
 {
