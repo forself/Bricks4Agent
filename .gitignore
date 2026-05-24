@@ -72,3 +72,6 @@ packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/
 
 # Build cache
 *.lscache
+
+# strat-validate self-contained linux build(80MB、scp 上 VPS、不進 git)
+tools/strat-validate/publish-linux/
