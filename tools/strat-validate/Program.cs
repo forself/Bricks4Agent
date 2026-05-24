@@ -784,6 +784,20 @@ async Task RunAllocate()
     Console.WriteLine($"  有效獨立押注數 N_eff = {nEff:F1} / {N} 腿   平均兩兩相關 ρ̄ = {avgRho:F2}   " +
         (nEff < N * 0.6 ? "⚠ N_eff 遠低於腿數 = 假分散(腿太像)" : "✓ 分散有效"));
 
+    // 為什麼沒選 BTC?把每條腿「選中幣 vs BTC」的回測 Sharpe/報酬攤出來。
+    // 引擎選的是「策略主動交易 edge 最強的幣」(Sharpe),不是「最有價值的資產」(buy&hold)——
+    // BTC 最有效率/最被研究透 → 主動策略 edge 通常最薄;alt 沒效率、波動大 → edge 反而高。
+    Console.WriteLine("\n=== 為什麼沒選 BTC?(各腿 選中幣 vs BTC 回測 Sharpe;引擎挑的是 edge 不是資產價值)===");
+    foreach (var l in pool)
+    {
+        var c = passed.First(x => x.Name == l.Name);
+        bool hasBtc = c.PerCoin.TryGetValue("BTCUSDT", out var bv);
+        string btcCol = hasBtc ? $"BTC Sh {bv.sh,5:F2} (ret {bv.ret,5:F0}%)" : "BTC 無資料";
+        string verdict = !hasBtc ? "" : bv.sh >= l.Sharpe ? " ⚠ BTC 其實更強?!" : bv.sh <= 0m ? " → BTC 上此策略賠錢/無 edge" : " → BTC edge 較弱";
+        Console.WriteLine($"   {l.Name,-16} 選 {Sh(l.Coin),-5} Sh {l.Sharpe,5:F2}  ·  {btcCol}{verdict}");
+    }
+    Console.WriteLine("   註:這量的是『策略在該幣上的主動 edge』。BTC edge 薄 ≠ BTC 不值得長抱;若要『核心持有 BTC』那是 buy&hold/被動配置、不是這引擎的範疇。");
+
     // 相關矩陣
     Console.WriteLine("\n=== 選中腿 相關矩陣(全期權益日報酬)===");
     Console.WriteLine("  " + new string(' ', 18) + string.Join("", pool.Select(l => $"{Sh(l.Coin),8}")));
