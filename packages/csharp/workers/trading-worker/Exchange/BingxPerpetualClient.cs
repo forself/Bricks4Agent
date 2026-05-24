@@ -265,6 +265,12 @@ public class BingxPerpetualClient : IPerpetualClient
         if (arr.ValueKind != JsonValueKind.Array) return list;
         foreach (var o in arr.EnumerateArray())
         {
+            // 之前漏解析 stopPrice / reduceOnly / 真實時間 → 查倉看不到止損價、無法稽核保護。補齊:
+            var sp = ParseDec(o, "stopPrice");
+            var lp = ParseDec(o, "price");
+            bool ro = o.TryGetProperty("reduceOnly", out var rv) &&
+                      (rv.ValueKind == JsonValueKind.True ||
+                       (rv.ValueKind == JsonValueKind.String && string.Equals(rv.GetString(), "true", StringComparison.OrdinalIgnoreCase)));
             list.Add(new PerpetualOrder
             {
                 ExternalId = o.TryGetProperty("orderId", out var oid) ? oid.ToString() : null,
@@ -275,11 +281,25 @@ public class BingxPerpetualClient : IPerpetualClient
                 OrderType = (o.TryGetProperty("type", out var ty) ? ty.GetString() ?? "market" : "market").ToLowerInvariant(),
                 Quantity = ParseDec(o, "origQty"),
                 FilledQty = ParseDec(o, "executedQty"),
+                LimitPrice = lp > 0m ? lp : null,
+                StopPrice  = sp > 0m ? sp : null,
+                ReduceOnly = ro,
                 Status = MapOrderStatus(o.TryGetProperty("status", out var st) ? st.GetString() ?? "submitted" : "submitted"),
-                UpdatedAt = DateTime.UtcNow,
+                CreatedAt = ParseEpochMs(o, "time"),
+                UpdatedAt = ParseEpochMs(o, "updateTime"),
             });
         }
         return list;
+    }
+
+    // BingX 時間欄位(time / updateTime)可能是 number 或 string 的 epoch ms;都接、解不出回 now。
+    private static DateTime ParseEpochMs(JsonElement o, string key)
+    {
+        if (!o.TryGetProperty(key, out var v)) return DateTime.UtcNow;
+        long ms = v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n) ? n
+                : v.ValueKind == JsonValueKind.String && long.TryParse(v.GetString(), out var s) ? s
+                : 0;
+        return ms > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime : DateTime.UtcNow;
     }
 
     // ── Leverage / Mark price ──────────────────────────────────────
