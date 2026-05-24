@@ -101,6 +101,9 @@ services:
       # （TrendingDown 不開多 / TrendingUp 不開空）。**全域、影響所有 watch**。只擋開倉/加倉、不擋平倉。
       # 給逆勢均值回歸策略(rsi_stoch)在空頭少接刀;預設 off 不破壞既有行為。
       AUTOTRADER_REGIME_GATE_MODE: "${AUTOTRADER_REGIME_GATE_MODE:-}"
+      # Perp 加倉(scale-in)門檻 step:required_conf = min_conf + N×step。設 1.0 = 第一筆加倉就要 0.99
+      # → 等於關閉 scale-in、讓 budget_pct 成為單腿硬上限(不再疊倉破壞配置比例)。預設 0.15。
+      AUTOTRADER_PERP_SCALE_IN_STEP: "${AUTOTRADER_PERP_SCALE_IN_STEP:-}"
 
       # Lab / 排程回測（策略分析階段）。RunOnStart=true → broker 啟動就跑一輪（驗證/觸發用、跑完設回 false）。
       # 注意：MaxParallel / BacktestSymbols 不在這裡用 ${:-} 空字串覆寫（空 int 會讓 config binding crash、

@@ -1633,7 +1633,8 @@ public class AutoTraderService : BackgroundService
             return;
         }
 
-        var barsPayload = JsonSerializer.Serialize(new { symbol, interval = "1d", limit = 100 });
+        // limit 200(原 100):ts_momentum 等策略需 ≥114 根,抓 100 會永遠「資料不足」→ 該腿廢掉。
+        var barsPayload = JsonSerializer.Serialize(new { symbol, interval = "1d", limit = 200 });
         var barsResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", barsPayload));
         if (!barsResult.Success)
         {
@@ -1667,7 +1668,7 @@ public class AutoTraderService : BackgroundService
         };
         if (!string.IsNullOrEmpty(item.HtfInterval))
         {
-            var htfBarsPayload = JsonSerializer.Serialize(new { symbol, interval = item.HtfInterval, limit = 100 });
+            var htfBarsPayload = JsonSerializer.Serialize(new { symbol, interval = item.HtfInterval, limit = 200 });
             var htfResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", htfBarsPayload));
             if (htfResult.Success)
             {
