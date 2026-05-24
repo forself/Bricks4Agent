@@ -296,32 +296,7 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trade_history failed"));
 
             var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-            var agg = new Dictionary<string, (int n, decimal pnl, int wins, HashSet<string> ex)>(StringComparer.OrdinalIgnoreCase);
-            if (doc.TryGetProperty("trades", out var trades) && trades.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var t in trades.EnumerateArray())
-                {
-                    var strat = t.TryGetProperty("strategy", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
-                    if (string.IsNullOrEmpty(strat)) continue;
-                    if (!t.TryGetProperty("realized_pnl", out var rp) || rp.ValueKind != JsonValueKind.Number) continue;
-                    var ex = t.TryGetProperty("exchange", out var exv) ? exv.GetString() ?? "" : "";
-                    if (exFilter != null && !exFilter.Contains(ex)) continue;
-                    var pnl = rp.GetDecimal();
-                    (int n, decimal pnl, int wins, HashSet<string> ex) cur = agg.TryGetValue(strat, out var c)
-                        ? c : (0, 0m, 0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-                    cur.n++; cur.pnl += pnl; if (pnl > 0m) cur.wins++; cur.ex.Add(ex);
-                    agg[strat] = cur;
-                }
-            }
-            var outp = agg.Select(kv => new
-            {
-                strategy = kv.Key,
-                trades = kv.Value.n,
-                realized_pnl = Math.Round(kv.Value.pnl, 4),
-                wins = kv.Value.wins,
-                win_rate = kv.Value.n > 0 ? Math.Round((decimal)kv.Value.wins / kv.Value.n, 3) : 0m,
-                exchanges = kv.Value.ex.OrderBy(x => x).ToList(),
-            }).OrderByDescending(s => s.trades).ToList();
+            var outp = AggregateStrategyPnl(doc, exFilter);
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
@@ -488,6 +463,87 @@ public static class TradingEndpoints
     }
 
     // ── 輔助 ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// per-strategy 已實現 P&L 聚合。
+    /// - perp(realized_pnl 已由 FillPoller 算好、非 null)→ 直接加總。
+    /// - spot(realized_pnl 為 null,如 paper alpaca/binance)→ 用 FIFO 成本基礎重放
+    ///   每個 (exchange,symbol) 的買賣序列算已實現:sell 時 (proceeds−lot成本)×qty、含手續費。
+    ///   → 讓 paper 現貨也有 forward P&L,當 --allocate 的第二證據源。
+    private static List<object> AggregateStrategyPnl(JsonElement doc, HashSet<string>? exFilter)
+    {
+        var agg = new Dictionary<string, (int n, decimal pnl, int wins, HashSet<string> ex)>(StringComparer.OrdinalIgnoreCase);
+        void Add(string strat, decimal pnl, string ex)
+        {
+            (int n, decimal pnl, int wins, HashSet<string> ex) c = agg.TryGetValue(strat, out var e)
+                ? e : (0, 0m, 0, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            c.n++; c.pnl += pnl; if (pnl > 0m) c.wins++; c.ex.Add(ex);
+            agg[strat] = c;
+        }
+
+        if (!doc.TryGetProperty("trades", out var trades) || trades.ValueKind != JsonValueKind.Array)
+            return new List<object>();
+
+        // 解析成記錄
+        var recs = new List<(string strat, string ex, string sym, string side, decimal qty, decimal price, decimal fee, decimal? pnl, string ts)>();
+        foreach (var t in trades.EnumerateArray())
+        {
+            var strat = t.TryGetProperty("strategy", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+            if (string.IsNullOrEmpty(strat)) continue;
+            var ex = t.TryGetProperty("exchange", out var exv) ? exv.GetString() ?? "" : "";
+            if (exFilter != null && !exFilter.Contains(ex)) continue;
+            decimal Num(string p) => t.TryGetProperty(p, out var x) && x.ValueKind == JsonValueKind.Number ? x.GetDecimal() : 0m;
+            decimal? pnl = t.TryGetProperty("realized_pnl", out var rp) && rp.ValueKind == JsonValueKind.Number ? rp.GetDecimal() : (decimal?)null;
+            var side = t.TryGetProperty("side", out var sd) ? (sd.GetString() ?? "").ToLowerInvariant() : "";
+            var ts = t.TryGetProperty("executed_at", out var ea) ? ea.GetString() ?? "" : "";
+            recs.Add((strat!, ex, t.TryGetProperty("symbol", out var sy) ? sy.GetString() ?? "" : "", side, Num("quantity"), Num("price"), Num("fee"), pnl, ts));
+        }
+
+        // perp:realized_pnl 已算好 → 直接加總
+        foreach (var r in recs.Where(r => r.pnl.HasValue))
+            Add(r.strat, r.pnl!.Value, r.ex);
+
+        // spot:realized_pnl 為 null → 按 (exchange,symbol) FIFO 重放
+        foreach (var grp in recs.Where(r => !r.pnl.HasValue).GroupBy(r => (r.ex, r.sym)))
+        {
+            var lots = new List<(decimal qty, decimal costPerUnit)>();   // FIFO 買入批
+            foreach (var r in grp.OrderBy(r => r.ts, StringComparer.Ordinal))
+            {
+                if (r.qty <= 0m) continue;
+                if (r.side == "buy")
+                {
+                    lots.Add((r.qty, r.price + r.fee / r.qty));   // 成本含手續費
+                }
+                else if (r.side == "sell")
+                {
+                    var proceedsPerUnit = r.price - r.fee / r.qty;
+                    var remaining = r.qty;
+                    decimal realized = 0m;
+                    while (remaining > 0m && lots.Count > 0)
+                    {
+                        var lot = lots[0];
+                        var m = Math.Min(remaining, lot.qty);
+                        realized += (proceedsPerUnit - lot.costPerUnit) * m;
+                        remaining -= m;
+                        if (m >= lot.qty) lots.RemoveAt(0);
+                        else lots[0] = (lot.qty - m, lot.costPerUnit);
+                    }
+                    // 有對應到買入批才算一筆已實現(沒庫存的裸賣不計、避免噪音)
+                    if (r.qty - remaining > 0m) Add(r.strat, realized, r.ex);
+                }
+            }
+        }
+
+        return agg.OrderByDescending(kv => kv.Value.n).Select(kv => (object)new
+        {
+            strategy = kv.Key,
+            trades = kv.Value.n,
+            realized_pnl = Math.Round(kv.Value.pnl, 4),
+            wins = kv.Value.wins,
+            win_rate = kv.Value.n > 0 ? Math.Round((decimal)kv.Value.wins / kv.Value.n, 3) : 0m,
+            exchanges = kv.Value.ex.OrderBy(x => x).ToList(),
+        }).ToList();
+    }
 
     /// <summary>
     /// 從 HttpContext 抓真實的 principal/role（由 BrokerAuthMiddleware /
