@@ -42,8 +42,6 @@ var strategies = new Dictionary<string, IStrategy>
     ["sma_cross"]       = new SmaCrossStrategy(),
     ["rsi_oversold"]    = new RsiStrategy(),
     ["macd_divergence"] = new MacdStrategy(),
-    ["composite"]       = CompositeStrategy.Default(),
-    ["multi_timeframe"] = new MultiTimeframeStrategy(),
     ["fibonacci_retracement"] = new FibonacciStrategy(),
     ["bollinger_bands"] = new BollingerStrategy(),
     ["harmonic_pattern"] = new HarmonicStrategy(),
@@ -102,33 +100,12 @@ var strategies = new Dictionary<string, IStrategy>
     ["volume_breakout"]  = new VolumeBreakoutStrategy(),   // 通道突破 + 量能確認
 };
 
-// LLM proxy 配置——ensemble arbitrator 跟 llm/news 策略共用同一份 broker URL + model
-IEnsembleArbitrator? arbitrator = null;
+// LLM proxy 配置——llm/news 策略共用同一份 broker URL + model
 var llmEnabled = config.GetValue("Worker:Strategy:Llm:Enabled", false);
 var llmBrokerUrl = config.GetValue<string>("Worker:Strategy:Llm:BrokerUrl")
                    ?? config.GetValue<string>("Worker:Strategy:Llm:BaseUrl")
                    ?? "http://broker:5000";
 var llmModel = config.GetValue("Worker:Strategy:Llm:Model", "gemini-2.0-flash")!;
-
-if (llmEnabled)
-{
-    // 仲裁者跟 ensemble 互相依賴的順序：先建 arbitrator、再建 ensemble 時注入
-    var arbThreshold = (decimal)config.GetValue("Worker:Strategy:Ensemble:ArbitratorThreshold", 0.6);
-    var arbHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-    var arbLogger = loggerFactory.CreateLogger<LlmEnsembleArbitrator>();
-    arbitrator = new LlmEnsembleArbitrator(arbHttp, arbLogger, llmBrokerUrl, llmModel, arbThreshold);
-    logger.LogInformation("Ensemble LLM arbitrator enabled: threshold={T:P0} model={M}",
-        arbThreshold, llmModel);
-}
-
-// Ensemble 必須在 constituents 都註冊好之後才能建（動態權重 by Sharpe + 選用 LLM 仲裁）
-strategies["ensemble"] = new WeightedEnsembleStrategy(new List<IStrategy>
-{
-    strategies["sma_cross"],
-    strategies["rsi_oversold"],
-    strategies["macd_divergence"],
-    strategies["multi_timeframe"],
-}, arbitrator: arbitrator);
 
 // [whitelist add: 2026-05-24 AnthonyLee] 去相關精選 4 支的一鍵組合 = 淨加權曝險 ensemble。
 // 用「淨加權曝險」(非投票):單一 symbol 只有一個淨部位,持有 4 支反波動率加權後的淨曝險,
@@ -143,21 +120,8 @@ strategies["decorr4_ls"] = new NetWeightedEnsembleStrategy(new List<(IStrategy, 
     (strategies["fib_retrace_ls"], 0.10m),
 }, name: "decorr4_ls");
 
-// AutoSelect 也是要 constituents 都在後才能建（regime → 1 個成員執行）
-strategies["auto_select"] = AutoSelectStrategy.DefaultFrom(strategies);
-
-// 趨勢過濾版 rsi_stoch（risk-off 第一塊）：只在 close>SMA50 放行做多、跌勢不接刀。要 inner 先在。
-if (strategies.TryGetValue("rsi_stoch", out var rsiStochInner))
-    strategies["rsi_stoch_trend"] = new TrendGatedStrategy(rsiStochInner, "rsi_stoch_trend", trendPeriod: 50);
-
 // 專注震盪集成：只合驗證過有 edge 的 rsi_stoch/rsi_oversold/mfi/cci（盤整引擎）。要 inner 都在。
 strategies["osc_ensemble"] = OscillatorEnsembleStrategy.DefaultFrom(strategies);
-
-// RegimeAdaptive：regime → 該行情專屬策略組合（固定權重加權投票）。也要 constituents 都在後才能建。
-strategies["regime_adaptive"] = RegimeAdaptiveEnsembleStrategy.DefaultFrom(strategies);
-
-// CharacterAdaptive：用 Hurst+波動率當 meta 閘門、依市場性格連續調成員權重（與 ensemble 的 Sharpe 權重正交）。也要 constituents 都在後才能建。
-strategies["character_ensemble"] = CharacterAdaptiveEnsembleStrategy.DefaultFrom(strategies);
 
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
