@@ -56,6 +56,7 @@ public static class AutoTraderEndpoints
                 active = w.Active,
                 mode = w.Mode,
                 leverage = w.Leverage,
+                budget_pct = w.BudgetPct,
                 htf_interval = w.HtfInterval,
                 shadow = w.Shadow,
                 owner_principal_id = w.OwnerPrincipalId,

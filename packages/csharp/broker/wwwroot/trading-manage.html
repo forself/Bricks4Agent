@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B4A 管理控制台</title>
+<style>
+  :root{--bg:#0b0e11;--card:#181a20;--card2:#1e2329;--line:#2b3139;--txt:#eaecef;--mut:#848e9c;--grn:#0ecb81;--red:#f6465d;--yel:#f0b90b;--blu:#3a8bfd;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif;padding:18px;max-width:1100px;margin:0 auto}
+  a{color:var(--blu);text-decoration:none}.muted{color:var(--mut)}.grn{color:var(--grn)}.red{color:var(--red)}.yel{color:var(--yel)}
+  h1{font-size:18px;font-weight:600}
+  h2{font-size:13px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:22px 0 10px}
+  .topbar{display:flex;justify-content:space-between;align-items:center}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500;font-size:11px}
+  input,select,button{font:inherit;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:6px 9px}
+  button{cursor:pointer}button:hover{border-color:var(--mut)}
+  .btn-arm{background:rgba(246,70,93,.12);color:var(--red);border-color:rgba(246,70,93,.3)}
+  .btn-shadow{background:rgba(132,142,156,.12);color:var(--mut)}
+  .btn-x{color:var(--red);border-color:transparent;background:transparent;padding:4px 8px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .pill{font-size:11px;padding:2px 8px;border-radius:10px}.p-real{background:rgba(246,70,93,.15);color:var(--red)}.p-paper{background:rgba(132,142,156,.15);color:var(--mut)}
+  .links{font-size:12px;margin-top:20px;text-align:center;color:var(--mut)}.links a{margin:0 8px}
+  #toast{position:fixed;right:18px;bottom:18px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;opacity:0;transition:.2s;pointer-events:none}
+  #toast.show{opacity:1}
+  .filt{font-size:12px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>⚙️ B4A 管理控制台</h1>
+  <div class="muted" style="font-size:12px" id="status">載入中…</div>
+</div>
+
+<h2>監控管理 · 武裝 / 加減 watch</h2>
+<div class="panel">
+  <div class="row">
+    <input id="w-sym" placeholder="symbol 例 BTC-USDT" style="width:150px">
+    <select id="w-ex"><option value="bingx">bingx (真錢)</option><option value="binance">binance (paper)</option><option value="alpaca">alpaca (paper)</option></select>
+    <input id="w-strat" placeholder="strategy 例 mfi" style="width:140px">
+    <input id="w-qty" placeholder="qty" value="1" style="width:70px">
+    <button onclick="addWatch()">+ 新增監控</button>
+    <span style="flex:1"></span>
+    <span class="filt muted">篩選:</span>
+    <select id="w-filt" class="filt" onchange="renderWatches()"><option value="all">全部</option><option value="bingx">只真錢</option><option value="paper">只 paper</option></select>
+  </div>
+  <table><thead><tr><th>幣</th><th>交易所</th><th>策略</th><th>模式</th><th>budget</th><th>訊號</th><th>狀態</th><th></th><th></th></tr></thead>
+  <tbody id="w-table"><tr><td colspan="9" class="muted">載入中…</td></tr></tbody></table>
+</div>
+
+<h2>價格告警</h2>
+<div class="panel">
+  <div class="row">
+    <input id="a-sym" placeholder="symbol" style="width:130px">
+    <select id="a-ex"><option value="bingx">bingx</option><option value="binance">binance</option></select>
+    <select id="a-cond">
+      <option value="price_above">價格 ≥</option><option value="price_below">價格 ≤</option>
+      <option value="position_pnl_below">持倉 PnL% ≤</option><option value="portfolio_dd_above">當日 DD% ≥</option>
+    </select>
+    <input id="a-thr" placeholder="門檻值" style="width:90px">
+    <input id="a-cd" placeholder="冷卻分" value="30" style="width:70px">
+    <button onclick="addAlert()">+ 新增告警</button>
+  </div>
+  <table><thead><tr><th>名稱</th><th>條件</th><th>幣</th><th>門檻</th><th></th></tr></thead>
+  <tbody id="a-table"><tr><td colspan="5" class="muted">載入中…</td></tr></tbody></table>
+</div>
+
+<div class="links">
+  <a href="/trading.html">← 監控儀錶板</a> ·
+  <a href="/trading-legacy.html#auto">市場掃描器(legacy)</a> ·
+  <a href="/trading-legacy.html#me">憑證管理(legacy)</a> ·
+  <a href="/strategy-lab.html">策略 Lab</a> ·
+  <a href="/line-admin.html">系統 admin</a>
+</div>
+<div id="toast"></div>
+
+<script>
+let WATCHES=[];
+const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
+async function api(p,o){const r=await fetch(p,Object.assign({credentials:'same-origin'},o||{}));try{return await r.json();}catch{return{success:r.ok};}}
+
+async function loadStatus(){
+  const j=await api('/api/v1/auto-trader/status'); const d=j.data||j;
+  WATCHES=d.watch_list||[];
+  document.getElementById('status').innerHTML=`<span class="dot" style="background:${d.enabled?'var(--grn)':'var(--red)'}"></span> AutoTrader ${d.enabled?'running':'stopped'} · ${WATCHES.length} watch · poll ${d.interval_seconds||'?'}s`;
+  renderWatches();
+}
+function renderWatches(){
+  const f=document.getElementById('w-filt').value;
+  let ws=WATCHES.slice().sort((a,b)=>(a.exchange===b.exchange?0:a.exchange==='bingx'?-1:1));
+  if(f==='bingx')ws=ws.filter(w=>w.exchange==='bingx'); else if(f==='paper')ws=ws.filter(w=>w.exchange!=='bingx');
+  document.getElementById('w-table').innerHTML=ws.map(w=>{
+    const real=w.exchange==='bingx';
+    const armed=!w.shadow;
+    const tog=real?`<button class="${armed?'btn-arm':'btn-shadow'}" onclick="toggleShadow('${w.symbol}','${w.exchange}',${armed})">${armed?'🔴 真錢':'👻 影子'}</button>`:'<span class="pill p-paper">paper</span>';
+    return `<tr><td><b>${esc(w.symbol)}</b></td><td>${esc(w.exchange)}</td><td>${esc(w.strategy)}</td>
+      <td class="muted">${esc(w.mode||'')}</td><td>${w.budget_pct?w.budget_pct+'%':'—'}</td>
+      <td>${esc(w.last_signal||'?')}</td><td>${tog}</td>
+      <td><button class="btn-x" onclick="rmWatch('${w.symbol}','${w.exchange}')">移除</button></td></tr>`;
+  }).join('')||'<tr><td colspan="9" class="muted">無</td></tr>';
+}
+async function addWatch(){
+  const symbol=document.getElementById('w-sym').value.trim(),exchange=document.getElementById('w-ex').value,
+        strategy=document.getElementById('w-strat').value.trim(),quantity=parseFloat(document.getElementById('w-qty').value);
+  if(!symbol||!strategy||!(quantity>0))return toast('填 symbol / strategy / qty');
+  const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,exchange,strategy,quantity})});
+  toast(r?.success?`已加入 ${symbol}`:'失敗:'+(r?.error||'?')); loadStatus();
+}
+async function rmWatch(symbol,exchange){
+  if(!confirm(`移除監控 ${symbol} (${exchange})?`))return;
+  const r=await api(`/api/v1/auto-trader/watch?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}`,{method:'DELETE'});
+  toast(r?.success?`已移除 ${symbol}`:'失敗'); loadStatus();
+}
+async function toggleShadow(symbol,exchange,armed){
+  const toShadow=armed; // armed→點擊轉影子;未武裝→武裝真錢
+  if(!toShadow && !confirm(`⚠ 確定把 ${symbol} 武裝成 🔴 真錢?(會開始真實下單)`))return;
+  const r=await api('/api/v1/auto-trader/watch/shadow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,exchange,shadow:toShadow})});
+  toast(r?.success?`${symbol} → ${toShadow?'👻 影子':'🔴 真錢'}`:'失敗:'+(r?.error||'?')); loadStatus();
+}
+
+async function loadAlerts(){
+  const j=await api('/api/v1/alerts/rules'); const d=j.data||j; const rules=d.rules||d||[];
+  document.getElementById('a-table').innerHTML=(Array.isArray(rules)?rules:[]).map(r=>
+    `<tr><td>${esc(r.name||'—')}</td><td>${esc(r.condition_type||'')}</td><td>${esc(r.symbol||'')}</td><td>${r.threshold??''}</td>
+     <td><button class="btn-x" onclick="rmAlert('${r.id}')">刪</button></td></tr>`).join('')
+    ||'<tr><td colspan="5" class="muted">無告警規則</td></tr>';
+}
+async function addAlert(){
+  const symbol=document.getElementById('a-sym').value.trim(),exchange=document.getElementById('a-ex').value,
+        condition_type=document.getElementById('a-cond').value,threshold=parseFloat(document.getElementById('a-thr').value),
+        cooldown_minutes=parseInt(document.getElementById('a-cd').value)||30;
+  if(!symbol||isNaN(threshold))return toast('填 symbol / 門檻');
+  const name=`${symbol} ${condition_type} ${threshold}`;
+  const r=await api('/api/v1/alerts/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,condition_type,symbol,exchange,threshold,cooldown_minutes})});
+  toast(r?.success?'告警已建':'失敗:'+(r?.error||'?')); loadAlerts();
+}
+async function rmAlert(id){const r=await api(`/api/v1/alerts/rules/${id}`,{method:'DELETE'});toast(r?.success?'已刪':'失敗');loadAlerts();}
+
+loadStatus(); loadAlerts(); setInterval(loadStatus,20000);
+</script>
+</body>
+</html>
