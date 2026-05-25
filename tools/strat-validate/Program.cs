@@ -67,6 +67,8 @@ if (args.Contains("--carry")) { await RunCarry(); return; }
 if (args.Contains("--xsrev")) { await RunXsRev(); return; }
 // ── --fundsig:資金費當跨幣訊號(contrarian:long 低 funding/short 高 funding)──
 if (args.Contains("--fundsig")) { await RunFundSig(); return; }
+// ── --tsmom:時序動量(managed-futures:每幣按自己趨勢多/空、等權籃子、熊市自動翻空)──
+if (args.Contains("--tsmom")) { await RunTsMom(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
@@ -1256,6 +1258,86 @@ async Task RunFundSig()
     Console.WriteLine($"  全期: Sharpe {full.sharpe:F2} ret {full.ret:F0}% maxDD {full.dd:F0}% 換手 {tov2:P0}");
     Console.WriteLine($"  後半 OOS: Sharpe {oos.sharpe:F2} ret {oos.ret:F0}%");
     Console.WriteLine($"  判定:OOS Sharpe {oos.sharpe:F2} → {(oos.sharpe > 0.3m ? "✅ 有戲、可進 paper" : oos.sharpe > 0m ? "⚠ 微弱" : "❌ 無 edge")}(funding 含 carry 成分、本就帶 contrarian 味)");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --tsmom 時序動量(managed futures):每幣按自己趨勢符號 +1/−1、等權籃子。
+// 牛市多數幣 +1→淨多、熊市 −1→淨空(危機 alpha)。歷史最穩健系統性 edge,測它在 crypto 成不成立。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunTsMom()
+{
+    decimal EnvT(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    decimal costSide = EnvT("TSMOM_COST_PER_SIDE", 0.0008m);
+    Console.WriteLine("=== 時序動量 --tsmom(每幣按自己趨勢 +1/−1、等權;熊市自動翻空)===\n");
+
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    var coins = dat.Keys.ToList();
+    int L = dat.Values.Min(b => b.Count);
+    var cl = coins.ToDictionary(c => c, c => dat[c].Skip(dat[c].Count - L).Select(b => b.Close).ToList());
+    Console.WriteLine($"宇宙:{coins.Count} 幣、對齊尾段 {L} 日\n");
+
+    // longOnly=false:多空(趨勢上+1/下−1);true:純多(上+1/下0)。回傳 (eq, 平均淨曝險, 換手)
+    (List<decimal> eq, decimal netExp, decimal tov) Run(int lookback, int rebal, bool longOnly, decimal cost)
+    {
+        var eq = new List<decimal> { 1m }; var sig = new Dictionary<string, int>(); int rb = 0; decimal ts = 0m, netSum = 0m; int netN = 0;
+        foreach (var c in coins) sig[c] = 0;
+        for (int t = lookback; t < L - 1; t++)
+        {
+            if ((t - lookback) % rebal == 0)
+            {
+                int changed = 0;
+                foreach (var c in coins)
+                {
+                    int s = cl[c][t] > cl[c][t - lookback] ? 1 : (longOnly ? 0 : -1);
+                    if (s != sig[c]) changed++;
+                    sig[c] = s;
+                }
+                decimal tov = (decimal)changed / coins.Count; ts += tov; rb++;
+                eq[^1] *= (1m - tov * 2m * cost);
+                netSum += (decimal)sig.Values.Sum() / coins.Count; netN++;
+            }
+            // 等權:每幣權重 = sig/N(總 gross 曝險 ≤ 1)
+            decimal pr = coins.Where(c => sig[c] != 0).Sum(c => (decimal)sig[c] / coins.Count * (cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m));
+            eq.Add(eq[^1] * (1m + pr));
+        }
+        return (eq, netN > 0 ? netSum / netN : 0m, rb > 0 ? ts / rb : 0m);
+    }
+
+    int[] lbs = { 20, 50, 100, 150, 200 }; int[] rbs = { 3, 7, 14 };
+    foreach (var lo in new[] { false, true })
+    {
+        Console.WriteLine($"=== {(lo ? "純多趨勢" : "多空(熊市翻空)")} 敏感度(realistic;格=Sharpe / 年化%)===");
+        Console.WriteLine("  lookback\\rebal " + string.Join("", rbs.Select(r => $"{r + "d",14}")));
+        foreach (var lb in lbs)
+        {
+            var cells = rbs.Select(rb => { var (eq, _, _) = Run(lb, rb, lo, costSide); var st = StatsOf(eq); var ann = eq.Count > 30 ? (decimal)((Math.Pow((double)eq[^1], 365.0 / eq.Count) - 1) * 100) : 0m; return $"{st.sharpe,6:F2}/{ann,5:F0}%"; });
+            Console.WriteLine($"  {lb + "d",-14}" + string.Join("  ", cells));
+        }
+        Console.WriteLine();
+    }
+
+    int repLb = (int)EnvT("TSMOM_LOOKBACK", 100m), repRb = (int)EnvT("TSMOM_REBAL", 7m);
+    var (eqF, net, tov2) = Run(repLb, repRb, false, costSide);
+    var full = StatsOf(eqF); var oos = StatsOf(eqF.Skip(eqF.Count / 2).ToList());
+    // 熊市表現:用等權買入持有的最差 1/4 段對照(危機 alpha 關鍵)
+    var bhEq = new List<decimal> { 1m };
+    for (int t = 0; t < L - 1; t++) { decimal r = coins.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m); bhEq.Add(bhEq[^1] * (1m + r)); }
+    var bh = StatsOf(bhEq);
+    Console.WriteLine($"=== 代表 多空 lookback{repLb}/rebal{repRb} ===");
+    Console.WriteLine($"  全期 realistic: Sharpe {full.sharpe:F2} ret {full.ret:F0}% maxDD {full.dd:F0}% · 平均淨曝險 {net:P0}(>0偏多)· 換手 {tov2:P0}");
+    Console.WriteLine($"  後半 OOS: Sharpe {oos.sharpe:F2} ret {oos.ret:F0}% maxDD {oos.dd:F0}%");
+    Console.WriteLine($"  vs 等權買入持有: Sharpe {bh.sharpe:F2} maxDD {bh.dd:F0}%  → TSMOM maxDD {(full.dd < bh.dd ? "更低(趨勢避險生效)" : "沒更低")}");
+    try
+    {
+        var ens = strats.First(x => x.name == "decorr4_ls").s;
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m).EquityCurve.Select(e => e.Value).ToList();
+        int n = Math.Min(eqF.Count, dc.Count);
+        var rho = CorrelationGuard.PearsonOfReturns(eqF.Skip(eqF.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
+        Console.WriteLine($"  與 decorr4@BTC ρ = {rho:F2}");
+    }
+    catch { }
+    Console.WriteLine($"\n  判定:OOS Sharpe {oos.sharpe:F2} + maxDD {(full.dd < bh.dd ? "<B&H(危機 alpha)" : "")} → {(oos.sharpe > 0.3m ? "✅ 可進 paper" : oos.sharpe > 0m ? "⚠ 微弱" : "❌ 無 edge")}");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
