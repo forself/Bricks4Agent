@@ -100,7 +100,7 @@ public class DailyReportService : BackgroundService
     /// 組合過去 N 小時的成交摘要 + AutoTrader 狀態、推 Discord + LINE。
     /// 給手動端點 / scheduler 都用。
     /// </summary>
-    public async Task<(bool Ok, string Summary)> BuildAndPushAsync(int periodHours, CancellationToken ct)
+    public async Task<(bool Ok, string Summary)> BuildAndPushAsync(int periodHours, CancellationToken ct, bool push = true)
     {
         var since = DateTime.UtcNow.AddHours(-periodHours);
         var fetched = await FetchTradesAsync(_exchange, since, ct);
@@ -189,6 +189,13 @@ public class DailyReportService : BackgroundService
 
         var body = sb.ToString();
         var title = $"{titleEmoji} 每日交易彙整 · {DateTime.UtcNow:yyyy-MM-dd}";
+
+        // dry-run(push=false):只回 summary、不推 Discord/LINE → 測試/預覽不洗版
+        if (!push)
+        {
+            _logger.LogInformation("DailyReport dry-run (no push): pnl={Pnl:F2} trades={N}", stats.RealizedPnlSum, stats.TradeCount);
+            return (true, body);
+        }
 
         var dr = await _discord.SendAdHocAsync(title, body, color, ct);
         var lr = await _line.SendAdHocAsync(title, body,

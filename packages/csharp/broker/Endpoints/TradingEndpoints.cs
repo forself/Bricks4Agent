@@ -203,8 +203,10 @@ public static class TradingEndpoints
             Broker.Services.DailyReportService daily, HttpRequest req, CancellationToken ct) =>
         {
             var hours = req.Query.TryGetValue("hours", out var h) && int.TryParse(h.ToString(), out var n) ? n : 24;
-            var (ok, summary) = await daily.BuildAndPushAsync(hours, ct);
-            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok, summary }));
+            // ?dry=true → 只回 summary、不推 Discord/LINE(預覽/測試不洗版)
+            var dry = req.Query.TryGetValue("dry", out var d) && (d.ToString() == "true" || d.ToString() == "1");
+            var (ok, summary) = await daily.BuildAndPushAsync(hours, ct, push: !dry);
+            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry, dry, summary }));
         });
 
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
