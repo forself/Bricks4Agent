@@ -26,6 +26,7 @@ public class DailyReportService : BackgroundService
     private readonly DiscordNotificationService _discord;
     private readonly LineNotificationService _line;
     private readonly AutoTraderService _autoTrader;
+    private readonly BrokerCore.Data.BrokerDb _db;
     private readonly ILogger<DailyReportService> _logger;
     private readonly int _reportHourUtc;
     private readonly string _exchange;
@@ -36,6 +37,7 @@ public class DailyReportService : BackgroundService
         DiscordNotificationService discord,
         LineNotificationService line,
         AutoTraderService autoTrader,
+        BrokerCore.Data.BrokerDb db,
         ILogger<DailyReportService> logger)
     {
         _dispatcher = dispatcher;
@@ -43,6 +45,7 @@ public class DailyReportService : BackgroundService
         _discord = discord;
         _line = line;
         _autoTrader = autoTrader;
+        _db = db;
         _logger = logger;
         _reportHourUtc = ParseIntEnv("DAILY_REPORT_AT_UTC_HOUR", defaultValue: 0, min: -1, max: 23);
         _exchange = Environment.GetEnvironmentVariable("DAILY_REPORT_EXCHANGE") ?? "bingx";
@@ -155,7 +158,7 @@ public class DailyReportService : BackgroundService
         if (periodHours <= 24)
         {
             // 日報:每腿健康 —— 持倉 + 最新 action+原因 + 卡住旗標(解今天「看不到腿為何不跑」的痛點)
-            var posSides = await FetchPositionSidesAsync(_exchange, ct);
+            var posSides = FetchPositionSides(_exchange);
             var logBySym = _autoTrader.RecentLogs
                 .GroupBy(l => l.Symbol)
                 .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.Time).First());
@@ -241,30 +244,17 @@ public class DailyReportService : BackgroundService
         return list;
     }
 
-    // 抓某交易所目前有倉的 symbol→side(給日報腿健康用)。失敗回空、不擋報告。
-    private async Task<Dictionary<string, string>> FetchPositionSidesAsync(string exchange, CancellationToken ct)
+    // 目前有倉的 symbol→side。讀 broker 自己的 perp_position_state(get_positions 對 bingx perp
+    // 走 trading.account 會回空;perp_position_state 是保護掃描維護的可靠快取)。失敗回空、不擋報告。
+    private Dictionary<string, string> FetchPositionSides(string exchange)
     {
         var outp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!_registry.HasAvailableWorker("trading.account")) return outp;
         try
         {
-            var req = new ApprovedRequest
-            {
-                RequestId = Guid.NewGuid().ToString("N"), CapabilityId = "trading.account", Route = "get_positions",
-                Payload = JsonSerializer.Serialize(new { exchange }), Scope = "{}",
-                PrincipalId = "system", TaskId = "daily-report", SessionId = "daily-report",
-            };
-            var result = await _dispatcher.DispatchAsync(req);
-            if (!result.Success) return outp;
-            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
-            if (doc.TryGetProperty("positions", out var arr) && arr.ValueKind == JsonValueKind.Array)
-                foreach (var p in arr.EnumerateArray())
-                {
-                    var sym = p.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
-                    var qty = p.TryGetProperty("quantity", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetDecimal() : 0m;
-                    var side = p.TryGetProperty("side", out var sd) ? sd.GetString() ?? "" : "";
-                    if (!string.IsNullOrEmpty(sym) && qty > 0m) outp[sym] = side;
-                }
+            var rows = _db.Query<BrokerCore.Models.PerpetualPositionStateEntry>(
+                "SELECT * FROM perp_position_state WHERE exchange = @ex", new { ex = exchange });
+            foreach (var r in rows)
+                if (!string.IsNullOrEmpty(r.Symbol)) outp[r.Symbol] = r.Side;
         }
         catch { }
         return outp;
