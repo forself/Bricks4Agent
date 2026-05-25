@@ -11,22 +11,45 @@
   a{color:var(--blu);text-decoration:none}.muted{color:var(--mut)}.grn{color:var(--grn)}.red{color:var(--red)}.yel{color:var(--yel)}
   h1{font-size:18px;font-weight:600}
   h2{font-size:13px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:22px 0 10px}
+  h3{font-size:13px;font-weight:600;margin-bottom:8px}
   .topbar{display:flex;justify-content:space-between;align-items:center}
   .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
   .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card{background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:12px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   td,th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500;font-size:11px}
   input,select,button{font:inherit;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:6px 9px}
+  .card input,.card select{background:var(--bg);}
   button{cursor:pointer}button:hover{border-color:var(--mut)}
+  button:disabled{opacity:.45;cursor:not-allowed}
   .btn-arm{background:rgba(246,70,93,.12);color:var(--red);border-color:rgba(246,70,93,.3)}
   .btn-shadow{background:rgba(132,142,156,.12);color:var(--mut)}
   .btn-x{color:var(--red);border-color:transparent;background:transparent;padding:4px 8px}
+  .btn-y{background:rgba(240,185,11,.14);color:var(--yel);border-color:rgba(240,185,11,.3)}
+  .btn-g{background:rgba(14,203,129,.14);color:var(--grn);border-color:rgba(14,203,129,.3)}
+  .btn-sm{padding:4px 9px;font-size:12px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
   .pill{font-size:11px;padding:2px 8px;border-radius:10px}.p-real{background:rgba(246,70,93,.15);color:var(--red)}.p-paper{background:rgba(132,142,156,.15);color:var(--mut)}
-  .links{font-size:12px;margin-top:20px;text-align:center;color:var(--mut)}.links a{margin:0 8px}
-  #toast{position:fixed;right:18px;bottom:18px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;opacity:0;transition:.2s;pointer-events:none}
+  .links{font-size:12px;margin-top:24px;text-align:center;color:var(--mut)}.links a{margin:0 8px}
+  #toast{position:fixed;right:18px;bottom:18px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;opacity:0;transition:.2s;pointer-events:none;max-width:340px}
   #toast.show{opacity:1}
   .filt{font-size:12px}
+  label{font-size:11px;color:var(--mut)}
+  /* scanner */
+  .scan-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+  .fg{display:flex;flex-direction:column;gap:3px}
+  .scan-result{margin-top:6px}
+  .scan-empty{color:var(--mut);font-size:12px;text-align:center;padding:14px}
+  .scan-row{display:grid;grid-template-columns:80px 56px 1fr 130px 44px;gap:10px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line);font-size:12px}
+  .sr-sym{font-weight:600}.sr-act.buy{color:var(--grn)}.sr-act.sell{color:var(--red)}
+  .bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden}.bar .fill{height:100%}.fill.up{background:var(--grn)}.fill.down{background:var(--red)}
+  .sr-px{text-align:right;color:var(--mut)}
+  .scan-progress{font-size:11px;color:var(--mut)}
+  /* credentials / totp */
+  .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:end}
+  .mono{font-family:monospace}
+  code{background:var(--bg);padding:2px 6px;border-radius:3px;font-family:monospace;font-size:11px}
+  .hint{font-size:11px;color:var(--mut);margin-top:6px}
 </style>
 </head>
 <body>
@@ -51,6 +74,21 @@
   <tbody id="w-table"><tr><td colspan="9" class="muted">載入中…</td></tr></tbody></table>
 </div>
 
+<h2>🔍 市場掃描器 · 一鍵建立監控</h2>
+<div class="panel">
+  <div class="hint" style="margin-bottom:8px">對一籃子 symbol 跑 composite 策略、按信心 + 動作篩出候選、勾選後一鍵加入監控(數量用上方的 qty 欄)。預設掃加密幣。</div>
+  <div class="scan-form">
+    <div class="fg"><label>動作</label><select id="scan-action"><option value="any">任意</option><option value="buy">僅 BUY</option><option value="sell">僅 SELL</option></select></div>
+    <div class="fg"><label>最低信心</label><input id="scan-min-conf" type="number" value="0.65" min="0" max="1" step="0.05" style="width:80px"></div>
+    <div class="fg"><label>Top N</label><input id="scan-topn" type="number" value="10" min="3" max="30" step="1" style="width:70px"></div>
+    <div class="fg"><label>類型</label><select id="scan-type"><option value="crypto">加密</option><option value="all">全部</option><option value="stock">美股</option></select></div>
+    <button class="btn-y btn-sm" onclick="runMarketScan()" id="scan-run-btn">開始掃描</button>
+    <button class="btn-g btn-sm" onclick="addBatchToWatch()" id="scan-add-btn" disabled>加入勾選</button>
+    <span class="scan-progress" id="scan-progress"></span>
+  </div>
+  <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描,按「開始掃描」跑 composite 策略</div></div>
+</div>
+
 <h2>價格告警</h2>
 <div class="panel">
   <div class="row">
@@ -68,21 +106,114 @@
   <tbody id="a-table"><tr><td colspan="5" class="muted">載入中…</td></tr></tbody></table>
 </div>
 
+<h2>🔐 憑證管理 · Exchange API + 兩步驗證</h2>
+<div class="panel">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">我的帳戶</span>
+    <span id="me-viewer" class="muted" style="font-size:11px">—</span>
+    <button class="btn-sm" onclick="loadMe()" style="margin-left:auto">重新整理</button>
+  </div>
+
+  <!-- 兩步驗證（TOTP）-->
+  <div class="card">
+    <h3>🔐 兩步驗證（TOTP）</h3>
+    <div id="totp-status" class="muted" style="font-size:12px;margin-bottom:8px">— 載入中 —</div>
+
+    <div id="totp-enable-area" style="display:none">
+      <button class="btn-y btn-sm" onclick="totpStartEnroll()">啟用兩步驗證</button>
+      <div class="hint">啟用後登入需 6 位數動態碼。建議使用 Google Authenticator / Authy / 1Password。</div>
+    </div>
+
+    <div id="totp-enroll-area" style="display:none">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">1️⃣ 在 authenticator app 加入新帳號</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+        <input id="totp-otpauth" readonly class="mono" style="font-size:11px">
+        <button class="btn-sm" onclick="copyText('totp-otpauth')">複製 URL</button>
+      </div>
+      <div class="hint" style="margin-bottom:8px">或手動輸入 secret:
+        <code id="totp-secret"></code>
+        <button class="btn-sm" style="font-size:10px;padding:2px 8px;margin-left:4px" onclick="copyText('totp-secret', true)">複製</button>
+      </div>
+      <div style="font-size:12px;font-weight:600;margin:12px 0 6px">2️⃣ 收好 backup codes(只顯示一次)</div>
+      <div id="totp-backup-codes" style="background:var(--bg);padding:8px;border-radius:4px;font-family:monospace;font-size:11px;line-height:1.8"></div>
+      <button class="btn-sm" onclick="copyBackupCodes()" style="margin-top:6px">複製全部 backup codes</button>
+      <div style="font-size:12px;font-weight:600;margin:12px 0 6px">3️⃣ 輸入 app 顯示的 6 位數驗證碼以正式啟用</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="totp-enroll-code" placeholder="123456" maxlength="6" autocomplete="off" inputmode="numeric" class="mono" style="font-size:14px;letter-spacing:4px;width:120px">
+        <button class="btn-y btn-sm" onclick="totpVerifyEnroll()">驗證並啟用</button>
+        <button class="btn-sm" onclick="totpCancelEnroll()">取消</button>
+      </div>
+      <div id="totp-enroll-msg" class="hint"></div>
+    </div>
+
+    <div id="totp-disable-area" style="display:none">
+      <div class="hint" style="margin-bottom:8px">停用需要當前的 6 位數驗證碼或未使用的 backup code。</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="totp-disable-code" placeholder="TOTP 或 backup code" autocomplete="off" class="mono" style="width:200px">
+        <button class="btn-arm btn-sm" onclick="totpDisable()">停用兩步驗證</button>
+      </div>
+      <div id="totp-disable-msg" class="hint"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>新增憑證</h3>
+    <div class="grid2">
+      <div><label>交易所</label>
+        <select id="me-cred-ex" style="width:100%">
+          <option value="bingx">BingX 永續</option>
+          <option value="binance">Binance 加密</option>
+          <option value="alpaca">Alpaca 美股</option>
+        </select></div>
+      <div><label>標籤(選填)</label>
+        <input id="me-cred-label" placeholder="主帳號 / Demo 等" style="width:100%"></div>
+      <div><label>API Key</label>
+        <input id="me-cred-key" autocomplete="off" class="mono" style="width:100%"></div>
+      <div><label>API Secret</label>
+        <input id="me-cred-secret" type="password" autocomplete="off" class="mono" style="width:100%"></div>
+      <div><label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="me-cred-demo" style="width:auto"> Demo / Paper 帳號(VST / testnet)</label></div>
+      <div><button class="btn-y btn-sm" onclick="addMyCredential()">加入並驗證</button></div>
+    </div>
+    <div id="me-cred-msg" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h3>已儲存憑證(加密儲存、broker 重啟不會丟)</h3>
+    <table id="me-cred-table" style="font-size:12px">
+      <thead><tr><th>交易所</th><th>標籤</th><th>類型</th><th>狀態</th><th>建立</th><th>最近使用</th><th>操作</th></tr></thead>
+      <tbody><tr><td colspan="7" class="muted">—</td></tr></tbody>
+    </table>
+    <div class="hint">
+      ℹ️ API key / secret 用 broker master key (AES-256-GCM) 加密儲存、AAD 綁 entry_id、改任一欄解密失敗。<br>
+      ℹ️ 同一交易所同一類型(live / demo)只能一筆 active;要換 key 先停用或刪舊的。
+    </div>
+  </div>
+</div>
+
 <div class="links">
   <a href="/trading.html">← 監控儀錶板</a> ·
-  <a href="/trading-legacy.html#auto">市場掃描器(legacy)</a> ·
-  <a href="/trading-legacy.html#me">憑證管理(legacy)</a> ·
-  <a href="/strategy-lab.html">策略 Lab</a> ·
+  <a href="/strategy-lab.html">策略 / 回測 Lab</a> ·
   <a href="/line-admin.html">系統 admin</a>
 </div>
 <div id="toast"></div>
 
 <script>
-let WATCHES=[];
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
-async function api(p,o){const r=await fetch(p,Object.assign({credentials:'same-origin'},o||{}));try{return await r.json();}catch{return{success:r.ok};}}
+function toast(m,type){const t=document.getElementById('toast');t.textContent=m;
+  t.style.borderColor=type==='error'?'var(--red)':type==='ok'?'var(--grn)':type==='warn'?'var(--yel)':'var(--line)';
+  t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),3200);}
+const toastOk=m=>toast(m,'ok'),toastErr=m=>toast(m,'error'),toastWarn=m=>toast(m,'warn'),toastInfo=m=>toast(m,'info');
+// cookie session（same-origin）— watch / alert / scanner 用
+async function api(path,opts){try{const r=await fetch(path,Object.assign({credentials:'same-origin'},opts||{}));return await r.json();}catch(e){return{success:false,ok:false,error:e.message};}}
+// credentials / 2FA 用（credentials:'include' + JSON header）— 與 legacy 完全一致、不改邏輯
+async function _authFetch(path, opts={}){
+  const r = await fetch(path, Object.assign({credentials:'include',headers:{'Content-Type':'application/json'}}, opts));
+  return await r.json().catch(()=>({success:false,message:'Invalid JSON'}));
+}
 
+/* ───────────── 監控管理 ───────────── */
+let WATCHES=[];
 async function loadStatus(){
   const j=await api('/api/v1/auto-trader/status'); const d=j.data||j;
   WATCHES=d.watch_list||[];
@@ -108,20 +239,119 @@ async function addWatch(){
         strategy=document.getElementById('w-strat').value.trim(),quantity=parseFloat(document.getElementById('w-qty').value);
   if(!symbol||!strategy||!(quantity>0))return toast('填 symbol / strategy / qty');
   const r=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,exchange,strategy,quantity})});
-  toast(r?.success?`已加入 ${symbol}`:'失敗:'+(r?.error||'?')); loadStatus();
+  toast(r?.success?`已加入 ${symbol}`:'失敗:'+(r?.error||r?.message||'?'), r?.success?'ok':'error'); loadStatus();
 }
 async function rmWatch(symbol,exchange){
   if(!confirm(`移除監控 ${symbol} (${exchange})?`))return;
   const r=await api(`/api/v1/auto-trader/watch?symbol=${encodeURIComponent(symbol)}&exchange=${encodeURIComponent(exchange)}`,{method:'DELETE'});
-  toast(r?.success?`已移除 ${symbol}`:'失敗'); loadStatus();
+  toast(r?.success?`已移除 ${symbol}`:'失敗', r?.success?'ok':'error'); loadStatus();
 }
 async function toggleShadow(symbol,exchange,armed){
   const toShadow=armed; // armed→點擊轉影子;未武裝→武裝真錢
   if(!toShadow && !confirm(`⚠ 確定把 ${symbol} 武裝成 🔴 真錢?(會開始真實下單)`))return;
   const r=await api('/api/v1/auto-trader/watch/shadow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,exchange,shadow:toShadow})});
-  toast(r?.success?`${symbol} → ${toShadow?'👻 影子':'🔴 真錢'}`:'失敗:'+(r?.error||'?')); loadStatus();
+  toast(r?.success?`${symbol} → ${toShadow?'👻 影子':'🔴 真錢'}`:'失敗:'+(r?.error||r?.message||'?'), r?.success?'ok':'error'); loadStatus();
 }
 
+/* ───────────── 市場掃描器 ───────────── */
+const defaultSymbols=[
+  {symbol:'AAPL',type:'stock',exchange:'alpaca'},{symbol:'MSFT',type:'stock',exchange:'alpaca'},
+  {symbol:'NVDA',type:'stock',exchange:'alpaca'},{symbol:'AMZN',type:'stock',exchange:'alpaca'},
+  {symbol:'GOOGL',type:'stock',exchange:'alpaca'},{symbol:'META',type:'stock',exchange:'alpaca'},
+  {symbol:'TSLA',type:'stock',exchange:'alpaca'},{symbol:'AVGO',type:'stock',exchange:'alpaca'},
+  {symbol:'AMD',type:'stock',exchange:'alpaca'},{symbol:'NFLX',type:'stock',exchange:'alpaca'},
+  {symbol:'CRM',type:'stock',exchange:'alpaca'},{symbol:'ORCL',type:'stock',exchange:'alpaca'},
+  {symbol:'INTC',type:'stock',exchange:'alpaca'},{symbol:'QCOM',type:'stock',exchange:'alpaca'},
+  {symbol:'JPM',type:'stock',exchange:'alpaca'},{symbol:'V',type:'stock',exchange:'alpaca'},
+  {symbol:'COIN',type:'stock',exchange:'alpaca'},{symbol:'MSTR',type:'stock',exchange:'alpaca'},
+  {symbol:'PLTR',type:'stock',exchange:'alpaca'},{symbol:'SPY',type:'stock',exchange:'alpaca'},
+  {symbol:'QQQ',type:'stock',exchange:'alpaca'},
+  // ── 加密貨幣 ──
+  {symbol:'BTC',type:'crypto',exchange:'binance'},{symbol:'ETH',type:'crypto',exchange:'binance'},
+  {symbol:'BNB',type:'crypto',exchange:'binance'},{symbol:'SOL',type:'crypto',exchange:'binance'},
+  {symbol:'XRP',type:'crypto',exchange:'binance'},{symbol:'DOGE',type:'crypto',exchange:'binance'},
+  {symbol:'ADA',type:'crypto',exchange:'binance'},{symbol:'AVAX',type:'crypto',exchange:'binance'},
+  {symbol:'DOT',type:'crypto',exchange:'binance'},{symbol:'LINK',type:'crypto',exchange:'binance'},
+  {symbol:'MATIC',type:'crypto',exchange:'binance'},{symbol:'UNI',type:'crypto',exchange:'binance'},
+  {symbol:'NEAR',type:'crypto',exchange:'binance'},{symbol:'ARB',type:'crypto',exchange:'binance'},
+  {symbol:'OP',type:'crypto',exchange:'binance'},{symbol:'ATOM',type:'crypto',exchange:'binance'},
+  {symbol:'FIL',type:'crypto',exchange:'binance'},{symbol:'APT',type:'crypto',exchange:'binance'},
+  {symbol:'SUI',type:'crypto',exchange:'binance'},{symbol:'INJ',type:'crypto',exchange:'binance'},
+  {symbol:'TIA',type:'crypto',exchange:'binance'},{symbol:'SEI',type:'crypto',exchange:'binance'},
+  {symbol:'RENDER',type:'crypto',exchange:'binance'},{symbol:'FET',type:'crypto',exchange:'binance'},
+  {symbol:'IMX',type:'crypto',exchange:'binance'},{symbol:'ALGO',type:'crypto',exchange:'binance'},
+  {symbol:'GRT',type:'crypto',exchange:'binance'},{symbol:'STX',type:'crypto',exchange:'binance'},
+  {symbol:'AAVE',type:'crypto',exchange:'binance'},{symbol:'MKR',type:'crypto',exchange:'binance'},
+  {symbol:'LDO',type:'crypto',exchange:'binance'},{symbol:'DYDX',type:'crypto',exchange:'binance'},
+  {symbol:'RUNE',type:'crypto',exchange:'binance'},{symbol:'LTC',type:'crypto',exchange:'binance'},
+];
+let _scanResults=[];
+async function runMarketScan(){
+  const minConf=parseFloat(document.getElementById('scan-min-conf').value)||0.65;
+  const topN=parseInt(document.getElementById('scan-topn').value)||10;
+  const actionFilter=document.getElementById('scan-action').value;
+  const typeFilter=document.getElementById('scan-type').value;
+  const all=defaultSymbols.filter(s=>typeFilter==='all'||s.type===typeFilter);
+  const prog=document.getElementById('scan-progress'),out=document.getElementById('scan-result');
+  const addBtn=document.getElementById('scan-add-btn'),runBtn=document.getElementById('scan-run-btn');
+  addBtn.disabled=true;runBtn.disabled=true;_scanResults=[];
+  if(all.length===0){out.innerHTML='<div class="scan-empty">無符合 symbol</div>';runBtn.disabled=false;return;}
+  out.innerHTML='<div class="scan-empty">掃描中… 0 / '+all.length+'</div>';
+  const results=[];
+  for(let i=0;i<all.length;i+=5){
+    const batch=all.slice(i,i+5);
+    prog.textContent=`掃描中… ${i} / ${all.length}`;
+    const res=await Promise.all(batch.map(async s=>{
+      try{
+        const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+s.symbol+'&limit=100');
+        if(!bars?.data?.bars||bars.data.bars.length<30)return null;
+        const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'composite',symbol:s.symbol,exchange:s.exchange,interval:'1d',bars:bars.data.bars})});
+        if(!r?.data)return null;
+        const last=bars.data.bars[bars.data.bars.length-1];
+        return{symbol:s.symbol,exchange:s.exchange,type:s.type,action:r.data.action,confidence:r.data.confidence||0,price:last.close};
+      }catch(e){return null;}
+    }));
+    res.forEach(r=>{if(r)results.push(r);});
+  }
+  prog.textContent=`完成 ${results.length} / ${all.length}`;
+  runBtn.disabled=false;
+  const filtered=results
+    .filter(r=>r.action!=='hold')
+    .filter(r=>actionFilter==='any'||r.action===actionFilter)
+    .filter(r=>r.confidence>=minConf)
+    .sort((a,b)=>b.confidence-a.confidence)
+    .slice(0,topN);
+  _scanResults=filtered;
+  if(filtered.length===0){out.innerHTML='<div class="scan-empty">無符合條件(共掃 '+results.length+' 個、信心 ≥ '+minConf+')</div>';return;}
+  out.innerHTML=filtered.map((r,i)=>{
+    const cls=r.action==='buy'?'buy':'sell',fcls=r.action==='buy'?'up':'down',pct=Math.round(r.confidence*100);
+    return`<div class="scan-row">
+      <span class="sr-sym">${esc(r.symbol)}</span>
+      <span class="sr-act ${cls}">${r.action.toUpperCase()}</span>
+      <div class="bar"><div class="fill ${fcls}" style="width:${pct}%"></div></div>
+      <span class="sr-px">$${Number(r.price).toFixed(2)} · ${pct}%</span>
+      <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-idx="${i}" checked>加</label>
+    </div>`;
+  }).join('');
+  addBtn.disabled=false;
+}
+async function addBatchToWatch(){
+  if(!_scanResults.length)return;
+  const checked=[...document.querySelectorAll('#scan-result input[type=checkbox]:checked')]
+    .map(cb=>_scanResults[parseInt(cb.dataset.idx)]).filter(Boolean);
+  if(!checked.length){toastWarn('沒有勾選任何 symbol');return;}
+  const qty=parseFloat(document.getElementById('w-qty').value)||1;
+  let ok=0,fail=0;
+  for(const r of checked){
+    const x=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:r.symbol,exchange:r.exchange,strategy:'composite',quantity:qty})});
+    if(x?.data||x?.success||x?.ok)ok++;else fail++;
+  }
+  if(ok>0)toastOk(`已加入 ${ok} 個監控`+(fail>0?`,失敗 ${fail}`:''));
+  else toastErr(`全部失敗:${fail} 個`);
+  loadStatus();
+}
+
+/* ───────────── 價格告警 ───────────── */
 async function loadAlerts(){
   const j=await api('/api/v1/alerts/rules'); const d=j.data||j; const rules=d.rules||d||[];
   document.getElementById('a-table').innerHTML=(Array.isArray(rules)?rules:[]).map(r=>
@@ -136,11 +366,155 @@ async function addAlert(){
   if(!symbol||isNaN(threshold))return toast('填 symbol / 門檻');
   const name=`${symbol} ${condition_type} ${threshold}`;
   const r=await api('/api/v1/alerts/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,condition_type,symbol,exchange,threshold,cooldown_minutes})});
-  toast(r?.success?'告警已建':'失敗:'+(r?.error||'?')); loadAlerts();
+  toast(r?.success?'告警已建':'失敗:'+(r?.error||r?.message||'?'), r?.success?'ok':'error'); loadAlerts();
 }
-async function rmAlert(id){const r=await api(`/api/v1/alerts/rules/${id}`,{method:'DELETE'});toast(r?.success?'已刪':'失敗');loadAlerts();}
+async function rmAlert(id){const r=await api(`/api/v1/alerts/rules/${id}`,{method:'DELETE'});toast(r?.success?'已刪':'失敗', r?.success?'ok':'error');loadAlerts();}
 
-loadStatus(); loadAlerts(); setInterval(loadStatus,20000);
+/* ───────────── 憑證 / 兩步驗證（與 legacy 邏輯一致）───────────── */
+function copyText(elId, isText=false){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const val = isText ? el.textContent : el.value;
+  navigator.clipboard.writeText(val).then(() => {});
+}
+function copyBackupCodes(){
+  const div = document.getElementById('totp-backup-codes');
+  if (!div) return;
+  const codes = Array.from(div.querySelectorAll('code')).map(c => c.textContent).join('\n');
+  navigator.clipboard.writeText(codes);
+}
+async function refreshTotpStatus(){
+  const r = await _authFetch('/api/v1/auth/me');
+  const statusEl  = document.getElementById('totp-status');
+  const enableA   = document.getElementById('totp-enable-area');
+  const enrollA   = document.getElementById('totp-enroll-area');
+  const disableA  = document.getElementById('totp-disable-area');
+  if (!statusEl) return;
+  if (!r?.success){
+    statusEl.textContent = '— 未登入 —';
+    enableA.style.display = enrollA.style.display = disableA.style.display = 'none';
+    return;
+  }
+  const enabled = !!r.data?.two_fa_enabled;
+  if (enabled){
+    statusEl.innerHTML = '✅ <span class="grn">已啟用</span>　登入需驗證 6 位數動態碼。';
+    enableA.style.display = 'none'; enrollA.style.display = 'none'; disableA.style.display = '';
+  } else {
+    statusEl.innerHTML = '⚠️ <span class="muted">未啟用</span>　建議啟用以保護帳戶(管理 / 真錢操作)。';
+    enableA.style.display = ''; enrollA.style.display = 'none'; disableA.style.display = 'none';
+  }
+}
+async function totpStartEnroll(){
+  const r = await _authFetch('/api/v1/auth/2fa/setup', {method:'POST', body:'{}'});
+  if (!r?.success){ toastErr('啟用流程失敗:' + (r?.message || 'unknown')); return; }
+  document.getElementById('totp-otpauth').value = r.data.otpauth_url;
+  document.getElementById('totp-secret').textContent = r.data.secret;
+  document.getElementById('totp-backup-codes').innerHTML =
+    (r.data.backup_codes || []).map(c => `<code style="background:transparent;color:var(--txt)">${c}</code>`).join('　');
+  document.getElementById('totp-enable-area').style.display = 'none';
+  document.getElementById('totp-enroll-area').style.display = '';
+  document.getElementById('totp-enroll-code').value = '';
+  document.getElementById('totp-enroll-msg').textContent = '';
+}
+async function totpVerifyEnroll(){
+  const code = (document.getElementById('totp-enroll-code').value || '').trim();
+  const msg = document.getElementById('totp-enroll-msg');
+  if (!/^\d{6}$/.test(code)){ msg.style.color='var(--red)'; msg.textContent='請輸入 6 位數驗證碼'; return; }
+  const r = await _authFetch('/api/v1/auth/2fa/verify-enroll', { method:'POST', body: JSON.stringify({ totp_code: code }) });
+  if (!r?.success){ msg.style.color='var(--red)'; msg.textContent='驗證失敗:' + (r?.message || 'TOTP 不正確'); return; }
+  msg.style.color='var(--grn)'; msg.textContent='✅ 兩步驗證已啟用';
+  await refreshTotpStatus();
+}
+function totpCancelEnroll(){
+  document.getElementById('totp-enroll-area').style.display = 'none';
+  document.getElementById('totp-enable-area').style.display = '';
+}
+async function totpDisable(){
+  const code = (document.getElementById('totp-disable-code').value || '').trim();
+  const msg = document.getElementById('totp-disable-msg');
+  if (!code){ msg.style.color='var(--red)'; msg.textContent='請輸入當前 TOTP 或 backup code'; return; }
+  if (!confirm('確定停用兩步驗證?停用後登入只剩密碼。')) return;
+  const r = await _authFetch('/api/v1/auth/2fa/disable', { method:'POST', body: JSON.stringify({ proof_code: code }) });
+  if (!r?.success){ msg.style.color='var(--red)'; msg.textContent='停用失敗:' + (r?.message || 'proof code 不正確'); return; }
+  msg.style.color='var(--grn)'; msg.textContent='已停用';
+  document.getElementById('totp-disable-code').value = '';
+  await refreshTotpStatus();
+}
+async function loadMe(){
+  refreshTotpStatus();
+  const r = await _authFetch('/api/v1/exchange-credentials/');
+  const v = document.getElementById('me-viewer');
+  const tb = document.querySelector('#me-cred-table tbody');
+  if(!r?.success){
+    if(v) v.textContent = '需要登入';
+    tb.innerHTML = '<tr><td colspan="7" class="red">'+(r?.message||'unauthorized')+'</td></tr>';
+    return;
+  }
+  const data = r.data;
+  if(v) v.textContent = '登入身份:' + data.viewer.principal_id + ' · 角色:' + data.viewer.role + ' · 看到:' + (data.viewer.scope==='all'?'全部用戶憑證':'我自己');
+  const creds = data.credentials || [];
+  if(creds.length===0){ tb.innerHTML = '<tr><td colspan="7" class="muted">尚未新增憑證</td></tr>'; return; }
+  tb.innerHTML = creds.map(c => {
+    const live = c.is_demo ? '<span class="red">📋 Demo</span>' : '<span class="grn">🟢 Live</span>';
+    const status = c.disabled ? '<span class="muted">停用</span>' : '<span class="grn">啟用</span>';
+    const lastUsed = c.last_used_at ? new Date(c.last_used_at).toLocaleString() : '—';
+    const toggleBtn = c.disabled
+      ? `<button class="btn-sm" onclick="toggleMyCred('${c.entry_id}',false)">啟用</button>`
+      : `<button class="btn-sm" onclick="toggleMyCred('${c.entry_id}',true)">停用</button>`;
+    return `<tr>
+      <td><strong>${esc(c.exchange)}</strong></td>
+      <td>${esc(c.label)||'<span class="muted">—</span>'}</td>
+      <td>${live}</td><td>${status}</td>
+      <td>${new Date(c.created_at).toLocaleDateString()}</td>
+      <td>${lastUsed}</td>
+      <td>
+        <button class="btn-y btn-sm" onclick="testMyCred('${c.entry_id}')">測試</button>
+        ${toggleBtn}
+        <button class="btn-arm btn-sm" onclick="deleteMyCred('${c.entry_id}','${esc(c.exchange)}')">刪除</button>
+      </td></tr>`;
+  }).join('');
+}
+async function addMyCredential(){
+  const ex = document.getElementById('me-cred-ex').value;
+  const label = document.getElementById('me-cred-label').value;
+  const key = document.getElementById('me-cred-key').value.trim();
+  const sec = document.getElementById('me-cred-secret').value.trim();
+  const isDemo = document.getElementById('me-cred-demo').checked;
+  const msg = document.getElementById('me-cred-msg');
+  if(!key||!sec){msg.textContent='缺 API key 或 secret';msg.style.color='var(--red)';return}
+  msg.textContent='儲存中...';msg.style.color='var(--mut)';
+  const r = await _authFetch('/api/v1/exchange-credentials/', {method:'POST',
+    body: JSON.stringify({exchange:ex,api_key:key,api_secret:sec,label,is_demo:isDemo})});
+  if(!r.success){msg.textContent='✗ '+(r.message||'failed');msg.style.color='var(--red)';return}
+  msg.textContent='✓ 已加入、清除欄位中';msg.style.color='var(--grn)';
+  document.getElementById('me-cred-key').value='';
+  document.getElementById('me-cred-secret').value='';
+  document.getElementById('me-cred-label').value='';
+  document.getElementById('me-cred-demo').checked=false;
+  setTimeout(()=>{msg.textContent='';loadMe()}, 800);
+}
+async function testMyCred(entryId){
+  toastInfo('測試中、call 交易所...');
+  const r = await _authFetch('/api/v1/exchange-credentials/'+encodeURIComponent(entryId)+'/test', {method:'POST'});
+  if(!r.success){toastErr(r.message||'failed');return}
+  const d = r.data;
+  if(d.exchange_call_ok){
+    toastOk(`✓ 連線 OK · balance ${d.account.balance.toFixed(2)} ${d.account.is_demo?'VST':'USDT'} · 部位 ${d.account.positions}`);
+  } else { toastWarn('解密 OK 但交易所拒絕'); }
+}
+async function toggleMyCred(entryId, disable){
+  const path = '/api/v1/exchange-credentials/'+encodeURIComponent(entryId)+'/'+(disable?'disable':'enable');
+  const r = await _authFetch(path, {method:'POST'});
+  if(r.success){toastOk(disable?'已停用':'已啟用');loadMe()} else toastErr(r.message);
+}
+async function deleteMyCred(entryId, exchange){
+  if(!confirm(`刪除 ${exchange} 憑證?此動作不可逆。`))return;
+  const r = await _authFetch('/api/v1/exchange-credentials/'+encodeURIComponent(entryId), {method:'DELETE'});
+  if(r.success){toastOk('已刪除');loadMe()} else toastErr(r.message);
+}
+
+/* ───────────── init ───────────── */
+loadStatus(); loadAlerts(); loadMe(); setInterval(loadStatus,20000);
 </script>
 </body>
 </html>
