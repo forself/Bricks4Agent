@@ -398,6 +398,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Da
 builder.Services.AddHostedService<Broker.Services.AutoTraderHeartbeatService>();
 // ETH/BTC 比值告警 — 「ETH 補漲論」的客觀觸發點(突破 0.030 推、跌破 0.025 推)
 builder.Services.AddHostedService<Broker.Services.EthBtcRatioAlertService>();
+// 橫斷面動量 shadow runner — portfolio-level、不下單、forward 驗證 xsmom edge(XSMOM_SHADOW_ENABLED=true 開)
+builder.Services.AddHostedService<Broker.Services.XsMomShadowService>();
 // 動態合約規格 cache，啟動 + 每 12h 從 trading-worker 拉、灌進 BrokerCore.Trading.SymbolSpecs
 builder.Services.AddSingleton<Broker.Services.SymbolSpecsService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.SymbolSpecsService>());

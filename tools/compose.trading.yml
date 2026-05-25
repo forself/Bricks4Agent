@@ -104,6 +104,12 @@ services:
       # Perp 加倉(scale-in)門檻 step:required_conf = min_conf + N×step。設 1.0 = 第一筆加倉就要 0.99
       # → 等於關閉 scale-in、讓 budget_pct 成為單腿硬上限(不再疊倉破壞配置比例)。預設 0.15。
       AUTOTRADER_PERP_SCALE_IN_STEP: "${AUTOTRADER_PERP_SCALE_IN_STEP:-}"
+      # 橫斷面動量 shadow runner(portfolio-level、不下單、forward 驗證 xsmom)。預設關。
+      XSMOM_SHADOW_ENABLED: "${XSMOM_SHADOW_ENABLED:-}"
+      XSMOM_SHADOW_LOOKBACK_D: "${XSMOM_SHADOW_LOOKBACK_D:-}"
+      XSMOM_SHADOW_REBAL_D: "${XSMOM_SHADOW_REBAL_D:-}"
+      XSMOM_SHADOW_TOPK: "${XSMOM_SHADOW_TOPK:-}"
+      XSMOM_SHADOW_NOTIFY: "${XSMOM_SHADOW_NOTIFY:-}"
 
       # Lab / 排程回測（策略分析階段）。RunOnStart=true → broker 啟動就跑一輪（驗證/觸發用、跑完設回 false）。
       # 注意：MaxParallel / BacktestSymbols 不在這裡用 ${:-} 空字串覆寫（空 int 會讓 config binding crash、
