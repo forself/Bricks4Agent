@@ -1,0 +1,15 @@
+[Unit]
+Description=B4A Docker Watchdog (health alerts + self-heal)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/b4a/tools/docker-watchdog.py
+Restart=always
+RestartSec=10
+User=root
+# watchdog 本身死了 systemd 會在 10s 內拉起;監看的是別的容器、自己也要活著
+
+[Install]
+WantedBy=multi-user.target

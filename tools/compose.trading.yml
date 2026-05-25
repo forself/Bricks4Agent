@@ -222,6 +222,17 @@ services:
     networks:
       - trading-net
     restart: unless-stopped
+    # Liveness：打 /metrics（無 auth、輕量）。process 活著但 ASP.NET 卡死/deadlock 時
+    # /metrics 不回 → 連續失敗標 unhealthy → autoheal 自動重啟（解「看起來在跑、其實死了」）。
+    # start_period 給 broker 開機（DB init）緩衝、期間 fail 不算數。
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:5000/metrics"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "autoheal=true"
 
   # ── Quote Worker（報價 + K 線 + 技術指標）────────────────────────────
   quote-worker:
@@ -362,6 +373,23 @@ services:
     depends_on:
       - broker
     restart: unless-stopped
+
+  # ── Autoheal（自癒）────────────────────────────────────────────────
+  # 監看帶 label autoheal=true 且有 healthcheck 的容器（目前只有 broker）；
+  # 被 healthcheck 標成 unhealthy 就自動 docker restart。解「broker process 活著但卡死」。
+  # 硬崩潰由各 service 的 restart:unless-stopped 處理；worker 沒 healthcheck（image 無 curl）
+  # 改由 host 端 watchdog（tools/docker-watchdog.py）偵測 + 重啟 + 推 Discord。
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: b4a-autoheal
+    restart: always
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal   # 只動帶 autoheal=true 的容器
+      AUTOHEAL_INTERVAL: "15"              # 每 15s 檢查一次 health 狀態
+      AUTOHEAL_START_PERIOD: "90"          # 容器啟動後 90s 內不動（配合 broker start_period）
+      CURL_TIMEOUT: "30"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   trading-net:
