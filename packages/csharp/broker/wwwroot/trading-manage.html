@@ -191,6 +191,41 @@
   </div>
 </div>
 
+<div id="admin-section" style="display:none">
+<h2>👥 用戶管理 · admin only</h2>
+<div class="panel">
+  <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="muted" style="font-size:11px">改 role / 重設密碼會撤銷該用戶現有 session</span>
+    <button class="btn-sm" onclick="loadAdmin()" style="margin-left:auto">重新整理</button>
+  </div>
+  <div class="card">
+    <h3>新增用戶</h3>
+    <div class="grid2">
+      <div><label>Principal ID(帳號)</label>
+        <input id="admin-new-pid" placeholder="user_alice / user_bob" class="mono" style="width:100%"></div>
+      <div><label>顯示名稱</label>
+        <input id="admin-new-name" placeholder="Alice" style="width:100%"></div>
+      <div><label>初始密碼(≥8 字)</label>
+        <input id="admin-new-pwd" type="password" style="width:100%"></div>
+      <div><label>角色</label>
+        <select id="admin-new-role" style="width:100%">
+          <option value="user">user(看自己)</option>
+          <option value="admin">admin(看全部)</option>
+        </select></div>
+      <div style="grid-column:1/-1"><button class="btn-y btn-sm" onclick="addUser()">建立</button>
+        <span id="admin-new-msg" class="hint" style="margin-left:10px"></span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>用戶清單</h3>
+    <table id="admin-users-table" style="font-size:12px">
+      <thead><tr><th>Principal ID</th><th>顯示名稱</th><th>角色</th><th>狀態</th><th>建立</th><th>最後登入</th><th>操作</th></tr></thead>
+      <tbody><tr><td colspan="7" class="muted">—</td></tr></tbody>
+    </table>
+  </div>
+</div>
+</div>
+
 <div class="links">
   <a href="/trading.html">← 監控儀錶板</a> ·
   <a href="/strategy-lab.html">策略 / 回測 Lab</a> ·
@@ -513,8 +548,100 @@ async function deleteMyCred(entryId, exchange){
   if(r.success){toastOk('已刪除');loadMe()} else toastErr(r.message);
 }
 
+/* ───────────── 用戶管理（admin only，與 legacy 邏輯一致）───────────── */
+async function detectAdmin(){
+  try{
+    const r = await _authFetch('/api/v1/auth/me');
+    if(r?.success && r.data?.role==='admin'){
+      document.getElementById('admin-section').style.display='';
+      loadAdmin();
+    }
+  }catch{}
+}
+async function loadAdmin(){
+  const r = await _authFetch('/api/v1/admin/users/');
+  const tb = document.querySelector('#admin-users-table tbody');
+  if(!r?.success){ tb.innerHTML = '<tr><td colspan="7" class="red">'+(r?.message||'admin only')+'</td></tr>'; return; }
+  const users = r.data.users || [];
+  tb.innerHTML = users.map(u => {
+    const roleColor = u.role==='admin' ? 'var(--grn)' : 'var(--txt)';
+    const stateChip = u.disabled
+      ? '<span class="red">✗ 停用</span>'
+      : (u.must_change_password ? '<span class="yel">⚠ 待改密碼</span>' : '<span class="grn">✓ 啟用</span>');
+    const lastLogin = u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '—';
+    const toggleBtn = u.disabled
+      ? `<button class="btn-sm" onclick="adminEnableUser('${u.principal_id}')">啟用</button>`
+      : `<button class="btn-sm" onclick="adminDisableUser('${u.principal_id}')">停用</button>`;
+    return `<tr>
+      <td><code>${esc(u.principal_id)}</code></td>
+      <td>${esc(u.display_name)||''}</td>
+      <td><span style="color:${roleColor}">${esc(u.role)}</span></td>
+      <td>${stateChip}</td>
+      <td>${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>${lastLogin}</td>
+      <td>
+        <button class="btn-y btn-sm" onclick="adminResetPwd('${u.principal_id}')">重設密碼</button>
+        <button class="btn-sm" onclick="adminToggleRole('${u.principal_id}','${u.role}')">切角色</button>
+        ${toggleBtn}
+        <button class="btn-arm btn-sm" onclick="adminDeleteUser('${u.principal_id}')">刪除</button>
+      </td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="muted">無用戶</td></tr>';
+}
+async function addUser(){
+  const pid = document.getElementById('admin-new-pid').value.trim();
+  const pwd = document.getElementById('admin-new-pwd').value;
+  const role = document.getElementById('admin-new-role').value;
+  const name = document.getElementById('admin-new-name').value.trim();
+  const msg = document.getElementById('admin-new-msg');
+  if(!pid||!pwd){msg.textContent='缺 principal_id 或密碼';msg.style.color='var(--red)';return}
+  if(pwd.length<8){msg.textContent='密碼至少 8 字';msg.style.color='var(--red)';return}
+  msg.textContent='建立中...';msg.style.color='var(--mut)';
+  const r = await _authFetch('/api/v1/admin/users/', {method:'POST',
+    body: JSON.stringify({principal_id:pid,password:pwd,role,display_name:name})});
+  if(!r.success){msg.textContent='✗ '+(r.message||'failed');msg.style.color='var(--red)';return}
+  msg.textContent='✓ 建立成功';msg.style.color='var(--grn)';
+  document.getElementById('admin-new-pid').value='';
+  document.getElementById('admin-new-pwd').value='';
+  document.getElementById('admin-new-name').value='';
+  setTimeout(()=>{msg.textContent='';loadAdmin()}, 800);
+}
+async function adminResetPwd(pid){
+  const np = prompt(`為 ${pid} 設新密碼(≥8 字、user 下次登入需再改):`);
+  if(!np)return;
+  if(np.length<8){toastErr('密碼至少 8 字');return}
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/reset-password',
+    {method:'POST',body:JSON.stringify({new_password:np})});
+  if(r.success)toastOk('已重設、已撤銷該用戶 sessions'); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminToggleRole(pid, current){
+  const next = current==='admin' ? 'user' : 'admin';
+  if(!confirm(`把 ${pid} 改成 ${next}?將撤銷其現有 session。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/role',
+    {method:'POST',body:JSON.stringify({role:next})});
+  if(r.success)toastOk('角色已改為 '+next); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminDisableUser(pid){
+  if(!confirm(`停用 ${pid}?該用戶現有 session 會被踢線、不能登入。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/disable', {method:'POST'});
+  if(r.success)toastOk('已停用'); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminEnableUser(pid){
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid)+'/enable', {method:'POST'});
+  if(r.success)toastOk('已啟用'); else toastErr(r.message);
+  loadAdmin();
+}
+async function adminDeleteUser(pid){
+  if(!confirm(`徹底刪 ${pid}?不可逆。`))return;
+  const r = await _authFetch('/api/v1/admin/users/'+encodeURIComponent(pid), {method:'DELETE'});
+  if(r.success)toastOk('已刪除'); else toastErr(r.message);
+  loadAdmin();
+}
+
 /* ───────────── init ───────────── */
-loadStatus(); loadAlerts(); loadMe(); setInterval(loadStatus,20000);
+loadStatus(); loadAlerts(); loadMe(); detectAdmin(); setInterval(loadStatus,20000);
 </script>
 </body>
 </html>
