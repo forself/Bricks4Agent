@@ -63,6 +63,11 @@ if (args.Contains("--xsmom")) { await RunXsMom(); return; }
 // 量化:各幣 funding 年化多少、穩不穩、扣成本後淨 carry、小本金值不值得。
 if (args.Contains("--carry")) { await RunCarry(); return; }
 
+// ── --xsrev:短週期橫斷面反轉(long 跌最兇/short 漲最兇)+ 與動量相關性 ──
+if (args.Contains("--xsrev")) { await RunXsRev(); return; }
+// ── --fundsig:資金費當跨幣訊號(contrarian:long 低 funding/short 高 funding)──
+if (args.Contains("--fundsig")) { await RunFundSig(); return; }
+
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
     var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit=1000";
@@ -1094,6 +1099,163 @@ async Task RunCarry()
     Console.WriteLine($"  $350 本金 → 每倉 ~{350.0 / (topN * 2):F0} USDT,逼近最小單、手續費吃掉大半 carry → **不划算**。");
     Console.WriteLine($"  建議:本金 ≥ ${topN * 2 * 75} 左右(每倉 ~75 USDT、fee 佔比夠小)再上;當『穩定底盤』、跟方向性 edge 並存。");
     Console.WriteLine($"  ⚠ 毛 carry {basketAnn:F0}% 看似高多半是少數高波動 alt 灌的(年化波動欄越大越不穩);BTC/ETH funding 通常才年化個位數。");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --xsrev 短週期橫斷面反轉:long 近期跌最兇 / short 漲最兇。跟動量負/低相關 = 配對紅利。
+// ⚠ 高換手(日頻 rebal)→ 成本是生死關。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunXsRev()
+{
+    decimal EnvR(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    int topK = (int)EnvR("XSREV_TOPK", 3m);
+    decimal costSide = EnvR("XSREV_COST_PER_SIDE", 0.0008m);
+    Console.WriteLine("=== 短週期橫斷面反轉 --xsrev(long 跌最兇 / short 漲最兇、等權市場中性)===");
+    Console.WriteLine($"  topK={topK} · 成本 {costSide:P2}/邊\n");
+
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    var coins = dat.Keys.ToList();
+    int L = dat.Values.Min(b => b.Count);
+    var cl = coins.ToDictionary(c => c, c => dat[c].Skip(dat[c].Count - L).Select(b => b.Close).ToList());
+    Console.WriteLine($"宇宙:{coins.Count} 幣、對齊尾段 {L} 日\n");
+
+    // reversal=true:long bottomK(跌最兇)/short topK(漲最兇);false=動量
+    (List<decimal> eq, decimal tov) Run(int lookback, int rebal, bool reversal, decimal cost)
+    {
+        var eq = new List<decimal> { 1m }; List<string> curL = new(), curS = new(); int rb = 0; decimal ts = 0m;
+        for (int t = lookback; t < L - 1; t++)
+        {
+            if ((t - lookback) % rebal == 0)
+            {
+                var rank = coins.Select(c => (c, r: cl[c][t - lookback] > 0 ? (cl[c][t] - cl[c][t - lookback]) / cl[c][t - lookback] : 0m)).OrderByDescending(x => x.r).ToList();
+                var winners = rank.Take(topK).Select(x => x.c).ToList();
+                var losers = rank.AsEnumerable().Reverse().Take(topK).Select(x => x.c).ToList();
+                var nL = reversal ? losers : winners;
+                var nS = reversal ? winners : losers;
+                int changed = nL.Except(curL).Count() + curL.Except(nL).Count() + nS.Except(curS).Count() + curS.Except(nS).Count();
+                decimal tov = (decimal)changed / (4 * topK); ts += tov; rb++;
+                eq[^1] *= (1m - tov * 2m * cost); curL = nL; curS = nS;
+            }
+            decimal Ret(List<string> s) => s.Count == 0 ? 0m : s.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m);
+            eq.Add(eq[^1] * (1m + Ret(curL) - Ret(curS)));
+        }
+        return (eq, rb > 0 ? ts / rb : 0m);
+    }
+
+    int[] lbs = { 1, 2, 3, 5 }; int[] rbs = { 1, 2, 3 };
+    Console.WriteLine("=== 反轉敏感度(realistic 成本;格=Sharpe / 年化%)===");
+    Console.WriteLine("  lookback\\rebal " + string.Join("", rbs.Select(r => $"{r + "d",14}")));
+    foreach (var lb in lbs)
+    {
+        var cells = rbs.Select(rb => { var (eq, _) = Run(lb, rb, true, costSide); var st = StatsOf(eq); var ann = eq.Count > 30 ? (decimal)((Math.Pow((double)eq[^1], 365.0 / eq.Count) - 1) * 100) : 0m; return $"{st.sharpe,6:F2}/{ann,5:F0}%"; });
+        Console.WriteLine($"  {lb + "d",-14}" + string.Join("  ", cells));
+    }
+
+    int repLb = (int)EnvR("XSREV_LOOKBACK", 3m), repRb = (int)EnvR("XSREV_REBAL", 2m);
+    var (eqF, tov2) = Run(repLb, repRb, true, costSide);
+    var (eqG, _) = Run(repLb, repRb, true, 0m);
+    var full = StatsOf(eqF); var oos = StatsOf(eqF.Skip(eqF.Count / 2).ToList());
+    Console.WriteLine($"\n=== 代表 反轉 lookback{repLb}/rebal{repRb} ===");
+    Console.WriteLine($"  全期 realistic: Sharpe {full.sharpe:F2} ret {full.ret:F0}% maxDD {full.dd:F0}% 換手 {tov2:P0}/rebal");
+    Console.WriteLine($"  全期 gross 0成本: Sharpe {StatsOf(eqG).sharpe:F2}  → ⚠ 成本侵蝕 {StatsOf(eqG).sharpe - full.sharpe:F2}(高換手致命傷)");
+    Console.WriteLine($"  後半 OOS: Sharpe {oos.sharpe:F2} ret {oos.ret:F0}%");
+    // 與動量的相關(配對紅利關鍵)
+    var (eqMom, _) = Run(30, 7, false, costSide);
+    int n = Math.Min(eqF.Count, eqMom.Count);
+    var rhoMom = CorrelationGuard.PearsonOfReturns(eqF.Skip(eqF.Count - n).ToList(), eqMom.Skip(eqMom.Count - n).ToList());
+    Console.WriteLine($"\n  與 xsmom 動量(30/7)相關 ρ = {rhoMom:F2} → {(rhoMom < 0m ? "✅ 負相關、絕佳配對(動量+反轉互補)" : rhoMom < 0.3m ? "○ 低相關、可配對" : "⚠ 同向、配對紅利低")}");
+    Console.WriteLine($"  判定:OOS Sharpe {oos.sharpe:F2} + 成本後 {(full.sharpe > 0.3m ? "撐得住" : "被成本咬爛")} → {(oos.sharpe > 0.3m && full.sharpe > 0.3m ? "可進 paper" : "反轉被換手成本吃掉、典型結果、不上")}");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --fundsig 資金費當跨幣訊號:contrarian — long funding 最低(空擁擠)/short 最高(多擁擠)。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunFundSig()
+{
+    int topK = (int)(decimal.TryParse(Environment.GetEnvironmentVariable("FUNDSIG_TOPK"), out var tk) ? tk : 3m);
+    decimal costSide = 0.0008m;
+    Console.WriteLine("=== 資金費跨幣訊號 --fundsig(contrarian:long 低 funding / short 高 funding、等權)===\n");
+
+    async Task<List<decimal>> FetchFundDaily(string sym)
+    {
+        // Binance fundingRate 單次 limit 實測只回 ~200 筆 → 分頁往回(endTime 遞減)抓 ~2 年。
+        try
+        {
+            var all = new List<(long t, decimal r)>();
+            long? endTime = null;
+            for (int page = 0; page < 12; page++)
+            {
+                var url = $"https://fapi.binance.com/fapi/v1/fundingRate?symbol={sym}&limit=1000" + (endTime.HasValue ? $"&endTime={endTime.Value}" : "");
+                var json = await http.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(json);
+                var batch = new List<(long, decimal)>();
+                foreach (var e in doc.RootElement.EnumerateArray())
+                    if (e.TryGetProperty("fundingTime", out var ft) && decimal.TryParse(e.GetProperty("fundingRate").GetString(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+                        batch.Add((ft.GetInt64(), v));
+                if (batch.Count == 0) break;
+                all.AddRange(batch);
+                endTime = batch.Min(x => x.Item1) - 1;   // 往更早抓
+                if (batch.Count < 150) break;            // 沒更多了
+                await Task.Delay(120);
+            }
+            var pts = all.OrderBy(x => x.t).Select(x => x.r).ToList();
+            var daily = new List<decimal>();   // 3 個 8h ≈ 1 日
+            for (int i = 0; i + 2 < pts.Count; i += 3) daily.Add(pts[i] + pts[i + 1] + pts[i + 2]);
+            return daily;
+        }
+        catch { return new List<decimal>(); }
+    }
+
+    var fund = new Dictionary<string, List<decimal>>(); var px = new Dictionary<string, List<decimal>>();
+    foreach (var sym in symbols)
+    {
+        var fd = await FetchFundDaily(sym); var b = await Fetch(sym);
+        // 要求 ≥250 天 funding+price,避免某個短歷史幣把對齊窗口截到很短(→ 過擬合假象)
+        if (fd.Count >= 250 && b.Count >= 250) { fund[sym] = fd; px[sym] = b.Select(x => x.Close).ToList(); }
+        else Console.WriteLine($"  (跳過 {Sh(sym)}:funding {fd.Count}d / price {b.Count}d 不足 250)");
+    }
+    var coins = fund.Keys.ToList();
+    if (coins.Count < topK * 2 + 1) { Console.WriteLine("資料不足。"); return; }
+    int L = coins.Min(c => Math.Min(fund[c].Count, px[c].Count));
+    var fd2 = coins.ToDictionary(c => c, c => fund[c].Skip(fund[c].Count - L).ToList());
+    var px2 = coins.ToDictionary(c => c, c => px[c].Skip(px[c].Count - L).ToList());
+    Console.WriteLine($"宇宙:{coins.Count} 幣、對齊尾段 {L} 日\n");
+
+    (List<decimal> eq, decimal tov) Run(int sigLb, int rebal, decimal cost)
+    {
+        var eq = new List<decimal> { 1m }; List<string> curL = new(), curS = new(); int rb = 0; decimal ts = 0m;
+        for (int t = sigLb; t < L - 1; t++)
+        {
+            if ((t - sigLb) % rebal == 0)
+            {
+                var rank = coins.Select(c => (c, s: fd2[c].Skip(t - sigLb).Take(sigLb).DefaultIfEmpty(0m).Average())).OrderBy(x => x.s).ToList();   // 升序:funding 最低在前
+                var nL = rank.Take(topK).Select(x => x.c).ToList();          // long 低 funding
+                var nS = rank.AsEnumerable().Reverse().Take(topK).Select(x => x.c).ToList();  // short 高 funding
+                int changed = nL.Except(curL).Count() + curL.Except(nL).Count() + nS.Except(curS).Count() + curS.Except(nS).Count();
+                decimal tov = (decimal)changed / (4 * topK); ts += tov; rb++;
+                eq[^1] *= (1m - tov * 2m * cost); curL = nL; curS = nS;
+            }
+            decimal Ret(List<string> s) => s.Count == 0 ? 0m : s.Average(c => px2[c][t] > 0 ? (px2[c][t + 1] - px2[c][t]) / px2[c][t] : 0m);
+            eq.Add(eq[^1] * (1m + Ret(curL) - Ret(curS)));
+        }
+        return (eq, rb > 0 ? ts / rb : 0m);
+    }
+
+    int[] lbs = { 3, 7, 14 }; int[] rbs = { 3, 7 };
+    Console.WriteLine("=== 敏感度(realistic 成本;格=Sharpe / 年化%)===");
+    Console.WriteLine("  sigLookback\\rebal " + string.Join("", rbs.Select(r => $"{r + "d",14}")));
+    foreach (var lb in lbs)
+    {
+        var cells = rbs.Select(rb => { var (eq, _) = Run(lb, rb, costSide); var st = StatsOf(eq); var ann = eq.Count > 30 ? (decimal)((Math.Pow((double)eq[^1], 365.0 / eq.Count) - 1) * 100) : 0m; return $"{st.sharpe,6:F2}/{ann,5:F0}%"; });
+        Console.WriteLine($"  {lb + "d",-17}" + string.Join("  ", cells));
+    }
+    var (eqF, tov2) = Run(7, 7, costSide);
+    var full = StatsOf(eqF); var oos = StatsOf(eqF.Skip(eqF.Count / 2).ToList());
+    Console.WriteLine($"\n=== 代表 funding-contrarian sigLb7/rebal7 ===");
+    Console.WriteLine($"  全期: Sharpe {full.sharpe:F2} ret {full.ret:F0}% maxDD {full.dd:F0}% 換手 {tov2:P0}");
+    Console.WriteLine($"  後半 OOS: Sharpe {oos.sharpe:F2} ret {oos.ret:F0}%");
+    Console.WriteLine($"  判定:OOS Sharpe {oos.sharpe:F2} → {(oos.sharpe > 0.3m ? "✅ 有戲、可進 paper" : oos.sharpe > 0m ? "⚠ 微弱" : "❌ 無 edge")}(funding 含 carry 成分、本就帶 contrarian 味)");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
