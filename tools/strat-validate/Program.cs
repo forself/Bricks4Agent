@@ -73,6 +73,8 @@ if (args.Contains("--tsmom")) { await RunTsMom(); return; }
 if (args.Contains("--pairs")) { await RunPairs(); return; }
 // ── --lowvol:橫斷面低波動異常(long 低波動幣/short 高波動)──
 if (args.Contains("--lowvol")) { await RunLowVol(); return; }
+// ── --harmonic:諧波/fib 跨時框重驗(觸發頻率 + OOS + 顯著性;測低時框能否救回)──
+if (args.Contains("--harmonic")) { await RunHarmonic(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
@@ -1467,6 +1469,84 @@ async Task RunLowVol()
     var (eqF, _) = Run(30, 14, costSide);
     var full = StatsOf(eqF); var oos = StatsOf(eqF.Skip(eqF.Count / 2).ToList());
     Console.WriteLine($"\n  代表 30/14: 全期 Sharpe {full.sharpe:F2} / OOS {oos.sharpe:F2} → {(oos.sharpe > 0.3m ? "✅ 有戲" : oos.sharpe > 0m ? "⚠ 弱" : "❌ 無 edge")}");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --harmonic 諧波/fib 跨時框重驗:觸發頻率(諧波常常幾乎不觸發)+ OOS + 池化顯著性。
+// 測「換低時框(更多觸發)能不能把無 edge 的機械諧波救回來」這個還沒系統試過的變體。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunHarmonic()
+{
+    Console.WriteLine("=== 諧波 / Fib 跨時框重驗(機械版;memory 已記 1d 無 OOS edge、本次測低時框變體)===\n");
+    var rng2 = new Random(7);
+    (decimal lo, double t) Boot(List<decimal> xs)
+    {
+        if (xs.Count < 5) return (0, 0);
+        double mean = (double)xs.Average();
+        double sd = Math.Sqrt(xs.Select(x => ((double)x - mean) * ((double)x - mean)).Sum() / (xs.Count - 1));
+        double se = sd / Math.Sqrt(xs.Count); double tStat = se > 0 ? mean / se : 0;
+        var ms = new double[1500];
+        for (int b = 0; b < 1500; b++) { double s = 0; for (int i = 0; i < xs.Count; i++) s += (double)xs[rng2.Next(xs.Count)]; ms[b] = s / xs.Count; }
+        Array.Sort(ms); return ((decimal)ms[37], tStat);   // ~2.5% 分位
+    }
+
+    // 受測:harmonic_ls / fib_retrace_ls(多空)+ harmonic_pattern / fibonacci_retracement(純多)
+    var ls = new HashSet<string> { "harmonic_ls", "fib_retrace_ls" };
+    var cand = new (string name, IStrategy s, bool isLs)[]
+    {
+        ("harmonic_ls",            strats.First(x => x.name == "harmonic_ls").s, true),
+        ("fib_retrace_ls",         strats.First(x => x.name == "fib_retrace_ls").s, true),
+        ("harmonic_pattern",       new HarmonicStrategy(), false),
+        ("fibonacci_retracement",  new FibonacciStrategy(), false),
+    };
+    string[] tfs = { "1d", "12h", "4h" };
+
+    foreach (var iv in tfs)
+    {
+        // 抓該時框宇宙
+        var dv = new Dictionary<string, List<BarData>>();
+        foreach (var sym in symbols) { try { var b = await Fetch(sym, iv); if (b.Count >= 350) dv[sym] = b; } catch { } }
+        Console.WriteLine($"=== 時框 {iv}({dv.Count} 幣)===");
+        Console.WriteLine($"  {"策略",-22}{"交易/千根",11}{"full Sh",9}{"OOS中位%",10}{"顯著CI下界",12}  判定");
+        foreach (var (name, s, isLs) in cand)
+        {
+            var trades = new List<decimal>(); var fullSh = new List<decimal>(); var oos = new List<decimal>(); var pool = new List<decimal>();
+            foreach (var kv in dv)
+            {
+                var cfg = new StrategyConfig { Symbol = kv.Key, Interval = iv };
+                try
+                {
+                    if (isLs)
+                    {
+                        var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m);
+                        if (bt.TotalBars < 100) continue;
+                        trades.Add(bt.TotalTrades / (decimal)kv.Value.Count * 1000m); fullSh.Add(bt.SharpeRatio);
+                        var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                        if (w.TotalFolds > 0) { oos.Add(w.AvgTestReturnPct); foreach (var f in w.Folds.Where(f => f.Test != null)) pool.Add(f.Test!.TotalReturnPct); }
+                    }
+                    else
+                    {
+                        var bt = BacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m);
+                        if (bt.TotalBars < 100) continue;
+                        trades.Add(bt.TotalTrades / (decimal)kv.Value.Count * 1000m); fullSh.Add(bt.SharpeRatio);
+                        var w = BacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                        if (w.TotalFolds > 0) { oos.Add(w.AvgTestReturnPct); foreach (var f in w.Folds.Where(f => f.Test != null)) pool.Add(f.Test!.TotalReturnPct); }
+                    }
+                }
+                catch { }
+            }
+            if (trades.Count == 0) { Console.WriteLine($"  {name,-22}(無資料)"); continue; }
+            var (ciLo, _) = Boot(pool);
+            decimal tpk = Math.Round(trades.Average(), 1);
+            decimal medOos = Median(oos);
+            bool sig = ciLo > 0m && pool.Count >= 5;
+            bool tooRare = tpk < 1m;
+            string verdict = tooRare ? "❌ 幾乎不觸發" : sig && medOos > 0m ? "✅ 有戲?!" : "❌ 無 edge";
+            Console.WriteLine($"  {name,-22}{tpk,11:F1}{fullSh.Average(),9:F2}{medOos,10:F1}{ciLo,12:F1}  {verdict}");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("判定:諧波機械版的死穴是『1d 幾乎不觸發』;換低時框觸發變多 → 看 OOS+顯著性有沒有救回。");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
