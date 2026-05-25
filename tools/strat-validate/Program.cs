@@ -59,6 +59,10 @@ if (args.Contains("--allocate")) { await RunAllocate(); return; }
 // 跟所有「單幣技術指標」正交;驗證有沒有 OOS edge + 跟現有書(decorr4)相不相關。
 if (args.Contains("--xsmom")) { await RunXsMom(); return; }
 
+// ── --carry:資金費 carry 研究(現貨多+永續空收 funding、近零風險、跟價格動量正交)──
+// 量化:各幣 funding 年化多少、穩不穩、扣成本後淨 carry、小本金值不值得。
+if (args.Contains("--carry")) { await RunCarry(); return; }
+
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
     var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit=1000";
@@ -1025,6 +1029,71 @@ async Task RunXsMom()
         (oos.sharpe > 0.3m ? "✅ OOS 站得住、可進 paper" : oos.sharpe > 0m ? "⚠ OOS 微正但弱、再觀察" : "❌ OOS 翻負、edge 不穩、別上") +
         $" · 與 decorr4 ρ 低=分散有但 edge 才是門檻。");
     Console.WriteLine("  (env XSMOM_LOOKBACK / XSMOM_REBAL 換格驗 OOS;敏感度表跨越正負 = 參數脆、過擬合風險高。");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --carry 資金費 carry:現貨多 + 永續空收 funding。近零方向風險、跟價格 edge 正交的「穩定底盤」。
+// 量化各幣 funding 年化/穩定度 + 籃子淨 carry + 小本金可行性。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunCarry()
+{
+    int topN = (int)(decimal.TryParse(Environment.GetEnvironmentVariable("CARRY_TOPN"), out var tn) ? tn : 5m);
+    Console.WriteLine("=== 資金費 carry --carry(現貨多+永續空收 funding;年化=rate×3×365)===\n");
+
+    // 抓 Binance USDT-M funding 歷史(8h 一次、1000 筆≈333 天)
+    async Task<List<decimal>> FetchFunding(string sym)
+    {
+        try
+        {
+            var json = await http.GetStringAsync($"https://fapi.binance.com/fapi/v1/fundingRate?symbol={sym}&limit=1000");
+            using var doc = JsonDocument.Parse(json);
+            var outl = new List<decimal>();
+            foreach (var e in doc.RootElement.EnumerateArray())
+                if (e.TryGetProperty("fundingRate", out var fr) && decimal.TryParse(fr.GetString(), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+                    outl.Add(v);
+            return outl;
+        }
+        catch { return new List<decimal>(); }
+    }
+
+    var rows = new List<(string coin, decimal ann, decimal recentAnn, decimal pctPos, decimal annStd, int n)>();
+    foreach (var sym in symbols)
+    {
+        var f = await FetchFunding(sym);
+        if (f.Count < 100) continue;
+        decimal avg = f.Average();
+        decimal ann = avg * 3m * 365m * 100m;
+        var recent = f.Skip(Math.Max(0, f.Count - 90)).ToList();   // 近 ~30 天
+        decimal recentAnn = recent.Average() * 3m * 365m * 100m;
+        decimal pctPos = (decimal)f.Count(x => x > 0m) / f.Count * 100m;
+        var a = f.Average();
+        decimal std = (decimal)Math.Sqrt((double)f.Select(x => (x - a) * (x - a)).Average()) * 3m * 365m * 100m;
+        rows.Add((Sh(sym), Math.Round(ann, 1), Math.Round(recentAnn, 1), Math.Round(pctPos, 0), Math.Round(std, 0), f.Count));
+    }
+    if (rows.Count == 0) { Console.WriteLine("無 funding 資料。"); return; }
+
+    Console.WriteLine($"  {"coin",-7}{"年化%",8}{"近30d年化%",12}{"%正",7}{"年化波動%",11}{"n",6}");
+    foreach (var r in rows.OrderByDescending(r => r.ann))
+        Console.WriteLine($"  {r.coin,-7}{r.ann,8:F1}{r.recentAnn,12:F1}{r.pctPos,6:F0}%{r.annStd,11:F0}{r.n,6}");
+
+    // 籃子:取年化 funding 最高的 topN(現貨多+永續空、等權)→ 平均 carry
+    var top = rows.OrderByDescending(r => r.ann).Take(topN).ToList();
+    decimal basketAnn = top.Average(r => r.ann);
+    decimal basketRecent = top.Average(r => r.recentAnn);
+    // 成本拖累估:每幣一對(現貨多+永續空)、開+平 4 條腿 × ~0.05% taker ≈ 0.2%/輪;月 rebal ≈ 2.4%/年 + 點差滑點 ~1% → 抓 ~3%/年
+    decimal costDrag = 3.0m;
+    decimal netAnn = basketAnn - costDrag;
+    Console.WriteLine($"\n=== 籃子(年化 funding 最高 {topN} 幣、現貨多+永續空、等權)===");
+    Console.WriteLine($"  成員:{string.Join(", ", top.Select(r => $"{r.coin}({r.ann:F0}%)"))}");
+    Console.WriteLine($"  毛 carry 年化 ~{basketAnn:F1}%(近30d ~{basketRecent:F1}%)− 成本拖累 ~{costDrag:F0}% = **淨 ~{netAnn:F1}%/年**");
+    Console.WriteLine($"  風險:近零方向(delta-neutral)、跟價格動量/TA 正交 → 真分散底盤;尾部=交易所/穩定幣脫鉤、強平、funding 反轉。");
+
+    // 小本金可行性
+    Console.WriteLine($"\n=== 小本金可行性 ===");
+    Console.WriteLine($"  {topN} 幣 carry = {topN * 2} 個小倉(每幣 現貨+永續各一)。BingX 最小名目 ~5 USDT/倉。");
+    Console.WriteLine($"  $350 本金 → 每倉 ~{350.0 / (topN * 2):F0} USDT,逼近最小單、手續費吃掉大半 carry → **不划算**。");
+    Console.WriteLine($"  建議:本金 ≥ ${topN * 2 * 75} 左右(每倉 ~75 USDT、fee 佔比夠小)再上;當『穩定底盤』、跟方向性 edge 並存。");
+    Console.WriteLine($"  ⚠ 毛 carry {basketAnn:F0}% 看似高多半是少數高波動 alt 灌的(年化波動欄越大越不穩);BTC/ETH funding 通常才年化個位數。");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
