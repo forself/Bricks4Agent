@@ -152,8 +152,37 @@ public class DailyReportService : BackgroundService
         }
 
         sb.AppendLine();
-        sb.AppendLine($"**AutoTrader watch ({watchSnapshot.Count} active)**");
-        foreach (var w in watchSnapshot.Take(8)) sb.AppendLine($"・{w}");
+        if (periodHours <= 24)
+        {
+            // 日報:每腿健康 —— 持倉 + 最新 action+原因 + 卡住旗標(解今天「看不到腿為何不跑」的痛點)
+            var posSides = await FetchPositionSidesAsync(_exchange, ct);
+            var logBySym = _autoTrader.RecentLogs
+                .GroupBy(l => l.Symbol)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.Time).First());
+            string Short(string m) => m.Length > 46 ? m[..46] + "…" : m;
+            var legs = _autoTrader.WatchList.Values.Where(w => w.Active && w.Exchange == _exchange)
+                .OrderByDescending(w => w.BudgetPct).ToList();
+            var anomalies = new List<string>();
+            sb.AppendLine($"**真錢腿健康 ({legs.Count})**");
+            foreach (var w in legs)
+            {
+                bool hasPos = posSides.TryGetValue(w.Symbol, out var side);
+                var sig = w.LastSignal ?? "?";
+                logBySym.TryGetValue(w.Symbol, out var lg);
+                var reason = lg != null ? $"{lg.Action}: {Short(lg.Message)}" : "—";
+                string mark = hasPos ? $"✅ 持倉 {side}" : (sig is "buy" or "sell" ? "⚠ 有訊號未開" : "○ 觀望");
+                sb.AppendLine($"・{w.Symbol.Replace("-USDT", "")} {w.Strategy}: {mark} · {sig} — {reason}");
+                // 卡住:有 buy/sell 訊號、無持倉、最新動作是 skip/blocked → 異常
+                if (!hasPos && sig is "buy" or "sell" && lg != null && lg.Action is "skip" or "blocked" or "error")
+                    anomalies.Add($"{w.Symbol.Replace("-USDT", "")}({sig}卡在 {lg.Action})");
+            }
+            if (anomalies.Count > 0) sb.AppendLine($"⚠ **注意**: {string.Join("、", anomalies)}");
+        }
+        else
+        {
+            sb.AppendLine($"**AutoTrader watch ({watchSnapshot.Count} active)**");
+            foreach (var w in watchSnapshot.Take(8)) sb.AppendLine($"・{w}");
+        }
 
         var body = sb.ToString();
         var title = $"{titleEmoji} 每日交易彙整 · {DateTime.UtcNow:yyyy-MM-dd}";
@@ -210,6 +239,35 @@ public class DailyReportService : BackgroundService
             list.Add((pnl, strategy, symbol));
         }
         return list;
+    }
+
+    // 抓某交易所目前有倉的 symbol→side(給日報腿健康用)。失敗回空、不擋報告。
+    private async Task<Dictionary<string, string>> FetchPositionSidesAsync(string exchange, CancellationToken ct)
+    {
+        var outp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!_registry.HasAvailableWorker("trading.account")) return outp;
+        try
+        {
+            var req = new ApprovedRequest
+            {
+                RequestId = Guid.NewGuid().ToString("N"), CapabilityId = "trading.account", Route = "get_positions",
+                Payload = JsonSerializer.Serialize(new { exchange }), Scope = "{}",
+                PrincipalId = "system", TaskId = "daily-report", SessionId = "daily-report",
+            };
+            var result = await _dispatcher.DispatchAsync(req);
+            if (!result.Success) return outp;
+            var doc = JsonDocument.Parse(result.ResultPayload ?? "{}").RootElement;
+            if (doc.TryGetProperty("positions", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                foreach (var p in arr.EnumerateArray())
+                {
+                    var sym = p.TryGetProperty("symbol", out var s) ? s.GetString() ?? "" : "";
+                    var qty = p.TryGetProperty("quantity", out var q) && q.ValueKind == JsonValueKind.Number ? q.GetDecimal() : 0m;
+                    var side = p.TryGetProperty("side", out var sd) ? sd.GetString() ?? "" : "";
+                    if (!string.IsNullOrEmpty(sym) && qty > 0m) outp[sym] = side;
+                }
+        }
+        catch { }
+        return outp;
     }
 
     private static int ParseIntEnv(string name, int defaultValue, int min, int max)
