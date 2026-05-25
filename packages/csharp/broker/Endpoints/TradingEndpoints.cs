@@ -472,7 +472,7 @@ public static class TradingEndpoints
     /// - spot(realized_pnl 為 null,如 paper alpaca/binance)→ 用 FIFO 成本基礎重放
     ///   每個 (exchange,symbol) 的買賣序列算已實現:sell 時 (proceeds−lot成本)×qty、含手續費。
     ///   → 讓 paper 現貨也有 forward P&L,當 --allocate 的第二證據源。
-    private static List<object> AggregateStrategyPnl(JsonElement doc, HashSet<string>? exFilter)
+    internal static List<object> AggregateStrategyPnl(JsonElement doc, HashSet<string>? exFilter)
     {
         var agg = new Dictionary<string, (int n, decimal pnl, int wins, HashSet<string> ex)>(StringComparer.OrdinalIgnoreCase);
         void Add(string strat, decimal pnl, string ex)

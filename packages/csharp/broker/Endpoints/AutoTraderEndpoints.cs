@@ -1,6 +1,9 @@
 using Broker.Helpers;
 using Broker.Middleware;
 using Broker.Services;
+using BrokerCore.Contracts;
+using BrokerCore.Services;
+using FunctionPool.Registry;
 using System.Text.Json;
 
 namespace Broker.Endpoints;
@@ -213,6 +216,111 @@ public static class AutoTraderEndpoints
                 time = log.Time,
             });
             return Results.Ok(ApiResponseHelper.Success(new { count = logs.Count(), logs }));
+        });
+
+        // 監控儀錶板彙整(trading v2)：account + 每腿健康(持倉/訊號/原因/保護)+ forward + xsmom。
+        // server 端把多來源 join 好、頁面一個 fetch 渲染。
+        at.MapGet("/dashboard", async (AutoTraderService svc, BrokerCore.Data.BrokerDb db,
+            IExecutionDispatcher dispatcher, IWorkerRegistry registry, HttpRequest req, CancellationToken ct) =>
+        {
+            var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "bingx";
+            ApprovedRequest Rq(string cap, string route, object payload) => new()
+            {
+                RequestId = Guid.NewGuid().ToString("N"), CapabilityId = cap, Route = route,
+                Payload = JsonSerializer.Serialize(payload), Scope = "{}",
+                PrincipalId = "system", TaskId = "dashboard", SessionId = "dashboard",
+            };
+            static decimal D(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : 0m;
+            static string Sv(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+
+            // 1. 持倉(trading.perpetual get_positions — 最完整:qty/entry/mark/pnl%/liq)
+            var posBySym = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+            if (registry.HasAvailableWorker("trading.perpetual"))
+            {
+                try
+                {
+                    var pr = await dispatcher.DispatchAsync(Rq("trading.perpetual", "get_positions", new { exchange }));
+                    if (pr.Success)
+                    {
+                        var pd = JsonDocument.Parse(pr.ResultPayload ?? "{}").RootElement;
+                        if (pd.TryGetProperty("positions", out var pa) && pa.ValueKind == JsonValueKind.Array)
+                            foreach (var p in pa.EnumerateArray())
+                            {
+                                var s = Sv(p, "symbol");
+                                if (!string.IsNullOrEmpty(s) && Math.Abs(D(p, "quantity")) > 0m) posBySym[s] = p.Clone();
+                            }
+                    }
+                }
+                catch { }
+            }
+            // sl_price 從 perp_position_state 補(get_positions 沒有 SL)
+            var slBySym = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            try { foreach (var r in db.Query<BrokerCore.Models.PerpetualPositionStateEntry>("SELECT * FROM perp_position_state WHERE exchange = @ex", new { ex = exchange })) slBySym[r.Symbol] = r.SlPrice; }
+            catch { }
+
+            // 2. trades(forward + 今日 P&L)
+            JsonElement tradesRoot = JsonDocument.Parse("{}").RootElement;
+            if (registry.HasAvailableWorker("trading.account"))
+            {
+                try
+                {
+                    var tr = await dispatcher.DispatchAsync(Rq("trading.account", "get_trade_history",
+                        new { exchange = (string?)null, since = DateTime.UtcNow.AddDays(-30).ToString("o"), limit = 100000 }));
+                    if (tr.Success) tradesRoot = JsonDocument.Parse(tr.ResultPayload ?? "{}").RootElement;
+                }
+                catch { }
+            }
+            decimal dayPnl = 0m; int dayTrades = 0; var midnight = DateTime.UtcNow.Date;
+            if (tradesRoot.TryGetProperty("trades", out var tarr) && tarr.ValueKind == JsonValueKind.Array)
+                foreach (var t in tarr.EnumerateArray())
+                {
+                    if (!string.Equals(Sv(t, "exchange"), exchange, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!t.TryGetProperty("realized_pnl", out var rp) || rp.ValueKind != JsonValueKind.Number) continue;
+                    if (t.TryGetProperty("executed_at", out var ea) && DateTime.TryParse(ea.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt) && dt >= midnight)
+                    { dayPnl += rp.GetDecimal(); dayTrades++; }
+                }
+            var forward = TradingEndpoints.AggregateStrategyPnl(tradesRoot, null);
+
+            // 3. 每腿
+            var logBySym = svc.RecentLogs.GroupBy(l => l.Symbol).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.Time).First());
+            decimal totalNotional = 0m;
+            var legs = new List<object>();
+            foreach (var w in svc.WatchList.Values.Where(w => w.Active && string.Equals(w.Exchange, exchange, StringComparison.OrdinalIgnoreCase)).OrderByDescending(w => w.BudgetPct))
+            {
+                bool hasPos = posBySym.TryGetValue(w.Symbol, out var p);
+                decimal qty = hasPos ? Math.Abs(D(p, "quantity")) : 0m, mark = hasPos ? D(p, "mark_price") : 0m;
+                if (hasPos) totalNotional += qty * mark;
+                logBySym.TryGetValue(w.Symbol, out var lg);
+                legs.Add(new
+                {
+                    symbol = w.Symbol, strategy = w.Strategy, mode = w.Mode, budget_pct = w.BudgetPct,
+                    signal = w.LastSignal ?? "?", confidence = w.LastConfidence,
+                    has_position = hasPos, side = hasPos ? Sv(p, "side") : "",
+                    entry = hasPos ? D(p, "avg_entry_price") : 0m, mark,
+                    pnl_pct = hasPos ? D(p, "unrealized_pnl_pct") : 0m,
+                    liq = hasPos ? D(p, "liquidation_price") : 0m, liq_dist = hasPos ? D(p, "liquidation_distance_pct") : 0m,
+                    sl = slBySym.TryGetValue(w.Symbol, out var slv) ? slv : 0m,
+                    last_action = lg?.Action ?? "", last_reason = lg?.Message ?? "",
+                });
+            }
+            decimal balance = svc.DeclaredCapital.TryGetValue(exchange.ToLowerInvariant(), out var bal) ? bal : 0m;
+
+            // 4. xsmom shadow
+            object? xsmom = null;
+            try { if (File.Exists("/data/xsmom-shadow.json")) xsmom = JsonDocument.Parse(File.ReadAllText("/data/xsmom-shadow.json")).RootElement.Clone(); }
+            catch { }
+
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                exchange,
+                account = new
+                {
+                    balance = Math.Round(balance, 2),
+                    exposure_x = balance > 0 ? Math.Round(totalNotional / balance, 2) : 0m,
+                    day_pnl = Math.Round(dayPnl, 2), day_trades = dayTrades,
+                },
+                legs, forward, xsmom,
+            }));
         });
     }
 }
