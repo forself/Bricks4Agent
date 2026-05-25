@@ -69,6 +69,10 @@ if (args.Contains("--xsrev")) { await RunXsRev(); return; }
 if (args.Contains("--fundsig")) { await RunFundSig(); return; }
 // ── --tsmom:時序動量(managed-futures:每幣按自己趨勢多/空、等權籃子、熊市自動翻空)──
 if (args.Contains("--tsmom")) { await RunTsMom(); return; }
+// ── --pairs:配對/協整 stat-arb(價差 z-score 均值回歸、market-neutral、應該真去相關)──
+if (args.Contains("--pairs")) { await RunPairs(); return; }
+// ── --lowvol:橫斷面低波動異常(long 低波動幣/short 高波動)──
+if (args.Contains("--lowvol")) { await RunLowVol(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
@@ -1338,6 +1342,131 @@ async Task RunTsMom()
     }
     catch { }
     Console.WriteLine($"\n  判定:OOS Sharpe {oos.sharpe:F2} + maxDD {(full.dd < bh.dd ? "<B&H(危機 alpha)" : "")} → {(oos.sharpe > 0.3m ? "✅ 可進 paper" : oos.sharpe > 0m ? "⚠ 微弱" : "❌ 無 edge")}");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --pairs 配對 stat-arb:log 價差(比值)均值回歸。formation 選會回歸的對、trading(OOS)交易 z-score。
+// 結構上跟方向性策略完全不同(價差回歸)→ 最可能真去相關。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunPairs()
+{
+    decimal EnvP(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    decimal entryZ = EnvP("PAIRS_ENTRY_Z", 2.0m), exitZ = EnvP("PAIRS_EXIT_Z", 0.5m), stopZ = EnvP("PAIRS_STOP_Z", 4.0m);
+    int zWin = (int)EnvP("PAIRS_ZWIN", 30m);
+    decimal costSide = EnvP("PAIRS_COST_PER_SIDE", 0.0008m);
+    Console.WriteLine($"=== 配對 stat-arb --pairs(log 價差均值回歸;entryZ={entryZ} exitZ={exitZ} zWin={zWin})===\n");
+
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    var coins = dat.Keys.ToList();
+    int L = dat.Values.Min(b => b.Count);
+    var lp = coins.ToDictionary(c => c, c => dat[c].Skip(dat[c].Count - L).Select(b => (double)Math.Log((double)b.Close)).ToList());
+    var ret = coins.ToDictionary(c => c, c => { var r = dat[c].Skip(dat[c].Count - L).Select(b => b.Close).ToList(); var o = new List<decimal>(); for (int t = 1; t < r.Count; t++) o.Add(r[t - 1] > 0 ? (r[t] - r[t - 1]) / r[t - 1] : 0m); return o; });
+    int form = L / 2;   // formation = 前半;trading(OOS)= 後半
+    Console.WriteLine($"宇宙:{coins.Count} 幣、{L} 日(formation 前 {form} / trading 後 {L - form})\n");
+
+    // formation 選會均值回歸的對:half-life(AR(1) φ via lag-1 autocorr)在可交易區間
+    var selected = new List<(string a, string b, double half)>();
+    for (int i = 0; i < coins.Count; i++)
+        for (int j = i + 1; j < coins.Count; j++)
+        {
+            var s = new double[form];
+            for (int t = 0; t < form; t++) s[t] = lp[coins[i]][t] - lp[coins[j]][t];
+            double mean = s.Average();
+            double num = 0, den = 0;
+            for (int t = 1; t < form; t++) { num += (s[t] - mean) * (s[t - 1] - mean); den += (s[t - 1] - mean) * (s[t - 1] - mean); }
+            double phi = den > 0 ? num / den : 1;
+            if (phi <= 0 || phi >= 1) continue;
+            double half = -Math.Log(2) / Math.Log(phi);
+            if (half >= 3 && half <= 40) selected.Add((coins[i], coins[j], half));
+        }
+    selected = selected.OrderBy(x => x.half).Take((int)EnvP("PAIRS_MAX", 25m)).ToList();
+    Console.WriteLine($"formation 選出 {selected.Count} 對可交易(half-life 3-40 天)。前幾對:");
+    foreach (var p in selected.Take(6)) Console.WriteLine($"   {Sh(p.a)}-{Sh(p.b)} half-life {p.half:F0}d");
+
+    if (selected.Count == 0) { Console.WriteLine("無可交易配對。"); return; }
+
+    // trading(OOS):每對 rolling z-score 進出、dollar-neutral 1:1、組合等權
+    var portRet = new List<decimal>();   // 每日組合報酬(交易窗)
+    for (int t = form + zWin; t < L - 1; t++)
+    {
+        var dayRets = new List<decimal>();
+        foreach (var (ca, cb, _) in selected)
+        {
+            // rolling mean/std of spread over [t-zWin, t]
+            double m = 0; for (int k = t - zWin; k < t; k++) m += lp[ca][k] - lp[cb][k]; m /= zWin;
+            double v = 0; for (int k = t - zWin; k < t; k++) { var d = (lp[ca][k] - lp[cb][k]) - m; v += d * d; } v = Math.Sqrt(v / zWin);
+            if (v <= 0) continue;
+            double z = ((lp[ca][t] - lp[cb][t]) - m) / v;
+            // 簡化:當期 z 決定當日持倉(|z|>entry 進、>stop 不進、否則 flat);P&L = pos×(r_a−r_b)
+            int pos = z > (double)entryZ && z < (double)stopZ ? -1 : z < -(double)entryZ && z > -(double)stopZ ? 1 : 0;
+            if (pos == 0) continue;
+            dayRets.Add((decimal)pos * (ret[ca][t] - ret[cb][t]) - 2m * costSide / zWin);  // 攤平成本(粗估)
+        }
+        portRet.Add(dayRets.Count > 0 ? dayRets.Average() : 0m);
+    }
+    var eq = new List<decimal> { 1m }; foreach (var r in portRet) eq.Add(eq[^1] * (1m + r));
+    var st = StatsOf(eq);
+    Console.WriteLine($"\n=== 組合(OOS 交易窗、{selected.Count} 對等權)===");
+    Console.WriteLine($"  Sharpe {st.sharpe:F2}  ret {st.ret:F0}%  maxDD {st.dd:F0}%  交易日 {portRet.Count(r => r != 0)}/{portRet.Count}");
+    try
+    {
+        var ens = strats.First(x => x.name == "decorr4_ls").s;
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m).EquityCurve.Select(e => e.Value).ToList();
+        int n = Math.Min(eq.Count, dc.Count);
+        var rho = CorrelationGuard.PearsonOfReturns(eq.Skip(eq.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
+        Console.WriteLine($"  與 decorr4@BTC ρ = {rho:F2} → {(Math.Abs((double)rho) < 0.3 ? "✅ 低相關" : "⚠ 偏相關")}");
+    }
+    catch { }
+    Console.WriteLine($"  判定:OOS Sharpe {st.sharpe:F2} → {(st.sharpe > 0.5m ? "✅ 有戲" : st.sharpe > 0.2m ? "⚠ 弱" : "❌ 無 edge")}(stat-arb 對成本/流動性敏感、實盤更難)");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --lowvol 橫斷面低波動異常:long 低波動幣 / short 高波動幣(風險異常、與動量不同維度)。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunLowVol()
+{
+    int topK = (int)(decimal.TryParse(Environment.GetEnvironmentVariable("LOWVOL_TOPK"), out var k) ? k : 3m);
+    decimal costSide = 0.0008m;
+    Console.WriteLine("=== 橫斷面低波動 --lowvol(long 低波動 / short 高波動、等權)===\n");
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    var coins = dat.Keys.ToList();
+    int L = dat.Values.Min(b => b.Count);
+    var cl = coins.ToDictionary(c => c, c => dat[c].Skip(dat[c].Count - L).Select(b => b.Close).ToList());
+    Console.WriteLine($"宇宙:{coins.Count} 幣、{L} 日\n");
+
+    (List<decimal> eq, decimal tov) Run(int volLb, int rebal, decimal cost)
+    {
+        var eq = new List<decimal> { 1m }; List<string> curL = new(), curS = new(); int rb = 0; decimal ts = 0m;
+        decimal Vol(string c, int t) { var r = new List<double>(); for (int k = t - volLb + 1; k <= t; k++) if (cl[c][k - 1] > 0) r.Add((double)((cl[c][k] - cl[c][k - 1]) / cl[c][k - 1])); if (r.Count < 2) return 0m; var a = r.Average(); return (decimal)Math.Sqrt(r.Select(x => (x - a) * (x - a)).Average()); }
+        for (int t = volLb; t < L - 1; t++)
+        {
+            if ((t - volLb) % rebal == 0)
+            {
+                var rank = coins.Select(c => (c, v: Vol(c, t))).Where(x => x.v > 0).OrderBy(x => x.v).ToList();
+                var nL = rank.Take(topK).Select(x => x.c).ToList();           // 低波動
+                var nS = rank.AsEnumerable().Reverse().Take(topK).Select(x => x.c).ToList();  // 高波動
+                int changed = nL.Except(curL).Count() + curL.Except(nL).Count() + nS.Except(curS).Count() + curS.Except(nS).Count();
+                decimal tov = (decimal)changed / (4 * topK); ts += tov; rb++;
+                eq[^1] *= (1m - tov * 2m * cost); curL = nL; curS = nS;
+            }
+            decimal Ret(List<string> s) => s.Count == 0 ? 0m : s.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m);
+            eq.Add(eq[^1] * (1m + Ret(curL) - Ret(curS)));
+        }
+        return (eq, rb > 0 ? ts / rb : 0m);
+    }
+    int[] lbs = { 14, 30, 60 }; int[] rbs = { 7, 14 };
+    Console.WriteLine("=== 敏感度(realistic;格=Sharpe / 年化%)===");
+    Console.WriteLine("  volLb\\rebal " + string.Join("", rbs.Select(r => $"{r + "d",14}")));
+    foreach (var lb in lbs)
+    {
+        var cells = rbs.Select(rb => { var (eq, _) = Run(lb, rb, costSide); var s = StatsOf(eq); var ann = eq.Count > 30 ? (decimal)((Math.Pow((double)eq[^1], 365.0 / eq.Count) - 1) * 100) : 0m; return $"{s.sharpe,6:F2}/{ann,5:F0}%"; });
+        Console.WriteLine($"  {lb + "d",-11}" + string.Join("  ", cells));
+    }
+    var (eqF, _) = Run(30, 14, costSide);
+    var full = StatsOf(eqF); var oos = StatsOf(eqF.Skip(eqF.Count / 2).ToList());
+    Console.WriteLine($"\n  代表 30/14: 全期 Sharpe {full.sharpe:F2} / OOS {oos.sharpe:F2} → {(oos.sharpe > 0.3m ? "✅ 有戲" : oos.sharpe > 0m ? "⚠ 弱" : "❌ 無 edge")}");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
