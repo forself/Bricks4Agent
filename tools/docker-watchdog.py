@@ -84,7 +84,9 @@ def discord(title, desc, color, critical=False):
     try:
         req = urllib.request.Request(
             WEBHOOK, data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"})
+            headers={"Content-Type": "application/json",
+                     # Discord/Cloudflare 會 403 擋掉 urllib 預設 UA、必須帶自訂 User-Agent
+                     "User-Agent": "B4A-Watchdog/1.0"})
         urllib.request.urlopen(req, timeout=15).read()
     except Exception as e:
         log(f"discord 推播失敗: {e}")
