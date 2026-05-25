@@ -54,6 +54,11 @@ var symbols = new[]
 //        + 相關 haircut + 單腿上限 ④ vol-target 算整體曝險。輸出每腿 budget_pct + N_eff + 畢業判定。
 if (args.Contains("--allocate")) { await RunAllocate(); return; }
 
+// ── --xsmom:橫斷面動量(cross-sectional momentum)——結構不同的去相關 edge 研究 ──
+// 跨幣排序:每 rebal 期 long 過去 lookback 報酬最強的 topK、short 最弱的 topK(等權)。
+// 跟所有「單幣技術指標」正交;驗證有沒有 OOS edge + 跟現有書(decorr4)相不相關。
+if (args.Contains("--xsmom")) { await RunXsMom(); return; }
+
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
     var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit=1000";
@@ -914,6 +919,112 @@ async Task RunAllocate()
     foreach (var (coin, strat, bp) in budgets)
         Console.WriteLine($"   UPDATE auto_trade_watchlist SET budget_pct={bp} WHERE strategy='{strat}'; -- {strat}@{Sh(coin)}");
     Console.WriteLine("\n   ⚠ 真錢 budget 改完必須立刻 restart broker(否則跑動的 PersistWatch 會用記憶體舊值覆蓋回去)。");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// --xsmom 橫斷面動量:跨幣排序、long 強勢 topK / short 弱勢 topK。結構不同的去相關 edge。
+// ════════════════════════════════════════════════════════════════════════════
+async Task RunXsMom()
+{
+    decimal EnvX(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
+    int topK = (int)EnvX("XSMOM_TOPK", 3m);
+    decimal costSide = EnvX("XSMOM_COST_PER_SIDE", 0.0008m);   // 8bps/邊(perp taker+滑點)
+
+    Console.WriteLine("=== 橫斷面動量 --xsmom(跨幣排序;long topK 強 / short topK 弱、等權)===");
+    Console.WriteLine($"  topK={topK} · 成本 {costSide:P2}/邊(env XSMOM_TOPK / XSMOM_COST_PER_SIDE)\n");
+
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    var coins = dat.Keys.ToList();
+    if (coins.Count < topK * 2 + 1) { Console.WriteLine("幣數不足。"); return; }
+    int L = dat.Values.Min(b => b.Count);
+    var cl = coins.ToDictionary(c => c, c => dat[c].Skip(dat[c].Count - L).Select(b => b.Close).ToList());
+    Console.WriteLine($"宇宙:{coins.Count} 幣、對齊尾段 {L} 日(~{L / 365.0:F1} 年)\n");
+
+    // 核心回測 → (權益曲線, 平均換手率)。ls=true 多空、false 純多 topK。
+    (List<decimal> eq, decimal turnover) Run(int lookback, int rebal, bool ls, decimal cost)
+    {
+        var eq = new List<decimal> { 1m };
+        List<string> curL = new(), curS = new();
+        int rebals = 0; decimal turnSum = 0m;
+        for (int t = lookback; t < L - 1; t++)
+        {
+            if ((t - lookback) % rebal == 0)
+            {
+                var rank = coins.Select(c => (c, r: cl[c][t - lookback] > 0 ? (cl[c][t] - cl[c][t - lookback]) / cl[c][t - lookback] : 0m))
+                                .OrderByDescending(x => x.r).ToList();
+                var nL = rank.Take(topK).Select(x => x.c).ToList();
+                var nS = ls ? rank.AsEnumerable().Reverse().Take(topK).Select(x => x.c).ToList() : new List<string>();
+                int changed = nL.Except(curL).Count() + curL.Except(nL).Count() + nS.Except(curS).Count() + curS.Except(nS).Count();
+                int basket = topK * (ls ? 2 : 1);
+                decimal tov = basket > 0 ? (decimal)changed / (2 * basket) : 0m;
+                turnSum += tov; rebals++;
+                eq[^1] *= (1m - tov * 2m * cost);   // 換手比例 × 來回成本
+                curL = nL; curS = nS;
+            }
+            decimal Ret(List<string> set) => set.Count == 0 ? 0m : set.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m);
+            decimal pr = Ret(curL) - (ls ? Ret(curS) : 0m);
+            eq.Add(eq[^1] * (1m + pr));
+        }
+        return (eq, rebals > 0 ? turnSum / rebals : 0m);
+    }
+
+    // 敏感度:lookback × rebal(防單一參數僥倖;穩健 = 多格都正)
+    int[] lbs = { 30, 60, 90, 120 };
+    int[] rbs = { 7, 14, 30 };
+    foreach (var ls in new[] { true, false })
+    {
+        Console.WriteLine($"=== {(ls ? "多空(market-neutral)" : "純多 topK")} 敏感度(realistic 成本;格=Sharpe / 年化%)===");
+        Console.WriteLine("  lookback\\rebal " + string.Join("", rbs.Select(r => $"{r + "d",14}")));
+        foreach (var lb in lbs)
+        {
+            var cells = rbs.Select(rb =>
+            {
+                var (eq, _) = Run(lb, rb, ls, costSide);
+                var st = StatsOf(eq);
+                var ann = eq.Count > 30 ? (decimal)((Math.Pow((double)eq[^1], 365.0 / eq.Count) - 1) * 100) : 0m;
+                return $"{st.sharpe,6:F2}/{ann,5:F0}%";
+            });
+            Console.WriteLine($"  {lb + "d",-14}" + string.Join("  ", cells));
+        }
+        Console.WriteLine();
+    }
+
+    // 代表配置細看(env XSMOM_LOOKBACK/REBAL 可指定要驗哪格)+ OOS(後半段)+ vs 買入持有
+    int repLb = (int)EnvX("XSMOM_LOOKBACK", 30m);
+    int repRb = (int)EnvX("XSMOM_REBAL", 7m);
+    var (eqF, tov2) = Run(repLb, repRb, true, costSide);
+    var (eqG, _) = Run(repLb, repRb, true, 0m);
+    var full = StatsOf(eqF);
+    int half = eqF.Count / 2;
+    var oos = StatsOf(eqF.Skip(half).ToList());
+    Console.WriteLine($"=== 代表配置 多空 lookback{repLb}/rebal{repRb} ===");
+    Console.WriteLine($"  全期(realistic): ret {full.ret,6:F0}%  Sharpe {full.sharpe:F2}  maxDD {full.dd:F0}%  換手 {tov2:P0}/rebal");
+    Console.WriteLine($"  全期(gross 0成本): Sharpe {StatsOf(eqG).sharpe:F2}  → 成本侵蝕 {StatsOf(eqG).sharpe - full.sharpe:F2}");
+    Console.WriteLine($"  後半段 OOS:      ret {oos.ret,6:F0}%  Sharpe {oos.sharpe:F2}  maxDD {oos.dd:F0}%");
+    // 買入持有等權基準
+    var bhEq = new List<decimal> { 1m };
+    for (int t = 0; t < L - 1; t++) { decimal r = coins.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m); bhEq.Add(bhEq[^1] * (1m + r)); }
+    var bh = StatsOf(bhEq);
+    Console.WriteLine($"  vs 等權買入持有:  ret {bh.ret,6:F0}%  Sharpe {bh.sharpe:F2}  maxDD {bh.dd:F0}%");
+
+    // ★ 重點:跟現有書(decorr4_ls@BTC)相不相關 = 是不是真分散
+    try
+    {
+        var ens = strats.First(x => x.name == "decorr4_ls").s;
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m)
+                 .EquityCurve.Select(e => e.Value).ToList();
+        int n = Math.Min(eqF.Count, dc.Count);
+        var rho = CorrelationGuard.PearsonOfReturns(eqF.Skip(eqF.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
+        Console.WriteLine($"\n=== 與現有書 decorr4_ls@BTC 的相關 ρ = {rho:F2} ===");
+        Console.WriteLine($"  → {(Math.Abs((double)rho) < 0.3 ? "✅ 低相關、真分散紅利:值得當新一類 sleeve" : "⚠ 相關偏高、分散紅利有限")}");
+    }
+    catch (Exception ex) { Console.WriteLine($"相關計算失敗:{ex.Message}"); }
+
+    Console.WriteLine($"\n判定(數據驅動):OOS Sharpe {oos.sharpe:F2} → " +
+        (oos.sharpe > 0.3m ? "✅ OOS 站得住、可進 paper" : oos.sharpe > 0m ? "⚠ OOS 微正但弱、再觀察" : "❌ OOS 翻負、edge 不穩、別上") +
+        $" · 與 decorr4 ρ 低=分散有但 edge 才是門檻。");
+    Console.WriteLine("  (env XSMOM_LOOKBACK / XSMOM_REBAL 換格驗 OOS;敏感度表跨越正負 = 參數脆、過擬合風險高。");
 }
 
 // --allocate 用:一條部署腿(策略 → 指派到的幣)的統計。Folds=跨幣池化 fold 數、Breadth=幾成幣 OOS 正
