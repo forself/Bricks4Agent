@@ -314,3 +314,73 @@ H15 後追加。`ProjectFromXabc` 加 `przWideningPct` 參數,range ±15%。
 - [ ] backtest 加入真實 funding rate(目前只用 0.010%/8h 估計)
 
 ---
+
+---
+
+## 2026-05-26 H16+ Method C — Tp1 從實際進場價投影(換機接手)
+
+**動機**:H16 後 widepz 配置 TP 過緊侵蝕收益(scan10_widepz Sharpe 0.86→0.77、fullRet 1280→931)。讀 `ProjectFromXabc` 內部發現:
+
+### 根因(`HarmonicPatterns.cs` line 540)
+
+```csharp
+var dProxy = (przLow + przHigh) / 2m;          // ← D 的代理 = PRZ 中心
+var (_, _, tp1, tp2, _) = CalcTpSl(direction, Xp, Cp, dProxy, ...);
+```
+
+Tp1 用 PRZ 中心當 D 投影、與實際進場價無關。widepz 對稱外擴 PRZ 後**中心不變**,但實際進場常在邊緣 → bullish 在上緣進場時 `Tp1 - entry` 可能負(目標已被當前價超過、立刻觸發出場)。
+
+### 修法(Method C)
+
+`HarmonicPrzLsStrategy.cs` 在 signal emit 前用實際進場價(`bars[^1].Close`)重算 Tp1:
+
+```csharp
+// H16+ Method C:Tp1 從『實際進場價(=currentPrice)』重新投影
+var (_, _, tp1Refined, _, _) = HarmonicPatterns.CalcTpSl(direction, X.Price, C.Price, currentPrice, slBuffer, proj.PatternName);
+// ... TargetPrice = Math.Round(tp1Refined, 4)
+```
+
+理論依據:Carney 教科書中 D = 實際反轉點 = 進場點。原代理用 PRZ 中心是簡化。
+副作用:保留 `proj.Tp1` 在 indicators 為 `tp1_proxy` 供稽核。
+
+### A/B 對比(同 walk-forward 250/90/60、default params、commission 0.0005)
+
+**`harm_prz_scan10` per-symbol Sharpe(窄 PRZ、理論影響極小)**:
+
+| Symbol | Pre | Post | Δ | 註 |
+|---|---:|---:|---:|---|
+| LTC | 0.53 | 0.53 | 0.00 | |
+| OP | 0.86 | **1.31** | **+0.45** ⬆ | |
+| NEAR | 0.58 | 0.33 | −0.25 ↓ | 已黑名單 |
+| APT | 1.06 | 1.23 | +0.17 ↑ | |
+| INJ | 0.66 | 0.67 | +0.01 ≈ | |
+| **avg** | **0.74** | **0.81** | **+0.07** ↑ | 4/5 ≥ pre |
+
+→ **王牌 scan10 沒退化**,反而 OP/APT 略升,只 NEAR 退(本就排除)。
+
+**`harm_prz_scan10_widepz` per-symbol Sharpe(寬 PRZ、理論受益方)**:
+
+| Symbol | Pre | Post | Δ |
+|---|---:|---:|---:|
+| ADA | 1.58 | **1.95** | **+0.37** ⬆ |
+| DOT | 0.61 | **0.87** | **+0.26** ⬆ |
+| INJ | 0.88 | **1.69** | **+0.81** ⬆⬆ |
+| NEAR | 0.52 | 0.38 | ↓(已黑名單) |
+| BTC | −0.09 | −0.27 | ↓(已黑名單) |
+| **avg(ADA+DOT+INJ)** | **1.02** | **1.50** | **+0.48** ⬆⬆ |
+
+→ widepz 對可部署 coin **大幅改善**,完全對應「修正上緣進場 TP 太緊」的理論預測。
+
+### 結論
+
+⭐ **Method C 是 net win**:
+- scan10(窄 PRZ):微升、沒退化(王牌守住)
+- widepz(寬 PRZ):+0.48 Sharpe avg(ADA/DOT/INJ),改善幅度顯著
+- 改動量極小(strategy 一處、5 行)、向後相容(其他用 ProjectFromXabc 的不受影響、indicators 保留 tp1_proxy 供稽核)
+- 理論基礎(Carney 教科書 D = 實際進場點)+ A/B 實證雙重驗證
+
+### 後續(可選)
+
+- 跨 20-coin 全集 pooled t-stat 重跑(strat-validate t-stat pool 改 LS 引擎一併處理、見系統面待辦)
+- §6 配重在 Method C 後可能微調(scan10_widepz 因 TP 修正、相對 scan10 的優勢回升,配重再評估)
+- H18 ATR trailing SL 若上線、跟 Method C 並存(誰先到誰先平)→ 預期 widepz 額外受益

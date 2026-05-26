@@ -154,6 +154,11 @@ public class HarmonicPrzLsStrategy : IStrategy
             if (conf < minConf) { lastHoldReason = $"{proj.PatternName}[{ci}] conf {conf:F2} < {minConf}"; continue; }
 
             // ★ 找到有效訊號,emit
+            // H16+ Method C:Tp1 從『實際進場價(=currentPrice)』重新投影,而非用 ProjectFromXabc 的 PRZ 中心代理。
+            // 理論依據:Carney 教科書中 D = 實際反轉點 = 進場點。原代理用 PRZ 中心,
+            // widepz(H14)外擴 PRZ ±15% 後,實際進場常在邊緣 → Tp1 距離對某些 trade 偏緊。
+            // 用 currentPrice 當 D 投影 Tp1 是理論最對,且對窄 PRZ(scan10)影響近 0(代理 ≈ 進場)。
+            var (_, _, tp1Refined, _, _) = HarmonicPatterns.CalcTpSl(direction, X.Price, C.Price, currentPrice, slBuffer, proj.PatternName);
             string action = direction == "bullish" ? "buy" : "sell";
             string reason = $"PRZ-mode {proj.PatternName}[{ci}] {direction}:價 {currentPrice:F2} 在 PRZ[{proj.PrzLow:F2},{proj.PrzHigh:F2}] fit {proj.Fit:F2}"
                           + (hasCandle ? $", 燭線確認({candleSig})" : "")
@@ -167,7 +172,7 @@ public class HarmonicPrzLsStrategy : IStrategy
                 Action = action, Confidence = Math.Round(conf, 2), Reason = reason,
                 Interval = config.Interval,
                 StopPrice = proj.SlPrice,
-                TargetPrice = Math.Round(proj.Tp1, 4),
+                TargetPrice = Math.Round(tp1Refined, 4),
                 Indicators = new()
                 {
                     ["pattern_fit"]   = proj.Fit,
@@ -177,7 +182,8 @@ public class HarmonicPrzLsStrategy : IStrategy
                     ["prz_low"]       = proj.PrzLow,
                     ["prz_high"]      = proj.PrzHigh,
                     ["sl_price"]      = proj.SlPrice,
-                    ["tp1"]           = proj.Tp1,
+                    ["tp1"]           = tp1Refined,
+                    ["tp1_proxy"]     = proj.Tp1,            // 保留原代理值供對比/稽核
                     ["age_c"]         = ageC,
                     ["window_idx"]    = ci,            // 第幾個 pivot 窗找到(_scanWindows>1 時有用)
                     ["price"]         = Math.Round(currentPrice, 4),
