@@ -32,7 +32,8 @@ public static class LongShortBacktestEngine
         decimal notionalPct = 0.95m,   // 每次開倉名目佔當前 equity 比例(無槓桿)
         bool confidenceSizing = false, // true:名目再 × signal.Confidence(淨加權 ensemble 用來「分歧縮量」)
         decimal atrTrailMultiplier = 0m, // H18:>0 啟用 ATR trailing SL(每根 ratchet activeStopPrice、不放鬆)
-        int atrPeriod = 14)            // ATR 視窗
+        int atrPeriod = 14,            // ATR 視窗
+        decimal defaultInitialSlPct = 0m) // H18 補正:策略未 emit StopPrice 但啟用 trail 時、開倉用此 % 做初始 SL(讓 trail 有 base 可 ratchet)
     {
         var costRate = commission + slippagePct;
         var result = new BacktestEngine.BacktestResult
@@ -151,7 +152,16 @@ public static class LongShortBacktestEngine
                 if (desired != 0)
                 {
                     decimal sizeScale = confidenceSizing ? Math.Clamp(signal.Confidence, 0m, 1m) : 1m;
-                    OpenAt(i, price, desired, sizeScale, signal.StopPrice ?? 0m, signal.TargetPrice ?? 0m);
+                    // H18 補正:策略未 emit StopPrice 但 caller 啟用 trail + 給 defaultInitialSlPct → bootstrap SL,
+                    // 讓 trail 有 base 可 ratchet(否則 trail 永遠 skip、對 trend 策略 no-op)。
+                    decimal effectiveStop = signal.StopPrice ?? 0m;
+                    if (effectiveStop == 0m && atrTrailMultiplier > 0m && defaultInitialSlPct > 0m)
+                    {
+                        effectiveStop = desired > 0
+                            ? price * (1m - defaultInitialSlPct / 100m)   // long:entry × (1 − pct%)
+                            : price * (1m + defaultInitialSlPct / 100m); // short:entry × (1 + pct%)
+                    }
+                    OpenAt(i, price, desired, sizeScale, effectiveStop, signal.TargetPrice ?? 0m);
                 }
             }
 
@@ -206,7 +216,8 @@ public static class LongShortBacktestEngine
         decimal initialCash = 100_000, decimal commission = 0.001m, decimal slippagePct = 0m,
         bool confidenceSizing = false,
         decimal atrTrailMultiplier = 0m,   // H18:>0 啟用 ATR trailing SL
-        int atrPeriod = 14)
+        int atrPeriod = 14,
+        decimal defaultInitialSlPct = 0m)  // H18 補正:trail 啟用 + 策略未 emit 時的初始 SL %
     {
         var result = new BacktestEngine.WalkForwardResult
         {
@@ -220,11 +231,11 @@ public static class LongShortBacktestEngine
         for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
         {
             var trainSlice = bars.GetRange(start, trainBars);
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct);
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt = Run(strategy, testWindow, config, initialCash, commission,
                 tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing,
-                atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod);
+                atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct);
             result.Folds.Add(new BacktestEngine.WalkForwardFold
             {
                 FoldIndex = foldIdx++,

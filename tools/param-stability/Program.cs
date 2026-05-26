@@ -336,16 +336,18 @@ async Task RunValidateH18OnTrendStrats()
         var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
         var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
         Console.WriteLine($"── {label} × {sym}({note})──");
-        Console.WriteLine($"  {"trail",-10} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        Console.WriteLine($"  {"trail",-13} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        // H18 補正:傳 defaultInitialSlPct=5(配合 AutoTrader 5% 預設)讓 trail 有 base 可 ratchet
         foreach (var m in multipliers)
         {
             var strat = mk();
             var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
                 trainBars: 250, testBars: 90, stride: 60,
                 commission: 0.0005m, slippagePct: 0.0003m,
-                atrTrailMultiplier: m, atrPeriod: 14);
-            var ml = m == 0m ? "off" : $"{m:F1}x";
-            Console.WriteLine($"  {ml,-10} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+                atrTrailMultiplier: m, atrPeriod: 14,
+                defaultInitialSlPct: m > 0m ? 5m : 0m);  // trail 開才 bootstrap 5% SL;trail 關保持原 signal-driven
+            var ml = m == 0m ? "off" : $"{m:F1}x+5%SL";
+            Console.WriteLine($"  {ml,-13} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
         }
         Console.WriteLine();
     }
