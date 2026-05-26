@@ -46,6 +46,7 @@ public static class LongShortBacktestEngine
         decimal entryPrice = 0m;
         int entryIndex = -1;
         DateTime entryDate = DateTime.MinValue;
+        decimal activeStopPrice = 0m;  // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
         decimal peakEquity = initialCash, maxDrawdown = 0m, prevEquity = initialCash;
         var dailyReturns = new List<decimal>();
 
@@ -72,10 +73,10 @@ public static class LongShortBacktestEngine
                 Quantity = qty, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
                 HoldBars = entryIndex >= 0 ? i - entryIndex : 0,
             });
-            position = 0m; entryPrice = 0m; entryIndex = -1;
+            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m;
         }
 
-        void OpenAt(int i, decimal px, int dir, decimal sizeScale)
+        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop)
         {
             decimal eqNow = cash;                        // 已平倉、position=0 → equity=cash
             decimal notional = eqNow * notionalPct * sizeScale;
@@ -85,6 +86,7 @@ public static class LongShortBacktestEngine
             cash -= position * px;                        // 多:扣現;空:收現金
             cash -= notional * costRate;
             entryPrice = px; entryIndex = i; entryDate = bars[i].OpenTime;
+            activeStopPrice = stop;                       // H2-Fib SL:訊號未帶 stop 時=0、不啟用
         }
 
         for (int i = lookback; i < bars.Count; i++)
@@ -93,6 +95,20 @@ public static class LongShortBacktestEngine
             var signal = strategy.Evaluate(window, config);
             var price = bars[i].Close;
 
+            // ── H2-Fib SL:盤中觸 SL 即平倉(不發 StopPrice 的策略 activeStopPrice=0、整段 skip)──
+            bool stoppedOutThisBar = false;
+            if (position != 0m && activeStopPrice > 0m)
+            {
+                bool slHit = position > 0m
+                    ? bars[i].Low  <= activeStopPrice    // long: 跌破 SL
+                    : bars[i].High >= activeStopPrice;   // short: 漲破 SL
+                if (slHit)
+                {
+                    CloseAt(i, activeStopPrice);          // 在 SL 價位出場(保守、會清 activeStopPrice)
+                    stoppedOutThisBar = true;
+                }
+            }
+
             var equity = cash + position * price;
             result.EquityCurve.Add(new BacktestEngine.EquityPoint { Date = bars[i].OpenTime, Value = equity });
             if (prevEquity > 0m) dailyReturns.Add((equity - prevEquity) / prevEquity);
@@ -100,6 +116,8 @@ public static class LongShortBacktestEngine
             if (equity > peakEquity) peakEquity = equity;
             var dd = peakEquity - equity;
             if (dd > maxDrawdown) maxDrawdown = dd;
+
+            if (stoppedOutThisBar) continue;              // 本根已 SL 出場、不再因訊號開新倉
 
             int cur = position > 0m ? 1 : position < 0m ? -1 : 0;
             int desired = cur;
@@ -113,7 +131,7 @@ public static class LongShortBacktestEngine
                 if (desired != 0)
                 {
                     decimal sizeScale = confidenceSizing ? Math.Clamp(signal.Confidence, 0m, 1m) : 1m;
-                    OpenAt(i, price, desired, sizeScale);
+                    OpenAt(i, price, desired, sizeScale, signal.StopPrice ?? 0m);
                 }
             }
         }

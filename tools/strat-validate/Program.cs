@@ -47,6 +47,8 @@ var symbols = new[]
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
     // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
     ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
+    // H2-Fib(2026-05-26):FibRetrace + textbook Fib SL,看 DD 能否從 96 砍下來
+    ("fib_retrace_sl_ls", new FibRetraceSlLsStrategy()),
     // 諧波+斐波組合實驗(2026-05-26 H-Combo):失敗策略組合是否有突破口
     ("harm_fib_5050", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
         { (new HarmonicLsStrategy(), 0.5m), (new FibRetraceLsStrategy(), 0.5m) }, name: "harm_fib_5050")),
