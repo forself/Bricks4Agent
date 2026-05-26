@@ -47,6 +47,13 @@ var symbols = new[]
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
     // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
     ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
+    // 諧波+斐波組合實驗(2026-05-26 H-Combo):失敗策略組合是否有突破口
+    ("harm_fib_5050", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicLsStrategy(), 0.5m), (new FibRetraceLsStrategy(), 0.5m) }, name: "harm_fib_5050")),
+    ("harm_fib_3070", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicLsStrategy(), 0.3m), (new FibRetraceLsStrategy(), 0.7m) }, name: "harm_fib_3070")),
+    ("harm_range_fib_regime_5050", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicRangeLsStrategy(), 0.5m), (new FibRetraceRegimeLsStrategy(), 0.5m) }, name: "harm_range_fib_regime_5050")),
     // 一鍵淨加權 ensemble(去相關4支、反波動率權重)— 對照「真組合」
     ("decorr4_ls", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
         { (new DualMomentumLsStrategy(), 0.38m), (new DualThrustStrategy(), 0.32m),

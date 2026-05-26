@@ -84,5 +84,54 @@ H1 排除「regime 不對」、H4 排除「雜訊」。再加上 baseline 已證
 
 ---
 
+## 2026-05-26 H-Combo — 失敗策略組合是否有突破口？
+
+**動機**：用戶提出假設「失敗的策略可能組合起來有突破」。三個 ensemble 同次跑：
+
+| Ensemble | 組成 | 測試什麼 |
+|---|---|---|
+| `harm_fib_5050` | harmonic 50% + fib 50% | 失敗 + 有 edge 是否 orthogonal |
+| `harm_fib_3070` | harmonic 30% + fib 70% | fib 領導、harmonic 小權重輔助 |
+| `harm_range_fib_regime_5050` | harm_range 50% + fib_regime 50% | **雙失敗組合直接驗證** |
+
+### 結果（LS 引擎、20 檔幣 walk-forward）
+
+| Strategy | OOSmed% | Sharpe | DD% | 跨時框 (正/5) | t-stat |
+|---|---:|---:|---:|---:|---:|
+| `fib_retrace_ls`（baseline）| **7.6** | **0.29** | 96 | 3.0 (**4/5**) | **2.13** ✅ |
+| `harmonic_ls`（baseline）| −7.3 | −0.15 | 133 | −0.4 (1/5) | — |
+| `harm_fib_3070` | 2.5 | 0.13 | 118 | 0.9 (3/5) | 1.16 ❌ |
+| `harm_fib_5050` | −2.2 | 0.08 | 152 | −0.4 (3/5) | 0.91 ❌ |
+| `harm_range_fib_regime_5050` | 0.0 | **0.00** | 50 | −0.6 (1/5) | — |
+
+### 結論
+
+**1. 雙失敗組合確認沒救** ❌
+
+`harm_range_fib_regime_5050` Sharpe **0.00**、跨時框 1/5、OOSmed 0。**filter+filter = 更嚴的 filter**，預期會這樣、結果照辦。
+
+**2. harmonic 在組合裡不是「補充」、是「噪音」** ❌
+
+加 harmonic 任何權重都拉低純 fib：
+- Sharpe 0.29 → 0.13 → 0.08（權重越高、越拖累）
+- **t-stat 從 2.13 顯著 → 1.16 / 0.91 不顯著**（殺掉統計顯著性）
+
+**3. 唯一小亮點（不足以推薦部署）**：跨時框穩定性
+
+`harm_fib_5050` 在 BTC 跨時框 5/5 正、SOL/INJ 最佳——比純 fib 略穩。但 Sharpe 0.08 太低，**穩定性換不掉 edge 流失**。
+
+### Meta-learning
+
+用戶 hypothesis「失敗組合可能有突破」**反面驗證**：
+- 失敗策略沒救（單獨或組合都沒救）
+- 失敗 + 有 edge 也是拖累而非互補
+- **訊號本身無 edge = 加入組合也無 edge**（在 net-weighted ensemble 下）
+
+但這條負面結果**值得記下來**——之後若想加新策略到 decorr4，先在 ensemble 跑 t-stat、確認顯著性沒被殺再考慮。
+
+→ 諧波線**徹底收線**。剩餘可能性：跨資產 / 機構持倉 / 新型形態定義——但都屬「另起爐灶」、不是現有諧波研究的延伸。
+
+---
+
 
 ---
