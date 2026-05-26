@@ -23,6 +23,14 @@ if (args.Contains("--validate-robust"))
     return;
 }
 
+// --validate-candidates: 同 symbol 不同策略(default 參數)比較,評估換腿可能性
+// (ETH/LTC 換腿候選驗證,portfolio review 後續)
+if (args.Contains("--validate-candidates"))
+{
+    await RunValidateCandidates();
+    return;
+}
+
 // 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
 // 跑全部用 --all 旗標(較長運行時間)。
 bool runAll = args.Contains("--all");
@@ -105,6 +113,63 @@ foreach (var (name, strat) in strats)
 }
 
 Console.WriteLine("(穩定度 ≥ 0.7 通常算 robust;< 0.5 多半過擬合徵兆,但要結合 opt vs def OOS 一起看)");
+
+async Task RunValidateCandidates()
+{
+    Console.WriteLine("=== 換腿候選 LS 驗證(同 symbol 不同策略、default 參數)===");
+    Console.WriteLine("補完 portfolio review:ETH/LTC 換腿候選在 LS walk-forward 下是否真的勝部署中。\n");
+
+    var groups = new List<(string sym, IStrategy[] strats, string note)>
+    {
+        ("ETHUSDT", new IStrategy[]
+        {
+            new MfiStrategy(),                  // 現部署
+            new MaRegimeTrendStrategy(),        // 候選 1(長線 def OOS 45.9%)
+            new FibRetraceLsStrategy(),         // 候選 2(長線 def OOS 45.6%)
+        }, "ETH:現 mfi (def 4.4% 是 portfolio 最低)"),
+        ("LTCUSDT", new IStrategy[]
+        {
+            new StochasticStrategy(),           // 現部署 rsi_stoch
+            new FibRetraceLsStrategy(),         // 候選(長線 def OOS 120.4%,35 結果最高)
+            new MfiStrategy(),                  // 第二候選(def 26.1%、use-default)
+        }, "LTC:現 rsi_stoch (LS mixed、AvgRet -2.7%)"),
+    };
+
+    var http3 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    async Task<List<BarData>> Fetch3(string s)
+    {
+        var url = $"https://api.binance.com/api/v3/klines?symbol={s}&interval=1d&limit=1000";
+        var json = await http3.GetStringAsync(url);
+        using var doc = JsonDocument.Parse(json);
+        var bars = new List<BarData>();
+        foreach (var k in doc.RootElement.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
+                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
+                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
+                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
+                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
+                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
+            });
+        return bars;
+    }
+
+    foreach (var (sym, strats3, note) in groups)
+    {
+        Console.WriteLine($"── {note} ──");
+        var bars = await Fetch3(sym);
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"  {"strategy",-20} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var s in strats3)
+        {
+            var r = LongShortBacktestEngine.RunWalkForward(s, bars, cfg, trainBars: 250, testBars: 90, stride: 60);
+            string marker = strats3[0] == s ? "(現)" : "(候選)";
+            Console.WriteLine($"  {s.Name + " " + marker,-20} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+}
 
 async Task RunValidateRobust()
 {

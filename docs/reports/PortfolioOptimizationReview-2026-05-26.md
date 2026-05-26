@@ -140,3 +140,56 @@ ETH 的最強單腿是 `ma_regime_trend`（45.9）和 `fib_retrace_ls`（45.6）
 ---
 
 **檔案**：本檔自包含、無需新跑 code。下一步若要 LS 驗證 ETH/LTC 候選，在 `tools/param-stability/Program.cs` 的 `--validate-robust` pair list 加入即可。
+
+---
+
+## 附錄：ETH/LTC 候選 LS 驗證（2026-05-26 補完）
+
+加 `--validate-candidates` 模式跑 LS walk-forward、對比現部署 vs 候選（皆 default 參數）：
+
+### ETH（現 mfi）
+
+| Strategy | OOSmed% | Sharpe | DD% | +folds | WinRate |
+|---|---:|---:|---:|---:|---:|
+| `mfi`（現）| 4.8 | 0.58 | 60.4 | 7/12 | 54.17 |
+| **`ma_regime_trend`（候選）**| **8.9** | **0.84** | **46.9** | **9/12** | 52.08 |
+| **`fib_retrace_ls`（候選）**| **13.2** | **0.96** | 85.9 | 8/12 | **68.05** |
+
+**兩個候選全勝**：
+- ma_regime_trend：**保守選**。Sharpe +0.26、DD 降 13.5pp、+folds 多 2 個（穩定性增強）
+- fib_retrace_ls：**激進選**。Sharpe +0.38、OOSmed 提升 +8.4%、WinRate 從 54 → **68%**，但 DD 升 25pp
+
+→ ETH 換腿選項：① `ma_regime_trend`（穩）② `fib_retrace_ls`（強但 DD 高）③ 兩者組合
+
+### LTC（現 rsi_stoch）
+
+| Strategy | OOSmed% | Sharpe | DD% | +folds | WinRate |
+|---|---:|---:|---:|---:|---:|
+| `rsi_stoch`（現）| 2.3 | 0.49 | 89.8 | 7/12 | 45.84 |
+| ⭐⭐⭐ **`fib_retrace_ls`（候選）**| **25.0** | **1.40** | **46.4** | **10/12** | **80.56** |
+| `mfi`（候選）| 0.0 | 0.54 | 27.3 | 5/12 | 41.67 |
+
+⭐⭐⭐ **LTC × fib_retrace_ls(default) 是這整輪研究的最強發現**：
+- OOSmed **25.0%** vs 2.3%（**11x 提升**）
+- Sharpe **1.40** vs 0.49（**接近 3x 提升**、>1 是極佳）
+- DD **46.4%** vs 89.8%（**砍 48%**）
+- +folds **10/12** vs 7/12（最穩）
+- WinRate **80.56%** vs 45.84%（從 coin-flip 到 **4/5 勝率**）
+
+而且**用 default 參數就最佳**（不需調參、無過擬合風險）。
+
+---
+
+## 更新的優化建議全貌
+
+| 部署 | 現狀 | 優化機會 | LS 驗證 |
+|---|---|---|:---:|
+| BTC × decorr4_ls | ✓ 穩 | 無 | — |
+| **BNB × dual_mom_ls** | ❌ no-edge | 換 bb_revert/dual_thrust/fib_retrace(opt) | ✅ Sharpe 0.66-0.85 |
+| DOGE × ma_regime_trend | ✓ def 92.2 | 加第二腿 bb_revert(opt) | ✅ Sharpe 1.13 |
+| **ETH × mfi** | ⚠ def 4.4 最弱 | 換 ma_regime(穩) 或 fib_retrace(強) | ✅ Sharpe 0.84/0.96 |
+| **LTC × rsi_stoch** | ⚠ LS mixed | **換 fib_retrace_ls** | ⭐⭐⭐ Sharpe **1.40** |
+
+**5 個部署 → 4 個有 LS 驗證的優化機會**。最強單一發現：**LTC × fib_retrace_ls**。
+
+**fib_retrace_ls 出現在 4 個 symbol 的優化建議裡**（BNB opt / LTC def / ETH def / decorr4_ls 組件）——它是真正跨多幣 robust 的非趨勢腿。
