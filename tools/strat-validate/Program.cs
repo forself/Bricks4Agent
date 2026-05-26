@@ -15,10 +15,13 @@ decimal fundingPer8h = decimal.TryParse(Environment.GetEnvironmentVariable("FUND
 // ── 快速迭代模式(2026-05-26)──
 // --fast       :5 主幣 × 1d 而已、跑 30-60s(原本 20 幣 × 5 時框 = 8-10 min)
 // --only=PAT   :只跑名稱符合 PAT(支援 *)的策略;e.g. --only=harm_prz_*
+// --bars=N     :抓 N 根 K 線(預設 1000、> 1000 走 KlineCache 分頁;2000 ≈ 5.5 年日線)
 bool fastMode = args.Contains("--fast");
 string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substring(7);
+int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
+if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
 
 string[] symbols = fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -189,6 +192,33 @@ string[] symbols = fastMode
           (new FibRetraceLsStrategy(), 0.34m),
           (new DualMomentumLsStrategy(), 0.33m) },
         name: "triple_pattern_mom")),
+    // ── Tier 1:延伸 H14 widepz 王牌候選的組合(2026-05-26 晚)──
+    // H35:decorr5 用 widepz 取代 scan10
+    ("decorr5_widepz", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.33m),
+            (new DualThrustStrategy(),        0.27m),
+            (new BollingerRevertLsStrategy(), 0.16m),
+            (new FibRetraceLsStrategy(),      0.09m),
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_widepz", scanWindows: 10, przWidening: 0.15m), 0.15m),
+        }, name: "decorr5_widepz")),
+    // H32:widepz + ts_momentum(今天 alpha 王 t=3.22)
+    ("tsmom_widepz", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new TsMomentumStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_widepz", scanWindows: 10, przWidening: 0.15m), 0.5m) },
+        name: "tsmom_widepz")),
+    // H33:widepz + chandelier(突破 + 反轉)
+    ("chandelier_widepz", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new ChandelierTrendStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_widepz", scanWindows: 10, przWidening: 0.15m), 0.5m) },
+        name: "chandelier_widepz")),
+    // H34:4-leg(widepz + fib + dual_mom + bb_revert)
+    ("quad_widepz", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_widepz", scanWindows: 10, przWidening: 0.15m), 0.25m),
+          (new FibRetraceLsStrategy(), 0.25m),
+          (new DualMomentumLsStrategy(), 0.25m),
+          (new BollingerRevertLsStrategy(), 0.25m) },
+        name: "quad_widepz")),
     // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
     ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
     // H2-Fib(2026-05-26):FibRetrace + textbook Fib SL,看 DD 能否從 96 砍下來
@@ -248,7 +278,8 @@ if (args.Contains("--harmonic")) { await RunHarmonic(); return; }
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
     // 走共享 KlineCache(~/.cache/brick4agent/klines/、24h TTL、FORCE_REFRESH_KLINES=1 強制刷)
-    var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, interval, limit: 1000);
+    // --bars=N 可指定深度(預設 1000、> 1000 走分頁)
+    var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, interval, limit: barsLimit);
     // 套用 runtime funding 假設(cache 不存 FundingRate、避免不同 fundingPer8h 衝突)
     foreach (var b in bars) b.FundingRate = fundingPer8h;
     return bars;

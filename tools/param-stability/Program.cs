@@ -45,6 +45,29 @@ if (args.Contains("--validate-harm-prz-scan"))
     return;
 }
 
+// --validate-widepz: H14+H15 疊加(harm_prz_scan10_widepz)的 per-symbol robustness
+// OP/NEAR/ADA/DOT × widepz 跨多 walk-forward 配置,確認 28% 不是 sample luck
+if (args.Contains("--validate-widepz"))
+{
+    await RunValidateWidepz();
+    return;
+}
+
+// --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
+if (args.Contains("--test-pagination"))
+{
+    Console.WriteLine("=== H22 Binance 分頁測試 ===");
+    foreach (var sym in new[] { "BTCUSDT", "ETHUSDT", "OPUSDT" })
+    {
+        Console.WriteLine($"抓 {sym} 2000 bars...");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d", limit: 2000);
+        sw.Stop();
+        Console.WriteLine($"  → {bars.Count} bars ({bars[0].OpenTime:yyyy-MM-dd} → {bars[^1].OpenTime:yyyy-MM-dd}), {sw.ElapsedMilliseconds}ms");
+    }
+    return;
+}
+
 // 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
 // 跑全部用 --all 旗標(較長運行時間)。
 bool runAll = args.Contains("--all");
@@ -110,6 +133,41 @@ foreach (var (name, strat) in strats)
 }
 
 Console.WriteLine("(穩定度 ≥ 0.7 通常算 robust;< 0.5 多半過擬合徵兆,但要結合 opt vs def OOS 一起看)");
+
+async Task RunValidateWidepz()
+{
+    Console.WriteLine("=== H14+H15 widepz per-symbol robustness ===");
+    Console.WriteLine("OP/NEAR/ADA/DOT × harm_prz_scan10_widepz 跨多 walk-forward 配置,");
+    Console.WriteLine("確認 strat-validate 的 per-symbol edge 不是 sample luck。\n");
+
+    var widepz = () => new HarmonicPrzLsStrategy(
+        patternWhitelist: null, name: "harm_prz_scan10_widepz",
+        scanWindows: 10, przWidening: 0.15m);
+
+    string[] symbols = { "OPUSDT", "NEARUSDT", "ADAUSDT", "DOTUSDT", "INJUSDT", "BTCUSDT" };
+    var configs = new[]
+    {
+        (train:200, test:60,  stride:40, label:"200/60/40"),
+        (train:250, test:90,  stride:60, label:"250/90/60 (baseline)"),
+        (train:300, test:90,  stride:60, label:"300/90/60"),
+        (train:250, test:120, stride:60, label:"250/120/60"),
+    };
+
+    foreach (var sym in symbols)
+    {
+        Console.WriteLine($"── {sym} ──");
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"  {"config",-22} {"folds",6} {"OOSmed%",8} {"AvgRet%",8} {"Sharpe",7} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var (tr, te, st, label) in configs)
+        {
+            var r = LongShortBacktestEngine.RunWalkForward(widepz(), bars, cfg, trainBars: tr, testBars: te, stride: st);
+            if (r.TotalFolds == 0) { Console.WriteLine($"  {label,-22} (no folds)"); continue; }
+            Console.WriteLine($"  {label,-22} {r.TotalFolds,6} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,7:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+}
 
 async Task RunValidateHarmPrzScan()
 {
