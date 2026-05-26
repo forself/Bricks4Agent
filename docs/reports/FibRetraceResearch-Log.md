@@ -125,3 +125,77 @@ Long-only 下 SL 反而拖累——可能假突破觸發 SL 過早出場。**Lon
 
 **不發 StopPrice 的策略 `activeStopPrice=0`、`position!=0 && activeStopPrice>0` 不成立 → 整段 skip → 無行為變化**。零回歸。
 
+
+---
+
+## 2026-05-26 H16-Fib — TP 觸發救活 fib_retrace_ls(換機 Claude 接手驗證)
+
+**動機**:H16 commit(`2a66892`)讓 `LongShortBacktestEngine` 讀 `Signal.TargetPrice`。`FibRetraceLsStrategy` 早就在 signal 設 Fib 1.272 擴展為 TP,但 pre-H16 引擎完全忽略 → 該策略在 long-only pool 拿 t=0.25、判定失敗。換機後接手驗證 H16 是否翻案。
+
+### 重跑配置
+- 工具:`param-stability --validate-ltc-fib-robust` + `--validate-candidates`(post-H16 LS 引擎)
+- 走 LongShortBacktestEngine.RunWalkForward(default params、commission 0.0005、slip 0.0003)
+
+### LTC × fib_retrace_ls 跨時框 + 跨配置
+
+跨時框(walk-forward 250/90/60):
+
+| interval | OOSmed% | AvgSh | +folds | WinRate |
+|---|---:|---:|---|---:|
+| 1h | 0.2 | 0.46 | 7/12 | 58% |
+| 4h | 0.3 | 0.16 | 6/12 | 47% |
+| 12h | 3.7 | 0.35 | 8/12 | 56% |
+| **1d** | **25.0** | **1.41** | **10/12** | **80.5%** |
+| 1w | 33.0 | 1.28 | 2/2 | 83% |
+
+跨 7 個 1d 配置(default params)Sharpe **1.07-1.45**、+folds 9-12/N、WinRate **71-90%** → 不是配置運氣。
+
+對照 `rsi_stoch`(現 LTC 部署)同 7 配置:Sharpe 0.38-0.97 / WinRate 36-61% / DD **56-93%**(基本爆倉) → fib 全面壓制。
+
+### ETH / LTC 換腿候選對比(--validate-candidates)
+
+ETH(現 mfi def 4.4% 是 portfolio 最弱):
+
+| 策略 | OOSmed% | Sharpe | DD% | WinRate |
+|---|---:|---:|---:|---:|
+| mfi(現)| 4.8 | 0.58 | 60.4 | 54% |
+| ma_regime_trend(保守候選)| 8.9 | 0.84 | **46.9** | 52% |
+| **fib_retrace_ls(激進候選)** | **13.8** | **0.97** | 85.9 | **68%** |
+
+LTC(現 rsi_stoch mixed):
+
+| 策略 | OOSmed% | Sharpe | DD% | WinRate |
+|---|---:|---:|---:|---:|
+| rsi_stoch(現)| 2.3 | 0.50 | 89.8 | 48% |
+| **fib_retrace_ls** | **25.0** | **1.41** | **46.4** | **80.5%** |
+| mfi | 0.0 | 0.54 | 27.3 | 41% |
+
+### H16 前後 fib_retrace_ls 對比
+
+| 指標 | Pre-H16(long-only pool)| Post-H16(LS+TP)|
+|---|---|---|
+| 整體 pool t-stat | **0.25**(失敗)| 未重跑(需把 strat-validate pool 改 LS) |
+| ETH(default LS) | n/a | OOSmed **13.8** / Sharpe **0.97** |
+| LTC(default LS) | n/a | OOSmed **25.0** / Sharpe **1.41** |
+| Pool mean / CI | 0.4% / [−2.5, 3.4] | per-symbol 分化大、需重跑 pool |
+
+### 結論(⚠ 翻案 fib_retrace_ls)
+
+⭐ **H16 救了 fib_retrace_ls,但 edge 高度 symbol-dependent**:
+- LTC 是全面壓倒(每欄都勝 rsi_stoch、DD 半砍)→ 若 LTC 進實盤,fib_retrace_ls 是首選
+- ETH 是「激進選項」(報酬+勝率最高,DD 比 ma_regime 高 25pp)
+- 跨時框只有 1d(+1w 有限樣本)有 edge —— worker 排程**必須鎖 1d**
+- Pool 失敗是 pre-H16 引擎不讀 TP 的實作問題、不是訊號問題(再次驗證 [feedback_verify_implementation_first])
+
+### Actionable
+
+1. ⭐ **fib_retrace_ls 應該加進 shadow §6 配重**(目前未列、但 H16 後在 ETH/LTC 是最大受益者)。建議配重 5-10%、限定 ETH/LTC 主場
+2. ETH 實盤換腿選項(已有資料):
+   - 保守 ma_regime_trend(DD 46.9 最低、Sharpe 0.84)
+   - 激進 fib_retrace_ls(Sharpe 0.97 / WinRate 68% 最高、DD 85.9 高)
+3. LTC 不在實盤,結論僅供未來重組參考
+4. **Pool t-stat 重跑待辦**:strat-validate 改用 LS 引擎才能在 pool 層看到 H16 影響(系統面待辦項)
+
+### Meta
+
+連續第二次驗證「結論前先驗實作」鐵則:`harmonic_ls` 是進場時機晚、`fib_retrace_ls` 是 TP 沒被引擎讀。**多 hypothesis 失敗未必是訊號問題、可能是實作問題**。每次「策略無 edge」結論落地前,先確認引擎/訊號實作是否完整 honor 策略 spec。
