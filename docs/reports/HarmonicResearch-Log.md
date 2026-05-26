@@ -205,5 +205,10 @@ H1/H4/H-Combo 跑得很乾淨、結論看似很硬——但前提（進場機制
 - **H9** Volume divergence 第三 confirmation
 - **H10** 多時框 confluence
 - **H11** harm_prz_ls + fib_retrace_ls 重做 H-Combo
+- **H14**（用戶 2026-05-26 提出、保留待用）：**PRZ 區間自己也加 ±15% 浮動**。
+  現行 `TolerancePad=0.15` 只套在 AB/XA、BC/AB 比率比對；PRZ（用 Ad 範圍從 A 投影）
+  用的是 pattern 的 strict Ad.Min/Ad.Max。若 butterfly + five_o 之外的 pattern
+  其實也有 edge 但被 strict PRZ 排掉，加 PRZ 浮動會撈回。一行 code 改動。
+  條件：若 H7/H11 顯示 edge 不夠時觸發。
 
 ---

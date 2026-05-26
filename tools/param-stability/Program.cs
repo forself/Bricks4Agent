@@ -37,6 +37,14 @@ if (args.Contains("--validate-ltc-fib-robust"))
     return;
 }
 
+// --validate-harm-prz-scan: H15 王牌候選的 per-symbol LS 驗證
+// LTC/OP/NEAR/APT × harm_prz_scan10 vs 現部署策略對比
+if (args.Contains("--validate-harm-prz-scan"))
+{
+    await RunValidateHarmPrzScan();
+    return;
+}
+
 // 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
 // 跑全部用 --all 旗標(較長運行時間)。
 bool runAll = args.Contains("--all");
@@ -102,6 +110,60 @@ foreach (var (name, strat) in strats)
 }
 
 Console.WriteLine("(穩定度 ≥ 0.7 通常算 robust;< 0.5 多半過擬合徵兆,但要結合 opt vs def OOS 一起看)");
+
+async Task RunValidateHarmPrzScan()
+{
+    Console.WriteLine("=== H15 王牌候選 harm_prz_scan10 per-symbol LS 驗證 ===");
+    Console.WriteLine("LTC/OP/NEAR/APT/INJ:strat-validate 顯示這些幣上 harm_prz_scan10 有明顯 edge,");
+    Console.WriteLine("這裡用 LongShortBacktestEngine 跑 walk-forward 確認 + 對比現部署或最強對照。\n");
+
+    var groups = new List<(string sym, IStrategy[] strats, string note)>
+    {
+        ("LTCUSDT",  new IStrategy[]
+        {
+            new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+            new FibRetraceLsStrategy(),       // 對照:LTC 上 fib 是另一個強候選(Sharpe 1.40)
+            new StochasticStrategy(),         // 對照:現部署 rsi_stoch
+        }, "LTC:現 rsi_stoch、fib def 強候選"),
+        ("OPUSDT",   new IStrategy[]
+        {
+            new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+            new FibRetraceLsStrategy(),
+            new MfiStrategy(),
+        }, "OP:strat-validate 顯示 1d 21% best"),
+        ("NEARUSDT", new IStrategy[]
+        {
+            new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+            new FibRetraceLsStrategy(),
+            new BollingerRevertLsStrategy(),
+        }, "NEAR:4/5 時框 avg 9%"),
+        ("APTUSDT",  new IStrategy[]
+        {
+            new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+            new FibRetraceLsStrategy(),
+            new BollingerRevertLsStrategy(),
+        }, "APT:3/5 時框 avg 6%"),
+        ("INJUSDT",  new IStrategy[]
+        {
+            new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+            new FibRetraceLsStrategy(),
+        }, "INJ:3/5 時框 avg 8%"),
+    };
+
+    foreach (var (sym, strats4, note) in groups)
+    {
+        Console.WriteLine($"── {note} ──");
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"  {"strategy",-22} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var s in strats4)
+        {
+            var r = LongShortBacktestEngine.RunWalkForward(s, bars, cfg, trainBars: 250, testBars: 90, stride: 60);
+            Console.WriteLine($"  {s.Name,-22} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+}
 
 async Task RunValidateLtcFibRobust()
 {

@@ -24,8 +24,38 @@ namespace StrategyWorker.Engine;
 /// </summary>
 public class HarmonicPrzLsStrategy : IStrategy
 {
-    public string Name => "harmonic_prz_ls";
-    public string Description => "H5-Harmonic-PRZ:Carney 教科書用法 — 4 點 XABC + 從 A 投影 PRZ + 當前價進 PRZ 才進場";
+    // H6 per-pattern breakdown(2026-05-26):允許 ctor 限定只交易某些 pattern(white list)。
+    // null = 全部 10 個 pattern(預設 = harmonic_prz_ls);傳子集 = 變體(命名 harm_prz_<pattern>)。
+    private readonly HashSet<string>? _patternWhitelist;
+    private readonly string _name;
+    // H12/H13 regime filter(2026-05-26):null = 不過濾、傳 set = 只允許這些 regime 進場
+    private readonly HashSet<Indicators.RegimeDetector.RegimeType>? _regimeWhitelist;
+    // H15 多窗口掃描(2026-05-26):掃最近 N 個 4-pivot 窗,取第一個有效 XABC+PRZ 命中。
+    // 預設 1 = 現行行為(只看最後 4);> 1 = 鬆 trigger、撈更多形態。
+    private readonly int _scanWindows;
+    // H14 PRZ 浮動(2026-05-26):PRZ 區間額外往外擴 X% 讓更多當前價算進。預設 0 = 不擴。
+    private readonly decimal _przWidening;
+
+    public HarmonicPrzLsStrategy(
+        IEnumerable<string>? patternWhitelist = null,
+        string? name = null,
+        IEnumerable<Indicators.RegimeDetector.RegimeType>? regimeWhitelist = null,
+        int scanWindows = 1,
+        decimal przWidening = 0m)
+    {
+        _patternWhitelist = patternWhitelist == null
+            ? null
+            : new HashSet<string>(patternWhitelist, StringComparer.OrdinalIgnoreCase);
+        _name = name ?? "harmonic_prz_ls";
+        _regimeWhitelist = regimeWhitelist == null ? null : new HashSet<Indicators.RegimeDetector.RegimeType>(regimeWhitelist);
+        _scanWindows = Math.Max(1, scanWindows);
+        _przWidening = Math.Max(0m, przWidening);
+    }
+
+    public string Name => _name;
+    public string Description => _patternWhitelist == null
+        ? "H5-Harmonic-PRZ:Carney 教科書用法 — 4 點 XABC + 從 A 投影 PRZ + 當前價進 PRZ 才進場"
+        : $"H6-Harmonic-PRZ {string.Join("/", _patternWhitelist)}:單 pattern 變體";
     public StrategyCategory Category => StrategyCategory.Pattern;
     public int MinBars => 50;
     public decimal MinCapitalUsdt => 120m;
@@ -51,88 +81,115 @@ public class HarmonicPrzLsStrategy : IStrategy
         decimal slBuffer = config.GetParam("hm_sl_buffer",   SlBuffer);
         if (bars.Count < MinBars) return Hold(config, "資料不足");
 
+        // H12/H13 regime gate(可選、null = 不過濾)— 部分變體只在某種 regime 進場
+        if (_regimeWhitelist != null)
+        {
+            var regime = RegimeDetector.Detect(bars);
+            if (!_regimeWhitelist.Contains(regime.Type))
+                return Hold(config, $"regime {regime.Type} 不在白名單");
+        }
         var pivots = HarmonicPatterns.FindPivots(bars, pivotWindow);
         if (pivots.Count < 4) return Hold(config, $"pivots 不足 4(目前 {pivots.Count})");
 
-        // 取最近 4 個 pivot 當 XABC
-        var X = pivots[^4]; var A = pivots[^3]; var B = pivots[^2]; var C = pivots[^1];
-
-        // 嚴格交替驗證
-        string direction;
-        if (!X.IsHigh && A.IsHigh && !B.IsHigh && C.IsHigh)
-            direction = "bullish";
-        else if (X.IsHigh && !A.IsHigh && B.IsHigh && !C.IsHigh)
-            direction = "bearish";
-        else
-            return Hold(config, $"XABC 不交替(X{(X.IsHigh ? "H" : "L")}A{(A.IsHigh ? "H" : "L")}B{(B.IsHigh ? "H" : "L")}C{(C.IsHigh ? "H" : "L")})");
-
-        // C 不能太老
-        int ageC = bars.Count - 1 - C.Index;
-        if (ageC > maxAgeC)
-            return Hold(config, $"XABC 太老(C 距今 {ageC} 根 > {maxAgeC})");
-
-        // 4-點投影:選最 fit 的 pattern + 算 PRZ
-        var proj = HarmonicPatterns.ProjectFromXabc(direction, X.Price, A.Price, B.Price, C.Price, slBuffer);
-        if (proj == null) return Hold(config, "XABC 比率不符任何 pattern");
-
-        // 當前價是否在 PRZ
-        decimal currentPrice = bars[^1].Close;
-        bool inPrz = currentPrice >= proj.PrzLow && currentPrice <= proj.PrzHigh;
-        if (!inPrz)
-            return Hold(config, $"{proj.PatternName} XABC fit {proj.Fit:F2} 但價 {currentPrice:F2} 不在 PRZ [{proj.PrzLow:F2}, {proj.PrzHigh:F2}]");
-
-        // PRZ 失效檢查:bullish 不能跌破 PrzLow、bearish 不能漲破 PrzHigh(已過則本 XABC 失效)
-        if (direction == "bullish" && bars[^1].Low < proj.PrzLow * (1m - slBuffer))
-            return Hold(config, $"{proj.PatternName} PRZ 已被跌破、失效");
-        if (direction == "bearish" && bars[^1].High > proj.PrzHigh * (1m + slBuffer))
-            return Hold(config, $"{proj.PatternName} PRZ 已被漲破、失效");
-
-        // 確認:當前 bar 視為 D 候選,看燭線 + RSI 背離
-        int dIdx = bars.Count - 1;
-        var (hasCandle, candleSig) = HarmonicPatterns.DetectCandleConfirmation(bars, dIdx, direction);
-        var (hasRsiDiv, rsiB, rsiD) = HarmonicPatterns.DetectRsiDivergence(bars, B.Index, dIdx, direction);
-
-        decimal conf = proj.Fit;
-        if (hasCandle) conf += 0.15m;
-        if (hasRsiDiv) conf += 0.15m;
-        conf = Math.Clamp(conf, 0m, 0.95m);
-        if (conf < minConf)
-            return Hold(config, $"{proj.PatternName}({direction}) PRZ 命中但 conf {conf:F2} < {minConf}");
-
-        string action = direction == "bullish" ? "buy" : "sell";
-        string reason = $"PRZ-mode {proj.PatternName} {direction}:價 {currentPrice:F2} 在 PRZ[{proj.PrzLow:F2},{proj.PrzHigh:F2}] fit {proj.Fit:F2}"
-                      + (hasCandle ? $", 燭線確認({candleSig})" : "")
-                      + (hasRsiDiv ? ", RSI 背離" : "")
-                      + $" — {(action == "buy" ? "做多" : "做空")}";
-
-        return new Signal
+        // H15:掃最近 _scanWindows 個 4-pivot 窗,取第一個有效 XABC+PRZ 命中的。
+        // _scanWindows=1 → 等同舊版(只看最後 4 個 pivot);> 1 → 多窗口、放鬆 trigger。
+        string lastHoldReason = "no valid XABC + PRZ match";
+        for (int ci = pivots.Count - 1; ci >= 3 && (pivots.Count - 1 - ci) < _scanWindows; ci--)
         {
-            SignalId = $"sig-{Guid.NewGuid():N}"[..16],
-            Strategy = Name, Symbol = config.Symbol, Exchange = config.Exchange,
-            Action = action, Confidence = Math.Round(conf, 2), Reason = reason,
-            Interval = config.Interval,
-            StopPrice = proj.SlPrice,                  // ★ engine 會讀(2026-05-26 LS engine 加 SL 支援)
-            TargetPrice = Math.Round(proj.Tp1, 4),     // TP 目前 LS engine 還未讀、留著供以後
-            Indicators = new()
+            var X = pivots[ci - 3]; var A = pivots[ci - 2]; var B = pivots[ci - 1]; var C = pivots[ci];
+
+            // 嚴格交替驗證
+            string direction;
+            if (!X.IsHigh && A.IsHigh && !B.IsHigh && C.IsHigh)
+                direction = "bullish";
+            else if (X.IsHigh && !A.IsHigh && B.IsHigh && !C.IsHigh)
+                direction = "bearish";
+            else
             {
-                ["pattern_name_hash"] = (decimal)proj.PatternName.Length, // 名字打 hash 給 dashboard 看
-                ["pattern_fit"]  = proj.Fit,
-                ["direction"]    = direction == "bullish" ? 1m : -1m,
-                ["ab_xa"]        = proj.AbRatio,
-                ["bc_ab"]        = proj.BcRatio,
-                ["prz_low"]      = proj.PrzLow,
-                ["prz_high"]     = proj.PrzHigh,
-                ["sl_price"]     = proj.SlPrice,
-                ["tp1"]          = proj.Tp1,
-                ["age_c"]        = ageC,
-                ["price"]        = Math.Round(currentPrice, 4),
-            },
-        };
+                lastHoldReason = $"XABC[{ci}] 不交替";
+                continue;
+            }
+
+            // C 不能太老(往回掃只會更老、可以提早 break;但用 continue 保留別的窗口可能恰好通過)
+            int ageC = bars.Count - 1 - C.Index;
+            if (ageC > maxAgeC)
+            {
+                lastHoldReason = $"XABC[{ci}] C 太老({ageC} > {maxAgeC})";
+                break;   // 往回的 C 只會更老
+            }
+
+            // 4-點投影(帶 PRZ widening H14)
+            var proj = HarmonicPatterns.ProjectFromXabc(direction, X.Price, A.Price, B.Price, C.Price, slBuffer, _przWidening);
+            if (proj == null) { lastHoldReason = $"XABC[{ci}] 比率不符 pattern"; continue; }
+
+            // pattern whitelist 過濾
+            if (_patternWhitelist != null && !_patternWhitelist.Contains(proj.PatternName))
+            {
+                lastHoldReason = $"XABC[{ci}] pattern {proj.PatternName} 不在白名單";
+                continue;
+            }
+
+            // 當前價是否在 PRZ
+            decimal currentPrice = bars[^1].Close;
+            bool inPrz = currentPrice >= proj.PrzLow && currentPrice <= proj.PrzHigh;
+            if (!inPrz)
+            {
+                lastHoldReason = $"{proj.PatternName}[{ci}] 價 {currentPrice:F2} 不在 PRZ [{proj.PrzLow:F2}, {proj.PrzHigh:F2}]";
+                continue;
+            }
+
+            // PRZ 失效檢查
+            if (direction == "bullish" && bars[^1].Low < proj.PrzLow * (1m - slBuffer)) { lastHoldReason = $"{proj.PatternName}[{ci}] PRZ 失效"; continue; }
+            if (direction == "bearish" && bars[^1].High > proj.PrzHigh * (1m + slBuffer)) { lastHoldReason = $"{proj.PatternName}[{ci}] PRZ 失效"; continue; }
+
+            // 確認 + 信心
+            int dIdx = bars.Count - 1;
+            var (hasCandle, candleSig) = HarmonicPatterns.DetectCandleConfirmation(bars, dIdx, direction);
+            var (hasRsiDiv, rsiB, rsiD) = HarmonicPatterns.DetectRsiDivergence(bars, B.Index, dIdx, direction);
+
+            decimal conf = proj.Fit;
+            if (hasCandle) conf += 0.15m;
+            if (hasRsiDiv) conf += 0.15m;
+            conf = Math.Clamp(conf, 0m, 0.95m);
+            if (conf < minConf) { lastHoldReason = $"{proj.PatternName}[{ci}] conf {conf:F2} < {minConf}"; continue; }
+
+            // ★ 找到有效訊號,emit
+            string action = direction == "bullish" ? "buy" : "sell";
+            string reason = $"PRZ-mode {proj.PatternName}[{ci}] {direction}:價 {currentPrice:F2} 在 PRZ[{proj.PrzLow:F2},{proj.PrzHigh:F2}] fit {proj.Fit:F2}"
+                          + (hasCandle ? $", 燭線確認({candleSig})" : "")
+                          + (hasRsiDiv ? ", RSI 背離" : "")
+                          + $" — {(action == "buy" ? "做多" : "做空")}";
+
+            return new Signal
+            {
+                SignalId = $"sig-{Guid.NewGuid():N}"[..16],
+                Strategy = Name, Symbol = config.Symbol, Exchange = config.Exchange,
+                Action = action, Confidence = Math.Round(conf, 2), Reason = reason,
+                Interval = config.Interval,
+                StopPrice = proj.SlPrice,
+                TargetPrice = Math.Round(proj.Tp1, 4),
+                Indicators = new()
+                {
+                    ["pattern_fit"]   = proj.Fit,
+                    ["direction"]     = direction == "bullish" ? 1m : -1m,
+                    ["ab_xa"]         = proj.AbRatio,
+                    ["bc_ab"]         = proj.BcRatio,
+                    ["prz_low"]       = proj.PrzLow,
+                    ["prz_high"]      = proj.PrzHigh,
+                    ["sl_price"]      = proj.SlPrice,
+                    ["tp1"]           = proj.Tp1,
+                    ["age_c"]         = ageC,
+                    ["window_idx"]    = ci,            // 第幾個 pivot 窗找到(_scanWindows>1 時有用)
+                    ["price"]         = Math.Round(currentPrice, 4),
+                },
+            };
+        }
+        return Hold(config, lastHoldReason);
     }
 
-    private static Signal Hold(StrategyConfig c, string reason) => new()
+    private Signal Hold(StrategyConfig c, string reason) => new()
     {
-        SignalId = $"sig-{Guid.NewGuid():N}"[..16], Strategy = "harmonic_prz_ls",
+        SignalId = $"sig-{Guid.NewGuid():N}"[..16], Strategy = _name,
         Symbol = c.Symbol, Exchange = c.Exchange, Action = "hold", Confidence = 0, Reason = reason, Interval = c.Interval,
     };
 }

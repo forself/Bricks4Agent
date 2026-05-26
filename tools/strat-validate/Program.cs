@@ -11,13 +11,24 @@ var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 // 固定 funding 假設(long 付正值):env FUNDING_RATE_PER_8H、預設 0.01%/8h(=0.03%/日)。
 // 多頭實際常 3-5x;engine 按實際持有期累計(持越久咬越多)。灌進每根 bar、只在 applyFunding 時生效。
 decimal fundingPer8h = decimal.TryParse(Environment.GetEnvironmentVariable("FUNDING_RATE_PER_8H"), out var fpr) && fpr >= 0 ? fpr : 0.0001m;
-var symbols = new[]
-{
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-    "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "DOTUSDT", "ATOMUSDT",
-    // 2026-05-25 擴幣宇宙 12→20(堆樣本:更多幣 = pooling 後 fold 更多、廣度濾網更有力)
-    "TRXUSDT", "UNIUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "SUIUSDT", "INJUSDT",
-};
+
+// ── 快速迭代模式(2026-05-26)──
+// --fast       :5 主幣 × 1d 而已、跑 30-60s(原本 20 幣 × 5 時框 = 8-10 min)
+// --only=PAT   :只跑名稱符合 PAT(支援 *)的策略;e.g. --only=harm_prz_*
+bool fastMode = args.Contains("--fast");
+string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substring(7);
+if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
+if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
+
+string[] symbols = fastMode
+    ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
+    : new[]
+    {
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
+        "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT", "DOTUSDT", "ATOMUSDT",
+        // 2026-05-25 擴幣宇宙 12→20(堆樣本:更多幣 = pooling 後 fold 更多、廣度濾網更有力)
+        "TRXUSDT", "UNIUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "SUIUSDT", "INJUSDT",
+    };
 
 (string name, IStrategy s)[] strats =
 {
@@ -47,6 +58,137 @@ var symbols = new[]
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
     // 研究實驗(H5-Harmonic-PRZ, 2026-05-26):教科書 Carney 用法 - 4 點 XABC + PRZ 投影進場
     ("harmonic_prz_ls", new HarmonicPrzLsStrategy()),
+    // H6 per-pattern breakdown(2026-05-26):每個 pattern 單獨測 OOS、找撐起 edge 的是誰
+    ("harm_prz_gartley",      new HarmonicPrzLsStrategy(new[] { "gartley" },      "harm_prz_gartley")),
+    ("harm_prz_bat",          new HarmonicPrzLsStrategy(new[] { "bat" },          "harm_prz_bat")),
+    ("harm_prz_butterfly",    new HarmonicPrzLsStrategy(new[] { "butterfly" },    "harm_prz_butterfly")),
+    ("harm_prz_crab",         new HarmonicPrzLsStrategy(new[] { "crab" },         "harm_prz_crab")),
+    ("harm_prz_deep_crab",    new HarmonicPrzLsStrategy(new[] { "deep_crab" },    "harm_prz_deep_crab")),
+    ("harm_prz_deep_gartley", new HarmonicPrzLsStrategy(new[] { "deep_gartley" }, "harm_prz_deep_gartley")),
+    ("harm_prz_cypher",       new HarmonicPrzLsStrategy(new[] { "cypher" },       "harm_prz_cypher")),
+    ("harm_prz_shark",        new HarmonicPrzLsStrategy(new[] { "shark" },        "harm_prz_shark")),
+    ("harm_prz_alt_bat",      new HarmonicPrzLsStrategy(new[] { "alt_bat" },      "harm_prz_alt_bat")),
+    ("harm_prz_five_o",       new HarmonicPrzLsStrategy(new[] { "five_o" },       "harm_prz_five_o")),
+    // H11 PRZ + fib 重做 H-Combo(原版用錯版 harmonic、結論作廢)
+    ("harm_prz_fib_5050", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(), 0.5m), (new FibRetraceLsStrategy(), 0.5m) }, name: "harm_prz_fib_5050")),
+    ("harm_prz_fib_3070", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(), 0.3m), (new FibRetraceLsStrategy(), 0.7m) }, name: "harm_prz_fib_3070")),
+    ("harm_prz_fib_7030", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(), 0.7m), (new FibRetraceLsStrategy(), 0.3m) }, name: "harm_prz_fib_7030")),
+    // H12 PRZ + RangeBound regime(H1 重做)
+    ("harm_prz_range_ls", new HarmonicPrzLsStrategy(
+        patternWhitelist: null, name: "harm_prz_range_ls",
+        regimeWhitelist: new[] { StrategyWorker.Engine.Indicators.RegimeDetector.RegimeType.RangeBound })),
+    // H13 PRZ + Trending regime(新對比:PRZ 在趨勢 vs 橫盤誰強)
+    ("harm_prz_trend_ls", new HarmonicPrzLsStrategy(
+        patternWhitelist: null, name: "harm_prz_trend_ls",
+        regimeWhitelist: new[] {
+            StrategyWorker.Engine.Indicators.RegimeDetector.RegimeType.TrendingUp,
+            StrategyWorker.Engine.Indicators.RegimeDetector.RegimeType.TrendingDown
+        })),
+    // ── 潛在「王牌」候選(對沖價值 / 去相關 sleeve)──
+    // 輕量 sleeve(貼近 decorr4 的 10% fib 比例)
+    ("harm_prz_fib_2080", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(), 0.2m), (new FibRetraceLsStrategy(), 0.8m) }, name: "harm_prz_fib_2080")),
+    // decorr5:把 harm_prz 加進現行 decorr4(比例縮放讓總和 100%)
+    ("decorr5_with_harmprz", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.33m),
+            (new DualThrustStrategy(),        0.27m),
+            (new BollingerRevertLsStrategy(), 0.16m),
+            (new FibRetraceLsStrategy(),      0.09m),
+            (new HarmonicPrzLsStrategy(),     0.15m),
+        }, name: "decorr5_with_harmprz")),
+    // 純 mean-revert 家族對:harm_prz + bb_revert 互補測試
+    ("harm_prz_bb_revert", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(), 0.5m), (new BollingerRevertLsStrategy(), 0.5m) }, name: "harm_prz_bb_revert")),
+    // ── H7 top-2 patterns(基於 H6 發現:butterfly t=1.79 + five_o t=1.60 撐起 edge)──
+    ("harm_prz_top2", new HarmonicPrzLsStrategy(
+        new[] { "butterfly", "five_o" }, "harm_prz_top2")),
+    // butterfly 單獨 + fib 組合(最強單 pattern + 最穩非趨勢腿)
+    ("harm_prz_butterfly_fib", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(new[] { "butterfly" }, "_butterfly"), 0.5m),
+          (new FibRetraceLsStrategy(), 0.5m) }, name: "harm_prz_butterfly_fib")),
+    // decorr5 更新版:用 butterfly-only 而非全 pattern 版加進去(濃縮 edge)
+    ("decorr5_butterfly", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.33m),
+            (new DualThrustStrategy(),        0.27m),
+            (new BollingerRevertLsStrategy(), 0.16m),
+            (new FibRetraceLsStrategy(),      0.09m),
+            (new HarmonicPrzLsStrategy(new[] { "butterfly" }, "_butterfly"), 0.15m),
+        }, name: "decorr5_butterfly")),
+    // ── H15 acid test:多窗口掃描(放鬆 trigger 看 edge 撐不撐得住)──
+    // top-2 + 不同 scan_windows 看 sweet spot
+    ("harm_prz_top2_scan5",  new HarmonicPrzLsStrategy(
+        new[] { "butterfly", "five_o" }, "harm_prz_top2_scan5",  scanWindows: 5)),
+    ("harm_prz_top2_scan10", new HarmonicPrzLsStrategy(
+        new[] { "butterfly", "five_o" }, "harm_prz_top2_scan10", scanWindows: 10)),
+    ("harm_prz_top2_scan20", new HarmonicPrzLsStrategy(
+        new[] { "butterfly", "five_o" }, "harm_prz_top2_scan20", scanWindows: 20)),
+    // butterfly 單獨 + scan(看 butterfly 一個 pattern 能不能撐起)
+    ("harm_prz_butterfly_scan10", new HarmonicPrzLsStrategy(
+        new[] { "butterfly" }, "harm_prz_butterfly_scan10", scanWindows: 10)),
+    // 全 pattern + scan(對照、看 scan 提升能否補平 noise pattern 的負拖)
+    ("harm_prz_scan10", new HarmonicPrzLsStrategy(
+        patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10)),
+    // ── H14 PRZ 浮動 ±15%(疊加 H15 scan10、看是否再加乘)──
+    ("harm_prz_scan10_widepz", new HarmonicPrzLsStrategy(
+        patternWhitelist: null, name: "harm_prz_scan10_widepz",
+        scanWindows: 10, przWidening: 0.15m)),
+    ("harm_prz_top2_scan10_widepz", new HarmonicPrzLsStrategy(
+        new[] { "butterfly", "five_o" }, "harm_prz_top2_scan10_widepz",
+        scanWindows: 10, przWidening: 0.15m)),
+    // ── 王牌候選 decorr5(用 scan10 版替換早先 marginal 的 decorr5)──
+    ("decorr5_scan10", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.33m),
+            (new DualThrustStrategy(),        0.27m),
+            (new BollingerRevertLsStrategy(), 0.16m),
+            (new FibRetraceLsStrategy(),      0.09m),
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_scan10", scanWindows: 10), 0.15m),
+        }, name: "decorr5_scan10")),
+    ("decorr5_top2_scan10", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.33m),
+            (new DualThrustStrategy(),        0.27m),
+            (new BollingerRevertLsStrategy(), 0.16m),
+            (new FibRetraceLsStrategy(),      0.09m),
+            (new HarmonicPrzLsStrategy(new[] { "butterfly", "five_o" }, "_top2_scan10", scanWindows: 10), 0.15m),
+        }, name: "decorr5_top2_scan10")),
+    // ── 布林家族補測(原本沒進 strat-validate)──
+    ("bollinger_bands",   new BollingerStrategy()),          // 基本版(無趨勢過濾、bb_revert_ls 的對照)
+    ("squeeze_breakout",  new SqueezeBreakoutStrategy()),    // 完全不同邏輯:波動收縮後突破、順勢進
+    // 維加斯通道(多層 EMA 趨勢跟隨、跟布林/斐波/諧波不同流派)
+    // ⚠ MinBars=700,在 1000-bar 資料下 walk-forward fold 數會偏少;先註冊看
+    ("vegas_tunnel",      new VegasTunnelStrategy()),
+    // 潛在互補組合:squeeze 突破 + harm_prz_top2 反轉(理論上市場狀態互斥)
+    ("squeeze_harm_prz_top2", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new SqueezeBreakoutStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(new[] { "butterfly", "five_o" }, "_top2"), 0.5m) },
+        name: "squeeze_harm_prz_top2")),
+    // ── 新組合候選(用 H15 scan10 強版本)──
+    ("squeeze_harm_prz_scan10", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new SqueezeBreakoutStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_scan10", scanWindows: 10), 0.5m) },
+        name: "squeeze_harm_prz_scan10")),
+    // 動量 + 諧波(vol-managed momentum + 反轉、時序錯開)
+    ("tsmom_harm_prz_scan10", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new TsMomentumStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_scan10", scanWindows: 10), 0.5m) },
+        name: "tsmom_harm_prz_scan10")),
+    // Chandelier 突破 + 諧波(Donchian 趨勢延續 + 反轉)
+    ("chandelier_harm_prz_scan10", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new ChandelierTrendStrategy(), 0.5m),
+          (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_scan10", scanWindows: 10), 0.5m) },
+        name: "chandelier_harm_prz_scan10")),
+    // 三腿:諧波 + fib 回撤 + 雙動量(三種不同 mechanism、理論上去相關最大)
+    ("triple_pattern_mom", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        { (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_scan10", scanWindows: 10), 0.33m),
+          (new FibRetraceLsStrategy(), 0.34m),
+          (new DualMomentumLsStrategy(), 0.33m) },
+        name: "triple_pattern_mom")),
     // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
     ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
     // H2-Fib(2026-05-26):FibRetrace + textbook Fib SL,看 DD 能否從 96 砍下來
@@ -63,6 +205,18 @@ var symbols = new[]
         { (new DualMomentumLsStrategy(), 0.38m), (new DualThrustStrategy(), 0.32m),
           (new BollingerRevertLsStrategy(), 0.19m), (new FibRetraceLsStrategy(), 0.10m) }, name: "decorr4_ls")),
 };
+
+// --only=PAT 過濾(支援 *)
+if (onlyFilter != null)
+{
+    var regex = new System.Text.RegularExpressions.Regex(
+        "^" + System.Text.RegularExpressions.Regex.Escape(onlyFilter).Replace("\\*", ".*") + "$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    var filtered = strats.Where(s => regex.IsMatch(s.name)).ToArray();
+    Console.WriteLine($"⚡ 過濾後策略: {filtered.Length} 個 ({string.Join(", ", filtered.Select(s => s.name))})");
+    strats = filtered;
+    if (strats.Length == 0) { Console.WriteLine("(no strategy matched --only filter、退出)"); return; }
+}
 
 // ── --allocate:穩健配置引擎(獨立快速模式,不跑完整報告)──────────────
 // 4 步:① 入場閘(顯著 + full 正 + sharpe>0) ② edge×逆波動 raw 權重 ③ 朝等權收縮(λ=T/T*)
@@ -187,7 +341,7 @@ var lsEq = PrintTable("Long-short(新引擎)", (s, b, c) => LongShortBacktestEng
 // ── 多時框 策略 × 幣 分析(預設 1h~1w,找跨時框穩健最優解)──────────────
 // long-only 引擎(對應實際 perp_long_only)。每時框 per(策略,幣) OOS = walk-forward avg test%。
 // 跨時框一致 = 真 edge 的證據;只在單一時框好 = 多半噪音/單一行情(如 XRP 那波大漲)。
-string[] intervals = { "1h", "4h", "12h", "1d", "1w" };
+string[] intervals = fastMode ? new[] { "1d" } : new[] { "1h", "4h", "12h", "1d", "1w" };
 string Sh(string s) => s.Replace("USDT", "");
 
 // 跑單一時框的 策略×幣 grid(printGrid=true 才印完整表),回傳 strat->coin->OOS%

@@ -493,7 +493,8 @@ public static class HarmonicPatterns
     /// </summary>
     public static XabcProjection? ProjectFromXabc(
         string direction, decimal Xp, decimal Ap, decimal Bp, decimal Cp,
-        decimal slBufferPct = 0.005m)
+        decimal slBufferPct = 0.005m,
+        decimal przWideningPct = 0m)   // H14:PRZ 區間額外往外擴 X% (預設 0 = 不擴)
     {
         var xa = Math.Abs(Ap - Xp);
         var ab = Math.Abs(Bp - Ap);
@@ -527,6 +528,14 @@ public static class HarmonicPatterns
         if (best == null) return null;
 
         var (przLow, przHigh) = CalcPrz(direction, Xp, Ap, best.Ad.Min, best.Ad.Max);
+        // H14:PRZ 區間額外往外擴(讓更多當前價算進 PRZ、撈更多 trigger)
+        if (przWideningPct > 0m)
+        {
+            var range = przHigh - przLow;
+            var widen = range * przWideningPct;
+            przLow  -= widen;
+            przHigh += widen;
+        }
         // 對 D 投影到 PRZ 中心(僅供 TP 計算的代理、實際 entry 是當前價)
         var dProxy = (przLow + przHigh) / 2m;
         var (_, _, tp1, tp2, _) = CalcTpSl(direction, Xp, Cp, dProxy, slBufferPct, best.Name);
