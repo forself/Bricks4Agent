@@ -155,3 +155,76 @@ ts_momentum:               2%
 ---
 
 **Meta-finding(再次強調)**:結論「策略無 edge」前先驗實作對不對符合理論。今天 5/26 H5 翻案案例(`harmonic_ls` 進場時機晚 3-8 bars 違反 Carney textbook PRZ 進場)已記在 [feedback_verify_implementation_first](../../.claude/projects/-Users-dba-anthony-Note/memory/feedback_verify_implementation_first.md);這次酸測再次印證 — 多 hypothesis 失敗未必是訊號問題,可能是實作問題。
+
+---
+
+## 6. 附錄 — H16 啟用後 LS 引擎重測(2026-05-26 晚)
+
+H16 啟用 `LongShortBacktestEngine` 讀 `Signal.TargetPrice` 後,重跑 26 支 `harm_prz_*` × 20 幣 × 5 時框 × 2000 bars。
+
+| 策略 | OOSmed% (pre→post) | +fold% | fullRet% | Sharpe | DD% |
+|---|---|---|---|---|---|
+| `harm_prz_scan10` | 6.6 → **7.3** ⬆ | 32 → 37 ⬆ | 393 → 388 ≈ | 0.73 → **0.91** ⬆ | 28 → **11** ⬇⬇ |
+| `harm_prz_scan10_widepz` | 11.0 → 9.8 ⬇ | 38 → 39 ≈ | 1280 → 931 ⬇ | 0.86 → 0.77 ⬇ | 30 → **22** ⬇ |
+| `harm_prz_top2_scan10` | 5.3 → 4.5 ⬇ | 20 → 18 ≈ | 192 → 177 ≈ | 0.77 → **0.90** ⬆ | 18 → **6** ⬇⬇ |
+| `harm_prz_top2_scan10_widepz` | 8.5 → 5.1 ⬇⬇ | 23 → 18 ⬇ | 379 → 295 ⬇ | 0.77 → 0.61 ⬇⬇ | 29 → 21 ⬇ |
+| `harm_prz_butterfly_scan10` | 2.1 → 2.1 = | 11 → 11 = | 58 → 58 = | 0.74 → 0.74 = | 0 → 0 = |
+
+**解讀**:
+1. **窄 PRZ + TP = 純加分** — `scan10`、`top2_scan10` Sharpe ↑、DD 砍半
+2. **寬 PRZ + TP = 喜憂參半** — `scan10_widepz` 略降但 DD 改善;`top2_scan10_widepz` 變差
+3. `butterfly_scan10` 完全沒變 — TP 還沒到價就被反向訊號平掉
+
+**Pooled t-stat 沒變**:n=512、scan10_widepz 仍 5.01、scan10 仍 5.86,**因為 t-stat 用的是 Benson long-only 引擎、不讀 TP**。LS 引擎才受影響。要真實衡量 H16 對顯著性的影響,需把 strat-validate 的 pool 改用 LS 引擎(列在「6. 系統面待辦」)。
+
+### 更新後的 shadow 配重(覆蓋 §3 Tier 1)
+
+```yaml
+harm_prz_scan10:          20%   # ⬆ H16 後 Sharpe 0.91、DD 11(risk-adjusted 王者)
+harm_prz_scan10_widepz:   20%   # ⬇ 從 30%(TP 略侵蝕收益、但 DD 改善)
+decorr5_widepz:           15%   # 不變
+ma_regime_trend:          15%   # 不變
+accel_momentum:           10%   # 不變
+dual_mom_ls:              10%   # 不變
+ts_momentum:               5%   # 不變
+harm_prz_top2_scan10:      5%   # 新增 — H16 後 Sharpe 0.90、DD 6
+# total                  100%
+```
+
+### Deployed 重跑 — Pooled t-stat(2000 bars、n=512)
+
+對 20 支現役/候選策略補齊 t-stat(原始 deployed 跑 log 在 t-stat 段被截掉、本次補齊):
+
+| 策略 | mean% | 95% CI | t | 判定 |
+|---|---|---|---|---|
+| `decorr5_top2_scan10` | 5.3 | [1.4, 9.7] | 2.48 | ✅ 顯著 |
+| `dual_mom_ls` | 5.3 | [1.5, 9.7] | 2.45 | ✅ 顯著 |
+| `decorr5_widepz` | 5.2 | [1.2, 9.5] | 2.44 | ✅ 顯著 |
+| `decorr5_scan10` | 5.2 | [1.2, 9.5] | 2.44 | ✅ 顯著 |
+| `ma_regime_trend` | 5.2 | [1.3, 9.5] | 2.45 | ✅ 顯著 |
+| `accel_momentum` | 5.1 | [1.4, 9.3] | 2.50 | ✅ 顯著 |
+| `decorr4_ls` | 5.1 | [1.0, 9.4] | 2.36 | ✅ 顯著 |
+| `chandelier_trend` | 5.0 | [1.4, 9.0] | 2.50 | ✅ 顯著 |
+| `ts_momentum` | 4.6 | [0.8, 8.4] | 2.27 | ✅ 顯著 |
+| `don_trend` | 3.8 | [1.1, 6.8] | 2.62 | ✅ 顯著 |
+| `dual_thrust` | 2.9 | [0.0, 6.1] | 1.93 | ✅ 顯著 |
+| `di_trend_ls` | 3.3 | [0.0, 6.8] | 1.80 | — |
+| `supertrend_ls` | 2.8 | [-1.4, 7.1] | 1.31 | — |
+| `fib_retrace_ls` | 0.4 | [-2.5, 3.4] | 0.25 | — |
+| `rsi2_rev` | 0.5 | [-0.2, 1.2] | 1.23 | — |
+| `mfi` | 0.0 | [-1.2, 1.2] | -0.02 | — |
+| `bb_revert_ls` | 0.0 | [-1.2, 1.4] | -0.03 | — |
+| `boll_rev` | -0.3 | [-1.0, 0.4] | -0.79 | — |
+| `squeeze_breakout` | -0.6 | [-1.7, 0.7] | -0.98 | — |
+| `rsi_stoch` | -1.5 | [-3.0, 0.0] | -1.90 | — |
+
+**對比 harm_prz 王牌**:`scan10_widepz` t=5.01、`scan10` t=5.86 — **顯著性遠超現役任何一支**(下一名 don_trend t=2.62)。即使下調 50% 自然 inflation,harm_prz 王牌仍是頭部。
+
+### 對外承接(換機後待辦)
+
+詳見 [HarmonicResearch-Log.md](HarmonicResearch-Log.md) 的「待辦 / 待驗」段。摘要:
+
+1. 必驗:`fib_retrace_sl` × H16 影響(它也設 TP、可能翻案);`HarmonicPrzLsStrategy.Tp1` 計算合理性(widepz TP 太緊)
+2. Shadow 啟動前:final 配重(用 §6 表)+ 幣池白名單(LTC/OP/ADA/INJ/APT/SUI;BTC/NEAR 黑名單)+ 啟動日 + 4 週升 live 標準
+3. H17-H21 路線圖:confidence sizing / ATR trailing / 多時框 confluence / volume divergence
+4. 系統面:strat-validate t-stat pool 改 LS 引擎;真實 funding rate 加入回測

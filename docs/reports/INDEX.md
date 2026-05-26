@@ -24,7 +24,7 @@
 |---|---|---|
 | **[Param Stability Research](ParamStabilityResearch-Log.md)** | 2026-05-26 | 5 個 robust (策略, 幣) pair 發現；filter 路徑不適合；LTC × fib_retrace 最強 |
 | [Fib Retrace Research](FibRetraceResearch-Log.md) | 2026-05-26 | H1-Fib regime filter ❌；**H2-Fib SL ✅** 風險調整後 +72%（DD 96→67）|
-| [Harmonic Research](HarmonicResearch-Log.md) | 2026-05-26 | H1 regime / H4 timeframe / H-Combo 全 ❌——**諧波研究線收線** |
+| **[Harmonic Research](HarmonicResearch-Log.md)** | 2026-05-26 | H1-H16 完整紀錄。H5 PRZ 翻案 → H15 scan → H14 widepz → H16 TP。最終 t=5.01、Sharpe 0.91（scan10）、DD 11%。**王牌已建立** |
 
 ## 🏗 架構文件
 

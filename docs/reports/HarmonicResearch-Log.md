@@ -212,3 +212,105 @@ H1/H4/H-Combo 跑得很乾淨、結論看似很硬——但前提（進場機制
   條件：若 H7/H11 顯示 edge 不夠時觸發。
 
 ---
+
+## H6-H16 — 一條線連到「真王牌」（2026-05-26 下午〜晚上）
+
+### H6（per-pattern 拆解）
+10 個形態各自跑。Butterfly + Five-O 微弱正、其餘多接近 0。結論：把所有形態合起來看才會穩、單一形態樣本太少。
+
+### H7（高 RR subset:Crab / Deep_Crab / Butterfly）
+合起來測 — 略強於 baseline 但不顯著。停在這條線。
+
+### H11（harm_prz_ls + fib_retrace_ls H-Combo 重做）
+等權 ensemble。OOS 7-8%、可用。但組合互補性沒打開、邊際提升有限。
+
+### H12 / H13（regime / timeframe filter）
+跟 fib 結論一樣 — filter 只是等比例縮量、不改善訊號質量。**收線**。
+(歷史結論[feedback_strategy_filter_pattern](../../.claude/projects/-Users-dba-anthony-Note/memory/feedback_strategy_filter_pattern.md)再次驗證。)
+
+### H15 — multi-window scan（重大突破）⭐⭐⭐
+**假設**：原 `HarmonicPrzLsStrategy.Evaluate` 只檢查最近 4 個 pivots 為 XABC、漏掉「過去幾根 bar 內有更好 pattern」的機會。
+
+**改動**：加 `scanWindows` 參數,iterate `pivots.Count-1 down to scanWindows back`。
+
+**結果**(scan10、2000 bars、1d):
+- t 2.00 → **4.03**
+- OOS mean 0.6% → **5.2%**
+- Sharpe 0.14 → **0.73**
+
+**啟示**：實作 bug 等級的限制(只看最近 4 點)壓抑了訊號到「微弱顯著」。放開後是穩定 edge。
+
+### H14 落地 — PRZ ±15% widening ⭐⭐⭐
+H15 後追加。`ProjectFromXabc` 加 `przWideningPct` 參數,range ±15%。
+
+**結果**(scan10_widepz、2000 bars、1d):
+- t = **5.01**(再升、上界 10.2%)
+- OOS mean = **7.2%**
+- LS fullRet = **1280%**(無 TP 版)
+- LS Sharpe 0.86、DD 30%
+
+**Per-symbol robustness**(4 種 walk-forward 配置):
+- ✅ OP / ADA / INJ:4 配置都 Sharpe>1.2
+- ⚠ DOT:Sharp 跨配置不穩(-0.36 → 1.08)
+- ❌ NEAR:樣本運氣(從 portfolio 拿掉)
+- ❌ BTC:諧波在 BTC 完全無 edge
+
+### H16 — LS 引擎讀 `Signal.TargetPrice`(2026-05-26 晚)
+**動機**:`HarmonicPrzLsStrategy.Evaluate` 早就設 `TargetPrice = Math.Round(proj.Tp1, 4)`,但 LS 引擎之前完全忽略。Carney 教科書 PRZ 進場本來就配 TP 出場(D 反彈到 C / 0.382 retrace 等)。
+
+**改動**:[LongShortBacktestEngine.cs](../../packages/csharp/workers/strategy-worker/Engine/LongShortBacktestEngine.cs) 加 `activeTargetPrice` field、同 SL 邏輯反向(long 用 High、short 用 Low)。同根都觸發按 SL 先(保守)。
+
+**H16 前後 LS 引擎全期(2000 bars、1d)對比**:
+
+| 策略 | OOSmed% | +fold% | fullRet% | Sharpe | DD% |
+|---|---|---|---|---|---|
+| `harm_prz_scan10` | 6.6 → **7.3** ⬆ | 32 → 37 ⬆ | 393 → 388 ≈ | 0.73 → **0.91** ⬆ | 28 → **11** ⬇⬇ |
+| `harm_prz_scan10_widepz` | 11.0 → 9.8 ⬇ | 38 → 39 ≈ | 1280 → 931 ⬇ | 0.86 → 0.77 ⬇ | 30 → **22** ⬇ |
+| `harm_prz_top2_scan10` | 5.3 → 4.5 ⬇ | 20 → 18 ≈ | 192 → 177 ≈ | 0.77 → **0.90** ⬆ | 18 → **6** ⬇⬇ |
+| `harm_prz_top2_scan10_widepz` | 8.5 → 5.1 ⬇⬇ | 23 → 18 ⬇ | 379 → 295 ⬇ | 0.77 → 0.61 ⬇⬇ | 29 → 21 ⬇ |
+| `harm_prz_butterfly_scan10` | 2.1 → 2.1 = | 11 → 11 = | 58 → 58 = | 0.74 → 0.74 = | 0 → 0 = |
+
+**解讀**:
+1. 窄 PRZ + TP = 純加分(`scan10`、`top2_scan10` Sharpe ↑、DD 砍半)
+2. 寬 PRZ + TP = 喜憂參半(widepz 配置 TP 比例過緊、提前出場錯失 trend continuation)
+3. `butterfly_scan10` 完全沒變 — TP 還沒到價就被反向訊號平掉
+
+**新風向**:H16 後 `scan10`(無 widepz)反而是 risk-adjusted 王者(Sharpe 0.91、DD 11%)。配重應從「widepz 重押」改成「scan10 / scan10_widepz 並列」。
+
+### 收結
+
+從 H1「結論諧波無 edge」→ H5「PRZ 進場救回 t=2」→ H15「scan10 t=4.03」→ H14「widepz t=5.01」→ H16「scan10 Sharpe 0.91 / DD 11%」。一條線 5 個 hypothesis、把諧波從「無用」推到「t > 5 的真王牌」。
+
+**累計 commits**(2026-05-26):
+- `b49a72c` H5 PRZ 翻案
+- `70ad979` H6/H7/H11-15 諧波研究 + --fast 模式
+- `4cb01ad` H22 Binance 分頁 + widepz Tier 1 組合
+- `4c8d088` Portfolio 2000-bar acid test
+- `2a66892` H16 — LS 引擎讀 TargetPrice
+
+---
+
+## 待辦 / 待驗(交接給下台機器)
+
+### 必驗(配重 finalize 前)
+- [ ] **`fib_retrace_sl` × H16 影響**:該策略也設 TP(Fib 1.272 擴展),H16 後表現可能翻案
+- [ ] **`HarmonicPrzLsStrategy.Tp1` 計算合理性**:H16 顯示 widepz 配置 TP 過緊 → 重新看 `ProjectFromXabc` 內部如何投影 Tp1。可能要按 PRZ 寬度比例調整
+- [ ] **1h / 4h 跨時框**:已驗 — 王牌只在 12h + 1d 有 edge。worker 排程務必鎖 1d(或 12h)
+
+### shadow 啟動前
+- [ ] Final portfolio 配重(用 H16 後新建議:scan10 20% / scan10_widepz 20% / decorr5_widepz 15% / ma_regime_trend 15% / accel_momentum 10% / dual_mom_ls 10% / ts_momentum 5% / top2_scan10 5%)
+- [ ] 幣池限制清單(BTC / NEAR 禁用 harm_prz_*;LTC / OP / ADA / INJ / APT / SUI 主場)
+- [ ] shadow 啟動日 + 4 週後評估標準(PnL ≥ +5%、DD < 20% 才升 live)
+
+### H17-H21 路線圖
+- **H17**:Confidence-based 倉位 sizing — `HarmonicPrzLsStrategy` 的 `signal.Confidence` 已根據 pattern 質量在 0.55-0.80 間浮動,引擎已有 `confidenceSizing` 旗標,需評估打開後對 Sharpe 的影響
+- **H18**:ATR trailing SL — 取代固定 SL,在 trend 段最大化、解決 widepz TP 太緊的問題
+- **H20**:多時框 confluence(12h 訊號 + 1d 訊號才開倉、訊號頻率 ↓ 但勝率 ↑)
+- **H21**:Volume divergence 第三 confirmation(PRZ 觸發 + 量背離才開倉)
+
+### 系統面
+- [ ] strat-validate t-stat pool 改用 LS 引擎(目前用 Benson long-only、看不到 H16 影響)
+- [ ] portfolio.json 修訂前的 shadow 驗證流程文件化(現在是口頭約定)
+- [ ] backtest 加入真實 funding rate(目前只用 0.010%/8h 估計)
+
+---
