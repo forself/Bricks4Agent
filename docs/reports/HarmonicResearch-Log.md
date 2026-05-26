@@ -851,3 +851,75 @@ H21 conf bonus 把 vol div 用做「conf 加分」(讓 borderline 的 fit 低 tr
 - 其他幣保留 baseline(沒明顯受益)
 - 硬閘模式收線(過濾太緊、不採用)
 - 也可考慮把 `volDivThreshold` 從 1.5 調更高(1.8 / 2.0)看 selectivity 是否提升 quality
+
+---
+
+## 2026-05-26 H18 補完 — bb_revert × peak trail 是隱藏王者(ETH 換腿洗牌)
+
+### 動機
+
+用戶問斐波那契跟布林通道有沒有都覆蓋。fib 充分覆蓋(H1/H2/H16/H18-ATR/H18-peak),bb_revert 只有 portfolio review baseline + H18 trend test 一次。補完 bb_revert × peak trail 多配置 A/B(類 fib 待遇)。
+
+### A/B(bb_revert_ls × ETH/BNB/ADA × 6 trail 配置)
+
+**bb_revert_ls × ETHUSDT**:
+
+| trail | Sharpe | DD% | Return% | R/DD | WR% |
+|---|---:|---:|---:|---:|---:|
+| baseline | 0.62 | 46.7 | 4.1 | 0.09 | 50 |
+| ATR 2.0x+5%SL | 0.42 | 13.3 | 6.1 | 0.46 | 48 |
+| **peak 3%/2%(live)** | **2.00** | **4.9** | 8.3 | **1.69** | **88** ⭐ |
+| peak 5%/3% | 0.85 | 4.9 | 3.5 | 0.72 | 65 |
+| peak 5%/5% | 0.58 | 4.9 | 1.8 | 0.36 | 57 |
+| peak 3%/5% | 0.89 | 4.1 | 4.0 | 0.97 | 57 |
+
+**bb_revert_ls × BNBUSDT**:
+- baseline → peak 3%/2%:Sharpe 0.49→**1.33**、DD 22.6→**5.2**、R/DD 0.20→0.75、WR 37→**70**
+
+**bb_revert_ls × ADAUSDT**:
+- baseline → peak 3%/2%:Sharpe 0.72→**1.06**、DD 51.7→**4.9**、R/DD 0.10→**0.87**
+
+### 🎯 ETH 換腿三選一(用 H18 補完後)
+
+| 候選 | Sharpe | DD% | R/DD | WR% |
+|---|---:|---:|---:|---:|
+| mfi(現)| 0.58 | 60.4 | 0.14 | 54 |
+| fib_retrace_ls + peak 3%/2% | 1.53 | 6.7 | **2.01** | 74 |
+| **bb_revert_ls + peak 3%/2%** | **2.00** | **4.9** | 1.69 | **88** ⭐ |
+
+**bb_revert + peak 3%/2% 是新王者**:
+- Sharpe 最高(2.00 vs fib 1.53)
+- DD 最低(4.9 vs fib 6.7)
+- WinRate 最高(88% vs fib 74%)
+- Return/DD 接近 fib(1.69 vs 2.01,差 16%)
+
+### 為什麼 mean reversion + peak trail 是天造地設
+
+bb_revert 進場邏輯:價格觸 Bollinger 下軌 → 進多預期反彈到中軌。本質是「短週期目標、追求快速到位」。
+peak trail 3%/2% 行為:peak 達 +3% → SL 拖到 peak −2%。
+
+兩者契合:bb_revert 的 winners 短週期就達峰(預期幾根 K 就反彈到目標),peak trail 立刻鎖到 2% 以內、不讓 winner 反向回吐 → **WR 88%(極高、表示絕大多數進場都成功鎖到利潤)**。
+
+對比 fib_retrace_ls(trend follow + Fib retrace):winners 週期較長、需要更長 trail 距離。bb_revert 的「短窗口 + peak」是天然配對。
+
+### Meta-learning(累積)
+
+**「策略性質決定最適 trail 配置」**:
+- mean reversion(bb_revert):短週期 + 快速到峰 → peak trail 緊(3%/2%)最強
+- trend follow(ma_regime / fib + trend):長週期 + 跟趨勢跑 → peak trail 寬(5%/3%)或 ATR multi-day 較合適
+- TP-driven(harm_prz + Method C):TP 主導出場,trail 無舞台(H18 對 harm_prz no-op)
+
+→ 沒「一個 trail 配置打天下」,要按策略類型挑。
+
+### Actionable
+
+**ETH 換腿候選最終排名(待 live-aligned shadow 對帳驗證)**:
+1. ⭐ `bb_revert_ls + peak 3%/2%`(R/DD 1.69、Sharpe 2.00、WR 88%)
+2. `fib_retrace_ls + peak 3%/2%`(R/DD 2.01、Sharpe 1.53)
+3. `ma_regime_trend + peak 3%/2%`(R/DD 0.89、Sharpe 1.73)
+
+**因為 VPS 已設 `AUTOTRADER_TRAILING_TRIGGER_PCT=3` + `DISTANCE_PCT=2`(2026-05-26 部署)**,
+任何換到上述候選之一,**peak trail 即時生效**、不需額外 env 變更。
+
+⚠ caveat:Sharpe 2.00 是 walk-forward OOS、bootstrap CI 還沒做(strat-validate t-stat 重跑中)。
+若數字過好可能 sample 運氣、需 strat-validate pool t-stat 確認顯著(下個 commit 後接著看)。

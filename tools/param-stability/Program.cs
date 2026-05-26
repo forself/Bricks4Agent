@@ -383,6 +383,9 @@ async Task RunValidateH18PeakTrail()
         ("fib_retrace_ls",   () => new FibRetraceLsStrategy(),       "ETHUSDT", "ETH 換腿候選 / H18 ATR 王者"),
         ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "ETHUSDT", "ETH 保守候選"),
         ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "BNBUSDT", "BNB 現役"),
+        ("bb_revert_ls",     () => new BollingerRevertLsStrategy(), "ETHUSDT", "Bollinger 補測 — ETH 上未驗"),
+        ("bb_revert_ls",     () => new BollingerRevertLsStrategy(), "BNBUSDT", "BNB 換腿候選之一"),
+        ("bb_revert_ls",     () => new BollingerRevertLsStrategy(), "ADAUSDT", "ADA 上 H18 widepz baseline 已強(Sharpe 1.95)"),
     };
     // 配置:baseline / ATR 對照 / 多 peak 配置(從 live 預設 + 變體)
     var trailConfigs = new (string label, decimal atrMult, decimal peakTrig, decimal peakDist)[]
