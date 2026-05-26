@@ -31,6 +31,14 @@ if (args.Contains("--validate-candidates"))
     return;
 }
 
+// --validate-ltc-fib-robust: 對本日最強發現 LTC × fib_retrace 做 robustness 補測
+// 跨時框 + 不同 walk-forward 設定,確認不是 1d 假象
+if (args.Contains("--validate-ltc-fib-robust"))
+{
+    await RunValidateLtcFibRobust();
+    return;
+}
+
 // 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
 // 跑全部用 --all 旗標(較長運行時間)。
 bool runAll = args.Contains("--all");
@@ -113,6 +121,86 @@ foreach (var (name, strat) in strats)
 }
 
 Console.WriteLine("(穩定度 ≥ 0.7 通常算 robust;< 0.5 多半過擬合徵兆,但要結合 opt vs def OOS 一起看)");
+
+async Task RunValidateLtcFibRobust()
+{
+    Console.WriteLine("=== LTC × fib_retrace_ls Robustness 補測 ===");
+    Console.WriteLine("本日最強發現:LTC × fib_retrace_ls(default) Sharpe 1.40。");
+    Console.WriteLine("確認不是 1d 假象 + 不是特定 train/test 配置運氣。\n");
+
+    var http4 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    async Task<List<BarData>> FetchTf(string interval)
+    {
+        var url = $"https://api.binance.com/api/v3/klines?symbol=LTCUSDT&interval={interval}&limit=1000";
+        var json = await http4.GetStringAsync(url);
+        using var doc = JsonDocument.Parse(json);
+        var bars = new List<BarData>();
+        foreach (var k in doc.RootElement.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
+                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
+                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
+                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
+                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
+                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
+            });
+        return bars;
+    }
+
+    Console.WriteLine("── 1. 跨時框測試(walk-forward train250/test90/stride60、default params)──");
+    Console.WriteLine($"  {"interval",-8} {"bars",5} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+    var intervals = new[] { "1h", "4h", "12h", "1d", "1w" };
+    foreach (var iv in intervals)
+    {
+        var bars = await FetchTf(iv);
+        var cfg = new StrategyConfig { Symbol = "LTCUSDT", Exchange = "binance", Interval = iv };
+        var r = LongShortBacktestEngine.RunWalkForward(new FibRetraceLsStrategy(), bars, cfg, trainBars: 250, testBars: 90, stride: 60);
+        if (r.TotalFolds == 0)
+        {
+            Console.WriteLine($"  {iv,-8} {bars.Count,5}  (bar 不足做 walk-forward)");
+            continue;
+        }
+        Console.WriteLine($"  {iv,-8} {bars.Count,5} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+    }
+
+    Console.WriteLine("\n── 2. 1d 不同 walk-forward 配置(default params)──");
+    Console.WriteLine($"  {"train/test/stride",-20} {"folds",6} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+    var bars1d = await FetchTf("1d");
+    var cfg1d = new StrategyConfig { Symbol = "LTCUSDT", Exchange = "binance", Interval = "1d" };
+    var configs = new[]
+    {
+        (train:200, test:60,  stride:40),
+        (train:200, test:90,  stride:60),
+        (train:250, test:90,  stride:60),   // baseline (前面已測)
+        (train:250, test:120, stride:60),
+        (train:300, test:90,  stride:60),
+        (train:300, test:120, stride:90),
+        (train:400, test:90,  stride:60),
+    };
+    foreach (var (tr, te, st) in configs)
+    {
+        var r = LongShortBacktestEngine.RunWalkForward(new FibRetraceLsStrategy(), bars1d, cfg1d, trainBars: tr, testBars: te, stride: st);
+        string label = $"{tr}/{te}/{st}";
+        if (r.TotalFolds == 0)
+        {
+            Console.WriteLine($"  {label,-20}  (bar 不足)");
+            continue;
+        }
+        Console.WriteLine($"  {label,-20} {r.TotalFolds,6} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+    }
+
+    Console.WriteLine("\n── 3. 對照:rsi_stoch(現部署)在同一組配置 ──");
+    Console.WriteLine($"  {"train/test/stride",-20} {"folds",6} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+    foreach (var (tr, te, st) in configs)
+    {
+        var r = LongShortBacktestEngine.RunWalkForward(new StochasticStrategy(), bars1d, cfg1d, trainBars: tr, testBars: te, stride: st);
+        string label = $"{tr}/{te}/{st}";
+        if (r.TotalFolds == 0) continue;
+        Console.WriteLine($"  {label,-20} {r.TotalFolds,6} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+    }
+    Console.WriteLine("\n(目標:若 fib 在多時框/多配置下都顯著勝 rsi_stoch、就是 robust 換腿候選)");
+}
 
 async Task RunValidateCandidates()
 {
