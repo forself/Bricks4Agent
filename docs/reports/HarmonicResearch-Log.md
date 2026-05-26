@@ -55,3 +55,34 @@
 **檔案**：[HarmonicRangeLsStrategy.cs](../../packages/csharp/workers/strategy-worker/Engine/HarmonicRangeLsStrategy.cs)、註冊於 [strat-validate Program.cs](../../tools/strat-validate/Program.cs)。Build 0 warnings、無回歸。
 
 ---
+
+## 2026-05-26 H4 — 高時框 only（**直接用 H1 既有跑次的資料、無需新代碼**）
+
+**假設**：若雜訊是諧波失敗根因之一，高時框（4h / 12h / 1w）應該變正。
+
+**證據**：strat-validate 已跨 5 個時框跑（1h/4h/12h/1d/1w、20 檔幣），跨時框中位 OOS%：
+
+| 策略 | 1h | 4h | 12h | 1d | 1w | 平均 | 正/5 |
+|---|---:|---:|---:|---:|---:|---:|:---:|
+| `harmonic_ls` | 0 | 0 | −1 | −2 | 0 | **−0.4** | **1/5** ❌ |
+| `harmonic_range_ls`(H1) | 0 | 0 | 0 | 0 | 0 | 0.0 | 0/5 ❌ |
+| `fib_retrace_ls`（對照）| 0 | 1 | −3 | 4 | **13** | 3.0 | 4/5 ✓ |
+| `ma_regime_trend`（對照）| 0 | 0 | −4 | 5 | **15** | 3.2 | 2/5 ✓ |
+| `dual_mom_ls`（對照）| 0 | −3 | −5 | 5 | 11 | 1.7 | 2/5 ✓ |
+
+**結論**：❌ **假設不成立**。
+
+別的策略在 **1w（週線）都明顯改善**（fib_retrace 13、ma_regime 15、dual_mom 11、di_trend 34、ts_momentum 36）——雜訊降低對它們有效。**諧波在 1w 仍是 0**——不是雜訊問題、是訊號本身沒 edge。
+
+**學到（決定性）**：
+
+H1 排除「regime 不對」、H4 排除「雜訊」。再加上 baseline 已證實「機械 + Carney 確認」無 edge——**所有「使用情境」類假設都已排除**。失敗根因鎖定在**諧波形態本身在 crypto 沒有可重現的反轉預測力**。
+
+**研究線收線**：H2（pattern subset）、H5（sizing modifier）、H3（funding 雙確認）按目前證據預期都不會贏（要對抗「訊號本身無 edge」這個底層問題）。建議：
+- 諧波檔案保留供日後新角度的測試（如：跨資產證據、機構持倉結合、新型形態定義）
+- 研究重心轉到**已有 edge 的策略深耕**（fib_retrace_ls 跨時框 4/5 正、是最穩的對沖腿；funding/OI meta 已接進 character_ensemble、值得追）
+
+---
+
+
+---
