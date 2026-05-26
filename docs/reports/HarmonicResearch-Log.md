@@ -384,3 +384,53 @@ var (_, _, tp1Refined, _, _) = HarmonicPatterns.CalcTpSl(direction, X.Price, C.P
 - 跨 20-coin 全集 pooled t-stat 重跑(strat-validate t-stat pool 改 LS 引擎一併處理、見系統面待辦)
 - §6 配重在 Method C 後可能微調(scan10_widepz 因 TP 修正、相對 scan10 的優勢回升,配重再評估)
 - H18 ATR trailing SL 若上線、跟 Method C 並存(誰先到誰先平)→ 預期 widepz 額外受益
+
+---
+
+## 2026-05-26 H17 — Confidence-based sizing(❌ 假設不成立)
+
+**假設**:HarmonicPrzLs 已輸出 Confidence(pattern fit + candle confirm + RSI div、0.6-0.95)。引擎 `confidenceSizing=true` 把名目 × Confidence。低 conf trade 應該 edge 較弱 → 縮量降低 drag → Sharpe ↑。
+
+### 改動
+
+無 strategy / engine 改動 — 直接用既有 `LongShortBacktestEngine.RunWalkForward(... confidenceSizing: true/false)` A/B。新增 `--validate-h17-confsizing` mode 在 param-stability。
+
+### 結果(harm_prz_scan10、7 幣 walk-forward 250/90/60、default params)
+
+| Coin | Sharpe off | Sharpe on | Δ Sharpe | Return off | Return on | DD off | DD on |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| LTC | 0.56 | 0.54 | −0.02 | 2.1 | 1.5 | 25.2 | 21.6 |
+| OP | 1.32 | 1.33 | +0.01 | 23.3 | 13.2 | 14.3 | 9.9 |
+| NEAR | 0.33 | 0.27 | −0.06 | 9.2 | 4.8 | 9.8 | 9.4 |
+| APT | 1.25 | 1.25 | 0.00 | 22.1 | 14.2 | 8.6 | 7.1 |
+| INJ | 0.67 | 0.67 | 0.00 | 13.5 | 8.9 | 10.9 | 8.0 |
+| ADA | 1.19 | 1.18 | −0.01 | 26.4 | 18.5 | 7.4 | 6.1 |
+| DOT | 0.50 | 0.50 | 0.00 | 15.1 | 8.8 | 16.0 | 13.7 |
+| **avg** | **0.83** | **0.82** | **−0.01** | **16.0** | **10.0** | **13.2** | **10.8** |
+
+WinRate / +folds 兩種模式下完全相同(同樣的 trade、只是 size 不同)。
+
+### 結論
+
+❌ **H17 假設不成立**:
+- Sharpe 平均 −0.01(7 幣中 4 持平 / 2 微降 / 1 微升)
+- Return 平均 −38%、DD 平均 −18% → **等比例縮量、PnL 曲線同比下縮**
+- 沒有「低 conf trade edge 較弱」的訊號 — Confidence 對 trade 結果**不是有效的 quality 區分器**
+
+### 為什麼(分析)
+
+harm_prz 的 Confidence = `pattern_fit + candle_confirm + RSI_div`。這三個 indicator 是 **pattern 品質**的代理、不是 **trade 報酬**的預測器。高 fit 的形態 ≠ 高勝率 trade,因為:
+- pattern 品質決定「這是不是真的 PRZ」(訊號 sanity)
+- 但實際反轉成功與否取決於市場 context(波動、流動性、外部事件),這些跟 fit 無關
+
+→ 縮 low-conf trade 就是縮一些跟 high-conf trade **同樣勝率分布**的 trade、純粹是 capital 縮放。
+
+### Meta-learning
+
+**「Confidence-based sizing 要 work,Confidence 必須跟 trade 報酬有正相關」**。
+本實驗的 negative 結果證明:對 harm_prz_scan10,這個前提不滿足。其他策略(如 ensemble — Confidence 來自多策略共識強度)可能仍有效;但對單一形態識別類策略,sizing 該另尋指標(如 ATR / volume / regime)。
+
+### 收線
+
+❌ H17 對 harm_prz_scan10 不採用。**收線**。
+路線圖剩 H18(ATR trailing SL)、H20(多時框 confluence)、H21(volume divergence)— 這三條都不靠 Confidence 當分量器,值得繼續。

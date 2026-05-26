@@ -53,6 +53,14 @@ if (args.Contains("--validate-widepz"))
     return;
 }
 
+// --validate-h17-confsizing: H17 路線圖 — harm_prz_scan10 confidence-based sizing A/B
+// strategy 已輸出 Confidence 0.6-0.95;引擎 confidenceSizing=true → 名目 × Confidence。看 Sharpe ↑↓
+if (args.Contains("--validate-h17-confsizing"))
+{
+    await RunValidateH17ConfSizing();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -221,6 +229,33 @@ async Task RunValidateHarmPrzScan()
         }
         Console.WriteLine();
     }
+}
+
+async Task RunValidateH17ConfSizing()
+{
+    Console.WriteLine("=== H17 — harm_prz_scan10 confidence-based sizing A/B(LS 引擎)===");
+    Console.WriteLine("Strategy 已輸出 Confidence(pattern fit + candle confirm + RSI div, 0.6-0.95)");
+    Console.WriteLine("引擎 confidenceSizing=true → 名目 × Confidence(縮量 5-40%、低 conf trade 弱化)");
+    Console.WriteLine("假設:低信心 trade edge 較弱 → 縮量降低 drag → Sharpe ↑;反證:winner 被砍 → Return ↓\n");
+
+    var coins = new[] { "LTCUSDT", "OPUSDT", "NEARUSDT", "APTUSDT", "INJUSDT", "ADAUSDT", "DOTUSDT" };
+    foreach (var sym in coins)
+    {
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"── {sym} ──");
+        Console.WriteLine($"  {"mode",-22} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var (label, useConfSize) in new[] { ("confSize=off (baseline)", false), ("confSize=on  (H17)", true) })
+        {
+            var strat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10);
+            var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
+                trainBars: 250, testBars: 90, stride: 60,
+                commission: 0.0005m, slippagePct: 0.0003m, confidenceSizing: useConfSize);
+            Console.WriteLine($"  {label,-22} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("解讀:on vs off Sharpe 一致升 = H17 加分;一致降 = 縮量殺 edge;mixed = 看主場/分歧");
 }
 
 async Task RunValidateLtcFibRobust()
