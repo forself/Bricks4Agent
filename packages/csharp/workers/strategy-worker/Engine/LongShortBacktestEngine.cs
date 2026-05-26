@@ -30,7 +30,9 @@ public static class LongShortBacktestEngine
         int tradeStartIndex = 0,
         decimal slippagePct = 0m,
         decimal notionalPct = 0.95m,   // 每次開倉名目佔當前 equity 比例(無槓桿)
-        bool confidenceSizing = false) // true:名目再 × signal.Confidence(淨加權 ensemble 用來「分歧縮量」)
+        bool confidenceSizing = false, // true:名目再 × signal.Confidence(淨加權 ensemble 用來「分歧縮量」)
+        decimal atrTrailMultiplier = 0m, // H18:>0 啟用 ATR trailing SL(每根 ratchet activeStopPrice、不放鬆)
+        int atrPeriod = 14)            // ATR 視窗
     {
         var costRate = commission + slippagePct;
         var result = new BacktestEngine.BacktestResult
@@ -152,6 +154,23 @@ public static class LongShortBacktestEngine
                     OpenAt(i, price, desired, sizeScale, signal.StopPrice ?? 0m, signal.TargetPrice ?? 0m);
                 }
             }
+
+            // H18:ATR trailing SL — 每根用 close − N×ATR(long)/ close + N×ATR(short)更新 activeStopPrice。
+            // 只 ratchet 往有利方向(max for long、min for short),從不放鬆;trail 從 next bar 才生效(check-then-trail)。
+            // 預設 atrTrailMultiplier=0 → 整段 skip,向後相容、不影響既有策略。
+            if (atrTrailMultiplier > 0m && position != 0m && activeStopPrice > 0m)
+            {
+                var atr = ComputeAtrAt(bars, i, atrPeriod);
+                if (atr > 0m)
+                {
+                    var trailedSl = position > 0m
+                        ? bars[i].Close - atrTrailMultiplier * atr
+                        : bars[i].Close + atrTrailMultiplier * atr;
+                    activeStopPrice = position > 0m
+                        ? Math.Max(activeStopPrice, trailedSl)
+                        : Math.Min(activeStopPrice, trailedSl);
+                }
+            }
         }
 
         if (position != 0m) CloseAt(bars.Count - 1, bars[^1].Close);
@@ -185,7 +204,9 @@ public static class LongShortBacktestEngine
         IStrategy strategy, List<BarData> bars, StrategyConfig config,
         int trainBars = 250, int testBars = 90, int stride = 60,
         decimal initialCash = 100_000, decimal commission = 0.001m, decimal slippagePct = 0m,
-        bool confidenceSizing = false)
+        bool confidenceSizing = false,
+        decimal atrTrailMultiplier = 0m,   // H18:>0 啟用 ATR trailing SL
+        int atrPeriod = 14)
     {
         var result = new BacktestEngine.WalkForwardResult
         {
@@ -199,10 +220,11 @@ public static class LongShortBacktestEngine
         for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
         {
             var trainSlice = bars.GetRange(start, trainBars);
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod);
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt = Run(strategy, testWindow, config, initialCash, commission,
-                tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing);
+                tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing,
+                atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod);
             result.Folds.Add(new BacktestEngine.WalkForwardFold
             {
                 FoldIndex = foldIdx++,
@@ -225,6 +247,25 @@ public static class LongShortBacktestEngine
         result.WorstTestDdPct = Math.Round(result.Folds.Select(f => f.Test!.MaxDrawdownPct).Max(), 2);
         result.IsOosReturnGap = Math.Round(trainReturns.Average() - testReturns.Average(), 2);
         return result;
+    }
+
+    /// <summary>
+    /// H18 helper:ATR at bar idx,用過去 atrPeriod 根 TR 平均。
+    /// idx<period 或資料不夠 → 回 0(caller 會 skip trail 更新)。
+    /// </summary>
+    private static decimal ComputeAtrAt(List<BarData> bars, int idx, int period)
+    {
+        if (idx < period || period < 1) return 0m;
+        decimal sum = 0m;
+        for (int i = idx - period + 1; i <= idx; i++)
+        {
+            var hi = bars[i].High;
+            var lo = bars[i].Low;
+            var prevClose = bars[i - 1].Close;
+            var tr = Math.Max(hi - lo, Math.Max(Math.Abs(hi - prevClose), Math.Abs(lo - prevClose)));
+            sum += tr;
+        }
+        return sum / period;
     }
 
     /// <summary>

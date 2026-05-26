@@ -61,6 +61,14 @@ if (args.Contains("--validate-h17-confsizing"))
     return;
 }
 
+// --validate-h18-atr-trail: H18 路線圖 — ATR trailing SL × harm_prz_scan10/widepz
+// 引擎 atrTrailMultiplier>0 每根 ratchet activeStopPrice 往有利方向。看趨勢段能不能挽救 widepz TP 太緊。
+if (args.Contains("--validate-h18-atr-trail"))
+{
+    await RunValidateH18AtrTrail();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -256,6 +264,47 @@ async Task RunValidateH17ConfSizing()
         Console.WriteLine();
     }
     Console.WriteLine("解讀:on vs off Sharpe 一致升 = H17 加分;一致降 = 縮量殺 edge;mixed = 看主場/分歧");
+}
+
+async Task RunValidateH18AtrTrail()
+{
+    Console.WriteLine("=== H18 — ATR trailing SL × harm_prz_scan10 / widepz(LS 引擎、3 multiplier 對比)===");
+    Console.WriteLine("引擎每根 ratchet activeStopPrice 往有利方向(只縮不放)。");
+    Console.WriteLine("假設:widepz 配置下 TP 太緊提早出場 → trailing 接管後讓趨勢跑、Sharpe ↑ / DD ↓");
+    Console.WriteLine("multiplier:0=baseline(無 trail)、2.0=保守、3.0=寬鬆\n");
+
+    var strats = new (string label, Func<HarmonicPrzLsStrategy> mk)[]
+    {
+        ("scan10",         () => new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10)),
+        ("scan10_widepz",  () => new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m)),
+    };
+    var multipliers = new decimal[] { 0m, 2.0m, 3.0m };
+    var coins = new[] { "LTCUSDT", "OPUSDT", "ADAUSDT", "INJUSDT" };
+
+    foreach (var (label, mkStrat) in strats)
+    {
+        Console.WriteLine($"┌─── {label} ───");
+        foreach (var sym in coins)
+        {
+            var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+            var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+            Console.WriteLine($"│  {sym}");
+            Console.WriteLine($"│    {"trail",-10} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+            foreach (var m in multipliers)
+            {
+                var strat = mkStrat();
+                var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
+                    trainBars: 250, testBars: 90, stride: 60,
+                    commission: 0.0005m, slippagePct: 0.0003m,
+                    atrTrailMultiplier: m, atrPeriod: 14);
+                var ml = m == 0m ? "off" : $"{m:F1}x";
+                Console.WriteLine($"│    {ml,-10} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+            }
+            Console.WriteLine("│");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("解讀:trail on 對比 off 同 Sharpe / DD 變化。widepz 若 Sharpe ↑ DD ↓ = H18 有效救 TP 太緊。");
 }
 
 async Task RunValidateLtcFibRobust()

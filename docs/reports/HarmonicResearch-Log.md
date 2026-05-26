@@ -434,3 +434,70 @@ harm_prz 的 Confidence = `pattern_fit + candle_confirm + RSI_div`。這三個 i
 
 ❌ H17 對 harm_prz_scan10 不採用。**收線**。
 路線圖剩 H18(ATR trailing SL)、H20(多時框 confluence)、H21(volume divergence)— 這三條都不靠 Confidence 當分量器,值得繼續。
+
+---
+
+## 2026-05-26 H18 — ATR trailing SL(對 harm_prz no-op、引擎改動有全域價值)
+
+### 動機
+
+從 Method C 之外的另一個角度修 widepz「TP 太緊」:讓 SL 沿 ATR 往有利方向 ratchet。趨勢段若 trail 比 TP 早被觸發,trail 接管 → 不被 TP 提早砍。
+
+### 引擎改動
+
+`LongShortBacktestEngine.Run` / `RunWalkForward` 加 opt-in 參數:
+- `atrTrailMultiplier`(decimal,預設 0=關)
+- `atrPeriod`(int,預設 14)
+
+每根 bar(在 signal-driven open/close 之後)update `activeStopPrice`:
+- long:`max(activeStopPrice, close - mult × ATR)`(只往上 ratchet)
+- short:`min(activeStopPrice, close + mult × ATR)`(只往下 ratchet)
+- 從下一根才生效(check-then-trail,避免同根 gotcha)
+
+預設 0 → 整段 skip → 向後相容(其他策略 caller 不傳即不啟用)。Unit.Tests 830/0 zero regression。
+
+### A/B(harm_prz_scan10 + harm_prz_scan10_widepz × 4 coins × multiplier {0, 2.0x, 3.0x})
+
+**scan10**(窄 PRZ):**0/12 case 有任何變化**。Sharpe / Return / DD 完全相同 pre vs post。
+
+**scan10_widepz**(寬 PRZ):
+
+| coin | mult | Sharpe | Δ | DD% | Δ |
+|---|---:|---:|---:|---:|---:|
+| LTC | off/2/3 | 1.03 | = | 32.4 | = |
+| **OP** | off | 1.61 | base | 29.1 | base |
+| **OP** | **2.0x** | **1.64** | **+0.03** | **23.3** | **−5.8** ↓ |
+| OP | 3.0x | 1.62 | +0.01 | 27.7 | -1.4 |
+| ADA | off/2/3 | 1.96 | = | 9.8 | = |
+| INJ | off/2/3 | 1.69 | = | 9.8 | = |
+
+→ **7/8 case 完全 no-op**,只 OP × widepz × 2.0x 有微小 DD 改善(−5.8pp、Sharpe +0.03)。
+
+### 為什麼 no-op(結構性發現)
+
+**Method C 把 TP 做對後,harm_prz 變成 TP-driven 策略**。Tp1 = entry + 0.382×(C − entry)、距離短(典型 < 5% 移動)、價格觸 PRZ 反彈後 1-3 根就觸發 → trail 還沒 ratchet 多少就被 TP 平倉。**TP 跟 trail 在引擎裡共存(SL/TP 同根都觸發按 SL 先),但實際上 TP 幾乎總是先到**。
+
+### 結論
+
+❌ **H18 對 harm_prz 是 no-op**:Method C TP 主導出場、trail 沒舞台。
+
+✅ **引擎改動本身仍有全域價值**:`LongShortBacktestEngine` 現在原生支援 ATR trailing,任何不發 `TargetPrice` 的策略都可開啟。預期受益對象:
+- `ma_regime_trend`(現 ETH/BNB 候選、長趨勢、無 TP)
+- `dual_thrust`(突破策略)
+- `accel_momentum`(動能 trend follow)
+- `decorr5_widepz`(ensemble 含非 TP 策略)
+- `chandelier_trend`(策略名本身就是 ATR trailing 概念、可整合)
+
+### Meta-learning
+
+**「策略類型決定優化路徑」**。
+TP-driven 策略(harm_prz、fib_retrace_ls)→ 優化 TP 邏輯(Method C 已做)
+Trail-driven 策略(ma_regime / accel / chandelier)→ 開 H18 ATR trailing(現在 engine 支援)
+Mixed(decorr ensemble)→ 看 sub-strategy 多數派決定
+
+下一步 actionable:在 ma_regime_trend × ETH 上 A/B H18 trailing(若 Sharpe 提升 → 影響 ETH 換腿評估)。
+
+### 收線
+
+❌ H18 對 harm_prz_scan10 / widepz 收線(no-op、結構性原因)。
+✅ 引擎 ATR trailing 支援保留、給其他策略(尤其 trend-following)未來啟用。
