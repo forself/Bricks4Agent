@@ -45,6 +45,10 @@ services:
       AUTOTRADER_PARTIAL_EXIT_RATIO: "${AUTOTRADER_PARTIAL_EXIT_RATIO:-}"
       AUTOTRADER_BREAKEVEN_TRIGGER_PCT: "${AUTOTRADER_BREAKEVEN_TRIGGER_PCT:-}"
       AUTOTRADER_BREAKEVEN_BUFFER_PCT: "${AUTOTRADER_BREAKEVEN_BUFFER_PCT:-}"
+      # H18 live-align peak trailing(2026-05-26):trigger 預設 0=關;設 >0 啟用、達 peak gain X% 後 SL = peak×(1∓distance%)。
+      # backtest 驗 trigger=3 distance=2 在 ma_regime×BNB 把 R/DD 從 0.10→0.88(回測 9x 改善)。
+      AUTOTRADER_TRAILING_TRIGGER_PCT: "${AUTOTRADER_TRAILING_TRIGGER_PCT:-}"
+      AUTOTRADER_TRAILING_DISTANCE_PCT: "${AUTOTRADER_TRAILING_DISTANCE_PCT:-}"
 
       # A2 ATR-based SL（opt-in）— >0 啟用、0 / 沒設 → 走 fixed AUTOTRADER_INITIAL_SL_PCT
       AUTOTRADER_ATR_SL_MULTIPLIER: "${AUTOTRADER_ATR_SL_MULTIPLIER:-}"
