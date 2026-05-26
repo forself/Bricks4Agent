@@ -466,6 +466,87 @@ public static class HarmonicPatterns
         );
     }
 
+    // ── 4-點投影模式(H5-Harmonic-PRZ 用、2026-05-26) ─────────────
+
+    public sealed class XabcProjection
+    {
+        public string PatternName { get; init; } = "";
+        public string Direction   { get; init; } = "";
+        public decimal Fit        { get; init; }    // 0-1,只用 AB/XA + BC/AB 算(因為 CD/AD 尚未知)
+        public decimal AbRatio    { get; init; }
+        public decimal BcRatio    { get; init; }
+        public decimal PrzLow     { get; init; }
+        public decimal PrzHigh    { get; init; }
+        public decimal SlPrice    { get; init; }    // bullish: X*(1-buffer);bearish: X*(1+buffer)
+        public decimal Tp1        { get; init; }    // CD retrace 38.2% 或 Shark/Cypher 走 XC
+        public decimal Tp2        { get; init; }    // CD retrace 61.8% 或 Shark/Cypher 走 XC
+    }
+
+    /// <summary>
+    /// 教科書 Carney 用法:XABC 4 點完成、從 A 投影 PRZ、等價格進入 PRZ 時進場。
+    /// 比現行 Detect()(等 D 也成 pivot、實際晚 3-8 根 K 線)更貼近原意。
+    ///
+    /// 給定 XABC,只比對 AB/XA + BC/AB(CD/AD 還沒發生),從所有 pattern 裡找最 fit 的;
+    /// 對該 pattern 從 A 用 Ad 範圍投影 PRZ。回傳最佳投影或 null。
+    ///
+    /// Caller 用法:策略檢查當前價是否在 returned PrzLow..PrzHigh 之間 → 是 = 可進場。
+    /// </summary>
+    public static XabcProjection? ProjectFromXabc(
+        string direction, decimal Xp, decimal Ap, decimal Bp, decimal Cp,
+        decimal slBufferPct = 0.005m)
+    {
+        var xa = Math.Abs(Ap - Xp);
+        var ab = Math.Abs(Bp - Ap);
+        var bc = Math.Abs(Cp - Bp);
+        if (xa <= 0m || ab <= 0m || bc <= 0m) return null;
+
+        var abXa = ab / xa;
+        var bcAb = bc / ab;
+
+        bool InRange(decimal v, decimal lo, decimal hi) =>
+            v >= lo * (1m - TolerancePad) && v <= hi * (1m + TolerancePad);
+
+        decimal Deviation(decimal v, decimal lo, decimal hi)
+        {
+            var center = (lo + hi) / 2m;
+            var halfRange = (hi - lo) / 2m + center * TolerancePad;
+            if (halfRange == 0m) return 0m;
+            return Math.Min(1m, Math.Abs(v - center) / halfRange);
+        }
+
+        PatternSpec? best = null;
+        decimal bestFit = 0m;
+        foreach (var p in Patterns)
+        {
+            if (!InRange(abXa, p.Ab.Min, p.Ab.Max)) continue;
+            if (!InRange(bcAb, p.Bc.Min, p.Bc.Max)) continue;
+            var dev = (Deviation(abXa, p.Ab.Min, p.Ab.Max) + Deviation(bcAb, p.Bc.Min, p.Bc.Max)) / 2m;
+            var fit = Math.Clamp(1m - dev, 0m, 1m);
+            if (fit > bestFit) { best = p; bestFit = fit; }
+        }
+        if (best == null) return null;
+
+        var (przLow, przHigh) = CalcPrz(direction, Xp, Ap, best.Ad.Min, best.Ad.Max);
+        // 對 D 投影到 PRZ 中心(僅供 TP 計算的代理、實際 entry 是當前價)
+        var dProxy = (przLow + przHigh) / 2m;
+        var (_, _, tp1, tp2, _) = CalcTpSl(direction, Xp, Cp, dProxy, slBufferPct, best.Name);
+        var sl = direction == "bullish" ? Xp * (1m - slBufferPct) : Xp * (1m + slBufferPct);
+
+        return new XabcProjection
+        {
+            PatternName = best.Name,
+            Direction   = direction,
+            Fit         = Math.Round(bestFit, 4),
+            AbRatio     = Math.Round(abXa, 4),
+            BcRatio     = Math.Round(bcAb, 4),
+            PrzLow      = przLow,
+            PrzHigh     = przHigh,
+            SlPrice     = Math.Round(sl, 4),
+            Tp1         = tp1,
+            Tp2         = tp2,
+        };
+    }
+
     // ── PRZ 區間計算（Batch C+ 新增、影片重點 #1） ───────────────
 
     /// <summary>

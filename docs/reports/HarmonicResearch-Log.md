@@ -133,5 +133,77 @@ H1 排除「regime 不對」、H4 排除「雜訊」。再加上 baseline 已證
 
 ---
 
+## 2026-05-26 H5 — PRZ 4 點投影進場（⚠ 翻案前面三條結論）
+
+**用戶 pushback 觸發的重新檢視**：用戶質疑「諧波 10 個延伸形態、不該慘成這樣」，要我查實作。讀完 [HarmonicPatterns.DetectAll](../../packages/csharp/workers/strategy-worker/Engine/Indicators/HarmonicPatterns.cs#L634) + [FindPivots](../../packages/csharp/workers/strategy-worker/Engine/Indicators/HarmonicPatterns.cs#L276) 發現：
+
+**baseline harmonic_ls 的根本缺陷**：
+- `FindPivots(bars, window=3)`：D 必須過 3 根 K 線才被確認成 pivot
+- `DetectAll` 要求 X/A/B/C/D **5 點全是已確認 pivot**
+- 策略的 entryWindow=8 → 實際進場在 D 之後 **3–8 根 K 線**
+
+⇒ **策略在反轉開始後 3–8 根 K 線才下單**（追單而非預測）——違反 Carney 教科書原意（PRZ 投影、在 D 形成前就在 PRZ 等）。**前面 H1/H4/H-Combo 三條測試都建在錯誤的進場機制上**。
+
+**改動**：
+1. 新方法 `HarmonicPatterns.ProjectFromXabc`：4 點 XABC、用 AB/XA + BC/AB 比率比對 10 個 pattern，從 A 投影 PRZ
+2. 新策略 [HarmonicPrzLsStrategy](../../packages/csharp/workers/strategy-worker/Engine/HarmonicPrzLsStrategy.cs)：取最近 4 pivot → 投影 PRZ → 當前價在 PRZ + 燭線/RSI 確認 → 進場（SL = X ± 0.5%、走 LongShortBacktestEngine 已支援的 StopPrice）
+
+### 結果（20 檔幣 walk-forward OOS）
+
+| | OOSsym+ | OOSmed | +fold | fullRet% | Sharpe | DD% |
+|---|---:|---:|---:|---:|---:|---:|
+| **Long-only** | | | | | | |
+| harmonic_ls | 30% | −1.8 | 19% | **−26** | **−0.08** | 56 |
+| **harmonic_prz_ls** | **40%** | 0.0 | 8% | **+8** | **+0.14** | **4** |
+| **Long-short** | | | | | | |
+| harmonic_ls | 35% | −7.3 | 26% | **−36** | **−0.15** | **133** |
+| **harmonic_prz_ls** | **40%** | −0.2 | 10% | **+6** | **−0.01** | **11** |
+
+**統計顯著性（pooled 240 folds）**：
+
+| Strategy | OOSavg | 95% CI | t-stat | 結論 |
+|---|---:|---|---:|---|
+| fib_retrace_ls | 4.9% | [0.6, 9.6] | 2.11 | ✅ 顯著 |
+| **harmonic_prz_ls** | **0.6%** | **[0.1, 1.4]** | **2.00** | ✅ **顯著** |
+| harmonic_range_ls | −0.5% | [−1.2, 0.1] | −1.50 | — |
+
+### 結論（⚠ 翻案）
+
+⭐ **諧波（PRZ 進場）在 crypto 有微小但統計顯著的 OOS edge**：
+- t=2.00、p<0.05、95% CI 不跨 0
+- LS fullRet 從 **−36% → +6%**
+- LS DD 從 **133% → 11%**（砍 92%）
+- long-only Sharpe 從 −0.08 → **+0.14**
+
+**前面三條結論修正**：
+
+| 原結論 | 修正後 |
+|---|---|
+| 諧波在 crypto 沒 edge | ⭐ 進場機制改對後**有微小但顯著的 edge** |
+| filter 不救無 edge | ✓ 仍對（regime filter 救不了）但「無 edge」是**錯誤前提** |
+| H-Combo harmonic + fib 拖累 | ⚠ 用錯版 harmonic、結論作廢、**該用 harm_prz_ls 重做** |
+
+### 但別過度興奮
+
+- edge 很小（0.6% / fold）→ 單腿部署利潤微薄
+- 跨 5 時框仍 0/5 正——1d 是唯一有效時框（PRZ 條件嚴 → 多時框觸發都不夠）
+- 觸發頻率低（OOSsym+ 40%、+fold 8-10%）= 很多時候空轉
+
+**真正可能用途**：
+- ⭐ 對沖腿 / 去相關 sleeve（不是主力）
+- ⭐ 跟 fib_retrace_ls 在 ensemble 組合（重做 H-Combo、這次用 harm_prz_ls）
+
+### Meta-learning（重要、加進研究紀律）
+
+**「結論前先驗證實作是否符合理論假設」**。
+H1/H4/H-Combo 跑得很乾淨、結論看似很硬——但前提（進場機制）錯了的話，整條研究線的結論都浮動。用戶 pushback 觸發的重讀是這次研究最有價值的一步。
+
+下一步候選 broader roadmap：
+- **H6** per-pattern 拆解（10 個形態哪個撐起這個 edge）
+- **H7** 高 RR pattern subset（Crab/Deep_Crab/Butterfly）
+- **H8** 歷史 EV 加權（自適應信心）
+- **H9** Volume divergence 第三 confirmation
+- **H10** 多時框 confluence
+- **H11** harm_prz_ls + fib_retrace_ls 重做 H-Combo
 
 ---

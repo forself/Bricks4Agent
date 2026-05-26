@@ -45,6 +45,8 @@ var symbols = new[]
     ("harmonic_ls",      new HarmonicLsStrategy()),
     // 研究實驗(harmonic research log H1, 2026-05-26):諧波 + 橫盤 regime 閘
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
+    // 研究實驗(H5-Harmonic-PRZ, 2026-05-26):教科書 Carney 用法 - 4 點 XABC + PRZ 投影進場
+    ("harmonic_prz_ls", new HarmonicPrzLsStrategy()),
     // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
     ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
     // H2-Fib(2026-05-26):FibRetrace + textbook Fib SL,看 DD 能否從 96 砍下來
