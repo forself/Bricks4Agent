@@ -48,11 +48,12 @@ public static class GenericWalkForwardOptimizer
         public decimal OosSharpe { get; set; }
     }
 
-    private const int MaxGrid = 400;  // 防參數空間爆炸
+    public const int DefaultMaxGrid = 400;  // 預設防參數空間爆炸;研究時可顯式提高
 
     public static Result Optimize(
         IStrategy strategy, List<BarData> bars, StrategyConfig baseConfig,
-        int trainBars, int testBars, decimal cash = 1000m, decimal commission = 0.001m)
+        int trainBars, int testBars, decimal cash = 1000m, decimal commission = 0.001m,
+        int maxGrid = DefaultMaxGrid)
     {
         var r = new Result
         {
@@ -63,7 +64,7 @@ public static class GenericWalkForwardOptimizer
         if (strategy.ParamSchema.Count == 0) { r.Error = "strategy has no tunable ParamSchema"; return r; }
         var grid = BuildGrid(strategy.ParamSchema);
         r.GridSize = grid.Count;
-        if (grid.Count > MaxGrid) { r.Error = $"grid too large ({grid.Count} > {MaxGrid})"; return r; }
+        if (grid.Count > maxGrid) { r.Error = $"grid too large ({grid.Count} > {maxGrid})"; return r; }
         if (bars.Count < trainBars + testBars) { r.Error = "not enough bars for one window"; return r; }
 
         var paramHits = new Dictionary<string, Dictionary<string, int>>();  // key -> value -> count

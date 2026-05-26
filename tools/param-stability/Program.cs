@@ -15,18 +15,26 @@ var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
 string[] symbols = { "BTCUSDT", "ETHUSDT", "BNBUSDT", "DOGEUSDT", "LTCUSDT" };
 
-(string name, IStrategy s)[] strats =
-{
-    // 部署中的單腿(decorr4_ls 是 composite、無 ParamSchema 故跳過)
-    ("dual_mom_ls",      new DualMomentumLsStrategy()),
-    ("ma_regime_trend",  new MaRegimeTrendStrategy()),
-    ("mfi",              new MfiStrategy()),
-    ("rsi_stoch",        new StochasticStrategy()),
-    // 研究中的關鍵腿(decorr4 components + 對沖腿)
-    ("fib_retrace_ls",   new FibRetraceLsStrategy()),
-    ("dual_thrust",      new DualThrustStrategy()),
-    ("bb_revert_ls",     new BollingerRevertLsStrategy()),
-};
+// 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
+// 跑全部用 --all 旗標(較長運行時間)。
+bool runAll = args.Contains("--all");
+(string name, IStrategy s)[] strats = runAll
+    ? new (string, IStrategy)[]
+    {
+        ("dual_mom_ls",      new DualMomentumLsStrategy()),
+        ("ma_regime_trend",  new MaRegimeTrendStrategy()),
+        ("mfi",              new MfiStrategy()),
+        ("rsi_stoch",        new StochasticStrategy()),
+        ("fib_retrace_ls",   new FibRetraceLsStrategy()),
+        ("dual_thrust",      new DualThrustStrategy()),
+        ("bb_revert_ls",     new BollingerRevertLsStrategy()),
+    }
+    : new (string, IStrategy)[]
+    {
+        ("dual_thrust",      new DualThrustStrategy()),   // grid 5832
+        ("bb_revert_ls",     new BollingerRevertLsStrategy()), // grid 1296
+    };
+const int MaxGrid = 6000;   // 提高上限(預設 400)允許 dual_thrust(5832)、bb_revert(1296)
 
 async Task<List<BarData>> Fetch(string sym)
 {
@@ -76,7 +84,7 @@ foreach (var (name, strat) in strats)
         if (!data.ContainsKey(sym)) continue;
         var bars = data[sym];
         var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
-        var r = GenericWalkForwardOptimizer.Optimize(strat, bars, cfg, trainBars: 250, testBars: 90, cash: 1000m);
+        var r = GenericWalkForwardOptimizer.Optimize(strat, bars, cfg, trainBars: 250, testBars: 90, cash: 1000m, maxGrid: MaxGrid);
         if (r.Error != null)
         {
             Console.WriteLine($"{name,-18} {sym,-10}  ERROR: {r.Error}");

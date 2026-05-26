@@ -69,3 +69,70 @@ BNB 現部署的是 `dual_mom_ls`（不是 fib）。但這結果暗示：**若 d
 - ⚠ **工具有 bug**（grid 上限）— dual_thrust / bb_revert 整類沒測到、要補
 
 下一步：①(明天) 補測 dual_thrust + bb_revert，可能要動 MaxGrid 或縮 ParamSchema ②(後天) 驗證 LTC rsi_stoch 換參的真實 walk-forward 效果（換在 strat-validate 比對），決定是否寫進 portfolio.json
+
+---
+
+## 2026-05-26 第二輪 — 修 grid bug + 補測 dual_thrust / bb_revert_ls
+
+**修法**：`GenericWalkForwardOptimizer.Optimize` 加 optional `maxGrid` 參數（預設 `DefaultMaxGrid=400` 保留現行行為）；param-stability 工具顯式傳 `maxGrid: 6000` 讓 dual_thrust(5832)、bb_revert_ls(1296)能跑。
+
+### 結果（10 個新組合）
+
+| Strategy | Symbol | def OOS% | opt OOS% | 穩定度 | Verdict | 最常選參數 |
+|---|---|---:|---:|---:|---|---|
+| **dual_thrust** | **BNB** | **−52.5** | **+11.0** | 0.66 | ⭐ **robust** | `lookback=5, sma=80, k1=0.8, k2=0.5` |
+| dual_thrust | ETH | 17.1 | **+48.6** | 0.56 | marginal | `lookback=15, sma=20, k1=0.4, k2=0.5` |
+| dual_thrust | BTC | 14.2 | 3.6 | 0.69 | use-default | (預設已最佳) |
+| dual_thrust | DOGE | −61.7 | −40.7 | 0.47 | no-edge | — |
+| dual_thrust | LTC | 47.8 | −41.2 | 0.59 | no-edge | (調參反而虧) |
+| ⭐⭐ **bb_revert_ls** | **DOGE** | **−55.3** | **+63.7** | **0.83** | **robust** | `period=10, sma=60, z=1.25` |
+| **bb_revert_ls** | **BNB** | 43.3 | **+57.4** | 0.63 | ⭐ robust | `period=15, sma=70, z=1` |
+| bb_revert_ls | BTC | 38.1 | 33.6 | **0.88** | use-default | (預設極穩、不換) |
+| bb_revert_ls | ETH | −4.3 | −8.6 | 0.54 | no-edge | — |
+| bb_revert_ls | LTC | 3.9 | −28.1 | 0.54 | no-edge | — |
+
+### 兩輪累計（35 組合）
+
+| Verdict | 第一輪 | 第二輪 | 合計 | % |
+|---|---:|---:|---:|---:|
+| `use-default` | 10 | 2 | 12 | 34% |
+| `no-edge` | 11 | 4 | 15 | 43% |
+| **`robust`** | 2 | 3 | **5** | **14%** |
+| **`marginal`** | 1 | 1 | **2** | **6%** |
+| ERROR | 10 | 0 | 0 | 0% |
+
+→ **20% 真有調參邊際**（5 robust + 2 marginal）。其餘 80% 不該動參。
+
+**5 個 robust pair（按發現順序）**：
+1. ⭐⭐ **DOGE × bb_revert_ls**：def **−55.3%** → opt **+63.7%**、穩定度 **0.83** — **最強發現**，巨虧轉大賺
+2. **LTC × rsi_stoch**：def 6.2% → opt 32.2%、穩定度 **0.88**
+3. **BNB × bb_revert_ls**：def 43.3% → opt 57.4%、穩定度 0.63
+4. **BNB × dual_thrust**：def **−52.5%** → opt **+11%**、穩定度 0.66
+5. **BNB × fib_retrace_ls**：def −5% → opt 37.6%、穩定度 0.63
+
+### 跨組合 pattern：BNB 是「需要客製化」的市場
+
+BNB 跨 7 支策略：3 支 robust + 1 use-default + 3 no-edge：
+
+| 策略 | def | opt | Verdict |
+|---|---:|---:|---|
+| dual_mom_ls | 14.3 | −0.6 | no-edge ❌ |
+| ma_regime_trend | 35.4 | −21.0 | no-edge ❌ |
+| mfi | 25.1 | 16.5 | use-default ✓ |
+| rsi_stoch | 11.9 | −19.9 | no-edge ❌ |
+| **dual_thrust** | −52.5 | +11.0 | ⭐ **robust** |
+| **bb_revert_ls** | 43.3 | 57.4 | ⭐ **robust** |
+| **fib_retrace_ls** | −5 | +37.6 | ⭐ **robust** |
+
+**觀察**：portfolio.json 的 BNB 用 `dual_mom_ls`（no-edge），但 BNB **更適合均回 / 突破 / 回撤類**（bb_revert / dual_thrust / fib_retrace）。可能 BNB 的市場特性（震盪而非趨勢）讓純動量沒 edge、形態 / 均回類才有 edge。
+
+**這是 portfolio.json 可能該重新評估 BNB 策略選擇的訊號**——不只是換參、是**換策略類別**。
+
+### 結論 + 後續
+
+- ✅ Tool bug 修了、5832 grid 跑得動
+- ⭐ 新增 3 個 robust pair，**DOGE × bb_revert_ls** 是這兩輪最大發現
+- ⭐ Cross-strategy pattern：**BNB 可能該換策略類別**
+- 下一步：① 在 strat-validate 跑 LS 引擎驗證 robust pair 的最佳參數效果（確認 walk-forward optimizer 結果一致）② 評估 BNB 是否該換策略類別
+
+**檔案**：[tools/param-stability/Program.cs](../../tools/param-stability/Program.cs) 加 `--all` 旗標（預設只跑前次 ERROR 兩支）。[GenericWalkForwardOptimizer.cs](../../packages/csharp/workers/strategy-worker/Engine/GenericWalkForwardOptimizer.cs) 加 `maxGrid` optional 參數（向後相容、所有現有測試不變）。
