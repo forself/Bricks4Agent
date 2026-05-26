@@ -15,6 +15,14 @@ var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
 string[] symbols = { "BTCUSDT", "ETHUSDT", "BNBUSDT", "DOGEUSDT", "LTCUSDT" };
 
+// --validate-robust: 把已發現的 5 個 robust pair 拿到 LongShortBacktestEngine
+// (部署用引擎)跑 walk-forward,看 opt params 在 LS 下是否仍勝預設。
+if (args.Contains("--validate-robust"))
+{
+    await RunValidateRobust();
+    return;
+}
+
 // 第一輪(2026-05-26)5 支已測過;這輪只補測之前被 MaxGrid=400 擋掉的兩支。
 // 跑全部用 --all 旗標(較長運行時間)。
 bool runAll = args.Contains("--all");
@@ -97,3 +105,67 @@ foreach (var (name, strat) in strats)
 }
 
 Console.WriteLine("(穩定度 ≥ 0.7 通常算 robust;< 0.5 多半過擬合徵兆,但要結合 opt vs def OOS 一起看)");
+
+async Task RunValidateRobust()
+{
+    Console.WriteLine("=== Robust Pair LS-Engine 驗證 ===");
+    Console.WriteLine("把 5 個 robust pair 的最佳參數拿到 LongShortBacktestEngine(部署引擎)跑 walk-forward,");
+    Console.WriteLine("看 opt 在 LS 下是否仍勝 def(walk-forward optimizer 用的是 long-only 引擎,LS 才是真環境)\n");
+
+    var pairs = new (string sym, IStrategy strat, Dictionary<string, object> opt)[]
+    {
+        ("DOGEUSDT", new BollingerRevertLsStrategy(),
+            new Dictionary<string, object> { ["bb_period"]=10, ["bb_trend_sma"]=60, ["bb_entry_z"]=1.25m }),
+        ("LTCUSDT",  new StochasticStrategy(),
+            new Dictionary<string, object> { ["rsi_period"]=7, ["stoch_k"]=7, ["stoch_d"]=3 }),
+        ("BNBUSDT",  new BollingerRevertLsStrategy(),
+            new Dictionary<string, object> { ["bb_period"]=15, ["bb_trend_sma"]=70, ["bb_entry_z"]=1m }),
+        ("BNBUSDT",  new DualThrustStrategy(),
+            new Dictionary<string, object> { ["dt_lookback"]=5, ["dt_trend_sma"]=80, ["dt_k1"]=0.8m, ["dt_k2"]=0.5m }),
+        ("BNBUSDT",  new FibRetraceLsStrategy(),
+            new Dictionary<string, object> { ["fib_lookback"]=90, ["fib_min_range_pct"]=5m }),
+    };
+
+    var http2 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    var cache = new Dictionary<string, List<BarData>>();
+    async Task<List<BarData>> Fetch2(string s)
+    {
+        if (cache.TryGetValue(s, out var v)) return v;
+        var url = $"https://api.binance.com/api/v3/klines?symbol={s}&interval=1d&limit=1000";
+        var json = await http2.GetStringAsync(url);
+        using var doc = JsonDocument.Parse(json);
+        var bars = new List<BarData>();
+        foreach (var k in doc.RootElement.EnumerateArray())
+            bars.Add(new BarData
+            {
+                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
+                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
+                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
+                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
+                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
+                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
+            });
+        cache[s] = bars;
+        return bars;
+    }
+
+    Console.WriteLine($"{"strategy",-18} {"sym",-9} {"變體",-6}  {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate",8}");
+    Console.WriteLine(new string('─', 110));
+
+    foreach (var (sym, strat, optParams) in pairs)
+    {
+        var bars = await Fetch2(sym);
+        var cfgDef = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        var cfgOpt = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d", Params = optParams };
+
+        var def = LongShortBacktestEngine.RunWalkForward(strat, bars, cfgDef, trainBars: 250, testBars: 90, stride: 60);
+        var opt = LongShortBacktestEngine.RunWalkForward(strat, bars, cfgOpt, trainBars: 250, testBars: 90, stride: 60);
+
+        string Row(string variant, BacktestEngine.WalkForwardResult r) =>
+            $"{strat.Name,-18} {sym,-9} {variant,-6}  {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}";
+
+        Console.WriteLine(Row("def", def));
+        Console.WriteLine(Row("opt", opt));
+        Console.WriteLine();
+    }
+}

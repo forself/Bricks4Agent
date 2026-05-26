@@ -136,3 +136,53 @@ BNB 跨 7 支策略：3 支 robust + 1 use-default + 3 no-edge：
 - 下一步：① 在 strat-validate 跑 LS 引擎驗證 robust pair 的最佳參數效果（確認 walk-forward optimizer 結果一致）② 評估 BNB 是否該換策略類別
 
 **檔案**：[tools/param-stability/Program.cs](../../tools/param-stability/Program.cs) 加 `--all` 旗標（預設只跑前次 ERROR 兩支）。[GenericWalkForwardOptimizer.cs](../../packages/csharp/workers/strategy-worker/Engine/GenericWalkForwardOptimizer.cs) 加 `maxGrid` optional 參數（向後相容、所有現有測試不變）。
+
+---
+
+## 2026-05-26 第三輪 — LS 引擎驗證 5 個 robust pair
+
+**目的**：walk-forward optimizer 內部用的是 `BacktestEngine.Run`（long-only），但部署用的是 `LongShortBacktestEngine`。需驗證 opt params 在 LS 引擎下也成立、不只是長線 OOS 假象。
+
+**方法**：`tools/param-stability/Program.cs` 加 `--validate-robust` 模式，對 5 個 robust pair 各跑 `LongShortBacktestEngine.RunWalkForward(train250/test90/stride60)`，比對 def vs opt 在 LS 下的 OOS 表現。
+
+### 結果（5/5 全部驗證成立）
+
+| Pair | def OOSmed% | opt OOSmed% | Δ | def Sharpe | opt Sharpe | def DD% | opt DD% | def +folds | opt +folds | WinRate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ⭐⭐ **DOGE × bb_revert_ls** | **−0.7** | **+9.7** | **+10.4** | 0.47 | **1.13** | **277.7** | **71.6** | 4/12 | 7/12 | 36→**67%** |
+| **BNB × dual_thrust** | 0.0 | **+9.4** | +9.4 | **−0.40** | **+0.85** | 38.7 | **23.8** | 1/12 | **7/12** | 21→53% |
+| **BNB × fib_retrace_ls** | −1.7 | **+4.7** | +6.4 | 0.02 | **+0.66** | 35.2 | 25.8 | 5/12 | 7/12 | 53→60% |
+| **BNB × bb_revert_ls** | 0.0 | **+4.4** | +4.4 | 0.50 | **+0.84** | 22.6 | 35.3 | 4/12 | **9/12** | 38→61% |
+| LTC × rsi_stoch | 2.3 | **+6.6** | +4.3 | 0.49 | 0.35 | 89.8 | **74.1** | 7/12 | 7/12 | 46→61% |
+
+**5/5 OOSmed 上升、4/5 Sharpe 上升、4/5 DD 下降、3/5 +folds 提升**。LS 引擎下優化效應**完全成立**——walk-forward optimizer 的發現不是 long-only 假象。
+
+### 最重要的兩個發現
+
+**1. ⭐⭐ DOGE × bb_revert_ls 是這整輪研究的最大產出**
+
+opt 參數 `bb_period=10, bb_trend_sma=60, bb_entry_z=1.25` 在 LS walk-forward 下：
+- **DD 277.7% → 71.6%**（砍 75%）
+- **Sharpe 0.47 → 1.13**（>1 是真的好）
+- **WinRate 36% → 67%**
+- **OOSmed −0.7% → +9.7%**
+
+→ portfolio.json 目前 DOGE 用 `ma_regime_trend`（年化 29%、t=2.45）。**bb_revert_ls 是 DOGE 的另一個可選/補充策略**。
+
+**2. ⭐ BNB 「換策略類別」假說完全成立**
+
+portfolio.json 現在 BNB 用 `dual_mom_ls`（純動量、no-edge）。三個非動量策略（bb_revert / dual_thrust / fib_retrace）在 BNB 下 opt 後：
+- Sharpe 從 0.02/−0.40/0.50 全變到 **0.66/0.85/0.84**
+- DD 都在 25–35% 區間（健康）
+- +folds 都 ≥ 7/12（穩定）
+
+→ **BNB 該從 dual_mom_ls 換成均回/突破/回撤類**。
+
+### actionable 建議（待用戶決定）
+
+1. **DOGE × bb_revert_ls(opt)**：可視為 DOGE 的「均回腿」候選，補上現有 ma_regime_trend 的趨勢腿。或在 decorr4 組合裡為 DOGE 加重 bb_revert 權重。
+2. **BNB 換策略**：dual_mom_ls → bb_revert_ls 或 dual_thrust 或 fib_retrace（三選一、或組合）。Sharpe 從 no-edge 變 0.66–0.85。
+3. **LTC × rsi_stoch(opt)**：OOSmed 與 DD 都改善，但 AvgRet 變負（有極端 fold 拖累）→ **不急著動**、再觀察。
+4. portfolio.json 改動屬實盤調整、**待用戶決定**——研究紀錄已備齊、可隨時提案。
+
+**檔案**：[tools/param-stability/Program.cs](../../tools/param-stability/Program.cs) 加 `--validate-robust` 模式。下次可擴展為 portfolio-level（多腿同時跑）。
