@@ -2,14 +2,21 @@
 // 安全:reconciler 只自動建 shadow 單、不自動武裝真錢、不覆寫/不刪除既有 watch;live(shadow=false)一律 SKIP。
 // ⚠ 改本檔(尤其刪 watch)要 rebuild broker 才生效,見 [[reference_vps_deploy]]。
 //
-// 2026-05-24 激進化:3 倉 → 5 倉、組合曝險上限 200%→300%(3x 名目/本金)。
-//   高槓桿低本金、放大名目提升資金利用率;保護靠 5% reduce-only bracket SL + DD 熔斷(8%)+ 緊急停止。
-//   資金預算制(budget_pct,DB 管理,合計=300%=上限):BTC 70 / BNB 65 / DOGE 60 / ETH 55 / LTC 50。
-//   全 5 支統計顯著 + full-period 正;leverage 5x;env AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT=300。
+// 2026-05-25 更新 — 同步實盤 6 腿(allocate 引擎 + BTC 核心腿配出、合計 300% = 3x 上限):
+//   BTC 120(核心、decorr4_ls 集成、confidence-sizing 超單腿)/ BNB 60(ma_regime_trend) /
+//   SUI 35 / SOL 30 / UNI 30 / ETH 25(long_only、保留手動管理)。
+// 移除 DOGE / LTC(已不在實盤)。高槓桿低本金、保護靠 bracket SL + SYNC trailing(2026-05-25 開啟)
+// + DD 熔斷(8%) + 緊急停止。env AUTOTRADER_MAX_PORTFOLIO_EXPOSURE_PCT=300。
+//
+// 2026-05-26 H16+ 諧波 PRZ 翻案、harm_prz_scan10 王牌(Sharpe 0.91 / DD 11)入候選 + Method C 修
+//   widepz TP 太緊(+0.48 Sharpe avg)。fib_retrace_ls H16 後在 LTC/ETH 翻案、亦入候選。
+//   詳見 docs/reports/PortfolioOptimizationReview-2026-05-26.md + HarmonicResearch-Log.md。
+//   下輪換腿草案在 review doc、shadow 對帳數週驗證後再實施(BNB / ETH 是 actionable 對象)。
 [
-  { "exchange": "bingx", "symbol": "BTC-USDT",  "strategy": "decorr4_ls",      "mode": "perp_both",      "leverage": 5, "quantity": 0.001, "shadow": false, "enabled": true, "note": "4 策略集成、年化 32%、t=2.71 / budget 70% / perp_both 雙向(_ls 可做空、跌勢翻空)" },
-  { "exchange": "bingx", "symbol": "BNB-USDT",  "strategy": "dual_mom_ls",     "mode": "perp_both",      "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "雙時框動量、年化 28%、t=2.57 / budget 65% / perp_both 雙向(有倉、sell 先平多再開空)" },
-  { "exchange": "bingx", "symbol": "DOGE-USDT", "strategy": "ma_regime_trend", "mode": "perp_long_only", "leverage": 5, "quantity": 50,    "shadow": false, "enabled": true, "note": "均線 regime 趨勢、DOGE 上 +24、年化 29%、t=2.45 / budget 60%" },
-  { "exchange": "bingx", "symbol": "ETH-USDT",  "strategy": "mfi",             "mode": "perp_long_only", "leverage": 5, "quantity": 0.01,  "shadow": false, "enabled": true, "note": "資金流、統計最穩 t=3.72、maxDD 最低 / budget 55%" },
-  { "exchange": "bingx", "symbol": "LTC-USDT",  "strategy": "rsi_stoch",       "mode": "perp_long_only", "leverage": 5, "quantity": 1,     "shadow": false, "enabled": true, "note": "隨機指標回歸、LTC 5/5 全正、t=2.77 / budget 50%" }
+  { "exchange": "bingx", "symbol": "BTC-USDT", "strategy": "decorr4_ls",      "mode": "perp_both",      "leverage": 5, "quantity": 0.01,  "shadow": false, "enabled": true, "note": "核心腿 — decorr4 集成(dual_mom 38% + dual_thrust 32% + bb_revert 19% + fib 10%)、confidence-sizing 依共識下注。budget 120% = 3x cap 的 40%" },
+  { "exchange": "bingx", "symbol": "BNB-USDT", "strategy": "ma_regime_trend", "mode": "perp_both",      "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "原 dual_mom 的 BNB 多單留著交給它接管。budget 60%。⚠ 2026-05-26 review:BNB 動量類全 no-edge、可考慮換 bb_revert_ls/dual_thrust/fib_retrace_ls(shadow 驗證後)" },
+  { "exchange": "bingx", "symbol": "SUI-USDT", "strategy": "dual_mom_ls",     "mode": "perp_both",      "leverage": 5, "quantity": 1,     "shadow": false, "enabled": true, "note": "🆕 真錢首上(2026-05-25 allocate 配出)。budget 35%" },
+  { "exchange": "bingx", "symbol": "SOL-USDT", "strategy": "dual_thrust",     "mode": "perp_both",      "leverage": 5, "quantity": 0.1,   "shadow": false, "enabled": true, "note": "🆕 真錢首上。budget 30%" },
+  { "exchange": "bingx", "symbol": "UNI-USDT", "strategy": "ts_momentum",     "mode": "perp_both",      "leverage": 5, "quantity": 1,     "shadow": false, "enabled": true, "note": "🆕 真錢首上(ts_momentum 需 114 bars、fetch 已調 200)。budget 30%" },
+  { "exchange": "bingx", "symbol": "ETH-USDT", "strategy": "mfi",             "mode": "perp_long_only", "leverage": 5, "quantity": 0.012, "shadow": false, "enabled": true, "note": "第 6 腿、使用者要求保留 ETH 主動管理。budget 25%。⚠ 2026-05-26 review:mfi 是 portfolio 最弱(def OOS 4.4)、候選 ma_regime_trend(保守 Sharpe 0.84/DD 47)或 fib_retrace_ls(激進 Sharpe 0.97/WR 68% 但 DD 86) — 待 shadow 對帳" }
 ]

@@ -252,3 +252,74 @@ ETH 的最強單腿是 `ma_regime_trend`（45.9）和 `fib_retrace_ls`（45.6）
 - Fib 仍是 long-only DD 高的策略（雖然 LS 引擎下 LTC 上 DD 46% 合理、比 rsi 90% 低）
 
 **換腿可以 robustly 進行**。下一步：portfolio.json 變更草案（用戶授權後動）。
+
+---
+
+## 附錄(2026-05-26 換機後 — 重要更正 + 新數據)
+
+### ⚠️ 報告基準失準:portfolio.json stale → 換成實盤實況
+
+本報告的「現行 portfolio.json」段是基於 `packages/csharp/broker/portfolio.json` 的 stale 內容(BTC/BNB/DOGE/ETH/LTC、舊 budget 70/65/60/55/50)。實際 broker 在跑的是 **2026-05-25 allocate 引擎配出的 6 腿**:
+
+| Symbol | Strategy | Budget | Mode | 在本報告原有分析? |
+|---|---|---:|---|---|
+| BTC | decorr4_ls | 120% | perp_both | ✓ 維持 |
+| BNB | **ma_regime_trend** | 60% | perp_both | ⚠ 不是 dual_mom_ls;但 review 表顯示 ma_regime 在 BNB 也 no-edge → 結論仍成立 |
+| SUI | dual_mom_ls | 35% | perp_both | ❌ 未分析 |
+| SOL | dual_thrust | 30% | perp_both | ❌ 未分析 |
+| UNI | ts_momentum | 30% | perp_both | ❌ 未分析 |
+| ETH | mfi | 25% | perp_long_only | ✓ 結論適用 |
+
+**actionable 換腿(只看實況交集)**:
+- BNB:仍建議換(bb_revert_ls / dual_thrust / fib_retrace_ls 三選一)
+- ETH:仍建議換(ma_regime_trend 保守 / fib_retrace_ls 激進)
+- DOGE/LTC:本報告的建議 **moot**(這兩腿不在實盤)
+- SUI/SOL/UNI:本報告未分析、暫不動;若要重排需 param-stability 跨幣補測
+
+`portfolio.json` 2026-05-26 已同步成實況 6 腿(commit 中)、避免下次評估再拿 stale 比。
+
+### 新發現 1:Method C(Tp1 從實際進場價投影)改變 §6 配重評估
+
+詳見 [HarmonicResearch-Log.md](HarmonicResearch-Log.md) 的「2026-05-26 H16+ Method C」段。摘要:
+- 修了 widepz 配置 TP 太緊問題(根因:ProjectFromXabc 用 PRZ 中心當 D 投影、widepz 外擴後實際進場常落 PRZ 邊緣)
+- A/B 對比:
+  - `harm_prz_scan10`(窄 PRZ):avg Sharpe 0.74→0.81(王牌沒退化)
+  - `harm_prz_scan10_widepz`(寬 PRZ):avg Sharpe 1.02→1.50(+0.48,大幅改善)
+- **意義**:scan10_widepz 不再是「打折版 scan10」,回到與 scan10 接近的地位 → §6 原本「scan10 20% / widepz 20%」可微調讓 widepz 略增
+
+### 新發現 2:fib_retrace_ls H16 後翻案(本報告新增腿候選)
+
+詳見 [FibRetraceResearch-Log.md](FibRetraceResearch-Log.md) 的「2026-05-26 H16-Fib」段。摘要:
+- Pre-H16 long-only pool t=0.25 失敗 → Post-H16 LS 引擎讀 Signal.TargetPrice(Fib 1.272 擴展)後翻案
+- LTC × fib_retrace_ls:Sharpe **1.41** / WinRate **80.5%** / DD 砍半,全面壓制 rsi_stoch
+- ETH × fib_retrace_ls:Sharpe **0.97** / WinRate **68%**,但 DD 比 ma_regime 高 25pp(激進選項)
+- 跨時框只 1d(+1w 有限)有 edge → worker 鎖 1d
+
+### 修正後的 §6 Shadow 配重草案(覆蓋原案)
+
+```yaml
+harm_prz_scan10:          20%   # 不變,王牌
+harm_prz_scan10_widepz:   22%   # ⬆ 從 20%(Method C 後 widepz 回升)
+decorr5_widepz:           13%   # ⬇ 從 15%
+ma_regime_trend:          15%   # 不變
+accel_momentum:           10%   # 不變
+dual_mom_ls:               8%   # ⬇ 從 10%
+ts_momentum:               5%   # 不變
+harm_prz_top2_scan10:      4%   # ⬇ 從 5%
+fib_retrace_ls:            3%   # 🆕 新增,限 LTC + ETH(其他幣 --validate-candidates 顯示 fib 弱)
+# total                  100%
+```
+
+**幣池白名單**:
+- harm_prz_*:LTC / OP / ADA / INJ / APT / SUI 主場;BTC / NEAR 黑名單(scan10 在 BTC 完全無 edge、NEAR 樣本運氣)
+- fib_retrace_ls:LTC / ETH 主場;OP / NEAR / APT 黑名單(--validate-candidates 顯示 fib 在這幾個負/弱)
+
+### 升 live 標準(不變)
+
+Shadow 跑 4 週後,單腿 PnL ≥ +5% 且 DD < 20% 才升 live、初始配重砍半(總曝險 ~51%、其餘 49% 保留現有 portfolio / 現金)。
+
+### 系統面待辦(必要、優先序低)
+
+- [ ] strat-validate t-stat pool 改用 LS 引擎(才能在 20-coin pool 看到 H16 + Method C 的全貌、目前 pool 用 Benson long-only、看不到)
+- [ ] SUI/SOL/UNI 在 param-stability / strat-validate 補測(本報告未涵蓋、實盤 3 腿)
+- [ ] 真實 funding rate 入回測(目前估 0.010%/8h)
