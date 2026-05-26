@@ -69,6 +69,14 @@ if (args.Contains("--validate-h18-atr-trail"))
     return;
 }
 
+// --validate-h18-trend: H18 ATR trailing 對「無 TP 的趨勢策略」的影響(預期真正受益對象)
+// 直接影響 ETH/BNB 換腿評估 — ma_regime_trend(保守候選)加 trail 後能否反超 fib_retrace_ls
+if (args.Contains("--validate-h18-trend"))
+{
+    await RunValidateH18OnTrendStrats();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -305,6 +313,43 @@ async Task RunValidateH18AtrTrail()
         Console.WriteLine();
     }
     Console.WriteLine("解讀:trail on 對比 off 同 Sharpe / DD 變化。widepz 若 Sharpe ↑ DD ↓ = H18 有效救 TP 太緊。");
+}
+
+async Task RunValidateH18OnTrendStrats()
+{
+    Console.WriteLine("=== H18 — ATR trailing × 趨勢策略(無 TP、預期受益對象)===");
+    Console.WriteLine("假設:不發 TargetPrice 的策略沒有 TP 提早出場、trail 真正接管 → Sharpe ↑ / DD ↓");
+    Console.WriteLine("關鍵問題:ma_regime_trend × ETH 加 trail 後能否反超 fib_retrace_ls(Sharpe 0.97)?\n");
+
+    // 焦點:目前實盤 + 換腿候選的 trend 策略 × 對應幣
+    var cases = new (string strategyLabel, Func<IStrategy> mk, string sym, string note)[]
+    {
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),  "ETHUSDT", "ETH 換腿保守候選"),
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),  "BNBUSDT", "BNB 換腿候選之一"),
+        ("dual_thrust",      () => new DualThrustStrategy(),     "SOLUSDT", "現 SOL 腿"),
+        ("dual_thrust",      () => new DualThrustStrategy(),     "BNBUSDT", "BNB 換腿候選之一"),
+    };
+    var multipliers = new decimal[] { 0m, 2.0m, 3.0m };
+
+    foreach (var (label, mk, sym, note) in cases)
+    {
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"── {label} × {sym}({note})──");
+        Console.WriteLine($"  {"trail",-10} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var m in multipliers)
+        {
+            var strat = mk();
+            var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
+                trainBars: 250, testBars: 90, stride: 60,
+                commission: 0.0005m, slippagePct: 0.0003m,
+                atrTrailMultiplier: m, atrPeriod: 14);
+            var ml = m == 0m ? "off" : $"{m:F1}x";
+            Console.WriteLine($"  {ml,-10} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("ETH 換腿評估:若 ma_regime_trend × ETH 加 trail Sharpe > 0.97 → 保守選項超激進 fib_retrace_ls,值得換");
 }
 
 async Task RunValidateLtcFibRobust()

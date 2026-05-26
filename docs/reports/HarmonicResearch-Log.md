@@ -501,3 +501,53 @@ Mixed(decorr ensemble)→ 看 sub-strategy 多數派決定
 
 ❌ H18 對 harm_prz_scan10 / widepz 收線(no-op、結構性原因)。
 ✅ 引擎 ATR trailing 支援保留、給其他策略(尤其 trend-following)未來啟用。
+
+---
+
+## 2026-05-26 H18 補正 — 趨勢策略測試發現引擎 gap
+
+繼 H18 對 harm_prz no-op 之後,加測 trend 策略(預期受益對象):
+
+| 案例 | trail off Sharpe | 2.0x | 3.0x | Δ |
+|---|---:|---:|---:|---:|
+| ma_regime_trend × ETH | 0.85 | 0.85 | 0.85 | 0 |
+| ma_regime_trend × BNB | 0.36 | 0.36 | 0.36 | 0 |
+| dual_thrust × SOL | 0.46 | 0.46 | 0.46 | 0 |
+| dual_thrust × BNB | −0.40 | −0.40 | −0.40 | 0 |
+
+**12/12 case 完全 no-op**。原因:
+
+驗證 `StopPrice = ` 賦值次數:
+- `HarmonicPrzLsStrategy`:1(唯一發)
+- `FibRetraceLsStrategy / MaRegimeTrendStrategy / DualThrustStrategy / AccelMomentumStrategy`:**0**
+
+引擎 trail 條件:
+```csharp
+if (atrTrailMultiplier > 0m && position != 0m && activeStopPrice > 0m)
+```
+
+`activeStopPrice` 只在 OpenAt 從 `signal.StopPrice` 設入。**策略不發 StopPrice → activeStopPrice 永遠 0 → trail 永遠 skip**。
+
+### 結論:H18 引擎 gap、需「initial SL bootstrap」才能對 trend 策略生效
+
+**現況**:H18 只對「主動 emit StopPrice」的策略有效(harm_prz),而 harm_prz 因 Method C 變 TP-driven 又用不到 → **目前等於 dead code**。
+
+**要解**(留待未來):
+- 引擎加 `defaultInitialSlPct` 參數(預設 0)
+- 若策略沒 emit StopPrice 且 `atrTrailMultiplier > 0`,OpenAt 時 engine 自己用 `entry × (1 ∓ defaultInitialSlPct)` bootstrap activeStopPrice
+- 之後 trail 才有 base 可以 ratchet
+
+### ETH 換腿評估(沒被打開的鎖)
+
+由於 H18 對 ma_regime_trend × ETH 是 no-op,**ETH 換腿的保守 vs 激進 trade-off 不變**:
+- 保守 ma_regime_trend:Sharpe 0.84 / DD 47
+- 激進 fib_retrace_ls:Sharpe 0.97 / DD 86
+
+H18 沒能拉高 ma_regime_trend Sharpe → 沒辦法在「保住低 DD 同時」反超 fib。Trade-off 還是 trade-off。
+
+### 收線(更新)
+
+- ❌ H18 對 harm_prz:no-op(Method C TP 主導出場)
+- ❌ H18 對 trend 策略:no-op(策略不發 StopPrice、trail 無 base)
+- ⚠ 引擎 ATR trailing 機制本身正確但**目前無有效啟用者**
+- **下一步**:加 `defaultInitialSlPct` engine bootstrap → 才能在 trend 策略 A/B 看 H18 真實價值
