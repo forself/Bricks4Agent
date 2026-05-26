@@ -77,6 +77,14 @@ if (args.Contains("--validate-h18-trend"))
     return;
 }
 
+// --validate-h18-peak-trail: H18 live-align — peak-based trailing(跟 AutoTraderService 同邏輯)A/B
+// 對 fib_retrace_ls × ETH 跑多種 peak trail 配置、對比 ATR trail / baseline,看 live 套用後是否一致受益
+if (args.Contains("--validate-h18-peak-trail"))
+{
+    await RunValidateH18PeakTrail();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -355,6 +363,53 @@ async Task RunValidateH18OnTrendStrats()
         Console.WriteLine();
     }
     Console.WriteLine("ETH 換腿評估:若 ma_regime_trend × ETH 加 trail Sharpe > 0.97 → 保守選項超激進 fib_retrace_ls,值得換");
+}
+
+async Task RunValidateH18PeakTrail()
+{
+    Console.WriteLine("=== H18 live-align — peak-based trailing × fib_retrace_ls/ma_regime × ETH/BNB ===");
+    Console.WriteLine("跟 AutoTraderService 同邏輯:peak 達 trigger 後、SL = peak × (1 ∓ distance%);只 ratchet。");
+    Console.WriteLine("目的:驗證 H18 ATR 結論在 live-aligned peak 機制下是否一致(換腿 finalize 用)\n");
+
+    var cases = new (string strategyLabel, Func<IStrategy> mk, string sym, string note)[]
+    {
+        ("fib_retrace_ls",   () => new FibRetraceLsStrategy(),       "ETHUSDT", "ETH 換腿候選 / H18 ATR 王者"),
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "ETHUSDT", "ETH 保守候選"),
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "BNBUSDT", "BNB 現役"),
+    };
+    // 配置:baseline / ATR 對照 / 多 peak 配置(從 live 預設 + 變體)
+    var trailConfigs = new (string label, decimal atrMult, decimal peakTrig, decimal peakDist)[]
+    {
+        ("baseline",          0m,   0m,   0m  ),
+        ("ATR 2.0x+5%SL",     2.0m, 0m,   0m  ),  // ATR 對照(從 H18 winner)
+        ("peak 3%/2%(live)", 0m,   3m,   2m  ),  // live 預設方向
+        ("peak 5%/3%",        0m,   5m,   3m  ),  // 中等
+        ("peak 5%/5%",        0m,   5m,   5m  ),  // 鬆
+        ("peak 3%/5%",        0m,   3m,   5m  ),  // 早觸發 + 鬆 SL
+    };
+
+    foreach (var (label, mk, sym, note) in cases)
+    {
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"── {label} × {sym}({note})──");
+        Console.WriteLine($"  {"trail",-22} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"Return/DD",10} {"WinRate"}");
+        foreach (var (tlabel, atrMult, peakTrig, peakDist) in trailConfigs)
+        {
+            var strat = mk();
+            var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
+                trainBars: 250, testBars: 90, stride: 60,
+                commission: 0.0005m, slippagePct: 0.0003m,
+                atrTrailMultiplier: atrMult, atrPeriod: 14,
+                defaultInitialSlPct: (atrMult > 0m || peakTrig > 0m) ? 5m : 0m,
+                peakTrailTriggerPct: peakTrig, peakTrailDistancePct: peakDist);
+            var rdd = r.WorstTestDdPct > 0m ? r.AvgTestReturnPct / r.WorstTestDdPct : 0m;
+            Console.WriteLine($"  {tlabel,-22} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {rdd,10:F2} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("關鍵問題:peak 機制下 fib×ETH 是否仍 Return/DD 大幅勝 baseline?");
+    Console.WriteLine("若是 → ETH 換腿(fib + live peak trail)結論 robust、可推進 shadow 階段");
 }
 
 async Task RunValidateLtcFibRobust()

@@ -33,7 +33,9 @@ public static class LongShortBacktestEngine
         bool confidenceSizing = false, // true:名目再 × signal.Confidence(淨加權 ensemble 用來「分歧縮量」)
         decimal atrTrailMultiplier = 0m, // H18:>0 啟用 ATR trailing SL(每根 ratchet activeStopPrice、不放鬆)
         int atrPeriod = 14,            // ATR 視窗
-        decimal defaultInitialSlPct = 0m) // H18 補正:策略未 emit StopPrice 但啟用 trail 時、開倉用此 % 做初始 SL(讓 trail 有 base 可 ratchet)
+        decimal defaultInitialSlPct = 0m, // H18 補正:策略未 emit StopPrice 但啟用 trail 時、開倉用此 % 做初始 SL(讓 trail 有 base 可 ratchet)
+        decimal peakTrailTriggerPct = 0m, // H18-live-align:peak-based trail 啟動門檻(peak gain ≥ X% 才啟動、跟 AutoTraderService.TrailingTriggerPct 對齊)
+        decimal peakTrailDistancePct = 0m) // peak-based trail 距離(SL = peak × (1 ∓ distance%/100)、跟 AutoTraderService.TrailingDistancePct 對齊)
     {
         var costRate = commission + slippagePct;
         var result = new BacktestEngine.BacktestResult
@@ -54,6 +56,7 @@ public static class LongShortBacktestEngine
         DateTime entryDate = DateTime.MinValue;
         decimal activeStopPrice = 0m;    // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
         decimal activeTargetPrice = 0m;  // H16 TP 支援:開倉時鎖定的獲利目標(0=不啟用)
+        decimal peakPrice = 0m;          // H18 peak-trail:position 期間的最佳價(long=最高、short=最低、跟 AutoTraderService.PeakPrice 對齊)
         decimal peakEquity = initialCash, maxDrawdown = 0m, prevEquity = initialCash;
         var dailyReturns = new List<decimal>();
 
@@ -80,7 +83,7 @@ public static class LongShortBacktestEngine
                 Quantity = qty, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
                 HoldBars = entryIndex >= 0 ? i - entryIndex : 0,
             });
-            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m; activeTargetPrice = 0m;
+            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m; activeTargetPrice = 0m; peakPrice = 0m;
         }
 
         void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target)
@@ -95,6 +98,7 @@ public static class LongShortBacktestEngine
             entryPrice = px; entryIndex = i; entryDate = bars[i].OpenTime;
             activeStopPrice = stop;                       // H2-Fib SL:訊號未帶 stop 時=0、不啟用
             activeTargetPrice = target;                   // H16 TP:訊號未帶 target 時=0、不啟用
+            peakPrice = px;                               // H18 peak-trail:從進場價開始追蹤
         }
 
         for (int i = lookback; i < bars.Count; i++)
@@ -155,7 +159,8 @@ public static class LongShortBacktestEngine
                     // H18 補正:策略未 emit StopPrice 但 caller 啟用 trail + 給 defaultInitialSlPct → bootstrap SL,
                     // 讓 trail 有 base 可 ratchet(否則 trail 永遠 skip、對 trend 策略 no-op)。
                     decimal effectiveStop = signal.StopPrice ?? 0m;
-                    if (effectiveStop == 0m && atrTrailMultiplier > 0m && defaultInitialSlPct > 0m)
+                    bool trailEnabled = atrTrailMultiplier > 0m || peakTrailTriggerPct > 0m;
+                    if (effectiveStop == 0m && trailEnabled && defaultInitialSlPct > 0m)
                     {
                         effectiveStop = desired > 0
                             ? price * (1m - defaultInitialSlPct / 100m)   // long:entry × (1 − pct%)
@@ -176,6 +181,31 @@ public static class LongShortBacktestEngine
                     var trailedSl = position > 0m
                         ? bars[i].Close - atrTrailMultiplier * atr
                         : bars[i].Close + atrTrailMultiplier * atr;
+                    activeStopPrice = position > 0m
+                        ? Math.Max(activeStopPrice, trailedSl)
+                        : Math.Min(activeStopPrice, trailedSl);
+                }
+            }
+
+            // H18 live-align:Peak-based trailing — 跟 AutoTraderService 同邏輯。
+            // peak 達 trigger 後、SL = peak × (1 ∓ distance%);只 ratchet。預設 peakTrailTriggerPct=0 → skip。
+            if (peakTrailTriggerPct > 0m && peakTrailDistancePct > 0m && position != 0m && activeStopPrice > 0m && entryPrice > 0m)
+            {
+                // 更新 peakPrice(long 用 High、short 用 Low)
+                peakPrice = position > 0m
+                    ? Math.Max(peakPrice, bars[i].High)
+                    : (peakPrice == 0m ? bars[i].Low : Math.Min(peakPrice, bars[i].Low));
+
+                // peakPct = 從 entry 出發的最佳 unrealized %
+                decimal peakPct = position > 0m
+                    ? (peakPrice - entryPrice) / entryPrice * 100m
+                    : (entryPrice - peakPrice) / entryPrice * 100m;
+
+                if (peakPct >= peakTrailTriggerPct)
+                {
+                    var trailedSl = position > 0m
+                        ? peakPrice * (1m - peakTrailDistancePct / 100m)
+                        : peakPrice * (1m + peakTrailDistancePct / 100m);
                     activeStopPrice = position > 0m
                         ? Math.Max(activeStopPrice, trailedSl)
                         : Math.Min(activeStopPrice, trailedSl);
@@ -217,7 +247,9 @@ public static class LongShortBacktestEngine
         bool confidenceSizing = false,
         decimal atrTrailMultiplier = 0m,   // H18:>0 啟用 ATR trailing SL
         int atrPeriod = 14,
-        decimal defaultInitialSlPct = 0m)  // H18 補正:trail 啟用 + 策略未 emit 時的初始 SL %
+        decimal defaultInitialSlPct = 0m,  // H18 補正:trail 啟用 + 策略未 emit 時的初始 SL %
+        decimal peakTrailTriggerPct = 0m,  // H18 live-align:peak-based trail trigger %
+        decimal peakTrailDistancePct = 0m) // peak-based trail distance %
     {
         var result = new BacktestEngine.WalkForwardResult
         {
@@ -231,11 +263,12 @@ public static class LongShortBacktestEngine
         for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
         {
             var trainSlice = bars.GetRange(start, trainBars);
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct, peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct);
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt = Run(strategy, testWindow, config, initialCash, commission,
                 tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing,
-                atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct);
+                atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct,
+                peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct);
             result.Folds.Add(new BacktestEngine.WalkForwardFold
             {
                 FoldIndex = foldIdx++,
