@@ -369,3 +369,75 @@ bb_revert_ls:              3%   # 🆕 限 ETH / BNB / ADA(三幣 OOS + peak tra
 - fib_retrace_ls(備案):LTC / ETH 主場、若 bb_revert shadow 失敗才啟用
 
 ⚠ **Caveat**:bb_revert × ETH Sharpe 2.00 是 walk-forward OOS 單路徑、bootstrap CI 未做。strat-validate pool t-stat 在重跑(用 LS 引擎),完成後若 bb_revert / fib t-stat 顯著(>2)再進升 live 流程;若不顯著退回保守(ma_regime_trend)候選。
+
+---
+
+## 🚨 t-stat 驗證結果(2026-05-26 晚 — 紀律救命段)
+
+strat-validate pool t-stat 跑完(LS 引擎、Method C、20 幣 × 12 folds、bootstrap 2000 次)。
+
+### 重大發現:bb_revert / fib **都不顯著**!
+
+68 支策略測,**25 支 95% CI 下界 > 0**。bb_revert_ls 與 fib_retrace_ls **都不在顯著名單**。
+
+意味:
+- 上面「新發現 3」的 ETH × bb_revert Sharpe 2.00 是**單條 OOS 路徑運氣**,pool 跨幣站不住
+- fib_retrace_ls H16 翻案的 LTC/ETH 結論是**局部 edge、不是普遍 edge**
+- **bb_revert / fib 從 ETH 換腿候選撤下**,「新發現 3」的配重草案作廢
+
+### 25 支顯著策略 t-stat 前 10(取代上面所有草案)
+
+| # | 策略 | n | mean% | 95% CI | t |
+|---:|---|---:|---:|---|---:|
+| 1 | **harm_prz_scan10_widepz** | 240 | 17.0 | [11.4, 23.5] | **5.54** |
+| 2 | tsmom_widepz | 240 | 14.8 | [8.8, 21.8] | 4.60 |
+| 3 | tsmom_harm_prz_scan10 | 240 | 13.6 | [7.7, 20.2] | 4.19 |
+| 4 | **ts_momentum** | 240 | 12.9 | [6.8, 19.5] | 4.10 |
+| 5 | harm_prz_top2_scan10_widepz | 240 | 12.4 | [7.9, 17.7] | 4.82 |
+| 6 | decorr5_top2_scan10 | 240 | 11.0 | [4.7, 18.0] | 3.34 |
+| 7 | **harm_prz_scan10** | 240 | 10.6 | [7.4, 14.4] | **5.93** ⭐ |
+| 8 | dual_mom_ls | 240 | 10.4 | [4.7, 17.1] | 3.21 |
+| 9 | **decorr4_ls**(BTC 現役) | 240 | 10.2 | [4.4, 16.9] | 3.11 |
+| 10 | decorr5_widepz | 240 | 10.0 | [3.9, 16.3] | 3.17 |
+
+> ⚠ 報告自帶 caveat:folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;且多重檢定下 68 × 5% ≈ 3 支會假陽性 → 只信 t 高且 mean 大的前幾名。
+
+### ✅ 修正後的真錢與 shadow 動作(取代以上所有提案)
+
+**真錢層(立刻、零變動)**
+
+現行 6 腿維持不動。理由:
+- BTC `decorr4_ls` t=3.11 ✅、BNB `ma_regime_trend` t=2.52(勉強)、SUI `dual_mom_ls` t=3.21 ✅、SOL `dual_thrust` t=2.67 ✅、UNI `ts_momentum` t=4.10 ✅ — 都通過 / 勉強通過,沒理由換
+- ETH `mfi` 不顯著,但替代品 `bb_revert_ls` / `fib_retrace_ls` 也都不顯著 → **空動作換空動作、無意義**
+
+**Shadow basket(可立刻啟動、paper-trade 4 週)**
+
+```yaml
+# 全部從 t-stat ≥ 3 的顯著名單選、優先 t-stat 最高
+harm_prz_scan10_widepz:   30%   # t=5.54、mean 17%(王牌、Method C 加持)
+harm_prz_scan10:          25%   # t=5.93(最高 t-stat、原始王牌)
+ts_momentum:              15%   # t=4.10、mean 12.9%
+harm_prz_top2_scan10_widepz: 15%   # t=4.82(top-2 限制版)
+tsmom_widepz:             10%   # t=4.60(組合策略)
+dual_mom_ls:               5%   # t=3.21(分散)
+# total                  100%
+```
+
+**幣池**:harm_prz_* → LTC / OP / ADA / INJ / APT / SUI;BTC / NEAR 黑名單。
+
+**升 live 條件**(門檻更嚴、因為 t-stat 已嚴篩過):
+- Shadow 跑 4 週、單腿 PnL ≥ +5% 且 DD < 20%
+- 跨腿相關 |ρ| < 0.6
+- 升 live 第一順位:`harm_prz_scan10_widepz`(現有真錢沒充分用上、t-stat 與 mean 雙冠)
+- ETH `mfi` 換腿候選:改用 `ts_momentum` 或 `harm_prz_scan10`(都顯著)、**不要 bb_revert / fib**
+
+### Meta-learning(紀律救命)
+
+**「walk-forward 單路徑漂亮 ≠ pool t-stat 顯著」** — 這次 bb_revert × ETH Sharpe 2.00 是教科書級案例:
+- 單一(策略 × 幣)路徑 OOS Sharpe 2.00 / WR 88% 看起來無懈可擊
+- 但 pool t-stat(跨 20 幣 × 12 folds = 240 樣本)bootstrap CI 顯示 edge **不顯著**
+- 意義:同一策略在其他幣 / 其他時段表現不一致,所謂的「ETH × bb_revert」可能是 ETH 那段資料的特定 regime 巧合
+- **以後規矩**:任何「ETH 換腿 / BNB 換腿」決策,**必須先過 pool t-stat 才能進 shadow**,不能單看 (策略 × 幣) walk-forward 數字
+- 否則就是用 240 個比較裡挑最漂亮的那 1 個、典型 cherry-picking
+
+如果今天跳過 t-stat 直接動 ETH 換 bb_revert → shadow 大概率退化、真錢上線後更可能虧錢。**紀律救了一次**。
