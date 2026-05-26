@@ -45,6 +45,8 @@ var symbols = new[]
     ("harmonic_ls",      new HarmonicLsStrategy()),
     // 研究實驗(harmonic research log H1, 2026-05-26):諧波 + 橫盤 regime 閘
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
+    // 研究實驗(fib research log H1-Fib, 2026-05-26):FibRetrace + RegimeDetector 真趨勢
+    ("fib_retrace_regime_ls", new FibRetraceRegimeLsStrategy()),
     // 一鍵淨加權 ensemble(去相關4支、反波動率權重)— 對照「真組合」
     ("decorr4_ls", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
         { (new DualMomentumLsStrategy(), 0.38m), (new DualThrustStrategy(), 0.32m),
