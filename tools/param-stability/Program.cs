@@ -324,10 +324,13 @@ async Task RunValidateH18OnTrendStrats()
     // 焦點:目前實盤 + 換腿候選的 trend 策略 × 對應幣
     var cases = new (string strategyLabel, Func<IStrategy> mk, string sym, string note)[]
     {
-        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),  "ETHUSDT", "ETH 換腿保守候選"),
-        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),  "BNBUSDT", "BNB 換腿候選之一"),
-        ("dual_thrust",      () => new DualThrustStrategy(),     "SOLUSDT", "現 SOL 腿"),
-        ("dual_thrust",      () => new DualThrustStrategy(),     "BNBUSDT", "BNB 換腿候選之一"),
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "ETHUSDT", "ETH 換腿保守候選"),
+        ("fib_retrace_ls",   () => new FibRetraceLsStrategy(),       "ETHUSDT", "ETH 換腿激進候選(TP-driven)"),
+        ("ma_regime_trend",  () => new MaRegimeTrendStrategy(),     "BNBUSDT", "BNB 換腿候選 1/3"),
+        ("dual_thrust",      () => new DualThrustStrategy(),         "BNBUSDT", "BNB 換腿候選 2/3"),
+        ("bb_revert_ls",     () => new BollingerRevertLsStrategy(), "BNBUSDT", "BNB 換腿候選 3/3"),
+        ("fib_retrace_ls",   () => new FibRetraceLsStrategy(),       "BNBUSDT", "BNB 換腿候選 4(TP-driven 對照)"),
+        ("dual_thrust",      () => new DualThrustStrategy(),         "SOLUSDT", "現 SOL 腿"),
     };
     var multipliers = new decimal[] { 0m, 2.0m, 3.0m };
 
