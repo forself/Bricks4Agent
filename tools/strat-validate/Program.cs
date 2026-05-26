@@ -91,21 +91,10 @@ if (args.Contains("--harmonic")) { await RunHarmonic(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
-    var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval={interval}&limit=1000";
-    var json = await http.GetStringAsync(url);
-    using var doc = JsonDocument.Parse(json);
-    var bars = new List<BarData>();
-    foreach (var k in doc.RootElement.EnumerateArray())
-        bars.Add(new BarData
-        {
-            OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
-            Open = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
-            High = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
-            Low = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
-            Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
-            Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
-            FundingRate = fundingPer8h,   // 固定假設;只在 applyFunding=true 的回測生效
-        });
+    // 走共享 KlineCache(~/.cache/brick4agent/klines/、24h TTL、FORCE_REFRESH_KLINES=1 強制刷)
+    var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, interval, limit: 1000);
+    // 套用 runtime funding 假設(cache 不存 FundingRate、避免不同 fundingPer8h 衝突)
+    foreach (var b in bars) b.FundingRate = fundingPer8h;
     return bars;
 }
 

@@ -11,8 +11,6 @@ using StrategyWorker.Models;
 using System.Globalization;
 using System.Text.Json;
 
-var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-
 string[] symbols = { "BTCUSDT", "ETHUSDT", "BNBUSDT", "DOGEUSDT", "LTCUSDT" };
 
 // --validate-robust: 把已發現的 5 個 robust pair 拿到 LongShortBacktestEngine
@@ -60,24 +58,7 @@ bool runAll = args.Contains("--all");
     };
 const int MaxGrid = 6000;   // 提高上限(預設 400)允許 dual_thrust(5832)、bb_revert(1296)
 
-async Task<List<BarData>> Fetch(string sym)
-{
-    var url = $"https://api.binance.com/api/v3/klines?symbol={sym}&interval=1d&limit=1000";
-    var json = await http.GetStringAsync(url);
-    using var doc = JsonDocument.Parse(json);
-    var bars = new List<BarData>();
-    foreach (var k in doc.RootElement.EnumerateArray())
-        bars.Add(new BarData
-        {
-            OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
-            Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
-            High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
-            Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
-            Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
-            Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
-        });
-    return bars;
-}
+async Task<List<BarData>> Fetch(string sym) => await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
 
 Console.WriteLine("=== Walk-Forward 參數穩定度檢驗 ===");
 Console.WriteLine($"資料: {symbols.Length} 檔幣 daily klines (limit=1000)");
@@ -128,25 +109,7 @@ async Task RunValidateLtcFibRobust()
     Console.WriteLine("本日最強發現:LTC × fib_retrace_ls(default) Sharpe 1.40。");
     Console.WriteLine("確認不是 1d 假象 + 不是特定 train/test 配置運氣。\n");
 
-    var http4 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-    async Task<List<BarData>> FetchTf(string interval)
-    {
-        var url = $"https://api.binance.com/api/v3/klines?symbol=LTCUSDT&interval={interval}&limit=1000";
-        var json = await http4.GetStringAsync(url);
-        using var doc = JsonDocument.Parse(json);
-        var bars = new List<BarData>();
-        foreach (var k in doc.RootElement.EnumerateArray())
-            bars.Add(new BarData
-            {
-                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
-                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
-                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
-                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
-                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
-                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
-            });
-        return bars;
-    }
+    Task<List<BarData>> FetchTf(string interval) => ToolsShared.KlineCache.FetchOrLoad("LTCUSDT", interval);
 
     Console.WriteLine("── 1. 跨時框測試(walk-forward train250/test90/stride60、default params)──");
     Console.WriteLine($"  {"interval",-8} {"bars",5} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
@@ -223,25 +186,7 @@ async Task RunValidateCandidates()
         }, "LTC:現 rsi_stoch (LS mixed、AvgRet -2.7%)"),
     };
 
-    var http3 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-    async Task<List<BarData>> Fetch3(string s)
-    {
-        var url = $"https://api.binance.com/api/v3/klines?symbol={s}&interval=1d&limit=1000";
-        var json = await http3.GetStringAsync(url);
-        using var doc = JsonDocument.Parse(json);
-        var bars = new List<BarData>();
-        foreach (var k in doc.RootElement.EnumerateArray())
-            bars.Add(new BarData
-            {
-                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
-                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
-                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
-                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
-                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
-                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
-            });
-        return bars;
-    }
+    Task<List<BarData>> Fetch3(string s) => ToolsShared.KlineCache.FetchOrLoad(s, "1d");
 
     foreach (var (sym, strats3, note) in groups)
     {
@@ -279,28 +224,7 @@ async Task RunValidateRobust()
             new Dictionary<string, object> { ["fib_lookback"]=90, ["fib_min_range_pct"]=5m }),
     };
 
-    var http2 = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-    var cache = new Dictionary<string, List<BarData>>();
-    async Task<List<BarData>> Fetch2(string s)
-    {
-        if (cache.TryGetValue(s, out var v)) return v;
-        var url = $"https://api.binance.com/api/v3/klines?symbol={s}&interval=1d&limit=1000";
-        var json = await http2.GetStringAsync(url);
-        using var doc = JsonDocument.Parse(json);
-        var bars = new List<BarData>();
-        foreach (var k in doc.RootElement.EnumerateArray())
-            bars.Add(new BarData
-            {
-                OpenTime = DateTimeOffset.FromUnixTimeMilliseconds(k[0].GetInt64()).UtcDateTime,
-                Open  = decimal.Parse(k[1].GetString()!, CultureInfo.InvariantCulture),
-                High  = decimal.Parse(k[2].GetString()!, CultureInfo.InvariantCulture),
-                Low   = decimal.Parse(k[3].GetString()!, CultureInfo.InvariantCulture),
-                Close = decimal.Parse(k[4].GetString()!, CultureInfo.InvariantCulture),
-                Volume = decimal.Parse(k[5].GetString()!, CultureInfo.InvariantCulture),
-            });
-        cache[s] = bars;
-        return bars;
-    }
+    Task<List<BarData>> Fetch2(string s) => ToolsShared.KlineCache.FetchOrLoad(s, "1d");
 
     Console.WriteLine($"{"strategy",-18} {"sym",-9} {"變體",-6}  {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate",8}");
     Console.WriteLine(new string('─', 110));
