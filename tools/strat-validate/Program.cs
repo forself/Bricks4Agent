@@ -499,11 +499,14 @@ Console.WriteLine("  → real+fund = realistic 再加 funding;realistic 正但 r
 
 // (5) 統計顯著性(1d、realistic 成本):pool 跨幣×fold 的 OOS 報酬,bootstrap 95% CI。
 // CI 下界 > 0 才算「edge 跟 0 有顯著差異」(不是運氣);否則就是 noise。
+// 2026-05-26 重構:改用 LongShortBacktestEngine(讀 Signal.StopPrice/TargetPrice、支援 H16 TP / Method C),
+// Benson long-only 引擎吃不到這些訊號 → 對 harm_prz / fib_retrace_ls 等 SL/TP-emitting 策略
+// pool t-stat 之前被嚴重低估(fib t=0.25 失敗的根因)。
 List<decimal> PoolOosFolds(IStrategy s)
 {
     var r = new List<decimal>();
     foreach (var kv in data)
-        try { var w = BacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
               foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
         catch { }
     return r;
