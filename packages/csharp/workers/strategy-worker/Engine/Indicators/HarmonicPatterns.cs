@@ -637,6 +637,25 @@ public static class HarmonicPatterns
         return (has, rsiB, rsiD);
     }
 
+    /// <summary>
+    /// H21 — Volume divergence:在 D 點(反轉點)的成交量相對 B→D-1 區間平均的「擴張」確認。
+    /// 諧波理論:真實反轉伴隨機構參與 = 量能放大;稀薄量 = 弱反轉、易失敗。
+    /// 跟 RsiDivergence 不同:這是「量擴張」、direction-agnostic。
+    /// 回傳 (是否擴張、D 量、區間平均量)。D 量 ≥ threshold × avg 算確認。
+    /// </summary>
+    public static (bool HasDivergence, decimal VolD, decimal VolAvg) DetectVolumeDivergence(
+        List<BarData> bars, int bIndex, int dIndex, decimal threshold = 1.5m)
+    {
+        if (bIndex < 0 || dIndex >= bars.Count || bIndex >= dIndex) return (false, 0m, 0m);
+        decimal sum = 0m; int n = 0;
+        for (int i = bIndex; i < dIndex; i++) { sum += bars[i].Volume; n++; }
+        if (n == 0) return (false, 0m, 0m);
+        var avg = sum / n;
+        var volD = bars[dIndex].Volume;
+        var has = avg > 0m && volD >= avg * threshold;
+        return (has, volD, avg);
+    }
+
     // ── Candle Confirmation 掃描（Batch C+ 新增、影片重點 #2） ────
 
     /// <summary>

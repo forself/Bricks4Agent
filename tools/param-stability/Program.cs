@@ -85,6 +85,13 @@ if (args.Contains("--validate-h18-peak-trail"))
     return;
 }
 
+// --validate-h21-vol-div: H21 — Volume divergence A/B(harm_prz_scan10、baseline vs 加分模式 vs 硬閘模式)
+if (args.Contains("--validate-h21-vol-div"))
+{
+    await RunValidateH21VolDiv();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -410,6 +417,39 @@ async Task RunValidateH18PeakTrail()
     }
     Console.WriteLine("關鍵問題:peak 機制下 fib×ETH 是否仍 Return/DD 大幅勝 baseline?");
     Console.WriteLine("若是 → ETH 換腿(fib + live peak trail)結論 robust、可推進 shadow 階段");
+}
+
+async Task RunValidateH21VolDiv()
+{
+    Console.WriteLine("=== H21 — Volume divergence × harm_prz_scan10 三模 A/B ===");
+    Console.WriteLine("D 點量 ≥ 1.5×(B→D-1 平均)= 確認反轉有量能撐(諧波理論:真實反轉伴隨機構參與)");
+    Console.WriteLine("baseline / 加分(+0.10 conf 但不過濾) / 硬閘(無 vol div 不進場) 三模對比\n");
+
+    var coins = new[] { "LTCUSDT", "OPUSDT", "APTUSDT", "INJUSDT", "ADAUSDT" };
+    var modes = new (string label, Func<HarmonicPrzLsStrategy> mk)[]
+    {
+        ("baseline",       () => new HarmonicPrzLsStrategy(name: "harm_prz_scan10", scanWindows: 10)),
+        ("vol_div +0.10",  () => new HarmonicPrzLsStrategy(name: "harm_prz_scan10", scanWindows: 10, volDivConfBonus: 0.10m)),
+        ("vol_div HARD",   () => new HarmonicPrzLsStrategy(name: "harm_prz_scan10", scanWindows: 10, requireVolDivToEnter: true)),
+    };
+    foreach (var sym in coins)
+    {
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        Console.WriteLine($"── {sym} ──");
+        Console.WriteLine($"  {"mode",-16} {"OOSmed%",8} {"AvgRet%",8} {"AvgSh",6} {"WorstDD%",9} {"+folds",7} {"WinRate"}");
+        foreach (var (label, mk) in modes)
+        {
+            var strat = mk();
+            var r = LongShortBacktestEngine.RunWalkForward(strat, bars, cfg,
+                trainBars: 250, testBars: 90, stride: 60,
+                commission: 0.0005m, slippagePct: 0.0003m);
+            Console.WriteLine($"  {label,-16} {r.MedianTestReturnPct,8:F1} {r.AvgTestReturnPct,8:F1} {r.AvgTestSharpe,6:F2} {r.WorstTestDdPct,9:F1} {$"{r.PositiveTestFolds}/{r.TotalFolds}",7} {r.AvgTestWinRate,8:F2}");
+        }
+        Console.WriteLine();
+    }
+    Console.WriteLine("解讀:加分模式 vs baseline 差異小 → vol div 不是 conf 區分器(同 H17 結論)");
+    Console.WriteLine("    硬閘模式 vs baseline:Sharpe ↑ + +folds ↓ = 確實是 quality 過濾器、值得當 filter");
 }
 
 async Task RunValidateLtcFibRobust()

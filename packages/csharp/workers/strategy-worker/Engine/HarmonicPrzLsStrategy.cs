@@ -35,13 +35,20 @@ public class HarmonicPrzLsStrategy : IStrategy
     private readonly int _scanWindows;
     // H14 PRZ 浮動(2026-05-26):PRZ 區間額外往外擴 X% 讓更多當前價算進。預設 0 = 不擴。
     private readonly decimal _przWidening;
+    // H21 Volume divergence(2026-05-26):D 點量 ≥ threshold × B→D-1 平均 = 確認反轉有量能撐。
+    private readonly decimal _volDivConfBonus;       // > 0 = 加分模式(類似 RSI div +0.15)
+    private readonly bool    _requireVolDivToEnter;  // true = 硬閘模式、無 vol div 不進場
+    private readonly decimal _volDivThreshold;       // 預設 1.5(量需擴張 50%)
 
     public HarmonicPrzLsStrategy(
         IEnumerable<string>? patternWhitelist = null,
         string? name = null,
         IEnumerable<Indicators.RegimeDetector.RegimeType>? regimeWhitelist = null,
         int scanWindows = 1,
-        decimal przWidening = 0m)
+        decimal przWidening = 0m,
+        decimal volDivConfBonus = 0m,
+        bool requireVolDivToEnter = false,
+        decimal volDivThreshold = 1.5m)
     {
         _patternWhitelist = patternWhitelist == null
             ? null
@@ -50,6 +57,9 @@ public class HarmonicPrzLsStrategy : IStrategy
         _regimeWhitelist = regimeWhitelist == null ? null : new HashSet<Indicators.RegimeDetector.RegimeType>(regimeWhitelist);
         _scanWindows = Math.Max(1, scanWindows);
         _przWidening = Math.Max(0m, przWidening);
+        _volDivConfBonus = Math.Max(0m, volDivConfBonus);
+        _requireVolDivToEnter = requireVolDivToEnter;
+        _volDivThreshold = volDivThreshold > 0m ? volDivThreshold : 1.5m;
     }
 
     public string Name => _name;
@@ -146,10 +156,20 @@ public class HarmonicPrzLsStrategy : IStrategy
             int dIdx = bars.Count - 1;
             var (hasCandle, candleSig) = HarmonicPatterns.DetectCandleConfirmation(bars, dIdx, direction);
             var (hasRsiDiv, rsiB, rsiD) = HarmonicPatterns.DetectRsiDivergence(bars, B.Index, dIdx, direction);
+            // H21 Volume divergence(量擴張)— 預設兩個 flag 全 0/false → 整段 skip、向後相容
+            var (hasVolDiv, volD, volAvg) = (_volDivConfBonus > 0m || _requireVolDivToEnter)
+                ? HarmonicPatterns.DetectVolumeDivergence(bars, B.Index, dIdx, _volDivThreshold)
+                : (false, 0m, 0m);
+            if (_requireVolDivToEnter && !hasVolDiv)
+            {
+                lastHoldReason = $"{proj.PatternName}[{ci}] vol div 不夠({volD:F0} < {_volDivThreshold:F1}×{volAvg:F0})";
+                continue;
+            }
 
             decimal conf = proj.Fit;
             if (hasCandle) conf += 0.15m;
             if (hasRsiDiv) conf += 0.15m;
+            if (hasVolDiv && _volDivConfBonus > 0m) conf += _volDivConfBonus;
             conf = Math.Clamp(conf, 0m, 0.95m);
             if (conf < minConf) { lastHoldReason = $"{proj.PatternName}[{ci}] conf {conf:F2} < {minConf}"; continue; }
 
