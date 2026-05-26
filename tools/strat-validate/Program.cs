@@ -236,12 +236,14 @@ string[] symbols = fastMode
           (new BollingerRevertLsStrategy(), 0.19m), (new FibRetraceLsStrategy(), 0.10m) }, name: "decorr4_ls")),
 };
 
-// --only=PAT 過濾(支援 *)
+// --only=PAT1,PAT2 過濾(支援 *、可逗號分隔多 pattern OR-match)
 if (onlyFilter != null)
 {
+    var patterns = onlyFilter.Split(',')
+        .Select(p => "^" + System.Text.RegularExpressions.Regex.Escape(p.Trim()).Replace("\\*", ".*") + "$");
+    var combined = string.Join("|", patterns);
     var regex = new System.Text.RegularExpressions.Regex(
-        "^" + System.Text.RegularExpressions.Regex.Escape(onlyFilter).Replace("\\*", ".*") + "$",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        combined, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     var filtered = strats.Where(s => regex.IsMatch(s.name)).ToArray();
     Console.WriteLine($"⚡ 過濾後策略: {filtered.Length} 個 ({string.Join(", ", filtered.Select(s => s.name))})");
     strats = filtered;

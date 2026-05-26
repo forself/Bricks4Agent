@@ -1,13 +1,14 @@
 # Reports Index
 
-14 份報告分組導覽。**研究紀錄 .md 每天累積、不刪**（負面結果也是知識）。
+15 份報告分組導覽。**研究紀錄 .md 每天累積、不刪**（負面結果也是知識）。
 
 ## 🎯 部署/決策（最新優先）
 
 | 報告 | 日期 | 摘要 |
 |---|---|---|
-| **[Portfolio Optimization Review](PortfolioOptimizationReview-2026-05-26.md)** | 2026-05-26 | portfolio.json 5 個部署逐 symbol 評估 + ETH/LTC LS 候選驗證。發現 LTC × fib_retrace_ls Sharpe 1.40、BNB 該換策略類別 |
-| [Usable Combos](UsableCombos-2026-05-24.md) | 2026-05-24 | 12 策略單腿績效 + 去相關精選 4 支組合 + 部署細則。**目前 portfolio.json 的依據** |
+| **[Portfolio 2000-bar Acid Test](Portfolio-2000bar-AcidTest-2026-05-26.md)** | 2026-05-26 | 2000 bars 酸測。`harm_prz_scan10_widepz` t=5.01、fullRet 1280%。下架 8 支冗員、two-stage shadow 草案 |
+| [Portfolio Optimization Review](PortfolioOptimizationReview-2026-05-26.md) | 2026-05-26 | （早一輪）portfolio.json 5 個部署逐 symbol 評估 + ETH/LTC LS 候選驗證 |
+| [Usable Combos](UsableCombos-2026-05-24.md) | 2026-05-24 | 12 策略單腿績效 + 去相關精選 4 支組合 + 部署細則 |
 
 ## 📊 策略研究（按時間）
 
