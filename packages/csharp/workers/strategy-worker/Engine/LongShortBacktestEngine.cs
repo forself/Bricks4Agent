@@ -15,6 +15,9 @@ namespace StrategyWorker.Engine;
 ///
 /// 無 lookahead:逐根只餵 bars[0..i];部位用「當根收盤」進出。tradeStartIndex 給 walk-forward OOS 用
 /// (前段只當指標 warmup、不計交易/績效)。
+///
+/// SL / TP(2026-05-26 H16):訊號帶 StopPrice / TargetPrice 時、盤中觸價即平倉;同根都觸發按 SL 先。
+/// 不發 stop/target 的策略不受影響(active*Price=0 整段 skip)。
 /// </summary>
 public static class LongShortBacktestEngine
 {
@@ -46,7 +49,8 @@ public static class LongShortBacktestEngine
         decimal entryPrice = 0m;
         int entryIndex = -1;
         DateTime entryDate = DateTime.MinValue;
-        decimal activeStopPrice = 0m;  // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
+        decimal activeStopPrice = 0m;    // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
+        decimal activeTargetPrice = 0m;  // H16 TP 支援:開倉時鎖定的獲利目標(0=不啟用)
         decimal peakEquity = initialCash, maxDrawdown = 0m, prevEquity = initialCash;
         var dailyReturns = new List<decimal>();
 
@@ -73,10 +77,10 @@ public static class LongShortBacktestEngine
                 Quantity = qty, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
                 HoldBars = entryIndex >= 0 ? i - entryIndex : 0,
             });
-            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m;
+            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m; activeTargetPrice = 0m;
         }
 
-        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop)
+        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target)
         {
             decimal eqNow = cash;                        // 已平倉、position=0 → equity=cash
             decimal notional = eqNow * notionalPct * sizeScale;
@@ -87,6 +91,7 @@ public static class LongShortBacktestEngine
             cash -= notional * costRate;
             entryPrice = px; entryIndex = i; entryDate = bars[i].OpenTime;
             activeStopPrice = stop;                       // H2-Fib SL:訊號未帶 stop 時=0、不啟用
+            activeTargetPrice = target;                   // H16 TP:訊號未帶 target 時=0、不啟用
         }
 
         for (int i = lookback; i < bars.Count; i++)
@@ -95,7 +100,8 @@ public static class LongShortBacktestEngine
             var signal = strategy.Evaluate(window, config);
             var price = bars[i].Close;
 
-            // ── H2-Fib SL:盤中觸 SL 即平倉(不發 StopPrice 的策略 activeStopPrice=0、整段 skip)──
+            // ── 盤中觸發 SL / TP 即平倉(策略不發 stop/target 時 active*Price=0、整段 skip)──
+            // 同根同時觸 SL 與 TP 時 SL 先(保守、悲觀假設、市場標準做法)。
             bool stoppedOutThisBar = false;
             if (position != 0m && activeStopPrice > 0m)
             {
@@ -106,6 +112,18 @@ public static class LongShortBacktestEngine
                 {
                     CloseAt(i, activeStopPrice);          // 在 SL 價位出場(保守、會清 activeStopPrice)
                     stoppedOutThisBar = true;
+                }
+            }
+            // H16 TP:SL 未觸發才檢 TP(同根 SL+TP 都進範圍 → 按 SL 出、不雙重歸因)
+            if (!stoppedOutThisBar && position != 0m && activeTargetPrice > 0m)
+            {
+                bool tpHit = position > 0m
+                    ? bars[i].High >= activeTargetPrice  // long: 漲破 TP
+                    : bars[i].Low  <= activeTargetPrice; // short: 跌破 TP
+                if (tpHit)
+                {
+                    CloseAt(i, activeTargetPrice);        // 在 TP 價位出場
+                    stoppedOutThisBar = true;             // 與 SL 共用旗標:本根不再因訊號開新倉
                 }
             }
 
@@ -131,7 +149,7 @@ public static class LongShortBacktestEngine
                 if (desired != 0)
                 {
                     decimal sizeScale = confidenceSizing ? Math.Clamp(signal.Confidence, 0m, 1m) : 1m;
-                    OpenAt(i, price, desired, sizeScale, signal.StopPrice ?? 0m);
+                    OpenAt(i, price, desired, sizeScale, signal.StopPrice ?? 0m, signal.TargetPrice ?? 0m);
                 }
             }
         }
