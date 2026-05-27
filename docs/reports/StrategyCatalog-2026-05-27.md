@@ -38,6 +38,25 @@
 
 **部署摘要**:6 支真錢、6 支 shadow scanner、13 支顯著但未部署(可挑做新 scanner)
 
+### 🆕 結構性 alpha 追加(2026-05-27 深夜)
+
+新發現、不在原 25 排名表內、抗 decay 性高:
+
+| # | 策略 | t | mean% | 95% CI | 家族 | 部署狀態 |
+|--:|---|---:|---:|---|---|---|
+| 🆕 | `funding_momentum_ls` | **+3.25** | 10.1 | [4.2, 16.4] | 結構性 | 🟡 shadow(fundmom_scanner)|
+| 🆕 | `funding_extreme` | **−3.76** | -13.8 | [-21.5, -6.7] | anti-edge | ❌ 顯著為負、收線(反向 = funding_momentum_ls) |
+
+**機制重大發現**:funding 極端時 = **羊群延續、非均值回歸**
+- contrarian buy on low funding(funding_extreme):catch falling knife、t=−3.76
+- momentum follow trend on extreme funding(funding_momentum_ls):跟對方向、t=+3.25
+- 兩個對稱、合理
+
+**為什麼是結構性 alpha**:
+- funding 是 perp 強制收費機制、永遠存在(只要 perp 存在)
+- 「funding 極端 → 趨勢延續」反映人性(羊群、不止損)、不會 decay
+- 跟既有諧波 / trend / decorr 完全不同訊號源、decorr 紅利大
+
 ---
 
 ## 🔬 按家族分組:策略詳細卡片
