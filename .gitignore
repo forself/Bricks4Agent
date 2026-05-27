@@ -75,3 +75,10 @@ packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/
 
 # strat-validate self-contained linux build(80MB、scp 上 VPS、不進 git)
 tools/strat-validate/publish-linux/
+
+# 個人盤點筆記(明確不 push 到團隊 repo、給組長看用)
+SHARE-PLAN.md
+
+# decorr-analysis tool build artifacts
+tools/decorr-analysis/bin/
+tools/decorr-analysis/obj/
