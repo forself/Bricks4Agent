@@ -55,7 +55,11 @@
 <body>
 <div class="topbar">
   <h1>⚙️ B4A 管理控制台</h1>
-  <div class="muted" style="font-size:12px" id="status">載入中…</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="muted" style="font-size:12px" id="status">載入中…</div>
+    <button class="btn-arm btn-sm" onclick="emergencyStopAll()" title="切斷 AutoTrader + 所有 watch active=0、需手動 clear 才能恢復"
+            style="font-weight:600;font-size:11px">🚨 EMERGENCY STOP</button>
+  </div>
 </div>
 
 <h2>監控管理 · 武裝 / 加減 watch</h2>
@@ -762,6 +766,30 @@ async function toggleScannerShadow(id, shadow){
   toast(r?.success ? `${id} → ${shadow?'SHADOW':'REAL'}` : '失敗:'+(r?.error||r?.message||'?'),
         r?.success?'ok':'error');
   loadScanners();
+}
+
+/* ───────────── emergency stop ───────────── */
+async function emergencyStopAll(){
+  const confirmText = '請輸入「STOP」確認(全平真錢 + 停 AutoTrader + 所有 watch 設 inactive、需手動 clear 才能恢復):';
+  const input = prompt(confirmText);
+  if (input !== 'STOP') {
+    toast(input === null ? '已取消' : '輸入不符,已取消', 'error');
+    return;
+  }
+  const reason = prompt('觸發原因(寫進 audit log、之後可查):', '手動緊急停止');
+  if (reason === null) return;
+  const r = await api('/api/v1/emergency/stop-all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ reason })
+  });
+  if (r?.success) {
+    toast('🚨 Emergency stop 已觸發、KillSwitch active', 'ok');
+    loadStatus();
+    loadScanners();
+  } else {
+    toast('失敗:' + (r?.error || r?.message || '?'), 'error');
+  }
 }
 
 /* ───────────── init ───────────── */

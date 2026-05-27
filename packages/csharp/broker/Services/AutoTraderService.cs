@@ -383,6 +383,10 @@ public class AutoTraderService : BackgroundService
     private readonly ConcurrentQueue<SlHitRecord> _recentSlHits = new();
     private DateTime? _slFlushTriggeredAt;
 
+    // 2026-05-27 真錢安全強化:Circuit Breaker 觸發時 Discord critical alert
+    // Dedup 規則:每 UTC 日 per-exchange 只推一次、但 DD 惡化 +2pp 會 escalation 再推
+    private readonly ConcurrentDictionary<string, (DateTime At, decimal AlertedDd)> _cbAlertedState = new();
+
     public int SlFlushThreshold      => _slFlushThreshold;
     public int SlFlushWindowMinutes  => _slFlushWindowMinutes;
     public bool SlFlushTriggered     => _slFlushTriggeredAt.HasValue;
@@ -700,6 +704,49 @@ public class AutoTraderService : BackgroundService
     /// 內部會更新該 exchange 的 peak（漲就抬高、跨 UTC 午夜重置）並計算 DD%。
     /// 觸發條件：DD% ≥ _maxPortfolioDdPct → Triggered=true，呼叫端要 skip 該 cycle 的下單。
     /// </summary>
+    // 2026-05-27 真錢安全強化:CB 觸發推 Discord(per-exchange dedup、UTC 日重置、惡化 +2pp escalation)
+    private async Task TryPushCbAlertAsync(string exchange, CircuitBreakerEval cb, CancellationToken ct)
+    {
+        try
+        {
+            var nowUtc = DateTime.UtcNow;
+            var today = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, DateTimeKind.Utc);
+            bool shouldAlert = false;
+            decimal alertedDd = cb.DdPct;
+            _cbAlertedState.AddOrUpdate(exchange,
+                _ => { shouldAlert = true; return (nowUtc, cb.DdPct); },
+                (_, prev) =>
+                {
+                    if (prev.At < today) { shouldAlert = true; return (nowUtc, cb.DdPct); }    // UTC 新日:第一次推
+                    if (cb.DdPct >= prev.AlertedDd + 2m) { shouldAlert = true; return (nowUtc, cb.DdPct); }  // 惡化 +2pp:escalation 再推
+                    alertedDd = prev.AlertedDd;
+                    return prev;
+                });
+            if (!shouldAlert) return;
+
+            var discord = DiscordNotify;
+            if (discord == null) { _logger.LogDebug("CB alert: Discord disabled, skip push"); return; }
+            var body =
+                $"⚠ **{exchange}** 當日 DD **{cb.DdPct:F2}%** ≥ 閾值 {cb.Threshold:F1}%、" +
+                $"新開倉已暫停(既有部位的 SL / peak-trail 保護鏈仍會跑、不會撤單)。\n\n" +
+                $"• Peak: `{cb.PeakValue:F2}`\n" +
+                $"• Current: `{cb.CurrentValue:F2}`\n" +
+                $"• Peak reset at: `{cb.PeakResetAt:yyyy-MM-dd HH:mm}` UTC\n\n" +
+                $"**檢視:**dashboard `/trading-manage.html`\n" +
+                $"**完全停止(切真錢全平):** `POST /api/v1/emergency/stop-all`";
+            await discord.SendAdHocAsync(
+                title: $"🚨 Circuit Breaker — {exchange} 當日 DD {cb.DdPct:F1}%",
+                body: body,
+                color: 0xF6465D,
+                ct: ct);
+            _logger.LogInformation("CB Discord alert sent for {Exchange} DD={Dd:F2}%", exchange, cb.DdPct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AutoTrader: failed to push CB Discord alert for {Exchange}", exchange);
+        }
+    }
+
     public CircuitBreakerEval EvaluateCircuitBreaker(string exchange, decimal currentValue, DateTime nowUtc)
     {
         if (currentValue <= 0m)
@@ -1827,6 +1874,8 @@ public class AutoTraderService : BackgroundService
                             exchange, cb.DdPct, cb.Threshold, cb.PeakValue, cb.CurrentValue, symbol, action);
                         AddLog(item, "halt",
                             $"⚠ Portfolio DD {cb.DdPct:F1}% ≥ {cb.Threshold}% on {exchange} (peak={cb.PeakValue:F2}, now={cb.CurrentValue:F2}) — order blocked");
+                        // 2026-05-27 真錢安全強化:首次觸發 / DD 惡化 +2pp 推 Discord critical alert
+                        _ = TryPushCbAlertAsync(exchange, cb, ct);
                         return;
                     }
 
