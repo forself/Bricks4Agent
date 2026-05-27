@@ -92,6 +92,14 @@ if (args.Contains("--validate-h21-vol-div"))
     return;
 }
 
+// --validate-paramsweep: H22+ — harm_prz_scan10 / widepz 參數面 sweep
+//   scanWindows × przWidening × 5 主場幣、找邊際遞減點
+if (args.Contains("--validate-paramsweep"))
+{
+    await RunValidateParamSweep();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -596,5 +604,111 @@ async Task RunValidateRobust()
         Console.WriteLine(Row("def", def));
         Console.WriteLine(Row("opt", opt));
         Console.WriteLine();
+    }
+}
+
+async Task RunValidateParamSweep()
+{
+    Console.WriteLine("=== H22+ harm_prz 參數面 sweep — scanWindows × przWidening × 5 主場幣 ===");
+    Console.WriteLine("Baseline: scanWindows=10, przWidening=0.15(t-stat 5.54)");
+    Console.WriteLine("找邊際遞減點:scan 縮成 5 是否更純?widepz 開到 20% 是否撈更多訊號?\n");
+
+    string[] symbols = { "LTCUSDT", "OPUSDT", "ADAUSDT", "INJUSDT", "APTUSDT" };
+    int[] scanWindowOpts = { 5, 10, 15, 20, 30 };
+    decimal[] widepzOpts = { 0m, 0.10m, 0.15m, 0.20m };
+
+    // 為每個幣 fetch 一次 bars(複用)
+    var barsCache = new Dictionary<string, List<BarData>>();
+    foreach (var s in symbols)
+    {
+        barsCache[s] = await ToolsShared.KlineCache.FetchOrLoad(s, "1d");
+        Console.WriteLine($"  {s} bars loaded: {barsCache[s].Count}");
+    }
+    Console.WriteLine();
+
+    // 跑每個 (scan, widepz, symbol) tuple
+    // 結果 aggregate by (scan, widepz) 跨幣中位 Sharpe + AvgRet,找最強組合
+    var results = new List<(int scan, decimal pz, string sym, decimal sharpe, decimal medRet, decimal ddPct, int folds, int posFolds)>();
+    foreach (var scan in scanWindowOpts)
+    foreach (var pz in widepzOpts)
+    foreach (var sym in symbols)
+    {
+        var name = $"sc{scan}_pz{(int)(pz*100)}";
+        var strat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: name, scanWindows: scan, przWidening: pz);
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        var r = LongShortBacktestEngine.RunWalkForward(strat, barsCache[sym], cfg, trainBars: 250, testBars: 90, stride: 60);
+        if (r.TotalFolds == 0) continue;
+        results.Add((scan, pz, sym, r.AvgTestSharpe, r.MedianTestReturnPct, r.WorstTestDdPct, r.TotalFolds, r.PositiveTestFolds));
+    }
+
+    // 表 1:跨 (scan × pz) 跨幣 avg Sharpe
+    Console.WriteLine("=== 表 1:跨幣 avg Sharpe(粗體 = baseline scan=10 / pz=15)===");
+    Console.WriteLine($"  {"scanWin",-8}{"pz=0",10}{"pz=10",10}{"pz=15★",10}{"pz=20",10}");
+    foreach (var scan in scanWindowOpts)
+    {
+        Console.Write($"  {scan,-8}");
+        foreach (var pz in widepzOpts)
+        {
+            var subset = results.Where(r => r.scan == scan && r.pz == pz).ToList();
+            var avgSh = subset.Count > 0 ? subset.Average(r => r.sharpe) : 0m;
+            var marker = (scan == 10 && pz == 0.15m) ? "★" : "";
+            Console.Write($"{avgSh,9:F2}{marker,1}");
+        }
+        Console.WriteLine();
+    }
+
+    // 表 2:跨幣中位 Return%
+    Console.WriteLine("\n=== 表 2:跨幣中位 OOS Return%(walk-forward mean of medians)===");
+    Console.WriteLine($"  {"scanWin",-8}{"pz=0",10}{"pz=10",10}{"pz=15★",10}{"pz=20",10}");
+    foreach (var scan in scanWindowOpts)
+    {
+        Console.Write($"  {scan,-8}");
+        foreach (var pz in widepzOpts)
+        {
+            var subset = results.Where(r => r.scan == scan && r.pz == pz).ToList();
+            var avgRet = subset.Count > 0 ? subset.Average(r => r.medRet) : 0m;
+            var marker = (scan == 10 && pz == 0.15m) ? "★" : "";
+            Console.Write($"{avgRet,9:F1}{marker,1}");
+        }
+        Console.WriteLine();
+    }
+
+    // 表 3:跨幣中位 Worst DD%(越低越好)
+    Console.WriteLine("\n=== 表 3:跨幣中位 Worst DD%(越低越穩)===");
+    Console.WriteLine($"  {"scanWin",-8}{"pz=0",10}{"pz=10",10}{"pz=15★",10}{"pz=20",10}");
+    foreach (var scan in scanWindowOpts)
+    {
+        Console.Write($"  {scan,-8}");
+        foreach (var pz in widepzOpts)
+        {
+            var subset = results.Where(r => r.scan == scan && r.pz == pz).ToList();
+            var medDd = subset.Count > 0 ? subset.Average(r => r.ddPct) : 0m;
+            var marker = (scan == 10 && pz == 0.15m) ? "★" : "";
+            Console.Write($"{medDd,9:F1}{marker,1}");
+        }
+        Console.WriteLine();
+    }
+
+    // 找 top-5 (scan, pz) 組合按 cross-symbol Sharpe
+    Console.WriteLine("\n=== Top 5 (scan × pz) 跨幣 avg Sharpe 排名 ===");
+    var ranked = results
+        .GroupBy(r => (r.scan, r.pz))
+        .Select(g => new
+        {
+            scan = g.Key.scan,
+            pz = g.Key.pz,
+            avgSh = g.Average(r => r.sharpe),
+            avgRet = g.Average(r => r.medRet),
+            avgDd = g.Average(r => r.ddPct),
+        })
+        .OrderByDescending(g => g.avgSh)
+        .Take(5);
+    Console.WriteLine($"  {"rank",-5}{"scan",6}{"pz",6}{"avg Sharpe",12}{"avg Ret%",10}{"avg DD%",10}");
+    int rank = 1;
+    foreach (var g in ranked)
+    {
+        var marker = (g.scan == 10 && g.pz == 0.15m) ? " (baseline)" : "";
+        Console.WriteLine($"  {rank,-5}{g.scan,6}{(int)(g.pz*100),6}{g.avgSh,12:F2}{g.avgRet,10:F1}{g.avgDd,10:F1}{marker}");
+        rank++;
     }
 }

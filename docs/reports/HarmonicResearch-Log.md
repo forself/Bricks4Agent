@@ -923,3 +923,60 @@ peak trail 3%/2% 行為:peak 達 +3% → SL 拖到 peak −2%。
 
 ⚠ caveat:Sharpe 2.00 是 walk-forward OOS、bootstrap CI 還沒做(strat-validate t-stat 重跑中)。
 若數字過好可能 sample 運氣、需 strat-validate pool t-stat 確認顯著(下個 commit 後接著看)。
+
+---
+
+## 2026-05-27 H22+ 參數面 sweep — scanWindows 飽和、przWidening 微正、已到參數極點
+
+### 動機
+
+t-stat 顯著名單確認 + 7 個 scanner shadow 中。在做更激進改動(HTF / 跨資產)前、先檢查
+harm_prz_scan10 / widepz 的核心參數是不是真的在最佳點、還是還有 free win。
+
+### 設計
+
+`--validate-paramsweep` mode:`scanWindows ∈ {5,10,15,20,30}` × `przWidening ∈ {0, 0.10, 0.15, 0.20}` × 5 主場幣
+(LTC / OP / ADA / INJ / APT)= **20 variants × 5 = 100 walk-forwards**(250/90/60)。
+
+### 結果(5 幣 avg test Sharpe)
+
+| scanWin | pz=0 | pz=10 | pz=15★ | pz=20 |
+|---:|---:|---:|---:|---:|
+| 5 | 0.71 | 0.91 | 1.06 | 1.14 |
+| 10 | **0.98** | **1.40** | **1.52★** | **1.60** |
+| 15 | 0.98 | 1.40 | 1.52 | 1.60 |
+| 20 | 0.98 | 1.40 | 1.52 | 1.60 |
+| 30 | 0.98 | 1.40 | 1.52 | 1.60 |
+
+### 兩個明確發現
+
+**1. scanWindows 在 10 完全飽和**
+
+10/15/20/30 給出**完全相同**結果 — 多掃窗口找不到新 pattern;5 太少(掉 ~30% edge)。
+→ **scanWindows=10 是已知最佳**、再加只是浪費 CPU。
+
+**2. przWidening 從 15% → 20% 微正(+0.08 Sharpe)**
+
+| pz | Sharpe | Ret% | DD% | Ret/DD |
+|---:|---:|---:|---:|---:|
+| 0 | 0.98 | 1.2 | 13.4 | 0.09 |
+| 10 | 1.40 | 5.6 | 17.3 | 0.32 |
+| 15★(現) | 1.52 | 7.4 | 18.2 | 0.41 |
+| 20 | **1.60** | **8.4** | 19.8 | 0.42 |
+
+20% 比 15% 多 ~13% return、但 DD 也 +1.6pp(Ret/DD 基本同)。屬於「微正、邊際遞減」、不是 game-changer。
+不切是因為:backtest 樣本中位 2024-2026、recent regime 是否成立未知,寬到 20% 過擬合風險微升。
+
+### 結論 — 已到參數極點
+
+**現有 widepz(scanWindows=10, przWidening=15%)是合理選擇。** 要再進化必須:
+- 換 mechanism(HTF 過濾 / 跨資產 / regime 切換)
+- 不是調參(curve-fit 已盡)
+
+→ 下一步主軸:**B HTF 確認** + **C 跨資產 / regime**(不再追同類 param tweak)
+
+### Actionable
+
+- `widepz_scanner` 配置維持(scanWindows=10, przWidening=0.15)— **不需變更**
+- 反之若想稍微激進、可考慮升 0.20、Sharpe +5%、DD +1.6pp、自己決定
+- 後續 Sharpe 提升的 alpha 必須在參數空間之外
