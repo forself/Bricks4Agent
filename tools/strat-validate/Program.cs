@@ -574,15 +574,31 @@ Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠
 Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
 
 // 2026-05-27 Q1.1:Kelly fraction sizing 推薦(每支顯著策略、用 walk-forward win-rate / avg win / avg loss)
+// Q1.2(同 commit):疊加 vol-target scalar(用 BTC 當下 realized vol vs target 60%)
 if (showKelly && sigNames.Count > 0)
 {
-    Console.WriteLine($"\n=== Kelly fraction 推薦 sizing(quarter-Kelly、max 20% clamp)===");
-    Console.WriteLine($"  {"strategy",-22} {"win%",6} {"avgWin%",8} {"avgLoss%",9} {"b ratio",8} {"raw Kelly%",11} {"safe %",8}  diagnostic");
+    // Vol-target diagnostic — 用 BTC 1d closes 算當下 vol regime
+    decimal btcRealizedVol = 0m;
+    decimal volScalar = 1m;
+    string volExplain = "(無 BTC 資料)";
+    if (data.TryGetValue("BTCUSDT", out var btcBars) && btcBars.Count >= 35)
+    {
+        var btcCloses = btcBars.Select(b => b.Close).ToList();
+        var diag = VolTargetSizer.Diagnose(btcCloses, kellyPct: 1m, targetVol: 0.60m, lookback: 30);
+        btcRealizedVol = diag.RealizedVol;
+        volScalar = diag.Scalar;
+        volExplain = diag.Explanation;
+    }
+
+    Console.WriteLine($"\n=== Kelly fraction 推薦 sizing(quarter-Kelly、max 20% clamp、× vol-target scalar)===");
+    Console.WriteLine($"  vol-target 假設 60% 年化、BTC 當下 realized vol = {btcRealizedVol:P0} → scalar = {volScalar:F2}");
+    Console.WriteLine($"  {volExplain}");
+    Console.WriteLine();
+    Console.WriteLine($"  {"strategy",-22} {"win%",6} {"avgWin%",8} {"avgLoss%",9} {"b ratio",8} {"Kelly safe%",12} {"× vol-scalar",13} {"final %",9}");
     foreach (var (name, s) in strats.Where(x => sigNames.Contains(x.name)).OrderByDescending(x => sigT.GetValueOrDefault(x.name, 0)))
     {
         var pool = PoolOosFolds(s);
         if (pool.Count == 0) continue;
-        // 從 pool 算 win rate / avg win / avg loss(decimal %)
         var wins = pool.Where(r => r > 0).ToList();
         var losses = pool.Where(r => r < 0).Select(r => -r).ToList();
         decimal winRate = (decimal)wins.Count / pool.Count;
@@ -591,12 +607,29 @@ if (showKelly && sigNames.Count > 0)
         decimal b = avgLoss > 0m ? avgWin / avgLoss : 0m;
         decimal raw = KellyPositionSizer.Compute(winRate, avgWin, avgLoss);
         decimal safe = KellyPositionSizer.RecommendedPct(winRate, avgWin, avgLoss);
-        string diag = raw <= 0m ? "❌ 負期望、不下注"
-                    : (safe < raw * 0.25m ? "⚠ cap 限縮" : "✅ 健康");
-        Console.WriteLine($"  {name,-22} {winRate * 100m,5:F0}% {avgWin,8:F1} {avgLoss,9:F1} {b,8:F2} {raw * 100m,10:F1}% {safe * 100m,7:F1}%  {diag}");
+        decimal final = safe * volScalar;
+        Console.WriteLine($"  {name,-22} {winRate * 100m,5:F0}% {avgWin,8:F1} {avgLoss,9:F1} {b,8:F2} {safe * 100m,11:F1}% {volScalar,12:F2}× {final * 100m,8:F1}%");
     }
-    Console.WriteLine($"\n  心法:quarter-Kelly(raw/4)是業界 sweet spot、保增長 + 大降 DD。max 20% 防 over-concentration。");
-    Console.WriteLine($"        現引擎用固定 notionalPct=0.95、改 Kelly 後每支策略自有最佳 size、Q1 目標。");
+    decimal totalFinal = strats
+        .Where(x => sigNames.Contains(x.name))
+        .Sum(x => {
+            var pool = PoolOosFolds(x.s);
+            if (pool.Count == 0) return 0m;
+            var wins = pool.Where(r => r > 0).ToList();
+            var losses = pool.Where(r => r < 0).Select(r => -r).ToList();
+            decimal winRate = (decimal)wins.Count / pool.Count;
+            decimal avgWin = wins.Count > 0 ? wins.Average() : 0m;
+            decimal avgLoss = losses.Count > 0 ? losses.Average() : 0m;
+            return KellyPositionSizer.RecommendedPct(winRate, avgWin, avgLoss) * volScalar;
+        });
+    Console.WriteLine($"\n  總配重(final):{totalFinal * 100m:F1}% of equity");
+    if (totalFinal > 1m)
+        Console.WriteLine($"  ⚠ 加總 > 100%、實作時須等比例 scale down(總曝險不能超過 equity)");
+    else
+        Console.WriteLine($"  ✅ 加總 < 100%、剩 {(1m - totalFinal) * 100m:F1}% 現金緩衝");
+
+    Console.WriteLine($"\n  心法:Kelly 給「該配多少」、vol-target 給「現在該縮放多少」、兩個 ×。");
+    Console.WriteLine($"        高 vol regime(scalar < 1)= 防御;低 vol regime(scalar > 1)= 機會、適度放大。");
 }
 
 // (6) 顯著策略的最佳組合(只用統計顯著那群、去相關 |ρ|<0.4、反波動率配重)
