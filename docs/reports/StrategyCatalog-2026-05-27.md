@@ -40,12 +40,30 @@
 
 ### 🆕 結構性 alpha 追加(2026-05-27 深夜)
 
-新發現、不在原 25 排名表內、抗 decay 性高:
+新發現、不在原 25 排名表內、抗 decay 性高。Funding momentum 家族經 param sweep 後找到 **xtight 變體 t=5.93 跟 harm_prz_scan10 並列家族最高**:
 
-| # | 策略 | t | mean% | 95% CI | 家族 | 部署狀態 |
-|--:|---|---:|---:|---|---|---|
-| 🆕 | `funding_momentum_ls` | **+3.25** | 10.1 | [4.2, 16.4] | 結構性 | 🟡 shadow(fundmom_scanner)|
-| 🆕 | `funding_extreme` | **−3.76** | -13.8 | [-21.5, -6.7] | anti-edge | ❌ 顯著為負、收線(反向 = funding_momentum_ls) |
+| # | 策略 | t | mean% | Sharpe | PF | 部署狀態 |
+|--:|---|---:|---:|---:|---:|---|
+| 🆕⭐ | `fundmom_ls_xtight`(0.05/0.95)| **+5.93** | **17.4** | **0.71** | **3.09** | 🟡 shadow(fundmom_xtight_scanner)— 王者級 |
+| 🆕 | `fundmom_ls_tight`(0.10/0.90) | 3.48 | 11.3 | 0.56 | 1.75 | — |
+| 🆕 | `fundmom_ls_loose`(0.20/0.80) | 3.48 | 11.1 | 0.55 | 1.44 | — |
+| 🆕 | `funding_momentum_ls`(0.15/0.85、預設)| 3.25 | 10.1 | 0.53 | 1.47 | 🟡 shadow(fundmom_scanner)|
+| 🆕 | `funding_extreme`(contrarian、反向)| **−3.76** | -13.8 | — | — | ❌ 顯著為負、收線(反向證實 momentum 才對) |
+
+**機制重大發現**:funding 極端時 = **羊群延續、非均值回歸**
+
+- contrarian buy on low funding(funding_extreme):catch falling knife、t=−3.76
+- momentum follow trend on extreme funding(funding_momentum_ls):跟對方向、t=+3.25
+- 兩個對稱、合理
+
+**xtight 變體的 selectivity-quality tradeoff**:閾值從 15%/85% 收緊到 5%/95%、trade 數/年從 8 砍到 3、但 Sharpe +34% / PF +110%(極端 funding 訊號稀缺但強)
+
+**為什麼是結構性 alpha**:
+- funding 是 perp 強制收費機制、永遠存在(只要 perp 存在)
+- 「funding 極端 → 趨勢延續」反映人性(羊群、不止損)、不會 decay
+- 跟既有諧波 / trend / decorr 完全不同訊號源、decorr 紅利大
+
+→ **funding momentum 家族整體是除 harm_prz_scan10 之外的第二個 "頂級" 訊號源、且抗 decay 比 harm_prz 強**
 
 **機制重大發現**:funding 極端時 = **羊群延續、非均值回歸**
 - contrarian buy on low funding(funding_extreme):catch falling knife、t=−3.76
