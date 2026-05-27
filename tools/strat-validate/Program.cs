@@ -50,6 +50,10 @@ string[] symbols = fastMode
     // 2026-05-27 反向組:funding momentum(funding 極端時跟同方向、非 contrarian)
     // funding_extreme 跑出 t=-3.76 顯著為負 → 反向應該為正
     ("funding_momentum_ls", new FundingMomentumLsStrategy()),
+    // 2026-05-27 變體:tighter/looser threshold sweep,看是否更高 Sharpe
+    ("fundmom_ls_tight",  new FundingMomentumLsStrategy("fundmom_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),  // 更嚴
+    ("fundmom_ls_loose",  new FundingMomentumLsStrategy("fundmom_ls_loose",  hotPct: 0.80m, coldPct: 0.20m)),  // 更鬆
+    ("fundmom_ls_xtight", new FundingMomentumLsStrategy("fundmom_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),  // 極嚴
     // 第一批(趨勢家族,原本偏多用、實為多空對稱)
     ("ts_momentum",      new TsMomentumStrategy()),
     ("chandelier_trend", new ChandelierTrendStrategy()),

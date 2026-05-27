@@ -137,6 +137,11 @@ strategies["tsmom_btc_not_up"] = new BtcRegimeFilterStrategy(
 // 真結構性 alpha 來源(funding 是強制收費機制、人性不變、不會 decay)
 strategies["funding_momentum_ls"] = new FundingMomentumLsStrategy();
 
+// [2026-05-27 深夜] fundmom_ls_xtight:極端 funding(top/bottom 5%)+ momentum
+// param sweep 發現極端閾值 t=5.93 跟 harm_prz_scan10 並列最高、mean 17.4% / Sharpe 0.71 / PF 3.09
+// 選擇性換質量:trade 數/年 8→3、但每筆品質爆高
+strategies["fundmom_ls_xtight"] = new FundingMomentumLsStrategy("fundmom_ls_xtight", hotPct: 0.95m, coldPct: 0.05m);
+
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。

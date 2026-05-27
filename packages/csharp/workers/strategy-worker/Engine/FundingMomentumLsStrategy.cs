@@ -20,14 +20,23 @@ namespace StrategyWorker.Engine;
 /// </summary>
 public class FundingMomentumLsStrategy : IStrategy
 {
-    public string Name => "funding_momentum_ls";
-    public string Description => "Funding Momentum LS — funding 極高 = 多頭趨勢強進多、極低 = 空頭趨勢強進空(跟趨勢、不是 contrarian)";
+    private readonly string _name;
+    private readonly decimal _hotPct;
+    private readonly decimal _coldPct;
+
+    public FundingMomentumLsStrategy(string name = "funding_momentum_ls", decimal hotPct = 0.85m, decimal coldPct = 0.15m)
+    {
+        _name = name;
+        _hotPct = hotPct;
+        _coldPct = coldPct;
+    }
+
+    public string Name => _name;
+    public string Description => $"Funding Momentum LS — funding 極高 = 多頭趨勢強進多、極低 = 空頭趨勢強進空(threshold {_coldPct:P0}/{_hotPct:P0})";
     public StrategyCategory Category => StrategyCategory.Trend;
     public int MinBars => 40;
     public decimal MinCapitalUsdt => 100m;
 
-    private const decimal HotPct  = 0.85m;     // ≥ 此 = 多頭擁擠 → BUY 跟趨勢
-    private const decimal ColdPct = 0.15m;     // ≤ 此 = 空頭擁擠 → SELL 跟趨勢
     private const int Lookback = 100;
 
     public IReadOnlyDictionary<string, ParamSpec> ParamSchema => new Dictionary<string, ParamSpec>
@@ -40,8 +49,8 @@ public class FundingMomentumLsStrategy : IStrategy
     {
         if (bars.Count < MinBars) return Hold(config, $"Not enough data (need {MinBars}+ bars)");
 
-        var hotPct  = config.GetParam("funding_hot_pct", HotPct);
-        var coldPct = config.GetParam("funding_cold_pct", ColdPct);
+        var hotPct  = config.GetParam("funding_hot_pct", _hotPct);
+        var coldPct = config.GetParam("funding_cold_pct", _coldPct);
 
         var fb = FundingBias.Compute(bars, Lookback);
         if (fb == null) return Hold(config, "無 funding 資料(非 perp 或未接資金費率)— 自動降級");
@@ -87,10 +96,10 @@ public class FundingMomentumLsStrategy : IStrategy
         };
     }
 
-    private static Signal Hold(StrategyConfig c, string reason) => new()
+    private Signal Hold(StrategyConfig c, string reason) => new()
     {
         SignalId = $"sig-{Guid.NewGuid():N}"[..16],
-        Strategy = "funding_momentum_ls",
+        Strategy = _name,
         Symbol = c.Symbol, Exchange = c.Exchange,
         Action = "hold", Confidence = 0, Reason = reason, Interval = c.Interval,
     };
