@@ -17,6 +17,11 @@ var startDate = endDate.AddDays(-365);
 Console.WriteLine($"=== OI/L-S/Taker vs Funding/Price correlation probe ===");
 Console.WriteLine($"Window: {startDate:yyyy-MM-dd} → {endDate:yyyy-MM-dd}");
 
+// Pool 累積:跨所有幣的 (signal, nextRet) pair,跑全 pool t-stat
+var poolFund = new List<double>(); var poolOi = new List<double>();
+var poolTls = new List<double>(); var poolRls = new List<double>(); var poolTaker = new List<double>();
+var poolNext = new List<double>();
+
 foreach (var sym in symbols)
 {
     Console.WriteLine($"\n## {sym}");
@@ -78,6 +83,39 @@ foreach (var sym in symbols)
     PrintEdge("    Retail L/S ratio   ", rls, nextR);
     PrintEdge("    Taker buy/sell vol ", taker, nextR);
     PrintEdge("    Funding (baseline) ", fund, nextR);
+
+    // Quantile-based edge: 看極端值區段 vs 平均的 nextRet 差
+    // 為什麼:funding raw Pearson t=-0.76 但 strat-validate quantile threshold t=+5.93,
+    // 說明 edge 在非線性極端值區域(只 funding 暴衝才有 edge)。OI/L-S 可能同理。
+    Console.WriteLine($"\n  Quantile edge(top/bot 20% vs 中段,t-stat > 2 = 非線性 edge):");
+    PrintQuantileEdge("    OI %change         ", oi, nextR);
+    PrintQuantileEdge("    Top L/S ratio      ", tls, nextR);
+    PrintQuantileEdge("    Retail L/S ratio   ", rls, nextR);
+    PrintQuantileEdge("    Taker buy/sell vol ", taker, nextR);
+    PrintQuantileEdge("    Funding (baseline) ", fund, nextR);
+
+    // Pool 累積(這幣的資料加入跨幣 pool)
+    poolFund.AddRange(fund); poolOi.AddRange(oi);
+    poolTls.AddRange(tls); poolRls.AddRange(rls); poolTaker.AddRange(taker);
+    poolNext.AddRange(nextR);
+}
+
+// 跨幣 pool t-stat — 即使單幣不顯著,8 幣方向一致就有意義
+if (symbols.Length > 1)
+{
+    Console.WriteLine($"\n=== 跨 {symbols.Length} 幣 POOL t-stat(總樣本 {poolNext.Count} 天)===");
+    Console.WriteLine($"  Linear Pearson:");
+    PrintEdge("    OI %change         ", poolOi.ToArray(), poolNext.ToArray());
+    PrintEdge("    Top L/S ratio      ", poolTls.ToArray(), poolNext.ToArray());
+    PrintEdge("    Retail L/S ratio   ", poolRls.ToArray(), poolNext.ToArray());
+    PrintEdge("    Taker buy/sell vol ", poolTaker.ToArray(), poolNext.ToArray());
+    PrintEdge("    Funding (baseline) ", poolFund.ToArray(), poolNext.ToArray());
+    Console.WriteLine($"  Quantile (top/bot 20%):");
+    PrintQuantileEdge("    OI %change         ", poolOi.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Top L/S ratio      ", poolTls.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Retail L/S ratio   ", poolRls.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Taker buy/sell vol ", poolTaker.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Funding (baseline) ", poolFund.ToArray(), poolNext.ToArray());
 }
 
 Console.WriteLine($"\n=== 結論判讀 ===");
@@ -106,4 +144,24 @@ static void PrintEdge(string label, double[] signal, double[] nextRet)
     double t = r * Math.Sqrt(n - 2) / Math.Sqrt(Math.Max(1e-9, 1 - r * r));
     string flag = Math.Abs(t) > 2.0 ? " ✅" : (Math.Abs(t) > 1.5 ? " ~" : "");
     Console.WriteLine($"{label} vs nextRet: r={r:+0.000;-0.000}  t={t:+0.00;-0.00}{flag}");
+}
+
+// 把 signal 分成 top/bot 20% + mid 60%,看極端值區段的 nextRet 平均是否顯著不同於中段。
+// 回報:top 平均 / bot 平均 / spread = top - bot / t-stat(Welch two-sample)
+static void PrintQuantileEdge(string label, double[] signal, double[] nextRet)
+{
+    int n = signal.Length;
+    var paired = signal.Select((s, i) => (s, r: nextRet[i])).OrderBy(p => p.s).ToList();
+    int q = Math.Max(5, n / 5);   // top/bot 各 20%(至少 5 個)
+    var botArr = paired.Take(q).Select(p => p.r).ToArray();
+    var topArr = paired.TakeLast(q).Select(p => p.r).ToArray();
+    double botMean = botArr.Average(), topMean = topArr.Average();
+    double spread = topMean - botMean;
+    // Welch t: (m1-m2) / sqrt(v1/n1 + v2/n2)
+    double botVar = botArr.Length < 2 ? 0 : botArr.Sum(x => (x - botMean) * (x - botMean)) / (botArr.Length - 1);
+    double topVar = topArr.Length < 2 ? 0 : topArr.Sum(x => (x - topMean) * (x - topMean)) / (topArr.Length - 1);
+    double se = Math.Sqrt(botVar / botArr.Length + topVar / topArr.Length);
+    double t = se < 1e-9 ? 0 : spread / se;
+    string flag = Math.Abs(t) > 2.0 ? " ✅" : (Math.Abs(t) > 1.5 ? " ~" : "");
+    Console.WriteLine($"{label} top {topMean*100:+0.00;-0.00}% / bot {botMean*100:+0.00;-0.00}% / spread {spread*100:+0.00;-0.00}pp  t={t:+0.00;-0.00}{flag}");
 }
