@@ -70,6 +70,15 @@ VALUES
    '["LTCUSDT","OPUSDT","APTUSDT"]',
    20, 2, 10,
    'spot', '1d', 5, 1, 1,
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 2026-05-27 晚 C 路線部署:tsmom_btc_not_up(ts_momentum + 只在 BTC sideways/down 開倉)
+  -- A/B 數據:Sharpe 0.66 → 0.82 (+0.16),機制:tsmom 在 BTC up 期 Sharpe 只 0.31 過濾掉
+  -- 跟 tsmom_1d_scanner 平行 A/B:同 universe(TRX/SUI/AVAX)、看 filter 是否在 shadow 期復現
+  ('tsmom_btcnotup_scanner', 'tsmom_btcnotup_scanner', 'tsmom_btc_not_up',
+   '["TRXUSDT","SUIUSDT","AVAXUSDT"]',
+   20, 2, 10,
+   'spot', '1d', 5, 1, 1,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- Sanity check

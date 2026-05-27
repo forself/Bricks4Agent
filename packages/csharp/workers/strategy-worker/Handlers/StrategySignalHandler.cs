@@ -260,6 +260,14 @@ public class StrategySignalHandler : ICapabilityHandler
             MacdSignal = doc.TryGetProperty("macd_signal", out var mg) ? mg.GetInt32() : 9,
         };
 
+        // [2026-05-27 C 路線] 注入 ref_btc_bars 給 BtcRegimeFilterStrategy(AsyncLocal 跨 thread 隔離)
+        // 任何包 BtcRegimeFilterStrategy 的 strategy 都會用這份 BTC bars 判 regime;沒注入則 wrapper pass-through
+        if (doc.TryGetProperty("ref_btc_bars", out var refBtcEl) && refBtcEl.ValueKind == JsonValueKind.Array)
+        {
+            var refBtc = ParseBars(refBtcEl);
+            if (refBtc.Count >= 2) BtcRegimeFilterStrategy.BtcBarsRef = refBtc;
+        }
+
         var signal = strategy.Evaluate(bars, config);
 
         // Regime side-channel：跟 signal 同一份 bars 算一次 regime、broker AutoTrader 用它做 gate。

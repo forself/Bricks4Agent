@@ -123,6 +123,15 @@ strategies["decorr4_ls"] = new NetWeightedEnsembleStrategy(new List<(IStrategy, 
 // 專注震盪集成：只合驗證過有 edge 的 rsi_stoch/rsi_oversold/mfi/cci（盤整引擎）。要 inner 都在。
 strategies["osc_ensemble"] = OscillatorEnsembleStrategy.DefaultFrom(strategies);
 
+// [2026-05-27 C 路線] tsmom_btc_not_up:ts_momentum + BTC regime filter(只在 sideways/down 開倉)
+// 實證:tsmom 在 BTC up 期 Sharpe 只 0.31(進場晚被 SL 殺)、過濾掉後 baseline 0.66 → 0.82 (+0.16)
+// 需 broker scanner 注入 BTC bars 到 StrategySignalHandler;handler 會設 BtcBarsRef、wrapper 才能 evaluate regime
+strategies["tsmom_btc_not_up"] = new BtcRegimeFilterStrategy(
+    strategies["ts_momentum"],
+    new[] { "sideways", "down" },
+    emaFast: 20, emaSlow: 50,
+    name: "tsmom_btc_not_up");
+
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。

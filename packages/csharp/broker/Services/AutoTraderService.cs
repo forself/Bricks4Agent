@@ -3026,6 +3026,23 @@ public class AutoTraderService : BackgroundService
         // B.2:對每個 candidate fetch bars + signal、收集非 hold 且通過 confidence threshold 的進 picks。
         // scanner 用自己的 interval(1d / 1w),不跟核心腿固定 1d 綁定。
         // B.4:同時抓 lastBarClose 給 DispatchScannerLegAsync 當 shadow EntryPrice。
+        // C 路線:scanner 每 cycle 預先 fetch 一次 BTC bars,給策略 worker 注入 BtcRegimeFilterStrategy.BtcBarsRef
+        // 沒拉到 BTC 也照跑(wrapper 沒注入會 pass-through),不擋核心腿
+        JsonElement? refBtcBars = null;
+        try
+        {
+            var btcSym = scanner.Interval == "1w" || scanner.Interval == "1d" ? "BTCUSDT" : "BTCUSDT";
+            var btcPayload = JsonSerializer.Serialize(new { symbol = btcSym, interval = scanner.Interval, limit = 200 });
+            var btcResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", btcPayload));
+            if (btcResult.Success)
+            {
+                var btcDoc = JsonDocument.Parse(btcResult.ResultPayload ?? "{}");
+                if (btcDoc.RootElement.TryGetProperty("bars", out var btcArr) && btcArr.GetArrayLength() >= 50)
+                    refBtcBars = btcArr.Clone();   // Clone 因為 doc 出函式 scope 後會 dispose
+            }
+        }
+        catch (Exception ex) { _logger.LogDebug(ex, "Scanner {ScannerId} BTC ref bars fetch failed", scanner.Id); }
+
         var ranked = new List<(string Symbol, string Action, decimal Confidence, string Reason, long SignalBarTs, decimal EntryPrice)>();
         foreach (var sym in candidates)
         {
@@ -3077,6 +3094,8 @@ public class AutoTraderService : BackgroundService
                 ["interval"] = scanner.Interval,
                 ["bars"]     = barsArr,
             };
+            // C 路線:注入 BTC ref bars(給 BtcRegimeFilterStrategy 用、其他策略無視)
+            if (refBtcBars.HasValue) signalPayloadDict["ref_btc_bars"] = refBtcBars.Value;
             var signalResult = await _dispatcher.DispatchAsync(
                 BuildRequest("strategy.signal", "evaluate", JsonSerializer.Serialize(signalPayloadDict)));
             if (!signalResult.Success) continue;

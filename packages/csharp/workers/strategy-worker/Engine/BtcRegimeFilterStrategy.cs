@@ -30,10 +30,15 @@ namespace StrategyWorker.Engine;
 public sealed class BtcRegimeFilterStrategy : IStrategy
 {
     /// <summary>
-    /// 由 backtest harness 在跑前注入 BTC 1d bars。Production 部署改成從 broker query 抓。
-    /// 用 static 簡化、不擴 IStrategy interface。
+    /// BTC bars 注入點。Backtest 用 setter 直接設、production strategy-worker 用 AsyncLocal、
+    /// 確保跨 request 不互染(多 thread 同時 evaluate 各自 scope)。
     /// </summary>
-    public static List<BarData>? BtcBarsRef { get; set; }
+    private static readonly System.Threading.AsyncLocal<List<BarData>?> _btcBarsAsyncLocal = new();
+    public static List<BarData>? BtcBarsRef
+    {
+        get => _btcBarsAsyncLocal.Value;
+        set => _btcBarsAsyncLocal.Value = value;
+    }
 
     private readonly IStrategy _base;
     private readonly HashSet<string> _allowedRegimes;
