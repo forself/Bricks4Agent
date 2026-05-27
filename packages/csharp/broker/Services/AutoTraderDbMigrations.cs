@@ -90,6 +90,14 @@ public static class AutoTraderDbMigrations
         AddColumnIfMissing(db, logger, "principal_credentials", "totp_secret_enc", "TEXT NULL");
         AddColumnIfMissing(db, logger, "principal_credentials", "totp_enrolled_at", "TEXT NULL");
         AddColumnIfMissing(db, logger, "principal_credentials", "backup_codes_enc", "TEXT NULL");
+
+        // Scanner Hybrid Phase 1 B.4(2026-05-27)— scanner_active_legs close-side lifecycle
+        // soft close 設計:row 不刪、改填 closed_at + exit_price + realized_pnl_pct + close_reason
+        // 之前 B.3 進 DB 的 row 沒這幾欄、得 ALTER 補上
+        AddColumnIfMissing(db, logger, "scanner_active_legs", "closed_at",        "TEXT NULL");
+        AddColumnIfMissing(db, logger, "scanner_active_legs", "exit_price",       "TEXT NOT NULL DEFAULT '0'");
+        AddColumnIfMissing(db, logger, "scanner_active_legs", "realized_pnl_pct", "TEXT NOT NULL DEFAULT '0'");
+        AddColumnIfMissing(db, logger, "scanner_active_legs", "close_reason",     "TEXT NOT NULL DEFAULT ''");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

@@ -2928,6 +2928,9 @@ public class AutoTraderService : BackgroundService
             if (ct.IsCancellationRequested) return;
             try
             {
+                // B.4 close pass:先檢查現有 active leg 有沒有反向訊號需要 close
+                // 順序重要:close 跑完才釋出 slot、open 才能立刻補位、同 cycle 內換腿
+                await CloseScannerActiveLegsAsync(scanner, ct);
                 await ProcessScannerAsync(scanner, ct);
             }
             catch (Exception ex)
@@ -2940,11 +2943,12 @@ public class AutoTraderService : BackgroundService
     private async Task ProcessScannerAsync(ScannerLegEntry scanner, CancellationToken ct)
     {
         // 載入該 scanner 已開 active legs(避免同 scanner 重複開同幣、檢查 max_concurrent)
+        // B.4:soft close 設計 — closed_at IS NULL 才算「目前在 active」
         List<ScannerActiveLegEntry> activeLegs;
         try
         {
             activeLegs = _db.Query<ScannerActiveLegEntry>(
-                "SELECT * FROM scanner_active_legs WHERE scanner_id = @ScannerId",
+                "SELECT * FROM scanner_active_legs WHERE scanner_id = @ScannerId AND closed_at IS NULL",
                 new { ScannerId = scanner.Id });
         }
         catch (Exception ex)
@@ -3006,7 +3010,8 @@ public class AutoTraderService : BackgroundService
 
         // B.2:對每個 candidate fetch bars + signal、收集非 hold 且通過 confidence threshold 的進 picks。
         // scanner 用自己的 interval(1d / 1w),不跟核心腿固定 1d 綁定。
-        var ranked = new List<(string Symbol, string Action, decimal Confidence, string Reason, long SignalBarTs)>();
+        // B.4:同時抓 lastBarClose 給 DispatchScannerLegAsync 當 shadow EntryPrice。
+        var ranked = new List<(string Symbol, string Action, decimal Confidence, string Reason, long SignalBarTs, decimal EntryPrice)>();
         foreach (var sym in candidates)
         {
             if (ct.IsCancellationRequested) return;
@@ -3018,6 +3023,7 @@ public class AutoTraderService : BackgroundService
 
             JsonElement barsArr;
             long latestBarTs = 0;
+            decimal lastBarClose = 0m;
             try
             {
                 var barsDoc = JsonDocument.Parse(barsResult.ResultPayload ?? "{}");
@@ -3035,6 +3041,12 @@ public class AutoTraderService : BackgroundService
                         else if (DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var asDt))
                             latestBarTs = new DateTimeOffset(asDt, TimeSpan.Zero).ToUnixTimeMilliseconds();
                     }
+                }
+                // B.4:取 close 當 shadow EntryPrice(real dispatch 階段會被實際成交價覆蓋)
+                if (lastBar.TryGetProperty("close", out var cl))
+                {
+                    if (cl.ValueKind == JsonValueKind.Number) lastBarClose = cl.GetDecimal();
+                    else if (cl.ValueKind == JsonValueKind.String && decimal.TryParse(cl.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dc)) lastBarClose = dc;
                 }
             }
             catch (JsonException) { continue; }
@@ -3067,7 +3079,7 @@ public class AutoTraderService : BackgroundService
             // 排除 hold + 低信心(走 _minConfidence、跟核心腿一致)
             if (action == "hold" || confidence < _minConfidence) continue;
 
-            ranked.Add((sym, action, confidence, reason, latestBarTs));
+            ranked.Add((sym, action, confidence, reason, latestBarTs, lastBarClose));
         }
 
         if (ranked.Count == 0)
@@ -3093,7 +3105,7 @@ public class AutoTraderService : BackgroundService
             if (ct.IsCancellationRequested) return;
             try
             {
-                await DispatchScannerLegAsync(scanner, pick.Symbol, pick.Action, pick.Confidence, pick.SignalBarTs, ct);
+                await DispatchScannerLegAsync(scanner, pick.Symbol, pick.Action, pick.Confidence, pick.SignalBarTs, pick.EntryPrice, ct);
             }
             catch (Exception ex)
             {
@@ -3104,7 +3116,7 @@ public class AutoTraderService : BackgroundService
 
     private async Task DispatchScannerLegAsync(
         ScannerLegEntry scanner, string symbol, string action, decimal confidence, long signalBarTs,
-        CancellationToken ct)
+        decimal entryPriceProxy, CancellationToken ct)
     {
         // 冪等鎖:同 (scanner_id, symbol, signal_bar_ts) 不重複開。
         // signal_bar_ts 是 candidate 抓到的最後一根 K 線開盤時間(unix ms)、
@@ -3140,6 +3152,8 @@ public class AutoTraderService : BackgroundService
             Symbol          = symbol,
             Exchange        = "binance",   // scanner 預設 binance、未來 ScannerLegEntry 可加 exchange 欄位
             Side            = side,
+            EntryPrice      = entryPriceProxy,    // B.4:shadow 用 bar close 模擬;real dispatch 階段會被實際成交價覆蓋
+            PeakMark        = entryPriceProxy,    // 起算 peak = entry,close pass 後續更新
             SignalBarTs     = signalBarTs,
             EntrySignal     = $"{action}@{scanner.Interval}",
             EntryConfidence = confidence,
@@ -3147,8 +3161,6 @@ public class AutoTraderService : BackgroundService
             OpenedAt        = DateTime.UtcNow,
             UpdatedAt       = DateTime.UtcNow,
             OwnerPrincipalId = scanner.OwnerPrincipalId,
-            // EntryPrice / PeakMark / SlPrice / TpPrice / LiquidationPrice 等保護鏈欄位
-            // 在 real 路徑(B.3b)真實下單後才填、shadow 階段先 0(模擬時用 candidate fetch 時的 bar close 填補)
         };
 
         if (scanner.Shadow)
@@ -3178,6 +3190,128 @@ public class AutoTraderService : BackgroundService
         _logger.LogWarning("Scanner {ScannerId} non-shadow dispatch for {Symbol} requested — NOT IMPLEMENTED yet (B.3b)。請保持 shadow=true 直到 4 週 shadow paper trade 達標、再實作 real dispatch。",
             scanner.Id, symbol);
         await Task.CompletedTask;
+    }
+
+    // B.4 close-side lifecycle(2026-05-27)
+    // 每 cycle 在 ProcessScannerAsync 開新腿之前跑一次:
+    //   - 查該 scanner 所有 closed_at IS NULL 的 leg
+    //   - 對每條 leg 拉同 scanner.Strategy × leg.Symbol × scanner.Interval 的最新訊號
+    //   - 若訊號反向(leg.Side="long" 收 "sell"、或 "short" 收 "buy")→ 關腿
+    //   - 計算 realized_pnl_pct(含 0.16% 約算 round-trip 成本)、UPDATE 該 leg
+    //   - log "[SHADOW] closed ... pnl=±X%"、給 shadow 4 週評估累加用
+    //
+    // 安全:
+    //   - 只在 shadow=true 路徑跑。real 路徑(B.3b 未實作)會由 real exit 流程處理
+    //   - 找不到訊號 / 資料不足 / 訊號同向 → leg 保留不動
+    //   - update 失敗不 throw、記 warning 不影響其他 leg
+    //
+    // TP/SL 觸發:Phase 1 不處理。等策略明確 emit StopPrice/TargetPrice 進 leg 後 Phase 2 再加。
+    // Funding / 隔夜利息:Phase 1 不入 PnL。P5 真實 funding rate 接入後再說。
+    private async Task CloseScannerActiveLegsAsync(ScannerLegEntry scanner, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return;
+
+        List<ScannerActiveLegEntry> activeLegs;
+        try
+        {
+            activeLegs = _db.Query<ScannerActiveLegEntry>(
+                "SELECT * FROM scanner_active_legs WHERE scanner_id = @ScannerId AND closed_at IS NULL",
+                new { ScannerId = scanner.Id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "CloseScannerActiveLegsAsync: active legs query failed for {ScannerId}", scanner.Id);
+            return;
+        }
+
+        if (activeLegs.Count == 0) return;
+        if (!_registry.HasAvailableWorker("quote.ohlcv") || !_registry.HasAvailableWorker("strategy.signal"))
+        {
+            _logger.LogDebug("Scanner {ScannerId} close pass skipped — workers unavailable", scanner.Id);
+            return;
+        }
+
+        foreach (var leg in activeLegs)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            try
+            {
+                // Step 1: 拉 bars
+                var barsPayload = JsonSerializer.Serialize(new { symbol = leg.Symbol, interval = scanner.Interval, limit = 200 });
+                var barsResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", barsPayload));
+                if (!barsResult.Success) continue;
+
+                JsonElement barsArr;
+                decimal lastBarClose = 0m;
+                try
+                {
+                    var barsDoc = JsonDocument.Parse(barsResult.ResultPayload ?? "{}");
+                    if (!barsDoc.RootElement.TryGetProperty("bars", out barsArr) || barsArr.GetArrayLength() < 30) continue;
+                    var lastBar = barsArr[barsArr.GetArrayLength() - 1];
+                    if (lastBar.TryGetProperty("close", out var cl))
+                    {
+                        if (cl.ValueKind == JsonValueKind.Number) lastBarClose = cl.GetDecimal();
+                        else if (cl.ValueKind == JsonValueKind.String && decimal.TryParse(cl.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dc)) lastBarClose = dc;
+                    }
+                }
+                catch (Exception) { continue; }
+
+                if (lastBarClose <= 0m) continue;
+
+                // Step 2: 拉訊號
+                var signalPayloadDict = new Dictionary<string, object?>
+                {
+                    ["strategy"] = scanner.Strategy,
+                    ["symbol"]   = leg.Symbol,
+                    ["exchange"] = leg.Exchange,
+                    ["interval"] = scanner.Interval,
+                    ["bars"]     = barsArr,
+                };
+                var signalResult = await _dispatcher.DispatchAsync(
+                    BuildRequest("strategy.signal", "evaluate", JsonSerializer.Serialize(signalPayloadDict)));
+                if (!signalResult.Success) continue;
+
+                string action;
+                try
+                {
+                    var sig = JsonDocument.Parse(signalResult.ResultPayload ?? "{}").RootElement;
+                    action = sig.TryGetProperty("action", out var aEl) ? aEl.GetString() ?? "hold" : "hold";
+                }
+                catch (Exception) { continue; }
+
+                // Step 3: 反向訊號才關腿。同向或 hold 都不動。
+                var oppositeOf = leg.Side == "long" ? "sell" : "buy";
+                if (action != oppositeOf) continue;
+
+                // Step 4: 計 PnL(含 round-trip 成本 ≈ 0.16% = (0.05 commission + 0.03 slippage) × 2 邊)
+                decimal entry = leg.EntryPrice;
+                if (entry <= 0m) continue;   // 沒 entry 沒法算、跳過(理論不該發生、B.4.2 已修)
+                decimal grossPct = leg.Side == "long"
+                    ? (lastBarClose / entry - 1m) * 100m
+                    : (entry / lastBarClose - 1m) * 100m;
+                decimal pnlPct = grossPct - 0.16m;
+
+                // Step 5: UPDATE leg
+                var closedAt = DateTime.UtcNow;
+                try
+                {
+                    _db.Execute(
+                        "UPDATE scanner_active_legs SET closed_at = @ClosedAt, exit_price = @ExitPrice, realized_pnl_pct = @PnlPct, close_reason = 'reverse', updated_at = @ClosedAt WHERE id = @Id",
+                        new { Id = leg.Id, ClosedAt = closedAt, ExitPrice = lastBarClose, PnlPct = pnlPct });
+                    _logger.LogInformation("[SHADOW] Scanner {ScannerId} closed {Side} {Symbol} — entry={Entry:0.0000} exit={Exit:0.0000} pnl={Pnl:+0.00;-0.00}% (reverse signal {Action})",
+                        scanner.Id, leg.Side, leg.Symbol, entry, lastBarClose, pnlPct, action);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Scanner {ScannerId} failed to update closed leg {LegId}", scanner.Id, leg.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Scanner {ScannerId} close pass error for leg {LegId}", scanner.Id, leg.Id);
+            }
+        }
     }
 }
 

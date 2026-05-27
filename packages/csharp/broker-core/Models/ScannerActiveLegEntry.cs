@@ -108,4 +108,28 @@ public class ScannerActiveLegEntry
     [Column("owner_principal_id")]
     [MaxLength(80)]
     public string OwnerPrincipalId { get; set; } = "prn_dashboard";
+
+    // ── Close-side lifecycle(B.4、2026-05-27)──────────────────────────
+    // 用「soft close」設計:row 不刪、改填 ClosedAt + ExitPrice + RealizedPnlPct + CloseReason。
+    // 理由:shadow 評估期(4 週)要累加 realized PnL、看勝率/DD、需保留歷史;
+    // 也方便事後 audit「為什麼這條 leg 在這天 close」。
+    // 「目前 active」= ClosedAt IS NULL;dispatch 冪等鎖看的是 (scanner_id, symbol, signal_bar_ts)
+    // 不分 active/closed,所以同 bar 反覆 open-close 也只記一筆。
+
+    /// <summary>關倉時間(UTC);NULL = 還在持倉。</summary>
+    [Column("closed_at")]
+    public DateTime? ClosedAt { get; set; }
+
+    /// <summary>關倉價(shadow 用 close 訊號當下的 bar close 模擬;real dispatch 用實際成交價)。</summary>
+    [Column("exit_price")]
+    public decimal ExitPrice { get; set; }
+
+    /// <summary>已實現報酬 %(含 commission/slippage 預扣;long: (exit/entry-1)*100;short: (entry/exit-1)*100)。</summary>
+    [Column("realized_pnl_pct")]
+    public decimal RealizedPnlPct { get; set; }
+
+    /// <summary>關倉原因:"reverse"(反向訊號)/ "sl_hit"(停損)/ "tp_hit"(止盈)/ "manual" / "expired"。</summary>
+    [Column("close_reason")]
+    [MaxLength(20)]
+    public string CloseReason { get; set; } = string.Empty;
 }
