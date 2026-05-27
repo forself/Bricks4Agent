@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>SeedRetailLs</AssemblyName>
+    <NoWarn>$(NoWarn);CS8002;NU1702</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\packages\csharp\workers\strategy-worker\StrategyWorker.csproj" />
+    <Compile Include="..\shared\OiMetricsCache.cs" Link="Shared\OiMetricsCache.cs" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+</Project>

@@ -315,6 +315,7 @@ public class StrategySignalHandler : ICapabilityHandler
                 Volume   = b.TryGetProperty("volume", out var v) ? v.GetDecimal()  : 0,
                 FundingRate  = b.TryGetProperty("funding_rate",  out var fr) && fr.ValueKind == JsonValueKind.Number ? fr.GetDecimal() : null,
                 OpenInterest = b.TryGetProperty("open_interest", out var oiv) && oiv.ValueKind == JsonValueKind.Number ? oiv.GetDecimal() : null,
+                RetailLongShortRatio = b.TryGetProperty("retail_long_short_ratio", out var rls) && rls.ValueKind == JsonValueKind.Number ? rls.GetDecimal() : null,
             });
         }
         return bars;

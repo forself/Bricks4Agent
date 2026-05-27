@@ -157,6 +157,24 @@ public class StartupHistoryFetcher
             }
         }
 
+        // Q2 retail L/S 抓最近 30 天(strategy 100 lookback、長期累積夠 + tools/seed-retail-ls 一次性 backfill)
+        foreach (var binanceSymbol in cryptoSymbols)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                var count = await _fetcher.FetchRetailLsDeepAsync(binanceSymbol, ct);
+                if (count > 0)
+                    _logger.LogInformation("Retail L/S: {Symbol} → {Count} daily points", binanceSymbol, count);
+                await Task.Delay(300, ct).ContinueWith(_ => { });
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{binanceSymbol}/retail_ls: {ex.Message}");
+                _logger.LogWarning(ex, "Retail L/S fetch failed: {Symbol}", binanceSymbol);
+            }
+        }
+
         IsFetching = false;
         LastStatus = $"done: {totalBars} bars, {errors.Count} errors";
         _logger.LogInformation("StartupHistoryFetcher complete: {Total} bars, {Errors} errors", totalBars, errors.Count);

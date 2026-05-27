@@ -117,7 +117,9 @@ public class QuoteOhlcvHandler : ICapabilityHandler
         var sym = NormalizeCryptoSymbol(symbol);
         var bars = _db.GetBars(sym, interval, limit);
         var fundings = _db.GetFundingRates(sym, 2000);
+        var retailLs = _db.GetRetailLsRatios(sym, 5000);   // Q2 retail_ls_contrarian alpha
         var merged = AlignFunding(bars, fundings);
+        var lsMerged = AlignRetailLs(bars, retailLs);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -125,7 +127,8 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             interval,
             count = merged.Count,
             funding_points = fundings.Count,
-            bars = merged.Select(m => new
+            retail_ls_points = retailLs.Count,
+            bars = merged.Select((m, idx) => new
             {
                 open_time  = m.Bar.OpenTime,
                 close_time = m.Bar.CloseTime,
@@ -135,6 +138,7 @@ public class QuoteOhlcvHandler : ICapabilityHandler
                 close      = m.Bar.Close,
                 volume     = m.Bar.Volume,
                 funding_rate = m.FundingRate,
+                retail_long_short_ratio = idx < lsMerged.Count ? lsMerged[idx].LsRatio : null,
             })
         });
         return (true, json, null);
@@ -156,6 +160,28 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             {
                 last = sortedFund[fi].FundingRate;
                 fi++;
+            }
+            outl.Add((b, last));
+        }
+        return outl;
+    }
+
+    /// <summary>同 AlignFunding pattern,把 5min~1d retail_ls 序列 as-of join 到 bars(向前填充)。
+    /// 早於第一筆 sample 的 bar → null,strategy 端自動降級 hold。Q2 retail_ls_contrarian 用。</summary>
+    public static List<(OhlcvBar Bar, decimal? LsRatio)> AlignRetailLs(
+        List<OhlcvBar> bars, List<RetailLsRatioPoint> ls)
+    {
+        var sortedBars = bars.OrderBy(b => b.OpenTime).ToList();
+        var sortedLs = ls.OrderBy(p => p.SampleTime).ToList();
+        var outl = new List<(OhlcvBar, decimal?)>(sortedBars.Count);
+        int li = 0;
+        decimal? last = null;
+        foreach (var b in sortedBars)
+        {
+            while (li < sortedLs.Count && sortedLs[li].SampleTime <= b.OpenTime)
+            {
+                last = sortedLs[li].LsRatio;
+                li++;
             }
             outl.Add((b, last));
         }

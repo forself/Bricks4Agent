@@ -68,6 +68,18 @@ public class QuoteDbStorage : IDisposable
 
             CREATE INDEX IF NOT EXISTS idx_funding_lookup
                 ON funding_rate(symbol, funding_time);
+
+            -- 2026-05-28 Q2 retail L/S contrarian alpha:Binance global account L/S ratio(per-symbol、5min~1d 粒度)
+            -- 跟 funding_rate 平行儲存,QuoteOhlcvHandler 同樣對齊到 bars 後 emit retail_long_short_ratio。
+            CREATE TABLE IF NOT EXISTS retail_ls_ratio (
+                symbol      TEXT NOT NULL,
+                sample_time TEXT NOT NULL,    -- ISO,通常 5min 粒度
+                ls_ratio    REAL NOT NULL,    -- count_long_short_ratio: long_account/short_account
+                PRIMARY KEY (symbol, sample_time)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_retail_ls_lookup
+                ON retail_ls_ratio(symbol, sample_time);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -319,6 +331,70 @@ public class QuoteDbStorage : IDisposable
     {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM funding_rate WHERE symbol = $symbol";
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    // ── 散戶多空比(Q2 retail_ls_contrarian)─────────────────────────────
+
+    public void SaveRetailLsRatios(IEnumerable<RetailLsRatioPoint> points)
+    {
+        using var tx = _conn.BeginTransaction();
+        using var cmd = _conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO retail_ls_ratio (symbol, sample_time, ls_ratio)
+            VALUES ($symbol, $sampleTime, $lsRatio)
+            """;
+        var pSymbol = cmd.Parameters.Add("$symbol", SqliteType.Text);
+        var pTime = cmd.Parameters.Add("$sampleTime", SqliteType.Text);
+        var pRatio = cmd.Parameters.Add("$lsRatio", SqliteType.Real);
+
+        int count = 0;
+        foreach (var p in points)
+        {
+            pSymbol.Value = p.Symbol;
+            pTime.Value = p.SampleTime.ToString("o");
+            pRatio.Value = (double)p.LsRatio;
+            cmd.ExecuteNonQuery();
+            count++;
+        }
+        tx.Commit();
+        _logger.LogDebug("Saved {Count} retail L/S ratio points", count);
+    }
+
+    public List<RetailLsRatioPoint> GetRetailLsRatios(string symbol, int limit = 1000)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT symbol, sample_time, ls_ratio
+            FROM retail_ls_ratio
+            WHERE symbol = $symbol
+            ORDER BY sample_time DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var list = new List<RetailLsRatioPoint>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new RetailLsRatioPoint
+            {
+                Symbol = reader.GetString(0),
+                SampleTime = DateTime.Parse(reader.GetString(1)),
+                LsRatio = (decimal)reader.GetDouble(2),
+            });
+        }
+        list.Reverse();
+        return list;
+    }
+
+    public int CountRetailLsRatios(string symbol)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM retail_ls_ratio WHERE symbol = $symbol";
         cmd.Parameters.AddWithValue("$symbol", symbol);
         return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }

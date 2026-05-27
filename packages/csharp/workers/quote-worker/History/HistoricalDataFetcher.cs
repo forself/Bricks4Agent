@@ -309,6 +309,55 @@ public class HistoricalDataFetcher
     }
 
     /// <summary>
+    /// 散戶多空比深度回補(Q2 retail_ls_contrarian alpha 來源)。
+    /// Binance /futures/data/globalLongShortAccountRatio:period=1d、limit max 30。
+    /// 公開 API 只回 30 天、歷史靠 tools/oi-validate 從 data.binance.vision 一次性 seed。
+    /// 此 runtime 路徑保證每天有最新值,長期累積成 100+ 天 lookback。
+    /// </summary>
+    public async Task<int> FetchRetailLsDeepAsync(
+        string binanceSymbol, CancellationToken ct = default)
+    {
+        var normalizedSymbol = binanceSymbol.Replace("USDT", "").ToUpper();
+        var url = $"https://fapi.binance.com/futures/data/globalLongShortAccountRatio" +
+                  $"?symbol={binanceSymbol}&period=1d&limit=30";
+        try
+        {
+            using var resp = await _http.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Binance retail L/S returned {Code} for {Symbol}",
+                    resp.StatusCode, binanceSymbol);
+                return 0;
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            var points = new List<RetailLsRatioPoint>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (!el.TryGetProperty("longShortRatio", out var rEl)) continue;
+                if (!decimal.TryParse(rEl.GetString(), out var ratio)) continue;
+                if (!el.TryGetProperty("timestamp", out var tEl)) continue;
+                long ts = tEl.GetInt64();
+                points.Add(new RetailLsRatioPoint
+                {
+                    Symbol = normalizedSymbol,
+                    SampleTime = DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime,
+                    LsRatio = ratio,
+                });
+            }
+            _db.SaveRetailLsRatios(points);
+            _logger.LogInformation("Retail L/S deep {Symbol}: saved {Count} points (30d API)",
+                binanceSymbol, points.Count);
+            return points.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Retail L/S deep fetch failed: {Symbol}", binanceSymbol);
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// 當前未平倉量快照（OI history 只有 ~30 天、故只取即時值當 live 訊號、不落歷史表）。
     /// 回 (openInterest 基幣張數, 取得時間)。失敗回 null。
     /// </summary>

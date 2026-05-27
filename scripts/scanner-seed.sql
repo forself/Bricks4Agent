@@ -98,6 +98,17 @@ VALUES
    '["APTUSDT","INJUSDT","ATOMUSDT","LINKUSDT","LTCUSDT","SUIUSDT","TRXUSDT","AVAXUSDT"]',
    30, 3, 10,
    'spot', '1d', 5, 1, 1,
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 2026-05-28 Q2 retail_ls_contrarian_tight(IS+OOS 雙確認 t=-2.89/-2.25、strat-validate Sharpe 0.69 / 年化 93%)
+  -- ⚠ enabled=0 PARK 等待基建:quote-worker 還沒接 retail_ls 抓+對齊管道(類似 funding 路徑)
+  --   需求:新增 retail_long_short_ratio 表 + Binance metrics 抓取(data.binance.vision daily zip + recent API)
+  --        + AlignRetailLs + 加進 ohlcv JSON。tools/shared/OiMetricsCache.cs 是 backfill 範本可參考
+  -- 暫存 entry 用於文件化,不參與 scanner sweep。Production 管道完成後改 enabled=1 即可上 shadow
+  ('retail_ls_scanner', 'retail_ls_scanner', 'retail_ls_contrarian_tight',
+   '["BTCUSDT","ETHUSDT","BNBUSDT","LTCUSDT","OPUSDT","SUIUSDT","APTUSDT","INJUSDT"]',
+   25, 3, 10,
+   'spot', '1d', 5, 1, 0,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- Sanity check
