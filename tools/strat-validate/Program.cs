@@ -16,6 +16,9 @@ decimal fundingPer8h = decimal.TryParse(Environment.GetEnvironmentVariable("FUND
 // --fast       :5 主幣 × 1d 而已、跑 30-60s(原本 20 幣 × 5 時框 = 8-10 min)
 // --only=PAT   :只跑名稱符合 PAT(支援 *)的策略;e.g. --only=harm_prz_*
 // --bars=N     :抓 N 根 K 線(預設 1000、> 1000 走 KlineCache 分頁;2000 ≈ 5.5 年日線)
+// --show-kelly: 跑完 t-stat 後額外印出每支顯著策略的 Kelly fraction 推薦 sizing
+// 用 walk-forward OOS win rate + avg win/loss、quarter-Kelly、max 20% clamp
+bool showKelly = args.Contains("--show-kelly");
 bool fastMode = args.Contains("--fast");
 string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substring(7);
 int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
@@ -569,6 +572,32 @@ foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x
 }
 Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠ 但 folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;");
 Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
+
+// 2026-05-27 Q1.1:Kelly fraction sizing 推薦(每支顯著策略、用 walk-forward win-rate / avg win / avg loss)
+if (showKelly && sigNames.Count > 0)
+{
+    Console.WriteLine($"\n=== Kelly fraction 推薦 sizing(quarter-Kelly、max 20% clamp)===");
+    Console.WriteLine($"  {"strategy",-22} {"win%",6} {"avgWin%",8} {"avgLoss%",9} {"b ratio",8} {"raw Kelly%",11} {"safe %",8}  diagnostic");
+    foreach (var (name, s) in strats.Where(x => sigNames.Contains(x.name)).OrderByDescending(x => sigT.GetValueOrDefault(x.name, 0)))
+    {
+        var pool = PoolOosFolds(s);
+        if (pool.Count == 0) continue;
+        // 從 pool 算 win rate / avg win / avg loss(decimal %)
+        var wins = pool.Where(r => r > 0).ToList();
+        var losses = pool.Where(r => r < 0).Select(r => -r).ToList();
+        decimal winRate = (decimal)wins.Count / pool.Count;
+        decimal avgWin = wins.Count > 0 ? wins.Average() : 0m;
+        decimal avgLoss = losses.Count > 0 ? losses.Average() : 0m;
+        decimal b = avgLoss > 0m ? avgWin / avgLoss : 0m;
+        decimal raw = KellyPositionSizer.Compute(winRate, avgWin, avgLoss);
+        decimal safe = KellyPositionSizer.RecommendedPct(winRate, avgWin, avgLoss);
+        string diag = raw <= 0m ? "❌ 負期望、不下注"
+                    : (safe < raw * 0.25m ? "⚠ cap 限縮" : "✅ 健康");
+        Console.WriteLine($"  {name,-22} {winRate * 100m,5:F0}% {avgWin,8:F1} {avgLoss,9:F1} {b,8:F2} {raw * 100m,10:F1}% {safe * 100m,7:F1}%  {diag}");
+    }
+    Console.WriteLine($"\n  心法:quarter-Kelly(raw/4)是業界 sweet spot、保增長 + 大降 DD。max 20% 防 over-concentration。");
+    Console.WriteLine($"        現引擎用固定 notionalPct=0.95、改 Kelly 後每支策略自有最佳 size、Q1 目標。");
+}
 
 // (6) 顯著策略的最佳組合(只用統計顯著那群、去相關 |ρ|<0.4、反波動率配重)
 // 全程用 long-only 權益(loEq)→ 跟顯著性(long-only OOS)+ 實際 perp_long_only 部署一致。
