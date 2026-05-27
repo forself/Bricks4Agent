@@ -54,6 +54,10 @@ string[] symbols = fastMode
     ("fundmom_ls_tight",  new FundingMomentumLsStrategy("fundmom_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),  // 更嚴
     ("fundmom_ls_loose",  new FundingMomentumLsStrategy("fundmom_ls_loose",  hotPct: 0.80m, coldPct: 0.20m)),  // 更鬆
     ("fundmom_ls_xtight", new FundingMomentumLsStrategy("fundmom_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),  // 極嚴
+    // 2026-05-27 第二類結構性 alpha 候選:volume momentum + sweep
+    ("volmom_ls",          new VolumeMomentumLsStrategy("volmom_ls",          volPct: 0.85m)),
+    ("volmom_ls_tight",    new VolumeMomentumLsStrategy("volmom_ls_tight",    volPct: 0.90m)),
+    ("volmom_ls_xtight",   new VolumeMomentumLsStrategy("volmom_ls_xtight",   volPct: 0.95m)),
     // 第一批(趨勢家族,原本偏多用、實為多空對稱)
     ("ts_momentum",      new TsMomentumStrategy()),
     ("chandelier_trend", new ChandelierTrendStrategy()),
