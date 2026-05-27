@@ -656,32 +656,61 @@ if (showKelly && sigNames.Count > 0)
             var mvWeights = MinVarianceOptimizer.MinVarianceWeights(cov, maxWeight: 0.35m);
             var msWeights = MinVarianceOptimizer.MaxSharpeWeights(cov, expectedReturns.ToArray(), maxWeight: 0.35m);
             var eqWeights = MinVarianceOptimizer.EqualWeights(returnsPerStrat.Count);
+            var rpWeights = RiskParityOptimizer.ErcWeights(cov, maxWeight: 0.35m);
 
-            Console.WriteLine($"\n=== Q1.3 Mean-variance portfolio optimization(top {returnsPerStrat.Count} sig 策略、cov from pool folds)===");
-            Console.WriteLine($"  {"strategy",-22} {"E[ret]%",9} {"equal-w",9} {"min-var",9} {"max-Sharpe",11}");
+            Console.WriteLine($"\n=== Q1.3-1.4 Portfolio config(top {returnsPerStrat.Count} sig 策略、cov from pool folds)===");
+            Console.WriteLine($"  {"strategy",-22} {"E[ret]%",9} {"equal-w",9} {"inv-vol",9} {"min-var",9} {"risk-parity",12} {"max-Sharpe",11}");
+            // inverse-vol baseline 對照(naive RP)
+            var invVolRaw = new double[returnsPerStrat.Count];
+            for (int i = 0; i < returnsPerStrat.Count; i++)
+                invVolRaw[i] = 1.0 / Math.Sqrt(Math.Max(cov[i, i], 1e-12));
+            double ivSum = invVolRaw.Sum();
+            var ivWeights = invVolRaw.Select(x => (decimal)(x / ivSum)).ToArray();
             for (int i = 0; i < stratNames.Count; i++)
             {
-                Console.WriteLine($"  {stratNames[i],-22} {expectedReturns[i],8:F1}% {eqWeights[i] * 100m,8:F1}% {mvWeights[i] * 100m,8:F1}% {msWeights[i] * 100m,10:F1}%");
+                Console.WriteLine($"  {stratNames[i],-22} {expectedReturns[i],8:F1}% {eqWeights[i] * 100m,8:F1}% {ivWeights[i] * 100m,8:F1}% {mvWeights[i] * 100m,8:F1}% {rpWeights[i] * 100m,11:F1}% {msWeights[i] * 100m,10:F1}%");
             }
 
             // Portfolio metrics 對比
-            var eqRet = MinVarianceOptimizer.PortfolioReturn(eqWeights, expectedReturns.ToArray());
-            var mvRet = MinVarianceOptimizer.PortfolioReturn(mvWeights, expectedReturns.ToArray());
-            var msRet = MinVarianceOptimizer.PortfolioReturn(msWeights, expectedReturns.ToArray());
-            var eqVar = MinVarianceOptimizer.PortfolioVariance(eqWeights, cov);
-            var mvVar = MinVarianceOptimizer.PortfolioVariance(mvWeights, cov);
-            var msVar = MinVarianceOptimizer.PortfolioVariance(msWeights, cov);
-            var eqStd = (decimal)Math.Sqrt((double)eqVar);
-            var mvStd = (decimal)Math.Sqrt((double)mvVar);
-            var msStd = (decimal)Math.Sqrt((double)msVar);
+            decimal[] PortfolioMetrics(decimal[] w)
+            {
+                var r = MinVarianceOptimizer.PortfolioReturn(w, expectedReturns.ToArray());
+                var v = MinVarianceOptimizer.PortfolioVariance(w, cov);
+                var s = (decimal)Math.Sqrt((double)v);
+                return new[] { r, s, s > 0 ? r / s : 0m };
+            }
+            var eqM = PortfolioMetrics(eqWeights);
+            var ivM = PortfolioMetrics(ivWeights);
+            var mvM = PortfolioMetrics(mvWeights);
+            var rpM = PortfolioMetrics(rpWeights);
+            var msM = PortfolioMetrics(msWeights);
             Console.WriteLine();
             Console.WriteLine($"  {"portfolio",-22} {"E[ret]%",9} {"vol%",9} {"Sharpe-like",11}");
-            Console.WriteLine($"  {"equal-weight",-22} {eqRet,8:F1}% {eqStd,8:F1}% {(eqStd > 0 ? eqRet / eqStd : 0m),10:F2}");
-            Console.WriteLine($"  {"min-variance",-22} {mvRet,8:F1}% {mvStd,8:F1}% {(mvStd > 0 ? mvRet / mvStd : 0m),10:F2}  ⭐ robust");
-            Console.WriteLine($"  {"max-Sharpe",-22} {msRet,8:F1}% {msStd,8:F1}% {(msStd > 0 ? msRet / msStd : 0m),10:F2}  ⚠ μ 敏感");
+            Console.WriteLine($"  {"equal-weight",-22} {eqM[0],8:F1}% {eqM[1],8:F1}% {eqM[2],10:F2}");
+            Console.WriteLine($"  {"inverse-vol (naive)",-22} {ivM[0],8:F1}% {ivM[1],8:F1}% {ivM[2],10:F2}  baseline");
+            Console.WriteLine($"  {"min-variance",-22} {mvM[0],8:F1}% {mvM[1],8:F1}% {mvM[2],10:F2}  ⭐ robust");
+            Console.WriteLine($"  {"risk-parity (ERC)",-22} {rpM[0],8:F1}% {rpM[1],8:F1}% {rpM[2],10:F2}  ⭐⭐ Bridgewater-style");
+            Console.WriteLine($"  {"max-Sharpe",-22} {msM[0],8:F1}% {msM[1],8:F1}% {msM[2],10:F2}  ⚠ μ 敏感");
 
-            Console.WriteLine($"\n  心法:min-variance 不需估報酬、更 robust;max-Sharpe 對 μ 雜訊極敏感(實務常給極端配重)。");
-            Console.WriteLine($"        實作配重建議用 min-variance + max-cap 35% / 支、避免單腿過大。");
+            // ERC diagnostic:risk contribution check(目標 1/N 均等)
+            var rcPct = RiskParityOptimizer.RiskContributions(rpWeights, cov);
+            decimal targetRc = 1m / rcPct.Length;
+            Console.WriteLine($"\n  Risk parity 風險貢獻檢查(目標每支 {targetRc:P0}、收斂越接近越好):");
+            decimal maxDev = 0m;
+            for (int i = 0; i < stratNames.Count; i++)
+            {
+                var dev = Math.Abs(rcPct[i] - targetRc);
+                if (dev > maxDev) maxDev = dev;
+                var marker = dev < 0.02m ? "✅" : (dev < 0.05m ? "⚠" : "❌");
+                Console.WriteLine($"    {stratNames[i],-22} weight={rpWeights[i] * 100m,5:F1}%  RC={rcPct[i] * 100m,5:F1}%  dev={dev * 100m,4:F1}pp {marker}");
+            }
+            Console.WriteLine($"  最大偏離 target={maxDev * 100m:F1}pp(< 2pp = 收斂良好)");
+
+            Console.WriteLine($"\n  心法:");
+            Console.WriteLine($"    - min-variance:總風險最小、但常過度集中、丟掉高 ret/vol 策略");
+            Console.WriteLine($"    - risk parity:每支對總風險貢獻平均、forced diversification、Bridgewater 主推");
+            Console.WriteLine($"    - max-Sharpe:理論最佳但 μ-敏感、實務常極端");
+            Console.WriteLine($"    - **業界經驗:risk parity + max-cap 35% 是 best default**(Carver / Roncalli)");
         }
     }
 }
