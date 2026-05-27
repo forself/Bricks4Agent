@@ -361,6 +361,7 @@ builder.Services.AddHostedService<Broker.Services.ToolSpecCapabilitySyncService>
 // D1 Phase 1 — sizing service 必須在 AutoTraderService 前註冊（後者依賴它）
 builder.Services.AddSingleton<Broker.Services.AutoTraderSizingService>();
 builder.Services.AddSingleton<Broker.Services.AutoTraderService>();
+builder.Services.AddSingleton<Broker.Services.PortfolioSizingService>();   // Q1.6 portfolio sizing 推薦
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.AutoTraderService>());
 builder.Services.AddSingleton<Broker.Services.PriceAlertService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.PriceAlertService>());
@@ -1147,6 +1148,7 @@ if (poolEnabled)
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
     ScannerEndpoints.Map(api);     // Phase 1 Step C — Scanner Hybrid 定義 + active legs view
+    PortfolioSizingEndpoints.Map(api);  // Q1.6 — sizing 推薦(Kelly + ERC + vol-target + DD-aware)
     EmergencyEndpoints.Map(api);   // W14 P1+P5
     CapabilityGraphEndpoints.Map(api);   // G3 — capability registry graph
     PolicyReplayEndpoints.Map(api);      // G1 — sandbox PolicyEngine replay
