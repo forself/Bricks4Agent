@@ -1146,6 +1146,7 @@ if (poolEnabled)
     StrategyEndpoints.Map(api);
     RiskEndpoints.Map(api);
     AutoTraderEndpoints.Map(api);
+    ScannerEndpoints.Map(api);     // Phase 1 Step C — Scanner Hybrid 定義 + active legs view
     EmergencyEndpoints.Map(api);   // W14 P1+P5
     CapabilityGraphEndpoints.Map(api);   // G3 — capability registry graph
     PolicyReplayEndpoints.Map(api);      // G1 — sandbox PolicyEngine replay

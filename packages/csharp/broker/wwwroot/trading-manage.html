@@ -89,6 +89,31 @@
   <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描,按「開始掃描」跑 composite 策略</div></div>
 </div>
 
+<h2>🛰 Scanner Hybrid · 策略 × 候選池 信號驅動</h2>
+<div class="panel">
+  <div class="hint" style="margin-bottom:8px">
+    每個 scanner 跑一支 t-stat 顯著策略、在限定 universe 內找信號最強的開倉。預設全 shadow(只記不下單)。
+    <span class="muted">設計:<a href="https://github.com/Anthonylee0206/Brick4Agent/blob/main/docs/designs/portfolio-scanner-hybrid.md" target="_blank">portfolio-scanner-hybrid.md</a></span>
+  </div>
+  <h3 style="margin-top:4px">🎯 Scanner 定義</h3>
+  <table style="margin-bottom:14px"><thead><tr>
+    <th>ID</th><th>策略</th><th>時框</th><th>Universe</th><th>容量</th><th>預算</th><th>Shadow</th><th>啟用</th>
+  </tr></thead>
+  <tbody id="sc-legs-table"><tr><td colspan="8" class="muted">載入中…</td></tr></tbody></table>
+
+  <h3>📈 已開腿(active + 最近 close 歷史)</h3>
+  <div class="row" style="margin-bottom:6px">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="sc-show-closed" style="width:auto" onchange="loadScanners()"> 顯示已 close 的歷史
+    </label>
+    <span class="scan-progress" id="sc-summary"></span>
+  </div>
+  <table><thead><tr>
+    <th>Scanner</th><th>幣</th><th>方向</th><th>進場價</th><th>當前 / 出場</th><th>PnL%</th><th>狀態</th><th>時間</th>
+  </tr></thead>
+  <tbody id="sc-active-table"><tr><td colspan="8" class="muted">載入中…</td></tr></tbody></table>
+</div>
+
 <h2>價格告警</h2>
 <div class="panel">
   <div class="row">
@@ -640,8 +665,104 @@ async function adminDeleteUser(pid){
   loadAdmin();
 }
 
+/* ───────────── scanner hybrid ───────────── */
+async function loadScanners(){
+  const [legsResp, activeResp] = await Promise.all([
+    api('/api/v1/scanner/legs'),
+    api('/api/v1/scanner/active' + (document.getElementById('sc-show-closed')?.checked ? '?include_closed=true' : ''))
+  ]);
+
+  // Legs table
+  const legs = (legsResp.data || legsResp).legs || [];
+  const lt = document.getElementById('sc-legs-table');
+  if (!legs.length) {
+    lt.innerHTML = '<tr><td colspan="8" class="muted">尚未設定 scanner。SQL seed:scripts/scanner-seed.sql</td></tr>';
+  } else {
+    lt.innerHTML = legs.map(l => {
+      const universe = Array.isArray(l.universe) ? l.universe.join(', ') : '?';
+      const shadowBtn = l.shadow
+        ? `<button class="btn-sm btn-shadow" onclick="toggleScannerShadow('${l.id}', false)">👻 SHADOW</button>`
+        : `<button class="btn-sm btn-arm" onclick="toggleScannerShadow('${l.id}', true)">🔴 REAL (B.3b 未實作)</button>`;
+      const enabledBtn = l.enabled
+        ? `<button class="btn-sm btn-g" onclick="toggleScannerEnabled('${l.id}', false)">✅ 啟用</button>`
+        : `<button class="btn-sm" onclick="toggleScannerEnabled('${l.id}', true)">⏸ 停用</button>`;
+      return `<tr>
+        <td><b>${l.id}</b></td>
+        <td>${l.strategy}</td>
+        <td>${l.interval}</td>
+        <td title="${universe}" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${universe}</td>
+        <td>max ${l.max_concurrent}</td>
+        <td>${l.budget_total}% / 腿 ${l.per_leg_cap}%</td>
+        <td>${shadowBtn}</td>
+        <td>${enabledBtn}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Active legs table
+  const actives = (activeResp.data || activeResp).active_legs || [];
+  const at = document.getElementById('sc-active-table');
+  const sum = document.getElementById('sc-summary');
+  if (!actives.length) {
+    at.innerHTML = '<tr><td colspan="8" class="muted">尚無 active leg。Scanner 在等候 signal(每 5 分鐘 sweep cycle)</td></tr>';
+    sum.textContent = '';
+  } else {
+    const openCnt = actives.filter(a => !a.closed_at).length;
+    const closedCnt = actives.length - openCnt;
+    const closedPnls = actives.filter(a => a.closed_at).map(a => Number(a.realized_pnl_pct) || 0);
+    const totalPnl = closedPnls.reduce((s, v) => s + v, 0);
+    const wins = closedPnls.filter(p => p > 0).length;
+    const wr = closedPnls.length ? (wins / closedPnls.length * 100).toFixed(0) : '-';
+    sum.textContent = `${openCnt} active · ${closedCnt} closed · 累計 PnL ${totalPnl.toFixed(2)}% · WR ${wr}${closedPnls.length?'%':''} (${wins}/${closedPnls.length})`;
+
+    at.innerHTML = actives.map(a => {
+      const closed = !!a.closed_at;
+      const sideColor = a.side === 'long' ? 'grn' : 'red';
+      const pnlColor = Number(a.realized_pnl_pct) >= 0 ? 'grn' : 'red';
+      const status = closed
+        ? `<span class="pill p-paper">closed · ${a.close_reason || '?'}</span>`
+        : (a.shadow ? '<span class="pill p-paper">👻 SHADOW</span>' : '<span class="pill p-real">🔴 REAL</span>');
+      const exitOrCurrent = closed ? `${Number(a.exit_price).toFixed(4)}` : `<span class="muted">peak ${Number(a.peak_mark).toFixed(4)}</span>`;
+      const pnlDisplay = closed
+        ? `<span class="${pnlColor}">${Number(a.realized_pnl_pct).toFixed(2)}%</span>`
+        : '<span class="muted">—</span>';
+      const ts = closed
+        ? new Date(a.closed_at).toLocaleString('zh-TW', {hour12:false})
+        : new Date(a.opened_at).toLocaleString('zh-TW', {hour12:false});
+      return `<tr>
+        <td><span class="muted" style="font-size:11px">${a.scanner_id}</span></td>
+        <td><b>${a.symbol}</b></td>
+        <td class="${sideColor}">${a.side}</td>
+        <td>${Number(a.entry_price).toFixed(4)}</td>
+        <td>${exitOrCurrent}</td>
+        <td>${pnlDisplay}</td>
+        <td>${status}</td>
+        <td class="muted" style="font-size:11px">${ts}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+async function toggleScannerEnabled(id, enabled){
+  const r = await api(`/api/v1/scanner/legs/${encodeURIComponent(id)}/enable`,
+    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled})});
+  toast(r?.success ? `${id} ${enabled?'已啟用':'已停用'}` : '失敗:'+(r?.error||r?.message||'?'),
+        r?.success?'ok':'error');
+  loadScanners();
+}
+async function toggleScannerShadow(id, shadow){
+  if (!shadow) {
+    if (!confirm(`⚠ 切 ${id} 為 REAL 模式?\n注意:B.3b real dispatch 還沒實作、切了也不會真正下單、只 log warning。\n shadow → real 真錢前必須先 4 週 shadow 驗證 + B.3b 補完。`)) return;
+  }
+  const r = await api(`/api/v1/scanner/legs/${encodeURIComponent(id)}/shadow`,
+    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({shadow})});
+  toast(r?.success ? `${id} → ${shadow?'SHADOW':'REAL'}` : '失敗:'+(r?.error||r?.message||'?'),
+        r?.success?'ok':'error');
+  loadScanners();
+}
+
 /* ───────────── init ───────────── */
-loadStatus(); loadAlerts(); loadMe(); detectAdmin(); setInterval(loadStatus,20000);
+loadStatus(); loadAlerts(); loadMe(); detectAdmin(); loadScanners();
+setInterval(loadStatus,20000); setInterval(loadScanners,30000);
 </script>
 </body>
 </html>
