@@ -19,9 +19,11 @@ decimal fundingPer8h = decimal.TryParse(Environment.GetEnvironmentVariable("FUND
 bool fastMode = args.Contains("--fast");
 string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substring(7);
 int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
+bool realFunding = args.Contains("--apply-funding");
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
+if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 funding history(LS engine 雙向計費),非預設 0.01%/8h 假設");
 
 string[] symbols = fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -321,6 +323,19 @@ foreach (var sym in symbols)
 }
 Console.WriteLine($"\n資料就緒:{data.Count}/{symbols.Length} 檔(≥400 日線)");
 
+// 2026-05-27 D 路線:--apply-funding 注入真實 Binance funding history
+// 每個 symbol 抓 + align、bar.FundingRate 填好,LongShortBacktestEngine(applyFunding=true)會用
+if (realFunding)
+{
+    Console.WriteLine("💸 注入真實 funding 歷史(Binance fapi):");
+    foreach (var kv in data)
+    {
+        await ToolsShared.FundingCache.InjectInto(kv.Value, kv.Key, "1d");
+        var nz = kv.Value.Count(b => b.FundingRate.HasValue && b.FundingRate != 0m);
+        Console.WriteLine($"  {kv.Key}: {nz}/{kv.Value.Count} bars 注入");
+    }
+}
+
 var bhRets = new List<decimal>(); var bhShs = new List<decimal>(); var bhDds = new List<decimal>();
 foreach (var kv in data) { var st = StatsOf(kv.Value.Select(b => b.Close).ToList()); bhRets.Add(st.ret); bhShs.Add(st.sharpe); bhDds.Add(st.dd); }
 if (data.Count > 0)
@@ -506,7 +521,7 @@ List<decimal> PoolOosFolds(IStrategy s)
 {
     var r = new List<decimal>();
     foreach (var kv in data)
-        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding);
               foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
         catch { }
     return r;
