@@ -82,3 +82,11 @@ SHARE-PLAN.md
 # decorr-analysis tool build artifacts
 tools/decorr-analysis/bin/
 tools/decorr-analysis/obj/
+
+# VPS auto-generated(/opt/b4a 同 repo、這幾個只在 VPS 跑出來)
+allocate-reports/
+data/
+equity-log.csv
+scripts/strat-validate-bin/
+discord-bots/bot-node/access.json.bak
+discord-bots/bot-node/access.json.bak.*
