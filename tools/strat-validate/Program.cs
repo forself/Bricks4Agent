@@ -23,10 +23,12 @@ bool fastMode = args.Contains("--fast");
 string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substring(7);
 int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
 bool realFunding = args.Contains("--apply-funding");
+bool realRetailLs = args.Contains("--apply-retail-ls");
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
 if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 funding history(LS engine 雙向計費),非預設 0.01%/8h 假設");
+if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
 
 string[] symbols = fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -57,6 +59,11 @@ string[] symbols = fastMode
     ("fundmom_ls_tight",  new FundingMomentumLsStrategy("fundmom_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),  // 更嚴
     ("fundmom_ls_loose",  new FundingMomentumLsStrategy("fundmom_ls_loose",  hotPct: 0.80m, coldPct: 0.20m)),  // 更鬆
     ("fundmom_ls_xtight", new FundingMomentumLsStrategy("fundmom_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),  // 極嚴
+    // 2026-05-28 Q2 第一個通過 IS+OOS 雙確認的真結構性 alpha(pool t=-2.89/-2.25、跨 8 幣方向全一致)
+    // 需 --apply-retail-ls 注入 bar.RetailLongShortRatio 才有意義(否則整段 hold)
+    ("retail_ls_contrarian",        new RetailLsContrarianStrategy()),
+    ("retail_ls_contrarian_tight",  new RetailLsContrarianStrategy("retail_ls_contrarian_tight",  hotPct: 0.90m, coldPct: 0.10m)),  // 更嚴
+    ("retail_ls_contrarian_xtight", new RetailLsContrarianStrategy("retail_ls_contrarian_xtight", hotPct: 0.95m, coldPct: 0.05m)),  // 極嚴
     // 2026-05-27 第二類結構性 alpha 候選:volume momentum + sweep
     ("volmom_ls",          new VolumeMomentumLsStrategy("volmom_ls",          volPct: 0.85m)),
     ("volmom_ls_tight",    new VolumeMomentumLsStrategy("volmom_ls_tight",    volPct: 0.90m)),
@@ -350,6 +357,18 @@ if (realFunding)
         await ToolsShared.FundingCache.InjectInto(kv.Value, kv.Key, "1d");
         var nz = kv.Value.Count(b => b.FundingRate.HasValue && b.FundingRate != 0m);
         Console.WriteLine($"  {kv.Key}: {nz}/{kv.Value.Count} bars 注入");
+    }
+}
+
+// 2026-05-28 Q2 retail_ls_contrarian:注入 RetailLongShortRatio(data.binance.vision daily metrics zip)
+if (realRetailLs)
+{
+    Console.WriteLine("📊 注入 retail_ls 歷史(data.binance.vision metrics):");
+    foreach (var kv in data)
+    {
+        await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, "1d");
+        var nz = kv.Value.Count(b => b.RetailLongShortRatio.HasValue);
+        Console.WriteLine($"  {kv.Key}: {nz}/{kv.Value.Count} bars 注入 retail_ls");
     }
 }
 

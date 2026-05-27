@@ -15,6 +15,7 @@
 //
 // 快取:~/.cache/brick4agent/oi-metrics/{SYMBOL}/{YYYY-MM-DD}.json,單檔不 expire(歷史資料不變)
 
+using StrategyWorker.Engine;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text.Json;
@@ -163,6 +164,52 @@ public static class OiMetricsCache
             ));
         }
         return result;
+    }
+
+    /// <summary>
+    /// 把 OI / Retail L/S 注入到 bars(就地修改 bars[i] 的 OpenInterest + RetailLongShortRatio)。
+    /// 規則:bar 區間 [OpenTime, nextBar.OpenTime) 內所有 5min snapshot 的均值。
+    /// 已有 OI 的不覆寫(由 quote-worker 寫的真實 OI 優先)。
+    /// </summary>
+    public static async Task InjectInto(List<BarData> bars, string symbol, string interval = "1d")
+    {
+        if (bars.Count == 0) return;
+        var startUtc = bars[0].OpenTime.AddDays(-1);
+        var endUtc = bars[^1].OpenTime.AddDays(1);
+        var snaps = await FetchOrLoad(symbol, startUtc, endUtc);
+        if (snaps.Count == 0) return;
+
+        TimeSpan barLen = interval switch
+        {
+            "1m" => TimeSpan.FromMinutes(1), "5m" => TimeSpan.FromMinutes(5), "15m" => TimeSpan.FromMinutes(15),
+            "30m" => TimeSpan.FromMinutes(30), "1h" => TimeSpan.FromHours(1), "4h" => TimeSpan.FromHours(4),
+            "1d" => TimeSpan.FromDays(1), "1w" => TimeSpan.FromDays(7),
+            _ => TimeSpan.FromDays(1),
+        };
+
+        int sIdx = 0;
+        for (int i = 0; i < bars.Count; i++)
+        {
+            var startTs = bars[i].OpenTime;
+            var endTs = (i + 1 < bars.Count) ? bars[i + 1].OpenTime : startTs + barLen;
+
+            while (sIdx < snaps.Count && snaps[sIdx].Ts < startTs) sIdx++;
+            decimal oiSum = 0m, lsSum = 0m;
+            int n = 0;
+            int j = sIdx;
+            while (j < snaps.Count && snaps[j].Ts < endTs)
+            {
+                oiSum += snaps[j].SumOpenInterestValue;
+                lsSum += snaps[j].CountLsRatio;
+                n++;
+                j++;
+            }
+            if (n > 0)
+            {
+                bars[i].OpenInterest ??= oiSum / n;
+                bars[i].RetailLongShortRatio = lsSum / n;
+            }
+        }
     }
 
     /// <summary>
