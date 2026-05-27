@@ -27,12 +27,14 @@ public class OiMomentumLsStrategy : IStrategy
     private readonly string _name;
     private readonly decimal _hotPct;
     private readonly decimal _coldPct;
+    private readonly bool _invertSignal;   // true = OI 暴衝反向(contrarian),false = 跟趨勢(momentum、預設)
 
-    public OiMomentumLsStrategy(string name = "oi_momentum_ls", decimal hotPct = 0.80m, decimal coldPct = 0.20m)
+    public OiMomentumLsStrategy(string name = "oi_momentum_ls", decimal hotPct = 0.80m, decimal coldPct = 0.20m, bool invertSignal = false)
     {
         _name = name;
         _hotPct = hotPct;
         _coldPct = coldPct;
+        _invertSignal = invertSignal;
     }
 
     public string Name => _name;
@@ -80,17 +82,23 @@ public class OiMomentumLsStrategy : IStrategy
         decimal confidence = 0.5m;
         string reason;
 
+        // 對立假設備援:invertSignal=true → contrarian(OI 暴衝後 mean revert),false → momentum 預設
+        string highAction = _invertSignal ? "sell" : "buy";
+        string lowAction = _invertSignal ? "buy" : "sell";
+        string highReasonTag = _invertSignal ? "contrarian SHORT" : "跟趨勢 LONG";
+        string lowReasonTag = _invertSignal ? "contrarian LONG" : "SHORT";
+
         if (pct >= hotPct)
         {
-            action = "buy";
+            action = highAction;
             confidence = Math.Clamp(0.6m + (pct - hotPct), 0.5m, 0.9m);
-            reason = $"OI %change {current:P2} 在近期極高端(百分位 {pct:P0} ≥ {hotPct:P0})= 大量新資金進場 → 跟趨勢 LONG";
+            reason = $"OI %change {current:P2} 在近期極高端(百分位 {pct:P0} ≥ {hotPct:P0})= 大量新資金進場 → {highReasonTag}";
         }
         else if (pct <= coldPct)
         {
-            action = "sell";
+            action = lowAction;
             confidence = Math.Clamp(0.6m + (coldPct - pct), 0.5m, 0.9m);
-            reason = $"OI %change {current:P2} 在近期極低端(百分位 {pct:P0} ≤ {coldPct:P0})= 大量平倉/空頭增 → SHORT";
+            reason = $"OI %change {current:P2} 在近期極低端(百分位 {pct:P0} ≤ {coldPct:P0})= 大量平倉/空頭增 → {lowReasonTag}";
         }
         else
         {

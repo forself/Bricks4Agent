@@ -30,6 +30,7 @@ Console.WriteLine($"Window: {startDate:yyyy-MM-dd} → {endDate:yyyy-MM-dd}" + (
 var poolFund = new List<double>(); var poolOi = new List<double>();
 var poolTls = new List<double>(); var poolRls = new List<double>(); var poolTaker = new List<double>();
 var poolNext = new List<double>();
+var poolFundDelta = new List<double>(); var poolRlsDelta = new List<double>(); var poolOiAbs = new List<double>();
 
 foreach (var sym in symbols)
 {
@@ -86,12 +87,27 @@ foreach (var sym in symbols)
     Console.WriteLine($"    Retail L/S ratio    vs todayRet: {Pearson(rls, todayR):+0.000;-0.000}");
     Console.WriteLine($"    Taker buy/sell vol  vs todayRet: {Pearson(taker, todayR):+0.000;-0.000}");
 
+    // 2026-05-28 翻案探勘 — 加 funding %change(delta、變化率)、L/S change 等衍生指標
+    var fundDelta = new double[rows.Count];
+    var rlsDelta = new double[rows.Count];
+    var oiAbs = new double[rows.Count];  // OI |%change| 絕對值(衝突 = 高波動 regime 信號)
+    for (int k = 1; k < rows.Count; k++)
+    {
+        fundDelta[k] = fund[k] - fund[k - 1];
+        rlsDelta[k] = rls[k] - rls[k - 1];
+        oiAbs[k] = Math.Abs(oi[k]);
+    }
+
     Console.WriteLine($"\n  指標 vs next-day return(>0.05 = 可能有 edge,t-stat 補):");
     PrintEdge("    OI %change         ", oi, nextR);
     PrintEdge("    Top L/S ratio      ", tls, nextR);
     PrintEdge("    Retail L/S ratio   ", rls, nextR);
     PrintEdge("    Taker buy/sell vol ", taker, nextR);
     PrintEdge("    Funding (baseline) ", fund, nextR);
+    Console.WriteLine($"  衍生指標(翻案探勘):");
+    PrintEdge("    Funding Δ (delta)  ", fundDelta, nextR);
+    PrintEdge("    Retail L/S Δ       ", rlsDelta, nextR);
+    PrintEdge("    OI |%change|       ", oiAbs, nextR);
 
     // Quantile-based edge: 看極端值區段 vs 平均的 nextRet 差
     // 為什麼:funding raw Pearson t=-0.76 但 strat-validate quantile threshold t=+5.93,
@@ -107,6 +123,7 @@ foreach (var sym in symbols)
     poolFund.AddRange(fund); poolOi.AddRange(oi);
     poolTls.AddRange(tls); poolRls.AddRange(rls); poolTaker.AddRange(taker);
     poolNext.AddRange(nextR);
+    poolFundDelta.AddRange(fundDelta); poolRlsDelta.AddRange(rlsDelta); poolOiAbs.AddRange(oiAbs);
 }
 
 // 跨幣 pool t-stat — 即使單幣不顯著,8 幣方向一致就有意義
@@ -119,12 +136,19 @@ if (symbols.Length > 1)
     PrintEdge("    Retail L/S ratio   ", poolRls.ToArray(), poolNext.ToArray());
     PrintEdge("    Taker buy/sell vol ", poolTaker.ToArray(), poolNext.ToArray());
     PrintEdge("    Funding (baseline) ", poolFund.ToArray(), poolNext.ToArray());
+    Console.WriteLine($"  衍生指標 pool:");
+    PrintEdge("    Funding Δ          ", poolFundDelta.ToArray(), poolNext.ToArray());
+    PrintEdge("    Retail L/S Δ       ", poolRlsDelta.ToArray(), poolNext.ToArray());
+    PrintEdge("    OI |%change|       ", poolOiAbs.ToArray(), poolNext.ToArray());
     Console.WriteLine($"  Quantile (top/bot 20%):");
     PrintQuantileEdge("    OI %change         ", poolOi.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Top L/S ratio      ", poolTls.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Retail L/S ratio   ", poolRls.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Taker buy/sell vol ", poolTaker.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Funding (baseline) ", poolFund.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Funding Δ          ", poolFundDelta.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Retail L/S Δ       ", poolRlsDelta.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    OI |%change|       ", poolOiAbs.ToArray(), poolNext.ToArray());
 }
 
 Console.WriteLine($"\n=== 結論判讀 ===");

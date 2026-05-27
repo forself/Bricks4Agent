@@ -28,13 +28,15 @@ public class RetailLsContrarianStrategy : IStrategy
     private readonly decimal _hotPct;
     private readonly decimal _coldPct;
     private readonly bool _dailyRebalance;
+    private readonly bool _invertSignal;   // true = 跟單散戶(momentum)、false = 反向(contrarian、預設)
 
-    public RetailLsContrarianStrategy(string name = "retail_ls_contrarian", decimal hotPct = 0.80m, decimal coldPct = 0.20m, bool dailyRebalance = false)
+    public RetailLsContrarianStrategy(string name = "retail_ls_contrarian", decimal hotPct = 0.80m, decimal coldPct = 0.20m, bool dailyRebalance = false, bool invertSignal = false)
     {
         _name = name;
         _hotPct = hotPct;
         _coldPct = coldPct;
         _dailyRebalance = dailyRebalance;
+        _invertSignal = invertSignal;
     }
 
     public string Name => _name;
@@ -73,35 +75,40 @@ public class RetailLsContrarianStrategy : IStrategy
         decimal confidence = 0.5m;
         string reason;
 
+        // 對立假設備援:invertSignal=true → 跟單散戶(momentum),測「也許散戶在極端時是對的」
+        // contrarian 是預設、Q2 oi-validate t=-2.89/-2.25 雙確認的方向
+        string highAction = _invertSignal ? "buy" : "sell";    // 散戶極多 → 跟單 buy / 反向 sell
+        string lowAction  = _invertSignal ? "sell" : "buy";   // 散戶極空 → 跟單 sell / 反向 buy
+        string highReasonTag = _invertSignal ? "跟單 LONG" : "反向 SHORT";
+        string lowReasonTag  = _invertSignal ? "跟單 SHORT" : "反向 LONG";
+
         if (_dailyRebalance)
         {
             // Daily rebalance 模式:每根都 emit buy/sell、position 每天 flip 按 pctile
-            // 為什麼:raw signal pool t=-2.89(1-day edge),但 default 策略持倉幾十天 = 過了 edge window。
-            // daily rebalance 讓 position 每天 reset、剛好捕 nextRet edge。代價:trading cost 高。
             if (pct > 0.5m)
             {
-                action = "sell";
+                action = highAction;
                 confidence = Math.Clamp(0.6m + (pct - 0.5m), 0.6m, 0.9m);
-                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} > 50% → 反向 SHORT(下一根結算)";
+                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} > 50% → {highReasonTag}(下一根結算)";
             }
             else
             {
-                action = "buy";
+                action = lowAction;
                 confidence = Math.Clamp(0.6m + (0.5m - pct), 0.6m, 0.9m);
-                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} ≤ 50% → 反向 LONG(下一根結算)";
+                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} ≤ 50% → {lowReasonTag}(下一根結算)";
             }
         }
         else if (pct >= hotPct)
         {
-            action = "sell";
+            action = highAction;
             confidence = Math.Clamp(0.6m + (pct - hotPct), 0.5m, 0.9m);
-            reason = $"retail L/S {current:F3} 在近期極高端(百分位 {pct:P0} ≥ {hotPct:P0})= 散戶極度擁擠看多 → 反向 SHORT";
+            reason = $"retail L/S {current:F3} 在近期極高端(百分位 {pct:P0} ≥ {hotPct:P0})= 散戶極度擁擠看多 → {highReasonTag}";
         }
         else if (pct <= coldPct)
         {
-            action = "buy";
+            action = lowAction;
             confidence = Math.Clamp(0.6m + (coldPct - pct), 0.5m, 0.9m);
-            reason = $"retail L/S {current:F3} 在近期極低端(百分位 {pct:P0} ≤ {coldPct:P0})= 散戶極度擁擠看空 → 反向 LONG";
+            reason = $"retail L/S {current:F3} 在近期極低端(百分位 {pct:P0} ≤ {coldPct:P0})= 散戶極度擁擠看空 → {lowReasonTag}";
         }
         else
         {

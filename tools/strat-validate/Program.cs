@@ -70,6 +70,13 @@ string[] symbols = fastMode
     ("oi_momentum_ls",        new OiMomentumLsStrategy()),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
+    // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
+    ("oi_contrarian_ls",        new OiMomentumLsStrategy("oi_contrarian_ls",        hotPct: 0.80m, coldPct: 0.20m, invertSignal: true)),
+    ("oi_contrarian_ls_tight",  new OiMomentumLsStrategy("oi_contrarian_ls_tight",  hotPct: 0.90m, coldPct: 0.10m, invertSignal: true)),
+    ("oi_contrarian_ls_xtight", new OiMomentumLsStrategy("oi_contrarian_ls_xtight", hotPct: 0.95m, coldPct: 0.05m, invertSignal: true)),
+    // 2026-05-28 翻案測:retail_ls momentum(跟單散戶);contrarian 已通過 OOS,對立假設證偽更穩
+    ("retail_ls_momentum",        new RetailLsContrarianStrategy("retail_ls_momentum",        hotPct: 0.80m, coldPct: 0.20m, invertSignal: true)),
+    ("retail_ls_momentum_tight",  new RetailLsContrarianStrategy("retail_ls_momentum_tight",  hotPct: 0.90m, coldPct: 0.10m, invertSignal: true)),
     // 2026-05-27 第二類結構性 alpha 候選:volume momentum + sweep
     ("volmom_ls",          new VolumeMomentumLsStrategy("volmom_ls",          volPct: 0.85m)),
     ("volmom_ls_tight",    new VolumeMomentumLsStrategy("volmom_ls_tight",    volPct: 0.90m)),
