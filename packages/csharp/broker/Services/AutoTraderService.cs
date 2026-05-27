@@ -3099,7 +3099,9 @@ public class AutoTraderService : BackgroundService
 
             // Step 1: K 線(scanner.Interval、limit 200 同核心腿 ProcessSymbolAsync)
             var barsPayload = JsonSerializer.Serialize(new { symbol = sym, interval = scanner.Interval, limit = 200 });
-            var barsResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", barsPayload));
+            // 2026-05-27 改用 get_bars_funding:bars 帶 funding_rate 欄、funding_momentum_ls 等策略才能用
+            // 其他策略無 funding 邏輯、額外欄不影響
+            var barsResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars_funding", barsPayload));
             if (!barsResult.Success) continue;
 
             JsonElement barsArr;
