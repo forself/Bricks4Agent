@@ -781,7 +781,13 @@ public class AutoTraderService : BackgroundService
         }
     }
 
-    private void PersistWatch(string key, WatchItem item)
+    // 2026-05-27:加 onlyLastCheck 參數修「sweep 把 SQL UPDATE Active=0 反轉成 1」bug
+    //   - 預設(false)= 完整 upsert,給 AddWatch / Resume / Pause / SetShadow / risk 調量等「明確意圖」呼叫
+    //   - true = sweep 路徑、只更新 LastSignal / LastConfidence / LastCheck / UpdatedAt 三欄
+    //     不再覆寫 Active / Shadow / Mode / Strategy / Quantity 等「狀態」欄
+    //   根因:in-memory _watchList[*].Active 跟 DB 不同步時、sweep 每 cycle 把 in-memory 寫回 DB、
+    //   會把外部直接 SQL UPDATE 的變更(active=0)反轉成 active=1。詳見 [[project_scanner_p0_option_c]] 的 mystery section。
+    private void PersistWatch(string key, WatchItem item, bool onlyLastCheck = false)
     {
         try
         {
@@ -801,6 +807,15 @@ public class AutoTraderService : BackgroundService
                     BudgetPct = item.BudgetPct,
                     CreatedAt = now, UpdatedAt = now,
                 });
+            }
+            else if (onlyLastCheck)
+            {
+                // Sweep 路徑:只動 last-check 欄;Active / Shadow / Strategy 等保留 DB 既有值
+                existing.LastSignal = item.LastSignal;
+                existing.LastConfidence = item.LastConfidence;
+                existing.LastCheck = item.LastCheck;
+                existing.UpdatedAt = now;
+                _db.Update(existing);
             }
             else
             {
@@ -1715,7 +1730,7 @@ public class AutoTraderService : BackgroundService
         item.LastSignal = action;
         item.LastConfidence = confidence;
         item.LastCheck = DateTime.UtcNow;
-        PersistWatch($"{exchange}:{symbol}", item);
+        PersistWatch($"{exchange}:{symbol}", item, onlyLastCheck: true);
 
         // Dev-only override：env 設了就覆蓋訊號 + 跳過 threshold（用於 e2e 測試）
         if (_devForceAction != null)
