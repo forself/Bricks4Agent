@@ -6,7 +6,8 @@
 
 | 報告 | 日期 | 摘要 |
 |---|---|---|
-| **[Portfolio 2000-bar Acid Test](Portfolio-2000bar-AcidTest-2026-05-26.md)** | 2026-05-26 | 2000 bars 酸測。`harm_prz_scan10_widepz` t=5.01、fullRet 1280%。下架 8 支冗員、two-stage shadow 草案 |
+| **[Scanner Universe 交集分析](ScannerUniverse-2026-05-27.md)** | 2026-05-27 | 3 支 scanner 候選(scan10/widepz/tsmom) universe 推薦 + 衝突盤點 + ensemble ❌ 結論 |
+| [Portfolio 2000-bar Acid Test](Portfolio-2000bar-AcidTest-2026-05-26.md) | 2026-05-26 | 2000 bars 酸測。`harm_prz_scan10_widepz` t=5.01、fullRet 1280%。下架 8 支冗員、two-stage shadow 草案 |
 | [Portfolio Optimization Review](PortfolioOptimizationReview-2026-05-26.md) | 2026-05-26 | （早一輪）portfolio.json 5 個部署逐 symbol 評估 + ETH/LTC LS 候選驗證 |
 | [Usable Combos](UsableCombos-2026-05-24.md) | 2026-05-24 | 12 策略單腿績效 + 去相關精選 4 支組合 + 部署細則 |
 
