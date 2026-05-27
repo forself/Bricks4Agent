@@ -100,6 +100,14 @@ if (args.Contains("--validate-paramsweep"))
     return;
 }
 
+// --validate-htf: B 路線 — HTF EMA trend confirmation wrapper A/B
+//   baseline / htf(20,50) / htf(50,200) × scan10, widepz, tsmom × 主場幣
+if (args.Contains("--validate-htf"))
+{
+    await RunValidateHtf();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -710,5 +718,86 @@ async Task RunValidateParamSweep()
         var marker = (g.scan == 10 && g.pz == 0.15m) ? " (baseline)" : "";
         Console.WriteLine($"  {rank,-5}{g.scan,6}{(int)(g.pz*100),6}{g.avgSh,12:F2}{g.avgRet,10:F1}{g.avgDd,10:F1}{marker}");
         rank++;
+    }
+}
+
+async Task RunValidateHtf()
+{
+    Console.WriteLine("=== B 路線 — HTF EMA trend confirmation wrapper A/B ===");
+    Console.WriteLine("假設:加 EMA(20/50) 或 EMA(50/200) trend filter 後、Sharpe ↑ / WR ↑ / DD ↓");
+    Console.WriteLine("代價:trade frequency ↓(可能砍到一半)、看 quality vs quantity 哪個贏\n");
+
+    string[] symbols = { "LTCUSDT", "OPUSDT", "ADAUSDT", "INJUSDT", "APTUSDT", "BTCUSDT" };
+
+    (string label, Func<IStrategy> factory)[] strats =
+    {
+        ("scan10_base",          () => new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10)),
+        ("scan10_htf2050",       () => new HtfConfirmationStrategy(new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10), 20, 50)),
+        ("scan10_htf50200",      () => new HtfConfirmationStrategy(new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10), 50, 200)),
+        ("widepz_base",          () => new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m)),
+        ("widepz_htf2050",       () => new HtfConfirmationStrategy(new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m), 20, 50)),
+        ("widepz_htf50200",      () => new HtfConfirmationStrategy(new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m), 50, 200)),
+        ("tsmom_base",           () => new TsMomentumStrategy()),
+        ("tsmom_htf2050",        () => new HtfConfirmationStrategy(new TsMomentumStrategy(), 20, 50)),
+        ("tsmom_htf50200",       () => new HtfConfirmationStrategy(new TsMomentumStrategy(), 50, 200)),
+    };
+
+    // Pre-fetch bars
+    var bcache = new Dictionary<string, List<BarData>>();
+    foreach (var s in symbols)
+    {
+        bcache[s] = await ToolsShared.KlineCache.FetchOrLoad(s, "1d");
+    }
+
+    var results = new List<(string label, string sym, decimal sharpe, decimal medRet, decimal ddPct, int folds, int posFolds, int totalTrades)>();
+    foreach (var (label, factory) in strats)
+    {
+        foreach (var sym in symbols)
+        {
+            var strat = factory();
+            var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+            var r = LongShortBacktestEngine.RunWalkForward(strat, bcache[sym], cfg, trainBars: 250, testBars: 90, stride: 60);
+            if (r.TotalFolds == 0) continue;
+            int trades = r.Folds.Where(f => f.Test != null).Sum(f => f.Test!.TotalTrades);
+            results.Add((label, sym, r.AvgTestSharpe, r.MedianTestReturnPct, r.WorstTestDdPct, r.TotalFolds, r.PositiveTestFolds, trades));
+        }
+    }
+
+    // 表:跨幣 avg(per label)
+    Console.WriteLine("=== 跨幣 avg(每 label 在 6 幣的平均)===");
+    Console.WriteLine($"  {"label",-20} {"Sharpe",8} {"Ret%",8} {"DD%",8} {"+fold%",8} {"Trades",9} {"Δ Sharpe vs base"}");
+    var baseByFamily = new Dictionary<string, decimal>
+    {
+        ["scan10"] = 0m,
+        ["widepz"] = 0m,
+        ["tsmom"] = 0m,
+    };
+    foreach (var (label, _) in strats)
+    {
+        var subset = results.Where(r => r.label == label).ToList();
+        if (subset.Count == 0) { Console.WriteLine($"  {label,-20} (no data)"); continue; }
+        var avgSh = subset.Average(r => r.sharpe);
+        var avgRet = subset.Average(r => r.medRet);
+        var avgDd = subset.Average(r => r.ddPct);
+        var posFoldPct = (decimal)subset.Sum(r => r.posFolds) / subset.Sum(r => r.folds) * 100m;
+        var avgTrades = subset.Average(r => r.totalTrades);
+        var family = label.Contains("scan10") ? "scan10" : (label.Contains("widepz") ? "widepz" : "tsmom");
+        if (label.EndsWith("_base")) baseByFamily[family] = avgSh;
+        var delta = avgSh - baseByFamily[family];
+        var marker = label.EndsWith("_base") ? "(baseline)" : $"{delta:+0.00;-0.00}";
+        Console.WriteLine($"  {label,-20} {avgSh,8:F2} {avgRet,8:F1} {avgDd,8:F1} {posFoldPct,7:F0}% {avgTrades,9:F0}  {marker}");
+    }
+
+    // 結論判斷
+    Console.WriteLine("\n=== 簡判 ===");
+    foreach (var family in new[] { "scan10", "widepz", "tsmom" })
+    {
+        var baseSh = results.Where(r => r.label == $"{family}_base").Average(r => r.sharpe);
+        var h2050  = results.Where(r => r.label == $"{family}_htf2050").Select(r => (decimal?)r.sharpe).FirstOrDefault() ?? 0m;
+        var h50200 = results.Where(r => r.label == $"{family}_htf50200").Select(r => (decimal?)r.sharpe).FirstOrDefault() ?? 0m;
+        // 用 avg
+        h2050  = results.Where(r => r.label == $"{family}_htf2050").Average(r => r.sharpe);
+        h50200 = results.Where(r => r.label == $"{family}_htf50200").Average(r => r.sharpe);
+        Console.WriteLine($"  {family}: base {baseSh:F2}, htf(20/50) {h2050:F2}{(h2050>baseSh?" ✅":" ❌")}, htf(50/200) {h50200:F2}{(h50200>baseSh?" ✅":" ❌")}");
     }
 }
