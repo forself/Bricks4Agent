@@ -122,6 +122,41 @@
   <tbody id="sc-active-table"><tr><td colspan="8" class="muted">載入中…</td></tr></tbody></table>
 </div>
 
+<h2>📐 Portfolio Sizing 推薦 · Kelly × ERC × Vol-target × DD-aware</h2>
+<div class="panel">
+  <div class="hint" style="margin-bottom:8px">
+    每個 enabled scanner 套用四層 sizing(Kelly safe / ERC weight / vol-target / DD-aware)、給出推薦配重 %。
+    <b style="color:var(--yel)">只 recommend、不自動 apply</b> — 看完手動 SQL <code>UPDATE scanner_legs SET budget_total=?</code> 才生效。
+    <span class="muted">Backtest stats hardcoded 於 PortfolioSizingService.cs(2026-05-27 strat-validate)</span>
+  </div>
+  <div class="row" style="margin-bottom:10px">
+    <div class="fg"><label>權益 USDT(空=自動讀 BingX)</label><input id="ps-equity" type="number" step="1" placeholder="auto" style="width:120px"></div>
+    <div class="fg"><label>目標年化 vol %</label><input id="ps-tvol" type="number" value="60" min="20" max="200" style="width:80px"></div>
+    <div class="fg"><label>單支 max cap %</label><input id="ps-cap" type="number" value="20" min="5" max="50" style="width:80px"></div>
+    <div class="fg"><label>當前 DD %</label><input id="ps-dd" type="number" value="0" min="0" max="50" style="width:80px"></div>
+    <button class="btn-y btn-sm" onclick="loadPortfolioSizing()" id="ps-btn">📊 計算推薦</button>
+    <span id="ps-progress" class="scan-progress"></span>
+  </div>
+  <div id="ps-summary" class="card" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;font-size:12px">
+      <div><div class="muted">權益</div><div id="ps-eq" style="font-size:16px;font-weight:600">—</div></div>
+      <div><div class="muted">BTC 30d vol</div><div id="ps-bv" style="font-size:16px;font-weight:600">—</div></div>
+      <div><div class="muted">vol scalar</div><div id="ps-vs" style="font-size:16px;font-weight:600">—</div></div>
+      <div><div class="muted">DD scalar</div><div id="ps-ds" style="font-size:16px;font-weight:600">—</div></div>
+      <div><div class="muted">總配重 / 現金</div><div id="ps-tot" style="font-size:16px;font-weight:600">—</div></div>
+    </div>
+  </div>
+  <div id="ps-warnings" style="display:none;background:rgba(240,185,11,.08);border:1px solid rgba(240,185,11,.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px"></div>
+  <table id="ps-table" style="display:none">
+    <thead><tr>
+      <th>Scanner</th><th>策略</th><th>當前 budget%</th><th>Kelly safe%</th><th>ERC%</th>
+      <th>推薦 %</th><th>推薦 USDT</th><th>差值</th><th>SQL</th>
+    </tr></thead>
+    <tbody id="ps-tbody"></tbody>
+  </table>
+  <div id="ps-empty" class="muted" style="text-align:center;padding:14px;font-size:12px">尚未計算,按「計算推薦」</div>
+</div>
+
 <h2>價格告警</h2>
 <div class="panel">
   <div class="row">
@@ -766,6 +801,80 @@ async function toggleScannerShadow(id, shadow){
   toast(r?.success ? `${id} → ${shadow?'SHADOW':'REAL'}` : '失敗:'+(r?.error||r?.message||'?'),
         r?.success?'ok':'error');
   loadScanners();
+}
+
+/* ───────────── portfolio sizing ───────────── */
+let PS_LAST_BUDGETS = {};  // scanner_id → current budget% (from scanner legs)
+async function loadPortfolioSizing(){
+  const btn = document.getElementById('ps-btn');
+  const prog = document.getElementById('ps-progress');
+  btn.disabled = true; prog.textContent = '計算中…';
+
+  // 同步抓 scanner legs 的當前 budget 做差值比對
+  try {
+    const legsResp = await api('/api/v1/scanner/legs');
+    const legs = (legsResp.data || legsResp).legs || [];
+    PS_LAST_BUDGETS = {};
+    legs.forEach(l => { PS_LAST_BUDGETS[l.id] = Number(l.budget_total) || 0; });
+  } catch {}
+
+  const params = new URLSearchParams();
+  const eq = document.getElementById('ps-equity').value.trim();
+  if (eq) params.set('equity', eq);
+  params.set('target_vol', document.getElementById('ps-tvol').value || '60');
+  params.set('max_cap', document.getElementById('ps-cap').value || '20');
+  params.set('current_dd', document.getElementById('ps-dd').value || '0');
+
+  const r = await api('/api/v1/portfolio/sizing-recommendation?' + params.toString());
+  btn.disabled = false; prog.textContent = '';
+  if (!r?.success) {
+    toastErr('推薦失敗:' + (r?.error || r?.message || '?'));
+    return;
+  }
+  const d = r.data || {};
+  // summary
+  document.getElementById('ps-summary').style.display = '';
+  document.getElementById('ps-eq').textContent = (d.totalEquity ?? 0).toFixed(2) + ' USDT';
+  document.getElementById('ps-bv').textContent = ((d.btcRealizedVol ?? 0) * 100).toFixed(1) + '%';
+  document.getElementById('ps-vs').textContent = (d.volScalar ?? 1).toFixed(2) + '×';
+  document.getElementById('ps-ds').textContent = (d.ddScalar ?? 1).toFixed(2) + '×';
+  document.getElementById('ps-tot').innerHTML = `${(d.totalFinalPct ?? 0).toFixed(1)}% <span class="muted" style="font-size:12px">/ 現金 ${(d.cashBuffer ?? 0).toFixed(0)}</span>`;
+  // warnings
+  const warns = d.warnings || [];
+  const wEl = document.getElementById('ps-warnings');
+  if (warns.length) {
+    wEl.style.display = '';
+    wEl.innerHTML = warns.map(w => `<div>${esc(w)}</div>`).join('');
+  } else { wEl.style.display = 'none'; }
+  // table
+  const scanners = d.scanners || [];
+  document.getElementById('ps-empty').style.display = scanners.length ? 'none' : '';
+  document.getElementById('ps-table').style.display = scanners.length ? '' : 'none';
+  document.getElementById('ps-tbody').innerHTML = scanners.map(s => {
+    const cur = PS_LAST_BUDGETS[s.scannerId] ?? 0;
+    const diff = (s.finalPct ?? 0) - cur;
+    const diffColor = Math.abs(diff) < 0.5 ? 'muted' : (diff > 0 ? 'grn' : 'red');
+    const diffSign = diff > 0 ? '+' : '';
+    const sql = `UPDATE scanner_legs SET budget_total=${(s.finalPct ?? 0).toFixed(1)} WHERE id='${s.scannerId}';`;
+    return `<tr title="${esc(s.rationale || '')}">
+      <td><b>${esc(s.scannerId)}</b></td>
+      <td class="muted" style="font-size:11px">${esc(s.strategy)}</td>
+      <td>${cur.toFixed(1)}%</td>
+      <td>${(s.kellySafePct ?? 0).toFixed(1)}%</td>
+      <td>${(s.ercWeight ?? 0).toFixed(1)}%</td>
+      <td><b>${(s.finalPct ?? 0).toFixed(1)}%</b></td>
+      <td>${(s.finalUsdt ?? 0).toFixed(2)}</td>
+      <td class="${diffColor}">${diffSign}${diff.toFixed(1)}pp</td>
+      <td><button class="btn-sm" onclick="copyToClipboard(${JSON.stringify(sql).replace(/"/g,'&quot;')})" title="複製 SQL">📋</button></td>
+    </tr>`;
+  }).join('');
+  toastOk(`推薦完成 · 總配重 ${(d.totalFinalPct ?? 0).toFixed(1)}%`);
+}
+function copyToClipboard(text){
+  navigator.clipboard.writeText(text).then(
+    () => toastOk('已複製 SQL'),
+    () => toastErr('複製失敗')
+  );
 }
 
 /* ───────────── emergency stop ───────────── */
