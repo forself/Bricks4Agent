@@ -630,6 +630,60 @@ if (showKelly && sigNames.Count > 0)
 
     Console.WriteLine($"\n  心法:Kelly 給「該配多少」、vol-target 給「現在該縮放多少」、兩個 ×。");
     Console.WriteLine($"        高 vol regime(scalar < 1)= 防御;低 vol regime(scalar > 1)= 機會、適度放大。");
+
+    // Q1.3:Mean-variance portfolio optimization(取代「去相關精選 + 反波動率」啟發式)
+    // 用 strat-validate 已算的 pool fold returns 算 cov matrix、解 min-var 跟 max-Sharpe
+    var sigList = strats.Where(x => sigNames.Contains(x.name))
+                        .OrderByDescending(x => sigT.GetValueOrDefault(x.name, 0))
+                        .Take(8)   // 取 top 8(避免 N 太大 inversion 不穩)
+                        .ToList();
+    if (sigList.Count >= 2)
+    {
+        var returnsPerStrat = new List<List<decimal>>();
+        var expectedReturns = new List<decimal>();
+        var stratNames = new List<string>();
+        foreach (var (name, s) in sigList)
+        {
+            var pool = PoolOosFolds(s);
+            if (pool.Count < 10) continue;
+            returnsPerStrat.Add(pool);
+            expectedReturns.Add(pool.Average());
+            stratNames.Add(name);
+        }
+        if (returnsPerStrat.Count >= 2)
+        {
+            var cov = MinVarianceOptimizer.Covariance(returnsPerStrat);
+            var mvWeights = MinVarianceOptimizer.MinVarianceWeights(cov, maxWeight: 0.35m);
+            var msWeights = MinVarianceOptimizer.MaxSharpeWeights(cov, expectedReturns.ToArray(), maxWeight: 0.35m);
+            var eqWeights = MinVarianceOptimizer.EqualWeights(returnsPerStrat.Count);
+
+            Console.WriteLine($"\n=== Q1.3 Mean-variance portfolio optimization(top {returnsPerStrat.Count} sig 策略、cov from pool folds)===");
+            Console.WriteLine($"  {"strategy",-22} {"E[ret]%",9} {"equal-w",9} {"min-var",9} {"max-Sharpe",11}");
+            for (int i = 0; i < stratNames.Count; i++)
+            {
+                Console.WriteLine($"  {stratNames[i],-22} {expectedReturns[i],8:F1}% {eqWeights[i] * 100m,8:F1}% {mvWeights[i] * 100m,8:F1}% {msWeights[i] * 100m,10:F1}%");
+            }
+
+            // Portfolio metrics 對比
+            var eqRet = MinVarianceOptimizer.PortfolioReturn(eqWeights, expectedReturns.ToArray());
+            var mvRet = MinVarianceOptimizer.PortfolioReturn(mvWeights, expectedReturns.ToArray());
+            var msRet = MinVarianceOptimizer.PortfolioReturn(msWeights, expectedReturns.ToArray());
+            var eqVar = MinVarianceOptimizer.PortfolioVariance(eqWeights, cov);
+            var mvVar = MinVarianceOptimizer.PortfolioVariance(mvWeights, cov);
+            var msVar = MinVarianceOptimizer.PortfolioVariance(msWeights, cov);
+            var eqStd = (decimal)Math.Sqrt((double)eqVar);
+            var mvStd = (decimal)Math.Sqrt((double)mvVar);
+            var msStd = (decimal)Math.Sqrt((double)msVar);
+            Console.WriteLine();
+            Console.WriteLine($"  {"portfolio",-22} {"E[ret]%",9} {"vol%",9} {"Sharpe-like",11}");
+            Console.WriteLine($"  {"equal-weight",-22} {eqRet,8:F1}% {eqStd,8:F1}% {(eqStd > 0 ? eqRet / eqStd : 0m),10:F2}");
+            Console.WriteLine($"  {"min-variance",-22} {mvRet,8:F1}% {mvStd,8:F1}% {(mvStd > 0 ? mvRet / mvStd : 0m),10:F2}  ⭐ robust");
+            Console.WriteLine($"  {"max-Sharpe",-22} {msRet,8:F1}% {msStd,8:F1}% {(msStd > 0 ? msRet / msStd : 0m),10:F2}  ⚠ μ 敏感");
+
+            Console.WriteLine($"\n  心法:min-variance 不需估報酬、更 robust;max-Sharpe 對 μ 雜訊極敏感(實務常給極端配重)。");
+            Console.WriteLine($"        實作配重建議用 min-variance + max-cap 35% / 支、避免單腿過大。");
+        }
+    }
 }
 
 // (6) 顯著策略的最佳組合(只用統計顯著那群、去相關 |ρ|<0.4、反波動率配重)
