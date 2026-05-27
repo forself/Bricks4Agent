@@ -2994,10 +2994,88 @@ public class AutoTraderService : BackgroundService
             scanner.Id, scanner.Strategy, scanner.Interval, universe.Count,
             coreOccupied.Count + alreadyOpen.Count, candidates.Count, slots, scanner.Shadow);
 
-        // Phase B.1 骨架:還沒 fetch signal、還沒 dispatch。
-        // 下一個 commit(B.2):對 candidates 個別 fetch bars + signal、收 (sym, signal, conf)、
-        // sort by confidence desc、取前 slots 個 → DispatchScannerLegAsync(scanner, pick)。
-        // Shadow 模式:DispatchScannerLegAsync 同樣 honor scanner.Shadow flag、log "[SHADOW] would open"。
+        if (candidates.Count == 0 || slots <= 0) return;
+
+        if (!_registry.HasAvailableWorker("quote.ohlcv") || !_registry.HasAvailableWorker("strategy.signal"))
+        {
+            _logger.LogDebug("Scanner {ScannerId} skipped — quote/strategy worker unavailable", scanner.Id);
+            return;
+        }
+
+        // B.2:對每個 candidate fetch bars + signal、收集非 hold 且通過 confidence threshold 的進 picks。
+        // scanner 用自己的 interval(1d / 1w),不跟核心腿固定 1d 綁定。
+        var ranked = new List<(string Symbol, string Action, decimal Confidence, string Reason, long SignalBarTs)>();
+        foreach (var sym in candidates)
+        {
+            if (ct.IsCancellationRequested) return;
+
+            // Step 1: K 線(scanner.Interval、limit 200 同核心腿 ProcessSymbolAsync)
+            var barsPayload = JsonSerializer.Serialize(new { symbol = sym, interval = scanner.Interval, limit = 200 });
+            var barsResult = await _dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars", barsPayload));
+            if (!barsResult.Success) continue;
+
+            JsonElement barsArr;
+            long latestBarTs = 0;
+            try
+            {
+                var barsDoc = JsonDocument.Parse(barsResult.ResultPayload ?? "{}");
+                if (!barsDoc.RootElement.TryGetProperty("bars", out barsArr) || barsArr.GetArrayLength() < 30) continue;
+                // 最後一根 K 線時間戳當 signal_bar_ts、給冪等鎖用
+                var lastBar = barsArr[barsArr.GetArrayLength() - 1];
+                if (lastBar.TryGetProperty("open_time", out var ot)) latestBarTs = ot.GetInt64();
+            }
+            catch (JsonException) { continue; }
+
+            // Step 2: 策略訊號
+            var signalPayloadDict = new Dictionary<string, object?>
+            {
+                ["strategy"] = scanner.Strategy,
+                ["symbol"]   = sym,
+                ["exchange"] = "binance",   // scanner 預設 binance、未來 ScannerLegEntry 可加 exchange 欄位
+                ["interval"] = scanner.Interval,
+                ["bars"]     = barsArr,
+            };
+            var signalResult = await _dispatcher.DispatchAsync(
+                BuildRequest("strategy.signal", "evaluate", JsonSerializer.Serialize(signalPayloadDict)));
+            if (!signalResult.Success) continue;
+
+            string action; decimal confidence; string reason;
+            try
+            {
+                var sig = JsonDocument.Parse(signalResult.ResultPayload ?? "{}").RootElement;
+                action     = sig.TryGetProperty("action",     out var aEl) ? aEl.GetString() ?? "hold" : "hold";
+                confidence = sig.TryGetProperty("confidence", out var cEl) ? cEl.GetDecimal() : 0m;
+                reason     = sig.TryGetProperty("reason",     out var rEl) ? rEl.GetString() ?? "" : "";
+            }
+            catch (JsonException) { continue; }
+
+            // 排除 hold + 低信心(走 _minConfidence、跟核心腿一致)
+            if (action == "hold" || confidence < _minConfidence) continue;
+
+            ranked.Add((sym, action, confidence, reason, latestBarTs));
+        }
+
+        if (ranked.Count == 0)
+        {
+            _logger.LogDebug("Scanner {ScannerId} no actionable signals (universe scanned, all hold/low-conf)", scanner.Id);
+            return;
+        }
+
+        // 按 confidence 降序、取前 slots 個。confidence 同分時 symbol 字母序穩定。
+        var picks = ranked
+            .OrderByDescending(r => r.Confidence)
+            .ThenBy(r => r.Symbol, StringComparer.Ordinal)
+            .Take(slots)
+            .ToList();
+
+        var pickSummary = string.Join(", ", picks.Select(p => $"{p.Symbol}@{p.Action}/{p.Confidence:0.00}"));
+        _logger.LogInformation("Scanner {ScannerId} picks ({N}/{Slots}): {Picks}",
+            scanner.Id, picks.Count, slots, pickSummary);
+
+        // Phase B.3(下一個 commit)會把 picks 經過 DispatchScannerLegAsync 真正開倉:
+        //   - shadow=true → 只 log "[SHADOW] would open scanner leg ..."
+        //   - shadow=false → 走核心腿同款 PlaceSpotOrderAsync / PlacePerpOrderForSignalAsync
+        //                  + insert scanner_active_legs(signal_bar_ts 當冪等鎖)
         await Task.CompletedTask;
     }
 }
