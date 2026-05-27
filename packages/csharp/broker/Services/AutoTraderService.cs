@@ -1110,6 +1110,12 @@ public class AutoTraderService : BackgroundService
                     AddLog(item, "error", $"Exception: {ex.Message}");
                 }
             }
+
+            // Step 1c: Portfolio Scanner Hybrid pass(2026-05-27 Phase 1 Step B)。
+            // 核心腿掃完後、再跑 scanner legs:策略 + 候選幣池、AutoTrader 挑訊號最強的開倉。
+            // 預設所有 scanner 都 shadow=true、4 週紙交易達標才升 live。
+            try { await SweepScannerLegsAsync(ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "AutoTrader scanner sweep failed"); }
         }
     }
 
@@ -2885,6 +2891,115 @@ public class AutoTraderService : BackgroundService
 
     private static string TruncateReason(string reason)
         => reason.Length > 120 ? reason[..120] + "…" : reason;
+
+    // ── Portfolio Scanner Hybrid sweep(2026-05-27 Phase 1 Step B 骨架)──────────────────────────
+    //
+    // 跟 watch foreach 互補:watches 是固定 (策略, 幣) 契約、scanner 是「策略 + 候選幣池」、
+    // 每 cycle 在 universe 內挑訊號最強的 N 個開倉(`scanner_active_legs` 記錄已開部位)。
+    //
+    // 骨架階段(B.1)只 log:
+    //   - 載入 scanner_legs WHERE enabled=1
+    //   - 對每個 scanner、跳過已達 max_concurrent 的、log "scanning universe of N symbols"
+    //   - 還沒 fetch signal 也沒 dispatch — 留給 B.2 / B.3
+    //
+    // 設計來源:docs/designs/portfolio-scanner-hybrid.md
+    private async Task SweepScannerLegsAsync(CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return;
+
+        List<ScannerLegEntry> scanners;
+        try
+        {
+            // BaseOrm Query<T> 用 SQL string、跨 thread 安全(BrokerDb 內部加鎖)
+            scanners = _db.Query<ScannerLegEntry>(
+                "SELECT * FROM scanner_legs WHERE enabled = 1 ORDER BY id");
+        }
+        catch (Exception ex)
+        {
+            // 第一次部署、scanner_legs 表還沒建好 / Migration 未跑完 → 靜默退化、不擋核心腿
+            _logger.LogDebug(ex, "SweepScannerLegsAsync: scanner_legs query failed (likely uninitialized)");
+            return;
+        }
+
+        if (scanners.Count == 0) return;
+
+        foreach (var scanner in scanners)
+        {
+            if (ct.IsCancellationRequested) return;
+            try
+            {
+                await ProcessScannerAsync(scanner, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AutoTrader scanner {ScannerId} error", scanner.Id);
+            }
+        }
+    }
+
+    private async Task ProcessScannerAsync(ScannerLegEntry scanner, CancellationToken ct)
+    {
+        // 載入該 scanner 已開 active legs(避免同 scanner 重複開同幣、檢查 max_concurrent)
+        List<ScannerActiveLegEntry> activeLegs;
+        try
+        {
+            activeLegs = _db.Query<ScannerActiveLegEntry>(
+                "SELECT * FROM scanner_active_legs WHERE scanner_id = @ScannerId",
+                new { ScannerId = scanner.Id });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Scanner {ScannerId} active legs query failed", scanner.Id);
+            return;
+        }
+
+        if (activeLegs.Count >= scanner.MaxConcurrent)
+        {
+            _logger.LogDebug("Scanner {ScannerId} at capacity ({Active}/{Max}), skipping",
+                scanner.Id, activeLegs.Count, scanner.MaxConcurrent);
+            return;
+        }
+
+        // 解析 universe JSON array(由 Phase 3 UI / portfolio.json seed 填入)
+        List<string> universe;
+        try
+        {
+            universe = JsonSerializer.Deserialize<List<string>>(scanner.Universe) ?? new();
+        }
+        catch (JsonException)
+        {
+            _logger.LogWarning("Scanner {ScannerId} has invalid universe JSON: {Universe}",
+                scanner.Id, scanner.Universe);
+            return;
+        }
+
+        if (universe.Count == 0) return;
+
+        // 排除規則:
+        //   1. 已被核心腿(watchlist)占用的 symbol — scanner 是機會主義、不撞核心契約腿
+        //   2. 已被本 scanner 開的 symbol(active legs)
+        var coreOccupied = _watchList.Values
+            .Where(w => w.Active)
+            .Select(w => w.Symbol)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var alreadyOpen = activeLegs.Select(a => a.Symbol).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = universe
+            .Where(sym => !coreOccupied.Contains(sym) && !alreadyOpen.Contains(sym))
+            .ToList();
+
+        var slots = scanner.MaxConcurrent - activeLegs.Count;
+        _logger.LogInformation(
+            "Scanner {ScannerId} strategy={Strategy} interval={Interval} universe={U} occupied={Occ} candidates={C} slots={Slots} shadow={Shadow}",
+            scanner.Id, scanner.Strategy, scanner.Interval, universe.Count,
+            coreOccupied.Count + alreadyOpen.Count, candidates.Count, slots, scanner.Shadow);
+
+        // Phase B.1 骨架:還沒 fetch signal、還沒 dispatch。
+        // 下一個 commit(B.2):對 candidates 個別 fetch bars + signal、收 (sym, signal, conf)、
+        // sort by confidence desc、取前 slots 個 → DispatchScannerLegAsync(scanner, pick)。
+        // Shadow 模式:DispatchScannerLegAsync 同樣 honor scanner.Shadow flag、log "[SHADOW] would open"。
+        await Task.CompletedTask;
+    }
 }
 
 // ── Models ──────────────────────────────────────────────────────────
