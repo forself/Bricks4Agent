@@ -67,6 +67,10 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     initDb.EnsureTable<PrincipalSession>();
     // 用戶交易所 API 憑證（Phase A2.5a 2026-05-10）— at-rest AES-GCM 加密、AAD 綁 entry_id
     initDb.EnsureTable<ExchangeCredential>();
+    // Portfolio Scanner Hybrid (2026-05-27 Phase 1) — scanner 定義 + 已開 active legs
+    // 核心腿是固定 (策略, 幣);scanner 是「策略 + 候選幣池」、AutoTrader 每 cycle 挑訊號最強的開
+    initDb.EnsureTable<ScannerLegEntry>();
+    initDb.EnsureTable<ScannerActiveLegEntry>();
     // 對既有 DB 補欄位（mode / leverage 是 Phase 3 加的、舊表沒有）
     Broker.Services.AutoTraderDbMigrations.Apply(initDb, startupLoggerFactory.CreateLogger("AutoTraderDbMigrations"));
     // Alert system（#2 2026-05-07）—— 規則 + 事件
