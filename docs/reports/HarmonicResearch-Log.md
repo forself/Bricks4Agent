@@ -1039,3 +1039,70 @@ A 路線參數已到極點。試 HTF(higher timeframe)EMA cross 當 trend filter
 
 → 加進 [[feedback_walkforward_vs_pool_tstat]] 的紀律延伸:任何包裝/過濾器、必須 A/B
   針對策略類型(reversal / trend / breakout)、不要無腦套全部。
+
+---
+
+## 2026-05-27 C 路線 BTC regime filter — 1/3 成功(經典 selection bias 教訓)
+
+### Step 1:描述性分析(cross-asset)發現 regime sensitivity
+
+新 mode `--validate-cross-asset`:每 walk-forward fold 用 BTC EMA(20)/(50) cross 分類 regime(up/sideways/down)、聚合策略表現:
+
+| 策略 | best regime | best Sharpe | worst Sharpe | spread |
+|---|---|---:|---:|---:|
+| scan10 | BTC up | 1.31 | 0.51(down) | 0.80 |
+| widepz | BTC sideways | **1.96** | 1.06(down) | 0.90 |
+| tsmom | BTC sideways | 1.01 | 0.31(up) | 0.70 |
+
+**看起來**:都有 regime 敏感、widepz × sideways 達 Sharpe 1.96(比 baseline 1.22 高 60%)、能 filter 應該大賺。
+
+### Step 2:處方性實作(filter wrapper)只 1/3 成功
+
+實作 [BtcRegimeFilterStrategy](../../packages/csharp/workers/strategy-worker/Engine/BtcRegimeFilterStrategy.cs)、設定 allowedRegimes、跑 A/B:
+
+| label | Sharpe | Trades | Δ vs base |
+|---|---:|---:|---|
+| scan10_base | 0.98 | 37 | (baseline) |
+| scan10_btcUp | 0.47 | 19 | **−0.51** ❌ |
+| widepz_base | 1.52 | 50 | (baseline) |
+| widepz_btcSide | **0.53** | **19** | **−0.99** ❌❌ |
+| widepz_btcUpOrSide | 1.19 | 41 | −0.33 ❌ |
+| tsmom_base | 0.66 | 22 | (baseline) |
+| tsmom_btcSide | 0.79 | 16 | **+0.13** ✅ |
+| tsmom_btcNotUp | **0.82** | 16 | **+0.16** ✅ |
+
+只 **tsmom 真實 benefit**。harm_prz 全爆。
+
+### Meta — 為什麼描述性 ≠ 處方性
+
+**selection / path bias**:
+- 描述性聚合:`avg(Sharpe of folds | regime=X)` — 描述歷史
+- 處方性 filter:「未來只在 regime=X 開倉」— 預測動作
+- 兩者不等價,因為:
+  1. **Trade count 大幅減少**(50→19、19/50=38%)→ 樣本變異主導、edge 被噪訊吃掉
+  2. **Regime 分類在 fold 開始 vs 在 trade 當下**:fold 級 regime 標籤是粗粒度、但 trade 當下 regime 可能已切換
+  3. **Path dependence**:多 regime 訓練給策略「混合 stability」、強制單 regime = 失去多樣性
+
+**為什麼 tsmom 成功?**:
+- tsmom 的 BTC up 樣本 Sharpe 真的差(0.31)— 不是 sample 變異、是策略本質不適合 trending market
+  (tsmom 順 trend、進場晚、被 SL 殺)
+- 過濾掉 trending = 移除真實負 edge、剩下的真好
+
+→ Filter 有用的條件:**worst regime 本身 Sharpe << 0、不是只是「相對較差」**
+
+### Actionable
+
+- ✅ 可上 shadow:`tsmom_btcNotUp_scanner`(策略 tsmom + filter 只在 BTC sideways/down 開)
+  - Sharpe 0.66 → 0.82(+0.16)是真實
+  - 替代既有 `tsmom_1d_scanner` 或並列 A/B
+- ❌ 不上:harm_prz × 任何 regime filter(統統爆掉)
+- 路線啟示:**regime filter 只對「在 worst regime 真實 Sharpe<0.5 的策略」有效**
+
+### Meta-learning(累積)
+
+**「描述性 per-regime stats」≠「處方性 filter 增益」** — 同 [[feedback_walkforward_vs_pool_tstat]]:
+- 觀察到某條件下表現好 ≠ 強制只在該條件下交易就會復現好結果
+- 跟 bb_revert × ETH Sharpe 2.00 是同類陷阱、只是這次在 regime 維度
+
+→ 紀律延伸:任何「過濾/篩選」想法必須先實作 wrapper、跑 A/B、再決定上 shadow。
+  不能直接從聚合表上看「X 在 Y 條件下強」就部署。

@@ -108,6 +108,22 @@ if (args.Contains("--validate-htf"))
     return;
 }
 
+// --validate-cross-asset: C 路線 — BTC 當 macro regime reference、
+//   看 scan10 / widepz / tsmom 在 BTC trend up/sideways/down 不同 regime 下表現是否不同
+if (args.Contains("--validate-cross-asset"))
+{
+    await RunValidateCrossAsset();
+    return;
+}
+
+// --validate-regime-filter: C 路線實作 — BtcRegimeFilterStrategy A/B
+//   widepz_sideways / scan10_up / tsmom_sideways vs baseline,確認真套用後 Sharpe 提升
+if (args.Contains("--validate-regime-filter"))
+{
+    await RunValidateRegimeFilter();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -799,5 +815,204 @@ async Task RunValidateHtf()
         h2050  = results.Where(r => r.label == $"{family}_htf2050").Average(r => r.sharpe);
         h50200 = results.Where(r => r.label == $"{family}_htf50200").Average(r => r.sharpe);
         Console.WriteLine($"  {family}: base {baseSh:F2}, htf(20/50) {h2050:F2}{(h2050>baseSh?" ✅":" ❌")}, htf(50/200) {h50200:F2}{(h50200>baseSh?" ✅":" ❌")}");
+    }
+}
+
+async Task RunValidateCrossAsset()
+{
+    Console.WriteLine("=== C 路線 — BTC macro regime 分析(scan10 / widepz / tsmom)===");
+    Console.WriteLine("假設:策略在 BTC trend up / down / sideways 不同 regime 下表現差異顯著、可當 filter。");
+    Console.WriteLine("方法:每 walk-forward fold 的 TestStart 找 BTC EMA(20)/EMA(50) cross,分類 regime。\n");
+
+    var btcBars = await ToolsShared.KlineCache.FetchOrLoad("BTCUSDT", "1d");
+    Console.WriteLine($"BTC bars: {btcBars.Count} ({btcBars[0].OpenTime:yyyy-MM-dd} → {btcBars[^1].OpenTime:yyyy-MM-dd})\n");
+
+    // 預計算每根 BTC bar 的 EMA(20) / EMA(50)
+    var ema20 = ComputeEmaSeries(btcBars, 20);
+    var ema50 = ComputeEmaSeries(btcBars, 50);
+
+    // 給定日期、找 BTC regime("up" / "down" / "sideways")
+    string BtcRegimeAt(DateTime ts)
+    {
+        // 找該日對應的 BTC bar(最後一根 OpenTime <= ts)
+        int idx = -1;
+        for (int i = btcBars.Count - 1; i >= 0; i--)
+            if (btcBars[i].OpenTime <= ts) { idx = i; break; }
+        if (idx < 50) return "warmup";
+        var f = ema20[idx];
+        var s = ema50[idx];
+        var gapPct = (f - s) / s;
+        if (gapPct > 0.02m) return "up";       // EMA20 > EMA50 by > 2% = clear uptrend
+        if (gapPct < -0.02m) return "down";    // EMA20 < EMA50 by > 2% = clear downtrend
+        return "sideways";                      // 中間 = 整理 / regime 切換中
+    }
+
+    string[] symbols = { "LTCUSDT", "OPUSDT", "ADAUSDT", "INJUSDT", "APTUSDT" };
+    (string label, Func<IStrategy> factory)[] strats =
+    {
+        ("scan10",  () => new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10)),
+        ("widepz",  () => new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m)),
+        ("tsmom",   () => new TsMomentumStrategy()),
+    };
+
+    // 結果 bucket:(label, regime) → list of (returnPct, sharpe)
+    var buckets = new Dictionary<(string label, string regime), List<(decimal ret, decimal sh)>>();
+
+    foreach (var sym in symbols)
+    {
+        var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d");
+        var cfg = new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" };
+        foreach (var (label, factory) in strats)
+        {
+            var r = LongShortBacktestEngine.RunWalkForward(factory(), bars, cfg, trainBars: 250, testBars: 90, stride: 60);
+            foreach (var f in r.Folds.Where(f => f.Test != null))
+            {
+                var regime = BtcRegimeAt(f.TestStart);
+                if (regime == "warmup") continue;
+                var key = (label, regime);
+                if (!buckets.ContainsKey(key)) buckets[key] = new();
+                buckets[key].Add((f.Test!.TotalReturnPct, f.Test!.SharpeRatio));
+            }
+        }
+    }
+
+    // 表:per (strategy, regime) 統計
+    Console.WriteLine("=== Per-regime 表現(跨 5 主場幣 × 多 fold)===");
+    Console.WriteLine($"  {"strategy",-10} {"regime",-10} {"n folds",8} {"avg Ret%",10} {"avg Sharpe",12} {"+folds%",9}");
+    foreach (var label in new[] { "scan10", "widepz", "tsmom" })
+    {
+        foreach (var regime in new[] { "up", "sideways", "down" })
+        {
+            var key = (label, regime);
+            if (!buckets.ContainsKey(key) || buckets[key].Count == 0)
+            {
+                Console.WriteLine($"  {label,-10} {regime,-10} {0,8} {"-",10} {"-",12} {"-",9}");
+                continue;
+            }
+            var data = buckets[key];
+            var avgRet = data.Average(x => x.ret);
+            var avgSh = data.Average(x => x.sh);
+            var posPct = (decimal)data.Count(x => x.ret > 0) / data.Count * 100m;
+            Console.WriteLine($"  {label,-10} {regime,-10} {data.Count,8} {avgRet,10:F1} {avgSh,12:F2} {posPct,8:F0}%");
+        }
+        Console.WriteLine();
+    }
+
+    // 簡判
+    Console.WriteLine("=== 簡判(哪個 regime 是該策略最強場景)===");
+    foreach (var label in new[] { "scan10", "widepz", "tsmom" })
+    {
+        var perRegime = new Dictionary<string, decimal>();
+        foreach (var regime in new[] { "up", "sideways", "down" })
+        {
+            var key = (label, regime);
+            if (buckets.ContainsKey(key) && buckets[key].Count >= 3)
+                perRegime[regime] = buckets[key].Average(x => x.sh);
+        }
+        if (perRegime.Count == 0) { Console.WriteLine($"  {label}: 樣本不足"); continue; }
+        var best = perRegime.OrderByDescending(kv => kv.Value).First();
+        var worst = perRegime.OrderBy(kv => kv.Value).First();
+        var spread = best.Value - worst.Value;
+        var meaningful = spread > 0.3m ? "✅ regime filter 有用" : (spread > 0.1m ? "⚠ 微小差異" : "❌ regime 無區辨力");
+        Console.Write($"  {label}: best={best.Key}({best.Value:F2})、worst={worst.Key}({worst.Value:F2})、spread={spread:F2}  {meaningful}");
+        Console.WriteLine();
+    }
+}
+
+static decimal[] ComputeEmaSeries(List<BarData> bars, int period)
+{
+    var result = new decimal[bars.Count];
+    if (bars.Count < period) return result;
+    decimal k = 2m / (period + 1m);
+    decimal ema = 0m;
+    for (int i = 0; i < period; i++) { ema += bars[i].Close; result[i] = 0; }
+    ema /= period;
+    result[period - 1] = ema;
+    for (int i = period; i < bars.Count; i++)
+    {
+        ema = bars[i].Close * k + ema * (1m - k);
+        result[i] = ema;
+    }
+    return result;
+}
+
+async Task RunValidateRegimeFilter()
+{
+    Console.WriteLine("=== C 路線實作 — BtcRegimeFilter A/B ===");
+    Console.WriteLine("驗證:--validate-cross-asset 觀察的 per-regime Sharpe spread、套用真 filter 後能否復現");
+    Console.WriteLine("配置(從 cross-asset 分析挑 best regime):");
+    Console.WriteLine("  scan10 → only BTC up");
+    Console.WriteLine("  widepz → only BTC sideways");
+    Console.WriteLine("  tsmom  → only BTC sideways\n");
+
+    var btcBars = await ToolsShared.KlineCache.FetchOrLoad("BTCUSDT", "1d");
+    BtcRegimeFilterStrategy.BtcBarsRef = btcBars;
+    Console.WriteLine($"BTC bars loaded: {btcBars.Count}\n");
+
+    string[] symbols = { "LTCUSDT", "OPUSDT", "ADAUSDT", "INJUSDT", "APTUSDT" };
+
+    (string label, Func<IStrategy> factory)[] strats =
+    {
+        ("scan10_base",            () => new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10)),
+        ("scan10_btcUp",           () => new BtcRegimeFilterStrategy(new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10), new[] { "up" })),
+        ("scan10_btcUpOrSide",     () => new BtcRegimeFilterStrategy(new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10), new[] { "up", "sideways" })),
+        ("widepz_base",            () => new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m)),
+        ("widepz_btcSide",         () => new BtcRegimeFilterStrategy(new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m), new[] { "sideways" })),
+        ("widepz_btcUpOrSide",     () => new BtcRegimeFilterStrategy(new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m), new[] { "up", "sideways" })),
+        ("tsmom_base",             () => new TsMomentumStrategy()),
+        ("tsmom_btcSide",          () => new BtcRegimeFilterStrategy(new TsMomentumStrategy(), new[] { "sideways" })),
+        ("tsmom_btcNotUp",         () => new BtcRegimeFilterStrategy(new TsMomentumStrategy(), new[] { "sideways", "down" })),
+    };
+
+    var bcache = new Dictionary<string, List<BarData>>();
+    foreach (var s in symbols) bcache[s] = await ToolsShared.KlineCache.FetchOrLoad(s, "1d");
+
+    var results = new Dictionary<string, List<(decimal sh, decimal ret, decimal dd, int trades, int folds, int posFolds)>>();
+    foreach (var (label, factory) in strats)
+    {
+        results[label] = new();
+        foreach (var sym in symbols)
+        {
+            var r = LongShortBacktestEngine.RunWalkForward(factory(), bcache[sym],
+                new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" },
+                trainBars: 250, testBars: 90, stride: 60);
+            if (r.TotalFolds == 0) continue;
+            int trades = r.Folds.Where(f => f.Test != null).Sum(f => f.Test!.TotalTrades);
+            results[label].Add((r.AvgTestSharpe, r.MedianTestReturnPct, r.WorstTestDdPct, trades, r.TotalFolds, r.PositiveTestFolds));
+        }
+    }
+
+    Console.WriteLine("=== 跨幣 avg(每 label 在 5 幣的平均)===");
+    Console.WriteLine($"  {"label",-25} {"Sharpe",8} {"Ret%",8} {"DD%",8} {"+fold%",8} {"Trades",9} {"Δ vs base"}");
+    var baseSh = new Dictionary<string, decimal>();
+    foreach (var (label, _) in strats)
+    {
+        var subset = results[label];
+        if (subset.Count == 0) { Console.WriteLine($"  {label,-25} (no data)"); continue; }
+        var avgSh = subset.Average(x => x.sh);
+        var avgRet = subset.Average(x => x.ret);
+        var avgDd = subset.Average(x => x.dd);
+        var totalFolds = subset.Sum(x => x.folds);
+        var posPct = totalFolds > 0 ? (decimal)subset.Sum(x => x.posFolds) / totalFolds * 100m : 0m;
+        var avgTrades = subset.Average(x => x.trades);
+        var family = label.StartsWith("scan10") ? "scan10" : (label.StartsWith("widepz") ? "widepz" : "tsmom");
+        if (label.EndsWith("_base")) baseSh[family] = avgSh;
+        var delta = avgSh - baseSh[family];
+        var marker = label.EndsWith("_base") ? "(baseline)" : $"{delta:+0.00;-0.00}";
+        Console.WriteLine($"  {label,-25} {avgSh,8:F2} {avgRet,8:F1} {avgDd,8:F1} {posPct,7:F0}% {avgTrades,9:F0}  {marker}");
+    }
+
+    Console.WriteLine("\n=== 簡判 ===");
+    foreach (var family in new[] { "scan10", "widepz", "tsmom" })
+    {
+        var baseVal = results[$"{family}_base"].Average(x => x.sh);
+        Console.Write($"  {family}: ");
+        foreach (var (label, _) in strats.Where(s => s.label.StartsWith(family) && s.label != $"{family}_base"))
+        {
+            var sh = results[label].Average(x => x.sh);
+            var verdict = sh > baseVal + 0.1m ? "✅" : (sh > baseVal ? "≈" : "❌");
+            Console.Write($"{label.Replace($"{family}_", "")}={sh:F2}{verdict} ");
+        }
+        Console.WriteLine($"| base={baseVal:F2}");
     }
 }
