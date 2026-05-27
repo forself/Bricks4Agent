@@ -2975,11 +2975,13 @@ public class AutoTraderService : BackgroundService
 
         if (universe.Count == 0) return;
 
-        // 排除規則:
-        //   1. 已被核心腿(watchlist)占用的 symbol — scanner 是機會主義、不撞核心契約腿
+        // 排除規則(2026-05-27 P0' fix:Option C):
+        //   1. 已被「真錢核心腿」占用的 symbol — scanner 是機會主義、不撞真錢腿
+        //      只避 budget_pct > 0 的腿(真錢配重);active=1 但 budget=0 的實驗 watch 不擋
+        //      (避免實驗 watch 把整個 alt-coin 池子鎖死、scanner 永遠 candidates=0)
         //   2. 已被本 scanner 開的 symbol(active legs)
         var coreOccupied = _watchList.Values
-            .Where(w => w.Active)
+            .Where(w => w.Active && w.BudgetPct > 0m)
             .Select(w => w.Symbol)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var alreadyOpen = activeLegs.Select(a => a.Symbol).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -3020,11 +3022,24 @@ public class AutoTraderService : BackgroundService
             {
                 var barsDoc = JsonDocument.Parse(barsResult.ResultPayload ?? "{}");
                 if (!barsDoc.RootElement.TryGetProperty("bars", out barsArr) || barsArr.GetArrayLength() < 30) continue;
-                // 最後一根 K 線時間戳當 signal_bar_ts、給冪等鎖用
+                // 最後一根 K 線時間戳當 signal_bar_ts、給冪等鎖用。
+                // quote.ohlcv 不同 exchange / interval 回傳的 open_time 可能是 Number(ms epoch)或 String(ISO/數字字串),都接受。
                 var lastBar = barsArr[barsArr.GetArrayLength() - 1];
-                if (lastBar.TryGetProperty("open_time", out var ot)) latestBarTs = ot.GetInt64();
+                if (lastBar.TryGetProperty("open_time", out var ot))
+                {
+                    if (ot.ValueKind == JsonValueKind.Number) latestBarTs = ot.GetInt64();
+                    else if (ot.ValueKind == JsonValueKind.String)
+                    {
+                        var s = ot.GetString() ?? "";
+                        if (long.TryParse(s, out var asMs)) latestBarTs = asMs;
+                        else if (DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var asDt))
+                            latestBarTs = new DateTimeOffset(asDt, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                    }
+                }
             }
             catch (JsonException) { continue; }
+            catch (InvalidOperationException) { continue; }
+            catch (FormatException) { continue; }
 
             // Step 2: 策略訊號
             var signalPayloadDict = new Dictionary<string, object?>
