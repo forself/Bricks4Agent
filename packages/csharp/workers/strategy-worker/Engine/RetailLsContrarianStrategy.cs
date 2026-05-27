@@ -27,12 +27,14 @@ public class RetailLsContrarianStrategy : IStrategy
     private readonly string _name;
     private readonly decimal _hotPct;
     private readonly decimal _coldPct;
+    private readonly bool _dailyRebalance;
 
-    public RetailLsContrarianStrategy(string name = "retail_ls_contrarian", decimal hotPct = 0.80m, decimal coldPct = 0.20m)
+    public RetailLsContrarianStrategy(string name = "retail_ls_contrarian", decimal hotPct = 0.80m, decimal coldPct = 0.20m, bool dailyRebalance = false)
     {
         _name = name;
         _hotPct = hotPct;
         _coldPct = coldPct;
+        _dailyRebalance = dailyRebalance;
     }
 
     public string Name => _name;
@@ -71,7 +73,25 @@ public class RetailLsContrarianStrategy : IStrategy
         decimal confidence = 0.5m;
         string reason;
 
-        if (pct >= hotPct)
+        if (_dailyRebalance)
+        {
+            // Daily rebalance 模式:每根都 emit buy/sell、position 每天 flip 按 pctile
+            // 為什麼:raw signal pool t=-2.89(1-day edge),但 default 策略持倉幾十天 = 過了 edge window。
+            // daily rebalance 讓 position 每天 reset、剛好捕 nextRet edge。代價:trading cost 高。
+            if (pct > 0.5m)
+            {
+                action = "sell";
+                confidence = Math.Clamp(0.6m + (pct - 0.5m), 0.6m, 0.9m);
+                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} > 50% → 反向 SHORT(下一根結算)";
+            }
+            else
+            {
+                action = "buy";
+                confidence = Math.Clamp(0.6m + (0.5m - pct), 0.6m, 0.9m);
+                reason = $"[daily-rebal] retail L/S 百分位 {pct:P0} ≤ 50% → 反向 LONG(下一根結算)";
+            }
+        }
+        else if (pct >= hotPct)
         {
             action = "sell";
             confidence = Math.Clamp(0.6m + (pct - hotPct), 0.5m, 0.9m);

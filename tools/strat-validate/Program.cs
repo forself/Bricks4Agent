@@ -64,6 +64,12 @@ string[] symbols = fastMode
     ("retail_ls_contrarian",        new RetailLsContrarianStrategy()),
     ("retail_ls_contrarian_tight",  new RetailLsContrarianStrategy("retail_ls_contrarian_tight",  hotPct: 0.90m, coldPct: 0.10m)),  // 更嚴
     ("retail_ls_contrarian_xtight", new RetailLsContrarianStrategy("retail_ls_contrarian_xtight", hotPct: 0.95m, coldPct: 0.05m)),  // 極嚴
+    ("retail_ls_daily_rebal", new RetailLsContrarianStrategy("retail_ls_daily_rebal", dailyRebalance: true)),  // 每根都 flip 捕 1d edge
+    // 2026-05-28 Q2 第二個通過 IS+OOS 雙確認的 alpha(quantile pool t=+2.01/+2.39、線性不顯著=非線性 edge)
+    // 需 --apply-retail-ls 注入(同 endpoint 順便 fill bar.OpenInterest)
+    ("oi_momentum_ls",        new OiMomentumLsStrategy()),
+    ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
+    ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-27 第二類結構性 alpha 候選:volume momentum + sweep
     ("volmom_ls",          new VolumeMomentumLsStrategy("volmom_ls",          volPct: 0.85m)),
     ("volmom_ls_tight",    new VolumeMomentumLsStrategy("volmom_ls_tight",    volPct: 0.90m)),
