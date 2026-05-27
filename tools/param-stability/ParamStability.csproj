@@ -11,5 +11,6 @@
     <ProjectReference Include="..\..\packages\csharp\workers\strategy-worker\StrategyWorker.csproj" />
     <ProjectReference Include="..\..\packages\csharp\broker-core\BrokerCore.csproj" />
     <Compile Include="..\shared\KlineCache.cs" Link="Shared\KlineCache.cs" />
+    <Compile Include="..\shared\FundingCache.cs" Link="Shared\FundingCache.cs" />
   </ItemGroup>
 </Project>

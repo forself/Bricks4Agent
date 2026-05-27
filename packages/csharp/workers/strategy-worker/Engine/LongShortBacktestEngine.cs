@@ -35,7 +35,12 @@ public static class LongShortBacktestEngine
         int atrPeriod = 14,            // ATR 視窗
         decimal defaultInitialSlPct = 0m, // H18 補正:策略未 emit StopPrice 但啟用 trail 時、開倉用此 % 做初始 SL(讓 trail 有 base 可 ratchet)
         decimal peakTrailTriggerPct = 0m, // H18-live-align:peak-based trail 啟動門檻(peak gain ≥ X% 才啟動、跟 AutoTraderService.TrailingTriggerPct 對齊)
-        decimal peakTrailDistancePct = 0m) // peak-based trail 距離(SL = peak × (1 ∓ distance%/100)、跟 AutoTraderService.TrailingDistancePct 對齊)
+        decimal peakTrailDistancePct = 0m, // peak-based trail 距離(SL = peak × (1 ∓ distance%/100)、跟 AutoTraderService.TrailingDistancePct 對齊)
+        bool applyFunding = false)        // D 路線(2026-05-27):永續 funding 計入 PnL。需 bars[i].FundingRate 已注入(用 ToolsShared.FundingCache.InjectInto)
+                                          // 約定:bar.FundingRate = 該根 bar 持有期間的【累計】 funding rate(SUM、不是 avg)
+                                          // 多單:cash -= position × close × fundingRate(正 funding=付、負=收)
+                                          // 空單:cash -= position × close × fundingRate(position 已帶負號、正 funding=收、負=付)
+                                          // 兩邊用同公式、靠 position 符號自動處理 short sign flip
     {
         var costRate = commission + slippagePct;
         var result = new BacktestEngine.BacktestResult
@@ -132,6 +137,14 @@ public static class LongShortBacktestEngine
                     CloseAt(i, activeTargetPrice);        // 在 TP 價位出場
                     stoppedOutThisBar = true;             // 與 SL 共用旗標:本根不再因訊號開新倉
                 }
+            }
+
+            // D 路線:funding 計入 cash(在 equity 計算前先扣)。
+            // 用 position(已帶符號)× close × fundingRate、多空通用、不需分支。
+            // 開倉當根不收(從進場後第一根開始;對齊 BacktestEngine 邏輯、避免 entry-bar double charge)。
+            if (applyFunding && position != 0m && i > entryIndex && bars[i].FundingRate is decimal fr && fr != 0m)
+            {
+                cash -= position * price * fr;
             }
 
             var equity = cash + position * price;
@@ -249,7 +262,8 @@ public static class LongShortBacktestEngine
         int atrPeriod = 14,
         decimal defaultInitialSlPct = 0m,  // H18 補正:trail 啟用 + 策略未 emit 時的初始 SL %
         decimal peakTrailTriggerPct = 0m,  // H18 live-align:peak-based trail trigger %
-        decimal peakTrailDistancePct = 0m) // peak-based trail distance %
+        decimal peakTrailDistancePct = 0m, // peak-based trail distance %
+        bool applyFunding = false)         // D 路線:funding 計入 PnL(bars 需先注入 FundingRate)
     {
         var result = new BacktestEngine.WalkForwardResult
         {
@@ -263,12 +277,12 @@ public static class LongShortBacktestEngine
         for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
         {
             var trainSlice = bars.GetRange(start, trainBars);
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct, peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct, peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding);
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt = Run(strategy, testWindow, config, initialCash, commission,
                 tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing,
                 atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct,
-                peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct);
+                peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding);
             result.Folds.Add(new BacktestEngine.WalkForwardFold
             {
                 FoldIndex = foldIdx++,

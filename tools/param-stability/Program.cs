@@ -124,6 +124,14 @@ if (args.Contains("--validate-regime-filter"))
     return;
 }
 
+// --validate-funding-impact: D 路線實作 — LongShortBacktestEngine applyFunding A/B
+//   各幣 × 各策略 × with-funding / without-funding、看 Sharpe / Return 修正量
+if (args.Contains("--validate-funding-impact"))
+{
+    await RunValidateFundingImpact();
+    return;
+}
+
 // --test-pagination: 驗證 H22 KlineCache 分頁能否正確抓到 2000 bars
 if (args.Contains("--test-pagination"))
 {
@@ -1015,4 +1023,59 @@ async Task RunValidateRegimeFilter()
         }
         Console.WriteLine($"| base={baseVal:F2}");
     }
+}
+
+async Task RunValidateFundingImpact()
+{
+    Console.WriteLine("=== D 路線實作 — funding 入回測 A/B ===");
+    Console.WriteLine("對比 with-funding vs baseline、看實際 PnL 差距。");
+    Console.WriteLine("Negative funding 幣(APT/INJ/ATOM):長單應大 boost、空單大 drag。");
+    Console.WriteLine("Positive funding 幣(LTC/BTC):長單微 drag。\n");
+
+    // 大 funding 量級的 6 主場幣
+    string[] symbols = { "APTUSDT", "INJUSDT", "ATOMUSDT", "LTCUSDT", "BTCUSDT", "TRXUSDT" };
+
+    (string label, Func<IStrategy> factory)[] strats =
+    {
+        ("scan10",  () => new HarmonicPrzLsStrategy(null, "scan10", scanWindows: 10)),
+        ("widepz",  () => new HarmonicPrzLsStrategy(null, "widepz", scanWindows: 10, przWidening: 0.15m)),
+        ("tsmom",   () => new TsMomentumStrategy()),
+    };
+
+    // Pre-fetch bars + inject funding
+    var bcache = new Dictionary<string, List<BarData>>();
+    foreach (var s in symbols)
+    {
+        bcache[s] = await ToolsShared.KlineCache.FetchOrLoad(s, "1d");
+        await ToolsShared.FundingCache.InjectInto(bcache[s], s, "1d");
+        var nonZero = bcache[s].Where(b => b.FundingRate.HasValue && b.FundingRate != 0m).Select(b => b.FundingRate!.Value).ToList();
+        Console.WriteLine($"  {s}: {nonZero.Count}/{bcache[s].Count} 有 non-zero funding,daily avg(non-zero only)={(nonZero.Count > 0 ? nonZero.Average() : 0m) * 100m:F4}%,range[{(nonZero.Count > 0 ? nonZero.Min() : 0m) * 100m:F4}%, {(nonZero.Count > 0 ? nonZero.Max() : 0m) * 100m:F4}%]");
+    }
+    Console.WriteLine();
+
+    Console.WriteLine($"  {"symbol",-10} {"strat",-8} {"mode",-12} {"Sharpe",8} {"Ret%",8} {"DD%",8} {"Δ vs no_f"}");
+    foreach (var sym in symbols)
+    {
+        foreach (var (label, factory) in strats)
+        {
+            decimal baseShWithout = 0m;
+            foreach (var (mode, applyF) in new[] { ("no_funding", false), ("with_funding", true) })
+            {
+                var r = LongShortBacktestEngine.RunWalkForward(factory(), bcache[sym],
+                    new StrategyConfig { Symbol = sym, Exchange = "binance", Interval = "1d" },
+                    trainBars: 250, testBars: 90, stride: 60, applyFunding: applyF);
+                if (r.TotalFolds == 0) { Console.WriteLine($"  {sym,-10} {label,-8} {mode,-12} (no folds)"); continue; }
+                if (!applyF) baseShWithout = r.AvgTestSharpe;
+                var delta = applyF ? r.AvgTestSharpe - baseShWithout : 0m;
+                var marker = applyF ? $"{delta:+0.00;-0.00}" : "(baseline)";
+                Console.WriteLine($"  {sym,-10} {label,-8} {mode,-12} {r.AvgTestSharpe,8:F2} {r.MedianTestReturnPct,8:F1} {r.WorstTestDdPct,8:F1}  {marker}");
+            }
+        }
+        Console.WriteLine();
+    }
+
+    // 結論
+    Console.WriteLine("=== 摘要 ===");
+    Console.WriteLine("關注:Δ Sharpe 大於 ±0.10 = funding 顯著影響、shadow 評估必用 with_funding");
+    Console.WriteLine("APT/INJ/ATOM 是 short-pay 幣、長單應正向、空單應負向");
 }
