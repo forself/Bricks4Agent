@@ -3072,10 +3072,96 @@ public class AutoTraderService : BackgroundService
         _logger.LogInformation("Scanner {ScannerId} picks ({N}/{Slots}): {Picks}",
             scanner.Id, picks.Count, slots, pickSummary);
 
-        // Phase B.3(下一個 commit)會把 picks 經過 DispatchScannerLegAsync 真正開倉:
-        //   - shadow=true → 只 log "[SHADOW] would open scanner leg ..."
-        //   - shadow=false → 走核心腿同款 PlaceSpotOrderAsync / PlacePerpOrderForSignalAsync
-        //                  + insert scanner_active_legs(signal_bar_ts 當冪等鎖)
+        // B.3 dispatch:逐一檢冪等鎖、shadow 直接 persist(只記不下單)、real 路徑暫保留給 B.3b。
+        foreach (var pick in picks)
+        {
+            if (ct.IsCancellationRequested) return;
+            try
+            {
+                await DispatchScannerLegAsync(scanner, pick.Symbol, pick.Action, pick.Confidence, pick.SignalBarTs, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Scanner {ScannerId} dispatch failed for {Symbol}", scanner.Id, pick.Symbol);
+            }
+        }
+    }
+
+    private async Task DispatchScannerLegAsync(
+        ScannerLegEntry scanner, string symbol, string action, decimal confidence, long signalBarTs,
+        CancellationToken ct)
+    {
+        // 冪等鎖:同 (scanner_id, symbol, signal_bar_ts) 不重複開。
+        // signal_bar_ts 是 candidate 抓到的最後一根 K 線開盤時間(unix ms)、
+        // 同 cycle 重跑、或 broker 重啟後同 bar 都不會重開。
+        if (signalBarTs > 0)
+        {
+            int existing;
+            try
+            {
+                existing = _db.Scalar<int>(
+                    "SELECT COUNT(*) FROM scanner_active_legs WHERE scanner_id = @ScannerId AND symbol = @Symbol AND signal_bar_ts = @SignalBarTs",
+                    new { ScannerId = scanner.Id, Symbol = symbol, SignalBarTs = signalBarTs });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Scanner {ScannerId} idempotency check failed for {Symbol}", scanner.Id, symbol);
+                return;
+            }
+            if (existing > 0)
+            {
+                _logger.LogDebug("Scanner {ScannerId} {Symbol} bar {Ts} already dispatched, skipping",
+                    scanner.Id, symbol, signalBarTs);
+                return;
+            }
+        }
+
+        // 構造 active leg(無論 shadow 或 real 都持久化、shadow=true 標記)
+        var side = action == "sell" ? "short" : "long";
+        var leg = new ScannerActiveLegEntry
+        {
+            Id              = $"{scanner.Id}:{symbol}:{signalBarTs}",
+            ScannerId       = scanner.Id,
+            Symbol          = symbol,
+            Exchange        = "binance",   // scanner 預設 binance、未來 ScannerLegEntry 可加 exchange 欄位
+            Side            = side,
+            SignalBarTs     = signalBarTs,
+            EntrySignal     = $"{action}@{scanner.Interval}",
+            EntryConfidence = confidence,
+            Shadow          = scanner.Shadow,
+            OpenedAt        = DateTime.UtcNow,
+            UpdatedAt       = DateTime.UtcNow,
+            OwnerPrincipalId = scanner.OwnerPrincipalId,
+            // EntryPrice / PeakMark / SlPrice / TpPrice / LiquidationPrice 等保護鏈欄位
+            // 在 real 路徑(B.3b)真實下單後才填、shadow 階段先 0(模擬時用 candidate fetch 時的 bar close 填補)
+        };
+
+        if (scanner.Shadow)
+        {
+            // Shadow 模式:只 persist active leg(標 shadow=true)、log "would open"、不下任何真單。
+            // 後續 cycle 反向訊號出來時、scanner close 路徑(B.4)會把這條移走、累積 shadow PnL 給 portfolio review 看。
+            try
+            {
+                _db.Insert(leg);
+                _logger.LogInformation("[SHADOW] Scanner {ScannerId} would open {Side} {Symbol} (conf={Conf:0.00}, bar={Bar}) — recorded, no real order",
+                    scanner.Id, side, symbol, confidence, signalBarTs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Scanner {ScannerId} failed to insert shadow leg for {Symbol}", scanner.Id, symbol);
+            }
+            return;
+        }
+
+        // Real 模式:暫保留給 B.3b。
+        // 該路徑需要:
+        //   1. 走核心腿 ProcessSymbolAsync 同款 risk gate(circuit breaker、portfolio DD、approval flow)
+        //   2. PlaceSpotOrderAsync / PlacePerpOrderForSignalAsync 派單
+        //   3. 真實成交價填入 leg.EntryPrice / leg.PeakMark / leg.SlPrice
+        //   4. Insert leg(成功才插、避免 ghost leg)
+        // 因為涉及真錢、且 4 週 shadow 紀律期還沒過、本 commit 不開放 real dispatch:
+        _logger.LogWarning("Scanner {ScannerId} non-shadow dispatch for {Symbol} requested — NOT IMPLEMENTED yet (B.3b)。請保持 shadow=true 直到 4 週 shadow paper trade 達標、再實作 real dispatch。",
+            scanner.Id, symbol);
         await Task.CompletedTask;
     }
 }
