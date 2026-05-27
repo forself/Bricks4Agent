@@ -204,11 +204,13 @@ public class PortfolioSizingService
             decimal kellySafe = _Math.KellySafe(stats.WinRate, stats.AvgWinPct, stats.AvgLossPct,
                 fraction: 0.25m, maxPct: maxCapPerStrategy);
             decimal ercWeight = ercRaw.GetValueOrDefault(id, 0m);
-            decimal finalPct = ercWeight * volScalar * ddScalar;
+            decimal rawFinalPct = ercWeight * volScalar * ddScalar;
+            // 2026-05-27 bug fix:vol/DD 放大後須再 cap、單支不能超過 maxCap
+            decimal finalPct = Math.Min(rawFinalPct, maxCapPerStrategy);
             decimal finalUsdt = finalPct * totalEquityUsdt;
             totalFinalPct += finalPct;
 
-            string rationale = $"Kelly raw {kellyRaw:P1} / safe {kellySafe:P1} / ERC {ercWeight:P1} × vol {volScalar:F2} × DD {ddScalar:F2} = {finalPct:P1}";
+            string rationale = $"Kelly raw {kellyRaw:P1} / safe {kellySafe:P1} / ERC {ercWeight:P1} × vol {volScalar:F2} × DD {ddScalar:F2} = {rawFinalPct:P1} → capped {finalPct:P1}";
             recommendations.Add(new ScannerRecommendation(id, strat,
                 Math.Round(kellyRaw * 100m, 1), Math.Round(kellySafe * 100m, 1),
                 Math.Round(volScalar, 2),
@@ -219,12 +221,34 @@ public class PortfolioSizingService
                 rationale));
         }
 
+        // 2026-05-27 bug fix:總配重 cap — N × maxCap 容易爆 100%,等比縮到 95% 留 5% 現金緩衝
+        const decimal totalCap = 0.95m;
+        if (totalFinalPct > totalCap)
+        {
+            decimal scaleDown = totalCap / totalFinalPct;
+            warnings.Add($"⚠ 總配重 {totalFinalPct:P1} > {totalCap:P0} — 全體 × {scaleDown:F3} 等比縮回 {totalCap:P0}");
+            var rescaled = new List<ScannerRecommendation>();
+            decimal newTotalPct = 0m;
+            foreach (var r in recommendations)
+            {
+                decimal newPct = (r.FinalPct / 100m) * scaleDown;
+                decimal newUsdt = newPct * totalEquityUsdt;
+                newTotalPct += newPct;
+                rescaled.Add(r with
+                {
+                    FinalPct = Math.Round(newPct * 100m, 1),
+                    FinalUsdt = Math.Round(newUsdt, 2),
+                    Rationale = r.Rationale + $" → 全體 scale × {scaleDown:F3} = {newPct:P1}"
+                });
+            }
+            recommendations = rescaled;
+            totalFinalPct = newTotalPct;
+        }
+
         decimal totalUsdt = totalFinalPct * totalEquityUsdt;
         decimal cashBuffer = totalEquityUsdt - totalUsdt;
-        if (totalFinalPct > 1m)
-            warnings.Add($"⚠ 總配重 {totalFinalPct:P0} > 100% — 須 scale down 或減 max cap");
-        if (cashBuffer < totalEquityUsdt * 0.10m)
-            warnings.Add($"⚠ 現金緩衝 {cashBuffer:F2} USDT 過低(< 10% equity)、考慮降 max cap");
+        if (cashBuffer < totalEquityUsdt * 0.05m)
+            warnings.Add($"⚠ 現金緩衝 {cashBuffer:F2} USDT 過低(< 5% equity)、考慮降 max cap");
 
         return new SizingResponse(
             TotalEquity: totalEquityUsdt,
