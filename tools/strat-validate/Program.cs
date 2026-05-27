@@ -77,6 +77,12 @@ string[] symbols = fastMode
     // 2026-05-28 翻案測:retail_ls momentum(跟單散戶);contrarian 已通過 OOS,對立假設證偽更穩
     ("retail_ls_momentum",        new RetailLsContrarianStrategy("retail_ls_momentum",        hotPct: 0.80m, coldPct: 0.20m, invertSignal: true)),
     ("retail_ls_momentum_tight",  new RetailLsContrarianStrategy("retail_ls_momentum_tight",  hotPct: 0.90m, coldPct: 0.10m, invertSignal: true)),
+    // 2026-05-28 第二代 alpha 候選:retail_ls Δ(變化率) — oi-validate pool t=-3.51 / OOS -3.65 比 raw 更強
+    ("retail_ls_delta_contrarian",        new RetailLsDeltaContrarianStrategy()),
+    ("retail_ls_delta_contrarian_tight",  new RetailLsDeltaContrarianStrategy("retail_ls_delta_contrarian_tight",  hotPct: 0.90m, coldPct: 0.10m)),
+    ("retail_ls_delta_contrarian_xtight", new RetailLsDeltaContrarianStrategy("retail_ls_delta_contrarian_xtight", hotPct: 0.95m, coldPct: 0.05m)),
+    // momentum 對照組(預期應該負 — 驗證 contrarian 方向不是 fluke)
+    ("retail_ls_delta_momentum",          new RetailLsDeltaContrarianStrategy("retail_ls_delta_momentum",          hotPct: 0.80m, coldPct: 0.20m, invertSignal: true)),
     // 2026-05-27 第二類結構性 alpha 候選:volume momentum + sweep
     ("volmom_ls",          new VolumeMomentumLsStrategy("volmom_ls",          volPct: 0.85m)),
     ("volmom_ls_tight",    new VolumeMomentumLsStrategy("volmom_ls_tight",    volPct: 0.90m)),
