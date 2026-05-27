@@ -10,12 +10,21 @@
 using StrategyWorker.Engine;
 using ToolsShared;
 
-var symbols = args.Length > 0 ? args : new[] { "BTCUSDT" };
-var endDate = DateTime.UtcNow.Date;
+// 支援 --days-back N(從 endDate 往前推 N 天作 endDate、用於 OOS 驗證):
+//   dotnet run -- BTCUSDT ETHUSDT --days-back 365   等於跑「去年的去年」
+int daysBack = 0;
+var symList = new List<string>();
+for (int i = 0; i < args.Length; i++)
+{
+    if (args[i] == "--days-back" && i + 1 < args.Length) { int.TryParse(args[++i], out daysBack); }
+    else symList.Add(args[i]);
+}
+var symbols = symList.Count > 0 ? symList.ToArray() : new[] { "BTCUSDT" };
+var endDate = DateTime.UtcNow.Date.AddDays(-daysBack);
 var startDate = endDate.AddDays(-365);
 
 Console.WriteLine($"=== OI/L-S/Taker vs Funding/Price correlation probe ===");
-Console.WriteLine($"Window: {startDate:yyyy-MM-dd} → {endDate:yyyy-MM-dd}");
+Console.WriteLine($"Window: {startDate:yyyy-MM-dd} → {endDate:yyyy-MM-dd}" + (daysBack > 0 ? $" (OOS: {daysBack} 天前)" : " (in-sample)"));
 
 // Pool 累積:跨所有幣的 (signal, nextRet) pair,跑全 pool t-stat
 var poolFund = new List<double>(); var poolOi = new List<double>();
