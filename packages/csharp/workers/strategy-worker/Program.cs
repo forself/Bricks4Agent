@@ -132,6 +132,11 @@ strategies["tsmom_btc_not_up"] = new BtcRegimeFilterStrategy(
     emaFast: 20, emaSlow: 50,
     name: "tsmom_btc_not_up");
 
+// [2026-05-27 結構性 alpha] funding_momentum_ls:funding 極端時跟同方向(羊群延續)
+// 實證:contrarian funding_extreme t=-3.76(anti-edge)、momentum funding_momentum_ls t=+3.25 顯著正
+// 真結構性 alpha 來源(funding 是強制收費機制、人性不變、不會 decay)
+strategies["funding_momentum_ls"] = new FundingMomentumLsStrategy();
+
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。

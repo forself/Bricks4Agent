@@ -44,6 +44,12 @@ string[] symbols = fastMode
     ("don_trend",        new DonTrendStrategy()),
     ("rsi2_rev",         new Rsi2RevStrategy()),
     ("boll_rev",         new BollRevStrategy()),
+    // 2026-05-27 結構性 alpha 第一彈:資金費率 contrarian(funding 極低 = 空頭擁擠 → 進多)
+    // 需 --apply-funding 注入 bar.FundingRate 才有意義(否則整段 hold)
+    ("funding_extreme",  new FundingExtremeStrategy()),
+    // 2026-05-27 反向組:funding momentum(funding 極端時跟同方向、非 contrarian)
+    // funding_extreme 跑出 t=-3.76 顯著為負 → 反向應該為正
+    ("funding_momentum_ls", new FundingMomentumLsStrategy()),
     // 第一批(趨勢家族,原本偏多用、實為多空對稱)
     ("ts_momentum",      new TsMomentumStrategy()),
     ("chandelier_trend", new ChandelierTrendStrategy()),

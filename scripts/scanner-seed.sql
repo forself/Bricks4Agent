@@ -79,6 +79,16 @@ VALUES
    '["TRXUSDT","SUIUSDT","AVAXUSDT"]',
    20, 2, 10,
    'spot', '1d', 5, 1, 1,
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 2026-05-27 深夜 結構性 alpha 第一支:funding_momentum_ls
+  -- 機制:funding 極端時跟同方向(羊群延續、非 contrarian)、t=+3.25 顯著、年化 37%、Sharpe 0.54
+  -- 對照 funding_extreme(contrarian) t=-3.76 anti-edge,證實「funding 極端 = 趨勢延續」結構性
+  -- universe 選 funding 量級大的(APT/INJ/ATOM 負 funding;LINK/LTC 正 funding;tsmom 主場 SUI/TRX/AVAX)
+  ('fundmom_scanner', 'fundmom_scanner', 'funding_momentum_ls',
+   '["APTUSDT","INJUSDT","ATOMUSDT","LINKUSDT","LTCUSDT","SUIUSDT","TRXUSDT","AVAXUSDT"]',
+   30, 3, 10,
+   'spot', '1d', 5, 1, 1,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- Sanity check
