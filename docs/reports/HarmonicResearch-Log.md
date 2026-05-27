@@ -1106,3 +1106,85 @@ A 路線參數已到極點。試 HTF(higher timeframe)EMA cross 當 trend filter
 
 → 紀律延伸:任何「過濾/篩選」想法必須先實作 wrapper、跑 A/B、再決定上 shadow。
   不能直接從聚合表上看「X 在 Y 條件下強」就部署。
+
+---
+
+## 2026-05-27 D 路線後續 — strat-validate t-stat with real funding 重跑
+
+### 動機
+
+D 路線 funding engine 整合(commit `9829ece`)完成。需驗證:套用真實 Binance funding 後、25 顯著策略 ranking 是否變動、是否有支策略掉出顯著、scanner 配置是否要動。
+
+### 方法
+
+`strat-validate --apply-funding`(commit `aee8562`):20 主場幣 daily bars + Binance 真實 funding history(800 days × 3/day cover)、LongShortBacktestEngine applyFunding=true 跑 pool t-stat。
+
+### 結果(funding 前 vs 後對比)
+
+**沒有任何策略掉出顯著名單。** 25 顯著策略全保留。Top 5 內僅 rank 4&5 互換(top2_widepz 與 ts_momentum)。
+
+| # | 策略 | mean% (no→yes) | t (no→yes) | Δt | 備註 |
+|--:|---|---|---|---:|---|
+| 1 | harm_prz_scan10_widepz | 17.0→17.0 | 5.54→5.54 | 0 | 純 LS、net-neutral |
+| 4 | harm_prz_top2_scan10_widepz | 12.4→12.4 | 4.82→4.83 | +0.01 | 同 |
+| 6 | harm_prz_scan10 | 10.6→10.6 | 5.93→**5.93** | 0 | 最高 t、不動 |
+| 16-17 | harm_prz_top2_scan10/20 | 8.3→8.3 | 5.12→5.12 | 0 | 同 |
+| 21 | harm_prz_butterfly_scan10 | 3.6→3.6 | 3.73→3.73 | 0 | 同 |
+| --- 純 LS 諧波 funding 影響 = **0**(都 net-neutral)--- |
+| 2 | tsmom_widepz | 14.8→14.4 | 4.60→4.53 | −0.07 | trend 微跌 |
+| 3 | tsmom_harm_prz_scan10 | 13.6→13.2 | 4.19→4.11 | −0.08 | 同 |
+| 5 | ts_momentum | 12.9→12.4 | 4.10→3.99 | −0.11 | trend 跌幅最大 |
+| 11 | dual_mom_ls | 10.4→9.8 | 3.21→3.05 | −0.16 | trend 跌幅大 |
+| 12 | **decorr4_ls** ⭐ | 10.2→9.5 | **3.11→2.96** | −0.15 | **BTC 真錢腿、邊際縮窄** |
+| 19 | **ma_regime_trend** ⭐ | 7.0→6.6 | **2.52→2.40** | −0.12 | **BNB 真錢腿、本來就勉強** |
+| 20 | dual_thrust | 6.7→6.1 | 2.67→2.46 | −0.21 | SOL 真錢腿、跌幅最大 |
+
+### 三個明確結論
+
+**1. 純 LS 諧波 funding 影響為零**
+- `harm_prz_scan10` / `widepz` / `top2_scan10/20` / `butterfly_scan10`:t-stat 完全不變
+- 機制:LS 多空交替、平均 net exposure ≈ 0、funding 進出 cancel
+- ✅ 7 scanner 主軸(scan10/widepz/top2_widepz)funding 確認無影響、deploy 決策不變
+
+**2. Trend 策略一致微跌 0.1-0.2 t-stat**
+- `ts_momentum` / `tsmom_widepz` / `dual_mom_ls` / `dual_thrust` / `ma_regime_trend` / `decorr4_ls`(內含 trend)
+- 機制:多頭偏向(BTC/ETH/LINK/LTC 正 funding drag)、win 期是 long-trend、funding 慢慢咬
+- 不致命:沒有掉出顯著、但邊際縮窄
+
+**3. 真錢腿 2/6 邊際接近 2.0 警戒線**
+- BTC `decorr4_ls`:t=3.11 → 2.96(從「高信度」邊界 3.0 滑下)
+- BNB `ma_regime_trend`:t=2.52 → 2.40(本來就勉強、現更勉強)
+- SOL `dual_thrust`:t=2.67 → 2.46
+- 雖然都 >2 還顯著、但下次 t-stat 重跑若再跌、ma_regime 是第一個動腿對象
+
+### 對 7 scanner 配置的衝擊
+
+| Scanner | 衝擊 | 動作 |
+|---|---|---|
+| scan10 / widepz / top2_widepz | **0** | 不動 |
+| decorr5 | −0.17 t(仍 3.11) | 不動 |
+| tsmom_1d / tsmom_1w | −0.11 t(仍 3.99) | 不動 |
+| tsmom_widepz | −0.07 t | 不動 |
+
+→ **配置完全不需動。** funding 確認是「成本修正」、不是「排名洗牌」。
+
+### Meta-learning(累積)
+
+**「真實 funding 對 LS net-neutral 策略無影響、對 trend 策略小 drag」**
+- 對 portfolio 設計含意:純 LS 策略 funding hedge inherent、不需額外注意
+- Long-heavy 策略(trend follow)需保守低估 backtest Sharpe ~5-10%(funding 隱性成本)
+- decorr ensemble 雖含 LS 子策略、但 net 仍有方向、會微跌
+
+### 對升 live 流程的含意(加 P5 evaluation 步驟)
+
+任何升 live 評估必跑兩版:
+1. baseline:`applyFunding=false`(歷史方法、用於跨報告對比)
+2. with_funding:`applyFunding=true`(真實成本、決策用)
+
+若 with_funding t-stat < 2 → 不升;若 >=2 但 < no_funding 太多 → 警戒(funding 規律性 drag、未來實盤可能更糟)。
+
+### Actionable
+
+- ✅ 7 scanner shadow 維持不動、繼續累積 4 週
+- ⚠ BNB ma_regime_trend t=2.40 是警戒值、若 shadow 期再有 tsmom_widepz / ts_momentum 表現更好的證據、考慮換腿
+- ✅ 後續任何 strat-validate / param-stability 跑、預設加 `--apply-funding`(取代 0.01%/8h 固定假設)
