@@ -109,6 +109,15 @@ VALUES
    '["BTCUSDT","ETHUSDT","BNBUSDT","LTCUSDT","OPUSDT","SUIUSDT","APTUSDT","INJUSDT"]',
    25, 3, 10,
    'spot', '1d', 5, 1, 0,
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 2026-05-28 Q2 翻案2:retail_ls_delta_contrarian(Δ版,oi-validate OOS t=-3.65 + strat-validate 20 幣 pool t=+3.30 ✅ 顯著)
+  -- 唯一通過 95% CI 下界>0 的策略;經濟意義:散戶意見變化方向比絕對位置更前瞻(動量耗盡頂底)
+  -- 跟 retail_ls_contrarian 同源但測量角度不同(level vs delta)、可組互補 sleeve
+  ('retail_ls_delta_scanner', 'retail_ls_delta_scanner', 'retail_ls_delta_contrarian',
+   '["BTCUSDT","ETHUSDT","BNBUSDT","LTCUSDT","OPUSDT","SUIUSDT","APTUSDT","INJUSDT"]',
+   25, 3, 10,
+   'spot', '1d', 5, 1, 0,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- Sanity check

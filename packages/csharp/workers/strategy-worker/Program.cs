@@ -143,10 +143,16 @@ strategies["funding_momentum_ls"] = new FundingMomentumLsStrategy();
 strategies["fundmom_ls_xtight"] = new FundingMomentumLsStrategy("fundmom_ls_xtight", hotPct: 0.95m, coldPct: 0.05m);
 
 // [2026-05-28 Q2 第一個 production-ready 結構性 alpha] retail_ls_contrarian
-// oi-validate IS+OOS pool t=-2.89/-2.25 雙確認、strat-validate Sharpe 0.69 / 年化 93% / DD 57%
+// oi-validate IS+OOS pool t=-2.89/-2.25 雙確認、strat-validate Sharpe 0.45 / 年化 27% / DD 55%
 // 經濟意義:散戶位置擁擠看多 → 反向走;靠 quote-worker retail_ls_ratio 表 + AlignRetailLs 注入
 strategies["retail_ls_contrarian"]       = new RetailLsContrarianStrategy();
 strategies["retail_ls_contrarian_tight"] = new RetailLsContrarianStrategy("retail_ls_contrarian_tight", hotPct: 0.90m, coldPct: 0.10m);
+
+// [2026-05-28 Q2 翻案2 — Δ 版本: oi-validate OOS t=-3.65 > raw 的 -2.89] retail_ls_delta_contrarian
+// strat-validate 20 幣 full mode pool t=+3.30 ✅ 95% CI [+4.0, +14.9] — 首支顯著!
+// 經濟意義:散戶意見「變化方向」比「絕對位置」更前瞻(動量耗盡頂底)
+strategies["retail_ls_delta_contrarian"]       = new RetailLsDeltaContrarianStrategy();
+strategies["retail_ls_delta_contrarian_xtight"] = new RetailLsDeltaContrarianStrategy("retail_ls_delta_contrarian_xtight", hotPct: 0.95m, coldPct: 0.05m);
 
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
