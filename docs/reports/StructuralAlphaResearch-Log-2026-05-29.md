@@ -148,7 +148,8 @@ Retail L/S 8 幣 linear t 全為負(方向全一致)→ 最強候選。
 1. **存活鏈三層**:風險加權(不爆 327%)→ CB+DD-aware(46%→16%)→ 有效槓桿~3x(16%→48% < 強平)。**3x + 防禦活得下來**。
 2. **3x 下別用 step**(DD 29%→×3=87% 貼強平);用 poly/linear 緊 CB(DD 16%→×3=48% 有 margin)。
 3. **linear CB5-8% 微勝 poly**(效率 ×2.2)。
-4. **防禦逼近效率天花板 ×2 報酬/DD** — 上限由 alpha 品質決定、非防禦旋鈕。突破要靠**更好 alpha / 更多去相關腿**,或 **regime-aware CB**(只在確認下跌縮倉、省 whipsaw,未測、唯一能推 frontier 的防禦改良)。
-5. caveat:backtest CB 乾淨成交、真實 gap 穿透更深;CB 縮倉 = 踏空反彈(報酬代價)。
+4. **防禦逼近效率天花板 ×2 報酬/DD** — 上限由 alpha 品質決定、非防禦旋鈕。突破只能靠**更好 alpha / 更多去相關腿**。
+5. **regime-aware CB 已測、推翻**:自身 SMA gate ×2.5 是自我參照假象;BTC 外生 gate ×1.5 反比 plain(×2.1)差(逆勢 alpha 在 BTC 跌時正賺、gate 砍錯時機)。**plain DD-aware ×2.1 = 最佳誠實防禦**。教訓 [[feedback_self_referential_regime_overlay]]:regime overlay 信號必外生。
+6. caveat:backtest CB 乾淨成交、真實 gap 穿透更深;CB 縮倉 = 踏空反彈(報酬代價)。
 
 詳見 memory [[q2-portfolio-survival]]。
