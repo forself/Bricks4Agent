@@ -92,6 +92,9 @@ string[] symbols = fastMode
     ("volmom_ls_xtight",   new VolumeMomentumLsStrategy("volmom_ls_xtight",   volPct: 0.95m)),
     // 第一批(趨勢家族,原本偏多用、實為多空對稱)
     ("ts_momentum",      new TsMomentumStrategy()),
+    // 2026-05-29 補註冊(原盲區):tsmom_btc_not_up = ts_momentum + BTC-not-up entry filter(外生 BTC regime)
+    // 需設 BtcRegimeFilterStrategy.BtcBarsRef = BTC bars(下方資料載入後設),否則 pass-through 退化成 ts_momentum
+    ("tsmom_btc_not_up", new BtcRegimeFilterStrategy(new TsMomentumStrategy(), new[] { "sideways", "down" }, emaFast: 20, emaSlow: 50, name: "tsmom_btc_not_up")),
     ("chandelier_trend", new ChandelierTrendStrategy()),
     ("ma_regime_trend",  new MaRegimeTrendStrategy()),
     ("dual_thrust",      new DualThrustStrategy()),
@@ -368,6 +371,9 @@ foreach (var sym in symbols)
     catch (Exception ex) { Console.WriteLine($"{sym}: {ex.Message}"); }
 }
 Console.WriteLine($"\n資料就緒:{data.Count}/{symbols.Length} 檔(≥400 日線)");
+
+// 2026-05-29:設 BTC bars 給 BtcRegimeFilterStrategy(tsmom_btc_not_up 才能評估外生 regime、否則退化成 ts_momentum)
+if (data.TryGetValue("BTCUSDT", out var btcRef)) BtcRegimeFilterStrategy.BtcBarsRef = btcRef;
 
 // 2026-05-27 D 路線:--apply-funding 注入真實 Binance funding history
 // 每個 symbol 抓 + align、bar.FundingRate 填好,LongShortBacktestEngine(applyFunding=true)會用
