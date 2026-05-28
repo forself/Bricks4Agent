@@ -993,12 +993,20 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
 
     PrintCombo($"組合 全部 {all.Count} 支等權", all);
 
-    // 2026-05-29 防禦後組合:套 live CB(~8%)+ DD-aware 漸進縮倉,看裸 DD 被壓到哪、報酬代價
-    foreach (var (cb, tag) in new[] { (0.08m, "CB8%"), (0.15m, "CB15%") })
+    // 2026-05-29 防禦後組合 sweep:CB 門檻 × scale 方法,找最佳 DD/報酬 frontier(評估防禦改善空間)
+    // 每格 = 套防禦後的 (maxDD%, 報酬%);report-per-DD 比率(報酬/DD)= 防禦效率,越高越好
     {
-        var dp = PortfolioDefended(all, cb, "poly");
-        var ds = PortfolioDefended(all, cb, "step");
-        Console.WriteLine($"  防禦後({tag}、風險加權)  poly[DD {dp.origDd:F0}%→{dp.defDd:F0}% ret {dp.origRet:F0}%→{dp.defRet:F0}%]  step[DD {ds.defDd:F0}% ret {ds.defRet:F0}%]");
+        var probe = PortfolioDefended(all, 0.08m, "poly");
+        Console.WriteLine($"  防禦 sweep(風險加權、裸 DD {probe.origDd:F0}% / 裸報酬 {probe.origRet:F0}%)— 找最佳 CB×方法:");
+        Console.WriteLine($"    {"CB門檻",-8}{"poly DD/ret",-20}{"step DD/ret",-20}{"linear DD/ret",-20}");
+        foreach (var cb in new[] { 0.05m, 0.08m, 0.12m, 0.20m })
+        {
+            var p = PortfolioDefended(all, cb, "poly");
+            var s = PortfolioDefended(all, cb, "step");
+            var l = PortfolioDefended(all, cb, "linear");
+            Console.WriteLine($"    {cb,-8:P0}{$"{p.defDd:F0}%/{p.defRet:F0}% (×{(p.defDd>0?p.defRet/p.defDd:0):F1})",-20}{$"{s.defDd:F0}%/{s.defRet:F0}% (×{(s.defDd>0?s.defRet/s.defDd:0):F1})",-20}{$"{l.defDd:F0}%/{l.defRet:F0}% (×{(l.defDd>0?l.defRet/l.defDd:0):F1})",-20}");
+        }
+        Console.WriteLine($"    (×N = 報酬/DD 效率比;DD 是 1x、實盤有效槓桿 L 倍則 DD×L 須 < ~80% 才有強平 margin)");
     }
 
     // 貪婪挑去相關組合:候選先濾掉負期望(Sharpe≤0,去相關但賠錢的不要),再從 Sharpe 高起、納入「對已選全部 |ρ|<0.4」者

@@ -119,3 +119,36 @@ Retail L/S 8 幣 linear t 全為負(方向全一致)→ 最強候選。
 - [[feedback_signal_probe_vs_strategy_two_filters]] — 顯著 ≠ 通過,需「跨幣方向一致 + 經濟意義 + corr<0.3」三濾
 - [[feedback_structural_alpha_requires_x_uncorrelated_with_price]]
 - 翻案紀律:蓋棺前試方向翻轉 / 衍生指標 / threshold U 形 / breadth 測試
+
+---
+
+## 2026-05-29 存活剖析(4 alpha 一起上真錢會不會死)
+
+工具:strat-validate 新增 `--sl`(固定止損)、`PortfolioDefended()`(CB + DrawdownAwareSizer overlay)、FundingCache 深度自動放大。
+
+**深歷史(--bars=1300 含 2022 LUNA/FTX)**:風險加權組合裸 maxDD 41%→46%(2022 只加 5pp、去相關在深熊撐住)。
+**funding 深 6.5 年(--bars=2400)**:pool t **3.44→1.43 不顯著**、DD 70% — 近窗顯著恐 regime 過擬合,對 funding_momentum 要謙虛(live 真錢中)。
+
+**相關矩陣(去相關真實)**:最高 funding×retail_ls 0.35,其餘近零/負(oi vs delta −0.36)。
+**配重生死線**:等權 DD **327%** vs 風險加權 DD **46%**。retail_ls_tight 單腿 DD 97% 是毒、反波動率自動掐到 4%。
+
+**止損 sweep(0/6/10/15%、風險加權)**:DD 鎖死 46% 不管止損幾%,只砍 Sharpe(6% 最兇 0.60→0.25、15% 回 0.42)。
+→ 46% 是「崩盤多腿一起 grind-down」非單筆 blowup,固定止損擋不了。**單筆止損不在保命關鍵路徑**。
+
+**總體防禦 sweep(CB × 方法、裸 46%/138%)** — 保命關鍵:
+
+| CB | poly DD/ret(效率) | step DD/ret | linear DD/ret |
+|---|---|---|---|
+| 5% | 15%/29% (×2.0) | 29%/49% (×1.7) | **16%/34% (×2.2)** |
+| 8% | 16%/33% (×2.1) | 29%/49% (×1.7) | 18%/37% (×2.1) |
+| 12% | 18%/36% (×2.0) | 29%/49% (×1.7) | 21%/39% (×1.8) |
+| 20% | 21%/41% (×2.0) | 29%/49% (×1.7) | 25%/45% (×1.8) |
+
+**結論**:
+1. **存活鏈三層**:風險加權(不爆 327%)→ CB+DD-aware(46%→16%)→ 有效槓桿~3x(16%→48% < 強平)。**3x + 防禦活得下來**。
+2. **3x 下別用 step**(DD 29%→×3=87% 貼強平);用 poly/linear 緊 CB(DD 16%→×3=48% 有 margin)。
+3. **linear CB5-8% 微勝 poly**(效率 ×2.2)。
+4. **防禦逼近效率天花板 ×2 報酬/DD** — 上限由 alpha 品質決定、非防禦旋鈕。突破要靠**更好 alpha / 更多去相關腿**,或 **regime-aware CB**(只在確認下跌縮倉、省 whipsaw,未測、唯一能推 frontier 的防禦改良)。
+5. caveat:backtest CB 乾淨成交、真實 gap 穿透更深;CB 縮倉 = 踏空反彈(報酬代價)。
+
+詳見 memory [[q2-portfolio-survival]]。
