@@ -399,6 +399,9 @@ foreach (var kv in data) { var st = StatsOf(kv.Value.Select(b => b.Close).ToList
 if (data.Count > 0)
     Console.WriteLine($"=== Buy & Hold 基準(全期)===  中位 ret {Median(bhRets):F0}% | 平均 Sharpe {bhShs.Average():F2} | 平均 maxDD {bhDds.Average():F0}%");
 
+// 權益曲線對應日期(per coin、各策略共用同 bars;lsEq 最後跑 → 留 LS 引擎日期),給 regime-gate 用
+var curveDates = new Dictionary<string, List<DateTime>>();
+
 // 一張表 = 一種引擎(long-only / long-short);回傳 [strat][symbol]=全期權益曲線(給相關/組合用)
 Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
     string title,
@@ -427,6 +430,7 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
             var bt = run(s, kv.Value, cfg);
             fullRets.Add(bt.TotalReturnPct); fullShs.Add(bt.SharpeRatio); fullDds.Add(bt.MaxDrawdownPct);
             perSym[kv.Key] = bt.EquityCurve.Select(e => e.Value).ToList();
+            curveDates[kv.Key] = bt.EquityCurve.Select(e => e.Date).ToList();   // regime-gate 用(lsEq 最後跑覆寫)
             if (bt.MaxDrawdownPct < StatsOf(kv.Value.Select(b => b.Close).ToList()).dd) ddBeat++;
         }
         if (symTot == 0) { Console.WriteLine($"  {name,-16} (無資料)"); continue; }
@@ -954,9 +958,22 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
             oRet.Count > 0 ? Math.Round(oRet.Average(), 1) : 0, dRet.Count > 0 ? Math.Round(dRet.Average(), 1) : 0);
 }
 
-// 2026-05-29 regime-gated 防禦:DD-aware 縮倉只在「持續下跌」(組合權益跌破自己 SMA_N)才啟用,
-// 牛市/震盪的暫時回撤不縮倉(省 whipsaw、不踏空反彈)。對照 plain DD-aware 看能否推 ret/DD frontier。
-(decimal defDd, decimal defRet) PortfolioDefendedRegime(List<string> members, decimal cbDd, int smaN = 20, decimal power = 2m)
+// BTC 外生 regime:BTC 收盤 < SMA50 = 市場 risk-off 下跌(用日期查、跟組合曲線對齊)
+var btcDowntrend = new Dictionary<DateTime, bool>();
+if (data.TryGetValue("BTCUSDT", out var btcRegimeBars) && btcRegimeBars.Count > 50)
+{
+    var bc = btcRegimeBars.OrderBy(b => b.OpenTime).ToList();
+    for (int i = 0; i < bc.Count; i++)
+    {
+        if (i < 50) { btcDowntrend[bc[i].OpenTime] = false; continue; }
+        decimal sma = 0m; for (int k = i - 50; k < i; k++) sma += bc[k].Close; sma /= 50;
+        btcDowntrend[bc[i].OpenTime] = bc[i].Close < sma;
+    }
+}
+
+// 2026-05-29 regime-gated 防禦:DD-aware 縮倉只在「持續下跌」才啟用,牛市/震盪暫時回撤不縮(省 whipsaw)。
+// useBtc=true → 用 BTC 外生 regime(BTC<SMA50、按日期查、嚴謹);false → 組合自身 SMA_N(內生 proxy)。
+(decimal defDd, decimal defRet) PortfolioDefendedRegime(List<string> members, decimal cbDd, int smaN = 20, decimal power = 2m, bool useBtc = false)
 {
     var dDd = new List<decimal>(); var dRet = new List<decimal>();
     foreach (var kv in data)
@@ -973,15 +990,23 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
         for (int i = 0; i < w.Length; i++) w[i] /= wsum;
         var port = new List<decimal>(len) { 1m };
         for (int t = 0; t < len - 1; t++) { decimal pr = 0m; for (int i = 0; i < legRets.Count; i++) pr += w[i] * legRets[i][t]; port.Add(port[^1] * (1m + pr)); }
-        // regime-gated 模擬:逐 bar、DD-aware scalar 只在 port[i-1] < SMA_N 時套用,否則 scalar=1
+        // 此 coin 曲線對應日期(curveDates 是 LS 引擎全長、port 取 min len、對齊尾端? 實為前 len 個)
+        var dts = curveDates.TryGetValue(kv.Key, out var dlist) ? dlist : null;
+        // regime-gated 模擬:逐 bar、DD-aware scalar 只在「下跌 regime」時套用,否則 scalar=1
         decimal adj = port[0], adjPeak = adj, adjMaxDd = 0m, oPeak = port[0];
         for (int i = 1; i < port.Count; i++)
         {
             if (port[i] > oPeak) oPeak = port[i];   // 用 original 算 DD(決定縮倉幅度)
             decimal curDd = oPeak > 0m ? Math.Max(0m, (oPeak - port[i - 1]) / oPeak) : 0m;
-            // regime gate:port[i-1] 是否跌破 SMA_N(持續下跌才縮)
-            bool downtrend = false;
-            if (i - 1 >= smaN) { decimal sma = 0m; for (int k = i - smaN; k < i; k++) sma += port[k]; sma /= smaN; downtrend = port[i - 1] < sma; }
+            bool downtrend;
+            if (useBtc)
+                // BTC 外生:查 port[i-1] 對應日期的 BTC regime(日期不齊則 fallback 不縮)
+                downtrend = dts != null && i - 1 < dts.Count && btcDowntrend.TryGetValue(dts[i - 1], out var dt) && dt;
+            else
+            {
+                downtrend = false;
+                if (i - 1 >= smaN) { decimal sma = 0m; for (int k = i - smaN; k < i; k++) sma += port[k]; sma /= smaN; downtrend = port[i - 1] < sma; }
+            }
             decimal scalar = downtrend ? StrategyWorker.Engine.DrawdownAwareSizer.PolynomialScale(curDd, cbDd, power) : 1m;
             decimal origRet = port[i - 1] > 0m ? (port[i] - port[i - 1]) / port[i - 1] : 0m;
             adj *= (1m + origRet * scalar);
@@ -1046,13 +1071,15 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
             Console.WriteLine($"    {cb,-8:P0}{$"{p.defDd:F0}%/{p.defRet:F0}% (×{(p.defDd>0?p.defRet/p.defDd:0):F1})",-20}{$"{s.defDd:F0}%/{s.defRet:F0}% (×{(s.defDd>0?s.defRet/s.defDd:0):F1})",-20}{$"{l.defDd:F0}%/{l.defRet:F0}% (×{(l.defDd>0?l.defRet/l.defDd:0):F1})",-20}");
         }
         Console.WriteLine($"    (×N = 報酬/DD 效率比;DD 是 1x、實盤有效槓桿 L 倍則 DD×L 須 < ~80% 才有強平 margin)");
-        // regime-gated 對照:DD-aware 只在持續下跌(跌破 SMA20)才縮倉,看能否推 frontier
-        Console.WriteLine($"    regime-gated(只在跌破 SMA20 才縮倉、poly)vs plain:");
+        // regime-gated 對照:plain vs 組合自身SMA(內生) vs BTC外生(嚴謹、查日期 BTC<SMA50)
+        Console.WriteLine($"    regime-gated vs plain(驗 regime 增益是否為自我參照假象):");
         foreach (var cb in new[] { 0.08m, 0.12m })
         {
             var plain = PortfolioDefended(all, cb, "poly");
-            var rg = PortfolioDefendedRegime(all, cb, 20);
-            Console.WriteLine($"      CB{cb:P0}  plain[DD {plain.defDd:F0}%/ret {plain.defRet:F0}% ×{(plain.defDd>0?plain.defRet/plain.defDd:0):F1}]  regime[DD {rg.defDd:F0}%/ret {rg.defRet:F0}% ×{(rg.defDd>0?rg.defRet/rg.defDd:0):F1}]");
+            var rgSelf = PortfolioDefendedRegime(all, cb, 20, useBtc: false);
+            var rgBtc = PortfolioDefendedRegime(all, cb, 20, useBtc: true);
+            string F((decimal dd, decimal ret) x) => $"{x.dd:F0}%/{x.ret:F0}% ×{(x.dd>0?x.ret/x.dd:0):F1}";
+            Console.WriteLine($"      CB{cb:P0}  plain[{F((plain.defDd,plain.defRet))}]  自身SMA[{F(rgSelf)}]  BTC外生[{F(rgBtc)}]");
         }
     }
 
