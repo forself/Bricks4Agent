@@ -122,6 +122,28 @@
   <tbody id="sc-active-table"><tr><td colspan="8" class="muted">載入中…</td></tr></tbody></table>
 </div>
 
+<h2>📊 結構性指標疊圖 · price vs retail_ls vs OI(唯讀複核)</h2>
+<div class="panel">
+  <div class="hint" style="margin-bottom:8px">
+    把價格、散戶多空比(retail_ls)、未平倉量(OI)疊在一張圖(各自正規化到 0-100%),肉眼複核「策略訊號的極端點是不是真的對齊」。
+    <span class="muted">純唯讀、資料來自 get_bars_funding;不接外部服務、不離開 broker。</span>
+  </div>
+  <div class="row" style="margin-bottom:10px">
+    <div class="fg"><label>標的</label>
+      <select id="chart-sym">
+        <option>BTCUSDT</option><option>ETHUSDT</option><option>BNBUSDT</option><option>LTCUSDT</option>
+        <option selected>APTUSDT</option><option>OPUSDT</option><option>SUIUSDT</option><option>INJUSDT</option>
+      </select></div>
+    <div class="fg"><label>天數</label><input id="chart-days" type="number" value="120" min="40" max="400" style="width:80px"></div>
+    <button class="btn-y btn-sm" onclick="loadChart()" id="chart-btn">📈 畫圖</button>
+    <span id="chart-progress" class="scan-progress"></span>
+    <span style="flex:1"></span>
+    <span class="filt"><span style="color:var(--txt)">━</span> price <span style="color:var(--grn)">━</span> retail_ls <span style="color:var(--blu)">━</span> OI</span>
+  </div>
+  <div id="chart-wrap" style="overflow-x:auto"><svg id="chart-svg" width="100%" height="320" style="display:block"></svg></div>
+  <div id="chart-empty" class="muted" style="text-align:center;padding:14px;font-size:12px">選標的、按「畫圖」</div>
+</div>
+
 <h2>📐 Portfolio Sizing 推薦 · Kelly × ERC × Vol-target × DD-aware</h2>
 <div class="panel">
   <div class="hint" style="margin-bottom:8px">
@@ -875,6 +897,64 @@ function copyToClipboard(text){
     () => toastOk('已複製 SQL'),
     () => toastErr('複製失敗')
   );
+}
+
+/* ───────────── 結構性指標疊圖(vanilla SVG、無外部 lib)───────────── */
+const SVGNS = 'http://www.w3.org/2000/svg';
+// 把一條序列正規化到 [0,1](skip null);回 {pts:[{i,v01}], min, max}
+function normSeries(vals){
+  const idx = [], nums = [];
+  vals.forEach((v, i) => { if (v !== null && v !== undefined && !isNaN(v)) { idx.push(i); nums.push(Number(v)); } });
+  if (!nums.length) return null;
+  const min = Math.min(...nums), max = Math.max(...nums), span = max - min;
+  return { idx, v01: nums.map(n => span > 1e-12 ? (n - min) / span : 0.5), min, max };
+}
+function polyline(svg, series, n, W, H, color){
+  if (!series) return;
+  const pts = series.idx.map((i, k) => `${(i/(n-1))*W},${H - series.v01[k]*H}`).join(' ');
+  const pl = document.createElementNS(SVGNS, 'polyline');
+  pl.setAttribute('points', pts);
+  pl.setAttribute('fill', 'none');
+  pl.setAttribute('stroke', color);
+  pl.setAttribute('stroke-width', '1.5');
+  svg.appendChild(pl);
+}
+async function loadChart(){
+  const sym = document.getElementById('chart-sym').value;
+  const days = document.getElementById('chart-days').value || '120';
+  const btn = document.getElementById('chart-btn'), prog = document.getElementById('chart-progress');
+  btn.disabled = true; prog.textContent = '載入中…';
+  const r = await api(`/api/v1/workers/quote/ohlcv/bars-metrics?symbol=${encodeURIComponent(sym)}&interval=1d&limit=${days}`);
+  btn.disabled = false; prog.textContent = '';
+  const bars = (r?.data || r)?.bars || [];
+  const svg = document.getElementById('chart-svg');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!bars.length){ document.getElementById('chart-empty').style.display=''; toastErr('無資料:'+(r?.error||r?.message||'?')); return; }
+  document.getElementById('chart-empty').style.display='none';
+
+  const W = 1000, H = 300, n = bars.length;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H+20}`);
+  // 格線
+  for (let g=0; g<=4; g++){
+    const y = (g/4)*H;
+    const ln = document.createElementNS(SVGNS,'line');
+    ln.setAttribute('x1',0); ln.setAttribute('y1',y); ln.setAttribute('x2',W); ln.setAttribute('y2',y);
+    ln.setAttribute('stroke','#2b3139'); ln.setAttribute('stroke-width','0.5');
+    svg.appendChild(ln);
+  }
+  const close = bars.map(b => b.close);
+  const rls   = bars.map(b => b.retail_long_short_ratio ?? b.retailLongShortRatio ?? null);
+  const oi    = bars.map(b => b.open_interest ?? b.openInterest ?? null);
+  polyline(svg, normSeries(close), n, W, H, '#eaecef');  // price 白
+  polyline(svg, normSeries(rls),   n, W, H, '#0ecb81');  // retail_ls 綠
+  polyline(svg, normSeries(oi),    n, W, H, '#3a8bfd');  // OI 藍
+  // 範圍標籤
+  const cN = normSeries(close), rN = normSeries(rls);
+  const lbl = document.createElementNS(SVGNS,'text');
+  lbl.setAttribute('x',4); lbl.setAttribute('y',H+15); lbl.setAttribute('fill','#848e9c'); lbl.setAttribute('font-size','11');
+  lbl.textContent = `${sym} · ${n} 根 · price ${cN?cN.min.toFixed(4):'?'}~${cN?cN.max.toFixed(4):'?'} · retail_ls ${rN?rN.min.toFixed(2):'?'}~${rN?rN.max.toFixed(2):'?'}`;
+  svg.appendChild(lbl);
+  toastOk(`${sym} 畫好 ${n} 根`);
 }
 
 /* ───────────── emergency stop ───────────── */

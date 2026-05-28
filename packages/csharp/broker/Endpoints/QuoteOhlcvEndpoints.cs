@@ -44,6 +44,26 @@ public static class QuoteOhlcvEndpoints
             return ToResponse(result);
         });
 
+        // GET /api/v1/workers/quote/ohlcv/bars-metrics?symbol=APTUSDT&interval=1d&limit=180
+        // bars 帶 funding_rate + retail_long_short_ratio + open_interest(get_bars_funding)
+        // 給 dashboard 圖表面板疊圖用(price vs 結構性指標)
+        ohlcv.MapGet("/bars-metrics", async (
+            IWorkerRegistry registry, IExecutionDispatcher dispatcher,
+            HttpRequest req, CancellationToken ct) =>
+        {
+            if (!registry.HasAvailableWorker("quote.ohlcv"))
+                return Results.Ok(ApiResponseHelper.Error("quote-worker not connected"));
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                symbol   = req.Query["symbol"].ToString(),
+                interval = req.Query.TryGetValue("interval", out var iv) ? iv.ToString() : "1d",
+                limit    = req.Query.TryGetValue("limit", out var lm) && int.TryParse(lm, out var n) ? n : 180,
+            });
+            var result = await dispatcher.DispatchAsync(BuildRequest("quote.ohlcv", "get_bars_funding", payload));
+            return ToResponse(result);
+        });
+
         // ── 抓取美股歷史 ────────────────────────────────────────────────
 
         ohlcv.MapGet("/fetch-stock", async (
