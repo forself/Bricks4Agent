@@ -82,6 +82,7 @@ public class DailyReportService : BackgroundService
                 if (fired.DayOfWeek == DayOfWeek.Sunday)
                 {
                     await BuildAndPushAsync(periodHours: 24 * 7, ct);
+                    await BuildAndPushScannerShadowAsync(periodHours: 24 * 7, ct);   // 每週 shadow scanner vs backtest 對照
                 }
                 if (fired.Day == 1)
                 {
@@ -205,6 +206,75 @@ public class DailyReportService : BackgroundService
         _logger.LogInformation("DailyReport pushed: discord={D} line={L} pnl={Pnl:F2} trades={N} strategies={S}",
             dr.ok, lr.ok, stats.RealizedPnlSum, stats.TradeCount, byStrategy.Count);
         return (ok, body);
+    }
+
+    /// <summary>
+    /// 每週 shadow scanner vs backtest 對照(2026-05-29)— 累積 closed leg 統計 + 本期增量,跟 backtest 預期勝率對照、標偏離。
+    /// 目標:4 週影子期累積後判斷哪條 live 復現 backtest、可升真錢。純讀 scanner_active_legs。
+    /// </summary>
+    public async Task<(bool Ok, string Summary)> BuildAndPushScannerShadowAsync(int periodHours, CancellationToken ct, bool push = true)
+    {
+        await Task.CompletedTask;
+        // backtest 預期勝率(strat-validate 跨幣中位、含 2022)— 偏離參考線
+        var expWr = new Dictionary<string, decimal>
+        {
+            ["retail_ls_contrarian_tight"] = 50m, ["retail_ls_delta_contrarian"] = 46m,
+            ["funding_momentum_ls"] = 42m, ["fundmom_ls_xtight"] = 47m,
+            ["ts_momentum"] = 44m, ["tsmom_widepz"] = 46m, ["decorr5_scan10"] = 49m,
+            ["harm_prz_scan10"] = 42m, ["harm_prz_scan10_widepz"] = 50m, ["harm_prz_top2_scan10_widepz"] = 48m,
+        };
+
+        List<BrokerCore.Models.ScannerLegEntry> scanners;
+        try { scanners = _db.Query<BrokerCore.Models.ScannerLegEntry>("SELECT * FROM scanner_legs WHERE enabled = 1 ORDER BY id"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "ScannerShadow: scanner_legs query failed"); return (false, "query failed"); }
+        if (scanners.Count == 0) return (false, "no enabled scanners");
+
+        var since = DateTime.UtcNow.AddHours(-periodHours);
+        var sb = new StringBuilder();
+        sb.AppendLine($"**Shadow Scanner 表現 vs backtest（{scanners.Count} 條 enabled）**");
+        sb.AppendLine($"_累積 closed 統計 + 近 {periodHours / 24}d 增量;偏離 = live 勝率 − backtest 預期_");
+        sb.AppendLine();
+
+        int totalClosed = 0, totalOpen = 0;
+        foreach (var sc in scanners)
+        {
+            List<BrokerCore.Models.ScannerActiveLegEntry> legs;
+            try { legs = _db.Query<BrokerCore.Models.ScannerActiveLegEntry>(
+                "SELECT * FROM scanner_active_legs WHERE scanner_id = @s", new { s = sc.Id }); }
+            catch { continue; }
+
+            var closed = legs.Where(l => l.ClosedAt != null).ToList();
+            int openCnt = legs.Count(l => l.ClosedAt == null);
+            int newOpen = legs.Count(l => l.OpenedAt >= since);
+            int newClose = closed.Count(l => l.ClosedAt >= since);
+            totalClosed += closed.Count; totalOpen += openCnt;
+
+            if (closed.Count == 0)
+            {
+                sb.AppendLine($"・**{sc.Strategy}**: 0 closed · {openCnt} open · 本期 +{newOpen}開 (資料未足)");
+                continue;
+            }
+            int wins = closed.Count(l => l.RealizedPnlPct > 0);
+            decimal wr = (decimal)wins / closed.Count * 100m;
+            decimal cumPnl = closed.Sum(l => l.RealizedPnlPct);
+            double avgHold = closed.Average(l => ((l.ClosedAt!.Value) - l.OpenedAt).TotalDays);
+            string dev = "";
+            if (expWr.TryGetValue(sc.Strategy, out var ew) && closed.Count >= 5)
+            {
+                var d = wr - ew;
+                dev = $" · vs backtest {ew:F0}%: {(d >= 0 ? "+" : "")}{d:F0}pp{(Math.Abs(d) > 20 ? " ⚠偏離" : "")}";
+            }
+            sb.AppendLine($"・**{sc.Strategy}**: {closed.Count}closed 勝率{wr:F0}% 累計{(cumPnl >= 0 ? "+" : "")}{cumPnl:F1}% 持{avgHold:F0}d · {openCnt}open 本期+{newOpen}/-{newClose}{dev}");
+        }
+        sb.AppendLine();
+        sb.AppendLine($"合計 {totalClosed} closed · {totalOpen} open。樣本 <5 closed 不算勝率(影子期初常見)。");
+
+        var body = sb.ToString();
+        var title = $"🔬 Shadow Scanner 週報 · {DateTime.UtcNow:yyyy-MM-dd}";
+        if (!push) return (true, body);
+        var dr = await _discord.SendAdHocAsync(title, body, 0x3a8bfd, ct);
+        _logger.LogInformation("ScannerShadow pushed: discord={D} scanners={N} closed={C}", dr.ok, scanners.Count, totalClosed);
+        return (dr.ok, body);
     }
 
     private async Task<List<(decimal Pnl, string? Strategy, string? Symbol)>> FetchTradesAsync(
