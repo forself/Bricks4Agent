@@ -24,11 +24,14 @@ string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substrin
 int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
 bool realFunding = args.Contains("--apply-funding");
 bool realRetailLs = args.Contains("--apply-retail-ls");
+// --sl=N:LS 引擎固定初始止損 %(模擬 live 止損機制做存活測試;0=無止損,現有行為)
+decimal slPct = decimal.TryParse(args.FirstOrDefault(a => a.StartsWith("--sl="))?.Substring(5), out var slv) ? slv : 0m;
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
 if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 funding history(LS engine 雙向計費),非預設 0.01%/8h 假設");
 if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
+if (slPct > 0m) Console.WriteLine($"🛑 --sl={slPct}%:LS 引擎固定初始止損(模擬 live 止損、存活測試)");
 
 string[] symbols = fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -439,7 +442,7 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
 }
 
 var loEq = PrintTable("Long-only(Benson 引擎)", (s, b, c) => BacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => BacktestEngine.Run(s, b, c));
-var lsEq = PrintTable("Long-short(新引擎)", (s, b, c) => LongShortBacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => LongShortBacktestEngine.Run(s, b, c));
+var lsEq = PrintTable("Long-short(新引擎)", (s, b, c) => LongShortBacktestEngine.RunWalkForward(s, b, c, 250, 90, 60, defaultInitialSlPct: slPct), (s, b, c) => LongShortBacktestEngine.Run(s, b, c, defaultInitialSlPct: slPct));
 
 // ── 多時框 策略 × 幣 分析(預設 1h~1w,找跨時框穩健最優解)──────────────
 // long-only 引擎(對應實際 perp_long_only)。每時框 per(策略,幣) OOS = walk-forward avg test%。

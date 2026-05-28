@@ -172,8 +172,10 @@ public static class LongShortBacktestEngine
                     // H18 補正:策略未 emit StopPrice 但 caller 啟用 trail + 給 defaultInitialSlPct → bootstrap SL,
                     // 讓 trail 有 base 可 ratchet(否則 trail 永遠 skip、對 trend 策略 no-op)。
                     decimal effectiveStop = signal.StopPrice ?? 0m;
-                    bool trailEnabled = atrTrailMultiplier > 0m || peakTrailTriggerPct > 0m;
-                    if (effectiveStop == 0m && trailEnabled && defaultInitialSlPct > 0m)
+                    // 策略未 emit StopPrice 但 caller 給 defaultInitialSlPct → 設固定初始 SL。
+                    // (原只在 trail 啟用時 bootstrap;2026-05-29 放寬:固定止損也適用、用於模擬 live 止損機制做存活測試。
+                    //  向後相容:defaultInitialSlPct 預設 0 → 不設 SL、現有行為不變。)
+                    if (effectiveStop == 0m && defaultInitialSlPct > 0m)
                     {
                         effectiveStop = desired > 0
                             ? price * (1m - defaultInitialSlPct / 100m)   // long:entry × (1 − pct%)
