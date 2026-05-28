@@ -129,7 +129,44 @@ VALUES
    'spot', '1d', 5, 1, 0,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
--- Sanity check
-SELECT printf('seed 完成,enabled scanner: %d,total budget: %.0f USDT',
-              COUNT(*), SUM(budget_total))
-FROM scanner_legs WHERE enabled=1;
+-- ── 多市場 paper-shadow scanner(美股 alpaca + 台股 twse)──────────────────────────
+-- 平台「資產無關治理化多市場」demo:同一套 scanner / 保護鏈 / governance 跑多市場 paper-shadow。
+-- 策略:harm_prz_scan10_widepz(harmonic PRZ 形態)。多市場驗證(2026-05-28、--stocks/--twstocks/--fx):
+--   美股 pool t=5.45 ✅ / 台股 t=3.37 ⚠️(廣度53%<60%、邊緣) / 外匯 t=0.74 ❌(不接)。
+--   ⚠ 不用 ts_momentum:股票 t=1.59 不顯著(動量在股票被 mean-reversion + 上漲 drift 削弱)。
+-- universe = 全驗證集、求廣(scanner 每 cycle 挑訊號最強 N 個),**刻意不按歷史報酬挑股**:
+--   逐檔 OOS 是噪音(BA 單檔 15% 運氣、中位僅 1%),照表現挑=selection bias 不會復現。
+--   美股 = strat-validate --stocks 全 24 檔(跨 6 sector、max breadth);台股 = --twstocks 全 15 檔。
+-- universe 必須 ⊆ quote-worker 抓的 StockSymbols(scanner 讀 DB bars、沒 bars 永遠 pending);已同步 appsettings.json。
+--   VPS 用 env 覆寫 Worker__Quote__StockSymbols,須含這些 symbol 才會有 bars。
+-- 都 shadow=1、leverage=1。**台股是 shadow-only 觀察**(t 顯著但過不了廣度閘、不升 real;exchange='twse' 無真實 client、
+--   shadow 不下單、bars/關腿都走 quote-worker symbol 查、不碰交易所 client)。美股升 paper-live 前才設 budget。
+-- 預算單位是 paper(非 USDT),sanity check 用 per-exchange 分組、不跟 crypto USDT 混加。
+INSERT OR REPLACE INTO scanner_legs
+  (id, name, strategy, universe,
+   budget_total, max_concurrent, per_leg_cap,
+   mode, interval, leverage, shadow, enabled, exchange,
+   owner_principal_id, created_at, updated_at)
+VALUES
+  ('usstock_harmprz_scanner', 'usstock_harmprz_scanner', 'harm_prz_scan10_widepz',
+   '["AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META","JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA"]',
+   3000, 3, 1000,
+   'spot', '1d', 1, 1, 1, 'alpaca',
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 台股 shadow-only 觀察(t=3.37 顯著但廣度<60%、不升 real;exchange='twse' 純 metadata、shadow 不下單)
+  ('twstock_harmprz_scanner', 'twstock_harmprz_scanner', 'harm_prz_scan10_widepz',
+   '["2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW","0050.TW"]',
+   0, 3, 0,
+   'spot', '1d', 1, 1, 1, 'twse',
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+
+-- 全新 DB 補正:EnsureTable 建 exchange 欄不帶 SQL DEFAULT(BaseOrm 不從 model initializer 產 DEFAULT、
+-- 且 ScannerLegEntry.Exchange 非 [Required]),上面 crypto INSERT 省略 exchange 欄會塞 NULL。
+-- 既有 DB 走 migration 的 DEFAULT 'binance' 沒這問題;此 UPDATE 兜底全新 DB(alpaca 列已顯式設、不受影響)。
+UPDATE scanner_legs SET exchange='binance' WHERE exchange IS NULL OR exchange='';
+
+-- Sanity check(per exchange:binance=USDT、alpaca=paper USD,單位不同不混加)
+SELECT printf('seed 完成 [%s] enabled scanner: %d、budget: %.0f',
+              exchange, COUNT(*), SUM(budget_total))
+FROM scanner_legs WHERE enabled=1 GROUP BY exchange;

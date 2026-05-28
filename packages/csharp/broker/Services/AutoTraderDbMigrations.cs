@@ -98,6 +98,11 @@ public static class AutoTraderDbMigrations
         AddColumnIfMissing(db, logger, "scanner_active_legs", "exit_price",       "TEXT NOT NULL DEFAULT '0'");
         AddColumnIfMissing(db, logger, "scanner_active_legs", "realized_pnl_pct", "TEXT NOT NULL DEFAULT '0'");
         AddColumnIfMissing(db, logger, "scanner_active_legs", "close_reason",     "TEXT NOT NULL DEFAULT ''");
+
+        // 多市場支援(236ad05)— ScannerLegEntry 後加 exchange 欄,但 scanner_legs 是 Phase 1(6c57049)建的。
+        // EnsureTable 是 CREATE TABLE IF NOT EXISTS、不補欄,既有 broker.db 沒這欄 → INSERT exchange 會 500。
+        // 預設 binance 保留既有 crypto scanner 行為;美股 scanner 用 exchange='alpaca'。
+        AddColumnIfMissing(db, logger, "scanner_legs", "exchange", "TEXT NOT NULL DEFAULT 'binance'");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,

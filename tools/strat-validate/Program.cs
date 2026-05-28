@@ -33,9 +33,15 @@ if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 fund
 if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
 if (slPct > 0m) Console.WriteLine($"🛑 --sl={slPct}%:LS 引擎固定初始止損(模擬 live 止損、存活測試)");
 
-// --stocks:改用美股 universe + Yahoo 資料源(驗價格類策略在股票有無 edge;funding/retail_ls 自動失效)
+// 多市場驗證(都走 Yahoo 日線 + StockBarCache、funding/retail_ls 自動失效):
+// --stocks   美股跨 sector / --twstocks 台股跨 sector / --fx 外匯主流對+交叉
 bool stocksMode = args.Contains("--stocks");
+bool twMode     = args.Contains("--twstocks");
+bool fxMode     = args.Contains("--fx");
+bool yahooMode  = stocksMode || twMode || fxMode;   // 非 crypto perp:資料走 Yahoo、無 funding/retail_ls
 if (stocksMode) Console.WriteLine("📈 --stocks:美股模式(Yahoo 日線、StockBarCache);funding/retail_ls 注入自動 skip");
+if (twMode)     Console.WriteLine("🇹🇼 --twstocks:台股模式(Yahoo .TW 日線);funding/retail_ls 注入自動 skip");
+if (fxMode)     Console.WriteLine("💱 --fx:外匯模式(Yahoo =X 日線);funding/retail_ls 注入自動 skip");
 
 string[] symbols = stocksMode
     ? new[]
@@ -43,6 +49,23 @@ string[] symbols = stocksMode
         // 跨 sector 美股(科技/金融/醫療/能源/消費/工業)— breadth 給 cross-sectional + pooling
         "AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META",
         "JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA",
+    }
+    : twMode
+    ? new[]
+    {
+        // 跨 sector 台股(半導體/金融/電信/塑化/鋼鐵/食品/零售/ETF)— 驗 harmonic 在 TWSE 是否延伸
+        "2330.TW","2317.TW","2454.TW","2308.TW","2303.TW",  // 半導體/電子
+        "2881.TW","2882.TW","2891.TW",                       // 金融
+        "2412.TW",                                            // 電信
+        "1301.TW","1303.TW",                                  // 塑化
+        "2002.TW","1216.TW","2912.TW","0050.TW",              // 鋼鐵/食品/零售/大盤 ETF
+    }
+    : fxMode
+    ? new[]
+    {
+        // 外匯主流對 + 交叉盤(Yahoo =X 格式)— harmonic 源自 FX/股票 TA、先驗 majors
+        "EURUSD=X","USDJPY=X","GBPUSD=X","USDCHF=X","AUDUSD=X","USDCAD=X","NZDUSD=X",  // 7 majors
+        "EURJPY=X","GBPJPY=X","EURGBP=X","AUDJPY=X",                                    // 4 crosses
     }
     : fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -341,8 +364,8 @@ if (args.Contains("--harmonic")) { await RunHarmonic(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
-    // stocks 模式:Yahoo 日線(StockBarCache)、無 funding;否則 Binance KlineCache
-    if (stocksMode)
+    // Yahoo 模式(美股/台股/FX):Yahoo 日線(StockBarCache)、無 funding;否則 Binance KlineCache
+    if (yahooMode)
         return await ToolsShared.StockBarCache.FetchOrLoad(sym, interval, limit: barsLimit);
     // 走共享 KlineCache(~/.cache/brick4agent/klines/、24h TTL、FORCE_REFRESH_KLINES=1 強制刷)
     // --bars=N 可指定深度(預設 1000、> 1000 走分頁)
@@ -391,8 +414,8 @@ if (data.TryGetValue("BTCUSDT", out var btcRef)) BtcRegimeFilterStrategy.BtcBars
 
 // 2026-05-27 D 路線:--apply-funding 注入真實 Binance funding history
 // 每個 symbol 抓 + align、bar.FundingRate 填好,LongShortBacktestEngine(applyFunding=true)會用
-// stocks 模式:股票無 funding/retail_ls,自動 skip 注入(get_bars_funding 不適用)
-if (realFunding && !stocksMode)
+// Yahoo 模式(美股/台股/FX):無 funding/retail_ls,自動 skip 注入(get_bars_funding 不適用)
+if (realFunding && !yahooMode)
 {
     Console.WriteLine("💸 注入真實 funding 歷史(Binance fapi):");
     foreach (var kv in data)
@@ -404,8 +427,8 @@ if (realFunding && !stocksMode)
 }
 
 // 2026-05-28 Q2 retail_ls_contrarian:注入 RetailLongShortRatio(data.binance.vision daily metrics zip)
-// stocks 模式 skip(股票無 perp metrics)
-if (realRetailLs && !stocksMode)
+// Yahoo 模式 skip(股票/FX 無 perp metrics)
+if (realRetailLs && !yahooMode)
 {
     Console.WriteLine("📊 注入 retail_ls 歷史(data.binance.vision metrics):");
     foreach (var kv in data)
