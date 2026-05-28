@@ -153,3 +153,32 @@ Retail L/S 8 幣 linear t 全為負(方向全一致)→ 最強候選。
 6. caveat:backtest CB 乾淨成交、真實 gap 穿透更深;CB 縮倉 = 踏空反彈(報酬代價)。
 
 詳見 memory [[q2-portfolio-survival]]。
+
+---
+
+## 2026-05-29 全策略熊市審計(12 條部署策略 × 含 2022 LUNA/FTX)
+
+起因:發現部署策略多用 bars=1000(=2023-09 起、漏 2022 熊)驗證、只 4 條跑過防禦。用 --bars=1300 跑全部。
+
+**結果:11 跑成、10/11 pool t 顯著(含 2022)**:
+| 策略 | pool t | LS DD |
+|---|---|---|
+| harm_prz_scan10 / _widepz / top2 | 6.16 / 5.58 / 4.76 | 9% / 11% / 7% |
+| fundmom_ls_xtight / tsmom_widepz / decorr5 | 5.32 / 4.85 / 4.64 | 65% / 64% / 66% |
+| ts_momentum / funding_momentum_ls | 4.49 / 4.15 | 69% / 71% |
+| retail_ls_contrarian_tight / _delta | 2.47 / 2.41 | 91% / 72% |
+| **oi_contrarian_ls** ❌ | **0.43** | 79% |
+| **tsmom_btc_not_up** ❌(補註冊後驗) | **0.87** | **116%** |
+
+**2 條失敗該下架**:oi_contrarian_ls(熊市 LS 不顯著)、tsmom_btc_not_up(plain ts_momentum t=4.49 但加 BTC 濾網 t→0.87,濾網過擬合到無熊窗)。
+
+**非平穩性**:funding bars=1000(無熊)t=3.44 / 1300(含 2022)t=4.15 / 2400(含 2019-21)t=1.43。熊市不破策略、上古市場才破。
+
+**🌟 分散組合 >> 任何子集**:
+| 組合(風險加權) | Sharpe | 裸 DD | 防禦後 |
+|---|---|---|---|
+| 4 條 Q2 | 0.60 | 46% | 16% |
+| 全 10 顯著條分散 | **1.24** | **19%** | **8%** |
+加 harmonic 家族(Sharpe 1.0+/DD 7-11%)讓組合品質跳級、防禦效率 ×2→×8-9。**實證防禦天花板突破靠更好 alpha/更多去相關腿,非防禦旋鈕。** 3x:分散組合裸 19%×3=57% 不用防禦就活。
+
+詳見 memory [[bear-market-audit-2026-05-29]]。
