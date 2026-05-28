@@ -55,11 +55,38 @@ foreach (int hold in new[] { 1, 3, 5, 10 })
 
 // 4. Split-half OOS:20d mom hold-5d 淨報酬切前後半,兩半都顯著才算穩(非單一 regime)
 Console.WriteLine($"\n--- Split-half OOS(20d mom hold-5d 淨、前後半各驗)---");
+var (momBest, _, _) = RunXsec(20, holdDays: 5, costPerSide: 0.0008);
 {
-    var (mom, _, _) = RunXsec(20, holdDays: 5, costPerSide: 0.0008);
-    int half = mom.Count / 2;
-    Report("前半(早期)", mom.Take(half).ToList());
-    Report("後半(近期)", mom.Skip(half).ToList());
+    int half = momBest.Count / 2;
+    Report("前半(早期)", momBest.Take(half).ToList());
+    Report("後半(近期)", momBest.Skip(half).ToList());
+}
+
+// 5. 去相關驗證:xsec mom vs 市場 beta(等權 long 全幣)vs BTC — 確認市場中性 + 邊際貢獻
+Console.WriteLine($"\n--- 去相關驗證(20d mom hold-5d vs 方向性 beta)---");
+{
+    // 對齊:mom series 對應 date index [20, dates.Count-1),每點 = 該日 → 隔日報酬
+    var ewMkt = new List<double>(); var btc = new List<double>();
+    for (int i = 20; i < dates.Count - 1; i++)
+    {
+        var today = closesByDate[dates[i]]; var next = closesByDate[dates[i + 1]];
+        var rs = new List<double>();
+        foreach (var s in symbols) if (today.TryGetValue(s, out var tc) && tc > 0 && next.TryGetValue(s, out var nc)) rs.Add((double)(nc / tc - 1m));
+        ewMkt.Add(rs.Count > 0 ? rs.Average() : 0);
+        btc.Add(today.TryGetValue("BTCUSDT", out var bt) && bt > 0 && next.TryGetValue("BTCUSDT", out var bn) ? (double)(bn / bt - 1m) : 0);
+    }
+    int n = Math.Min(momBest.Count, ewMkt.Count);
+    var m = momBest.Take(n).ToArray();
+    double cMkt = Pearson(m, ewMkt.Take(n).ToArray()), cBtc = Pearson(m, btc.Take(n).ToArray());
+    Console.WriteLine($"  corr(xsec mom, 等權市場) = {cMkt:+0.000;-0.000}   corr(xsec mom, BTC) = {cBtc:+0.000;-0.000}");
+    Console.WriteLine($"  → 接近 0 = 市場中性、跟方向性 alpha 結構去相關");
+    // 邊際貢獻示意:兩個等波動 sleeve、Sharpe 各 sA/sB、相關 ρ → 組合 Sharpe = (sA+sB)/sqrt(2(1+ρ))
+    double sMom = 1.28, sBook = 1.29; // xsec mom 淨 / 現有 10 條分散組合(bear audit)
+    foreach (double rho in new[] { 0.0, cMkt, 0.3 })
+    {
+        double comb = (sMom + sBook) / Math.Sqrt(2 * (1 + rho));
+        Console.WriteLine($"  若 corr={rho:+0.00;-0.00}:xsec mom(Sh {sMom}) + 現有組合(Sh {sBook})等波動合併 → Sharpe ~{comb:F2}");
+    }
 }
 
 Console.WriteLine($"\n判讀:市場中性日 spread、t>2 = 橫斷面因子 edge;淨利(扣成本)後 t>2 + maxDD 低 + 跟方向性 alpha 去相關 = 救得了組合的新因子");
@@ -125,6 +152,15 @@ void ApplyDay(Dictionary<string, decimal> today, Dictionary<string, decimal> nex
     double topFwd = Avg(longs), botFwd = Avg(shorts);
     momR.Add((topFwd - botFwd) - cost);   // 動量淨報酬
     revR.Add((botFwd - topFwd) - cost);
+}
+
+static double Pearson(double[] x, double[] y)
+{
+    int n = Math.Min(x.Length, y.Length);
+    if (n < 3) return 0;
+    double mx = x.Take(n).Average(), my = y.Take(n).Average(), sxy = 0, sxx = 0, syy = 0;
+    for (int i = 0; i < n; i++) { double dx = x[i] - mx, dy = y[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
+    return sxx < 1e-12 || syy < 1e-12 ? 0 : sxy / Math.Sqrt(sxx * syy);
 }
 
 static void Report(string label, List<double> daily)
