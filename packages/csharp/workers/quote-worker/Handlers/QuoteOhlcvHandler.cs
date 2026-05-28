@@ -118,8 +118,10 @@ public class QuoteOhlcvHandler : ICapabilityHandler
         var bars = _db.GetBars(sym, interval, limit);
         var fundings = _db.GetFundingRates(sym, 2000);
         var retailLs = _db.GetRetailLsRatios(sym, 5000);   // Q2 retail_ls_contrarian alpha
+        var oiHist = _db.GetOpenInterestHist(sym, 5000);   // Q2 oi_contrarian alpha
         var merged = AlignFunding(bars, fundings);
         var lsMerged = AlignRetailLs(bars, retailLs);
+        var oiMerged = AlignOi(bars, oiHist);
 
         var json = JsonSerializer.Serialize(new
         {
@@ -128,6 +130,7 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             count = merged.Count,
             funding_points = fundings.Count,
             retail_ls_points = retailLs.Count,
+            oi_points = oiHist.Count,
             bars = merged.Select((m, idx) => new
             {
                 open_time  = m.Bar.OpenTime,
@@ -139,6 +142,7 @@ public class QuoteOhlcvHandler : ICapabilityHandler
                 volume     = m.Bar.Volume,
                 funding_rate = m.FundingRate,
                 retail_long_short_ratio = idx < lsMerged.Count ? lsMerged[idx].LsRatio : null,
+                open_interest = idx < oiMerged.Count ? oiMerged[idx].OiValue : null,
             })
         });
         return (true, json, null);
@@ -182,6 +186,27 @@ public class QuoteOhlcvHandler : ICapabilityHandler
             {
                 last = sortedLs[li].LsRatio;
                 li++;
+            }
+            outl.Add((b, last));
+        }
+        return outl;
+    }
+
+    /// <summary>同 AlignFunding pattern,把 OI 歷史 as-of join 到 bars(向前填充)。Q2 oi_contrarian 用。</summary>
+    public static List<(OhlcvBar Bar, decimal? OiValue)> AlignOi(
+        List<OhlcvBar> bars, List<OpenInterestPoint> oi)
+    {
+        var sortedBars = bars.OrderBy(b => b.OpenTime).ToList();
+        var sortedOi = oi.OrderBy(p => p.SampleTime).ToList();
+        var outl = new List<(OhlcvBar, decimal?)>(sortedBars.Count);
+        int oiIdx = 0;
+        decimal? last = null;
+        foreach (var b in sortedBars)
+        {
+            while (oiIdx < sortedOi.Count && sortedOi[oiIdx].SampleTime <= b.OpenTime)
+            {
+                last = sortedOi[oiIdx].OiValue;
+                oiIdx++;
             }
             outl.Add((b, last));
         }

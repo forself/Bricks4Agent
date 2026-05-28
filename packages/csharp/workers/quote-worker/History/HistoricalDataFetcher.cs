@@ -358,6 +358,52 @@ public class HistoricalDataFetcher
     }
 
     /// <summary>
+    /// 未平倉量歷史深度回補(Q2 oi_contrarian alpha)。
+    /// Binance /futures/data/openInterestHist:period=1d、limit max 30、回 sumOpenInterestValue(USDT 名目)。
+    /// 公開 API 只回 30 天、歷史靠 tools/seed-retail-ls(同時 seed retail_ls + OI)一次性 backfill。
+    /// </summary>
+    public async Task<int> FetchOiHistDeepAsync(
+        string binanceSymbol, CancellationToken ct = default)
+    {
+        var normalizedSymbol = binanceSymbol.Replace("USDT", "").ToUpper();
+        var url = $"https://fapi.binance.com/futures/data/openInterestHist" +
+                  $"?symbol={binanceSymbol}&period=1d&limit=30";
+        try
+        {
+            using var resp = await _http.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Binance OI hist returned {Code} for {Symbol}", resp.StatusCode, binanceSymbol);
+                return 0;
+            }
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(json);
+            var points = new List<OpenInterestPoint>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (!el.TryGetProperty("sumOpenInterestValue", out var vEl)) continue;
+                if (!decimal.TryParse(vEl.GetString(), out var val)) continue;
+                if (!el.TryGetProperty("timestamp", out var tEl)) continue;
+                long ts = tEl.GetInt64();
+                points.Add(new OpenInterestPoint
+                {
+                    Symbol = normalizedSymbol,
+                    SampleTime = DateTimeOffset.FromUnixTimeMilliseconds(ts).UtcDateTime,
+                    OiValue = val,
+                });
+            }
+            _db.SaveOpenInterestHist(points);
+            _logger.LogInformation("OI hist deep {Symbol}: saved {Count} points (30d API)", binanceSymbol, points.Count);
+            return points.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OI hist deep fetch failed: {Symbol}", binanceSymbol);
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// 當前未平倉量快照（OI history 只有 ~30 天、故只取即時值當 live 訊號、不落歷史表）。
     /// 回 (openInterest 基幣張數, 取得時間)。失敗回 null。
     /// </summary>

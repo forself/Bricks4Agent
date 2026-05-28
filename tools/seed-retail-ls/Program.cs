@@ -37,7 +37,7 @@ Console.WriteLine($"Symbols: {string.Join(", ", symbols)}");
 using var conn = new SqliteConnection($"Data Source={dbPath}");
 conn.Open();
 
-// 確保 table 存在
+// 確保 table 存在(retail_ls + open_interest 兩張,同一 metrics 來源一次 backfill)
 using (var cmd = conn.CreateCommand())
 {
     cmd.CommandText = """
@@ -48,6 +48,13 @@ using (var cmd = conn.CreateCommand())
             PRIMARY KEY (symbol, sample_time)
         );
         CREATE INDEX IF NOT EXISTS idx_retail_ls_lookup ON retail_ls_ratio(symbol, sample_time);
+        CREATE TABLE IF NOT EXISTS open_interest_hist (
+            symbol TEXT NOT NULL,
+            sample_time TEXT NOT NULL,
+            oi_value REAL NOT NULL,
+            PRIMARY KEY (symbol, sample_time)
+        );
+        CREATE INDEX IF NOT EXISTS idx_oi_hist_lookup ON open_interest_hist(symbol, sample_time);
         """;
     cmd.ExecuteNonQuery();
 }
@@ -72,6 +79,12 @@ foreach (var sym in symbols)
     var pSym = cmd.Parameters.Add("$s", SqliteType.Text);
     var pTime = cmd.Parameters.Add("$t", SqliteType.Text);
     var pRatio = cmd.Parameters.Add("$r", SqliteType.Real);
+    using var oiCmd = conn.CreateCommand();
+    oiCmd.Transaction = tx;
+    oiCmd.CommandText = "INSERT OR REPLACE INTO open_interest_hist (symbol, sample_time, oi_value) VALUES ($s, $t, $v)";
+    var pOiSym = oiCmd.Parameters.Add("$s", SqliteType.Text);
+    var pOiTime = oiCmd.Parameters.Add("$t", SqliteType.Text);
+    var pOiVal = oiCmd.Parameters.Add("$v", SqliteType.Real);
 
     int saved = 0;
     foreach (var s in byDay)
@@ -80,10 +93,14 @@ foreach (var sym in symbols)
         pTime.Value = s.Ts.ToString("o");
         pRatio.Value = (double)s.CountLsRatio;
         cmd.ExecuteNonQuery();
+        pOiSym.Value = normalized;
+        pOiTime.Value = s.Ts.ToString("o");
+        pOiVal.Value = (double)s.SumOpenInterestValue;
+        oiCmd.ExecuteNonQuery();
         saved++;
     }
     tx.Commit();
-    Console.WriteLine($"{saved} daily rows saved");
+    Console.WriteLine($"{saved} daily rows saved (retail_ls + OI)");
     totalSaved += saved;
 }
 

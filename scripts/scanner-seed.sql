@@ -118,6 +118,15 @@ VALUES
    '["BTCUSDT","ETHUSDT","BNBUSDT","LTCUSDT","OPUSDT","SUIUSDT","APTUSDT","INJUSDT"]',
    25, 3, 10,
    'spot', '1d', 5, 1, 0,
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- 2026-05-29 Q2 翻案:oi_contrarian_ls(OI 暴衝後 mean revert、非 momentum)
+  -- strat-validate 可用(60% 幣 OOS 正 / Sharpe 0.41 / full 16%)、跟 retail_ls corr -0.18 去相關
+  -- pool t=0.45 弱 → 純 shadow 收數據驗證,不升真錢;靠 open_interest_hist 表 + AlignOi 注入
+  ('oi_contrarian_scanner', 'oi_contrarian_scanner', 'oi_contrarian_ls',
+   '["BTCUSDT","ETHUSDT","BNBUSDT","LTCUSDT","OPUSDT","SUIUSDT","APTUSDT","INJUSDT"]',
+   25, 3, 10,
+   'spot', '1d', 5, 1, 0,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- Sanity check

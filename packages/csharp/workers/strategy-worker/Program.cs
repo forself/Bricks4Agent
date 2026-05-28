@@ -154,6 +154,11 @@ strategies["retail_ls_contrarian_tight"] = new RetailLsContrarianStrategy("retai
 strategies["retail_ls_delta_contrarian"]       = new RetailLsDeltaContrarianStrategy();
 strategies["retail_ls_delta_contrarian_xtight"] = new RetailLsDeltaContrarianStrategy("retail_ls_delta_contrarian_xtight", hotPct: 0.95m, coldPct: 0.05m);
 
+// [2026-05-29 Q2 翻案 — OI contrarian: OI 暴衝後 mean revert,非 momentum] oi_contrarian_ls
+// strat-validate 20 幣 full mode 可用(60% 幣 OOS 正 / Sharpe 0.41 / full 16%);跟 retail_ls corr -0.18 去相關
+// pool t=0.45 弱 → shadow 收數據,不升真錢;invertSignal=true 把 OiMomentumLsStrategy 翻成 contrarian
+strategies["oi_contrarian_ls"] = new OiMomentumLsStrategy("oi_contrarian_ls", hotPct: 0.80m, coldPct: 0.20m, invertSignal: true);
+
 // LLM 策略（選用）— 走 broker 的 /api/v1/llm-proxy/chat 集中代理，
 // 不再直接連 Gemini / OpenAI，這樣每次呼叫才會被 broker 的 MeteredLlmProxyService
 // 記到儀表板的 LLM Proxy 分頁。

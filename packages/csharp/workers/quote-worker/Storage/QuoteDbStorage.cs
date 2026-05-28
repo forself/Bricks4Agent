@@ -80,6 +80,18 @@ public class QuoteDbStorage : IDisposable
 
             CREATE INDEX IF NOT EXISTS idx_retail_ls_lookup
                 ON retail_ls_ratio(symbol, sample_time);
+
+            -- 2026-05-29 Q2 oi_contrarian alpha:perp 未平倉量(USDT 名目值)歷史,跟 retail_ls 平行
+            -- QuoteOhlcvHandler AlignOi 對齊後 emit open_interest;oi_momentum_ls 算 %change pctile 用
+            CREATE TABLE IF NOT EXISTS open_interest_hist (
+                symbol      TEXT NOT NULL,
+                sample_time TEXT NOT NULL,
+                oi_value    REAL NOT NULL,   -- sum_open_interest_value (USDT 名目)
+                PRIMARY KEY (symbol, sample_time)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_oi_hist_lookup
+                ON open_interest_hist(symbol, sample_time);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -395,6 +407,70 @@ public class QuoteDbStorage : IDisposable
     {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM retail_ls_ratio WHERE symbol = $symbol";
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    // ── 未平倉量歷史(Q2 oi_contrarian)──────────────────────────────
+
+    public void SaveOpenInterestHist(IEnumerable<OpenInterestPoint> points)
+    {
+        using var tx = _conn.BeginTransaction();
+        using var cmd = _conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO open_interest_hist (symbol, sample_time, oi_value)
+            VALUES ($symbol, $sampleTime, $oiValue)
+            """;
+        var pSymbol = cmd.Parameters.Add("$symbol", SqliteType.Text);
+        var pTime = cmd.Parameters.Add("$sampleTime", SqliteType.Text);
+        var pVal = cmd.Parameters.Add("$oiValue", SqliteType.Real);
+
+        int count = 0;
+        foreach (var p in points)
+        {
+            pSymbol.Value = p.Symbol;
+            pTime.Value = p.SampleTime.ToString("o");
+            pVal.Value = (double)p.OiValue;
+            cmd.ExecuteNonQuery();
+            count++;
+        }
+        tx.Commit();
+        _logger.LogDebug("Saved {Count} open interest points", count);
+    }
+
+    public List<OpenInterestPoint> GetOpenInterestHist(string symbol, int limit = 1000)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT symbol, sample_time, oi_value
+            FROM open_interest_hist
+            WHERE symbol = $symbol
+            ORDER BY sample_time DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$symbol", symbol);
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var list = new List<OpenInterestPoint>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new OpenInterestPoint
+            {
+                Symbol = reader.GetString(0),
+                SampleTime = DateTime.Parse(reader.GetString(1)),
+                OiValue = (decimal)reader.GetDouble(2),
+            });
+        }
+        list.Reverse();
+        return list;
+    }
+
+    public int CountOpenInterestHist(string symbol)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM open_interest_hist WHERE symbol = $symbol";
         cmd.Parameters.AddWithValue("$symbol", symbol);
         return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }

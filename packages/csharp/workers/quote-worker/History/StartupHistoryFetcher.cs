@@ -175,6 +175,24 @@ public class StartupHistoryFetcher
             }
         }
 
+        // Q2 OI 歷史抓最近 30 天(oi_contrarian;同 retail_ls 累積策略 + seed 工具 backfill 歷史)
+        foreach (var binanceSymbol in cryptoSymbols)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                var count = await _fetcher.FetchOiHistDeepAsync(binanceSymbol, ct);
+                if (count > 0)
+                    _logger.LogInformation("OI hist: {Symbol} → {Count} daily points", binanceSymbol, count);
+                await Task.Delay(300, ct).ContinueWith(_ => { });
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{binanceSymbol}/oi_hist: {ex.Message}");
+                _logger.LogWarning(ex, "OI hist fetch failed: {Symbol}", binanceSymbol);
+            }
+        }
+
         IsFetching = false;
         LastStatus = $"done: {totalBars} bars, {errors.Count} errors";
         _logger.LogInformation("StartupHistoryFetcher complete: {Total} bars, {Errors} errors", totalBars, errors.Count);
