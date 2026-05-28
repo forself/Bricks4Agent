@@ -33,7 +33,18 @@ if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 fund
 if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
 if (slPct > 0m) Console.WriteLine($"🛑 --sl={slPct}%:LS 引擎固定初始止損(模擬 live 止損、存活測試)");
 
-string[] symbols = fastMode
+// --stocks:改用美股 universe + Yahoo 資料源(驗價格類策略在股票有無 edge;funding/retail_ls 自動失效)
+bool stocksMode = args.Contains("--stocks");
+if (stocksMode) Console.WriteLine("📈 --stocks:美股模式(Yahoo 日線、StockBarCache);funding/retail_ls 注入自動 skip");
+
+string[] symbols = stocksMode
+    ? new[]
+    {
+        // 跨 sector 美股(科技/金融/醫療/能源/消費/工業)— breadth 給 cross-sectional + pooling
+        "AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META",
+        "JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA",
+    }
+    : fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
     : new[]
     {
@@ -330,6 +341,9 @@ if (args.Contains("--harmonic")) { await RunHarmonic(); return; }
 
 async Task<List<BarData>> Fetch(string sym, string interval = "1d")
 {
+    // stocks 模式:Yahoo 日線(StockBarCache)、無 funding;否則 Binance KlineCache
+    if (stocksMode)
+        return await ToolsShared.StockBarCache.FetchOrLoad(sym, interval, limit: barsLimit);
     // 走共享 KlineCache(~/.cache/brick4agent/klines/、24h TTL、FORCE_REFRESH_KLINES=1 強制刷)
     // --bars=N 可指定深度(預設 1000、> 1000 走分頁)
     var bars = await ToolsShared.KlineCache.FetchOrLoad(sym, interval, limit: barsLimit);
@@ -377,7 +391,8 @@ if (data.TryGetValue("BTCUSDT", out var btcRef)) BtcRegimeFilterStrategy.BtcBars
 
 // 2026-05-27 D 路線:--apply-funding 注入真實 Binance funding history
 // 每個 symbol 抓 + align、bar.FundingRate 填好,LongShortBacktestEngine(applyFunding=true)會用
-if (realFunding)
+// stocks 模式:股票無 funding/retail_ls,自動 skip 注入(get_bars_funding 不適用)
+if (realFunding && !stocksMode)
 {
     Console.WriteLine("💸 注入真實 funding 歷史(Binance fapi):");
     foreach (var kv in data)
@@ -389,7 +404,8 @@ if (realFunding)
 }
 
 // 2026-05-28 Q2 retail_ls_contrarian:注入 RetailLongShortRatio(data.binance.vision daily metrics zip)
-if (realRetailLs)
+// stocks 模式 skip(股票無 perp metrics)
+if (realRetailLs && !stocksMode)
 {
     Console.WriteLine("📊 注入 retail_ls 歷史(data.binance.vision metrics):");
     foreach (var kv in data)
