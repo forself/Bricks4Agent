@@ -646,11 +646,45 @@ var rng = new Random(42);
     Array.Sort(means);
     return ((decimal)mean, (decimal)means[(int)(0.025 * 2000)], (decimal)means[(int)(0.975 * 2000)], tStat);
 }
+// 標準常態 CDF(Abramowitz-Stegun erf 近似、誤差 < 1.5e-7)
+double NormCdf(double x)
+{
+    double t = 1.0 / (1.0 + 0.2316419 * Math.Abs(x));
+    double d = 0.3989422804014327 * Math.Exp(-x * x / 2.0);
+    double p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+    return x >= 0 ? 1.0 - p : p;
+}
+// 標準常態反函數(Acklam 有理近似、誤差 ~1e-9)
+double NormInv(double p)
+{
+    if (p <= 0) return -8; if (p >= 1) return 8;
+    double[] a = { -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00 };
+    double[] b = { -5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01 };
+    double[] c = { -7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00 };
+    double[] dd = { 7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00 };
+    double plow = 0.02425, phigh = 1 - 0.02425, q, r2;
+    if (p < plow) { q = Math.Sqrt(-2 * Math.Log(p)); return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((dd[0]*q+dd[1])*q+dd[2])*q+dd[3])*q+1); }
+    if (p <= phigh) { q = p - 0.5; r2 = q*q; return (((((a[0]*r2+a[1])*r2+a[2])*r2+a[3])*r2+a[4])*r2+a[5])*q / (((((b[0]*r2+b[1])*r2+b[2])*r2+b[3])*r2+b[4])*r2+1); }
+    q = Math.Sqrt(-2 * Math.Log(1 - p)); return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((dd[0]*q+dd[1])*q+dd[2])*q+dd[3])*q+1);
+}
+// 樣本 skewness(γ3)+ kurtosis(γ4、非超額、常態=3)
+(double skew, double kurt) SkewKurt(List<decimal> xs)
+{
+    int n = xs.Count;
+    if (n < 4) return (0, 3);
+    double mean = (double)xs.Average();
+    double m2 = xs.Sum(x => Math.Pow((double)x - mean, 2)) / n;
+    double m3 = xs.Sum(x => Math.Pow((double)x - mean, 3)) / n;
+    double m4 = xs.Sum(x => Math.Pow((double)x - mean, 4)) / n;
+    double sd = Math.Sqrt(m2);
+    return sd <= 0 ? (0, 3) : (m3 / Math.Pow(sd, 3), m4 / Math.Pow(sd, 4));
+}
 Console.WriteLine("\n=== 統計顯著性(1d、realistic 成本;pool 跨幣×fold OOS%、bootstrap 95% CI)===");
 Console.WriteLine($"  {"strategy",-16}{"n",5}{"mean%",8}   {"95% CI",16}{"t",7}  判定");
 int sigTested = 0, sigPassed = 0;
 var sigNames = new HashSet<string>();
 var sigT = new Dictionary<string, double>();
+var trials = new List<(string name, double sr, int n, double skew, double kurt, double tstat)>();
 foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x.s); return p.Count > 0 ? p.Average() : -999m; }))
 {
     var pool = PoolOosFolds(s);
@@ -658,10 +692,53 @@ foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x
     bool sig = lo > 0m && pool.Count >= 5;
     sigT[name] = t; if (sig) sigNames.Add(name);
     sigTested++; if (sig) sigPassed++;
+    if (pool.Count >= 5)
+    {
+        double mu = (double)pool.Average();
+        double sd = Math.Sqrt(pool.Select(x => ((double)x - mu) * ((double)x - mu)).Sum() / (pool.Count - 1));
+        var (sk, ku) = SkewKurt(pool);
+        trials.Add((name, sd > 0 ? mu / sd : 0, pool.Count, sk, ku, t));   // sr = fold 報酬的 Sharpe(非年化)
+    }
     Console.WriteLine($"  {name,-16}{pool.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
 }
 Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠ 但 folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;");
 Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
+
+// ── 多重檢定 + Deflated Sharpe(López de Prado、修「試 N 個變體 → 選擇偏誤」)──
+// 跑 N 個策略變體、純運氣也會冒出幾個「95%CI 顯著」。兩個業界標準扣假陽性:
+//   1) Deflated Sharpe Ratio:基準改成「試 N 次的期望最大 Sharpe」SR*,DSR≥0.95 才算真超過
+//   2) Benjamini-Hochberg FDR / Bonferroni:對 one-sided p-value 多重檢定校正(把上面那行口頭警告變成正式計算)
+if (trials.Count >= 3)
+{
+    int N = trials.Count;
+    const double euler = 0.5772156649015329;   // Euler-Mascheroni
+    double srMean = trials.Average(x => x.sr);
+    double srVar = trials.Sum(x => (x.sr - srMean) * (x.sr - srMean)) / (N - 1);
+    double srStd = Math.Sqrt(Math.Max(srVar, 0));
+    double sr0 = srStd * ((1 - euler) * NormInv(1.0 - 1.0 / N) + euler * NormInv(1.0 - 1.0 / (N * Math.E)));
+    var withP = trials.Select(x => (x.name, x.sr, x.n, x.skew, x.kurt, p: 1.0 - NormCdf(x.tstat))).ToList();
+    // BH-FDR 閾值(α=0.05):p 升冪排序、找最大 k 使 p_(k) ≤ k/N·α
+    var pAsc = withP.OrderBy(x => x.p).ToList();
+    double bhThresh = 0;
+    for (int k = 0; k < pAsc.Count; k++) if (pAsc[k].p <= (k + 1.0) / N * 0.05) bhThresh = pAsc[k].p;
+    double bonf = 0.05 / N;
+    Console.WriteLine($"\n=== 多重檢定 + Deflated Sharpe(N={N} 變體、SR*={sr0:F3}=試 N 次期望最大 Sharpe 基準)===");
+    Console.WriteLine($"  {"strategy",-22}{"SR",7}{"DSR",8}{"p(1側)",10}{"Bonf",6}{"BH",5}");
+    int dsrPass = 0, bonfPass = 0, bhPass = 0;
+    var bySr = withP.OrderByDescending(x => x.sr).ToList();
+    double cutoff = bySr.Count > 15 ? bySr[14].sr : double.MinValue;
+    foreach (var x in bySr)
+    {
+        double denom = Math.Sqrt(Math.Max(1e-9, 1 - x.skew * x.sr + (x.kurt - 1) / 4.0 * x.sr * x.sr));
+        double dsr = NormCdf((x.sr - sr0) * Math.Sqrt(Math.Max(1, x.n - 1)) / denom);
+        bool dP = dsr >= 0.95, bP = x.p < bonf, hP = x.p <= bhThresh;
+        if (dP) dsrPass++; if (bP) bonfPass++; if (hP) bhPass++;
+        if (x.sr >= cutoff || dP || bP || hP)
+            Console.WriteLine($"  {x.name,-22}{x.sr,7:F3}{dsr,8:F3}{x.p,10:F4}{(bP ? "✅" : "—"),6}{(hP ? "✅" : "—"),5}");
+    }
+    Console.WriteLine($"  → 原始 95%CI 顯著 {sigPassed} 支;多重檢定後:DSR≥0.95 {dsrPass} 支、Bonferroni {bonfPass} 支、BH-FDR(5%) {bhPass} 支。");
+    Console.WriteLine($"     差額 = 多重檢定揪出的假陽性;只信過 DSR / BH-FDR 的才是真 edge。");
+}
 
 // 2026-05-27 Q1.1:Kelly fraction sizing 推薦(每支顯著策略、用 walk-forward win-rate / avg win / avg loss)
 // Q1.2(同 commit):疊加 vol-target scalar(用 BTC 當下 realized vol vs target 60%)
