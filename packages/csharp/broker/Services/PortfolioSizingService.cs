@@ -84,7 +84,7 @@ public class PortfolioSizingService
     }
 
     /// <summary>
-    /// 8 個 scanner 對應策略的 backtest stats(2026-05-27 strat-validate --apply-funding 跑出)
+    /// scanner 對應策略的 backtest stats(strat-validate 跑出、2026-05-27 起、Q2 alpha 2026-05-29 補)
     /// 之後可改成動態查 scanner_active_legs 統計、或從 t-stat re-run 自動更新
     /// </summary>
     private static readonly Dictionary<string, StratStats> BacktestStats = new()
@@ -99,6 +99,11 @@ public class PortfolioSizingService
         ["funding_momentum_ls"]           = new(WinRate: 0.52m, AvgWinPct: 42.5m, AvgLossPct: 23.8m, MeanRet: 10.7m, Vol: 33.0m),
         ["fundmom_ls_xtight"]             = new(WinRate: 0.62m, AvgWinPct: 39.8m, AvgLossPct: 18.7m, MeanRet: 17.4m, Vol: 33.0m),
         ["tsmom_btc_not_up"]              = new(WinRate: 0.55m, AvgWinPct: 35.0m, AvgLossPct: 22.0m, MeanRet: 12.0m, Vol: 34.0m),
+        // 2026-05-29 Q2 結構性 alpha(strat-validate 20 幣 full mode 跑出;WR+PF 推 AvgWin/AvgLoss、DD 推 Vol)
+        // 尚在 shadow、stats 是 backtest;影子期滿後改 live 統計
+        ["retail_ls_contrarian_tight"]    = new(WinRate: 0.50m, AvgWinPct: 38.9m, AvgLossPct: 15.0m, MeanRet: 11.9m, Vol: 36.0m),
+        ["retail_ls_delta_contrarian"]    = new(WinRate: 0.46m, AvgWinPct: 18.4m, AvgLossPct: 14.0m, MeanRet: 0.9m,  Vol: 34.0m),
+        ["oi_contrarian_ls"]              = new(WinRate: 0.59m, AvgWinPct: 15.8m, AvgLossPct: 20.0m, MeanRet: 1.2m,  Vol: 36.0m),
     };
 
     public sealed record StratStats(decimal WinRate, decimal AvgWinPct, decimal AvgLossPct, decimal MeanRet, decimal Vol);
