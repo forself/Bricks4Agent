@@ -32,6 +32,8 @@ var poolTls = new List<double>(); var poolRls = new List<double>(); var poolTake
 var poolNext = new List<double>();
 var poolFundDelta = new List<double>(); var poolRlsDelta = new List<double>(); var poolOiAbs = new List<double>();
 var poolComposite = new List<double>(); var poolRls5d = new List<double>(); var poolRlsAccel = new List<double>();
+// Cross-sectional 累積:date → list of (coin, retail_ls, retail_ls_delta, nextRet)
+var xsByDate = new Dictionary<DateTime, List<(string sym, double rls, double rlsDelta, double nextRet)>>();
 
 foreach (var sym in symbols)
 {
@@ -56,12 +58,14 @@ foreach (var sym in symbols)
     // 4. 對齊:用 bar.OpenTime.Date 作 key
     var byDay = daily.ToDictionary(d => d.Day, d => d);
     var rows = new List<(decimal funding, decimal oiPct, decimal topLs, decimal retailLs, decimal takerLs, decimal nextRet, decimal todayRet)>();
+    var rowDates = new List<DateTime>();
     for (int i = 0; i < bars.Count - 1; i++)
     {
         if (!byDay.TryGetValue(bars[i].OpenTime.Date, out var d)) continue;
         decimal nextRet = bars[i + 1].Close / bars[i].Close - 1m;
         decimal todayRet = i > 0 ? bars[i].Close / bars[i - 1].Close - 1m : 0m;
         rows.Add(((bars[i].FundingRate ?? 0m), d.OiPctChange, d.AvgTopLsRatio, d.AvgRetailLsRatio, d.AvgTakerLsRatio, nextRet, todayRet));
+        rowDates.Add(bars[i].OpenTime.Date);
     }
     if (rows.Count < 60) { Console.WriteLine($"  對齊樣本 {rows.Count} 太少、skip"); continue; }
 
@@ -148,6 +152,14 @@ foreach (var sym in symbols)
     poolNext.AddRange(nextR);
     poolFundDelta.AddRange(fundDelta); poolRlsDelta.AddRange(rlsDelta); poolOiAbs.AddRange(oiAbs);
     poolComposite.AddRange(rlsFundComposite); poolRls5d.AddRange(rls5dMom); poolRlsAccel.AddRange(rlsAccel);
+
+    // Cross-sectional 累積:每天記 (coin, retail_ls, retail_ls Δ, nextRet)
+    for (int k = 0; k < rows.Count; k++)
+    {
+        var date = rowDates[k];
+        if (!xsByDate.TryGetValue(date, out var list)) { list = new(); xsByDate[date] = list; }
+        list.Add((sym, rls[k], rlsDelta[k], nextR[k]));
+    }
 }
 
 // 跨幣 pool t-stat — 即使單幣不顯著,8 幣方向一致就有意義
@@ -182,10 +194,47 @@ if (symbols.Length > 1)
     PrintQuantileEdge("    Retail L/S 加速度  ", poolRlsAccel.ToArray(), poolNext.ToArray());
 }
 
+// 2026-05-29 Cross-sectional(市場中性)探勘 — 每天跨幣排名、long bot / short top retail_ls
+//   結構跟現有「絕對 threshold per-coin」完全不同 → 若有 edge 是去相關的新 alpha
+//   每天要 ≥4 幣才排名;long 最不擁擠 third、short 最擁擠 third;組合 = (long 平均 nextRet) - (short 平均 nextRet)
+if (symbols.Length >= 4 && xsByDate.Count > 0)
+{
+    Console.WriteLine($"\n=== Cross-sectional 市場中性探勘(每天 ≥4 幣排名;long bot / short top)===");
+    RunCrossSectional("retail_ls level", xsByDate, useDelta: false);
+    RunCrossSectional("retail_ls Δ    ", xsByDate, useDelta: true);
+}
+
 Console.WriteLine($"\n=== 結論判讀 ===");
 Console.WriteLine($"  - corr(指標, funding) < 0.3 → 獨立 alpha 源");
 Console.WriteLine($"  - |corr(指標, todayRet)| > 0.5 → lookahead 風險、慎用");
 Console.WriteLine($"  - corr(指標, nextRet) > 0.05 且 t-stat > 2 → 有 edge,進策略開發");
+Console.WriteLine($"  - Cross-sectional spread t > 2 → 市場中性新結構 alpha,值得建 harness");
+
+// 每天跨幣排名、long 最低 third / short 最高 third、回報每日 market-neutral spread 的 t-stat。
+// daily spread = mean(bot third nextRet) − mean(top third nextRet);contrarian 假設 spread > 0。
+static void RunCrossSectional(string label,
+    Dictionary<DateTime, List<(string sym, double rls, double rlsDelta, double nextRet)>> xsByDate,
+    bool useDelta)
+{
+    var dailySpreads = new List<double>();
+    foreach (var kv in xsByDate)
+    {
+        var coins = kv.Value;
+        if (coins.Count < 4) continue;
+        var ranked = coins.OrderBy(c => useDelta ? c.rlsDelta : c.rls).ToList();
+        int third = Math.Max(1, ranked.Count / 3);
+        double botMean = ranked.Take(third).Average(c => c.nextRet);        // 最不擁擠 → long
+        double topMean = ranked.TakeLast(third).Average(c => c.nextRet);    // 最擁擠 → short
+        dailySpreads.Add(botMean - topMean);                                // contrarian: long bot − short top
+    }
+    if (dailySpreads.Count < 30) { Console.WriteLine($"    {label}: 樣本 {dailySpreads.Count} 太少"); return; }
+    double mean = dailySpreads.Average();
+    double sd = StdDev(dailySpreads.ToArray(), mean);
+    double t = sd > 1e-9 ? mean / (sd / Math.Sqrt(dailySpreads.Count)) : 0;
+    double annual = mean * 365 * 100;  // 每日 spread 年化(粗估、無複利)
+    string flag = Math.Abs(t) > 2.0 ? " ✅" : (Math.Abs(t) > 1.5 ? " ~" : "");
+    Console.WriteLine($"    {label}: 日均 spread {mean*100:+0.000;-0.000}% / 年化~{annual:+0;-0}% / t={t:+0.00;-0.00} (n={dailySpreads.Count}天){flag}");
+}
 
 static double StdDev(double[] x, double mean)
 {
