@@ -924,6 +924,36 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
     return (rs.Count > 0 ? Math.Round(rs.Average(), 1) : 0, ss.Count > 0 ? Math.Round(ss.Average(), 2) : 0, ds.Count > 0 ? Math.Round(ds.Average(), 1) : 0);
 }
 
+// 2026-05-29:防禦後組合 — 對風險加權組合曲線套 DrawdownAwareSizer(CB + 漸進縮倉),
+// 看 live 防禦機制把裸 maxDD 壓到哪、報酬代價多少。cbDd=熔斷門檻(poly: DD→cbDd 時 scalar→0)。
+(decimal origDd, decimal defDd, decimal origRet, decimal defRet) PortfolioDefended(
+    List<string> members, decimal cbDd, string method = "poly")
+{
+    var oDd = new List<decimal>(); var dDd = new List<decimal>(); var oRet = new List<decimal>(); var dRet = new List<decimal>();
+    foreach (var kv in data)
+    {
+        var curves = members.Where(m => lsEq.ContainsKey(m) && lsEq[m].ContainsKey(kv.Key)).Select(m => lsEq[m][kv.Key]).ToList();
+        if (curves.Count < members.Count) continue;
+        int len = curves.Min(c => c.Count);
+        if (len < 3) continue;
+        var legRets = new List<decimal[]>();
+        foreach (var c in curves) { var r = new decimal[len - 1]; for (int t = 1; t < len; t++) r[t - 1] = c[t - 1] > 0 ? (c[t] - c[t - 1]) / c[t - 1] : 0m; legRets.Add(r); }
+        // 風險加權(反波動率)
+        var w = new decimal[curves.Count]; decimal wsum = 0m;
+        for (int i = 0; i < curves.Count; i++) { var avg = legRets[i].Average(); var vol = (decimal)Math.Sqrt((double)legRets[i].Select(x => (x - avg) * (x - avg)).Average()); w[i] = vol > 0m ? 1m / vol : 0m; wsum += w[i]; }
+        if (wsum <= 0m) continue;
+        for (int i = 0; i < w.Length; i++) w[i] /= wsum;
+        var port = new List<decimal>(len) { 1m };
+        for (int t = 0; t < len - 1; t++) { decimal pr = 0m; for (int i = 0; i < legRets.Count; i++) pr += w[i] * legRets[i][t]; port.Add(port[^1] * (1m + pr)); }
+        // 套防禦:DrawdownAwareSizer.Simulate(原曲線, maxAcceptableDd=cbDd, method)
+        var sim = StrategyWorker.Engine.DrawdownAwareSizer.Simulate(port, cbDd, method);
+        oRet.Add((sim.OrigFinal - 1m) * 100m); dRet.Add((sim.AdjFinal - 1m) * 100m);
+        oDd.Add(sim.OrigMaxDd * 100m); dDd.Add(sim.AdjMaxDd * 100m);
+    }
+    return (oDd.Count > 0 ? Math.Round(oDd.Average(), 1) : 0, dDd.Count > 0 ? Math.Round(dDd.Average(), 1) : 0,
+            oRet.Count > 0 ? Math.Round(oRet.Average(), 1) : 0, dRet.Count > 0 ? Math.Round(dRet.Average(), 1) : 0);
+}
+
 // 組合 OOS:每檔跑多空 RunPortfolioWalkForward、池化 test fold 報酬 → (avgOOS%, %fold正)
 (decimal avgRet, decimal posPct) PortfolioOos(List<string> members)
 {
@@ -962,6 +992,14 @@ if (lsEq.Count >= 2 && lsEq.Values.First().ContainsKey("BTCUSDT"))
     }
 
     PrintCombo($"組合 全部 {all.Count} 支等權", all);
+
+    // 2026-05-29 防禦後組合:套 live CB(~8%)+ DD-aware 漸進縮倉,看裸 DD 被壓到哪、報酬代價
+    foreach (var (cb, tag) in new[] { (0.08m, "CB8%"), (0.15m, "CB15%") })
+    {
+        var dp = PortfolioDefended(all, cb, "poly");
+        var ds = PortfolioDefended(all, cb, "step");
+        Console.WriteLine($"  防禦後({tag}、風險加權)  poly[DD {dp.origDd:F0}%→{dp.defDd:F0}% ret {dp.origRet:F0}%→{dp.defRet:F0}%]  step[DD {ds.defDd:F0}% ret {ds.defRet:F0}%]");
+    }
 
     // 貪婪挑去相關組合:候選先濾掉負期望(Sharpe≤0,去相關但賠錢的不要),再從 Sharpe 高起、納入「對已選全部 |ρ|<0.4」者
     var ranked = all.Where(n => AvgSharpe(n) > 0m).OrderByDescending(AvgSharpe).ToList();

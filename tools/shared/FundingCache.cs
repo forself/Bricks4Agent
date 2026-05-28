@@ -104,7 +104,10 @@ public static class FundingCache
     public static async Task InjectInto(List<BarData> bars, string symbol, string interval = "1d")
     {
         if (bars.Count == 0) return;
-        var funding = await FetchOrLoad(symbol, limit: 2000);
+        // 2026-05-29:funding 抓取深度隨 bar 數自動放大(每日 ~3 events、+buffer),
+        // 否則深歷史回測(--bars 2000+)早期 bar 拿不到 funding。FetchOrLoad 的 daysBack 跟著 limit 放大。
+        int fundingLimit = Math.Max(2000, bars.Count * 3 + 300);
+        var funding = await FetchOrLoad(symbol, limit: fundingLimit);
         if (funding.Count == 0)
         {
             Console.WriteLine($"[FundingCache] {symbol}: no funding data、bars FundingRate 保持 null");
