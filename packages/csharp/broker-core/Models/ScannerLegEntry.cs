@@ -65,6 +65,12 @@ public class ScannerLegEntry
     [MaxLength(20)]
     public string Mode { get; set; } = "spot";
 
+    /// <summary>交易所:"binance"(預設、crypto)/ "bingx" / "alpaca"(美股 paper)。
+    /// 2026-05-29 加:scanner 原硬編 binance,加此欄支援多市場(美股 paper-shadow 治理 demo)。</summary>
+    [Column("exchange")]
+    [MaxLength(20)]
+    public string Exchange { get; set; } = "binance";
+
     /// <summary>K 線時框、e.g. "1d"。harm_prz_scan10* 跨時框驗證只在 12h+1d 有 edge。</summary>
     [Column("interval")]
     [Required]

@@ -3141,7 +3141,7 @@ public class AutoTraderService : BackgroundService
             {
                 ["strategy"] = scanner.Strategy,
                 ["symbol"]   = sym,
-                ["exchange"] = "binance",   // scanner 預設 binance、未來 ScannerLegEntry 可加 exchange 欄位
+                ["exchange"] = string.IsNullOrEmpty(scanner.Exchange) ? "binance" : scanner.Exchange,   // 2026-05-29 多市場
                 ["interval"] = scanner.Interval,
                 ["bars"]     = barsArr,
             };
@@ -3235,7 +3235,7 @@ public class AutoTraderService : BackgroundService
             Id              = $"{scanner.Id}:{symbol}:{signalBarTs}",
             ScannerId       = scanner.Id,
             Symbol          = symbol,
-            Exchange        = "binance",   // scanner 預設 binance、未來 ScannerLegEntry 可加 exchange 欄位
+            Exchange        = string.IsNullOrEmpty(scanner.Exchange) ? "binance" : scanner.Exchange,   // 2026-05-29 多市場
             Side            = side,
             EntryPrice      = entryPriceProxy,    // B.4:shadow 用 bar close 模擬;real dispatch 階段會被實際成交價覆蓋
             PeakMark        = entryPriceProxy,    // 起算 peak = entry,close pass 後續更新
