@@ -31,6 +31,7 @@ var poolFund = new List<double>(); var poolOi = new List<double>();
 var poolTls = new List<double>(); var poolRls = new List<double>(); var poolTaker = new List<double>();
 var poolNext = new List<double>();
 var poolFundDelta = new List<double>(); var poolRlsDelta = new List<double>(); var poolOiAbs = new List<double>();
+var poolComposite = new List<double>(); var poolRls5d = new List<double>(); var poolRlsAccel = new List<double>();
 
 foreach (var sym in symbols)
 {
@@ -98,6 +99,24 @@ foreach (var sym in symbols)
         oiAbs[k] = Math.Abs(oi[k]);
     }
 
+    // 2026-05-29 第三波探勘 — 複合 / 多日信號
+    //   composite = z(retail_ls) × z(funding):兩者同向極端(都擁擠看多)= 最強反指 → 預期負
+    //   rls5dMom  = retail_ls 5 日累計變化(中期意見轉向、比 1 日 Δ 平滑)
+    //   rlsAccel  = retail_ls Δ 的 Δ(二階、加速度)
+    double rlsMean = rls.Average(), rlsSd = StdDev(rls, rlsMean);
+    double fundMean = fund.Average(), fundSd = StdDev(fund, fundMean);
+    var rlsFundComposite = new double[rows.Count];
+    var rls5dMom = new double[rows.Count];
+    var rlsAccel = new double[rows.Count];
+    for (int k = 0; k < rows.Count; k++)
+    {
+        double zr = rlsSd > 1e-9 ? (rls[k] - rlsMean) / rlsSd : 0;
+        double zf = fundSd > 1e-9 ? (fund[k] - fundMean) / fundSd : 0;
+        rlsFundComposite[k] = zr * zf;
+        if (k >= 5) rls5dMom[k] = rls[k] - rls[k - 5];
+        if (k >= 2) rlsAccel[k] = rlsDelta[k] - rlsDelta[k - 1];
+    }
+
     Console.WriteLine($"\n  指標 vs next-day return(>0.05 = 可能有 edge,t-stat 補):");
     PrintEdge("    OI %change         ", oi, nextR);
     PrintEdge("    Top L/S ratio      ", tls, nextR);
@@ -108,6 +127,10 @@ foreach (var sym in symbols)
     PrintEdge("    Funding Δ (delta)  ", fundDelta, nextR);
     PrintEdge("    Retail L/S Δ       ", rlsDelta, nextR);
     PrintEdge("    OI |%change|       ", oiAbs, nextR);
+    Console.WriteLine($"  複合/多日信號(第三波):");
+    PrintEdge("    rls×funding 複合   ", rlsFundComposite, nextR);
+    PrintEdge("    Retail L/S 5日動量 ", rls5dMom, nextR);
+    PrintEdge("    Retail L/S 加速度  ", rlsAccel, nextR);
 
     // Quantile-based edge: 看極端值區段 vs 平均的 nextRet 差
     // 為什麼:funding raw Pearson t=-0.76 但 strat-validate quantile threshold t=+5.93,
@@ -124,6 +147,7 @@ foreach (var sym in symbols)
     poolTls.AddRange(tls); poolRls.AddRange(rls); poolTaker.AddRange(taker);
     poolNext.AddRange(nextR);
     poolFundDelta.AddRange(fundDelta); poolRlsDelta.AddRange(rlsDelta); poolOiAbs.AddRange(oiAbs);
+    poolComposite.AddRange(rlsFundComposite); poolRls5d.AddRange(rls5dMom); poolRlsAccel.AddRange(rlsAccel);
 }
 
 // 跨幣 pool t-stat — 即使單幣不顯著,8 幣方向一致就有意義
@@ -140,6 +164,10 @@ if (symbols.Length > 1)
     PrintEdge("    Funding Δ          ", poolFundDelta.ToArray(), poolNext.ToArray());
     PrintEdge("    Retail L/S Δ       ", poolRlsDelta.ToArray(), poolNext.ToArray());
     PrintEdge("    OI |%change|       ", poolOiAbs.ToArray(), poolNext.ToArray());
+    Console.WriteLine($"  複合/多日 pool(第三波):");
+    PrintEdge("    rls×funding 複合   ", poolComposite.ToArray(), poolNext.ToArray());
+    PrintEdge("    Retail L/S 5日動量 ", poolRls5d.ToArray(), poolNext.ToArray());
+    PrintEdge("    Retail L/S 加速度  ", poolRlsAccel.ToArray(), poolNext.ToArray());
     Console.WriteLine($"  Quantile (top/bot 20%):");
     PrintQuantileEdge("    OI %change         ", poolOi.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Top L/S ratio      ", poolTls.ToArray(), poolNext.ToArray());
@@ -149,12 +177,23 @@ if (symbols.Length > 1)
     PrintQuantileEdge("    Funding Δ          ", poolFundDelta.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    Retail L/S Δ       ", poolRlsDelta.ToArray(), poolNext.ToArray());
     PrintQuantileEdge("    OI |%change|       ", poolOiAbs.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    rls×funding 複合   ", poolComposite.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Retail L/S 5日動量 ", poolRls5d.ToArray(), poolNext.ToArray());
+    PrintQuantileEdge("    Retail L/S 加速度  ", poolRlsAccel.ToArray(), poolNext.ToArray());
 }
 
 Console.WriteLine($"\n=== 結論判讀 ===");
 Console.WriteLine($"  - corr(指標, funding) < 0.3 → 獨立 alpha 源");
 Console.WriteLine($"  - |corr(指標, todayRet)| > 0.5 → lookahead 風險、慎用");
 Console.WriteLine($"  - corr(指標, nextRet) > 0.05 且 t-stat > 2 → 有 edge,進策略開發");
+
+static double StdDev(double[] x, double mean)
+{
+    if (x.Length < 2) return 0;
+    double s = 0;
+    foreach (var v in x) s += (v - mean) * (v - mean);
+    return Math.Sqrt(s / (x.Length - 1));
+}
 
 static double Pearson(double[] x, double[] y)
 {
