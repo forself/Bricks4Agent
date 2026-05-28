@@ -131,17 +131,15 @@ VALUES
 
 -- ── 多市場 paper-shadow scanner(美股 alpaca + 台股 twse)──────────────────────────
 -- 平台「資產無關治理化多市場」demo:同一套 scanner / 保護鏈 / governance 跑多市場 paper-shadow。
--- 策略:harm_prz_scan10_widepz(harmonic PRZ 形態)。多市場驗證(2026-05-28、--stocks/--twstocks/--fx):
---   美股 pool t=5.45 ✅ / 台股 t=3.37 ⚠️(廣度53%<60%、邊緣) / 外匯 t=0.74 ❌(不接)。
---   ⚠ 不用 ts_momentum:股票 t=1.59 不顯著(動量在股票被 mean-reversion + 上漲 drift 削弱)。
--- universe = 全驗證集、求廣(scanner 每 cycle 挑訊號最強 N 個),**刻意不按歷史報酬挑股**:
---   逐檔 OOS 是噪音(BA 單檔 15% 運氣、中位僅 1%),照表現挑=selection bias 不會復現。
---   美股 = strat-validate --stocks 全 24 檔(跨 6 sector、max breadth);台股 = --twstocks 全 15 檔。
--- universe 必須 ⊆ quote-worker 抓的 StockSymbols(scanner 讀 DB bars、沒 bars 永遠 pending);已同步 appsettings.json。
---   VPS 用 env 覆寫 Worker__Quote__StockSymbols,須含這些 symbol 才會有 bars。
--- 都 shadow=1、leverage=1。**台股是 shadow-only 觀察**(t 顯著但過不了廣度閘、不升 real;exchange='twse' 無真實 client、
---   shadow 不下單、bars/關腿都走 quote-worker symbol 查、不碰交易所 client)。美股升 paper-live 前才設 budget。
--- 預算單位是 paper(非 USDT),sanity check 用 per-exchange 分組、不跟 crypto USDT 混加。
+-- **全策略套件深歷史驗證(2026-05-28、--bars=2000、93 策略、含 BH-FDR 多重檢定):美股 vs 台股 要用對立策略。**
+--   美股 → harmonic:harm_prz_scan10_widepz t=7.29、mean 4.6%(trend 弱:ts_momentum t=0.76 不顯著)。
+--   台股 → trend:ts_momentum t=5.68、mean 4.8%、廣度 87%(harmonic 台股 t=5.08 但 mean 僅 1.3% = 顯著卻經濟無意義)。
+--   經濟意義:台股半導體出口週期趨勢強、美股大型股效率高偏均值回歸。外匯 t=0.74 ❌ 不接。
+--   BH-FDR(N=93):美股 14 支過、台股 30 支過;⚠ Deflated Sharpe 因冗餘變體灌高 SR* 過度懲罰(見 feedback memory)。
+-- universe = 全驗證集、求廣(scanner 每 cycle 挑訊號最強 N 個),**刻意不按歷史報酬挑股**(selection bias)。
+--   美股 = --stocks 全 24 檔(跨 6 sector);台股 = --twstocks 全 15 檔。必須 ⊆ quote-worker StockSymbols(沒 bars 永遠 pending)。
+-- 都 shadow=1、leverage=1(過 4 週紀律才升 paper-live);台股 exchange='twse' 無真實 client、shadow 不下單、
+--   bars/關腿走 quote-worker symbol 查、不碰交易所 client。預算單位 paper(非 USDT),sanity check per-exchange 分組。
 INSERT OR REPLACE INTO scanner_legs
   (id, name, strategy, universe,
    budget_total, max_concurrent, per_leg_cap,
@@ -154,8 +152,8 @@ VALUES
    'spot', '1d', 1, 1, 1, 'alpaca',
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 
-  -- 台股 shadow-only 觀察(t=3.37 顯著但廣度<60%、不升 real;exchange='twse' 純 metadata、shadow 不下單)
-  ('twstock_harmprz_scanner', 'twstock_harmprz_scanner', 'harm_prz_scan10_widepz',
+  -- 台股 = ts_momentum(全套件揪出的台股真 edge:t=5.68 mean 4.8% 廣度87%、過 BH-FDR;非 harmonic 的 1.3%)
+  ('twstock_tsmom_scanner', 'twstock_tsmom_scanner', 'ts_momentum',
    '["2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW","0050.TW"]',
    0, 3, 0,
    'spot', '1d', 1, 1, 1, 'twse',
