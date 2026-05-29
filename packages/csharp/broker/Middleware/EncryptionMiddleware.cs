@@ -94,6 +94,9 @@ public class EncryptionMiddleware
             || path.StartsWith("/api/v1/quota", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/replay", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-29 AnthonyLee] Artifact 下載 API — admin POST /artifacts/{id}/download-link
+            // 走 cookie session、不帶 scoped_token、不走 ECDH(plain JSON);公開 GET /dl 靠 HMAC 簽章把關、無 body 本就免疫。
+            || path.StartsWith("/api/v1/artifacts", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/dashboard/", StringComparison.OrdinalIgnoreCase);
     }
 

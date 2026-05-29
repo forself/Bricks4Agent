@@ -84,6 +84,8 @@ public class BrokerAuthMiddleware
             || path.StartsWith("/api/v1/quota", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/replay", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/capabilities/", StringComparison.OrdinalIgnoreCase)
+            // [whitelist add: 2026-05-29 AnthonyLee] Artifact 下載 API — cookie-auth、不要 scoped_token。已在 EncryptionMiddleware 同步開白名單。
+            || path.StartsWith("/api/v1/artifacts", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/dashboard/", StringComparison.OrdinalIgnoreCase);
     }
 
