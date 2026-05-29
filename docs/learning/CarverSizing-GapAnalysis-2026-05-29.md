@@ -51,7 +51,7 @@ Carver 的部位 = 一條「波動標準化」的管線,每一段都把風險拉
   - 根因:B4A confidence(0.6-1.0、門檻 gate 副產品)**不是校準 forecast**。Carver forecast-strength sizing 要 work、forecast 必須 predictive。
   - **決定:不開 `CONFIDENCE_SIZING_ENABLED`**(會降報酬不升 Sharpe);固定倉位現狀是對的。要用先做 confidence 校準。
 - [ ] **confidence 校準檢查**:抽幾支策略看 confidence 分布,確認跨策略可比(或加一層 per-strategy normalization)。
-- [ ] **position buffering**:加「目標 vs 現倉差 < X% 不動」的緩衝帶,砍 rebalance churn(Carver Ch7;對真錢成本直接有感)。
+- [x] **position buffering** ✅ 評估了(2026-05-29)= **不需要**:Carver buffering 解「連續重算目標→小幅漂移→頻繁交易」的 churn,但 B4A 是**固定倉位 + 訊號驅動**、沒有連續漂移的目標可 buffer。且既有防護已足:`r9 Symbol Cooldown`(active、60s、雙向)+ AutoTrader 30min re-open 冷卻 + scanner 冪等鎖 + 訊號驅動持有。**現在加 = 解不存在的問題 + 真錢引擎冗餘複雜度**。→ 只有未來開了 conf/Kelly 連續 sizing 才回來做。
 - [ ] 讀 Carver Ch5-7 原文核對本摘要(本 doc 是從框架記憶寫的、非逐頁)。
 
 ## 不要做
