@@ -160,6 +160,15 @@ VALUES
    '["2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW"]',
    0, 3, 0,
    'spot', '1d', 1, 1, 1, 'twse',
+   'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+
+  -- ETF harmonic(2026-05-29 --etf 驗證:harm_prz_scan10_widepz t=9.46、唯一過 DSR≥0.95 的最乾淨 edge)
+  -- ETF 平滑個股噪音→PRZ 形態更乾淨;⚠ 很可能跟單股 US harmonic 相關 → shadow 跑是為 live 測相關
+  --   (確認是新 alpha 還是更優載體)。19 檔:廣指數 + 11 SPDR sector + 4 國際,全 alpaca 可交易。
+  ('etf_harmprz_scanner', 'etf_harmprz_scanner', 'harm_prz_scan10_widepz',
+   '["SPY","QQQ","IWM","DIA","XLK","XLF","XLE","XLV","XLP","XLY","XLI","XLU","XLB","XLRE","XLC","EWT","EWJ","EEM","FXI"]',
+   0, 3, 0,
+   'spot', '1d', 1, 1, 1, 'alpaca',
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 -- 全新 DB 補正:EnsureTable 建 exchange 欄不帶 SQL DEFAULT(BaseOrm 不從 model initializer 產 DEFAULT、
