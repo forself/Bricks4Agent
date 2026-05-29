@@ -50,6 +50,13 @@
   .mono{font-family:monospace}
   code{background:var(--bg);padding:2px 6px;border-radius:3px;font-family:monospace;font-size:11px}
   .hint{font-size:11px;color:var(--mut);margin-top:6px}
+  /* 分頁(把長頁切成 tabs、免一直滑) */
+  #tabnav{position:sticky;top:0;z-index:50;background:var(--bg);display:flex;gap:6px;flex-wrap:wrap;padding:10px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+  #tabnav button{background:var(--card2);color:var(--mut);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600}
+  #tabnav button:hover{color:var(--txt)}
+  #tabnav button.active{color:var(--txt);border-color:var(--blu);box-shadow:inset 0 -2px 0 var(--blu)}
+  .tabsec{display:none}.tabsec.active{display:block}
+  .tabsec>h2:first-child{margin-top:4px}
 </style>
 </head>
 <body>
@@ -61,6 +68,8 @@
             style="font-weight:600;font-size:11px">🚨 EMERGENCY STOP</button>
   </div>
 </div>
+
+<div id="tabnav"></div>
 
 <h2>監控管理 · 武裝 / 加減 watch</h2>
 <div class="panel">
@@ -1028,6 +1037,34 @@ function copyArtifactLink(){
   if(navigator.clipboard){navigator.clipboard.writeText(u.value).then(done,()=>{document.execCommand('copy');done();});}
   else{document.execCommand('copy');done();}
 }
+
+/* ───────────── 分頁導覽(把長頁切成 tabs) ───────────── */
+(function setupTabs(){
+  const nav=document.getElementById('tabnav'); if(!nav) return;
+  const h2s=[...document.querySelectorAll('h2')]; const secs=[];
+  h2s.forEach((h2,i)=>{
+    const id='tab'+i;
+    const label=(h2.textContent||('區塊'+(i+1))).split('·')[0].trim();
+    const sec=document.createElement('section'); sec.className='tabsec'; sec.id=id;
+    h2.parentNode.insertBefore(sec,h2); sec.appendChild(h2);
+    let next;  // 把 h2 後面的 siblings 收進 sec、直到下一個 h2 / footer / toast
+    while((next=sec.nextSibling)){
+      if(next.nodeType===1 && (next.tagName==='H2'||next.classList.contains('links')||next.id==='toast')) break;
+      sec.appendChild(next);
+    }
+    secs.push(id);
+    const b=document.createElement('button'); b.textContent=label; b.dataset.tab=id;
+    b.onclick=()=>showTab(id); nav.appendChild(b);
+  });
+  window.showTab=function(id){
+    document.querySelectorAll('.tabsec').forEach(s=>s.classList.toggle('active',s.id===id));
+    nav.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+    try{localStorage.setItem('tm_tab',id);}catch(e){}
+    window.scrollTo({top:0});
+  };
+  let saved=null; try{saved=localStorage.getItem('tm_tab');}catch(e){}
+  if(secs.length) showTab(secs.includes(saved)?saved:secs[0]);
+})();
 
 /* ───────────── init ───────────── */
 loadStatus(); loadAlerts(); loadMe(); detectAdmin(); loadScanners();
