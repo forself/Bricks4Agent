@@ -53,13 +53,7 @@ public sealed class BrokerArtifactDownloadService
 
     /// <summary>驗簽 + 驗期。任何不符回 false(刻意不分辨是過期還是壞章、不洩漏)。</summary>
     public bool ValidateSignature(string artifactId, long exp, string? sig)
-    {
-        if (string.IsNullOrWhiteSpace(artifactId) || string.IsNullOrWhiteSpace(sig)) return false;
-        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > exp) return false;
-        var expected = Encoding.UTF8.GetBytes(Sign(artifactId, exp));
-        var actual = Encoding.UTF8.GetBytes(sig);
-        return actual.Length == expected.Length && CryptographicOperations.FixedTimeEquals(actual, expected);
-    }
+        => ValidateSignatureCore(_secret, artifactId, exp, sig, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
     /// <summary>解析 artifact 實體檔(含路徑穿透防護)。回 (Ok, FullPath, FileName, ContentType, Error)。</summary>
     public (bool Ok, string FullPath, string FileName, string ContentType, string? Error) ResolveFile(string artifactId)
@@ -73,15 +67,10 @@ public sealed class BrokerArtifactDownloadService
         catch { return (false, "", "", "", "bad_path"); }
 
         // 路徑穿透防護:檔案必須落在 artifact 記錄宣告的 DocumentsRoot 之下
-        if (!string.IsNullOrWhiteSpace(rec.DocumentsRoot))
+        if (!string.IsNullOrWhiteSpace(rec.DocumentsRoot) && !IsPathUnderRoot(full, Path.GetFullPath(rec.DocumentsRoot)))
         {
-            var root = Path.GetFullPath(rec.DocumentsRoot);
-            var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-            if (!full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("ArtifactDownload: artifact {Id} FilePath 落在 DocumentsRoot 之外、拒絕。", artifactId);
-                return (false, "", "", "", "path_escape");
-            }
+            _logger.LogWarning("ArtifactDownload: artifact {Id} FilePath 落在 DocumentsRoot 之外、拒絕。", artifactId);
+            return (false, "", "", "", "path_escape");
         }
         if (!File.Exists(full)) return (false, "", "", "", "missing");
 
@@ -89,11 +78,31 @@ public sealed class BrokerArtifactDownloadService
         return (true, full, SanitizeFileName(name), ContentTypeFor(full), null);
     }
 
-    private string Sign(string artifactId, long exp)
+    private string Sign(string artifactId, long exp) => ComputeSignature(_secret, artifactId, exp);
+
+    // ── 可單元測試的純安全邏輯(internal static、無 DI 依賴)─────────────────────
+    /// <summary>HMAC-SHA256("{id}|{exp}") → base64url。確定性。</summary>
+    internal static string ComputeSignature(byte[] secret, string artifactId, long exp)
     {
-        using var h = new HMACSHA256(_secret);
-        var data = Encoding.UTF8.GetBytes($"{artifactId}|{exp}");
-        return Base64Url(h.ComputeHash(data));
+        using var h = new HMACSHA256(secret);
+        return Base64Url(h.ComputeHash(Encoding.UTF8.GetBytes($"{artifactId}|{exp}")));
+    }
+
+    /// <summary>驗簽核心:空 id/sig、過期(now&gt;exp)、簽章不符 → false。固定時間比較防 timing。</summary>
+    internal static bool ValidateSignatureCore(byte[] secret, string artifactId, long exp, string? sig, long nowUnix)
+    {
+        if (string.IsNullOrWhiteSpace(artifactId) || string.IsNullOrWhiteSpace(sig)) return false;
+        if (nowUnix > exp) return false;
+        var expected = Encoding.UTF8.GetBytes(ComputeSignature(secret, artifactId, exp));
+        var actual = Encoding.UTF8.GetBytes(sig);
+        return actual.Length == expected.Length && CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
+
+    /// <summary>路徑穿透防護:fullPath 必須在 root 之下(用 separator 結尾比較、防 /root vs /rootEvil 前綴繞過)。</summary>
+    internal static bool IsPathUnderRoot(string fullPath, string root)
+    {
+        var rootWithSep = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Base64Url(byte[] b) =>
