@@ -26,6 +26,10 @@ bool realFunding = args.Contains("--apply-funding");
 bool realRetailLs = args.Contains("--apply-retail-ls");
 // --sl=N:LS 引擎固定初始止損 %(模擬 live 止損機制做存活測試;0=無止損,現有行為)
 decimal slPct = decimal.TryParse(args.FirstOrDefault(a => a.StartsWith("--sl="))?.Substring(5), out var slv) ? slv : 0m;
+// --conf-sizing:部位名目 × signal.Confidence(Carver forecast-strength sizing 實驗;對照固定倉位)
+// 注意:LS 引擎只在 conf≥0.6 才開倉、故 scale 實際範圍 0.6-1.0(溫和);引擎版無 floor(live 版 floor 0.3)
+bool confSizing = args.Contains("--conf-sizing");
+if (confSizing) Console.WriteLine("📐 --conf-sizing:部位 × signal.Confidence(forecast-strength sizing 實驗、對照固定倉位)");
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
@@ -628,7 +632,7 @@ List<decimal> PoolOosFolds(IStrategy s)
 {
     var r = new List<decimal>();
     foreach (var kv in data)
-        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding);
+        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, confidenceSizing: confSizing, applyFunding: realFunding);
               foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
         catch { }
     return r;

@@ -45,7 +45,11 @@ Carver 的部位 = 一條「波動標準化」的管線,每一段都把風險拉
 
 ## Q1 可動的下一步(沒被 6/25 / Phase2 時間閘擋)
 
-- [ ] **backtest confidence-scaling**:strat-validate 加「按 signal confidence 縮放部位」對照組,看 Sharpe/DD 有沒有比固定倉位好。有改善 → shadow 驗 → 才開 `CONFIDENCE_SIZING_ENABLED`。
+- [x] **backtest confidence-scaling** ✅ 做了(2026-05-29、strat-validate `--conf-sizing`、8 部署策略 A/B):
+  - 結果:**mean 全面↓~35%、但 t-stat 幾乎不動**(harm 5.47→6.05、ts_mom 4.16→4.14、dual_mom 3.58→3.49…)。
+  - 解讀:confidence-scaling 只是按比例縮曝險(vol 同比縮)、**risk-adj 報酬無改善**;沒選出更好的交易、只少賺。
+  - 根因:B4A confidence(0.6-1.0、門檻 gate 副產品)**不是校準 forecast**。Carver forecast-strength sizing 要 work、forecast 必須 predictive。
+  - **決定:不開 `CONFIDENCE_SIZING_ENABLED`**(會降報酬不升 Sharpe);固定倉位現狀是對的。要用先做 confidence 校準。
 - [ ] **confidence 校準檢查**:抽幾支策略看 confidence 分布,確認跨策略可比(或加一層 per-strategy normalization)。
 - [ ] **position buffering**:加「目標 vs 現倉差 < X% 不動」的緩衝帶,砍 rebalance churn(Carver Ch7;對真錢成本直接有感)。
 - [ ] 讀 Carver Ch5-7 原文核對本摘要(本 doc 是從框架記憶寫的、非逐頁)。
