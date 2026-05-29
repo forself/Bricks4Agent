@@ -1792,6 +1792,45 @@ async Task RunXsMom()
     var bh = StatsOf(bhEq);
     Console.WriteLine($"  vs 等權買入持有:  ret {bh.ret,6:F0}%  Sharpe {bh.sharpe:F2}  maxDD {bh.dd:F0}%");
 
+    // ── 衰減診斷:split-half Sharpe 掉(2.21→1.12)是「因子死」還是「成本」還是「regime」?──
+    //   切 4 等分,逐段比 net / gross / 同期等權B&H 的 Sharpe:
+    //   · gross 也逐段降 = 真 alpha 衰減(因子擁擠/失效、最該擔心)
+    //   · gross 穩、只 net 降 = 成本/換手侵蝕(可調 rebal 緩解)
+    //   · 衰減跟著 B&H 走 = regime 依賴(動量在盤整/熊市本來就弱、屬正常、非死)
+    var bhAlign = bhEq.Skip(Math.Max(0, bhEq.Count - eqF.Count)).ToList();  // 對齊到 eqF 同窗
+    Console.WriteLine($"\n=== 衰減診斷(lookback{repLb}/rebal{repRb};切 4 等分;Sharpe)===");
+    Console.WriteLine($"  {"區段",-7}{"net Sh",9}{"gross Sh",10}{"成本拖累",10}{"同期B&H Sh",12}{"net 年化%",11}");
+    var qNet = new List<decimal>(); var qGross = new List<decimal>();
+    int qn = eqF.Count / 4;
+    for (int k = 0; k < 4; k++)
+    {
+        int a = k * qn, bnd = (k == 3) ? eqF.Count : (k + 1) * qn;
+        var segN = eqF.Skip(a).Take(bnd - a).ToList();
+        var segG = eqG.Skip(a).Take(bnd - a).ToList();
+        var segB = bhAlign.Skip(a).Take(bnd - a).ToList();
+        var sN = StatsOf(segN); var sG = StatsOf(segG); var sB = StatsOf(segB);
+        var ann = segN.Count > 10 ? (decimal)((Math.Pow((double)(segN[^1] / segN[0]), 365.0 / segN.Count) - 1) * 100) : 0m;
+        Console.WriteLine($"  Q{k + 1,-6}{sN.sharpe,9:F2}{sG.sharpe,10:F2}{sG.sharpe - sN.sharpe,10:F2}{sB.sharpe,12:F2}{ann,11:F0}");
+        qNet.Add(sN.sharpe); qGross.Add(sG.sharpe);
+    }
+    // 前半 vs 後半(headline)
+    int hh = eqF.Count / 2;
+    var fhN = StatsOf(eqF.Take(hh).ToList()); var bhN = StatsOf(eqF.Skip(hh).ToList());
+    var fhG = StatsOf(eqG.Take(hh).ToList()); var bhG = StatsOf(eqG.Skip(hh).ToList());
+    Console.WriteLine($"  前半 net {fhN.sharpe:F2} → 後半 net {bhN.sharpe:F2}  │  前半 gross {fhG.sharpe:F2} → 後半 gross {bhG.sharpe:F2}");
+    // 成因判定(優先序:成因互斥、先區分 regime vs 擁擠 —— 兩者都讓 gross 衰減,但 regime 同時伴隨大盤崩)
+    var bhFh = StatsOf(bhAlign.Take(hh).ToList()).sharpe; var bhBh = StatsOf(bhAlign.Skip(hh).ToList()).sharpe;
+    bool grossDecays = bhG.sharpe < fhG.sharpe * 0.7m;            // gross 後半 < 前半 70% = alpha 真衰(非成本)
+    bool regimeCollapse = bhBh < bhFh - 0.5m;                     // 大盤後半 Sharpe 明顯轉弱(regime 換手)
+    bool costGap = !grossDecays && (bhG.sharpe - bhN.sharpe) > (fhG.sharpe - fhN.sharpe) + 0.3m;  // gross 穩、淨成本拖累變大
+    string cause =
+        costGap ? "成本/換手侵蝕為主(gross 後半尚穩、是成本吃掉)→ 拉長 rebal 或降 topK 可救回淨 Sharpe"
+        : (grossDecays && regimeCollapse) ? "★ regime/離散度依賴:gross 衰減與同期大盤崩【同步】(B&H Sh 也崩)= 相關性升高、橫斷面離散度消失、無 spread 可吃。XS 動量的結構特性、非永久死亡;裸跑會在相關熊市流血"
+        : grossDecays ? "⚠ 真 alpha 衰減/擁擠:gross 後半崩、但同期大盤【沒】同步崩 = edge 自身失效(最該擔心、不部署或極小)"
+        : "後半淨衰減但 gross 尚穩、與成本/regime 無明確對應 → 樣本/雜訊,維持小權重觀察";
+    Console.WriteLine($"  → 成因:{cause}");
+    Console.WriteLine($"     (因子 net 前半 {fhN.sharpe:F2}→後半 {bhN.sharpe:F2};同期大盤 B&H 前半 {bhFh:F2}→後半 {bhBh:F2})");
+
     // ★ 重點:跟現有書(decorr4_ls@BTC)相不相關 = 是不是真分散
     try
     {

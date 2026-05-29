@@ -199,3 +199,24 @@ Retail L/S 8 幣 linear t 全為負(方向全一致)→ 最強候選。
 **結論**:❌ **雙重失敗(不顯著 + 冗餘)**。spread 對 alt ≈ coin funding(BTC funding 量級相對小、減掉幾乎不改變),不是獨立信號。
 **學到**:裸 spread 不行;市場中性的 funding 信號要去相關得用「**跨幣相對排名 / z-score 標準化**」而非裸減。再次印證 [[feedback_structural_alpha_requires_x_uncorrelated_with_price]] —— 新信號先過「跟既有源 corr<0.3」這關、裸 spread 過不了。
 (順帶:pool quantile 確認已部署信號仍活 — Retail L/S Δ t=−3.64、Retail L/S t=−2.08、funding t=−2.05。)
+
+---
+
+## 2026-05-29 第五波 — xsec 價格動量「衰減」成因診斷(regime 依賴、非擁擠)
+
+(注:這支是 `tools/xsec-factor` 的**價格動量排名**因子 Sharpe 1.28/t=2.40,**不是**上面第三波2 那條已 shelve 的 oi 相對擁擠探勘。兩者同叫「cross-sectional」但不同信號。)
+
+**問題**:[[xsec-momentum-factor]] split-half 顯示前半 Sh 1.83 → 後半 0.14 衰減。先前歸因「經典擁擠因子 / alpha decay」。但「擁擠」是強假設、會誤導決策(擁擠=退役;regime 依賴=擇時/閘控)。要用資料分清成因。
+**改動**:`strat-validate --xsmom` 加切 4 等分衰減診斷 — 逐段比 **net / gross / 同期等權 B&H 的 Sharpe**。三種成因可分辨:① gross 也降=真 alpha 衰減 ② gross 穩、只 net 降=成本 ③ 衰減跟著 B&H 走=regime/離散度依賴。
+**結果**(lookback20/rebal7、20 幣含 2022):
+
+| 區段 | net Sh | gross Sh | 成本拖累 | 同期 B&H Sh |
+|---|---:|---:|---:|---:|
+| Q1 | 2.02 | 2.06 | 0.04 | 2.26 |
+| Q2 | 1.67 | 1.73 | 0.06 | 0.96 |
+| Q3 | 0.41 | 0.49 | 0.08 | −0.08 |
+| Q4 | −0.11 | −0.04 | 0.07 | −1.22 |
+
+**結論**:**不是擁擠** —— ① 成本拖累全程 ~0.05 恆定(非成本)② gross 跟 net 一起崩(非單純成本)③ **gross 崩與同期大盤崩【完全同步】**(因子 net 1.83→0.14、大盤 B&H 1.56→−0.60)= **regime/離散度依賴**:相關性升高的熊市裡橫斷面離散度消失、沒 spread 可吃,XS 動量結構性失效。
+**決策**:不退役、保留小權重去相關 sleeve(corr decorr4 僅 0.22),但**裸跑會在相關熊市流血** → 真要部署需**外生離散度/regime 閘**(如橫斷面報酬離散度低時縮倉;離散度對因子自身權益是外生、不犯 [[feedback_self_referential_regime_overlay]])。屬未來工程、非現在。
+**學到**:「衰減」先別跳「擁擠」結論 —— 切段比 net/gross/同期大盤,能分清擁擠 vs 成本 vs regime。三者處方完全不同(退役 / 調 rebal / 加閘)。
