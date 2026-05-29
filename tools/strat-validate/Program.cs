@@ -1726,7 +1726,7 @@ async Task RunXsMom()
     Console.WriteLine($"宇宙:{coins.Count} 幣、對齊尾段 {L} 日(~{L / 365.0:F1} 年)\n");
 
     // 核心回測 → (權益曲線, 平均換手率)。ls=true 多空、false 純多 topK。
-    (List<decimal> eq, decimal turnover) Run(int lookback, int rebal, bool ls, decimal cost)
+    (List<decimal> eq, decimal turnover) Run(int lookback, int rebal, bool ls, decimal cost, Func<int, decimal>? exposure = null)
     {
         var eq = new List<decimal> { 1m };
         List<string> curL = new(), curS = new();
@@ -1748,7 +1748,8 @@ async Task RunXsMom()
             }
             decimal Ret(List<string> set) => set.Count == 0 ? 0m : set.Average(c => cl[c][t] > 0 ? (cl[c][t + 1] - cl[c][t]) / cl[c][t] : 0m);
             decimal pr = Ret(curL) - (ls ? Ret(curS) : 0m);
-            eq.Add(eq[^1] * (1m + pr));
+            decimal e = exposure?.Invoke(t) ?? 1m;   // 外生 exposure 閘(0..1);成本仍照付=對閘保守
+            eq.Add(eq[^1] * (1m + pr * e));
         }
         return (eq, rebals > 0 ? turnSum / rebals : 0m);
     }
@@ -1830,6 +1831,45 @@ async Task RunXsMom()
         : "後半淨衰減但 gross 尚穩、與成本/regime 無明確對應 → 樣本/雜訊,維持小權重觀察";
     Console.WriteLine($"  → 成因:{cause}");
     Console.WriteLine($"     (因子 net 前半 {fhN.sharpe:F2}→後半 {bhN.sharpe:F2};同期大盤 B&H 前半 {bhFh:F2}→後半 {bhBh:F2})");
+
+    // ── 離散度閘:fair-weather 修復測試 ──
+    //   閘信號 = 橫斷面 lookback 報酬的標準差(離散度),外生於因子權益(不犯自我參照 [[feedback_self_referential_regime_overlay]])。
+    //   門檻 = 自身 trailing 90 日中位(規則固定、只看 t 之前、絕不 fit 後半段),離散度 < 中位 → 縮倉到 0(相關市場沒 spread 可吃)。
+    int dispWin = 90;
+    var disp = new Dictionary<int, decimal>();
+    for (int t = repLb; t < L; t++)
+    {
+        var rs = coins.Select(c => cl[c][t - repLb] > 0 ? (cl[c][t] - cl[c][t - repLb]) / cl[c][t - repLb] : 0m).ToList();
+        var mu = rs.Average();
+        disp[t] = (decimal)Math.Sqrt((double)rs.Select(r => (r - mu) * (r - mu)).Average());
+    }
+    decimal Gate(int t)
+    {
+        var hist = new List<decimal>();
+        for (int k = Math.Max(repLb, t - dispWin); k < t; k++) if (disp.TryGetValue(k, out var d)) hist.Add(d);  // 嚴格 t 之前、無 lookahead
+        if (hist.Count < 20 || !disp.ContainsKey(t)) return 1m;   // 暖機不足 → 滿倉
+        var sorted = hist.OrderBy(x => x).ToList();
+        return disp[t] >= sorted[sorted.Count / 2] ? 1m : 0m;     // 離散度 ≥ trailing 中位 → 在場、否則縮倉
+    }
+    var tsAll = Enumerable.Range(repLb, Math.Max(0, L - 1 - repLb)).ToList();
+    decimal avgExp = tsAll.Count > 0 ? tsAll.Average(Gate) : 1m;
+    var (eqGate, _) = Run(repLb, repRb, true, costSide, Gate);
+    var gFull = StatsOf(eqGate);
+    int hg = eqGate.Count / 2;
+    var gBack = StatsOf(eqGate.Skip(hg).ToList());
+    Console.WriteLine($"\n=== 離散度閘實驗(閘=橫斷面離散度≥自身trailing90中位才在場;門檻固定、不 fit 後半)===");
+    Console.WriteLine($"  平均在場比例 {avgExp:P0}(設計上 ~50%、中位切)");
+    Console.WriteLine($"  {"",-7}{"ungated ret/Sh/DD",26}{"gated ret/Sh/DD",26}");
+    Console.WriteLine($"  {"全期",-7}{$"{full.ret,6:F0}% / {full.sharpe,4:F2} / {full.dd,3:F0}%",26}{$"{gFull.ret,6:F0}% / {gFull.sharpe,4:F2} / {gFull.dd,3:F0}%",26}");
+    Console.WriteLine($"  {"後半",-7}{$"{oos.ret,6:F0}% / {oos.sharpe,4:F2} / {oos.dd,3:F0}%",26}{$"{gBack.ret,6:F0}% / {gBack.sharpe,4:F2} / {gBack.dd,3:F0}%",26}");
+    bool ddCut = gBack.dd < oos.dd - 5m;                         // 後半 maxDD 明顯降
+    bool backSharpeUp = gBack.sharpe > oos.sharpe + 0.1m;        // 後半 risk-adj 真改善
+    bool keptUpside = gFull.sharpe >= full.sharpe - 0.2m;        // 全期沒被閘搞砸(縮倉踏空牛市)
+    Console.WriteLine("  → 判定:" + (
+        !keptUpside ? "❌ 閘代價>效益:全期 Sharpe 被踏空拖垮(中位切縮倉砍掉牛市)、後半 risk-adj 也沒實質改善 → 不加閘;這條靠【組合層防禦】(CB/DD-aware)+ 小權重去相關紅利更划算"
+        : (ddCut && backSharpeUp) ? "✅ 閘有效:削熊市 DD 且後半 risk-adj 改善、又沒犧牲全期 → fair-weather 被外生離散度閘救回、值得當有閘 sleeve"
+        : (ddCut || backSharpeUp) ? "⚠ 閘邊際(削了 DD 或改善 risk-adj 其一)、代價是踏空 → 看組合是否需要這條保命特性"
+        : "❌ 閘無助(後半沒改善)→ 離散度(中位切)不是有效擇時信號"));
 
     // ★ 重點:跟現有書(decorr4_ls@BTC)相不相關 = 是不是真分散
     try
