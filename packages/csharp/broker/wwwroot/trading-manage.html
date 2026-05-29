@@ -100,8 +100,9 @@
 
 <h2>🔍 市場掃描器 · 一鍵建立監控</h2>
 <div class="panel">
-  <div class="hint" style="margin-bottom:8px">對一籃子 symbol 跑 composite 策略、按信心 + 動作篩出候選、勾選後一鍵加入監控(數量用上方的 qty 欄)。預設掃加密幣。</div>
+  <div class="hint" style="margin-bottom:8px">對一籃子 symbol 跑選定策略、按信心 + 動作篩出候選、勾選後一鍵加入監控(數量用上方的 qty 欄)。預設掃加密幣。</div>
   <div class="scan-form">
+    <div class="fg"><label>策略</label><select id="scan-strat" style="min-width:130px"><option value="ts_momentum">ts_momentum</option></select></div>
     <div class="fg"><label>動作</label><select id="scan-action"><option value="any">任意</option><option value="buy">僅 BUY</option><option value="sell">僅 SELL</option></select></div>
     <div class="fg"><label>最低信心</label><input id="scan-min-conf" type="number" value="0.65" min="0" max="1" step="0.05" style="width:80px"></div>
     <div class="fg"><label>Top N</label><input id="scan-topn" type="number" value="10" min="3" max="30" step="1" style="width:70px"></div>
@@ -110,7 +111,7 @@
     <button class="btn-g btn-sm" onclick="addBatchToWatch()" id="scan-add-btn" disabled>加入勾選</button>
     <span class="scan-progress" id="scan-progress"></span>
   </div>
-  <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描,按「開始掃描」跑 composite 策略</div></div>
+  <div class="scan-result" id="scan-result"><div class="scan-empty">尚未掃描,按「開始掃描」跑選定策略</div></div>
 </div>
 
 <h2>🛰 Scanner Hybrid · 策略 × 候選池 信號驅動</h2>
@@ -457,6 +458,7 @@ async function runMarketScan(){
   const topN=parseInt(document.getElementById('scan-topn').value)||10;
   const actionFilter=document.getElementById('scan-action').value;
   const typeFilter=document.getElementById('scan-type').value;
+  const strat=document.getElementById('scan-strat').value||'ts_momentum';
   const all=defaultSymbols.filter(s=>typeFilter==='all'||s.type===typeFilter);
   const prog=document.getElementById('scan-progress'),out=document.getElementById('scan-result');
   const addBtn=document.getElementById('scan-add-btn'),runBtn=document.getElementById('scan-run-btn');
@@ -471,7 +473,7 @@ async function runMarketScan(){
       try{
         const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+s.symbol+'&limit=100');
         if(!bars?.data?.bars||bars.data.bars.length<30)return null;
-        const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:'composite',symbol:s.symbol,exchange:s.exchange,interval:'1d',bars:bars.data.bars})});
+        const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:strat,symbol:s.symbol,exchange:s.exchange,interval:'1d',bars:bars.data.bars})});
         if(!r?.data)return null;
         const last=bars.data.bars[bars.data.bars.length-1];
         return{symbol:s.symbol,exchange:s.exchange,type:s.type,action:r.data.action,confidence:r.data.confidence||0,price:last.close};
@@ -500,9 +502,10 @@ async function addBatchToWatch(){
     .map(cb=>_scanResults[parseInt(cb.dataset.idx)]).filter(Boolean);
   if(!checked.length){toastWarn('沒有勾選任何 symbol');return;}
   const qty=parseFloat(document.getElementById('w-qty').value)||1;
+  const strat=document.getElementById('scan-strat')?.value||'composite';  // 用掃描所選策略加監控(scan with X → watch with X)
   let ok=0,fail=0;
   for(const r of checked){
-    const x=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:r.symbol,exchange:r.exchange,strategy:'composite',quantity:qty})});
+    const x=await api('/api/v1/auto-trader/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:r.symbol,exchange:r.exchange,strategy:strat,quantity:qty})});
     if(x?.data||x?.success||x?.ok)ok++;else fail++;
   }
   if(ok>0)toastOk(`已加入 ${ok} 個監控`+(fail>0?`,失敗 ${fail}`:''));
@@ -1092,6 +1095,17 @@ async function loadOverview(){
   renderScanSnapshot();
 }
 
+async function loadScanStrategies(){  // 從 /strategy/list 填掃描器策略下拉(只列 /strategy/signal 真支援的、無 composite)
+  try{
+    const j=await api('/api/v1/strategy/list'); const d=j.data||j;
+    const list=(d.strategies||[]).filter(Boolean);
+    const sel=document.getElementById('scan-strat'); if(!sel||!list.length)return;
+    const prev=sel.value;
+    sel.innerHTML=list.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    sel.value=list.includes(prev)?prev:(list.includes('ts_momentum')?'ts_momentum':list[0]);
+  }catch(e){}
+}
+
 /* ───────────── 分頁導覽(把長頁切成 tabs)+ 懶載入 ───────────── */
 (function setupTabs(){
   const nav=document.getElementById('tabnav'); if(!nav) return;
@@ -1128,7 +1142,7 @@ async function loadOverview(){
 })();
 
 /* ───────────── init ───────────── */
-loadStatus(); loadAlerts(); loadMe(); detectAdmin(); loadScanners();
+loadStatus(); loadAlerts(); loadMe(); detectAdmin(); loadScanners(); loadScanStrategies();
 setInterval(loadStatus,20000); setInterval(loadScanners,30000);
 </script>
 </body>
