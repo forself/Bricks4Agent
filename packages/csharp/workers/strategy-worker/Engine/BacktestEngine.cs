@@ -46,6 +46,7 @@ public class BacktestEngine
         public decimal Pnl       { get; set; }
         public decimal PnlPct    { get; set; }
         public int HoldBars      { get; set; }
+        public decimal EntryConfidence { get; set; }  // 進場當下 signal.Confidence(confidence 校準診斷用;0=未記錄)
     }
 
     public class EquityPoint

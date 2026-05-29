@@ -30,6 +30,10 @@ decimal slPct = decimal.TryParse(args.FirstOrDefault(a => a.StartsWith("--sl="))
 // 注意:LS 引擎只在 conf≥0.6 才開倉、故 scale 實際範圍 0.6-1.0(溫和);引擎版無 floor(live 版 floor 0.3)
 bool confSizing = args.Contains("--conf-sizing");
 if (confSizing) Console.WriteLine("📐 --conf-sizing:部位 × signal.Confidence(forecast-strength sizing 實驗、對照固定倉位)");
+// --conf-diag:confidence 校準診斷(Q1 開放項)— per-trade entry confidence vs 實際 PnlPct。
+// 答「confidence 有沒有預測力(分桶單調?corr≠0?)+ 跨策略可不可比(分布重疊?)」。用 full-sample(對找關係有利、null 結果更強)。
+bool confDiag = args.Contains("--conf-diag");
+if (confDiag) Console.WriteLine("🔬 --conf-diag:confidence 校準診斷(entry confidence vs 實際報酬;full-sample、找關係有利)");
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
@@ -457,6 +461,9 @@ var bhRets = new List<decimal>(); var bhShs = new List<decimal>(); var bhDds = n
 foreach (var kv in data) { var st = StatsOf(kv.Value.Select(b => b.Close).ToList()); bhRets.Add(st.ret); bhShs.Add(st.sharpe); bhDds.Add(st.dd); }
 if (data.Count > 0)
     Console.WriteLine($"=== Buy & Hold 基準(全期)===  中位 ret {Median(bhRets):F0}% | 平均 Sharpe {bhShs.Average():F2} | 平均 maxDD {bhDds.Average():F0}%");
+
+// --conf-diag:confidence 校準診斷(複用已載入 data + strats)── 答「confidence 有預測力嗎 / 跨策略可比嗎」
+if (confDiag) { RunConfDiagnostic(); return; }
 
 // 權益曲線對應日期(per coin、各策略共用同 bars;lsEq 最後跑 → 留 LS 引擎日期),給 regime-gate 用
 var curveDates = new Dictionary<string, List<DateTime>>();
@@ -1274,6 +1281,101 @@ if (strats.Any(x => x.name == "decorr4_ls"))
 }
 
 Console.WriteLine("\n判定 = OOS 中位報酬>0 且 ≥60% 檔 OOS 正報酬 且 全期連續 Sharpe>0。組合層比較單腿:Sharpe 升 / maxDD 降 = 去相關紅利。");
+
+// ════════════════════════════════════════════════════════════════════════════
+// --conf-diag:confidence 校準診斷(Q1 開放項;Carver gap-analysis §開放項)
+//   per-trade entry confidence vs 實際 PnlPct。答兩問:
+//   ① 有預測力嗎(分桶單調 / Pearson·Spearman ≠ 0)② 跨策略可比嗎(分布重疊 / 中位 spread)
+//   full-sample(對「找到關係」有利、故 null 結果是保守且強的結論)。
+// ════════════════════════════════════════════════════════════════════════════
+void RunConfDiagnostic()
+{
+    double Pearson(List<double> xs, List<double> ys)
+    {
+        int n = xs.Count; if (n < 3) return 0;
+        double mx = xs.Average(), my = ys.Average(), sxy = 0, sxx = 0, syy = 0;
+        for (int i = 0; i < n; i++) { var dx = xs[i] - mx; var dy = ys[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
+        return (sxx > 0 && syy > 0) ? sxy / Math.Sqrt(sxx * syy) : 0;
+    }
+    List<double> Rank(List<double> v)   // 平均秩處理 ties(confidence 多重複值)
+    {
+        var idx = Enumerable.Range(0, v.Count).OrderBy(i => v[i]).ToList();
+        var r = new double[v.Count];
+        int k = 0;
+        while (k < idx.Count)
+        {
+            int j = k;
+            while (j + 1 < idx.Count && v[idx[j + 1]] == v[idx[k]]) j++;
+            double avgRank = (k + j) / 2.0 + 1;
+            for (int t = k; t <= j; t++) r[idx[t]] = avgRank;
+            k = j + 1;
+        }
+        return r.ToList();
+    }
+    double Spearman(List<double> xs, List<double> ys) => Pearson(Rank(xs), Rank(ys));
+    double Pct(List<double> sorted, double q)
+    {
+        if (sorted.Count == 0) return 0;
+        double pos = q * (sorted.Count - 1);
+        int lo = (int)Math.Floor(pos), hi = (int)Math.Ceiling(pos);
+        return lo == hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+    }
+
+    Console.WriteLine("\n=== confidence 校準診斷(full-sample;每筆 entry confidence vs 實際 PnlPct)===");
+    Console.WriteLine("解讀:Pearson/Spearman ≈ 0 → confidence 對「單筆好壞」無預測力 → forecast-strength sizing 無 alpha、固定倉位正確。");
+    Console.WriteLine("      conf 若全擠在 0.6-1.0(進場閘 0.6 截斷)且各策略中位差大 = 跨策略不可比(Carver forecast 需波動標準化、B4A 未做)。\n");
+    Console.WriteLine($"  {"strategy",-22}{"n",5}  conf[min med max]    {"Pear",7}{"Spear",8}  │ 低桶Pnl%(WR) 中桶          高桶          趨勢");
+
+    var rows = new List<(string name, double med, double pear, double spear, int n, bool constant)>();
+    foreach (var (name, s) in strats)
+    {
+        var confs = new List<double>(); var pnls = new List<double>();
+        foreach (var kv in data)
+        {
+            try
+            {
+                var cfg = new StrategyConfig { Symbol = kv.Key, Interval = "1d" };
+                var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, defaultInitialSlPct: slPct, applyFunding: realFunding);
+                foreach (var t in bt.Trades) { confs.Add((double)t.EntryConfidence); pnls.Add((double)t.PnlPct); }
+            }
+            catch { }
+        }
+        if (confs.Count < 20) { Console.WriteLine($"  {name,-22}{confs.Count,5}  (trades < 20、樣本不足、skip)"); continue; }
+        var sortedConf = confs.OrderBy(x => x).ToList();
+        double cmin = sortedConf.First(), cmed = Pct(sortedConf, 0.5), cmax = sortedConf.Last();
+        double pear = Pearson(confs, pnls), spear = Spearman(confs, pnls);
+
+        var pairs = confs.Zip(pnls, (c, p) => (c, p)).OrderBy(x => x.c).ToList();
+        int b = pairs.Count / 3;
+        var loG = pairs.Take(b).ToList();
+        var midG = pairs.Skip(b).Take(b).ToList();
+        var hiG = pairs.Skip(2 * b).ToList();
+        double AvgP(List<(double c, double p)> g) => g.Count > 0 ? g.Average(x => x.p) : 0;
+        double WR(List<(double c, double p)> g) => g.Count > 0 ? (double)g.Count(x => x.p > 0) / g.Count * 100 : 0;
+        double loP = AvgP(loG), midP = AvgP(midG), hiP = AvgP(hiG);
+        string trend = (hiP > midP && midP > loP) ? "↑單調" : (hiP > loP ? "弱↑" : (hiP < loP ? "✗反向" : "平"));
+
+        bool constant = (cmax - cmin) < 0.001;
+        Console.WriteLine($"  {name,-22}{confs.Count,5}  [{cmin:F2} {cmed:F2} {cmax:F2}] {pear,7:F3}{spear,8:F3}  │ {loP,5:F2}({WR(loG):F0}%) {midP,5:F2}({WR(midG):F0}%) {hiP,5:F2}({WR(hiG):F0}%)  {(constant ? "常數conf" : trend)}");
+        rows.Add((name, cmed, pear, spear, confs.Count, constant));
+    }
+
+    if (rows.Count > 0)
+    {
+        double medSpread = rows.Max(x => x.med) - rows.Min(x => x.med);
+        int constantCnt = rows.Count(x => x.constant);
+        // 真預測力 = Pearson 與 Spearman 同號(線性+秩一致)且兩者皆 >0.1;反號 = 離群驅動的假關係、不算
+        int consistent = rows.Count(x => Math.Sign(x.pear) == Math.Sign(x.spear) && Math.Abs(x.pear) > 0.1 && Math.Abs(x.spear) > 0.1);
+        int conflicting = rows.Count(x => Math.Sign(x.pear) != Math.Sign(x.spear) && (Math.Abs(x.pear) > 0.1 || Math.Abs(x.spear) > 0.1));
+        Console.WriteLine("\n── 結論 ──");
+        Console.WriteLine($"① 範圍壓縮:conf 下限 ≈ 0.6(進場閘截斷);{constantCnt}/{rows.Count} 支吐【常數 confidence】(min=max、零資訊)。");
+        Console.WriteLine($"② 跨策略不可比:conf 中位 spread = {medSpread:F2}({(medSpread > 0.15 ? "大 → 各策略的 0.X 不等義、不能放同一尺度 scale 倉位" : "小")})。");
+        Console.WriteLine($"③ 預測力:Pearson·Spearman 同號且皆>0.1 的 {consistent}/{rows.Count};反號(離群假關係){conflicting} 支。");
+        Console.WriteLine(consistent == 0
+            ? "→ confidence 對單筆報酬【無一致預測力】→ forecast-strength sizing 無 alpha 可撈、固定倉位是對的(資料印證 conf-sizing 負結果)。"
+            : $"→ {consistent} 支 conf 帶【一致】弱預測力,可對那幾支單獨深究 per-strategy sizing(但跨策略仍不可比、不能全域開)。");
+    }
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // --allocate 配置引擎:把候選策略池跑成「可直接部署的權重」

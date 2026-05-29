@@ -50,7 +50,13 @@ Carver 的部位 = 一條「波動標準化」的管線,每一段都把風險拉
   - 解讀:confidence-scaling 只是按比例縮曝險(vol 同比縮)、**risk-adj 報酬無改善**;沒選出更好的交易、只少賺。
   - 根因:B4A confidence(0.6-1.0、門檻 gate 副產品)**不是校準 forecast**。Carver forecast-strength sizing 要 work、forecast 必須 predictive。
   - **決定:不開 `CONFIDENCE_SIZING_ENABLED`**(會降報酬不升 Sharpe);固定倉位現狀是對的。要用先做 confidence 校準。
-- [ ] **confidence 校準檢查**:抽幾支策略看 confidence 分布,確認跨策略可比(或加一層 per-strategy normalization)。
+- [x] **confidence 校準檢查** ✅ 做了(2026-05-29、strat-validate `--conf-diag`、10 支已驗策略 × 20 幣 full-sample):
+  - 工具:`BacktestTrade.EntryConfidence`(進場當下 signal.Confidence)+ LS 引擎記錄;每筆 (conf, PnlPct) 算 Pearson/Spearman + conf 三分桶 avgPnl/勝率。
+  - **① 範圍壓縮**:conf 全擠在 0.6-1.0(進場閘 ≥0.6 截斷);**mfi=0.70、rsi_stoch=0.80 吐常數 conf(min=max、零資訊)**。
+  - **② 跨策略不可比**:conf 中位 spread = **0.17**(rsi_stoch 0.80 / smc 0.70 / ts_mom·di_trend 0.64)→ 各策略的「0.X」不等義、不能放同一尺度 scale 倉位。
+  - **③ 預測力**:Pearson·Spearman 同號且皆>0.1 的只 **1/10**(bb_revert_ls、且 n=81 最小樣本);dual_mom +0.13/−0.13、di_trend +0.11/−0.02 = **兩者反號 = 離群驅動假關係、非單調預測**;桶趨勢多數非單調。
+  - **結論**:confidence【不是校準 forecast】—— 經驗證實了上面「從推理」的歸因。**決定維持不開 confidence sizing**;唯一弱訊號 bb_revert(MR 策略:高 conf=偏離越大=回歸越多、合理但樣本薄)列為未來 per-strategy 深究、非現在。
+- [ ] ~~confidence 校準檢查~~(已完成、見上)。原規劃的 per-strategy normalization:只有在「先把策略改成 emit 連續校準 forecast」(策略層重構、見下)之後才有意義,否則 normalize 一個零資訊/常數的數字無益。
 - [x] **position buffering** ✅ 評估了(2026-05-29)= **不需要**:Carver buffering 解「連續重算目標→小幅漂移→頻繁交易」的 churn,但 B4A 是**固定倉位 + 訊號驅動**、沒有連續漂移的目標可 buffer。且既有防護已足:`r9 Symbol Cooldown`(active、60s、雙向)+ AutoTrader 30min re-open 冷卻 + scanner 冪等鎖 + 訊號驅動持有。**現在加 = 解不存在的問題 + 真錢引擎冗餘複雜度**。→ 只有未來開了 conf/Kelly 連續 sizing 才回來做。
 - [ ] 讀 Carver Ch5-7 原文核對本摘要(本 doc 是從框架記憶寫的、非逐頁)。
 

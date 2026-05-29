@@ -58,6 +58,7 @@ public static class LongShortBacktestEngine
         decimal position = 0m;       // 帶正負號:>0 多、<0 空
         decimal entryPrice = 0m;
         int entryIndex = -1;
+        decimal entryConfidence = 0m;  // 進場當下 signal.Confidence(confidence 校準診斷用)
         DateTime entryDate = DateTime.MinValue;
         decimal activeStopPrice = 0m;    // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
         decimal activeTargetPrice = 0m;  // H16 TP 支援:開倉時鎖定的獲利目標(0=不啟用)
@@ -87,11 +88,12 @@ public static class LongShortBacktestEngine
                 ExitDate = bars[i].OpenTime, ExitPrice = px,
                 Quantity = qty, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
                 HoldBars = entryIndex >= 0 ? i - entryIndex : 0,
+                EntryConfidence = entryConfidence,
             });
-            position = 0m; entryPrice = 0m; entryIndex = -1; activeStopPrice = 0m; activeTargetPrice = 0m; peakPrice = 0m;
+            position = 0m; entryPrice = 0m; entryIndex = -1; entryConfidence = 0m; activeStopPrice = 0m; activeTargetPrice = 0m; peakPrice = 0m;
         }
 
-        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target)
+        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target, decimal confidence)
         {
             decimal eqNow = cash;                        // 已平倉、position=0 → equity=cash
             decimal notional = eqNow * notionalPct * sizeScale;
@@ -100,7 +102,7 @@ public static class LongShortBacktestEngine
             position = dir * qty;
             cash -= position * px;                        // 多:扣現;空:收現金
             cash -= notional * costRate;
-            entryPrice = px; entryIndex = i; entryDate = bars[i].OpenTime;
+            entryPrice = px; entryIndex = i; entryDate = bars[i].OpenTime; entryConfidence = confidence;
             activeStopPrice = stop;                       // H2-Fib SL:訊號未帶 stop 時=0、不啟用
             activeTargetPrice = target;                   // H16 TP:訊號未帶 target 時=0、不啟用
             peakPrice = px;                               // H18 peak-trail:從進場價開始追蹤
@@ -181,7 +183,7 @@ public static class LongShortBacktestEngine
                             ? price * (1m - defaultInitialSlPct / 100m)   // long:entry × (1 − pct%)
                             : price * (1m + defaultInitialSlPct / 100m); // short:entry × (1 + pct%)
                     }
-                    OpenAt(i, price, desired, sizeScale, effectiveStop, signal.TargetPrice ?? 0m);
+                    OpenAt(i, price, desired, sizeScale, effectiveStop, signal.TargetPrice ?? 0m, signal.Confidence);
                 }
             }
 
