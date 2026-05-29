@@ -154,8 +154,10 @@ VALUES
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 
   -- 台股 = ts_momentum(全套件揪出的台股真 edge:t=5.68 mean 4.8% 廣度87%、過 BH-FDR;非 harmonic 的 1.3%)
+  -- universe = 14 單股(2026-05-29 去相關優化:移除 0050.TW,它是台灣50 ETF/指數、跟 2330 corr 0.90、
+  --   屬類別錯誤+雙押大盤 beta;單股趨勢 scanner 要個股 idiosyncratic 趨勢、非市場 beta)
   ('twstock_tsmom_scanner', 'twstock_tsmom_scanner', 'ts_momentum',
-   '["2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW","0050.TW"]',
+   '["2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW"]',
    0, 3, 0,
    'spot', '1d', 1, 1, 1, 'twse',
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'));
