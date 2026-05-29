@@ -18,6 +18,19 @@ if (!BOT_ADMIN_TOKEN) {
   console.warn('[broker] BOT_INTERNAL_ADMIN_TOKEN not set; mobile approval buttons will not work');
 }
 
+// broker 容器 recreate 會換 docker IP。預設 keep-alive 會卡在指向舊 IP 的死連線、
+// 以前要手動 restart bot-node 才恢復。用短 keep-alive 的 dispatcher(連線幾乎不重用)→
+// 每次請求重開連線、重解析 DNS,broker 重啟後自動連到新 IP。
+// undici 經 discord.js 帶入;拿不到就純靠 callBroker 的 retry。只套在 broker 呼叫、不動 discord.js。
+let brokerDispatcher = null;
+try {
+  const { Agent } = await import('undici');
+  brokerDispatcher = new Agent({ keepAliveTimeout: 10, keepAliveMaxTimeout: 10 });
+  console.log('[broker] short keep-alive dispatcher active (auto-reconnect on broker IP change)');
+} catch {
+  console.warn('[broker] undici Agent unavailable; relying on retry for reconnect');
+}
+
 /**
  * 通用 broker 呼叫。
  * @param {'GET'|'POST'|'DELETE'} method
@@ -37,34 +50,41 @@ export async function callBroker(method, path, body = null, opts = {}) {
   } else {
     headers['X-Internal-Bot-Token'] = BOT_TOKEN;
   }
-  try {
-    const resp = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      // 30s timeout
-      signal: AbortSignal.timeout(30_000),
-    });
-    const text = await resp.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { /* 非 JSON、留 null */ }
+  // 網路錯誤(broker recreate 換 IP / 暫時不可達)重試 3 次:第一次可能撞到死連線、
+  // 重試會重開新連線(短 keep-alive + 重解析 DNS)連到新 broker IP,免手動 restart。
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+        ...(brokerDispatcher ? { dispatcher: brokerDispatcher } : {}),
+      });
+      const text = await resp.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { /* 非 JSON、留 null */ }
 
-    if (!resp.ok) {
-      return {
-        ok: false,
-        status: resp.status,
-        error: `HTTP ${resp.status}: ${(data && (data.message || data.error)) || text.slice(0, 200)}`,
-      };
-    }
-    // broker 用 ApiResponseHelper 包：{ success, message, data, ... }
-    if (data && typeof data === 'object' && 'success' in data) {
-      if (!data.success) {
-        return { ok: false, status: resp.status, error: data.message || 'broker error' };
+      if (!resp.ok) {
+        return {
+          ok: false,
+          status: resp.status,
+          error: `HTTP ${resp.status}: ${(data && (data.message || data.error)) || text.slice(0, 200)}`,
+        };
       }
-      return { ok: true, status: resp.status, data: data.data };
+      // broker 用 ApiResponseHelper 包：{ success, message, data, ... }
+      if (data && typeof data === 'object' && 'success' in data) {
+        if (!data.success) {
+          return { ok: false, status: resp.status, error: data.message || 'broker error' };
+        }
+        return { ok: true, status: resp.status, data: data.data };
+      }
+      return { ok: true, status: resp.status, data };
+    } catch (e) {
+      lastErr = e;  // 網路類錯誤才會到這(HTTP 4xx/5xx 上面已 return)
+      if (attempt < 2) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
     }
-    return { ok: true, status: resp.status, data };
-  } catch (e) {
-    return { ok: false, status: 0, error: `network: ${e.message}` };
   }
+  return { ok: false, status: 0, error: `network: ${lastErr?.message || 'unknown'} (after 3 tries)` };
 }
