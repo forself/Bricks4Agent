@@ -73,12 +73,13 @@ VALUES
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 
   -- 2026-05-27 晚 C 路線部署:tsmom_btc_not_up(ts_momentum + 只在 BTC sideways/down 開倉)
-  -- A/B 數據:Sharpe 0.66 → 0.82 (+0.16),機制:tsmom 在 BTC up 期 Sharpe 只 0.31 過濾掉
-  -- 跟 tsmom_1d_scanner 平行 A/B:同 universe(TRX/SUI/AVAX)、看 filter 是否在 shadow 期復現
+  -- ⚠ 已下架(enabled=0、2026-05-29 熊市審計):plain ts_momentum 含 2022 熊 t=4.49,但加 BTC regime 濾網
+  --   t→0.87(濾網過擬合到無熊窗、加熊樣本就破)+ LS DD 116%。VPS 已 disabled、此處同步。
+  --   教訓:regime 濾網的 A/B「+0.16 Sharpe」是無熊窗假象;[[bear-market-audit-2026-05-29]]。
   ('tsmom_btcnotup_scanner', 'tsmom_btcnotup_scanner', 'tsmom_btc_not_up',
    '["TRXUSDT","SUIUSDT","AVAXUSDT"]',
    20, 2, 10,
-   'spot', '1d', 5, 1, 1,
+   'spot', '1d', 5, 1, 0,
    'prn_dashboard', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 
   -- 2026-05-27 深夜 結構性 alpha 第一支:funding_momentum_ls
