@@ -51,19 +51,22 @@ def log(m):
     print(f"[{datetime.now().isoformat(timespec='seconds')}] {m}", flush=True)
 
 
-def load_webhook():
+def load_env_value(key):
+    """從 ENV_FILE 讀一個 KEY=value(webhook / dead-man URL 共用)。"""
     try:
         with open(ENV_FILE, encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
-                if line.startswith("DISCORD_WEBHOOK_URL="):
+                if line.startswith(key + "="):
                     return line.split("=", 1)[1].strip().strip('"').strip("'")
     except Exception as e:
         log(f"env 讀取失敗: {e}")
     return None
 
 
-WEBHOOK = load_webhook()
+WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL") or load_env_value("DISCORD_WEBHOOK_URL")
+# 域外 dead-man heartbeat URL(如 healthchecks.io 的 ping URL)。未設 → 整段 no-op、行為不變。
+DEADMAN_URL = os.environ.get("DEADMAN_URL") or load_env_value("DEADMAN_URL")
 
 
 def discord(title, desc, color, critical=False):
@@ -91,6 +94,25 @@ def discord(title, desc, color, critical=False):
         log(f"推播 → {title}")
     except Exception as e:
         log(f"discord 推播失敗: {e}")
+
+
+def deadman_ping(ok=True):
+    """域外 dead-man's switch heartbeat。
+
+    每輪 ping 一個【VPS 外】的服務(healthchecks.io / Better Uptime / UptimeRobot 等)。
+    這是唯一能覆蓋「整台 VPS 掛掉 / 斷網 / 斷電」的層 —— 那時 watchdog 自己也死了、
+    Discord 推不出去,但外部服務會因為「該收到的 ping 沒收到」而逾時告警(沉默即故障)。
+    ok=False(broker 異常)→ ping /fail 立即觸發外部告警,是獨立於 Discord 的第二通道。
+    未設 DEADMAN_URL → no-op。任何錯誤只記 log、絕不影響主監看迴圈。
+    """
+    if not DEADMAN_URL:
+        return
+    url = DEADMAN_URL if ok else DEADMAN_URL.rstrip("/") + "/fail"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "B4A-Watchdog/1.0"})
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:
+        log(f"dead-man ping 失敗(不影響監看): {e}")
 
 
 def sh(args, timeout=20):
@@ -160,9 +182,12 @@ def main():
     wedge_count = collections.defaultdict(int)          # 容器 -> 連續卡死次數
     last_worker_restart = {}                            # 容器 -> ts
 
-    log(f"watchdog 啟動,webhook={'已設定' if WEBHOOK else '缺失!'},poll={POLL}s")
+    log(f"watchdog 啟動,webhook={'已設定' if WEBHOOK else '缺失!'},"
+        f"dead-man={'已設定' if DEADMAN_URL else '未設(僅本機告警)'},poll={POLL}s")
     discord("🟢 B4A Watchdog 上線",
-            f"Docker 容器監看已啟動,每 {POLL}s 輪詢一次。掛掉 / 卡死 / crash-loop 會即時推播。",
+            f"Docker 容器監看已啟動,每 {POLL}s 輪詢一次。掛掉 / 卡死 / crash-loop 會即時推播。"
+            + ("\n域外 dead-man heartbeat 已啟用(VPS 整台掛也會從外部告警)。" if DEADMAN_URL
+               else "\n⚠ 未設 DEADMAN_URL:VPS 整台掛掉時無域外告警。"),
             GRN)
 
     first_round = True
@@ -253,6 +278,11 @@ def main():
                                 log(f"{cname} 卡死但在冷卻期、暫不重啟")
                     else:
                         wedge_count[cname] = 0
+
+        # ── 域外 dead-man heartbeat:ping VPS 外的服務 ──
+        # broker OK → 送 success(重置外部計時器);broker 異常 → 送 /fail(外部立即告警)。
+        # watchdog / VPS 整個死 → ping 停止 → 外部服務逾時告警(覆蓋整機死亡的唯一層)。
+        deadman_ping(ok=(condition(cur.get(BROKER)) == "OK"))
 
         first_round = False
         time.sleep(POLL)
