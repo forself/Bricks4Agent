@@ -80,6 +80,14 @@
     </div>
     <div id="ov-scan"><span class="muted">尚未掃描</span></div>
   </div>
+  <div class="card" style="margin:10px 0 0">
+    <h3 style="margin:0 0 8px">💰 真錢書 (BingX)</h3>
+    <div id="ov-legs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px"><span class="muted">載入中…</span></div>
+  </div>
+  <div class="card" style="margin:10px 0 0">
+    <h3 style="margin:0 0 8px">📊 forward 實盤 P&L <span class="hint" style="margin:0">真錢+paper(FIFO)</span></h3>
+    <div id="ov-forward"><span class="muted">載入中…</span></div>
+  </div>
 </div>
 
 <h2>監控管理 · 武裝 / 加減 watch</h2>
@@ -1079,8 +1087,8 @@ function renderScanSnapshot(){  // 總覽用:濃縮版 top picks
   }).join(' ');
 }
 async function loadOverview(){
-  let acc={},legs=[];
-  try{const j=await api('/api/v1/auto-trader/dashboard?exchange=bingx');const d=j.data||j;acc=d.account||{};legs=d.legs||[];}catch(e){}
+  let acc={},legs=[],fw=[];
+  try{const j=await api('/api/v1/auto-trader/dashboard?exchange=bingx');const d=j.data||j;acc=d.account||{};legs=d.legs||[];fw=d.forward||[];}catch(e){}
   let watchN=(typeof WATCHES!=='undefined'?WATCHES.length:0);
   try{const s=await api('/api/v1/auto-trader/status');const sd=s.data||s;watchN=(sd.watch_list||[]).length||watchN;}catch(e){}
   let alertN=0; try{const a=await api('/api/v1/alerts/rules');const ad=a.data||a;const rl=ad.rules||ad||[];alertN=Array.isArray(rl)?rl.length:0;}catch(e){}
@@ -1092,7 +1100,27 @@ async function loadOverview(){
     kpi('持倉',openPos+' 開倉',legs.length+' 腿 · '+(acc.day_trades||0)+' 今日成交','')+
     kpi('監控 watch',watchN,'AutoTrader','')+
     kpi('告警規則',alertN,'','');
+  renderOverviewLegs(legs); renderOverviewForward(fw);
   renderScanSnapshot();
+}
+function renderOverviewLegs(legs){
+  const el=document.getElementById('ov-legs'); if(!el)return;
+  const sym=s=>(s||'').replace('-USDT','').replace('USDT','');
+  el.innerHTML = (legs&&legs.length) ? legs.map(l=>{
+    const sc=l.signal==='buy'?'grn':l.signal==='sell'?'red':'muted';
+    const pos=l.has_position?`<span class="${l.side==='short'?'red':'grn'}">● ${esc(l.side)} ${(l.pnl_pct>=0?'+':'')+Number(l.pnl_pct||0).toFixed(1)}%</span>`:'<span class="muted">○ 空手</span>';
+    return `<div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(sym(l.symbol))}</b><span class="${sc}" style="font-size:10px;font-weight:700">${esc((l.signal||'').toUpperCase())}</span></div>
+      <div class="muted" style="font-size:10px;margin:2px 0 0">${esc(l.strategy||'')}</div>
+      <div style="font-size:11px;margin-top:3px">${pos}</div>
+      <div class="muted" style="font-size:10px">預算 ${Number(l.budget_pct||0).toFixed(0)}%</div>
+    </div>`;
+  }).join('') : '<span class="muted">無真錢腿</span>';
+}
+function renderOverviewForward(fw){
+  const el=document.getElementById('ov-forward'); if(!el)return;
+  const rows=(fw||[]).slice(0,8).map(f=>`<tr><td>${esc(f.strategy)}</td><td class="muted">${esc((f.exchanges||[]).join(','))}</td><td>${f.trades||0}</td><td class="${(Number(f.realized_pnl||0)>=0)?'grn':'red'}">${(Number(f.realized_pnl||0)>=0?'+':'')+Number(f.realized_pnl||0).toFixed(2)}</td></tr>`).join('');
+  el.innerHTML = rows ? `<table style="font-size:12px"><thead><tr><th>策略</th><th>場</th><th>成交</th><th>realized</th></tr></thead><tbody>${rows}</tbody></table>` : '<span class="muted">尚無已實現成交(round-trip 累積中)</span>';
 }
 
 async function loadScanStrategies(){  // 從 /strategy/list 填掃描器策略下拉(只列 /strategy/signal 真支援的、無 composite)
