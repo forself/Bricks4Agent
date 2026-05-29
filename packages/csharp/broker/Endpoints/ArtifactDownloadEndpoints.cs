@@ -1,4 +1,5 @@
 using Broker.Helpers;
+using Broker.Middleware;
 using Broker.Services;
 
 namespace Broker.Endpoints;
@@ -31,11 +32,14 @@ public static class ArtifactDownloadEndpoints
             return Results.File(r.FullPath, r.ContentType, r.FileName);
         });
 
-        // 產生簽章下載連結:admin only
-        g.MapPost("/{id}/download-link", (HttpContext ctx, string id, LocalAdminAuthService auth, BrokerArtifactDownloadService svc) =>
+        // 產生簽章下載連結:admin only(走 dashboard cookie/scoped current-user、跟 /admin/users 同模型;
+        // 不用 LocalAdminAuthService.TryRequireAuthenticated——那個只認 loopback、遠端 dashboard 會 403)
+        g.MapPost("/{id}/download-link", (HttpContext ctx, string id, BrokerArtifactDownloadService svc) =>
         {
-            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
-                return denied;
+            var (pid, role) = ctx.GetCurrentUser();
+            if (pid == null) return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase))
+                return Results.Json(ApiResponseHelper.Error("Admin only", 403), statusCode: 403);
             var r = svc.ResolveFile(id);
             if (!r.Ok)
                 return Results.NotFound(ApiResponseHelper.Error("artifact not found or has no local file"));
