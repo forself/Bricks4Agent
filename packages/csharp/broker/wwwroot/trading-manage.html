@@ -471,7 +471,7 @@ async function runMarketScan(){
     prog.textContent=`掃描中… ${i} / ${all.length}`;
     const res=await Promise.all(batch.map(async s=>{
       try{
-        const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+s.symbol+'&limit=100');
+        const bars=await api('/api/v1/workers/quote/ohlcv?symbol='+s.symbol+'&limit=250');  // 250:夠長 lookback 策略(ts_momentum 需 114+)用
         if(!bars?.data?.bars||bars.data.bars.length<30)return null;
         const r=await api('/api/v1/strategy/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:strat,symbol:s.symbol,exchange:s.exchange,interval:'1d',bars:bars.data.bars})});
         if(!r?.data)return null;
