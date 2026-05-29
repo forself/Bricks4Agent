@@ -71,6 +71,17 @@
 
 <div id="tabnav"></div>
 
+<h2>📊 總覽</h2>
+<div class="panel">
+  <div id="ov-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px"></div>
+  <div class="card" style="margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0">🔍 掃描器快照</h3><span class="hint" id="ov-scan-meta" style="margin:0">—</span>
+    </div>
+    <div id="ov-scan"><span class="muted">尚未掃描</span></div>
+  </div>
+</div>
+
 <h2>監控管理 · 武裝 / 加減 watch</h2>
 <div class="panel">
   <div class="row">
@@ -478,17 +489,10 @@ async function runMarketScan(){
     .slice(0,topN);
   _scanResults=filtered;
   if(filtered.length===0){out.innerHTML='<div class="scan-empty">無符合條件(共掃 '+results.length+' 個、信心 ≥ '+minConf+')</div>';return;}
-  out.innerHTML=filtered.map((r,i)=>{
-    const cls=r.action==='buy'?'buy':'sell',fcls=r.action==='buy'?'up':'down',pct=Math.round(r.confidence*100);
-    return`<div class="scan-row">
-      <span class="sr-sym">${esc(r.symbol)}</span>
-      <span class="sr-act ${cls}">${r.action.toUpperCase()}</span>
-      <div class="bar"><div class="fill ${fcls}" style="width:${pct}%"></div></div>
-      <span class="sr-px">$${Number(r.price).toFixed(2)} · ${pct}%</span>
-      <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-idx="${i}" checked>加</label>
-    </div>`;
-  }).join('');
+  out.innerHTML=scanRowsHtml(filtered);
   addBtn.disabled=false;
+  saveScanCache(filtered);     // 快取最後一次掃描、讓重進 tab / 總覽不空白
+  renderScanSnapshot();        // 同步更新總覽快照
 }
 async function addBatchToWatch(){
   if(!_scanResults.length)return;
@@ -1038,10 +1042,60 @@ function copyArtifactLink(){
   else{document.execCommand('copy');done();}
 }
 
-/* ───────────── 分頁導覽(把長頁切成 tabs) ───────────── */
+/* ───────────── 總覽 + 掃描快取 helpers ───────────── */
+function scanRowsHtml(filtered){
+  return filtered.map((r,i)=>{
+    const cls=r.action==='buy'?'buy':'sell',fcls=r.action==='buy'?'up':'down',pct=Math.round((r.confidence||0)*100);
+    return`<div class="scan-row">
+      <span class="sr-sym">${esc(r.symbol)}</span>
+      <span class="sr-act ${cls}">${(r.action||'').toUpperCase()}</span>
+      <div class="bar"><div class="fill ${fcls}" style="width:${pct}%"></div></div>
+      <span class="sr-px">$${Number(r.price).toFixed(2)} · ${pct}%</span>
+      <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-idx="${i}" checked>加</label>
+    </div>`;
+  }).join('');
+}
+function saveScanCache(f){ try{localStorage.setItem('tm_scan',JSON.stringify({ts:Date.now(),r:f}));}catch(e){} }
+function loadScanCache(){ try{return JSON.parse(localStorage.getItem('tm_scan')||'null');}catch(e){return null;} }
+function scanAgo(ts){ if(!ts)return''; const m=Math.round((Date.now()-ts)/60000); return m<1?'剛剛':m<60?m+' 分前':Math.round(m/60)+' 小時前'; }
+function renderScanCache(){  // 重進掃描器 tab 時、顯示上次結果(免每次重跑)
+  const c=loadScanCache(), out=document.getElementById('scan-result'); if(!out||!c||!c.r||!c.r.length)return false;
+  _scanResults=c.r;
+  out.innerHTML=`<div class="hint" style="margin-bottom:8px">📦 上次掃描(${scanAgo(c.ts)})· 按「開始掃描」更新</div>`+scanRowsHtml(c.r);
+  const addBtn=document.getElementById('scan-add-btn'); if(addBtn)addBtn.disabled=false;
+  return true;
+}
+function renderScanSnapshot(){  // 總覽用:濃縮版 top picks
+  const el=document.getElementById('ov-scan'), meta=document.getElementById('ov-scan-meta'); if(!el)return;
+  const c=loadScanCache();
+  if(!c||!c.r||!c.r.length){ el.innerHTML='<span class="muted">尚未掃描 · 去「市場掃描器」跑一次</span>'; if(meta)meta.textContent='—'; return; }
+  if(meta)meta.textContent=scanAgo(c.ts);
+  el.innerHTML=c.r.slice(0,8).map(r=>{
+    const cls=r.action==='buy'?'grn':'red';
+    return `<span class="pill" style="background:var(--card);margin:2px;display:inline-block"><b>${esc(r.symbol)}</b> <span class="${cls}">${(r.action||'').toUpperCase()}</span> ${Math.round((r.confidence||0)*100)}%</span>`;
+  }).join(' ');
+}
+async function loadOverview(){
+  let acc={},legs=[];
+  try{const j=await api('/api/v1/auto-trader/dashboard?exchange=bingx');const d=j.data||j;acc=d.account||{};legs=d.legs||[];}catch(e){}
+  let watchN=(typeof WATCHES!=='undefined'?WATCHES.length:0);
+  try{const s=await api('/api/v1/auto-trader/status');const sd=s.data||s;watchN=(sd.watch_list||[]).length||watchN;}catch(e){}
+  let alertN=0; try{const a=await api('/api/v1/alerts/rules');const ad=a.data||a;const rl=ad.rules||ad||[];alertN=Array.isArray(rl)?rl.length:0;}catch(e){}
+  const openPos=legs.filter(l=>l.has_position).length, dp=Number(acc.day_pnl||0), ex=Number(acc.exposure_x||0), bal=acc.balance;
+  const kpi=(lab,val,sub,c)=>`<div class="card" style="margin:0"><label>${lab}</label><div style="font-size:20px;font-weight:700" class="${c||''}">${val}</div><div class="hint" style="margin:0">${sub||''}</div></div>`;
+  document.getElementById('ov-kpis').innerHTML=
+    kpi('真錢權益 (BingX)',(bal!=null?Number(bal).toFixed(2):'—')+' <span class="muted" style="font-size:12px">USDT</span>',(dp>=0?'+':'')+dp.toFixed(2)+' 今日已實現','')+
+    kpi('有效曝險 / 3.0x',ex.toFixed(2)+'x',ex>3?'⚠ 超上限':(ex<=1?'≤1x 保守':'區間內'),ex>3?'red':'grn')+
+    kpi('持倉',openPos+' 開倉',legs.length+' 腿 · '+(acc.day_trades||0)+' 今日成交','')+
+    kpi('監控 watch',watchN,'AutoTrader','')+
+    kpi('告警規則',alertN,'','');
+  renderScanSnapshot();
+}
+
+/* ───────────── 分頁導覽(把長頁切成 tabs)+ 懶載入 ───────────── */
 (function setupTabs(){
   const nav=document.getElementById('tabnav'); if(!nav) return;
-  const h2s=[...document.querySelectorAll('h2')]; const secs=[];
+  const h2s=[...document.querySelectorAll('h2')]; const secs=[]; const loaded=new Set();
   h2s.forEach((h2,i)=>{
     const id='tab'+i;
     const label=(h2.textContent||('區塊'+(i+1))).split('·')[0].trim();
@@ -1056,13 +1110,20 @@ function copyArtifactLink(){
     const b=document.createElement('button'); b.textContent=label; b.dataset.tab=id;
     b.onclick=()=>showTab(id); nav.appendChild(b);
   });
+  function activate(sec,id){  // 切到 tab 時自動載入內容、免空白
+    if(sec.querySelector('#ov-kpis')){ try{loadOverview();}catch(e){} }                       // 總覽:每次都刷新
+    if(sec.querySelector('#scan-run-btn')){ const o=document.getElementById('scan-result'); if(o&&!o.querySelector('.scan-row')){ try{renderScanCache();}catch(e){} } }  // 掃描器:顯示快取、不自動重跑
+    [['#ps-btn',()=>loadPortfolioSizing()],['#chart-btn',()=>{if(document.getElementById('chart-sym')&&document.getElementById('chart-sym').value)loadChart();}],['#admin-users-table',()=>loadAdmin()]]
+      .forEach(([sel,fn])=>{ if(sec.querySelector(sel)){ const k=id+sel; if(!loaded.has(k)){loaded.add(k);try{fn();}catch(e){}} } });  // 其餘:首次開啟才載入
+  }
   window.showTab=function(id){
     document.querySelectorAll('.tabsec').forEach(s=>s.classList.toggle('active',s.id===id));
     nav.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
-    try{localStorage.setItem('tm_tab',id);}catch(e){}
+    try{localStorage.setItem('tm_tab2',id);}catch(e){}
     window.scrollTo({top:0});
+    const sec=document.getElementById(id); if(sec) activate(sec,id);
   };
-  let saved=null; try{saved=localStorage.getItem('tm_tab');}catch(e){}
+  let saved=null; try{saved=localStorage.getItem('tm_tab2');}catch(e){}
   if(secs.length) showTab(secs.includes(saved)?saved:secs[0]);
 })();
 
