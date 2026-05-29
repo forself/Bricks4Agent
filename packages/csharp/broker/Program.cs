@@ -321,6 +321,15 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewProjectDefinitionC
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewWorkflowDesignService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewPdfRenderService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
+// Artifact 下載 API(2026-05-29 AnthonyLee — 執行 Benson 2026-03-29 plan 的新檔;reuse 不改原檔)
+builder.Services.AddSingleton(new Broker.Services.BrokerArtifactDownloadOptions
+{
+    SigningSecret = builder.Configuration["ArtifactDownload:SigningSecret"]
+        ?? Environment.GetEnvironmentVariable("ARTIFACT_DOWNLOAD_SIGNING_SECRET") ?? "",
+    TtlSeconds = int.TryParse(builder.Configuration["ArtifactDownload:TtlSeconds"], out var _artDlTtl) ? _artDlTtl : 3600,
+    PublicBaseUrl = builder.Configuration["ArtifactDownload:PublicBaseUrl"] ?? "",
+});
+builder.Services.AddSingleton<Broker.Services.BrokerArtifactDownloadService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
@@ -1136,6 +1145,8 @@ AgentInboxEndpoints.Map(api);
 AgentExecEndpoints.Map(api);
 // LLM 代理觀測 endpoint（無論 pool 是否 enabled 都掛，因為這層跟 worker 無關）
 LlmProxyEndpoints.Map(api);
+// Artifact 下載 API(2026-05-29 AnthonyLee — Benson artifact-download plan 的新檔實作;平台功能、非 pool-gated)
+ArtifactDownloadEndpoints.Map(api);
 
 if (poolEnabled)
 {
