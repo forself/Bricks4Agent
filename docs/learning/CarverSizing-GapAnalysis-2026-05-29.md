@@ -59,4 +59,40 @@ Carver 的部位 = 一條「波動標準化」的管線,每一段都把風險拉
 - ❌ max-Sharpe 配重(μ 敏感、strat-validate 已標註、用 risk-parity)
 - ❌ 急著開 confidence/Kelly sizing 進真錢(先 backtest + shadow、循紀律)
 
+---
+
+## 深入筆記:Carver 的 forecast 怎麼建(2026-05-29、conf-sizing 負結果的根因)
+
+今天 conf-sizing 實驗失敗的根因是「B4A confidence 不是校準 forecast」。這節挖深:Carver 的 forecast 到底是什麼、B4A 差在哪、要補什麼。
+
+### Carver forecast recipe(Ch7)
+1. **Raw forecast**:rule 的連續、帶號輸出(e.g. EWMAC = 快EMA − 慢EMA;breakout = 距通道 %)。**強度有意義、不是二元 buy/sell**。
+2. **波動標準化**:raw ÷ 標的價格波動(σ_price)。→ forecast 變成「風險調整後的訊號強度」、跨標的可比。
+3. **Forecast scalar**:× 一個常數,讓 forecast 的長期**平均絕對值 = 10**(Carver 慣例)。scalar = 10 / avg(|vol-std raw|)。
+4. **Cap ±20**:極端訊號削頂(robustness、別在一個爆衝訊號 all-in)。
+5. **組合多 rule**:capped forecasts 加權平均 × **FDM**(分散後 forecast 波動變低 → 乘回去補到平均 10、capped ~2.5)。
+6. **部位**:= (combined forecast / 10) × vol-target 部位。→ forecast 10 = 滿倉、20 = 2×、5 = 半倉。**連續、校準、可比**。
+
+### B4A 的 confidence 差在哪(為何 conf-sizing 沒用)
+| Carver forecast | B4A confidence |
+|---|---|
+| 連續帶號、強度=部位 | [0,1] 量值 + 另外的 action 方向 |
+| 波動標準化(跨標的可比) | 各策略各自啟發式、**未標準化**(ts_mom 0.7 ≠ harmonic 0.7) |
+| scale 到平均絕對值 10(校準) | **未校準**(0.9 不等於「比 0.45 好兩倍」) |
+| 範圍完整 ±20 | **被 ≥0.6 開倉閘截斷成 0.6-1.0** |
+
+→ 拿一個「不可比、未校準、範圍壓縮」的數字 scale 倉位 = scale by noise。**今天 t-stat 不動就是這個**。
+
+### 要把 confidence 變成真 forecast 要補什麼(未來工程、非現在)
+1. 每策略 emit **連續帶號 forecast**(不只 action+confidence)。
+2. **波動標準化**(÷ 價格 vol)。
+3. **per-strategy forecast scalar**(校準各策略平均 |forecast| 到共同尺度)。
+4. 才談 forecast-strength sizing —— 那時輸入校準了、才可能加值。
+→ 這是**策略層重構**(動每支策略的輸出)、比 sizing flag 大得多。**列為未來項、不是現在**。
+
+### 哲學分歧(刻意的):Carver lever-up vs B4A 存活優先
+Carver 的精神:**分散是唯一免費午餐 → 用槓桿把分散組合放大到固定 vol 目標**(IDM)、同 vol 拿更多報酬。
+B4A 刻意放棄這個:**名目壓 ~1× 權益、存活 > vol 目標**([[feedback_effective_leverage_is_real_risk]])。
+→ 不是 B4A 漏做、是**有意識的 trade-off**:Carver 假設「不會在你需要時爆掉」、B4A 在 crypto 5x 強平環境選擇先活著。report 可寫成「對標 Carver、在槓桿哲學上 deliberate divergence」。
+
 相關:[[QuantMatureRoadmap]] mental model #9「position sizing is alpha」、[[feedback_effective_leverage_is_real_risk]]、[[project_q2_portfolio_survival]]
