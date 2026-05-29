@@ -1,21 +1,71 @@
 #!/bin/bash
-# B4A daily backup — broker.db / quote.db / secrets / .env 打包到 /opt/b4a-backups
-# 保留 14 天、超過自動刪。你之後設 cron 從家機器 rsync 這個目錄回去。
+# B4A daily backup — broker.db / quote.db(WAL-safe 線上備份)/ trading-data / secrets / .env
+# 本機保留 14 天 + 可選 off-box 送出(設 .env.trading 的 BACKUP_OFFBOX_DEST=scp:user@host:/path)。
+#
+# 為何改 WAL-safe(2026-05-30):原本 `docker cp` 直接複製【運行中】的 WAL SQLite,
+# 最近 commit 還在 -wal(沒被 copy)→ 還原少交易;checkpoint 中途 copy → 內部撕裂、還原不了。
+# 改用 sqlite3 線上備份 API(host python3),對 live DB 產生【一致】快照(處理 WAL + 並發寫)。
 set -e
 DATE=$(date -u +%Y%m%d-%H%M%S)
 DEST=/opt/b4a-backups/b4a-$DATE.tar.gz
-
-# 從 docker volume 拉 db 出來、打包敏感檔
+ENV_FILE=/opt/b4a/tools/.env.trading
 TMPDIR=$(mktemp -d)
-docker cp b4a-broker:/data/broker.db "$TMPDIR/broker.db" 2>/dev/null || echo 'broker.db skip'
-docker cp b4a-quote-worker:/data/quote.db "$TMPDIR/quote.db" 2>/dev/null || echo 'quote.db skip'
+
+# WAL-safe SQLite 線上備份。$1=volume名 $2=容器內 db 檔名 $3=輸出名。
+# 失敗不中止整個備份(set -e 下用 || 守衛)、退而求其次 raw cp(至少有東西)。
+snapshot_sqlite() {
+  local mp src
+  mp=$(docker volume inspect "$1" --format '{{.Mountpoint}}' 2>/dev/null) || { echo "$3 skip (volume $1 不存在)"; return 0; }
+  src="$mp/$2"
+  [ -f "$src" ] || { echo "$3 skip (無 $src)"; return 0; }
+  if python3 - "$src" "$TMPDIR/$3" <<'PY' 2>/dev/null
+import sqlite3, sys
+src, dst = sys.argv[1], sys.argv[2]
+s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+d = sqlite3.connect(dst)
+with d:
+    s.backup(d)          # 線上備份 API:一致、WAL-safe
+s.close(); d.close()
+PY
+  then
+    echo "$3 ok WAL-safe ($(du -h "$TMPDIR/$3" | cut -f1))"
+  else
+    echo "$3 線上備份失敗、退而求其次 raw cp(可能不一致)"
+    cp "$src" "$TMPDIR/$3" 2>/dev/null || echo "$3 skip (raw cp 也失敗)"
+  fi
+}
+
+snapshot_sqlite b4a-trading_broker-data broker.db broker.db
+snapshot_sqlite b4a-trading_quote-data  quote.db  quote.db
+
+# trading-data(小、非主庫)維持 docker cp
 docker cp b4a-trading-worker:/data/ "$TMPDIR/trading-data" 2>/dev/null || echo 'trading skip'
-cp /opt/b4a/tools/.env.trading "$TMPDIR/.env.trading"
-cp -r /opt/b4a/tools/secrets "$TMPDIR/secrets"
+cp "$ENV_FILE" "$TMPDIR/.env.trading" 2>/dev/null || echo '.env skip'
+cp -r /opt/b4a/tools/secrets "$TMPDIR/secrets" 2>/dev/null || echo 'secrets skip'
 
 tar czf "$DEST" -C "$TMPDIR" .
 rm -rf "$TMPDIR"
 echo "[$(date -u +%FT%TZ)] backup written: $DEST ($(du -h "$DEST" | cut -f1))"
 
-# 保留最近 14 個
+# 本機保留最近 14 個
 ls -1t /opt/b4a-backups/b4a-*.tar.gz 2>/dev/null | tail -n +15 | xargs -r rm -v
+
+# ── 可選 off-box 送出 ──
+# VPS 一掛、本機備份跟著死 → 離機副本是「重啟治不好/整機掛」失效情境的命脈,也是 warm-standby 前提。
+# 設 .env.trading 的 BACKUP_OFFBOX_DEST=scp:user@host:/remote/path(無引號)才啟用;未設=僅本機(原行為)。
+# ⚠ tarball 含 secrets/.env → off-box 目的地必須安全(scp 已加密傳輸,但落地端要鎖好)。
+OFFBOX=$(grep -E '^BACKUP_OFFBOX_DEST=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+if [ -n "$OFFBOX" ]; then
+  case "$OFFBOX" in
+    scp:*)
+      target=${OFFBOX#scp:}
+      if scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$DEST" "$target/" >/dev/null 2>&1; then
+        echo "[off-box] scp → $target ok"
+      else
+        echo "[off-box] scp 失敗 → $target(本機備份仍在、不影響)"
+      fi ;;
+    *) echo "[off-box] 不支援的 DEST 格式:$OFFBOX(需 scp:user@host:/path)" ;;
+  esac
+else
+  echo "[off-box] 未設 BACKUP_OFFBOX_DEST → 僅本機備份(VPS 掛則無離機副本)"
+fi
