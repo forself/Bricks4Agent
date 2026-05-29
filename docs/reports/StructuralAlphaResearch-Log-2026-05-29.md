@@ -182,3 +182,20 @@ Retail L/S 8 幣 linear t 全為負(方向全一致)→ 最強候選。
 加 harmonic 家族(Sharpe 1.0+/DD 7-11%)讓組合品質跳級、防禦效率 ×2→×8-9。**實證防禦天花板突破靠更好 alpha/更多去相關腿,非防禦旋鈕。** 3x:分散組合裸 19%×3=57% 不用防禦就活。
 
 詳見 memory [[bear-market-audit-2026-05-29]]。
+
+---
+
+## 2026-05-29 第四波 — cross-asset funding spread(驗死)
+
+**假設**:某幣 funding 相對 BTC funding(spread = coin_funding − BTC_funding)= 市場中性的擁擠定位信號,可能比 funding 絕對值更前瞻、且去相關。
+**改動**:`oi-validate` 加 cross-asset funding spread(同日)+ pool t-stat + corr vs funding-level(防重包)。
+**結果**(8 幣、2912 天):
+| 檢定 | 值 | 判定 |
+|---|---|---|
+| Pool linear t | −1.53 | ❌ |
+| Pool quantile t | −0.77 | ❌ |
+| spread vs funding-level corr | 大型幣 0.50-0.60 / **alt 0.95-0.997** | 重包 |
+
+**結論**:❌ **雙重失敗(不顯著 + 冗餘)**。spread 對 alt ≈ coin funding(BTC funding 量級相對小、減掉幾乎不改變),不是獨立信號。
+**學到**:裸 spread 不行;市場中性的 funding 信號要去相關得用「**跨幣相對排名 / z-score 標準化**」而非裸減。再次印證 [[feedback_structural_alpha_requires_x_uncorrelated_with_price]] —— 新信號先過「跟既有源 corr<0.3」這關、裸 spread 過不了。
+(順帶:pool quantile 確認已部署信號仍活 — Retail L/S Δ t=−3.64、Retail L/S t=−2.08、funding t=−2.05。)

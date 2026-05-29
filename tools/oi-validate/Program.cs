@@ -35,6 +35,17 @@ var poolComposite = new List<double>(); var poolRls5d = new List<double>(); var 
 // Cross-sectional 累積:date → list of (coin, retail_ls, retail_ls_delta, nextRet)
 var xsByDate = new Dictionary<DateTime, List<(string sym, double rls, double rlsDelta, double nextRet)>>();
 
+// 2026-05-29 cross-asset funding spread 探勘:本幣 funding − BTC funding(同日)= 市場中性 funding 信號
+// 假設:某幣 funding 相對大盤(BTC)極端 = 該幣特有的擁擠定位,可能比 funding 絕對值更前瞻
+var poolFundSpread = new List<double>();
+var poolFundSpreadNext = new List<double>();   // 對齊 poolFundSpread 的 nextRet(只非BTC)
+var btcBenchBars = await KlineCache.FetchOrLoad("BTCUSDT", "1d");
+await FundingCache.InjectInto(btcBenchBars, "BTCUSDT", "1d");
+var btcFundByDay = btcBenchBars
+    .Where(b => b.OpenTime >= startDate && b.OpenTime <= endDate)
+    .GroupBy(b => b.OpenTime.Date)
+    .ToDictionary(g => g.Key, g => (double)(g.First().FundingRate ?? 0m));
+
 foreach (var sym in symbols)
 {
     Console.WriteLine($"\n## {sym}");
@@ -79,6 +90,11 @@ foreach (var sym in symbols)
     var taker = rows.Select(r => (double)r.takerLs).ToArray();
     var nextR = rows.Select(r => (double)r.nextRet).ToArray();
     var todayR = rows.Select(r => (double)r.todayRet).ToArray();
+
+    // cross-asset funding spread:本幣 funding − BTC funding(同日)
+    var fundSpread = new double[rows.Count];
+    for (int k = 0; k < rows.Count; k++)
+        fundSpread[k] = fund[k] - btcFundByDay.GetValueOrDefault(rowDates[k], 0.0);
 
     Console.WriteLine($"\n  指標 vs funding(corr 高=不是新 alpha):");
     Console.WriteLine($"    OI %change          vs funding: {Pearson(oi, fund):+0.000;-0.000}");
@@ -127,6 +143,13 @@ foreach (var sym in symbols)
     PrintEdge("    Retail L/S ratio   ", rls, nextR);
     PrintEdge("    Taker buy/sell vol ", taker, nextR);
     PrintEdge("    Funding (baseline) ", fund, nextR);
+    if (sym != "BTCUSDT")
+    {
+        PrintEdge("    Funding spread(vBTC)", fundSpread, nextR);
+        Console.WriteLine($"      ↑ spread vs funding-level corr: {Pearson(fundSpread, fund):+0.000;-0.000}(高=只是 funding 重包、非新信號)");
+        poolFundSpread.AddRange(fundSpread);
+        poolFundSpreadNext.AddRange(nextR);
+    }
     Console.WriteLine($"  衍生指標(翻案探勘):");
     PrintEdge("    Funding Δ (delta)  ", fundDelta, nextR);
     PrintEdge("    Retail L/S Δ       ", rlsDelta, nextR);
@@ -172,6 +195,12 @@ if (symbols.Length > 1)
     PrintEdge("    Retail L/S ratio   ", poolRls.ToArray(), poolNext.ToArray());
     PrintEdge("    Taker buy/sell vol ", poolTaker.ToArray(), poolNext.ToArray());
     PrintEdge("    Funding (baseline) ", poolFund.ToArray(), poolNext.ToArray());
+    Console.WriteLine($"  cross-asset(市場中性)pool:");
+    if (poolFundSpread.Count >= 60)
+    {
+        PrintEdge("    Funding spread(vBTC)", poolFundSpread.ToArray(), poolFundSpreadNext.ToArray());
+        PrintQuantileEdge("    Funding spread(vBTC)", poolFundSpread.ToArray(), poolFundSpreadNext.ToArray());
+    }
     Console.WriteLine($"  衍生指標 pool:");
     PrintEdge("    Funding Δ          ", poolFundDelta.ToArray(), poolNext.ToArray());
     PrintEdge("    Retail L/S Δ       ", poolRlsDelta.ToArray(), poolNext.ToArray());
