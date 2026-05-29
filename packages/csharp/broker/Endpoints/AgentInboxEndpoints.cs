@@ -41,31 +41,67 @@ public static class AgentInboxEndpoints
 
             var requestedBy = body.TryGetProperty("requested_by", out var rb) && rb.ValueKind == JsonValueKind.String
                 ? rb.GetString() : null;
+            // 冪等鍵(選填):同 (agent_id, idempotency_key) 已有任務 → 回既有、不重建。
+            // 防 client 重試 / broker 重啟接手時重複建任務;沒帶 key → 維持原行為(不去重)。
+            var idempotencyKey = body.TryGetProperty("idempotency_key", out var ik) && ik.ValueKind == JsonValueKind.String
+                ? ik.GetString() : null;
 
-            // 算 seq — 該 agent 目前最大 seq + 1
-            var maxSeq = db.QueryFirst<MaxSeqRow>(
-                "SELECT COALESCE(MAX(seq), 0) AS Seq FROM agent_inbox_tasks WHERE agent_id = @aid",
-                new { aid = agentId });
-            var nextSeq = (maxSeq?.Seq ?? 0) + 1;
+            IResult Existing(AgentInboxTask t) => Results.Ok(ApiResponseHelper.Success(new
+            {
+                task_id = t.TaskId, agent_id = t.AgentId, seq = t.Seq,
+                status = t.Status, created_at = t.CreatedAt, deduped = true
+            }));
+
+            if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                var dup = db.QueryFirst<AgentInboxTask>(
+                    "SELECT * FROM agent_inbox_tasks WHERE agent_id = @aid AND idempotency_key = @k LIMIT 1",
+                    new { aid = agentId, k = idempotencyKey });
+                if (dup != null) return Existing(dup);
+            }
 
             var taskId = $"inbox_{Guid.NewGuid():N}"[..20];
-            var entity = new AgentInboxTask
+            AgentInboxTask entity;
+            try
             {
-                TaskId = taskId,
-                AgentId = agentId,
-                Seq = nextSeq,
-                Prompt = prompt,
-                Status = "pending",
-                RequestedBy = requestedBy,
-                CreatedAt = DateTime.UtcNow
-            };
-            db.Insert(entity);
+                // seq 計算 + insert 包進交易:InTransaction 走 _writeGate 把整段序列化,
+                // 修「兩個併發 push 讀到同一個 MAX(seq) → 撞號」。
+                entity = db.InTransaction(() =>
+                {
+                    var maxSeq = db.QueryFirst<MaxSeqRow>(
+                        "SELECT COALESCE(MAX(seq), 0) AS Seq FROM agent_inbox_tasks WHERE agent_id = @aid",
+                        new { aid = agentId });
+                    var e = new AgentInboxTask
+                    {
+                        TaskId = taskId,
+                        AgentId = agentId,
+                        Seq = (maxSeq?.Seq ?? 0) + 1,
+                        Prompt = prompt,
+                        Status = "pending",
+                        RequestedBy = requestedBy,
+                        IdempotencyKey = idempotencyKey,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    db.Insert(e);
+                    return e;
+                });
+            }
+            catch (Exception) when (!string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                // 併發:另一請求用同 key 搶先 insert → 撞 UNIQUE index。
+                // 冪等的權威是「捕捉 UNIQUE 違反例外」,不是上面的 SELECT 早退(SELECT 不阻塞並發)。
+                var raced = db.QueryFirst<AgentInboxTask>(
+                    "SELECT * FROM agent_inbox_tasks WHERE agent_id = @aid AND idempotency_key = @k LIMIT 1",
+                    new { aid = agentId, k = idempotencyKey });
+                if (raced != null) return Existing(raced);
+                throw;   // 不是 key 衝突造成的 → 照常往上拋
+            }
 
             return Results.Ok(ApiResponseHelper.Success(new
             {
-                task_id = taskId,
+                task_id = entity.TaskId,
                 agent_id = agentId,
-                seq = nextSeq,
+                seq = entity.Seq,
                 status = "pending",
                 created_at = entity.CreatedAt
             }));

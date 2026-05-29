@@ -94,6 +94,11 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_events_trace_seq
                       ON audit_events(trace_id, trace_seq)");
 
+        // AgentInboxTask: (agent_id, idempotency_key) push 冪等
+        //   SQLite 把 NULL 視為相異 → 沒帶 key 的既有/新列彼此不衝突、向後相容;有 key 才強制唯一
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_inbox_idempotency
+                      ON agent_inbox_tasks(agent_id, idempotency_key)");
+
         // ── Phase 4：因果工作流索引 ──
 
         // PlanNode: (plan_id, ordinal) 拓撲序查詢
@@ -196,6 +201,9 @@ public class BrokerDbInitializer
         // ApprovalRequest 派發冪等：避免「立刻執行」按一次下一單真錢、按 N 次下 N 單
         TryExecute("ALTER TABLE approval_requests ADD COLUMN dispatched_at TEXT");
         TryExecute("ALTER TABLE approval_requests ADD COLUMN dispatched_by TEXT");
+
+        // AgentInbox push 冪等（2026-05-29）：同 (agent_id, idempotency_key) 重試/重啟接手不重建任務
+        TryExecute("ALTER TABLE agent_inbox_tasks ADD COLUMN idempotency_key TEXT");
 
         // approval_id schema 從 INTEGER 修成 TEXT 的單次 migration。
         // 既有 schema 寫成 INTEGER PRIMARY KEY AUTOINCREMENT、但 model 是 string ApprovalId

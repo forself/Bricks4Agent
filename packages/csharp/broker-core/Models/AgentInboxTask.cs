@@ -47,6 +47,12 @@ public class AgentInboxTask
     [MaxLength(100)]
     public string? RequestedBy { get; set; }
 
+    /// <summary>冪等鍵（選填）：同 (agent_id, idempotency_key) 重複 push 回既有任務、不重建。
+    /// 防 client 重試 / broker 重啟接手時重複建任務。UNIQUE index 見 BrokerDbInitializer。</summary>
+    [Column("idempotency_key")]
+    [MaxLength(120)]
+    public string? IdempotencyKey { get; set; }
+
     [Column("model")]
     [MaxLength(80)]
     public string? Model { get; set; }
