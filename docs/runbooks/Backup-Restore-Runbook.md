@@ -114,14 +114,17 @@ df -h /                    # 確認降下來
 
 ### 場景 C — 新機重建(VPS 死了)
 偵測:dead-man(healthchecks.io)告警 / Discord 靜默 / ssh 不通。需 §7 go-bag。
-1. Contabo 開新 VPS(同規格、新加坡)→ 裝 docker + rclone
-2. `rclone config create r2 ...`(鑰匙來自 go-bag,**不是**死掉的 VPS)+ `no_check_bucket=true`
-3. `git clone <myorigin> /opt/b4a`
-4. `bash /opt/b4a/scripts/restore-fetch.sh`(自動抓最新 + 驗完整性)
-5. 照 §3 步驟 3-6 放回 + build + up
-6. **Cloudflare**:把 tunnel / DNS 指到新 VPS(named tunnel 要在新機跑 cloudflared + 既有 token)
-7. broker 從 BingX re-hydrate 倉位 → 檢查 → **手動**重新武裝真錢
-8. 重設每日備份 cron(`0 18 * * * /opt/b4a/scripts/backup-daily.sh`)
+
+**一鍵路徑(推薦)**:新機裝好 docker + git 後,clone 程式碼或直接抓腳本,跑:
+```bash
+bash bootstrap-restore.sh
+```
+它會:提示貼 go-bag 的 R2 鑰匙 + git URL → 設 rclone → clone → 抓最新備份 → 放回 .env/secrets/DB → **還原 Cloudflare tunnel(憑證已隨備份、重連同一 tunnel、DNS 免改)** → build + up → 印人工核對清單。
+
+> tunnel 重連原理:備份已含 `/etc/cloudflared`(tunnel 憑證 + config),bootstrap 放回後 `cloudflared service install` 即用【同一個 tunnel ID】從新機連出 → CF 端 DNS(CNAME 指向 tunnel ID)不變、自動指到新機。**不用改 DNS。**
+
+手動路徑(bootstrap 出錯時逐步來):裝 docker/rclone/cloudflared → `rclone config create r2 ...`(鑰匙來自 go-bag)→ `git clone` → `restore-fetch.sh` → §3 步驟 3-6 放回 + 建 volume 注入 DB → 放回 `/etc/cloudflared` + `cloudflared service install` → build + up。
+完成後:broker 從 BingX re-hydrate 倉位 → 核對 → **手動**武裝真錢 → 重設備份 cron(`0 18 * * * /opt/b4a/scripts/backup-daily.sh`)。
 
 ### 場景 D — 退到某個時間點
 ```bash
@@ -133,11 +136,12 @@ bash /opt/b4a/scripts/restore-fetch.sh   # 預設抓最新;要指定舊的就手
 
 VPS 死了你會需要這些,而它們**不能只存在死掉的 VPS 上**。現在就存進密碼管理器 / 你筆電:
 
-- [ ] **R2 鑰匙**:Access Key ID + Secret Access Key + endpoint(`https://<account_id>.r2.cloudflarestorage.com`)— 沒這個抓不到 R2 備份 = 循環依賴,最致命
+- [ ] **R2 鑰匙**:Access Key ID + Secret Access Key + endpoint(`https://<account_id>.r2.cloudflarestorage.com`)— 沒這個抓不到 R2 備份 = 循環依賴,**最致命**
 - [ ] **myorigin git URL**(clone 程式碼用)
-- [ ] **Cloudflare 登入**(repoint tunnel/DNS)+ named tunnel 的 token/設定
 - [ ] **Contabo 登入**(開新 VPS)
 - [ ] **BingX 登入**(還原後人工核對持倉)
-- [ ] 本 runbook 在 git(已 ✅,從筆電 GitHub 讀得到)
+- [ ] **Cloudflare 登入**(備援:萬一要手動重建 tunnel / 改 DNS)
+- [x] ~~named tunnel token/設定~~ → **已隨備份**(`/etc/cloudflared` 進 tarball,bootstrap 自動還原、重連同一 tunnel)
+- [x] 本 runbook + 腳本在 git(從筆電 GitHub 讀得到)
 
 > 自我測試:假設你現在只有一台全新筆電 + 上面這些,你能在 1 小時內把平台在新 VPS 上拉起來嗎?能 = go-bag 完整。卡在哪一項 = 那項就是你的 DR 盲點。

@@ -42,6 +42,10 @@ snapshot_sqlite b4a-trading_quote-data  quote.db  quote.db
 docker cp b4a-trading-worker:/data/ "$TMPDIR/trading-data" 2>/dev/null || echo 'trading skip'
 cp "$ENV_FILE" "$TMPDIR/.env.trading" 2>/dev/null || echo '.env skip'
 cp -r /opt/b4a/tools/secrets "$TMPDIR/secrets" 2>/dev/null || echo 'secrets skip'
+# Cloudflare tunnel 設定 + 憑證(scenario C 新機重建 tunnel 用;含 tunnel credential = secret,
+# 故只進這個本就含密鑰、只上 private R2 的 tarball)。新機放回 /etc/cloudflared + cloudflared service install 即重連同一 tunnel、DNS 免改。
+cp -r /etc/cloudflared   "$TMPDIR/cloudflared-etc"  2>/dev/null || echo 'cloudflared-etc skip'
+cp -r /root/.cloudflared "$TMPDIR/cloudflared-root" 2>/dev/null || echo 'cloudflared-root skip'
 
 tar czf "$DEST" -C "$TMPDIR" .
 rm -rf "$TMPDIR"
