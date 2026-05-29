@@ -314,6 +314,27 @@
     </table>
   </div>
 </div>
+
+<h2>📎 Artifact 下載連結 · admin only</h2>
+<div class="panel">
+  <div style="margin-bottom:10px"><span class="muted" style="font-size:11px">輸入 artifact ID → 產生 HMAC 簽章下載連結(預設 1 小時到期);連結本身即憑證、可直接下載不需登入。</span></div>
+  <div class="card">
+    <div class="grid2">
+      <div style="grid-column:1/-1"><label>Artifact ID</label>
+        <input id="artdl-id" placeholder="art_xxxxxxxx" class="mono" style="width:100%"></div>
+      <div style="grid-column:1/-1"><button class="btn-y btn-sm" onclick="genArtifactLink()">產生下載連結</button>
+        <span id="artdl-msg" class="hint" style="margin-left:10px"></span></div>
+    </div>
+    <div id="artdl-out" class="card" style="display:none;margin-top:10px">
+      <label>簽章連結(檔名 <span id="artdl-file" class="mono"></span>)</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="artdl-url" class="mono" style="flex:1;min-width:240px" readonly>
+        <button class="btn-sm" onclick="copyArtifactLink()">複製</button>
+        <a id="artdl-open" href="#" target="_blank" rel="noopener" class="btn-sm" style="text-decoration:none">開啟</a>
+      </div>
+    </div>
+  </div>
+</div>
 </div>
 
 <div class="links">
@@ -979,6 +1000,33 @@ async function emergencyStopAll(){
   } else {
     toast('失敗:' + (r?.error || r?.message || '?'), 'error');
   }
+}
+
+/* ───────────── Artifact 下載連結 ───────────── */
+async function genArtifactLink(){
+  const id=document.getElementById('artdl-id').value.trim();
+  const msg=document.getElementById('artdl-msg'), out=document.getElementById('artdl-out');
+  if(!id){msg.textContent='請輸入 artifact ID';return;}
+  msg.textContent='產生中…';
+  const r=await _authFetch('/api/v1/artifacts/'+encodeURIComponent(id)+'/download-link',{method:'POST',body:'{}'});
+  const d=(r&&r.data)||r||{};
+  if(r&&r.success&&d.url){
+    const full=d.url.startsWith('http')?d.url:location.origin+d.url;  // 未設 PublicBaseUrl 時 url 為相對路徑
+    document.getElementById('artdl-url').value=full;
+    document.getElementById('artdl-file').textContent=d.file_name||'';
+    document.getElementById('artdl-open').href=full;
+    out.style.display=''; msg.textContent=''; toastOk('連結已產生');
+  } else {
+    out.style.display='none';
+    msg.textContent='失敗:'+(r&&(r.error||r.message)||'artifact 不存在或無本地檔');
+    toastErr('產生失敗');
+  }
+}
+function copyArtifactLink(){
+  const u=document.getElementById('artdl-url'); if(!u.value)return; u.select();
+  const done=()=>toastOk('已複製');
+  if(navigator.clipboard){navigator.clipboard.writeText(u.value).then(done,()=>{document.execCommand('copy');done();});}
+  else{document.execCommand('copy');done();}
 }
 
 /* ───────────── init ───────────── */
