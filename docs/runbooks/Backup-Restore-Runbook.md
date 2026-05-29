@@ -27,22 +27,25 @@
 # 1. 程式碼(備份裡沒有)
 git clone <myorigin-url> /opt/b4a && cd /opt/b4a
 
-# 2. 取備份 tarball(R2 設好後 / 或本機 /opt/b4a-backups)
-#    rclone copy r2:<bucket>/b4a/b4a-YYYYMMDD-HHMMSS.tar.gz .
-mkdir -p /tmp/restore && tar xzf b4a-YYYYMMDD-HHMMSS.tar.gz -C /tmp/restore
+# 2. 取備份 tarball — 用 restore-fetch.sh 自動抓【最新】+ 解開 + 驗完整性
+#    (前提:此機已裝 rclone + 設好 r2 remote,見 §7 冷啟動 go-bag)
+bash /opt/b4a/scripts/restore-fetch.sh
+#    → 解開在 /tmp/b4a-restore/extracted/(broker.db / quote.db / .env.trading / secrets / trading-data)
+#    本機若還活著、直接用本機備份更快:tar xzf /opt/b4a-backups/b4a-*.tar.gz -C /tmp/b4a-restore/extracted
+RESTORE=/tmp/b4a-restore/extracted
 
 # 3. 停 stack(確保 broker 沒在寫 DB)
 cd /opt/b4a/tools
 docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading.secrets.yml down
 
 # 4. 放回設定 + 密鑰
-cp /tmp/restore/.env.trading /opt/b4a/tools/.env.trading
-cp -r /tmp/restore/secrets   /opt/b4a/tools/secrets
+cp "$RESTORE/.env.trading" /opt/b4a/tools/.env.trading
+cp -r "$RESTORE/secrets"   /opt/b4a/tools/secrets
 
 # 5. 放回 DB 進 volume(★先刪舊 -wal/-shm:備份是自足一致 .db,留舊 wal 會衝突)
 V=/var/lib/docker/volumes/b4a-trading_broker-data/_data
 rm -f $V/broker.db-wal $V/broker.db-shm
-cp /tmp/restore/broker.db $V/broker.db
+cp "$RESTORE/broker.db" $V/broker.db
 # quote.db 同理 → b4a-trading_quote-data volume
 
 # 6. build + 起
@@ -67,3 +70,74 @@ rm -rf "$T"
 ```
 
 建議每隔一陣子跑一次第 5 節(備份的價值 = 能還原,沒驗過的備份等於沒有)。
+
+## 6. 危機處理決策樹(出事先對號入座)
+
+先判斷是哪一類,再走對應動作。核心分野:**VPS 還活著嗎?**
+
+```
+出事了
+ │
+ ├─ broker 一直 crash / DB 損毀,但 VPS 還能 ssh
+ │     → 場景 A:單機 DB 還原(最常見、最快、不用新機)
+ │
+ ├─ 磁碟滿(容器起不來、ALTER/寫入失敗)
+ │     → 場景 B:清空間(不是還原)
+ │
+ ├─ VPS 整台連不上(Contabo 宕/網路斷/kernel panic)
+ │     → 場景 C:新機重建(才動到 R2 抓備份)
+ │
+ └─ 誤刪/壞 deploy 想退到某個時間點
+       → 場景 D:指定舊備份還原
+```
+
+### 場景 A — 單機 DB 還原(VPS 活著)
+偵測:broker crash-loop、watchdog 推 CRITICAL。本機 `/opt/b4a-backups` 就有備份(比 R2 快)。
+```bash
+cd /opt/b4a/tools && docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading.secrets.yml stop broker
+mkdir -p /tmp/b4a-restore/extracted
+tar xzf "$(ls -1t /opt/b4a-backups/b4a-*.tar.gz | head -1)" -C /tmp/b4a-restore/extracted ./broker.db
+python3 -c "import sqlite3;print(sqlite3.connect('/tmp/b4a-restore/extracted/broker.db').execute('PRAGMA integrity_check').fetchone()[0])"  # 應 ok
+V=/var/lib/docker/volumes/b4a-trading_broker-data/_data; rm -f $V/broker.db-wal $V/broker.db-shm
+cp /tmp/b4a-restore/extracted/broker.db $V/broker.db
+docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading.secrets.yml up -d broker
+```
+
+### 場景 B — 磁碟滿(治不好失敗,還原沒用)
+還原解決不了滿磁碟。先清:
+```bash
+docker builder prune -af   # 清 build cache(本系統最大宗,曾佔 ~70G)
+docker image prune -af     # 清 dangling image
+df -h /                    # 確認降下來
+```
+根治:設 /etc/docker/daemon.json 的 `builder.gc.defaultKeepStorage` 上限(見 ContainerResilience doc)。
+
+### 場景 C — 新機重建(VPS 死了)
+偵測:dead-man(healthchecks.io)告警 / Discord 靜默 / ssh 不通。需 §7 go-bag。
+1. Contabo 開新 VPS(同規格、新加坡)→ 裝 docker + rclone
+2. `rclone config create r2 ...`(鑰匙來自 go-bag,**不是**死掉的 VPS)+ `no_check_bucket=true`
+3. `git clone <myorigin> /opt/b4a`
+4. `bash /opt/b4a/scripts/restore-fetch.sh`(自動抓最新 + 驗完整性)
+5. 照 §3 步驟 3-6 放回 + build + up
+6. **Cloudflare**:把 tunnel / DNS 指到新 VPS(named tunnel 要在新機跑 cloudflared + 既有 token)
+7. broker 從 BingX re-hydrate 倉位 → 檢查 → **手動**重新武裝真錢
+8. 重設每日備份 cron(`0 18 * * * /opt/b4a/scripts/backup-daily.sh`)
+
+### 場景 D — 退到某個時間點
+```bash
+rclone lsf r2:b4a-backups/b4a/   # 列所有備份、挑日期
+bash /opt/b4a/scripts/restore-fetch.sh   # 預設抓最新;要指定舊的就手動 rclone copy 那一份再 tar
+```
+
+## 7. 冷啟動 go-bag(必須存在【VPS 以外】,否則場景 C 卡死)
+
+VPS 死了你會需要這些,而它們**不能只存在死掉的 VPS 上**。現在就存進密碼管理器 / 你筆電:
+
+- [ ] **R2 鑰匙**:Access Key ID + Secret Access Key + endpoint(`https://<account_id>.r2.cloudflarestorage.com`)— 沒這個抓不到 R2 備份 = 循環依賴,最致命
+- [ ] **myorigin git URL**(clone 程式碼用)
+- [ ] **Cloudflare 登入**(repoint tunnel/DNS)+ named tunnel 的 token/設定
+- [ ] **Contabo 登入**(開新 VPS)
+- [ ] **BingX 登入**(還原後人工核對持倉)
+- [ ] 本 runbook 在 git(已 ✅,從筆電 GitHub 讀得到)
+
+> 自我測試:假設你現在只有一台全新筆電 + 上面這些,你能在 1 小時內把平台在新 VPS 上拉起來嗎?能 = go-bag 完整。卡在哪一項 = 那項就是你的 DR 盲點。
