@@ -90,3 +90,4 @@ equity-log.csv
 scripts/strat-validate-bin/
 discord-bots/bot-node/access.json.bak
 discord-bots/bot-node/access.json.bak.*
+__pycache__/
