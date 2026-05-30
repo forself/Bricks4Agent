@@ -149,6 +149,9 @@ services:
       Notifications__Discord__ProtectNotify: "${NOTIFY_PROTECT_SLMOVE:-true}"
       Notifications__Discord__ProtectThrottleMinutes: "${NOTIFY_PROTECT_THROTTLE_MIN:-60}"
       Notifications__Line__Enabled: "${NOTIFICATIONS_LINE_ENABLED:-false}"
+      # LINE 跟 Discord 共用同一個 NOTIFY_PROTECT_SLMOVE 旋鈕(一個值同時控兩條通知路徑)
+      Notifications__Line__ProtectNotify: "${NOTIFY_PROTECT_SLMOVE:-true}"
+      Notifications__Line__ProtectThrottleMinutes: "${NOTIFY_PROTECT_THROTTLE_MIN:-60}"
       # 申報資金錨定（per exchange）：risk rules 用 min(這個值, 實際 balance) 算 equity。
       # 賺到不會自動放寬風控，必須由人手動調這個 env 才會。0 = 用實際值。
       Risk__DeclaredCapital__Bingx: "${RISK_DECLARED_CAPITAL_BINGX:-0}"

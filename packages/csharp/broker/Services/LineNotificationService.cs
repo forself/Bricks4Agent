@@ -43,6 +43,10 @@ public class LineNotificationService : BackgroundService
     private bool _heartbeatStaleNotified;
     private readonly NotificationDedupRepo _dedup;
 
+    // protect 洗版控制（跟 Discord 路徑同邏輯）：SL 移動每 symbol 節流;false=完全不推 SL 移動。
+    private readonly bool _protectNotify;
+    private readonly TimeSpan _protectThrottle;
+
     public LineNotificationService(
         PriceAlertService alerts,
         AutoTraderService autoTrader,
@@ -62,6 +66,8 @@ public class LineNotificationService : BackgroundService
         _recipientOverride = config["Notifications:Line:RecipientId"];
         _intervalSeconds = Math.Max(10, config.GetValue("Notifications:Line:IntervalSeconds", 15));
         _heartbeatStaleMinutes = Math.Max(2, config.GetValue("Notifications:Line:HeartbeatStaleMinutes", 15));
+        _protectNotify = config.GetValue("Notifications:Line:ProtectNotify", true);
+        _protectThrottle = TimeSpan.FromMinutes(Math.Max(1, config.GetValue("Notifications:Line:ProtectThrottleMinutes", 60)));
     }
 
     public bool IsEnabledInConfig => _enabledInConfig;
@@ -158,6 +164,25 @@ public class LineNotificationService : BackgroundService
             var action = l.Action.ToLowerInvariant();
             var (prefix, level) = ClassifyAction(action);
             if (string.IsNullOrEmpty(prefix)) continue;
+
+            // protect 洗版控制（跟 Discord 路徑同邏輯）：exchange SL set 確認不推;
+            // SL→BE / Trailing lock 每 symbol 節流(ProtectNotify=false 則全靜音);實際保護平倉照常推。
+            if (action == "protect")
+            {
+                var pmsg = l.Message ?? "";
+                if (pmsg.Contains("exchange SL set", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var isSlMove = pmsg.Contains("Trailing lock", StringComparison.OrdinalIgnoreCase)
+                            || pmsg.Contains("SL → BE", StringComparison.OrdinalIgnoreCase)
+                            || pmsg.Contains("SL -> BE", StringComparison.OrdinalIgnoreCase);
+                if (isSlMove)
+                {
+                    if (!_protectNotify) continue;
+                    var psig = $"protect-slmove|{l.Symbol}";
+                    if (_dedup.IsRecentlySent("line", psig, _protectThrottle)) continue;
+                    _dedup.MarkSent("line", psig);
+                }
+            }
 
             // 錯誤類 dedup：30 分鐘內相同 signature 不重推。
             // ⚠ 簽章抽掉數字(隨行情變的 1039 等)、否則去重失效、同一則失敗每輪洗版(5/24 修)。
