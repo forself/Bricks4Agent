@@ -27,7 +27,7 @@ LITESTREAM_ACCESS_KEY_ID=$AK
 LITESTREAM_SECRET_ACCESS_KEY=$SK
 ENV
 
-# Litestream config(無 key)
+# Litestream config(無 key、要讓容器內非 root 的 litestream 用戶讀得到 → 644)
 cat > "$CFGDIR/litestream.yml" <<YML
 dbs:
   - path: /data/broker.db
@@ -41,6 +41,7 @@ dbs:
         snapshot-interval: 12h
         sync-interval: 10s
 YML
+chmod 644 "$CFGDIR/litestream.yml"   # 無 secret、容器讀;.litestream.env 維持 600(docker host 端 root 讀)
 
 docker pull "$IMG"
 docker rm -f b4a-litestream 2>/dev/null || true
