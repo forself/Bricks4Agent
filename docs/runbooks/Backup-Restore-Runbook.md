@@ -55,6 +55,25 @@ docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading
 
 啟動後:broker 跑 migration(冪等)→ 從 BingX re-hydrate 倉位 → **AutoTrader 預設 disabled(真錢不自動武裝)**。檢查 `/api/v1/health`、watchlist、持倉對得上 → 再**手動**決定是否重新武裝真錢。別忘了 restart bot-node(自動重連已有,通常自己好)。
 
+## 3.5 從 Litestream 還原 broker.db(連續 PITR、RPO ~10s)
+
+日 tarball 是「整包 DR」;Litestream 是 broker.db 的**連續 point-in-time**(治理/audit/inbox 狀態只丟秒級)。
+要把 broker.db 還原到【最新】或【某個時間點】:
+```bash
+# 停 broker(別讓它寫 DB)
+cd /opt/b4a/tools && docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading.secrets.yml stop broker
+# 從 R2 還原(最新);要時點加 -timestamp 2026-05-30T06:00:00Z
+docker run --rm --user 10002:10002 --env-file /opt/b4a-litestream/.litestream.env \
+  -v b4a-trading_broker-data:/data -v /opt/b4a-litestream/litestream.yml:/etc/litestream.yml:ro \
+  litestream/litestream restore -config /etc/litestream.yml -o /data/broker-restored.db /data/broker.db
+# 驗 + 換上(先刪舊 -wal/-shm)
+V=/var/lib/docker/volumes/b4a-trading_broker-data/_data
+python3 -c "import sqlite3;print(sqlite3.connect('$V/broker-restored.db').execute('PRAGMA integrity_check').fetchone()[0])"
+rm -f $V/broker.db-wal $V/broker.db-shm && mv $V/broker.db-restored.db $V/broker.db  # 確認 ok 再換
+docker compose --env-file .env.trading -f compose.trading.yml -f compose.trading.secrets.yml start broker
+```
+新機(場景 C)要從 litestream 還原:先 `litestream-setup.sh` 設好(或手動配 /opt/b4a-litestream),再跑上面 restore。
+
 ## 4. 最關鍵觀念
 
 **還原 = 救回「控制器的治理/設定狀態」,不是救回持倉。** 持倉永遠以 BingX 為準、broker 啟動對帳。用三天前的備份還原,broker 看到的仍是【當下】交易所真實倉位。備份的交易元資料只是輔助,真相在交易所。
