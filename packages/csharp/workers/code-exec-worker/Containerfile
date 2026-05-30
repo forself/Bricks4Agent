@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish packages/csharp/workers/code-exec-worker/CodeExecWorker.csproj \
+    -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# 沙箱要跑 python3 / bash / timeout(coreutils);aspnet 基底已有 bash+coreutils,補 python3
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && adduser --disabled-password --gecos "" --uid 10010 codeexec \
+    && chown -R codeexec:codeexec /app
+
+USER codeexec
+ENTRYPOINT ["dotnet", "CodeExecWorker.dll"]

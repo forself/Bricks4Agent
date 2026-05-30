@@ -378,6 +378,38 @@ services:
       - broker
     restart: unless-stopped
 
+  # ── Code-Exec Worker（沙箱化任意程式碼執行）─────────────────────────
+  # worker 範本 + 治理示範：高風險能力(code.exec = execute/high)。
+  # 預設【休眠】：靠 profiles: ["code-exec"] 擋住，一般 `docker compose up` 不會拉起，
+  #   要明確 `docker compose --profile code-exec up -d code-exec-worker` 才啟動。
+  #   → 實盤 broker 上不主動暴露「執行任意碼」的攻擊面，要人親手開。
+  # 防護層：broker approval gate(require_approval) + capability ACL/quota/full-audit
+  #   + worker 內 timeout/ulimit 沙箱 + non-root(uid 10010) + 容器層 mem/pids 硬限。
+  # 待硬化(v1 未做)：per-process 網路 egress 隔離(改放 internal:true 網路)。
+  code-exec-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/code-exec-worker/Containerfile
+    image: b4a-code-exec-worker:latest
+    container_name: b4a-code-exec-worker
+    profiles: ["code-exec"]
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__MaxConcurrent: "${CODEEXEC_MAX_CONCURRENT:-2}"
+      WORKER_Worker__CodeExec__MaxTimeoutSeconds: "${CODEEXEC_MAX_TIMEOUT:-30}"
+      WORKER_Worker__CodeExec__MemLimitKB: "${CODEEXEC_MEM_KB:-262144}"
+      WORKER_Worker__CodeExec__MaxProcs: "${CODEEXEC_MAX_PROCS:-64}"
+      WORKER_Worker__CodeExec__MaxFileSizeKB: "${CODEEXEC_MAX_FSIZE_KB:-10240}"
+      WORKER_Worker__CodeExec__OutputCapBytes: "${CODEEXEC_OUTPUT_CAP:-16384}"
+    mem_limit: "${CODEEXEC_CONTAINER_MEM:-512m}"
+    pids_limit: 128
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
   # ── Autoheal（自癒）────────────────────────────────────────────────
   # 監看帶 label autoheal=true 且有 healthcheck 的容器（目前只有 broker）；
   # 被 healthcheck 標成 unhealthy 就自動 docker restart。解「broker process 活著但卡死」。

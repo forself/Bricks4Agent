@@ -1,0 +1,62 @@
+{
+  "tool_id": "code.exec",
+  "display_name": "Sandboxed Code Execution",
+  "summary": "Execute a submitted snippet of Python or Bash inside a resource-limited sandbox (wall-clock timeout, memory/CPU/process/file-size ulimits, isolated throwaway workdir, non-root). Broker-mediated, approval-gated, fully audited.",
+  "kind": "compute",
+  "status": "beta",
+  "version": "2026-05-30",
+  "tags": ["compute", "sandbox", "code-execution", "python", "bash"],
+  "capability_template": {
+    "action_type": "execute",
+    "resource_type": "compute",
+    "risk_level": "high",
+    "approval_policy": "require_approval",
+    "ttl_seconds": 600,
+    "audit_level": "full",
+    "quota": { "max_calls": 20, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "code.exec",
+      "route": "python",
+      "purpose": "Run a Python 3 snippet in the sandbox (python3 -I, isolated mode)."
+    },
+    {
+      "capability_id": "code.exec",
+      "route": "bash",
+      "purpose": "Run a Bash snippet in the sandbox."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "language": { "type": "string", "enum": ["python", "bash"], "description": "Overrides the route if both present." },
+      "code": { "type": "string", "description": "Source to execute (max 100KB)." },
+      "timeout_s": { "type": "integer", "minimum": 1, "maximum": 30, "description": "Wall-clock seconds; clamped to worker MaxTimeoutSeconds." },
+      "stdin": { "type": "string", "description": "Optional stdin fed to the process." }
+    },
+    "required": ["code"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "language": { "type": "string" },
+      "exit_code": { "type": "integer" },
+      "timed_out": { "type": "boolean" },
+      "duration_ms": { "type": "integer" },
+      "stdout": { "type": "string" },
+      "stderr": { "type": "string" },
+      "truncated": { "type": "boolean" }
+    }
+  },
+  "execution_rules": {
+    "mediation_required": true,
+    "sandbox": "timeout+ulimit (no privileged, no docker-socket)",
+    "network": "deploy-level isolation (run worker on no-egress network); not enforced per-process in v1"
+  },
+  "response_contract": {
+    "must_identify_language": true,
+    "must_report_exit_code": true,
+    "must_flag_timeout": true
+  }
+}
