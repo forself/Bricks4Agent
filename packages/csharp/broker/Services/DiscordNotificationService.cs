@@ -40,6 +40,12 @@ public class DiscordNotificationService : BackgroundService
     private bool _heartbeatStaleNotified = false;
     private readonly int _heartbeatStaleMinutes;
 
+    // ── protect 洗版控制 ──
+    // action="protect" 被重用:SL 移動(SL→BE/Trailing)+ exchange SL set 確認 = 高頻噪音;
+    // 但實際保護平倉(perp close…)= 重要、要留。ProtectNotify=false 連 SL 移動也不推。
+    private readonly bool _protectNotify;
+    private readonly TimeSpan _protectThrottle;
+
     public DiscordNotificationService(
         PriceAlertService alerts,
         AutoTraderService autoTrader,
@@ -57,6 +63,9 @@ public class DiscordNotificationService : BackgroundService
         _intervalSeconds = Math.Max(10, config.GetValue("Notifications:Discord:IntervalSeconds", 15));
         // Auto-trader cycle 預設 5 分鐘、給寬限到 15 分鐘才視為 stale
         _heartbeatStaleMinutes = Math.Max(2, config.GetValue("Notifications:Discord:HeartbeatStaleMinutes", 15));
+        // protect 通知:SL 移動類每 symbol 最多每 N 分鐘推一則;false=完全不推 SL 移動(實際平倉仍推)
+        _protectNotify = config.GetValue("Notifications:Discord:ProtectNotify", true);
+        _protectThrottle = TimeSpan.FromMinutes(Math.Max(1, config.GetValue("Notifications:Discord:ProtectThrottleMinutes", 60)));
     }
 
     public bool IsEnabled => !string.IsNullOrWhiteSpace(_webhookUrl);
@@ -158,6 +167,28 @@ public class DiscordNotificationService : BackgroundService
             var action = l.Action.ToLowerInvariant();
             var (emoji, color, prefix) = ClassifyAction(action);
             if (emoji == "") continue;
+
+            // ── protect 洗版控制 ──
+            // SL→BE / Trailing lock = 每次 ratchet 都來、洗版主因 → 每 symbol 節流(number-stripped 不適用、
+            //   直接用 symbol 當鍵 → 同倉一窗內只推一則);exchange SL set = 純確認回執 → 永不推;
+            //   實際保護平倉(perp close… / "{SIDE} {qty} — …")= 真的動部位、重要 → 不攔、照常推。
+            if (action == "protect")
+            {
+                var pmsg = l.Message ?? "";
+                if (pmsg.Contains("exchange SL set", StringComparison.OrdinalIgnoreCase))
+                    continue;  // 確認回執、不推
+                var isSlMove = pmsg.Contains("Trailing lock", StringComparison.OrdinalIgnoreCase)
+                            || pmsg.Contains("SL → BE", StringComparison.OrdinalIgnoreCase)
+                            || pmsg.Contains("SL -> BE", StringComparison.OrdinalIgnoreCase);
+                if (isSlMove)
+                {
+                    if (!_protectNotify) continue;                 // 完全關掉 SL 移動推播
+                    var psig = $"protect-slmove|{l.Symbol}";
+                    if (_dedup.IsRecentlySent("discord", psig, _protectThrottle)) continue;
+                    _dedup.MarkSent("discord", psig);
+                }
+                // 其餘 protect(實際保護平倉/下單)落到下面照常推
+            }
 
             // 錯誤類 dedup：同 signature 30 分鐘內已推過就略過（5/19 持久化）。
             // ⚠ 簽章必須抽掉訊息裡的數字 —— 否則像「Net perp notional 1039 …」的 1039 每輪隨行情變動
