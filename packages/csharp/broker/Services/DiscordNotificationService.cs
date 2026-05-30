@@ -205,9 +205,9 @@ public class DiscordNotificationService : BackgroundService
 
             var fields = new[]
             {
-                new { name = "Symbol",   value = l.Symbol,   inline = true },
-                new { name = "Exchange", value = l.Exchange, inline = true },
-                new { name = "Action",   value = action,     inline = true },
+                new { name = "Symbol",   value = l.Symbol,        inline = true },
+                new { name = "Exchange", value = l.Exchange ?? "", inline = true },
+                new { name = "Action",   value = action,          inline = true },
             };
 
             await SendEmbedAsync(
@@ -218,6 +218,9 @@ public class DiscordNotificationService : BackgroundService
                 timestamp:   l.Time,
                 ct:          ct);
         }
+        // 防 seen-set 無限成長:剪到只剩當前 RecentLogs 視窗(≤200)內的 key
+        //（舊 log 已從 _tradeLog 上限 dequeue、不會再出現,留在 seen 裡只是慢性洩漏）
+        _seenLogKeys.IntersectWith(_autoTrader.RecentLogs.Select(LogKey));
     }
 
     // ── 對外 API（供 Endpoint 呼叫）───────────────────────────────────

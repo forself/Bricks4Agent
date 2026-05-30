@@ -200,6 +200,8 @@ public class LineNotificationService : BackgroundService
             var body = $"{l.Symbol} @ {l.Exchange}\n動作：{action}\n{l.Message}";
             await SendNotificationAsync(title, body, level, ct);
         }
+        // 防 seen-set 無限成長:剪到只剩當前 RecentLogs 視窗(≤200)內的 key
+        _seenLogKeys.IntersectWith(_autoTrader.RecentLogs.Select(LogKey));
     }
 
     // 跟 DiscordNotificationService.ClassifyAction 對齊（無 emoji/color、回 (中文標題, level)）。
