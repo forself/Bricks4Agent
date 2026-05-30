@@ -43,9 +43,16 @@ dbs:
 YML
 chmod 644 "$CFGDIR/litestream.yml"   # 無 secret、容器讀;.litestream.env 維持 600(docker host 端 root 讀)
 
+# Litestream v0.5 需寫 broker.db(建 _litestream_seq 簿記表)→ 用跟 broker 完全相同的 UID 跑,
+# 它建的檔都歸 broker 擁有、不會把 broker 鎖在外面。SQLite WAL 處理並發、標準 sidecar 模式。
+BROKER_UID=$(docker exec b4a-broker id -u 2>/dev/null || echo 10002)
+BROKER_GID=$(docker exec b4a-broker id -g 2>/dev/null || echo 10002)
+echo "litestream 以 broker UID 跑:$BROKER_UID:$BROKER_GID"
+
 docker pull "$IMG"
 docker rm -f b4a-litestream 2>/dev/null || true
 docker run -d --name b4a-litestream --restart unless-stopped \
+  --user "$BROKER_UID:$BROKER_GID" \
   --env-file "$CFGDIR/.litestream.env" \
   -v "$VOL":/data \
   -v "$CFGDIR/litestream.yml":/etc/litestream.yml:ro \
