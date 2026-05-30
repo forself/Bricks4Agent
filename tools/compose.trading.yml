@@ -144,6 +144,10 @@ services:
       Embedding__Enabled: "false"
 
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
+      # protect 保護單推播:false=SL→BE/Trailing/exchange SL set 完全靜音(只留實際平倉/買賣/熔斷/錯誤)。
+      # 想開回節流模式:設 NOTIFY_PROTECT_SLMOVE=true + ProtectThrottleMinutes(預設 60)。
+      Notifications__Discord__ProtectNotify: "${NOTIFY_PROTECT_SLMOVE:-true}"
+      Notifications__Discord__ProtectThrottleMinutes: "${NOTIFY_PROTECT_THROTTLE_MIN:-60}"
       Notifications__Line__Enabled: "${NOTIFICATIONS_LINE_ENABLED:-false}"
       # 申報資金錨定（per exchange）：risk rules 用 min(這個值, 實際 balance) 算 equity。
       # 賺到不會自動放寬風控，必須由人手動調這個 env 才會。0 = 用實際值。
