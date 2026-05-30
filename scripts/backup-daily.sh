@@ -73,8 +73,8 @@ if [ -n "$OFFBOX" ]; then
           # 這是「無 bucket lifecycle 權限時」的等價做法(object-scoped token 有 delete 權)。
           # 只動 $remote(=…/b4a)前綴;litestream/ 由 litestream 自管 72h retention、不受影響。
           KEEP=$(grep -E '^REMOTE_KEEP_DAYS=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-); KEEP=${KEEP:-21}
-          DELN=$(rclone delete "$remote/" --min-age "${KEEP}d" -v 2>&1 | grep -c "Deleted")
-          echo "[off-box] 遠端保留 ${KEEP}d:清掉 ${DELN} 個過期 tarball"
+          DELN=$(rclone delete "$remote/" --min-age "${KEEP}d" -v 2>&1 | grep -c "Deleted") || true  # grep -c 0 筆會 exit 1、別讓 set -e 中止
+          echo "[off-box] 遠端保留 ${KEEP}d:清掉 ${DELN:-0} 個過期 tarball"
         else
           echo "[off-box] rclone 失敗 → $remote(本機備份仍在、不影響)"
         fi
