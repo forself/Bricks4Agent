@@ -378,6 +378,33 @@ services:
       - broker
     restart: unless-stopped
 
+  # ── Telemetry Worker（獨立觀測者 / failover 安全測試靶）──────────────
+  # 每 N 秒打 broker 自己的健康端點(唯讀 GET),寫時間序列進 /data/telemetry.db。
+  # 為什麼有價值：① 獨立於 broker 之外記錄它的健康，broker 掛了它還活著、把那段
+  #   掛掉+恢復記進時間序列(跟 watchdog 不住在 broker 裡同道理)② 純唯讀零真錢，
+  #   有狀態(db 持續長大) → 是 failover 暖備複製/還原 demo 的安全測試標的。
+  # 開能力 telemetry.history(Read/low/auto-approve)給 dashboard 拉健康曲線。
+  telemetry-worker:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/telemetry-worker/Containerfile
+    image: b4a-telemetry-worker:latest
+    container_name: b4a-telemetry-worker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Telemetry__BrokerApiUrl: "http://broker:5000"
+      WORKER_Worker__Telemetry__SampleIntervalSeconds: "${TELEMETRY_INTERVAL:-15}"
+      WORKER_Worker__Telemetry__DbPath: "/data/telemetry.db"
+      WORKER_Worker__Telemetry__RetentionHours: "${TELEMETRY_RETENTION_HOURS:-168}"
+    volumes:
+      - telemetry-data:/data
+    networks:
+      - trading-net
+    depends_on:
+      - broker
+    restart: unless-stopped
+
   # ── Code-Exec Worker（沙箱化任意程式碼執行）─────────────────────────
   # worker 範本 + 治理示範：高風險能力(code.exec = execute/high)。
   # 預設【休眠】：靠 profiles: ["code-exec"] 擋住，一般 `docker compose up` 不會拉起，
@@ -436,3 +463,4 @@ volumes:
   broker-data:
   quote-data:
   trading-data:
+  telemetry-data:

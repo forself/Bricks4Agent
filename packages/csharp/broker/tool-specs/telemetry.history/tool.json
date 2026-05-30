@@ -1,0 +1,57 @@
+{
+  "tool_id": "telemetry.history",
+  "display_name": "Telemetry History",
+  "summary": "Read-only access to the broker health time-series collected by the independent telemetry-worker (health score, status, worker counts over time). Backed by a local SQLite store; no side effects.",
+  "kind": "observability",
+  "status": "beta",
+  "version": "2026-05-30",
+  "tags": ["observability", "telemetry", "health", "time-series", "read-only"],
+  "capability_template": {
+    "action_type": "read",
+    "resource_type": "observability",
+    "risk_level": "low",
+    "approval_policy": "auto",
+    "ttl_seconds": 300,
+    "audit_level": "standard",
+    "quota": { "max_calls": 600, "per_window_seconds": 3600 }
+  },
+  "capability_bindings": [
+    {
+      "capability_id": "telemetry.history",
+      "route": "query",
+      "purpose": "Return health samples within a recent time window (minutes), newest first."
+    },
+    {
+      "capability_id": "telemetry.history",
+      "route": "latest",
+      "purpose": "Return the most recent health sample plus total sample count."
+    }
+  ],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "minutes": { "type": "integer", "minimum": 1, "description": "Look-back window for 'query' (default 60)." },
+      "limit": { "type": "integer", "minimum": 1, "description": "Max rows returned for 'query' (default 500)." }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "count": { "type": "integer" },
+      "total_samples": { "type": "integer" },
+      "samples": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sampled_at": { "type": "string" },
+            "health_score": { "type": ["number", "null"] },
+            "status": { "type": "string" },
+            "workers_total": { "type": "integer" },
+            "workers_healthy": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}
