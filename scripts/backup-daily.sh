@@ -60,7 +60,7 @@ ls -1t /opt/b4a-backups/b4a-*.tar.gz 2>/dev/null | tail -n +15 | xargs -r rm -v
 #   rclone:remote:bucket/path   物件儲存(Cloudflare R2 / Backblaze B2 / S3,需先 rclone config)
 #   scp:user@host:/remote/path  另一台機器
 # ⚠ tarball 含 secrets/.env → off-box 目的地必須安全(傳輸已加密,落地端 bucket 要私有、token 要 scoped)。
-# 遠端保留:用 bucket 端 lifecycle rule 自動過期(比腳本刪遠端安全),本機仍保留 14 份。
+# 遠端保留:上傳後自動刪該前綴下 >REMOTE_KEEP_DAYS(預設 21)天的舊 tarball(見下);本機仍保留 14 份。
 OFFBOX=$(grep -E '^BACKUP_OFFBOX_DEST=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
 if [ -n "$OFFBOX" ]; then
   case "$OFFBOX" in
@@ -69,6 +69,12 @@ if [ -n "$OFFBOX" ]; then
       if command -v rclone >/dev/null 2>&1; then
         if rclone copy "$DEST" "$remote/" --contimeout 20s --timeout 120s >/dev/null 2>&1; then
           echo "[off-box] rclone → $remote ok"
+          # 遠端保留:刪該前綴下 > REMOTE_KEEP_DAYS 天的舊 tarball(剛上傳的 age=0、不會被刪)。
+          # 這是「無 bucket lifecycle 權限時」的等價做法(object-scoped token 有 delete 權)。
+          # 只動 $remote(=…/b4a)前綴;litestream/ 由 litestream 自管 72h retention、不受影響。
+          KEEP=$(grep -E '^REMOTE_KEEP_DAYS=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-); KEEP=${KEEP:-21}
+          DELN=$(rclone delete "$remote/" --min-age "${KEEP}d" -v 2>&1 | grep -c "Deleted")
+          echo "[off-box] 遠端保留 ${KEEP}d:清掉 ${DELN} 個過期 tarball"
         else
           echo "[off-box] rclone 失敗 → $remote(本機備份仍在、不影響)"
         fi
