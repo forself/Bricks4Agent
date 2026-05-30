@@ -58,9 +58,16 @@ Carver 的部位 = 一條「波動標準化」的管線,每一段都把風險拉
   - **結論**:confidence【不是校準 forecast】—— 經驗證實了上面「從推理」的歸因。**決定維持不開 confidence sizing**;唯一弱訊號 bb_revert(MR 策略:高 conf=偏離越大=回歸越多、合理但樣本薄)列為未來 per-strategy 深究、非現在。
 - [ ] ~~confidence 校準檢查~~(已完成、見上)。原規劃的 per-strategy normalization:只有在「先把策略改成 emit 連續校準 forecast」(策略層重構、見下)之後才有意義,否則 normalize 一個零資訊/常數的數字無益。
 - [x] **position buffering** ✅ 評估了(2026-05-29)= **不需要**:Carver buffering 解「連續重算目標→小幅漂移→頻繁交易」的 churn,但 B4A 是**固定倉位 + 訊號驅動**、沒有連續漂移的目標可 buffer。且既有防護已足:`r9 Symbol Cooldown`(active、60s、雙向)+ AutoTrader 30min re-open 冷卻 + scanner 冪等鎖 + 訊號驅動持有。**現在加 = 解不存在的問題 + 真錢引擎冗餘複雜度**。→ 只有未來開了 conf/Kelly 連續 sizing 才回來做。
+- [x] **vol-targeting backtest A/B** ✅ 做了(2026-05-30、strat-validate `--vol-target`、10 部署策略 × 20 幣;引擎加 `volTargetSizing`/`volTargetAnnual`/`volTargetLookback`/`volTargetMaxScalar`,進場當下僅看 t 之前 closes 算 realized vol、無 lookahead):
+  - **標準(scalar 上限 2.0)**:trend 類 4/10 **Sharpe↑+DD↓**(ma_regime_trend、dual_mom_ls、supertrend_ls、**decorr4_ls 真錢核心**),MR/signal 類沒改善。符合學理(vol-targeting 對趨勢最有效)。
+  - **⚠ 但 Sharpe 提升多半靠低 vol 期 scalar>1 加槓桿**——直接抵觸「名目壓 ~1× 權益、存活優先」鐵律([[feedback_effective_leverage_is_real_risk]])。
+  - **de-risk-only 驗證(`VOL_TARGET_MAX=1.0`、只縮不放、合紀律)**:maxDD↓ 變 **7/10(廣泛、穩健)**,但 Sharpe↑ 掉到 **2/10** → **拿掉槓桿後 DD 照降、Sharpe 提升幾乎消失**。證實:apparent Sharpe gain = 槓桿,不是 timing alpha。
+  - **決定:不部署 vol-targeting**。加槓桿版違紀律;de-risk-only 版只是 DD 降低器、而**既有 CB+DD-aware overlay 砍 DD 更兇**(46%→16%,見 [[q2-portfolio-survival]])、這個冗餘。維持固定倉位。
+  - **方法論收穫**:任何「改善 Sharpe」的 sizing overlay,要把上限 cap 到 1.0 再測一次——若 Sharpe gain 消失就是【靠槓桿】不是【靠擇時】。
 - [ ] 讀 Carver Ch5-7 原文核對本摘要(本 doc 是從框架記憶寫的、非逐頁)。
 
 ## 不要做
+- ❌ vol-targeting(加槓桿版違存活紀律;de-risk-only 版跟既有 DD 防線冗餘 — 2026-05-30 驗證)
 - ❌ IDM 放大 gross(跟有效槓桿紀律衝突)
 - ❌ max-Sharpe 配重(μ 敏感、strat-validate 已標註、用 risk-parity)
 - ❌ 急著開 confidence/Kelly sizing 進真錢(先 backtest + shadow、循紀律)

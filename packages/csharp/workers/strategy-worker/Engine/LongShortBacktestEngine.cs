@@ -36,11 +36,16 @@ public static class LongShortBacktestEngine
         decimal defaultInitialSlPct = 0m, // H18 補正:策略未 emit StopPrice 但啟用 trail 時、開倉用此 % 做初始 SL(讓 trail 有 base 可 ratchet)
         decimal peakTrailTriggerPct = 0m, // H18-live-align:peak-based trail 啟動門檻(peak gain ≥ X% 才啟動、跟 AutoTraderService.TrailingTriggerPct 對齊)
         decimal peakTrailDistancePct = 0m, // peak-based trail 距離(SL = peak × (1 ∓ distance%/100)、跟 AutoTraderService.TrailingDistancePct 對齊)
-        bool applyFunding = false)        // D 路線(2026-05-27):永續 funding 計入 PnL。需 bars[i].FundingRate 已注入(用 ToolsShared.FundingCache.InjectInto)
+        bool applyFunding = false,        // D 路線(2026-05-27):永續 funding 計入 PnL。需 bars[i].FundingRate 已注入(用 ToolsShared.FundingCache.InjectInto)
                                           // 約定:bar.FundingRate = 該根 bar 持有期間的【累計】 funding rate(SUM、不是 avg)
                                           // 多單:cash -= position × close × fundingRate(正 funding=付、負=收)
                                           // 空單:cash -= position × close × fundingRate(position 已帶負號、正 funding=收、負=付)
                                           // 兩邊用同公式、靠 position 符號自動處理 short sign flip
+        bool volTargetSizing = false,     // Q1.2 vol-targeting:開倉名目再 × VolTargetSizer scalar(target/realized vol、clamp 0.3~2.0)
+                                          // 跟 confidenceSizing 相乘相容。用「進場當下、僅看 t 之前 closes」算 realized vol(無 lookahead)。
+        decimal volTargetAnnual = 0.60m,  // 目標年化波動(預設 60% ≈ BTC 長期平均);realized 高於它→縮、低於它→放
+        int volTargetLookback = 30,       // realized vol 回看窗(日)
+        decimal volTargetMaxScalar = 2.0m) // scalar 上限。=1.0 → 「只縮不放」de-risk-only(永不加槓桿、合存活紀律)
     {
         var costRate = commission + slippagePct;
         var result = new BacktestEngine.BacktestResult
@@ -171,6 +176,14 @@ public static class LongShortBacktestEngine
                 if (desired != 0)
                 {
                     decimal sizeScale = confidenceSizing ? Math.Clamp(signal.Confidence, 0m, 1m) : 1m;
+                    // Q1.2 vol-targeting:用進場當下、僅 t 之前的 closes 算 realized vol → scalar(高 vol 縮/低 vol 放)。
+                    // 與 confidenceSizing 相乘相容;無 lookahead(只取 bars[0..i])。
+                    if (volTargetSizing)
+                    {
+                        var closesSoFar = bars.GetRange(0, i + 1).Select(b => b.Close).ToList();
+                        var realizedVol = VolTargetSizer.AnnualizedRealizedVol(closesSoFar, volTargetLookback);
+                        sizeScale *= VolTargetSizer.ComputeScalar(realizedVol, volTargetAnnual, 0.3m, volTargetMaxScalar);
+                    }
                     // H18 補正:策略未 emit StopPrice 但 caller 啟用 trail + 給 defaultInitialSlPct → bootstrap SL,
                     // 讓 trail 有 base 可 ratchet(否則 trail 永遠 skip、對 trend 策略 no-op)。
                     decimal effectiveStop = signal.StopPrice ?? 0m;
@@ -267,7 +280,11 @@ public static class LongShortBacktestEngine
         decimal defaultInitialSlPct = 0m,  // H18 補正:trail 啟用 + 策略未 emit 時的初始 SL %
         decimal peakTrailTriggerPct = 0m,  // H18 live-align:peak-based trail trigger %
         decimal peakTrailDistancePct = 0m, // peak-based trail distance %
-        bool applyFunding = false)         // D 路線:funding 計入 PnL(bars 需先注入 FundingRate)
+        bool applyFunding = false,         // D 路線:funding 計入 PnL(bars 需先注入 FundingRate)
+        bool volTargetSizing = false,      // Q1.2 vol-targeting(透傳 Run)
+        decimal volTargetAnnual = 0.60m,
+        int volTargetLookback = 30,
+        decimal volTargetMaxScalar = 2.0m)
     {
         var result = new BacktestEngine.WalkForwardResult
         {
@@ -281,12 +298,13 @@ public static class LongShortBacktestEngine
         for (int start = 0; start + requiredPerFold <= bars.Count; start += stride)
         {
             var trainSlice = bars.GetRange(start, trainBars);
-            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct, peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding);
+            var trainBt = Run(strategy, trainSlice, config, initialCash, commission, slippagePct: slippagePct, confidenceSizing: confidenceSizing, atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct, peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding, volTargetSizing: volTargetSizing, volTargetAnnual: volTargetAnnual, volTargetLookback: volTargetLookback, volTargetMaxScalar: volTargetMaxScalar);
             var testWindow = bars.GetRange(start, trainBars + testBars);
             var testBt = Run(strategy, testWindow, config, initialCash, commission,
                 tradeStartIndex: trainBars, slippagePct: slippagePct, confidenceSizing: confidenceSizing,
                 atrTrailMultiplier: atrTrailMultiplier, atrPeriod: atrPeriod, defaultInitialSlPct: defaultInitialSlPct,
-                peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding);
+                peakTrailTriggerPct: peakTrailTriggerPct, peakTrailDistancePct: peakTrailDistancePct, applyFunding: applyFunding,
+                volTargetSizing: volTargetSizing, volTargetAnnual: volTargetAnnual, volTargetLookback: volTargetLookback, volTargetMaxScalar: volTargetMaxScalar);
             result.Folds.Add(new BacktestEngine.WalkForwardFold
             {
                 FoldIndex = foldIdx++,

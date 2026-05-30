@@ -34,6 +34,10 @@ if (confSizing) Console.WriteLine("📐 --conf-sizing:部位 × signal.Confidenc
 // 答「confidence 有沒有預測力(分桶單調?corr≠0?)+ 跨策略可不可比(分布重疊?)」。用 full-sample(對找關係有利、null 結果更強)。
 bool confDiag = args.Contains("--conf-diag");
 if (confDiag) Console.WriteLine("🔬 --conf-diag:confidence 校準診斷(entry confidence vs 實際報酬;full-sample、找關係有利)");
+// --vol-target:Q1.2 vol-targeting A/B(固定 sizing vs 反波動率調倉;比 Sharpe/maxDD/pool t-stat)。
+// 紀律:先驗有沒有用、再談部署(同 conf-sizing 流程)。env VOL_TARGET_ANNUAL / VOL_TARGET_LOOKBACK 可調。
+bool volTargetAB = args.Contains("--vol-target");
+if (volTargetAB) Console.WriteLine("📏 --vol-target:vol-targeting A/B(反波動率調倉 vs 固定;比風險調整後報酬)");
 if (fastMode) Console.WriteLine("⚡ --fast mode:5 幣 × 1d only");
 if (onlyFilter != null) Console.WriteLine($"⚡ --only={onlyFilter}");
 if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)");
@@ -464,6 +468,7 @@ if (data.Count > 0)
 
 // --conf-diag:confidence 校準診斷(複用已載入 data + strats)── 答「confidence 有預測力嗎 / 跨策略可比嗎」
 if (confDiag) { RunConfDiagnostic(); return; }
+if (volTargetAB) { RunVolTargetAB(); return; }
 
 // 權益曲線對應日期(per coin、各策略共用同 bars;lsEq 最後跑 → 留 LS 引擎日期),給 regime-gate 用
 var curveDates = new Dictionary<string, List<DateTime>>();
@@ -1281,6 +1286,81 @@ if (strats.Any(x => x.name == "decorr4_ls"))
 }
 
 Console.WriteLine("\n判定 = OOS 中位報酬>0 且 ≥60% 檔 OOS 正報酬 且 全期連續 Sharpe>0。組合層比較單腿:Sharpe 升 / maxDD 降 = 去相關紅利。");
+
+// ════════════════════════════════════════════════════════════════════════════
+// --vol-target:Q1.2 vol-targeting A/B(roadmap milestone)。固定 sizing vs 反波動率調倉,
+//   比【風險調整後】(Sharpe↑/maxDD↓),不是 mean↑。先驗有沒有用、再談部署(同 conf-sizing 紀律)。
+// ════════════════════════════════════════════════════════════════════════════
+void RunVolTargetAB()
+{
+    decimal tv = decimal.TryParse(Environment.GetEnvironmentVariable("VOL_TARGET_ANNUAL"), out var v) ? v : 0.60m;
+    int lb = int.TryParse(Environment.GetEnvironmentVariable("VOL_TARGET_LOOKBACK"), out var l) ? l : 30;
+    decimal mx = decimal.TryParse(Environment.GetEnvironmentVariable("VOL_TARGET_MAX"), out var m) ? m : 2.0m;
+    string mode = mx <= 1.0m ? "de-risk-only 只縮不放、合存活紀律" : $"scalar 上限 {mx}(>1 會加槓桿)";
+
+    Console.WriteLine($"\n=== vol-targeting A/B(target {tv:P0} 年化、lookback {lb}d、{mode};固定 vs 反波動率調倉)===");
+    Console.WriteLine("解讀:vol-targeting 賣點是【風險調整後】改善(Sharpe↑/maxDD↓)、不是 mean↑;就算 mean 降,Sharpe 升+DD 降就值得。");
+    Console.WriteLine("      clamp 0.3~2.0;crypto realized vol 常 >60% → scalar 多半 <1(縮倉)。\n");
+    Console.WriteLine($"  {"strategy",-16}│ 固定 Sh/DD%/ret%/t  │ volTgt Sh/DD%/ret%/t │ 判定");
+
+    // 自帶 t-stat(不依賴外層 BootCI/rng,因本函式在它們指派前就被呼叫)
+    double Tstat(List<decimal> xs)
+    {
+        if (xs.Count < 5) return 0;
+        double mean = (double)xs.Average();
+        double sd = Math.Sqrt(xs.Select(x => ((double)x - mean) * ((double)x - mean)).Sum() / (xs.Count - 1));
+        double se = sd / Math.Sqrt(xs.Count);
+        return se > 0 ? mean / se : 0;
+    }
+
+    List<decimal> Pool(IStrategy s, bool vt)
+    {
+        var r = new List<decimal>();
+        foreach (var kv in data)
+            try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60,
+                       commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding,
+                       volTargetSizing: vt, volTargetAnnual: tv, volTargetLookback: lb, volTargetMaxScalar: mx);
+                  foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
+            catch { }
+        return r;
+    }
+
+    int shUp = 0, ddDown = 0, both = 0, total = 0;
+    foreach (var (name, s) in strats)
+    {
+        var fSh = new List<decimal>(); var fDD = new List<decimal>(); var fRet = new List<decimal>();
+        var vSh = new List<decimal>(); var vDD = new List<decimal>(); var vRet = new List<decimal>();
+        foreach (var kv in data)
+        {
+            try
+            {
+                var cfg = new StrategyConfig { Symbol = kv.Key, Interval = "1d" };
+                var bF = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding);
+                var bV = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding,
+                                                     volTargetSizing: true, volTargetAnnual: tv, volTargetLookback: lb, volTargetMaxScalar: mx);
+                if (bF.TotalBars >= 100)
+                {
+                    fSh.Add(bF.SharpeRatio); fDD.Add(bF.MaxDrawdownPct); fRet.Add(bF.TotalReturnPct);
+                    vSh.Add(bV.SharpeRatio); vDD.Add(bV.MaxDrawdownPct); vRet.Add(bV.TotalReturnPct);
+                }
+            }
+            catch { }
+        }
+        if (fSh.Count < 3) { Console.WriteLine($"  {name,-16}(樣本不足、skip)"); continue; }
+        decimal mfSh = Median(fSh), mfDD = Median(fDD), mfRet = Median(fRet);
+        decimal mvSh = Median(vSh), mvDD = Median(vDD), mvRet = Median(vRet);
+        double tF = Tstat(Pool(s, false)), tV = Tstat(Pool(s, true));
+        bool sUp = mvSh > mfSh + 0.05m;     // Sharpe 明顯升
+        bool dDn = mvDD < mfDD - 2m;        // maxDD 明顯降(> 2pp)
+        total++; if (sUp) shUp++; if (dDn) ddDown++; if (sUp && dDn) both++;
+        string verdict = (sUp && dDn) ? "✅ Sh↑DD↓" : dDn ? "⚠ 只 DD↓" : sUp ? "⚠ 只 Sh↑" : "✗ 沒改善";
+        Console.WriteLine($"  {name,-16}│ {mfSh,5:F2}/{mfDD,4:F0}/{mfRet,5:F0}/{tF,4:F1} │ {mvSh,5:F2}/{mvDD,4:F0}/{mvRet,5:F0}/{tV,4:F1} │ {verdict}");
+    }
+    Console.WriteLine($"\n── 結論 ── {total} 策略:Sharpe 升 {shUp}、maxDD 降 {ddDown}、兩者皆 {both}。");
+    Console.WriteLine(both > total / 2
+        ? "→ vol-targeting 多數策略改善風險調整後表現,值得進一步評估(recommend 工具 → shadow → 循紀律部署)。"
+        : "→ vol-targeting 對多數策略無明顯淨改善(crypto 多在縮倉、降報酬未換到 Sharpe);維持固定倉位、或只對 DD 過高的腿選擇性用。");
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // --conf-diag:confidence 校準診斷(Q1 開放項;Carver gap-analysis §開放項)
