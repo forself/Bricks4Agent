@@ -49,7 +49,11 @@ public sealed class TelemetrySampler
         string status = "unreachable";
         var rawParts = new List<string>();
 
-        // ── /api/v1/health/score → score + status ──
+        // ── /api/v1/health/score → score + status + worker 數 ──
+        // broker 回 { data: { overall_score, overall_status, worker_count, healthy_count, workers[] } }
+        // （隔離測試逮到:原本只找 score/status、漏了 broker 實際的 overall_* 欄位 → 永遠 unreachable)
+        int total = 0, healthy = 0;
+        bool gotCounts = false;
         var scoreJson = await TryGetAsync("/api/v1/health/score", ct);
         if (scoreJson != null)
         {
@@ -57,35 +61,39 @@ public sealed class TelemetrySampler
             try
             {
                 var root = Unwrap(JsonDocument.Parse(scoreJson).RootElement);
-                if (TryGetNumber(root, out var sc, "score", "health_score", "value")) score = sc;
-                if (TryGetString(root, out var st, "status", "level")) status = st;
+                if (TryGetNumber(root, out var sc, "overall_score", "score", "health_score", "value")) score = sc;
+                if (TryGetString(root, out var st, "overall_status", "status", "level")) status = st;
                 else if (score is { } s) status = s >= 80 ? "healthy" : s >= 50 ? "degraded" : "critical";
+                if (TryGetNumber(root, out var wc, "worker_count")) { total = (int)wc; gotCounts = true; }
+                if (TryGetNumber(root, out var hc, "healthy_count")) healthy = (int)hc;
             }
             catch (Exception ex) { _log.LogDebug(ex, "score parse failed"); status = "parse_error"; }
         }
 
-        // ── /api/v1/health/workers → total + healthy ──
-        int total = 0, healthy = 0;
-        var workersJson = await TryGetAsync("/api/v1/health/workers", ct);
-        if (workersJson != null)
+        // 後備:score 端點沒給 worker 數 → 退而數 /health/workers 陣列
+        if (!gotCounts)
         {
-            rawParts.Add(workersJson.Length > 2000 ? workersJson[..2000] : workersJson);
-            try
+            var workersJson = await TryGetAsync("/api/v1/health/workers", ct);
+            if (workersJson != null)
             {
-                var root = Unwrap(JsonDocument.Parse(workersJson).RootElement);
-                if (root.TryGetProperty("workers", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                rawParts.Add(workersJson.Length > 2000 ? workersJson[..2000] : workersJson);
+                try
                 {
-                    foreach (var w in arr.EnumerateArray())
+                    var root = Unwrap(JsonDocument.Parse(workersJson).RootElement);
+                    if (root.TryGetProperty("workers", out var arr) && arr.ValueKind == JsonValueKind.Array)
                     {
-                        total++;
-                        if (TryGetString(w, out var ws, "status") &&
-                            (ws.Equals("healthy", StringComparison.OrdinalIgnoreCase) ||
-                             ws.Equals("ok", StringComparison.OrdinalIgnoreCase)))
-                            healthy++;
+                        foreach (var w in arr.EnumerateArray())
+                        {
+                            total++;
+                            if (TryGetString(w, out var ws, "status") &&
+                                (ws.Equals("healthy", StringComparison.OrdinalIgnoreCase) ||
+                                 ws.Equals("ok", StringComparison.OrdinalIgnoreCase)))
+                                healthy++;
+                        }
                     }
                 }
+                catch (Exception ex) { _log.LogDebug(ex, "workers parse failed"); }
             }
-            catch (Exception ex) { _log.LogDebug(ex, "workers parse failed"); }
         }
 
         var sample = new TelemetrySample(
