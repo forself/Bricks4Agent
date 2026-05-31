@@ -1152,6 +1152,7 @@ if (poolEnabled)
 {
     WorkerEndpoints.Map(api);
     DiagnosticsEndpoints.Map(api);
+    TelemetryEndpoints.Map(api);   // GET /telemetry/history — 唯讀健康時間序列(派發 telemetry.history)
     QuoteWorkerEndpoints.Map(api);
     QuoteOhlcvEndpoints.Map(api);
     TradingEndpoints.Map(api);

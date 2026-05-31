@@ -177,6 +177,15 @@
     <div id="cHealth" class="chart"></div>
   </div>
 
+  <!-- 4b. broker 健康趨勢（telemetry-worker 時間序列）-->
+  <div class="card wide">
+    <div class="card-title">
+      <span class="main">📉 broker 健康趨勢 <span style="font-weight:400;color:var(--td)">(Health Over Time · telemetry-worker)</span></span>
+      <span class="sub" id="htSub">—</span>
+    </div>
+    <div id="cHealthTrend" class="chart"></div>
+  </div>
+
   <!-- 5. 服務延遲 p50/p95/p99 -->
   <div class="card wide">
     <div class="card-title">
@@ -214,7 +223,7 @@ const CHART_THEME = {
   backgroundColor: 'transparent',
 };
 function newChart(id) { return echarts.init(document.getElementById(id), null, { renderer: 'svg' }); }
-const ch = { cpu: newChart('cCpu'), mem: newChart('cMem'), net: newChart('cNet'), health: newChart('cHealth'), lat: newChart('cLat') };
+const ch = { cpu: newChart('cCpu'), mem: newChart('cMem'), net: newChart('cNet'), health: newChart('cHealth'), healthTrend: newChart('cHealthTrend'), lat: newChart('cLat') };
 
 // ─────── helpers ───────
 function fmtBytes(b) {
@@ -380,6 +389,56 @@ async function loadHealth() {
   } catch (e) { console.warn('health', e); }
 }
 
+// ─────── 4b. broker 健康趨勢（telemetry-worker 時間序列）───────
+async function loadHealthTrend() {
+  try {
+    const r = await fetch('/api/v1/telemetry/history?minutes=180&limit=1000', { credentials: 'include' });
+    if (r.status === 503) { document.getElementById('htSub').textContent = 'telemetry-worker 未連線'; return; }
+    const j = await r.json();
+    if (!j.success) { document.getElementById('htSub').textContent = '無資料'; return; }
+    // worker 回 newest-first → reverse 成 oldest→newest(時間軸左→右)
+    const samples = (j.data.samples || []).slice().reverse();
+    document.getElementById('htSub').textContent = samples.length
+      ? `${samples.length} 點 · 共 ${j.data.total_samples ?? samples.length} 筆` : '暫無資料';
+    if (!samples.length) {
+      ch.healthTrend.setOption({ ...CHART_THEME, title: { text: '暫無 telemetry 資料（worker 剛上線）', left: 'center', top: 'middle', textStyle: { color: '#6b7388', fontSize: 13, fontWeight: 400 } } }, true);
+      return;
+    }
+    const t = samples.map(s => s.sampled_at);
+    ch.healthTrend.setOption({
+      ...CHART_THEME,
+      tooltip: {
+        trigger: 'axis',
+        formatter: ps => {
+          const s = samples[ps[0].dataIndex];
+          return `${new Date(s.sampled_at).toLocaleString('zh-TW', { hour12: false })}<br>`
+               + `score ${s.health_score == null ? '— (unreachable)' : s.health_score} · ${s.status}<br>`
+               + `workers ${s.workers_healthy}/${s.workers_total}`;
+        },
+      },
+      legend: { top: 0, right: 8, textStyle: { color: '#6b7388' }, data: ['health score', 'healthy workers'] },
+      grid: { left: 8, right: 48, top: 24, bottom: 40, containLabel: true },
+      xAxis: { type: 'category', data: t, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 9, formatter: v => new Date(v).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) } },
+      yAxis: [
+        { type: 'value', min: 0, max: 100, name: 'score', nameTextStyle: { color: '#6b7388', fontSize: 10 }, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(42,49,66,0.4)' } } },
+        { type: 'value', min: 0, name: 'workers', position: 'right', nameTextStyle: { color: '#6b7388', fontSize: 10 }, axisLine: { lineStyle: { color: '#2a3142' } }, axisLabel: { color: '#6b7388', fontSize: 10 }, splitLine: { show: false } },
+      ],
+      series: [
+        {
+          name: 'health score', type: 'line', smooth: true, showSymbol: false, connectNulls: false,
+          data: samples.map(s => s.health_score),
+          lineStyle: { color: '#67c23a', width: 2 }, areaStyle: { color: 'rgba(103,194,58,0.10)' },
+          markLine: { silent: true, symbol: 'none', label: { color: '#e6a23c', fontSize: 10 }, lineStyle: { color: '#e6a23c', type: 'dashed' }, data: [{ yAxis: 80, name: '健康門檻' }] },
+        },
+        {
+          name: 'healthy workers', type: 'line', yAxisIndex: 1, step: 'end', showSymbol: false,
+          data: samples.map(s => s.workers_healthy), lineStyle: { color: '#5db8ff', width: 1.5 },
+        },
+      ],
+    }, true);
+  } catch (e) { console.warn('healthTrend', e); document.getElementById('htSub').textContent = '載入失敗'; }
+}
+
 // ─────── 5. 服務延遲 p50/p95/p99 ───────
 async function loadLat() {
   try {
@@ -463,7 +522,7 @@ async function checkAuth() {
 
 // ─────── Master refresh ───────
 async function loadAll() {
-  await Promise.all([loadContainers(), loadHealth(), loadLat(), loadErrors()]);
+  await Promise.all([loadContainers(), loadHealth(), loadHealthTrend(), loadLat(), loadErrors()]);
 }
 (async () => {
   const ok = await checkAuth();
