@@ -23,6 +23,10 @@ services:
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/test-broker.db"
+      # 必須:開 FunctionPool 才會註冊 IWorkerRegistry + 起 7000 worker listener
+      #（HealthScoreService 硬依賴 IWorkerRegistry,沒開會 DI crash)。ContainerManager 不開(不讓 test broker 管容器)。
+      FunctionPool__Enabled: "true"
+      FunctionPool__ListenPort: "7000"
       # 拋棄式 master key(隔離測試 DB、不保護任何真實資料);ECDH 沒給 broker 會自動產
       Broker__Encryption__MasterKeyBase64: "${TEST_MASTER_KEY:-}"
       Broker__ScopedToken__Secret: "${TEST_TOKEN_SECRET:-isolated-test-only-not-a-real-secret}"
