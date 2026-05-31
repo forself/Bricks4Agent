@@ -1,0 +1,72 @@
+# 隔離測試 harness —— 驗證 worker 真能跑(註冊/取樣/approval/audit),完全不碰實盤。
+#
+# 隔離手段:獨立 project name(b4a-isolated)+ 獨立網路(b4a-test-net)+ 獨立 DB volume +
+#   broker-test 不映射 host port(用 docker exec curl 驗)+ 無交易所 key + AutoTrader 不啟用。
+#   → 跟 compose.trading.yml 那套實盤完全分離,worker 連的是 broker-test、不是實盤 broker。
+#
+# 用法(VPS,master key 用拋棄式即時生成、不落 git):
+#   cd /opt/b4a
+#   TEST_MASTER_KEY=$(openssl rand -base64 32) \
+#     docker compose -p b4a-isolated -f tools/compose.isolated-test.yml up -d --build
+#   ...驗證...
+#   docker compose -p b4a-isolated -f tools/compose.isolated-test.yml down -v   # -v 連測試 DB 一起清
+#
+# broker-test 重用既有 b4a-broker:latest image(tool-specs 已 baked,code.exec / telemetry.history
+#   會自動 sync 進 test broker 的 capabilities 表)。
+
+name: b4a-isolated
+
+services:
+  broker-test:
+    image: b4a-broker:latest          # 重用既有 image、不 rebuild broker
+    container_name: b4a-broker-test
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:5000"
+      Database__Path: "/data/test-broker.db"
+      # 拋棄式 master key(隔離測試 DB、不保護任何真實資料);ECDH 沒給 broker 會自動產
+      Broker__Encryption__MasterKeyBase64: "${TEST_MASTER_KEY:-}"
+      Broker__ScopedToken__Secret: "${TEST_TOKEN_SECRET:-isolated-test-only-not-a-real-secret}"
+      # 不放任何交易所 key、不 enable AutoTrader → 這個 broker 不會下任何單
+    networks: [test-net]
+    volumes:
+      - test-broker-data:/data
+    restart: "no"
+
+  telemetry-worker-test:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/telemetry-worker/Containerfile
+    image: b4a-telemetry-worker:latest
+    container_name: b4a-telemetry-worker-test
+    environment:
+      WORKER_Worker__BrokerHost: "broker-test"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__Telemetry__BrokerApiUrl: "http://broker-test:5000"
+      WORKER_Worker__Telemetry__SampleIntervalSeconds: "10"
+      WORKER_Worker__Telemetry__DbPath: "/data/telemetry.db"
+    networks: [test-net]
+    volumes:
+      - test-telemetry-data:/data
+    depends_on: [broker-test]
+    restart: "no"
+
+  code-exec-worker-test:
+    build:
+      context: ..
+      dockerfile: packages/csharp/workers/code-exec-worker/Containerfile
+    image: b4a-code-exec-worker:latest
+    container_name: b4a-code-exec-worker-test
+    environment:
+      WORKER_Worker__BrokerHost: "broker-test"
+      WORKER_Worker__BrokerPort: "7000"
+    networks: [test-net]
+    depends_on: [broker-test]
+    restart: "no"
+
+networks:
+  test-net:
+    name: b4a-test-net
+
+volumes:
+  test-broker-data:
+  test-telemetry-data:
