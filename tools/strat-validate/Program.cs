@@ -163,6 +163,8 @@ string[] symbols = etfMode
     ("donchian_fade_ls", new DonchianFadeLsStrategy()),
     // 第三批(諧波 / 斐波那契)
     ("fib_retrace_ls",   new FibRetraceLsStrategy()),
+    // 使用者完整斐波規則 v1(2026-06-02):分級點位+連2根站穩+目標1+深度+SL下一階。對照 fib_retrace_sl_ls。
+    ("fib_confluence_ls", new FibConfluenceLsStrategy()),
     ("harmonic_ls",      new HarmonicLsStrategy()),
     // 研究實驗(harmonic research log H1, 2026-05-26):諧波 + 橫盤 regime 閘
     ("harmonic_range_ls", new HarmonicRangeLsStrategy()),
