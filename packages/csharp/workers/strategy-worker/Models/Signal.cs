@@ -20,6 +20,12 @@ public class Signal
     /// <summary>選用停損。多單:後續 K 線 low 觸到此價即出場。null = 不啟用。</summary>
     public decimal? StopPrice { get; set; }
 
+    /// <summary>選用「部分出場」目標(scale-out)。多單:觸到此價先平掉 PartialExitFraction 比例、其餘續抱到 TargetPrice/StopPrice。
+    /// null = 不啟用(整倉進出)。比 TargetPrice 近(沿途先落袋一半)。Phase 2:fib 1.13~1.272 反轉區平 50%。</summary>
+    public decimal? PartialTargetPrice { get; set; }
+    /// <summary>部分出場比例(0~1)。null/0 但有 PartialTargetPrice 時引擎用預設 0.5。</summary>
+    public decimal? PartialExitFraction { get; set; }
+
     public string Interval    { get; set; } = "1d";
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 

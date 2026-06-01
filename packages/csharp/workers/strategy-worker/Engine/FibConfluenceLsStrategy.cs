@@ -16,7 +16,13 @@ namespace StrategyWorker.Engine;
 /// </summary>
 public class FibConfluenceLsStrategy : IStrategy
 {
-    public string Name => "fib_confluence_ls";
+    private readonly string _name;
+    private readonly bool _emitPartial;
+    /// <summary>emitPartial=true → 在 fib 1.13(反轉區起點)發 PartialTargetPrice 平 50%、其餘續抱到目標(Phase 2)。</summary>
+    public FibConfluenceLsStrategy(string name = "fib_confluence_ls", bool emitPartial = false)
+    { _name = name; _emitPartial = emitPartial; }
+
+    public string Name => _name;
     public string Description => "Fib 匯流(多空)— 分級點位+連2根站穩進場、目標=1+深度、SL=下一階(使用者完整規則 v1)";
     public StrategyCategory Category => StrategyCategory.Pattern;
     public int MinBars => 70;
@@ -125,6 +131,9 @@ public class FibConfluenceLsStrategy : IStrategy
                    + $"(SL@{slPrice:F2} TP@{tgtPrice:F2}, 高{high:F2}/低{low:F2})",
             StopPrice = Math.Round(slPrice, 4),
             TargetPrice = Math.Round(tgtPrice, 4),
+            // Phase 2:到 fib 1.13(反轉區起點)先平 50%、其餘續抱到目標。升勢在高之上、跌勢在低之下。
+            PartialTargetPrice = _emitPartial ? Math.Round(up ? low + 1.13m * range : high - 1.13m * range, 4) : (decimal?)null,
+            PartialExitFraction = _emitPartial ? 0.5m : (decimal?)null,
             Indicators = new()
             {
                 ["swing_high"]  = Math.Round(high, 4),

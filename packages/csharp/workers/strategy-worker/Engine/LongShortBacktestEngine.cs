@@ -68,6 +68,7 @@ public static class LongShortBacktestEngine
         decimal activeStopPrice = 0m;    // H2-Fib SL 支援:開倉時鎖定的停損價(0=不啟用、靠反向訊號平倉)
         decimal activeTargetPrice = 0m;  // H16 TP 支援:開倉時鎖定的獲利目標(0=不啟用)
         decimal peakPrice = 0m;          // H18 peak-trail:position 期間的最佳價(long=最高、short=最低、跟 AutoTraderService.PeakPrice 對齊)
+        decimal activePartialTarget = 0m; decimal partialFraction = 0m; bool partialDone = false;  // Phase 2 部分出場(scale-out)
         decimal peakEquity = initialCash, maxDrawdown = 0m, prevEquity = initialCash;
         var dailyReturns = new List<decimal>();
 
@@ -96,9 +97,35 @@ public static class LongShortBacktestEngine
                 EntryConfidence = entryConfidence,
             });
             position = 0m; entryPrice = 0m; entryIndex = -1; entryConfidence = 0m; activeStopPrice = 0m; activeTargetPrice = 0m; peakPrice = 0m;
+            activePartialTarget = 0m; partialFraction = 0m; partialDone = false;
         }
 
-        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target, decimal confidence)
+        // Phase 2 部分出場:平掉 frac 比例、其餘續抱(entryPrice 不變)。記一筆 trade、PnL 照算。
+        void PartialCloseAt(int i, decimal px, decimal frac)
+        {
+            if (position == 0m || frac <= 0m || frac >= 1m) return;
+            decimal closeQty = Math.Abs(position) * frac;
+            decimal closedPos = (position > 0m ? 1m : -1m) * closeQty;
+            decimal exitNotional = closeQty * px;
+            cash += closedPos * px;
+            cash -= exitNotional * costRate;
+            decimal pnl = closedPos * (px - entryPrice) - closeQty * entryPrice * costRate - exitNotional * costRate;
+            decimal pnlPct = entryPrice > 0m
+                ? (position > 0m ? (px - entryPrice) : (entryPrice - px)) / entryPrice * 100m : 0m;
+            result.Trades.Add(new BacktestEngine.BacktestTrade
+            {
+                Side = position > 0m ? "long" : "short",
+                EntryDate = entryDate, EntryPrice = entryPrice,
+                ExitDate = bars[i].OpenTime, ExitPrice = px,
+                Quantity = closeQty, Pnl = Math.Round(pnl, 2), PnlPct = Math.Round(pnlPct, 2),
+                HoldBars = entryIndex >= 0 ? i - entryIndex : 0, EntryConfidence = entryConfidence,
+            });
+            position -= closedPos;      // 剩 (1-frac) 部位續抱
+            partialDone = true;
+        }
+
+        void OpenAt(int i, decimal px, int dir, decimal sizeScale, decimal stop, decimal target, decimal confidence,
+            decimal partialTarget, decimal partialFrac)
         {
             decimal eqNow = cash;                        // 已平倉、position=0 → equity=cash
             decimal notional = eqNow * notionalPct * sizeScale;
@@ -111,6 +138,9 @@ public static class LongShortBacktestEngine
             activeStopPrice = stop;                       // H2-Fib SL:訊號未帶 stop 時=0、不啟用
             activeTargetPrice = target;                   // H16 TP:訊號未帶 target 時=0、不啟用
             peakPrice = px;                               // H18 peak-trail:從進場價開始追蹤
+            activePartialTarget = partialTarget;          // Phase 2:訊號未帶=0、不啟用
+            partialFraction = (partialFrac > 0m && partialFrac < 1m) ? partialFrac : 0.5m;
+            partialDone = false;
         }
 
         for (int i = lookback; i < bars.Count; i++)
@@ -132,6 +162,12 @@ public static class LongShortBacktestEngine
                     CloseAt(i, activeStopPrice);          // 在 SL 價位出場(保守、會清 activeStopPrice)
                     stoppedOutThisBar = true;
                 }
+            }
+            // Phase 2 部分出場:未停損、有 partial target、還沒部分平過 → 觸價平 fraction、其餘續抱到 TP/SL
+            if (!stoppedOutThisBar && position != 0m && activePartialTarget > 0m && !partialDone)
+            {
+                bool ptHit = position > 0m ? bars[i].High >= activePartialTarget : bars[i].Low <= activePartialTarget;
+                if (ptHit) PartialCloseAt(i, activePartialTarget, partialFraction);
             }
             // H16 TP:SL 未觸發才檢 TP(同根 SL+TP 都進範圍 → 按 SL 出、不雙重歸因)
             if (!stoppedOutThisBar && position != 0m && activeTargetPrice > 0m)
@@ -196,7 +232,8 @@ public static class LongShortBacktestEngine
                             ? price * (1m - defaultInitialSlPct / 100m)   // long:entry × (1 − pct%)
                             : price * (1m + defaultInitialSlPct / 100m); // short:entry × (1 + pct%)
                     }
-                    OpenAt(i, price, desired, sizeScale, effectiveStop, signal.TargetPrice ?? 0m, signal.Confidence);
+                    OpenAt(i, price, desired, sizeScale, effectiveStop, signal.TargetPrice ?? 0m, signal.Confidence,
+                        signal.PartialTargetPrice ?? 0m, signal.PartialExitFraction ?? 0m);
                 }
             }
 
