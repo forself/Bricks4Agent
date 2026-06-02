@@ -55,16 +55,35 @@ edge 在大 10 流動幣(你量到)。BTC/ETH 永續深(數十億 ADV),個人跑
 
 ---
 
-## 把框架套到「比較難」的案例:rsi_stoch(動量/震盪)
+## 整本 live 書的 edge 經濟學(以程式碼實際 Category 為準)
 
-funding carry 是 easy mode(現金流明擺著)。動量類的硬處在「誰付錢」沒那麼明顯——這才是真考驗:
-- **誰在另一邊**:追高殺低的對手 = 對新資訊**反應不足**的人(資訊擴散慢)、或**處置效應**太早賣贏家的人。
-- **來源**:主要**行為**(underreaction)+ 部分**風險溢酬**(動量崩盤 momentum crash 的尾部風險補償,2009/2022 那種急反轉)。
-- **為什麼沒套利掉**:動量崩盤的尾部風險讓套利者卻步(它會週期性大爆);crowding 後溢酬縮。
-- **什麼殺死它**:急反轉(momentum crash)、過度擁擠、低波動橫盤(沒趨勢可吃)。
-- **分類**:行為異常為主 → **比 funding carry 的風險溢酬部分更會衰減**,要更小心 OOS + 擁擠。
+> live 清單(strat-validate liveStrats):`rsi_stoch, mfi, donchian_fade_ls, dual_mom_ls, ts_momentum, ma_regime_trend, decorr4_ls`。
+> 攤開後分兩大家族 + 一個組合。**設計上很去相關(趨勢 + MR + fade),但各條 edge 的「硬度」差很多。**
 
-→ 文獻:Jegadeesh-Titman(1993, 動量)、AQR 的 carry/momentum 跨資產系列、López de Prado(回測嚴謹度)。**知道你的 edge 在文獻的哪裡 = 答辯時能站住。**
+| 策略 | 實際分類 | 誰付錢給你 | 來源 | 什麼殺死它 | edge 硬度 |
+|---|---|---|---|---|---|
+| **ts_momentum** | Trend(vol-gated) | 對新資訊反應不足者 / 末段 FOMO 追高者 | 行為 underreaction + **動量崩盤尾部風險溢酬** | 急反轉(momentum crash)、橫盤 | **最硬**(跨資產百年最穩異常 + vol 閘門防崩) |
+| **ma_regime_trend** | Trend(long-biased) | 同上;緩漲段留得住 | 同上 | 頂部急轉(早離場緩解)、假突破洗 | 硬(long-biased 不吃做空逆風) |
+| **dual_mom_ls** | Momentum(多空) | 同上 | 同上 | 同上 + **做空腿吃 crypto 上行逆風** | 中(多空在 crypto 比 long-biased 弱) |
+| **donchian_fade_ls** | MeanReversion(ADX 閘) | 在區間邊緣被假突破洗的突破客 | 行為(假突破)+ 區間內多數突破會失敗 | **趨勢市**(ADX 閘已擋掉一部分) | 中(ADX 閘是它比裸 MR 強的關鍵) |
+| **mfi** | MeanReversion(量價) | 恐慌/被迫賣方(量能確認衰竭) | 行為過度反應 + 流動性提供 | **崩盤接刀**、擁擠 | 弱-中(量價比純價 RSI 稍好) |
+| **rsi_stoch** | MeanReversion | 恐慌/被迫賣方 | 行為過度反應 + 流動性提供 | **崩盤接刀(你自己的「裸 MR 爆倉」鐵律)** | **最弱**(最多人用的指標、被高度競爭) |
+| decorr4_ls | 組合(VPS 配、非 repo) | = 成員加權 | = 成員 | = 最弱成員 + 相關性上升 | 看成員(去相關是 portfolio 級好處) |
+
+**讀法**:
+- **趨勢家族(ts_momentum / ma_regime / dual_mom)edge 最硬**——有人**結構性反應不足** + 你被付錢承擔**動量崩盤**尾部風險。這是百年跨資產最穩的異常。long-biased(ts/ma)比多空(dual)在 crypto 強。
+- **MR 家族(rsi_stoch / mfi / donchian_fade)edge 最脆**——賺的是恐慌者的短期錯誤 + 接刀補償,**沒有人結構性付你錢**。`donchian_fade` 靠 ADX 閘避開趨勢、最防得住;`rsi_stoch`/`mfi` 用最多人看的指標、最該被懷疑。
+- 你的 bear audit 量到的(oi_contrarian / 某 tsmom 變體熊市失敗)跟這張表一致:**MR 與多空在熊/急轉 regime 最先死。**
+
+### rsi_stoch 真錢前必確認清單(它 edge 最弱、最該嚴控)
+
+- [ ] **long-only?**(sell = 出場、**不是放空**)。放空 crypto 超買 rip = 爆倉路徑;long-only buy-the-dip 才活。**確認 live watch mode。**
+- [ ] **硬止損?** MR 失敗模式 = 跌了再跌;沒止損的 buy-the-dip 崩盤歸零。確認 `_protectionConfig.InitialSlPct` / bracket SL 有開。
+- [ ] **bear/急跌 gate?** 它的死法就在崩盤接刀。考慮 BTC regime 閘(同 funding carry 的 200d-SMA 外生閘),熊市縮倉/關。
+- [ ] **小倉**:edge 最弱 → 權重該最小、別當主引擎。
+- [ ] **擁擠監測**:RSI/Stoch 全世界在用,定期看 live vs backtest 勝率偏離(shadow 週報)——衰減先兆。
+
+→ 文獻:Jegadeesh-Titman(1993, 動量)、AQR carry/value/momentum 跨資產、López de Prado《Advances in Financial ML》(回測嚴謹度、你已在用他的方法)。**知道 edge 在文獻哪裡 = 答辯站得住。**
 
 ---
 
