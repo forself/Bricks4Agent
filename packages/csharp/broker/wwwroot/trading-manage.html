@@ -308,6 +308,35 @@
       ℹ️ 同一交易所同一類型(live / demo)只能一筆 active;要換 key 先停用或刪舊的。
     </div>
   </div>
+
+  <div class="card">
+    <h3>📣 推播頻道</h3>
+    <div class="grid2">
+      <div><label>類型</label>
+        <select id="me-ch-type" style="width:100%">
+          <option value="discord">Discord webhook</option>
+          <option value="line">LINE token(路由 follow-on)</option>
+        </select></div>
+      <div><label>標籤(選填)</label>
+        <input id="me-ch-label" placeholder="我的頻道" style="width:100%"></div>
+      <div style="grid-column:1/-1"><label>目標(Discord webhook URL / LINE token)</label>
+        <input id="me-ch-target" autocomplete="off" class="mono" placeholder="https://discord.com/api/webhooks/..." style="width:100%"></div>
+      <div><button class="btn-y btn-sm" onclick="addMyChannel()">加入</button></div>
+    </div>
+    <div id="me-ch-msg" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h3>已登記推播頻道(每日彙整推到你自己的頻道)</h3>
+    <table id="me-ch-table" style="font-size:12px">
+      <thead><tr><th>類型</th><th>標籤</th><th>狀態</th><th>建立</th><th>最近使用</th><th>操作</th></tr></thead>
+      <tbody><tr><td colspan="6" class="muted">—</td></tr></tbody>
+    </table>
+    <div class="hint">
+      ℹ️ 目標(webhook URL / token)用 broker master key (AES-256-GCM) 加密儲存、只回遮罩。<br>
+      ℹ️ 每日 UTC 0 點,系統會把「只含你自己成交」的 PnL 彙整推到這裡(admin 收系統總覽)。MVP 路由先支援 Discord。
+    </div>
+  </div>
 </div>
 
 <h2 data-admin="1">👥 用戶管理 · admin only</h2>
@@ -610,6 +639,7 @@ async function totpDisable(){
 }
 async function loadMe(){
   refreshTotpStatus();
+  loadMyChannels();
   const r = await _authFetch('/api/v1/exchange-credentials/');
   const v = document.getElementById('me-viewer');
   const tb = document.querySelector('#me-cred-table tbody');
@@ -679,6 +709,64 @@ async function deleteMyCred(entryId, exchange){
   if(!confirm(`刪除 ${exchange} 憑證?此動作不可逆。`))return;
   const r = await _authFetch('/api/v1/exchange-credentials/'+encodeURIComponent(entryId), {method:'DELETE'});
   if(r.success){toastOk('已刪除');loadMe()} else toastErr(r.message);
+}
+
+/* ───────────── 推播頻道(per-principal、每日彙整路由)───────────── */
+async function loadMyChannels(){
+  const tb = document.querySelector('#me-ch-table tbody');
+  if(!tb) return;
+  const r = await _authFetch('/api/v1/notification-channels/');
+  if(!r?.success){ tb.innerHTML = '<tr><td colspan="6" class="red">'+(r?.message||'unauthorized')+'</td></tr>'; return; }
+  const chs = r.data.channels || [];
+  if(chs.length===0){ tb.innerHTML = '<tr><td colspan="6" class="muted">尚未登記推播頻道</td></tr>'; return; }
+  tb.innerHTML = chs.map(c => {
+    const status = c.disabled ? '<span class="muted">停用</span>' : '<span class="grn">啟用</span>';
+    const lastUsed = c.last_used_at ? new Date(c.last_used_at).toLocaleString() : '—';
+    const toggleBtn = c.disabled
+      ? `<button class="btn-sm" onclick="toggleMyChannel('${c.entry_id}',false)">啟用</button>`
+      : `<button class="btn-sm" onclick="toggleMyChannel('${c.entry_id}',true)">停用</button>`;
+    return `<tr>
+      <td><strong>${esc(c.channel_type)}</strong></td>
+      <td>${esc(c.label)||'<span class="muted">—</span>'}</td>
+      <td>${status}</td>
+      <td>${new Date(c.created_at).toLocaleDateString()}</td>
+      <td>${lastUsed}</td>
+      <td>
+        <button class="btn-y btn-sm" onclick="testMyChannel('${c.entry_id}')">測試</button>
+        ${toggleBtn}
+        <button class="btn-arm btn-sm" onclick="deleteMyChannel('${c.entry_id}','${esc(c.channel_type)}')">刪除</button>
+      </td></tr>`;
+  }).join('');
+}
+async function addMyChannel(){
+  const type = document.getElementById('me-ch-type').value;
+  const target = document.getElementById('me-ch-target').value.trim();
+  const label = document.getElementById('me-ch-label').value;
+  const msg = document.getElementById('me-ch-msg');
+  if(!target){msg.textContent='缺目標(webhook URL / token)';msg.style.color='var(--red)';return}
+  msg.textContent='儲存中...';msg.style.color='var(--mut)';
+  const r = await _authFetch('/api/v1/notification-channels/', {method:'POST',
+    body: JSON.stringify({channel_type:type,target,label})});
+  if(!r.success){msg.textContent='✗ '+(r.message||'failed');msg.style.color='var(--red)';return}
+  msg.textContent='✓ 已加入';msg.style.color='var(--grn)';
+  document.getElementById('me-ch-target').value='';
+  document.getElementById('me-ch-label').value='';
+  setTimeout(()=>{msg.textContent='';loadMyChannels()}, 800);
+}
+async function testMyChannel(entryId){
+  toastInfo('送測試訊息...');
+  const r = await _authFetch('/api/v1/notification-channels/'+encodeURIComponent(entryId)+'/test', {method:'POST'});
+  if(r.success){toastOk('✓ 已送、去你的頻道看')} else toastErr(r.message||'failed');
+}
+async function toggleMyChannel(entryId, disable){
+  const path = '/api/v1/notification-channels/'+encodeURIComponent(entryId)+'/'+(disable?'disable':'enable');
+  const r = await _authFetch(path, {method:'POST'});
+  if(r.success){toastOk(disable?'已停用':'已啟用');loadMyChannels()} else toastErr(r.message);
+}
+async function deleteMyChannel(entryId, type){
+  if(!confirm(`刪除 ${type} 推播頻道?`))return;
+  const r = await _authFetch('/api/v1/notification-channels/'+encodeURIComponent(entryId), {method:'DELETE'});
+  if(r.success){toastOk('已刪除');loadMyChannels()} else toastErr(r.message);
 }
 
 /* ───────────── 用戶管理（admin only，與 legacy 邏輯一致）───────────── */
