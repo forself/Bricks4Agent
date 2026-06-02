@@ -1,30 +1,47 @@
+using BaseOrm;
+
 namespace BrokerCore.Models;
 
 /// <summary>
 /// 每個 principal 的推播目標（多用戶:朋友收自己的告警 / 每日彙整到自己的頻道）。
-/// target（Discord webhook URL / LINE token）視為 secret、用 AtRestSecretCrypto 加密存。
+/// target（Discord webhook URL / LINE token）視為 secret、用 AtRestSecretCrypto 加密存、
+/// AAD 綁 entry_id + channel_type。
 /// </summary>
+[Table("notification_channels")]
 public class NotificationChannel
 {
-    /// <summary>{owner}:{type}:{guid} — 主鍵。</summary>
-    public string EntryId { get; set; } = string.Empty;
+    [Key(AutoIncrement = false)]
+    [Column("entry_id")]
+    [MaxLength(64)]
+    public string EntryId { get; set; } = string.Empty;       // {owner}:{type}:{guid}
 
-    /// <summary>這個推播頻道屬於哪個 principal。</summary>
+    [Column("owner_principal_id")]
+    [Required]
+    [MaxLength(80)]
     public string OwnerPrincipalId { get; set; } = string.Empty;
 
-    /// <summary>discord（webhook URL）/ line（messaging push token；MVP 先支援 discord 路由）。</summary>
-    public string ChannelType { get; set; } = "discord";
+    [Column("channel_type")]
+    [Required]
+    [MaxLength(20)]
+    public string ChannelType { get; set; } = "discord";      // discord（webhook URL）/ line（token）
 
-    /// <summary>自己取的辨識名。</summary>
+    [Column("label")]
+    [MaxLength(80)]
     public string? Label { get; set; }
 
-    /// <summary>加密的推播目標:Discord webhook URL / LINE token。base64(nonce|ct|tag)。</summary>
-    public string TargetEnc { get; set; } = string.Empty;
+    [Column("target_enc")]
+    [Required]
+    public string TargetEnc { get; set; } = string.Empty;     // base64(nonce|ct|tag) — webhook URL / token
 
-    /// <summary>暫停（保留設定不刪）。</summary>
+    [Column("disabled")]
     public bool Disabled { get; set; }
 
+    [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("last_used_at")]
     public DateTime? LastUsedAt { get; set; }
 }
