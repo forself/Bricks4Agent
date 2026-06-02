@@ -24,10 +24,11 @@
 - [ ] ⚠️ **沒註冊 = 被 deny**:非 admin 無自有憑證查 `/account`/`/positions` 會被擋(Gap 1.5「系統不會用共用/預設帳戶代查」)——這是**設計、不是 bug**,正是防止他掉進你的帳戶。
 - [ ] (API 等價:朋友登入後 `POST /api/v1/exchange-credentials {exchange, api_key, api_secret, is_demo}`)
 
-## Phase 3 — 朋友註冊推播頻道(可選;目前 API only、無 UI)
+## Phase 3 — 朋友註冊推播頻道(可選)
 
-- [ ] 朋友登入後 `POST /api/v1/notification-channels {channel_type:"discord", target:"他的 webhook URL", label}` → 他收**自己的**每日 PnL 彙整到自己頻道。
-- [ ] (TODO 小 follow-on:在 trading-manage.html 加推播頻道 UI;目前只能 API/curl。)
+- [ ] 朋友登入 → `trading-manage.html` →「📣 推播頻道」→ 類型選 Discord、貼自己的 webhook URL、加入 → 按「測試」確認收得到 → 他每天收**自己的** PnL 彙整(commit 3d52dc2,UI 已上)。
+- [ ] (API 等價:`POST /api/v1/notification-channels {channel_type:"discord", target:"webhook URL", label}`。)
+- [ ] (follow-on:LINE per-user 路由 + 即時逐筆告警路由,尚未做。)
 
 ## Phase 4 — 隔離驗收(authed 朋友,**本次併進來的步驟**)
 
