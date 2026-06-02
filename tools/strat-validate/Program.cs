@@ -214,6 +214,20 @@ string[] symbols = etfMode
             (new FibRetraceLsStrategy(),      0.09m),
             (new HarmonicPrzLsStrategy(),     0.15m),
         }, name: "decorr5_with_harmprz")),
+    // ── 2026-06-02 decorr4 弱腿對照:live decorr4(4腿)vs 只留硬腿(dual_mom+dual_thrust)──
+    // 問:bb_revert(沒過 pool t-stat)+ fib_retrace(輸 fib_confluence)在 net ensemble 裡是幫助還是拖累?
+    ("decorr4_full", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.38m),
+            (new DualThrustStrategy(),        0.32m),
+            (new BollingerRevertLsStrategy(), 0.19m),
+            (new FibRetraceLsStrategy(),      0.10m),
+        }, name: "decorr4_full")),
+    ("decorr4_lite", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new DualMomentumLsStrategy(),    0.38m),
+            (new DualThrustStrategy(),        0.32m),
+        }, name: "decorr4_lite")),
     // 純 mean-revert 家族對:harm_prz + bb_revert 互補測試
     ("harm_prz_bb_revert", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
         { (new HarmonicPrzLsStrategy(), 0.5m), (new BollingerRevertLsStrategy(), 0.5m) }, name: "harm_prz_bb_revert")),
