@@ -79,7 +79,8 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var p = CredScopedPayload(req.HttpContext, credSvc, exchange);
+            var (deny, p) = ResolveScopedPayload(req.HttpContext, credSvc, exchange);
+            if (deny != null) return Results.Ok(ApiResponseHelper.Error(deny));
             p["symbol"] = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null;
             p["status"] = req.Query.TryGetValue("status", out var st) ? st.ToString() : (string?)null;
             p["limit"]  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50;
@@ -98,7 +99,9 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var payload = JsonSerializer.Serialize(CredScopedPayload(req.HttpContext, credSvc, exchange));
+            var (deny, p) = ResolveScopedPayload(req.HttpContext, credSvc, exchange);
+            if (deny != null) return Results.Ok(ApiResponseHelper.Error(deny));
+            var payload = JsonSerializer.Serialize(p);
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_account", payload));
             return ToResponse(result);
         });
@@ -111,7 +114,9 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var payload = JsonSerializer.Serialize(CredScopedPayload(req.HttpContext, credSvc, exchange));
+            var (deny, p) = ResolveScopedPayload(req.HttpContext, credSvc, exchange);
+            if (deny != null) return Results.Ok(ApiResponseHelper.Error(deny));
+            var payload = JsonSerializer.Serialize(p);
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_positions", payload));
             return ToResponse(result);
         });
@@ -124,7 +129,8 @@ public static class TradingEndpoints
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var p = CredScopedPayload(req.HttpContext, credSvc, exchange);
+            var (deny, p) = ResolveScopedPayload(req.HttpContext, credSvc, exchange);
+            if (deny != null) return Results.Ok(ApiResponseHelper.Error(deny));
             p["symbol"] = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null;
             p["limit"]  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50;
             var payload = JsonSerializer.Serialize(p);
@@ -590,12 +596,16 @@ public static class TradingEndpoints
     }
 
     /// <summary>
-    /// 多用戶隱私隔離:用 caller 自己的 principal 解析其交易所憑證、把 __credentials 拼進 payload,
+    /// 多用戶隱私隔離 + 安全閘:用 caller 自己的 principal 解析其交易所憑證、把 __credentials 拼進 payload,
     /// 讓 worker 走「用戶自己的帳戶」查 account/positions/orders/trades —— 每個朋友只看到自己的倉。
-    /// 解析不到(該用戶沒註冊該交易所憑證)就不帶 __credentials → worker fallback env 預設 client
-    /// (向後相容:既有單用戶 / 未註冊憑證者行為不變)。
+    /// 回傳 (Deny, Payload):
+    ///   - 解析到自有憑證 → 注入 __credentials、Deny=null。
+    ///   - 沒自有憑證 + caller 是 admin → Deny=null、不帶 __credentials → worker fallback env 預設
+    ///     (單用戶=你、向後相容)。
+    ///   - 沒自有憑證 + caller 非 admin → Deny=錯誤訊息。**絕不 fallback env 預設**,
+    ///     否則朋友會掉進共用帳戶、看到甚至下單到別人(你)的真錢/紙上帳戶(Gap 1.5 安全洞)。
     /// </summary>
-    private static Dictionary<string, object?> CredScopedPayload(
+    private static (string? Deny, Dictionary<string, object?> Payload) ResolveScopedPayload(
         HttpContext ctx, ExchangeCredentialService credSvc, string exchange)
     {
         var d = new Dictionary<string, object?> { ["exchange"] = exchange };
@@ -604,9 +614,15 @@ public static class TradingEndpoints
         {
             var dec = credSvc.Resolve(principalId, exchange);
             if (dec != null)
+            {
                 d["__credentials"] = new { api_key = dec.ApiKey, api_secret = dec.ApiSecret, is_demo = dec.IsDemo };
+                return (null, d);
+            }
         }
-        return d;
+        if (!RequestBodyHelper.IsAdmin(ctx))
+            return ($"未註冊 {exchange} 交易所憑證:請先到「交易所憑證」設定你自己的 API key。" +
+                    "系統不會用共用 / 預設帳戶代查,以免看到別人的倉。", d);
+        return (null, d);  // admin 無自有憑證 → env 預設(你的帳戶,單用戶行為不變)
     }
 
     /// <summary>
