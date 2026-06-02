@@ -87,6 +87,37 @@ public class TradingDbStorage : IDisposable
 
         // 舊 DB 增量遷移：trades.strategy 欄位（idempotent、欄位已存在會吃掉例外）
         TryAddColumn("trades", "strategy", "TEXT");
+
+        // 2026-06-02 多用戶隱私:trades.owner_principal_id（每筆成交歸屬哪個 principal）。
+        // 既有(單用戶時代)成交全是 admin 的真錢/紙上單 → backfill 成 prn_dashboard,
+        // 之後 admin 看全部、朋友只看自己的 owner 列。idempotent:加完欄位 + 補空值。
+        TryAddColumn("trades", "owner_principal_id", "TEXT");
+        BackfillTradeOwners("prn_dashboard");
+        CreateOwnerIndex();
+    }
+
+    private void BackfillTradeOwners(string adminPrincipal)
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "UPDATE trades SET owner_principal_id = $admin WHERE owner_principal_id IS NULL OR owner_principal_id = ''";
+            cmd.Parameters.AddWithValue("$admin", adminPrincipal);
+            var n = cmd.ExecuteNonQuery();
+            if (n > 0) _logger.LogInformation("Backfilled {N} legacy trades → owner={Admin}", n, adminPrincipal);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "BackfillTradeOwners failed (non-fatal)"); }
+    }
+
+    private void CreateOwnerIndex()
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_trades_owner ON trades(owner_principal_id)";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "create idx_trades_owner failed (non-fatal)"); }
     }
 
     private void TryAddColumn(string table, string column, string typeDecl)
@@ -194,12 +225,15 @@ public class TradingDbStorage : IDisposable
             strategy = InferStrategy(trade.Exchange, trade.Symbol, trade.ExecutedAt);
         }
 
+        // 多用戶:空 owner → 預設 admin prn_dashboard(目前 FillPoller/手動單走 env 預設帳戶=admin)。
+        var owner = string.IsNullOrEmpty(trade.OwnerPrincipalId) ? "prn_dashboard" : trade.OwnerPrincipalId;
+
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO trades
-                (trade_id, order_id, symbol, exchange, side, quantity, price, fee, realized_pnl, executed_at, strategy)
+                (trade_id, order_id, symbol, exchange, side, quantity, price, fee, realized_pnl, executed_at, strategy, owner_principal_id)
             VALUES
-                ($tradeId, $orderId, $symbol, $exchange, $side, $qty, $price, $fee, $pnl, $executedAt, $strategy)
+                ($tradeId, $orderId, $symbol, $exchange, $side, $qty, $price, $fee, $pnl, $executedAt, $strategy, $owner)
             """;
         cmd.Parameters.AddWithValue("$tradeId",    trade.TradeId);
         cmd.Parameters.AddWithValue("$orderId",    trade.OrderId);
@@ -212,6 +246,7 @@ public class TradingDbStorage : IDisposable
         cmd.Parameters.AddWithValue("$pnl",        trade.RealizedPnl.HasValue ? (object)(double)trade.RealizedPnl.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$executedAt", trade.ExecutedAt.ToString("o"));
         cmd.Parameters.AddWithValue("$strategy",   string.IsNullOrEmpty(strategy) ? DBNull.Value : (object)strategy);
+        cmd.Parameters.AddWithValue("$owner",      owner);
         cmd.ExecuteNonQuery();
     }
 
@@ -290,13 +325,20 @@ public class TradingDbStorage : IDisposable
         return raw == null ? 0 : Convert.ToInt32(raw);
     }
 
-    public List<TradeRecord> GetTrades(string? symbol = null, int limit = 100, string? exchange = null, DateTime? sinceUtc = null)
+    public List<TradeRecord> GetTrades(string? symbol = null, int limit = 100, string? exchange = null, DateTime? sinceUtc = null, string? ownerPrincipalId = null)
     {
         using var cmd = _conn.CreateCommand();
         var conditions = new List<string>();
         if (symbol   != null) { conditions.Add("symbol = $symbol");      cmd.Parameters.AddWithValue("$symbol", symbol); }
         if (exchange != null) { conditions.Add("exchange = $exchange");  cmd.Parameters.AddWithValue("$exchange", exchange); }
         if (sinceUtc.HasValue){ conditions.Add("executed_at >= $since"); cmd.Parameters.AddWithValue("$since", sinceUtc.Value.ToString("o")); }
+        // 多用戶隱私:ownerPrincipalId 非空 → 只回該 owner 的成交(朋友只看自己);
+        // null → 不過濾(admin 看全部)。
+        if (!string.IsNullOrEmpty(ownerPrincipalId))
+        {
+            conditions.Add("owner_principal_id = $owner");
+            cmd.Parameters.AddWithValue("$owner", ownerPrincipalId);
+        }
         var clause = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
         cmd.CommandText = $"SELECT * FROM trades {clause} ORDER BY executed_at DESC LIMIT $limit";
         cmd.Parameters.AddWithValue("$limit", limit);
@@ -305,6 +347,7 @@ public class TradingDbStorage : IDisposable
         using var r = cmd.ExecuteReader();
         // 用欄位名拿值、不依賴 ordinal——舊 DB 沒 strategy 欄、新 DB 有，欄位順序穩定
         var strategyOrd = r.GetOrdinal("strategy");
+        var ownerOrd    = r.GetOrdinal("owner_principal_id");
         while (r.Read())
         {
             list.Add(new TradeRecord
@@ -320,6 +363,7 @@ public class TradingDbStorage : IDisposable
                 RealizedPnl = r.IsDBNull(r.GetOrdinal("realized_pnl")) ? null : (decimal)r.GetDouble(r.GetOrdinal("realized_pnl")),
                 ExecutedAt  = DateTime.Parse(r.GetString(r.GetOrdinal("executed_at"))),
                 Strategy    = r.IsDBNull(strategyOrd) ? null : r.GetString(strategyOrd),
+                OwnerPrincipalId = r.IsDBNull(ownerOrd) ? null : r.GetString(ownerOrd),
             });
         }
         return list;

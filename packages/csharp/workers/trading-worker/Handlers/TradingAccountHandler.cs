@@ -59,18 +59,22 @@ public class TradingAccountHandler : ICapabilityHandler
         if (opts.TryGetProperty("since", out var sn) && sn.ValueKind == JsonValueKind.String &&
             DateTime.TryParse(sn.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var snDt))
             since = snDt.ToUniversalTime();
+        // 多用戶隱私:broker 對非 admin caller 帶 owner_principal_id → 只回該用戶成交;
+        // admin / 未帶 → null → 不過濾、看全部(政策:admin 看全部、朋友只看自己)。
+        var owner = opts.TryGetProperty("owner_principal_id", out var op) && op.ValueKind == JsonValueKind.String
+            ? op.GetString() : null;
 
-        var trades = _db.GetTrades(symbol: symbol, limit: limit, exchange: exchange, sinceUtc: since);
+        var trades = _db.GetTrades(symbol: symbol, limit: limit, exchange: exchange, sinceUtc: since, ownerPrincipalId: owner);
         var json = JsonSerializer.Serialize(new
         {
             count = trades.Count,
-            symbol, exchange, since, limit,
+            symbol, exchange, since, limit, owner_principal_id = owner,
             trades = trades.Select(t => new
             {
                 trade_id = t.TradeId, order_id = t.OrderId, symbol = t.Symbol, exchange = t.Exchange,
                 side = t.Side, quantity = t.Quantity, price = t.Price,
                 fee = t.Fee, realized_pnl = t.RealizedPnl, executed_at = t.ExecutedAt,
-                strategy = t.Strategy,
+                strategy = t.Strategy, owner_principal_id = t.OwnerPrincipalId,
             })
         });
         return (true, json, null);

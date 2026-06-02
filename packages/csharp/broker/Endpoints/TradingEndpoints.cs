@@ -155,6 +155,7 @@ public static class TradingEndpoints
             {
                 exchange, symbol, limit,
                 since = since?.ToString("o"),
+                owner_principal_id = TradeHistoryOwnerFilter(req.HttpContext),
             });
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_trade_history", payload));
             if (!result.Success)
@@ -249,7 +250,8 @@ public static class TradingEndpoints
             if (req.Query.TryGetValue("since", out var sn) && DateTime.TryParse(sn.ToString(), out var snDt))
                 since = snDt.ToUniversalTime();
 
-            var payload = JsonSerializer.Serialize(new { exchange, symbol, limit, since = since?.ToString("o") });
+            var payload = JsonSerializer.Serialize(new { exchange, symbol, limit, since = since?.ToString("o"),
+                owner_principal_id = TradeHistoryOwnerFilter(ctx) });
             var result = await dispatcher.DispatchAsync(BuildRequest(ctx, "trading.account", "get_trade_history", payload));
             if (!result.Success)
                 return Results.Ok(ApiResponseHelper.Error(result.ErrorMessage ?? "get_trade_history failed"));
@@ -606,6 +608,14 @@ public static class TradingEndpoints
         }
         return d;
     }
+
+    /// <summary>
+    /// 多用戶本地交易歷史隱私 filter(get_trade_history 的 owner_principal_id):
+    /// admin → null(不過濾、看全部);非 admin → caller principal(只看自己的成交)。
+    /// 政策:admin 看全部、朋友只看自己。loopback 內部分析(strategy-pnl)不套此 filter、需全量。
+    /// </summary>
+    private static string? TradeHistoryOwnerFilter(HttpContext ctx)
+        => RequestBodyHelper.IsAdmin(ctx) ? null : RequestBodyHelper.GetPrincipalId(ctx);
 
     // 走 ApprovalAwareResponseHelper：approval gate 卡住的單會被重塑成 status="pending_approval"
     // 結構化回應、不是「失敗 + 字串」、讓 dashboard / bot 兩端都能分得出「真失敗 vs 卡審」。
