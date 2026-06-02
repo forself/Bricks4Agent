@@ -90,3 +90,43 @@ edge 在大 10 流動幣(你量到)。BTC/ETH 永續深(數十億 ADV),個人跑
 ## 給使用者的下一步練習
 
 對你**每一條真錢/shadow 策略**,寫一頁這個 6 題。寫不出「誰付錢 + 為什麼不停」的,就**別放真錢**——那條很可能是過擬合或借來的 beta。這比再跑一條新策略更補你的量化缺口。
+
+---
+
+## 附錄:live 配重診斷 + 按 edge 硬度建議重排(2026-06-02,只給數字、未動 live)
+
+查 VPS live watchlist(shadow=0 active=1)實際 budget,對照 edge 硬度,發現**表面權重藏了錯配**。
+
+**`decorr4_ls`(budget 60、全書最大注)拆解 = NetWeightedEnsemble**:
+`dual_mom_ls 0.38 / dual_thrust 0.32 / bb_revert_ls 0.19 / fib_retrace_ls 0.10`。
+
+**真實單策略曝險(獨立 watch + decorr4 內含)**:
+
+| 策略 | 獨立 | decorr4 內含 | 真實合計 | edge 硬度 |
+|---|---|---|---|---|
+| dual_mom_ls | 42 | 60×0.38≈23 | **~65** ⬆全書最大 | 中(多空逆風) |
+| dual_thrust | 33 | 60×0.32≈19 | ~52 | 硬-ish |
+| ma_regime_trend | 50 | — | 50 | 硬 |
+| ts_momentum | 40 | — | 40 | **最硬** |
+| mfi | 25 | — | 25 | 弱 |
+| bb_revert_ls | 0 | 60×0.19≈11 | ~11 | **弱(沒過 pool t-stat)** |
+| fib_retrace_ls | 0 | 60×0.10≈6 | ~6 | 弱(輸 fib_confluence) |
+
+**兩個錯配**:① decorr4 不是新去相關 edge、是把已超配的 dual_mom/dual_thrust **再加碼** → 真實最大注是「中」硬度的 dual_mom、最硬的 ts_momentum 只第 4。② decorr4 約 30%(bb_revert+fib_retrace,~17 budget)押在沒紮實 edge 故事的腿上(bb_revert 還是你自己「t-stat 不顯著紀律救命案例」)。
+
+**建議重排(gross 同等或更低、按硬度、砍無 edge 腿;數字僅供參考)**:
+
+| 策略 | 現真實 | 建議 | 理由 |
+|---|---|---|---|
+| ts_momentum | 40 | **55** | 最硬 + vol 閘存活 → 該最大 |
+| ma_regime_trend | 50 | 50 | 硬 long-bias、已合適 |
+| dual_thrust | ~52 | 45 | 硬-ish、略降避免過度集中 |
+| dual_mom_ls | ~65 | 40 | 中(多空逆風)、不該全書最大 |
+| mfi | 25 | 25 | 弱→小 + long_only(去相關值、留) |
+| bb_revert_ls | ~11 | **0** | 沒過 t-stat、砍 |
+| fib_retrace_ls | ~6 | **0** | 輸 fib_confluence、砍 |
+| **gross** | ~249 | **~215** | 更保守、砍無 edge 腿 |
+
+**實作選項**:(a) **拆掉 decorr4** → 4 條改成 hardness-weighted 獨立 watch(最透明、消除重複計算,代價=失去 ensemble 的訊號 netting/降 churn);或 (b) 保留 ensemble 但**只放非重複的硬腿**(拿掉 bb_revert/fib_retrace)+ 調獨立 budget 對到真實目標。
+
+**紀律**:這是「**降風險 + 提升配置品質**」(gross 沒升、砍掉無 edge 腿 = de-risk),不是加碼;但動 live 真錢配重仍**留使用者手按**([[feedback_derisk_now_addrisk_waits]])。
