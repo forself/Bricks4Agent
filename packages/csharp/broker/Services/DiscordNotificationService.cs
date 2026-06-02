@@ -241,6 +241,22 @@ public class DiscordNotificationService : BackgroundService
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    /// <summary>
+    /// 多用戶:推一則 embed 到「指定」webhook（不是全域那個）。給每個朋友自己的頻道用。
+    /// 不走 dedup、由 caller 控制節流。
+    /// </summary>
+    public async Task<(bool ok, string? error)> SendAdHocToWebhookAsync(
+        string webhookUrl, string title, string body, int color = 0x2B6CB0, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(webhookUrl)) return (false, "Empty webhook URL");
+        try
+        {
+            await SendEmbedToUrlAsync(webhookUrl, title, body, color, fields: null, timestamp: DateTime.UtcNow, ct: ct);
+            return (true, null);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTestAsync(string? customMessage = null)
     {
         if (!IsEnabled) return (false, "Webhook URL not configured");
@@ -363,7 +379,17 @@ public class DiscordNotificationService : BackgroundService
 
     // ── 底層 webhook ─────────────────────────────────────────────────
 
-    private async Task SendEmbedAsync(
+    private Task SendEmbedAsync(
+        string title,
+        string description,
+        int color,
+        object? fields,
+        DateTime? timestamp,
+        CancellationToken ct)
+        => SendEmbedToUrlAsync(_webhookUrl, title, description, color, fields, timestamp, ct);
+
+    private async Task SendEmbedToUrlAsync(
+        string webhookUrl,
         string title,
         string description,
         int color,
@@ -392,7 +418,7 @@ public class DiscordNotificationService : BackgroundService
 
         try
         {
-            var resp = await client.PostAsJsonAsync(_webhookUrl, payload, ct);
+            var resp = await client.PostAsJsonAsync(webhookUrl, payload, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync(ct);

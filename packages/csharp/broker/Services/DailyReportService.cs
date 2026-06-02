@@ -27,6 +27,7 @@ public class DailyReportService : BackgroundService
     private readonly LineNotificationService _line;
     private readonly AutoTraderService _autoTrader;
     private readonly BrokerCore.Data.BrokerDb _db;
+    private readonly NotificationChannelService _notificationChannels;
     private readonly ILogger<DailyReportService> _logger;
     private readonly int _reportHourUtc;
     private readonly string _exchange;
@@ -38,6 +39,7 @@ public class DailyReportService : BackgroundService
         LineNotificationService line,
         AutoTraderService autoTrader,
         BrokerCore.Data.BrokerDb db,
+        NotificationChannelService notificationChannels,
         ILogger<DailyReportService> logger)
     {
         _dispatcher = dispatcher;
@@ -46,6 +48,7 @@ public class DailyReportService : BackgroundService
         _line = line;
         _autoTrader = autoTrader;
         _db = db;
+        _notificationChannels = notificationChannels;
         _logger = logger;
         _reportHourUtc = ParseIntEnv("DAILY_REPORT_AT_UTC_HOUR", defaultValue: 0, min: -1, max: 23);
         _exchange = Environment.GetEnvironmentVariable("DAILY_REPORT_EXCHANGE") ?? "bingx";
@@ -78,6 +81,7 @@ public class DailyReportService : BackgroundService
             try
             {
                 await BuildAndPushAsync(periodHours: 24, ct);
+                await PushPerUserSummariesAsync(periodHours: 24, ct);   // 多用戶:朋友收自己頻道的彙整
 
                 if (fired.DayOfWeek == DayOfWeek.Sunday)
                 {
@@ -209,6 +213,70 @@ public class DailyReportService : BackgroundService
     }
 
     /// <summary>
+    /// 多用戶:對每個有登記 Discord 頻道的「非 admin」用戶,推一份只含他自己成交的精簡每日彙整。
+    /// admin(prn_dashboard)已從全域 webhook 收系統總覽、這裡跳過避免重複。
+    /// 用 Gap 2 的 owner filter 抓 owner-scoped 成交。回推成功的用戶數。
+    /// </summary>
+    public async Task<int> PushPerUserSummariesAsync(int periodHours, CancellationToken ct, bool push = true)
+    {
+        var channels = _notificationChannels.ListActiveByType("discord")
+            .Where(c => c.OwnerPrincipalId != "prn_dashboard")   // admin 走系統總覽、不重複
+            .GroupBy(c => c.OwnerPrincipalId)
+            .Select(g => g.First())                               // 每 owner 取一個 discord 頻道
+            .ToList();
+        if (channels.Count == 0) return 0;
+
+        var since = DateTime.UtcNow.AddHours(-periodHours);
+        int sent = 0;
+        foreach (var ch in channels)
+        {
+            try
+            {
+                var fetched = await FetchTradesAsync(_exchange, since, ct, ownerPrincipalId: ch.OwnerPrincipalId);
+                var stats = PnlAggregator.Aggregate(fetched.Select(t => t.Pnl));
+                var byStrategy = fetched
+                    .GroupBy(t => string.IsNullOrEmpty(t.Strategy) ? "(無)" : t.Strategy!)
+                    .Select(g => new { Name = g.Key, S = PnlAggregator.Aggregate(g.Select(x => x.Pnl)) })
+                    .OrderByDescending(x => x.S.RealizedPnlSum)
+                    .ToList();
+
+                var pnlSign = stats.RealizedPnlSum >= 0 ? "+" : "";
+                var color   = stats.RealizedPnlSum >= 0 ? 0x0ECB81 : 0xF6465D;
+                var emoji   = stats.RealizedPnlSum >= 0 ? "📈" : "📉";
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"**你的過去 {periodHours}h（{_exchange.ToUpper()}）**");
+                sb.AppendLine($"成交筆數：{stats.TradeCount}  勝率：{stats.WinRatePct:F1}%  Profit Factor：{stats.ProfitFactor:F2}");
+                sb.AppendLine($"已實現 PnL：**{pnlSign}{stats.RealizedPnlSum:F2}** USDT");
+                sb.AppendLine($"勝/敗：{stats.WinCount}/{stats.LoseCount}  平均勝：+{stats.AvgWin:F2}  平均敗：{stats.AvgLoss:F2}");
+                if (byStrategy.Any(x => x.S.TradeCount > 0))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("**按策略**");
+                    foreach (var s in byStrategy.Take(6))
+                    {
+                        if (s.S.TradeCount == 0) continue;
+                        var sign = s.S.RealizedPnlSum >= 0 ? "+" : "";
+                        sb.AppendLine($"・{s.Name}: {s.S.TradeCount}筆 勝率{s.S.WinRatePct:F0}% PnL **{sign}{s.S.RealizedPnlSum:F2}**");
+                    }
+                }
+                var title = $"{emoji} 你的每日交易彙整 · {DateTime.UtcNow:yyyy-MM-dd}";
+
+                if (!push) continue;
+                var (sok, err) = await _discord.SendAdHocToWebhookAsync(ch.Target, title, sb.ToString(), color, ct);
+                if (sok) sent++;
+                else _logger.LogWarning("PerUser daily report push failed for {Owner}: {Err}", ch.OwnerPrincipalId, err);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PerUser daily report failed for {Owner}", ch.OwnerPrincipalId);
+            }
+        }
+        _logger.LogInformation("PerUser daily reports pushed: {Sent}/{Total}", sent, channels.Count);
+        return sent;
+    }
+
+    /// <summary>
     /// 每週 shadow scanner vs backtest 對照(2026-05-29)— 累積 closed leg 統計 + 本期增量,跟 backtest 預期勝率對照、標偏離。
     /// 目標:4 週影子期累積後判斷哪條 live 復現 backtest、可升真錢。純讀 scanner_active_legs。
     /// </summary>
@@ -278,16 +346,19 @@ public class DailyReportService : BackgroundService
     }
 
     private async Task<List<(decimal Pnl, string? Strategy, string? Symbol)>> FetchTradesAsync(
-        string exchange, DateTime sinceUtc, CancellationToken ct)
+        string exchange, DateTime sinceUtc, CancellationToken ct, string? ownerPrincipalId = null)
     {
         var empty = new List<(decimal, string?, string?)>();
         if (!_registry.HasAvailableWorker("trading.account")) return empty;
 
+        // ownerPrincipalId 非空 → get_trade_history 只回該 owner 的成交(每用戶彙整用);
+        // null → 系統總覽(operator 日報、看全部)。
         var payload = JsonSerializer.Serialize(new
         {
             exchange,
             limit = 500,
             since = sinceUtc.ToString("o"),
+            owner_principal_id = ownerPrincipalId,
         });
         var req = new ApprovedRequest
         {

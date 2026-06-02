@@ -67,6 +67,8 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     initDb.EnsureTable<PrincipalSession>();
     // 用戶交易所 API 憑證（Phase A2.5a 2026-05-10）— at-rest AES-GCM 加密、AAD 綁 entry_id
     initDb.EnsureTable<ExchangeCredential>();
+    // 多用戶推播頻道（2026-06-02）— 每個 principal 自己的 Discord webhook / LINE,target at-rest 加密
+    initDb.EnsureTable<NotificationChannel>();
     // Portfolio Scanner Hybrid (2026-05-27 Phase 1) — scanner 定義 + 已開 active legs
     // 核心腿是固定 (策略, 幣);scanner 是「策略 + 候選幣池」、AutoTrader 每 cycle 挑訊號最強的開
     initDb.EnsureTable<ScannerLegEntry>();
@@ -388,6 +390,7 @@ builder.Services.AddSingleton<BrokerCore.Crypto.AtRestSecretCrypto>(sp =>
     return new BrokerCore.Crypto.AtRestSecretCrypto(key);
 });
 builder.Services.AddSingleton<Broker.Services.ExchangeCredentialService>();
+builder.Services.AddSingleton<Broker.Services.NotificationChannelService>();
 builder.Services.AddSingleton<Broker.Services.BacktestHistoryService>();
 builder.Services.AddSingleton<Broker.Services.PortfolioAnalyticsService>();
 builder.Services.AddSingleton<Broker.Services.BenchmarkService>();
@@ -1177,6 +1180,7 @@ if (poolEnabled)
     LabEndpoints.Map(api);
     AuthEndpoints.Map(api);
     ExchangeCredentialsEndpoints.Map(api);
+    NotificationChannelsEndpoints.Map(api);   // 多用戶:每個 principal 管自己的推播頻道
     AdminUsersEndpoints.Map(api);
     ExportEndpoints.Map(api);
     HealthCheckEndpoints.Map(api);
