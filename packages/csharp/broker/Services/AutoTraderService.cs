@@ -270,6 +270,34 @@ public class AutoTraderService : BackgroundService
         return (oldVal, newAnchor);
     }
 
+    /// <summary>
+    /// 多用戶:per-(owner,exchange) 申報資金。key=「owner:exchange」。
+    /// 未設 per-user 時 ResolveDeclaredCapital 會回退到全域「exchange」預設(向後相容)。
+    /// </summary>
+    public (decimal Old, decimal New) UpdateDeclaredCapital(string ownerPrincipalId, string exchange, decimal newAnchor)
+    {
+        var owner = string.IsNullOrEmpty(ownerPrincipalId) ? "prn_dashboard" : ownerPrincipalId;
+        var key = $"{owner}:{exchange.ToLowerInvariant()}";
+        var oldVal = _declaredCapitalByExchange.TryGetValue(key, out var v) ? v : 0m;
+        _declaredCapitalByExchange[key] = newAnchor;
+        _logger.LogInformation("RiskAnchor updated (per-user): {Key} {Old:F2} → {New:F2}", key, oldVal, newAnchor);
+        return (oldVal, newAnchor);
+    }
+
+    /// <summary>
+    /// (owner,exchange) → 申報資金上限。先找 per-user「owner:exchange」、
+    /// 無則回退全域「exchange」預設(env Risk__DeclaredCapital__{ex} / BalanceAnchorService 維護的那個)。
+    /// 回 0 = 未啟用、用實際 balance。
+    /// </summary>
+    public decimal ResolveDeclaredCapital(string ownerPrincipalId, string exchange)
+    {
+        var ex = exchange.ToLowerInvariant();
+        if (!string.IsNullOrEmpty(ownerPrincipalId)
+            && _declaredCapitalByExchange.TryGetValue($"{ownerPrincipalId}:{ex}", out var perUser) && perUser > 0m)
+            return perUser;
+        return _declaredCapitalByExchange.TryGetValue(ex, out var global) ? global : 0m;
+    }
+
     // D1 Phase 2 — PerpProtectionAction / PerpProtectionDecision / EvaluatePerpetualProtection
     // 移到 ProtectionDecisionEngine.cs。Callsite 改用 ProtectionDecisionEngine.EvaluatePerpetualProtection。
 #if D1_PHASE2_REMOVED_BODY  // 留 marker、不會編譯、之後找方便
@@ -2101,27 +2129,36 @@ public class AutoTraderService : BackgroundService
     /// broker 重啟也保留（持久化到 DB），UTC 跨日下個 cycle 自動寫新紀錄。
     /// 沒有特地重置舊紀錄、舊 row 累積在 DB 中、之後想做歷史趨勢可以用。
     /// </summary>
-    private decimal ComputePerpDayPnlPct(string exchange, decimal currentBalance)
+    private decimal ComputePerpDayPnlPct(string ownerPrincipalId, string exchange, decimal currentBalance)
     {
         try
         {
+            // 2026-06-02 多用戶:day-open balance 按 (owner:exchange:date) 隔離。
+            // 之前 key=exchange:date → 同交易所先下單者的餘額會變成全交易所當日基準、
+            // 其他用戶的 r16 當日虧損熔斷會用「別人的餘額」算 day_pnl%(雙向都錯)。
+            var owner = string.IsNullOrEmpty(ownerPrincipalId) ? "prn_dashboard" : ownerPrincipalId;
             var utcDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            var key = $"{exchange}:{utcDate}";
+            var key = $"{owner}:{exchange}:{utcDate}";
             var existing = _db.Get<BrokerCore.Models.PerpDailyOpenBalance>(key);
             if (existing == null)
             {
+                // 平滑遷移:單用戶時代的舊 row 是 {exchange}:{date}。若當日已有舊基準就沿用它,
+                // 不在部署當日把既有用戶的當日虧損基準重置成部署當下餘額(否則熔斷靈敏度被洗掉)。
+                var legacy = _db.Get<BrokerCore.Models.PerpDailyOpenBalance>($"{exchange}:{utcDate}");
+                var openingBalance = legacy != null && legacy.Balance > 0m ? legacy.Balance : currentBalance;
                 _db.Insert(new BrokerCore.Models.PerpDailyOpenBalance
                 {
                     Key = key,
                     Exchange = exchange,
                     UtcDate = utcDate,
-                    Balance = currentBalance,
+                    Balance = openingBalance,
                     CapturedAt = DateTime.UtcNow,
                 });
                 _logger.LogInformation(
-                    "Perp daily open balance recorded for {Ex} on {Date}: {Bal} USDT",
-                    exchange, utcDate, currentBalance);
-                return 0m;
+                    "Perp daily open balance recorded for {Owner}/{Ex} on {Date}: {Bal} USDT{Migrated}",
+                    owner, exchange, utcDate, openingBalance, legacy != null ? " (sourced from legacy key)" : "");
+                if (openingBalance <= 0m) return 0m;
+                return (currentBalance - openingBalance) / openingBalance * 100m;
             }
             if (existing.Balance <= 0m) return 0m;
             return (currentBalance - existing.Balance) / existing.Balance * 100m;
@@ -2282,7 +2319,8 @@ public class AutoTraderService : BackgroundService
 
             // 申報資金錨定：跌會收緊、漲不放寬。0 / 沒設 = 用實際 balance。
             var anchoredBalance = balance;
-            if (_declaredCapitalByExchange.TryGetValue(item.Exchange, out var declared) && declared > 0m)
+            var declared = ResolveDeclaredCapital(item.OwnerPrincipalId, item.Exchange);
+            if (declared > 0m)
                 anchoredBalance = Math.Min(balance, declared);
 
             // ★ Dynamic position sizing（user request）：開倉時動態算 qty 讓 max_loss = balance × risk%
@@ -2540,7 +2578,7 @@ public class AutoTraderService : BackgroundService
             }
 
             // r16 daily loss circuit breaker：取「今日 UTC 開盤 balance」、算當日 PnL%
-            var dayPnlPct = ComputePerpDayPnlPct(item.Exchange, balance);
+            var dayPnlPct = ComputePerpDayPnlPct(item.OwnerPrincipalId, item.Exchange, balance);
 
             var riskPayload = JsonSerializer.Serialize(new
             {
