@@ -144,6 +144,9 @@ public static class TradingEndpoints
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpRequest req, CancellationToken ct) =>
         {
+            // 多用戶:本地交易歷史是隱私資料,必須登入(未認證會讓 owner filter 拿不到 principal)。
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(req.HttpContext)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
@@ -246,6 +249,9 @@ public static class TradingEndpoints
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, HttpRequest req, CancellationToken ct) =>
         {
+            // 多用戶:交易匯出是隱私資料,必須登入(否則 owner filter 拿不到 principal)。
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
@@ -628,10 +634,16 @@ public static class TradingEndpoints
     /// <summary>
     /// 多用戶本地交易歷史隱私 filter(get_trade_history 的 owner_principal_id):
     /// admin → null(不過濾、看全部);非 admin → caller principal(只看自己的成交)。
-    /// 政策:admin 看全部、朋友只看自己。loopback 內部分析(strategy-pnl)不套此 filter、需全量。
+    /// **fail-closed**:非 admin 又拿不到 principal(未認證)→ 回配不到任何 owner 的 sentinel,
+    /// 絕不回空字串(空會被 GetTrades 當「不過濾」→ 洩漏全部成交,2026-06-02 端到端測抓到的漏洞)。
+    /// loopback 內部分析(strategy-pnl)不套此 filter、需全量。
     /// </summary>
     private static string? TradeHistoryOwnerFilter(HttpContext ctx)
-        => RequestBodyHelper.IsAdmin(ctx) ? null : RequestBodyHelper.GetPrincipalId(ctx);
+    {
+        if (RequestBodyHelper.IsAdmin(ctx)) return null;            // admin 看全部
+        var pid = RequestBodyHelper.GetPrincipalId(ctx);
+        return string.IsNullOrEmpty(pid) ? "__unauthenticated__" : pid;  // 非 admin 無 principal → 配不到任何成交
+    }
 
     // 走 ApprovalAwareResponseHelper：approval gate 卡住的單會被重塑成 status="pending_approval"
     // 結構化回應、不是「失敗 + 字串」、讓 dashboard / bot 兩端都能分得出「真失敗 vs 卡審」。
