@@ -1,5 +1,6 @@
 using Broker.Helpers;
 using Broker.Middleware;
+using Broker.Services;
 using BrokerCore.Contracts;
 using BrokerCore.Services;
 using FunctionPool.Registry;
@@ -72,17 +73,17 @@ public static class TradingEndpoints
 
         trading.MapGet("/orders", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            ExchangeCredentialService credSvc, HttpRequest req, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.order"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
-            var payload = JsonSerializer.Serialize(new
-            {
-                symbol = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null,
-                status = req.Query.TryGetValue("status", out var st) ? st.ToString() : (string?)null,
-                limit  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50,
-            });
+            var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
+            var p = CredScopedPayload(req.HttpContext, credSvc, exchange);
+            p["symbol"] = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null;
+            p["status"] = req.Query.TryGetValue("status", out var st) ? st.ToString() : (string?)null;
+            p["limit"]  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50;
+            var payload = JsonSerializer.Serialize(p);
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.order", "list_orders", payload));
             return ToResponse(result);
         });
@@ -91,43 +92,42 @@ public static class TradingEndpoints
 
         trading.MapGet("/account", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            ExchangeCredentialService credSvc, HttpRequest req, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var payload = JsonSerializer.Serialize(new { exchange });
+            var payload = JsonSerializer.Serialize(CredScopedPayload(req.HttpContext, credSvc, exchange));
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_account", payload));
             return ToResponse(result);
         });
 
         trading.MapGet("/positions", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            ExchangeCredentialService credSvc, HttpRequest req, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
             var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
-            var payload = JsonSerializer.Serialize(new { exchange });
+            var payload = JsonSerializer.Serialize(CredScopedPayload(req.HttpContext, credSvc, exchange));
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_positions", payload));
             return ToResponse(result);
         });
 
         trading.MapGet("/trades", async (
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
-            HttpRequest req, CancellationToken ct) =>
+            ExchangeCredentialService credSvc, HttpRequest req, CancellationToken ct) =>
         {
             if (!registry.HasAvailableWorker("trading.account"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 
-            var payload = JsonSerializer.Serialize(new
-            {
-                exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca",
-                symbol   = req.Query.TryGetValue("symbol",   out var s)  ? s.ToString()  : (string?)null,
-                limit    = req.Query.TryGetValue("limit",    out var l) && int.TryParse(l, out var n) ? n : 50,
-            });
+            var exchange = req.Query.TryGetValue("exchange", out var ex) ? ex.ToString() : "alpaca";
+            var p = CredScopedPayload(req.HttpContext, credSvc, exchange);
+            p["symbol"] = req.Query.TryGetValue("symbol", out var s) ? s.ToString() : (string?)null;
+            p["limit"]  = req.Query.TryGetValue("limit", out var l) && int.TryParse(l, out var n) ? n : 50;
+            var payload = JsonSerializer.Serialize(p);
             var result = await dispatcher.DispatchAsync(BuildRequest(req.HttpContext, "trading.account", "get_trades", payload));
             return ToResponse(result);
         });
@@ -585,6 +585,26 @@ public static class TradingEndpoints
             TaskId       = taskId,
             SessionId    = sessionId,
         };
+    }
+
+    /// <summary>
+    /// 多用戶隱私隔離:用 caller 自己的 principal 解析其交易所憑證、把 __credentials 拼進 payload,
+    /// 讓 worker 走「用戶自己的帳戶」查 account/positions/orders/trades —— 每個朋友只看到自己的倉。
+    /// 解析不到(該用戶沒註冊該交易所憑證)就不帶 __credentials → worker fallback env 預設 client
+    /// (向後相容:既有單用戶 / 未註冊憑證者行為不變)。
+    /// </summary>
+    private static Dictionary<string, object?> CredScopedPayload(
+        HttpContext ctx, ExchangeCredentialService credSvc, string exchange)
+    {
+        var d = new Dictionary<string, object?> { ["exchange"] = exchange };
+        var principalId = RequestBodyHelper.GetPrincipalId(ctx);
+        if (!string.IsNullOrEmpty(principalId))
+        {
+            var dec = credSvc.Resolve(principalId, exchange);
+            if (dec != null)
+                d["__credentials"] = new { api_key = dec.ApiKey, api_secret = dec.ApiSecret, is_demo = dec.IsDemo };
+        }
+        return d;
     }
 
     // 走 ApprovalAwareResponseHelper：approval gate 卡住的單會被重塑成 status="pending_approval"
