@@ -345,8 +345,11 @@ public static class TradingEndpoints
         // GET：dashboard 顯示當前 anchor + 最近變動原因
         // POST：admin 手動指定 anchor（bypass deposit/withdraw 偵測）
         trading.MapGet("/risk-anchor/{exchange}", (
-            string exchange, Broker.Services.BalanceAnchorService svc, Broker.Services.AutoTraderService at) =>
+            string exchange, HttpContext ctx, Broker.Services.BalanceAnchorService svc, Broker.Services.AutoTraderService at) =>
         {
+            // 2026-06-03 安全:風險錨/申報資金是 operator 級設定 → admin only(原本無 auth、洩露 capital)。
+            if (!RequestBodyHelper.IsAdmin(ctx))
+                return Results.Json(ApiResponseHelper.Error("admin required", 403), statusCode: 403);
             var state = svc.GetState(exchange);
             var inMemory = at.DeclaredCapital.TryGetValue(exchange.ToLowerInvariant(), out var v) ? v : 0m;
             return Results.Ok(ApiResponseHelper.Success(new
@@ -367,6 +370,9 @@ public static class TradingEndpoints
         trading.MapPost("/risk-anchor/{exchange}", async (
             string exchange, HttpRequest req, Broker.Services.BalanceAnchorService svc, CancellationToken ct) =>
         {
+            // 2026-06-03 安全:這是改真錢風險錨(declared capital → 影響 sizing)的寫入 → admin only(原本無 auth)。
+            if (!RequestBodyHelper.IsAdmin(req.HttpContext))
+                return Results.Json(ApiResponseHelper.Error("admin required", 403), statusCode: 403);
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
             decimal newAnchor;
@@ -393,6 +399,9 @@ public static class TradingEndpoints
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, HttpRequest req, CancellationToken ct) =>
         {
+            // 2026-06-03 安全:策略訊號矩陣 → 至少要登入(defense-in-depth、原本無 auth)。
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             if (!registry.HasAvailableWorker("strategy.signal") || !registry.HasAvailableWorker("quote.ohlcv"))
                 return Results.Ok(ApiResponseHelper.Error("strategy-worker or quote-worker not connected"));
 
