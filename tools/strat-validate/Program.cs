@@ -44,6 +44,12 @@ if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)"
 if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 funding history(LS engine 雙向計費),非預設 0.01%/8h 假設");
 if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
 if (slPct > 0m) Console.WriteLine($"🛑 --sl={slPct}%:LS 引擎固定初始止損(模擬 live 止損、存活測試)");
+// --from=YYYY-MM-DD / --to=YYYY-MM-DD:把 bars 切到日期窗做 regime 分段(如 2022 純熊段)。
+// 需 --bars 夠大涵蓋該窗(如 --from=2022-01-01 配 --bars=2000)。切窗後 OOS fold 變少 → 看 full-period ret/Sh/DD 為主。
+DateTime? winFrom = DateTime.TryParse(args.FirstOrDefault(a => a.StartsWith("--from="))?.Substring(7), out var _wf) ? DateTime.SpecifyKind(_wf, DateTimeKind.Utc) : (DateTime?)null;
+DateTime? winTo   = DateTime.TryParse(args.FirstOrDefault(a => a.StartsWith("--to="))?.Substring(5),   out var _wt) ? DateTime.SpecifyKind(_wt, DateTimeKind.Utc) : (DateTime?)null;
+if (winFrom != null || winTo != null)
+    Console.WriteLine($"🗓 日期窗 {winFrom?.ToString("yyyy-MM-dd") ?? "起"} ~ {winTo?.ToString("yyyy-MM-dd") ?? "今"}:切窗 regime 分段(OOS fold 變少、看 full-period 為主)");
 
 // 多市場驗證(都走 Yahoo 日線 + StockBarCache、funding/retail_ls 自動失效):
 // --stocks   美股跨 sector / --twstocks 台股跨 sector / --fx 外匯主流對+交叉
@@ -448,6 +454,18 @@ foreach (var sym in symbols)
     catch (Exception ex) { Console.WriteLine($"{sym}: {ex.Message}"); }
 }
 Console.WriteLine($"\n資料就緒:{data.Count}/{symbols.Length} 檔(≥400 日線)");
+
+// --from/--to 切窗:在注入(funding/retail)前切,讓注入只 fetch 窗內、B&H 基準也對齊窗(2022 熊 B&H 大跌才是對的對照)
+if (winFrom != null || winTo != null)
+{
+    var lo = winFrom ?? DateTime.MinValue; var hi = winTo ?? DateTime.MaxValue;
+    foreach (var k in data.Keys.ToList())
+    {
+        var w = data[k].Where(b => b.OpenTime >= lo && b.OpenTime <= hi).ToList();
+        if (w.Count >= 60) data[k] = w; else data.Remove(k);  // 窗內太少(< 約 2 個月)就丟
+    }
+    Console.WriteLine($"🗓 切窗後:{data.Count} 檔(窗內 ≥60 bars)");
+}
 
 // 2026-05-29:設 BTC bars 給 BtcRegimeFilterStrategy(tsmom_btc_not_up 才能評估外生 regime、否則退化成 ts_momentum)
 if (data.TryGetValue("BTCUSDT", out var btcRef)) BtcRegimeFilterStrategy.BtcBarsRef = btcRef;
