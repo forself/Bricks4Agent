@@ -87,6 +87,7 @@ public class DailyReportService : BackgroundService
                 {
                     await BuildAndPushAsync(periodHours: 24 * 7, ct);
                     await BuildAndPushScannerShadowAsync(periodHours: 24 * 7, ct);   // 每週 shadow scanner vs backtest 對照
+                    await BuildAndPushLiveDivergenceAsync(periodHours: 24 * 90, ct);  // 每週 真錢腿 backtest vs live 背離(僅背離才推)
                 }
                 if (fired.Day == 1)
                 {
@@ -343,6 +344,67 @@ public class DailyReportService : BackgroundService
         var dr = await _discord.SendAdHocAsync(title, body, 0x3a8bfd, ct);
         _logger.LogInformation("ScannerShadow pushed: discord={D} scanners={N} closed={C}", dr.ok, scanners.Count, totalClosed);
         return (dr.ok, body);
+    }
+
+    /// <summary>
+    /// 真錢腿 backtest vs live 背離監控(2026-06-03)。對每個 budget_pct>0 的真錢策略:
+    /// 部署時 backtest 為正 edge、但 live 累計虧損(≥minTrades 筆)= 背離 → 推 Discord ⚠ 警報。
+    /// 健康時不推、不洗版(只在偵測到背離才告警)。觸發信號用「live 累計 PnL &lt; 0」而非勝率
+    /// (趨勢策略本就低勝率高賺賠比、用勝率會誤報)。
+    /// dual_mom 案例(backtest t3.66 強、live 0/3 虧 −13.5)會被自動抓到——之前靠人肉審計才發現。
+    /// 真錢調整(減碼/下架)仍是人工;此監控只負責「叫」。
+    /// </summary>
+    public async Task<(bool Ok, string Summary, int Diverged)> BuildAndPushLiveDivergenceAsync(
+        int periodHours, CancellationToken ct, bool push = true)
+    {
+        const int minTrades = 3;   // 真錢腿成交稀疏、低門檻;小樣本只當「heads-up」非定論
+        List<BrokerCore.Models.AutoTradeWatchEntry> live;
+        try
+        {
+            live = _db.Query<BrokerCore.Models.AutoTradeWatchEntry>(
+                "SELECT * FROM auto_trade_watchlist WHERE active = 1 AND budget_pct > 0 ORDER BY budget_pct DESC");
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "LiveDivergence: watchlist query failed"); return (false, "query failed", 0); }
+        if (live.Count == 0) return (true, "no real-money legs", 0);
+
+        var since = DateTime.UtcNow.AddHours(-periodHours);
+        var trades = await FetchTradesAsync(_exchange, since, ct);
+        var byStrat = trades.Where(t => t.Strategy != null)
+            .GroupBy(t => t.Strategy!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var diverged = new List<string>();
+        foreach (var leg in live)
+        {
+            byStrat.TryGetValue(leg.Strategy, out var g);
+            int n = g?.Count ?? 0;
+            if (n < minTrades) continue;   // 樣本不足、不判(真錢腿初期常見)
+            int wins = g!.Count(t => t.Pnl > 0);
+            decimal wr = (decimal)wins / n * 100m;
+            decimal cumPnl = g!.Sum(t => t.Pnl);
+            if (cumPnl < 0m)   // 部署=正 edge 卻 live 累計虧 = 背離
+                diverged.Add($"**{leg.Strategy}**（{leg.Symbol} 配重{leg.BudgetPct:F0}%）：{n} 筆 勝率{wr:F0}% 累計 {cumPnl:F1}");
+        }
+
+        if (diverged.Count == 0)
+        {
+            _logger.LogInformation("LiveDivergence: {N} real-money legs checked, no divergence", live.Count);
+            return (true, "no divergence", 0);   // 健康 → 不推
+        }
+
+        var alert = new StringBuilder();
+        alert.AppendLine($"**真錢腿 backtest vs live 背離 — {diverged.Count} 條偏離**");
+        alert.AppendLine("_部署時 backtest 為正 edge、live 卻累計虧損 → 考慮減碼/下架(真錢調整=人工)_");
+        alert.AppendLine();
+        foreach (var d in diverged) alert.AppendLine($"・{d}");
+        alert.AppendLine();
+        alert.AppendLine($"_近 {periodHours / 24}d、≥{minTrades} 筆才判;小樣本當 heads-up 非定論_");
+
+        var body = alert.ToString();
+        if (!push) return (true, body, diverged.Count);
+        var dr = await _discord.SendAdHocAsync($"⚠ 真錢背離警報 · {DateTime.UtcNow:yyyy-MM-dd}", body, 0xff3b30, ct);
+        _logger.LogWarning("LiveDivergence: {N} legs DIVERGED, pushed discord={D}", diverged.Count, dr.ok);
+        return (dr.ok, body, diverged.Count);
     }
 
     private async Task<List<(decimal Pnl, string? Strategy, string? Symbol)>> FetchTradesAsync(

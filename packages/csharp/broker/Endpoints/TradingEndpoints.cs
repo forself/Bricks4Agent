@@ -232,6 +232,16 @@ public static class TradingEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry, dry, summary }));
         });
 
+        // 手動觸發 真錢腿 backtest vs live 背離檢查(?dry=true 不推、只回 summary;預設窗 90d)
+        trading.MapPost("/push-live-divergence", async (
+            Broker.Services.DailyReportService daily, HttpRequest req, CancellationToken ct) =>
+        {
+            var hours = req.Query.TryGetValue("hours", out var h) && int.TryParse(h.ToString(), out var n) ? n : 24 * 90;
+            var dry = req.Query.TryGetValue("dry", out var d) && (d.ToString() == "true" || d.ToString() == "1");
+            var (ok, summary, diverged) = await daily.BuildAndPushLiveDivergenceAsync(hours, ct, push: !dry);
+            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && diverged > 0, dry, diverged, summary }));
+        });
+
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
         trading.MapPost("/symbol-specs/refresh", async (
             Broker.Services.SymbolSpecsService svc, CancellationToken ct) =>
