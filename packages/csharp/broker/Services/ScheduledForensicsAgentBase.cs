@@ -183,6 +183,29 @@ public abstract class ScheduledForensicsAgentBase : BackgroundService
             pending.LatencyMs = latencyMs;
             pending.CompletedAt = DateTime.UtcNow;
             db.Update(pending);
+
+            // 子 LLM 稽核盲區補強(2026-06-03):broker 派的 LLM agent 不只記 effect、
+            // 連 reasoning 都進「防竄改 hash-chain 稽核」(AuditChainVerifier 每 30min 驗)。
+            // reasoning 全文留 agent_inbox_tasks.Reply、這裡記 prompt/response 的 SHA256 digest
+            // → 任何事後竄改 reasoning,digest 對不上 = 抓得到。對齊「broker governs LLM reasoning」。
+            try
+            {
+                var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
+                static string Dg(string? x) => System.Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(x ?? "")))[..16];
+                audit.RecordEvent(
+                    traceId: $"{TaskType}-{pending.TaskId}", eventType: "LLM_REASONING",
+                    principalId: PrincipalId, taskId: pending.TaskId, resourceRef: AgentId,
+                    details: JsonSerializer.Serialize(new
+                    {
+                        agent = AgentId, model = result.Model, eval_tokens = result.EvalCount,
+                        prompt_digest = Dg(systemPrompt + userPrompt),
+                        response_digest = Dg(result.Content), latency_ms = latencyMs,
+                    }));
+            }
+            catch (Exception aex) { _logger.LogWarning(aex, "[{Agent}] LLM reasoning audit 寫入失敗(non-fatal)", AgentId); }
+
             _logger.LogInformation(
                 "[{Agent}] task={T} done · events={E} · {L}ms · model={M}",
                 AgentId, pending.TaskId,

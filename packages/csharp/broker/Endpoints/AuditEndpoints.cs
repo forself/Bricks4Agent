@@ -192,7 +192,7 @@ public static class AuditEndpoints
         // 這條 endpoint 讓 bot-node 在 dispatch 前同步推 LLM 完整 response、broker 落表。
         // 僅供 audit/forensics、不參與 dispatch 決策。
         // Auth：要 X-Internal-Bot-Token（bot-node 本來就有）、不開 cookie session。
-        audit.MapPost("/llm-reasoning", (HttpContext ctx, BrokerDb db) =>
+        audit.MapPost("/llm-reasoning", (HttpContext ctx, BrokerDb db, IAuditService auditService) =>
         {
             // bot-node 拿 X-Internal-Bot-Token 過 InternalBotAuthMiddleware 後 role 是 "user" 或 "admin"
             // 沒過 middleware 的話 GetRoleId 回空字串、就拒絕
@@ -222,6 +222,27 @@ public static class AuditEndpoints
             if (entry.ToolArgs.Length > 4096) entry.ToolArgs = entry.ToolArgs[..4096] + "…[truncated]";
 
             db.Insert(entry);
+
+            // 子 LLM 稽核盲區補強(2026-06-03):bot-node 的 client-side claude reasoning 不只進
+            // LlmReasoningAuditEntry 表,同步寫一筆「防竄改 hash-chain 稽核」(同 AuditChainVerifier 驗的鏈)。
+            // reasoning 全文留表、這裡記 SHA256 digest → 竄改 reasoning 則 digest 對不上、抓得到。
+            // 對齊「broker governs LLM reasoning」:連 client 端 LLM 決策的推理都被 broker 防竄改記錄。
+            try
+            {
+                var digest = System.Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(entry.LlmReasoning)))[..16];
+                auditService.RecordEvent(
+                    traceId: $"llm-reasoning-{entry.Source}-{entry.UserId}", eventType: "LLM_REASONING",
+                    principalId: RequestBodyHelper.GetPrincipalId(ctx), resourceRef: entry.ToolName,
+                    details: JsonSerializer.Serialize(new
+                    {
+                        entry_id = entry.EntryId, source = entry.Source, turn = entry.Turn,
+                        tool = entry.ToolName, acl_allowed = entry.AclAllowed, dispatch = entry.DispatchResult,
+                        reasoning_digest = digest, reasoning_len = entry.LlmReasoning.Length,
+                    }));
+            }
+            catch { /* 稽核鏈寫入失敗不擋 reasoning 記錄(表已 Insert)*/ }
+
             return Results.Ok(ApiResponseHelper.Success(new { entry_id = entry.EntryId }));
         });
 
