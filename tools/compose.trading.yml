@@ -216,7 +216,9 @@ services:
       FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "256m"
       FunctionPool__ContainerManager__WorkerImages__agent__CpuLimit: "0.3"
     ports:
-      - "5100:5000"
+      # 2026-06-03 安全:綁 127.0.0.1 不綁 0.0.0.0 —— 否則 docker 繞過 ufw、真錢 broker API 公網裸奔
+      # (Cloudflare tunnel 走 127.0.0.1:5100、bot-node/worker 走 docker 內網,都不受影響)。
+      - "127.0.0.1:5100:5000"
     volumes:
       - broker-data:/data
       # Docker socket mount so ContainerManager can query docker ps / stats for
