@@ -63,6 +63,9 @@ public static class TradingEndpoints
             IWorkerRegistry registry, IExecutionDispatcher dispatcher,
             HttpContext ctx, CancellationToken ct) =>
         {
+            // 2026-06-03 安全:訂單查詢要登入(原本無 auth、defense-in-depth)。
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             if (!registry.HasAvailableWorker("trading.order"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
 

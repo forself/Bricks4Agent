@@ -20,8 +20,11 @@ public static class DiagnosticsEndpoints
         // and worker heartbeats. Returns a structured report with all detected issues.
         //
         // This is a read-only, side-effect-free operation.
-        diag.MapGet("/scan", async (IDiagnosticsService svc, CancellationToken ct) =>
+        diag.MapGet("/scan", async (HttpContext ctx, IDiagnosticsService svc, CancellationToken ct) =>
         {
+            // 2026-06-03 安全:系統診斷(容器/worker 內部狀態)要登入(原本無 auth、defense-in-depth)。
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             var report = await svc.ScanAsync(ct);
 
             return Results.Ok(ApiResponseHelper.Success(new
@@ -50,6 +53,8 @@ public static class DiagnosticsEndpoints
         // ── GET /api/v1/diagnostics/history — 排程掃描歷史 ──
         diag.MapGet("/history", (HttpRequest req, IServiceProvider sp) =>
         {
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(req.HttpContext)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             var sched = sp.GetService<ScheduledDiagnosticsService>();
             if (sched == null)
                 return Results.Ok(ApiResponseHelper.Error("Scheduled diagnostics not enabled"));
@@ -60,8 +65,10 @@ public static class DiagnosticsEndpoints
         });
 
         // ── GET /api/v1/diagnostics/history/:runId — 單次掃描的 issues ──
-        diag.MapGet("/history/{runId}", (string runId, IServiceProvider sp) =>
+        diag.MapGet("/history/{runId}", (string runId, HttpContext ctx, IServiceProvider sp) =>
         {
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             var sched = sp.GetService<ScheduledDiagnosticsService>();
             if (sched == null)
                 return Results.Ok(ApiResponseHelper.Error("Scheduled diagnostics not enabled"));
@@ -71,8 +78,10 @@ public static class DiagnosticsEndpoints
         });
 
         // ── GET /api/v1/diagnostics/space — DB 空間使用 ──
-        diag.MapGet("/space", (IServiceProvider sp) =>
+        diag.MapGet("/space", (HttpContext ctx, IServiceProvider sp) =>
         {
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
             var sched = sp.GetService<ScheduledDiagnosticsService>();
             if (sched == null)
                 return Results.Ok(ApiResponseHelper.Error("Scheduled diagnostics not enabled"));
