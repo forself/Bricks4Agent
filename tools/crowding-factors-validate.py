@@ -142,14 +142,25 @@ if __name__ == "__main__":
     def f_oi(c,d,t,ds,i):
         p=ds[i-1] if i>0 else None
         return (d[3][t]/d[3][p]-1.0) if (p and t in d[3] and p in d[3] and d[3].get(p,0)>0) else None
+    def f_rlsd_pctile(c,d,t,ds,i):   # 你部署的構造:per-coin Δ 的 trailing-100 百分位
+        rls=d[2]; p=ds[i-1] if i>0 else None
+        if not p or t not in rls or p not in rls: return None
+        cur=rls[t]-rls[p]; hist=[]
+        for j in range(max(1,i-100), i):
+            a,b=ds[j],ds[j-1]
+            if a in rls and b in rls: hist.append(rls[a]-rls[b])
+        return (sum(1 for x in hist if x<cur)/len(hist)) if len(hist)>=20 else None
     def f_fund(c,d,t,ds,i): return d[1].get(t)
     def f_mom(c,d,t,ds,i):
         di=i-20; return (d[0][t]/d[0][ds[di]]-1.0) if (di>=0 and ds[di] in d[0] and t in d[0]) else None
 
     print("\n=== 各擁擠度因子完整 gauntlet ===")
-    nr,_=gauntlet("retail_ls 反向", data, f_rls, dates, btc_sma)
-    nrd,_=gauntlet("retail_ls Δ 反向", data, f_rlsd, dates, btc_sma)
+    nr,_=gauntlet("retail_ls 反向(level、cross-sec)", data, f_rls, dates, btc_sma)
+    nrdp,_=gauntlet("retail_ls Δ-pctile 反向(你部署的構造)", data, f_rlsd_pctile, dates, btc_sma)
+    nrd,_=gauntlet("retail_ls Δ-raw 反向(我的 crude)", data, f_rlsd, dates, btc_sma)
     no,_=gauntlet("oi %chg 反向", data, f_oi, dates, btc_sma)
+    print("\n=== PK 結論:level vs delta(同 cross-sectional 框架)===")
+    print(f"  level     Sharpe {sharpe(nr):.2f}" + (f" / Δ-pctile {sharpe(nrdp):.2f}" if nrdp else "") + f" / Δ-raw {sharpe(nrd):.2f}")
 
     print("\n=== 成本壓力(retail_ls / oi、淨 Sharpe vs 每側成本)===")
     for nm,fn in [("retail_ls",f_rls),("oi",f_oi)]:
