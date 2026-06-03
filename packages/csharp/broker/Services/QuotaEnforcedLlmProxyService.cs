@@ -42,7 +42,7 @@ public class QuotaEnforcedLlmProxyService : ILlmProxyService
     public async Task<LlmChatResult> ChatAsync(JsonElement body, BrokerTask? task = null, CancellationToken cancellationToken = default)
     {
         var pid = task?.AssignedPrincipalId ?? "system";
-        var result = await _inner.ChatAsync(body, task, cancellationToken);
+        var result = await ChatWithTransientRetryAsync(body, task, cancellationToken);
 
         try
         {
@@ -61,5 +61,36 @@ public class QuotaEnforcedLlmProxyService : ILlmProxyService
         }
 
         return result;
+    }
+
+    // 上游(Gemini 等)過載會回 503 UNAVAILABLE「high demand, usually temporary」。
+    // 背景 agent(forensics/anomaly/market-report)被這個 transient 拖成失敗 + 健康掃描閃 UNHEALTHY
+    // → alert fatigue(真 critical 來時被無視)。短退避重試吸收 transient spike;
+    // 非 transient(quota/429/400/auth)立刻拋、不重試。retry 加在我的 decorator、不碰 Benson 底層。
+    private static readonly int[] RetryBackoffMs = { 1500, 4000 };   // 最多 3 次嘗試(1 + 2 retry),最壞 +5.5s
+    private async Task<LlmChatResult> ChatWithTransientRetryAsync(JsonElement body, BrokerTask? task, CancellationToken ct)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try { return await _inner.ChatAsync(body, task, ct); }
+            catch (InvalidOperationException ex) when (attempt < RetryBackoffMs.Length && IsTransientUpstream(ex.Message))
+            {
+                var msg = ex.Message.Length > 120 ? ex.Message[..120] : ex.Message;
+                _logger.LogWarning("LLM 上游 transient(嘗試 {N}/{Max}):{Msg} — 退避 {Ms}ms 重試",
+                    attempt + 1, RetryBackoffMs.Length + 1, msg, RetryBackoffMs[attempt]);
+                await Task.Delay(RetryBackoffMs[attempt], ct);
+            }
+        }
+    }
+
+    // 只認「上游暫時過載」(503/UNAVAILABLE/overload),不含 quota/429(那是真限制、不該快重試)。
+    private static bool IsTransientUpstream(string? m)
+    {
+        if (string.IsNullOrEmpty(m)) return false;
+        if (m.Contains("quota", StringComparison.OrdinalIgnoreCase) || m.Contains("429")) return false;
+        return m.Contains("503")
+            || m.Contains("UNAVAILABLE", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("overload", StringComparison.OrdinalIgnoreCase)
+            || m.Contains("high demand", StringComparison.OrdinalIgnoreCase);
     }
 }
