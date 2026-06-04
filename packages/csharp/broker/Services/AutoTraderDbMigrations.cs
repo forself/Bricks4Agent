@@ -28,6 +28,12 @@ public static class AutoTraderDbMigrations
             column: "leverage",
             sqlType: "INTEGER NOT NULL DEFAULT 5");
 
+        // 2026-06-04:per-leg「用 strategy emit 的結構性停損」開關(諧波 PRZ 失效價);default 0 = 既有行為
+        AddColumnIfMissing(db, logger,
+            table: "auto_trade_watchlist",
+            column: "use_signal_sl",
+            sqlType: "INTEGER NOT NULL DEFAULT 0");
+
         // Batch C+++ Phase 2：HTF（higher timeframe）大週期確認週期
         // null = 不做 HTF 確認、跟既有 watch entry 行為一致
         AddColumnIfMissing(db, logger,

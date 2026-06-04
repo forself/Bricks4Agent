@@ -126,6 +126,9 @@ public class AutoTraderService : BackgroundService
     // ── Phase 4: Perpetual position protection — PerpetualPositionState 移到
     //    ProtectionDecisionEngine.cs（同 namespace、引用不變）
     private readonly ConcurrentDictionary<string, PerpetualPositionState> _perpPositionState = new();
+    // 2026-06-04:橋接「開倉路徑解析到的 signal StopPrice」→「保護 scan 的 SL init」。
+    // key = {owner}:{exchange}:{symbol}:{side}(同 perp protection state key)。只在 UseSignalSl 腿填、平倉時清。
+    private readonly ConcurrentDictionary<string, decimal> _signalSlByKey = new();
     private readonly decimal _perpLiqEmergencyPct;
     private readonly decimal _dynamicRiskPct;   // 開倉時 max_loss 佔帳戶比例（預設 2%、對齊 r14）
     private readonly decimal _maxPortfolioRiskPct;  // 所有開倉 combined max_loss 上限（預設 6%、對齊 r16）
@@ -844,6 +847,7 @@ public class AutoTraderService : BackgroundService
                     HtfInterval = string.IsNullOrEmpty(e.HtfInterval) ? null : e.HtfInterval,
                     Shadow = e.Shadow,
                     BudgetPct = e.BudgetPct,
+                    UseSignalSl = e.UseSignalSl,
                 };
             }
             if (entries.Count > 0)
@@ -1444,6 +1448,7 @@ public class AutoTraderService : BackgroundService
                 if (_perpPositionState.TryRemove(k, out _))
                 {
                     DeletePersistedPerpState(k);
+                    _signalSlByKey.TryRemove(k, out _);   // 2026-06-04:平倉清掉橋接的 signal stop
                     _logger.LogInformation("Perp position {Key} closed — protection state cleaned", k);
                 }
             }
@@ -1464,10 +1469,17 @@ public class AutoTraderService : BackgroundService
         if (_perpPositionState.ContainsKey(key))
             effectiveSlPct = _protectionConfig.InitialSlPct;  // 不會用到、僅為 lambda capture
         else
+        {
             // 槓桿感知：軟 SL 也要收緊到強平距離以內，否則高槓桿時 SL 掛在強平價之後、broker 先看到也來不及
             // （全倉模式 _disableLevSlCap=true → 不收緊、抱反彈）
-            effectiveSlPct = LeverageAwareSlPct(
-                await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct), leverage, _disableLevSlCap);
+            var fixedBase = await ComputeEffectiveSlPctAsync(exchange, symbol, entryPrice, ct);
+            // 2026-06-04:UseSignalSl 腿開倉時若有橋接到 signal stop(諧波 PRZ 失效價)→ soft SL 也用它,
+            // 跟 bracket SL 一致(否則 soft 停在固定%、會在 PRZ 失效前提前平倉、白費結構性停損)。
+            var baseSlPct = _signalSlByKey.TryGetValue(key, out var sigSl)
+                ? ResolveBaseSlPct(entryPrice, isLong, useSignalSl: true, signalStop: sigSl, fixedFallbackPct: fixedBase)
+                : fixedBase;
+            effectiveSlPct = LeverageAwareSlPct(baseSlPct, leverage, _disableLevSlCap);
+        }
 
         var state = _perpPositionState.GetOrAdd(key, _ =>
         {
@@ -1798,6 +1810,14 @@ public class AutoTraderService : BackgroundService
         var action = signal.TryGetProperty("action", out var a) ? a.GetString() ?? "hold" : "hold";
         var confidence = signal.TryGetProperty("confidence", out var c) ? c.GetDecimal() : 0;
         var reason = signal.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
+        // 2026-06-04:UseSignalSl 腿解析 signal 的 stop_loss(諧波 PRZ 失效價)→ 暫存到 item,傳給開倉路徑當結構性 SL。
+        item.PendingSignalSl = null;
+        if (item.UseSignalSl && signal.TryGetProperty("stop_loss", out var slEl)
+            && slEl.ValueKind == JsonValueKind.Number)
+        {
+            var sl = slEl.GetDecimal();
+            if (sl > 0m) item.PendingSignalSl = sl;
+        }
         // strategy-worker 從 0a48xx 版起 evaluate response 多帶 regime side-channel；舊 worker 就是空字串
         var regimeType = signal.TryGetProperty("regime", out var regEl) && regEl.ValueKind == JsonValueKind.Object
             && regEl.TryGetProperty("type", out var rt) ? rt.GetString() ?? "" : "";
@@ -2638,16 +2658,23 @@ public class AutoTraderService : BackgroundService
         {
             var isLong = string.Equals(perpPosSide, "long", StringComparison.OrdinalIgnoreCase);
             var pricePrecision = BrokerCore.Trading.SymbolSpecs.GetSpec(item.Exchange, item.Symbol)?.PricePrecision;
-            var effectiveSlPct = LeverageAwareSlPct(_protectionConfig.InitialSlPct, item.Leverage, _disableLevSlCap);
+            // 2026-06-04:UseSignalSl 腿 → 用 strategy 結構性停損(諧波 PRZ 失效價)當 base,否則固定 %;都過 LeverageAwareSlPct clamp。
+            var baseSlPct = ResolveBaseSlPct(markPrice, isLong, item.UseSignalSl, item.PendingSignalSl, _protectionConfig.InitialSlPct);
+            var usingSignalSl = item.UseSignalSl && item.PendingSignalSl is decimal _psl && _psl > 0m
+                                && (isLong ? _psl < markPrice : _psl > markPrice);
+            var effectiveSlPct = LeverageAwareSlPct(baseSlPct, item.Leverage, _disableLevSlCap);
             var slPrice = ComputeBracketSlPrice(markPrice, effectiveSlPct, isLong);
             if (slPrice.HasValue)
             {
                 var slRounded = RoundPrice(slPrice.Value, pricePrecision);
                 perpDict["stop_loss_price"] = slRounded;
-                var tightened = effectiveSlPct < _protectionConfig.InitialSlPct;
+                // 橋接給保護 scan:讓 soft SL init 用同一個 signal stop(否則 soft 仍停在固定%、提前平倉、白費結構性停損)
+                if (usingSignalSl)
+                    _signalSlByKey[$"{item.OwnerPrincipalId}:{item.Exchange}:{item.Symbol}:{perpPosSide}"] = item.PendingSignalSl!.Value;
+                var tightened = effectiveSlPct < baseSlPct;
                 AddLog(item, "info",
-                    $"bracket SL attached: entry≈{markPrice:F4} SL={slRounded:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x" +
-                    (tightened ? $", tightened from {_protectionConfig.InitialSlPct}% to stay inside liq distance)" : ")"));
+                    $"bracket SL attached: entry≈{markPrice:F4} SL={slRounded:F4} ({effectiveSlPct:0.##}% {(isLong ? "below" : "above")}, {item.Leverage}x, mode={(usingSignalSl ? "signal-PRZ" : "fixed")}" +
+                    (tightened ? $", clamped from {baseSlPct:0.##}% to stay inside liq distance)" : ")"));
             }
 
             // C — Bracket TP（opt-in）：R:R 模式優先（TP 距離 = RR × SL 距離）、否則固定 %；跟 trailing 並存。
@@ -2799,6 +2826,29 @@ public class AutoTraderService : BackgroundService
         if (leverage <= 1m) return configuredSlPct;
         var liqDistanceCap = 100m / leverage * 0.6m;
         return Math.Min(configuredSlPct, liqDistanceCap);
+    }
+
+    /// <summary>
+    /// 2026-06-04:決定初始 SL 的「base 距離 %」(尚未過 LeverageAwareSlPct clamp)。
+    ///   useSignalSl + signalStop 在 entry 正確一側(long 在下/short 在上)且 &gt;0
+    ///     → 回 signal 隱含風險%(諧波 PRZ 失效價等結構性停損),讓策略自己的論點失效價當停損;
+    ///   否則(沒開、無 emit、或方向錯)→ 回 fixedFallbackPct(既有固定 %/ATR 行為)。
+    /// 回傳值仍會在呼叫端過 LeverageAwareSlPct 收緊到強平距離內 → 即使 signal stop 過寬也不會超過災難線(安全不變)。
+    /// pure static、好測。
+    /// </summary>
+    internal static decimal ResolveBaseSlPct(
+        decimal entryPrice, bool isLong, bool useSignalSl, decimal? signalStop, decimal fixedFallbackPct)
+    {
+        if (useSignalSl && signalStop is decimal s && s > 0m && entryPrice > 0m)
+        {
+            bool correctSide = isLong ? s < entryPrice : s > entryPrice;
+            if (correctSide)
+            {
+                var riskPct = Math.Abs(entryPrice - s) / entryPrice * 100m;
+                if (riskPct > 0m) return riskPct;
+            }
+        }
+        return fixedFallbackPct;
     }
 
     /// <summary>
@@ -3472,6 +3522,14 @@ public class WatchItem
 
     /// <summary>資金預算制:本 watch 開倉名目佔餘額 %。&gt;0 覆蓋全域 exposure_pct(多倉各配額度、不先搶先贏);0=用全域。</summary>
     public decimal BudgetPct { get; set; } = 0m;
+
+    /// <summary>2026-06-04:用 strategy emit 的結構性停損(諧波 PRZ 失效價)當初始 SL,而非通用固定 %。
+    /// 預設 false。仍會過 LeverageAwareSlPct 收緊到強平距離內。</summary>
+    public bool UseSignalSl { get; set; } = false;
+
+    /// <summary>執行期暫存:本輪 strategy 訊號 emit 的 StopPrice(由 ProcessSymbol 解析、傳給開倉路徑)。
+    /// 非持久化、每輪覆寫;只在 UseSignalSl=true 時填。</summary>
+    public decimal? PendingSignalSl { get; set; }
 }
 
 public class TradeLog

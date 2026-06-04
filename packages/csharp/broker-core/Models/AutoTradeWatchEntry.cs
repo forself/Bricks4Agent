@@ -83,6 +83,14 @@ public class AutoTradeWatchEntry
     [Column("shadow")]
     public bool Shadow { get; set; } = false;
 
+    /// <summary>
+    /// 2026-06-04:用 strategy emit 的 StopPrice 當初始 SL(諧波 PRZ 失效價等結構性停損),
+    /// 而非通用固定 % SL。預設 false = 既有行為(固定 %/ATR)。signal stop 仍會過 LeverageAwareSlPct
+    /// 收緊到強平距離內(安全不變);只對「策略會 emit 結構性停損」的腿開(如諧波)、避免通用 5% 洗單。
+    /// </summary>
+    [Column("use_signal_sl")]
+    public bool UseSignalSl { get; set; } = false;
+
     [Column("last_signal")]
     [MaxLength(20)]
     public string? LastSignal { get; set; }

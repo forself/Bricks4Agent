@@ -203,6 +203,12 @@ passed += bdPassed;
 failed += bdFailed;
 
 Console.WriteLine();
+
+var (sslPassed, sslFailed) = Broker.Tests.SignalSlTests.Run();
+passed += sslPassed;
+failed += sslFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {
