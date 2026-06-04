@@ -283,6 +283,23 @@ public class LineNotificationService : BackgroundService
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    /// <summary>
+    /// 推一則通知給「指定 recipient」(不是預設那個人)。給「不同收件者」的場景用,
+    /// 例如台股資金流日報推給家人的 LINE userId。不過 dedup、由 caller 控制節流。
+    /// </summary>
+    public async Task<(bool ok, string? error)> SendAdHocToAsync(
+        string to, string title, string body, string level = "info", CancellationToken ct = default)
+    {
+        if (!_enabledInConfig) return (false, "LINE notifications disabled in config");
+        if (string.IsNullOrWhiteSpace(to)) return (false, "empty recipient");
+        try
+        {
+            await SendNotificationAsync(title, body, level, ct, toOverride: to);
+            return (true, null);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SendTestAsync(string? customMessage = null)
     {
         if (!_enabledInConfig) return (false, "LINE notifications disabled in config");
@@ -296,7 +313,7 @@ public class LineNotificationService : BackgroundService
 
     // ── 底層：dispatch line.notification.send capability ──
 
-    private async Task SendNotificationAsync(string title, string body, string level, CancellationToken ct)
+    private async Task SendNotificationAsync(string title, string body, string level, CancellationToken ct, string? toOverride = null)
     {
         try
         {
@@ -306,8 +323,10 @@ public class LineNotificationService : BackgroundService
                 ["body"] = body,
                 ["level"] = level,
             };
-            if (!string.IsNullOrEmpty(_recipientOverride))
-                args["to"] = _recipientOverride;
+            // toOverride(指定收件者)優先;否則用 broker 端設定的預設 recipient
+            var to = !string.IsNullOrEmpty(toOverride) ? toOverride : _recipientOverride;
+            if (!string.IsNullOrEmpty(to))
+                args["to"] = to;
 
             var payload = JsonSerializer.Serialize(new { args });
             var req = new ApprovedRequest

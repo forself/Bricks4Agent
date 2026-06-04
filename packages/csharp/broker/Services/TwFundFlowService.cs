@@ -20,11 +20,14 @@ public class TwFundFlowService : BackgroundService
     private readonly IHttpClientFactory _httpFactory;
     private readonly BrokerCore.Data.BrokerDb _db;
     private readonly DiscordNotificationService _discord;
+    private readonly LineNotificationService _line;
     private readonly ILogger<TwFundFlowService> _logger;
     private readonly int _reportHourUtc;
     private readonly string[] _watchlist;
     private readonly string _htmlPath;
     private readonly string _reportUrl;
+    private readonly string[] _lineTo;      // 額外推 LINE 的 userId(如家人);空=不推 LINE
+    private readonly string _publicUrl;      // LINE 給家人的「公開報表」連結(免 Cloudflare Access)
 
     private const int HistoryWindow = 8;     // 連續買賣超查的歷史天數窗
     private const int MinHistoryDates = 6;   // 啟動時少於這數量就 backfill
@@ -37,11 +40,13 @@ public class TwFundFlowService : BackgroundService
         IHttpClientFactory httpFactory,
         BrokerCore.Data.BrokerDb db,
         DiscordNotificationService discord,
+        LineNotificationService line,
         ILogger<TwFundFlowService> logger)
     {
         _httpFactory = httpFactory;
         _db = db;
         _discord = discord;
+        _line = line;
         _logger = logger;
         _reportHourUtc = ParseIntEnv("TW_FUNDFLOW_AT_UTC_HOUR", defaultValue: 9, min: -1, max: 23);
         var raw = Environment.GetEnvironmentVariable("TW_FUNDFLOW_WATCHLIST");
@@ -51,6 +56,10 @@ public class TwFundFlowService : BackgroundService
         _htmlPath = Environment.GetEnvironmentVariable("TW_FUNDFLOW_REPORT_HTML") ?? "/app/wwwroot/tw-fundflow.html";
         _reportUrl = Environment.GetEnvironmentVariable("TW_FUNDFLOW_REPORT_URL")
                      ?? "https://dashboard.b4a-trading.app/tw-fundflow.html";
+        _lineTo = (Environment.GetEnvironmentVariable("TW_FUNDFLOW_LINE_TO") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // 給家人的公開連結(免 Access);沒設就退回 dashboard URL(家人會被 Access 擋、需設了才推)
+        _publicUrl = Environment.GetEnvironmentVariable("TW_FUNDFLOW_PUBLIC_URL") ?? _reportUrl;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -139,6 +148,18 @@ public class TwFundFlowService : BackgroundService
         var (ok, err) = await _discord.SendAdHocAsync($"🇹🇼 台股資金流日報 · {isoDate}", summary, 0x2B6CB0, ct);
         _logger.LogInformation("TwFundFlow pushed: discord={Ok} date={Date} stocks={N} err={Err}",
             ok, isoDate, rows.Count, err ?? "-");
+
+        // 額外推 LINE 給家人(gated:設了 TW_FUNDFLOW_LINE_TO 才推)。用公開連結(免 Access)、純文字(LINE 不吃 markdown 去掉 **)。
+        if (_lineTo.Length > 0 && _line.IsEnabledInConfig)
+        {
+            var lineBody = TwFundFlowReport.RenderDiscord(report, _publicUrl).Replace("**", "");
+            foreach (var to in _lineTo)
+            {
+                var (lok, lerr) = await _line.SendAdHocToAsync(to, $"🇹🇼 台股資金流日報 · {isoDate}", lineBody, "info", ct);
+                _logger.LogInformation("TwFundFlow LINE push to {To}: ok={Ok} err={Err}",
+                    to[..Math.Min(6, to.Length)], lok, lerr ?? "-");
+            }
+        }
         return (ok, summary, true);
     }
 

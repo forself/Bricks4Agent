@@ -155,6 +155,13 @@ services:
       # LINE 跟 Discord 共用同一個 NOTIFY_PROTECT_SLMOVE 旋鈕(一個值同時控兩條通知路徑)
       Notifications__Line__ProtectNotify: "${NOTIFY_PROTECT_SLMOVE:-true}"
       Notifications__Line__ProtectThrottleMinutes: "${NOTIFY_PROTECT_THROTTLE_MIN:-60}"
+      # 台股資金流日報(2026-06-04)— 個人用、非真錢。預設空走程式內建值(UTC9=TST17:00、預設 14 檔 watchlist)。
+      # TW_FUNDFLOW_LINE_TO 設了才會額外推 LINE 給家人(逗號分隔 userId);PUBLIC_URL = 給家人的免登入公開連結。
+      TW_FUNDFLOW_AT_UTC_HOUR: "${TW_FUNDFLOW_AT_UTC_HOUR:-}"
+      TW_FUNDFLOW_WATCHLIST: "${TW_FUNDFLOW_WATCHLIST:-}"
+      TW_FUNDFLOW_LINE_TO: "${TW_FUNDFLOW_LINE_TO:-}"
+      TW_FUNDFLOW_PUBLIC_URL: "${TW_FUNDFLOW_PUBLIC_URL:-}"
+      TW_FUNDFLOW_REPORT_URL: "${TW_FUNDFLOW_REPORT_URL:-}"
       # 申報資金錨定（per exchange）：risk rules 用 min(這個值, 實際 balance) 算 equity。
       # 賺到不會自動放寬風控，必須由人手動調這個 env 才會。0 = 用實際值。
       Risk__DeclaredCapital__Bingx: "${RISK_DECLARED_CAPITAL_BINGX:-0}"
