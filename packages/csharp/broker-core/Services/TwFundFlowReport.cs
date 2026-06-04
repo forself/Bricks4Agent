@@ -184,11 +184,13 @@ public static class TwFundFlowReport
 *{{box-sizing:border-box}}body{{margin:0;font-family:-apple-system,'Segoe UI','Microsoft JhengHei',sans-serif;background:var(--bg);color:#111;font-size:15px;line-height:1.5}}
 .wrap{{max-width:880px;margin:0 auto;padding:14px}}
 h1{{font-size:20px;margin:6px 0}}.date{{color:var(--mut);font-size:13px}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0;overflow:hidden}}
 .card h2{{font-size:16px;margin:0 0 8px}}
-.hl li{{margin:3px 0}}
-.grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
-@media(max-width:620px){{.grid{{grid-template-columns:1fr}}}}
+.hl{{margin:6px 0;padding-left:18px}}.hl li{{margin:3px 0}}
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.grid>div{{min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+@media(max-width:700px){{.grid{{grid-template-columns:1fr}}}}
+.scroll{{overflow-x:auto;-webkit-overflow-scrolling:touch}}
 table{{width:100%;border-collapse:collapse;font-size:14px}}
 th,td{{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}}
 th:first-child,td:first-child{{text-align:left}}
@@ -196,8 +198,9 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
 .buy{{color:var(--buy);font-weight:600}}.sell{{color:var(--sell);font-weight:600}}
 .tag{{font-size:11px;color:var(--mut)}}
 .watch td:first-child{{font-weight:600}}
-.foot{{color:var(--mut);font-size:12px;text-align:center;margin:18px 0 8px}}
+.foot{{color:var(--mut);font-size:12px;text-align:center;margin:18px 0 8px;padding:0 8px}}
 .note{{color:var(--mut);font-size:12px;margin:2px 0 0}}
+@media(max-width:480px){{body{{font-size:14px}}table{{font-size:13px}}th,td{{padding:4px}}.wrap{{padding:8px}}h1{{font-size:18px}}}}
 </style></head><body><div class=""wrap"">");
 
         sb.Append($@"<h1>🇹🇼 台股資金流日報</h1><div class=""date"">{E(d.Date)} · 全市場 {d.TotalStocks} 檔個股 · 單位{(d.UseAmount ? "買賣超金額(億元)" : "張")}、正=買超/增</div>");
@@ -242,7 +245,7 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
         sb.Append("</div></div>");
 
         // watchlist
-        sb.Append(@"<div class=""card""><h2>📌 我的 watchlist</h2><table class=""watch""><tr><th>個股</th><th>法人(張)</th><th>外資</th><th>投信</th><th>自營</th><th>融資</th><th>融券</th></tr>");
+        sb.Append(@"<div class=""card""><h2>📌 我的 watchlist</h2><div class=""scroll""><table class=""watch""><tr><th>個股</th><th>法人(張)</th><th>外資</th><th>投信</th><th>自營</th><th>融資</th><th>融券</th></tr>");
         foreach (var w in d.Watch)
         {
             if (!w.HasData) { sb.Append($@"<tr><td>{E(w.Code)}</td><td colspan=""6"" class=""tag"">無資料</td></tr>"); continue; }
@@ -254,7 +257,7 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
                 $@"<td class=""{ClsL(w.MarginChg)}"">{Lots(w.MarginChg)}</td>" +
                 $@"<td class=""{ClsL(w.ShortChg)}"">{Lots(w.ShortChg)}</td></tr>");
         }
-        sb.Append("</table></div>");
+        sb.Append("</table></div></div>");
 
         sb.Append($@"<div class=""foot"">資料來源:TWSE 三大法人買賣超(T86)+ 融資融券(MI_MARGN)+ 收盤(STOCK_DAY_ALL)。B4A 自動產生、僅供參考、非投資建議。</div>");
         sb.Append("</div></body></html>");
