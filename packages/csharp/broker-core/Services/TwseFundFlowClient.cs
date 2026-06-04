@@ -17,6 +17,9 @@ public static class TwseFundFlowClient
         "https://www.twse.com.tw/rwd/zh/fund/T86?date={0}&selectType=ALL&response=json";
     private const string MarginUrl =
         "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={0}&selectType=ALL&response=json";
+    // STOCK_DAY_ALL = 全上市個股「最近一個交易日」OHLC(只回最新日、無歷史)。算買賣超金額(億)用。
+    private const string StockDayAllUrl =
+        "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json";
 
     /// <summary>
     /// 抓某 TST 日期的台股資金流。回 (hasData, rows)。
@@ -115,6 +118,45 @@ public static class TwseFundFlowClient
         return map;
     }
 
+    /// <summary>
+    /// 抓全個股「最近交易日」收盤價(STOCK_DAY_ALL)。回 (date, code→close)。失敗回 ("", 空)。
+    /// 只回最新日、無歷史 → 只給「當日報表」算金額用;backfill 歷史日無收盤(金額退回張數)。
+    /// </summary>
+    public static async Task<(string Date, Dictionary<string, decimal> Closes)> FetchClosesAsync(
+        HttpClient http, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = await http.GetStringAsync(StockDayAllUrl, ct);
+            return ParseStockDayAll(json);
+        }
+        catch { return ("", new()); }
+    }
+
+    /// <summary>
+    /// 解析 STOCK_DAY_ALL → (date, code→收盤價)。純函式、可測。
+    /// 欄位(已核對 2330):[0]代號 [1]名稱 [7]收盤價;停牌/無成交收盤為 "--" → skip。
+    /// </summary>
+    public static (string Date, Dictionary<string, decimal> Closes) ParseStockDayAll(string json)
+    {
+        var map = new Dictionary<string, decimal>();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("stat", out var stat) || stat.GetString() != "OK") return ("", map);
+        string date = root.TryGetProperty("date", out var dt) ? (dt.GetString() ?? "") : "";
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return (date, map);
+
+        foreach (var r in data.EnumerateArray())
+        {
+            if (r.ValueKind != JsonValueKind.Array || r.GetArrayLength() < 8) continue;
+            string code = (r[0].GetString() ?? "").Trim();
+            if (!IsCommonStock(code)) continue;
+            var close = NumDec(r[7]);
+            if (close > 0) map[code] = close;
+        }
+        return (date, map);
+    }
+
     /// <summary>普通個股 + 主要 ETF:4 位數字代號(濾掉 6 位權證、含字母的特殊商品如 00403A)。</summary>
     public static bool IsCommonStock(string code) =>
         code.Length == 4 && code.All(char.IsDigit);
@@ -127,5 +169,15 @@ public static class TwseFundFlowClient
         s = s.Replace(",", "").Replace(" ", "").Trim();
         if (s is "" or "--" or "-" or "---") return 0;
         return long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    /// <summary>TWSE 數字字串 → decimal(價格用):去逗號、"--"/空白 → 0。</summary>
+    public static decimal NumDec(JsonElement el)
+    {
+        string? s = el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
+        if (string.IsNullOrWhiteSpace(s)) return 0m;
+        s = s.Replace(",", "").Replace(" ", "").Trim();
+        if (s is "" or "--" or "-" or "---") return 0m;
+        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0m;
     }
 }

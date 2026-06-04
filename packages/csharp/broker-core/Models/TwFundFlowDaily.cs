@@ -48,6 +48,10 @@ public class TwFundFlowDaily
     [Column("short_balance")]  public long ShortBalance { get; set; }    // 融券今日餘額
     [Column("short_prev")]     public long ShortPrev { get; set; }       // 融券前日餘額
 
+    /// <summary>當日收盤價(STOCK_DAY_ALL field[7]);算「買賣超金額(億)」用。0 = 該日未取得收盤(如 backfill 歷史日)。</summary>
+    [Column("close_price")]
+    public decimal ClosePrice { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

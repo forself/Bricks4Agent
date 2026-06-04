@@ -109,6 +109,9 @@ public static class AutoTraderDbMigrations
         // EnsureTable 是 CREATE TABLE IF NOT EXISTS、不補欄,既有 broker.db 沒這欄 → INSERT exchange 會 500。
         // 預設 binance 保留既有 crypto scanner 行為;美股 scanner 用 exchange='alpaca'。
         AddColumnIfMissing(db, logger, "scanner_legs", "exchange", "TEXT NOT NULL DEFAULT 'binance'");
+
+        // 2026-06-04:台股資金流加收盤價欄(算買賣超金額億用);tw_fund_flow_daily 表已先上線、需 ALTER 補。
+        AddColumnIfMissing(db, logger, "tw_fund_flow_daily", "close_price", "TEXT NOT NULL DEFAULT '0'");
     }
 
     private static void AddColumnIfMissing(BrokerDb db, ILogger logger,
