@@ -1,4 +1,4 @@
-namespace Broker.Services;
+namespace BrokerCore.Services;
 
 // D1 Phase 2 — 從 AutoTraderService 抽出來的「保護決策」單一職責。
 //

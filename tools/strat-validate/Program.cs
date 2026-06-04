@@ -44,6 +44,14 @@ if (barsLimit != 1000) Console.WriteLine($"⚡ --bars={barsLimit}(歷史加深)"
 if (realFunding) Console.WriteLine("💸 --apply-funding:用 Binance 真實 funding history(LS engine 雙向計費),非預設 0.01%/8h 假設");
 if (realRetailLs) Console.WriteLine("📊 --apply-retail-ls:用 data.binance.vision metrics 注入 RetailLongShortRatio(retail_ls_contrarian 必要)");
 if (slPct > 0m) Console.WriteLine($"🛑 --sl={slPct}%:LS 引擎固定初始止損(模擬 live 止損、存活測試)");
+// --with-protection:回測套上「live 防禦鏈」(初始SL+BE-move+peak-trailing),用 VPS 真正在跑的參數值。
+//   目的=測「strategy + 防禦」真實逐年績效 vs signal-only;NOT 優化防禦參數(用 live 固定值、不准 curve-fit)。
+//   值來源(2026-06-04):broker-core ProtectionConfig 預設 InitialSl 5%/BE 3%+0.5% + VPS env Trailing 3%/2%。
+//   殘留近似:%-based partial exit 未套(引擎的 partial 走 signal PartialTargetPrice);bar-close 觸發近似盤中。
+bool withProtection = args.Contains("--with-protection");
+decimal protSl = 5m, protBeTrig = 3m, protBeBuf = 0.5m, protTrailTrig = 3m, protTrailDist = 2m;
+if (withProtection)
+    Console.WriteLine($"🛡 --with-protection:套 live 防禦鏈(SL{protSl}% / BE {protBeTrig}%+{protBeBuf}% / trail {protTrailTrig}%→{protTrailDist}%);測 strategy+防禦真實績效、非優化防禦");
 // --from=YYYY-MM-DD / --to=YYYY-MM-DD:把 bars 切到日期窗做 regime 分段(如 2022 純熊段)。
 // 需 --bars 夠大涵蓋該窗(如 --from=2022-01-01 配 --bars=2000)。切窗後 OOS fold 變少 → 看 full-period ret/Sh/DD 為主。
 DateTime? winFrom = DateTime.TryParse(args.FirstOrDefault(a => a.StartsWith("--from="))?.Substring(7), out var _wf) ? DateTime.SpecifyKind(_wf, DateTimeKind.Utc) : (DateTime?)null;
@@ -291,6 +299,88 @@ string[] symbols = etfMode
             (new FibRetraceLsStrategy(),      0.09m),
             (new HarmonicPrzLsStrategy(new[] { "butterfly", "five_o" }, "_top2_scan10", scanWindows: 10), 0.15m),
         }, name: "decorr5_top2_scan10")),
+    // ── BTC 組合實驗(2026-06-04、諧波為主、跟現有 momentum-heavy 組合對照)──
+    //   現有 decorr5 諧波只 0.15(被稀釋);這幾個把諧波拉到 0.4-0.5、看它真有份量時 BTC 怎麼跑。
+    ("btc_harm_ma", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.50m),
+            (new MaRegimeTrendStrategy(), 0.50m),   // 諧波 + 趨勢(2 去相關機制;諧波可確認/否決趨勢)
+        }, name: "btc_harm_ma")),
+    ("btc_harm_lead", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.50m),
+            (new DualMomentumLsStrategy(),    0.25m),
+            (new BollingerRevertLsStrategy(), 0.25m),   // 諧波主導 + 動量/均值回歸當輔
+        }, name: "btc_harm_lead")),
+    ("btc_harm_accel_bb", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.40m),
+            (new AccelMomentumStrategy(),     0.30m),
+            (new BollingerRevertLsStrategy(), 0.30m),   // 諧波 + 最強動量 + 均值回歸(3 機制、諧波最大)
+        }, name: "btc_harm_accel_bb")),
+    // ── BTC 組合實驗 第二批(2026-06-04、拚不同走向看逐年比較)──
+    ("btc_ma_accel", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new MaRegimeTrendStrategy(), 0.50m),
+            (new AccelMomentumStrategy(), 0.50m),   // 純趨勢對(兩個最強趨勢)
+        }, name: "btc_ma_accel")),
+    ("btc_ma_bb", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new MaRegimeTrendStrategy(),     0.60m),
+            (new BollingerRevertLsStrategy(), 0.40m),   // 趨勢 + 均值回歸
+        }, name: "btc_ma_bb")),
+    ("btc_accel_bb", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new AccelMomentumStrategy(),     0.60m),
+            (new BollingerRevertLsStrategy(), 0.40m),   // 動量 + MR(無 ma)
+        }, name: "btc_accel_bb")),
+    ("btc_harm_bb", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.50m),
+            (new BollingerRevertLsStrategy(), 0.50m),   // 諧波 + MR(無動量、最去相關嘗試)
+        }, name: "btc_harm_bb")),
+    ("btc_tri_balanced", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new MaRegimeTrendStrategy(),     0.34m),
+            (new AccelMomentumStrategy(),     0.33m),
+            (new BollingerRevertLsStrategy(), 0.33m),   // 趨勢×2 + MR 三均衡
+        }, name: "btc_tri_balanced")),
+    ("btc_def", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new BollingerRevertLsStrategy(), 0.40m),
+            (new FibRetraceLsStrategy(),      0.30m),
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.30m),   // 防禦:MR + Fib + 諧波(無動量)
+        }, name: "btc_def")),
+    // ── BTC 組合實驗 第三批(2026-06-04、再備幾種不同角度)──
+    ("btc_accel_heavy", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new AccelMomentumStrategy(),     0.70m),
+            (new BollingerRevertLsStrategy(), 0.30m),   // accel 主導(最強單腿)+ MR 緩衝
+        }, name: "btc_accel_heavy")),
+    ("btc_trend_trio", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new MaRegimeTrendStrategy(),  0.40m),
+            (new AccelMomentumStrategy(),  0.30m),
+            (new DualMomentumLsStrategy(), 0.30m),   // 純趨勢/動量三
+        }, name: "btc_trend_trio")),
+    ("btc_harm_thrust", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.50m),
+            (new DualThrustStrategy(), 0.50m),   // 諧波 + 突破(都偏區間/反轉)
+        }, name: "btc_harm_thrust")),
+    ("btc_mr_pair", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new BollingerRevertLsStrategy(), 0.50m),
+            (new FibRetraceLsStrategy(),      0.50m),   // 純均值回歸對
+        }, name: "btc_mr_pair")),
+    ("btc_kitchen", new NetWeightedEnsembleStrategy(new List<(IStrategy, decimal)>
+        {
+            (new HarmonicPrzLsStrategy(patternWhitelist: null, name: "_h", scanWindows: 10, przWidening: 0.15m), 0.20m),
+            (new MaRegimeTrendStrategy(),     0.20m),
+            (new AccelMomentumStrategy(),     0.20m),
+            (new DualMomentumLsStrategy(),    0.20m),
+            (new BollingerRevertLsStrategy(), 0.20m),   // 五機制等權「全餐」
+        }, name: "btc_kitchen")),
     // ── 布林家族補測(原本沒進 strat-validate)──
     ("bollinger_bands",   new BollingerStrategy()),          // 基本版(無趨勢過濾、bb_revert_ls 的對照)
     ("squeeze_breakout",  new SqueezeBreakoutStrategy()),    // 完全不同邏輯:波動收縮後突破、順勢進
@@ -553,7 +643,15 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
 }
 
 var loEq = PrintTable("Long-only(Benson 引擎)", (s, b, c) => BacktestEngine.RunWalkForward(s, b, c, 250, 90, 60), (s, b, c) => BacktestEngine.Run(s, b, c));
-var lsEq = PrintTable("Long-short(新引擎)", (s, b, c) => LongShortBacktestEngine.RunWalkForward(s, b, c, 250, 90, 60, defaultInitialSlPct: slPct), (s, b, c) => LongShortBacktestEngine.Run(s, b, c, defaultInitialSlPct: slPct));
+var lsEq = PrintTable("Long-short(新引擎)",
+    (s, b, c) => LongShortBacktestEngine.RunWalkForward(s, b, c, 250, 90, 60,
+        defaultInitialSlPct: withProtection ? protSl : slPct,
+        peakTrailTriggerPct: withProtection ? protTrailTrig : 0m, peakTrailDistancePct: withProtection ? protTrailDist : 0m,
+        beTriggerPct: withProtection ? protBeTrig : 0m, beBufferPct: withProtection ? protBeBuf : 0m),
+    (s, b, c) => LongShortBacktestEngine.Run(s, b, c,
+        defaultInitialSlPct: withProtection ? protSl : slPct,
+        peakTrailTriggerPct: withProtection ? protTrailTrig : 0m, peakTrailDistancePct: withProtection ? protTrailDist : 0m,
+        beTriggerPct: withProtection ? protBeTrig : 0m, beBufferPct: withProtection ? protBeBuf : 0m));
 
 // ── 多時框 策略 × 幣 分析(預設 1h~1w,找跨時框穩健最優解)──────────────
 // long-only 引擎(對應實際 perp_long_only)。每時框 per(策略,幣) OOS = walk-forward avg test%。
