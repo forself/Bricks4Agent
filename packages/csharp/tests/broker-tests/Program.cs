@@ -209,6 +209,12 @@ passed += sslPassed;
 failed += sslFailed;
 
 Console.WriteLine();
+
+var (twffPassed, twffFailed) = Broker.Tests.TwFundFlowTests.Run();
+passed += twffPassed;
+failed += twffFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

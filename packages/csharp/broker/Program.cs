@@ -81,6 +81,8 @@ using (var initDb = BrokerDb.UseSqlite(connectionString))
     // Notification dedup（5/19 修：broker rebuild 重啟後 in-memory dedup state 丟失、
     // 同樣 risk-blocked 訊息被連環推 9 次到 Discord/LINE。改持久化、跨重啟記得 30 min 內已推過）
     initDb.EnsureTable<NotificationDedupEntry>();
+    // 台股每日資金流（2026-06-04）— 三大法人買賣超 + 融資融券、累積歷史供研究 + 每日 digest 推 DM
+    initDb.EnsureTable<TwFundFlowDaily>();
 }
 
 // ── Step 2: 加密基礎建設 ──
@@ -411,6 +413,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.Li
 // Singleton 版本給 manual trigger endpoint 用、HostedService 共用同一個 instance（避免兩份狀態）
 builder.Services.AddSingleton<Broker.Services.DailyReportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.DailyReportService>());
+// 台股資金流每日彙整（2026-06-04）— 抓三大法人+融資融券、存 DB、TW_FUNDFLOW_AT_UTC_HOUR(預設9=17:00 TST)推 DM
+// Singleton 給手動 endpoint 用、HostedService 共用同一 instance
+builder.Services.AddSingleton<Broker.Services.TwFundFlowService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.TwFundFlowService>());
 // AutoTrader 心跳看門狗 — sweep 卡住(真錢無人看管)就推 Discord/LINE 告警、恢復再推一則
 builder.Services.AddHostedService<Broker.Services.AutoTraderHeartbeatService>();
 // ETH/BTC 比值告警 — 「ETH 補漲論」的客觀觸發點(突破 0.030 推、跌破 0.025 推)

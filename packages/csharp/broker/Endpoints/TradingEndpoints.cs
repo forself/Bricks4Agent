@@ -242,6 +242,16 @@ public static class TradingEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && diverged > 0, dry, diverged, summary }));
         });
 
+        // 手動觸發台股資金流彙整(預覽 / 立刻看用;?dry=true 不推、只回 summary;往回找最近交易日)
+        trading.MapPost("/push-tw-fundflow", async (
+            Broker.Services.TwFundFlowService twff, HttpRequest req, CancellationToken ct) =>
+        {
+            var dry = req.Query.TryGetValue("dry", out var d) && (d.ToString() == "true" || d.ToString() == "1");
+            var lookback = req.Query.TryGetValue("lookback", out var l) && int.TryParse(l.ToString(), out var n) ? n : 7;
+            var (ok, summary, hadData) = await twff.BuildAndPushAsync(push: !dry, maxLookbackDays: lookback, ct);
+            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && hadData, dry, had_data = hadData, summary }));
+        });
+
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
         trading.MapPost("/symbol-specs/refresh", async (
             Broker.Services.SymbolSpecsService svc, CancellationToken ct) =>
