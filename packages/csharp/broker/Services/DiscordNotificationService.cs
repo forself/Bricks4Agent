@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Broker.Services;
 
@@ -28,6 +29,9 @@ public class DiscordNotificationService : BackgroundService
     private readonly NotificationDedupRepo _dedup;
     private readonly ILogger<DiscordNotificationService> _logger;
     private readonly string _webhookUrl;
+    // 2026-06-04:DM 模式 — 設了 bot token + 你的 user ID → operator 通知改 DM 給你(只有你收得到、不進任何頻道)。
+    private readonly string _botToken;
+    private readonly string _dmUserId;
     private readonly int _intervalSeconds;
 
     private readonly HashSet<string> _seenAlertKeys = new();
@@ -60,6 +64,8 @@ public class DiscordNotificationService : BackgroundService
         _dedup = dedup;
         _logger = logger;
         _webhookUrl = config["Notifications:Discord:WebhookUrl"] ?? "";
+        _botToken = config["Notifications:Discord:BotToken"] ?? "";
+        _dmUserId = config["Notifications:Discord:DmUserId"] ?? "";
         _intervalSeconds = Math.Max(10, config.GetValue("Notifications:Discord:IntervalSeconds", 15));
         // Auto-trader cycle 預設 5 分鐘、給寬限到 15 分鐘才視為 stale
         _heartbeatStaleMinutes = Math.Max(2, config.GetValue("Notifications:Discord:HeartbeatStaleMinutes", 15));
@@ -68,7 +74,9 @@ public class DiscordNotificationService : BackgroundService
         _protectThrottle = TimeSpan.FromMinutes(Math.Max(1, config.GetValue("Notifications:Discord:ProtectThrottleMinutes", 60)));
     }
 
-    public bool IsEnabled => !string.IsNullOrWhiteSpace(_webhookUrl);
+    // DM 模式優先:設了 bot token + user ID 就走 DM;否則看 webhook。
+    private bool DmEnabled => !string.IsNullOrWhiteSpace(_botToken) && !string.IsNullOrWhiteSpace(_dmUserId);
+    public bool IsEnabled => DmEnabled || !string.IsNullOrWhiteSpace(_webhookUrl);
     public string MaskedWebhook => IsEnabled
         ? _webhookUrl[..Math.Min(40, _webhookUrl.Length)] + "…"
         : "";
@@ -386,7 +394,51 @@ public class DiscordNotificationService : BackgroundService
         object? fields,
         DateTime? timestamp,
         CancellationToken ct)
-        => SendEmbedToUrlAsync(_webhookUrl, title, description, color, fields, timestamp, ct);
+        => DmEnabled
+            ? SendEmbedViaDmAsync(title, description, color, fields, timestamp, ct)   // 2026-06-04:operator 通知改 DM 給你(只有你看到)
+            : SendEmbedToUrlAsync(_webhookUrl, title, description, color, fields, timestamp, ct);
+
+    // 2026-06-04:DM operator 通知 — 用 bot token(複用 bot-node 的)開跟你的 DM channel + 發 embed。
+    // 只有你收得到、不進任何頻道(解共享頻道洩漏策略名/動作)。bot 需跟你同 server + 你允許 server 成員 DM。
+    private async Task SendEmbedViaDmAsync(
+        string title, string description, int color, object? fields, DateTime? timestamp, CancellationToken ct)
+    {
+        var embed = new
+        {
+            title, description, color, fields,
+            timestamp = timestamp?.ToUniversalTime().ToString("o"),
+            footer = new { text = "B4A Trading · Broker notification (DM)" },
+        };
+        using var client = _httpFactory.CreateClient("discord-webhook");
+        client.Timeout = TimeSpan.FromSeconds(10);
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bot {_botToken}");
+        try
+        {
+            // 1. 開(或取既有)跟該 user 的 DM channel
+            var dmResp = await client.PostAsJsonAsync(
+                "https://discord.com/api/v10/users/@me/channels", new { recipient_id = _dmUserId }, ct);
+            if (!dmResp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Discord DM channel create {Status}: {Body}",
+                    dmResp.StatusCode, await dmResp.Content.ReadAsStringAsync(ct));
+                return;
+            }
+            var dm = await dmResp.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            if (dm.ValueKind != JsonValueKind.Object || !dm.TryGetProperty("id", out var idEl))
+            {
+                _logger.LogWarning("Discord DM channel: no id in response");
+                return;
+            }
+            // 2. 發 embed 到該 DM channel
+            var msgResp = await client.PostAsJsonAsync(
+                $"https://discord.com/api/v10/channels/{idEl.GetString()}/messages",
+                new { embeds = new[] { embed } }, ct);
+            if (!msgResp.IsSuccessStatusCode)
+                _logger.LogWarning("Discord DM send {Status}: {Body}",
+                    msgResp.StatusCode, await msgResp.Content.ReadAsStringAsync(ct));
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Discord DM POST failed"); }
+    }
 
     private async Task SendEmbedToUrlAsync(
         string webhookUrl,

@@ -144,6 +144,9 @@ services:
       Embedding__Enabled: "false"
 
       Notifications__Discord__WebhookUrl: "${DISCORD_WEBHOOK_URL:-}"
+      # 2026-06-04:DM 模式 — 設了這兩個 → operator 通知改 DM 給你(只有你看到、不進共享頻道);沒設則照舊走 webhook。
+      Notifications__Discord__BotToken: "${DISCORD_BOT_TOKEN:-}"
+      Notifications__Discord__DmUserId: "${DISCORD_DM_USER_ID:-}"
       # protect 保護單推播:false=SL→BE/Trailing/exchange SL set 完全靜音(只留實際平倉/買賣/熔斷/錯誤)。
       # 想開回節流模式:設 NOTIFY_PROTECT_SLMOVE=true + ProtectThrottleMinutes(預設 60)。
       Notifications__Discord__ProtectNotify: "${NOTIFY_PROTECT_SLMOVE:-true}"
