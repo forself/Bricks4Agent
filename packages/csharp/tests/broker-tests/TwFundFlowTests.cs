@@ -57,6 +57,16 @@ public static class TwFundFlowTests
     ]}
     """;
 
+    // 上市公司基本資料(t187ap03_L 形狀):公司代號 + 產業別代碼
+    private const string IndustryJson = """
+    [
+    {"公司代號":"2330","公司名稱":"台積電","產業別":"24"},
+    {"公司代號":"2317","公司名稱":"鴻海","產業別":"28"},
+    {"公司代號":"2603","公司名稱":"長榮","產業別":"15"},
+    {"公司代號":"01001","公司名稱":"權證類","產業別":"24"}
+    ]
+    """;
+
     public static (int passed, int failed) Run()
     {
         int passed = 0, failed = 0;
@@ -187,6 +197,33 @@ public static class TwFundFlowTests
         var fam = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html", includeWatchlist: false);
         Check("family-no-watchlist", !fam.Contains("watchlist"));
         Check("family-has-summary", fam.Contains("重點摘要"));
+
+        // ── 產業對照解析 + IndustryName ──
+        var imap = TwseFundFlowClient.ParseIndustryMap(IndustryJson);
+        Check("industry-2330=半導體", imap.GetValueOrDefault("2330") == "半導體");
+        Check("industry-2317=電子零組件", imap.GetValueOrDefault("2317") == "電子零組件");
+        Check("industry-2603=航運", imap.GetValueOrDefault("2603") == "航運");
+        Check("industry-excludes-5digit-warrant", !imap.ContainsKey("01001"));   // 5位→IsCommonStock false
+        Check("industryname-24=半導體", TwseFundFlowClient.IndustryName("24") == "半導體");
+        Check("industryname-unknown→產業99", TwseFundFlowClient.IndustryName("99") == "產業99");
+
+        // ── 按產業彙總(2330 半導體買 / 2317 電子零組件賣)──
+        var secRows = new List<TwFundFlowDaily>
+        {
+            new() { StockCode = "2330", StockName = "台積電", TotalNet = 771_034, ForeignNet = -103_827, TrustNet = 647_975 },
+            new() { StockCode = "2317", StockName = "鴻海", TotalNet = -500_000, ForeignNet = -400_000, TrustNet = -100_000 },
+        };
+        var secCloses = new Dictionary<string, decimal> { ["2330"] = 2385m, ["2317"] = 200m };
+        var secMap = new Dictionary<string, string> { ["2330"] = "半導體", ["2317"] = "電子零組件" };
+        var rdSec = TwFundFlowReport.Build("2026-06-03", secRows, secCloses,
+            new Dictionary<string, List<long>>(), Array.Empty<string>(), secMap);
+        Check("sector-inflow-半導體", rdSec.SectorInflow.Any(s => s.Sector == "半導體" && s.TotalYi == 18.4m));
+        Check("sector-outflow-電子零組件", rdSec.SectorOutflow.Any(s => s.Sector == "電子零組件" && s.TotalYi == -1.0m));
+        Check("sector-highlights-nonempty", rdSec.SectorHighlights.Count > 0);
+        // 家人版(sectorFocus)= 產業為主、無個股 top、無 watchlist
+        var famSec = TwFundFlowReport.RenderDiscord(rdSec, "https://x/f.html", includeWatchlist: false, sectorFocus: true);
+        Check("sectorfocus-has-產業", famSec.Contains("產業淨流入") || famSec.Contains("產業淨流出"));
+        Check("sectorfocus-no-watchlist", !famSec.Contains("watchlist"));
 
         Console.WriteLine($"--- TwFundFlow: {passed} passed, {failed} failed ---");
         return (passed, failed);

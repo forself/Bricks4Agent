@@ -20,6 +20,8 @@ public static class TwFundFlowReport
     public record ConsecItem(string Code, string Name, int Days, long LatestLots);
     public record WatchRow(string Code, string Name, long TotalLots, long ForeignLots, long TrustLots,
         long DealerLots, long MarginChg, long ShortChg, decimal TotalYi, bool HasData);
+    /// <summary>產業層級資金流:三大法人合計金額(億)+ 外資/投信 分項(億)+ 該產業檔數。</summary>
+    public record SectorItem(string Sector, decimal TotalYi, decimal ForeignYi, decimal TrustYi, int StockCount);
 
     public record ReportData(
         string Date, int TotalStocks, bool UseAmount,
@@ -28,7 +30,8 @@ public static class TwFundFlowReport
         List<RankItem> TrustBuy, List<RankItem> TrustSell,
         List<RankItem> MarginUp, List<RankItem> ShortUp,
         List<ConsecItem> ConsecBuy, List<ConsecItem> ConsecSell,
-        List<WatchRow> Watch, List<string> Highlights);
+        List<SectorItem> SectorInflow, List<SectorItem> SectorOutflow,
+        List<WatchRow> Watch, List<string> Highlights, List<string> SectorHighlights);
 
     /// <summary>買賣超金額(億元)= 淨股數 × 收盤價 / 1e8。收盤未知(0)→ 0。</summary>
     public static decimal AmountYi(long shares, decimal close) =>
@@ -51,6 +54,7 @@ public static class TwFundFlowReport
         Dictionary<string, decimal> closes,
         Dictionary<string, List<long>> foreignHistRecentFirst,
         string[] watchlist,
+        Dictionary<string, string>? sectorByCode = null,
         int topN = 8)
     {
         bool useAmount = closes.Count > 0;
@@ -101,6 +105,34 @@ public static class TwFundFlowReport
                 AmountYi(r.TotalNet, Close(code)), true);
         }).ToList();
 
+        // 按產業彙總三大法人金額(億):每檔的法人/外資/投信金額累加到所屬產業 → 排各產業淨流入/流出
+        var sectorInflow = new List<SectorItem>();
+        var sectorOutflow = new List<SectorItem>();
+        var sectorHl = new List<string>();
+        if (sectorByCode is { Count: > 0 } && useAmount)
+        {
+            var agg = new Dictionary<string, (decimal tot, decimal fgn, decimal tru, int n)>();
+            foreach (var r in stocks)
+            {
+                if (!sectorByCode.TryGetValue(r.StockCode, out var sec)) continue;
+                var c = Close(r.StockCode);
+                if (c <= 0) continue;
+                agg.TryGetValue(sec, out var a);
+                agg[sec] = (a.tot + AmountYi(r.TotalNet, c), a.fgn + AmountYi(r.ForeignNet, c),
+                            a.tru + AmountYi(r.TrustNet, c), a.n + 1);
+            }
+            var sectors = agg.Select(kv => new SectorItem(kv.Key,
+                Math.Round(kv.Value.tot, 1), Math.Round(kv.Value.fgn, 1), Math.Round(kv.Value.tru, 1), kv.Value.n)).ToList();
+            sectorInflow = sectors.Where(s => s.TotalYi > 0).OrderByDescending(s => s.TotalYi).Take(topN).ToList();
+            sectorOutflow = sectors.Where(s => s.TotalYi < 0).OrderBy(s => s.TotalYi).Take(topN).ToList();
+            if (sectorInflow.Count > 0)
+                sectorHl.Add($"資金最流入:{sectorInflow[0].Sector}({FmtYi(sectorInflow[0].TotalYi)})" +
+                    (sectorInflow.Count > 1 ? $"、{sectorInflow[1].Sector}({FmtYi(sectorInflow[1].TotalYi)})" : ""));
+            if (sectorOutflow.Count > 0)
+                sectorHl.Add($"資金最流出:{sectorOutflow[0].Sector}({FmtYi(sectorOutflow[0].TotalYi)})" +
+                    (sectorOutflow.Count > 1 ? $"、{sectorOutflow[1].Sector}({FmtYi(sectorOutflow[1].TotalYi)})" : ""));
+        }
+
         // 重點摘要
         var hl = new List<string>();
         string Val(RankItem i) => useAmount ? FmtYi(i.AmountYi) : FmtLots(i.Lots);
@@ -119,7 +151,8 @@ public static class TwFundFlowReport
             hl.Add($"watchlist 法人最大動向:{wBig.Name} {FmtLots(wBig.TotalLots)}");
 
         return new ReportData(date, stocks.Count, useAmount, totalBuy, totalSell, foreignBuy, foreignSell,
-            trustBuy, trustSell, marginUp, shortUp, consecBuy, consecSell, watch, hl);
+            trustBuy, trustSell, marginUp, shortUp, consecBuy, consecSell,
+            sectorInflow, sectorOutflow, watch, hl, sectorHl);
     }
 
     // ── 格式化 ──
@@ -127,51 +160,72 @@ public static class TwFundFlowReport
     private static string FmtLots(long v) => (v >= 0 ? "+" : "") + v.ToString("N0") + "張";
     private static string Val(RankItem i, bool useAmount) => useAmount ? FmtYi(i.AmountYi) : FmtLots(i.Lots);
 
-    // ── Discord(精簡)──
-    // includeWatchlist=false:推給家人的 LINE 版省略「我的 watchlist」(那是個人關注清單、不外送)。
-    public static string RenderDiscord(ReportData d, string? reportUrl, bool includeWatchlist = true)
+    // ── Discord / LINE(精簡)──
+    // includeWatchlist=false:省略「我的 watchlist」(個人關注清單不外送)。
+    // sectorFocus=true:家人版 → 以「各產業資金流」為主、拿掉個股 top / 連續動能(家人要看的是產業)。
+    public static string RenderDiscord(ReportData d, string? reportUrl, bool includeWatchlist = true, bool sectorFocus = false)
     {
         var sb = new StringBuilder();
-        // 家人版(!includeWatchlist):連「watchlist 法人最大動向」這條摘要也濾掉(個人關注清單不外送)
-        var highlights = includeWatchlist
-            ? d.Highlights
-            : d.Highlights.Where(h => !h.StartsWith("watchlist")).ToList();
+        // 摘要:家人版用產業摘要;否則用個股摘要(非 watchlist 模式濾掉「watchlist 法人最大動向」那條)
+        var highlights = sectorFocus
+            ? d.SectorHighlights
+            : (includeWatchlist ? d.Highlights : d.Highlights.Where(h => !h.StartsWith("watchlist")).ToList());
         if (highlights.Count > 0)
         {
             sb.AppendLine("**📊 重點摘要**");
             foreach (var h in highlights) sb.AppendLine($"・{h}");
             sb.AppendLine();
         }
-        void Sec(string title, List<RankItem> items, int take)
+        void SecRank(string title, List<RankItem> items, int take)
         {
             if (items.Count == 0) return;
             sb.AppendLine($"**{title}**");
             foreach (var i in items.Take(take)) sb.AppendLine($"・{i.Name}({i.Code}) {Val(i, d.UseAmount)}");
             sb.AppendLine();
         }
-        if (d.ConsecBuy.Count > 0 || d.ConsecSell.Count > 0)
+        void SecSector(string title, List<SectorItem> items, int take)
         {
-            sb.AppendLine("**🔥 外資連續動能**");
-            foreach (var c in d.ConsecBuy.Take(3)) sb.AppendLine($"・🟢 {c.Name}({c.Code}) 連 {c.Days} 日買超");
-            foreach (var c in d.ConsecSell.Take(3)) sb.AppendLine($"・🔴 {c.Name}({c.Code}) 連 {Math.Abs(c.Days)} 日賣超");
+            if (items.Count == 0) return;
+            sb.AppendLine($"**{title}**");
+            foreach (var s in items.Take(take))
+                sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)})");
             sb.AppendLine();
         }
-        Sec("🟢 三大法人買超 top", d.TotalBuy, 5);
-        Sec("🔴 三大法人賣超 top", d.TotalSell, 5);
 
-        if (includeWatchlist)
+        if (sectorFocus)
         {
-            sb.AppendLine($"**📌 我的 watchlist({d.Watch.Count})**");
-            foreach (var w in d.Watch)
+            // 家人版:純產業
+            SecSector("📈 產業淨流入 top", d.SectorInflow, 8);
+            SecSector("📉 產業淨流出 top", d.SectorOutflow, 8);
+        }
+        else
+        {
+            if (d.ConsecBuy.Count > 0 || d.ConsecSell.Count > 0)
             {
-                if (!w.HasData) { sb.AppendLine($"・{w.Code}: (無資料)"); continue; }
-                sb.AppendLine($"・{w.Name}({w.Code}): 法人{FmtLots(w.TotalLots)} (外{FmtLots(w.ForeignLots)} 投{FmtLots(w.TrustLots)}) · 融資{FmtLots(w.MarginChg)} 融券{FmtLots(w.ShortChg)}");
+                sb.AppendLine("**🔥 外資連續動能**");
+                foreach (var c in d.ConsecBuy.Take(3)) sb.AppendLine($"・🟢 {c.Name}({c.Code}) 連 {c.Days} 日買超");
+                foreach (var c in d.ConsecSell.Take(3)) sb.AppendLine($"・🔴 {c.Name}({c.Code}) 連 {Math.Abs(c.Days)} 日賣超");
+                sb.AppendLine();
+            }
+            SecRank("🟢 三大法人買超 top", d.TotalBuy, 5);
+            SecRank("🔴 三大法人賣超 top", d.TotalSell, 5);
+            SecSector("📈 產業淨流入 top", d.SectorInflow, 6);
+            SecSector("📉 產業淨流出 top", d.SectorOutflow, 6);
+
+            if (includeWatchlist)
+            {
+                sb.AppendLine($"**📌 我的 watchlist({d.Watch.Count})**");
+                foreach (var w in d.Watch)
+                {
+                    if (!w.HasData) { sb.AppendLine($"・{w.Code}: (無資料)"); continue; }
+                    sb.AppendLine($"・{w.Name}({w.Code}): 法人{FmtLots(w.TotalLots)} (外{FmtLots(w.ForeignLots)} 投{FmtLots(w.TrustLots)}) · 融資{FmtLots(w.MarginChg)} 融券{FmtLots(w.ShortChg)}");
+                }
             }
         }
         if (!string.IsNullOrWhiteSpace(reportUrl))
         {
             sb.AppendLine();
-            sb.AppendLine($"📄 完整報表(全榜+融資融券+顏色表格):{reportUrl}");
+            sb.AppendLine($"📄 完整報表:{reportUrl}");
         }
         return sb.ToString();
     }
@@ -219,6 +273,15 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
             sb.Append(@"<div class=""card""><h2>📊 重點摘要</h2><ul class=""hl"">");
             foreach (var h in d.Highlights) sb.Append($"<li>{E(h)}</li>");
             sb.Append("</ul></div>");
+        }
+
+        // 各產業資金流(三大法人金額)— 放重點摘要後、最顯眼
+        if (d.SectorInflow.Count > 0 || d.SectorOutflow.Count > 0)
+        {
+            sb.Append(@"<div class=""card""><h2>🏭 各產業資金流(三大法人金額)</h2><div class=""grid"">");
+            sb.Append(SectorTable("淨流入 top", d.SectorInflow, E, Cls));
+            sb.Append(SectorTable("淨流出 top", d.SectorOutflow, E, Cls));
+            sb.Append("</div></div>");
         }
 
         // 連續動能
@@ -286,6 +349,21 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
             string val = useAmount ? (i.AmountYi >= 0 ? "+" : "") + i.AmountYi.ToString("0.0") : Lots(i.Lots);
             sb.Append($@"<tr><td>{E(i.Name)}<span class=""tag""> {E(i.Code)}</span></td><td class=""{cls}"">{val}</td></tr>");
         }
+        sb.Append("</table></div>");
+        return sb.ToString();
+    }
+
+    private static string SectorTable(string title, List<SectorItem> items, Func<string, string> E, Func<decimal, string> Cls)
+    {
+        static string Sgn(decimal v) => (v >= 0 ? "+" : "") + v.ToString("0.0");
+        var sb = new StringBuilder();
+        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>億元</th><th>外資</th><th>投信</th></tr>");
+        if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td><td></td><td></td></tr>");
+        foreach (var s in items)
+            sb.Append($@"<tr><td>{E(s.Sector)}<span class=""tag""> {s.StockCount}檔</span></td>" +
+                $@"<td class=""{Cls(s.TotalYi)}"">{Sgn(s.TotalYi)}</td>" +
+                $@"<td class=""{Cls(s.ForeignYi)}"">{Sgn(s.ForeignYi)}</td>" +
+                $@"<td class=""{Cls(s.TrustYi)}"">{Sgn(s.TrustYi)}</td></tr>");
         sb.Append("</table></div>");
         return sb.ToString();
     }

@@ -24,6 +24,21 @@ public static class TwseFundFlowClient
     // 不靠 STOCK_DAY_ALL 的「只回最新日」→ 任何報表日(含 backfill 歷史日)都拿得到當日收盤、穩定顯示億元。
     private const string MiIndexUrl =
         "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={0}&type=ALLBUT0999&response=json";
+    // 上市公司基本資料(含產業別代碼)。給「按產業彙總資金流」用 — 個股 → 產業別代碼 → 中文產業名。
+    private const string IndustryUrl = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L";
+
+    // TWSE 標準產業別代碼 → 中文名(穩定、少變)。未知代碼 → IndustryName 回「產業{code}」。
+    private static readonly Dictionary<string, string> IndustryNames = new()
+    {
+        ["01"] = "水泥", ["02"] = "食品", ["03"] = "塑膠", ["04"] = "紡織纖維", ["05"] = "電機機械",
+        ["06"] = "電器電纜", ["08"] = "玻璃陶瓷", ["09"] = "造紙", ["10"] = "鋼鐵", ["11"] = "橡膠",
+        ["12"] = "汽車", ["14"] = "建材營造", ["15"] = "航運", ["16"] = "觀光餐旅", ["17"] = "金融保險",
+        ["18"] = "貿易百貨", ["20"] = "其他", ["21"] = "化學", ["22"] = "生技醫療", ["23"] = "油電燃氣",
+        ["24"] = "半導體", ["25"] = "電腦及週邊", ["26"] = "光電", ["27"] = "通信網路", ["28"] = "電子零組件",
+        ["29"] = "電子通路", ["30"] = "資訊服務", ["31"] = "其他電子", ["32"] = "文化創意", ["33"] = "農業科技",
+        ["35"] = "綠能環保", ["36"] = "數位雲端", ["37"] = "運動休閒", ["38"] = "居家生活",
+        ["80"] = "管理股票", ["91"] = "存託憑證",
+    };
 
     /// <summary>
     /// 抓某 TST 日期的台股資金流。回 (hasData, rows)。
@@ -214,6 +229,36 @@ public static class TwseFundFlowClient
             }
         }
         return (date, map);
+    }
+
+    /// <summary>產業別代碼 → 中文產業名(未知 → 「產業{code}」)。純函式。</summary>
+    public static string IndustryName(string code)
+    {
+        code = (code ?? "").Trim();
+        return IndustryNames.TryGetValue(code, out var n) ? n : $"產業{code}";
+    }
+
+    /// <summary>抓「個股 → 中文產業名」對照(上市公司基本資料 t187ap03_L)。失敗回空。給按產業彙總資金流用。</summary>
+    public static async Task<Dictionary<string, string>> FetchIndustryMapAsync(HttpClient http, CancellationToken ct = default)
+    {
+        try { return ParseIndustryMap(await http.GetStringAsync(IndustryUrl, ct)); }
+        catch { return new(); }
+    }
+
+    /// <summary>解析 t187ap03_L → code → 中文產業名(只留普通個股、產業代碼轉中文)。純函式、可測。</summary>
+    public static Dictionary<string, string> ParseIndustryMap(string json)
+    {
+        var map = new Dictionary<string, string>();
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return map;
+        foreach (var c in doc.RootElement.EnumerateArray())
+        {
+            if (c.ValueKind != JsonValueKind.Object) continue;
+            string code = c.TryGetProperty("公司代號", out var cd) ? (cd.GetString() ?? "").Trim() : "";
+            string ind = c.TryGetProperty("產業別", out var id) ? (id.GetString() ?? "").Trim() : "";
+            if (IsCommonStock(code) && ind.Length > 0) map[code] = IndustryName(ind);
+        }
+        return map;
     }
 
     /// <summary>普通個股 + 主要 ETF:4 位數字代號(濾掉 6 位權證、含字母的特殊商品如 00403A)。</summary>

@@ -134,7 +134,8 @@ public class TwFundFlowService : BackgroundService
             ? closes
             : rows.Where(r => r.ClosePrice > 0).ToDictionary(r => r.StockCode, r => r.ClosePrice);
         var foreignHist = LoadForeignHistory(isoDate, HistoryWindow);
-        var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist);
+        var sectorMap = await GetIndustryMapAsync(http, ct);   // 個股→產業名,給按產業彙總用
+        var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist, sectorMap);
 
         // 寫 HTML 報表(寫檔失敗不致命)
         WriteHtml(TwFundFlowReport.RenderHtml(report));
@@ -153,8 +154,8 @@ public class TwFundFlowService : BackgroundService
         // 額外推 LINE 給家人(gated:設了 TW_FUNDFLOW_LINE_TO 才推)。用公開連結(免 Access)、純文字(LINE 不吃 markdown 去掉 **)。
         if (_lineTo.Length > 0 && _line.IsEnabledInConfig)
         {
-            // 推給家人:省略「我的 watchlist」(個人關注清單不外送)
-            var lineBody = TwFundFlowReport.RenderDiscord(report, _publicUrl, includeWatchlist: false).Replace("**", "");
+            // 推給家人:以產業為主(sectorFocus)+ 省略 watchlist(個人關注清單不外送)
+            var lineBody = TwFundFlowReport.RenderDiscord(report, _publicUrl, includeWatchlist: false, sectorFocus: true).Replace("**", "");
             foreach (var to in _lineTo)
             {
                 var (lok, lerr) = await _line.SendAdHocToAsync(to, $"🇹🇼 台股資金流日報 · {isoDate}", lineBody, "info", ct);
@@ -221,6 +222,20 @@ public class TwFundFlowService : BackgroundService
         }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load history failed"); }
         return result;
+    }
+
+    // 個股→產業名 對照快取(少變、快取 12h、避免每次手動推都重抓 ~1090 家)
+    private Dictionary<string, string>? _industryMap;
+    private DateTime _industryMapAt = DateTime.MinValue;
+
+    /// <summary>取得個股→中文產業名對照(快取 12h);抓失敗保留舊快取、再不行回空(產業段就略過)。</summary>
+    private async Task<Dictionary<string, string>> GetIndustryMapAsync(HttpClient http, CancellationToken ct)
+    {
+        if (_industryMap is { Count: > 0 } && DateTime.UtcNow - _industryMapAt < TimeSpan.FromHours(12))
+            return _industryMap;
+        var m = await TwseFundFlowClient.FetchIndustryMapAsync(http, ct);
+        if (m.Count > 0) { _industryMap = m; _industryMapAt = DateTime.UtcNow; }
+        return _industryMap ?? new Dictionary<string, string>();
     }
 
     /// <summary>讀某交易日 DB 既存收盤(close_price&gt;0)→ code→close。MI_INDEX 抓不到時的 fallback。</summary>
