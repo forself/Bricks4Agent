@@ -67,6 +67,16 @@ public static class TwFundFlowTests
     ]
     """;
 
+    // 上櫃 TPEx 三大法人(欄名仿真;外資 = total−trust−dealer 反推)
+    private const string TpexInstJson = """
+    [
+    {"Date":"1150605","SecuritiesCompanyCode":"5483","CompanyName":"中美晶","SecuritiesInvestmentTrustCompanies-Difference":"150000","Dealers-Difference":"50000","TotalDifference":"1000000"},
+    {"Date":"1150605","SecuritiesCompanyCode":"00679B","CompanyName":"元大美債","SecuritiesInvestmentTrustCompanies-Difference":"0","Dealers-Difference":"0","TotalDifference":"500000"}
+    ]
+    """;
+    private const string TpexCloseJson = """[{"SecuritiesCompanyCode":"5483","Close":"120.5"},{"SecuritiesCompanyCode":"00679B","Close":"30.0"}]""";
+    private const string TpexIndustryJson = """[{"SecuritiesCompanyCode":"5483","SecuritiesIndustryCode":"24"},{"SecuritiesCompanyCode":"01001","SecuritiesIndustryCode":"24"}]""";
+
     public static (int passed, int failed) Run()
     {
         int passed = 0, failed = 0;
@@ -198,6 +208,24 @@ public static class TwFundFlowTests
         Check("changepct-2330=1.5", rdChg.TotalBuy.Any(x => x.Code == "2330" && x.ChangePct == 1.5m));
         Check("discord-shows-changepct", TwFundFlowReport.RenderDiscord(rdChg, null).Contains("1.5%"));
         Check("html-shows-changepct", TwFundFlowReport.RenderHtml(rdChg).Contains("+1.5%"));
+
+        // ── #3a 上櫃 TPEx 解析 ──
+        Check("tpex-roc→iso", TpexFundFlowClient.RocToIso("1150605") == "2026-06-05");
+        var (tdate, trows) = TpexFundFlowClient.ParseInstitutional(TpexInstJson);
+        Check("tpex-date=2026-06-05", tdate == "2026-06-05");
+        Check("tpex-only-5483(濾ETF)", trows.Count == 1 && trows[0].StockCode == "5483");
+        if (trows.Count == 1)
+        {
+            Check("tpex-total=1000000", trows[0].TotalNet == 1_000_000);
+            Check("tpex-foreign=800000(反推)", trows[0].ForeignNet == 800_000);   // 100萬−15萬−5萬
+            Check("tpex-identity", trows[0].ForeignNet + trows[0].TrustNet + trows[0].DealerNet == trows[0].TotalNet);
+        }
+        var tcloses = TpexFundFlowClient.ParseCloses(TpexCloseJson);
+        Check("tpex-close-5483=120.5", tcloses.GetValueOrDefault("5483") == 120.5m);
+        Check("tpex-close-excludes-etf", !tcloses.ContainsKey("00679B"));
+        var tind = TpexFundFlowClient.ParseIndustryMap(TpexIndustryJson);
+        Check("tpex-industry-5483=半導體", tind.GetValueOrDefault("5483") == "半導體");
+        Check("tpex-industry-excludes-5digit", !tind.ContainsKey("01001"));
 
         var disc = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html");
         Check("discord-has-summary", disc.Contains("重點摘要"));

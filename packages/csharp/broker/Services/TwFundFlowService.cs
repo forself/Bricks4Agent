@@ -29,6 +29,7 @@ public class TwFundFlowService : BackgroundService
     private readonly string _reportUrl;
     private readonly string[] _lineTo;      // 額外推 LINE 的 userId(如家人);空=不推 LINE
     private readonly string _publicUrl;      // LINE 給家人的「公開報表」連結(免 Cloudflare Access)
+    private readonly bool _includeOtc;       // 是否把上櫃(TPEx)併進「各產業資金流」(預設 true)
 
     private const int HistoryWindow = 8;     // 連續買賣超查的歷史天數窗
     private const int MinHistoryDates = 6;   // 啟動時少於這數量就 backfill
@@ -62,6 +63,7 @@ public class TwFundFlowService : BackgroundService
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         // 給家人的公開連結(免 Access);沒設就退回 dashboard URL(家人會被 Access 擋、需設了才推)
         _publicUrl = Environment.GetEnvironmentVariable("TW_FUNDFLOW_PUBLIC_URL") ?? _reportUrl;
+        _includeOtc = (Environment.GetEnvironmentVariable("TW_FUNDFLOW_INCLUDE_OTC") ?? "true").Trim().ToLowerInvariant() is "true" or "1";
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -136,14 +138,40 @@ public class TwFundFlowService : BackgroundService
             ? closes
             : rows.Where(r => r.ClosePrice > 0).ToDictionary(r => r.StockCode, r => r.ClosePrice);
         var foreignHist = LoadForeignHistory(isoDate, HistoryWindow);
-        var sectorMap = await GetIndustryMapAsync(http, ct);   // 個股→產業名,給按產業彙總用
+        var sectorMap = await GetIndustryMapAsync(http, ct);   // 上市個股→產業名
         // 漲跌%:用 DB 前一交易日收盤算((今收-前收)/前收),不靠解析 MI_INDEX 漲跌符號 HTML
         var prevCloses = LoadPrevCloses(isoDate);
         var changePct = new Dictionary<string, decimal>();
         foreach (var kv in closesForReport)
             if (prevCloses.TryGetValue(kv.Key, out var pc) && pc > 0)
                 changePct[kv.Key] = Math.Round((kv.Value - pc) / pc * 100m, 1);
-        var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist, sectorMap, changePct);
+
+        // 併入上櫃(TPEx)— 只在報表「當日」、in-memory(不存 DB)、失敗不致命 → 讓「各產業資金流」含上櫃。
+        var reportRows = rows;
+        var reportCloses = closesForReport;
+        if (_includeOtc)
+        {
+            try
+            {
+                var tpex = await TpexFundFlowClient.FetchAsync(http, ct);
+                if (tpex.Date == isoDate && tpex.Rows.Count > 0)
+                {
+                    var seen = rows.Select(r => r.StockCode).ToHashSet();
+                    var otcRows = tpex.Rows.Where(r => seen.Add(r.StockCode)).ToList();   // 防跟上市撞代號
+                    reportRows = new List<TwFundFlowDaily>(rows); reportRows.AddRange(otcRows);
+                    reportCloses = new Dictionary<string, decimal>(closesForReport);
+                    foreach (var kv in tpex.Closes) reportCloses.TryAdd(kv.Key, kv.Value);
+                    var otcSectors = await GetTpexIndustryMapAsync(http, ct);
+                    sectorMap = new Dictionary<string, string>(sectorMap);
+                    foreach (var kv in otcSectors) sectorMap.TryAdd(kv.Key, kv.Value);
+                    _logger.LogInformation("TwFundFlow: merged OTC +{N} stocks (sectors)", otcRows.Count);
+                }
+                else _logger.LogInformation("TwFundFlow: OTC skipped (date {D} != {Iso} or empty)", tpex.Date, isoDate);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: OTC merge failed (上市照常)"); }
+        }
+
+        var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct);
 
         // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
         WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
@@ -255,6 +283,19 @@ public class TwFundFlowService : BackgroundService
         var m = await TwseFundFlowClient.FetchIndustryMapAsync(http, ct);
         if (m.Count > 0) { _industryMap = m; _industryMapAt = DateTime.UtcNow; }
         return _industryMap ?? new Dictionary<string, string>();
+    }
+
+    private Dictionary<string, string>? _otcIndustryMap;
+    private DateTime _otcIndustryMapAt = DateTime.MinValue;
+
+    /// <summary>取得上櫃個股→中文產業名對照(快取 12h)。</summary>
+    private async Task<Dictionary<string, string>> GetTpexIndustryMapAsync(HttpClient http, CancellationToken ct)
+    {
+        if (_otcIndustryMap is { Count: > 0 } && DateTime.UtcNow - _otcIndustryMapAt < TimeSpan.FromHours(12))
+            return _otcIndustryMap;
+        var m = await TpexFundFlowClient.FetchIndustryMapAsync(http, ct);
+        if (m.Count > 0) { _otcIndustryMap = m; _otcIndustryMapAt = DateTime.UtcNow; }
+        return _otcIndustryMap ?? new Dictionary<string, string>();
     }
 
     /// <summary>讀「報表日的前一個交易日」DB 收盤(close_price&gt;0)→ code→close。算漲跌%用。</summary>
