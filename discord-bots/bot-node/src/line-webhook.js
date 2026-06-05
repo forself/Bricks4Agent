@@ -132,7 +132,8 @@ async function processEvent(evt) {
   if (!userId || !text) return;
 
   if (!isLineAllowed(userId)) {
-    console.log(`[line] rejected user=${userId.slice(0, 8)}…`);
+    // 完整 userId（非截斷）：onboard 新人時要把這串加進 access.json line_allowed_user_ids。
+    console.log(`[line] rejected user=${userId} (加白名單用完整 id)`);
     return;
   }
 
