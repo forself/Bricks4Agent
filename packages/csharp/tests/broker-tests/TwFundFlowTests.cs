@@ -187,6 +187,10 @@ public static class TwFundFlowTests
         Check("html-has-2330", html.Contains("2330"));
         Check("html-has-table", html.Contains("<table"));
         Check("html-valid-doc", html.StartsWith("<!doctype html") && html.TrimEnd().EndsWith("</html>"));
+        Check("html-full-has-watchlist", html.Contains("我的 watchlist"));               // 完整版含 watchlist
+        var famHtml = TwFundFlowReport.RenderHtml(rd, includeWatchlist: false);
+        Check("html-family-no-watchlist", !famHtml.Contains("我的 watchlist"));            // family 公開頁去掉 watchlist
+        Check("html-family-valid-doc", famHtml.StartsWith("<!doctype html") && famHtml.TrimEnd().EndsWith("</html>"));
 
         var disc = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html");
         Check("discord-has-summary", disc.Contains("重點摘要"));

@@ -231,7 +231,8 @@ public static class TwFundFlowReport
     }
 
     // ── HTML(完整報表、行動裝置友善、自含 CSS)──
-    public static string RenderHtml(ReportData d)
+    // includeWatchlist=false:family 公開頁 → 拿掉「我的 watchlist」段 + 濾掉 watchlist 重點摘要(個人關注不外送)。
+    public static string RenderHtml(ReportData d, bool includeWatchlist = true)
     {
         string E(string s) => WebUtility.HtmlEncode(s);
         string Cls(decimal v) => v >= 0 ? "buy" : "sell";
@@ -267,11 +268,12 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
 
         sb.Append($@"<h1>🇹🇼 台股資金流日報</h1><div class=""date"">{E(d.Date)} · 全市場 {d.TotalStocks} 檔個股 · 單位{(d.UseAmount ? "買賣超金額(億元)" : "張")}、正=買超/增</div>");
 
-        // 重點摘要
-        if (d.Highlights.Count > 0)
+        // 重點摘要(family 版濾掉「watchlist 法人最大動向」那條)
+        var hlList = includeWatchlist ? d.Highlights : d.Highlights.Where(h => !h.StartsWith("watchlist")).ToList();
+        if (hlList.Count > 0)
         {
             sb.Append(@"<div class=""card""><h2>📊 重點摘要</h2><ul class=""hl"">");
-            foreach (var h in d.Highlights) sb.Append($"<li>{E(h)}</li>");
+            foreach (var h in hlList) sb.Append($"<li>{E(h)}</li>");
             sb.Append("</ul></div>");
         }
 
@@ -315,20 +317,23 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
         sb.Append(LotTable("融券增加 top(空方布局)", d.ShortUp, E));
         sb.Append("</div></div>");
 
-        // watchlist
-        sb.Append(@"<div class=""card""><h2>📌 我的 watchlist</h2><div class=""scroll""><table class=""watch""><tr><th>個股</th><th>法人(張)</th><th>外資</th><th>投信</th><th>自營</th><th>融資</th><th>融券</th></tr>");
-        foreach (var w in d.Watch)
+        // watchlist(family 公開頁不含此段 — 個人關注清單不外送)
+        if (includeWatchlist)
         {
-            if (!w.HasData) { sb.Append($@"<tr><td>{E(w.Code)}</td><td colspan=""6"" class=""tag"">無資料</td></tr>"); continue; }
-            sb.Append($@"<tr><td>{E(w.Name)}<span class=""tag""> {E(w.Code)}</span></td>" +
-                $@"<td class=""{ClsL(w.TotalLots)}"">{Lots(w.TotalLots)}</td>" +
-                $@"<td class=""{ClsL(w.ForeignLots)}"">{Lots(w.ForeignLots)}</td>" +
-                $@"<td class=""{ClsL(w.TrustLots)}"">{Lots(w.TrustLots)}</td>" +
-                $@"<td class=""{ClsL(w.DealerLots)}"">{Lots(w.DealerLots)}</td>" +
-                $@"<td class=""{ClsL(w.MarginChg)}"">{Lots(w.MarginChg)}</td>" +
-                $@"<td class=""{ClsL(w.ShortChg)}"">{Lots(w.ShortChg)}</td></tr>");
+            sb.Append(@"<div class=""card""><h2>📌 我的 watchlist</h2><div class=""scroll""><table class=""watch""><tr><th>個股</th><th>法人(張)</th><th>外資</th><th>投信</th><th>自營</th><th>融資</th><th>融券</th></tr>");
+            foreach (var w in d.Watch)
+            {
+                if (!w.HasData) { sb.Append($@"<tr><td>{E(w.Code)}</td><td colspan=""6"" class=""tag"">無資料</td></tr>"); continue; }
+                sb.Append($@"<tr><td>{E(w.Name)}<span class=""tag""> {E(w.Code)}</span></td>" +
+                    $@"<td class=""{ClsL(w.TotalLots)}"">{Lots(w.TotalLots)}</td>" +
+                    $@"<td class=""{ClsL(w.ForeignLots)}"">{Lots(w.ForeignLots)}</td>" +
+                    $@"<td class=""{ClsL(w.TrustLots)}"">{Lots(w.TrustLots)}</td>" +
+                    $@"<td class=""{ClsL(w.DealerLots)}"">{Lots(w.DealerLots)}</td>" +
+                    $@"<td class=""{ClsL(w.MarginChg)}"">{Lots(w.MarginChg)}</td>" +
+                    $@"<td class=""{ClsL(w.ShortChg)}"">{Lots(w.ShortChg)}</td></tr>");
+            }
+            sb.Append("</table></div></div>");
         }
-        sb.Append("</table></div></div>");
 
         sb.Append($@"<div class=""foot"">資料來源:TWSE 三大法人買賣超(T86)+ 融資融券(MI_MARGN)+ 收盤(STOCK_DAY_ALL)。B4A 自動產生、僅供參考、非投資建議。</div>");
         sb.Append("</div></body></html>");

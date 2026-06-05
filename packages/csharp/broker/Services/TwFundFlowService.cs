@@ -24,7 +24,8 @@ public class TwFundFlowService : BackgroundService
     private readonly ILogger<TwFundFlowService> _logger;
     private readonly int _reportHourUtc;
     private readonly string[] _watchlist;
-    private readonly string _htmlPath;
+    private readonly string _htmlPath;        // 完整版(含 watchlist)→ dashboard(Access 限本人)
+    private readonly string _familyHtmlPath;  // family 版(去 watchlist)→ 公開(給家人連結)
     private readonly string _reportUrl;
     private readonly string[] _lineTo;      // 額外推 LINE 的 userId(如家人);空=不推 LINE
     private readonly string _publicUrl;      // LINE 給家人的「公開報表」連結(免 Cloudflare Access)
@@ -54,6 +55,7 @@ public class TwFundFlowService : BackgroundService
             ? DefaultWatchlist
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         _htmlPath = Environment.GetEnvironmentVariable("TW_FUNDFLOW_REPORT_HTML") ?? "/app/wwwroot/tw-fundflow.html";
+        _familyHtmlPath = Environment.GetEnvironmentVariable("TW_FUNDFLOW_FAMILY_HTML") ?? "/app/wwwroot/tw-fundflow-family.html";
         _reportUrl = Environment.GetEnvironmentVariable("TW_FUNDFLOW_REPORT_URL")
                      ?? "https://dashboard.b4a-trading.app/tw-fundflow.html";
         _lineTo = (Environment.GetEnvironmentVariable("TW_FUNDFLOW_LINE_TO") ?? "")
@@ -137,8 +139,9 @@ public class TwFundFlowService : BackgroundService
         var sectorMap = await GetIndustryMapAsync(http, ct);   // 個股→產業名,給按產業彙總用
         var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist, sectorMap);
 
-        // 寫 HTML 報表(寫檔失敗不致命)
-        WriteHtml(TwFundFlowReport.RenderHtml(report));
+        // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
+        WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
+        WriteHtml(_familyHtmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: false));
 
         var summary = TwFundFlowReport.RenderDiscord(report, _reportUrl);
         if (!push)
@@ -277,16 +280,16 @@ public class TwFundFlowService : BackgroundService
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: store failed for {Date}", isoDate); }
     }
 
-    private void WriteHtml(string html)
+    private void WriteHtml(string path, string html)
     {
         try
         {
-            var dir = Path.GetDirectoryName(_htmlPath);
+            var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(_htmlPath, html);
-            _logger.LogDebug("TwFundFlow: HTML written to {Path} ({Bytes}B)", _htmlPath, html.Length);
+            File.WriteAllText(path, html);
+            _logger.LogDebug("TwFundFlow: HTML written to {Path} ({Bytes}B)", path, html.Length);
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: HTML write failed ({Path})", _htmlPath); }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: HTML write failed ({Path})", path); }
     }
 
     private HttpClient CreateHttp()
