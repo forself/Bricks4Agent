@@ -137,7 +137,13 @@ public class TwFundFlowService : BackgroundService
             : rows.Where(r => r.ClosePrice > 0).ToDictionary(r => r.StockCode, r => r.ClosePrice);
         var foreignHist = LoadForeignHistory(isoDate, HistoryWindow);
         var sectorMap = await GetIndustryMapAsync(http, ct);   // 個股→產業名,給按產業彙總用
-        var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist, sectorMap);
+        // 漲跌%:用 DB 前一交易日收盤算((今收-前收)/前收),不靠解析 MI_INDEX 漲跌符號 HTML
+        var prevCloses = LoadPrevCloses(isoDate);
+        var changePct = new Dictionary<string, decimal>();
+        foreach (var kv in closesForReport)
+            if (prevCloses.TryGetValue(kv.Key, out var pc) && pc > 0)
+                changePct[kv.Key] = Math.Round((kv.Value - pc) / pc * 100m, 1);
+        var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist, sectorMap, changePct);
 
         // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
         WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
@@ -249,6 +255,24 @@ public class TwFundFlowService : BackgroundService
         var m = await TwseFundFlowClient.FetchIndustryMapAsync(http, ct);
         if (m.Count > 0) { _industryMap = m; _industryMapAt = DateTime.UtcNow; }
         return _industryMap ?? new Dictionary<string, string>();
+    }
+
+    /// <summary>讀「報表日的前一個交易日」DB 收盤(close_price&gt;0)→ code→close。算漲跌%用。</summary>
+    private Dictionary<string, decimal> LoadPrevCloses(string isoDate)
+    {
+        var result = new Dictionary<string, decimal>();
+        try
+        {
+            var prev = _db.Query<TwFundFlowDaily>(
+                "SELECT DISTINCT trade_date FROM tw_fund_flow_daily WHERE trade_date < @d ORDER BY trade_date DESC LIMIT 1",
+                new { d = isoDate }).FirstOrDefault()?.TradeDate;
+            if (string.IsNullOrEmpty(prev)) return result;
+            foreach (var r in _db.Query<TwFundFlowDaily>(
+                "SELECT stock_code, close_price FROM tw_fund_flow_daily WHERE trade_date=@d AND close_price > 0", new { d = prev }))
+                result[r.StockCode] = r.ClosePrice;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load prev closes failed"); }
+        return result;
     }
 
     /// <summary>讀某交易日 DB 既存收盤(close_price&gt;0)→ code→close。MI_INDEX 抓不到時的 fallback。</summary>

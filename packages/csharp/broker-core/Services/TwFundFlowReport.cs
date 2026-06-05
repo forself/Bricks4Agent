@@ -15,7 +15,7 @@ public static class TwFundFlowReport
 {
     private const long Lot = 1000;   // 1 張 = 1000 股
 
-    public record RankItem(string Code, string Name, decimal AmountYi, long Lots);
+    public record RankItem(string Code, string Name, decimal AmountYi, long Lots, decimal ChangePct = 0m);
     /// <summary>Days 帶正負號:正=連續買超天數、負=連續賣超天數。</summary>
     public record ConsecItem(string Code, string Name, int Days, long LatestLots);
     public record WatchRow(string Code, string Name, long TotalLots, long ForeignLots, long TrustLots,
@@ -55,14 +55,16 @@ public static class TwFundFlowReport
         Dictionary<string, List<long>> foreignHistRecentFirst,
         string[] watchlist,
         Dictionary<string, string>? sectorByCode = null,
+        Dictionary<string, decimal>? changePctByCode = null,
         int topN = 8)
     {
         bool useAmount = closes.Count > 0;
         decimal Close(string c) => closes.TryGetValue(c, out var v) ? v : 0m;
+        decimal ChgPct(string c) => changePctByCode != null && changePctByCode.TryGetValue(c, out var v) ? v : 0m;
         // 全市場榜:排除 ETF(代號 0 開頭)、避免 0050/0056 巨量股數蓋過個股
         var stocks = rows.Where(r => r.StockCode.Length == 4 && r.StockCode[0] != '0').ToList();
 
-        RankItem Mk(TwFundFlowDaily r, long net) => new(r.StockCode, r.StockName, AmountYi(net, Close(r.StockCode)), net / Lot);
+        RankItem Mk(TwFundFlowDaily r, long net) => new(r.StockCode, r.StockName, AmountYi(net, Close(r.StockCode)), net / Lot, ChgPct(r.StockCode));
         decimal Metric(TwFundFlowDaily r, long net) => useAmount ? Math.Abs(AmountYi(net, Close(r.StockCode))) : Math.Abs((decimal)net);
 
         List<RankItem> TopBuy(Func<TwFundFlowDaily, long> sel) =>
@@ -176,11 +178,12 @@ public static class TwFundFlowReport
             foreach (var h in highlights) sb.AppendLine($"・{h}");
             sb.AppendLine();
         }
+        static string Pct(RankItem i) => i.ChangePct != 0m ? $" {(i.ChangePct >= 0 ? "▲" : "▼")}{Math.Abs(i.ChangePct):0.0}%" : "";
         void SecRank(string title, List<RankItem> items, int take)
         {
             if (items.Count == 0) return;
             sb.AppendLine($"**{title}**");
-            foreach (var i in items.Take(take)) sb.AppendLine($"・{i.Name}({i.Code}) {Val(i, d.UseAmount)}");
+            foreach (var i in items.Take(take)) sb.AppendLine($"・{i.Name}({i.Code}) {Val(i, d.UseAmount)}{Pct(i)}");
             sb.AppendLine();
         }
         void SecSector(string title, List<SectorItem> items, int take)
@@ -346,13 +349,14 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
         Func<string, string> E, Func<decimal, string> Cls, Func<long, string> ClsL)
     {
         var sb = new StringBuilder();
-        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>{(useAmount ? "億元" : "張")}</th></tr>");
-        if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td></tr>");
+        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>{(useAmount ? "億元" : "張")}</th><th>漲跌</th></tr>");
+        if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td><td></td></tr>");
         foreach (var i in items)
         {
             string cls = useAmount ? Cls(i.AmountYi) : ClsL(i.Lots);
             string val = useAmount ? (i.AmountYi >= 0 ? "+" : "") + i.AmountYi.ToString("0.0") : Lots(i.Lots);
-            sb.Append($@"<tr><td>{E(i.Name)}<span class=""tag""> {E(i.Code)}</span></td><td class=""{cls}"">{val}</td></tr>");
+            string pct = i.ChangePct != 0m ? $@"<td class=""{Cls(i.ChangePct)}"">{(i.ChangePct >= 0 ? "+" : "")}{i.ChangePct.ToString("0.0")}%</td>" : "<td></td>";
+            sb.Append($@"<tr><td>{E(i.Name)}<span class=""tag""> {E(i.Code)}</span></td><td class=""{cls}"">{val}</td>{pct}</tr>");
         }
         sb.Append("</table></div>");
         return sb.ToString();

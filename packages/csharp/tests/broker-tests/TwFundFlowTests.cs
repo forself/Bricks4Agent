@@ -192,6 +192,13 @@ public static class TwFundFlowTests
         Check("html-family-no-watchlist", !famHtml.Contains("我的 watchlist"));            // family 公開頁去掉 watchlist
         Check("html-family-valid-doc", famHtml.StartsWith("<!doctype html") && famHtml.TrimEnd().EndsWith("</html>"));
 
+        // ── #2 漲跌% 進個股榜 ──
+        var chgMap = new Dictionary<string, decimal> { ["2330"] = 1.5m };
+        var rdChg = TwFundFlowReport.Build("2026-06-03", reportRows, closeMap, hist, new[] { "2330" }, null, chgMap);
+        Check("changepct-2330=1.5", rdChg.TotalBuy.Any(x => x.Code == "2330" && x.ChangePct == 1.5m));
+        Check("discord-shows-changepct", TwFundFlowReport.RenderDiscord(rdChg, null).Contains("1.5%"));
+        Check("html-shows-changepct", TwFundFlowReport.RenderHtml(rdChg).Contains("+1.5%"));
+
         var disc = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html");
         Check("discord-has-summary", disc.Contains("重點摘要"));
         Check("discord-has-watchlist", disc.Contains("watchlist"));
