@@ -100,7 +100,7 @@ public class TwFundFlowService : BackgroundService
     /// push=false = 只生成 HTML/存檔、不推。回 (ok, discordSummary, hadData)。
     /// </summary>
     public async Task<(bool Ok, string Summary, bool HadData)> BuildAndPushAsync(
-        bool push, int maxLookbackDays, CancellationToken ct)
+        bool push, int maxLookbackDays, CancellationToken ct, bool familyPreview = false)
     {
         var http = CreateHttp();
 
@@ -147,6 +147,16 @@ public class TwFundFlowService : BackgroundService
                 isoDate, rows.Count, closes.Count > 0);
             return (true, summary, true);
         }
+
+        // 家人版預覽:把「純產業 sectorFocus」版推到 operator 自己的 Discord(不碰 LINE/家人),給上線前看成品。
+        if (familyPreview)
+        {
+            var preview = TwFundFlowReport.RenderDiscord(report, _publicUrl, includeWatchlist: false, sectorFocus: true);
+            var (pok, perr) = await _discord.SendAdHocAsync($"🇹🇼 台股資金流日報(家人版預覽) · {isoDate}", preview, 0x9b59b6, ct);
+            _logger.LogInformation("TwFundFlow family-preview → Discord: ok={Ok} err={Err}", pok, perr ?? "-");
+            return (pok, preview, true);
+        }
+
         var (ok, err) = await _discord.SendAdHocAsync($"🇹🇼 台股資金流日報 · {isoDate}", summary, 0x2B6CB0, ct);
         _logger.LogInformation("TwFundFlow pushed: discord={Ok} date={Date} stocks={N} err={Err}",
             ok, isoDate, rows.Count, err ?? "-");

@@ -248,8 +248,10 @@ public static class TradingEndpoints
         {
             var dry = req.Query.TryGetValue("dry", out var d) && (d.ToString() == "true" || d.ToString() == "1");
             var lookback = req.Query.TryGetValue("lookback", out var l) && int.TryParse(l.ToString(), out var n) ? n : 7;
-            var (ok, summary, hadData) = await twff.BuildAndPushAsync(push: !dry, maxLookbackDays: lookback, ct);
-            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && hadData, dry, had_data = hadData, summary }));
+            // ?family=true → 把「家人版(純產業 sectorFocus)」推到 operator 自己的 Discord 預覽、不碰 LINE/家人
+            var family = req.Query.TryGetValue("family", out var fm) && (fm.ToString() == "true" || fm.ToString() == "1");
+            var (ok, summary, hadData) = await twff.BuildAndPushAsync(push: !dry, maxLookbackDays: lookback, ct, familyPreview: family);
+            return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && hadData, dry, family, had_data = hadData, summary }));
         });
 
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
