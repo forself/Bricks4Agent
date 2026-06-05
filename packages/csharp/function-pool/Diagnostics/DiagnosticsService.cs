@@ -48,6 +48,20 @@ public class DiagnosticsService : IDiagnosticsService
         ("warning:",   IssueSeverity.Warning),
     ];
 
+    // broker rebuild/restart 時 workers 重連會噴一批 transient(Connection closed / 暫時不可用 / stream 未連),
+    // 都是預期、會自動恢復。原本被 log-scan 當成 critical/error → 每次部署假 UNHEALTHY、掩蓋真問題。
+    // 命中這些字樣的行直接跳過、不計分(2026-06-05)。
+    private static readonly string[] BenignTransientPatterns =
+    [
+        "Connection closed by broker",
+        "broker:5000",
+        "Worker stream not connected",
+        "temporarily unavailable",
+        "temporarily unreachable",
+        "ConnectionRefused",
+        "broker temporarily",
+    ];
+
     public DiagnosticsService(
         IContainerManager containerMgr,
         IWorkerRegistry registry,
@@ -161,6 +175,9 @@ public class DiagnosticsService : IDiagnosticsService
 
                 var line = raw.Trim();
                 if (line.Length < 10) continue;
+
+                // broker rebuild 時 workers 重連的 transient = 預期噪音、不計分(避免每次部署假 UNHEALTHY)
+                if (BenignTransientPatterns.Any(b => line.Contains(b, StringComparison.OrdinalIgnoreCase))) continue;
 
                 IssueSeverity? sev = null;
                 foreach (var (token, severity) in LogPatterns)

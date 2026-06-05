@@ -45,6 +45,7 @@ public static class PerpetualEndpoints
 
         p.MapGet("/account", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
@@ -54,6 +55,7 @@ public static class PerpetualEndpoints
 
         p.MapGet("/positions", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
@@ -63,6 +65,7 @@ public static class PerpetualEndpoints
 
         p.MapPost("/order", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             using var reader = new StreamReader(req.Body);
@@ -95,6 +98,7 @@ public static class PerpetualEndpoints
 
         p.MapDelete("/order", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
@@ -107,6 +111,7 @@ public static class PerpetualEndpoints
 
         p.MapGet("/order", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
@@ -119,6 +124,7 @@ public static class PerpetualEndpoints
 
         p.MapGet("/open-orders", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             var ex = req.Query.TryGetValue("exchange", out var e) ? e.ToString() : "bingx";
@@ -130,6 +136,7 @@ public static class PerpetualEndpoints
 
         p.MapPost("/leverage", async (IWorkerRegistry registry, IExecutionDispatcher dispatcher, HttpRequest req) =>
         {
+            if (RequireLogin(req.HttpContext) is { } denied) return denied;
             if (!registry.HasAvailableWorker("trading.perpetual"))
                 return Results.Ok(ApiResponseHelper.Error("trading-worker not connected"));
             using var reader = new StreamReader(req.Body);
@@ -158,6 +165,14 @@ public static class PerpetualEndpoints
     /// 必須帶真實身份、否則 admin 核准就被繞過了。
     /// 沒帶 auth 的 case（極少、純內部測試）才 fallback "system"。
     /// </summary>
+    // 2026-06-05 安全:perpetual 路由全要登入。原本未認證 → Build() 退 principal="system" →
+    // PoolDispatcher approval gate 對 "system" 放行 → 繞過人工審核、直接下真錢 perp 單/改槓桿。
+    // 比照 TradingEndpoints 既有擋法(空 principal → 401)。dashboard cookie / scoped_token 任一登入即放行。
+    private static IResult? RequireLogin(HttpContext ctx) =>
+        string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx))
+            ? Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401)
+            : null;
+
     private static ApprovedRequest Build(HttpContext ctx, string capability, string route, string payload)
     {
         // 用 RequestBodyHelper 統一兩套 auth：scoped_token + cookie session 都認
