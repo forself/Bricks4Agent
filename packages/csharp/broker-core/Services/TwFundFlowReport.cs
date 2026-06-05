@@ -128,13 +128,18 @@ public static class TwFundFlowReport
     private static string Val(RankItem i, bool useAmount) => useAmount ? FmtYi(i.AmountYi) : FmtLots(i.Lots);
 
     // ── Discord(精簡)──
-    public static string RenderDiscord(ReportData d, string? reportUrl)
+    // includeWatchlist=false:推給家人的 LINE 版省略「我的 watchlist」(那是個人關注清單、不外送)。
+    public static string RenderDiscord(ReportData d, string? reportUrl, bool includeWatchlist = true)
     {
         var sb = new StringBuilder();
-        if (d.Highlights.Count > 0)
+        // 家人版(!includeWatchlist):連「watchlist 法人最大動向」這條摘要也濾掉(個人關注清單不外送)
+        var highlights = includeWatchlist
+            ? d.Highlights
+            : d.Highlights.Where(h => !h.StartsWith("watchlist")).ToList();
+        if (highlights.Count > 0)
         {
             sb.AppendLine("**📊 重點摘要**");
-            foreach (var h in d.Highlights) sb.AppendLine($"・{h}");
+            foreach (var h in highlights) sb.AppendLine($"・{h}");
             sb.AppendLine();
         }
         void Sec(string title, List<RankItem> items, int take)
@@ -154,11 +159,14 @@ public static class TwFundFlowReport
         Sec("🟢 三大法人買超 top", d.TotalBuy, 5);
         Sec("🔴 三大法人賣超 top", d.TotalSell, 5);
 
-        sb.AppendLine($"**📌 我的 watchlist({d.Watch.Count})**");
-        foreach (var w in d.Watch)
+        if (includeWatchlist)
         {
-            if (!w.HasData) { sb.AppendLine($"・{w.Code}: (無資料)"); continue; }
-            sb.AppendLine($"・{w.Name}({w.Code}): 法人{FmtLots(w.TotalLots)} (外{FmtLots(w.ForeignLots)} 投{FmtLots(w.TrustLots)}) · 融資{FmtLots(w.MarginChg)} 融券{FmtLots(w.ShortChg)}");
+            sb.AppendLine($"**📌 我的 watchlist({d.Watch.Count})**");
+            foreach (var w in d.Watch)
+            {
+                if (!w.HasData) { sb.AppendLine($"・{w.Code}: (無資料)"); continue; }
+                sb.AppendLine($"・{w.Name}({w.Code}): 法人{FmtLots(w.TotalLots)} (外{FmtLots(w.ForeignLots)} 投{FmtLots(w.TrustLots)}) · 融資{FmtLots(w.MarginChg)} 融券{FmtLots(w.ShortChg)}");
+            }
         }
         if (!string.IsNullOrWhiteSpace(reportUrl))
         {

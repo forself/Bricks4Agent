@@ -152,7 +152,8 @@ public class TwFundFlowService : BackgroundService
         // 額外推 LINE 給家人(gated:設了 TW_FUNDFLOW_LINE_TO 才推)。用公開連結(免 Access)、純文字(LINE 不吃 markdown 去掉 **)。
         if (_lineTo.Length > 0 && _line.IsEnabledInConfig)
         {
-            var lineBody = TwFundFlowReport.RenderDiscord(report, _publicUrl).Replace("**", "");
+            // 推給家人:省略「我的 watchlist」(個人關注清單不外送)
+            var lineBody = TwFundFlowReport.RenderDiscord(report, _publicUrl, includeWatchlist: false).Replace("**", "");
             foreach (var to in _lineTo)
             {
                 var (lok, lerr) = await _line.SendAdHocToAsync(to, $"🇹🇼 台股資金流日報 · {isoDate}", lineBody, "info", ct);

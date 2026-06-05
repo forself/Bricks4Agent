@@ -171,8 +171,10 @@ services:
       # Linux container 起來會炸 "must be an absolute path" 把整個 broker 健康度拉成 critical。
       # 改成 /data 下的子目錄、跟 broker.db 同一個 named volume、容器重建也不會丟。
       HighLevelCoordinator__AccessRoot: "/data/managed-workspaces"
-      # RecipientId 不設、line-worker 用自己的 DefaultRecipientId（從 secret 檔讀）
-      # Notifications__Line__RecipientId: "${NOTIFICATIONS_LINE_RECIPIENT:-}"
+      # operator/交易告警收件人:明確釘死成你自己的 userId(NOTIFICATIONS_LINE_RECIPIENT)。
+      # 跟台股日報的家人收件人(TW_FUNDFLOW_LINE_TO)物理隔離 —— 即使 line-worker
+      # DefaultRecipientId 被動到,交易告警也不會誤推到家人。空=退回 worker DefaultRecipientId(舊行為)。
+      Notifications__Line__RecipientId: "${NOTIFICATIONS_LINE_RECIPIENT:-}"
 
       DevelopmentSeed__Enabled: "true"
       DevelopmentSeed__PrincipalId: "prn_dashboard"

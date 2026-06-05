@@ -161,6 +161,11 @@ public static class TwFundFlowTests
         Check("discord-has-watchlist", disc.Contains("watchlist"));
         Check("discord-has-url", disc.Contains("https://x/tw-fundflow.html"));
 
+        // 推給家人的版本(includeWatchlist:false)必須省略「我的 watchlist」、但保留榜單摘要。
+        var fam = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html", includeWatchlist: false);
+        Check("family-no-watchlist", !fam.Contains("watchlist"));
+        Check("family-has-summary", fam.Contains("重點摘要"));
+
         Console.WriteLine($"--- TwFundFlow: {passed} passed, {failed} failed ---");
         return (passed, failed);
     }
