@@ -107,11 +107,12 @@ public class TwFundFlowService : BackgroundService
         var todayTst = DateTime.UtcNow.AddHours(8).Date;
         List<TwFundFlowDaily>? rows = null;
         string isoDate = "";
+        var matchedDay = todayTst;
         for (int back = 0; back < Math.Max(1, maxLookbackDays); back++)
         {
             var day = todayTst.AddDays(-back);
             var (hasData, fetched) = await TwseFundFlowClient.FetchDayAsync(http, day, ct);
-            if (hasData) { rows = fetched; isoDate = day.ToString("yyyy-MM-dd"); break; }
+            if (hasData) { rows = fetched; isoDate = day.ToString("yyyy-MM-dd"); matchedDay = day; break; }
         }
         if (rows == null || rows.Count == 0)
         {
@@ -119,19 +120,19 @@ public class TwFundFlowService : BackgroundService
             return (true, $"近 {maxLookbackDays} 日無台股資料(休市或未發布)", false);
         }
 
-        // 收盤價(STOCK_DAY_ALL 只回最新日)→ 與報表日相符才掛上、算金額
-        var (closeDate, closes) = await TwseFundFlowClient.FetchClosesAsync(http, ct);
-        bool closeMatches = closeDate.Replace("-", "") == isoDate.Replace("-", "");
-        if (closeMatches)
-            foreach (var r in rows)
-                if (closes.TryGetValue(r.StockCode, out var c)) r.ClosePrice = c;
+        // 收盤價:用「報表日自己的」全市場收盤(MI_INDEX 指定日期)→ 永遠對得上、穩定顯示億元
+        // (根治「張↔億元跳動」)。MI_INDEX 抓不到 → 退回 DB 既存的當日 close_price(之前跑存過)。
+        var closes = await TwseFundFlowClient.FetchClosesForDateAsync(http, matchedDay, ct);
+        if (closes.Count == 0) closes = LoadStoredCloses(isoDate);
+        foreach (var r in rows)
+            if (closes.TryGetValue(r.StockCode, out var c)) r.ClosePrice = c;
 
         StoreRows(isoDate, rows);
 
-        // 組報表:收盤 dict(報表日)+ 外資歷史序列(連續買賣超)
-        var closesForReport = closeMatches
-            ? rows.Where(r => r.ClosePrice > 0).ToDictionary(r => r.StockCode, r => r.ClosePrice)
-            : new Dictionary<string, decimal>();
+        // 組報表:收盤 dict(報表日自己的)+ 外資歷史序列(連續買賣超)
+        var closesForReport = closes.Count > 0
+            ? closes
+            : rows.Where(r => r.ClosePrice > 0).ToDictionary(r => r.StockCode, r => r.ClosePrice);
         var foreignHist = LoadForeignHistory(isoDate, HistoryWindow);
         var report = TwFundFlowReport.Build(isoDate, rows, closesForReport, foreignHist, _watchlist);
 
@@ -142,7 +143,7 @@ public class TwFundFlowService : BackgroundService
         if (!push)
         {
             _logger.LogInformation("TwFundFlow generated (no push): date={Date} stocks={N} useAmount={A}",
-                isoDate, rows.Count, closeMatches);
+                isoDate, rows.Count, closes.Count > 0);
             return (true, summary, true);
         }
         var (ok, err) = await _discord.SendAdHocAsync($"🇹🇼 台股資金流日報 · {isoDate}", summary, 0x2B6CB0, ct);
@@ -164,7 +165,7 @@ public class TwFundFlowService : BackgroundService
         return (ok, summary, true);
     }
 
-    /// <summary>歷史不足(distinct 日期 &lt; MinHistoryDates)→ backfill 最近 BackfillCalendarDays 內的交易日(無收盤)。</summary>
+    /// <summary>歷史不足(distinct 日期 &lt; MinHistoryDates)→ backfill 最近 BackfillCalendarDays 內的交易日(含當日收盤)。</summary>
     private async Task BackfillIfNeededAsync(CancellationToken ct)
     {
         int have;
@@ -186,6 +187,10 @@ public class TwFundFlowService : BackgroundService
                     continue;   // 已有就跳過
                 var (hasData, rows) = await TwseFundFlowClient.FetchDayAsync(http, day, ct);
                 if (!hasData) continue;   // 非交易日
+                // 也補抓該日收盤(MI_INDEX 指定日)→ 歷史日金額也算得出、render 穩定億元
+                var closes = await TwseFundFlowClient.FetchClosesForDateAsync(http, day, ct);
+                foreach (var r in rows)
+                    if (closes.TryGetValue(r.StockCode, out var c)) r.ClosePrice = c;
                 StoreRows(iso, rows);
                 filled++;
             }
@@ -215,6 +220,21 @@ public class TwFundFlowService : BackgroundService
                 result[g.Key] = g.OrderByDescending(r => r.TradeDate).Select(r => r.ForeignNet).ToList();
         }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load history failed"); }
+        return result;
+    }
+
+    /// <summary>讀某交易日 DB 既存收盤(close_price&gt;0)→ code→close。MI_INDEX 抓不到時的 fallback。</summary>
+    private Dictionary<string, decimal> LoadStoredCloses(string isoDate)
+    {
+        var result = new Dictionary<string, decimal>();
+        try
+        {
+            var rows = _db.Query<TwFundFlowDaily>(
+                "SELECT stock_code, close_price FROM tw_fund_flow_daily WHERE trade_date=@d AND close_price > 0",
+                new { d = isoDate });
+            foreach (var r in rows) result[r.StockCode] = r.ClosePrice;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load stored closes failed"); }
         return result;
     }
 

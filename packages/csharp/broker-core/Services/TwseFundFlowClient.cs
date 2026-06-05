@@ -20,6 +20,10 @@ public static class TwseFundFlowClient
     // STOCK_DAY_ALL = 全上市個股「最近一個交易日」OHLC(只回最新日、無歷史)。算買賣超金額(億)用。
     private const string StockDayAllUrl =
         "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY_ALL?response=json";
+    // MI_INDEX = 「指定日期」全市場個股 OHLC(type=ALLBUT0999)。根治「張↔億元跳動」:報表用報表日自己的收盤、
+    // 不靠 STOCK_DAY_ALL 的「只回最新日」→ 任何報表日(含 backfill 歷史日)都拿得到當日收盤、穩定顯示億元。
+    private const string MiIndexUrl =
+        "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={0}&type=ALLBUT0999&response=json";
 
     /// <summary>
     /// 抓某 TST 日期的台股資金流。回 (hasData, rows)。
@@ -153,6 +157,61 @@ public static class TwseFundFlowClient
             if (!IsCommonStock(code)) continue;
             var close = NumDec(r[7]);
             if (close > 0) map[code] = close;
+        }
+        return (date, map);
+    }
+
+    /// <summary>
+    /// 抓「指定 TST 日期」全市場個股收盤(MI_INDEX)。回 code→close。失敗/非交易日回空。
+    /// 用報表日自己的收盤 → 根治「張↔億元跳動」(不靠 STOCK_DAY_ALL 的只回最新日)。
+    /// </summary>
+    public static async Task<Dictionary<string, decimal>> FetchClosesForDateAsync(
+        HttpClient http, DateTime tstDate, CancellationToken ct = default)
+    {
+        try
+        {
+            var json = await http.GetStringAsync(string.Format(MiIndexUrl, tstDate.ToString("yyyyMMdd")), ct);
+            return ParseMiIndex(json).Closes;
+        }
+        catch { return new(); }
+    }
+
+    /// <summary>
+    /// 解析 MI_INDEX(type=ALLBUT0999)→ (date, code→收盤價)。純函式、可測。
+    /// MI_INDEX 是多表(指數表 + 個股表),且頂層常「無 stat」直接給 tables。
+    /// 用「欄位名」定位個股表(fields 同含「證券代號」+「收盤價」),避開指數表的「收盤指數」、且不寫死 index。
+    /// 漲跌欄含 HTML(&lt;p style…&gt;)是字串內容、不影響;收盤價形如 "2,425.00" 由 NumDec 處理。
+    /// </summary>
+    public static (string Date, Dictionary<string, decimal> Closes) ParseMiIndex(string json)
+    {
+        var map = new Dictionary<string, decimal>();
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        string date = root.TryGetProperty("date", out var dt) ? (dt.GetString() ?? "") : "";
+        if (!root.TryGetProperty("tables", out var tables) || tables.ValueKind != JsonValueKind.Array)
+            return (date, map);   // 非交易日 / 結構異常 → 空
+
+        foreach (var t in tables.EnumerateArray())
+        {
+            if (!t.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array) continue;
+            int codeIdx = -1, closeIdx = -1, i = 0;
+            foreach (var f in fields.EnumerateArray())
+            {
+                var name = f.GetString() ?? "";
+                if (name.Contains("證券代號")) codeIdx = i;
+                else if (name == "收盤價") closeIdx = i;   // 精確比對:排除指數表的「收盤指數」
+                i++;
+            }
+            if (codeIdx < 0 || closeIdx < 0) continue;   // 非個股表(如指數表)→ 跳過
+            if (!t.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) continue;
+            foreach (var r in data.EnumerateArray())
+            {
+                if (r.ValueKind != JsonValueKind.Array || r.GetArrayLength() <= Math.Max(codeIdx, closeIdx)) continue;
+                string code = (r[codeIdx].GetString() ?? "").Trim();
+                if (!IsCommonStock(code)) continue;
+                var close = NumDec(r[closeIdx]);
+                if (close > 0) map[code] = close;
+            }
         }
         return (date, map);
     }

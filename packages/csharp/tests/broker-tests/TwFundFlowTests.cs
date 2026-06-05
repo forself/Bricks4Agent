@@ -44,6 +44,19 @@ public static class TwFundFlowTests
     ]}
     """;
 
+    // MI_INDEX(指定日全市場 OHLC):頂層無 stat、多表(指數表 + 個股表)。個股表用欄位名「證券代號」+「收盤價」定位。
+    // 含:指數表(該跳過、有「收盤指數」非「收盤價」)、2330(收 2,425、漲跌欄含 HTML)、停牌(收 --)、00403A(濾掉)
+    private const string MiIndexJson = """
+    {"date":"20260603","tables":[
+    {"title":"價格指數","fields":["指數","收盤指數","漲跌(+/-)","漲跌點數","漲跌百分比(%)"],"data":[["寶島股價指數","12,345.67","<p style='color:red'>+</p>","1.00","0.5"]]},
+    {"title":"每日收盤行情","fields":["證券代號","證券名稱","成交股數","成交筆數","成交金額","開盤價","最高價","最低價","收盤價","漲跌(+/-)","漲跌價差"],"data":[
+    ["2330","台積電","29,219,904","89,415","70,861,766,012","2,425.00","2,440.00","2,410.00","2,425.00","<p style='color:red'>+</p>","45.00"],
+    ["9999","停牌股","0","0","0","--","--","--","--","","0.00"],
+    ["00403A","主動式統一","1,000","5","10,000","10.00","10.50","10.00","10.50","<p style='color:green'>-</p>","0.50"]
+    ]}
+    ]}
+    """;
+
     public static (int passed, int failed) Run()
     {
         int passed = 0, failed = 0;
@@ -121,6 +134,15 @@ public static class TwFundFlowTests
         Check("close-2330=2385", closes.TryGetValue("2330", out var c2330) && c2330 == 2385m);
         Check("close-skips-halt(--)", !closes.ContainsKey("9999"));        // 收盤 -- 不收
         Check("close-excludes-00403A", !closes.ContainsKey("00403A"));
+
+        // ── ParseMiIndex(指定日收盤、根治張↔億元跳動)──
+        var (midate, mcloses) = TwseFundFlowClient.ParseMiIndex(MiIndexJson);
+        Check("miindex-date=20260603", midate == "20260603");
+        Check("miindex-2330-close=2425", mcloses.TryGetValue("2330", out var mc) && mc == 2425m);
+        Check("miindex-skips-index-table", !mcloses.ContainsKey("寶島股價指數"));   // 指數表(收盤指數≠收盤價)跳過
+        Check("miindex-skips-halt(--)", !mcloses.ContainsKey("9999"));              // 停牌收盤 -- 不收
+        Check("miindex-excludes-00403A", !mcloses.ContainsKey("00403A"));           // 6位含字母濾掉
+        Check("miindex-only-2330", mcloses.Count == 1);                            // 唯一有效個股
 
         // ── AmountYi(買賣超金額億)──
         Check("amount-771034x2385=18.4", TwFundFlowReport.AmountYi(771_034, 2385m) == 18.4m);
