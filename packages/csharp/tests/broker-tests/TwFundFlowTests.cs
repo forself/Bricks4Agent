@@ -77,6 +77,15 @@ public static class TwFundFlowTests
     private const string TpexCloseJson = """[{"SecuritiesCompanyCode":"5483","Close":"120.5"},{"SecuritiesCompanyCode":"00679B","Close":"30.0"}]""";
     private const string TpexIndustryJson = """[{"SecuritiesCompanyCode":"5483","SecuritiesIndustryCode":"24"},{"SecuritiesCompanyCode":"01001","SecuritiesIndustryCode":"24"}]""";
 
+    // TAIFEX 期貨三大法人未平倉(取 外資及陸資 × 臺股期貨)
+    private const string TaifexJson = """
+    [
+    {"Date":"20260604","ContractCode":"臺股期貨","Item":"自營商","OpenInterest(Net)":"3219","ContractValueofOpenInterest(Net)(Thousands)":"29794619"},
+    {"Date":"20260604","ContractCode":"臺股期貨","Item":"外資及陸資","OpenInterest(Net)":"-69476","ContractValueofOpenInterest(Net)(Thousands)":"-643572285"},
+    {"Date":"20260604","ContractCode":"小型臺指期貨","Item":"外資及陸資","OpenInterest(Net)":"100","ContractValueofOpenInterest(Net)(Thousands)":"50000"}
+    ]
+    """;
+
     public static (int passed, int failed) Run()
     {
         int passed = 0, failed = 0;
@@ -226,6 +235,22 @@ public static class TwFundFlowTests
         var tind = TpexFundFlowClient.ParseIndustryMap(TpexIndustryJson);
         Check("tpex-industry-5483=半導體", tind.GetValueOrDefault("5483") == "半導體");
         Check("tpex-industry-excludes-5digit", !tind.ContainsKey("01001"));
+
+        // ── #3b TAIFEX 期貨大盤情緒 ──
+        var sent = TaifexClient.ParseForeignTxOi(TaifexJson);
+        Check("taifex-parsed", sent != null);
+        if (sent != null)
+        {
+            Check("taifex-pick-臺股期貨外資", sent.ForeignTxNetOi == -69476);   // 非自營、非小型臺指
+            Check("taifex-netYi=-6435.7", sent.ForeignTxNetYi == -6435.7m);    // -643,572,285 千 ÷ 1e5
+            Check("taifex-date=2026-06-04", sent.Date == "2026-06-04");
+            Check("taifex-sentiment-偏空", TwFundFlowReport.SentimentLine(sent).Contains("偏空"));
+        }
+        // 大盤情緒進報表
+        var rdSent = TwFundFlowReport.Build("2026-06-05", reportRows, closeMap, hist, new[] { "2330" }, null, null, sent);
+        Check("build-has-sentiment", rdSent.Sentiment != null && rdSent.Sentiment.ForeignTxNetOi == -69476);
+        Check("discord-shows-sentiment", TwFundFlowReport.RenderDiscord(rdSent, null).Contains("大盤情緒"));
+        Check("html-shows-sentiment", TwFundFlowReport.RenderHtml(rdSent).Contains("大盤情緒"));
 
         var disc = TwFundFlowReport.RenderDiscord(rd, "https://x/tw-fundflow.html");
         Check("discord-has-summary", disc.Contains("重點摘要"));

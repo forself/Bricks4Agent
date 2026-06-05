@@ -31,7 +31,8 @@ public static class TwFundFlowReport
         List<RankItem> MarginUp, List<RankItem> ShortUp,
         List<ConsecItem> ConsecBuy, List<ConsecItem> ConsecSell,
         List<SectorItem> SectorInflow, List<SectorItem> SectorOutflow,
-        List<WatchRow> Watch, List<string> Highlights, List<string> SectorHighlights);
+        List<WatchRow> Watch, List<string> Highlights, List<string> SectorHighlights,
+        TaifexClient.FuturesSentiment? Sentiment);
 
     /// <summary>買賣超金額(億元)= 淨股數 × 收盤價 / 1e8。收盤未知(0)→ 0。</summary>
     public static decimal AmountYi(long shares, decimal close) =>
@@ -56,6 +57,7 @@ public static class TwFundFlowReport
         string[] watchlist,
         Dictionary<string, string>? sectorByCode = null,
         Dictionary<string, decimal>? changePctByCode = null,
+        TaifexClient.FuturesSentiment? sentiment = null,
         int topN = 8)
     {
         bool useAmount = closes.Count > 0;
@@ -154,7 +156,16 @@ public static class TwFundFlowReport
 
         return new ReportData(date, stocks.Count, useAmount, totalBuy, totalSell, foreignBuy, foreignSell,
             trustBuy, trustSell, marginUp, shortUp, consecBuy, consecSell,
-            sectorInflow, sectorOutflow, watch, hl, sectorHl);
+            sectorInflow, sectorOutflow, watch, hl, sectorHl, sentiment);
+    }
+
+    /// <summary>大盤情緒一行(外資臺股期貨未平倉淨額 → 偏多/偏空)。</summary>
+    public static string SentimentLine(TaifexClient.FuturesSentiment s)
+    {
+        string mood = s.ForeignTxNetOi > 0 ? "偏多" : s.ForeignTxNetOi < 0 ? "偏空" : "中性";
+        string oi = (s.ForeignTxNetOi >= 0 ? "+" : "") + s.ForeignTxNetOi.ToString("N0");
+        string yi = (s.ForeignTxNetYi >= 0 ? "+" : "") + s.ForeignTxNetYi.ToString("0.0");
+        return $"🌡️ 大盤情緒(外資臺股期貨未平倉 · {s.Date}):{oi} 口({yi}億)→ {mood}";
     }
 
     // ── 格式化 ──
@@ -178,6 +189,7 @@ public static class TwFundFlowReport
             foreach (var h in highlights) sb.AppendLine($"・{h}");
             sb.AppendLine();
         }
+        if (d.Sentiment != null) { sb.AppendLine($"**{SentimentLine(d.Sentiment)}**"); sb.AppendLine(); }
         static string Pct(RankItem i) => i.ChangePct != 0m ? $" {(i.ChangePct >= 0 ? "▲" : "▼")}{Math.Abs(i.ChangePct):0.0}%" : "";
         void SecRank(string title, List<RankItem> items, int take)
         {
@@ -270,6 +282,10 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
 </style></head><body><div class=""wrap"">");
 
         sb.Append($@"<h1>🇹🇼 台股資金流日報</h1><div class=""date"">{E(d.Date)} · 全市場 {d.TotalStocks} 檔個股 · 單位{(d.UseAmount ? "買賣超金額(億元)" : "張")}、正=買超/增</div>");
+
+        // 大盤情緒(外資臺股期貨未平倉)
+        if (d.Sentiment != null)
+            sb.Append($@"<div class=""card"" style=""padding:10px 12px""><b>{E(SentimentLine(d.Sentiment))}</b></div>");
 
         // 重點摘要(family 版濾掉「watchlist 法人最大動向」那條)
         var hlList = includeWatchlist ? d.Highlights : d.Highlights.Where(h => !h.StartsWith("watchlist")).ToList();

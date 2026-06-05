@@ -171,7 +171,12 @@ public class TwFundFlowService : BackgroundService
             catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: OTC merge failed (上市照常)"); }
         }
 
-        var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct);
+        // 大盤情緒:外資臺股期貨未平倉淨額(TAIFEX)— 失敗不致命(略過該段)
+        TaifexClient.FuturesSentiment? sentiment = null;
+        try { sentiment = await TaifexClient.FetchForeignTxOiAsync(http, ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: TAIFEX sentiment fetch failed"); }
+
+        var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct, sentiment);
 
         // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
         WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
