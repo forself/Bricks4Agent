@@ -176,15 +176,16 @@ public class TwFundFlowService : BackgroundService
         try { sentiment = await TaifexClient.FetchForeignTxOiAsync(http, ct); }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: TAIFEX sentiment fetch failed"); }
 
-        var sectorHist = LoadSectorForeignHistory(isoDate, HistoryWindow, sectorMap);   // 產業連續同向(DB、不含報表日)
-        // 把報表日當天 live 的外資淨股按產業加總、prepend 到序列最前 → consec 跟畫面外資方向一致
+        var sectorHist = LoadSectorForeignHistory(isoDate, HistoryWindow, sectorMap, reportCloses);   // 產業連續同向(DB、現價加權、不含報表日)
+        // 把報表日當天 live 的外資(現價加權)按產業加總、prepend 到序列最前 → consec 跟畫面外資「億」方向一致
         var todayBySector = new Dictionary<string, long>();
         foreach (var r in reportRows)
         {
             if (!(r.StockCode.Length == 4 && r.StockCode[0] != '0')) continue;
             if (!sectorMap.TryGetValue(r.StockCode, out var sec)) continue;
+            if (!reportCloses.TryGetValue(r.StockCode, out var px) || px <= 0) continue;
             todayBySector.TryGetValue(sec, out var cur);
-            todayBySector[sec] = cur + r.ForeignNet;
+            todayBySector[sec] = cur + (long)(r.ForeignNet * px / 100000m);
         }
         foreach (var (sec, todayNet) in todayBySector)
         {
@@ -293,10 +294,10 @@ public class TwFundFlowService : BackgroundService
 
     /// <summary>產業層級的法人「連續同向」:把歷史每日各股的外資淨股(股)按產業加總 → sector→[淨額 最近在前]。
     /// 只用上市(DB 內)資料、上櫃不入歷史;sectorMap 涵蓋的代碼才算得到。給「產業連 N 日買/賣」用。</summary>
-    private Dictionary<string, List<long>> LoadSectorForeignHistory(string reportDate, int k, Dictionary<string, string> sectorMap)
+    private Dictionary<string, List<long>> LoadSectorForeignHistory(string reportDate, int k, Dictionary<string, string> sectorMap, Dictionary<string, decimal> closes)
     {
         var result = new Dictionary<string, List<long>>();
-        if (sectorMap.Count == 0) return result;
+        if (sectorMap.Count == 0 || closes.Count == 0) return result;
         try
         {
             // 故意「不含報表日」(< @d):報表日當天的外資淨額由 caller 用 live reportRows prepend,
@@ -317,9 +318,10 @@ public class TwFundFlowService : BackgroundService
             {
                 if (!(r.StockCode.Length == 4 && r.StockCode[0] != '0')) continue;   // 排 ETF
                 if (!sectorMap.TryGetValue(r.StockCode, out var sec)) continue;
+                if (!closes.TryGetValue(r.StockCode, out var px) || px <= 0) continue;   // 現價加權 → consec 跟畫面「億」同號
                 if (!bySectorDate.TryGetValue(sec, out var dm)) { dm = new(); bySectorDate[sec] = dm; }
                 dm.TryGetValue(r.TradeDate, out var cur);
-                dm[r.TradeDate] = cur + r.ForeignNet;
+                dm[r.TradeDate] = cur + (long)(r.ForeignNet * px / 100000m);   // 值加權(千元級)、只取號
             }
             var orderedDesc = dates.OrderByDescending(d => d).ToList();   // 最近在前
             foreach (var (sec, dm) in bySectorDate)
