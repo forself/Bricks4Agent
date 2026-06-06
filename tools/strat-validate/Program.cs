@@ -4,8 +4,12 @@
 using BrokerCore.Trading;
 using StrategyWorker.Engine;
 using StrategyWorker.Models;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+// 2026-06-07 平行化:重 walk-forward 迴圈用 Parallel.ForEach 打滿核心(原單執行緒只用 1 核)。
+// 每個 (策略, 幣) 的 walk-forward 互相獨立 = 天生可平行;策略平行(同 s 實例只被一個 task 用、不並發)。
+// 共享寫入改 ConcurrentDictionary、bootstrap RNG 改 per-strategy seed、輸出先收集後按原順序印。
 
 var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 // 固定 funding 假設(long 付正值):env FUNDING_RATE_PER_8H、預設 0.01%/8h(=0.03%/日)。
@@ -112,6 +116,15 @@ string[] symbols = etfMode
         // 2026-05-25 擴幣宇宙 12→20(堆樣本:更多幣 = pooling 後 fold 更多、廣度濾網更有力)
         "TRXUSDT", "UNIUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "SUIUSDT", "INJUSDT",
     };
+
+// 2026-06-07 #2 倖存者偏誤:--graveyard 把已下市/歸零的幣加進 crypto 宇宙(走 KlineCache 的
+// data.binance.vision archive 退路載入)→ 跑「倖存者 vs 含死幣」對照、量化 edge 被排除死幣高估多少。
+// 預設不含(維持原宇宙可比性)。載不到的(archive 也沒)會在「資料就緒」那步自然 skip。
+if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
+{
+    symbols = symbols.Concat(new[] { "LUNAUSDT", "FTTUSDT", "SRMUSDT" }).ToArray();
+    Console.WriteLine("⚰️ --graveyard:宇宙加入已死幣(LUNA/FTT/SRM)測倖存者偏誤");
+}
 
 (string name, IStrategy s)[] strats =
 {
@@ -597,7 +610,10 @@ if (confDiag) { RunConfDiagnostic(); return; }
 if (volTargetAB) { RunVolTargetAB(); return; }
 
 // 權益曲線對應日期(per coin、各策略共用同 bars;lsEq 最後跑 → 留 LS 引擎日期),給 regime-gate 用
-var curveDates = new Dictionary<string, List<DateTime>>();
+// ConcurrentDictionary:PrintTable 平行化後多策略併發寫(同幣 dates 相同、寫入值一致、只需執行緒安全容器)
+var curveDates = new ConcurrentDictionary<string, List<DateTime>>();
+// 平行度上限 = 邏輯核心數(walk-forward 互相獨立、CPU-bound)
+var ParOpts = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
 
 // 一張表 = 一種引擎(long-only / long-short);回傳 [strat][symbol]=全期權益曲線(給相關/組合用)
 Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
@@ -608,8 +624,11 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
     Console.WriteLine($"\n=== {title} 可用性(OOS train250/test90/stride60 跨檔;Full=全期連續、無調參)===");
     Console.WriteLine($"  {"strategy",-16}{"OOSsym+%",9}{"OOSmed%",9}{"+fold%",8}│{"fullRet%",10}{"fullSh",8}{"fullDD%",9}{"DD<BH%",8}  判定");
     var eqAll = new Dictionary<string, Dictionary<string, List<decimal>>>();
-    foreach (var (name, s) in strats)
+    var lines = new ConcurrentDictionary<string, string>();
+    var eqByName = new ConcurrentDictionary<string, Dictionary<string, List<decimal>>>();
+    Parallel.ForEach(strats, ParOpts, ns =>
     {
+        var (name, s) = ns;
         int symPos = 0, symTot = 0, ddBeat = 0;
         var oosRets = new List<decimal>(); var foldRets = new List<decimal>();
         var fullRets = new List<decimal>(); var fullShs = new List<decimal>(); var fullDds = new List<decimal>();
@@ -627,17 +646,22 @@ Dictionary<string, Dictionary<string, List<decimal>>> PrintTable(
             var bt = run(s, kv.Value, cfg);
             fullRets.Add(bt.TotalReturnPct); fullShs.Add(bt.SharpeRatio); fullDds.Add(bt.MaxDrawdownPct);
             perSym[kv.Key] = bt.EquityCurve.Select(e => e.Value).ToList();
-            curveDates[kv.Key] = bt.EquityCurve.Select(e => e.Date).ToList();   // regime-gate 用(lsEq 最後跑覆寫)
+            curveDates[kv.Key] = bt.EquityCurve.Select(e => e.Date).ToList();   // 同幣 dates 各策略相同、併發寫安全
             if (bt.MaxDrawdownPct < StatsOf(kv.Value.Select(b => b.Close).ToList()).dd) ddBeat++;
         }
-        if (symTot == 0) { Console.WriteLine($"  {name,-16} (無資料)"); continue; }
+        if (symTot == 0) { lines[name] = $"  {name,-16} (無資料)"; return; }
         decimal symPosPct = (decimal)symPos / symTot * 100m;
         decimal medRet = Median(oosRets);
         decimal foldPos = foldRets.Count > 0 ? (decimal)foldRets.Count(r => r > 0) / foldRets.Count * 100m : 0m;
         decimal fSh = fullShs.Average();
         bool usable = medRet > 0 && symPosPct >= 60m && fSh > 0m;
-        Console.WriteLine($"  {name,-16}{symPosPct,8:F0}%{medRet,9:F1}{foldPos,7:F0}%│{fullRets.Average(),10:F0}{fSh,8:F2}{fullDds.Average(),9:F0}{(decimal)ddBeat / symTot * 100m,7:F0}%  {(usable ? "✅ 可用" : "❌")}");
-        eqAll[name] = perSym;
+        lines[name] = $"  {name,-16}{symPosPct,8:F0}%{medRet,9:F1}{foldPos,7:F0}%│{fullRets.Average(),10:F0}{fSh,8:F2}{fullDds.Average(),9:F0}{(decimal)ddBeat / symTot * 100m,7:F0}%  {(usable ? "✅ 可用" : "❌")}";
+        eqByName[name] = perSym;
+    });
+    foreach (var (name, _) in strats)   // 按 strats 原順序印 + 建 eqAll(不被平行交錯)
+    {
+        if (lines.TryGetValue(name, out var ln)) Console.WriteLine(ln);
+        if (eqByName.TryGetValue(name, out var eq)) eqAll[name] = eq;
     }
     return eqAll;
 }
@@ -669,8 +693,10 @@ Dictionary<string, Dictionary<string, decimal>> PerCoinMatrix(string iv, Diction
         Console.WriteLine($"\n=== [{iv}] 策略 × 幣 OOS 報酬%矩陣(long-only、walk-forward avg test%;★=該策略最佳幣)===");
         Console.WriteLine("  " + new string(' ', 14) + string.Join("", coins.Select(c => $"{Sh(c),7}")) + "  │ 最佳 / 中位");
     }
-    foreach (var (name, s) in strats)
+    var rowByName = new ConcurrentDictionary<string, Dictionary<string, decimal>>();
+    Parallel.ForEach(strats, ParOpts, ns =>
     {
+        var (name, s) = ns;
         var row = new Dictionary<string, decimal>();
         foreach (var c in coins)
         {
@@ -678,7 +704,11 @@ Dictionary<string, Dictionary<string, decimal>> PerCoinMatrix(string iv, Diction
                   if (w.TotalFolds > 0) row[c] = Math.Round(w.AvgTestReturnPct, 1); }
             catch { }
         }
-        if (row.Count == 0) continue;
+        if (row.Count > 0) rowByName[name] = row;
+    });
+    foreach (var (name, _) in strats)   // 按 strats 原順序填 outp + 印 grid
+    {
+        if (!rowByName.TryGetValue(name, out var row)) continue;
         outp[name] = row;
         if (printGrid)
         {
@@ -867,7 +897,7 @@ List<double> PerPeriodSeries(IStrategy s)
     return series;
 }
 // moving-block bootstrap on a (serially dependent) series → (point mean, 2.5%, 97.5%, t=mean/blockSE)
-(decimal mean, decimal lo, decimal hi, double t) BlockBootCI(List<double> ys)
+(decimal mean, decimal lo, decimal hi, double t) BlockBootCI(List<double> ys, Random rng)
 {
     if (ys.Count < 5) return (0, 0, 0, 0);
     int T = ys.Count;
@@ -897,21 +927,34 @@ int sigTested = 0, sigPassed = 0;
 var sigNames = new HashSet<string>();
 var sigT = new Dictionary<string, double>();
 var trials = new List<(string name, double sr, int n, double skew, double kurt, double tstat)>();
-foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x.s); return p.Count > 0 ? p.Average() : -999m; }))
+// 平行算每策略(sortKey + series 統計);bootstrap RNG 用 per-strategy seed(42+i)= 執行緒安全 + 可重現。
+// 之後按 sortKey(= PoolOosFolds 均值、同 baseline)排序印 + 依序填 sigT/sigNames/trials(不被平行交錯)。
+var sigRes = new ConcurrentDictionary<string, (decimal sortKey, string line, double t, bool sig, bool hasTrial, double sr, int n, double sk, double ku)>();
+Parallel.For(0, strats.Length, ParOpts, i =>
 {
-    var series = PerPeriodSeries(s);                   // 每期跨幣均值(收幣相關)
-    var (m, lo, hi, t) = BlockBootCI(series);          // moving-block bootstrap(收重疊窗)
+    var (name, s) = strats[i];
+    var pool = PoolOosFolds(s);
+    decimal sortKey = pool.Count > 0 ? pool.Average() : -999m;
+    var series = PerPeriodSeries(s);                          // 每期跨幣均值(收幣相關)
+    var (m, lo, hi, t) = BlockBootCI(series, new Random(42 + i));   // per-strategy seed(收重疊窗)
     bool sig = lo > 0m && series.Count >= 5;
-    sigT[name] = t; if (sig) sigNames.Add(name);
-    sigTested++; if (sig) sigPassed++;
+    string line = $"  {name,-16}{series.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}";
     if (series.Count >= 5)
     {
         double mu = series.Average();
         double sd = Math.Sqrt(series.Select(x => (x - mu) * (x - mu)).Sum() / (series.Count - 1));
         var (sk, ku) = SkewKurt(series.Select(x => (decimal)x).ToList());
-        trials.Add((name, sd > 0 ? mu / sd : 0, series.Count, sk, ku, t));   // sr/n 都用「每期序列」= DSR 也吃有效期數、不再用 512
+        sigRes[name] = (sortKey, line, t, sig, true, sd > 0 ? mu / sd : 0, series.Count, sk, ku);
     }
-    Console.WriteLine($"  {name,-16}{series.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
+    else sigRes[name] = (sortKey, line, t, sig, false, 0, 0, 0, 0);
+});
+foreach (var (name, _) in strats.OrderByDescending(x => sigRes.TryGetValue(x.name, out var r) ? r.sortKey : -999m))
+{
+    if (!sigRes.TryGetValue(name, out var r)) continue;
+    sigT[name] = r.t; if (r.sig) sigNames.Add(name);
+    sigTested++; if (r.sig) sigPassed++;
+    if (r.hasTrial) trials.Add((name, r.sr, r.n, r.sk, r.ku, r.t));   // sr/n 用每期序列 = DSR 也吃有效期數
+    Console.WriteLine(r.line);
 }
 Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0(已用每期跨幣均值收掉幣相關 + block-bootstrap 收掉重疊窗 → n=有效期數、t 不再灌水)。");
 Console.WriteLine($"     多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 仍以下方 DSR / BH-FDR 為準。");
