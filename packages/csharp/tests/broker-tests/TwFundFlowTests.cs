@@ -274,20 +274,39 @@ public static class TwFundFlowTests
         // ── 按產業彙總(2330 半導體買 / 2317 電子零組件賣)──
         var secRows = new List<TwFundFlowDaily>
         {
-            new() { StockCode = "2330", StockName = "台積電", TotalNet = 771_034, ForeignNet = -103_827, TrustNet = 647_975 },
-            new() { StockCode = "2317", StockName = "鴻海", TotalNet = -500_000, ForeignNet = -400_000, TrustNet = -100_000 },
+            // 半導體:台積電(大買)+ 聯發科(小買)→ 測龍頭排序;融資融券是「張」、不除 Lot
+            new() { StockCode = "2330", StockName = "台積電", TotalNet = 771_034, ForeignNet = -103_827, TrustNet = 647_975, MarginBalance = 5000, MarginPrev = 4000, ShortBalance = 200, ShortPrev = 300 },
+            new() { StockCode = "2454", StockName = "聯發科", TotalNet = 200_000, ForeignNet = 150_000, TrustNet = 50_000, MarginBalance = 1200, MarginPrev = 1000 },
+            new() { StockCode = "2317", StockName = "鴻海", TotalNet = -500_000, ForeignNet = -400_000, TrustNet = -100_000, MarginBalance = 3000, MarginPrev = 3500 },
         };
-        var secCloses = new Dictionary<string, decimal> { ["2330"] = 2385m, ["2317"] = 200m };
-        var secMap = new Dictionary<string, string> { ["2330"] = "半導體", ["2317"] = "電子零組件" };
+        var secCloses = new Dictionary<string, decimal> { ["2330"] = 2385m, ["2317"] = 200m, ["2454"] = 1000m };
+        var secMap = new Dictionary<string, string> { ["2330"] = "半導體", ["2317"] = "電子零組件", ["2454"] = "半導體" };
+        // 產業歷史(最近在前):半導體連 3 日外資淨買 → 連 3 日
+        var secHist = new Dictionary<string, List<long>> { ["半導體"] = new() { 771_034L, 500_000L, 300_000L } };
         var rdSec = TwFundFlowReport.Build("2026-06-03", secRows, secCloses,
-            new Dictionary<string, List<long>>(), Array.Empty<string>(), secMap);
-        Check("sector-inflow-半導體", rdSec.SectorInflow.Any(s => s.Sector == "半導體" && s.TotalYi == 18.4m));
+            new Dictionary<string, List<long>>(), Array.Empty<string>(), secMap, sectorForeignHist: secHist);
+        var semi = rdSec.SectorInflow.FirstOrDefault(s => s.Sector == "半導體");
+        Check("sector-inflow-半導體", semi != null && semi.TotalYi == 20.4m);   // 台積18.4 + 聯發2.0
         Check("sector-outflow-電子零組件", rdSec.SectorOutflow.Any(s => s.Sector == "電子零組件" && s.TotalYi == -1.0m));
         Check("sector-highlights-nonempty", rdSec.SectorHighlights.Count > 0);
-        // 家人版(sectorFocus)= 產業為主、無個股 top、無 watchlist
+        // ① 龍頭股:半導體 top 應為台積電(金額最大)、其次聯發科
+        Check("sector-top-龍頭排序", semi != null && semi.TopStocks.Count == 2 && semi.TopStocks[0].Name == "台積電" && semi.TopStocks[1].Name == "聯發科");
+        // ③ 融資融券 by 產業(張):半導體融資 (5000-4000)+(1200-1000)=+1200、融券 (200-300)+0=-100
+        Check("sector-融資加總", semi != null && semi.MarginChgLots == 1200);
+        Check("sector-融券加總", semi != null && semi.ShortChgLots == -100);
+        // ④ 產業連續:半導體連 3 日買
+        Check("sector-連續天數", semi != null && semi.ConsecDays == 3);
+        // 家人版(sectorFocus)= 產業為主、無個股 top、無 watchlist;且新內容(龍頭/融資/連)有出現
         var famSec = TwFundFlowReport.RenderDiscord(rdSec, "https://x/f.html", includeWatchlist: false, sectorFocus: true);
         Check("sectorfocus-has-產業", famSec.Contains("產業淨流入") || famSec.Contains("產業淨流出"));
         Check("sectorfocus-no-watchlist", !famSec.Contains("watchlist"));
+        Check("sectorfocus-has-龍頭", famSec.Contains("龍頭") && famSec.Contains("台積電"));
+        Check("sectorfocus-has-融資融券", famSec.Contains("融資") && famSec.Contains("融券"));
+        Check("sectorfocus-has-連續", famSec.Contains("連3日買"));
+        // HTML 也要有新欄位
+        var htmlSec = TwFundFlowReport.RenderHtml(rdSec, includeWatchlist: false);
+        Check("html-sector-龍頭", htmlSec.Contains("龍頭") && htmlSec.Contains("台積電"));
+        Check("html-sector-連續欄", htmlSec.Contains("連續"));
 
         Console.WriteLine($"--- TwFundFlow: {passed} passed, {failed} failed ---");
         return (passed, failed);

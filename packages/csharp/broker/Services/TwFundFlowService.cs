@@ -176,7 +176,8 @@ public class TwFundFlowService : BackgroundService
         try { sentiment = await TaifexClient.FetchForeignTxOiAsync(http, ct); }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: TAIFEX sentiment fetch failed"); }
 
-        var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct, sentiment);
+        var sectorHist = LoadSectorForeignHistory(isoDate, HistoryWindow, sectorMap);   // 產業連續同向(只上市歷史)
+        var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct, sentiment, sectorHist);
 
         // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
         WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
@@ -273,6 +274,42 @@ public class TwFundFlowService : BackgroundService
                 result[g.Key] = g.OrderByDescending(r => r.TradeDate).Select(r => r.ForeignNet).ToList();
         }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load history failed"); }
+        return result;
+    }
+
+    /// <summary>產業層級的法人「連續同向」:把歷史每日各股的外資淨股(股)按產業加總 → sector→[淨額 最近在前]。
+    /// 只用上市(DB 內)資料、上櫃不入歷史;sectorMap 涵蓋的代碼才算得到。給「產業連 N 日買/賣」用。</summary>
+    private Dictionary<string, List<long>> LoadSectorForeignHistory(string reportDate, int k, Dictionary<string, string> sectorMap)
+    {
+        var result = new Dictionary<string, List<long>>();
+        if (sectorMap.Count == 0) return result;
+        try
+        {
+            var dates = _db.Query<TwFundFlowDaily>(
+                "SELECT DISTINCT trade_date FROM tw_fund_flow_daily WHERE trade_date <= @d ORDER BY trade_date DESC LIMIT @k",
+                new { d = reportDate, k })
+                .Select(r => r.TradeDate).ToList();
+            if (dates.Count == 0) return result;
+            string minDate = dates.Min()!;
+
+            var rows = _db.Query<TwFundFlowDaily>(
+                "SELECT stock_code, trade_date, foreign_net FROM tw_fund_flow_daily WHERE trade_date >= @min AND trade_date <= @d",
+                new { min = minDate, d = reportDate });
+
+            var bySectorDate = new Dictionary<string, Dictionary<string, long>>();
+            foreach (var r in rows)
+            {
+                if (!(r.StockCode.Length == 4 && r.StockCode[0] != '0')) continue;   // 排 ETF
+                if (!sectorMap.TryGetValue(r.StockCode, out var sec)) continue;
+                if (!bySectorDate.TryGetValue(sec, out var dm)) { dm = new(); bySectorDate[sec] = dm; }
+                dm.TryGetValue(r.TradeDate, out var cur);
+                dm[r.TradeDate] = cur + r.ForeignNet;
+            }
+            var orderedDesc = dates.OrderByDescending(d => d).ToList();   // 最近在前
+            foreach (var (sec, dm) in bySectorDate)
+                result[sec] = orderedDesc.Where(dm.ContainsKey).Select(d => dm[d]).ToList();
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: load sector history failed"); }
         return result;
     }
 

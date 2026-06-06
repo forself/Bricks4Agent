@@ -20,8 +20,12 @@ public static class TwFundFlowReport
     public record ConsecItem(string Code, string Name, int Days, long LatestLots);
     public record WatchRow(string Code, string Name, long TotalLots, long ForeignLots, long TrustLots,
         long DealerLots, long MarginChg, long ShortChg, decimal TotalYi, bool HasData);
-    /// <summary>產業層級資金流:三大法人合計金額(億)+ 外資/投信 分項(億)+ 該產業檔數。</summary>
-    public record SectorItem(string Sector, decimal TotalYi, decimal ForeignYi, decimal TrustYi, int StockCount);
+    /// <summary>產業內帶動的龍頭個股(名稱 + 法人合計金額億)。</summary>
+    public record SectorTop(string Name, decimal Yi);
+    /// <summary>產業層級資金流:三大法人合計金額(億)+ 外資/投信 分項(億)+ 該產業檔數
+    /// + 融資/融券變化(張、整產業加總)+ 帶動龍頭股 + 法人連續同向天數(正買負賣)。</summary>
+    public record SectorItem(string Sector, decimal TotalYi, decimal ForeignYi, decimal TrustYi, int StockCount,
+        long MarginChgLots, long ShortChgLots, List<SectorTop> TopStocks, int ConsecDays);
 
     public record ReportData(
         string Date, int TotalStocks, bool UseAmount,
@@ -58,6 +62,7 @@ public static class TwFundFlowReport
         Dictionary<string, string>? sectorByCode = null,
         Dictionary<string, decimal>? changePctByCode = null,
         TaifexClient.FuturesSentiment? sentiment = null,
+        Dictionary<string, List<long>>? sectorForeignHist = null,
         int topN = 8)
     {
         bool useAmount = closes.Count > 0;
@@ -115,20 +120,35 @@ public static class TwFundFlowReport
         var sectorHl = new List<string>();
         if (sectorByCode is { Count: > 0 } && useAmount)
         {
-            var agg = new Dictionary<string, (decimal tot, decimal fgn, decimal tru, int n)>();
-            foreach (var r in stocks)
+            // 產業法人「連續同向」天數(吃 service 算好的 sector→[外資淨股 最近在前])
+            int SectorConsec(string sec) =>
+                sectorForeignHist != null && sectorForeignHist.TryGetValue(sec, out var sh) && sh.Count > 0
+                    ? ConsecutiveDays(sh) * Math.Sign(sh[0]) : 0;
+            // 把一個產業群組算成 SectorItem:加總金額/外資/投信 + 融資融券變化(張)+ 帶動龍頭股 top3 + 連續天數
+            SectorItem MkSector(IGrouping<string, TwFundFlowDaily> g, bool inflow)
             {
-                if (!sectorByCode.TryGetValue(r.StockCode, out var sec)) continue;
-                var c = Close(r.StockCode);
-                if (c <= 0) continue;
-                agg.TryGetValue(sec, out var a);
-                agg[sec] = (a.tot + AmountYi(r.TotalNet, c), a.fgn + AmountYi(r.ForeignNet, c),
-                            a.tru + AmountYi(r.TrustNet, c), a.n + 1);
+                decimal tot = 0, fgn = 0, tru = 0; long mchg = 0, schg = 0; int n = 0;
+                var tops = new List<SectorTop>();
+                foreach (var r in g)
+                {
+                    var c = Close(r.StockCode);
+                    tot += AmountYi(r.TotalNet, c); fgn += AmountYi(r.ForeignNet, c); tru += AmountYi(r.TrustNet, c); n++;
+                    mchg += r.MarginBalance - r.MarginPrev;   // 融資/融券 model 已是「張」、不除 Lot
+                    schg += r.ShortBalance - r.ShortPrev;
+                    tops.Add(new SectorTop(r.StockName, AmountYi(r.TotalNet, c)));
+                }
+                // 帶動龍頭:流入產業取金額最大的買超股、流出產業取賣超最重的(方向一致才列)
+                var top3 = (inflow ? tops.Where(t => t.Yi > 0).OrderByDescending(t => t.Yi)
+                                   : tops.Where(t => t.Yi < 0).OrderBy(t => t.Yi))
+                    .Take(3).Select(t => new SectorTop(t.Name, Math.Round(t.Yi, 1))).ToList();
+                return new SectorItem(g.Key, Math.Round(tot, 1), Math.Round(fgn, 1), Math.Round(tru, 1), n,
+                    mchg, schg, top3, SectorConsec(g.Key));
             }
-            var sectors = agg.Select(kv => new SectorItem(kv.Key,
-                Math.Round(kv.Value.tot, 1), Math.Round(kv.Value.fgn, 1), Math.Round(kv.Value.tru, 1), kv.Value.n)).ToList();
-            sectorInflow = sectors.Where(s => s.TotalYi > 0).OrderByDescending(s => s.TotalYi).Take(topN).ToList();
-            sectorOutflow = sectors.Where(s => s.TotalYi < 0).OrderBy(s => s.TotalYi).Take(topN).ToList();
+            var groups = stocks.Where(r => sectorByCode.ContainsKey(r.StockCode) && Close(r.StockCode) > 0)
+                .GroupBy(r => sectorByCode[r.StockCode])
+                .Select(g => (g, tot: g.Sum(r => AmountYi(r.TotalNet, Close(r.StockCode))))).ToList();
+            sectorInflow = groups.Where(x => x.tot > 0).OrderByDescending(x => x.tot).Take(topN).Select(x => MkSector(x.g, true)).ToList();
+            sectorOutflow = groups.Where(x => x.tot < 0).OrderBy(x => x.tot).Take(topN).Select(x => MkSector(x.g, false)).ToList();
             if (sectorInflow.Count > 0)
                 sectorHl.Add($"資金最流入:{sectorInflow[0].Sector}({FmtYi(sectorInflow[0].TotalYi)})" +
                     (sectorInflow.Count > 1 ? $"、{sectorInflow[1].Sector}({FmtYi(sectorInflow[1].TotalYi)})" : ""));
@@ -201,9 +221,18 @@ public static class TwFundFlowReport
         void SecSector(string title, List<SectorItem> items, int take)
         {
             if (items.Count == 0) return;
+            string Lt(long v) => $"{(v >= 0 ? "+" : "")}{v:N0}張";
             sb.AppendLine($"**{title}**");
             foreach (var s in items.Take(take))
-                sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)})");
+            {
+                var consec = Math.Abs(s.ConsecDays) >= 2 ? $" · 連{Math.Abs(s.ConsecDays)}日{(s.ConsecDays > 0 ? "買" : "賣")}" : "";
+                sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)}){consec}");
+                var lead = s.TopStocks.Count > 0
+                    ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{t.Name}({FmtYi(t.Yi)})")) : "";
+                var marg = (s.MarginChgLots != 0 || s.ShortChgLots != 0) ? $"融資{Lt(s.MarginChgLots)} 融券{Lt(s.ShortChgLots)}" : "";
+                var sub = string.Join("｜", new[] { lead, marg }.Where(x => x.Length > 0));
+                if (sub.Length > 0) sb.AppendLine($"  ↳ {sub}");
+            }
             sb.AppendLine();
         }
 
@@ -381,14 +410,25 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
     private static string SectorTable(string title, List<SectorItem> items, Func<string, string> E, Func<decimal, string> Cls)
     {
         static string Sgn(decimal v) => (v >= 0 ? "+" : "") + v.ToString("0.0");
+        static string Lt(long v) => $"{(v >= 0 ? "+" : "")}{v:N0}";
         var sb = new StringBuilder();
-        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>億元</th><th>外資</th><th>投信</th></tr>");
-        if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td><td></td><td></td></tr>");
+        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>億元</th><th>外資</th><th>投信</th><th>連續</th></tr>");
+        if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td><td></td><td></td><td></td></tr>");
         foreach (var s in items)
+        {
+            var consec = Math.Abs(s.ConsecDays) >= 2 ? $"{(s.ConsecDays > 0 ? "買" : "賣")}{Math.Abs(s.ConsecDays)}日" : "—";
             sb.Append($@"<tr><td>{E(s.Sector)}<span class=""tag""> {s.StockCount}檔</span></td>" +
                 $@"<td class=""{Cls(s.TotalYi)}"">{Sgn(s.TotalYi)}</td>" +
                 $@"<td class=""{Cls(s.ForeignYi)}"">{Sgn(s.ForeignYi)}</td>" +
-                $@"<td class=""{Cls(s.TrustYi)}"">{Sgn(s.TrustYi)}</td></tr>");
+                $@"<td class=""{Cls(s.TrustYi)}"">{Sgn(s.TrustYi)}</td>" +
+                $@"<td class=""tag"">{consec}</td></tr>");
+            // 子列:帶動龍頭股 + 融資融券變化(張)
+            var lead = s.TopStocks.Count > 0
+                ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{E(t.Name)} {Sgn(t.Yi)}")) : "";
+            var marg = $"融資{Lt(s.MarginChgLots)} 融券{Lt(s.ShortChgLots)}張";
+            var sep = lead.Length > 0 ? "｜" : "";
+            sb.Append($@"<tr><td colspan=""5"" class=""tag"" style=""padding-left:12px"">{lead}{sep}{marg}</td></tr>");
+        }
         sb.Append("</table></div>");
         return sb.ToString();
     }
