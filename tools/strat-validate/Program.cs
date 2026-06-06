@@ -839,30 +839,82 @@ double NormInv(double p)
     double sd = Math.Sqrt(m2);
     return sd <= 0 ? (0, 3) : (m3 / Math.Pow(sd, 3), m4 / Math.Pow(sd, 4));
 }
-Console.WriteLine("\n=== 統計顯著性(1d、realistic 成本;pool 跨幣×fold OOS%、bootstrap 95% CI)===");
-Console.WriteLine($"  {"strategy",-16}{"n",5}{"mean%",8}   {"95% CI",16}{"t",7}  判定");
+
+// 2026-06-07 相依穩健統計:把「跨幣×fold」攤平的 iid bootstrap(高估顯著性、因幣高相關+重疊窗)
+// 換成「每期跨幣均值序列 + moving-block bootstrap」:
+//   (a) 每個 fold 位置跨幣取均值 → 收掉「幣高相關」(共同因子 per period 攤平成一個分散後報酬)
+//   (b) moving-block bootstrap(block 長 ~T^1/3)→ 收掉「重疊窗」的序列自相關
+//   結果:有效樣本 n 從 ~512 降成 ~實際期數(誠實)、t 不再被相依灌水。
+List<double> PerPeriodSeries(IStrategy s)
+{
+    var perCoin = new List<List<double>>();
+    foreach (var kv in data)
+        try
+        {
+            var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, confidenceSizing: confSizing, applyFunding: realFunding);
+            var fs = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
+            if (fs.Count > 0) perCoin.Add(fs);
+        }
+        catch { }
+    if (perCoin.Count == 0) return new();
+    int maxF = perCoin.Max(c => c.Count);
+    var series = new List<double>();
+    for (int p = 0; p < maxF; p++)
+    {
+        var vals = perCoin.Where(c => c.Count > p).Select(c => c[p]).ToList();
+        if (vals.Count > 0) series.Add(vals.Average());   // 該 fold 位置跨幣均值 = 分散後每期報酬
+    }
+    return series;
+}
+// moving-block bootstrap on a (serially dependent) series → (point mean, 2.5%, 97.5%, t=mean/blockSE)
+(decimal mean, decimal lo, decimal hi, double t) BlockBootCI(List<double> ys)
+{
+    if (ys.Count < 5) return (0, 0, 0, 0);
+    int T = ys.Count;
+    double pointMean = ys.Average();
+    int L = Math.Max(1, (int)Math.Round(Math.Pow(T, 1.0 / 3.0)));   // block 長 ~ T^(1/3)
+    int nBlocks = (int)Math.Ceiling((double)T / L);
+    var means = new double[2000];
+    for (int b = 0; b < 2000; b++)
+    {
+        double sum = 0; int cnt = 0;
+        for (int blk = 0; blk < nBlocks && cnt < T; blk++)
+        {
+            int start = rng.Next(T);                       // circular moving block
+            for (int j = 0; j < L && cnt < T; j++) { sum += ys[(start + j) % T]; cnt++; }
+        }
+        means[b] = sum / cnt;
+    }
+    Array.Sort(means);
+    double bMean = means.Average();
+    double bSd = Math.Sqrt(means.Select(x => (x - bMean) * (x - bMean)).Sum() / (means.Length - 1));
+    double tStat = bSd > 0 ? pointMean / bSd : 0;          // t = 點估計 / block-bootstrap SE
+    return ((decimal)pointMean, (decimal)means[50], (decimal)means[1949], tStat);
+}
+Console.WriteLine("\n=== 統計顯著性(1d、realistic 成本;每期跨幣均值 + moving-block bootstrap、相依穩健)===");
+Console.WriteLine($"  {"strategy",-16}{"T期",5}{"mean%",8}   {"95% CI",16}{"t",7}  判定   (n=有效期數、非 fold 數)");
 int sigTested = 0, sigPassed = 0;
 var sigNames = new HashSet<string>();
 var sigT = new Dictionary<string, double>();
 var trials = new List<(string name, double sr, int n, double skew, double kurt, double tstat)>();
 foreach (var (name, s) in strats.OrderByDescending(x => { var p = PoolOosFolds(x.s); return p.Count > 0 ? p.Average() : -999m; }))
 {
-    var pool = PoolOosFolds(s);
-    var (m, lo, hi, t) = BootCI(pool);
-    bool sig = lo > 0m && pool.Count >= 5;
+    var series = PerPeriodSeries(s);                   // 每期跨幣均值(收幣相關)
+    var (m, lo, hi, t) = BlockBootCI(series);          // moving-block bootstrap(收重疊窗)
+    bool sig = lo > 0m && series.Count >= 5;
     sigT[name] = t; if (sig) sigNames.Add(name);
     sigTested++; if (sig) sigPassed++;
-    if (pool.Count >= 5)
+    if (series.Count >= 5)
     {
-        double mu = (double)pool.Average();
-        double sd = Math.Sqrt(pool.Select(x => ((double)x - mu) * ((double)x - mu)).Sum() / (pool.Count - 1));
-        var (sk, ku) = SkewKurt(pool);
-        trials.Add((name, sd > 0 ? mu / sd : 0, pool.Count, sk, ku, t));   // sr = fold 報酬的 Sharpe(非年化)
+        double mu = series.Average();
+        double sd = Math.Sqrt(series.Select(x => (x - mu) * (x - mu)).Sum() / (series.Count - 1));
+        var (sk, ku) = SkewKurt(series.Select(x => (decimal)x).ToList());
+        trials.Add((name, sd > 0 ? mu / sd : 0, series.Count, sk, ku, t));   // sr/n 都用「每期序列」= DSR 也吃有效期數、不再用 512
     }
-    Console.WriteLine($"  {name,-16}{pool.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
+    Console.WriteLine($"  {name,-16}{series.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}");
 }
-Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0。⚠ 但 folds 非獨立(重疊窗+幣高相關)→ CI 偏窄、t 偏高、顯著性高估;");
-Console.WriteLine($"     且多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 只信「t 高且 mean 大」的前幾名才穩。");
+Console.WriteLine($"  測 {sigTested} 支、{sigPassed} 支 95%CI 下界>0(已用每期跨幣均值收掉幣相關 + block-bootstrap 收掉重疊窗 → n=有效期數、t 不再灌水)。");
+Console.WriteLine($"     多重檢定下純運氣約 {sigTested * 0.05:F0} 支會假陽性 → 仍以下方 DSR / BH-FDR 為準。");
 
 // ── 多重檢定 + Deflated Sharpe(López de Prado、修「試 N 個變體 → 選擇偏誤」)──
 // 跑 N 個策略變體、純運氣也會冒出幾個「95%CI 顯著」。兩個業界標準扣假陽性:
