@@ -225,7 +225,7 @@ public static class TwFundFlowReport
             sb.AppendLine($"**{title}**");
             foreach (var s in items.Take(take))
             {
-                var consec = Math.Abs(s.ConsecDays) >= 2 ? $" · 連{Math.Abs(s.ConsecDays)}日{(s.ConsecDays > 0 ? "買" : "賣")}" : "";
+                var consec = Math.Abs(s.ConsecDays) >= 2 ? $" · 外資連{Math.Abs(s.ConsecDays)}日{(s.ConsecDays > 0 ? "買" : "賣")}" : "";
                 sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)}){consec}");
                 var lead = s.TopStocks.Count > 0
                     ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{t.Name}({FmtYi(t.Yi)})")) : "";
@@ -412,7 +412,7 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
         static string Sgn(decimal v) => (v >= 0 ? "+" : "") + v.ToString("0.0");
         static string Lt(long v) => $"{(v >= 0 ? "+" : "")}{v:N0}";
         var sb = new StringBuilder();
-        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>億元</th><th>外資</th><th>投信</th><th>連續</th></tr>");
+        sb.Append($@"<div><table><tr><th>{E(title)}</th><th>億元</th><th>外資</th><th>投信</th><th>外資連續</th></tr>");
         if (items.Count == 0) sb.Append(@"<tr><td class=""tag"">無</td><td></td><td></td><td></td><td></td></tr>");
         foreach (var s in items)
         {
