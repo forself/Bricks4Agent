@@ -176,7 +176,21 @@ public class TwFundFlowService : BackgroundService
         try { sentiment = await TaifexClient.FetchForeignTxOiAsync(http, ct); }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow: TAIFEX sentiment fetch failed"); }
 
-        var sectorHist = LoadSectorForeignHistory(isoDate, HistoryWindow, sectorMap);   // 產業連續同向(只上市歷史)
+        var sectorHist = LoadSectorForeignHistory(isoDate, HistoryWindow, sectorMap);   // 產業連續同向(DB、不含報表日)
+        // 把報表日當天 live 的外資淨股按產業加總、prepend 到序列最前 → consec 跟畫面外資方向一致
+        var todayBySector = new Dictionary<string, long>();
+        foreach (var r in reportRows)
+        {
+            if (!(r.StockCode.Length == 4 && r.StockCode[0] != '0')) continue;
+            if (!sectorMap.TryGetValue(r.StockCode, out var sec)) continue;
+            todayBySector.TryGetValue(sec, out var cur);
+            todayBySector[sec] = cur + r.ForeignNet;
+        }
+        foreach (var (sec, todayNet) in todayBySector)
+        {
+            if (!sectorHist.TryGetValue(sec, out var series)) { series = new List<long>(); sectorHist[sec] = series; }
+            series.Insert(0, todayNet);   // 報表日在最前(LoadSectorForeignHistory 已排除報表日、不重複)
+        }
         var report = TwFundFlowReport.Build(isoDate, reportRows, reportCloses, foreignHist, _watchlist, sectorMap, changePct, sentiment, sectorHist);
 
         // 寫兩份 HTML:完整(含 watchlist)→ dashboard;family(去 watchlist)→ 公開給家人(寫檔失敗不致命)
@@ -285,15 +299,17 @@ public class TwFundFlowService : BackgroundService
         if (sectorMap.Count == 0) return result;
         try
         {
+            // 故意「不含報表日」(< @d):報表日當天的外資淨額由 caller 用 live reportRows prepend,
+            // 避免 DB 還沒寫入今天時、consec 用到不含今天的序列、跟畫面外資方向打架。
             var dates = _db.Query<TwFundFlowDaily>(
-                "SELECT DISTINCT trade_date FROM tw_fund_flow_daily WHERE trade_date <= @d ORDER BY trade_date DESC LIMIT @k",
+                "SELECT DISTINCT trade_date FROM tw_fund_flow_daily WHERE trade_date < @d ORDER BY trade_date DESC LIMIT @k",
                 new { d = reportDate, k })
                 .Select(r => r.TradeDate).ToList();
             if (dates.Count == 0) return result;
             string minDate = dates.Min()!;
 
             var rows = _db.Query<TwFundFlowDaily>(
-                "SELECT stock_code, trade_date, foreign_net FROM tw_fund_flow_daily WHERE trade_date >= @min AND trade_date <= @d",
+                "SELECT stock_code, trade_date, foreign_net FROM tw_fund_flow_daily WHERE trade_date >= @min AND trade_date < @d",
                 new { min = minDate, d = reportDate });
 
             var bySectorDate = new Dictionary<string, Dictionary<string, long>>();
