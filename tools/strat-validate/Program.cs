@@ -934,9 +934,8 @@ var sigRes = new ConcurrentDictionary<string, (decimal sortKey, string line, dou
 Parallel.For(0, strats.Length, ParOpts, i =>
 {
     var (name, s) = strats[i];
-    var pool = PoolOosFolds(s);
-    decimal sortKey = pool.Count > 0 ? pool.Average() : -999m;
     var series = PerPeriodSeries(s);                          // 每期跨幣均值(收幣相關)
+    decimal sortKey = series.Count > 0 ? (decimal)series.Average() : -999m;   // 排序鍵用 series 均值 → 省掉 PoolOosFolds 那趟 walk-forward(顯著性砍半)
     var (m, lo, hi, t) = BlockBootCI(series, new Random(42 + i));   // per-strategy seed(收重疊窗)
     bool sig = lo > 0m && series.Count >= 5;
     string line = $"  {name,-16}{series.Count,5}{m,8:F1}   [{lo,6:F1},{hi,6:F1}]{t,7:F2}  {(sig ? "✅ 顯著" : "—")}";
@@ -1192,15 +1191,17 @@ Console.WriteLine("\n=== 參數調校實驗(anchored walk-forward;IS 找最佳�
 Console.WriteLine($"  {"strategy",-14}{"IS Sharpe",11}{"OOS Sharpe",12}{"degradation",13}{"OOS ret%",10}");
 void WfOpt(string label, Func<List<BarData>, StrategyConfig, WalkForwardOptimizer.WalkForwardResult> run)
 {
-    var isS = new List<decimal>(); var oosS = new List<decimal>(); var oosR = new List<decimal>();
-    foreach (var kv in data)
+    var res = new ConcurrentBag<(decimal isS, decimal oosS, decimal oosR)>();
+    Parallel.ForEach(data, ParOpts, kv =>
+    {
         try { var r = run(kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" });
-              if (r.WindowCount > 0) { isS.Add(r.AvgInSampleSharpe); oosS.Add(r.AvgOutOfSampleSharpe); oosR.Add(r.AggregateOosReturnPct); } }
+              if (r.WindowCount > 0) res.Add((r.AvgInSampleSharpe, r.AvgOutOfSampleSharpe, r.AggregateOosReturnPct)); }
         catch { }
-    if (isS.Count == 0) { Console.WriteLine($"  {label,-14}(無資料)"); return; }
-    var avgIs = isS.Average(); var avgOos = oosS.Average();
+    });
+    if (res.IsEmpty) { Console.WriteLine($"  {label,-14}(無資料)"); return; }
+    var avgIs = res.Average(x => x.isS); var avgOos = res.Average(x => x.oosS);
     var deg = avgIs != 0 ? avgOos / avgIs : 0;
-    Console.WriteLine($"  {label,-14}{avgIs,11:F2}{avgOos,12:F2}{deg,13:F2}{oosR.Average(),10:F1}");
+    Console.WriteLine($"  {label,-14}{avgIs,11:F2}{avgOos,12:F2}{deg,13:F2}{res.Average(x => x.oosR),10:F1}");
 }
 WfOpt("sma_cross",    (b, c) => WalkForwardOptimizer.RunSma(b, c, 250, 90));
 WfOpt("rsi_oversold", (b, c) => WalkForwardOptimizer.RunRsi(b, c, 250, 90));
@@ -1216,9 +1217,10 @@ decimal Annualize(decimal totalRetPct, DateTime start, DateTime end)
     if (basev <= 0) return -100m;
     return (decimal)((Math.Pow(basev, 365.0 / days) - 1.0) * 100.0);
 }
-var perfRows = new List<(string name, decimal ann, decimal sh, decimal dd, decimal wr, decimal pf, decimal tpy, bool live)>();
-foreach (var (name, s) in strats)
+var perfRows = new ConcurrentBag<(string name, decimal ann, decimal sh, decimal dd, decimal wr, decimal pf, decimal tpy, bool live)>();
+Parallel.ForEach(strats, ParOpts, ns =>
 {
+    var (name, s) = ns;
     var anns = new List<decimal>(); var shs = new List<decimal>(); var dds = new List<decimal>();
     var wrs = new List<decimal>(); var pfs = new List<decimal>(); var tpys = new List<decimal>();
     foreach (var kv in data)
@@ -1230,10 +1232,10 @@ foreach (var (name, s) in strats)
             var yrs = (bt.EndDate - bt.StartDate).TotalDays / 365.0;
             tpys.Add(yrs > 0 ? (decimal)(bt.TotalTrades / yrs) : 0m);
         } catch { }
-    if (anns.Count == 0) continue;
+    if (anns.Count == 0) return;
     perfRows.Add((name, Median(anns), Math.Round(shs.Average(), 2), Math.Round(dds.Average(), 0),
         Math.Round(wrs.Average(), 0), Math.Round(pfs.Average(), 2), Math.Round(tpys.Average(), 0), liveStrats.Contains(name)));
-}
+});   // 印出時 OrderByDescending(ann)、插入序不影響 → ConcurrentBag 即可
 Console.WriteLine("\n=== 策略績效總表(1d、realistic 成本、full-period;跨幣中位;★=現行 live)===");
 Console.WriteLine($"  {"strategy",-16}{"年化%",8}{"Sharpe",8}{"maxDD%",8}{"勝率%",7}{"PF",7}{"交易/年",9}");
 foreach (var r in perfRows.OrderByDescending(x => x.ann))
