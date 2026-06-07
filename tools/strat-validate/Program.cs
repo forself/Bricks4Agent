@@ -680,7 +680,8 @@ var lsEq = PrintTable("Long-short(新引擎)",
 // ── 多時框 策略 × 幣 分析(預設 1h~1w,找跨時框穩健最優解)──────────────
 // long-only 引擎(對應實際 perp_long_only)。每時框 per(策略,幣) OOS = walk-forward avg test%。
 // 跨時框一致 = 真 edge 的證據;只在單一時框好 = 多半噪音/單一行情(如 XRP 那波大漲)。
-string[] intervals = fastMode ? new[] { "1d" } : new[] { "1h", "4h", "12h", "1d", "1w" };
+// --notf:全宇宙但只跑 1d(跳過 5 時框矩陣 = 最大的 5× 成本)、迭代/全宇宙快跑用。edge 本來就在 1d。
+string[] intervals = (fastMode || args.Contains("--notf")) ? new[] { "1d" } : new[] { "1h", "4h", "12h", "1d", "1w" };
 string Sh(string s) => s.Replace("USDT", "");
 
 // 跑單一時框的 策略×幣 grid(printGrid=true 才印完整表),回傳 strat->coin->OOS%
