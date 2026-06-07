@@ -558,6 +558,37 @@ foreach (var sym in symbols)
 }
 Console.WriteLine($"\n資料就緒:{data.Count}/{symbols.Length} 檔(≥400 日線)");
 
+// --concurrency:諧波多幣「同步觸發風險」診斷 — 跑全幣、把每筆交易疊日曆 → 每天同時幾倉 + entry 群聚。
+// 判讀:平均同時持倉/最大同時/≥N同步%;entry 群聚高 = 常常同步成一個大相關賭注 → 要設 max-concurrent。
+if (args.Contains("--concurrency"))
+{
+    var hstrat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m);
+    var trades = new List<(string coin, DateTime entry, DateTime exit)>();
+    foreach (var kv in data)
+        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+              foreach (var t in bt.Trades) trades.Add((kv.Key, t.EntryDate, t.ExitDate)); }
+        catch { }
+    Console.WriteLine($"\n=== 諧波多幣同步觸發風險(harm_prz_scan10_widepz、{data.Count} 幣、全期 1d)===");
+    Console.WriteLine($"  總交易 {trades.Count} 筆、{trades.Count / Math.Max(1.0, data.Count):F1} 筆/幣");
+    if (trades.Count > 0)
+    {
+        var cal = (data.TryGetValue("BTCUSDT", out var btc) ? btc.Select(b => b.OpenTime.Date) : trades.Select(t => t.entry.Date))
+            .Distinct().OrderBy(d => d).ToList();
+        var concs = cal.Select(day => trades.Count(t => t.entry <= day && day < t.exit)).ToList();
+        double avg = concs.Average(); int max = concs.Max();
+        var sortedC = concs.OrderBy(x => x).ToList(); int med = sortedC[sortedC.Count / 2];
+        double Pct(int thr) => concs.Count(c => c >= thr) / (double)concs.Count * 100;
+        Console.WriteLine($"  同時持倉:平均 {avg:F1} / 中位 {med} / 最大 {max}(共 {concs.Count} 交易日)");
+        Console.WriteLine($"    ≥5 同時:{Pct(5):F0}% of 交易日、≥10:{Pct(10):F0}%、≥{data.Count / 2}(半數幣):{Pct(data.Count / 2):F0}%");
+        var entriesPerDay = trades.GroupBy(t => t.entry.Date).Select(g => g.Count()).ToList();
+        int maxEntries = entriesPerDay.Max();
+        int entriesOn5plus = trades.GroupBy(t => t.entry.Date).Where(g => g.Count() >= 5).Sum(g => g.Count());
+        Console.WriteLine($"  entry 群聚:單日最多 {maxEntries} 個同步進場、{entriesOn5plus * 100 / trades.Count}% 的進場落在「單日≥5 同步進」的日子");
+        Console.WriteLine($"  → 判讀:平均同時持倉低 + ≥半數幣同時% 低 = 真分散;entry 群聚高 = 常同步成一賭注、需 max-concurrent 上限。");
+    }
+    return;
+}
+
 // --from/--to 切窗:在注入(funding/retail)前切,讓注入只 fetch 窗內、B&H 基準也對齊窗(2022 熊 B&H 大跌才是對的對照)
 if (winFrom != null || winTo != null)
 {
