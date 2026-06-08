@@ -606,7 +606,9 @@ if (args.Contains("--booksim"))
     var hstrat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m);
     var bt0 = new List<(string coin, DateTime entry, DateTime exit, double pnl)>();
     foreach (var kv in data)
-        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m,
+                  peakTrailTriggerPct: withProtection ? protTrailTrig : 0m, peakTrailDistancePct: withProtection ? protTrailDist : 0m,
+                  beTriggerPct: withProtection ? protBeTrig : 0m, beBufferPct: withProtection ? protBeBuf : 0m);
               foreach (var t in bt.Trades) bt0.Add((kv.Key, t.EntryDate, t.ExitDate, (double)t.PnlPct / 100.0)); }
         catch { }
     bt0 = bt0.OrderBy(t => t.entry).ToList();
