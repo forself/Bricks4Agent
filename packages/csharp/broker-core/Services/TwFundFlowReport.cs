@@ -25,7 +25,8 @@ public static class TwFundFlowReport
     /// <summary>產業層級資金流:三大法人合計金額(億)+ 外資/投信 分項(億)+ 該產業檔數
     /// + 融資/融券變化(張、整產業加總)+ 帶動龍頭股 + 法人連續同向天數(正買負賣)。</summary>
     public record SectorItem(string Sector, decimal TotalYi, decimal ForeignYi, decimal TrustYi, int StockCount,
-        long MarginChgLots, long ShortChgLots, List<SectorTop> TopStocks, int ConsecDays);
+        long MarginChgLots, long ShortChgLots, List<SectorTop> TopStocks, int ConsecDays,
+        List<SectorTop>? SubIndustries = null);   // 廣產業底下的細產業 breakdown(樹狀子節點;name=細產業、Yi=金額億)
 
     public record ReportData(
         string Date, int TotalStocks, bool UseAmount,
@@ -129,20 +130,28 @@ public static class TwFundFlowReport
             {
                 decimal tot = 0, fgn = 0, tru = 0; long mchg = 0, schg = 0; int n = 0;
                 var tops = new List<SectorTop>();
+                var subAgg = new Dictionary<string, decimal>();   // 細產業 → 金額億(樹狀子節點)
                 foreach (var r in g)
                 {
                     var c = Close(r.StockCode);
-                    tot += AmountYi(r.TotalNet, c); fgn += AmountYi(r.ForeignNet, c); tru += AmountYi(r.TrustNet, c); n++;
+                    var yiT = AmountYi(r.TotalNet, c);
+                    tot += yiT; fgn += AmountYi(r.ForeignNet, c); tru += AmountYi(r.TrustNet, c); n++;
                     mchg += r.MarginBalance - r.MarginPrev;   // 融資/融券 model 已是「張」、不除 Lot
                     schg += r.ShortBalance - r.ShortPrev;
-                    tops.Add(new SectorTop(r.StockName, AmountYi(r.TotalNet, c)));
+                    tops.Add(new SectorTop(r.StockName, yiT));
+                    var sub = TwSubIndustryMap.Get(r.StockCode) ?? "其他";   // 未 curate → 其他(render 會略過純其他)
+                    subAgg.TryGetValue(sub, out var cur); subAgg[sub] = cur + yiT;
                 }
                 // 帶動龍頭:流入產業取金額最大的買超股、流出產業取賣超最重的(方向一致才列)
                 var top3 = (inflow ? tops.Where(t => t.Yi > 0).OrderByDescending(t => t.Yi)
                                    : tops.Where(t => t.Yi < 0).OrderBy(t => t.Yi))
                     .Take(3).Select(t => new SectorTop(t.Name, Math.Round(t.Yi, 1))).ToList();
+                // 細產業 breakdown:同向取金額最大的前 4 個細產業(樹狀子節點)
+                var subs = (inflow ? subAgg.Where(kv => kv.Value > 0).OrderByDescending(kv => kv.Value)
+                                   : subAgg.Where(kv => kv.Value < 0).OrderBy(kv => kv.Value))
+                    .Take(4).Select(kv => new SectorTop(kv.Key, Math.Round(kv.Value, 1))).ToList();
                 return new SectorItem(g.Key, Math.Round(tot, 1), Math.Round(fgn, 1), Math.Round(tru, 1), n,
-                    mchg, schg, top3, SectorConsec(g.Key));
+                    mchg, schg, top3, SectorConsec(g.Key), subs);
             }
             var groups = stocks.Where(r => sectorByCode.ContainsKey(r.StockCode) && Close(r.StockCode) > 0)
                 .GroupBy(r => sectorByCode[r.StockCode])
@@ -227,6 +236,10 @@ public static class TwFundFlowReport
             {
                 var consec = Math.Abs(s.ConsecDays) >= 2 ? $" · 外資連{Math.Abs(s.ConsecDays)}日{(s.ConsecDays > 0 ? "買" : "賣")}" : "";
                 sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)}){consec}");
+                // 細產業樹(子節點;略過純「其他」= 未 curate)
+                var subs = (s.SubIndustries ?? new List<SectorTop>()).Where(x => x.Name != "其他").ToList();
+                if (subs.Count > 0)
+                    sb.AppendLine($"  ├ 細分:{string.Join("、", subs.Select(x => $"{x.Name} {FmtYi(x.Yi)}"))}");
                 var lead = s.TopStocks.Count > 0
                     ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{t.Name}({FmtYi(t.Yi)})")) : "";
                 var marg = (s.MarginChgLots != 0 || s.ShortChgLots != 0) ? $"融資{Lt(s.MarginChgLots)} 融券{Lt(s.ShortChgLots)}" : "";
@@ -422,6 +435,10 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
                 $@"<td class=""{Cls(s.ForeignYi)}"">{Sgn(s.ForeignYi)}</td>" +
                 $@"<td class=""{Cls(s.TrustYi)}"">{Sgn(s.TrustYi)}</td>" +
                 $@"<td class=""tag"">{consec}</td></tr>");
+            // 子列:細產業樹(略過純「其他」)
+            var subs = (s.SubIndustries ?? new List<SectorTop>()).Where(x => x.Name != "其他").ToList();
+            if (subs.Count > 0)
+                sb.Append($@"<tr><td colspan=""5"" class=""tag"" style=""padding-left:12px"">├ 細分:{string.Join("、", subs.Select(x => $"{E(x.Name)} {Sgn(x.Yi)}"))}</td></tr>");
             // 子列:帶動龍頭股 + 融資融券變化(張)
             var lead = s.TopStocks.Count > 0
                 ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{E(t.Name)} {Sgn(t.Yi)}")) : "";
