@@ -610,7 +610,7 @@ if (args.Contains("--booksim"))
               foreach (var t in bt.Trades) bt0.Add((kv.Key, t.EntryDate, t.ExitDate, (double)t.PnlPct / 100.0)); }
         catch { }
     bt0 = bt0.OrderBy(t => t.entry).ToList();
-    int maxSlots = 2;
+    int maxSlots = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--slots="))?.Substring(8), out var msArg) ? Math.Max(1, msArg) : 2;
     double years = bt0.Count > 0 ? Math.Max(0.5, (bt0.Max(t => t.exit) - bt0.Min(t => t.entry)).TotalDays / 365.0) : 1;
     Console.WriteLine($"\n=== Book 模擬:先到先得 + max {maxSlots} 槽(harm_prz_scan10_widepz、{data.Count} 幣全宇宙、{bt0.Count} 筆候選、~{years:F1}年)===");
     Console.WriteLine($"  {"總槓桿",7} {"每槽",5} {"固定報酬x",9} {"固定DD%",8} {"報酬/DD",8} {"複利DD%",8} {"最長連虧",8} {"最差單筆%",9} {"接/跳",9}");
