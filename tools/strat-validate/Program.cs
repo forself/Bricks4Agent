@@ -589,6 +589,59 @@ if (args.Contains("--concurrency"))
     return;
 }
 
+// --booksim:模擬「先到先得 + max N 槽 + 每槽槓桿」的 portfolio 權益路徑 → 真實 DD / 連虧 / 最差單筆 / 強平參考。
+// 用法 --booksim(預設 max 2 槽、跑 1x/2x/3x 總槓桿對照)。每槽槓桿 = 總槓桿 / 槽數;常態 1 倉時 = 半個總槓桿。
+if (args.Contains("--booksim"))
+{
+    var hstrat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m);
+    var bt0 = new List<(string coin, DateTime entry, DateTime exit, double pnl)>();
+    foreach (var kv in data)
+        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+              foreach (var t in bt.Trades) bt0.Add((kv.Key, t.EntryDate, t.ExitDate, (double)t.PnlPct / 100.0)); }
+        catch { }
+    bt0 = bt0.OrderBy(t => t.entry).ToList();
+    int maxSlots = 2;
+    double years = bt0.Count > 0 ? Math.Max(0.5, (bt0.Max(t => t.exit) - bt0.Min(t => t.entry)).TotalDays / 365.0) : 1;
+    Console.WriteLine($"\n=== Book 模擬:先到先得 + max {maxSlots} 槽(harm_prz_scan10_widepz、{data.Count} 幣全宇宙、{bt0.Count} 筆候選、~{years:F1}年)===");
+    Console.WriteLine($"  {"總槓桿",7} {"每槽",5} {"固定DD%",8} {"複利DD%",8} {"最長連虧",8} {"最差單筆%",9} {"接/跳",9}");
+    foreach (var totalLev in new[] { 1.0, 2.0, 3.0 })
+    {
+        double perSlot = totalLev / maxSlots;
+        var ev = new List<(DateTime d, int type, int idx)>();
+        for (int i = 0; i < bt0.Count; i++) { ev.Add((bt0[i].entry, 0, i)); ev.Add((bt0[i].exit, 1, i)); }
+        ev = ev.OrderBy(e => e.d).ThenBy(e => e.type == 1 ? 0 : 1).ToList();   // 同日先處理 exit 釋放槽
+        double eqC = 1.0, peakC = 1.0, ddC = 0;   // 複利
+        double eqF = 1.0, peakF = 1.0, ddF = 0;   // 固定倉位(加法、去複利失真;每筆 = perSlot × 起始權益)
+        double worst = 0; int openCount = 0, taken = 0, skipped = 0, curStreak = 0, maxStreak = 0;
+        var openSet = new HashSet<int>();
+        foreach (var e in ev)
+        {
+            if (e.type == 0) { if (openCount < maxSlots) { openSet.Add(e.idx); openCount++; taken++; } else skipped++; }
+            else if (openSet.Remove(e.idx))
+            {
+                openCount--;
+                double impact = perSlot * bt0[e.idx].pnl;
+                eqC *= 1 + impact; eqF += impact;
+                if (impact < worst) worst = impact;
+                if (bt0[e.idx].pnl < 0) { curStreak++; maxStreak = Math.Max(maxStreak, curStreak); } else curStreak = 0;
+                if (eqC > peakC) peakC = eqC; if ((peakC - eqC) / peakC > ddC) ddC = (peakC - eqC) / peakC;
+                if (eqF > peakF) peakF = eqF; if ((peakF - eqF) / peakF > ddF) ddF = (peakF - eqF) / peakF;
+            }
+        }
+        Console.WriteLine($"  {totalLev,6:F1}x {perSlot,4:F2}x {ddF * 100,8:F0} {ddC * 100,8:F0} {maxStreak,8} {worst * 100,9:F1} {$"{taken}/{skipped}",9}");
+    }
+    // 尾部:單筆 PnlPct 分布 + 最差幾筆(槓桿無關、看尾險來源)
+    var pnls = bt0.Select(t => t.pnl).OrderBy(x => x).ToList();
+    double Q(double q) => pnls.Count > 0 ? pnls[(int)Math.Clamp(q * (pnls.Count - 1), 0, pnls.Count - 1)] * 100 : 0;
+    Console.WriteLine($"\n  單筆報酬分布(underlying、未槓桿):最差 {Q(0):F1}% / p1 {Q(.01):F1}% / p5 {Q(.05):F1}% / 中位 {Q(.5):F1}% / p95 {Q(.95):F1}% / 最佳 {Q(1):F1}%");
+    Console.WriteLine($"  勝率 {pnls.Count(p => p > 0) * 100.0 / Math.Max(1, pnls.Count):F0}% · 最差 8 筆(coin / underlying% / 3x下對權益%):");
+    foreach (var t in bt0.OrderBy(t => t.pnl).Take(8))
+        Console.WriteLine($"    {t.coin,-10} {t.pnl * 100,7:F1}%   → 3x:{t.pnl * 1.5 * 100,6:F1}%");
+    Console.WriteLine($"  → SL 距離解讀:最差 underlying 若遠超「結構 SL ~5-10%」= 該 setup SL 太寬或跳空穿。強平由交易所槓桿(5x)決定、與 book 槓桿無關:任何 underlying < ~−20% 的單即觸 5x 強平 → 看上面最差幾筆有沒有 < −20%。");
+    Console.WriteLine($"  註:固定DD=去複利、較貼近真實感受;複利DD=滾倉(偏大)。全宇宙含低 edge 幣、quality 宇宙會更好。");
+    return;
+}
+
 // --from/--to 切窗:在注入(funding/retail)前切,讓注入只 fetch 窗內、B&H 基準也對齊窗(2022 熊 B&H 大跌才是對的對照)
 if (winFrom != null || winTo != null)
 {
