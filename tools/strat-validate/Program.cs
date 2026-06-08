@@ -558,6 +558,16 @@ foreach (var sym in symbols)
 }
 Console.WriteLine($"\n資料就緒:{data.Count}/{symbols.Length} 檔(≥400 日線)");
 
+// --coins=SYM1,SYM2,...:把宇宙篩到指定幣(測「濾掉弱 per-coin 幣對 book 的影響」)。可不帶 USDT 後綴。
+var coinsFilter = args.FirstOrDefault(a => a.StartsWith("--coins="))?.Substring(8);
+if (coinsFilter != null)
+{
+    var keep = coinsFilter.Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(c => c.Trim().ToUpperInvariant()).Select(c => c.EndsWith("USDT") ? c : c + "USDT").ToHashSet();
+    foreach (var k in data.Keys.ToList()) if (!keep.Contains(k)) data.Remove(k);
+    Console.WriteLine($"🎯 --coins:宇宙篩到 {data.Count} 檔({string.Join(",", data.Keys.Select(c => c.Replace("USDT", "")))})");
+}
+
 // --concurrency:諧波多幣「同步觸發風險」診斷 — 跑全幣、把每筆交易疊日曆 → 每天同時幾倉 + entry 群聚。
 // 判讀:平均同時持倉/最大同時/≥N同步%;entry 群聚高 = 常常同步成一個大相關賭注 → 要設 max-concurrent。
 if (args.Contains("--concurrency"))
@@ -603,7 +613,7 @@ if (args.Contains("--booksim"))
     int maxSlots = 2;
     double years = bt0.Count > 0 ? Math.Max(0.5, (bt0.Max(t => t.exit) - bt0.Min(t => t.entry)).TotalDays / 365.0) : 1;
     Console.WriteLine($"\n=== Book 模擬:先到先得 + max {maxSlots} 槽(harm_prz_scan10_widepz、{data.Count} 幣全宇宙、{bt0.Count} 筆候選、~{years:F1}年)===");
-    Console.WriteLine($"  {"總槓桿",7} {"每槽",5} {"固定DD%",8} {"複利DD%",8} {"最長連虧",8} {"最差單筆%",9} {"接/跳",9}");
+    Console.WriteLine($"  {"總槓桿",7} {"每槽",5} {"固定報酬x",9} {"固定DD%",8} {"報酬/DD",8} {"複利DD%",8} {"最長連虧",8} {"最差單筆%",9} {"接/跳",9}");
     foreach (var totalLev in new[] { 1.0, 2.0, 3.0 })
     {
         double perSlot = totalLev / maxSlots;
@@ -628,7 +638,8 @@ if (args.Contains("--booksim"))
                 if (eqF > peakF) peakF = eqF; if ((peakF - eqF) / peakF > ddF) ddF = (peakF - eqF) / peakF;
             }
         }
-        Console.WriteLine($"  {totalLev,6:F1}x {perSlot,4:F2}x {ddF * 100,8:F0} {ddC * 100,8:F0} {maxStreak,8} {worst * 100,9:F1} {$"{taken}/{skipped}",9}");
+        double calmar = ddF > 0 ? (eqF - 1) / ddF : 0;   // 去複利報酬 / 去複利DD = 乾淨效率
+        Console.WriteLine($"  {totalLev,6:F1}x {perSlot,4:F2}x {eqF,9:F2} {ddF * 100,8:F0} {calmar,8:F1} {ddC * 100,8:F0} {maxStreak,8} {worst * 100,9:F1} {$"{taken}/{skipped}",9}");
     }
     // 尾部:單筆 PnlPct 分布 + 最差幾筆(槓桿無關、看尾險來源)
     var pnls = bt0.Select(t => t.pnl).OrderBy(x => x).ToList();
