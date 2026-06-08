@@ -235,16 +235,19 @@ public static class TwFundFlowReport
             foreach (var s in items.Take(take))
             {
                 var consec = Math.Abs(s.ConsecDays) >= 2 ? $" · 外資連{Math.Abs(s.ConsecDays)}日{(s.ConsecDays > 0 ? "買" : "賣")}" : "";
-                sb.AppendLine($"・{s.Sector} {FmtYi(s.TotalYi)}(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)}){consec}");
-                // 細產業樹(子節點;略過純「其他」= 未 curate)
+                // 主分類(廣產業)— 醒目開頭
+                sb.AppendLine($"🔷 {s.Sector}　{FmtYi(s.TotalYi)}　(外{FmtYi(s.ForeignYi)} 投{FmtYi(s.TrustYi)}){consec}");
+                // 子分支(細產業)— 每個自己一行 + 樹狀線,主→子層級明顯
                 var subs = (s.SubIndustries ?? new List<SectorTop>()).Where(x => x.Name != "其他").ToList();
-                if (subs.Count > 0)
-                    sb.AppendLine($"  ├ 細分:{string.Join("、", subs.Select(x => $"{x.Name} {FmtYi(x.Yi)}"))}");
+                for (int i = 0; i < subs.Count; i++)
+                    sb.AppendLine($"　　{(i == subs.Count - 1 ? "└" : "├")} {subs[i].Name}　{FmtYi(subs[i].Yi)}");
+                // 龍頭股 + 融資融券(再縮一層)
                 var lead = s.TopStocks.Count > 0
                     ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{t.Name}({FmtYi(t.Yi)})")) : "";
                 var marg = (s.MarginChgLots != 0 || s.ShortChgLots != 0) ? $"融資{Lt(s.MarginChgLots)} 融券{Lt(s.ShortChgLots)}" : "";
                 var sub = string.Join("｜", new[] { lead, marg }.Where(x => x.Length > 0));
-                if (sub.Length > 0) sb.AppendLine($"  ↳ {sub}");
+                if (sub.Length > 0) sb.AppendLine($"　　💡 {sub}");
+                sb.AppendLine();   // 每個主分類之間空一行、更好讀
             }
             sb.AppendLine();
         }
@@ -282,7 +285,9 @@ public static class TwFundFlowReport
         if (!string.IsNullOrWhiteSpace(reportUrl))
         {
             sb.AppendLine();
-            sb.AppendLine($"📄 完整報表:{reportUrl}");
+            sb.AppendLine("📄 完整圖表報表(點下方連結):");
+            sb.AppendLine(reportUrl);   // URL 自己一行 = LINE 一定能自動變可點;若 LINE 內建瀏覽器打不開,長按連結選「用其他瀏覽器開啟」
+            sb.AppendLine("(若打不開:長按連結→用 Safari/Chrome 開)");
         }
         return sb.ToString();
     }
@@ -435,10 +440,11 @@ th{{color:var(--mut);font-weight:600;font-size:12px}}
                 $@"<td class=""{Cls(s.ForeignYi)}"">{Sgn(s.ForeignYi)}</td>" +
                 $@"<td class=""{Cls(s.TrustYi)}"">{Sgn(s.TrustYi)}</td>" +
                 $@"<td class=""tag"">{consec}</td></tr>");
-            // 子列:細產業樹(略過純「其他」)
+            // 子列:細產業樹 — 每個細產業自己一列、縮排 + 樹狀線 + 金額顏色(主→子層級明顯)
             var subs = (s.SubIndustries ?? new List<SectorTop>()).Where(x => x.Name != "其他").ToList();
-            if (subs.Count > 0)
-                sb.Append($@"<tr><td colspan=""5"" class=""tag"" style=""padding-left:12px"">├ 細分:{string.Join("、", subs.Select(x => $"{E(x.Name)} {Sgn(x.Yi)}"))}</td></tr>");
+            for (int i = 0; i < subs.Count; i++)
+                sb.Append($@"<tr><td style=""padding-left:22px;color:#9aa"">{(i == subs.Count - 1 ? "└" : "├")} {E(subs[i].Name)}</td>" +
+                    $@"<td class=""{Cls(subs[i].Yi)}"">{Sgn(subs[i].Yi)}</td><td colspan=""3""></td></tr>");
             // 子列:帶動龍頭股 + 融資融券變化(張)
             var lead = s.TopStocks.Count > 0
                 ? "龍頭 " + string.Join("、", s.TopStocks.Select(t => $"{E(t.Name)} {Sgn(t.Yi)}")) : "";
