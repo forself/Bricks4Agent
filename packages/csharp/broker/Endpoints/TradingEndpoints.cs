@@ -254,6 +254,20 @@ public static class TradingEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { pushed = ok && !dry && hadData, dry, family, had_data = hadData, summary }));
         });
 
+        // 下載家人版報表 HTML(self-contained、給家人本機開 → 繞過 LINE 內建瀏覽器打不開的問題)。
+        // 要登入(操作者在 dashboard 觸發);回傳 attachment 觸發瀏覽器下載。
+        trading.MapGet("/tw-fundflow/download", async (
+            Broker.Services.TwFundFlowService twff, HttpContext ctx, CancellationToken ct) =>
+        {
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var html = await twff.GetFamilyHtmlAsync(ct);
+            if (string.IsNullOrEmpty(html))
+                return Results.Ok(ApiResponseHelper.Error("報表尚未產生(資料未發布或抓取失敗)"));
+            var fn = $"台股資金流-{DateTime.UtcNow.AddHours(8):yyyy-MM-dd}.html";
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(html), "text/html; charset=utf-8", fn);
+        });
+
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
         trading.MapPost("/symbol-specs/refresh", async (
             Broker.Services.SymbolSpecsService svc, CancellationToken ct) =>

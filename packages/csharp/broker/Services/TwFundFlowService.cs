@@ -234,6 +234,15 @@ public class TwFundFlowService : BackgroundService
         return (ok, summary, true);
     }
 
+    /// <summary>下載用:重建最新家人版報表(push:false=寫檔、不推通知)後回傳 family HTML 內容。
+    /// 重建失敗則退回上次寫好的檔(graceful)。給「匯出 HTML 給家人本機開」用(繞過 LINE 內建瀏覽器)。</summary>
+    public async Task<string?> GetFamilyHtmlAsync(CancellationToken ct)
+    {
+        try { await BuildAndPushAsync(push: false, maxLookbackDays: 7, ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow download: 重建失敗、改回傳上次檔"); }
+        return File.Exists(_familyHtmlPath) ? await File.ReadAllTextAsync(_familyHtmlPath, ct) : null;
+    }
+
     /// <summary>歷史不足(distinct 日期 &lt; MinHistoryDates)→ backfill 最近 BackfillCalendarDays 內的交易日(含當日收盤)。</summary>
     private async Task BackfillIfNeededAsync(CancellationToken ct)
     {
