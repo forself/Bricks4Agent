@@ -1973,6 +1973,45 @@ async Task RunDispersion()
     bool win = pct >= 95 && topKsh > uniSh + 0.05 && topKsh > botKsh + 0.1;
     Console.WriteLine($"\n  判讀:{(win ? $"✅ 波動選股顯著贏隨機(百分位{pct:F0}%)+贏全宇宙 → 選股是真的、TW 可救、值得建選股層" : "⚠️ 沒顯著贏隨機 → 波動選股是運氣/幻覺 → TW 放生、專心美股/crypto")}");
     Console.WriteLine($"  (caveat:波動用全期算=輕微 lookahead；過關才上嚴格版 trailing-vol per rebalance)");
+
+    // ── Step 4:資金流(三大法人外資)× 波動 雙層選股(使用者原始 2 層論點)──
+    if (args.Contains("--with-flow"))
+    {
+        Console.WriteLine($"\n  === Step 4:資金流 × 波動 選股(--with-flow)===");
+        // 讀 curl 預抓的快取(C# HttpClient 對 TWSE 不穩 → 改外部 curl 可靠預抓、這裡只讀)
+        var (flowSum, tradingDays) = ToolsShared.TwInstFlowCache.SumAllCached();
+        Console.WriteLine($"  讀快取 T86:{tradingDays} 交易日有資料、{flowSum.Count} 檔有外資流");
+        if (tradingDays < 5) { Console.WriteLine("  ⚠ 快取 T86 不足(<5 交易日)→ 先用 curl 預抓到 ~/.cache/brick4agent/twflow/、再跑"); return; }
+        var flowScore = new Dictionary<string, double>();
+        foreach (var r in wv)
+        {
+            var code = r.sym.Replace(".TW", "");
+            if (!flowSum.TryGetValue(code, out var fs)) continue;
+            double avgVol = dat[r.sym].Count > 0 ? (double)dat[r.sym].Average(x => x.Volume) : 0;
+            if (avgVol > 0) flowScore[r.sym] = fs / avgVol;   // 累計外資淨股 / 平均日量 = 吸籌強度(跨股可比)
+        }
+        var wvf = wv.Where(r => flowScore.ContainsKey(r.sym)).Select(r => (r.sym, r.sh, v: r.v, f: flowScore[r.sym])).ToList();
+        if (wvf.Count < 8) { Console.WriteLine($"  ⚠ 有資金流資料的股不足({wvf.Count})、跳過"); return; }
+        int Kf = Math.Max(5, wvf.Count / 3);
+        double volSh = wvf.OrderByDescending(x => x.v).Take(Kf).Average(x => x.sh);
+        double flowShv = wvf.OrderByDescending(x => x.f).Take(Kf).Average(x => x.sh);
+        var volRank = wvf.OrderBy(x => x.v).Select((x, i) => (x.sym, r: i)).ToDictionary(z => z.sym, z => z.r);
+        var flowRank = wvf.OrderBy(x => x.f).Select((x, i) => (x.sym, r: i)).ToDictionary(z => z.sym, z => z.r);
+        double combSh = wvf.OrderByDescending(x => volRank[x.sym] + flowRank[x.sym]).Take(Kf).Average(x => x.sh);
+        double uniF = wvf.Average(x => x.sh);
+        var poolF = wvf.Select(x => x.sh).ToList(); var rmF = new List<double>();
+        for (int b = 0; b < 5000; b++) { double s = 0; for (int j = 0; j < Kf; j++) s += poolF[rng.Next(poolF.Count)]; rmF.Add(s / Kf); }
+        double randF = rmF.Average();
+        double pV = rmF.Count(x => x < volSh) * 100.0 / 5000, pF = rmF.Count(x => x < flowShv) * 100.0 / 5000, pC = rmF.Count(x => x < combSh) * 100.0 / 5000;
+        Console.WriteLine($"  (有資金流 {wvf.Count} 檔、top-{Kf})OOS Sharpe:");
+        Console.WriteLine($"    純波動:          {volSh,5:F2}  (隨機百分位 {pV:F0}%)");
+        Console.WriteLine($"    純資金流:        {flowShv,5:F2}  (百分位 {pF:F0}%)");
+        Console.WriteLine($"    波動+資金流組合: {combSh,5:F2}  (百分位 {pC:F0}%)");
+        Console.WriteLine($"    全宇宙 {uniF:F2} · 隨機 {randF:F2}");
+        bool flowAdds = combSh > volSh + 0.05;
+        Console.WriteLine($"\n  判讀:{(flowAdds ? $"✅ 資金流加在波動上「有」加分(組合 {combSh:F2} > 純波動 {volSh:F2})→ 你原始雙層論點成立" : $"⚠️ 資金流「沒」加分(組合 {combSh:F2} ≤ 純波動 {volSh:F2})→ 波動已抓到主因、資金流冗餘、雙層不值得")}");
+        Console.WriteLine($"  (caveat:flow_score 全期靜態 + 週採樣 = 輕微 lookahead;過關才上 ex-ante trailing-flow per rebalance)");
+    }
 }
 
 // 跨市場諧波分散:同一條 harmonic 跑 crypto/美股/台股 → 各市場日報酬序列 → 相關矩陣 + 等權組合。

@@ -15,5 +15,6 @@
     <Compile Include="..\shared\FundingCache.cs" Link="Shared\FundingCache.cs" />
     <Compile Include="..\shared\OiMetricsCache.cs" Link="Shared\OiMetricsCache.cs" />
     <Compile Include="..\shared\StockBarCache.cs" Link="Shared\StockBarCache.cs" />
+    <Compile Include="..\shared\TwInstFlowCache.cs" Link="Shared\TwInstFlowCache.cs" />
   </ItemGroup>
 </Project>
