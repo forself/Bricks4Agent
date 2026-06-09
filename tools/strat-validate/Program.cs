@@ -1819,6 +1819,16 @@ async Task RunAllocate()
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
     Console.WriteLine($"資料就緒:{dat.Count}/{symbols.Length} 檔 1d\n");
 
+    // retail_ls / oi 策略需注入 RetailLongShortRatio / OpenInterest(--apply-retail-ls);否則整段 hold → 0 edge。
+    // (主流程在 line ~689 注入、但 --allocate 在那之前就 return,故 RunAllocate 要自己注入)
+    if (realRetailLs)
+    {
+        int inj = 0;
+        foreach (var kv in dat)
+            try { await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, "1d"); inj++; } catch { }
+        Console.WriteLine($"📊 已注入 retail L/S + OI metrics:{inj}/{dat.Count} 檔(retail_ls / oi 策略才有信號)\n");
+    }
+
     // forward 實盤證據(per-strategy:成交數 / 已實現 P&L / 勝率)
     var fwd = new Dictionary<string, (int n, decimal pnl, decimal wr)>(StringComparer.OrdinalIgnoreCase);
     if (!string.IsNullOrEmpty(fwdFile) || !string.IsNullOrEmpty(fwdUrl))
@@ -2068,6 +2078,39 @@ async Task RunAllocate()
     Console.WriteLine($"\n  組合年化波動 {portAnnVol:P0} → 為打到目標 {targetVol:P0}、整體曝險 = {exposure:F2}x(上限 {maxExp:F1}x)");
     Console.WriteLine($"  有效獨立押注數 N_eff = {nEff:F1} / {N} 腿   平均兩兩相關 ρ̄ = {avgRho:F2}   " +
         (nEff < N * 0.6 ? "⚠ N_eff 遠低於腿數 = 假分散(腿太像)" : "✓ 分散有效"));
+
+    // ── 組合 vs 諧波單獨 直接對照(分散到底改善多少風險調整後報酬)──
+    // 用各腿日報酬 rets[] + 配置權重 w[] → 組合日報酬序列 → Sharpe(曝險不變)+ maxDD(exposure=1 raw);對照 100% 諧波腿。
+    {
+        (double sh, double dd, double ret) Stats(double[] r)
+        {
+            if (r.Length < 5) return (0, 0, 0);
+            double mean = r.Average();
+            double sd = Math.Sqrt(r.Select(x => (x - mean) * (x - mean)).Sum() / Math.Max(1, r.Length - 1));
+            double sharpe = sd > 1e-12 ? mean / sd * Math.Sqrt(252) : 0;
+            double eq = 1, peak = 1, mdd = 0;
+            foreach (var x in r) { eq *= 1 + x; if (eq > peak) peak = eq; var d = peak > 0 ? (peak - eq) / peak : 0; if (d > mdd) mdd = d; }
+            return (sharpe, mdd * 100, (eq - 1) * 100);
+        }
+        int harmIdx = -1;
+        for (int i = 0; i < N; i++) if (pool[i].Name.StartsWith("harm")) { harmIdx = i; break; }
+        var comb = new double[RL];
+        for (int t = 0; t < RL; t++) { double s = 0; for (int i = 0; i < N; i++) s += w[i] * rets[i][t]; comb[t] = s; }
+        var (cSh, cDd, cRet) = Stats(comb);
+        Console.WriteLine($"\n=== 組合 vs 諧波單獨(exposure=1 raw、全期日報酬;Sharpe 與曝險無關、maxDD 等比放大)===");
+        Console.WriteLine($"  {"配置",-14}{"Sharpe",9}{"maxDD%",9}{"全期報酬%",11}");
+        if (harmIdx >= 0)
+        {
+            var (hSh, hDd, hRet) = Stats(rets[harmIdx].ToArray());
+            Console.WriteLine($"  {"100% 諧波",-14}{hSh,9:F2}{hDd,9:F0}{hRet,11:F0}");
+            Console.WriteLine($"  {$"分散{N}腿",-14}{cSh,9:F2}{cDd,9:F0}{cRet,11:F0}");
+            string shGain = hSh > 0 ? $"{(cSh / hSh - 1) * 100:+0;-0}%" : "n/a";
+            string ddGain = hDd > 1e-9 ? $"{(cDd / hDd - 1) * 100:+0;-0}%" : "n/a";
+            Console.WriteLine($"  → 分散效果:Sharpe {shGain}、maxDD {ddGain}(負=DD 降、好)");
+            Console.WriteLine($"  註:Sharpe 升 = 分散真改善風險調整後報酬;vol-target 下可把組合放大到同 DD → 賺更多。");
+        }
+        else Console.WriteLine($"  {$"分散{N}腿",-14}{cSh,9:F2}{cDd,9:F0}{cRet,11:F0}  (本次無諧波腿、無對照)");
+    }
 
     // 為什麼沒選 BTC?把每條腿「選中幣 vs BTC」的回測 Sharpe/報酬攤出來。
     // 引擎選的是「策略主動交易 edge 最強的幣」(Sharpe),不是「最有價值的資產」(buy&hold)——
