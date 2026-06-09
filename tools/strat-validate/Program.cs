@@ -508,6 +508,9 @@ if (args.Contains("--xmarket")) { await RunXMarket(); return; }
 // ── --dispersion:edge 離散度診斷(選股能不能救活弱策略的前置判定)──
 if (args.Contains("--dispersion")) { await RunDispersion(); return; }
 
+// ── --selection-wf:嚴格版選股(trailing-vol per rebalance、ex-ante、無 lookahead)──
+if (args.Contains("--selection-wf")) { await RunSelectionWf(); return; }
+
 // ── --xsmom:橫斷面動量(cross-sectional momentum)——結構不同的去相關 edge 研究 ──
 // 跨幣排序:每 rebal 期 long 過去 lookback 報酬最強的 topK、short 最弱的 topK(等權)。
 // 跟所有「單幣技術指標」正交;驗證有沒有 OOS edge + 跟現有書(decorr4)相不相關。
@@ -1809,6 +1812,82 @@ void RunConfDiagnostic()
 // --allocate 配置引擎:把候選策略池跑成「可直接部署的權重」
 //   每腿 = (策略 → 它的最佳幣);跨腿做穩健配重。全用 long-short 引擎 + realistic 成本。
 // ════════════════════════════════════════════════════════════════════════════
+// 嚴格版選股:每個 walk-forward fold 用「該 fold 訓練窗的波動」(ex-ante、無 lookahead)選 top-K vol 股,
+// 在該 fold 測試窗收報酬 → 動態成員組合。對照隨機-K + 全宇宙(同折同窗、公平)。
+// 過關 = trailing-vol(ex-ante)仍顯著贏隨機 → 證實 killer test 的 0.51 不是全期波動 lookahead 灌的。
+async Task RunSelectionWf()
+{
+    var sname = args.FirstOrDefault(a => a.StartsWith("--strat="))?.Substring(8) ?? "harm_prz_scan10_widepz";
+    var st = strats.FirstOrDefault(s => s.name == sname).s;
+    if (st == null) { Console.WriteLine($"找不到策略 {sname}"); return; }
+    Console.WriteLine($"=== 嚴格版選股 trailing-vol per rebalance(ex-ante):{sname} · cost {costBps}bps/側 ===");
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    const int train = 250, test = 90, step = 60;
+    Console.WriteLine($"  宇宙 {dat.Count} 檔 · walk-forward {train}/{test}/{step}");
+    // per stock:各 fold 測試窗報酬
+    var foldRet = new Dictionary<string, List<double>>();
+    foreach (var kv in dat)
+        try
+        {
+            var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, train, test, step, commission: gComm, slippagePct: gSlip);
+            foldRet[kv.Key] = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
+        }
+        catch { }
+    if (foldRet.Count == 0) { Console.WriteLine("無資料"); return; }
+    int maxF = foldRet.Values.Max(v => v.Count);
+    int K = Math.Max(5, dat.Count / 3);
+    // fold f 的 trailing 波動 = bars[f*step : train+f*step](= fold f 訓練窗、在測試窗之前 = ex-ante)
+    double TrailVol(string sym, int f)
+    {
+        var b = dat[sym]; int lo = f * step, hi = train + f * step;
+        if (b.Count < hi) return double.NaN;
+        var rr = new List<double>(); for (int i = lo + 1; i < hi; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+        if (rr.Count < 20) return double.NaN;
+        double m = rr.Average(); return Math.Sqrt(rr.Select(x => (x - m) * (x - m)).Sum() / rr.Count);
+    }
+    double Sharpe(List<double> ser) { if (ser.Count < 3) return 0; double m = ser.Average(); double sd = Math.Sqrt(ser.Select(x => (x - m) * (x - m)).Sum() / Math.Max(1, ser.Count - 1)); return sd > 1e-9 ? m / sd * Math.Sqrt(365.0 / step) : 0; }
+    var volSel = new List<double>(); var uni = new List<double>();
+    var selCount = new Dictionary<string, int>();
+    for (int f = 0; f < maxF; f++)
+    {
+        var avail = foldRet.Where(kv => kv.Value.Count > f).Select(kv => kv.Key).ToList();
+        var vols = avail.Select(s => (s, v: TrailVol(s, f))).Where(x => !double.IsNaN(x.v)).ToList();
+        if (vols.Count < K) continue;
+        var top = vols.OrderByDescending(x => x.v).Take(K).Select(x => x.s).ToList();
+        volSel.Add(top.Average(s => foldRet[s][f]));
+        uni.Add(avail.Average(s => foldRet[s][f]));
+        foreach (var s in top) selCount[s] = selCount.GetValueOrDefault(s) + 1;
+    }
+    var rng = new Random(42); int M = 2000; var randSh = new List<double>();
+    for (int b = 0; b < M; b++)
+    {
+        var ser = new List<double>();
+        for (int f = 0; f < maxF; f++)
+        {
+            var avail = foldRet.Where(kv => kv.Value.Count > f).Select(kv => kv.Key).ToList();
+            if (avail.Count < K) continue;
+            var pick = avail.OrderBy(_ => rng.Next()).Take(K).ToList();
+            ser.Add(pick.Average(s => foldRet[s][f]));
+        }
+        randSh.Add(Sharpe(ser));
+    }
+    double vsSh = Sharpe(volSel), uniSh = Sharpe(uni), randMean = randSh.Average();
+    double pct = randSh.Count(x => x < vsSh) * 100.0 / M;
+    // 絕對報酬(可部署性關鍵;Sharpe 被跨股平均灌水、絕對報酬才實在)。fold=90天測試窗 → 年化 ≈ ×(365/90)
+    double vsRet = volSel.Average(), uniRet = uni.Average();
+    Console.WriteLine($"\n  === 嚴格版結果({volSel.Count} folds、top-{K})===");
+    Console.WriteLine($"  Sharpe — trailing-vol 選股: {vsSh:F2}   全宇宙: {uniSh:F2}   隨機-{K} 均值: {randMean:F2}   百分位: {pct:F0}%");
+    Console.WriteLine($"  絕對報酬(平均每fold~季)— vol選股: {vsRet:F2}%/季(年化~{vsRet * 365 / 90:F0}%)   全宇宙: {uniRet:F2}%/季(年化~{uniRet * 365 / 90:F0}%)");
+    Console.WriteLine($"  最常被選中(trailing-vol top-{K}):{string.Join(",", selCount.OrderByDescending(kv => kv.Value).Take(K).Select(kv => kv.Key.Replace(".TW", "") + $"({kv.Value})"))}");
+    // 選股信號是否真實 = 只看「同檔數下贏不贏隨機」(贏全宇宙是檔數/廣度效應、不該當選股勝負)
+    bool selReal = pct >= 95;
+    string breadth = vsSh >= uniSh ? "選股 ≥ 全宇宙" : $"全宇宙({uniSh:F2})> 選股 = 廣度/分散效應(檔數多→更分散)、非選股輸";
+    Console.WriteLine($"\n  判讀:{(selReal ? $"✅ trailing-vol(ex-ante)顯著贏隨機(百分位 {pct:F0}%)→ 選股信號真實、非 lookahead" : $"⚠️ 沒顯著贏隨機(百分位 {pct:F0}%)→ 選股是運氣")}");
+    Console.WriteLine($"  廣度註記:{breadth} → 最佳解傾向「留廣宇宙 + 高波動 tilt 權重」、非縮檔數。");
+    Console.WriteLine($"  (註:組合報酬序列 Sharpe 被跨股平均灌水、相對比較有效絕對值不可信;真實可部署看絕對報酬+成本+容量)");
+}
+
 // edge 離散度診斷:跑單一策略 per-symbol(LS、真實成本)→ 看 Sharpe 分布。
 // 高離散(少數股強、多數弱)= 選股有東西抓;均勻弱 = 選股救不了(不能從無 alpha 選出 alpha)。
 async Task RunDispersion()
