@@ -92,8 +92,12 @@ string[] symbols = etfMode
     ? new[]
     {
         // 跨 sector 美股(科技/金融/醫療/能源/消費/工業)— breadth 給 cross-sectional + pooling
+        // 2026-06-10 擴 24→~58(跟台股一致廣度、波動選股測;非 point-in-time、診斷用)
         "AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META",
-        "JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA",
+        "ORCL","ADBE","CSCO","QCOM","TXN","NFLX","TSLA","IBM","NOW","AMAT","MU","INTU","PANW",
+        "JPM","BAC","V","MA","GS","MS","WFC","C","AXP","BLK","SCHW",
+        "UNH","JNJ","LLY","ABBV","MRK","PFE","TMO","ABT","DHR",
+        "XOM","CVX","COP","WMT","KO","PG","DIS","CAT","BA","COST","HD","MCD","NKE","PEP","GE","HON","LMT","RTX",
     }
     : twMode
     ? new[]
