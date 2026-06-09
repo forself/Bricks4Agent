@@ -1820,18 +1820,30 @@ async Task RunSelectionWf()
     var sname = args.FirstOrDefault(a => a.StartsWith("--strat="))?.Substring(8) ?? "harm_prz_scan10_widepz";
     var st = strats.FirstOrDefault(s => s.name == sname).s;
     if (st == null) { Console.WriteLine($"找不到策略 {sname}"); return; }
-    Console.WriteLine($"=== 嚴格版選股 trailing-vol per rebalance(ex-ante):{sname} · cost {costBps}bps/側 ===");
+    bool longOnly = args.Contains("--long-only");   // 純多(台股散戶融券受限的現實);否則多空
+    Console.WriteLine($"=== 嚴格版選股 trailing-vol per rebalance(ex-ante):{sname} · cost {costBps}bps/側 · {(longOnly ? "純多 long-only" : "多空 LS")} ===");
     var dat = new Dictionary<string, List<BarData>>();
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
     const int train = 250, test = 90, step = 60;
     Console.WriteLine($"  宇宙 {dat.Count} 檔 · walk-forward {train}/{test}/{step}");
-    // per stock:各 fold 測試窗報酬
+    // per stock:各 fold 測試窗報酬(純多走 BacktestEngine、多空走 LongShortBacktestEngine)
     var foldRet = new Dictionary<string, List<double>>();
     foreach (var kv in dat)
         try
         {
-            var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, train, test, step, commission: gComm, slippagePct: gSlip);
-            foldRet[kv.Key] = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
+            var cfg = new StrategyConfig { Symbol = kv.Key, Interval = "1d" };
+            List<double> fr;
+            if (longOnly)
+            {
+                var w = BacktestEngine.RunWalkForward(st, kv.Value, cfg, train, test, step, commission: gComm, slippagePct: gSlip);
+                fr = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
+            }
+            else
+            {
+                var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, cfg, train, test, step, commission: gComm, slippagePct: gSlip);
+                fr = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
+            }
+            foldRet[kv.Key] = fr;
         }
         catch { }
     if (foldRet.Count == 0) { Console.WriteLine("無資料"); return; }
