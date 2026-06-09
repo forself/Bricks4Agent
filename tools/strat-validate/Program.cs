@@ -28,6 +28,11 @@ string? onlyFilter = args.FirstOrDefault(a => a.StartsWith("--only="))?.Substrin
 int barsLimit = int.TryParse(args.FirstOrDefault(a => a.StartsWith("--bars="))?.Substring(7), out var bl) ? bl : 1000;
 bool realFunding = args.Contains("--apply-funding");
 bool realRetailLs = args.Contains("--apply-retail-ls");
+// 真實成本覆寫:--cost-bps=N → 每側成本 N 基點(1bp=0.01%)。預設 8bps(=原 comm5+slip3、crypto realistic)。
+// 台股套 ~22bps/側(round-trip ~0.44% = 0.3% 賣稅 + ~0.14% 手續費)、美股 ~6bps、crypto ~8bps。全算在 commission(引擎 comm/slip 同等扣)。
+decimal costBps = decimal.TryParse(args.FirstOrDefault(a => a.StartsWith("--cost-bps="))?.Substring(11), out var cbVal) && cbVal > 0 ? cbVal : 8m;
+decimal gComm = costBps / 10000m, gSlip = 0m;
+if (costBps != 8m) Console.WriteLine($"💰 --cost-bps={costBps}:每側 {costBps:F0}bps(={costBps / 100m:F2}%/側、round-trip {costBps * 2m / 100m:F2}%)");
 // --sl=N:LS 引擎固定初始止損 %(模擬 live 止損機制做存活測試;0=無止損,現有行為)
 decimal slPct = decimal.TryParse(args.FirstOrDefault(a => a.StartsWith("--sl="))?.Substring(5), out var slv) ? slv : 0m;
 // --conf-sizing:部位名目 × signal.Confidence(Carver forecast-strength sizing 實驗;對照固定倉位)
@@ -94,11 +99,19 @@ string[] symbols = etfMode
     ? new[]
     {
         // 跨 sector 台股(半導體/金融/電信/塑化/鋼鐵/食品/零售/ETF)— 驗 harmonic 在 TWSE 是否延伸
-        "2330.TW","2317.TW","2454.TW","2308.TW","2303.TW",  // 半導體/電子
-        "2881.TW","2882.TW","2891.TW",                       // 金融
-        "2412.TW",                                            // 電信
-        "1301.TW","1303.TW",                                  // 塑化
-        "2002.TW","1216.TW","2912.TW","0050.TW",              // 鋼鐵/食品/零售/大盤 ETF
+        // 2026-06-09 擴宇宙 16→~50(離散度診斷要廣度;⚠️非 point-in-time、含倖存者偏誤、診斷用、正式回測要修)
+        // 半導體/IC
+        "2330.TW","2454.TW","2303.TW","3711.TW","2379.TW","3034.TW","3008.TW","2408.TW","3443.TW","6415.TW",
+        // 電子(組裝/零組件/網通/面板/散熱)
+        "2317.TW","2308.TW","2382.TW","2357.TW","2376.TW","4938.TW","6669.TW","2474.TW","2327.TW","3037.TW","2345.TW","2409.TW","3481.TW","3017.TW",
+        // 金融
+        "2881.TW","2882.TW","2891.TW","2886.TW","2884.TW","2885.TW","2892.TW","5880.TW","2880.TW","2890.TW",
+        // 電信
+        "2412.TW","3045.TW","4904.TW",
+        // 傳產(塑化/鋼鐵/食品/車/航運/紡織/零售)
+        "1301.TW","1303.TW","1326.TW","2002.TW","1216.TW","2207.TW","2603.TW","2609.TW","2615.TW","2618.TW","2105.TW","1402.TW","2912.TW",
+        // ETF
+        "0050.TW","0056.TW",
     }
     : fxMode
     ? new[]
@@ -489,6 +502,12 @@ if (onlyFilter != null)
 //        + 相關 haircut + 單腿上限 ④ vol-target 算整體曝險。輸出每腿 budget_pct + N_eff + 畢業判定。
 if (args.Contains("--allocate")) { await RunAllocate(); return; }
 
+// ── --xmarket:跨市場諧波分散(crypto vs 美股 vs 台股 的 harmonic 日報酬相關 + 等權組合)──
+if (args.Contains("--xmarket")) { await RunXMarket(); return; }
+
+// ── --dispersion:edge 離散度診斷(選股能不能救活弱策略的前置判定)──
+if (args.Contains("--dispersion")) { await RunDispersion(); return; }
+
 // ── --xsmom:橫斷面動量(cross-sectional momentum)——結構不同的去相關 edge 研究 ──
 // 跨幣排序:每 rebal 期 long 過去 lookback 報酬最強的 topK、short 最弱的 topK(等權)。
 // 跟所有「單幣技術指標」正交;驗證有沒有 OOS edge + 跟現有書(decorr4)相不相關。
@@ -575,7 +594,7 @@ if (args.Contains("--concurrency"))
     var hstrat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m);
     var trades = new List<(string coin, DateTime entry, DateTime exit)>();
     foreach (var kv in data)
-        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
               foreach (var t in bt.Trades) trades.Add((kv.Key, t.EntryDate, t.ExitDate)); }
         catch { }
     Console.WriteLine($"\n=== 諧波多幣同步觸發風險(harm_prz_scan10_widepz、{data.Count} 幣、全期 1d)===");
@@ -606,7 +625,7 @@ if (args.Contains("--booksim"))
     var hstrat = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m);
     var bt0 = new List<(string coin, DateTime entry, DateTime exit, double pnl)>();
     foreach (var kv in data)
-        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m,
+        try { var bt = LongShortBacktestEngine.Run(hstrat, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: gComm, slippagePct: gSlip,
                   peakTrailTriggerPct: withProtection ? protTrailTrig : 0m, peakTrailDistancePct: withProtection ? protTrailDist : 0m,
                   beTriggerPct: withProtection ? protBeTrig : 0m, beBufferPct: withProtection ? protBeBuf : 0m);
               foreach (var t in bt.Trades) bt0.Add((kv.Key, t.EntryDate, t.ExitDate, (double)t.PnlPct / 100.0)); }
@@ -916,7 +935,7 @@ List<decimal> PoolOosFolds(IStrategy s)
 {
     var r = new List<decimal>();
     foreach (var kv in data)
-        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, confidenceSizing: confSizing, applyFunding: realFunding);
+        try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip, confidenceSizing: confSizing, applyFunding: realFunding);
               foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
         catch { }
     return r;
@@ -979,7 +998,7 @@ List<double> PerPeriodSeries(IStrategy s)
     foreach (var kv in data)
         try
         {
-            var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m, confidenceSizing: confSizing, applyFunding: realFunding);
+            var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip, confidenceSizing: confSizing, applyFunding: realFunding);
             var fs = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
             if (fs.Count > 0) perCoin.Add(fs);
         }
@@ -1322,7 +1341,7 @@ Parallel.ForEach(strats, ParOpts, ns =>
     var wrs = new List<decimal>(); var pfs = new List<decimal>(); var tpys = new List<decimal>();
     foreach (var kv in data)
         try {
-            var bt = BacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+            var bt = BacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
             if (bt.TotalBars < 100) continue;
             anns.Add(Annualize(bt.TotalReturnPct, bt.StartDate, bt.EndDate));
             shs.Add(bt.SharpeRatio); dds.Add(bt.MaxDrawdownPct); wrs.Add(bt.WinRate); pfs.Add(bt.ProfitFactor);
@@ -1647,7 +1666,7 @@ void RunVolTargetAB()
         var r = new List<decimal>();
         foreach (var kv in data)
             try { var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60,
-                       commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding,
+                       commission: gComm, slippagePct: gSlip, applyFunding: realFunding,
                        volTargetSizing: vt, volTargetAnnual: tv, volTargetLookback: lb, volTargetMaxScalar: mx);
                   foreach (var f in w.Folds.Where(f => f.Test != null)) r.Add(f.Test!.TotalReturnPct); }
             catch { }
@@ -1664,8 +1683,8 @@ void RunVolTargetAB()
             try
             {
                 var cfg = new StrategyConfig { Symbol = kv.Key, Interval = "1d" };
-                var bF = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding);
-                var bV = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, applyFunding: realFunding,
+                var bF = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: gComm, slippagePct: gSlip, applyFunding: realFunding);
+                var bV = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: gComm, slippagePct: gSlip, applyFunding: realFunding,
                                                      volTargetSizing: true, volTargetAnnual: tv, volTargetLookback: lb, volTargetMaxScalar: mx);
                 if (bF.TotalBars >= 100)
                 {
@@ -1744,7 +1763,7 @@ void RunConfDiagnostic()
             try
             {
                 var cfg = new StrategyConfig { Symbol = kv.Key, Interval = "1d" };
-                var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m, defaultInitialSlPct: slPct, applyFunding: realFunding);
+                var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: gComm, slippagePct: gSlip, defaultInitialSlPct: slPct, applyFunding: realFunding);
                 foreach (var t in bt.Trades) { confs.Add((double)t.EntryConfidence); pnls.Add((double)t.PnlPct); }
             }
             catch { }
@@ -1790,6 +1809,161 @@ void RunConfDiagnostic()
 // --allocate 配置引擎:把候選策略池跑成「可直接部署的權重」
 //   每腿 = (策略 → 它的最佳幣);跨腿做穩健配重。全用 long-short 引擎 + realistic 成本。
 // ════════════════════════════════════════════════════════════════════════════
+// edge 離散度診斷:跑單一策略 per-symbol(LS、真實成本)→ 看 Sharpe 分布。
+// 高離散(少數股強、多數弱)= 選股有東西抓;均勻弱 = 選股救不了(不能從無 alpha 選出 alpha)。
+async Task RunDispersion()
+{
+    var sname = args.FirstOrDefault(a => a.StartsWith("--strat="))?.Substring(8) ?? "harm_prz_scan10_widepz";
+    var st = strats.FirstOrDefault(s => s.name == sname).s;
+    if (st == null) { Console.WriteLine($"找不到策略 {sname}"); return; }
+    Console.WriteLine($"=== edge 離散度診斷:{sname}(per-symbol LS、cost {costBps}bps/側、full-period)===");
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 200) dat[sym] = b; } catch { } }
+    Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔。判讀:高離散(少數強、多數弱)→選股有救;均勻弱→選股救不了\n");
+    // OOS walk-forward(250/90/60)per-symbol:OOS Sharpe = 各 test fold Sharpe 均值;OOS ret = AvgTestReturnPct。
+    // 用 OOS(非全期 in-sample)才能答「edge 在 OOS 是否集中在可辨識少數股」= 選股可行性。
+    var rows = new List<(string sym, double sh, double ret, double dd, int n)>();
+    foreach (var kv in dat)
+        try
+        {
+            var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
+            if (w.TotalFolds <= 0) continue;
+            var fsh = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.SharpeRatio).ToList();
+            if (fsh.Count == 0) continue;
+            rows.Add((kv.Key, fsh.Average(), (double)w.AvgTestReturnPct, (double)w.WorstTestDdPct, w.TotalFolds));
+        }
+        catch { }
+    if (rows.Count == 0) { Console.WriteLine("無資料"); return; }
+    rows = rows.OrderByDescending(r => r.sh).ToList();
+    Console.WriteLine($"  {"symbol",-12}{"OOS-Sh",8}{"OOSret%",9}{"worstDD%",9}{"folds",7}");
+    foreach (var r in rows) Console.WriteLine($"  {r.sym,-12}{r.sh,8:F2}{r.ret,9:F1}{r.dd,9:F0}{r.n,7}");
+    var shs = rows.Select(r => r.sh).OrderBy(x => x).ToList();
+    int N = shs.Count;
+    double mean = shs.Average();
+    double median = N % 2 == 1 ? shs[N / 2] : (shs[N / 2 - 1] + shs[N / 2]) / 2;
+    double sd = Math.Sqrt(shs.Select(x => (x - mean) * (x - mean)).Sum() / Math.Max(1, N - 1));
+    int posCnt = shs.Count(x => x > 0), strongCnt = shs.Count(x => x > 0.5), veryStrong = shs.Count(x => x > 1.0);
+    Console.WriteLine($"\n  === 離散度統計({N} 檔)===");
+    Console.WriteLine($"  Sharpe 均值 {mean:F2} · 中位 {median:F2} · 標準差 {sd:F2} · 全距 [{shs.First():F2}, {shs.Last():F2}]");
+    Console.WriteLine($"  Sharpe>0: {posCnt}/{N} ({posCnt * 100.0 / N:F0}%) · >0.5: {strongCnt} 檔 · >1.0: {veryStrong} 檔");
+    int strongSubset = strongCnt;
+    Console.WriteLine($"\n  === 離散度判讀 ===");
+    Console.WriteLine($"  Sharpe>0.5 的 {strongSubset} 檔平均 = {(strongSubset > 0 ? rows.Where(r => r.sh > 0.5).Average(r => r.sh) : 0):F2}(vs 全宇宙 {mean:F2})→ 有可剝離的強子集");
+
+    // ── 殺手鐧:按波動選股 vs 隨機選股(OOS Sharpe)──
+    // 波動 = 日報酬年化 std(結構性、跨年持續高 → 近似 ex-ante;嚴格版用 trailing/rebalance、此為一階檢定)
+    var vol = new Dictionary<string, double>();
+    foreach (var kv in dat)
+    {
+        var b = kv.Value; var rr = new List<double>();
+        for (int i = 1; i < b.Count; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+        if (rr.Count > 20) { double m = rr.Average(); vol[kv.Key] = Math.Sqrt(rr.Select(x => (x - m) * (x - m)).Sum() / rr.Count) * Math.Sqrt(252); }
+    }
+    var wv = rows.Where(r => vol.ContainsKey(r.sym)).Select(r => (r.sym, r.sh, v: vol[r.sym])).ToList();
+    int K = Math.Max(5, wv.Count / 3);
+    var byVol = wv.OrderByDescending(x => x.v).ToList();
+    double topKsh = byVol.Take(K).Average(x => x.sh);
+    double botKsh = byVol.Skip(Math.Max(0, byVol.Count - K)).Average(x => x.sh);
+    double uniSh = wv.Average(x => x.sh);
+    var rng = new Random(42); int M = 5000; var rm = new List<double>();
+    var poolSh = wv.Select(x => x.sh).ToList();
+    for (int b = 0; b < M; b++) { double s = 0; for (int j = 0; j < K; j++) s += poolSh[rng.Next(poolSh.Count)]; rm.Add(s / K); }
+    double randMean = rm.Average();
+    double pct = rm.Count(x => x < topKsh) * 100.0 / M;
+    Console.WriteLine($"\n  === 殺手鐧:波動選股 vs 隨機(top/bottom-{K} by 年化波動;OOS Sharpe)===");
+    Console.WriteLine($"  高波動 top-{K}: {topKsh:F2}   低波動 bottom-{K}: {botKsh:F2}   全宇宙: {uniSh:F2}   隨機-{K}均值: {randMean:F2}");
+    Console.WriteLine($"  高波動選股在隨機分布的百分位: {pct:F0}%（>95% = 顯著贏隨機、非運氣）");
+    Console.WriteLine($"  高波動 top-{K} 成員: {string.Join(",", byVol.Take(K).Select(x => x.sym.Replace(".TW", "")))}");
+    bool win = pct >= 95 && topKsh > uniSh + 0.05 && topKsh > botKsh + 0.1;
+    Console.WriteLine($"\n  判讀:{(win ? $"✅ 波動選股顯著贏隨機(百分位{pct:F0}%)+贏全宇宙 → 選股是真的、TW 可救、值得建選股層" : "⚠️ 沒顯著贏隨機 → 波動選股是運氣/幻覺 → TW 放生、專心美股/crypto")}");
+    Console.WriteLine($"  (caveat:波動用全期算=輕微 lookahead；過關才上嚴格版 trailing-vol per rebalance)");
+}
+
+// 跨市場諧波分散:同一條 harmonic 跑 crypto/美股/台股 → 各市場日報酬序列 → 相關矩陣 + 等權組合。
+// 低相關 = 真分散(市場/regime 不同);組合 Sharpe 升/DD 降 = 跨市場分散有效。對齊用共同交易日。
+async Task RunXMarket()
+{
+    var harm = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;
+    if (harm == null) { Console.WriteLine("找不到 harm_prz_scan10_widepz"); return; }
+    Console.WriteLine("=== 跨市場諧波分散 --xmarket(harm_prz_scan10_widepz、各市場日報酬)===\n");
+    var markets = new (string name, string[] syms, bool yahoo)[]
+    {
+        ("crypto", new[]{"BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","LTCUSDT","DOTUSDT","ATOMUSDT","TRXUSDT","UNIUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT","INJUSDT"}, false),
+        ("美股", new[]{"AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META","JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA"}, true),
+        ("台股", new[]{"2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW","0050.TW"}, true),
+    };
+    (double sh, double dd, double ret) StatsOf(double[] r)
+    {
+        if (r.Length < 5) return (0, 0, 0);
+        double mean = r.Average(), sd = Math.Sqrt(r.Select(x => (x - mean) * (x - mean)).Sum() / Math.Max(1, r.Length - 1));
+        double sh = sd > 1e-12 ? mean / sd * Math.Sqrt(252) : 0;
+        double eq = 1, peak = 1, mdd = 0;
+        foreach (var x in r) { eq *= 1 + x; if (eq > peak) peak = eq; var d2 = peak > 0 ? (peak - eq) / peak : 0; if (d2 > mdd) mdd = d2; }
+        return (sh, mdd * 100, (eq - 1) * 100);
+    }
+    var mret = new Dictionary<string, SortedDictionary<DateTime, double>>();
+    var mstats = new Dictionary<string, (double sh, double dd, double ret, int n)>();
+    foreach (var (mn, syms, yahoo) in markets)
+    {
+        var perDay = new Dictionary<DateTime, List<double>>();
+        int nsym = 0;
+        foreach (var sym in syms)
+        {
+            List<BarData> bars;
+            try { bars = yahoo ? await ToolsShared.StockBarCache.FetchOrLoad(sym, "1d", barsLimit) : await ToolsShared.KlineCache.FetchOrLoad(sym, "1d", barsLimit); }
+            catch { continue; }
+            if (bars.Count < 200) continue;
+            try
+            {
+                var bt = LongShortBacktestEngine.Run(harm, bars, new StrategyConfig { Symbol = sym, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
+                var eq = bt.EquityCurve;
+                for (int i = 1; i < eq.Count; i++)
+                {
+                    double pv = (double)eq[i - 1].Value; if (pv <= 0) continue;
+                    double r = (double)(eq[i].Value - eq[i - 1].Value) / pv;
+                    var d = eq[i].Date.Date;
+                    if (!perDay.TryGetValue(d, out var l)) perDay[d] = l = new();
+                    l.Add(r);
+                }
+                nsym++;
+            }
+            catch { }
+        }
+        var daily = new SortedDictionary<DateTime, double>();
+        foreach (var kv in perDay) if (kv.Value.Count > 0) daily[kv.Key] = kv.Value.Average();
+        mret[mn] = daily;
+        var st = StatsOf(daily.Values.ToArray());
+        mstats[mn] = (st.sh, st.dd, st.ret, nsym);
+        Console.WriteLine($"  {mn,-8} {nsym,2} 檔 · {daily.Count,4} 交易日 · Sharpe {st.sh,5:F2} · maxDD {st.dd,3:F0}% · 全期 {st.ret,6:F0}%");
+    }
+    var mnames = markets.Select(m => m.name).ToArray();
+    double PairCorr(string a, string b)
+    {
+        var da = mret[a]; var db = mret[b]; var xs = new List<double>(); var ys = new List<double>();
+        foreach (var kv in da) if (db.TryGetValue(kv.Key, out var v)) { xs.Add(kv.Value); ys.Add(v); }
+        if (xs.Count < 10) return double.NaN;
+        double mx = xs.Average(), my = ys.Average(), sxy = 0, sx = 0, sy = 0;
+        for (int i = 0; i < xs.Count; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sx += (xs[i] - mx) * (xs[i] - mx); sy += (ys[i] - my) * (ys[i] - my); }
+        return (sx > 0 && sy > 0) ? sxy / Math.Sqrt(sx * sy) : double.NaN;
+    }
+    Console.WriteLine("\n=== 跨市場 harmonic 日報酬 相關矩陣(對齊共同交易日)===");
+    Console.WriteLine("  " + new string(' ', 8) + string.Join("", mnames.Select(n => $"{n,8}")));
+    foreach (var a in mnames)
+        Console.WriteLine($"  {a,-8}" + string.Join("", mnames.Select(b => { var c = a == b ? 1.0 : PairCorr(a, b); return double.IsNaN(c) ? $"{"n/a",8}" : $"{c,8:F2}"; })));
+    // 等權跨市場組合(union 日期;缺市場當日 0 = 該市場休市/未交易、佔 1/N 權重的閒置)
+    var allDates = mret.Values.SelectMany(d => d.Keys).Distinct().OrderBy(d => d).ToList();
+    var comb = new List<double>();
+    foreach (var d in allDates) { double s = 0; foreach (var mn in mnames) if (mret[mn].TryGetValue(d, out var v)) s += v; comb.Add(s / mnames.Length); }
+    var cs = StatsOf(comb.ToArray());
+    Console.WriteLine("\n=== 等權跨市場組合 vs 各單市場 ===");
+    Console.WriteLine($"  {"配置",-12}{"Sharpe",9}{"maxDD%",9}{"全期報酬%",11}");
+    foreach (var mn in mnames) Console.WriteLine($"  {mn,-12}{mstats[mn].sh,9:F2}{mstats[mn].dd,9:F0}{mstats[mn].ret,11:F0}");
+    Console.WriteLine($"  {"跨市場等權",-12}{cs.sh,9:F2}{cs.dd,9:F0}{cs.ret,11:F0}");
+    double bestSh = mnames.Max(mn => mstats[mn].sh), bestDd = mnames.Min(mn => mstats[mn].dd);
+    Console.WriteLine($"  → 跨市場 Sharpe {cs.sh:F2} vs 最佳單市場 {bestSh:F2}({(bestSh > 0 ? (cs.sh / bestSh - 1) * 100 : 0):+0;-0}%);maxDD {cs.dd:F0}% vs 最佳單市場 {bestDd:F0}%");
+    Console.WriteLine("  判讀:相關低(<0.3)= 真分散;組合 Sharpe ≥ 最佳單市場 且 DD 更低 = 跨市場分散有效、值得鋪。");
+}
+
 async Task RunAllocate()
 {
     decimal EnvD(string k, decimal def) => decimal.TryParse(Environment.GetEnvironmentVariable(k), out var v) ? v : def;
@@ -1901,13 +2075,13 @@ async Task RunAllocate()
         {
             try
             {
-                var bt = LongShortBacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m);
+                var bt = LongShortBacktestEngine.Run(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
                 if (bt.TotalBars >= 100) perCoin[kv.Key] = (bt.SharpeRatio, bt.EquityCurve.Select(e => e.Value).ToList(), bt.TotalReturnPct, bt.MaxDrawdownPct);
             }
             catch { }
             try
             {
-                var wf = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                var wf = LongShortBacktestEngine.RunWalkForward(s, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
                 if (wf.TotalFolds == 0) continue;
                 coinsTested++;
                 if (wf.AvgTestReturnPct > 0) coinsPos++;
@@ -2327,7 +2501,7 @@ async Task RunXsMom()
     try
     {
         var ens = strats.First(x => x.name == "decorr4_ls").s;
-        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m)
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: gComm, slippagePct: gSlip)
                  .EquityCurve.Select(e => e.Value).ToList();
         int n = Math.Min(eqF.Count, dc.Count);
         var rho = CorrelationGuard.PearsonOfReturns(eqF.Skip(eqF.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
@@ -2635,7 +2809,7 @@ async Task RunTsMom()
     try
     {
         var ens = strats.First(x => x.name == "decorr4_ls").s;
-        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m).EquityCurve.Select(e => e.Value).ToList();
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: gComm, slippagePct: gSlip).EquityCurve.Select(e => e.Value).ToList();
         int n = Math.Min(eqF.Count, dc.Count);
         var rho = CorrelationGuard.PearsonOfReturns(eqF.Skip(eqF.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
         Console.WriteLine($"  與 decorr4@BTC ρ = {rho:F2}");
@@ -2712,7 +2886,7 @@ async Task RunPairs()
     try
     {
         var ens = strats.First(x => x.name == "decorr4_ls").s;
-        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: 0.0005m, slippagePct: 0.0003m).EquityCurve.Select(e => e.Value).ToList();
+        var dc = LongShortBacktestEngine.Run(ens, dat["BTCUSDT"], new StrategyConfig { Symbol = "BTCUSDT", Interval = "1d" }, commission: gComm, slippagePct: gSlip).EquityCurve.Select(e => e.Value).ToList();
         int n = Math.Min(eq.Count, dc.Count);
         var rho = CorrelationGuard.PearsonOfReturns(eq.Skip(eq.Count - n).ToList(), dc.Skip(dc.Count - n).ToList());
         Console.WriteLine($"  與 decorr4@BTC ρ = {rho:F2} → {(Math.Abs((double)rho) < 0.3 ? "✅ 低相關" : "⚠ 偏相關")}");
@@ -2816,18 +2990,18 @@ async Task RunHarmonic()
                 {
                     if (isLs)
                     {
-                        var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m);
+                        var bt = LongShortBacktestEngine.Run(s, kv.Value, cfg, commission: gComm, slippagePct: gSlip);
                         if (bt.TotalBars < 100) continue;
                         trades.Add(bt.TotalTrades / (decimal)kv.Value.Count * 1000m); fullSh.Add(bt.SharpeRatio);
-                        var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                        var w = LongShortBacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: gComm, slippagePct: gSlip);
                         if (w.TotalFolds > 0) { oos.Add(w.AvgTestReturnPct); foreach (var f in w.Folds.Where(f => f.Test != null)) pool.Add(f.Test!.TotalReturnPct); }
                     }
                     else
                     {
-                        var bt = BacktestEngine.Run(s, kv.Value, cfg, commission: 0.0005m, slippagePct: 0.0003m);
+                        var bt = BacktestEngine.Run(s, kv.Value, cfg, commission: gComm, slippagePct: gSlip);
                         if (bt.TotalBars < 100) continue;
                         trades.Add(bt.TotalTrades / (decimal)kv.Value.Count * 1000m); fullSh.Add(bt.SharpeRatio);
-                        var w = BacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: 0.0005m, slippagePct: 0.0003m);
+                        var w = BacktestEngine.RunWalkForward(s, kv.Value, cfg, 250, 90, 60, commission: gComm, slippagePct: gSlip);
                         if (w.TotalFolds > 0) { oos.Add(w.AvgTestReturnPct); foreach (var f in w.Folds.Where(f => f.Test != null)) pool.Add(f.Test!.TotalReturnPct); }
                     }
                 }
