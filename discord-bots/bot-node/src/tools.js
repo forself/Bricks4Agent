@@ -39,6 +39,11 @@ export const TOOLS = {
     dispatch: async () => callBroker('GET', '/api/v1/strategy/list'),
   },
 
+  'report.tw_fundflow': {
+    description: '取得最新「台股資金流報表」內容(三大法人/外資/投信買賣超、廣產業→細產業樹狀資金流向)。args: {}（不接參數）。被問到台股資金流/法人動向/外資買賣/哪個產業在進出時呼叫,然後用回傳的 summary 內容白話解說給使用者。回 {date, summary}。唯讀、非交易、人人可用。',
+    dispatch: async () => callBroker('GET', '/api/v1/trading/tw-fundflow/latest'),
+  },
+
   'strategy.signal': {
     description: '對 K 線跑單一策略產生訊號。args: {strategy: string, symbol: string, interval: string, bars?: array, bars_limit?: number(預設 100, max 500)}。**bars 沒給的話 tool 會自動先 quote.ohlcv 拿、不用你 chain 兩次 call**——只給 {strategy, symbol, interval} 就夠。要自帶 bars 也支援。',
     dispatch: async (args) => {

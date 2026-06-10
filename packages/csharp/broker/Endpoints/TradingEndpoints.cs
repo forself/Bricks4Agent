@@ -268,6 +268,19 @@ public static class TradingEndpoints
             return Results.File(System.Text.Encoding.UTF8.GetBytes(html), "text/html; charset=utf-8", fn);
         });
 
+        // 報表對話用:回最新家人版報表 summary 純文字(給 bot-node report.tw_fundflow 工具讀、LLM 解說資金流)。
+        // 要 principal(bot 內部 token 即滿足);唯讀、非敏感(就是公開家人版報表內容)。
+        trading.MapGet("/tw-fundflow/latest", async (
+            Broker.Services.TwFundFlowService twff, HttpContext ctx, CancellationToken ct) =>
+        {
+            if (string.IsNullOrEmpty(RequestBodyHelper.GetPrincipalId(ctx)))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var (date, summary) = await twff.GetLatestSummaryAsync(ct);
+            if (string.IsNullOrEmpty(summary))
+                return Results.Ok(ApiResponseHelper.Error("報表尚未產生(資料未發布或抓取失敗)"));
+            return Results.Ok(ApiResponseHelper.Success(new { date, summary }));
+        });
+
         // 手動 refresh contract specs cache（trading-worker 連回後可立即灌、不用等 12h 排程）
         trading.MapPost("/symbol-specs/refresh", async (
             Broker.Services.SymbolSpecsService svc, CancellationToken ct) =>

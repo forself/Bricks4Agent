@@ -29,6 +29,8 @@ public class TwFundFlowService : BackgroundService
     private readonly string _reportUrl;
     private readonly string[] _lineTo;      // 額外推 LINE 的 userId(如家人);空=不推 LINE
     private readonly string _publicUrl;      // LINE 給家人的「公開報表」連結(免 Cloudflare Access)
+    private string? _lastFamilySummary;      // 報表對話用:快取最新家人版 summary 純文字(每次 build 更新)
+    private string? _lastReportDate;         // 對應的報表日期(ISO)
     private readonly bool _includeOtc;       // 是否把上櫃(TPEx)併進「各產業資金流」(預設 true)
 
     private const int HistoryWindow = 8;     // 連續買賣超查的歷史天數窗
@@ -198,6 +200,10 @@ public class TwFundFlowService : BackgroundService
         WriteHtml(_htmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: true));
         WriteHtml(_familyHtmlPath, TwFundFlowReport.RenderHtml(report, includeWatchlist: false));
 
+        // 報表對話快取:存最新家人版 summary(LINE 同款純文字、含細產業樹)給 bot report 工具讀
+        _lastFamilySummary = TwFundFlowReport.RenderDiscord(report, _publicUrl, includeWatchlist: false, sectorFocus: true).Replace("**", "");
+        _lastReportDate = report.Date;
+
         var summary = TwFundFlowReport.RenderDiscord(report, _reportUrl);
         if (!push)
         {
@@ -241,6 +247,15 @@ public class TwFundFlowService : BackgroundService
         try { await BuildAndPushAsync(push: false, maxLookbackDays: 7, ct); }
         catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow download: 重建失敗、改回傳上次檔"); }
         return File.Exists(_familyHtmlPath) ? await File.ReadAllTextAsync(_familyHtmlPath, ct) : null;
+    }
+
+    /// <summary>報表對話用:回最新家人版 summary(date + 純文字、含細產業樹)。無快取則重建(push:false 不推)。</summary>
+    public async Task<(string? date, string? summary)> GetLatestSummaryAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_lastFamilySummary))
+            try { await BuildAndPushAsync(push: false, maxLookbackDays: 7, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "TwFundFlow summary: 重建失敗"); }
+        return (_lastReportDate, _lastFamilySummary);
     }
 
     /// <summary>歷史不足(distinct 日期 &lt; MinHistoryDates)→ backfill 最近 BackfillCalendarDays 內的交易日(含當日收盤)。</summary>
