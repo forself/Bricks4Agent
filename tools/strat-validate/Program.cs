@@ -1917,77 +1917,89 @@ async Task RunSelectionWf()
 // 不逐檔 cherry-pick(那會多重檢定假陽性)、驗證的是「一條路由規則」贏不贏 one-size-fits-all。
 async Task RunStockRouter()
 {
-    Console.WriteLine($"=== 個股性格路由回測(vol×ER → 策略;LS、cost {costBps}bps/側)===");
+    bool exAnte = args.Contains("--ex-ante");
+    bool longOnly = args.Contains("--long-only");
+    const double VOL_HI = 0.40, ER_TREND = 0.30;   // 固定機制門檻(無 lookahead、不優化=避免過擬合)
+    Console.WriteLine($"=== 個股性格路由回測({(exAnte ? "ex-ante per-fold 性格" : "全期性格")}{(longOnly ? " · 純多" : " · LS")};cost {costBps}bps/側)===");
     var dat = new Dictionary<string, List<BarData>>();
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 350) dat[sym] = b; } catch { } }
-    Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔(現有手挑、概念驗證用)\n");
+    Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔\n");
 
-    var sH = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;  // 波動擺盪 → 諧波反轉
+    var sH = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;  // 波動震盪 → 諧波反轉
     var sT = strats.FirstOrDefault(s => s.name == "ts_momentum").s;             // 趨勢 → 動量
     var sR = strats.FirstOrDefault(s => s.name == "bb_revert_ls").s;            // 均值回歸 → 布林回歸
-    if (sH == null || sT == null || sR == null) { Console.WriteLine("  缺策略(harm_prz_scan10_widepz/ts_momentum/bb_revert_ls)"); return; }
+    if (sH == null || sT == null || sR == null) { Console.WriteLine("  缺策略"); return; }
     var stratMap = new (string key, IStrategy st)[] { ("harmonic", sH), ("tsmom", sT), ("bb_revert", sR) };
 
-    // per-stock:vol(年化)+ ER(Kaufman 效率比、rolling-60 平均;高=趨勢、低=震盪)+ 3 策略 OOS 年化報酬
-    var rows = new List<(string sym, double vol, double er, Dictionary<string, double> oos)>();
+    // 算 bars[s0:s1) 的性格(vol 年化 + ER Kaufman 效率比)→ 路由 key。ex-ante 時餵訓練窗 = 無 lookahead。
+    string RouteSlice(List<BarData> b, int s0, int s1)
+    {
+        var rr = new List<double>();
+        for (int i = s0 + 1; i < s1; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+        if (rr.Count < 20) return "bb_revert";
+        double mm = rr.Average();
+        double vol = Math.Sqrt(rr.Select(x => (x - mm) * (x - mm)).Sum() / rr.Count) * Math.Sqrt(252);
+        double net = Math.Abs((double)(b[s1 - 1].Close - b[s0].Close)); double tot = 0;
+        for (int i = s0 + 1; i < s1; i++) tot += Math.Abs((double)(b[i].Close - b[i - 1].Close));
+        double er = tot > 0 ? net / tot : 0;
+        return er >= ER_TREND ? "tsmom" : (vol >= VOL_HI ? "harmonic" : "bb_revert");
+    }
+
+    var rng = new Random(42);
+    var perStock = new List<(string sym, double routed, Dictionary<string, double> single)>();
+    var routeCnt = new Dictionary<string, int> { ["tsmom"] = 0, ["harmonic"] = 0, ["bb_revert"] = 0 };
+    const double ann = 252.0 / 90.0;   // per-fold(~90交易日)→ 年化
     foreach (var kv in dat)
     {
         var b = kv.Value;
-        var rr = new List<double>();
-        for (int i = 1; i < b.Count; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
-        if (rr.Count < 60) continue;
-        double mm = rr.Average();
-        double vol = Math.Sqrt(rr.Select(x => (x - mm) * (x - mm)).Sum() / rr.Count) * Math.Sqrt(252);
-        int win = 60; var ers = new List<double>();
-        for (int i = win; i < b.Count; i++)
-        {
-            double net = Math.Abs((double)(b[i].Close - b[i - win].Close)); double tot = 0;
-            for (int j = i - win + 1; j <= i; j++) tot += Math.Abs((double)(b[j].Close - b[j - 1].Close));
-            if (tot > 0) ers.Add(net / tot);
-        }
-        if (ers.Count == 0) continue;
-        double er = ers.Average();
-        var oos = new Dictionary<string, double>();
+        var foldRet = new Dictionary<string, List<double>>();
         foreach (var (key, st) in stratMap)
         {
             try
             {
-                var w = LongShortBacktestEngine.RunWalkForward(st, b, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
-                oos[key] = w.TotalFolds > 0 ? (double)w.AvgTestReturnPct * 252.0 / 90.0 : 0;   // per-fold(~90交易日)→ 年化
+                var w = longOnly
+                    ? BacktestEngine.RunWalkForward(st, b, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip)
+                    : LongShortBacktestEngine.RunWalkForward(st, b, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
+                foldRet[key] = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.TotalReturnPct).ToList();
             }
-            catch { oos[key] = 0; }
+            catch { foldRet[key] = new List<double>(); }
         }
-        rows.Add((kv.Key, vol, er, oos));
+        int F = foldRet.Values.Min(l => l.Count);
+        if (F == 0) continue;
+        string fullKey = RouteSlice(b, 0, b.Count);   // 全期性格(非 ex-ante 用)
+        var routedFolds = new List<double>();
+        for (int f = 0; f < F; f++)
+        {
+            // ex-ante:用 fold f 的訓練窗 bars[f*60 : f*60+250](測試窗之前)算性格 → 無 lookahead
+            string key = exAnte ? RouteSlice(b, f * 60, Math.Min(b.Count, f * 60 + 250)) : fullKey;
+            routeCnt[key]++;
+            routedFolds.Add(foldRet[key][f]);
+        }
+        double routed = routedFolds.Average() * ann;
+        var single = foldRet.ToDictionary(p => p.Key, p => p.Value.Take(F).Average() * ann);
+        perStock.Add((kv.Key, routed, single));
     }
-    if (rows.Count < 8) { Console.WriteLine("  資料不足"); return; }
+    if (perStock.Count < 8) { Console.WriteLine("  資料不足"); return; }
 
-    double volMed = rows.Select(r => r.vol).OrderBy(x => x).ElementAt(rows.Count / 2);
-    double erMed = rows.Select(r => r.er).OrderBy(x => x).ElementAt(rows.Count / 2);
-    // 路由規則(機制導向、固定不學習=避免過擬合):趨勢→動量、波動震盪→諧波、平靜震盪→回歸
-    string Route(double v, double e) => e >= erMed ? "tsmom" : (v >= volMed ? "harmonic" : "bb_revert");
+    double routedAvg = perStock.Average(r => r.routed);
+    double allH = perStock.Average(r => r.single["harmonic"]);
+    double allT = perStock.Average(r => r.single["tsmom"]);
+    double allR = perStock.Average(r => r.single["bb_revert"]);
+    var keys = new[] { "harmonic", "tsmom", "bb_revert" }; var rand = new List<double>();
+    for (int bb = 0; bb < 5000; bb++) { double s = 0; foreach (var r in perStock) s += r.single[keys[rng.Next(3)]]; rand.Add(s / perStock.Count); }
+    double randMean = rand.Average(); double pct = rand.Count(x => x < routedAvg) * 100.0 / 5000;
 
-    double routed = rows.Average(r => r.oos[Route(r.vol, r.er)]);
-    double allH = rows.Average(r => r.oos["harmonic"]);
-    double allT = rows.Average(r => r.oos["tsmom"]);
-    double allR = rows.Average(r => r.oos["bb_revert"]);
-    var rng = new Random(42); var keys = new[] { "harmonic", "tsmom", "bb_revert" }; var rand = new List<double>();
-    for (int bb = 0; bb < 5000; bb++) { double s = 0; foreach (var r in rows) s += r.oos[keys[rng.Next(3)]]; rand.Add(s / rows.Count); }
-    double randMean = rand.Average();
-    double pct = rand.Count(x => x < routed) * 100.0 / 5000;
-
-    int cT = rows.Count(r => Route(r.vol, r.er) == "tsmom"), cH = rows.Count(r => Route(r.vol, r.er) == "harmonic"), cR = rows.Count(r => Route(r.vol, r.er) == "bb_revert");
-    Console.WriteLine($"  分組門檻:vol中位={volMed:F2} ER中位={erMed:F2}");
-    Console.WriteLine($"  路由分組:趨勢→tsmom {cT}檔 · 波動震盪→harmonic {cH}檔 · 平靜回歸→bb_revert {cR}檔");
-    Console.WriteLine($"\n  === OOS 年化報酬%(各檔平均、cost {costBps}bps)===");
-    Console.WriteLine($"  ★性格路由:       {routed,6:F1}%   (隨機路由百分位 {pct:F0}%)");
+    Console.WriteLine($"  路由分配(fold 計):tsmom {routeCnt["tsmom"]} · harmonic {routeCnt["harmonic"]} · bb_revert {routeCnt["bb_revert"]}(門檻 ER≥{ER_TREND}→趨勢、否則 vol≥{VOL_HI}→震盪)");
+    Console.WriteLine($"\n  === OOS 年化報酬%(各檔平均、cost {costBps}bps、{(longOnly ? "純多" : "LS")})===");
+    Console.WriteLine($"  ★性格路由:       {routedAvg,6:F1}%   (隨機路由百分位 {pct:F0}%)");
     Console.WriteLine($"   全用 harmonic:   {allH,6:F1}%");
     Console.WriteLine($"   全用 tsmom:      {allT,6:F1}%");
     Console.WriteLine($"   全用 bb_revert:  {allR,6:F1}%");
     Console.WriteLine($"   隨機路由均值:    {randMean,6:F1}%");
     double bestSingle = Math.Max(allH, Math.Max(allT, allR));
-    bool win2 = routed > bestSingle + 0.5 && pct >= 90;
-    Console.WriteLine($"\n  判讀:{(win2 ? $"✅ 性格路由 {routed:F1}% 贏最佳單策略 {bestSingle:F1}% + 贏隨機(百分位{pct:F0}%)→ 路由規則有價值、可推廣到每股/全市場" : $"⚠️ 路由 {routed:F1}% 沒明顯贏最佳單策略 {bestSingle:F1}% 或隨機(百分位{pct:F0}%)→ 路由無增益、不如直接全用最佳單策略")}");
-    Console.WriteLine($"  (caveat:vol/ER 全期算=輕微 lookahead;宇宙=手挑85非 point-in-time;LS 非純多;過關才上 ex-ante per-rebalance + 規則篩全市場宇宙)");
+    bool win2 = routedAvg > bestSingle + 0.5 && pct >= 90;
+    Console.WriteLine($"\n  判讀:{(win2 ? $"✅ 性格路由 {routedAvg:F1}% 贏最佳單策略 {bestSingle:F1}% + 贏隨機(百分位{pct:F0}%)→ 路由規則{(exAnte ? "(ex-ante 無lookahead)" : "")}有價值、可推廣每股/全市場" : $"⚠️ 路由 {routedAvg:F1}% 沒明顯贏最佳單策略 {bestSingle:F1}% 或隨機(百分位{pct:F0}%)→ 路由無增益")}");
+    Console.WriteLine($"  (caveat:{(exAnte ? "性格用訓練窗 ex-ante = 無lookahead;" : "性格全期算 = 輕微lookahead;")}宇宙手挑85非PIT(台股survivorship~2%小);門檻=固定機制值非優化;{(longOnly ? "純多可部署" : "LS")})");
 }
 
 // edge 離散度診斷:跑單一策略 per-symbol(LS、真實成本)→ 看 Sharpe 分布。
