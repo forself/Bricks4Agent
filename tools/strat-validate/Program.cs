@@ -74,11 +74,13 @@ bool stocksMode = args.Contains("--stocks");
 bool twMode     = args.Contains("--twstocks");
 bool fxMode     = args.Contains("--fx");
 bool etfMode    = args.Contains("--etf");
-bool yahooMode  = stocksMode || twMode || fxMode || etfMode;   // 非 crypto perp:資料走 Yahoo、無 funding/retail_ls
+bool commoMode  = args.Contains("--commodities");
+bool yahooMode  = stocksMode || twMode || fxMode || etfMode || commoMode;   // 非 crypto perp:資料走 Yahoo、無 funding/retail_ls
 if (stocksMode) Console.WriteLine("📈 --stocks:美股模式(Yahoo 日線、StockBarCache);funding/retail_ls 注入自動 skip");
 if (twMode)     Console.WriteLine("🇹🇼 --twstocks:台股模式(Yahoo .TW 日線);funding/retail_ls 注入自動 skip");
 if (fxMode)     Console.WriteLine("💱 --fx:外匯模式(Yahoo =X 日線);funding/retail_ls 注入自動 skip");
 if (etfMode)    Console.WriteLine("🧺 --etf:ETF 模式(廣指數+SPDR sector+國際;驗 ETF 有無獨立 edge)");
+if (commoMode)  Console.WriteLine("🛢️ --commodities:商品/期貨模式(Yahoo =F 日線、連續近月;金屬/能源/農產/股指期/債期);funding/retail_ls 自動 skip");
 
 string[] symbols = etfMode
     ? new[]
@@ -128,6 +130,17 @@ string[] symbols = etfMode
         // 外匯主流對 + 交叉盤(Yahoo =X 格式)— harmonic 源自 FX/股票 TA、先驗 majors
         "EURUSD=X","USDJPY=X","GBPUSD=X","USDCHF=X","AUDUSD=X","USDCAD=X","NZDUSD=X",  // 7 majors
         "EURJPY=X","GBPJPY=X","EURGBP=X","AUDJPY=X",                                    // 4 crosses
+    }
+    : commoMode
+    ? new[]
+    {
+        // 商品/期貨(Yahoo =F 連續近月)— 不同市場性格(趨勢/季節/carry),驗策略庫有無新鮮 edge
+        // ⚠️ 連續合約有換月 roll gap、診斷用;真部署要處理 roll-adjust
+        "GC=F","SI=F","HG=F","PL=F","PA=F",                          // 金屬(金/銀/銅/鉑/鈀)
+        "CL=F","BZ=F","NG=F","RB=F","HO=F",                          // 能源(WTI/Brent/天然氣/汽油/熱燃油)
+        "ZC=F","ZW=F","ZS=F","KC=F","SB=F","CC=F","CT=F",            // 農產(玉米/小麥/黃豆/咖啡/糖/可可/棉)
+        "ES=F","NQ=F","YM=F","RTY=F",                                // 股指期(SP500/那指/道瓊/羅素)
+        "ZN=F","ZB=F",                                               // 債期(10年/30年)
     }
     : fastMode
     ? new[] { "BTCUSDT", "ETHUSDT", "BNBUSDT", "LTCUSDT", "OPUSDT" }
@@ -195,6 +208,9 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     // [2026-06-10 從零開發、盤中] Order-flow 失衡:taker 主動買賣量比 → 短期續航(OFI 微結構、盤中才有意義)
     ("order_flow",            new OrderFlowImbalanceStrategy()),
     ("order_flow_inv",        new OrderFlowImbalanceStrategy("order_flow_inv", invert: true)),
+    // [2026-06-11 從零開發、結構性] COT 持倉:投機者極端淨持倉 → 反向(跟商業避險者站邊)
+    ("cot_positioning",       new CotPositioningStrategy()),
+    ("cot_positioning_inv",   new CotPositioningStrategy("cot_positioning_inv", invert: true)),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
@@ -2078,6 +2094,22 @@ async Task RunDispersion()
         for (int i = 1; i < btcB.Count; i++) { var pv = btcB[i - 1].Close; if (pv > 0m) btcRet[btcB[i].OpenTime.Date] = (btcB[i].Close - pv) / pv; }
         foreach (var kv in dat) foreach (var b in kv.Value) if (btcRet.TryGetValue(b.OpenTime.Date, out var r)) b.BtcRet = r;
         Console.WriteLine($"  📊 已注入 BTC 當日報酬:{btcRet.Count} 日(BTC-lead 策略用)");
+    }
+    // COT 持倉注入(商品/期貨;Yahoo =F ticker → CFTC market 關鍵字、Socrata 抓、無 lookahead)
+    var cotMap = new Dictionary<string, string>
+    {
+        ["GC=F"] = "GOLD", ["SI=F"] = "SILVER", ["HG=F"] = "COPPER", ["PL=F"] = "PLATINUM", ["PA=F"] = "PALLADIUM",
+        ["CL=F"] = "CRUDE OIL, LIGHT SWEET", ["NG=F"] = "NATURAL GAS", ["RB=F"] = "GASOLINE", ["HO=F"] = "ULSD",
+        ["ZC=F"] = "CORN", ["ZW=F"] = "WHEAT-SRW", ["ZS=F"] = "SOYBEANS", ["KC=F"] = "COFFEE C", ["SB=F"] = "SUGAR NO. 11", ["CC=F"] = "COCOA", ["CT=F"] = "COTTON NO. 2",
+        ["ES=F"] = "E-MINI S&P 500", ["NQ=F"] = "NASDAQ-100", ["YM=F"] = "DJIA", ["RTY=F"] = "RUSSELL 2000",
+        ["ZN=F"] = "10Y", ["ZB=F"] = "TREASURY BONDS",
+    };
+    {
+        int cotInj = 0, cotMiss = 0;
+        foreach (var kv in dat)
+            if (cotMap.TryGetValue(kv.Key, out var kw))
+                try { if (await ToolsShared.COTCache.InjectInto(kv.Value, kw) > 0) cotInj++; else cotMiss++; } catch { cotMiss++; }
+        if (cotInj > 0 || cotMiss > 0) Console.WriteLine($"  📊 已注入 COT 持倉:{cotInj} 檔命中、{cotMiss} 檔無資料(cot_positioning 策略用)");
     }
     Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔。判讀:高離散(少數強、多數弱)→選股有救;均勻弱→選股救不了\n");
     // OOS walk-forward(250/90/60)per-symbol:OOS Sharpe = 各 test fold Sharpe 均值;OOS ret = AvgTestReturnPct。

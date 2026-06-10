@@ -83,4 +83,5 @@ public class BarData
     public decimal? RetailLongShortRatio { get; set; }   // 散戶多空比(>1 = 散戶看多;Q2 2026-05-28 OOS 驗證真 alpha 源 t=-2.89/-2.25)
     public decimal? BtcRet { get; set; }   // 當日 BTC 報酬(strat-validate 注入;BTC-lead alt-lag 策略用、跨幣領先訊號)
     public decimal? TakerLsRatio { get; set; }   // taker 主動買/賣量比(order-flow;>1=主動買壓主導;data.binance.vision metrics)
+    public decimal? CotSpecNet { get; set; }   // COT 投機者(non-commercial)淨持倉 % OI(結構性部位;極端=擁擠;strat-validate 從 CFTC 注入)
 }
