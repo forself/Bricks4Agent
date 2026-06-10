@@ -184,6 +184,10 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     ("liq_capit_w5",          new LiquidationReversalStrategy("liq_capit_w5", moveZ: 1.5m, oiDrop: 0.05m, window: 5)),
     ("liq_capit_w3",          new LiquidationReversalStrategy("liq_capit_w3", moveZ: 1.5m, oiDrop: 0.03m, window: 3)),
     ("liq_capit_w7",          new LiquidationReversalStrategy("liq_capit_w7", moveZ: 1.5m, oiDrop: 0.07m, window: 7)),
+    // [2026-06-10 從零開發] OI 確認突破:突破 + OI升(新錢)= 真突破 vs 假突破
+    ("oi_breakout",           new OiBreakoutStrategy()),
+    ("oi_breakout_55",        new OiBreakoutStrategy("oi_breakout_55", lookback: 55, oiRise: 0.03m)),
+    ("oi_breakout_nofilter",  new OiBreakoutStrategy("oi_breakout_nofilter", lookback: 20, oiRise: 0.0m)),  // 對照組:無 OI 過濾
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
