@@ -520,6 +520,9 @@ if (args.Contains("--dispersion")) { await RunDispersion(); return; }
 // ── --selection-wf:嚴格版選股(trailing-vol per rebalance、ex-ante、無 lookahead)──
 if (args.Contains("--selection-wf")) { await RunSelectionWf(); return; }
 
+// ── --stock-router:個股性格路由回測(每股算 vol×ER 性格 → 配策略;驗證路由 vs 單策略 vs 隨機)──
+if (args.Contains("--stock-router")) { await RunStockRouter(); return; }
+
 // ── --xsmom:橫斷面動量(cross-sectional momentum)——結構不同的去相關 edge 研究 ──
 // 跨幣排序:每 rebal 期 long 過去 lookback 報酬最強的 topK、short 最弱的 topK(等權)。
 // 跟所有「單幣技術指標」正交;驗證有沒有 OOS edge + 跟現有書(decorr4)相不相關。
@@ -1909,6 +1912,84 @@ async Task RunSelectionWf()
     Console.WriteLine($"  (註:組合報酬序列 Sharpe 被跨股平均灌水、相對比較有效絕對值不可信;真實可部署看絕對報酬+成本+容量)");
 }
 
+// 個股性格路由回測:每股算 vol×ER 性格 → 配對應策略 → 比「性格路由」vs「全用單一策略」vs「隨機路由」。
+// 股票版正確哲學:回測「能套用全市場的路由規則」、非手挑宇宙;每股都能用(算性格→查表配策略)。
+// 不逐檔 cherry-pick(那會多重檢定假陽性)、驗證的是「一條路由規則」贏不贏 one-size-fits-all。
+async Task RunStockRouter()
+{
+    Console.WriteLine($"=== 個股性格路由回測(vol×ER → 策略;LS、cost {costBps}bps/側)===");
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 350) dat[sym] = b; } catch { } }
+    Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔(現有手挑、概念驗證用)\n");
+
+    var sH = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;  // 波動擺盪 → 諧波反轉
+    var sT = strats.FirstOrDefault(s => s.name == "ts_momentum").s;             // 趨勢 → 動量
+    var sR = strats.FirstOrDefault(s => s.name == "bb_revert_ls").s;            // 均值回歸 → 布林回歸
+    if (sH == null || sT == null || sR == null) { Console.WriteLine("  缺策略(harm_prz_scan10_widepz/ts_momentum/bb_revert_ls)"); return; }
+    var stratMap = new (string key, IStrategy st)[] { ("harmonic", sH), ("tsmom", sT), ("bb_revert", sR) };
+
+    // per-stock:vol(年化)+ ER(Kaufman 效率比、rolling-60 平均;高=趨勢、低=震盪)+ 3 策略 OOS 年化報酬
+    var rows = new List<(string sym, double vol, double er, Dictionary<string, double> oos)>();
+    foreach (var kv in dat)
+    {
+        var b = kv.Value;
+        var rr = new List<double>();
+        for (int i = 1; i < b.Count; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+        if (rr.Count < 60) continue;
+        double mm = rr.Average();
+        double vol = Math.Sqrt(rr.Select(x => (x - mm) * (x - mm)).Sum() / rr.Count) * Math.Sqrt(252);
+        int win = 60; var ers = new List<double>();
+        for (int i = win; i < b.Count; i++)
+        {
+            double net = Math.Abs((double)(b[i].Close - b[i - win].Close)); double tot = 0;
+            for (int j = i - win + 1; j <= i; j++) tot += Math.Abs((double)(b[j].Close - b[j - 1].Close));
+            if (tot > 0) ers.Add(net / tot);
+        }
+        if (ers.Count == 0) continue;
+        double er = ers.Average();
+        var oos = new Dictionary<string, double>();
+        foreach (var (key, st) in stratMap)
+        {
+            try
+            {
+                var w = LongShortBacktestEngine.RunWalkForward(st, b, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
+                oos[key] = w.TotalFolds > 0 ? (double)w.AvgTestReturnPct * 252.0 / 90.0 : 0;   // per-fold(~90交易日)→ 年化
+            }
+            catch { oos[key] = 0; }
+        }
+        rows.Add((kv.Key, vol, er, oos));
+    }
+    if (rows.Count < 8) { Console.WriteLine("  資料不足"); return; }
+
+    double volMed = rows.Select(r => r.vol).OrderBy(x => x).ElementAt(rows.Count / 2);
+    double erMed = rows.Select(r => r.er).OrderBy(x => x).ElementAt(rows.Count / 2);
+    // 路由規則(機制導向、固定不學習=避免過擬合):趨勢→動量、波動震盪→諧波、平靜震盪→回歸
+    string Route(double v, double e) => e >= erMed ? "tsmom" : (v >= volMed ? "harmonic" : "bb_revert");
+
+    double routed = rows.Average(r => r.oos[Route(r.vol, r.er)]);
+    double allH = rows.Average(r => r.oos["harmonic"]);
+    double allT = rows.Average(r => r.oos["tsmom"]);
+    double allR = rows.Average(r => r.oos["bb_revert"]);
+    var rng = new Random(42); var keys = new[] { "harmonic", "tsmom", "bb_revert" }; var rand = new List<double>();
+    for (int bb = 0; bb < 5000; bb++) { double s = 0; foreach (var r in rows) s += r.oos[keys[rng.Next(3)]]; rand.Add(s / rows.Count); }
+    double randMean = rand.Average();
+    double pct = rand.Count(x => x < routed) * 100.0 / 5000;
+
+    int cT = rows.Count(r => Route(r.vol, r.er) == "tsmom"), cH = rows.Count(r => Route(r.vol, r.er) == "harmonic"), cR = rows.Count(r => Route(r.vol, r.er) == "bb_revert");
+    Console.WriteLine($"  分組門檻:vol中位={volMed:F2} ER中位={erMed:F2}");
+    Console.WriteLine($"  路由分組:趨勢→tsmom {cT}檔 · 波動震盪→harmonic {cH}檔 · 平靜回歸→bb_revert {cR}檔");
+    Console.WriteLine($"\n  === OOS 年化報酬%(各檔平均、cost {costBps}bps)===");
+    Console.WriteLine($"  ★性格路由:       {routed,6:F1}%   (隨機路由百分位 {pct:F0}%)");
+    Console.WriteLine($"   全用 harmonic:   {allH,6:F1}%");
+    Console.WriteLine($"   全用 tsmom:      {allT,6:F1}%");
+    Console.WriteLine($"   全用 bb_revert:  {allR,6:F1}%");
+    Console.WriteLine($"   隨機路由均值:    {randMean,6:F1}%");
+    double bestSingle = Math.Max(allH, Math.Max(allT, allR));
+    bool win2 = routed > bestSingle + 0.5 && pct >= 90;
+    Console.WriteLine($"\n  判讀:{(win2 ? $"✅ 性格路由 {routed:F1}% 贏最佳單策略 {bestSingle:F1}% + 贏隨機(百分位{pct:F0}%)→ 路由規則有價值、可推廣到每股/全市場" : $"⚠️ 路由 {routed:F1}% 沒明顯贏最佳單策略 {bestSingle:F1}% 或隨機(百分位{pct:F0}%)→ 路由無增益、不如直接全用最佳單策略")}");
+    Console.WriteLine($"  (caveat:vol/ER 全期算=輕微 lookahead;宇宙=手挑85非 point-in-time;LS 非純多;過關才上 ex-ante per-rebalance + 規則篩全市場宇宙)");
+}
+
 // edge 離散度診斷:跑單一策略 per-symbol(LS、真實成本)→ 看 Sharpe 分布。
 // 高離散(少數股強、多數弱)= 選股有東西抓;均勻弱 = 選股救不了(不能從無 alpha 選出 alpha)。
 async Task RunDispersion()
@@ -2028,8 +2109,8 @@ async Task RunXMarket()
     var markets = new (string name, string[] syms, bool yahoo)[]
     {
         ("crypto", new[]{"BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","LTCUSDT","DOTUSDT","ATOMUSDT","TRXUSDT","UNIUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT","INJUSDT"}, false),
-        ("美股", new[]{"AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META","JPM","BAC","V","MA","UNH","JNJ","XOM","CVX","WMT","KO","PG","DIS","CAT","BA"}, true),
-        ("台股", new[]{"2330.TW","2317.TW","2454.TW","2308.TW","2303.TW","2881.TW","2882.TW","2891.TW","2412.TW","1301.TW","1303.TW","2002.TW","1216.TW","2912.TW","0050.TW"}, true),
+        ("美股", new[]{"AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META","ORCL","ADBE","CSCO","QCOM","TXN","NFLX","TSLA","IBM","NOW","AMAT","MU","INTU","PANW","JPM","BAC","V","MA","GS","MS","WFC","C","AXP","BLK","SCHW","UNH","JNJ","LLY","ABBV","MRK","PFE","TMO","ABT","DHR","XOM","CVX","COP","WMT","KO","PG","DIS","CAT","BA","COST","HD","MCD","NKE","PEP","GE","HON","LMT","RTX"}, true),
+        ("台股", new[]{"2330.TW","2454.TW","2303.TW","3711.TW","2379.TW","3034.TW","3008.TW","2408.TW","3443.TW","6415.TW","2317.TW","2308.TW","2382.TW","2357.TW","2376.TW","4938.TW","6669.TW","2474.TW","2327.TW","3037.TW","2345.TW","2409.TW","3481.TW","3017.TW","2881.TW","2882.TW","2891.TW","2886.TW","2884.TW","2885.TW","2892.TW","5880.TW","2880.TW","2890.TW","2412.TW","3045.TW","4904.TW","1301.TW","1303.TW","1326.TW","2002.TW","1216.TW","2207.TW","2603.TW","2609.TW","2615.TW","2618.TW","2105.TW","1402.TW","2912.TW","0050.TW","0056.TW","6488.TW","3529.TW","3035.TW","6285.TW","2449.TW","6239.TW","2344.TW","5269.TW","3661.TW","8046.TW","4958.TW","3533.TW","2492.TW","2383.TW","2360.TW","2347.TW","3702.TW","2353.TW","1102.TW","9910.TW","9904.TW","2915.TW","1210.TW","1722.TW","1605.TW","9921.TW","9914.TW","2887.TW","2888.TW","2883.TW","5876.TW","2542.TW","8454.TW","2548.TW"}, true),
     };
     (double sh, double dd, double ret) StatsOf(double[] r)
     {
