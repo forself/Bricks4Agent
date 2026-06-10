@@ -1945,8 +1945,20 @@ async Task RunStockRouter()
         return er >= ER_TREND ? "tsmom" : (vol >= VOL_HI ? "harmonic" : "bb_revert");
     }
 
+    // 從每-fold 報酬序列算 Sharpe(年化)+ maxDD(串接 fold 權益、fold 重疊→相對比較有效非絕對)
+    (double sharpe, double mdd) RiskMetrics(List<double> folds)
+    {
+        if (folds.Count < 2) return (0, 0);
+        double m = folds.Average();
+        double sd = Math.Sqrt(folds.Select(x => (x - m) * (x - m)).Sum() / (folds.Count - 1));
+        double sharpe = sd > 0 ? m / sd * Math.Sqrt(252.0 / 90.0) : 0;
+        double eq = 1, peak = 1, mdd = 0;
+        foreach (var r in folds) { eq *= 1 + r / 100; if (eq > peak) peak = eq; double dd = peak > 0 ? (peak - eq) / peak : 0; if (dd > mdd) mdd = dd; }
+        return (sharpe, mdd * 100);
+    }
+
     var rng = new Random(42);
-    var perStock = new List<(string sym, double routed, Dictionary<string, double> single)>();
+    var perStock = new List<(string sym, double routed, Dictionary<string, double> single, Dictionary<string, double> sharpe, Dictionary<string, double> mdd)>();
     var routeCnt = new Dictionary<string, int> { ["tsmom"] = 0, ["harmonic"] = 0, ["bb_revert"] = 0 };
     const double ann = 252.0 / 90.0;   // per-fold(~90交易日)→ 年化
     foreach (var kv in dat)
@@ -1977,7 +1989,14 @@ async Task RunStockRouter()
         }
         double routed = routedFolds.Average() * ann;
         var single = foldRet.ToDictionary(p => p.Key, p => p.Value.Take(F).Average() * ann);
-        perStock.Add((kv.Key, routed, single));
+        // B&H 基準:每 fold 測試窗 buy-hold(對齊策略 fold 窗 test=[f*60+250, +90))→ 判斷策略是 alpha 還是純多頭 beta
+        var bhFolds = new List<double>();
+        for (int f = 0; f < F; f++) { int ts = f * 60 + 250, te = ts + 90; if (te > b.Count) break; double c0 = (double)b[ts].Close; if (c0 > 0) bhFolds.Add(((double)b[te - 1].Close - c0) / c0 * 100); }
+        single["bh"] = bhFolds.Count > 0 ? bhFolds.Average() * ann : 0;
+        var sharpe = new Dictionary<string, double>(); var mdd = new Dictionary<string, double>();
+        foreach (var key in new[] { "harmonic", "tsmom", "bb_revert" }) { var rm = RiskMetrics(foldRet[key].Take(F).ToList()); sharpe[key] = rm.sharpe; mdd[key] = rm.mdd; }
+        var bhRm = RiskMetrics(bhFolds); sharpe["bh"] = bhRm.sharpe; mdd["bh"] = bhRm.mdd;
+        perStock.Add((kv.Key, routed, single, sharpe, mdd));
     }
     if (perStock.Count < 8) { Console.WriteLine("  資料不足"); return; }
 
@@ -1985,21 +2004,31 @@ async Task RunStockRouter()
     double allH = perStock.Average(r => r.single["harmonic"]);
     double allT = perStock.Average(r => r.single["tsmom"]);
     double allR = perStock.Average(r => r.single["bb_revert"]);
+    double allBH = perStock.Average(r => r.single["bh"]);
+    int n2 = perStock.Count;
+    int bhWinH = perStock.Count(r => r.single["harmonic"] > r.single["bh"]);
+    int bhWinT = perStock.Count(r => r.single["tsmom"] > r.single["bh"]);
+    int bhWinR2 = perStock.Count(r => r.single["bb_revert"] > r.single["bh"]);
+    double shH = perStock.Average(r => r.sharpe["harmonic"]), shT = perStock.Average(r => r.sharpe["tsmom"]), shR = perStock.Average(r => r.sharpe["bb_revert"]), shBH = perStock.Average(r => r.sharpe["bh"]);
+    double ddH = perStock.Average(r => r.mdd["harmonic"]), ddT = perStock.Average(r => r.mdd["tsmom"]), ddR = perStock.Average(r => r.mdd["bb_revert"]), ddBH = perStock.Average(r => r.mdd["bh"]);
     var keys = new[] { "harmonic", "tsmom", "bb_revert" }; var rand = new List<double>();
     for (int bb = 0; bb < 5000; bb++) { double s = 0; foreach (var r in perStock) s += r.single[keys[rng.Next(3)]]; rand.Add(s / perStock.Count); }
     double randMean = rand.Average(); double pct = rand.Count(x => x < routedAvg) * 100.0 / 5000;
 
     Console.WriteLine($"  路由分配(fold 計):tsmom {routeCnt["tsmom"]} · harmonic {routeCnt["harmonic"]} · bb_revert {routeCnt["bb_revert"]}(門檻 ER≥{ER_TREND}→趨勢、否則 vol≥{VOL_HI}→震盪)");
-    Console.WriteLine($"\n  === OOS 年化報酬%(各檔平均、cost {costBps}bps、{(longOnly ? "純多" : "LS")})===");
-    Console.WriteLine($"  ★性格路由:       {routedAvg,6:F1}%   (隨機路由百分位 {pct:F0}%)");
-    Console.WriteLine($"   全用 harmonic:   {allH,6:F1}%");
-    Console.WriteLine($"   全用 tsmom:      {allT,6:F1}%");
-    Console.WriteLine($"   全用 bb_revert:  {allR,6:F1}%");
-    Console.WriteLine($"   隨機路由均值:    {randMean,6:F1}%");
+    Console.WriteLine($"\n  === 風險-報酬完整對照(各檔平均、cost {costBps}bps、{(longOnly ? "純多" : "LS")})===");
+    Console.WriteLine($"  {"配法",-13}{"年化%",8}{"Sharpe",8}{"maxDD%",8}{"vsB&H",8}{"勝B&H",7}");
+    Console.WriteLine($"  {"買入持有B&H",-13}{allBH,8:F1}{shBH,8:F2}{ddBH,8:F0}{"—",8}{"—",7}");
+    Console.WriteLine($"  {"tsmom",-13}{allT,8:F1}{shT,8:F2}{ddT,8:F0}{allT - allBH,8:+0.0;-0.0}{bhWinT * 100 / n2 + "%",7}");
+    Console.WriteLine($"  {"harmonic",-13}{allH,8:F1}{shH,8:F2}{ddH,8:F0}{allH - allBH,8:+0.0;-0.0}{bhWinH * 100 / n2 + "%",7}");
+    Console.WriteLine($"  {"bb_revert",-13}{allR,8:F1}{shR,8:F2}{ddR,8:F0}{allR - allBH,8:+0.0;-0.0}{bhWinR2 * 100 / n2 + "%",7}");
+    Console.WriteLine($"  {"★性格路由",-13}{routedAvg,8:F1}{"—",8}{"—",8}{routedAvg - allBH,8:+0.0;-0.0}{$"隨機{pct:F0}%",7}");
     double bestSingle = Math.Max(allH, Math.Max(allT, allR));
     bool win2 = routedAvg > bestSingle + 0.5 && pct >= 90;
     Console.WriteLine($"\n  判讀:{(win2 ? $"✅ 性格路由 {routedAvg:F1}% 贏最佳單策略 {bestSingle:F1}% + 贏隨機(百分位{pct:F0}%)→ 路由規則{(exAnte ? "(ex-ante 無lookahead)" : "")}有價值、可推廣每股/全市場" : $"⚠️ 路由 {routedAvg:F1}% 沒明顯贏最佳單策略 {bestSingle:F1}% 或隨機(百分位{pct:F0}%)→ 路由無增益")}");
-    Console.WriteLine($"  (caveat:{(exAnte ? "性格用訓練窗 ex-ante = 無lookahead;" : "性格全期算 = 輕微lookahead;")}宇宙手挑85非PIT(台股survivorship~2%小);門檻=固定機制值非優化;{(longOnly ? "純多可部署" : "LS")})");
+    string alphaV = allT > allBH + 1 ? $"tsmom +{allT - allBH:F1}% = 真 alpha(勝 B&H {bhWinT * 100 / n2}% 檔)" : allT > allBH ? $"tsmom 僅 +{allT - allBH:F1}% = 勉強贏、主要是 beta" : $"tsmom ≤ B&H = 純多頭 beta、無主動價值";
+    Console.WriteLine($"  alpha 判讀(vs 買入持有):{alphaV}");
+    Console.WriteLine($"  (caveat:{(exAnte ? "性格用訓練窗 ex-ante = 無lookahead;" : "性格全期算 = 輕微lookahead;")}宇宙手挑85非PIT(台股survivorship~2%小);門檻=固定機制值非優化;{(longOnly ? "純多可部署" : "LS")};跨股平均報酬仍有灌水、相對比較有效)");
 }
 
 // edge 離散度診斷:跑單一策略 per-symbol(LS、真實成本)→ 看 Sharpe 分布。
