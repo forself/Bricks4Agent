@@ -2145,8 +2145,9 @@ async Task RunDispersion()
 async Task RunXMarket()
 {
     var harm = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;
-    if (harm == null) { Console.WriteLine("找不到 harm_prz_scan10_widepz"); return; }
-    Console.WriteLine("=== 跨市場諧波分散 --xmarket(harm_prz_scan10_widepz、各市場日報酬)===\n");
+    var ditr = strats.FirstOrDefault(s => s.name == "di_trend_ls").s;
+    if (harm == null || ditr == null) { Console.WriteLine("找不到 harm_prz_scan10_widepz / di_trend_ls"); return; }
+    Console.WriteLine("=== 跨市場分散 --xmarket(crypto/美股/台股=harmonic、FX=di_trend_ls;各市場日報酬 + 相關)===\n");
     var markets = new (string name, string[] syms, bool yahoo)[]
     {
         ("crypto", new[]{"BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","LTCUSDT","DOTUSDT","ATOMUSDT","TRXUSDT","UNIUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT","INJUSDT"}, false),
@@ -2197,7 +2198,32 @@ async Task RunXMarket()
         mstats[mn] = (st.sh, st.dd, st.ret, nsym);
         Console.WriteLine($"  {mn,-8} {nsym,2} 檔 · {daily.Count,4} 交易日 · Sharpe {st.sh,5:F2} · maxDD {st.dd,3:F0}% · 全期 {st.ret,6:F0}%");
     }
-    var mnames = markets.Select(m => m.name).ToArray();
+    // ── 加 di_trend_ls FX 進相關矩陣(驗證它跟 harmonic 去相關 = 真分散腿)──
+    {
+        var fxPairs = new[] { "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDCHF=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X", "EURJPY=X", "GBPJPY=X", "EURGBP=X", "AUDJPY=X" };
+        var perDay = new Dictionary<DateTime, List<double>>(); int nsym = 0;
+        foreach (var sym in fxPairs)
+        {
+            List<BarData> bars;
+            try { bars = await ToolsShared.StockBarCache.FetchOrLoad(sym, "1d", barsLimit); } catch { continue; }
+            if (bars.Count < 200) continue;
+            try
+            {
+                var bt = LongShortBacktestEngine.Run(ditr, bars, new StrategyConfig { Symbol = sym, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
+                var eq = bt.EquityCurve;
+                for (int i = 1; i < eq.Count; i++) { double pv = (double)eq[i - 1].Value; if (pv <= 0) continue; double r = (double)(eq[i].Value - eq[i - 1].Value) / pv; var d = eq[i].Date.Date; if (!perDay.TryGetValue(d, out var l)) perDay[d] = l = new(); l.Add(r); }
+                nsym++;
+            }
+            catch { }
+        }
+        var daily = new SortedDictionary<DateTime, double>();
+        foreach (var kv in perDay) if (kv.Value.Count > 0) daily[kv.Key] = kv.Value.Average();
+        mret["FX-ditrend"] = daily;
+        var st2 = StatsOf(daily.Values.ToArray());
+        mstats["FX-ditrend"] = (st2.sh, st2.dd, st2.ret, nsym);
+        Console.WriteLine($"  {"FX-ditrend",-8} {nsym,2} 對 · {daily.Count,4} 交易日 · Sharpe {st2.sh,5:F2} · maxDD {st2.dd,3:F0}% · 全期 {st2.ret,6:F0}%");
+    }
+    var mnames = markets.Select(m => m.name).Append("FX-ditrend").ToArray();
     double PairCorr(string a, string b)
     {
         var da = mret[a]; var db = mret[b]; var xs = new List<double>(); var ys = new List<double>();
