@@ -29,8 +29,12 @@ $tunnelName = "line$WebhookPort"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $brokerSourceConfigPath = Join-Path $repoRoot "packages\csharp\broker\appsettings.json"
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
-$openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
-$googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+$secureSecretsRoot = if ($env:BRICKS4AGENT_SECRETS_DIR) { $env:BRICKS4AGENT_SECRETS_DIR } else { "C:\secure\Bricks4Agent" }
+$openAiApiKeyFile = Join-Path $secureSecretsRoot "Api.txt"
+if (-not (Test-Path $openAiApiKeyFile)) {
+    $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
+}
+$googleOAuthClientFile = Get-ChildItem -Path @($secureSecretsRoot, $repoRoot) -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $brokerProductionOverridePath = Join-Path $brokerOut "appsettings.Production.json"
 $workerRuntimeConfigPath = Join-Path $workerOut "appsettings.json"
 $brokerRuntimeDbPath = Join-Path $dataRoot "broker.db"

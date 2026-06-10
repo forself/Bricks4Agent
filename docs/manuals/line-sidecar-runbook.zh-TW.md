@@ -48,9 +48,9 @@
 
 目前若要有最佳 live 行為，通常還需要：
 
-- repo 根目錄的 `Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`（可用 `BRICKS4AGENT_SECRETS_DIR` 環境變數改路徑；repo 根目錄為舊版備援）
   - 給高階模型用的 OpenAI-compatible API key
-- repo 根目錄的 `client_secret_*.json`
+- 同一機密目錄下的 `client_secret_*.json`
   - 給 Google Drive OAuth 使用
 - `%LOCALAPPDATA%\ngrok\ngrok.yml`
   - 可用的 ngrok 設定
@@ -75,7 +75,7 @@
 
 檔案：
 
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`（或 `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`；`D:\Bricks4Agent\Api.txt` 為舊版備援）
 
 目前 sidecar 會：
 
@@ -86,7 +86,7 @@
 
 檔案樣式：
 
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`（repo 根目錄為舊版備援）
 
 目前 sidecar 會：
 
@@ -253,11 +253,11 @@ broker 現在支援三種 Google Drive 身分：
 也就是說，若要讓 LINE 使用者在生成文件或網站原型後真的拿到可下載連結，至少要有：
 
 1. 可用的高階模型 API
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`
 - 這決定文件或網站原型能否先被生成
 
 2. 可用的 Google OAuth client JSON
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`
 - callback URI 必須對應：
   - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 

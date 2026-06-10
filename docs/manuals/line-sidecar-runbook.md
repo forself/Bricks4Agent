@@ -48,8 +48,8 @@ You need these available on the machine:
 
 Optional but currently expected for the best live behavior:
 
-- `Api.txt` at repo root for the high-level OpenAI-compatible API key
-- Google OAuth client JSON at repo root matching `client_secret_*.json`
+- `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) for the high-level OpenAI-compatible API key
+- Google OAuth client JSON matching `client_secret_*.json` in the same secrets directory
 - a valid ngrok config at `%LOCALAPPDATA%\ngrok\ngrok.yml`
 
 ## Local-Only Files And Inputs
@@ -75,7 +75,7 @@ At minimum, it must contain working values for:
 
 File:
 
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt` (or `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`; `D:\Bricks4Agent\Api.txt` is a legacy fallback)
 
 Current sidecar behavior:
 
@@ -86,7 +86,7 @@ Current sidecar behavior:
 
 File pattern:
 
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json` (repo root is a legacy fallback)
 
 Current sidecar behavior:
 
@@ -246,11 +246,11 @@ Live delivery currently has two download paths:
 If you want a LINE user to actually receive a downloadable link after a document or website artifact is generated, you still need all of the following:
 
 1. A working high-level model API
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`
 - This is required before the broker can generate the artifact itself
 
 2. A working Google OAuth client JSON
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`
 - The callback URI must match:
   - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
