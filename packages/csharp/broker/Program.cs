@@ -321,7 +321,8 @@ if (poolEnabled)
             SpawnTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("FunctionPool:ContainerManager:SpawnTimeoutSeconds", 120)),
             AutoRespawn = builder.Configuration.GetValue("FunctionPool:ContainerManager:AutoRespawn", true),
             BrokerHostForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerHostForWorkers", "broker") ?? "broker",
-            BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000)
+            BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000),
+            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000"
         };
 
         // Load worker image configs from configuration
@@ -333,7 +334,8 @@ if (poolEnabled)
                 Image = child.GetValue<string>("Image") ?? $"bricks4agent/{child.Key}:latest",
                 MemoryLimit = child.GetValue<string>("MemoryLimit"),
                 CpuLimit = child.GetValue<string>("CpuLimit"),
-                User = child.GetValue<string>("User")
+                User = child.GetValue<string>("User"),
+                NetworkName = child.GetValue<string>("NetworkName")
             };
 
             // Load environment
@@ -872,6 +874,7 @@ if (poolEnabled)
 }
 
 // ── RAG 種子（消費者保護法，僅首次執行） ──
+if (builder.Configuration.GetValue("RagSeed:Enabled", true))
 {
     using var scope = app.Services.CreateScope();
     var ragDb = scope.ServiceProvider.GetRequiredService<BrokerCore.Data.BrokerDb>();

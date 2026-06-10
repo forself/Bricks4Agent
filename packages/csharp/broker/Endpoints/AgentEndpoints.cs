@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Broker.Helpers;
 using Broker.Scripts;
+using Broker.Services;
 using BrokerCore.Crypto;
 using BrokerCore.Data;
 using BrokerCore.Models;
 using BrokerCore.Services;
 using FunctionPool.Container;
+using Microsoft.Extensions.Configuration;
 
 namespace Broker.Endpoints;
 
@@ -57,7 +59,7 @@ public static class AgentEndpoints
         });
 
         // ── 3. 建立 Agent（選擇能力 → 建立 Principal/Task/Grants） ──
-        agents.MapPost("/create", (HttpContext ctx, AgentSpawnService spawnService, IEnvelopeCrypto crypto) =>
+        agents.MapPost("/create", (HttpContext ctx, AgentSpawnService spawnService, IEnvelopeCrypto crypto, HighLevelLlmOptions highLevelLlmOptions) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
 
@@ -73,11 +75,6 @@ public static class AgentEndpoints
             }
 
             // 如果未指定，使用預設（低權限）
-            if (capabilityIds.Count == 0)
-            {
-                capabilityIds = spawnService.GetDefaultCapabilities();
-            }
-
             var request = new AgentSpawnRequest
             {
                 AgentId = body.TryGetProperty("agent_id", out var aid) ? aid.GetString() : null,
@@ -86,7 +83,11 @@ public static class AgentEndpoints
                 TaskType = body.TryGetProperty("task_type", out var tt) ? tt.GetString() : "analysis",
                 ScopeDescriptor = body.TryGetProperty("scope_descriptor", out var sd) ? sd.GetRawText() : null,
                 RequestedBy = body.TryGetProperty("requested_by", out var rb) ? rb.GetString() : "api",
-                QuotaPerCapability = body.TryGetProperty("quota_per_capability", out var q) ? q.GetInt32() : -1
+                QuotaPerCapability = body.TryGetProperty("quota_per_capability", out var q) ? q.GetInt32() : -1,
+                LlmDefaultModel = highLevelLlmOptions.DefaultModel,
+                LlmAllowModelOverride = highLevelLlmOptions.AllowModelOverride,
+                LlmSupportsToolCalling = true,
+                LlmStreamingEnabled = highLevelLlmOptions.StreamingEnabled
             };
 
             var result = spawnService.CreateAgent(request);
@@ -103,17 +104,22 @@ public static class AgentEndpoints
                 granted_capabilities = result.GrantedCapabilities,
                 max_risk_level = result.MaxRiskLevel,
                 warnings = result.Warnings,
+                llm_model = highLevelLlmOptions.DefaultModel,
                 broker_public_key = crypto.GetBrokerPublicKey(),
                 next_step = "Call POST /api/v1/agents/spawn with { agent_id } to start the container"
             }));
         });
 
         // ── 4. 生成 Agent 容器 ──
-        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto) =>
+        agents.MapPost("/spawn", async (HttpContext ctx, AgentSpawnService spawnService, IContainerManager containerManager, IEnvelopeCrypto crypto, IConfiguration configuration, HighLevelLlmOptions highLevelLlmOptions) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
                 return err!;
+            agentId = AgentSpawnService.NormalizeAgentId(agentId);
+            var (brokerUrlOk, agentBrokerUrl, brokerUrlError) = ResolveAgentBrokerUrl(body, configuration);
+            if (!brokerUrlOk)
+                return Results.BadRequest(ApiResponseHelper.Error(brokerUrlError ?? "Invalid broker_url.", 400));
 
             // 查找已建立的 Agent
             var allAgents = spawnService.ListAgents();
@@ -133,25 +139,50 @@ public static class AgentEndpoints
             // 準備環境變數
             var envOverrides = new Dictionary<string, string>
             {
-                ["BROKER_URL"] = "http://broker:5000",
+                ["BROKER_URL"] = agentBrokerUrl,
                 ["BROKER_PUB_KEY"] = crypto.GetBrokerPublicKey(),
                 ["BROKER_PRINCIPAL_ID"] = agent.PrincipalId,
                 ["BROKER_TASK_ID"] = agent.TaskId,
                 ["BROKER_ROLE_ID"] = agent.RoleId,
                 ["BROKER_WAIT_FOR_HEALTH"] = "1",
                 ["AGENT_NO_CONFIRM"] = "1",
-                ["AGENT_LINE_LISTEN"] = "1",
+                ["AGENT_LINE_LISTEN"] = "0",
                 ["AGENT_MAX_ITERATIONS"] = "10",
                 ["AGENT_VERBOSE"] = "1"
             };
 
-            // 可選的模型覆蓋
-            if (body.TryGetProperty("model", out var modelEl))
-                envOverrides["AGENT_MODEL"] = modelEl.GetString() ?? "";
-            if (body.TryGetProperty("provider", out var provEl))
-                envOverrides["AGENT_PROVIDER"] = provEl.GetString() ?? "";
-            if (body.TryGetProperty("api_key", out var keyEl))
-                envOverrides["OPENAI_API_KEY"] = keyEl.GetString() ?? "";
+            // Agent containers use the broker high-level model by default.
+            envOverrides["AGENT_MODEL"] = highLevelLlmOptions.DefaultModel;
+            if (body.TryGetProperty("model", out var modelEl) && modelEl.ValueKind == JsonValueKind.String)
+                envOverrides["AGENT_MODEL"] = modelEl.GetString() ?? highLevelLlmOptions.DefaultModel;
+            if (body.TryGetProperty("max_iterations", out var maxIterationsEl) &&
+                maxIterationsEl.ValueKind == JsonValueKind.Number)
+                envOverrides["AGENT_MAX_ITERATIONS"] = Math.Max(1, maxIterationsEl.GetInt32()).ToString();
+            if (body.TryGetProperty("verbose", out var verboseEl) &&
+                (verboseEl.ValueKind == JsonValueKind.True || verboseEl.ValueKind == JsonValueKind.False))
+                envOverrides["AGENT_VERBOSE"] = verboseEl.GetBoolean() ? "1" : "0";
+
+            var legacyLineListen = body.TryGetProperty("legacy_line_listen", out var legacyEl) &&
+                legacyEl.ValueKind == JsonValueKind.True;
+            if (legacyLineListen)
+            {
+                envOverrides["AGENT_LINE_LISTEN"] = "1";
+                envOverrides["AGENT_ENABLE_LEGACY_LINE_LISTEN"] = "1";
+                if (body.TryGetProperty("line_poll_interval", out var pollEl) &&
+                    pollEl.ValueKind == JsonValueKind.Number)
+                    envOverrides["AGENT_LINE_POLL_INTERVAL"] = Math.Max(500, pollEl.GetInt32()).ToString();
+            }
+            else
+            {
+                var runPrompt = body.TryGetProperty("run", out var runEl) && runEl.ValueKind == JsonValueKind.String
+                    ? runEl.GetString()
+                    : body.TryGetProperty("prompt", out var promptEl) && promptEl.ValueKind == JsonValueKind.String
+                        ? promptEl.GetString()
+                        : null;
+                envOverrides["AGENT_RUN"] = string.IsNullOrWhiteSpace(runPrompt)
+                    ? "Reply with the exact text AGENT_READY."
+                    : runPrompt.Trim();
+            }
 
             try
             {
@@ -190,6 +221,7 @@ public static class AgentEndpoints
             var body = RequestBodyHelper.GetBody(ctx);
             if (!RequestBodyHelper.TryGetRequired(body, "agent_id", out var agentId, out var err))
                 return err!;
+            agentId = AgentSpawnService.NormalizeAgentId(agentId);
 
             // 停用資料庫記錄
             spawnService.DeactivateAgent(agentId);
@@ -199,7 +231,7 @@ public static class AgentEndpoints
             {
                 var containers = await containerManager.ListManagedAsync();
                 var agentContainer = containers.FirstOrDefault(c =>
-                    c.WorkerId == agentId || c.WorkerType == "agent");
+                    c.WorkerType == "agent" && c.WorkerId == agentId);
 
                 if (agentContainer != null)
                 {
@@ -491,6 +523,33 @@ public static class AgentEndpoints
                 vector_db_total = db.GetAll<VectorEntry>().Count(v => v.TaskId == taskId)
             }));
         });
+    }
+
+    internal static (bool Ok, string BrokerUrl, string? Error) ResolveAgentBrokerUrl(
+        JsonElement body,
+        IConfiguration configuration)
+    {
+        var value = configuration.GetValue(
+            "FunctionPool:ContainerManager:AgentBrokerUrl",
+            "http://broker:5000") ?? "http://broker:5000";
+
+        if (body.TryGetProperty("broker_url", out var brokerUrlEl) &&
+            brokerUrlEl.ValueKind == JsonValueKind.String)
+        {
+            value = brokerUrlEl.GetString() ?? string.Empty;
+        }
+
+        value = value.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(value))
+            return (false, string.Empty, "Agent broker_url must not be empty.");
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return (false, string.Empty, "Agent broker_url must be an absolute http(s) URL.");
+        }
+
+        return (true, value, null);
     }
 
     // FTS query DTO

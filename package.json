@@ -8,6 +8,7 @@
     "test:generator": "node packages/javascript/browser/page-generator/examples/test-generator.js",
     "audit:ui-styles": "node tools/scripts/audit-ui-style-rules.mjs",
     "validate:agent-governed": "node tools/agent/tests/test-governed-mode.js",
+    "validate:agent-container-config": "node tools/agent/tests/test-agent-container-config.js",
     "validate:broker-scope": "dotnet run --project packages/csharp/broker/verify/Broker.Verify.csproj",
     "validate:broker-llm-proxy": "node tools/agent/tests/test-broker-llm-proxy.js",
     "validate:podman-governed-stack": "node tools/agent/tests/test-podman-governed-stack.js",

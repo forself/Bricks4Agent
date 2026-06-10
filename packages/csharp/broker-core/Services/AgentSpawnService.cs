@@ -123,7 +123,7 @@ public class AgentSpawnService
     /// </summary>
     public AgentSpawnResult CreateAgent(AgentSpawnRequest request)
     {
-        var agentId = request.AgentId ?? $"agent_{Guid.NewGuid():N}"[..24];
+        var agentId = NormalizeAgentId(request.AgentId);
         var principalId = $"prn_{agentId}";
         var taskId = $"task_{agentId}";
         var now = DateTime.UtcNow;
@@ -200,7 +200,13 @@ public class AgentSpawnService
 
         var runtimeDescriptor = JsonSerializer.Serialize(new
         {
-            llm = new { },
+            llm = new
+            {
+                default_model = request.LlmDefaultModel ?? string.Empty,
+                allow_model_override = request.LlmAllowModelOverride,
+                supports_tool_calling = request.LlmSupportsToolCalling,
+                streaming_enabled = request.LlmStreamingEnabled
+            },
             capability_grants = capabilityGrants
         }, JsonOptions);
 
@@ -239,6 +245,7 @@ public class AgentSpawnService
     /// <summary>停用 Agent（標記 Principal 和 Task 為 Inactive）</summary>
     public bool DeactivateAgent(string agentId)
     {
+        agentId = NormalizeAgentId(agentId);
         var principalId = $"prn_{agentId}";
         var taskId = $"task_{agentId}";
 
@@ -263,7 +270,8 @@ public class AgentSpawnService
     public List<AgentSummary> ListAgents()
     {
         var tasks = _db.GetAll<BrokerTask>()
-            .Where(t => t.AssignedPrincipalId?.StartsWith("prn_agent_") == true)
+            .Where(t => t.TaskId.StartsWith("task_", StringComparison.Ordinal) &&
+                        string.Equals(t.AssignedPrincipalId, $"prn_{t.TaskId[5..]}", StringComparison.Ordinal))
             .ToList();
 
         return tasks.Select(t =>
@@ -301,6 +309,29 @@ public class AgentSpawnService
     }
 
     // ── 輔助方法 ──
+
+    public static string NormalizeAgentId(string? requestedAgentId)
+    {
+        var raw = string.IsNullOrWhiteSpace(requestedAgentId)
+            ? $"agent_{Guid.NewGuid():N}"
+            : requestedAgentId.Trim();
+
+        if (!raw.StartsWith("agent_", StringComparison.OrdinalIgnoreCase))
+            raw = "agent_" + raw;
+
+        var chars = raw
+            .Select(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-' ? ch : '_')
+            .ToArray();
+        var normalized = new string(chars).Trim('_', '-');
+
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(normalized, "agent", StringComparison.OrdinalIgnoreCase))
+            normalized = $"agent_{Guid.NewGuid():N}";
+        else if (!normalized.StartsWith("agent_", StringComparison.OrdinalIgnoreCase))
+            normalized = "agent_" + normalized;
+
+        return normalized.Length <= 64 ? normalized : normalized[..64];
+    }
 
     private static object BuildScope(Capability cap)
     {
@@ -390,6 +421,10 @@ public class AgentSpawnRequest
     public string? ScopeDescriptor { get; set; }
     public string? RequestedBy { get; set; }
     public int QuotaPerCapability { get; set; } = -1; // -1 = unlimited
+    public string? LlmDefaultModel { get; set; }
+    public bool? LlmAllowModelOverride { get; set; }
+    public bool? LlmSupportsToolCalling { get; set; }
+    public bool? LlmStreamingEnabled { get; set; }
 }
 
 public class AgentSpawnResult

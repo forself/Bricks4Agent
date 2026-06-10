@@ -203,6 +203,12 @@ passed += bdPassed;
 failed += bdFailed;
 
 Console.WriteLine();
+
+var (agentPassed, agentFailed) = Broker.Tests.AgentContainerTests.Run();
+passed += agentPassed;
+failed += agentFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

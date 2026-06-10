@@ -1,5 +1,6 @@
 services:
   mock-ollama:
+    image: bricks4agent-mock-ollama:latest
     build:
       context: ../../..
       dockerfile: tools/agent/container/mock-ollama.Containerfile
@@ -7,12 +8,15 @@ services:
       PORT: "11434"
       MOCK_MODEL: "${STACK_MODEL:-stack-test-model}"
       MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
+      MOCK_TOOL_CALL: "${STACK_TOOL_CALL:-}"
+      MOCK_TOOL_PATH: "${STACK_TOOL_PATH:-README.md}"
     ports:
       - "${STACK_LLM_PORT:-11434}:11434"
     networks:
       - control-net
 
   broker:
+    image: bricks4agent-broker:latest
     build:
       context: ../../..
       dockerfile: packages/csharp/broker/Containerfile
@@ -21,9 +25,22 @@ services:
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/broker.db"
+      HighLevelCoordinator__AccessRoot: "/data/workspaces"
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET:-THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64:-BEjqln/N4iLKmxh5ltylZvLxax+iQc+m9T+1BkAz1+w=}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg+oxf+eIdOKgNveCoXr8rgrh/9NAtuBSto3XjXjajsW+hRANCAAS8WmQxu8c1Nwb+P8uoewmd9/gHlz/2i6pUZ+/WrMD+YiKf+mkfND1V37tF9eImxrlJGpMW5NR5vuk5dLRKuFWl}"
+      Embedding__Enabled: "false"
+      RagSeed__Enabled: "false"
+      LineChatGateway__RagEnabled: "false"
+      WorkerAuth__Enforce: "${WORKER_AUTH_ENFORCE:-false}"
+      WorkerAuth__Credentials__0__WorkerType: "line-worker"
+      WorkerAuth__Credentials__0__KeyId: "${LINE_WORKER_AUTH_KEY_ID:-line-worker-dev-key}"
+      WorkerAuth__Credentials__0__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:-line-worker-dev-shared-secret}"
+      WorkerAuth__Credentials__0__Status: "active"
+      WorkerAuth__Credentials__1__WorkerType: "file-worker"
+      WorkerAuth__Credentials__1__KeyId: "${FILE_WORKER_AUTH_KEY_ID:-file-worker-dev-key}"
+      WorkerAuth__Credentials__1__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:-file-worker-dev-shared-secret}"
+      WorkerAuth__Credentials__1__Status: "active"
       # ── LLM Proxy ──
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
@@ -57,12 +74,16 @@ services:
       FunctionPool__ContainerManager__NetworkName: "bricks4agent_worker-net"
       FunctionPool__ContainerManager__BrokerHostForWorkers: "broker"
       FunctionPool__ContainerManager__BrokerPortForWorkers: "7000"
+      FunctionPool__ContainerManager__AgentBrokerUrl: "${AGENT_BROKER_URL:-http://broker:5000}"
       FunctionPool__ContainerManager__MaxContainersPerType: "3"
       # Worker image configs
       FunctionPool__ContainerManager__WorkerImages__file-worker__Image: "bricks4agent-file-worker:latest"
       FunctionPool__ContainerManager__WorkerImages__file-worker__MemoryLimit: "256m"
       FunctionPool__ContainerManager__WorkerImages__line-worker__Image: "bricks4agent-line-worker:latest"
       FunctionPool__ContainerManager__WorkerImages__line-worker__MemoryLimit: "256m"
+      FunctionPool__ContainerManager__WorkerImages__agent__Image: "bricks4agent-agent:latest"
+      FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "512m"
+      FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_control-net"
     ports:
       - "${BROKER_PORT:-5000}:5000"
     volumes:
@@ -75,6 +96,7 @@ services:
 
   # ── File Worker ──
   file-worker:
+    image: bricks4agent-file-worker:latest
     build:
       context: ../../..
       dockerfile: packages/csharp/workers/file-worker/Containerfile
@@ -85,6 +107,9 @@ services:
       WORKER_Worker__BrokerPort: "7000"
       WORKER_Worker__MaxConcurrent: "4"
       WORKER_Worker__SandboxRoot: "/workspace"
+      WORKER_Worker__Auth__WorkerType: "file-worker"
+      WORKER_Worker__Auth__KeyId: "${FILE_WORKER_AUTH_KEY_ID:-file-worker-dev-key}"
+      WORKER_Worker__Auth__SharedSecret: "${FILE_WORKER_AUTH_SHARED_SECRET:-file-worker-dev-shared-secret}"
     volumes:
       - ../../..:/workspace:ro
     restart: "on-failure:5"
@@ -93,6 +118,7 @@ services:
 
   # ── LINE Worker ──
   line-worker:
+    image: bricks4agent-line-worker:latest
     build:
       context: ../../..
       dockerfile: packages/csharp/workers/line-worker/Containerfile
@@ -102,10 +128,15 @@ services:
       WORKER_Worker__BrokerHost: "broker"
       WORKER_Worker__BrokerPort: "7000"
       WORKER_Worker__MaxConcurrent: "4"
+      WORKER_Worker__Auth__WorkerType: "line-worker"
+      WORKER_Worker__Auth__KeyId: "${LINE_WORKER_AUTH_KEY_ID:-line-worker-dev-key}"
+      WORKER_Worker__Auth__SharedSecret: "${LINE_WORKER_AUTH_SHARED_SECRET:-line-worker-dev-shared-secret}"
+      WORKER_Broker__ApiUrl: "http://broker:5000"
       WORKER_Line__ChannelAccessToken: "${LINE_CHANNEL_ACCESS_TOKEN}"
       WORKER_Line__ChannelSecret: "${LINE_CHANNEL_SECRET}"
       WORKER_Line__DefaultRecipientId: "${LINE_DEFAULT_RECIPIENT_ID}"
       WORKER_Line__AllowedUserIds: "${LINE_ALLOWED_USER_IDS}"
+      WORKER_Line__WebhookHost: "0.0.0.0"
       WORKER_Line__WebhookPort: "19090"
     ports:
       - "${LINE_WEBHOOK_PORT:-19090}:19090"
@@ -115,6 +146,7 @@ services:
 
   # ── Agent ──
   agent:
+    image: bricks4agent-agent:latest
     build:
       context: ../../..
       dockerfile: tools/agent/Containerfile
@@ -147,8 +179,10 @@ services:
 # worker-net:  broker + workers (workers cannot reach agent or LLM directly)
 networks:
   control-net:
+    name: bricks4agent_control-net
     driver: bridge
   worker-net:
+    name: bricks4agent_worker-net
     driver: bridge
 
 volumes:

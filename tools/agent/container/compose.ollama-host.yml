@@ -1,5 +1,6 @@
 services:
   broker:
+    image: bricks4agent-broker:latest
     build:
       context: ../../..
       dockerfile: packages/csharp/broker/Containerfile
@@ -8,9 +9,13 @@ services:
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:5000"
       Database__Path: "/data/broker.db"
+      HighLevelCoordinator__AccessRoot: "/data/workspaces"
       Broker__ScopedToken__Secret: "${BROKER_SCOPED_TOKEN_SECRET:-THIS_IS_A_DEVELOPMENT_ONLY_SCOPED_TOKEN_SECRET_32B}"
       Broker__Encryption__MasterKeyBase64: "${BROKER_MASTER_KEY_BASE64:-BEjqln/N4iLKmxh5ltylZvLxax+iQc+m9T+1BkAz1+w=}"
       Broker__Encryption__EcdhPrivateKeyBase64: "${BROKER_ECDH_PRIVATE_KEY_BASE64:-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg+oxf+eIdOKgNveCoXr8rgrh/9NAtuBSto3XjXjajsW+hRANCAAS8WmQxu8c1Nwb+P8uoewmd9/gHlz/2i6pUZ+/WrMD+YiKf+mkfND1V37tF9eImxrlJGpMW5NR5vuk5dLRKuFWl}"
+      Embedding__Enabled: "false"
+      RagSeed__Enabled: "false"
+      LineChatGateway__RagEnabled: "false"
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "ollama"
       LlmProxy__BaseUrl: "${OLLAMA_BASE_URL:-http://host.containers.internal:11434}"
@@ -35,6 +40,7 @@ services:
       - broker-ollama-data:/data
 
   agent:
+    image: bricks4agent-agent:latest
     build:
       context: ../../..
       dockerfile: tools/agent/Containerfile
