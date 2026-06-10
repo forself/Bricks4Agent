@@ -1523,9 +1523,19 @@ try
                 AccessRoot = Path.Combine(sandboxRoot, "managed"),
                 CommandGuideReminderMinutes = 60
             });
+        var coordinatorDownloadOptions = new BrokerArtifactDownloadOptions
+        {
+            SigningSecret = "verify-artifact-download-secret",
+            SidecarLastTunnelUrlPath = Path.Combine(sandboxRoot, ".last-tunnel-url")
+        };
+        var coordinatorDownloadService = new BrokerArtifactDownloadService(
+            coordinatorWorkspaceService,
+            new SidecarPublicUrlResolver(coordinatorDownloadOptions),
+            coordinatorDownloadOptions);
         var coordinatorArtifactDeliveryService = new LineArtifactDeliveryService(
             coordinatorWorkspaceService,
             coordinatorGoogleDriveService,
+            coordinatorDownloadService,
             NullLogger<LineArtifactDeliveryService>.Instance);
         var coordinatorScaffoldSpecStore = new HighLevelSystemScaffoldSpecStore(coordinatorDb);
         var coordinatorScaffoldIterationStore = new HighLevelSystemScaffoldIterationStore(coordinatorDb);

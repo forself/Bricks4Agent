@@ -1,5 +1,6 @@
 using Broker.Services;
 using BrokerCore.Contracts;
+using BrokerCore.Data;
 
 // Make HighLevelCoordinator.BuildArtifactReply accessible
 using static Broker.Services.HighLevelCoordinator;
@@ -43,7 +44,7 @@ var failed = 0;
     var body = LineArtifactDeliveryService.BuildNotificationBody("data.csv", "/path/data.csv", null);
 
     AssertContains("Test2-title", body, "Artifact created, but a downloadable link is not available yet.");
-    AssertContains("Test2-filename", body, "File: data.csv");
+    AssertContains("Test2-filename", body, "\u6a94\u540d\uff1adata.csv");
     AssertContains("Test2-fallback", body, "downloadable link is not available yet");
     AssertContains("Test2-admin-help", body, "without exposing internal paths");
     AssertNotContains("Test2-no-local-path", body, "本機路徑");
@@ -93,6 +94,7 @@ var failed = 0;
     AssertContains("Test4-title", body, "Artifact created, but a downloadable link is not available yet.");
     AssertContains("Test4-fallback", body, "downloadable link is not available yet");
     AssertNotContains("Test4-no-drive-link", body, "drive.google.com");
+    AssertNotContains("Test4-no-local-path", body, "/p/big.json");
 
     Console.WriteLine($"  Test 4 body output:");
     Console.WriteLine("  ---");
@@ -100,6 +102,96 @@ var failed = 0;
         Console.WriteLine($"  | {line}");
     Console.WriteLine("  ---");
     Console.WriteLine();
+}
+
+// ---------- Test 4b: Broker fallback download link ----------
+{
+    var link = "https://example-sidecar.ngrok-free.dev/api/v1/artifacts/download/artifact_test?exp=111&sig=abc";
+    var body = LineArtifactDeliveryService.BuildNotificationBody(
+        "local.zip",
+        "C:\\internal\\local.zip",
+        new GoogleDriveShareResult { Success = false, Message = "drive_not_configured" },
+        link);
+
+    AssertContains("Test4b-download-label", body, "\u4e0b\u8f09\u9023\u7d50\uff1a");
+    AssertContains("Test4b-download-link", body, link);
+    AssertNotContains("Test4b-no-local-path", body, "C:\\internal\\local.zip");
+    Console.WriteLine($"  Test 4b body output:");
+    Console.WriteLine("  ---");
+    foreach (var line in body.Split(Environment.NewLine))
+        Console.WriteLine($"  | {line}");
+    Console.WriteLine("  ---");
+    Console.WriteLine();
+}
+
+// ---------- Test 4c: Signed broker download URL ----------
+{
+    var tempDir = Path.Combine(Path.GetTempPath(), "b4a-artifact-download-tests-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempDir);
+
+    try
+    {
+        var dbPath = Path.Combine(tempDir, "broker.db");
+        using var db = new BrokerDb($"Data Source={dbPath};Pooling=False");
+        new BrokerDbInitializer(db).Initialize();
+
+        var artifactPath = Path.Combine(tempDir, "artifact.txt");
+        await File.WriteAllTextAsync(artifactPath, "download-bytes", new System.Text.UTF8Encoding(false));
+
+        var lastUrlPath = Path.Combine(tempDir, ".last-tunnel-url");
+        await File.WriteAllTextAsync(lastUrlPath, "https://example-sidecar.ngrok-free.dev/webhook/line/", new System.Text.UTF8Encoding(false));
+
+        var workspace = new HighLevelLineWorkspaceService(db, new HighLevelCoordinatorOptions
+        {
+            AccessRoot = tempDir
+        });
+        var recorded = workspace.RecordArtifact(new HighLevelLineArtifactRecord
+        {
+            UserId = "download-user",
+            FileName = "artifact.txt",
+            Format = "txt",
+            FilePath = artifactPath,
+            DocumentsRoot = tempDir,
+            OverallStatus = "completed",
+            Success = true
+        });
+
+        var options = new BrokerArtifactDownloadOptions
+        {
+            SigningSecret = "unit-test-download-secret",
+            LinkTtlMinutes = 60,
+            SidecarLastTunnelUrlPath = lastUrlPath
+        };
+        var service = new BrokerArtifactDownloadService(
+            workspace,
+            new SidecarPublicUrlResolver(options),
+            options);
+
+        var signed = service.CreateSignedDownloadUrl(recorded.ArtifactId, DateTimeOffset.UtcNow);
+        AssertTrue("Test4c-signed-url-created", signed != null && signed.Contains("/api/v1/artifacts/download/", StringComparison.Ordinal));
+        AssertTrue("Test4c-signed-url-base", signed != null && signed.StartsWith("https://example-sidecar.ngrok-free.dev/", StringComparison.Ordinal));
+
+        var uri = new Uri(signed!);
+        var query = ParseQuery(uri.Query);
+        var exp = long.Parse(query["exp"]);
+        var sig = query["sig"];
+
+        var resolved = service.ValidateAndResolve(recorded.ArtifactId, exp, sig, DateTimeOffset.UtcNow);
+        AssertTrue("Test4c-valid-resolves", resolved.IsValid);
+        AssertEqual("Test4c-safe-file-name", resolved.SafeFileName, "artifact.txt");
+
+        var invalid = service.ValidateAndResolve(recorded.ArtifactId, exp, "bad-signature", DateTimeOffset.UtcNow);
+        AssertTrue("Test4c-invalid-rejected", !invalid.IsValid);
+
+        var expired = service.ValidateAndResolve(recorded.ArtifactId, exp, sig, DateTimeOffset.FromUnixTimeSeconds(exp + 1));
+        AssertTrue("Test4c-expired-rejected", expired.IsExpired);
+
+        db.Dispose();
+    }
+    finally
+    {
+        DeleteDirectoryWithRetry(tempDir);
+    }
 }
 
 // ---------- Test 5: BuildArtifactReply — Drive 成功 ----------
@@ -187,6 +279,74 @@ var failed = 0;
     Console.WriteLine();
 }
 
+// ---------- Test 9: Code generator fallback — tic-tac-toe ----------
+{
+    var draft = new HighLevelTaskDraft
+    {
+        TaskType = "code_gen",
+        ProjectName = "game1",
+        ProjectFolderName = "game1",
+        Title = "game1",
+        Summary = "建立 井字遊戲的網頁",
+        OriginalMessage = "/建立 井字遊戲的網頁"
+    };
+
+    var method = typeof(HighLevelCodeArtifactService).GetMethod(
+        "BuildFallbackHtml",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue("Test9-method-found", method != null);
+
+    var html = (string)method!.Invoke(null, new object[] { draft })!;
+    AssertContains("Test9-title", html, "井字遊戲");
+    AssertContains("Test9-board", html, "data-cell");
+    AssertContains("Test9-winning-lines", html, "winningLines");
+    AssertContains("Test9-reset", html, "重新開始");
+    AssertContains("Test9-custom-component-theme", html, "./runtime/ui_components/theme.css");
+    AssertContains("Test9-custom-component-import", html, "import('./runtime/ui_components/index.js')");
+    AssertContains("Test9-custom-component-basic-button", html, "BasicButton");
+    AssertNotContains("Test9-no-generic-shell", html, "Generated Web Prototype");
+    Console.WriteLine();
+}
+
+// ---------- Test 10: Code generator routes website replica requests ----------
+{
+    var draft = new HighLevelTaskDraft
+    {
+        TaskType = "code_gen",
+        ProjectName = "ntub-remake",
+        ProjectFolderName = "ntub-remake",
+        Title = "ntub-remake",
+        Summary = "參照 https://www.ntub.edu.tw/ 重製成可離線瀏覽的多頁網站，深度3，最多200頁",
+        OriginalMessage = "/建立 參照 https://www.ntub.edu.tw/ 重製成可離線瀏覽的多頁網站：同網域 *.ntub.edu.tw 以廣度優先爬取，深度 3 層、最多 200 頁"
+    };
+
+    var detectMethod = typeof(HighLevelCodeArtifactService).GetMethod(
+        "IsWebsiteReplicaRequest",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue("Test10-detect-method-found", detectMethod != null);
+    AssertTrue("Test10-website-replica-detected", (bool)detectMethod!.Invoke(null, new object[] { draft })!);
+
+    var urlMethod = typeof(HighLevelCodeArtifactService).GetMethod(
+        "ExtractFirstHttpUrl",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue("Test10-url-method-found", urlMethod != null);
+    var extractedUrl = (string?)urlMethod!.Invoke(null, new object[] { draft.OriginalMessage });
+    AssertContains("Test10-url-extracted", extractedUrl ?? "", "https://www.ntub.edu.tw/");
+
+    var optionsMethod = typeof(HighLevelCodeArtifactService).GetMethod(
+        "ResolveStaticReplicaOptions",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    AssertTrue("Test10-options-method-found", optionsMethod != null);
+    var options = optionsMethod!.Invoke(null, new object[] { draft, extractedUrl! })!;
+    var maxDepth = (int)options.GetType().GetProperty("MaxDepth")!.GetValue(options)!;
+    var maxPages = (int)options.GetType().GetProperty("MaxPages")!.GetValue(options)!;
+    var domainSuffix = (string)options.GetType().GetProperty("DomainSuffix")!.GetValue(options)!;
+    AssertTrue("Test10-depth", maxDepth == 3);
+    AssertTrue("Test10-pages", maxPages == 200);
+    AssertTrue("Test10-domain", domainSuffix == "ntub.edu.tw");
+    Console.WriteLine();
+}
+
 // ---------- Summary (Unit Tests) ----------
 Console.WriteLine($"=== Artifact Delivery Unit Results: {passed} passed, {failed} failed ===");
 Console.WriteLine();
@@ -266,5 +426,67 @@ void AssertNotContains(string name, string actual, string notExpected)
     {
         Console.Error.WriteLine($"  [FAIL] {name}: expected NOT to contain \"{notExpected}\"");
         failed++;
+    }
+}
+
+void AssertTrue(string name, bool condition)
+{
+    if (condition)
+    {
+        Console.WriteLine($"  [PASS] {name}");
+        passed++;
+    }
+    else
+    {
+        Console.Error.WriteLine($"  [FAIL] {name}");
+        failed++;
+    }
+}
+
+void AssertEqual(string name, string? actual, string expected)
+{
+    if (actual == expected)
+    {
+        Console.WriteLine($"  [PASS] {name}");
+        passed++;
+    }
+    else
+    {
+        Console.Error.WriteLine($"  [FAIL] {name}: expected \"{expected}\", got \"{actual}\"");
+        failed++;
+    }
+}
+
+Dictionary<string, string> ParseQuery(string query)
+{
+    return query.TrimStart('?')
+        .Split('&', StringSplitOptions.RemoveEmptyEntries)
+        .Select(part => part.Split('=', 2))
+        .Where(parts => parts.Length == 2)
+        .ToDictionary(
+            parts => Uri.UnescapeDataString(parts[0]),
+            parts => Uri.UnescapeDataString(parts[1]));
+}
+
+void DeleteDirectoryWithRetry(string path)
+{
+    for (var attempt = 0; attempt < 5; attempt++)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+            return;
+        }
+        catch (IOException) when (attempt < 4)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Thread.Sleep(100);
+        }
+        catch (UnauthorizedAccessException) when (attempt < 4)
+        {
+            Thread.Sleep(100);
+        }
     }
 }

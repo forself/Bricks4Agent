@@ -172,6 +172,9 @@ builder.Services.AddSingleton(deploymentSecretOptions);
 var googleDriveDeliveryOptions = builder.Configuration.GetSection("GoogleDriveDelivery").Get<Broker.Services.GoogleDriveDeliveryOptions>()
     ?? new Broker.Services.GoogleDriveDeliveryOptions();
 builder.Services.AddSingleton(googleDriveDeliveryOptions);
+var artifactDownloadOptions = builder.Configuration.GetSection("ArtifactDownload").Get<Broker.Services.BrokerArtifactDownloadOptions>()
+    ?? new Broker.Services.BrokerArtifactDownloadOptions();
+builder.Services.AddSingleton(artifactDownloadOptions);
 var tdxOptions = builder.Configuration.GetSection("Tdx").Get<Broker.Services.TdxOptions>()
     ?? new Broker.Services.TdxOptions();
 builder.Services.AddSingleton(tdxOptions);
@@ -198,6 +201,8 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewProjectDefinitionC
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewWorkflowDesignService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewPdfRenderService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
+builder.Services.AddSingleton<Broker.Services.SidecarPublicUrlResolver>();
+builder.Services.AddSingleton<Broker.Services.BrokerArtifactDownloadService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
@@ -845,6 +850,7 @@ PlanEndpoints.Map(api);
 RuntimeEndpoints.Map(api);
 HighLevelEndpoints.Map(api);
 GoogleDriveOAuthEndpoints.Map(api);
+ArtifactDownloadEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
 if (poolEnabled)

@@ -1898,10 +1898,13 @@ public class HighLevelCoordinator
 
         var lines = new List<string>
         {
-            "已生成網站原型。",
+            string.IsNullOrWhiteSpace(artifactResult.PackageFilePath) ? "已生成網站原型。" : "已生成離線網站封裝。",
             $"project_root: {artifactResult.ProjectRoot}",
             $"entry_file: {artifactResult.EntryFilePath}"
         };
+
+        if (!string.IsNullOrWhiteSpace(artifactResult.PackageFilePath))
+            lines.Add($"package_file: {artifactResult.PackageFilePath}");
 
         if (artifactResult.Delivery?.GoogleDrive?.Success == true)
         {
