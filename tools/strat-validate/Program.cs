@@ -176,6 +176,10 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     // 2026-05-28 Q2 第二個通過 IS+OOS 雙確認的 alpha(quantile pool t=+2.01/+2.39、線性不顯著=非線性 edge)
     // 需 --apply-retail-ls 注入(同 endpoint 順便 fill bar.OpenInterest)
     ("oi_momentum_ls",        new OiMomentumLsStrategy()),
+    // [2026-06-10 從零開發] 流動性清算反轉:大move + OI驟降 = 強制平倉級聯 → 反向吃 overshoot
+    ("liquidation_reversal",  new LiquidationReversalStrategy()),
+    ("liq_reversal_loose",    new LiquidationReversalStrategy("liq_reversal_loose", moveZ: 1.5m, oiDrop: 0.02m)),
+    ("liq_reversal_tight",    new LiquidationReversalStrategy("liq_reversal_tight", moveZ: 2.5m, oiDrop: 0.05m)),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
@@ -2041,6 +2045,13 @@ async Task RunDispersion()
     Console.WriteLine($"=== edge 離散度診斷:{sname}(per-symbol LS、cost {costBps}bps/側、full-period)===");
     var dat = new Dictionary<string, List<BarData>>();
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 200) dat[sym] = b; } catch { } }
+    // retail_ls / oi / liquidation 策略需注入 RetailLongShortRatio / OpenInterest(--apply-retail-ls)否則整段 hold → 0 edge
+    if (realRetailLs)
+    {
+        int inj = 0;
+        foreach (var kv in dat) try { await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, "1d"); inj++; } catch { }
+        Console.WriteLine($"  📊 已注入 retail L/S + OI metrics:{inj}/{dat.Count} 檔");
+    }
     Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔。判讀:高離散(少數強、多數弱)→選股有救;均勻弱→選股救不了\n");
     // OOS walk-forward(250/90/60)per-symbol:OOS Sharpe = 各 test fold Sharpe 均值;OOS ret = AvgTestReturnPct。
     // 用 OOS(非全期 in-sample)才能答「edge 在 OOS 是否集中在可辨識少數股」= 選股可行性。
