@@ -188,6 +188,10 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     ("oi_breakout",           new OiBreakoutStrategy()),
     ("oi_breakout_55",        new OiBreakoutStrategy("oi_breakout_55", lookback: 55, oiRise: 0.03m)),
     ("oi_breakout_nofilter",  new OiBreakoutStrategy("oi_breakout_nofilter", lookback: 20, oiRise: 0.0m)),  // 對照組:無 OI 過濾
+    // [2026-06-10 從零開發] BTC 領先-alt 滯後:BTC 近N日報酬領先 → alt 滯後跟(跨幣資訊流)
+    ("btc_lead",              new BtcLeadStrategy()),
+    ("btc_lead_l2",           new BtcLeadStrategy("btc_lead_l2", lag: 2, moveZ: 1.0m)),
+    ("btc_lead_z05",          new BtcLeadStrategy("btc_lead_z05", lag: 1, moveZ: 0.5m)),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
@@ -2059,6 +2063,14 @@ async Task RunDispersion()
         int inj = 0;
         foreach (var kv in dat) try { await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, "1d"); inj++; } catch { }
         Console.WriteLine($"  📊 已注入 retail L/S + OI metrics:{inj}/{dat.Count} 檔");
+    }
+    // 注入 BTC 當日報酬(BTC-lead alt-lag 策略用;從 price bars 算、不需 metrics)
+    if (dat.TryGetValue("BTCUSDT", out var btcB))
+    {
+        var btcRet = new Dictionary<DateTime, decimal>();
+        for (int i = 1; i < btcB.Count; i++) { var pv = btcB[i - 1].Close; if (pv > 0m) btcRet[btcB[i].OpenTime.Date] = (btcB[i].Close - pv) / pv; }
+        foreach (var kv in dat) foreach (var b in kv.Value) if (btcRet.TryGetValue(b.OpenTime.Date, out var r)) b.BtcRet = r;
+        Console.WriteLine($"  📊 已注入 BTC 當日報酬:{btcRet.Count} 日(BTC-lead 策略用)");
     }
     Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length} 檔。判讀:高離散(少數強、多數弱)→選股有救;均勻弱→選股救不了\n");
     // OOS walk-forward(250/90/60)per-symbol:OOS Sharpe = 各 test fold Sharpe 均值;OOS ret = AvgTestReturnPct。

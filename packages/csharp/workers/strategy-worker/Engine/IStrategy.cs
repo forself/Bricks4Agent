@@ -81,4 +81,5 @@ public class BarData
     public decimal? FundingRate  { get; set; }   // 永續資金費率(perp 才有;非 perp/無資料 = null)
     public decimal? OpenInterest { get; set; }   // 未平倉量(perp 才有;非 perp/無資料 = null)
     public decimal? RetailLongShortRatio { get; set; }   // 散戶多空比(>1 = 散戶看多;Q2 2026-05-28 OOS 驗證真 alpha 源 t=-2.89/-2.25)
+    public decimal? BtcRet { get; set; }   // 當日 BTC 報酬(strat-validate 注入;BTC-lead alt-lag 策略用、跨幣領先訊號)
 }
