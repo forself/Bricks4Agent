@@ -22,8 +22,12 @@ $workerErrLog = Join-Path $logDir "line-worker.err.log"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
 $ngrokPidFile = Join-Path $runRoot "ngrok.pid"
+$cloudflaredPidFile = Join-Path $runRoot "cloudflared.pid"
+$localhostRunPidFile = Join-Path $runRoot "localhostrun.pid"
+$webhookSyncPidFile = Join-Path $runRoot "webhook-sync.pid"
 $tunnelName = "line$WebhookPort"
 $configPath = Join-Path $scriptDir "appsettings.json"
+$brokerSourceConfigPath = Join-Path $repoRoot "packages\csharp\broker\appsettings.json"
 $lastUrlFile = Join-Path $scriptDir ".last-tunnel-url"
 $openAiApiKeyFile = Join-Path $repoRoot "Api.txt"
 $googleOAuthClientFile = Get-ChildItem -Path $repoRoot -Filter "client_secret_*.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -33,11 +37,33 @@ $brokerRuntimeDbPath = Join-Path $dataRoot "broker.db"
 $ngrokConfigPath = Join-Path $env:LOCALAPPDATA "ngrok\ngrok.yml"
 $ngrokOutLog = Join-Path $logDir "ngrok.out.log"
 $ngrokErrLog = Join-Path $logDir "ngrok.err.log"
+$cloudflaredOutLog = Join-Path $logDir "cloudflared.out.log"
+$cloudflaredErrLog = Join-Path $logDir "cloudflared.err.log"
+$localhostRunOutLog = Join-Path $logDir "localhostrun.out.log"
+$localhostRunErrLog = Join-Path $logDir "localhostrun.err.log"
+$webhookSyncOutLog = Join-Path $logDir "webhook-sync.out.log"
+$webhookSyncErrLog = Join-Path $logDir "webhook-sync.err.log"
 $projectInterviewTemplateCatalogPath = Join-Path $repoRoot "packages\javascript\browser\templates\catalog.json"
+$managedWorkspaceRoot = Join-Path $env:LOCALAPPDATA "Bricks4Agent\managed-workspaces"
 
-foreach ($dir in @($runRoot, $dataRoot, $brokerOut, $workerOut, $logDir)) {
+foreach ($dir in @($runRoot, $dataRoot, $brokerOut, $workerOut, $logDir, $managedWorkspaceRoot)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
+
+$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
+if (-not $dotnetCommand) {
+    $userDotnet = Join-Path $env:USERPROFILE ".dotnet\dotnet.exe"
+    if (Test-Path $userDotnet) {
+        $dotnetCommand = Get-Item $userDotnet
+    }
+}
+if (-not $dotnetCommand) {
+    throw "dotnet is not available on PATH or at $env:USERPROFILE\.dotnet\dotnet.exe."
+}
+$dotnetPath = if ($dotnetCommand.Source) { $dotnetCommand.Source } else { $dotnetCommand.FullName }
+$dotnetRoot = Split-Path -Parent $dotnetPath
+$env:DOTNET_ROOT = $dotnetRoot
+$env:PATH = "$dotnetRoot;$env:PATH"
 
 function Initialize-BrokerRuntimeDatabase {
     param(
@@ -91,6 +117,10 @@ if (-not (Test-Path $configPath)) {
 }
 
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
+$brokerSourceConfigRaw = ""
+if (Test-Path $brokerSourceConfigPath) {
+    $brokerSourceConfigRaw = Get-Content $brokerSourceConfigPath -Raw
+}
 $channelAccessToken = $config.Line.ChannelAccessToken
 $googleDriveSettings = $null
 if ($config.PSObject.Properties.Name -contains "GoogleDriveDelivery") {
@@ -112,6 +142,56 @@ $lineWorkerSharedSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WO
         $rng.Dispose()
     }
     [Convert]::ToBase64String($secretBytes)
+}
+$artifactDownloadSigningSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_ARTIFACT_DOWNLOAD_SIGNING_SECRET)) {
+    $env:B4A_ARTIFACT_DOWNLOAD_SIGNING_SECRET.Trim()
+} else {
+    $secretBytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($secretBytes)
+    } finally {
+        $rng.Dispose()
+    }
+    [Convert]::ToBase64String($secretBytes)
+}
+
+function Get-BrokerJsonSectionValue {
+    param(
+        [string]$RawJson,
+        [string]$Section,
+        [string]$Name,
+        [object]$DefaultValue
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RawJson)) {
+        return $DefaultValue
+    }
+
+    $sectionPattern = '"' + [regex]::Escape($Section) + '"\s*:\s*\{(?<body>[\s\S]*?)\n\s*\}'
+    $sectionMatch = [regex]::Match($RawJson, $sectionPattern)
+    if (-not $sectionMatch.Success) {
+        return $DefaultValue
+    }
+
+    $body = $sectionMatch.Groups["body"].Value
+    $namePattern = [regex]::Escape($Name)
+    $stringMatch = [regex]::Match($body, '"' + $namePattern + '"\s*:\s*"(?<value>[^"]*)"')
+    if ($stringMatch.Success) {
+        return $stringMatch.Groups["value"].Value
+    }
+
+    $boolMatch = [regex]::Match($body, '"' + $namePattern + '"\s*:\s*(?<value>true|false)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($boolMatch.Success) {
+        return [bool]::Parse($boolMatch.Groups["value"].Value)
+    }
+
+    $intMatch = [regex]::Match($body, '"' + $namePattern + '"\s*:\s*(?<value>\d+)')
+    if ($intMatch.Success) {
+        return [int]::Parse($intMatch.Groups["value"].Value)
+    }
+
+    return $DefaultValue
 }
 
 function Stop-RecordedProcess {
@@ -283,6 +363,119 @@ function Start-NgrokAgentIfNeeded {
     throw "ngrok started but the admin API on 127.0.0.1:4040 did not become available within 15 seconds. Check $ngrokOutLog and $ngrokErrLog."
 }
 
+function Start-CloudflaredTunnel {
+    $cloudflaredCommand = Get-Command cloudflared -ErrorAction SilentlyContinue
+    if (-not $cloudflaredCommand) {
+        throw "cloudflared is not installed or not available on PATH. Install Cloudflare.cloudflared or configure ngrok."
+    }
+
+    foreach ($logPath in @($cloudflaredOutLog, $cloudflaredErrLog)) {
+        if (Test-Path $logPath) { Remove-Item $logPath -Force }
+    }
+
+    $cloudflaredProc = Start-Process `
+        -FilePath $cloudflaredCommand.Source `
+        -ArgumentList @("tunnel", "--url", "http://localhost:$WebhookPort", "--no-autoupdate") `
+        -RedirectStandardOutput $cloudflaredOutLog `
+        -RedirectStandardError $cloudflaredErrLog `
+        -WindowStyle Hidden `
+        -PassThru
+    $cloudflaredProc.Id | Out-File -FilePath $cloudflaredPidFile -Encoding ascii -NoNewline
+
+    $deadline = (Get-Date).AddSeconds(45)
+    do {
+        Start-Sleep -Milliseconds 500
+        $combined = ""
+        foreach ($logPath in @($cloudflaredOutLog, $cloudflaredErrLog)) {
+            if (Test-Path $logPath) {
+                $combined += "`n" + (Get-Content $logPath -Raw -ErrorAction SilentlyContinue)
+            }
+        }
+
+        $match = [regex]::Match($combined, "https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+        if ($match.Success) {
+            return $match.Value.TrimEnd("/")
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    throw "cloudflared did not produce a public URL within 45 seconds. Check $cloudflaredOutLog and $cloudflaredErrLog."
+}
+
+function Start-LocalhostRunTunnel {
+    $sshCommand = Get-Command ssh -ErrorAction SilentlyContinue
+    if (-not $sshCommand) {
+        throw "ssh is not available on PATH. Install OpenSSH Client, configure ngrok, or install cloudflared."
+    }
+
+    foreach ($logPath in @($localhostRunOutLog, $localhostRunErrLog)) {
+        if (Test-Path $logPath) { Remove-Item $logPath -Force }
+    }
+
+    $sshProc = Start-Process `
+        -FilePath $sshCommand.Source `
+        -ArgumentList @("-o", "StrictHostKeyChecking=no", "-o", "ServerAliveInterval=30", "-R", "80:localhost:$WebhookPort", "nokey@localhost.run") `
+        -RedirectStandardOutput $localhostRunOutLog `
+        -RedirectStandardError $localhostRunErrLog `
+        -WindowStyle Hidden `
+        -PassThru
+    $sshProc.Id | Out-File -FilePath $localhostRunPidFile -Encoding ascii -NoNewline
+
+    $deadline = (Get-Date).AddSeconds(45)
+    do {
+        Start-Sleep -Milliseconds 500
+        $combined = ""
+        foreach ($logPath in @($localhostRunOutLog, $localhostRunErrLog)) {
+            if (Test-Path $logPath) {
+                $combined += "`n" + (Get-Content $logPath -Raw -ErrorAction SilentlyContinue)
+            }
+        }
+
+        $match = [regex]::Match($combined, "https://[a-zA-Z0-9-]+\.lhr\.life")
+        if ($match.Success) {
+            return $match.Value.TrimEnd("/")
+        }
+    } while ((Get-Date) -lt $deadline)
+
+    throw "localhost.run did not produce a public URL within 45 seconds. Check $localhostRunOutLog and $localhostRunErrLog."
+}
+
+function Start-LocalhostRunWebhookSync {
+    param(
+        [string]$RuntimeConfigPath,
+        [string]$LogsPath,
+        [string]$UrlPath
+    )
+
+    $syncScript = Join-Path $scriptDir "sync-localhostrun-webhook.ps1"
+    if (-not (Test-Path $syncScript)) {
+        Write-Warning "Skipping LINE webhook sync watchdog because script is missing: $syncScript"
+        return
+    }
+
+    foreach ($logPath in @($webhookSyncOutLog, $webhookSyncErrLog)) {
+        if (Test-Path $logPath) { Remove-Item $logPath -Force }
+    }
+
+    $syncProc = Start-Process `
+        -FilePath "powershell" `
+        -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", $syncScript,
+            "-ConfigPath", $RuntimeConfigPath,
+            "-LogDirectory", $LogsPath,
+            "-LastUrlPath", $UrlPath,
+            "-IntervalSeconds", "15"
+        ) `
+        -RedirectStandardOutput $webhookSyncOutLog `
+        -RedirectStandardError $webhookSyncErrLog `
+        -WindowStyle Hidden `
+        -PassThru
+
+    $syncProc.Id | Out-File -FilePath $webhookSyncPidFile -Encoding ascii -NoNewline
+    Write-Host "LINE webhook sync watchdog started: PID $($syncProc.Id)" -ForegroundColor Green
+}
+
 function Update-LineWebhook {
     param([string]$PublicUrl)
 
@@ -320,6 +513,9 @@ Stop-RecordedProcess -PidFile $brokerPidFile
 Stop-RecordedProcess -PidFile $workerPidFile
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $brokerOut "Broker.exe") -Label "broker"
 Stop-ProcessByExecutablePath -ExecutablePath (Join-Path $workerOut "LineWorker.exe") -Label "line-worker"
+Stop-RecordedProcess -PidFile $cloudflaredPidFile
+Stop-RecordedProcess -PidFile $localhostRunPidFile
+Stop-RecordedProcess -PidFile $webhookSyncPidFile
 Initialize-BrokerRuntimeDatabase -LegacyBrokerOutputPath $brokerOut -RuntimeDbPath $brokerRuntimeDbPath
 
 if (-not $SkipBuild) {
@@ -345,7 +541,13 @@ foreach ($logPath in @($brokerLog, $brokerErrLog, $workerLog, $workerErrLog)) {
     if (Test-Path $logPath) { Remove-Item $logPath -Force }
 }
 
-Start-NgrokAgentIfNeeded
+$ngrokAvailable = $true
+try {
+    Start-NgrokAgentIfNeeded
+} catch {
+    $ngrokAvailable = $false
+    Write-Warning ("ngrok is not available/configured; falling back to cloudflared quick tunnel. {0}" -f $_.Exception.Message)
+}
 
 $env:ASPNETCORE_URLS = "http://127.0.0.1:$BrokerPort"
 if (Test-Path $brokerProductionOverridePath) {
@@ -362,6 +564,18 @@ $productionOverrideMap = @{
 if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
         ApiKey = $openAiApiKey
+    }
+    $productionOverrideMap["LlmProxy"] = @{
+        Enabled = $true
+        Provider = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "Provider" -DefaultValue "openai-compatible"
+        BaseUrl = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "BaseUrl" -DefaultValue "https://api.openai.com"
+        ApiKey = $openAiApiKey
+        ApiFormat = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "ApiFormat" -DefaultValue "responses"
+        DefaultModel = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "DefaultModel" -DefaultValue "gpt-5.4-mini"
+        AllowModelOverride = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "AllowModelOverride" -DefaultValue $false
+        SupportsToolCalling = $true
+        StreamingEnabled = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "StreamingEnabled" -DefaultValue $false
+        TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
     }
 }
 if ($null -ne $googleOAuthClientFile) {
@@ -407,6 +621,29 @@ if ($null -ne $googleOAuthClientFile) {
 $productionOverrideMap["ProjectInterview"] = @{
     TemplateCatalogPath = $projectInterviewTemplateCatalogPath
 }
+$productionOverrideMap["ArtifactDownload"] = @{
+    SigningSecret = $artifactDownloadSigningSecret
+    LinkTtlMinutes = 60
+    AllowRepeatedDownloads = $true
+    SidecarLastTunnelUrlPath = $lastUrlFile
+}
+$containerRuntime = if (-not [string]::IsNullOrWhiteSpace($env:B4A_CONTAINER_RUNTIME)) {
+    $env:B4A_CONTAINER_RUNTIME.Trim()
+} elseif (Get-Command podman -ErrorAction SilentlyContinue) {
+    "podman"
+} else {
+    "docker"
+}
+$containerManagerEnabled = if (-not [string]::IsNullOrWhiteSpace($env:B4A_CONTAINER_MANAGER_ENABLED)) {
+    [System.Convert]::ToBoolean($env:B4A_CONTAINER_MANAGER_ENABLED)
+} else {
+    $null -ne (Get-Command $containerRuntime -ErrorAction SilentlyContinue)
+}
+$agentBrokerUrl = if (-not [string]::IsNullOrWhiteSpace($env:B4A_AGENT_BROKER_URL)) {
+    $env:B4A_AGENT_BROKER_URL.Trim()
+} else {
+    "http://host.containers.internal:$BrokerPort"
+}
 $productionOverrideMap["FunctionPool"] = @{
     Enabled = $true
     StrictMode = $false
@@ -418,7 +655,18 @@ $productionOverrideMap["FunctionPool"] = @{
     HealthCheckIntervalSeconds = 10
     MaxWorkers = 32
     ContainerManager = @{
-        Enabled = $false
+        Enabled = $containerManagerEnabled
+        Runtime = $containerRuntime
+        NetworkName = ""
+        AgentBrokerUrl = $agentBrokerUrl
+        MaxContainersPerType = 3
+        WorkerImages = @{
+            agent = @{
+                Image = "bricks4agent-agent:latest"
+                MemoryLimit = "512m"
+                Volumes = @("$managedWorkspaceRoot`:/workspace")
+            }
+        }
     }
 }
 $productionOverrideMap["WorkerAuth"] = @{
@@ -514,24 +762,61 @@ $workerProc.Id | Out-File -FilePath $workerPidFile -Encoding ascii -NoNewline
 
 Wait-HttpStatusCode -Uri "http://127.0.0.1:$WebhookPort/webhook/line/" -AcceptStatusCodes @(400, 401, 403, 405) -TimeoutSeconds 60 -Label "LINE worker webhook" -Method "POST" -Body "{}"
 
-Remove-NgrokTunnelIfPresent -Name $tunnelName
-$tunnel = Invoke-NgrokApi -Method Post -Path "/api/tunnels" -Body @{
-    name = $tunnelName
-    addr = "http://localhost:$WebhookPort"
-    proto = "http"
-    inspect = $true
+$tunnelProvider = "ngrok"
+if ($ngrokAvailable) {
+    Remove-NgrokTunnelIfPresent -Name $tunnelName
+    $tunnel = Invoke-NgrokApi -Method Post -Path "/api/tunnels" -Body @{
+        name = $tunnelName
+        addr = "http://localhost:$WebhookPort"
+        proto = "http"
+        inspect = $true
+    }
+    $tunnel = Wait-NgrokTunnelReady -Name $tunnelName -TimeoutSeconds 10
+    $publicUrl = $tunnel.public_url
+} else {
+    $tunnelProvider = "localhost.run"
+    $publicUrl = Start-LocalhostRunTunnel
 }
-$tunnel = Wait-NgrokTunnelReady -Name $tunnelName -TimeoutSeconds 10
 
-$publicUrl = $tunnel.public_url
-if (-not $SkipWebhookUpdate) {
+$webhookUpdated = $false
+if (-not $SkipWebhookUpdate -and -not $ngrokAvailable) {
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            Update-LineWebhook -PublicUrl $publicUrl
+            $webhookUpdated = $true
+            break
+        } catch {
+            if ($attempt -ge 5) {
+                throw
+            }
+
+            Write-Warning ("Cloudflared URL was rejected by LINE or not ready yet; retrying with a new quick tunnel. Attempt {0}/5. {1}" -f $attempt, $_.Exception.Message)
+            Stop-RecordedProcess -PidFile $cloudflaredPidFile
+            Stop-RecordedProcess -PidFile $localhostRunPidFile
+            if ($tunnelProvider -eq "localhost.run") {
+                $publicUrl = Start-LocalhostRunTunnel
+            } else {
+                $publicUrl = Start-CloudflaredTunnel
+            }
+        }
+    }
+}
+
+if (-not $SkipWebhookUpdate -and -not $webhookUpdated) {
     Update-LineWebhook -PublicUrl $publicUrl
+} else {
+    "$publicUrl/webhook/line/" | Out-File -FilePath $lastUrlFile -Encoding utf8 -NoNewline
+}
+
+if (-not $SkipWebhookUpdate -and $tunnelProvider -eq "localhost.run") {
+    Start-LocalhostRunWebhookSync -RuntimeConfigPath $workerRuntimeConfigPath -LogsPath $logDir -UrlPath $lastUrlFile
 }
 
 Write-Host ""
 Write-Host "Broker PID:   $($brokerProc.Id)" -ForegroundColor Cyan
 Write-Host "Worker PID:   $($workerProc.Id)" -ForegroundColor Cyan
 Write-Host "Broker URL:   http://localhost:$BrokerPort" -ForegroundColor Cyan
+Write-Host "Tunnel:       $tunnelProvider" -ForegroundColor Cyan
 Write-Host "Webhook URL:  $publicUrl/webhook/line/" -ForegroundColor Cyan
 Write-Host "Broker logs:  $brokerLog | $brokerErrLog" -ForegroundColor Cyan
 Write-Host "Worker logs:  $workerLog | $workerErrLog" -ForegroundColor Cyan

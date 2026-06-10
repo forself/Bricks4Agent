@@ -54,7 +54,7 @@ var workerAuthSharedSecret = config.GetValue<string>("Worker:Auth:SharedSecret")
     ?? config.GetValue<string>("Broker:WorkerAuth:SharedSecret")
     ?? "";
 
-using var webhookReceiver = new WebhookReceiver(webhookPort, webhookHost, lineApi, audioTempPath, webhookLogger);
+using var webhookReceiver = new WebhookReceiver(webhookPort, webhookHost, lineApi, audioTempPath, brokerApiUrl, webhookLogger);
 var notificationPollMs = config.GetValue("Line:NotificationPollIntervalMs", 5000);
 var notificationPollInterval = TimeSpan.FromMilliseconds(Math.Max(1000, notificationPollMs));
 var inboundDispatcher = new InboundDispatcher(

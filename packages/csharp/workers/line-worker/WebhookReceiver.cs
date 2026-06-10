@@ -21,8 +21,10 @@ public class WebhookReceiver : IDisposable
 {
     private readonly HttpListener _listener;
     private readonly LineApiClient _lineApi;
+    private readonly HttpClient _httpClient = new();
     private readonly ILogger _logger;
     private readonly string _audioTempPath;
+    private readonly string _brokerApiUrl;
 
     /// <summary>入站訊息佇列，供外部消費</summary>
     public ConcurrentQueue<InboundMessage> InboundQueue { get; } = new();
@@ -30,16 +32,18 @@ public class WebhookReceiver : IDisposable
     /// <summary>訊息到達時觸發</summary>
     public event Action? OnMessageReceived;
 
-    public WebhookReceiver(int port, string host, LineApiClient lineApi, string audioTempPath, ILogger logger)
+    public WebhookReceiver(int port, string host, LineApiClient lineApi, string audioTempPath, string brokerApiUrl, ILogger logger)
     {
         _lineApi = lineApi;
         _logger = logger;
         _audioTempPath = audioTempPath;
+        _brokerApiUrl = brokerApiUrl.TrimEnd('/');
 
         Directory.CreateDirectory(audioTempPath);
 
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://{host}:{port}/webhook/line/");
+        _listener.Prefixes.Add($"http://{host}:{port}/api/v1/artifacts/download/");
     }
 
     /// <summary>啟動 Webhook 監聽</summary>
@@ -72,6 +76,12 @@ public class WebhookReceiver : IDisposable
 
         try
         {
+            if (request.Url?.AbsolutePath.StartsWith("/api/v1/artifacts/download/", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await ProxyArtifactDownloadAsync(request, response, ct);
+                return;
+            }
+
             // LINE 的 verify 請求（空 body）直接回 200
             if (request.HttpMethod != "POST")
             {
@@ -106,6 +116,43 @@ public class WebhookReceiver : IDisposable
         finally
         {
             response.Close();
+        }
+    }
+
+    private async Task ProxyArtifactDownloadAsync(HttpListenerRequest request, HttpListenerResponse response, CancellationToken ct)
+    {
+        if (request.HttpMethod != "GET")
+        {
+            response.StatusCode = 405;
+            return;
+        }
+
+        var pathAndQuery = request.Url?.PathAndQuery ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(pathAndQuery))
+        {
+            response.StatusCode = 404;
+            return;
+        }
+
+        try
+        {
+            using var upstream = await _httpClient.GetAsync(_brokerApiUrl + pathAndQuery, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.StatusCode = (int)upstream.StatusCode;
+
+            if (upstream.Content.Headers.ContentType != null)
+                response.ContentType = upstream.Content.Headers.ContentType.ToString();
+            if (upstream.Content.Headers.ContentDisposition != null)
+                response.Headers["Content-Disposition"] = upstream.Content.Headers.ContentDisposition.ToString();
+            if (upstream.Content.Headers.ContentLength.HasValue)
+                response.ContentLength64 = upstream.Content.Headers.ContentLength.Value;
+
+            await using var upstreamStream = await upstream.Content.ReadAsStreamAsync(ct);
+            await upstreamStream.CopyToAsync(response.OutputStream, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Artifact download proxy failed for {PathAndQuery}", pathAndQuery);
+            response.StatusCode = 502;
         }
     }
 
@@ -215,6 +262,7 @@ public class WebhookReceiver : IDisposable
     public void Dispose()
     {
         _listener.Close();
+        _httpClient.Dispose();
     }
 }
 

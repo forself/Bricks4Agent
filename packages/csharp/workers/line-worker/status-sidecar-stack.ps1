@@ -11,8 +11,31 @@ $runRoot = Join-Path $repoRoot ".run\line-sidecar"
 $brokerPidFile = Join-Path $runRoot "broker.pid"
 $workerPidFile = Join-Path $runRoot "line-worker.pid"
 $ngrokPidFile = Join-Path $runRoot "ngrok.pid"
+$cloudflaredPidFile = Join-Path $runRoot "cloudflared.pid"
+$localhostRunPidFile = Join-Path $runRoot "localhostrun.pid"
+$webhookSyncPidFile = Join-Path $runRoot "webhook-sync.pid"
 $configPath = Join-Path $scriptDir "appsettings.json"
 $tunnelName = "line$WebhookPort"
+$logDir = Join-Path $runRoot "logs"
+
+function Get-LatestLocalhostRunEndpoint {
+    param([string]$Directory)
+
+    $combined = ""
+    foreach ($name in @("localhostrun.out.log", "localhostrun.err.log")) {
+        $path = Join-Path $Directory $name
+        if (Test-Path $path) {
+            $combined += "`n" + (Get-Content $path -Raw -ErrorAction SilentlyContinue)
+        }
+    }
+
+    $matches = [regex]::Matches($combined, "https://[a-zA-Z0-9-]+\.lhr\.life")
+    if ($matches.Count -eq 0) {
+        return $null
+    }
+
+    return $matches[$matches.Count - 1].Value.TrimEnd("/") + "/webhook/line/"
+}
 
 function Get-RecordedProcessStatus {
     param([string]$PidFile, [string]$Label)
@@ -49,6 +72,9 @@ $rows = @(
     Get-RecordedProcessStatus -PidFile $brokerPidFile -Label "broker"
     Get-RecordedProcessStatus -PidFile $workerPidFile -Label "line-worker"
     Get-RecordedProcessStatus -PidFile $ngrokPidFile -Label "ngrok"
+    Get-RecordedProcessStatus -PidFile $cloudflaredPidFile -Label "cloudflared"
+    Get-RecordedProcessStatus -PidFile $localhostRunPidFile -Label "localhost.run"
+    Get-RecordedProcessStatus -PidFile $webhookSyncPidFile -Label "webhook-sync"
 )
 $rows | Format-Table -AutoSize
 
@@ -74,6 +100,13 @@ if (Test-Path $configPath) {
             Write-Host ""
             Write-Host ("LINE webhook endpoint: {0}" -f $endpoint.endpoint) -ForegroundColor Cyan
             Write-Host ("LINE webhook active:   {0}" -f $endpoint.active) -ForegroundColor Cyan
+            $latestLocalhostRunEndpoint = Get-LatestLocalhostRunEndpoint -Directory $logDir
+            if ($latestLocalhostRunEndpoint) {
+                Write-Host ("latest localhost.run:  {0}" -f $latestLocalhostRunEndpoint) -ForegroundColor Cyan
+                if ($endpoint.endpoint -ne $latestLocalhostRunEndpoint) {
+                    Write-Host "LINE webhook does not match latest localhost.run URL; sync watchdog should update it shortly." -ForegroundColor Yellow
+                }
+            }
         } catch {
             Write-Host ""
             Write-Host "Failed to query LINE webhook endpoint." -ForegroundColor Yellow
