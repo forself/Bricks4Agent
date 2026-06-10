@@ -180,6 +180,10 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     ("liquidation_reversal",  new LiquidationReversalStrategy()),
     ("liq_reversal_loose",    new LiquidationReversalStrategy("liq_reversal_loose", moveZ: 1.5m, oiDrop: 0.02m)),
     ("liq_reversal_tight",    new LiquidationReversalStrategy("liq_reversal_tight", moveZ: 2.5m, oiDrop: 0.05m)),
+    // [2026-06-10 v2 改寫] 多日 capitulation 投降耗盡(OI 連降+價連動 = 槓桿資金耗盡 → 反轉、日線抓得到)
+    ("liq_capit_w5",          new LiquidationReversalStrategy("liq_capit_w5", moveZ: 1.5m, oiDrop: 0.05m, window: 5)),
+    ("liq_capit_w3",          new LiquidationReversalStrategy("liq_capit_w3", moveZ: 1.5m, oiDrop: 0.03m, window: 3)),
+    ("liq_capit_w7",          new LiquidationReversalStrategy("liq_capit_w7", moveZ: 1.5m, oiDrop: 0.07m, window: 7)),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設

@@ -21,16 +21,18 @@ public class LiquidationReversalStrategy : IStrategy
     private readonly string _name;
     private readonly decimal _moveZ;    // move 門檻(近期報酬 std 的倍數)
     private readonly decimal _oiDrop;   // OI 驟降門檻(正值、代表 -%change 下限)
+    private readonly int _window;       // 觀察窗(1=單根級聯 v1;>1=多日 capitulation 投降耗盡 v2)
 
-    public LiquidationReversalStrategy(string name = "liquidation_reversal", decimal moveZ = 2.0m, decimal oiDrop = 0.03m)
+    public LiquidationReversalStrategy(string name = "liquidation_reversal", decimal moveZ = 2.0m, decimal oiDrop = 0.03m, int window = 1)
     {
         _name = name;
         _moveZ = moveZ;
         _oiDrop = oiDrop;
+        _window = window;
     }
 
     public string Name => _name;
-    public string Description => $"流動性清算反轉 — 大 move(≥{_moveZ}σ)+ OI 驟降(≥{_oiDrop:P0})= 強制平倉級聯 → 反向吃 overshoot 反轉";
+    public string Description => $"流動性清算反轉 — {_window}日 move(≥{_moveZ}σ)+ OI 驟降(≥{_oiDrop:P0})= {(_window > 1 ? "槓桿投降耗盡" : "強制平倉級聯")} → 反向吃反轉";
     public StrategyCategory Category => StrategyCategory.MeanReversion;
     public int MinBars => 40;
     public decimal MinCapitalUsdt => 100m;
@@ -41,6 +43,7 @@ public class LiquidationReversalStrategy : IStrategy
     {
         ["liq_move_z"]  = new() { Type = "decimal", Default = 2.0m,  Choices = new object[] { 1.5m, 2.0m, 2.5m, 3.0m },    Description = "move 門檻(近期報酬 std 倍數)" },
         ["liq_oi_drop"] = new() { Type = "decimal", Default = 0.03m, Choices = new object[] { 0.02m, 0.03m, 0.05m, 0.08m }, Description = "OI 驟降門檻(-%change 下限)" },
+        ["liq_window"]  = new() { Type = "decimal", Default = 1m,    Choices = new object[] { 1m, 3m, 5m, 7m },              Description = "觀察窗(1=單根級聯、>1=多日capitulation)" },
     };
 
     public Signal Evaluate(List<BarData> bars, StrategyConfig config)
@@ -64,15 +67,18 @@ public class LiquidationReversalStrategy : IStrategy
         decimal vol = (decimal)Math.Sqrt(v2 / rets.Count);
         if (vol <= 0m) return Hold(config, "vol=0");
 
-        var last = bars[^1]; var prev = bars[^2];
-        if (prev.Close <= 0m) return Hold(config, "prev close 0");
-        decimal todayRet = (last.Close - prev.Close) / prev.Close;
-        decimal moveInVol = todayRet / vol;
+        int w = (int)config.GetParam("liq_window", (decimal)_window);
+        if (w < 1) w = 1;
+        if (bars.Count < w + 2) return Hold(config, "window 不足");
+        var last = bars[^1]; var baseBar = bars[^(w + 1)];
+        if (baseBar.Close <= 0m) return Hold(config, "base close 0");
+        decimal cumRet = (last.Close - baseBar.Close) / baseBar.Close;
+        decimal moveInVol = cumRet / (vol * (decimal)Math.Sqrt(w));   // W 日累積報酬 → 以 vol×√W 標準化
 
         if (!(last.OpenInterest is decimal oiCur && oiCur > 0m &&
-              prev.OpenInterest is decimal oiPrev && oiPrev > 0m))
+              baseBar.OpenInterest is decimal oiPrev && oiPrev > 0m))
             return Hold(config, "無 OI 資料(非 perp 或未接 metrics)— 自動降級");
-        decimal oiChange = (oiCur - oiPrev) / oiPrev;
+        decimal oiChange = (oiCur - oiPrev) / oiPrev;   // W 日 OI 累積變化(連降 = 投降耗盡)
 
         bool bigMove = Math.Abs(moveInVol) >= moveZ;
         bool oiDropped = oiChange <= -oiDropTh;
@@ -86,12 +92,12 @@ public class LiquidationReversalStrategy : IStrategy
             if (moveInVol < 0m)
             {
                 action = "buy";
-                reason = $"大跌 {todayRet:P1}({moveInVol:F1}σ)+ OI 驟降 {oiChange:P1} = 多頭強制平倉級聯 → 反向 BUY 吃反彈";
+                reason = $"{w}日跌 {cumRet:P1}({moveInVol:F1}σ)+ OI 降 {oiChange:P1} = 多頭投降耗盡 → 反向 BUY 吃反轉";
             }
             else
             {
                 action = "sell";
-                reason = $"大漲 {todayRet:P1}({moveInVol:F1}σ)+ OI 驟降 {oiChange:P1} = 空頭軋空級聯 → 反向 SELL 吃回落";
+                reason = $"{w}日漲 {cumRet:P1}({moveInVol:F1}σ)+ OI 降 {oiChange:P1} = 空頭投降耗盡 → 反向 SELL 吃反轉";
             }
             confidence = Math.Clamp(0.6m + (Math.Abs(moveInVol) - moveZ) * 0.1m + (-oiChange - oiDropTh), 0.5m, 0.9m);
         }
