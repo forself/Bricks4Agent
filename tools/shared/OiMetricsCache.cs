@@ -194,13 +194,14 @@ public static class OiMetricsCache
             var endTs = (i + 1 < bars.Count) ? bars[i + 1].OpenTime : startTs + barLen;
 
             while (sIdx < snaps.Count && snaps[sIdx].Ts < startTs) sIdx++;
-            decimal oiSum = 0m, lsSum = 0m;
+            decimal oiSum = 0m, lsSum = 0m, takerSum = 0m;
             int n = 0;
             int j = sIdx;
             while (j < snaps.Count && snaps[j].Ts < endTs)
             {
                 oiSum += snaps[j].SumOpenInterestValue;
                 lsSum += snaps[j].CountLsRatio;
+                takerSum += snaps[j].SumTakerLsVolRatio;
                 n++;
                 j++;
             }
@@ -208,6 +209,7 @@ public static class OiMetricsCache
             {
                 bars[i].OpenInterest ??= oiSum / n;
                 bars[i].RetailLongShortRatio = lsSum / n;
+                bars[i].TakerLsRatio = takerSum / n;
             }
         }
     }

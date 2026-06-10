@@ -192,6 +192,9 @@ if (args.Contains("--graveyard") && symbols.Contains("BTCUSDT"))
     ("btc_lead",              new BtcLeadStrategy()),
     ("btc_lead_l2",           new BtcLeadStrategy("btc_lead_l2", lag: 2, moveZ: 1.0m)),
     ("btc_lead_z05",          new BtcLeadStrategy("btc_lead_z05", lag: 1, moveZ: 0.5m)),
+    // [2026-06-10 從零開發、盤中] Order-flow 失衡:taker 主動買賣量比 → 短期續航(OFI 微結構、盤中才有意義)
+    ("order_flow",            new OrderFlowImbalanceStrategy()),
+    ("order_flow_inv",        new OrderFlowImbalanceStrategy("order_flow_inv", invert: true)),
     ("oi_momentum_ls_tight",  new OiMomentumLsStrategy("oi_momentum_ls_tight",  hotPct: 0.90m, coldPct: 0.10m)),
     ("oi_momentum_ls_xtight", new OiMomentumLsStrategy("oi_momentum_ls_xtight", hotPct: 0.95m, coldPct: 0.05m)),
     // 2026-05-28 翻案測:OI 暴衝 contrarian(mean revert);momentum 蓋棺後對立假設
