@@ -88,6 +88,14 @@ var strategies = new Dictionary<string, IStrategy>
     // 驗證仍「無 OOS edge」(全期 -34%/Sharpe -0.09),保留供研究、★勿實盤部署★。
     ["fib_retrace_ls"]   = new FibRetraceLsStrategy(),
     ["harmonic_ls"]      = new HarmonicLsStrategy(),        // ⚠ 無 edge、勿實盤
+    // [2026-06-10 Claude+AnthonyLee] 驗證的諧波 PRZ 變體 — strat-validate 跨市場冠軍家族
+    //   (harm_prz_scan10_widepz: crypto+台股雙料冠軍、DSR 0.950 / robust t≈14、過 BH-FDR)。
+    //   scanner 諧波腿(widepz/scan10/top2/etf/usstock)早指向這些 name、但 worker 漏註冊
+    //   → 派信號回 "Unknown strategy" → 諧波 shadow 永遠 0 進場。補註冊 = 打通 研究→shadow→arm。
+    //   參數對齊 strat-validate(scanWindows:10、przWidening:0.15=wide PRZ ±15%)。
+    ["harm_prz_scan10_widepz"]      = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10_widepz", scanWindows: 10, przWidening: 0.15m),
+    ["harm_prz_scan10"]             = new HarmonicPrzLsStrategy(patternWhitelist: null, name: "harm_prz_scan10", scanWindows: 10),
+    ["harm_prz_top2_scan10_widepz"] = new HarmonicPrzLsStrategy(new[] { "butterfly", "five_o" }, "harm_prz_top2_scan10_widepz", scanWindows: 10, przWidening: 0.15m),
     // [2026-05-24 Claude] 8 年深日線(2018-2026)OOS + 去相關篩出的 3 條,無狀態出場、可 bot 直接跑。
     // 一致性 ≥55%、1× 報酬正、趨勢↔均值回歸彼此 |r|≤0.42。★上真錢前必走 shadow 對帳、務必 ~1× 有效槓桿★。
     ["don_trend"]        = new DonTrendStrategy(),   // 海龜突破(趨勢腿)
