@@ -136,9 +136,11 @@ public static class AutoTraderEndpoints
             if (string.IsNullOrEmpty(symbol))
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
-            // 擁有者 = 當前登入者；未登入視同 admin user prn_dashboard（向後相容、本機 dev）
+            // [2026-06-10 安全] fail-closed:未登入直接拒(原 fail-open null→prn_dashboard admin、真錢腿可被匿名新增)
             var (pid, _) = ctx.GetCurrentUser();
-            var owner = pid ?? "prn_dashboard";
+            if (string.IsNullOrEmpty(pid))
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var owner = pid;
 
             svc.AddWatch(symbol, exchange, strategy, quantity, mode, leverage, owner, htfInterval, shadow);
             return Results.Ok(ApiResponseHelper.Success(new {
@@ -159,7 +161,9 @@ public static class AutoTraderEndpoints
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
             var (pid, role) = ctx.GetCurrentUser();
-            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(pid))   // [2026-06-10 安全] fail-closed:未登入拒(原 null→admin)
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var isAdminOrLegacy = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
             var (removed, reason) = svc.RemoveWatch(symbol, exchange, pid, isAdminOrLegacy);
             if (!removed && reason == "forbidden")
                 return Results.Json(ApiResponseHelper.Error("Forbidden: not your watch", 403), statusCode: 403);
@@ -187,7 +191,9 @@ public static class AutoTraderEndpoints
                 return Results.Ok(ApiResponseHelper.Error("Missing symbol"));
 
             var (pid, role) = ctx.GetCurrentUser();
-            var isAdminOrLegacy = pid == null || string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(pid))   // [2026-06-10 安全] fail-closed:未登入拒(真錢武裝端點、原 null→admin)
+                return Results.Json(ApiResponseHelper.Error("Login required", 401), statusCode: 401);
+            var isAdminOrLegacy = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase);
             var (ok, reason) = svc.SetShadow(symbol, exchange, shadow, pid, isAdminOrLegacy);
             if (!ok && reason == "forbidden")
                 return Results.Json(ApiResponseHelper.Error("Forbidden: not your watch", 403), statusCode: 403);
@@ -196,8 +202,10 @@ public static class AutoTraderEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { symbol, exchange, shadow }));
         });
 
-        at.MapPost("/interval", async (AutoTraderService svc, HttpRequest req) =>
+        at.MapPost("/interval", async (AutoTraderService svc, HttpContext ctx, HttpRequest req) =>
         {
+            if (!RequestBodyHelper.IsAdmin(ctx))   // [2026-06-10 安全] 全域設定:要 admin(原無檢查)
+                return Results.Json(ApiResponseHelper.Error("Forbidden: admin required", 403), statusCode: 403);
             using var reader = new StreamReader(req.Body);
             var body = await reader.ReadToEndAsync();
             var doc = JsonDocument.Parse(body).RootElement;

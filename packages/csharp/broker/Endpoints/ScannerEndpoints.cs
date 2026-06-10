@@ -80,8 +80,10 @@ public static class ScannerEndpoints
             catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error(ex.Message)); }
         });
 
-        sc.MapPost("/legs/{id}/enable", async (BrokerDb db, string id, HttpRequest req) =>
+        sc.MapPost("/legs/{id}/enable", async (BrokerDb db, string id, HttpRequest req, HttpContext ctx) =>
         {
+            if (!RequestBodyHelper.IsAdmin(ctx))   // [2026-06-10 安全] 真錢腿開關:要 admin(原無檢查)
+                return Results.Json(ApiResponseHelper.Error("Forbidden: admin required", 403), statusCode: 403);
             try
             {
                 using var doc = await JsonDocument.ParseAsync(req.Body);
@@ -96,8 +98,10 @@ public static class ScannerEndpoints
             catch (Exception ex) { return Results.Ok(ApiResponseHelper.Error(ex.Message)); }
         });
 
-        sc.MapPost("/legs/{id}/shadow", async (BrokerDb db, string id, HttpRequest req) =>
+        sc.MapPost("/legs/{id}/shadow", async (BrokerDb db, string id, HttpRequest req, HttpContext ctx) =>
         {
+            if (!RequestBodyHelper.IsAdmin(ctx))   // [2026-06-10 安全] 真錢武裝:要 admin(原無檢查)
+                return Results.Json(ApiResponseHelper.Error("Forbidden: admin required", 403), statusCode: 403);
             try
             {
                 using var doc = await JsonDocument.ParseAsync(req.Body);
