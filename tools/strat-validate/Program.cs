@@ -2054,15 +2054,19 @@ async Task RunDispersion()
     var sname = args.FirstOrDefault(a => a.StartsWith("--strat="))?.Substring(8) ?? "harm_prz_scan10_widepz";
     var st = strats.FirstOrDefault(s => s.name == sname).s;
     if (st == null) { Console.WriteLine($"找不到策略 {sname}"); return; }
-    Console.WriteLine($"=== edge 離散度診斷:{sname}(per-symbol LS、cost {costBps}bps/側、full-period)===");
+    var tf = args.FirstOrDefault(a => a.StartsWith("--tf="))?.Substring(5) ?? "1d";
+    int wfTrain = 250, wfTest = 90, wfStep = 60;   // 盤中用較大 bar 窗(1h:~30d/10d/7d)
+    if (tf == "1h") { wfTrain = 720; wfTest = 240; wfStep = 168; }
+    else if (tf == "4h") { wfTrain = 360; wfTest = 120; wfStep = 90; }
+    Console.WriteLine($"=== edge 離散度診斷:{sname}(per-symbol LS、cost {costBps}bps/側、tf={tf}、wf {wfTrain}/{wfTest}/{wfStep})===");
     var dat = new Dictionary<string, List<BarData>>();
-    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 200) dat[sym] = b; } catch { } }
+    foreach (var sym in symbols) { try { var b = await Fetch(sym, tf); if (b.Count >= wfTrain + wfTest) dat[sym] = b; } catch { } }
     // retail_ls / oi / liquidation 策略需注入 RetailLongShortRatio / OpenInterest(--apply-retail-ls)否則整段 hold → 0 edge
     if (realRetailLs)
     {
         int inj = 0;
-        foreach (var kv in dat) try { await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, "1d"); inj++; } catch { }
-        Console.WriteLine($"  📊 已注入 retail L/S + OI metrics:{inj}/{dat.Count} 檔");
+        foreach (var kv in dat) try { await ToolsShared.OiMetricsCache.InjectInto(kv.Value, kv.Key, tf); inj++; } catch { }
+        Console.WriteLine($"  📊 已注入 retail L/S + OI metrics({tf}):{inj}/{dat.Count} 檔");
     }
     // 注入 BTC 當日報酬(BTC-lead alt-lag 策略用;從 price bars 算、不需 metrics)
     if (dat.TryGetValue("BTCUSDT", out var btcB))
@@ -2079,7 +2083,7 @@ async Task RunDispersion()
     foreach (var kv in dat)
         try
         {
-            var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
+            var w = LongShortBacktestEngine.RunWalkForward(st, kv.Value, new StrategyConfig { Symbol = kv.Key, Interval = tf }, wfTrain, wfTest, wfStep, commission: gComm, slippagePct: gSlip);
             if (w.TotalFolds <= 0) continue;
             var fsh = w.Folds.Where(f => f.Test != null).Select(f => (double)f.Test!.SharpeRatio).ToList();
             if (fsh.Count == 0) continue;
