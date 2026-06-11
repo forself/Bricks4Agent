@@ -575,6 +575,8 @@ if (args.Contains("--fundsig")) { await RunFundSig(); return; }
 if (args.Contains("--tsmom")) { await RunTsMom(); return; }
 // ── --pairs:配對/協整 stat-arb(價差 z-score 均值回歸、market-neutral、應該真去相關)──
 if (args.Contains("--pairs")) { await RunPairs(); return; }
+if (args.Contains("--leadlag")) { await RunLeadLag(); return; }
+if (args.Contains("--regime")) { await RunRegime(); return; }
 // ── --lowvol:橫斷面低波動異常(long 低波動幣/short 高波動)──
 if (args.Contains("--lowvol")) { await RunLowVol(); return; }
 // ── --harmonic:諧波/fib 跨時框重驗(觸發頻率 + OOS + 顯著性;測低時框能否救回)──
@@ -2208,6 +2210,108 @@ async Task RunDispersion()
         Console.WriteLine($"\n  判讀:{(flowAdds ? $"✅ 資金流加在波動上「有」加分(組合 {combSh:F2} > 純波動 {volSh:F2})→ 你原始雙層論點成立" : $"⚠️ 資金流「沒」加分(組合 {combSh:F2} ≤ 純波動 {volSh:F2})→ 波動已抓到主因、資金流冗餘、雙層不值得")}");
         Console.WriteLine($"  (caveat:flow_score 全期靜態 + 週採樣 = 輕微 lookahead;過關才上 ex-ante trailing-flow per rebalance)");
     }
+}
+
+// harmonic regime 分析:把 harmonic 的每個 OOS test fold 按市況(波動/趨勢度ER/方向)分桶,看它在哪種市況強/弱。
+// 反轉策略理論:盤整/高波動強、強趨勢弱。量化確認 → 部署時可依市況調倉 + 早期察覺衰退。
+async Task RunRegime()
+{
+    var harm = strats.FirstOrDefault(s => s.name == "harm_prz_scan10_widepz").s;
+    if (harm == null) { Console.WriteLine("缺 harmonic"); return; }
+    Console.WriteLine($"=== harmonic regime 分析(harm_prz_scan10_widepz、各 OOS fold 按市況分桶、cost {costBps}bps)===\n");
+    var dat = new Dictionary<string, List<BarData>>();
+    foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
+    Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length}\n");
+    var folds = new List<(double ret, double vol, double dir, double er)>();
+    foreach (var kv in dat)
+    {
+        var b = kv.Value;
+        try
+        {
+            var w = LongShortBacktestEngine.RunWalkForward(harm, b, new StrategyConfig { Symbol = kv.Key, Interval = "1d" }, 250, 90, 60, commission: gComm, slippagePct: gSlip);
+            var fl = w.Folds.Where(f => f.Test != null).ToList();
+            for (int f = 0; f < fl.Count; f++)
+            {
+                int s0 = f * 60 + 250, s1 = Math.Min(b.Count, s0 + 90);
+                if (s0 < 1 || s1 - s0 < 20) continue;
+                var rr = new List<double>();
+                for (int i = s0 + 1; i < s1; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) rr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+                if (rr.Count < 15) continue;
+                double m = rr.Average(); double vol = Math.Sqrt(rr.Select(x => (x - m) * (x - m)).Sum() / rr.Count) * Math.Sqrt(252);
+                double dir = (double)(b[s1 - 1].Close - b[s0].Close) / (double)b[s0].Close;
+                double net = Math.Abs((double)(b[s1 - 1].Close - b[s0].Close)); double tot = 0; for (int i = s0 + 1; i < s1; i++) tot += Math.Abs((double)(b[i].Close - b[i - 1].Close)); double er = tot > 0 ? net / tot : 0;
+                folds.Add(((double)fl[f].Test!.TotalReturnPct, vol, dir, er));
+            }
+        }
+        catch { }
+    }
+    if (folds.Count < 20) { Console.WriteLine("fold 不足"); return; }
+    Console.WriteLine($"  總 {folds.Count} folds(跨幣 OOS 90日 test 窗)。每 fold = 那段市況下 harmonic 的 OOS 報酬。\n");
+    void Bucket(string label, Func<(double ret, double vol, double dir, double er), bool> hi, string hiName, string loName)
+    {
+        var H = folds.Where(hi).Select(f => f.ret).ToList(); var Lo = folds.Where(f => !hi(f)).Select(f => f.ret).ToList();
+        double am(List<double> l) => l.Count > 0 ? l.Average() : 0; double wr(List<double> l) => l.Count > 0 ? l.Count(x => x > 0) * 100.0 / l.Count : 0;
+        Console.WriteLine($"  {label,-12} {hiName,-10} avg {am(H),6:F1}% 勝{wr(H),3:F0}% (n{H.Count})  │  {loName,-10} avg {am(Lo),6:F1}% 勝{wr(Lo),3:F0}% (n{Lo.Count})");
+    }
+    double volMed = folds.Select(f => f.vol).OrderBy(x => x).ElementAt(folds.Count / 2);
+    double erMed = folds.Select(f => f.er).OrderBy(x => x).ElementAt(folds.Count / 2);
+    Bucket("波動", f => f.vol >= volMed, "高波動", "低波動");
+    Bucket("趨勢度ER", f => f.er >= erMed, "趨勢(高ER)", "盤整(低ER)");
+    Bucket("方向", f => f.dir >= 0, "上漲窗", "下跌窗");
+    Console.WriteLine($"\n  (門檻:vol中位={volMed:F2} ER中位={erMed:F2})");
+    Console.WriteLine($"  判讀:harmonic=反轉策略 → 預期「盤整(低ER)/高波動」強、「強趨勢(高ER)」弱。看上面數據確認 + 量化差距。");
+}
+
+// 跨市場 lead-lag:A 今天報酬 vs B 明天報酬的相關。顯著 = A 領先 B、可用 A 預測 B(資訊流時差)。
+// 對照同日相關 = lead-lag 要比同日「多出來」才是真領先(否則只是同步共動)。
+async Task RunLeadLag()
+{
+    Console.WriteLine("=== 跨市場 lead-lag(A[t] 報酬 預測 B[t+1] 嗎;對照同日相關)===\n");
+    var reps = new (string nm, string sym, bool yahoo)[]
+    {
+        ("BTC", "BTCUSDT", false), ("ETH", "ETHUSDT", false),
+        ("US_SPY", "SPY", true), ("Nasdaq", "QQQ", true),
+        ("Gold", "GC=F", true), ("Oil", "CL=F", true),
+        ("EUR", "EURUSD=X", true), ("JPY", "USDJPY=X", true),
+    };
+    var ret = new Dictionary<string, SortedDictionary<DateTime, double>>();
+    foreach (var (nm, sym, yahoo) in reps)
+    {
+        List<BarData> bars;
+        try { bars = yahoo ? await ToolsShared.StockBarCache.FetchOrLoad(sym, "1d", barsLimit) : await ToolsShared.KlineCache.FetchOrLoad(sym, "1d", barsLimit); }
+        catch { continue; }
+        if (bars.Count < 200) continue;
+        var sd = new SortedDictionary<DateTime, double>();
+        for (int i = 1; i < bars.Count; i++) { double pv = (double)bars[i - 1].Close; if (pv > 0) sd[bars[i].OpenTime.Date] = (double)(bars[i].Close - bars[i - 1].Close) / pv; }
+        if (sd.Count >= 200) { ret[nm] = sd; Console.WriteLine($"  {nm,-10} {sd.Count} 日"); }
+    }
+    var names = ret.Keys.ToList();
+    double Corr(List<double> xs, List<double> ys)
+    {
+        if (xs.Count < 50) return double.NaN;
+        double mx = xs.Average(), my = ys.Average(), sxy = 0, sx = 0, sy = 0;
+        for (int i = 0; i < xs.Count; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sx += (xs[i] - mx) * (xs[i] - mx); sy += (ys[i] - my) * (ys[i] - my); }
+        return (sx > 0 && sy > 0) ? sxy / Math.Sqrt(sx * sy) : double.NaN;
+    }
+    // lag>=1:A[t] vs B 在 A 之後 1-4 日內的下一個交易日;lag=0:同日
+    double XCorr(string a, string b, bool lead)
+    {
+        var da = ret[a]; var db = ret[b]; var xs = new List<double>(); var ys = new List<double>();
+        foreach (var kv in da)
+        {
+            if (!lead) { if (db.TryGetValue(kv.Key, out var v0)) { xs.Add(kv.Value); ys.Add(v0); } continue; }
+            for (int d = 1; d <= 4; d++) if (db.TryGetValue(kv.Key.AddDays(d), out var v)) { xs.Add(kv.Value); ys.Add(v); break; }
+        }
+        return Corr(xs, ys);
+    }
+    Console.WriteLine("\n=== lead-lag 相關(列=領先A、行=滯後B;A[t] vs B[t+1])===");
+    Console.WriteLine("  " + new string(' ', 10) + string.Join("", names.Select(n => $"{n,8}".Substring(0, Math.Min(8, $"{n,8}".Length)))));
+    foreach (var a in names)
+        Console.WriteLine($"  {a,-10}" + string.Join("", names.Select(b => { var c = a == b ? double.NaN : XCorr(a, b, true); return double.IsNaN(c) ? $"{"-",8}" : $"{c,8:F2}"; })));
+    Console.WriteLine("\n=== 同日相關(對照;lead-lag 要比這多出來才是真領先)===");
+    foreach (var a in names)
+        Console.WriteLine($"  {a,-10}" + string.Join("", names.Select(b => { var c = a == b ? double.NaN : XCorr(a, b, false); return double.IsNaN(c) ? $"{"-",8}" : $"{c,8:F2}"; })));
+    Console.WriteLine("\n  判讀:|lead-lag| > 0.1 且明顯 > 同日 = 真領先(可交易);多半 < 0.1(日頻宏觀已被套利)。");
 }
 
 // 跨市場諧波分散:同一條 harmonic 跑 crypto/美股/台股 → 各市場日報酬序列 → 相關矩陣 + 等權組合。
