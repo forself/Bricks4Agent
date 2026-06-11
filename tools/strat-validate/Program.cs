@@ -2303,7 +2303,47 @@ async Task RunXMarket()
         mstats["FX-ditrend"] = (st2.sh, st2.dd, st2.ret, nsym);
         Console.WriteLine($"  {"FX-ditrend",-8} {nsym,2} 對 · {daily.Count,4} 交易日 · Sharpe {st2.sh,5:F2} · maxDD {st2.dd,3:F0}% · 全期 {st2.ret,6:F0}%");
     }
-    var mnames = markets.Select(m => m.name).Append("FX-ditrend").ToArray();
+    // 結構性 alpha sleeve(crypto、非價格機制)— 測是否跟 harmonic 去相關 = 真機制分散
+    bool withStruct = args.Contains("--with-structural");
+    if (withStruct)
+    {
+        var structStrats = new (string nm, IStrategy st)[]
+        {
+            ("crypto-funding", strats.FirstOrDefault(s => s.name == "funding_momentum_ls").s),   // 你最強的結構訊號 t=5.93
+            ("crypto-retail", strats.FirstOrDefault(s => s.name == "retail_ls_delta_contrarian").s),
+            ("crypto-oi", strats.FirstOrDefault(s => s.name == "oi_momentum_ls").s),
+        };
+        var cu = new[] { "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT" };
+        foreach (var (nm, sst) in structStrats)
+        {
+            if (sst == null) continue;
+            var pd = new Dictionary<DateTime, List<double>>(); var ps = new Dictionary<string, SortedDictionary<DateTime, double>>(); int ns = 0;
+            foreach (var sym in cu)
+            {
+                List<BarData> bars;
+                try { bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d", barsLimit); } catch { continue; }
+                if (bars.Count < 200) continue;
+                try { await ToolsShared.OiMetricsCache.InjectInto(bars, sym, "1d"); } catch { }
+                try { await ToolsShared.FundingCache.InjectInto(bars, sym, "1d"); } catch { }   // funding 訊號(funding_momentum 用)
+                try
+                {
+                    var bt = LongShortBacktestEngine.Run(sst, bars, new StrategyConfig { Symbol = sym, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
+                    var eq = bt.EquityCurve; var sd = new SortedDictionary<DateTime, double>();
+                    for (int i = 1; i < eq.Count; i++) { double pv = (double)eq[i - 1].Value; if (pv <= 0) continue; double r = (double)(eq[i].Value - eq[i - 1].Value) / pv; var d = eq[i].Date.Date; if (!pd.TryGetValue(d, out var l)) pd[d] = l = new(); l.Add(r); sd[d] = r; }
+                    if (sd.Count > 20) ps[sym] = sd; ns++;
+                }
+                catch { }
+            }
+            var dd2 = new SortedDictionary<DateTime, double>();
+            foreach (var kv in pd) if (kv.Value.Count > 0) dd2[kv.Key] = kv.Value.Average();
+            mret[nm] = dd2; mSymRet[nm] = ps;
+            var stt = StatsOf(dd2.Values.ToArray()); mstats[nm] = (stt.sh, stt.dd, stt.ret, ns);
+            Console.WriteLine($"  {nm,-12} {ns,2} 檔 · {dd2.Count,4} 交易日 · Sharpe {stt.sh,5:F2} · maxDD {stt.dd,3:F0}% · 全期 {stt.ret,6:F0}%");
+        }
+    }
+    var mnames = (withStruct
+        ? markets.Select(m => m.name).Append("FX-ditrend").Append("crypto-funding").Append("crypto-retail").Append("crypto-oi")
+        : markets.Select(m => m.name).Append("FX-ditrend")).Where(n => mret.ContainsKey(n)).ToArray();
     double PairCorr(string a, string b)
     {
         var da = mret[a]; var db = mret[b]; var xs = new List<double>(); var ys = new List<double>();
