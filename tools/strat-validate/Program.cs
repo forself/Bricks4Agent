@@ -2236,9 +2236,11 @@ async Task RunXMarket()
     }
     var mret = new Dictionary<string, SortedDictionary<DateTime, double>>();
     var mstats = new Dictionary<string, (double sh, double dd, double ret, int n)>();
+    var mSymRet = new Dictionary<string, Dictionary<string, SortedDictionary<DateTime, double>>>();   // 市場→標的→日報酬(真實模擬用)
     foreach (var (mn, syms, yahoo) in markets)
     {
         var perDay = new Dictionary<DateTime, List<double>>();
+        var perSym = new Dictionary<string, SortedDictionary<DateTime, double>>();
         int nsym = 0;
         foreach (var sym in syms)
         {
@@ -2250,6 +2252,7 @@ async Task RunXMarket()
             {
                 var bt = LongShortBacktestEngine.Run(harm, bars, new StrategyConfig { Symbol = sym, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
                 var eq = bt.EquityCurve;
+                var sd = new SortedDictionary<DateTime, double>();
                 for (int i = 1; i < eq.Count; i++)
                 {
                     double pv = (double)eq[i - 1].Value; if (pv <= 0) continue;
@@ -2257,7 +2260,9 @@ async Task RunXMarket()
                     var d = eq[i].Date.Date;
                     if (!perDay.TryGetValue(d, out var l)) perDay[d] = l = new();
                     l.Add(r);
+                    sd[d] = r;
                 }
+                if (sd.Count > 20) perSym[sym] = sd;
                 nsym++;
             }
             catch { }
@@ -2265,6 +2270,7 @@ async Task RunXMarket()
         var daily = new SortedDictionary<DateTime, double>();
         foreach (var kv in perDay) if (kv.Value.Count > 0) daily[kv.Key] = kv.Value.Average();
         mret[mn] = daily;
+        mSymRet[mn] = perSym;
         var st = StatsOf(daily.Values.ToArray());
         mstats[mn] = (st.sh, st.dd, st.ret, nsym);
         Console.WriteLine($"  {mn,-8} {nsym,2} 檔 · {daily.Count,4} 交易日 · Sharpe {st.sh,5:F2} · maxDD {st.dd,3:F0}% · 全期 {st.ret,6:F0}%");
@@ -2272,7 +2278,7 @@ async Task RunXMarket()
     // ── 加 di_trend_ls FX 進相關矩陣(驗證它跟 harmonic 去相關 = 真分散腿)──
     {
         var fxPairs = new[] { "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDCHF=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X", "EURJPY=X", "GBPJPY=X", "EURGBP=X", "AUDJPY=X" };
-        var perDay = new Dictionary<DateTime, List<double>>(); int nsym = 0;
+        var perDay = new Dictionary<DateTime, List<double>>(); var perSym2 = new Dictionary<string, SortedDictionary<DateTime, double>>(); int nsym = 0;
         foreach (var sym in fxPairs)
         {
             List<BarData> bars;
@@ -2282,7 +2288,9 @@ async Task RunXMarket()
             {
                 var bt = LongShortBacktestEngine.Run(ditr, bars, new StrategyConfig { Symbol = sym, Interval = "1d" }, commission: gComm, slippagePct: gSlip);
                 var eq = bt.EquityCurve;
-                for (int i = 1; i < eq.Count; i++) { double pv = (double)eq[i - 1].Value; if (pv <= 0) continue; double r = (double)(eq[i].Value - eq[i - 1].Value) / pv; var d = eq[i].Date.Date; if (!perDay.TryGetValue(d, out var l)) perDay[d] = l = new(); l.Add(r); }
+                var sd = new SortedDictionary<DateTime, double>();
+                for (int i = 1; i < eq.Count; i++) { double pv = (double)eq[i - 1].Value; if (pv <= 0) continue; double r = (double)(eq[i].Value - eq[i - 1].Value) / pv; var d = eq[i].Date.Date; if (!perDay.TryGetValue(d, out var l)) perDay[d] = l = new(); l.Add(r); sd[d] = r; }
+                if (sd.Count > 20) perSym2[sym] = sd;
                 nsym++;
             }
             catch { }
@@ -2290,6 +2298,7 @@ async Task RunXMarket()
         var daily = new SortedDictionary<DateTime, double>();
         foreach (var kv in perDay) if (kv.Value.Count > 0) daily[kv.Key] = kv.Value.Average();
         mret["FX-ditrend"] = daily;
+        mSymRet["FX-ditrend"] = perSym2;
         var st2 = StatsOf(daily.Values.ToArray());
         mstats["FX-ditrend"] = (st2.sh, st2.dd, st2.ret, nsym);
         Console.WriteLine($"  {"FX-ditrend",-8} {nsym,2} 對 · {daily.Count,4} 交易日 · Sharpe {st2.sh,5:F2} · maxDD {st2.dd,3:F0}% · 全期 {st2.ret,6:F0}%");
@@ -2350,6 +2359,51 @@ async Task RunXMarket()
         Console.WriteLine($"  單 crypto:        Sharpe {cr.sh,5:F2} · maxDD {cr.dd,3:F0}%");
         Console.WriteLine($"  跨市場反波動率:   Sharpe {csIv.sh,5:F2} · maxDD {csIv.dd,3:F0}%");
         Console.WriteLine($"  → Sharpe {(cr.sh > 0 ? (csIv.sh / cr.sh - 1) * 100 : 0),0:+0;-0}% · maxDD {cr.dd - csIv.dd,0:+0;-0} 個百分點({(csIv.dd < cr.dd ? "更低 = 分散有效" : "沒降")})");
+    }
+    // 真實部署模擬:每市場只持 N 個並行倉(bootstrap 隨機 N 檔)→ 誠實可部署數字(非全標的平均灌水)
+    int realN = 0;
+    var rnArg = args.FirstOrDefault(a => a.StartsWith("--realistic-n="));
+    if (rnArg != null) int.TryParse(rnArg.Substring(14), out realN);
+    if (realN > 0)
+    {
+        var rng2 = new Random(123);
+        const int BOOT = 300;
+        Console.WriteLine($"\n=== 真實部署模擬:每市場持 {realN} 個並行倉(bootstrap {BOOT}、vs 全標的灌水版)===");
+        Console.WriteLine($"  {"市場",-12}{"真實Sharpe",11}{"真實maxDD%",12}{"灌水Sh",9}{"灌水DD%",9}");
+        var rPerMkt = new Dictionary<string, (double sh, double dd)>();
+        SortedDictionary<DateTime, double> PickStream(Dictionary<string, SortedDictionary<DateTime, double>> sm, int n)
+        {
+            var pick = sm.Keys.OrderBy(_ => rng2.Next()).Take(Math.Min(n, sm.Count)).ToList();
+            var sd = new SortedDictionary<DateTime, double>();
+            foreach (var d in pick.SelectMany(s => sm[s].Keys).Distinct())
+            { double s = 0; int c = 0; foreach (var sy in pick) if (sm[sy].TryGetValue(d, out var v)) { s += v; c++; } if (c > 0) sd[d] = s / c; }
+            return sd;
+        }
+        foreach (var mn in mnames)
+        {
+            if (!mSymRet.TryGetValue(mn, out var sm) || sm.Count < 2) continue;
+            var shs = new List<double>(); var dds = new List<double>();
+            for (int b = 0; b < BOOT; b++) { var st = StatsOf(PickStream(sm, realN).Values.ToArray()); shs.Add(st.sh); dds.Add(st.dd); }
+            rPerMkt[mn] = (shs.Average(), dds.Average());
+            Console.WriteLine($"  {mn,-12}{rPerMkt[mn].sh,11:F2}{rPerMkt[mn].dd,12:F0}{mstats[mn].sh,9:F1}{mstats[mn].dd,9:F0}");
+        }
+        // 真實跨市場書:每市場各持 N 倉、反波動率配重、每 bootstrap 重抽
+        var mk = rPerMkt.Keys.Where(k => mSymRet.ContainsKey(k) && mSymRet[k].Count >= 2).ToList();
+        var bSh = new List<double>(); var bDd = new List<double>();
+        for (int b = 0; b < BOOT; b++)
+        {
+            var streams = mk.ToDictionary(mn => mn, mn => PickStream(mSymRet[mn], realN));
+            var vv = mk.ToDictionary(mn => mn, mn => { var r = streams[mn].Values.ToArray(); if (r.Length < 5) return 1.0; double m = r.Average(); double s2 = Math.Sqrt(r.Select(x => (x - m) * (x - m)).Sum() / Math.Max(1, r.Length - 1)); return s2 > 1e-9 ? s2 : 1.0; });
+            var iw = mk.ToDictionary(mn => mn, mn => 1.0 / vv[mn]); double iws = iw.Values.Sum(); foreach (var mn in mk) iw[mn] /= iws;
+            var alld = streams.Values.SelectMany(d => d.Keys).Distinct().OrderBy(d => d).ToList();
+            var book = new double[alld.Count];
+            for (int k = 0; k < alld.Count; k++) { double s = 0, w = 0; foreach (var mn in mk) if (streams[mn].TryGetValue(alld[k], out var v)) { s += iw[mn] * v; w += iw[mn]; } book[k] = w > 0 ? s / w : 0; }
+            var bst = StatsOf(book); bSh.Add(bst.sh); bDd.Add(bst.dd);
+        }
+        Console.WriteLine($"\n  === 真實跨市場書(每市場 {realN} 倉、反波動率配重)vs 單 crypto ===");
+        if (rPerMkt.ContainsKey("crypto")) Console.WriteLine($"  單 crypto({realN}倉):       Sharpe {rPerMkt["crypto"].sh,5:F2} · maxDD {rPerMkt["crypto"].dd,3:F0}%");
+        Console.WriteLine($"  跨市場書({realN}倉/市場):  Sharpe {bSh.Average(),5:F2} · maxDD {bDd.Average(),3:F0}%");
+        Console.WriteLine($"  → 這才是「真的下單會拿到」的誠實數字(分散仍把回撤壓低、但不是灌水的 1%)");
     }
     Console.WriteLine("\n  判讀:相關低(<0.3)= 真分散;組合 Sharpe ≥ 最佳單市場 且 DD 更低 = 跨市場分散有效、值得鋪。");
 }
