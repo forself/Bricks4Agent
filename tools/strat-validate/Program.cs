@@ -2340,9 +2340,26 @@ async Task RunXMarket()
             var stt = StatsOf(dd2.Values.ToArray()); mstats[nm] = (stt.sh, stt.dd, stt.ret, ns);
             Console.WriteLine($"  {nm,-12} {ns,2} 檔 · {dd2.Count,4} 交易日 · Sharpe {stt.sh,5:F2} · maxDD {stt.dd,3:F0}% · 全期 {stt.ret,6:F0}%");
         }
+        // funding carry sleeve(delta-neutral 短perp 收 funding = 收益型、非方向;報酬 ≈ +fundingRate)
+        {
+            var pdc = new Dictionary<DateTime, List<double>>(); int nsc = 0;
+            foreach (var sym in cu)
+            {
+                List<BarData> bars;
+                try { bars = await ToolsShared.KlineCache.FetchOrLoad(sym, "1d", barsLimit); } catch { continue; }
+                if (bars.Count < 200) continue;
+                try { await ToolsShared.FundingCache.InjectInto(bars, sym, "1d"); } catch { continue; }
+                bool any = false;
+                foreach (var b in bars) if (b.FundingRate is decimal f && f != 0m) { var d = b.OpenTime.Date; if (!pdc.TryGetValue(d, out var l)) pdc[d] = l = new(); l.Add((double)f); any = true; }
+                if (any) nsc++;
+            }
+            var ddc = new SortedDictionary<DateTime, double>();
+            foreach (var kv in pdc) if (kv.Value.Count > 0) ddc[kv.Key] = kv.Value.Average();
+            if (ddc.Count > 20) { mret["crypto-carry"] = ddc; var sc = StatsOf(ddc.Values.ToArray()); mstats["crypto-carry"] = (sc.sh, sc.dd, sc.ret, nsc); Console.WriteLine($"  {"crypto-carry",-12} {nsc,2} 檔 · {ddc.Count,4} 交易日 · Sharpe {sc.sh,5:F2} · maxDD {sc.dd,3:F0}% · 全期 {sc.ret,6:F0}%"); }
+        }
     }
     var mnames = (withStruct
-        ? markets.Select(m => m.name).Append("FX-ditrend").Append("crypto-funding").Append("crypto-retail").Append("crypto-oi")
+        ? markets.Select(m => m.name).Append("FX-ditrend").Append("crypto-funding").Append("crypto-retail").Append("crypto-oi").Append("crypto-carry")
         : markets.Select(m => m.name).Append("FX-ditrend")).Where(n => mret.ContainsKey(n)).ToArray();
     double PairCorr(string a, string b)
     {
