@@ -3,9 +3,11 @@
 set -u
 cd "$(dirname "$0")"
 if [ "${1:-}" = "down" ]; then echo "拆除 demo stack…"; docker compose -p fsim down; exit 0; fi
-ETCD="docker exec fsim-etcd1 etcdctl"
-leader(){ $ETCD get /b4a/leader --print-value-only 2>/dev/null | tr -d '\n'; }
-work(){   $ETCD get /b4a/work   --print-value-only 2>/dev/null | tr -d '\n'; }
+# 讀「誰是主 / work 計數」用 brokersim 自己的 /status 端點(比 etcdctl 讀 gateway-寫入的 key 可靠;
+# etcdctl 對 v3 JSON-gateway 寫入的 key 會讀不到——已驗證 gateway 直讀資料正確)。
+status(){ docker exec "fsim-node-$1" python3 -c "import urllib.request,json;d=json.load(urllib.request.urlopen('http://localhost:8080',timeout=2));w=d['last_work'];print(d['role'],d['node'],(w.split()[0] if w not in ('','(none)') else ''))" 2>/dev/null; }
+leader(){ for n in a b; do set -- $(status "$n"); [ "${1:-}" = "PRIMARY" ] && { echo "$2"; return; }; done; }
+work(){   for n in a b; do set -- $(status "$n"); [ "${1:-}" = "PRIMARY" ] && { echo "${3:-}"; return; }; done; }
 line(){ echo; echo "═══════════ $* ═══════════"; }
 
 line "啟動 3 etcd(quorum)+ 2 broker(主/備)"
