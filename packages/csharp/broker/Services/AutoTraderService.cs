@@ -3147,10 +3147,12 @@ public class AutoTraderService : BackgroundService
             .ToList();
 
         var slots = scanner.MaxConcurrent - activeLegs.Count;
+        // legOpen/Max = 本 leg 自己的開倉/上限(受 MaxConcurrent 強制);coreOcc = 全域真錢 watch 數(跨 leg 共用、僅用於排除已佔 symbol)
+        // 注意:舊版 occupied = legOpen + coreOcc 混在一起 = 誤導(看起來像超開倉、其實沒)
         _logger.LogInformation(
-            "Scanner {ScannerId} strategy={Strategy} interval={Interval} universe={U} occupied={Occ} candidates={C} slots={Slots} shadow={Shadow}",
+            "Scanner {ScannerId} strategy={Strategy} interval={Interval} universe={U} legOpen={LegOpen}/{Max} coreOcc={CoreOcc} candidates={C} slots={Slots} shadow={Shadow}",
             scanner.Id, scanner.Strategy, scanner.Interval, universe.Count,
-            coreOccupied.Count + alreadyOpen.Count, candidates.Count, slots, scanner.Shadow);
+            alreadyOpen.Count, scanner.MaxConcurrent, coreOccupied.Count, candidates.Count, slots, scanner.Shadow);
 
         if (candidates.Count == 0 || slots <= 0) return;
 
