@@ -88,6 +88,27 @@ File pattern:
 
 - `C:\secure\Bricks4Agent\client_secret_*.json` (repo root is a legacy fallback)
 
+### 3.1 Worker identity credential store
+
+File:
+
+- `C:\secure\Bricks4Agent\worker-auth.json` (or `$env:BRICKS4AGENT_SECRETS_DIR\worker-auth.json`)
+
+Current sidecar behavior:
+
+- on startup, missing per-worker-type credentials are generated and persisted (line-worker, file-worker, browser-worker, transport-tdx, site-crawler-worker)
+- all credentials are injected into the broker runtime config with `WorkerAuth.Enforce = true`
+- the line-worker runtime config receives its matching credential
+- `B4A_LINE_WORKER_KEY_ID` / `B4A_LINE_WORKER_SHARED_SECRET` still override the line-worker entry for that run
+
+To start any other worker against the enforcing broker, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+```
+
+(`-Worker` accepts `file`, `browser`, `transport-tdx`, `site-crawler`.) The helper reads the same credential store, so registration passes worker identity verification.
+
 Current sidecar behavior:
 
 - the first matching file is used

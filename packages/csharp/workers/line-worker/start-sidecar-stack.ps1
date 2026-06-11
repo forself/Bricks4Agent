@@ -130,14 +130,7 @@ $googleDriveSettings = $null
 if ($config.PSObject.Properties.Name -contains "GoogleDriveDelivery") {
     $googleDriveSettings = $config.GoogleDriveDelivery
 }
-$lineWorkerKeyId = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_KEY_ID)) {
-    $env:B4A_LINE_WORKER_KEY_ID.Trim()
-} else {
-    "sidecar-line-worker"
-}
-$lineWorkerSharedSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_SHARED_SECRET)) {
-    $env:B4A_LINE_WORKER_SHARED_SECRET.Trim()
-} else {
+function New-WorkerSharedSecret {
     $secretBytes = New-Object byte[] 32
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try {
@@ -146,6 +139,53 @@ $lineWorkerSharedSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WO
         $rng.Dispose()
     }
     [Convert]::ToBase64String($secretBytes)
+}
+
+# Persistent per-worker-type identity credentials shared by broker and workers.
+# Stored outside the repo tree so manually started workers (run-worker.ps1)
+# present the same credentials the broker enforces.
+$workerAuthStorePath = Join-Path $secureSecretsRoot "worker-auth.json"
+$workerAuthTypes = @("line-worker", "file-worker", "browser-worker", "transport-tdx", "site-crawler-worker")
+$workerAuthCredentials = @()
+if (Test-Path $workerAuthStorePath) {
+    try {
+        # ForEach-Object unrolls the parsed JSON array; in Windows PowerShell 5.1
+        # @(ConvertFrom-Json ...) would otherwise capture a nested array.
+        $workerAuthCredentials = @((Get-Content $workerAuthStorePath -Raw | ConvertFrom-Json) | ForEach-Object { $_ })
+    } catch {
+        Write-Warning "worker-auth.json is unreadable and will be regenerated: $($_.Exception.Message)"
+        $workerAuthCredentials = @()
+    }
+}
+$workerAuthDirty = $false
+foreach ($workerAuthType in $workerAuthTypes) {
+    $existingCredential = $workerAuthCredentials | Where-Object { $_.WorkerType -eq $workerAuthType } | Select-Object -First 1
+    if ($null -eq $existingCredential -or [string]::IsNullOrWhiteSpace($existingCredential.SharedSecret)) {
+        $workerAuthCredentials = @($workerAuthCredentials | Where-Object { $_.WorkerType -ne $workerAuthType })
+        $workerAuthCredentials += [pscustomobject]@{
+            WorkerType   = $workerAuthType
+            KeyId        = "$workerAuthType-local"
+            SharedSecret = New-WorkerSharedSecret
+            Status       = "active"
+        }
+        $workerAuthDirty = $true
+    }
+}
+if ($workerAuthDirty) {
+    New-Item -ItemType Directory -Force -Path $secureSecretsRoot | Out-Null
+    $workerAuthJson = ConvertTo-Json @($workerAuthCredentials) -Depth 4
+    [System.IO.File]::WriteAllText($workerAuthStorePath, $workerAuthJson, [System.Text.UTF8Encoding]::new($false))
+}
+$lineWorkerStoredCredential = $workerAuthCredentials | Where-Object { $_.WorkerType -eq "line-worker" } | Select-Object -First 1
+$lineWorkerKeyId = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_KEY_ID)) {
+    $env:B4A_LINE_WORKER_KEY_ID.Trim()
+} else {
+    $lineWorkerStoredCredential.KeyId
+}
+$lineWorkerSharedSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_LINE_WORKER_SHARED_SECRET)) {
+    $env:B4A_LINE_WORKER_SHARED_SECRET.Trim()
+} else {
+    $lineWorkerStoredCredential.SharedSecret
 }
 $artifactDownloadSigningSecret = if (-not [string]::IsNullOrWhiteSpace($env:B4A_ARTIFACT_DOWNLOAD_SIGNING_SECRET)) {
     $env:B4A_ARTIFACT_DOWNLOAD_SIGNING_SECRET.Trim()
@@ -673,17 +713,29 @@ $productionOverrideMap["FunctionPool"] = @{
         }
     }
 }
-$productionOverrideMap["WorkerAuth"] = @{
-    Enforce = $true
-    ClockSkewSeconds = 300
-    Credentials = @(
-        @{
+$brokerWorkerAuthCredentials = @()
+foreach ($workerAuthCredential in $workerAuthCredentials) {
+    if ($workerAuthCredential.WorkerType -eq "line-worker") {
+        # line-worker may be overridden via B4A_LINE_WORKER_KEY_ID / _SHARED_SECRET.
+        $brokerWorkerAuthCredentials += @{
             WorkerType = "line-worker"
             KeyId = $lineWorkerKeyId
             SharedSecret = $lineWorkerSharedSecret
             Status = "active"
         }
-    )
+    } else {
+        $brokerWorkerAuthCredentials += @{
+            WorkerType = $workerAuthCredential.WorkerType
+            KeyId = $workerAuthCredential.KeyId
+            SharedSecret = $workerAuthCredential.SharedSecret
+            Status = $workerAuthCredential.Status
+        }
+    }
+}
+$productionOverrideMap["WorkerAuth"] = @{
+    Enforce = $true
+    ClockSkewSeconds = 300
+    Credentials = $brokerWorkerAuthCredentials
     HttpRoutes = @(
         @{
             WorkerType = "line-worker"

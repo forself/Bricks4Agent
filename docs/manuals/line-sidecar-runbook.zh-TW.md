@@ -88,6 +88,27 @@
 
 - `C:\secure\Bricks4Agent\client_secret_*.json`（repo 根目錄為舊版備援）
 
+### 3.1 Worker 身分憑證庫
+
+檔案：
+
+- `C:\secure\Bricks4Agent\worker-auth.json`（或 `$env:BRICKS4AGENT_SECRETS_DIR\worker-auth.json`）
+
+目前 sidecar 會：
+
+- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker）
+- 將全部憑證注入 broker runtime 設定，並開啟 `WorkerAuth.Enforce = true`
+- line-worker runtime 設定取得對應憑證
+- `B4A_LINE_WORKER_KEY_ID` / `B4A_LINE_WORKER_SHARED_SECRET` 仍可覆寫該次啟動的 line-worker 條目
+
+要讓其他 worker 對啟用驗證的 broker 註冊，使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+```
+
+（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+
 目前 sidecar 會：
 
 - 使用第一個符合的 client JSON
