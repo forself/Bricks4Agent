@@ -213,6 +213,24 @@ builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
 builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
 
+// ── 自動移轉階段①:叢集選主(唯讀)。設 Cluster:EtcdEndpoints 才啟用真選主;否則單機永遠 PRIMARY(現狀不變) ──
+var clusterEtcd = builder.Configuration.GetValue<string>("Cluster:EtcdEndpoints");
+if (!string.IsNullOrWhiteSpace(clusterEtcd))
+{
+    var clusterNodeId = builder.Configuration.GetValue<string>("Cluster:NodeId") ?? Environment.MachineName;
+    var clusterLeaseTtl = builder.Configuration.GetValue<int>("Cluster:LeaseTtlSeconds", 10);
+    var clusterEps = clusterEtcd.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    builder.Services.AddSingleton<Broker.Services.EtcdLeaderElection>(sp =>
+        new Broker.Services.EtcdLeaderElection(clusterEps, clusterNodeId, clusterLeaseTtl,
+            sp.GetRequiredService<ILogger<Broker.Services.EtcdLeaderElection>>()));
+    builder.Services.AddSingleton<Broker.Services.ILeaderElection>(sp => sp.GetRequiredService<Broker.Services.EtcdLeaderElection>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.EtcdLeaderElection>());
+}
+else
+{
+    builder.Services.AddSingleton<Broker.Services.ILeaderElection, Broker.Services.SingleNodeLeaderElection>();
+}
+
 // ── Step 4.6c: 治理層告警（health 變壞 / 新 pending approval → Discord + LINE 推送） ──
 builder.Services.AddHostedService<Broker.Services.GovernanceAlertsService>();
 
