@@ -2223,6 +2223,7 @@ async Task RunXMarket()
         ("crypto", new[]{"BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","LTCUSDT","DOTUSDT","ATOMUSDT","TRXUSDT","UNIUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT","INJUSDT"}, false),
         ("美股", new[]{"AAPL","MSFT","GOOGL","AMZN","NVDA","AMD","AVGO","CRM","INTC","META","ORCL","ADBE","CSCO","QCOM","TXN","NFLX","TSLA","IBM","NOW","AMAT","MU","INTU","PANW","JPM","BAC","V","MA","GS","MS","WFC","C","AXP","BLK","SCHW","UNH","JNJ","LLY","ABBV","MRK","PFE","TMO","ABT","DHR","XOM","CVX","COP","WMT","KO","PG","DIS","CAT","BA","COST","HD","MCD","NKE","PEP","GE","HON","LMT","RTX"}, true),
         ("台股", new[]{"2330.TW","2454.TW","2303.TW","3711.TW","2379.TW","3034.TW","3008.TW","2408.TW","3443.TW","6415.TW","2317.TW","2308.TW","2382.TW","2357.TW","2376.TW","4938.TW","6669.TW","2474.TW","2327.TW","3037.TW","2345.TW","2409.TW","3481.TW","3017.TW","2881.TW","2882.TW","2891.TW","2886.TW","2884.TW","2885.TW","2892.TW","5880.TW","2880.TW","2890.TW","2412.TW","3045.TW","4904.TW","1301.TW","1303.TW","1326.TW","2002.TW","1216.TW","2207.TW","2603.TW","2609.TW","2615.TW","2618.TW","2105.TW","1402.TW","2912.TW","0050.TW","0056.TW","6488.TW","3529.TW","3035.TW","6285.TW","2449.TW","6239.TW","2344.TW","5269.TW","3661.TW","8046.TW","4958.TW","3533.TW","2492.TW","2383.TW","2360.TW","2347.TW","3702.TW","2353.TW","1102.TW","9910.TW","9904.TW","2915.TW","1210.TW","1722.TW","1605.TW","9921.TW","9914.TW","2887.TW","2888.TW","2883.TW","5876.TW","2542.TW","8454.TW","2548.TW"}, true),
+        ("商品", new[]{"GC=F","SI=F","HG=F","PL=F","PA=F","CL=F","BZ=F","NG=F","RB=F","HO=F","ZC=F","ZW=F","ZS=F","KC=F","SB=F","CC=F","CT=F","ES=F","NQ=F","YM=F","RTY=F","ZN=F","ZB=F"}, true),
     };
     (double sh, double dd, double ret) StatsOf(double[] r)
     {
@@ -2318,7 +2319,39 @@ async Task RunXMarket()
     Console.WriteLine($"  {"跨市場等權",-12}{cs.sh,9:F2}{cs.dd,9:F0}{cs.ret,11:F0}");
     double bestSh = mnames.Max(mn => mstats[mn].sh), bestDd = mnames.Min(mn => mstats[mn].dd);
     Console.WriteLine($"  → 跨市場 Sharpe {cs.sh:F2} vs 最佳單市場 {bestSh:F2}({(bestSh > 0 ? (cs.sh / bestSh - 1) * 100 : 0):+0;-0}%);maxDD {cs.dd:F0}% vs 最佳單市場 {bestDd:F0}%");
-    Console.WriteLine("  判讀:相關低(<0.3)= 真分散;組合 Sharpe ≥ 最佳單市場 且 DD 更低 = 跨市場分散有效、值得鋪。");
+
+    // 反波動率(風險平價)配重:weight ∝ 1/vol(等權會被高波動 crypto 主導、各市場貢獻等風險才對)
+    var vols = mnames.ToDictionary(mn => mn, mn =>
+    {
+        var r = mret[mn].Values.ToArray();
+        if (r.Length < 5) return 1.0;
+        double mean = r.Average(); double sd = Math.Sqrt(r.Select(x => (x - mean) * (x - mean)).Sum() / Math.Max(1, r.Length - 1));
+        return sd > 1e-9 ? sd : 1.0;
+    });
+    var invw = mnames.ToDictionary(mn => mn, mn => 1.0 / vols[mn]);
+    double invSum = invw.Values.Sum();
+    foreach (var mn in mnames) invw[mn] /= invSum;
+    var combIv = new List<double>();
+    foreach (var d in allDates)
+    {
+        double s = 0, wsum = 0;
+        foreach (var mn in mnames) if (mret[mn].TryGetValue(d, out var v)) { s += invw[mn] * v; wsum += invw[mn]; }
+        combIv.Add(wsum > 0 ? s / wsum : 0);   // 當日只用有交易的市場、權重重新正規化
+    }
+    var csIv = StatsOf(combIv.ToArray());
+    Console.WriteLine($"  {"跨市場反波動率",-10}{csIv.sh,9:F2}{csIv.dd,9:F0}{csIv.ret,11:F0}");
+    Console.WriteLine($"  反波動率權重:{string.Join(" · ", mnames.Select(mn => $"{mn} {invw[mn]:P0}"))}");
+
+    // 分散效益:合體(反波動率)vs 單 crypto(使用者核心市場)
+    if (mstats.ContainsKey("crypto"))
+    {
+        var cr = mstats["crypto"];
+        Console.WriteLine($"\n  === 分散效益:合體 vs 單 crypto(你的核心)===");
+        Console.WriteLine($"  單 crypto:        Sharpe {cr.sh,5:F2} · maxDD {cr.dd,3:F0}%");
+        Console.WriteLine($"  跨市場反波動率:   Sharpe {csIv.sh,5:F2} · maxDD {csIv.dd,3:F0}%");
+        Console.WriteLine($"  → Sharpe {(cr.sh > 0 ? (csIv.sh / cr.sh - 1) * 100 : 0),0:+0;-0}% · maxDD {cr.dd - csIv.dd,0:+0;-0} 個百分點({(csIv.dd < cr.dd ? "更低 = 分散有效" : "沒降")})");
+    }
+    Console.WriteLine("\n  判讀:相關低(<0.3)= 真分散;組合 Sharpe ≥ 最佳單市場 且 DD 更低 = 跨市場分散有效、值得鋪。");
 }
 
 async Task RunAllocate()
