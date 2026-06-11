@@ -2222,7 +2222,7 @@ async Task RunRegime()
     var dat = new Dictionary<string, List<BarData>>();
     foreach (var sym in symbols) { try { var b = await Fetch(sym); if (b.Count >= 400) dat[sym] = b; } catch { } }
     Console.WriteLine($"  宇宙 {dat.Count}/{symbols.Length}\n");
-    var folds = new List<(double ret, double vol, double dir, double er)>();
+    var folds = new List<(double ret, double vol, double dir, double er, double tvol, double ter)>();
     foreach (var kv in dat)
     {
         var b = kv.Value;
@@ -2240,14 +2240,20 @@ async Task RunRegime()
                 double m = rr.Average(); double vol = Math.Sqrt(rr.Select(x => (x - m) * (x - m)).Sum() / rr.Count) * Math.Sqrt(252);
                 double dir = (double)(b[s1 - 1].Close - b[s0].Close) / (double)b[s0].Close;
                 double net = Math.Abs((double)(b[s1 - 1].Close - b[s0].Close)); double tot = 0; for (int i = s0 + 1; i < s1; i++) tot += Math.Abs((double)(b[i].Close - b[i - 1].Close)); double er = tot > 0 ? net / tot : 0;
-                folds.Add(((double)fl[f].Test!.TotalReturnPct, vol, dir, er));
+                // train 窗 regime(ex-ante、用於 sizing:用測試窗「之前」的市況決定倉位、無 lookahead)
+                int t0 = f * 60, t1 = Math.Min(b.Count, f * 60 + 250);
+                var tr = new List<double>();
+                for (int i = t0 + 1; i < t1; i++) { double pv = (double)b[i - 1].Close; if (pv > 0) tr.Add((double)(b[i].Close - b[i - 1].Close) / pv); }
+                double tm = tr.Count > 0 ? tr.Average() : 0; double tvol = tr.Count > 1 ? Math.Sqrt(tr.Select(x => (x - tm) * (x - tm)).Sum() / tr.Count) * Math.Sqrt(252) : 0;
+                double tnet = Math.Abs((double)(b[t1 - 1].Close - b[t0].Close)); double ttot = 0; for (int i = t0 + 1; i < t1; i++) ttot += Math.Abs((double)(b[i].Close - b[i - 1].Close)); double ter = ttot > 0 ? tnet / ttot : 0;
+                folds.Add(((double)fl[f].Test!.TotalReturnPct, vol, dir, er, tvol, ter));
             }
         }
         catch { }
     }
     if (folds.Count < 20) { Console.WriteLine("fold 不足"); return; }
     Console.WriteLine($"  總 {folds.Count} folds(跨幣 OOS 90日 test 窗)。每 fold = 那段市況下 harmonic 的 OOS 報酬。\n");
-    void Bucket(string label, Func<(double ret, double vol, double dir, double er), bool> hi, string hiName, string loName)
+    void Bucket(string label, Func<(double ret, double vol, double dir, double er, double tvol, double ter), bool> hi, string hiName, string loName)
     {
         var H = folds.Where(hi).Select(f => f.ret).ToList(); var Lo = folds.Where(f => !hi(f)).Select(f => f.ret).ToList();
         double am(List<double> l) => l.Count > 0 ? l.Average() : 0; double wr(List<double> l) => l.Count > 0 ? l.Count(x => x > 0) * 100.0 / l.Count : 0;
@@ -2260,6 +2266,20 @@ async Task RunRegime()
     Bucket("方向", f => f.dir >= 0, "上漲窗", "下跌窗");
     Console.WriteLine($"\n  (門檻:vol中位={volMed:F2} ER中位={erMed:F2})");
     Console.WriteLine($"  判讀:harmonic=反轉策略 → 預期「盤整(低ER)/高波動」強、「強趨勢(高ER)」弱。看上面數據確認 + 量化差距。");
+
+    // === regime-aware sizing:ex-ante train窗 regime 決定倉位、平均曝險正規化到 1.0(= 重分配、非加槓桿)===
+    double tvolMed = folds.Select(f => f.tvol).OrderBy(x => x).ElementAt(folds.Count / 2);
+    double terMed = folds.Select(f => f.ter).OrderBy(x => x).ElementAt(folds.Count / 2);
+    var mults = folds.Select(f => (f.tvol >= tvolMed && f.ter < terMed) ? 1.5 : (f.tvol < tvolMed && f.ter >= terMed) ? 0.5 : 1.0).ToList();
+    double mAvg = mults.Average();
+    var retsL = folds.Select(f => f.ret).ToList();
+    var sizedL = new List<double>(); for (int i = 0; i < folds.Count; i++) sizedL.Add(folds[i].ret * mults[i] / mAvg);
+    double ShF(List<double> l) { double mm = l.Average(); double sd = Math.Sqrt(l.Select(x => (x - mm) * (x - mm)).Sum() / l.Count); return sd > 0 ? mm / sd * Math.Sqrt(252.0 / 90) : 0; }
+    Console.WriteLine($"\n  === regime-aware sizing(ex-ante train窗 regime 調倉、平均曝險正規化到1.0、紀律=非槓桿)===");
+    Console.WriteLine($"  固定倉位:   每fold avg {retsL.Average(),6:F1}% · Sharpe {ShF(retsL):F2}");
+    Console.WriteLine($"  regime調倉: 每fold avg {sizedL.Average(),6:F1}% · Sharpe {ShF(sizedL):F2}(train甜蜜點1.5x/弱區0.5x、均1.0x)");
+    bool sizeWin = ShF(sizedL) > ShF(retsL) + 0.05 && sizedL.Average() > retsL.Average();
+    Console.WriteLine($"  判讀(sizing):{(sizeWin ? "✅ regime調倉贏固定(同曝險下用外生regime擇時加分)" : "⚠️ regime調倉沒明顯贏固定 → 固定倉位是對的(連外生regime都打不贏、別調)")}");
 }
 
 // 跨市場 lead-lag:A 今天報酬 vs B 明天報酬的相關。顯著 = A 領先 B、可用 A 預測 B(資訊流時差)。
