@@ -46,4 +46,19 @@
     </None>
   </ItemGroup>
 
+  <!--
+    HighLevelSiteRebuildService 在 broker 程序內就地使用 site-crawler-worker 的
+    SiteCrawlerService / DeterministicSiteExtractor,因此 broker ProjectReference 了
+    該 worker。但 worker 的 appsettings.json 會隨之流入 broker 的 publish 輸出,與
+    broker 自己的 appsettings.json 相對路徑相同,造成 NETSDK1152。
+    broker 容器只需要 broker 自己的設定,故在 publish 計算後移除來自 worker 的重複設定檔。
+  -->
+  <Target Name="RemoveTransitiveWorkerSettingsFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish
+        Remove="@(ResolvedFileToPublish)"
+        Condition="'%(RelativePath)' == 'appsettings.json' and $([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\','/').Contains('/site-crawler-worker/'))" />
+    </ItemGroup>
+  </Target>
+
 </Project>
