@@ -60,7 +60,10 @@ public sealed class HighLevelSiteRebuildServiceTests : IDisposable
         {
             AccessRoot = Path.Combine(tempRoot, "managed"),
         });
-        var delivery = new LineArtifactDeliveryService(workspace, drive, NullLogger<LineArtifactDeliveryService>.Instance);
+        var downloadOptions = new BrokerArtifactDownloadOptions { SigningSecret = "test-secret" };
+        var downloadService = new BrokerArtifactDownloadService(
+            workspace, new SidecarPublicUrlResolver(downloadOptions), downloadOptions);
+        var delivery = new LineArtifactDeliveryService(workspace, drive, downloadService, NullLogger<LineArtifactDeliveryService>.Instance);
         var service = new HighLevelSiteRebuildService(
             workspace,
             delivery,
