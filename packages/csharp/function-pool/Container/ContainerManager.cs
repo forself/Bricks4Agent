@@ -137,6 +137,53 @@ public class ContainerManager : IContainerManager
         }
     }
 
+    public async Task<List<ContainerStats>> GetStatsAsync(CancellationToken ct = default)
+    {
+        var running = _containers.Values
+            .Where(c => c.State == ContainerState.Running)
+            .Select(c => c.ContainerId)
+            .ToList();
+        if (running.Count == 0) return new List<ContainerStats>();
+
+        var args = new List<string> { "stats", "--no-stream", "--format", "{{json .}}" };
+        args.AddRange(running);
+
+        var (exitCode, stdout, _) = await RunCommandAsync(
+            _config.Runtime, args, TimeSpan.FromSeconds(15), ct);
+        if (exitCode != 0) return new List<ContainerStats>();
+
+        var result = new List<ContainerStats>();
+        foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var t = line.Trim();
+            if (t.Length == 0 || t[0] != '{') continue;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(t);
+                var r = doc.RootElement;
+                var id = r.TryGetProperty("ID", out var idEl) ? idEl.GetString() ?? "" : "";
+                if (id.Length > 12) id = id[..12];
+                result.Add(new ContainerStats
+                {
+                    ContainerId   = id,
+                    ContainerName = r.TryGetProperty("Name", out var nEl) ? nEl.GetString() ?? "" : "",
+                    CpuPercent    = ParseStatPercent(r.TryGetProperty("CPUPerc", out var cEl) ? cEl.GetString() : null),
+                    MemoryPercent = ParseStatPercent(r.TryGetProperty("MemPerc", out var mEl) ? mEl.GetString() : null),
+                });
+            }
+            catch { /* skip malformed line */ }
+        }
+        return result;
+    }
+
+    private static double ParseStatPercent(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return 0;
+        s = s.TrimEnd('%').Trim();
+        return double.TryParse(s, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
     /// <summary>Execute a CLI command and capture output</summary>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunCommandAsync(
         string command, IReadOnlyCollection<string> arguments, TimeSpan timeout, CancellationToken ct)

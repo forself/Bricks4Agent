@@ -62,6 +62,9 @@ public class BrokerDbInitializer
         // ── 向量嵌入（1 張） ──
         _db.EnsureTable<VectorEntry>();
 
+        // [MONITORING EXTRACTION] 平台健康分數歷史 snapshot
+        _db.EnsureTable<BrokerCore.Models.HealthScoreSnapshot>();
+
         EnsureColumns();
 
         // FTS5 全文檢索虛擬表（BM25）

@@ -29,4 +29,7 @@ public interface IContainerManager
 
     /// <summary>Check if the container runtime is available</summary>
     Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default);
+
+    /// <summary>Real-time resource usage for all running managed containers (docker stats).</summary>
+    Task<List<ContainerStats>> GetStatsAsync(CancellationToken ct = default);
 }

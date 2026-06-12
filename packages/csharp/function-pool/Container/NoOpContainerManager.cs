@@ -28,4 +28,7 @@ public class NoOpContainerManager : IContainerManager
 
     public Task<bool> IsRuntimeAvailableAsync(CancellationToken ct = default)
         => Task.FromResult(false);
+
+    public Task<List<ContainerStats>> GetStatsAsync(CancellationToken ct = default)
+        => Task.FromResult(new List<ContainerStats>());
 }
