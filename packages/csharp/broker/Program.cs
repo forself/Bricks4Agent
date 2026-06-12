@@ -166,12 +166,17 @@ builder.Services.AddSingleton<ILlmProxyService>(sp =>
     new BrokerCore.Services.MeteredLlmProxyService(
         sp.GetRequiredService<LlmProxyService>(),
         sp.GetRequiredService<BrokerCore.Services.LlmProxyMetrics>()));
-// [MONITORING EXTRACTION] Health Score 子系統（leader-guard 單機永遠 PRIMARY）
-builder.Services.AddSingleton<Broker.Services.ILeaderElection, Broker.Services.SingleNodeLeaderElection>();
-builder.Services.AddSingleton<Broker.Services.LeaderGuard>();
-builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
-builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
+// [MONITORING EXTRACTION] Health Score 子系統（leader-guard 單機永遠 PRIMARY）。
+// 它依賴 IWorkerRegistry（FunctionPool），且本質是監控 worker pool 健康，
+// 因此只在 FunctionPool 啟用時註冊；否則 broker 啟動會無法 resolve IWorkerRegistry。
+if (builder.Configuration.GetValue<bool>("FunctionPool:Enabled", false))
+{
+    builder.Services.AddSingleton<Broker.Services.ILeaderElection, Broker.Services.SingleNodeLeaderElection>();
+    builder.Services.AddSingleton<Broker.Services.LeaderGuard>();
+    builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
+    builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
+}
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
