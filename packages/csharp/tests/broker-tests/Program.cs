@@ -215,6 +215,12 @@ passed += twffPassed;
 failed += twffFailed;
 
 Console.WriteLine();
+
+var (clPassed, clFailed) = Broker.Tests.ClusterTests.Run();
+passed += clPassed;
+failed += clFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {
