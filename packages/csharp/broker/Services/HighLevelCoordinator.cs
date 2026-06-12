@@ -617,6 +617,27 @@ public class HighLevelCoordinator
                 };
             }
 
+            // 批准 = 確認設計 + 啟動建置 handoff：把訪談編譯出的專案定義
+            // 轉成 system_scaffold draft，走既有的生成、打包、交付鏈。
+            if (command == ProjectInterviewCommand.Approve &&
+                document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
+                document.CurrentProjectDefinition != null)
+            {
+                var approvedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
+                var approvedDocument = document.WithSessionState(approvedState).ClearPendingOptions();
+                await _projectInterviewStateService.SaveTaskDocumentAsync(approvedDocument, cancellationToken);
+
+                var constructionReply = await BuildProjectFromInterviewAsync(
+                    channel, userId, profile, document, cancellationToken);
+
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(profile, constructionReply),
+                    DecisionReason = "project interview approved and handed off to construction"
+                };
+            }
+
             var nextState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
             var updatedDocument = document.WithSessionState(nextState).ClearPendingOptions();
             await _projectInterviewStateService.SaveTaskDocumentAsync(updatedDocument, cancellationToken);
@@ -1094,6 +1115,96 @@ public class HighLevelCoordinator
         {
             CurrentPhase = ProjectInterviewPhase.AwaitUserReview
         });
+    }
+
+    /// <summary>
+    /// Interview -> construction handoff：把批准的訪談專案定義轉成
+    /// system_scaffold draft，交給既有的生成/打包/交付鏈。
+    /// </summary>
+    private async Task<string> BuildProjectFromInterviewAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        var definition = document.CurrentProjectDefinition!;
+        var projectFolderName = document.SessionState.ProjectFolderName
+            ?? document.SessionState.ProjectName
+            ?? $"interview-v{document.CurrentVersion}";
+        var managedPaths = BuildManagedPaths(channel, userId, profile, projectFolderName);
+
+        var draft = new HighLevelTaskDraft
+        {
+            DraftId = IdGen.New("draft"),
+            Channel = channel,
+            UserId = userId,
+            TaskType = "system_scaffold",
+            Title = document.SessionState.ProjectName ?? projectFolderName,
+            ProjectName = document.SessionState.ProjectName,
+            ProjectFolderName = projectFolderName,
+            OriginalMessage = $"/proj approved v{document.CurrentVersion}",
+            Summary = $"專案訪談 v{document.CurrentVersion} 批准的設計：{definition.TemplateFamily}（{definition.ProjectScale}）",
+            ManagedPaths = managedPaths
+        };
+        draft.ScaffoldSpec = new HighLevelSystemScaffoldSpec
+        {
+            Channel = channel,
+            UserId = userId,
+            DraftId = draft.DraftId,
+            ProjectName = draft.Title,
+            RequestSummary = draft.Summary,
+            LatestUserInput = draft.OriginalMessage,
+            ScaffoldFamily = definition.TemplateFamily,
+            UiShape = definition.StyleProfile,
+            ReadyForConfirmation = true,
+            ConfirmedRequirements = BuildCompileAssertions(document.Assertions).ToList()
+        };
+
+        try
+        {
+            var result = await _systemScaffoldService.GenerateAndDeliverAsync(
+                draft, profile, draft.DraftId, cancellationToken);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("Interview construction failed: {Message}", result.Message);
+                return BilingualProjectInterviewMessage(
+                    $"設計已確認，但建置失敗：{result.Message}\n可用 /revise 調整後重新批准。",
+                    $"Design confirmed, but construction failed: {result.Message}");
+            }
+
+            var lines = new List<string>
+            {
+                "設計已確認，專案建置完成。",
+                $"專案：{draft.Title}（設計版本 v{document.CurrentVersion}）"
+            };
+            if (!string.IsNullOrWhiteSpace(result.PackageFileName))
+            {
+                lines.Add($"封裝：{result.PackageFileName}");
+            }
+            if (result.Delivery?.GoogleDrive?.Success == true &&
+                !string.IsNullOrWhiteSpace(result.Delivery.GoogleDrive.WebViewLink))
+            {
+                lines.Add($"雲端連結：{result.Delivery.GoogleDrive.WebViewLink}");
+            }
+            else if (result.Delivery?.Notification != null)
+            {
+                lines.Add("下載連結將以通知送達。");
+            }
+            lines.Add($"專案位置：{result.ProjectRoot}");
+
+            return BilingualProjectInterviewMessage(
+                string.Join("\n", lines),
+                $"Design approved; project built{(string.IsNullOrWhiteSpace(result.PackageFileName) ? "" : $" and packaged as {result.PackageFileName}")}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Interview construction handoff threw for {User}", userId);
+            return BilingualProjectInterviewMessage(
+                "設計已確認，但建置過程發生錯誤；設計版本已保留，可稍後重試。",
+                "Design confirmed, but construction hit an error; the approved design is preserved.");
+        }
     }
 
     private static IReadOnlyList<string> BuildCompileAssertions(IReadOnlyList<ProjectInterviewAssertion> assertions)
