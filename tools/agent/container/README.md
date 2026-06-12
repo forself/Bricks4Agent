@@ -22,6 +22,7 @@ What it proves:
 - the agent only operates with the broker-issued session, role, capability, and scope
 - the broker can issue task-specific runtime defaults and capability grants from `runtime_descriptor`
 - worker containers can connect to the broker function pool in local container development
+- the default smoke test can force a broker-mediated `read_file` tool call through the file worker
 
 What it does not prove:
 
@@ -45,10 +46,22 @@ Those parts currently live in the Windows sidecar path under [`packages/csharp/w
 From the repo root:
 
 ```bash
+npm run validate:podman-governed-stack
+```
+
+The validation script prebuilds each image with an explicit `Containerfile`, then runs `podman compose up` without the compose build flag. This is the preferred smoke test on Windows Podman because some `podman-compose` versions do not reliably honor per-service `dockerfile:` entries during `up --build`.
+
+For manual runs:
+
+```bash
 podman compose -f tools/agent/container/compose.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
 The default stack uses the bundled mock upstream and should end with the agent printing `STACK_OK`.
+
+The smoke stack disables broker RAG seeding and embeddings so it only verifies the governed agent, broker LLM proxy, and worker attachment path. This avoids accidental dependence on a host-side Ollama embedding server.
+
+The default `npm run validate:podman-governed-stack` run also configures the mock upstream to request `read_file` once, so the test covers the agent submitting a broker-governed capability request and the broker dispatching it to `file-worker`.
 
 OpenAI-compatible stack:
 
@@ -122,6 +135,8 @@ Supported overrides:
 - `STACK_LLM_PORT`
 - `STACK_MODEL`
 - `STACK_RESPONSE_TEXT`
+- `STACK_TOOL_CALL`
+- `STACK_TOOL_PATH`
 - `BROKER_PRINCIPAL_ID`
 - `BROKER_TASK_ID`
 - `BROKER_ROLE_ID`
@@ -134,10 +149,18 @@ Supported overrides:
 - `LINE_DEFAULT_RECIPIENT_ID`
 - `LINE_ALLOWED_USER_IDS`
 - `LINE_WEBHOOK_PORT`
+- `LINE_WORKER_AUTH_KEY_ID`
+- `LINE_WORKER_AUTH_SHARED_SECRET`
+- `FILE_WORKER_AUTH_KEY_ID`
+- `FILE_WORKER_AUTH_SHARED_SECRET`
+- `WORKER_AUTH_ENFORCE`
+- `AGENT_BROKER_URL`
 - `AGENT_RUN`
 - `AGENT_VERBOSE`
 - `AGENT_LINE_LISTEN`
 - `AGENT_LINE_POLL_INTERVAL`
+
+`AGENT_BROKER_URL` controls the HTTP broker URL injected into dynamically spawned agent containers through `/api/v1/agents/spawn`. In the compose stack the default is `http://broker:5000`; for a host-side broker, point it at the broker address reachable from the container, such as `http://host.containers.internal:5361` on Podman Desktop.
 
 ## Switching To A Real Upstream
 

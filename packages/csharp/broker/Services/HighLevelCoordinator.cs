@@ -42,6 +42,7 @@ public class HighLevelCoordinator
     private readonly HighLevelDocumentArtifactService _documentArtifactService;
     private readonly HighLevelCodeArtifactService _codeArtifactService;
     private readonly HighLevelSystemScaffoldService _systemScaffoldService;
+    private readonly HighLevelSiteRebuildService _siteRebuildService;
     private readonly LineArtifactDeliveryService _lineArtifactDeliveryService;
     private readonly BrowserBindingService _browserBindingService;
     private readonly ProjectInterviewStateMachine _projectInterviewStateMachine;
@@ -67,6 +68,7 @@ public class HighLevelCoordinator
         HighLevelDocumentArtifactService documentArtifactService,
         HighLevelCodeArtifactService codeArtifactService,
         HighLevelSystemScaffoldService systemScaffoldService,
+        HighLevelSiteRebuildService siteRebuildService,
         LineArtifactDeliveryService lineArtifactDeliveryService,
         BrowserBindingService browserBindingService,
         ProjectInterviewStateMachine projectInterviewStateMachine,
@@ -98,6 +100,7 @@ public class HighLevelCoordinator
         _documentArtifactService = documentArtifactService;
         _codeArtifactService = codeArtifactService;
         _systemScaffoldService = systemScaffoldService;
+        _siteRebuildService = siteRebuildService;
         _lineArtifactDeliveryService = lineArtifactDeliveryService;
         _browserBindingService = browserBindingService;
         _projectInterviewStateMachine = projectInterviewStateMachine;
@@ -614,6 +617,27 @@ public class HighLevelCoordinator
                 };
             }
 
+            // 批准 = 確認設計 + 啟動建置 handoff：把訪談編譯出的專案定義
+            // 轉成 system_scaffold draft，走既有的生成、打包、交付鏈。
+            if (command == ProjectInterviewCommand.Approve &&
+                document.SessionState.CurrentPhase == ProjectInterviewPhase.AwaitUserReview &&
+                document.CurrentProjectDefinition != null)
+            {
+                var approvedState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
+                var approvedDocument = document.WithSessionState(approvedState).ClearPendingOptions();
+                await _projectInterviewStateService.SaveTaskDocumentAsync(approvedDocument, cancellationToken);
+
+                var constructionReply = await BuildProjectFromInterviewAsync(
+                    channel, userId, profile, document, cancellationToken);
+
+                return new HighLevelProcessResult
+                {
+                    Mode = HighLevelRouteMode.Production,
+                    Reply = PrepareReplyWithoutGuide(profile, constructionReply),
+                    DecisionReason = "project interview approved and handed off to construction"
+                };
+            }
+
             var nextState = _projectInterviewStateMachine.ApplyCommand(document.SessionState, command);
             var updatedDocument = document.WithSessionState(nextState).ClearPendingOptions();
             await _projectInterviewStateService.SaveTaskDocumentAsync(updatedDocument, cancellationToken);
@@ -1091,6 +1115,96 @@ public class HighLevelCoordinator
         {
             CurrentPhase = ProjectInterviewPhase.AwaitUserReview
         });
+    }
+
+    /// <summary>
+    /// Interview -> construction handoff：把批准的訪談專案定義轉成
+    /// system_scaffold draft，交給既有的生成/打包/交付鏈。
+    /// </summary>
+    private async Task<string> BuildProjectFromInterviewAsync(
+        string channel,
+        string userId,
+        HighLevelUserProfile profile,
+        ProjectInterviewTaskDocument document,
+        CancellationToken cancellationToken)
+    {
+        var definition = document.CurrentProjectDefinition!;
+        var projectFolderName = document.SessionState.ProjectFolderName
+            ?? document.SessionState.ProjectName
+            ?? $"interview-v{document.CurrentVersion}";
+        var managedPaths = BuildManagedPaths(channel, userId, profile, projectFolderName);
+
+        var draft = new HighLevelTaskDraft
+        {
+            DraftId = IdGen.New("draft"),
+            Channel = channel,
+            UserId = userId,
+            TaskType = "system_scaffold",
+            Title = document.SessionState.ProjectName ?? projectFolderName,
+            ProjectName = document.SessionState.ProjectName,
+            ProjectFolderName = projectFolderName,
+            OriginalMessage = $"/proj approved v{document.CurrentVersion}",
+            Summary = $"專案訪談 v{document.CurrentVersion} 批准的設計：{definition.TemplateFamily}（{definition.ProjectScale}）",
+            ManagedPaths = managedPaths
+        };
+        draft.ScaffoldSpec = new HighLevelSystemScaffoldSpec
+        {
+            Channel = channel,
+            UserId = userId,
+            DraftId = draft.DraftId,
+            ProjectName = draft.Title,
+            RequestSummary = draft.Summary,
+            LatestUserInput = draft.OriginalMessage,
+            ScaffoldFamily = definition.TemplateFamily,
+            UiShape = definition.StyleProfile,
+            ReadyForConfirmation = true,
+            ConfirmedRequirements = BuildCompileAssertions(document.Assertions).ToList()
+        };
+
+        try
+        {
+            var result = await _systemScaffoldService.GenerateAndDeliverAsync(
+                draft, profile, draft.DraftId, cancellationToken);
+
+            if (!result.Success)
+            {
+                _logger.LogWarning("Interview construction failed: {Message}", result.Message);
+                return BilingualProjectInterviewMessage(
+                    $"設計已確認，但建置失敗：{result.Message}\n可用 /revise 調整後重新批准。",
+                    $"Design confirmed, but construction failed: {result.Message}");
+            }
+
+            var lines = new List<string>
+            {
+                "設計已確認，專案建置完成。",
+                $"專案：{draft.Title}（設計版本 v{document.CurrentVersion}）"
+            };
+            if (!string.IsNullOrWhiteSpace(result.PackageFileName))
+            {
+                lines.Add($"封裝：{result.PackageFileName}");
+            }
+            if (result.Delivery?.GoogleDrive?.Success == true &&
+                !string.IsNullOrWhiteSpace(result.Delivery.GoogleDrive.WebViewLink))
+            {
+                lines.Add($"雲端連結：{result.Delivery.GoogleDrive.WebViewLink}");
+            }
+            else if (result.Delivery?.Notification != null)
+            {
+                lines.Add("下載連結將以通知送達。");
+            }
+            lines.Add($"專案位置：{result.ProjectRoot}");
+
+            return BilingualProjectInterviewMessage(
+                string.Join("\n", lines),
+                $"Design approved; project built{(string.IsNullOrWhiteSpace(result.PackageFileName) ? "" : $" and packaged as {result.PackageFileName}")}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Interview construction handoff threw for {User}", userId);
+            return BilingualProjectInterviewMessage(
+                "設計已確認，但建置過程發生錯誤；設計版本已保留，可稍後重試。",
+                "Design confirmed, but construction hit an error; the approved design is preserved.");
+        }
     }
 
     private static IReadOnlyList<string> BuildCompileAssertions(IReadOnlyList<ProjectInterviewAssertion> assertions)
@@ -1629,6 +1743,7 @@ public class HighLevelCoordinator
         HighLevelDocumentArtifactResult? artifactResult = null;
         HighLevelCodeArtifactResult? codeArtifactResult = null;
         HighLevelSystemScaffoldResult? scaffoldArtifactResult = null;
+        HighLevelSiteRebuildResult? siteRebuildResult = null;
         if (string.Equals(draft.TaskType, "doc_gen", StringComparison.OrdinalIgnoreCase))
         {
             artifactResult = await _documentArtifactService.GenerateAndDeliverAsync(draft, profile, cancellationToken);
@@ -1640,6 +1755,10 @@ public class HighLevelCoordinator
         else if (string.Equals(draft.TaskType, "system_scaffold", StringComparison.OrdinalIgnoreCase))
         {
             scaffoldArtifactResult = await _systemScaffoldService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
+        }
+        else if (string.Equals(draft.TaskType, "site_rebuild", StringComparison.OrdinalIgnoreCase))
+        {
+            siteRebuildResult = await _siteRebuildService.GenerateAndDeliverAsync(draft, profile, task.TaskId, cancellationToken);
         }
 
         _logger.LogInformation(
@@ -1661,6 +1780,10 @@ public class HighLevelCoordinator
         else if (scaffoldArtifactResult != null)
         {
             replyLines.Add(BuildSystemScaffoldReply(scaffoldArtifactResult));
+        }
+        else if (siteRebuildResult != null)
+        {
+            replyLines.Add(BuildSiteRebuildReply(siteRebuildResult));
         }
         else
         {
@@ -1775,10 +1898,13 @@ public class HighLevelCoordinator
 
         var lines = new List<string>
         {
-            "已生成網站原型。",
+            string.IsNullOrWhiteSpace(artifactResult.PackageFilePath) ? "已生成網站原型。" : "已生成離線網站封裝。",
             $"project_root: {artifactResult.ProjectRoot}",
             $"entry_file: {artifactResult.EntryFilePath}"
         };
+
+        if (!string.IsNullOrWhiteSpace(artifactResult.PackageFilePath))
+            lines.Add($"package_file: {artifactResult.PackageFilePath}");
 
         if (artifactResult.Delivery?.GoogleDrive?.Success == true)
         {
@@ -1815,6 +1941,37 @@ public class HighLevelCoordinator
         else if (artifactResult.Delivery != null)
         {
             lines.Add("雲端上傳未完成，但封裝檔已建立。");
+        }
+
+        return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    internal static string BuildSiteRebuildReply(HighLevelSiteRebuildResult artifactResult)
+    {
+        if (!artifactResult.Success)
+            return $"網站重製失敗：{artifactResult.Message}";
+
+        var lines = new List<string>
+        {
+            "已重製網站並封裝成可下載套件。",
+            $"source_url: {artifactResult.SourceUrl}",
+            $"depth: {artifactResult.MaxDepth}",
+            $"pages: {artifactResult.PagesCrawled}",
+            $"routes: {artifactResult.RoutesGenerated}",
+            $"package_file: {artifactResult.PackageFilePath}"
+        };
+
+        if (artifactResult.Delivery?.GoogleDrive?.Success == true)
+        {
+            lines.Add("Google Drive download link:");
+            if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.DownloadLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.DownloadLink);
+            else if (!string.IsNullOrWhiteSpace(artifactResult.Delivery.GoogleDrive.WebViewLink))
+                lines.Add(artifactResult.Delivery.GoogleDrive.WebViewLink);
+        }
+        else if (artifactResult.Delivery != null)
+        {
+            lines.Add("Google Drive upload was not completed; the package was kept as a local artifact.");
         }
 
         return string.Join('\n', lines.Where(line => !string.IsNullOrWhiteSpace(line)));
@@ -1927,6 +2084,8 @@ public class HighLevelCoordinator
 
     private string InferTaskType(string normalized)
     {
+        if (!string.IsNullOrWhiteSpace(HighLevelSiteRebuildService.TryExtractSourceUrl(normalized)) &&
+            ContainsAny(normalized, _options.SiteRebuildKeywords)) return "site_rebuild";
         if (ContainsAny(normalized, _options.SystemScaffoldKeywords)) return "system_scaffold";
         if (ContainsAny(normalized, _options.CodeModifyKeywords)) return "code_modify";
         var hasCodeArtifactHint = ContainsAny(normalized, _options.CodeArtifactKeywords);
@@ -1950,12 +2109,13 @@ public class HighLevelCoordinator
         var title = decision.TaskType switch
         {
             "system_scaffold" => $"Generate system scaffold from {channel} request",
+            "site_rebuild" => $"Rebuild website package from {channel} request",
             "code_modify" => $"Modify artifact from {channel} request",
             "doc_gen" => $"Generate document from {channel} request",
             "code_gen" => $"Generate deliverable from {channel} request",
             _ => $"Production task from {channel} request"
         };
-        var requiresProjectName = decision.TaskType is "code_gen" or "system_scaffold";
+        var requiresProjectName = decision.TaskType is "code_gen" or "system_scaffold" or "site_rebuild";
         var inlineProjectName = requiresProjectName ? TryExtractInlineProjectName(message) : null;
         var inlineProjectFolderName = string.IsNullOrWhiteSpace(inlineProjectName)
             ? null
@@ -2011,6 +2171,18 @@ public class HighLevelCoordinator
                 new() { PhaseId = "test", Title = "Run basic verification", Kind = "verification" },
                 new() { PhaseId = "package", Title = "Package scaffold", Kind = "packaging" },
                 new() { PhaseId = "deliver", Title = "Deliver artifact", Kind = "delivery" }
+            };
+        }
+
+        if (taskType == "site_rebuild")
+        {
+            return new List<HighLevelTaskPhase>
+            {
+                new() { PhaseId = "crawl", Title = "Crawl source site", Kind = "context_collection" },
+                new() { PhaseId = "extract", Title = "Extract visual structure", Kind = "deterministic_extraction" },
+                new() { PhaseId = "generate", Title = "Generate component JSON package", Kind = "artifact_creation" },
+                new() { PhaseId = "test", Title = "Verify generated package", Kind = "verification" },
+                new() { PhaseId = "deliver", Title = "Upload package and return link", Kind = "delivery" }
             };
         }
 
@@ -2709,6 +2881,10 @@ public class HighLevelCoordinator
         else if (draft.TaskType == "system_scaffold")
         {
             draft.Title = $"Generate system scaffold {projectName} from {draft.Channel} request";
+        }
+        else if (draft.TaskType == "site_rebuild")
+        {
+            draft.Title = $"Rebuild website package {projectName} from {draft.Channel} request";
         }
 
         draft.Description = string.Join('\n', new[]
@@ -3792,6 +3968,21 @@ public class HighLevelCoordinatorOptions
         "full system",
         "project skeleton",
         "scaffold"
+    };
+
+    public string[] SiteRebuildKeywords { get; set; } = new[]
+    {
+        "\u91cd\u88fd",
+        "\u91cd\u69cb",
+        "\u53c3\u8003",
+        "\u5b98\u7db2",
+        "\u7db2\u7ad9",
+        "\u7db2\u9801",
+        "rebuild",
+        "recreate",
+        "clone",
+        "site",
+        "website"
     };
 
     public string[] DocKeywords { get; set; } = new[]

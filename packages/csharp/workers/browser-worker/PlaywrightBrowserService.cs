@@ -7,7 +7,7 @@ namespace BrowserWorker;
 /// Manages Playwright browser lifecycle and provides page operations.
 /// One browser instance shared across requests; pages are created per-request.
 /// </summary>
-public sealed class PlaywrightBrowserService : IAsyncDisposable
+public sealed class PlaywrightBrowserService : IAsyncDisposable, IBrowserPageFetcher
 {
     private readonly BrowserWorkerOptions _options;
     private readonly ILogger<PlaywrightBrowserService> _logger;
@@ -89,60 +89,7 @@ public sealed class PlaywrightBrowserService : IAsyncDisposable
             if (statusCode >= 400)
                 return BrowserPageResult.Fail($"browser_http_{statusCode}");
 
-            var finalUrl = page.Url;
-            var title = await page.TitleAsync();
-
-            // Extract visible text content via JavaScript
-            var textContent = await page.EvaluateAsync<string>("""
-                (() => {
-                    const body = document.body;
-                    if (!body) return '';
-
-                    // Remove script, style, nav, header, footer, noscript elements
-                    const removes = body.querySelectorAll('script, style, nav, header, footer, noscript, svg, [aria-hidden="true"]');
-                    removes.forEach(el => el.remove());
-
-                    // Get visible text
-                    const text = body.innerText || body.textContent || '';
-                    return text.replace(/\s+/g, ' ').trim();
-                })()
-            """);
-
-            // Extract meta description
-            var description = await page.EvaluateAsync<string>("""
-                (() => {
-                    const meta = document.querySelector('meta[name="description"]');
-                    return meta ? (meta.getAttribute('content') || '') : '';
-                })()
-            """);
-
-            // Truncate content
-            var maxLen = _options.MaxContentLength;
-            if (textContent.Length > maxLen)
-                textContent = textContent[..maxLen];
-
-            // Optional screenshot
-            byte[]? screenshot = null;
-            if (_options.ScreenshotOnEvidence)
-            {
-                screenshot = await page.ScreenshotAsync(new PageScreenshotOptions
-                {
-                    Type = ScreenshotType.Png,
-                    FullPage = false
-                });
-            }
-
-            return new BrowserPageResult
-            {
-                Success = true,
-                StatusCode = statusCode,
-                FinalUrl = finalUrl,
-                Title = title,
-                Description = description,
-                TextContent = textContent,
-                Screenshot = screenshot,
-                FetchedAt = DateTimeOffset.UtcNow
-            };
+            return await ExtractPageAsync(page, statusCode);
         }
         catch (PlaywrightException ex)
         {
@@ -157,6 +104,171 @@ public sealed class PlaywrightBrowserService : IAsyncDisposable
         {
             _pageSemaphore.Release();
         }
+    }
+
+    /// <summary>
+    /// Navigate level: load the start URL, then follow up to (maxSteps) in-scope
+    /// internal links, extracting each step. Read-only — no clicking of buttons,
+    /// no form interaction. Links are followed only within the same origin (or an
+    /// allowed-host suffix), so navigate cannot wander off the governed site class.
+    /// </summary>
+    public async Task<BrowserNavigationResult> NavigateAsync(
+        string startUrl,
+        int maxSteps,
+        IReadOnlyCollection<string>? allowedHostSuffixes = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync();
+        if (_browser == null)
+            return BrowserNavigationResult.Fail("browser_not_initialized");
+
+        await _pageSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var context = await _browser.NewContextAsync(new BrowserNewContextOptions
+            {
+                UserAgent = userAgent ?? _options.UserAgent
+            });
+            var page = await context.NewPageAsync();
+            page.SetDefaultTimeout(_options.DefaultTimeoutMs);
+            page.SetDefaultNavigationTimeout(_options.NavigationTimeoutMs);
+
+            var steps = new List<BrowserPageResult>();
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var current = startUrl;
+
+            for (var step = 0; step <= Math.Max(0, maxSteps); step++)
+            {
+                var response = await page.GotoAsync(current, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded
+                });
+                if (response == null)
+                    return steps.Count == 0 ? BrowserNavigationResult.Fail("browser_navigation_failed") : BrowserNavigationResult.Ok(steps);
+                if (response.Status >= 400)
+                    return steps.Count == 0 ? BrowserNavigationResult.Fail($"browser_http_{response.Status}") : BrowserNavigationResult.Ok(steps);
+
+                visited.Add(page.Url);
+                steps.Add(await ExtractPageAsync(page, response.Status));
+
+                if (step == maxSteps)
+                    break;
+
+                var next = await FindNextInScopeLinkAsync(page, allowedHostSuffixes, visited);
+                if (next == null)
+                    break;
+                current = next;
+            }
+
+            return BrowserNavigationResult.Ok(steps);
+        }
+        catch (PlaywrightException ex)
+        {
+            return BrowserNavigationResult.Fail($"browser_playwright_error: {ex.Message}");
+        }
+        catch (TimeoutException)
+        {
+            return BrowserNavigationResult.Fail("browser_navigation_timeout");
+        }
+        finally
+        {
+            _pageSemaphore.Release();
+        }
+    }
+
+    private async Task<BrowserPageResult> ExtractPageAsync(IPage page, int statusCode)
+    {
+        var finalUrl = page.Url;
+        var title = await page.TitleAsync();
+
+        var textContent = await page.EvaluateAsync<string>("""
+            (() => {
+                const body = document.body;
+                if (!body) return '';
+                const removes = body.querySelectorAll('script, style, nav, header, footer, noscript, svg, [aria-hidden="true"]');
+                removes.forEach(el => el.remove());
+                const text = body.innerText || body.textContent || '';
+                return text.replace(/\s+/g, ' ').trim();
+            })()
+        """);
+
+        var description = await page.EvaluateAsync<string>("""
+            (() => {
+                const meta = document.querySelector('meta[name="description"]');
+                return meta ? (meta.getAttribute('content') || '') : '';
+            })()
+        """);
+
+        var maxLen = _options.MaxContentLength;
+        if (textContent.Length > maxLen)
+            textContent = textContent[..maxLen];
+
+        byte[]? screenshot = null;
+        if (_options.ScreenshotOnEvidence)
+        {
+            screenshot = await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Type = ScreenshotType.Png,
+                FullPage = false
+            });
+        }
+
+        return new BrowserPageResult
+        {
+            Success = true,
+            StatusCode = statusCode,
+            FinalUrl = finalUrl,
+            Title = title,
+            Description = description,
+            TextContent = textContent,
+            Screenshot = screenshot,
+            FetchedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    /// <summary>Find the first in-scope, unvisited internal link href on the current page.</summary>
+    private static async Task<string?> FindNextInScopeLinkAsync(
+        IPage page,
+        IReadOnlyCollection<string>? allowedHostSuffixes,
+        HashSet<string> visited)
+    {
+        var hrefs = await page.EvaluateAsync<string[]>("""
+            (() => Array.from(document.querySelectorAll('a[href]'))
+                .map(a => a.href)
+                .filter(h => h.startsWith('http')))()
+        """);
+
+        var currentHost = new Uri(page.Url).Host;
+        foreach (var href in hrefs)
+        {
+            if (!Uri.TryCreate(href, UriKind.Absolute, out var candidate))
+                continue;
+            var clean = new UriBuilder(candidate) { Fragment = string.Empty }.Uri.ToString();
+            if (visited.Contains(clean))
+                continue;
+            if (IsHostInScope(candidate.Host, currentHost, allowedHostSuffixes))
+                return clean;
+        }
+        return null;
+    }
+
+    private static bool IsHostInScope(string host, string currentHost, IReadOnlyCollection<string>? allowedHostSuffixes)
+    {
+        if (string.Equals(host, currentHost, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (allowedHostSuffixes == null)
+            return false;
+        foreach (var suffix in allowedHostSuffixes)
+        {
+            var s = suffix.Trim('.').ToLowerInvariant();
+            if (s.Length == 0)
+                continue;
+            if (string.Equals(host, s, StringComparison.OrdinalIgnoreCase) ||
+                host.EndsWith("." + s, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     public async ValueTask DisposeAsync()

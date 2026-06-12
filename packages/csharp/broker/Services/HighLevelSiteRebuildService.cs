@@ -1,0 +1,324 @@
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging.Abstractions;
+using SiteCrawlerWorker.Models;
+using SiteCrawlerWorker.Services;
+
+namespace Broker.Services;
+
+public sealed class HighLevelSiteRebuildResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string SourceUrl { get; set; } = string.Empty;
+    public int MaxDepth { get; set; }
+    public int PagesCrawled { get; set; }
+    public int RoutesGenerated { get; set; }
+    public SiteGenerationQualityReport QualityReport { get; set; } = new();
+    public StaticSitePackageVerificationReport VerificationReport { get; set; } = new();
+    public string GeneratedSiteRoot { get; set; } = string.Empty;
+    public string PackageFilePath { get; set; } = string.Empty;
+    public string PackageFileName { get; set; } = string.Empty;
+    public LineArtifactDeliveryResult? Delivery { get; set; }
+}
+
+public sealed class HighLevelSiteRebuildService
+{
+    private const int DefaultMaxDepth = 1;
+    private const int SiteRebuildMaxPages = int.MaxValue;
+    private const int DefaultTimeoutSeconds = 1800;
+    private static readonly Regex UrlPattern = new(@"https?://[^\s#]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex DepthPattern = new(@"(?:深度|depth)\s*[:：]?\s*(\d+)|(\d+)\s*層", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private readonly HighLevelLineWorkspaceService workspaceService;
+    private readonly LineArtifactDeliveryService artifactDeliveryService;
+    private readonly IPageFetcher pageFetcher;
+    private readonly Func<IVisualPageRenderer?>? visualRendererFactory;
+    private readonly ILogger<HighLevelSiteRebuildService> logger;
+
+    public HighLevelSiteRebuildService(
+        HighLevelLineWorkspaceService workspaceService,
+        LineArtifactDeliveryService artifactDeliveryService,
+        ILogger<HighLevelSiteRebuildService> logger)
+        : this(
+            workspaceService,
+            artifactDeliveryService,
+            new HttpPageFetcher(),
+            CreateDefaultVisualRenderer,
+            logger)
+    {
+    }
+
+    public HighLevelSiteRebuildService(
+        HighLevelLineWorkspaceService workspaceService,
+        LineArtifactDeliveryService artifactDeliveryService,
+        IPageFetcher pageFetcher,
+        ILogger<HighLevelSiteRebuildService> logger)
+        : this(workspaceService, artifactDeliveryService, pageFetcher, null, logger)
+    {
+    }
+
+    public HighLevelSiteRebuildService(
+        HighLevelLineWorkspaceService workspaceService,
+        LineArtifactDeliveryService artifactDeliveryService,
+        IPageFetcher pageFetcher,
+        Func<IVisualPageRenderer?>? visualRendererFactory,
+        ILogger<HighLevelSiteRebuildService> logger)
+    {
+        this.workspaceService = workspaceService;
+        this.artifactDeliveryService = artifactDeliveryService;
+        this.pageFetcher = pageFetcher;
+        this.visualRendererFactory = visualRendererFactory;
+        this.logger = logger;
+    }
+
+    public async Task<HighLevelSiteRebuildResult> GenerateAndDeliverAsync(
+        HighLevelTaskDraft draft,
+        HighLevelUserProfile profile,
+        string relatedTaskId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(draft.TaskType, "site_rebuild", StringComparison.OrdinalIgnoreCase))
+            return Fail("draft is not a site_rebuild task.");
+
+        var sourceUrl = TryExtractSourceUrl(draft.OriginalMessage);
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+            return Fail("source URL is required for site_rebuild.");
+
+        if (string.IsNullOrWhiteSpace(draft.ManagedPaths.ProjectRoot))
+            return Fail("project root is not available.");
+
+        var managedPaths = workspaceService.GetManagedPaths(profile.UserId, ensureExists: true);
+        if (managedPaths is null)
+            return Fail("managed paths not found.");
+
+        Directory.CreateDirectory(draft.ManagedPaths.ProjectRoot);
+        Directory.CreateDirectory(managedPaths.DocumentsRoot);
+
+        var maxDepth = ParseMaxDepth(draft.OriginalMessage);
+        var crawl = await CrawlAsync(sourceUrl, maxDepth, cancellationToken);
+        if (crawl.Pages.Count == 0)
+            return Fail("site crawl returned no pages.");
+
+        var document = new SiteGeneratorConverter(new ComponentLibraryLoader().LoadDefault()).Convert(crawl);
+        var quality = new SiteGenerationQualityAnalyzer().Analyze(document);
+        if (!quality.IsPassed)
+        {
+            return Fail(
+                $"site_generation_quality_gate_failed: {string.Join("; ", quality.Errors)}",
+                quality,
+                sourceUrl,
+                maxDepth,
+                crawl.Pages.Count,
+                document.Routes.Count);
+        }
+
+        var generatedRoot = Path.Combine(draft.ManagedPaths.ProjectRoot, "generated-site");
+        if (Directory.Exists(generatedRoot))
+            Directory.Delete(generatedRoot, recursive: true);
+
+        var packageFileName = BuildPackageFileName(draft);
+        var packageFilePath = Path.Combine(managedPaths.DocumentsRoot, packageFileName);
+        var package = new StaticSitePackageGenerator().Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = generatedRoot,
+            PackageName = "site",
+            EnforceQualityGate = true,
+            CreateArchive = true,
+            ArchivePath = packageFilePath,
+        });
+
+        VerifyGeneratedPackage(package);
+
+        var uploadToGoogleDrive = artifactDeliveryService.CanUploadToGoogleDrive(profile.UserId, "shared_delegated");
+        var delivery = await artifactDeliveryService.DeliverExistingFileAsync(new LineExistingArtifactDeliveryRequest
+        {
+            UserId = profile.UserId,
+            FilePath = packageFilePath,
+            FileName = packageFileName,
+            UploadToGoogleDrive = uploadToGoogleDrive,
+            IdentityMode = "shared_delegated",
+            ShareMode = string.Empty,
+            SendLineNotification = true,
+            NotificationTitle = "網站重製包已產生",
+            Source = "high_level_site_rebuild",
+            RelatedTaskType = draft.TaskType,
+            RelatedDraftId = draft.DraftId,
+            RelatedTaskId = relatedTaskId,
+        }, cancellationToken);
+
+        return new HighLevelSiteRebuildResult
+        {
+            Success = delivery.Success,
+            Message = delivery.Success
+                ? (delivery.UploadedToGoogleDrive ? "site_rebuild_packaged_and_uploaded" : "site_rebuild_packaged_locally_only")
+                : delivery.Message,
+            SourceUrl = sourceUrl,
+            MaxDepth = maxDepth,
+            PagesCrawled = crawl.Pages.Count,
+            RoutesGenerated = document.Routes.Count,
+            QualityReport = package.QualityReport,
+            VerificationReport = package.VerificationReport,
+            GeneratedSiteRoot = package.OutputDirectory,
+            PackageFilePath = packageFilePath,
+            PackageFileName = packageFileName,
+            Delivery = delivery,
+        };
+    }
+
+    public static string? TryExtractSourceUrl(string message)
+    {
+        var match = UrlPattern.Match(message ?? string.Empty);
+        if (!match.Success)
+            return null;
+
+        return match.Value.TrimEnd('.', ',', ';', '，', '。', '；');
+    }
+
+    public static int ParseMaxDepth(string message)
+    {
+        var match = DepthPattern.Match(message ?? string.Empty);
+        if (!match.Success)
+            return DefaultMaxDepth;
+
+        var value = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        return int.TryParse(value, out var depth)
+            ? Math.Clamp(depth, 0, 5)
+            : DefaultMaxDepth;
+    }
+
+    private async Task<SiteCrawlResult> CrawlAsync(string sourceUrl, int maxDepth, CancellationToken cancellationToken)
+    {
+        var visualRenderer = visualRendererFactory?.Invoke();
+        var hostSuffix = TryBuildSiteHostSuffix(sourceUrl);
+        try
+        {
+            var crawler = new SiteCrawlerService(pageFetcher, new DeterministicSiteExtractor(), visualRenderer, null);
+            return await crawler.CrawlAsync(new SiteCrawlRequest
+            {
+                RequestId = $"site-rebuild-{Guid.NewGuid():N}"[..24],
+                StartUrl = sourceUrl,
+                Scope = new SiteCrawlScope
+                {
+                    Kind = "link_depth",
+                    MaxDepth = maxDepth,
+                    SameOriginOnly = true,
+                    PathPrefixLock = false,
+                    AllowedHostSuffixes = hostSuffix is null ? [] : [hostSuffix],
+                },
+                Capture = new SiteCrawlCaptureOptions
+                {
+                    Html = false,
+                    RenderedDom = true,
+                    RenderedDomMaxPages = 128,
+                    Css = false,
+                    Scripts = false,
+                    Assets = false,
+                    Screenshots = false,
+                },
+                Budgets = new SiteCrawlBudgets
+                {
+                    MaxPages = SiteRebuildMaxPages,
+                    MaxTotalBytes = 80 * 1024 * 1024,
+                    MaxAssetBytes = 0,
+                    WallClockTimeoutSeconds = DefaultTimeoutSeconds,
+                },
+            }, cancellationToken);
+        }
+        finally
+        {
+            if (visualRenderer is not null)
+            {
+                await visualRenderer.DisposeAsync();
+            }
+        }
+    }
+
+    private static string? TryBuildSiteHostSuffix(string sourceUrl)
+    {
+        if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri))
+            return null;
+
+        var labels = uri.IdnHost
+            .Trim()
+            .TrimEnd('.')
+            .ToLowerInvariant()
+            .Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (labels.Length < 2 || labels.Any(label => label.Length == 0))
+            return null;
+
+        if (labels.Length >= 3 &&
+            labels[^1].Length == 2 &&
+            IsCommonSecondLevelPublicSuffix(labels[^2]))
+        {
+            return string.Join('.', labels[^3], labels[^2], labels[^1]);
+        }
+
+        return string.Join('.', labels[^2], labels[^1]);
+    }
+
+    private static bool IsCommonSecondLevelPublicSuffix(string label)
+    {
+        return label is "com" or "edu" or "gov" or "org" or "net" or "mil" or "ac" or "co";
+    }
+
+    private static IVisualPageRenderer CreateDefaultVisualRenderer()
+    {
+        return new PlaywrightVisualPageRenderer(
+            new VisualPageRendererOptions
+            {
+                Headless = true,
+                ViewportWidth = 1366,
+                ViewportHeight = 900,
+                PostNavigationSettleMs = 150,
+                NetworkIdleTimeoutMs = 0,
+                MaxRegions = 90,
+                MaxItemsPerRegion = 24,
+            },
+            NullLogger<PlaywrightVisualPageRenderer>.Instance);
+    }
+
+    private static void VerifyGeneratedPackage(StaticSitePackageResult package)
+    {
+        foreach (var path in new[] { package.EntryPoint, package.SiteJsonPath, package.ManifestPath })
+        {
+            if (!File.Exists(path))
+                throw new InvalidOperationException($"generated site package is missing {path}");
+        }
+
+        if (string.IsNullOrWhiteSpace(package.ArchivePath) || !File.Exists(package.ArchivePath))
+            throw new InvalidOperationException("generated site package archive is missing.");
+
+        if (!package.VerificationReport.IsPassed)
+        {
+            throw new InvalidOperationException(
+                $"generated site package verification failed: {string.Join("; ", package.VerificationReport.Errors)}");
+        }
+    }
+
+    private static string BuildPackageFileName(HighLevelTaskDraft draft)
+    {
+        var name = string.IsNullOrWhiteSpace(draft.ProjectFolderName) ? "site-rebuild" : draft.ProjectFolderName.Trim();
+        return $"{name}-site-package.zip";
+    }
+
+    private HighLevelSiteRebuildResult Fail(
+        string message,
+        SiteGenerationQualityReport? qualityReport = null,
+        string sourceUrl = "",
+        int maxDepth = 0,
+        int pagesCrawled = 0,
+        int routesGenerated = 0)
+    {
+        logger.LogWarning("Site rebuild generation failed: {Message}", message);
+        return new HighLevelSiteRebuildResult
+        {
+            Success = false,
+            Message = message,
+            SourceUrl = sourceUrl,
+            MaxDepth = maxDepth,
+            PagesCrawled = pagesCrawled,
+            RoutesGenerated = routesGenerated,
+            QualityReport = qualityReport ?? new SiteGenerationQualityReport(),
+        };
+    }
+}

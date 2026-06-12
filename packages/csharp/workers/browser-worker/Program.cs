@@ -60,6 +60,9 @@ var host = new WorkerHost(workerOptions, logger);
 var readHandlerLogger = loggerFactory.CreateLogger<BrowserReadHandler>();
 host.RegisterHandler(new BrowserReadHandler(browserService, readHandlerLogger));
 
+var governedHandlerLogger = loggerFactory.CreateLogger<GovernedBrowserActionHandler>();
+host.RegisterHandler(new GovernedBrowserActionHandler(browserService, governedHandlerLogger));
+
 // ── 啟動 ──
 logger.LogInformation(
     "BrowserWorker starting: broker={Host}:{Port} headless={Headless} maxPages={MaxPages}",

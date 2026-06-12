@@ -395,6 +395,7 @@ public sealed class GoogleDriveShareService
             ".json" => "application/json",
             ".html" => "text/html",
             ".csv" => "text/csv",
+            ".zip" => "application/zip",
             ".pdf" => "application/pdf",
             ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

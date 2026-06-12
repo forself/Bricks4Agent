@@ -62,15 +62,18 @@ public sealed class LineArtifactDeliveryService
 
     private readonly HighLevelLineWorkspaceService _workspaceService;
     private readonly GoogleDriveShareService _googleDriveShareService;
+    private readonly BrokerArtifactDownloadService _brokerArtifactDownloadService;
     private readonly ILogger<LineArtifactDeliveryService> _logger;
 
     public LineArtifactDeliveryService(
         HighLevelLineWorkspaceService workspaceService,
         GoogleDriveShareService googleDriveShareService,
+        BrokerArtifactDownloadService brokerArtifactDownloadService,
         ILogger<LineArtifactDeliveryService> logger)
     {
         _workspaceService = workspaceService;
         _googleDriveShareService = googleDriveShareService;
+        _brokerArtifactDownloadService = brokerArtifactDownloadService;
         _logger = logger;
     }
 
@@ -134,15 +137,6 @@ public sealed class LineArtifactDeliveryService
         var driveOk = driveResult?.Success == true;
         var overallStatus = driveOk || !request.UploadToGoogleDrive ? "completed" : "partial";
 
-        HighLevelLineNotification? notification = null;
-        if (request.SendLineNotification)
-        {
-            notification = _workspaceService.QueueLineNotification(
-                request.UserId,
-                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
-                BuildNotificationBody(fileName, filePath, driveResult));
-        }
-
         var artifact = _workspaceService.RecordArtifact(new HighLevelLineArtifactRecord
         {
             Channel = "line",
@@ -168,8 +162,22 @@ public sealed class LineArtifactDeliveryService
             GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
             DriveError = driveOk ? string.Empty : (driveResult?.Message ?? string.Empty),
             OverallStatus = overallStatus,
-            NotificationId = notification?.NotificationId ?? string.Empty
+            NotificationId = string.Empty
         });
+
+        HighLevelLineNotification? notification = null;
+        if (request.SendLineNotification)
+        {
+            var brokerDownloadUrl = driveOk
+                ? null
+                : _brokerArtifactDownloadService.CreateSignedDownloadUrl(artifact.ArtifactId);
+            notification = _workspaceService.QueueLineNotification(
+                request.UserId,
+                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
+                BuildNotificationBody(fileName, filePath, driveResult, brokerDownloadUrl));
+            artifact.NotificationId = notification.NotificationId;
+            _workspaceService.RecordArtifact(artifact);
+        }
 
         return new LineArtifactDeliveryResult
         {
@@ -231,15 +239,6 @@ public sealed class LineArtifactDeliveryService
         var driveOk = driveResult?.Success == true;
         var overallStatus = driveOk || !request.UploadToGoogleDrive ? "completed" : "partial";
 
-        HighLevelLineNotification? notification = null;
-        if (request.SendLineNotification)
-        {
-            notification = _workspaceService.QueueLineNotification(
-                request.UserId,
-                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
-                BuildNotificationBody(fileName, request.FilePath, driveResult));
-        }
-
         var artifact = _workspaceService.RecordArtifact(new HighLevelLineArtifactRecord
         {
             Channel = "line",
@@ -265,8 +264,22 @@ public sealed class LineArtifactDeliveryService
             GoogleDriveDownloadLink = driveResult?.DownloadLink ?? string.Empty,
             DriveError = driveOk ? string.Empty : (driveResult?.Message ?? string.Empty),
             OverallStatus = overallStatus,
-            NotificationId = notification?.NotificationId ?? string.Empty
+            NotificationId = string.Empty
         });
+
+        HighLevelLineNotification? notification = null;
+        if (request.SendLineNotification)
+        {
+            var brokerDownloadUrl = driveOk
+                ? null
+                : _brokerArtifactDownloadService.CreateSignedDownloadUrl(artifact.ArtifactId);
+            notification = _workspaceService.QueueLineNotification(
+                request.UserId,
+                string.IsNullOrWhiteSpace(request.NotificationTitle) ? "檔案已完成" : request.NotificationTitle.Trim(),
+                BuildNotificationBody(fileName, request.FilePath, driveResult, brokerDownloadUrl));
+            artifact.NotificationId = notification.NotificationId;
+            _workspaceService.RecordArtifact(artifact);
+        }
 
         return new LineArtifactDeliveryResult
         {
@@ -311,21 +324,10 @@ public sealed class LineArtifactDeliveryService
     public static string BuildNotificationBody(
         string fileName,
         string filePath,
-        GoogleDriveShareResult? driveResult)
+        GoogleDriveShareResult? driveResult,
+        string? brokerDownloadUrl = null)
     {
         var lines = new List<string>();
-
-        if (driveResult?.Success != true)
-        {
-            return string.Join(Environment.NewLine, new[]
-            {
-                "Artifact created, but a downloadable link is not available yet.",
-                string.Empty,
-                $"File: {fileName}",
-                string.Empty,
-                "The broker kept the artifact internally without exposing internal paths."
-            });
-        }
 
         if (driveResult?.Success == true)
         {
@@ -346,17 +348,24 @@ public sealed class LineArtifactDeliveryService
                 lines.Add("預覽連結：");
                 lines.Add(driveResult.WebViewLink);
             }
-        }
-        else
-        {
-            lines.Add("檔案已完成，但雲端上傳未完成。");
-            lines.Add(string.Empty);
-            lines.Add($"檔名：{fileName}");
-            lines.Add(string.Empty);
-            lines.Add("目前先保留在本機管理工作區。");
-            lines.Add($"本機路徑：{filePath}");
+            return string.Join(Environment.NewLine, lines);
         }
 
+        lines.Add("檔案已完成。");
+        lines.Add(string.Empty);
+        lines.Add($"檔名：{fileName}");
+
+        if (!string.IsNullOrWhiteSpace(brokerDownloadUrl))
+        {
+            lines.Add(string.Empty);
+            lines.Add("下載連結：");
+            lines.Add(brokerDownloadUrl);
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Artifact created, but a downloadable link is not available yet.");
+        lines.Add("The broker kept the artifact internally without exposing internal paths.");
         return string.Join(Environment.NewLine, lines);
     }
 

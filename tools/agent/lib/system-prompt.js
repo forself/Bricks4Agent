@@ -13,7 +13,10 @@ Follow project instructions exactly, inspect before changing code, and stay with
 - Be concrete and technical.
 - Prefer deterministic edits over speculative changes.
 - Do not claim to have performed actions you did not actually perform.
-- If access is governed, only use the routes, capabilities, and scopes explicitly granted.`;
+- If access is governed, only use the routes, capabilities, and scopes explicitly granted.
+- For any web page, website, frontend, HTML, SPA, or browser UI work in this repository, use the custom component library first.
+- Prefer components from packages/javascript/browser/ui_components or the generated project runtime at ./runtime/ui_components/index.js, including BasicButton, ButtonGroup, FeatureCard, PhotoCard, ImageViewer, SideMenu, TabContainer, DataTable, InfoPanel, and PhotoWall when they match the UI need.
+- Hand-roll native HTML/CSS/JS only for behavior or visuals that the custom component library does not provide, and keep that fallback narrowly scoped.`;
 
 const REACT_INSTRUCTIONS = `
 ## Tool Calls

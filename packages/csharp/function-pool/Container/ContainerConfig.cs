@@ -28,6 +28,9 @@ public class ContainerConfig
 
     /// <summary>Broker TCP port for workers</summary>
     public int BrokerPortForWorkers { get; set; } = 7000;
+
+    /// <summary>Broker HTTP URL as seen from inside agent containers</summary>
+    public string AgentBrokerUrl { get; set; } = "http://broker:5000";
 }
 
 /// <summary>
@@ -55,4 +58,7 @@ public class WorkerImageConfig
 
     /// <summary>CPU limit (e.g. "0.5")</summary>
     public string? CpuLimit { get; set; }
+
+    /// <summary>Optional per-image network override</summary>
+    public string? NetworkName { get; set; }
 }

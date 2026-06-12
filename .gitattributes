@@ -1,0 +1,25 @@
+# Normalize all text files to LF in the repository and on checkout.
+# The index is already fully LF; this stops autocrlf churn warnings.
+* text=auto eol=lf
+
+# Windows scripts that some tools expect with CRLF endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.db binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary

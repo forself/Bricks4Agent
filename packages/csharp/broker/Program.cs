@@ -159,7 +159,19 @@ builder.Services.AddSingleton<IPolicyEngine>(sp =>
 var llmProxyOptions = builder.Configuration.GetSection("LlmProxy").Get<LlmProxyOptions>()
     ?? new LlmProxyOptions();
 builder.Services.AddSingleton(llmProxyOptions);
-builder.Services.AddHttpClient<ILlmProxyService, LlmProxyService>();
+// [MONITORING EXTRACTION] LLM 觀測：raw LlmProxyService 用 typed HttpClient，外面包 Metered 裝飾器
+builder.Services.AddSingleton<BrokerCore.Services.LlmProxyMetrics>();
+builder.Services.AddHttpClient<LlmProxyService>();
+builder.Services.AddSingleton<ILlmProxyService>(sp =>
+    new BrokerCore.Services.MeteredLlmProxyService(
+        sp.GetRequiredService<LlmProxyService>(),
+        sp.GetRequiredService<BrokerCore.Services.LlmProxyMetrics>()));
+// [MONITORING EXTRACTION] Health Score 子系統（leader-guard 單機永遠 PRIMARY）
+builder.Services.AddSingleton<Broker.Services.ILeaderElection, Broker.Services.SingleNodeLeaderElection>();
+builder.Services.AddSingleton<Broker.Services.LeaderGuard>();
+builder.Services.AddSingleton<Broker.Services.HealthScoreService>();
+builder.Services.AddSingleton<Broker.Services.HealthScoreSnapshotService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Broker.Services.HealthScoreSnapshotService>());
 var highLevelLlmOptions = builder.Configuration.GetSection("HighLevelLlm").Get<Broker.Services.HighLevelLlmOptions>()
     ?? new Broker.Services.HighLevelLlmOptions();
 builder.Services.AddSingleton(highLevelLlmOptions);
@@ -172,6 +184,9 @@ builder.Services.AddSingleton(deploymentSecretOptions);
 var googleDriveDeliveryOptions = builder.Configuration.GetSection("GoogleDriveDelivery").Get<Broker.Services.GoogleDriveDeliveryOptions>()
     ?? new Broker.Services.GoogleDriveDeliveryOptions();
 builder.Services.AddSingleton(googleDriveDeliveryOptions);
+var artifactDownloadOptions = builder.Configuration.GetSection("ArtifactDownload").Get<Broker.Services.BrokerArtifactDownloadOptions>()
+    ?? new Broker.Services.BrokerArtifactDownloadOptions();
+builder.Services.AddSingleton(artifactDownloadOptions);
 var tdxOptions = builder.Configuration.GetSection("Tdx").Get<Broker.Services.TdxOptions>()
     ?? new Broker.Services.TdxOptions();
 builder.Services.AddSingleton(tdxOptions);
@@ -198,6 +213,8 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewProjectDefinitionC
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewWorkflowDesignService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewPdfRenderService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
+builder.Services.AddSingleton<Broker.Services.SidecarPublicUrlResolver>();
+builder.Services.AddSingleton<Broker.Services.BrokerArtifactDownloadService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
@@ -205,6 +222,7 @@ builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldProgressSto
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelSiteRebuildService>();
 builder.Services.AddSingleton<Broker.Services.IBrowserExecutionRequestBuilder, Broker.Services.BrowserExecutionRequestBuilder>();
 builder.Services.AddSingleton<Broker.Services.AzureIisDeploymentTargetService>();
 builder.Services.AddSingleton<Broker.Services.IAzureIisDeploymentRequestBuilder, Broker.Services.AzureIisDeploymentRequestBuilder>();
@@ -320,7 +338,8 @@ if (poolEnabled)
             SpawnTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue("FunctionPool:ContainerManager:SpawnTimeoutSeconds", 120)),
             AutoRespawn = builder.Configuration.GetValue("FunctionPool:ContainerManager:AutoRespawn", true),
             BrokerHostForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerHostForWorkers", "broker") ?? "broker",
-            BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000)
+            BrokerPortForWorkers = builder.Configuration.GetValue("FunctionPool:ContainerManager:BrokerPortForWorkers", 7000),
+            AgentBrokerUrl = builder.Configuration.GetValue("FunctionPool:ContainerManager:AgentBrokerUrl", "http://broker:5000") ?? "http://broker:5000"
         };
 
         // Load worker image configs from configuration
@@ -332,7 +351,8 @@ if (poolEnabled)
                 Image = child.GetValue<string>("Image") ?? $"bricks4agent/{child.Key}:latest",
                 MemoryLimit = child.GetValue<string>("MemoryLimit"),
                 CpuLimit = child.GetValue<string>("CpuLimit"),
-                User = child.GetValue<string>("User")
+                User = child.GetValue<string>("User"),
+                NetworkName = child.GetValue<string>("NetworkName")
             };
 
             // Load environment
@@ -842,8 +862,11 @@ PlanEndpoints.Map(api);
 RuntimeEndpoints.Map(api);
 HighLevelEndpoints.Map(api);
 GoogleDriveOAuthEndpoints.Map(api);
+ArtifactDownloadEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
+// [MONITORING EXTRACTION] /api/v1/health/workers, /health/score, /health/score/history
+HealthCheckEndpoints.Map(api);
 if (poolEnabled)
     WorkerEndpoints.Map(api);
 
@@ -871,6 +894,7 @@ if (poolEnabled)
 }
 
 // ── RAG 種子（消費者保護法，僅首次執行） ──
+if (builder.Configuration.GetValue("RagSeed:Enabled", true))
 {
     using var scope = app.Services.CreateScope();
     var ragDb = scope.ServiceProvider.GetRequiredService<BrokerCore.Data.BrokerDb>();

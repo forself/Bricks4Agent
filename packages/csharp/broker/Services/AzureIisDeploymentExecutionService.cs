@@ -117,25 +117,32 @@ public sealed class AzureIisDeploymentExecutionService
             cancellationToken);
         if (deployRun.ExitCode != 0)
         {
+            var rollback = await RunRollbackAsync(request, requestRoot, secret, cancellationToken);
             return FailWithEvidence(
                 request,
                 "deployment_remote_failed",
-                AzureIisDeploymentResult.Fail(request.RequestId, request.TargetId, "remote_deploy", deployRun.StandardError));
+                AzureIisDeploymentResult.Fail(
+                    request.RequestId,
+                    request.TargetId,
+                    rollback.Success ? "remote_deploy_rolled_back" : "remote_deploy_rollback_failed",
+                    $"Remote deploy failed: {deployRun.StandardError}. {rollback.Summary}."));
         }
 
         var healthCheck = await _healthChecks.CheckAsync(request, cancellationToken: cancellationToken);
         if (healthCheck.Attempted && !healthCheck.Success)
         {
+            var healthMessage = string.IsNullOrWhiteSpace(healthCheck.Error)
+                ? $"Health check failed: {healthCheck.Url} returned {(healthCheck.StatusCode?.ToString() ?? "unknown")}."
+                : $"Health check failed: {healthCheck.Error}";
+            var rollback = await RunRollbackAsync(request, requestRoot, secret, cancellationToken);
             return FailWithEvidence(
                 request,
                 "deployment_health_check_failed",
                 AzureIisDeploymentResult.Fail(
                     request.RequestId,
                     request.TargetId,
-                    "health_check",
-                    string.IsNullOrWhiteSpace(healthCheck.Error)
-                        ? $"Health check failed: {healthCheck.Url} returned {(healthCheck.StatusCode?.ToString() ?? "unknown")}."
-                        : $"Health check failed: {healthCheck.Error}"));
+                    rollback.Success ? "health_check_rolled_back" : "health_check_rollback_failed",
+                    $"{healthMessage} {rollback.Summary}."));
         }
 
         return OkWithEvidence(
@@ -219,6 +226,39 @@ public sealed class AzureIisDeploymentExecutionService
             new { docId = documentId }).FirstOrDefault();
 
         return entry == null ? null : TryReadEvidenceEntry(entry);
+    }
+
+    /// <summary>
+    /// Roll back to the backup the deploy script captured before overwriting the
+    /// target. Returns a short outcome string for the failure message.
+    /// </summary>
+    private async Task<(bool Success, string Summary)> RunRollbackAsync(
+        AzureIisDeploymentRequest request,
+        string requestRoot,
+        AzureIisDeploymentSecret secret,
+        CancellationToken cancellationToken)
+    {
+        var rollbackScript = AzureIisPowerShellScriptBuilder.BuildRollback(request);
+        var rollbackPath = Path.Combine(requestRoot, "rollback.ps1");
+        File.WriteAllText(rollbackPath, rollbackScript);
+
+        var rollbackRun = await _processRunner.RunAsync(
+            new ProcessRunSpec
+            {
+                FileName = "powershell",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{rollbackPath}\"",
+                WorkingDirectory = requestRoot,
+                EnvironmentVariables = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["B4A_DEPLOY_USERNAME"] = secret.UserName,
+                    ["B4A_DEPLOY_PASSWORD"] = secret.Password
+                }
+            },
+            cancellationToken);
+
+        return rollbackRun.ExitCode == 0
+            ? (true, "rolled back to the previous deployment")
+            : (false, $"rollback also failed: {rollbackRun.StandardError}");
     }
 
     private AzureIisDeploymentExecutionEnvelope OkWithEvidence(AzureIisDeploymentRequest request, AzureIisDeploymentResult result)

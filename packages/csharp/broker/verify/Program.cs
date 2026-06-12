@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
+using SiteCrawlerWorker.Services;
 using System.Security.Cryptography;
 using System.Net;
 using System.Net.Http;
@@ -1522,9 +1523,19 @@ try
                 AccessRoot = Path.Combine(sandboxRoot, "managed"),
                 CommandGuideReminderMinutes = 60
             });
+        var coordinatorDownloadOptions = new BrokerArtifactDownloadOptions
+        {
+            SigningSecret = "verify-artifact-download-secret",
+            SidecarLastTunnelUrlPath = Path.Combine(sandboxRoot, ".last-tunnel-url")
+        };
+        var coordinatorDownloadService = new BrokerArtifactDownloadService(
+            coordinatorWorkspaceService,
+            new SidecarPublicUrlResolver(coordinatorDownloadOptions),
+            coordinatorDownloadOptions);
         var coordinatorArtifactDeliveryService = new LineArtifactDeliveryService(
             coordinatorWorkspaceService,
             coordinatorGoogleDriveService,
+            coordinatorDownloadService,
             NullLogger<LineArtifactDeliveryService>.Instance);
         var coordinatorScaffoldSpecStore = new HighLevelSystemScaffoldSpecStore(coordinatorDb);
         var coordinatorScaffoldIterationStore = new HighLevelSystemScaffoldIterationStore(coordinatorDb);
@@ -1559,6 +1570,11 @@ try
             coordinatorScaffoldIterationStore,
             coordinatorScaffoldProgressStore,
             NullLogger<HighLevelSystemScaffoldService>.Instance);
+        var coordinatorSiteRebuildService = new HighLevelSiteRebuildService(
+            coordinatorWorkspaceService,
+            coordinatorArtifactDeliveryService,
+            new FakeSiteRebuildPageFetcher(),
+            NullLogger<HighLevelSiteRebuildService>.Instance);
         var coordinatorSharedDriveAuth = coordinatorGoogleOAuthService.StartAuthorization("line", "line-drive-owner");
         var coordinatorSharedDriveCallback = await coordinatorGoogleOAuthService.CompleteAuthorizationAsync(
             VerifyUrlHelpers.ExtractQueryParam(coordinatorSharedDriveAuth.AuthorizationUrl, "state"),
@@ -1635,6 +1651,7 @@ try
             coordinatorDocumentArtifactService,
             coordinatorCodeArtifactService,
             coordinatorSystemScaffoldService,
+            coordinatorSiteRebuildService,
             coordinatorArtifactDeliveryService,
             new BrowserBindingService(coordinatorDb),
             coordinatorProjectInterviewStateMachine,
@@ -1779,6 +1796,27 @@ try
         var scaffoldArtifacts = coordinatorWorkspaceService.ListArtifacts("line-scaffold-user");
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
+
+        var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");
+        AssertTrue(siteRebuildDraft.Draft != null && siteRebuildDraft.Draft.TaskType == "site_rebuild", "site rebuild command with URL creates site_rebuild draft");
+        AssertTrue(siteRebuildDraft.Draft!.ProjectName == "sitecopy", "site rebuild draft captures inline project name");
+        AssertTrue(siteRebuildDraft.FollowUpMessages != null && siteRebuildDraft.FollowUpMessages.Contains("y"), "site rebuild draft exposes confirm follow-up");
+
+        var siteRebuildConfirmed = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "confirm");
+        AssertTrue(siteRebuildConfirmed.CreatedTask != null && siteRebuildConfirmed.CreatedTask.TaskType == "site_rebuild", "confirm creates broker task for site_rebuild draft");
+        AssertTrue(siteRebuildConfirmed.Reply.Contains("已重製網站並封裝成可下載套件", StringComparison.Ordinal), "site rebuild confirm reply reports packaged site generation");
+        AssertTrue(siteRebuildConfirmed.Reply.Contains("Google Drive download link:", StringComparison.Ordinal), "site rebuild confirm reply includes drive download label");
+        AssertTrue(siteRebuildConfirmed.Reply.Contains("drive.google.com", StringComparison.OrdinalIgnoreCase), "site rebuild confirm reply includes drive link");
+        var siteRebuildArtifacts = coordinatorWorkspaceService.ListArtifacts("line-site-rebuild-user");
+        var siteRebuildArtifact = siteRebuildArtifacts.Single(item => item.RelatedTaskType == "site_rebuild");
+        AssertTrue(siteRebuildArtifact.UploadedToGoogleDrive, "site rebuild artifact records google drive upload");
+        AssertTrue(File.Exists(siteRebuildArtifact.FilePath), "site rebuild zip package exists on disk");
+        using (var zip = System.IO.Compression.ZipFile.OpenRead(siteRebuildArtifact.FilePath))
+        {
+            AssertTrue(zip.Entries.Any(entry => entry.FullName == "index.html"), "site rebuild zip contains index.html");
+            AssertTrue(zip.Entries.Any(entry => entry.FullName == "site.json"), "site rebuild zip contains site.json");
+            AssertTrue(zip.Entries.Any(entry => entry.FullName == "components/manifest.json"), "site rebuild zip contains component manifest");
+        }
 
         var duplicateId = await coordinator.ProcessLineMessageAsync("line-user-b", "/id bricks001");
         AssertTrue(duplicateId.Error == "invalid_user_code", "coordinator rejects duplicate preferred user id");
@@ -2180,6 +2218,37 @@ file sealed class FakeHttpClientFactory : IHttpClientFactory
         {
             BaseAddress = new Uri("http://localhost/")
         };
+}
+
+file sealed class FakeSiteRebuildPageFetcher : IPageFetcher
+{
+    public Task<PageFetchResult> FetchAsync(Uri uri, CancellationToken ct)
+        => FetchAsync(uri, long.MaxValue, ct);
+
+    public Task<PageFetchResult> FetchAsync(Uri uri, long maxBytes, CancellationToken ct)
+    {
+        var html = uri.AbsolutePath switch
+        {
+            "/" => """
+                <!doctype html><html><head><title>Example University</title></head>
+                <body><header><a href="/about">About</a><a href="/news">News</a></header>
+                <main><section><h1>Example University</h1><p>Welcome to Example University.</p></section></main></body></html>
+                """,
+            "/about" => """
+                <!doctype html><html><head><title>About</title></head>
+                <body><main><section><h1>About</h1><p>About the university.</p></section></main></body></html>
+                """,
+            "/news" => """
+                <!doctype html><html><head><title>News</title></head>
+                <body><main><section><h1>News</h1><p>Latest campus news.</p></section></main></body></html>
+                """,
+            _ => string.Empty
+        };
+
+        return Task.FromResult(string.IsNullOrWhiteSpace(html)
+            ? PageFetchResult.Fail(uri, 404, "not_found")
+            : PageFetchResult.Ok(uri, 200, "text/html", html));
+    }
 }
 
 file sealed class FakeHighLevelExecutionModelPlanner : IHighLevelExecutionModelPlanner

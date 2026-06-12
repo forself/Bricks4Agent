@@ -1,0 +1,327 @@
+using System.Text.Json.Serialization;
+
+namespace SiteCrawlerWorker.Models;
+
+public sealed class GeneratorSiteDocument
+{
+    [JsonPropertyName("schema_version")]
+    public string SchemaVersion { get; set; } = "site-generator/v1";
+
+    [JsonPropertyName("site")]
+    public GeneratorSiteMetadata Site { get; set; } = new();
+
+    [JsonPropertyName("component_library")]
+    public ComponentLibraryManifest ComponentLibrary { get; set; } = new();
+
+    [JsonPropertyName("routes")]
+    public List<GeneratorRoute> Routes { get; set; } = new();
+
+    [JsonPropertyName("component_requests")]
+    public List<ComponentRequest> ComponentRequests { get; set; } = new();
+}
+
+public sealed class GeneratorSiteMetadata
+{
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("source_url")]
+    public string SourceUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("crawl_run_id")]
+    public string CrawlRunId { get; set; } = string.Empty;
+
+    [JsonPropertyName("theme")]
+    public GeneratorTheme Theme { get; set; } = new();
+}
+
+public sealed class GeneratorTheme
+{
+    [JsonPropertyName("colors")]
+    public Dictionary<string, string> Colors { get; set; } = new();
+
+    [JsonPropertyName("typography")]
+    public Dictionary<string, string> Typography { get; set; } = new();
+}
+
+public sealed class ComponentLibraryManifest
+{
+    [JsonPropertyName("library_id")]
+    public string LibraryId { get; set; } = "bricks4agent.default";
+
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "1.0.0";
+
+    [JsonPropertyName("components")]
+    public List<ComponentDefinition> Components { get; set; } = new();
+}
+
+public sealed class ComponentDefinition
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("supported_roles")]
+    public List<string> SupportedRoles { get; set; } = new();
+
+    [JsonPropertyName("props_schema")]
+    public ComponentPropsSchema PropsSchema { get; set; } = new();
+
+    [JsonPropertyName("generated")]
+    public bool Generated { get; set; }
+}
+
+public sealed class GeneratorRoute
+{
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "/";
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("source_url")]
+    public string SourceUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("root")]
+    public ComponentNode Root { get; set; } = new();
+}
+
+public sealed class ComponentPropsSchema
+{
+    [JsonPropertyName("required")]
+    public List<string> Required { get; set; } = new();
+
+    [JsonPropertyName("properties")]
+    public Dictionary<string, ComponentPropSchema> Properties { get; set; } = new();
+}
+
+public sealed class ComponentPropSchema
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "string";
+
+    [JsonPropertyName("items")]
+    public ComponentPropSchema? Items { get; set; }
+
+    [JsonPropertyName("properties")]
+    public Dictionary<string, ComponentPropSchema> Properties { get; set; } = new();
+
+    [JsonPropertyName("required")]
+    public List<string> Required { get; set; } = new();
+}
+
+public sealed class ComponentValidationResult
+{
+    [JsonPropertyName("is_valid")]
+    public bool IsValid => Errors.Count == 0;
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
+}
+
+public sealed class SiteGenerationQualityPolicy
+{
+    [JsonPropertyName("allow_generated_components")]
+    public bool AllowGeneratedComponents { get; set; }
+
+    [JsonPropertyName("allow_component_requests")]
+    public bool AllowComponentRequests { get; set; }
+
+    [JsonPropertyName("require_unique_route_paths")]
+    public bool RequireUniqueRoutePaths { get; set; } = true;
+
+    [JsonPropertyName("require_page_shell_root")]
+    public bool RequirePageShellRoot { get; set; } = true;
+}
+
+public sealed class SiteGenerationQualityReport
+{
+    [JsonPropertyName("is_passed")]
+    public bool IsPassed => Errors.Count == 0;
+
+    [JsonPropertyName("route_count")]
+    public int RouteCount { get; set; }
+
+    [JsonPropertyName("component_node_count")]
+    public int ComponentNodeCount { get; set; }
+
+    [JsonPropertyName("component_request_count")]
+    public int ComponentRequestCount { get; set; }
+
+    [JsonPropertyName("generated_component_count")]
+    public int GeneratedComponentCount { get; set; }
+
+    [JsonPropertyName("component_types")]
+    public List<string> ComponentTypes { get; set; } = new();
+
+    [JsonPropertyName("unknown_component_types")]
+    public List<string> UnknownComponentTypes { get; set; } = new();
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = new();
+}
+
+public sealed class ComponentNode
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("props")]
+    public Dictionary<string, object?> Props { get; set; } = new();
+
+    [JsonPropertyName("children")]
+    public List<ComponentNode> Children { get; set; } = new();
+}
+
+public sealed class ComponentRequest
+{
+    [JsonPropertyName("request_id")]
+    public string RequestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("component_type")]
+    public string ComponentType { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = string.Empty;
+
+    [JsonPropertyName("source_page_url")]
+    public string SourcePageUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("source_selector")]
+    public string SourceSelector { get; set; } = string.Empty;
+}
+
+public sealed class StaticSitePackageOptions
+{
+    [JsonPropertyName("output_directory")]
+    public string OutputDirectory { get; set; } = string.Empty;
+
+    [JsonPropertyName("package_name")]
+    public string PackageName { get; set; } = "generated-site";
+
+    [JsonPropertyName("enforce_quality_gate")]
+    public bool EnforceQualityGate { get; set; }
+
+    [JsonPropertyName("create_archive")]
+    public bool CreateArchive { get; set; }
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
+}
+
+public sealed class SiteReconstructPackageRequest
+{
+    [JsonPropertyName("request_id")]
+    public string RequestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("start_url")]
+    public string StartUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("scope")]
+    public SiteCrawlScope Scope { get; set; } = new();
+
+    [JsonPropertyName("capture")]
+    public SiteCrawlCaptureOptions Capture { get; set; } = new();
+
+    [JsonPropertyName("budgets")]
+    public SiteCrawlBudgets Budgets { get; set; } = new();
+
+    [JsonPropertyName("output_directory")]
+    public string OutputDirectory { get; set; } = string.Empty;
+
+    [JsonPropertyName("package_name")]
+    public string PackageName { get; set; } = "generated-site";
+
+    [JsonPropertyName("enforce_quality_gate")]
+    public bool EnforceQualityGate { get; set; } = true;
+
+    [JsonPropertyName("create_archive")]
+    public bool CreateArchive { get; set; } = true;
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
+}
+
+public sealed class StaticSitePackageResult
+{
+    [JsonPropertyName("output_directory")]
+    public string OutputDirectory { get; set; } = string.Empty;
+
+    [JsonPropertyName("entry_point")]
+    public string EntryPoint { get; set; } = string.Empty;
+
+    [JsonPropertyName("site_json_path")]
+    public string SiteJsonPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("manifest_path")]
+    public string ManifestPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("archive_path")]
+    public string ArchivePath { get; set; } = string.Empty;
+
+    [JsonPropertyName("files")]
+    public List<string> Files { get; set; } = new();
+
+    [JsonPropertyName("quality_report")]
+    public SiteGenerationQualityReport QualityReport { get; set; } = new();
+
+    [JsonPropertyName("verification_report")]
+    public StaticSitePackageVerificationReport VerificationReport { get; set; } = new();
+}
+
+public sealed class StaticSitePackageVerificationReport
+{
+    [JsonPropertyName("is_passed")]
+    public bool IsPassed => Errors.Count == 0;
+
+    [JsonPropertyName("has_archive")]
+    public bool HasArchive { get; set; }
+
+    [JsonPropertyName("route_count")]
+    public int RouteCount { get; set; }
+
+    [JsonPropertyName("component_node_count")]
+    public int ComponentNodeCount { get; set; }
+
+    [JsonPropertyName("required_files")]
+    public List<string> RequiredFiles { get; set; } = new();
+
+    [JsonPropertyName("archive_entries")]
+    public List<string> ArchiveEntries { get; set; } = new();
+
+    [JsonPropertyName("runtime_renderer_types")]
+    public List<string> RuntimeRendererTypes { get; set; } = new();
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = new();
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = new();
+}
+
+public sealed class SiteReconstructPackageResult
+{
+    [JsonPropertyName("crawl_run_id")]
+    public string CrawlRunId { get; set; } = string.Empty;
+
+    [JsonPropertyName("page_count")]
+    public int PageCount { get; set; }
+
+    [JsonPropertyName("excluded_count")]
+    public int ExcludedCount { get; set; }
+
+    [JsonPropertyName("package")]
+    public StaticSitePackageResult Package { get; set; } = new();
+}

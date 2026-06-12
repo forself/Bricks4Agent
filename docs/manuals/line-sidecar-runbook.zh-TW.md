@@ -48,9 +48,9 @@
 
 目前若要有最佳 live 行為，通常還需要：
 
-- repo 根目錄的 `Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`（可用 `BRICKS4AGENT_SECRETS_DIR` 環境變數改路徑；repo 根目錄為舊版備援）
   - 給高階模型用的 OpenAI-compatible API key
-- repo 根目錄的 `client_secret_*.json`
+- 同一機密目錄下的 `client_secret_*.json`
   - 給 Google Drive OAuth 使用
 - `%LOCALAPPDATA%\ngrok\ngrok.yml`
   - 可用的 ngrok 設定
@@ -75,7 +75,7 @@
 
 檔案：
 
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`（或 `$env:BRICKS4AGENT_SECRETS_DIR\Api.txt`；`D:\Bricks4Agent\Api.txt` 為舊版備援）
 
 目前 sidecar 會：
 
@@ -86,7 +86,28 @@
 
 檔案樣式：
 
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`（repo 根目錄為舊版備援）
+
+### 3.1 Worker 身分憑證庫
+
+檔案：
+
+- `C:\secure\Bricks4Agent\worker-auth.json`（或 `$env:BRICKS4AGENT_SECRETS_DIR\worker-auth.json`）
+
+目前 sidecar 會：
+
+- 啟動時為缺少憑證的 worker 類型自動產生並持久化（line-worker、file-worker、browser-worker、transport-tdx、site-crawler-worker）
+- 將全部憑證注入 broker runtime 設定，並開啟 `WorkerAuth.Enforce = true`
+- line-worker runtime 設定取得對應憑證
+- `B4A_LINE_WORKER_KEY_ID` / `B4A_LINE_WORKER_SHARED_SECRET` 仍可覆寫該次啟動的 line-worker 條目
+
+要讓其他 worker 對啟用驗證的 broker 註冊，使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+```
+
+（`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
 
 目前 sidecar 會：
 
@@ -253,11 +274,11 @@ broker 現在支援三種 Google Drive 身分：
 也就是說，若要讓 LINE 使用者在生成文件或網站原型後真的拿到可下載連結，至少要有：
 
 1. 可用的高階模型 API
-- `D:\Bricks4Agent\Api.txt`
+- `C:\secure\Bricks4Agent\Api.txt`
 - 這決定文件或網站原型能否先被生成
 
 2. 可用的 Google OAuth client JSON
-- `D:\Bricks4Agent\client_secret_*.json`
+- `C:\secure\Bricks4Agent\client_secret_*.json`
 - callback URI 必須對應：
   - `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
