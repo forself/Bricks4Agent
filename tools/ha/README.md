@@ -37,9 +37,11 @@ docker compose -p b4aha -f tools/ha/docker-compose.ha.yml down
 
 ## 現況與下一步
 - ✅ 選主**機制**已實證:`demos/failover-sim`(brokersim、三測試全過)。
-- ✅ broker 內 `EtcdLeaderElection`/`LeaderGuard`:**build 驗證 + 邏輯照搬 failover-sim**;但 C# 版**尚未實跑**(本地跑需上面兩前置)。
-- ⬜ 真 broker 端到端(選主→殺主接手):待**實際 HA 部署**(rebuilt image + 完整 config + 真 etcd quorum)驗證,或本地補齊上面兩前置後跑。
-- ⬜ 狀態複製(Litestream→STANDBY)+ failover 對賬(階段④、需 perp idempotency 階段③真錢驗)+ 演練(階段⑥)。
+- ✅ broker 內 `EtcdLeaderElection`/`LeaderGuard`:**真 broker 本地實證(2026-06-12)** —— rebuild image + `FunctionPool__Enabled=true` 後,2 個真 b4a-broker + 3 etcd:
+  - **選主**:broker-b → Primary、broker-a → Standby(唯一主)✅
+  - **殺主接手**:`docker kill` broker-b → broker-a 在 ~lease TTL 內 → Primary ✅
+  → C# 選主碼**第一次實跑即正確**、真環境 failover 跑通。
+- ⬜ 狀態複製(Litestream→STANDBY)+ failover 對賬(階段④、需 perp idempotency 階段③真錢驗)+ 多機/真網路分區演練(階段⑥)。
 
 ## 紀律
 - ③ perp idempotency 真錢冪等沒驗前,**不要真的對真錢 broker 做自動 failover**(會雙下單)。本階段先當「暖備 + 半自動快速復原」+ 把選主在真 broker 跑通。

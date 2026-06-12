@@ -54,6 +54,7 @@ services:
       Cluster__EtcdEndpoints: "etcd1:2379,etcd2:2379,etcd3:2379"
       Cluster__NodeId: "broker-a"
       Cluster__LeaseTtlSeconds: "10"
+      FunctionPool__Enabled: "true"
     depends_on: [etcd1, etcd2, etcd3]
 
   broker-b:
@@ -67,4 +68,5 @@ services:
       Cluster__EtcdEndpoints: "etcd1:2379,etcd2:2379,etcd3:2379"
       Cluster__NodeId: "broker-b"
       Cluster__LeaseTtlSeconds: "10"
+      FunctionPool__Enabled: "true"
     depends_on: [etcd1, etcd2, etcd3]
