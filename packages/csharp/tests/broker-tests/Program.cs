@@ -221,6 +221,12 @@ passed += clPassed;
 failed += clFailed;
 
 Console.WriteLine();
+
+var (bpPassed, bpFailed) = Broker.Tests.BracketPriceTests.Run();
+passed += bpPassed;
+failed += bpFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {
