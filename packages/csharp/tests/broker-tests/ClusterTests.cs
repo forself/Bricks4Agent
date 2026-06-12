@@ -53,6 +53,22 @@ public static class ClusterTests
         var guardSingle = new LeaderGuard(single, NullLogger<LeaderGuard>.Instance);
         Check("guard-single→run-true", guardSingle.ShouldRun("any-job"));
 
+        // ---- DeriveIdemKey:冪等 key 的「純函式」（解耦合後抽出、無 env/無時間 → 可測）----
+        //      像組長 Pbkdf2 那組:純輸入→純輸出。同意圖→同 key 是 failover 不雙下單的基礎。
+        var k1 = AutoTraderService.DeriveIdemKey("op", "prn_a", "bingx", "BTC-USDT", "long", "harmonic", 12345L);
+        var k2 = AutoTraderService.DeriveIdemKey("op", "prn_a", "bingx", "BTC-USDT", "long", "harmonic", 12345L);
+        // 相同輸入（含同時間桶）→ 完全相同 key（deterministic）—— failover 重送會撞同 key、被 BingX 擋
+        Check("idem-same-input→same-key", k1 == k2);
+        // 不同 side → 不同 key（不會誤把多單當空單的重送）
+        var kShort = AutoTraderService.DeriveIdemKey("op", "prn_a", "bingx", "BTC-USDT", "short", "harmonic", 12345L);
+        Check("idem-diff-side→diff-key", k1 != kShort);
+        // 不同時間桶 → 不同 key（桶換了=新意圖、不會把幾小時後的新單誤判成重送）
+        var kLaterBucket = AutoTraderService.DeriveIdemKey("op", "prn_a", "bingx", "BTC-USDT", "long", "harmonic", 12346L);
+        Check("idem-diff-bucket→diff-key", k1 != kLaterBucket);
+        // 長度 ≤ 36（BingX clientOrderID 上限）+ 以 prefix- 開頭
+        Check("idem-len≤36", k1.Length <= 36);
+        Check("idem-prefix-format", k1.StartsWith("op-"));
+
         Console.WriteLine($"--- Cluster: {passed} passed, {failed} failed ---");
         return (passed, failed);
     }
