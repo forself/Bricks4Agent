@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\worker-sdk\WorkerSdk.csproj" />
+    <ProjectReference Include="..\..\broker-core\BrokerCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
