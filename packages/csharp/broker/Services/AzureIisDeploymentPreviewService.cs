@@ -120,6 +120,18 @@ public static class AzureIisPowerShellScriptBuilder
             "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Stop-WebAppPool -Name $appPoolName -ErrorAction SilentlyContinue }"
         };
 
+        // Back up the current deployment before cleanup/overwrite so a failed
+        // health check can be rolled back. Backup lives next to the target.
+        lines.AddRange(
+        [
+            "        $backupPath = $physicalPath.TrimEnd('\\') + '_b4a_backup'",
+            "        if (Test-Path $physicalPath) {",
+            "            if (Test-Path $backupPath) { Remove-Item -Path $backupPath -Recurse -Force -ErrorAction SilentlyContinue }",
+            "            New-Item -Path $backupPath -ItemType Directory -Force | Out-Null",
+            "            Get-ChildItem -Path $physicalPath -Force | Copy-Item -Destination $backupPath -Recurse -Force -ErrorAction SilentlyContinue",
+            "        }"
+        ]);
+
         if (request.RestartSite && string.Equals(request.DeploymentMode, "site_root", StringComparison.Ordinal))
         {
             lines.Add("        if ($siteName -and (Test-Path (\"IIS:\\Sites\\\" + $siteName))) { Stop-Website -Name $siteName -ErrorAction SilentlyContinue }");
@@ -155,6 +167,76 @@ public static class AzureIisPowerShellScriptBuilder
             "                if ($appPoolName) { Set-ItemProperty -Path $iisApplicationPath -Name applicationPool -Value $appPoolName }",
             "            }",
             "        }",
+            "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Start-WebAppPool -Name $appPoolName }"
+        ]);
+
+        if (request.RestartSite && string.Equals(request.DeploymentMode, "site_root", StringComparison.Ordinal))
+        {
+            lines.Add("        if ($siteName -and (Test-Path (\"IIS:\\Sites\\\" + $siteName))) { Start-Website -Name $siteName }");
+        }
+
+        lines.AddRange(
+        [
+            "    }",
+            "}",
+            "finally {",
+            "    if ($session) { Remove-PSSession -Session $session }",
+            "}"
+        ]);
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Restore the backup created by the deploy script: clear the target, copy the
+    /// backup contents back, and restart the app pool / site. Used when a remote
+    /// deploy or post-deploy health check fails.
+    /// </summary>
+    public static string BuildRollback(AzureIisDeploymentRequest request)
+    {
+        var lines = new List<string>
+        {
+            "$ErrorActionPreference = 'Stop'",
+            "$userName = $env:B4A_DEPLOY_USERNAME",
+            "$password = $env:B4A_DEPLOY_PASSWORD",
+            "if ([string]::IsNullOrWhiteSpace($userName) -or [string]::IsNullOrWhiteSpace($password)) {",
+            "    throw 'Missing deployment credentials in environment.'",
+            "}",
+            "$securePassword = ConvertTo-SecureString $password -AsPlainText -Force",
+            "$credential = New-Object System.Management.Automation.PSCredential($userName, $securePassword)",
+            "$sessionArgs = @{",
+            $"    ComputerName = '{EscapeSingleQuotes(request.VmHost)}'",
+            "    Credential = $credential",
+            "    Authentication = 'Default'",
+            "}",
+            $"if ({request.UseSsl.ToString().ToLowerInvariant()}) {{",
+            "    $sessionArgs.UseSSL = $true",
+            "}",
+            $"if ({request.Port} -gt 0) {{",
+            $"    $sessionArgs.Port = {request.Port}",
+            "}",
+            "$session = New-PSSession @sessionArgs",
+            "try {",
+            $"    $physicalPath = '{EscapeSingleQuotes(request.PhysicalPath)}'",
+            $"    $siteName = '{EscapeSingleQuotes(request.SiteName)}'",
+            $"    $appPoolName = '{EscapeSingleQuotes(request.AppPoolName)}'",
+            "    Invoke-Command -Session $session -ArgumentList $physicalPath, $siteName, $appPoolName -ScriptBlock {",
+            "        param($physicalPath, $siteName, $appPoolName)",
+            "        Import-Module WebAdministration",
+            "        $backupPath = $physicalPath.TrimEnd('\\') + '_b4a_backup'",
+            "        if (!(Test-Path $backupPath)) { throw 'No backup found to roll back to.' }",
+            "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Stop-WebAppPool -Name $appPoolName -ErrorAction SilentlyContinue }"
+        };
+
+        if (request.RestartSite && string.Equals(request.DeploymentMode, "site_root", StringComparison.Ordinal))
+        {
+            lines.Add("        if ($siteName -and (Test-Path (\"IIS:\\Sites\\\" + $siteName))) { Stop-Website -Name $siteName -ErrorAction SilentlyContinue }");
+        }
+
+        lines.AddRange(
+        [
+            "        Get-ChildItem -Path $physicalPath -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue",
+            "        Get-ChildItem -Path $backupPath -Force | Copy-Item -Destination $physicalPath -Recurse -Force -ErrorAction SilentlyContinue",
             "        if ($appPoolName -and (Test-Path (\"IIS:\\AppPools\\\" + $appPoolName))) { Start-WebAppPool -Name $appPoolName }"
         ]);
 
