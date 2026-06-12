@@ -17,6 +17,7 @@ public class HealthScoreSnapshotService : BackgroundService
 {
     private readonly HealthScoreService _scoreSvc;
     private readonly BrokerDb _db;
+    private readonly LeaderGuard _guard;
     private readonly ILogger<HealthScoreSnapshotService> _logger;
 
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(5);
@@ -25,10 +26,12 @@ public class HealthScoreSnapshotService : BackgroundService
     public HealthScoreSnapshotService(
         HealthScoreService scoreSvc,
         BrokerDb db,
+        LeaderGuard guard,
         ILogger<HealthScoreSnapshotService> logger)
     {
         _scoreSvc = scoreSvc;
         _db = db;
+        _guard = guard;
         _logger = logger;
     }
 
@@ -54,6 +57,8 @@ public class HealthScoreSnapshotService : BackgroundService
 
     private async Task TickAsync(CancellationToken ct)
     {
+        // 階段②:只有 PRIMARY(或單機)寫 snapshot;多節點時 STANDBY 自我跳過、避免雙寫
+        if (!_guard.ShouldRun("health-snapshot")) return;
         var report = await _scoreSvc.ComputeAsync(ct);
         if (report.WorkerCount == 0) return;  // 沒 worker 連上、別記 noise
 

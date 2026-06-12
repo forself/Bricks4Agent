@@ -230,6 +230,8 @@ else
 {
     builder.Services.AddSingleton<Broker.Services.ILeaderElection, Broker.Services.SingleNodeLeaderElection>();
 }
+// 階段②:LeaderGuard —— 讓「只該由 PRIMARY 做」的非真錢週期工作在 STANDBY 自我跳過(單機永遠跑、現狀不變)
+builder.Services.AddSingleton<Broker.Services.LeaderGuard>();
 
 // ── Step 4.6c: 治理層告警（health 變壞 / 新 pending approval → Discord + LINE 推送） ──
 builder.Services.AddHostedService<Broker.Services.GovernanceAlertsService>();
