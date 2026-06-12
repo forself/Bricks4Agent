@@ -1176,11 +1176,6 @@ public class BaseDb : IDisposable, IAsyncDisposable
 
         for (var index = 0; index < reader.FieldCount; index++)
         {
-            if (reader.IsDBNull(index))
-            {
-                continue;
-            }
-
             var columnName = reader.GetName(index);
             var property = meta.GetPropertyByColumn(columnName);
             if (property == null)
@@ -1188,7 +1183,15 @@ public class BaseDb : IDisposable, IAsyncDisposable
                 continue;
             }
 
+            // 用 GetValue（NULL → DBNull.Value）而非 IsDBNull(index)。後者在 Linux 的
+            // Microsoft.Data.Sqlite 上對部分欄位會丟 "No data exists for the row/column"
+            // （Windows 不會），GetValue 則是跨平台一致的 ADO.NET 契約。
             var value = reader.GetValue(index);
+            if (value is null or DBNull)
+            {
+                continue;
+            }
+
             var targetType = Nullable.GetUnderlyingType(property.Property.PropertyType) ?? property.Property.PropertyType;
 
             if (targetType == typeof(Guid))
