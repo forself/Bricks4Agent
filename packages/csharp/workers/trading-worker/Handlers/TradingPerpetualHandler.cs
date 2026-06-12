@@ -201,6 +201,9 @@ public class TradingPerpetualHandler : ICapabilityHandler
         // payload field: take_profit_price / stop_loss_price。null 視為不送、走傳統流程。
         decimal? tpPrice = opts.TryGetProperty("take_profit_price", out var tp) && tp.ValueKind == JsonValueKind.Number ? tp.GetDecimal() : null;
         decimal? slPrice = opts.TryGetProperty("stop_loss_price",   out var sl) && sl.ValueKind == JsonValueKind.Number ? sl.GetDecimal() : null;
+        // 冪等:caller 帶 client_order_id 就拿來當 OrderId（→ BingX clientOrderID）、沒帶才自己生隨機 id。
+        // failover 重送同一 deterministic client_order_id → BingX 擋重複（code=101400、PlaceOrderAsync 視為冪等命中）。
+        var clientOrderId = opts.TryGetProperty("client_order_id", out var cid) && cid.ValueKind == JsonValueKind.String ? cid.GetString() : null;
 
         if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(side) || string.IsNullOrEmpty(positionSide) || qty <= 0m)
             return (false, null, "missing required: symbol/side/position_side/quantity");
@@ -213,7 +216,7 @@ public class TradingPerpetualHandler : ICapabilityHandler
 
             var order = new PerpetualOrder
             {
-                OrderId = $"perp-{Guid.NewGuid():N}"[..16],
+                OrderId = !string.IsNullOrWhiteSpace(clientOrderId) ? clientOrderId! : $"perp-{Guid.NewGuid():N}"[..16],
                 Symbol = symbol, Exchange = c!.ExchangeName, Side = side, PositionSide = positionSide,
                 OrderType = orderType, Quantity = qty,
                 LimitPrice = limitPrice, StopPrice = stopPrice,

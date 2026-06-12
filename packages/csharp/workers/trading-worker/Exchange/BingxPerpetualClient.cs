@@ -166,6 +166,11 @@ public class BingxPerpetualClient : IPerpetualClient
             ["type"]         = MapOrderType(order.OrderType),
             ["quantity"]     = order.Quantity.ToString(CultureInfo.InvariantCulture),
         };
+        // 冪等 key：把 OrderId 當 BingX clientOrderID 送（2026-06-12 live 驗證:BingX 對重複 clientOrderID
+        // 回 code=101400）。failover 重送同一 deterministic key → BingX 擋 → 不雙下真錢單。
+        // OrderId 一律有值;unique 時不觸發 dedup（零影響）、deterministic 重送時才擋。
+        if (!string.IsNullOrWhiteSpace(order.OrderId))
+            qs["clientOrderID"] = order.OrderId.Length <= 36 ? order.OrderId : order.OrderId.Substring(0, 36);
         if (order.OrderType == "limit" && order.LimitPrice.HasValue)
             qs["price"] = order.LimitPrice.Value.ToString(CultureInfo.InvariantCulture);
         if (order.StopPrice.HasValue)
@@ -203,6 +208,16 @@ public class BingxPerpetualClient : IPerpetualClient
 
         var json = await SignedPostFormAsync("/openApi/swap/v2/trade/order", qs, ct);
         var doc = JsonDocument.Parse(json).RootElement;
+        // 冪等命中:clientOrderID 重複（failover 重送同一單）→ BingX code=101400 'clientOrderID unique
+        // check failed' → 視為「已下過」、非錯誤、不重複下單（這是 failover 不雙下單的關鍵）。
+        if (doc.TryGetProperty("code", out var dupCode) && dupCode.ValueKind == JsonValueKind.Number
+            && dupCode.GetInt32() == 101400)
+        {
+            order.Status = "idempotent_duplicate";
+            order.Error = null;
+            order.UpdatedAt = DateTime.UtcNow;
+            return order;
+        }
         EnsureOk(doc, "PlaceOrder");
 
         // BingX 回 { data: { order: { orderId, status, ... } } }

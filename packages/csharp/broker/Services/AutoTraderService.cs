@@ -1590,6 +1590,21 @@ public class AutoTraderService : BackgroundService
     }
 
     /// <summary>
+    /// 產生 deterministic 冪等 key（gated:env AUTOTRADER_IDEMPOTENT_KEYS=1 才啟用、否則回 null=不帶 key=現狀不變）。
+    /// 同一意圖（owner|exchange|symbol|side|tag + 5 分鐘時間桶）→ 同 key → failover 重送 → BingX 擋重複（code=101400）。
+    /// 5 分鐘桶覆蓋 failover 窗口;桶換了=新意圖。≤36 字元（BingX clientOrderID 上限）。
+    /// </summary>
+    private static string? BuildIdemKey(string prefix, string owner, string exchange, string symbol, string side, string tag)
+    {
+        var flag = Environment.GetEnvironmentVariable("AUTOTRADER_IDEMPOTENT_KEYS");
+        if (flag is not ("1" or "true" or "True" or "TRUE")) return null;
+        var bucket = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 300;
+        var basis = $"{owner}|{exchange}|{symbol}|{side}|{tag}|{bucket}";
+        var h = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(basis)));
+        return $"{prefix}-{h.Substring(0, 16).ToLowerInvariant()}";
+    }
+
+    /// <summary>
     /// 平倉用：long 倉用 sell + position_side=long + reduce_only；short 倉用 buy + position_side=short + reduce_only。
     /// </summary>
     private async Task<bool> ExecutePerpProtectionOrderAsync(
@@ -1602,18 +1617,20 @@ public class AutoTraderService : BackgroundService
         var creds = BuildCredentialsObject(ownerPrincipalId, exchange);
         // 平倉也把該 watch 的 strategy 帶上、SaveTrade 才能把這筆 close trade 歸到原策略
         var watchStrategy = _watchList.TryGetValue(watchKey, out var wWatch) ? wWatch.Strategy : null;
+        // 冪等 key（gated:AUTOTRADER_IDEMPOTENT_KEYS=1 才非 null）:同一平倉意圖 → 同 key → failover 重送被 BingX 擋（code=101400）
+        var idemKey = BuildIdemKey("cl", ownerPrincipalId, exchange, symbol, side, reason);
         var orderPayload = creds == null
             ? JsonSerializer.Serialize(new
             {
                 exchange, symbol, side = orderSide, position_side = side,
                 order_type = "market", quantity = qty, reduce_only = true,
-                strategy = watchStrategy,
+                strategy = watchStrategy, client_order_id = idemKey,
             })
             : JsonSerializer.Serialize(new
             {
                 exchange, symbol, side = orderSide, position_side = side,
                 order_type = "market", quantity = qty, reduce_only = true,
-                strategy = watchStrategy,
+                strategy = watchStrategy, client_order_id = idemKey,
                 __credentials = creds,
             });
         var result = await _dispatcher.DispatchAsync(BuildRequest("trading.perpetual", "place_order", orderPayload));
@@ -2650,6 +2667,9 @@ public class AutoTraderService : BackgroundService
             ["strategy"]      = item.Strategy,
         };
         if (creds != null) perpDict["__credentials"] = creds;
+        // 冪等 key（gated:AUTOTRADER_IDEMPOTENT_KEYS=1 才非 null）:同一開倉意圖 → 同 key → failover 重送被 BingX 擋（code=101400）、不雙開倉
+        var openIdemKey = BuildIdemKey("op", item.OwnerPrincipalId, item.Exchange, item.Symbol, perpPosSide, item.Strategy ?? "open");
+        if (openIdemKey != null) perpDict["client_order_id"] = openIdemKey;
 
         // C — Bracket SL：開倉（非平倉）時帶 exchange-side stop_loss_price、broker downtime 也有保護。
         // 用 markPrice 近似 entry、依方向算 SL。markPrice<=0（沒拿到）就 skip、不擋下單。
