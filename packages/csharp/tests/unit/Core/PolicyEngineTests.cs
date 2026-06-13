@@ -30,23 +30,23 @@ public class PolicyEngineTests
         TraceId = "trace_1"
     };
 
-    private static Capability MakeCapability(RiskLevel risk = RiskLevel.Low) => new()
+    private static Capability MakeCapability(RiskLevel risk = RiskLevel.Low, string approvalPolicy = "auto") => new()
     {
         CapabilityId = "file.read",
         Route = "file.read",
         RiskLevel = risk,
         ParamSchema = "{}",
-        ApprovalPolicy = "auto"
+        ApprovalPolicy = approvalPolicy
     };
 
-    private static CapabilityGrant MakeGrant() => new()
+    private static CapabilityGrant MakeGrant(string scopeOverride = "{}") => new()
     {
         GrantId = "grt_test",
         TaskId = "task_test",
         SessionId = "ses_test",
         PrincipalId = "p_test",
         CapabilityId = "file.read",
-        ScopeOverride = "{}",
+        ScopeOverride = scopeOverride,
         RemainingQuota = -1,
         ExpiresAt = DateTime.UtcNow.AddHours(1)
     };
@@ -87,10 +87,75 @@ public class PolicyEngineTests
         result.Decision.Should().Be(PolicyDecision.Allow);
     }
 
+    // §18.2: High/Critical no longer hard-denied — they route to approval.
     [Fact]
-    public void Evaluate_HighRisk_Denied()
+    public void Evaluate_HighRisk_RequiresApproval()
     {
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.High), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+    }
+
+    [Fact]
+    public void Evaluate_CriticalRisk_RequiresApproval()
+    {
+        var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Critical), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+    }
+
+    // §18.2: approval_policy drives the decision for Low/Medium risk.
+    [Fact]
+    public void Evaluate_DenyPolicy_Denied()
+    {
+        var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "deny"), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Deny);
+    }
+
+    [Fact]
+    public void Evaluate_RequireApprovalPolicy_RequiresApproval()
+    {
+        var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "require_approval"), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+    }
+
+    [Fact]
+    public void Evaluate_AutoIfScopeMatch_InScope_Allows()
+    {
+        // grant scope restricts to "docs"; payload writes under docs -> in scope -> auto
+        var payload = """{"route":"file.read","args":{"path":"docs/a.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Medium, "auto_if_task_scope_match"),
+            MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Allow);
+    }
+
+    [Fact]
+    public void Evaluate_AutoIfScopeMatch_OutOfScope_RequiresApproval()
+    {
+        // grant scope restricts to "docs"; payload writes under "src" -> out of scope -> approval
+        var payload = """{"route":"file.read","args":{"path":"src/b.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Medium, "auto_if_task_scope_match"),
+            MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+    }
+
+    [Fact]
+    public void Evaluate_AutoPolicy_OutOfScope_Denied()
+    {
+        // plain "auto" capability must still stay within scope; out-of-scope is a hard boundary
+        var payload = """{"route":"file.read","args":{"path":"src/b.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Low, "auto"),
+            MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.Deny);
     }

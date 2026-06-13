@@ -38,12 +38,7 @@ public class PolicyEngine : IPolicyEngine
                 $"Token epoch ({tokenEpoch}) is behind system epoch ({currentEpoch}). Token invalidated by kill switch.");
         }
 
-        if (capability.RiskLevel > RiskLevel.Medium)
-        {
-            return PolicyResult.Deny(
-                $"Capability '{capability.CapabilityId}' has risk level {capability.RiskLevel}. Only Low and Medium risk are allowed.");
-        }
-
+        // ── 路由必須相符（硬檢查） ──
         var requestedRoute = ExtractRoute(request.RequestPayload) ?? capability.Route;
         if (!string.IsNullOrWhiteSpace(requestedRoute) &&
             !requestedRoute.Equals(capability.Route, StringComparison.OrdinalIgnoreCase))
@@ -52,11 +47,7 @@ public class PolicyEngine : IPolicyEngine
                 $"Payload route '{requestedRoute}' does not match capability route '{capability.Route}'.");
         }
 
-        if (!IsScopeValid(request.RequestPayload, requestedRoute, grant.ScopeOverride, task.ScopeDescriptor))
-        {
-            return PolicyResult.Deny("Request resource is outside the granted scope.");
-        }
-
+        // ── 硬安全檢查（一律 Deny） ──
         if (!IsPathSandboxed(request.RequestPayload))
         {
             return PolicyResult.Deny("File path violates sandbox restrictions.");
@@ -74,7 +65,43 @@ public class PolicyEngine : IPolicyEngine
             return PolicyResult.Deny($"Payload schema validation failed: {errorMsg}");
         }
 
-        return PolicyResult.Allow();
+        // ── §18.2 風險/審批裁決 ──
+        // 對照 docs/designs/RiskClassificationAndApproval-2026-06-13.md:
+        //   deny → Deny;High/Critical → RequireApproval;
+        //   auto_if_task_scope_match → scope 內 Allow、逸出 RequireApproval;
+        //   auto → scope 內 Allow、逸出 Deny(硬邊界,如使用者私有資料夾)。
+        var inScope = IsScopeValid(request.RequestPayload, requestedRoute, grant.ScopeOverride, task.ScopeDescriptor);
+        var policy = (capability.ApprovalPolicy ?? "auto").Trim().ToLowerInvariant();
+
+        if (policy == "deny")
+        {
+            return PolicyResult.Deny($"Capability '{capability.CapabilityId}' is policy-denied.");
+        }
+
+        if (capability.RiskLevel >= RiskLevel.High)
+        {
+            return PolicyResult.RequireApproval(
+                $"Capability '{capability.CapabilityId}' is risk level {capability.RiskLevel}; approval required.");
+        }
+
+        switch (policy)
+        {
+            case "require_approval":
+            case "require_dual_approval":
+                return PolicyResult.RequireApproval(
+                    $"Capability '{capability.CapabilityId}' requires approval.");
+
+            case "auto_if_task_scope_match":
+                return inScope
+                    ? PolicyResult.Allow()
+                    : PolicyResult.RequireApproval("Request is outside the granted scope; approval required.");
+
+            case "auto":
+            default:
+                return inScope
+                    ? PolicyResult.Allow()
+                    : PolicyResult.Deny("Request resource is outside the granted scope.");
+        }
     }
 
     private static bool IsScopeValid(string payload, string requestedRoute, string grantScope, string taskScope)
