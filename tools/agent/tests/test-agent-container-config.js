@@ -28,7 +28,7 @@ function assertNotIncludes(name, text, unexpected) {
 const compose = read('tools/agent/container/compose.yml');
 assertIncludes('compose agent worker image', compose, 'FunctionPool__ContainerManager__WorkerImages__agent__Image: "bricks4agent-agent:latest"');
 assertIncludes('compose agent worker memory', compose, 'FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "512m"');
-assertIncludes('compose agent worker network override', compose, 'FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_control-net"');
+assertIncludes('compose agent worker network override', compose, 'FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_agent-net"');
 assertIncludes('compose agent broker url', compose, 'FunctionPool__ContainerManager__AgentBrokerUrl: "${AGENT_BROKER_URL:-http://broker:5000}"');
 assertIncludes('compose disables embeddings for smoke stack', compose, 'Embedding__Enabled: "false"');
 assertIncludes('compose disables rag seed for smoke stack', compose, 'RagSeed__Enabled: "false"');
