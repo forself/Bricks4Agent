@@ -63,6 +63,7 @@ When adding tests that produce files:
 
 ## Documentation
 
-- Canonical architecture: `docs/reports/CurrentArchitectureAndProgress-2026-03-26.md`
+- Canonical architecture: `docs/reports/CurrentArchitectureAndProgress-2026-06-13.md` (supersedes the 2026-03-26 report)
+- Agent container operations: `docs/manuals/agent-container-runbook.md`
 - Snapshot inventory: `docs/0326/` (cleaned snapshot, not single source of truth)
 - Design docs: `docs/designs/`

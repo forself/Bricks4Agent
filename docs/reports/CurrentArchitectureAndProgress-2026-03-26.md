@@ -1,7 +1,9 @@
 # Bricks4Agent Current Architecture And Progress
 
+> **Superseded by [CurrentArchitectureAndProgress-2026-06-13.md](CurrentArchitectureAndProgress-2026-06-13.md)** (three-way convergence + controlled agent container activation + commercial API). Kept for history.
+
 Date: 2026-03-26
-Status: current working report for the live system and main development direction
+Status: superseded working report (historical)
 
 ## 1. Executive Summary
 

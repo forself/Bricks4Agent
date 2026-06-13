@@ -179,7 +179,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 ## 建議閱讀順序
 
-1. [docs/reports/CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
+1. [docs/reports/CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
 2. [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
 3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
 4. `docs/designs` 內的子系統文件
@@ -188,7 +188,9 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 ### 現況與架構
 
-- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
+- [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)（現行）
+- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)（已被接替）
+- [受控代理容器操作手冊](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
 
 ### 手冊
 

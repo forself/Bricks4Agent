@@ -47,7 +47,7 @@ LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/lin
 - **頁面生成引擎**（PageGenerator，支援多種欄位類型）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
 
-AI agent 修改本專案時，優先以 `README.md`、`CLAUDE.md`、`docs/reports/CurrentArchitectureAndProgress-2026-03-26.md` 的 control-plane 架構為準；本文件後半段的 SPA/generator 指令是子系統操作手冊。
+AI agent 修改本專案時，優先以 `README.md`、`CLAUDE.md`、`docs/reports/CurrentArchitectureAndProgress-2026-06-13.md`（接替 2026-03-26 版）的 control-plane 架構為準；本文件後半段的 SPA/generator 指令是子系統操作手冊。
 
 ### 1.1 目前 live control-plane 核心
 

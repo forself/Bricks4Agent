@@ -155,6 +155,31 @@ Canonical verification command:
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message "hello"
 ```
 
+### Agent container path (controlled autonomous agent)
+
+A separate, podman-based governed stack where an LLM-driven agent runs in an
+isolated container and may only act through the broker (claim work, request
+governed tool execution, report results) — it never touches tools, data, or
+model providers directly. See [docs/manuals/agent-container-runbook.md](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md).
+
+Three LLM backends, all verified end-to-end (2026-06-13):
+
+```powershell
+# mock (offline, validates the governed chain)
+node tools/agent/tests/test-podman-governed-stack.js
+
+# local ollama (real open model, e.g. qwen3.6)
+node tools/agent/tests/test-podman-ollama-host-stack.js
+
+# commercial API (real ChatGPT)
+$env:OPENAI_BASE_URL="https://api.openai.com"; $env:OPENAI_API_KEY="<key>"
+$env:OPENAI_API_FORMAT="responses"; $env:STACK_MODEL="gpt-5.4-mini"
+node tools/agent/tests/test-podman-openai-compatible-stack.js
+```
+
+Requires podman (Windows: `podman machine start` on first use). The broker's
+`LlmProxy` speaks ollama, OpenAI chat, and OpenAI responses formats.
+
 ### Local admin console
 
 - `http://127.0.0.1:5361/line-admin.html`
@@ -178,7 +203,7 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 
 ## Recommended Reading Order
 
-1. [docs/reports/CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
+1. [docs/reports/CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
 2. [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
 3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
 4. subsystem-specific documents in `docs/designs`
@@ -187,7 +212,9 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 
 ### Current system and architecture
 
-- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)
+- [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md) (current)
+- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md) (superseded)
+- [Agent Container Runbook](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
 
 ### Manuals
 
