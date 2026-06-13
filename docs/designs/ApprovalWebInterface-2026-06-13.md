@@ -69,8 +69,61 @@ per-user quota / rate-limit,異常量才升 High。與審批 UI 無關,可並行
 2. Phase 2a 使用者連結式 web 審批(新使用者 web 認證 + 頁面)。
 3. Phase 3 line.send rate-limit。
 
-## 5. 待你拍板
+## 5. 已定案(owner,2026-06-13)
 
-- Phase 1 先做管理員後台審批分頁 —— 同意?
-- Phase 2 使用者面:走 **2a(連結式 web,能看內容)** 還是 **2b(先 LINE)**?
-- patch diff 等「看內容」渲染是這次 web 的賣點,優先度高 —— 確認?
+- **兩面一起規劃再做**(管理員 + 使用者)。
+- 使用者面走 **2a:連結式 web**(LINE 送簽章連結 → web 看內容再批)。
+- **內容渲染(patch diff/命令/路徑)高優先**,是賣點。
+
+## 6. 統一設計(兩面一起)
+
+### 6.1 共用:審批明細 + 內容渲染契約
+
+broker 端新增一個「審批明細」組裝(從 `ApprovalRequest` + 關聯 `ExecutionRequest.RequestPayload` + `Capability`),兩面 UI 共用同一形狀:
+
+```jsonc
+{
+  "approval_id": "apr_...", "request_id": "req_...",
+  "capability_id": "repo.patch.apply", "tier": "Admin|User",
+  "owner_principal_id": "prn_user1", "reason": "patch path outside scope",
+  "intent": "...", "created_at": "...", "expires_at": "...",
+  "rendered": {            // 內容渲染(高優先賣點)——依能力決定 kind
+    "kind": "patch|command|file|json",
+    "patch": "diff --git ...",          // kind=patch:repo.patch.apply
+    "command": "dotnet test",           // kind=command:build.test.run
+    "path": "...", "content_preview": "...", // kind=file:file.write
+    "payload": { }                      // kind=json:其他
+  }
+}
+```
+
+組裝邏輯放 broker(例如 `ApprovalDetailService` 或 BrokerService 擴充):依 `capability.Route` 解析 payload 的 `args` 成對應 `rendered.kind`。UI 只負責畫。
+
+### 6.2 管理員面(全域,localhost-only)
+
+端點(`LocalAdminEndpoints.cs`,`auth.TryRequireAuthenticated`):
+- `GET  /api/v1/local-admin/approvals` → 全部 pending 的審批明細(含 rendered)。
+- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,"local-admin",reason,isAdmin:true)`。
+- `POST /api/v1/local-admin/approvals/{id}/reject` `{reason}` → `RejectExecution(...,isAdmin:true)`。
+
+UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
+
+### 6.3 使用者面(2a:連結式 web)
+
+**簽章連結認證**(新,有別於 localhost-only 後台):
+- User 層審批產生時,broker 經 **LINE** 送該使用者一則:「有待審動作,點此查看 → `{baseUrl}/user-approvals.html#token=<signed>`」。
+- `signed` = 短時效(15 分)HMAC token,綁 `principal_id`(使用者)+ 到期。以既有 `Broker__ScopedToken__Secret` 簽。**只授權看/批該使用者自己的 User 層待審**(broker owner 授權已強制 `approverId==OwnerPrincipalId`)。
+- 新使用者端點(驗 token → 解出 userId):
+  - `GET  /api/v1/user/approvals?token=...` → `ListPendingApprovalsForApprover(userId,false)` + rendered。
+  - `POST /api/v1/user/approvals/{id}/approve` `{reason,token}` → `ApproveExecutionAsync(id,userId,reason,isAdmin:false)`。
+  - `POST /api/v1/user/approvals/{id}/reject` `{reason,token}`。
+- UI:`user-approvals.html`(輕量單頁,從 URL 取 token,列自己的待審 + 內容,approve/deny)。
+
+安全:token 短效、綁單一 userId、只暴露其本人 User 層;broker 仍二次強制 owner 授權。
+
+### 6.4 落地順序(實作)
+
+1. **共用 ApprovalDetail 組裝 + 內容渲染**(後端,test-first)。
+2. **管理員端點 + line-admin.html 審批分頁**。
+3. **使用者簽章連結認證 + 使用者端點 + user-approvals.html**。
+4. line.send rate-limit(Phase 3,獨立)。
