@@ -83,6 +83,7 @@ textarea{min-height:110px;resize:vertical}
       <button data-tab="browser">Browser 綁定</button>
       <button data-tab="deployment">Deployment</button>
       <button data-tab="delivery">交付記錄</button>
+      <button data-tab="approvals">審批 <span id="approvals-badge" class="tag" style="display:none"></span></button>
       <button data-tab="alerts">系統警示</button>
       <button data-tab="tools">Tool Specs</button>
     </nav>
@@ -450,6 +451,21 @@ textarea{min-height:110px;resize:vertical}
       </div>
     </section>
 
+    <section id="tab-approvals" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>待審佇列(管理員・全域)</h2>
+          <button class="button" id="refresh-approvals">重新整理</button>
+        </div>
+        <div class="list" id="approvals-list" style="max-height:620px"></div>
+      </div>
+      <div class="panel stack">
+        <h2>審批明細</h2>
+        <div id="approval-summary" class="notice">請從左側選擇待審項目。</div>
+        <div id="approval-detail"></div>
+      </div>
+    </section>
+
     <div id="notice" class="notice">後台已載入。</div>
   </main>
 </div>
@@ -473,6 +489,7 @@ const state = {
   deploymentExecutions: [],
   selectedDeploymentExecution: null,
   selectedDeploymentExecutionDocumentId: "",
+  approvals: { items: [], selectedId: "", selected: null },
   toolSpecs: [],
   selectedToolId: "",
   selectedTool: null,
@@ -947,6 +964,119 @@ async function showTab(tab) {
     await loadToolSpecs();
     state.toolsLoaded = true;
   }
+  if (tab === "approvals") {
+    await loadApprovals();
+  }
+}
+
+function af(o, n) {
+  if (!o) return undefined;
+  if (o[n] !== undefined) return o[n];
+  return o[n.charAt(0).toUpperCase() + n.slice(1)];
+}
+
+function updateApprovalsBadge(count) {
+  const badge = byId("approvals-badge");
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count; badge.style.display = ""; badge.style.background = "#b1432f"; badge.style.color = "#fff"; }
+  else { badge.style.display = "none"; }
+}
+
+async function loadApprovals() {
+  const result = await request("/api/v1/local-admin/approvals");
+  state.approvals.items = (result && (af(result, "items") || [])) || [];
+  updateApprovalsBadge(state.approvals.items.length);
+  renderApprovalsList();
+  const selected = state.approvals.items.find((a) => af(a, "approvalId") === state.approvals.selectedId);
+  if (selected) renderApprovalDetail(selected); else clearApprovalDetail();
+}
+
+function renderApprovalsList() {
+  const list = byId("approvals-list");
+  list.innerHTML = "";
+  if (!state.approvals.items.length) {
+    list.innerHTML = '<div class="notice">目前沒有待審項目。</div>';
+    return;
+  }
+  for (const item of state.approvals.items) {
+    const id = af(item, "approvalId");
+    const tier = af(item, "tier") || "";
+    const tierTag = tier === "Admin"
+      ? '<span style="background:#7a5310;color:#facc88;font-size:11px;padding:1px 7px;border-radius:6px">Admin</span>'
+      : '<span style="background:#16395e;color:#9ecbff;font-size:11px;padding:1px 7px;border-radius:6px">User</span>';
+    const div = document.createElement("div");
+    div.className = "item" + (id === state.approvals.selectedId ? " active" : "");
+    div.innerHTML = `<div class="row" style="justify-content:space-between"><strong style="font-family:monospace">${escapeHtml(af(item, "capabilityId") || "")}</strong>${tierTag}</div>`
+      + `<div style="font-size:12px;color:#9aa4b2">${escapeHtml(af(item, "ownerPrincipalId") || "")} · ${escapeHtml(af(item, "reason") || "")}</div>`;
+    div.addEventListener("click", () => selectApproval(id));
+    list.appendChild(div);
+  }
+}
+
+function selectApproval(id) {
+  state.approvals.selectedId = id;
+  const selected = state.approvals.items.find((a) => af(a, "approvalId") === id) || null;
+  renderApprovalsList();
+  renderApprovalDetail(selected);
+}
+
+function clearApprovalDetail() {
+  state.approvals.selectedId = "";
+  byId("approval-summary").style.display = "";
+  byId("approval-detail").innerHTML = "";
+}
+
+function renderRendered(r) {
+  if (!r) return "";
+  const kind = af(r, "kind");
+  if (kind === "patch") {
+    const lines = (af(r, "patch") || "").split("\n").map((line) => {
+      let style = "padding:0 8px;";
+      if (line.startsWith("+") && !line.startsWith("+++")) style += "background:#16321f;color:#7ee0a1";
+      else if (line.startsWith("-") && !line.startsWith("---")) style += "background:#3a1d1d;color:#f0999b";
+      else if (line.startsWith("@@")) style += "color:#9aa4b2";
+      return `<div style="${style}">${escapeHtml(line) || "&nbsp;"}</div>`;
+    }).join("");
+    return `<div style="font-size:12px;color:#9aa4b2;margin:6px 0 4px">變更內容 (patch)</div><div class="json" style="font-family:monospace;padding:0">${lines}</div>`;
+  }
+  if (kind === "command") return `<div style="font-size:12px;color:#9aa4b2;margin:6px 0 4px">命令</div><div class="json">${escapeHtml(af(r, "command") || "")}</div>`;
+  if (kind === "file") return `<div style="font-size:12px;color:#9aa4b2;margin:6px 0 4px">檔案 ${escapeHtml(af(r, "path") || "")}</div><div class="json">${escapeHtml(af(r, "contentPreview") || "")}</div>`;
+  return `<div style="font-size:12px;color:#9aa4b2;margin:6px 0 4px">payload</div><div class="json">${escapeHtml(af(r, "payload") || "{}")}</div>`;
+}
+
+function renderApprovalDetail(d) {
+  byId("approval-summary").style.display = "none";
+  const el = byId("approval-detail");
+  if (!d) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="stack">`
+    + `<div><strong style="font-family:monospace">${escapeHtml(af(d, "capabilityId") || "")}</strong></div>`
+    + `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px">`
+    + `<span style="color:#9aa4b2">tier</span><span>${escapeHtml(af(d, "tier") || "")}</span>`
+    + `<span style="color:#9aa4b2">owner</span><span style="font-family:monospace">${escapeHtml(af(d, "ownerPrincipalId") || "")}</span>`
+    + `<span style="color:#9aa4b2">原因</span><span>${escapeHtml(af(d, "reason") || "")}</span>`
+    + `<span style="color:#9aa4b2">intent</span><span>${escapeHtml(af(d, "intent") || "")}</span>`
+    + `</div>`
+    + renderRendered(af(d, "rendered"))
+    + `<input id="approval-reason" placeholder="決策理由(記入稽核)">`
+    + `<div class="row">`
+    + `<button class="button" id="approval-approve" style="border-color:#2f7a4e;color:#7ee0a1">核准</button>`
+    + `<button class="button" id="approval-reject" style="border-color:#7a2f2f;color:#f0999b">駁回</button>`
+    + `</div></div>`;
+  byId("approval-approve").addEventListener("click", wrapAction(() => decideApproval("approve")));
+  byId("approval-reject").addEventListener("click", wrapAction(() => decideApproval("reject")));
+}
+
+async function decideApproval(action) {
+  const id = state.approvals.selectedId;
+  if (!id) return;
+  const reason = byId("approval-reason") ? byId("approval-reason").value : "";
+  await request(`/api/v1/local-admin/approvals/${encodeURIComponent(id)}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason })
+  });
+  setNotice(action === "approve" ? "已核准並執行" : "已駁回", "ok");
+  clearApprovalDetail();
+  await loadApprovals();
 }
 
 async function loadSystem() {
@@ -1153,6 +1283,8 @@ async function refreshAll() {
   await loadRegistrationPolicy();
   await sleep(120);
   await loadDriveAdmin();
+  await sleep(120);
+  await loadApprovals();
   await sleep(120);
   if (state.workflowLoaded) {
     await loadWorkflow();
@@ -1669,6 +1801,7 @@ function bindEvents() {
   byId("preview-deployment").addEventListener("click", wrapAction(previewDeployment));
   byId("execute-deployment").addEventListener("click", wrapAction(executeDeployment));
   byId("refresh-tools").addEventListener("click", wrapAction(loadToolSpecs));
+  byId("refresh-approvals").addEventListener("click", wrapAction(loadApprovals));
   byId("apply-tool-filter").addEventListener("click", wrapAction(loadToolSpecs));
   byId("refresh-alerts").addEventListener("click", wrapAction(loadAlerts));
   byId("alerts-hours").addEventListener("change", wrapAction(loadAlerts));

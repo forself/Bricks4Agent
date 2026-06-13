@@ -744,6 +744,39 @@ public static class LocalAdminEndpoints
                 ? Results.NotFound(ApiResponseHelper.Error("Tool spec not found.", 404))
                 : Results.Ok(ApiResponseHelper.Success(new { item = spec }));
         });
+
+        // ── §18.2-C2 審批(管理員,全域;localhost-only 後台)──
+        localAdmin.MapGet("/approvals", (HttpContext ctx, LocalAdminAuthService auth, IBrokerService broker) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var items = broker.ListPendingApprovalDetailsForApprover("local-admin", isAdmin: true);
+            return Results.Ok(ApiResponseHelper.Success(new { total = items.Count, items }));
+        });
+
+        localAdmin.MapPost("/approvals/{approvalId}/approve", async (HttpContext ctx, LocalAdminAuthService auth, IBrokerService broker, string approvalId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() ?? string.Empty : string.Empty;
+            var result = await broker.ApproveExecutionAsync(approvalId, "local-admin", reason, isAdmin: true);
+            return result == null
+                ? Results.NotFound(ApiResponseHelper.Error("Approval not found or already decided.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item = result }));
+        });
+
+        localAdmin.MapPost("/approvals/{approvalId}/reject", (HttpContext ctx, LocalAdminAuthService auth, IBrokerService broker, string approvalId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            var reason = body.TryGetProperty("reason", out var r) ? r.GetString() ?? string.Empty : string.Empty;
+            var result = broker.RejectExecution(approvalId, "local-admin", reason, isAdmin: true);
+            return result == null
+                ? Results.NotFound(ApiResponseHelper.Error("Approval not found or already decided.", 404))
+                : Results.Ok(ApiResponseHelper.Success(new { item = result }));
+        });
     }
 
     private static string GetString(JsonElement body, string name, string defaultValue = "")
