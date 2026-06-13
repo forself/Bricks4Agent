@@ -111,11 +111,12 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
-Not: approval-gated high-risk actions (§18.2), a custom seccomp profile (the
-runtime default applies), a full end-to-end stack run of a model driving a patch
-through the adapters, or a complete §18 MVP. The container *confinement* (egress
-isolation + OS sandbox) is done and the execution adapters are implemented and
-unit-verified; the approval layer and the e2e model-driven demonstration are not.
+Not: a custom seccomp profile (the runtime default applies), dual-approval for
+Critical actions (MVP is single-approver), a fully production-hardened operator
+console, or `line.send` rate-limiting. Container confinement (egress + OS sandbox),
+the execution adapters (e2e-verified — a model drove `apply_patch` through the
+governed chain), and the §18.2 approval layer (decision + lifecycle + two tiers +
+both web surfaces, see §10) are all done and verified this cycle.
 
 ### Dishonest to deny
 The controlled autonomous agent — the hardest and most central piece — went from
@@ -127,9 +128,22 @@ broker governance" in this cycle.
 1. ~~Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, tmpfs.~~ **Done 2026-06-13** — applied to the agent in all three stacks, enforcement verified (`CapEff=0`, rootfs write blocked). Custom seccomp profile still pending (runtime default in effect).
 2. ~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ **Done 2026-06-13** — agent on `internal: true` `agent-net`, egress-denial verified; broker remains the only path to model providers.
 3. ~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ **Implemented + e2e-verified 2026-06-13** — `execution-adapter-worker` (`repo.patch.apply` + `build.test.run`), 38 real-git unit assertions + a full podman stack test where a model drives `apply_patch` through the governed chain and the file is actually patched. Remaining: broker `--integration` HTTP coverage of the new routes.
-4. **Approval service + risk tiering (§18.2).** ← next: gate high-risk adapter actions behind human approval.
-5. Control-plane console (design exists, not built).
-6. Custom seccomp profile for the agent (tighten beyond the runtime default).
+4. ~~Approval service + risk tiering (§18.2).~~ **Implemented + verified 2026-06-13** — see §10.
+5. ~~Control-plane console (approval surface).~~ **Partially built 2026-06-13** — `line-admin.html` gained an approval queue tab; the broader operator console is still design-only.
+6. Custom seccomp profile for the agent; broker `--integration` coverage of adapter + approval routes; line.send rate-limit.
+
+## 10. Governance approval system (§18.2) — implemented + verified 2026-06-13
+
+The risk-tiering + approval layer, built test-first this cycle on a written
+definition ([RiskClassificationAndApproval-2026-06-13.md](../designs/RiskClassificationAndApproval-2026-06-13.md),
+[ApprovalWebInterface-2026-06-13.md](../designs/ApprovalWebInterface-2026-06-13.md)):
+
+- **Decision (PolicyEngine)**: High/Critical and scope-escape no longer hard-denied — they return `RequireApproval`; `approval_policy` drives Low/Medium (`auto`, `auto_if_task_scope_match`, `require_approval`, `deny`). The primary risk discriminator is **scope ownership**: a user acting within their own private folder is auto; escaping it escalates.
+- **Lifecycle (BrokerService)**: `RequireApproval` holds the request as `PendingApproval` + creates an `ApprovalRequest`; an admin/user approve dispatches the held request, reject denies it — all audited. Quota + dispatch shared with the normal Allow path.
+- **Two tiers**: `User` (the owning user approves, in their own interface, limited to their scope) vs `Admin` (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own).
+- **Web surfaces**: admin approval tab in `line-admin.html` (localhost-only) + a user page (`user-approvals.html`) authenticated by a short-lived signed link sent over LINE. Both render the request **content** — a `repo.patch.apply` shows its unified diff — so the approver decides on substance, not a one-line string. The link is auto-sent on User-tier creation via `IApprovalNotifier` → `QueueLineNotification`.
+- **Verified**: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite **192/192**, xUnit **343/343**, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).
+- **Not done**: `require_dual_approval` (MVP is single-approver), `line.send` rate-limit, a full browser+LINE manual e2e, and the broader control-plane console.
 
 ## 9. Bottom Line
 

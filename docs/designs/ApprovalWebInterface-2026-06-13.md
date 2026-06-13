@@ -1,7 +1,7 @@
 # 審批 Web 介面:分析・評估・規劃 (§18.2-C2)
 
 Date: 2026-06-13
-Status: **規劃,待審** —— §18.2 審批引擎(A/B/C1)已完成,本文規劃 web 介面層
+Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用者簽章連結頁 + LINE 自動送連結皆完成、測過、實機 smoke 通過。僅 §6.4(4)line.send rate-limit 待做。
 依據: [RiskClassificationAndApproval-2026-06-13.md](RiskClassificationAndApproval-2026-06-13.md) §6.5(兩層審批)
 銜接引擎: PolicyEngine RequireApproval(+tier)、BrokerService approve/reject/list、`ApprovalRequest` 持久化
 
@@ -123,7 +123,10 @@ UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
 
 ### 6.4 落地順序(實作)
 
-1. **共用 ApprovalDetail 組裝 + 內容渲染**(後端,test-first)。
-2. **管理員端點 + line-admin.html 審批分頁**。
-3. **使用者簽章連結認證 + 使用者端點 + user-approvals.html**。
-4. line.send rate-limit(Phase 3,獨立)。
+1. ✅ **共用 ApprovalDetail 組裝 + 內容渲染**(`65db870`,6 測試)。
+2. ✅ **管理員端點 + line-admin.html 審批分頁**(`e3015b6`,build+JS+實機 smoke)。
+3. ✅ **使用者簽章連結認證 + 使用者端點 + user-approvals.html**(`752f0cc`,8 token 測試 + 實機)。
+3b. ✅ **LINE 自動送連結**:`IApprovalNotifier` seam + `LineApprovalNotifier`(`3620a45`,5 測試)—— User 層審批建立時 → 組簽章連結 → `QueueLineNotification` → line-worker 送達。
+4. ⬜ line.send rate-limit(Phase 3,獨立,待做)。
+
+實機 smoke(2026-06-13,真實 broker):使用者端點 bad token→401、`user-approvals.html`/`line-admin.html`→200、管理員端點未登入→401。
