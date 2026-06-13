@@ -422,7 +422,9 @@ public class BrokerDbInitializer
             new Capability
             {
                 CapabilityId = "repo.patch.apply",
-                Route = "execution.repo.apply_patch",
+                // Route must equal the agent's tool name (the agent submits route=toolName,
+                // and the PolicyEngine requires payload route == capability route).
+                Route = "apply_patch",
                 ActionType = ActionType.Write,
                 ResourceType = "repository",
                 RiskLevel = RiskLevel.Medium,
@@ -443,7 +445,7 @@ public class BrokerDbInitializer
             new Capability
             {
                 CapabilityId = "build.test.run",
-                Route = "execution.build_test.run",
+                Route = "run_build_test",
                 ActionType = ActionType.Execute,
                 ResourceType = "build",
                 RiskLevel = RiskLevel.Medium,

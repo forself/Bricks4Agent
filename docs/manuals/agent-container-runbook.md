@@ -138,11 +138,17 @@ adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、r
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
 # 設定驗證(compose 接線 + 加固 + 能力 seed + 工具映射)
 node tools/agent/tests/test-execution-adapter-config.js
+# 端到端:模型驅動 agent 經治理鏈套 patch,斷言檔案真的被改(profile=adapters)
+node tools/agent/tests/test-podman-execution-adapter-stack.js
 ```
 
 compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不啟動(不影響既有 governed stack 測試);預設掛載 throwaway workspace(`ADAPTER_WORKSPACE` 可覆寫),**不會動到真實 repo**。
 
-尚未做:用真實模型驅動 agent 端到端套 patch 的 stack 實跑、broker `--integration` 對新 route 的覆蓋。
+**已端到端驗證(2026-06-13)**:stack 測試讓 mock 模型驅動 agent 呼叫 `apply_patch`,經 broker 裁決(grant→policy→pool dispatch)→ adapter `git apply` → fixture 檔案實際被改。這條 e2e 揪出四個單元測試結構上抓不到的整合 bug(mock 環境變數接線、git bind-mount 的 `safe.directory`/`core.fileMode`、能力 route 必須等於 agent 工具名、workspace 根 scope 正規化),皆已修。
+
+> 慣例提醒:agent 送出的 payload `route` 就是「工具名」(如 `apply_patch`),broker policy 要求 `route == capability.Route`。所以新能力的 `Route` 必須設成工具名(`repo.patch.apply`→`apply_patch`、`build.test.run`→`run_build_test`),而非設計文件的 `execution.*` 邏輯名。
+
+尚未做:broker `--integration` HTTP 對新 route 的覆蓋(stack 測試已涵蓋真實 dispatch 路徑)。
 
 ## 10. 範圍界線(尚未做,對照規格 §13/§18)
 

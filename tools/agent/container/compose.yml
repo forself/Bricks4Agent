@@ -10,6 +10,7 @@ services:
       MOCK_RESPONSE_TEXT: "${STACK_RESPONSE_TEXT:-STACK_OK}"
       MOCK_TOOL_CALL: "${STACK_TOOL_CALL:-}"
       MOCK_TOOL_PATH: "${STACK_TOOL_PATH:-README.md}"
+      MOCK_TOOL_ARGS_JSON: "${STACK_TOOL_ARGS_JSON:-}"
     ports:
       - "${STACK_LLM_PORT:-11434}:11434"
     networks:
@@ -60,7 +61,7 @@ services:
       DevelopmentSeed__TaskType: "${BROKER_TASK_TYPE:-analysis}"
       DevelopmentSeed__AssignedRoleId: "${BROKER_ROLE_ID:-role_reader}"
       DevelopmentSeed__RuntimeDescriptor: >-
-        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search","scope":{"paths":["/workspace"],"routes":["search_files","search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
+        {"llm":{"default_model":"${STACK_MODEL:-stack-test-model}","allow_model_override":false,"supports_tool_calling":true,"streaming_enabled":false},"capability_grants":[{"capability_id":"file.read","scope":{"paths":["/workspace"],"routes":["read_file"]},"quota":-1},{"capability_id":"file.list","scope":{"paths":["/workspace"],"routes":["list_directory"]},"quota":-1},{"capability_id":"file.search","scope":{"paths":["/workspace"],"routes":["search_files","search_content"]},"quota":-1},{"capability_id":"file.write","scope":{"paths":["/workspace"],"routes":["write_file"]},"quota":100},{"capability_id":"repo.patch.apply","scope":{"paths":["/workspace"],"routes":["apply_patch"]},"quota":-1},{"capability_id":"build.test.run","scope":{"routes":["run_build_test"]},"quota":-1},{"capability_id":"line.message.send","scope":{"routes":["send_line_message"]},"quota":-1},{"capability_id":"line.notification.send","scope":{"routes":["send_line_notification"]},"quota":-1},{"capability_id":"line.message.read","scope":{"routes":["read_line_messages"]},"quota":-1},{"capability_id":"line.approval.request","scope":{"routes":["request_line_approval"]},"quota":-1},{"capability_id":"line.audio.send","scope":{"routes":["send_line_audio"]},"quota":-1}]}
       # ── Function Pool (Worker TCP Dispatch) ──
       FunctionPool__Enabled: "true"
       FunctionPool__ListenPort: "7000"

@@ -54,13 +54,13 @@ public static class ExecutionAdapterTests
 
             var repo = catalog.GetCapability("repo.patch.apply");
             AssertTrue("repo-cap-exists", repo != null);
-            AssertEqual("repo-cap-route", repo?.Route, "execution.repo.apply_patch");
+            AssertEqual("repo-cap-route", repo?.Route, "apply_patch");
             AssertEqual("repo-cap-risk", repo?.RiskLevel.ToString(), "Medium");
             AssertEqual("repo-cap-action", repo?.ActionType.ToString(), "Write");
 
             var build = catalog.GetCapability("build.test.run");
             AssertTrue("build-cap-exists", build != null);
-            AssertEqual("build-cap-route", build?.Route, "execution.build_test.run");
+            AssertEqual("build-cap-route", build?.Route, "run_build_test");
             AssertEqual("build-cap-action", build?.ActionType.ToString(), "Execute");
         }
         finally { TryDelete(tempDir); }

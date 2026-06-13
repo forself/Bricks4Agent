@@ -65,11 +65,23 @@ public class RepoApplyPatchHandler : ICapabilityHandler
             if (maxPatchFiles is int max && targetPaths.Count > max)
                 return Fail($"Patch touches {targetPaths.Count} files, exceeds max_patch_files={max}.");
 
-            if (allowedPaths.Count > 0)
+            // Normalize allowed paths to repo-relative. The grant scope often carries the
+            // sandbox root ("/workspace" or repoRoot) which means "the whole repo" — i.e.
+            // no sub-path restriction. Sub-paths (e.g. "frontend/") still restrict.
+            var allowAll = allowedPaths.Count == 0;
+            var normalizedAllowed = new List<string>();
+            foreach (var a in allowedPaths)
+            {
+                var rel = ToRepoRelative(a);
+                if (rel.Length == 0) { allowAll = true; break; }
+                normalizedAllowed.Add(rel);
+            }
+
+            if (!allowAll)
             {
                 foreach (var p in targetPaths)
                 {
-                    if (!UnifiedDiff.IsUnderAllowed(p, allowedPaths))
+                    if (!UnifiedDiff.IsUnderAllowed(p, normalizedAllowed))
                         return Fail($"Patch path outside allowed scope: {p}");
                 }
             }
@@ -133,7 +145,15 @@ public class RepoApplyPatchHandler : ICapabilityHandler
     }
 
     private Task<ProcessRunner.ProcessResult> Git(IReadOnlyList<string> args, CancellationToken ct)
-        => ProcessRunner.RunAsync("git", args, _repoRoot, _gitTimeout, ct: ct);
+    {
+        // The repo is typically a bind mount owned by a different uid and (on some
+        // hosts, e.g. WSL) presented with synthetic file modes. safe.directory=*
+        // avoids git's "dubious ownership" refusal; core.fileMode=false stops mode
+        // artifacts from failing `git apply`. Both are no-ops on a normal repo.
+        var full = new List<string> { "-c", "safe.directory=*", "-c", "core.fileMode=false" };
+        full.AddRange(args);
+        return ProcessRunner.RunAsync("git", full, _repoRoot, _gitTimeout, ct: ct);
+    }
 
     private static (int additions, int deletions) ParseNumstat(string numstat)
     {
@@ -184,6 +204,25 @@ public class RepoApplyPatchHandler : ICapabilityHandler
         }
         catch { }
         return null;
+    }
+
+    /// <summary>
+    /// Convert an allowed-path entry to repo-relative. The sandbox root (repoRoot,
+    /// "/workspace", ".", "/") becomes "" meaning "allow all"; absolute sub-paths
+    /// under the root are stripped to repo-relative; already-relative paths pass through.
+    /// </summary>
+    private string ToRepoRelative(string path)
+    {
+        var p = path.Replace('\\', '/').Trim();
+        if (p is "." or "/" or "") return string.Empty;
+        foreach (var root in new[] { _repoRoot.Replace('\\', '/').TrimEnd('/'), "/workspace" })
+        {
+            if (root.Length == 0) continue;
+            if (string.Equals(p, root, StringComparison.OrdinalIgnoreCase)) return string.Empty;
+            if (p.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase))
+                return p[(root.Length + 1)..].TrimStart('/');
+        }
+        return p.TrimStart('/');
     }
 
     private static string? GetString(JsonElement el, string name)

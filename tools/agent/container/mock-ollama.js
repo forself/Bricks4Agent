@@ -8,6 +8,10 @@ const model = process.env.MOCK_MODEL || 'stack-test-model';
 const responseText = process.env.MOCK_RESPONSE_TEXT || 'STACK_OK';
 const toolCall = process.env.MOCK_TOOL_CALL || '';
 const toolPath = process.env.MOCK_TOOL_PATH || 'README.md';
+// Generic tool args (JSON). Falls back to {path: toolPath} for read_file back-compat.
+let toolArgs = {};
+try { toolArgs = process.env.MOCK_TOOL_ARGS_JSON ? JSON.parse(process.env.MOCK_TOOL_ARGS_JSON) : {}; }
+catch (_) { toolArgs = {}; }
 
 function readJson(req) {
     return new Promise((resolve, reject) => {
@@ -62,7 +66,9 @@ const server = http.createServer(async (req, res) => {
 
         if (req.method === 'POST' && req.url === '/api/chat') {
             const body = await readJson(req);
-            if (toolCall === 'read_file' && !hasToolResult(body) && requestIncludesTool(body, 'read_file')) {
+            if (toolCall && !hasToolResult(body) && requestIncludesTool(body, toolCall)) {
+                // read_file keeps its {path} shorthand; other tools use MOCK_TOOL_ARGS_JSON.
+                const args = toolCall === 'read_file' ? { path: toolPath } : toolArgs;
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     model: body.model || model,
@@ -70,10 +76,10 @@ const server = http.createServer(async (req, res) => {
                         content: '',
                         tool_calls: [
                             {
-                                id: 'call_mock_read_file',
+                                id: `call_mock_${toolCall}`,
                                 function: {
-                                    name: 'read_file',
-                                    arguments: { path: toolPath },
+                                    name: toolCall,
+                                    arguments: args,
                                 },
                             },
                         ],

@@ -45,9 +45,9 @@ hasNot('adapter-not-real-repo', block, '../../..:/workspace');
 // 2) broker capability seed
 const seed = read('packages/csharp/broker-core/Data/BrokerDbInitializer.cs');
 has('seed-repo-cap', seed, 'CapabilityId = "repo.patch.apply"');
-has('seed-repo-route', seed, 'execution.repo.apply_patch');
+has('seed-repo-route', seed, 'Route = "apply_patch"');
 has('seed-build-cap', seed, 'CapabilityId = "build.test.run"');
-has('seed-build-route', seed, 'execution.build_test.run');
+has('seed-build-route', seed, 'Route = "run_build_test"');
 
 // 3) agent tool → capability mapping
 const registry = read('tools/agent/lib/tool-registry.js');
