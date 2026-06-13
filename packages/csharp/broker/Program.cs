@@ -870,10 +870,15 @@ GoogleDriveOAuthEndpoints.Map(api);
 ArtifactDownloadEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
-// [MONITORING EXTRACTION] /api/v1/health/workers, /health/score, /health/score/history
-HealthCheckEndpoints.Map(api);
+// [MONITORING EXTRACTION] health/worker endpoints 的 handler 依賴 IWorkerRegistry /
+// HealthScoreService 等 FunctionPool 服務。FunctionPool 關閉時這些服務不註冊,若 endpoint
+// 仍註冊,Minimal API 會把未註冊的服務參數推斷成 body,GET 端點 metadata inference 即拋
+// "Body was inferred...";因此 endpoint 註冊本身也必須 gate 在 poolEnabled。
 if (poolEnabled)
+{
+    HealthCheckEndpoints.Map(api);
     WorkerEndpoints.Map(api);
+}
 
 // ── Phase 3: 啟動功能池 TCP Listener ──
 if (poolEnabled)
