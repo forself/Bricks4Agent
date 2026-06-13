@@ -381,6 +381,12 @@ passed += approvalPassed;
 failed += approvalFailed;
 
 Console.WriteLine();
+
+var (linkPassed, linkFailed) = Broker.Tests.ApprovalLinkTests.Run();
+passed += linkPassed;
+failed += linkFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

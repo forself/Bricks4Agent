@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>待審動作</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background: #f4f5f7; color: #1f2430; line-height: 1.55; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; font-weight: 500; margin: 8px 0 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .card { background: #fff; border: 1px solid #e4e6eb; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .cap { font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+  .meta { color: #6b7280; font-size: 13px; margin: 4px 0 8px; }
+  .label { color: #6b7280; font-size: 12px; margin: 8px 0 3px; }
+  .content { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #f7f8fa; border: 1px solid #e4e6eb; border-radius: 8px; overflow-x: auto; }
+  .content div { padding: 0 8px; white-space: pre; }
+  .add { background: #e6f7ec; color: #137a3a; }
+  .del { background: #fdeaea; color: #b42318; }
+  .hunk { color: #6b7280; }
+  input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid #d0d3da; border-radius: 8px; font-size: 14px; margin: 10px 0; }
+  .row { display: flex; gap: 8px; }
+  button { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid; font-size: 14px; background: #fff; cursor: pointer; }
+  .approve { border-color: #137a3a; color: #137a3a; }
+  .reject { border-color: #b42318; color: #b42318; }
+  .notice { color: #6b7280; padding: 24px 0; text-align: center; }
+  .err { color: #b42318; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>待審動作</h1>
+  <div class="sub" id="sub">正在載入你的待審項目…</div>
+  <div id="list"></div>
+</div>
+<script>
+function getToken() {
+  const h = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+  if (h.get("token")) return h.get("token");
+  return new URLSearchParams(location.search).get("token") || "";
+}
+const TOKEN = getToken();
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function af(o, n) { if (!o) return undefined; return o[n] !== undefined ? o[n] : o[n.charAt(0).toUpperCase() + n.slice(1)]; }
+
+function renderContent(r) {
+  if (!r) return "";
+  const kind = af(r, "kind");
+  if (kind === "patch") {
+    const lines = (af(r, "patch") || "").split("\n").map((line) => {
+      let cls = "";
+      if (line.startsWith("+") && !line.startsWith("+++")) cls = "add";
+      else if (line.startsWith("-") && !line.startsWith("---")) cls = "del";
+      else if (line.startsWith("@@")) cls = "hunk";
+      return `<div class="${cls}">${esc(line) || " "}</div>`;
+    }).join("");
+    return `<div class="label">變更內容</div><div class="content">${lines}</div>`;
+  }
+  if (kind === "command") return `<div class="label">命令</div><div class="content"><div>${esc(af(r, "command") || "")}</div></div>`;
+  if (kind === "file") return `<div class="label">檔案 ${esc(af(r, "path") || "")}</div><div class="content"><div>${esc(af(r, "contentPreview") || "")}</div></div>`;
+  return `<div class="label">內容</div><div class="content"><div>${esc(af(r, "payload") || "{}")}</div></div>`;
+}
+
+async function api(path, options) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...(options || {}) });
+  const text = await res.text();
+  let payload = null; try { payload = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!res.ok) throw new Error((payload && (payload.message || payload.Message)) || res.statusText);
+  return payload && (payload.data || payload.Data) !== undefined ? (payload.data || payload.Data) : payload;
+}
+
+async function load() {
+  if (!TOKEN) { document.getElementById("sub").innerHTML = '<span class="err">連結無效或缺少 token。</span>'; return; }
+  let data;
+  try { data = await api("/api/v1/user/approvals?token=" + encodeURIComponent(TOKEN)); }
+  catch (e) { document.getElementById("sub").innerHTML = '<span class="err">連結已失效,請回 LINE 重新取得。</span>'; return; }
+  const items = af(data, "items") || [];
+  document.getElementById("sub").textContent = items.length ? `你有 ${items.length} 個待審項目` : "";
+  const list = document.getElementById("list");
+  if (!items.length) { list.innerHTML = '<div class="notice">目前沒有待審項目。</div>'; return; }
+  list.innerHTML = items.map((d) => {
+    const id = af(d, "approvalId");
+    return `<div class="card" data-id="${esc(id)}">
+      <div class="cap">${esc(af(d, "capabilityId") || "")}</div>
+      <div class="meta">${esc(af(d, "reason") || "")}</div>
+      ${renderContent(af(d, "rendered"))}
+      <input type="text" class="reason" placeholder="(可選)決策理由">
+      <div class="row">
+        <button class="approve" data-act="approve">核准</button>
+        <button class="reject" data-act="reject">拒絕</button>
+      </div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("button").forEach((b) => b.addEventListener("click", onDecide));
+}
+
+async function onDecide(ev) {
+  const card = ev.target.closest(".card");
+  const id = card.getAttribute("data-id");
+  const act = ev.target.getAttribute("data-act");
+  const reason = card.querySelector(".reason").value;
+  card.querySelectorAll("button").forEach((b) => b.disabled = true);
+  try {
+    await api(`/api/v1/user/approvals/${encodeURIComponent(id)}/${act}`, {
+      method: "POST", body: JSON.stringify({ token: TOKEN, reason })
+    });
+    card.outerHTML = `<div class="card"><div class="meta">已${act === "approve" ? "核准" : "拒絕"}。</div></div>`;
+  } catch (e) {
+    card.querySelectorAll("button").forEach((b) => b.disabled = false);
+    alert("操作失敗:" + e.message);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

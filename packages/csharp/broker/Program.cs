@@ -220,6 +220,7 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewPdfRenderService>(
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
 builder.Services.AddSingleton<Broker.Services.SidecarPublicUrlResolver>();
 builder.Services.AddSingleton<Broker.Services.BrokerArtifactDownloadService>();
+builder.Services.AddSingleton<Broker.Services.ApprovalLinkService>();
 builder.Services.AddSingleton<Broker.Services.LineArtifactDeliveryService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
@@ -856,6 +857,7 @@ api.MapPost("/health", healthHandler);
 TaskEndpoints.Map(api);
 SessionEndpoints.Map(api);
 ExecutionEndpoints.Map(api);
+UserApprovalEndpoints.Map(api);
 CapabilityEndpoints.Map(api);
 ToolSpecEndpoints.Map(api);
 BrowserBindingEndpoints.Map(api);
