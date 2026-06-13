@@ -37,6 +37,7 @@ public static class ApprovalLifecycleTests
         TestUserCannotApproveAdminTier();
         TestUserCannotApproveOthersUserTier();
         TestListForApproverFiltersByTierAndOwner();
+        TestApprovalDetailRendersPatch();
 
         Console.WriteLine();
         Console.WriteLine($"=== Approval Lifecycle Results: {_passed} passed, {_failed} failed ===");
@@ -56,7 +57,8 @@ public static class ApprovalLifecycleTests
 
     // 擱置一個待審請求(模擬 PolicyEngine 已回 RequireApproval 後的狀態)
     private static string SeedPending(BrokerDb db, string capabilityId,
-        ApproverTier tier = ApproverTier.Admin, string owner = "prn_a")
+        ApproverTier tier = ApproverTier.Admin, string owner = "prn_a",
+        string payload = "{\"route\":\"read_file\",\"args\":{}}")
     {
         new CapabilityCatalog(db).CreateGrant(
             "task_a", "ses_a", owner, capabilityId, "{}", -1, DateTime.UtcNow.AddHours(1));
@@ -69,7 +71,7 @@ public static class ApprovalLifecycleTests
             PrincipalId = owner,
             CapabilityId = capabilityId,
             Intent = "x",
-            RequestPayload = "{\"route\":\"read_file\",\"args\":{}}",
+            RequestPayload = payload,
             ExecutionState = ExecutionState.PendingApproval,
             TraceId = "tr_" + IdGen.New("t"),
             IdempotencyKey = IdGen.New("idem"),
@@ -243,6 +245,34 @@ public static class ApprovalLifecycleTests
             // 管理員看全部(3 筆)
             AssertEqual("admin-sees-all",
                 broker.ListPendingApprovalsForApprover("any_admin", isAdmin: true).Count.ToString(), "3");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestApprovalDetailRendersPatch()
+    {
+        Console.WriteLine("--- Approval detail renders a patch (content view) ---");
+        var dir = NewTempDir("detail-patch");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var payload = "{\"route\":\"apply_patch\",\"args\":{\"patch\":\"diff --git a/x.txt b/x.txt\\n-a\\n+b\\n\"}}";
+            var approvalId = SeedPending(db, "repo.patch.apply", ApproverTier.Admin, "prn_a", payload);
+
+            var detail = broker.GetApprovalDetail(approvalId);
+            AssertTrue("detail-not-null", detail != null);
+            AssertEqual("detail-kind-patch", detail?.Rendered.Kind, "patch");
+            AssertTrue("detail-patch-content", detail?.Rendered.Patch?.Contains("diff --git") == true);
+            AssertEqual("detail-tier", detail?.Tier, "Admin");
+
+            // build.test.run → command rendering
+            var bId = SeedPending(db, "build.test.run", ApproverTier.Admin, "prn_a",
+                "{\"route\":\"run_build_test\",\"args\":{\"command\":\"dotnet test\"}}");
+            var bDetail = broker.GetApprovalDetail(bId);
+            AssertEqual("detail-kind-command", bDetail?.Rendered.Kind, "command");
+            AssertEqual("detail-command", bDetail?.Rendered.Command, "dotnet test");
         }
         finally { TryDelete(dir); }
     }

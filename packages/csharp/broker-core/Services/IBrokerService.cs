@@ -47,6 +47,12 @@ public interface IBrokerService
     /// <summary>列出某審批者可見的待審:管理員看全部;使用者只看自己擁有的 User 層(§18.2)</summary>
     IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin);
 
+    /// <summary>單筆審批明細(含內容渲染),供 web UI(§18.2-C2)</summary>
+    ApprovalDetail? GetApprovalDetail(string approvalId);
+
+    /// <summary>某審批者可見的待審明細(含內容渲染),供 web UI(§18.2-C2)</summary>
+    IReadOnlyList<ApprovalDetail> ListPendingApprovalDetailsForApprover(string approverId, bool isAdmin);
+
     /// <summary>核准擱置的執行請求並 dispatch(§18.2)。回 null = 不存在/已決/無權批。</summary>
     Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false);
 

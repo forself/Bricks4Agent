@@ -387,6 +387,80 @@ public class BrokerService : IBrokerService
             .ToList();
     }
 
+    /// <inheritdoc />
+    public ApprovalDetail? GetApprovalDetail(string approvalId)
+    {
+        var approval = _db.Get<ApprovalRequest>(approvalId);
+        return approval == null ? null : BuildApprovalDetail(approval);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ApprovalDetail> ListPendingApprovalDetailsForApprover(string approverId, bool isAdmin)
+    {
+        return ListPendingApprovalsForApprover(approverId, isAdmin)
+            .Select(BuildApprovalDetail)
+            .ToList();
+    }
+
+    private ApprovalDetail BuildApprovalDetail(ApprovalRequest a)
+    {
+        var req = _db.Get<ExecutionRequest>(a.RequestId);
+        return new ApprovalDetail
+        {
+            ApprovalId = a.ApprovalId,
+            RequestId = a.RequestId,
+            CapabilityId = a.CapabilityId,
+            Tier = a.ApproverTier.ToString(),
+            OwnerPrincipalId = a.OwnerPrincipalId,
+            Reason = a.Reason,
+            Intent = req?.Intent ?? string.Empty,
+            CreatedAt = a.CreatedAt,
+            ExpiresAt = a.ExpiresAt,
+            Rendered = BuildRendered(a.CapabilityId, req?.RequestPayload ?? "{}")
+        };
+    }
+
+    /// <summary>依能力把請求 payload 渲染成可視內容(§18.2-C2 賣點)。</summary>
+    private static RenderedContent BuildRendered(string capabilityId, string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+            var args = root.TryGetProperty("args", out var a) ? a : root;
+            string? S(string n) =>
+                args.ValueKind == JsonValueKind.Object
+                && args.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString() : null;
+
+            switch (capabilityId)
+            {
+                case "repo.patch.apply":
+                    return new RenderedContent { Kind = "patch", Patch = S("patch") ?? string.Empty };
+                case "build.test.run":
+                    return new RenderedContent { Kind = "command", Command = S("command") ?? string.Empty };
+                case "file.write":
+                    var content = S("content") ?? string.Empty;
+                    return new RenderedContent
+                    {
+                        Kind = "file",
+                        Path = S("path") ?? string.Empty,
+                        ContentPreview = content.Length > 2000 ? content[..2000] + "…" : content
+                    };
+                default:
+                    return new RenderedContent
+                    {
+                        Kind = "json",
+                        Payload = args.ValueKind == JsonValueKind.Undefined ? payload : args.GetRawText()
+                    };
+            }
+        }
+        catch
+        {
+            return new RenderedContent { Kind = "json", Payload = payload };
+        }
+    }
+
     /// <summary>
     /// 授權檢查(§18.2):管理員可批任何待審;非管理員只能批 User 層、且是自己擁有的。
     /// </summary>
