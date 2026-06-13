@@ -434,7 +434,7 @@ public class LlmProxyService : ILlmProxyService
 
         return new LlmChatResult
         {
-            Content = root["output_text"]?.GetValue<string>() ?? string.Empty,
+            Content = ExtractResponsesText(root, output),
             ToolCalls = toolCalls,
             Thinking = string.Empty,
             Done = true,
@@ -442,6 +442,42 @@ public class LlmProxyService : ILlmProxyService
             TotalDuration = 0,
             EvalCount = root["usage"]?["output_tokens"]?.GetValue<int>() ?? 0,
         };
+    }
+
+    /// <summary>
+    /// 從 Responses API 回應提取文字。頂層 output_text 是 OpenAI SDK 的便利欄位,
+    /// 真實 API 原始回應未必有;此時從 output[] 陣列的 message item 聚合
+    /// content[].output_text。reasoning item(gpt-5 系列)會被自然略過。
+    /// </summary>
+    private static string ExtractResponsesText(JsonNode root, JsonArray output)
+    {
+        var topLevel = root["output_text"]?.GetValue<string>();
+        if (!string.IsNullOrEmpty(topLevel))
+        {
+            return topLevel;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var item in output)
+        {
+            if (!string.Equals(item?["type"]?.GetValue<string>(), "message", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var content = item?["content"] as JsonArray ?? [];
+            foreach (var part in content)
+            {
+                var partType = part?["type"]?.GetValue<string>();
+                if (string.Equals(partType, "output_text", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(partType, "text", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append(part?["text"]?.GetValue<string>() ?? string.Empty);
+                }
+            }
+        }
+
+        return sb.ToString();
     }
 
     private JsonArray NormalizeToolCalls(JsonArray? toolCalls)
