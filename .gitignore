@@ -58,6 +58,9 @@ tools/*.png
 .run/
 .test-output/
 .superpowers/
+# execution-adapter stack default workspace + adapter evidence
+tools/agent/container/adapter-workspace/
+**/.b4a-evidence/
 ngrok_recovery_codes.txt
 packages/csharp/broker/appsettings.Development.json
 packages/csharp/workers/line-worker/appsettings.json

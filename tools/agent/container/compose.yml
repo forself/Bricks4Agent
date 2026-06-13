@@ -146,6 +146,47 @@ services:
     networks:
       - worker-net
 
+  # ── Execution Adapter Worker (§18.1) ──
+  # Profile-gated: only starts with `--profile adapters` so the default governed
+  # stack test is unaffected. Trusted execution node — hardened per §13.2 but,
+  # unlike the agent, may write the workspace (it IS the mediated write path) and
+  # has egress (build/test restore). The agent still cannot reach it directly;
+  # only the broker dispatches repo.patch.apply / build.test.run to it.
+  execution-adapter-worker:
+    image: bricks4agent-execution-adapter-worker:latest
+    profiles: ["adapters"]
+    build:
+      context: ../../..
+      dockerfile: packages/csharp/workers/execution-adapter-worker/Containerfile
+    depends_on:
+      - broker
+    environment:
+      WORKER_Worker__BrokerHost: "broker"
+      WORKER_Worker__BrokerPort: "7000"
+      WORKER_Worker__MaxConcurrent: "2"
+      WORKER_Worker__SandboxRoot: "/workspace"
+      WORKER_Worker__EvidenceRoot: "/tmp/b4a-evidence"
+      WORKER_Worker__Auth__WorkerType: "execution-adapter-worker"
+      WORKER_Worker__Auth__KeyId: "${EXEC_ADAPTER_AUTH_KEY_ID:-exec-adapter-dev-key}"
+      WORKER_Worker__Auth__SharedSecret: "${EXEC_ADAPTER_AUTH_SHARED_SECRET:-exec-adapter-dev-shared-secret}"
+      HOME: "/tmp"
+    volumes:
+      # A fixture/throwaway workspace by default — NOT the real repo — so an applied
+      # patch never mutates the source tree. Override via ADAPTER_WORKSPACE.
+      - "${ADAPTER_WORKSPACE:-./adapter-workspace}:/workspace"
+    restart: "on-failure:5"
+    # ── OS-level hardening (design §13.2) ── no docker socket; non-root uid 10004
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    networks:
+      - worker-net   # broker dispatch + egress (build/test restore)
+
   # ── Agent ──
   agent:
     image: bricks4agent-agent:latest

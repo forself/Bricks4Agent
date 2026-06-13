@@ -530,6 +530,10 @@ class GovernedExecutor {
                 return `Search content: pattern=${args.pattern || '(none)'}`;
             case 'run_command':
                 return `Execute command: ${(args.command || '').substring(0, 100)}`;
+            case 'apply_patch':
+                return `Apply repo patch${args.base_commit ? ` (base ${String(args.base_commit).substring(0, 12)})` : ''}`;
+            case 'run_build_test':
+                return `Run build/test: ${(args.command || '').substring(0, 100)}`;
             default:
                 return `Tool call: ${toolName}`;
         }

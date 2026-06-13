@@ -96,7 +96,12 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.
 
 ### Still weak / honest limits
-- The controlled agent container is an MVP skeleton: **the approval service and execution adapters are not done** (the agent can read under governance but cannot yet do real work — repo edits, build/test). The container *itself* is now hardened: §13.1 network egress isolation and §13 OS sandboxing are both done (see below). The remaining gap is what the agent is *allowed to do* and *how risky actions are gated*, not how the container is confined.
+- The controlled agent container is past the read-only stage: the two §18.1 execution adapters (repo-adapter, build-test-adapter) are **implemented and unit-verified** (see below), so the agent can now propose real work — apply a patch, run a whitelisted build/test — under broker governance. **Still not done: the approval service (§18.2) and the full end-to-end stack drive of an agent applying a patch through a real model.** The container itself is hardened (§13.1 egress + §13 OS sandbox).
+- Execution adapters (§18.1) — **implemented, unit-verified 2026-06-13**:
+  - A dedicated hardened worker (`execution-adapter-worker`) implements `repo.patch.apply` (validate base_commit, enforce scope.allowed_paths, `git apply --check` then apply, diff-artifact evidence, idempotency) and `build.test.run` (whitelist-only, no-shell, structured stdout/stderr + exit, evidence).
+  - Verified by 38 broker unit-test assertions against **real git** (apply in-scope; reject base-commit mismatch / out-of-scope path / free-form shell with no write; only-patch-files-touched; idempotent replay; whitelist enforcement; truncation) — broker suite 154/154. Agent tool surface (`apply_patch`, `run_build_test`) wired; config-validation test green; the change does not regress the existing governed stack (still `STACK_OK`).
+  - The adapter is a trusted execution node: OS-hardened (§13.2, no docker socket) but with workspace-write and egress (build/test restore). The agent still cannot reach it — only the broker dispatches to it. It is profile-gated in compose (`--profile adapters`) and defaults to a throwaway workspace, never the real repo.
+  - Not yet: the full e2e stack run of a *model* driving `apply_patch` end-to-end (the unit tests exercise the handler logic directly), and broker `--integration` coverage of the new routes.
 - Agent container hardening (§13 + §13.1) — **done and verified 2026-06-13**:
   - **Egress sealed**: the agent sits on an `internal: true` compose network shared only with the broker — no route to host/internet (verified: a container on that network cannot reach `api.openai.com`; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.
   - **OS sandbox**: read-only rootfs (+ tmpfs `/tmp`), `cap_drop: ALL`, `no-new-privileges`, `pids_limit`, non-root uid 10001 (verified: rootfs write blocked, `CapEff=0`, `/tmp` writable, agent still completes the governed run). Seccomp is the runtime default profile (no custom profile yet).
@@ -105,10 +110,11 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
-Not: a custom seccomp profile (the runtime default applies, not a tailored one),
-approval-gated high-risk actions, execution adapters, or a complete §18 MVP. The
-container *confinement* (egress isolation + OS sandbox) is done; what the agent
-is *permitted to do*, and the gating of risky actions, is not.
+Not: approval-gated high-risk actions (§18.2), a custom seccomp profile (the
+runtime default applies), a full end-to-end stack run of a model driving a patch
+through the adapters, or a complete §18 MVP. The container *confinement* (egress
+isolation + OS sandbox) is done and the execution adapters are implemented and
+unit-verified; the approval layer and the e2e model-driven demonstration are not.
 
 ### Dishonest to deny
 The controlled autonomous agent — the hardest and most central piece — went from
@@ -119,8 +125,8 @@ broker governance" in this cycle.
 
 1. ~~Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, tmpfs.~~ **Done 2026-06-13** — applied to the agent in all three stacks, enforcement verified (`CapEff=0`, rootfs write blocked). Custom seccomp profile still pending (runtime default in effect).
 2. ~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ **Done 2026-06-13** — agent on `internal: true` `agent-net`, egress-denial verified; broker remains the only path to model providers.
-3. **Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.** ← next: makes the agent able to do real work, not just read.
-4. Approval service + risk tiering (§18.2).
+3. ~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ **Implemented + unit-verified 2026-06-13** — `execution-adapter-worker` (`repo.patch.apply` + `build.test.run`), 38 real-git assertions green, agent tools wired, profile-gated in compose. Remaining: e2e model-driven stack run + broker `--integration` coverage.
+4. **Approval service + risk tiering (§18.2).** ← next: gate high-risk adapter actions behind human approval.
 5. Control-plane console (design exists, not built).
 6. Custom seccomp profile for the agent (tighten beyond the runtime default).
 

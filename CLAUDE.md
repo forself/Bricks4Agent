@@ -25,6 +25,9 @@ Canonical LINE path: `line-worker -> broker high-level coordinator`.
 | `packages/csharp/broker/broker.db-shm` | SQLite shared memory | Yes | Delete with broker.db |
 | `packages/csharp/broker/broker.db-wal` | SQLite write-ahead log | Yes | Delete with broker.db |
 | `.test-output/` | Test output directory | Yes | Delete after testing |
+| `%TEMP%/b4a-exec-*` | Execution-adapter unit tests (temp git repos) | n/a (system temp) | Auto-deleted by the test (best-effort) |
+| `tools/agent/container/adapter-workspace/` | Default adapter stack workspace | Yes | Delete after running the `adapters` profile |
+| `**/.b4a-evidence/` | Adapter evidence (patches/logs) | Yes | Delete after testing |
 
 ### Cleanup procedure
 

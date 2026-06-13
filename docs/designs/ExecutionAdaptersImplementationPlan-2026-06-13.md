@@ -1,7 +1,7 @@
 # Execution Adapters (§18.1) — Test-Driven Implementation Plan
 
 Date: 2026-06-13
-Status: **plan for review** (not yet implemented)
+Status: **implemented + unit-verified** (Steps A–E done; 38 real-git assertions green, config test green, no regression to the governed stack). Remaining: e2e model-driven stack run + broker `--integration` coverage (Step F partial).
 Spec: [ControlledAutonomousAISystemTechnicalDesign.md](ControlledAutonomousAISystemTechnicalDesign.md) §14 (執行配接層), §18.1 (MVP), §9.2 (structured request), §6.4 (capability catalog), §13.2 (execution baseline), §21 (success criteria)
 Builds on: agent container already activated + sealed (§13.1 egress, §13 OS sandbox) — see [CurrentArchitectureAndProgress-2026-06-13.md](../reports/CurrentArchitectureAndProgress-2026-06-13.md)
 

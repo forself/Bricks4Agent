@@ -120,11 +120,34 @@ podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-pr
 
 mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file` → `STACK_OK`。
 
-## 9. 範圍界線(尚未做,對照規格 §13/§18)
+## 9. 執行配接器(§18.1,已實作 + 單元驗證 2026-06-13)
 
-受控代理容器目前是「通電 + governed 工具執行 + 網路出口隔離 + OS 沙箱」的 MVP 骨架。**尚未實作**:
-- repo-adapter / build-test-adapter 等執行配接器(讓 agent 能真的改檔、跑 build/test,而非只讀)
-- §18.2 審批服務、風險分級
+`execution-adapter-worker` 讓受控 agent 能真的做事(不再只讀):agent 產生結構化請求 → broker 裁決(grant/quota/scope/policy)→ adapter worker 執行並附證據。agent 永遠碰不到 adapter,只有 broker 會 dispatch。
+
+兩個能力:
+| 能力 / route | 行為 |
+|------|------|
+| `repo.patch.apply` / `execution.repo.apply_patch` | 驗 patch(非自由 shell)、驗 base_commit==HEAD、限 `scope.allowed_paths`、`git apply --check` 後套用、存 diff 證據、支援 idempotency_key(重放回前次結果不重套) |
+| `build.test.run` / `execution.build_test.run` | 只跑白名單命令(npm test / npm run build / dotnet test / pytest)、不經 shell、收 stdout/stderr+exit、截斷大輸出、存 log 證據 |
+
+adapter 是**受信任執行節點**:套 §13.2 OS 加固(非 root uid 10004、read-only rootfs、cap-drop ALL、no-new-privileges、無 docker socket),但與 agent 不同 —— 可寫 workspace(它就是經控制平面中介的寫入路徑)、有出口(build/test restore)。
+
+驗證:
+```bash
+# broker 單元測試(含 38 條執行配接器斷言,對真實 git 操作)
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+# 設定驗證(compose 接線 + 加固 + 能力 seed + 工具映射)
+node tools/agent/tests/test-execution-adapter-config.js
+```
+
+compose 中 adapter 服務以 **profile 隔離**(`--profile adapters`),預設不啟動(不影響既有 governed stack 測試);預設掛載 throwaway workspace(`ADAPTER_WORKSPACE` 可覆寫),**不會動到真實 repo**。
+
+尚未做:用真實模型驅動 agent 端到端套 patch 的 stack 實跑、broker `--integration` 對新 route 的覆蓋。
+
+## 10. 範圍界線(尚未做,對照規格 §13/§18)
+
+**尚未實作**:
+- §18.2 審批服務、風險分級(高風險 adapter 動作走人工放行)
 - agent 客製 seccomp profile(目前用 runtime 預設)
 
 這些是後續階段。重點:容器「關得住」已做到;agent「能做什麼、危險動作怎麼放行」尚未做。

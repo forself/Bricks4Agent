@@ -449,6 +449,36 @@ const TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        type: 'function',
+        function: {
+            name: 'apply_patch',
+            description: '透過執行配接器套用 unified diff patch 到倉庫（經 broker 治理，僅限授權路徑）。只接受 patch，不接受自由 shell。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    patch: { type: 'string', description: 'unified diff（git 格式）內容' },
+                    base_commit: { type: 'string', description: '預期的 base commit（需等於倉庫 HEAD），可省略' },
+                    idempotency_key: { type: 'string', description: '冪等鍵：同鍵重放回傳前次結果，不重複套用' },
+                },
+                required: ['patch'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'run_build_test',
+            description: '透過執行配接器在隔離環境執行白名單建置/測試命令（如 npm test、dotnet test），回傳結構化 stdout/stderr 與 exit code。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    command: { type: 'string', description: '白名單命令（例如 "dotnet test"、"npm run build"）' },
+                },
+                required: ['command'],
+            },
+        },
+    },
 ];
 
 const TOOL_TO_CAPABILITY = {
@@ -478,6 +508,8 @@ const TOOL_TO_CAPABILITY = {
     list_agents: 'agent.list',
     create_agent: 'agent.create',
     stop_agent: 'agent.stop',
+    apply_patch: 'repo.patch.apply',
+    run_build_test: 'build.test.run',
 };
 
 // ─── 工具分派 ───
