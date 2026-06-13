@@ -80,7 +80,7 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 
 受控代理容器目前是「通電 + governed 工具執行」的 MVP 骨架。**尚未實作**:
 - §13 完整容器安全 hardening(read-only rootfs、`cap-drop=ALL`、`no-new-privileges`、seccomp、tmpfs)
-- §13.1 嚴格網路隔離(容器只能連控制平面、禁直接對外)— 目前容器能連外網(商用 API 即靠此)
+- §13.1 嚴格網路隔離(容器只能連控制平面、禁直接對外)— 模型呼叫已走 broker(容器不持金鑰、商用 API 靠 broker 出口),但尚未*強制*容器無法自行對外連網
 - §18.2 審批服務、風險分級
 - repo-adapter / build-test-adapter 等執行配接器
 

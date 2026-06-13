@@ -58,11 +58,14 @@ Activation detail: [AgentContainerActivation-2026-06-13.md](AgentContainerActiva
 ## 4. Commercial Model API (ChatGPT)
 
 The broker `LlmProxy` speaks ollama, OpenAI chat (`v1/chat/completions`), and
-OpenAI responses (`v1/responses`) with a Bearer key. The controlled agent
-container can now target a real commercial model API by setting
-`OPENAI_BASE_URL=https://api.openai.com` plus key/format/model — verified against
-real gpt-5.4-mini. (The LINE high-level path already used real OpenAI; this
-extends it to the agent container's `LlmProxy`.)
+OpenAI responses (`v1/responses`) with a Bearer key. The agent container itself
+holds **no** provider key or base URL — it talks only to the broker, and the
+**broker's** `LlmProxy` reaches the commercial API. Pointing that proxy at a real
+model is a broker-side setting (`OPENAI_BASE_URL=https://api.openai.com` plus
+key/format/model) — verified against real gpt-5.4-mini. (The LINE high-level path
+already used real OpenAI; this extends the same capability to the broker's
+agent-facing `LlmProxy`.) So the broker is already the inference gateway for the
+agent path; what is missing is *enforcing* that the container cannot bypass it.
 
 ## 5. Integration Bugs Surfaced By First Activation
 
@@ -93,7 +96,7 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.
 
 ### Still weak / honest limits
-- The controlled agent container is an MVP skeleton: **§13 container hardening (read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp), strict network isolation, approval service, and execution adapters are not done**. The container can currently reach the open internet (which is how the commercial API works).
+- The controlled agent container is an MVP skeleton: **§13 container hardening (read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp), strict network isolation, approval service, and execution adapters are not done**. Model calls already route through the broker (the container holds no provider key), but nothing yet *prevents* the container from reaching the internet on its own — egress restriction is unenforced.
 - Browser runtime: action-level gating runs, but authenticated browser automation does not.
 - Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still `line-admin.html`).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
@@ -109,7 +112,7 @@ broker governance" in this cycle.
 ## 8. Recommended Near-Term Priorities
 
 1. Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp, tmpfs.
-2. Network isolation: the container should reach only the control plane; route model calls through a broker-side inference gateway rather than letting the container hit api.openai.com directly.
+2. Network isolation: model calls already go through the broker, but *enforce* it — put the agent container on an internal-only compose network so it can reach only the control plane and cannot egress to the internet directly.
 3. Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.
 4. Approval service + risk tiering (§18.2).
 5. Control-plane console (design exists, not built).
