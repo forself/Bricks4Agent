@@ -44,6 +44,9 @@
   <Folder Name="/workers/file-worker/">
     <Project Path="workers/file-worker/FileWorker.csproj" />
   </Folder>
+  <Folder Name="/workers/execution-adapter-worker/">
+    <Project Path="workers/execution-adapter-worker/ExecutionAdapterWorker.csproj" />
+  </Folder>
   <Folder Name="/workers/browser-worker/">
     <Project Path="workers/browser-worker/BrowserWorker.csproj" />
   </Folder>

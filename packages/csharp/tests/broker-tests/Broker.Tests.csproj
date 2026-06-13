@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\broker\Broker.csproj" />
+    <ProjectReference Include="..\..\workers\execution-adapter-worker\ExecutionAdapterWorker.csproj" />
   </ItemGroup>
 
 </Project>

@@ -369,6 +369,12 @@ passed += agentPassed;
 failed += agentFailed;
 
 Console.WriteLine();
+
+var (execAdapterPassed, execAdapterFailed) = Broker.Tests.ExecutionAdapterTests.Run();
+passed += execAdapterPassed;
+failed += execAdapterFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

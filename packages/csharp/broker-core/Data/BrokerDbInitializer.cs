@@ -418,6 +418,48 @@ public class BrokerDbInitializer
                 })
             },
 
+            // ── 執行配接層 §18.1：Medium 風險，task scope 相符即自動放行 ──
+            new Capability
+            {
+                CapabilityId = "repo.patch.apply",
+                Route = "execution.repo.apply_patch",
+                ActionType = ActionType.Write,
+                ResourceType = "repository",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto_if_task_scope_match",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        patch = new { type = "string" },
+                        base_commit = new { type = "string" },
+                        idempotency_key = new { type = "string" }
+                    },
+                    required = new[] { "patch" }
+                })
+            },
+            new Capability
+            {
+                CapabilityId = "build.test.run",
+                Route = "execution.build_test.run",
+                ActionType = ActionType.Execute,
+                ResourceType = "build",
+                RiskLevel = RiskLevel.Medium,
+                ApprovalPolicy = "auto_if_task_scope_match",
+                TtlSeconds = 900,
+                ParamSchema = ToJson(new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        command = new { type = "string" }
+                    },
+                    required = new[] { "command" }
+                })
+            },
+
             // ── High 風險：仍然拒絕 ──
             new Capability
             {
