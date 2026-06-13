@@ -250,6 +250,38 @@ public class BrokerService : IBrokerService
         var policyResult = _policyEngine.Evaluate(
             request, capability, grant, task, currentEpoch, session.EpochAtIssue);
 
+        // ── Step 11b: RequireApproval → 建審批請求並擱置(§18.2) ──
+        if (policyResult.Decision == Models.PolicyDecision.RequireApproval)
+        {
+            var approval = new ApprovalRequest
+            {
+                ApprovalId = IdGen.New("apr"),
+                RequestId = request.RequestId,
+                TaskId = taskId,
+                SessionId = sessionId,
+                PrincipalId = principalId,
+                CapabilityId = capabilityId,
+                Reason = policyResult.Reason,
+                Status = ApprovalStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddSeconds(capability.TtlSeconds > 0 ? capability.TtlSeconds : 900),
+                TraceId = traceId
+            };
+            _db.Insert(approval);
+
+            request.ExecutionState = ExecutionState.PendingApproval;
+            request.PolicyDecision = Models.PolicyDecision.RequireApproval;
+            request.PolicyReason = policyResult.Reason;
+            request.UpdatedAt = DateTime.UtcNow;
+            UpdateState(request);
+
+            _auditService.RecordEvent(traceId, "APPROVAL_REQUESTED",
+                principalId, taskId, sessionId, capabilityId,
+                JsonSerializer.Serialize(new { approval_id = approval.ApprovalId, reason = policyResult.Reason }));
+
+            return request;
+        }
+
         if (policyResult.Decision != Models.PolicyDecision.Allow)
         {
             return UpdateRequestState(request, ExecutionState.Denied,
@@ -264,35 +296,43 @@ public class BrokerService : IBrokerService
         _auditService.RecordEvent(traceId, "EXECUTION_ALLOWED",
             principalId, taskId, sessionId, capabilityId);
 
-        // ── Step 9 (cont.): 消耗配額 ──
+        // ── Steps 12-16:消耗配額 + dispatch + 記錄結果(與審批通過後共用) ──
+        return await DispatchAndRecordAsync(request, capability, grant);
+    }
+
+    /// <summary>
+    /// Steps 12-16:消耗配額 + 建 ApprovedRequest + dispatch + 記錄結果。
+    /// SubmitExecutionRequestAsync 的 Allow 路徑與 ApproveExecutionAsync 審批通過後共用。
+    /// </summary>
+    private async Task<ExecutionRequest> DispatchAndRecordAsync(
+        ExecutionRequest request, Capability capability, CapabilityGrant grant)
+    {
         if (!_capabilityCatalog.ConsumeQuota(grant.GrantId))
         {
             return UpdateRequestState(request, ExecutionState.Denied,
                 Models.PolicyDecision.Deny, "Failed to consume grant quota.");
         }
 
-        // ── Step 12: 建立 ApprovedRequest DTO ──
         var approvedRequest = new ApprovedRequest
         {
             RequestId = request.RequestId,
-            CapabilityId = capabilityId,
+            CapabilityId = request.CapabilityId,
             Route = capability.Route,
-            Payload = requestPayload,
+            Payload = request.RequestPayload,
             Scope = grant.ScopeOverride,
-            TraceId = traceId,
-            PrincipalId = principalId,
-            TaskId = taskId,
-            SessionId = sessionId
+            TraceId = request.TraceId,
+            PrincipalId = request.PrincipalId,
+            TaskId = request.TaskId,
+            SessionId = request.SessionId
         };
 
-        // ── Step 13: Dispatch ──
         request.ExecutionState = ExecutionState.Dispatched;
+        request.UpdatedAt = DateTime.UtcNow;
         UpdateState(request);
 
-        _auditService.RecordEvent(traceId, "EXECUTION_DISPATCHED",
-            principalId, taskId, sessionId, capabilityId);
+        _auditService.RecordEvent(request.TraceId, "EXECUTION_DISPATCHED",
+            request.PrincipalId, request.TaskId, request.SessionId, request.CapabilityId);
 
-        // ── Step 14: 收集結果（H-3 修復：proper async，消除 sync-over-async） ──
         ExecutionResult executionResult;
         try
         {
@@ -303,31 +343,111 @@ public class BrokerService : IBrokerService
             executionResult = ExecutionResult.Fail(request.RequestId, ex.Message);
         }
 
-        // ── Step 15: 更新狀態 + 稽核 ──
         if (executionResult.Success)
         {
             request.ExecutionState = ExecutionState.Succeeded;
             request.ResultPayload = executionResult.ResultPayload;
             request.EvidenceRef = executionResult.EvidenceRef;
-
-            _auditService.RecordEvent(traceId, "EXECUTION_SUCCEEDED",
-                principalId, taskId, sessionId, capabilityId);
+            _auditService.RecordEvent(request.TraceId, "EXECUTION_SUCCEEDED",
+                request.PrincipalId, request.TaskId, request.SessionId, request.CapabilityId);
         }
         else
         {
             request.ExecutionState = ExecutionState.Failed;
             request.ResultPayload = JsonSerializer.Serialize(new { error = executionResult.ErrorMessage });
-
-            _auditService.RecordEvent(traceId, "EXECUTION_FAILED",
-                principalId, taskId, sessionId, capabilityId,
+            _auditService.RecordEvent(request.TraceId, "EXECUTION_FAILED",
+                request.PrincipalId, request.TaskId, request.SessionId, request.CapabilityId,
                 JsonSerializer.Serialize(new { error = executionResult.ErrorMessage }));
         }
 
         request.UpdatedAt = DateTime.UtcNow;
         UpdateState(request);
-
-        // ── Step 16: 回傳 ──
         return request;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovals()
+    {
+        return _db.Query<ApprovalRequest>(
+            "SELECT * FROM approval_requests WHERE status = @s ORDER BY created_at",
+            new { s = (int)ApprovalStatus.Pending });
+    }
+
+    /// <inheritdoc />
+    public async Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason)
+    {
+        var approval = _db.Get<ApprovalRequest>(approvalId);
+        if (approval == null || approval.Status != ApprovalStatus.Pending)
+            return null;
+
+        var request = _db.Get<ExecutionRequest>(approval.RequestId);
+        if (request == null)
+            return null;
+
+        if (approval.ExpiresAt < DateTime.UtcNow)
+        {
+            approval.Status = ApprovalStatus.Expired;
+            approval.DecidedAt = DateTime.UtcNow;
+            _db.Update(approval);
+            return UpdateRequestState(request, ExecutionState.Denied,
+                Models.PolicyDecision.Deny, "Approval expired before decision.");
+        }
+
+        var capability = _capabilityCatalog.GetCapability(approval.CapabilityId);
+        var grant = _capabilityCatalog.GetActiveGrant(
+            approval.PrincipalId, approval.TaskId, approval.SessionId, approval.CapabilityId);
+        if (capability == null || grant == null)
+        {
+            approval.Status = ApprovalStatus.Rejected;
+            approval.DecidedAt = DateTime.UtcNow;
+            approval.DecisionReason = "Capability or grant unavailable at approval time.";
+            _db.Update(approval);
+            return UpdateRequestState(request, ExecutionState.Denied,
+                Models.PolicyDecision.Deny, "Capability or grant no longer available at approval time.");
+        }
+
+        approval.Status = ApprovalStatus.Approved;
+        approval.ApproverId = approverId;
+        approval.DecisionReason = reason;
+        approval.DecidedAt = DateTime.UtcNow;
+        _db.Update(approval);
+
+        request.ExecutionState = ExecutionState.Allowed;
+        request.PolicyDecision = Models.PolicyDecision.Allow;
+        request.PolicyReason = $"Approved by {approverId}: {reason}";
+        request.UpdatedAt = DateTime.UtcNow;
+        UpdateState(request);
+
+        _auditService.RecordEvent(approval.TraceId, "EXECUTION_APPROVED",
+            approverId, approval.TaskId, approval.SessionId, approval.CapabilityId,
+            JsonSerializer.Serialize(new { approval_id = approvalId, reason }));
+
+        return await DispatchAndRecordAsync(request, capability, grant);
+    }
+
+    /// <inheritdoc />
+    public ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason)
+    {
+        var approval = _db.Get<ApprovalRequest>(approvalId);
+        if (approval == null || approval.Status != ApprovalStatus.Pending)
+            return null;
+
+        approval.Status = ApprovalStatus.Rejected;
+        approval.ApproverId = approverId;
+        approval.DecisionReason = reason;
+        approval.DecidedAt = DateTime.UtcNow;
+        _db.Update(approval);
+
+        var request = _db.Get<ExecutionRequest>(approval.RequestId);
+        if (request == null)
+            return null;
+
+        _auditService.RecordEvent(approval.TraceId, "EXECUTION_REJECTED",
+            approverId, approval.TaskId, approval.SessionId, approval.CapabilityId,
+            JsonSerializer.Serialize(new { approval_id = approvalId, reason }));
+
+        return UpdateRequestState(request, ExecutionState.Denied,
+            Models.PolicyDecision.Deny, $"Rejected by {approverId}: {reason}");
     }
 
     /// <inheritdoc />

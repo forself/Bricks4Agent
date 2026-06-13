@@ -375,6 +375,12 @@ passed += execAdapterPassed;
 failed += execAdapterFailed;
 
 Console.WriteLine();
+
+var (approvalPassed, approvalFailed) = Broker.Tests.ApprovalLifecycleTests.Run();
+passed += approvalPassed;
+failed += approvalFailed;
+
+Console.WriteLine();
 Console.WriteLine($"=== Unit Test Results: {passed} passed, {failed} failed ===");
 if (failed > 0)
 {

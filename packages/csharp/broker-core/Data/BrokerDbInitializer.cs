@@ -38,6 +38,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<BrokerTask>();
         _db.EnsureTable<ContainerSession>();
         _db.EnsureTable<ExecutionRequest>();
+        _db.EnsureTable<ApprovalRequest>();
         _db.EnsureTable<AuditEvent>();
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
@@ -387,7 +388,8 @@ public class BrokerDbInitializer
                 ActionType = ActionType.Write,
                 ResourceType = "file",
                 RiskLevel = RiskLevel.Medium,
-                ApprovalPolicy = "require_approval",
+                // §18.2: scope 內(使用者私有資料夾)auto;逸出升 High → 審批
+                ApprovalPolicy = "auto_if_task_scope_match",
                 TtlSeconds = 300,
                 ParamSchema = ToJson(new
                 {
@@ -408,7 +410,8 @@ public class BrokerDbInitializer
                 ActionType = ActionType.Write,
                 ResourceType = "file",
                 RiskLevel = RiskLevel.Medium,
-                ApprovalPolicy = "require_approval",
+                // §18.2: 私有資料夾內刪自己的東西 auto;逸出升 High → 審批
+                ApprovalPolicy = "auto_if_task_scope_match",
                 TtlSeconds = 300,
                 ParamSchema = ToJson(new
                 {
@@ -752,7 +755,8 @@ public class BrokerDbInitializer
                 ActionType = ActionType.Write,
                 ResourceType = "memory",
                 RiskLevel = RiskLevel.Medium,
-                ApprovalPolicy = "auto",
+                // §18.2: 私有 scope 內 auto;逸出升 High → 審批
+                ApprovalPolicy = "auto_if_task_scope_match",
                 TtlSeconds = 300,
                 ParamSchema = ToJson(new
                 {

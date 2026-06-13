@@ -48,7 +48,17 @@ public enum ExecutionState
     Denied = 3,
     Dispatched = 4,
     Succeeded = 5,
-    Failed = 6
+    Failed = 6,
+    PendingApproval = 7
+}
+
+/// <summary>升權審批請求狀態(§18.2)</summary>
+public enum ApprovalStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2,
+    Expired = 3
 }
 
 /// <summary>Session 狀態</summary>
