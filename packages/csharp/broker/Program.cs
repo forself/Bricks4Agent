@@ -499,6 +499,8 @@ builder.Services.AddSingleton<IToolSpecStatusChecker>(sp =>
         sp.GetRequiredService<IToolSpecRegistry>(),
         sp.GetRequiredService<ILogger<Broker.Services.ToolSpecStatusChecker>>()));
 
+builder.Services.AddSingleton<IApprovalNotifier, Broker.Services.LineApprovalNotifier>();
+
 builder.Services.AddSingleton<IBrokerService>(sp =>
     new BrokerService(
         sp.GetRequiredService<BrokerDb>(),
@@ -509,7 +511,8 @@ builder.Services.AddSingleton<IBrokerService>(sp =>
         sp.GetRequiredService<IRevocationService>(),
         sp.GetRequiredService<ITaskRouter>(),
         sp.GetRequiredService<IExecutionDispatcher>(),
-        sp.GetRequiredService<IToolSpecStatusChecker>()));
+        sp.GetRequiredService<IToolSpecStatusChecker>(),
+        sp.GetRequiredService<IApprovalNotifier>()));
 
 builder.Services.AddSingleton<IPlanEngine>(sp =>
     new PlanEngine(

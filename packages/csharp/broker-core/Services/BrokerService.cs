@@ -37,6 +37,7 @@ public class BrokerService : IBrokerService
     private readonly ITaskRouter _taskRouter;
     private readonly IExecutionDispatcher _executionDispatcher;
     private readonly IToolSpecStatusChecker? _toolSpecStatusChecker;
+    private readonly IApprovalNotifier? _approvalNotifier;
 
     public BrokerService(
         BrokerDb db,
@@ -47,7 +48,8 @@ public class BrokerService : IBrokerService
         IRevocationService revocationService,
         ITaskRouter taskRouter,
         IExecutionDispatcher executionDispatcher,
-        IToolSpecStatusChecker? toolSpecStatusChecker = null)
+        IToolSpecStatusChecker? toolSpecStatusChecker = null,
+        IApprovalNotifier? approvalNotifier = null)
     {
         _db = db;
         _policyEngine = policyEngine;
@@ -58,6 +60,7 @@ public class BrokerService : IBrokerService
         _taskRouter = taskRouter;
         _executionDispatcher = executionDispatcher;
         _toolSpecStatusChecker = toolSpecStatusChecker;
+        _approvalNotifier = approvalNotifier;
     }
 
     /// <inheritdoc />
@@ -280,6 +283,13 @@ public class BrokerService : IBrokerService
             _auditService.RecordEvent(traceId, "APPROVAL_REQUESTED",
                 principalId, taskId, sessionId, capabilityId,
                 JsonSerializer.Serialize(new { approval_id = approval.ApprovalId, reason = policyResult.Reason }));
+
+            // User 層:通知擁有者(經 LINE 送可看內容的審批連結);失敗不擋審批建立
+            if (approval.ApproverTier == ApproverTier.User)
+            {
+                try { _approvalNotifier?.NotifyUserApprovalCreated(approval); }
+                catch { /* best-effort notification */ }
+            }
 
             return request;
         }
