@@ -31,7 +31,10 @@ services:
       LineChatGateway__RagEnabled: "false"
       LlmProxy__Enabled: "true"
       LlmProxy__Provider: "openai"
-      LlmProxy__BaseUrl: "http://mock-openai:8080"
+      # 預設指向 mock-openai;設 OPENAI_BASE_URL=https://api.openai.com 即可改用真實
+      # 商用模型 API(ChatGPT)。搭配 OPENAI_API_KEY 真實金鑰、OPENAI_API_FORMAT
+      # (responses 或 chat)與 STACK_MODEL(例如 gpt-4o-mini)。
+      LlmProxy__BaseUrl: "${OPENAI_BASE_URL:-http://mock-openai:8080}"
       LlmProxy__ApiKey: "${OPENAI_API_KEY:-dev-openai-key}"
       LlmProxy__ApiFormat: "${OPENAI_API_FORMAT:-responses}"
       LlmProxy__DefaultModel: "${STACK_MODEL:-openai-proxy-dev}"
