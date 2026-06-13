@@ -95,11 +95,36 @@ podman network rm seal-probe
 
 mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁決跑 governed `read_file` → `STACK_OK`。ollama/openai stack 的網路拓樸相同(broker 在 `egress`、agent 在 `agent-net`),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。
 
-## 8. 範圍界線(尚未做,對照規格 §13/§18)
+## 8. OS 層容器 hardening(§13,已實作 2026-06-13)
 
-受控代理容器目前是「通電 + governed 工具執行 + 網路出口隔離」的 MVP 骨架。**尚未實作**:
-- §13 OS 層容器 hardening(read-only rootfs、`cap-drop=ALL`、`no-new-privileges`、seccomp、tmpfs)
+三條 compose stack 的 **agent 服務**(受控主體,不受信任)都套上 OS 層沙箱:
+
+| 設定 | 作用 |
+|------|------|
+| `read_only: true` | rootfs 唯讀;`/workspace` bind mount 仍可寫(唯讀不影響掛載卷) |
+| `tmpfs: [/tmp]` | 唯一可寫的 rootfs 路徑放 tmpfs(`os.tmpdir()` 用) |
+| `cap_drop: [ALL]` | 丟掉所有 Linux capability(agent 以非 root uid 10001 跑,無需任何 cap) |
+| `security_opt: [no-new-privileges:true]` | 擋 setuid/setgid 提權 |
+| `pids_limit: 256` | 限制行程數(fork-bomb 防護) |
+
+seccomp 用 runtime 預設 profile(尚未寫客製 profile)。
+
+驗證(以 agent 映像直接驗證強制生效):
+
+```powershell
+podman run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true `
+  --entrypoint sh bricks4agent-agent:latest -c `
+  'echo uid=$(id -u); touch /app/probe 2>/dev/null && echo rootfs:BAD || echo rootfs:blocked; touch /tmp/probe && echo tmp:ok; grep CapEff /proc/self/status'
+# 預期:uid=10001 / rootfs:blocked / tmp:ok / CapEff:0000000000000000
+```
+
+mock stack 已實測:套上述 hardening 後 agent 仍能完成 governed `read_file` → `STACK_OK`。
+
+## 9. 範圍界線(尚未做,對照規格 §13/§18)
+
+受控代理容器目前是「通電 + governed 工具執行 + 網路出口隔離 + OS 沙箱」的 MVP 骨架。**尚未實作**:
+- repo-adapter / build-test-adapter 等執行配接器(讓 agent 能真的改檔、跑 build/test,而非只讀)
 - §18.2 審批服務、風險分級
-- repo-adapter / build-test-adapter 等執行配接器
+- agent 客製 seccomp profile(目前用 runtime 預設)
 
-這些是後續階段。
+這些是後續階段。重點:容器「關得住」已做到;agent「能做什麼、危險動作怎麼放行」尚未做。

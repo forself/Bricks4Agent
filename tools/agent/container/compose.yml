@@ -173,6 +173,17 @@ services:
     volumes:
       - ../../..:/workspace
     restart: "no"
+    # ── OS-level hardening (design §13) ──
+    # The agent is the untrusted autonomous main: sandbox it. It already runs as
+    # non-root (uid 10001) and needs no Linux capabilities.
+    read_only: true                 # rootfs read-only; the /workspace bind mount stays writable
+    tmpfs:
+      - /tmp                        # writable scratch (os.tmpdir) on tmpfs, not the rootfs
+    cap_drop:
+      - ALL                         # drop every capability — none are needed
+    security_opt:
+      - no-new-privileges:true      # block setuid/setgid privilege escalation
+    pids_limit: 256                 # cap process count (fork-bomb guard); seccomp = runtime default
     networks:
       # internal-only: the agent can reach the broker and nothing else (§13.1)
       - agent-net

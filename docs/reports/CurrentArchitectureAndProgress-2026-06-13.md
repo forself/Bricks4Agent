@@ -96,15 +96,19 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.
 
 ### Still weak / honest limits
-- The controlled agent container is an MVP skeleton: **§13 container hardening (read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp), the approval service, and execution adapters are not done**. Network egress isolation (§13.1) *is* now done: the agent sits on an `internal: true` compose network shared only with the broker, so it has no route to the host/internet — verified (a container on that network cannot reach `api.openai.com`; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.
+- The controlled agent container is an MVP skeleton: **the approval service and execution adapters are not done** (the agent can read under governance but cannot yet do real work — repo edits, build/test). The container *itself* is now hardened: §13.1 network egress isolation and §13 OS sandboxing are both done (see below). The remaining gap is what the agent is *allowed to do* and *how risky actions are gated*, not how the container is confined.
+- Agent container hardening (§13 + §13.1) — **done and verified 2026-06-13**:
+  - **Egress sealed**: the agent sits on an `internal: true` compose network shared only with the broker — no route to host/internet (verified: a container on that network cannot reach `api.openai.com`; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.
+  - **OS sandbox**: read-only rootfs (+ tmpfs `/tmp`), `cap_drop: ALL`, `no-new-privileges`, `pids_limit`, non-root uid 10001 (verified: rootfs write blocked, `CapEff=0`, `/tmp` writable, agent still completes the governed run). Seccomp is the runtime default profile (no custom profile yet).
 - Browser runtime: action-level gating runs, but authenticated browser automation does not.
 - Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still `line-admin.html`).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
-Not: OS-level container hardening (read-only rootfs, dropped caps, seccomp),
-approval-gated high-risk actions, or a complete §13/§18 MVP. (Network *egress*
-isolation is done; the broader hardening around it is not.)
+Not: a custom seccomp profile (the runtime default applies, not a tailored one),
+approval-gated high-risk actions, execution adapters, or a complete §18 MVP. The
+container *confinement* (egress isolation + OS sandbox) is done; what the agent
+is *permitted to do*, and the gating of risky actions, is not.
 
 ### Dishonest to deny
 The controlled autonomous agent — the hardest and most central piece — went from
@@ -113,11 +117,12 @@ broker governance" in this cycle.
 
 ## 8. Recommended Near-Term Priorities
 
-1. Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp, tmpfs.
+1. ~~Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, tmpfs.~~ **Done 2026-06-13** — applied to the agent in all three stacks, enforcement verified (`CapEff=0`, rootfs write blocked). Custom seccomp profile still pending (runtime default in effect).
 2. ~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ **Done 2026-06-13** — agent on `internal: true` `agent-net`, egress-denial verified; broker remains the only path to model providers.
-3. Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.
+3. **Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.** ← next: makes the agent able to do real work, not just read.
 4. Approval service + risk tiering (§18.2).
 5. Control-plane console (design exists, not built).
+6. Custom seccomp profile for the agent (tighten beyond the runtime default).
 
 ## 9. Bottom Line
 

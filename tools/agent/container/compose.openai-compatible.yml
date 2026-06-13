@@ -87,6 +87,15 @@ services:
     volumes:
       - ../../..:/workspace
     restart: "no"
+    # ── OS-level hardening (design §13) — see compose.yml for rationale ──
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     networks:
       # internal-only: agent reaches the broker and nothing else (§13.1).
       # The broker holds the OpenAI key and is the only egress to the provider.
