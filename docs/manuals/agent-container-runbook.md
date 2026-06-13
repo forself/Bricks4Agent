@@ -76,11 +76,29 @@ node tools/agent/tests/test-podman-openai-compatible-stack.js
 | `GET /api/v1/health` 回 `Body was inferred` | health endpoint 在 FunctionPool=false 仍註冊但服務缺失 | endpoint 註冊也 gate 在 FunctionPool |
 | 真實 OpenAI 回 200 但 agent 輸出空 | parser 只認頂層 `output_text` | 從 `output[]` 聚合 message content |
 
-## 7. 範圍界線(尚未做,對照規格 §13/§18)
+## 7. 網路隔離(§13.1,已實作 2026-06-13)
 
-受控代理容器目前是「通電 + governed 工具執行」的 MVP 骨架。**尚未實作**:
-- §13 完整容器安全 hardening(read-only rootfs、`cap-drop=ALL`、`no-new-privileges`、seccomp、tmpfs)
-- §13.1 嚴格網路隔離(容器只能連控制平面、禁直接對外)— 模型呼叫已走 broker(容器不持金鑰、商用 API 靠 broker 出口),但尚未*強制*容器無法自行對外連網
+三條 compose stack 都把 **agent 容器單獨放在 `internal: true` 的 `agent-net`**——該網路無對外閘道,agent 只能連 broker、無法自行對外連網。broker 另接 bridge 網路(`egress`/`control-net`/`worker-net`),保有對外出口(真實 OpenAI、host ollama)與 host port-publishing;商用 API 仍可用,因為**出口是 broker 不是 agent**(agent 不持金鑰)。agent 無 published port,故放 internal 網路安全(ingress 走 broker)。
+
+為何不直接把共用網路設成 internal:會連帶封住同網路上「有 published port 的 mock LLM」(internal 網路上的 port-publishing 在 docker/podman 行為不可靠)。所以只密封 agent。
+
+驗證(egress 拒絕):
+
+```powershell
+# internal 網路的容器連不到外網(bad address / 逾時)
+podman network create --internal seal-probe
+podman run --rm --network seal-probe alpine wget -T 4 -q -O- https://api.openai.com/v1/models   # 失敗
+# bridge 網路的容器連得到(回 401,代表連到了)
+podman run --rm alpine wget -T 6 -q -S -O /dev/null https://api.openai.com/v1/models            # 連到(401)
+podman network rm seal-probe
+```
+
+mock stack 已實測:agent 在 `agent-net` 仍能註冊 session、經 broker 裁決跑 governed `read_file` → `STACK_OK`。ollama/openai stack 的網路拓樸相同(broker 在 `egress`、agent 在 `agent-net`),但因需 GPU/金鑰未在此機離線複驗——使用者跑這兩條時即同時驗證。
+
+## 8. 範圍界線(尚未做,對照規格 §13/§18)
+
+受控代理容器目前是「通電 + governed 工具執行 + 網路出口隔離」的 MVP 骨架。**尚未實作**:
+- §13 OS 層容器 hardening(read-only rootfs、`cap-drop=ALL`、`no-new-privileges`、seccomp、tmpfs)
 - §18.2 審批服務、風險分級
 - repo-adapter / build-test-adapter 等執行配接器
 

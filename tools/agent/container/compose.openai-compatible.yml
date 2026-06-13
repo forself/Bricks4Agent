@@ -11,6 +11,8 @@ services:
       EXPECTED_API_KEY: "${OPENAI_API_KEY:-dev-openai-key}"
     ports:
       - "${STACK_LLM_PORT:-8080}:8080"
+    networks:
+      - egress
 
   broker:
     image: bricks4agent-broker:latest
@@ -55,6 +57,11 @@ services:
       - "${BROKER_PORT:-5361}:5000"
     volumes:
       - broker-openai-data:/data
+    networks:
+      # egress: reach mock-openai / real api.openai.com + host port-publishing
+      # agent-net: internal-only link to the sealed agent
+      - egress
+      - agent-net
 
   agent:
     image: bricks4agent-agent:latest
@@ -80,6 +87,24 @@ services:
     volumes:
       - ../../..:/workspace
     restart: "no"
+    networks:
+      # internal-only: agent reaches the broker and nothing else (§13.1).
+      # The broker holds the OpenAI key and is the only egress to the provider.
+      - agent-net
+
+# ── Network Isolation (design §13.1) ──
+# agent-net: internal:true — the agent has no route to the host/internet and can
+#   reach only the broker. The commercial API still works because the BROKER (on
+#   egress) makes the OpenAI call; the agent never holds a key or egresses itself.
+# egress:    bridge — broker + mock-openai reach the provider and publish ports.
+networks:
+  agent-net:
+    name: bricks4agent_openai_agent-net
+    driver: bridge
+    internal: true
+  egress:
+    name: bricks4agent_openai_egress
+    driver: bridge
 
 volumes:
   broker-openai-data:

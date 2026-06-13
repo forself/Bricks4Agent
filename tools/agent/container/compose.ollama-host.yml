@@ -38,6 +38,12 @@ services:
       - "${BROKER_PORT:-5002}:5000"
     volumes:
       - broker-ollama-data:/data
+    networks:
+      # egress: reach the host's ollama via host.containers.internal (host-gateway)
+      #   and publish the broker port to the host
+      # agent-net: internal-only link to the sealed agent
+      - egress
+      - agent-net
 
   agent:
     image: bricks4agent-agent:latest
@@ -63,6 +69,24 @@ services:
     volumes:
       - ../../..:/workspace
     restart: "no"
+    networks:
+      # internal-only: agent reaches the broker and nothing else (§13.1). The
+      # broker (on egress) is the only path to the host's ollama.
+      - agent-net
+
+# ── Network Isolation (design §13.1) ──
+# agent-net: internal:true — the agent has no route to the host/internet and can
+#   reach only the broker. The broker is the only component that reaches the
+#   host's ollama (via host.containers.internal on the egress network).
+# egress:    bridge — broker reaches the host gateway and publishes its port.
+networks:
+  agent-net:
+    name: bricks4agent_ollama_agent-net
+    driver: bridge
+    internal: true
+  egress:
+    name: bricks4agent_ollama_egress
+    driver: bridge
 
 volumes:
   broker-ollama-data:

@@ -96,13 +96,15 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.
 
 ### Still weak / honest limits
-- The controlled agent container is an MVP skeleton: **§13 container hardening (read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp), strict network isolation, approval service, and execution adapters are not done**. Model calls already route through the broker (the container holds no provider key), but nothing yet *prevents* the container from reaching the internet on its own — egress restriction is unenforced.
+- The controlled agent container is an MVP skeleton: **§13 container hardening (read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp), the approval service, and execution adapters are not done**. Network egress isolation (§13.1) *is* now done: the agent sits on an `internal: true` compose network shared only with the broker, so it has no route to the host/internet — verified (a container on that network cannot reach `api.openai.com`; one on a bridge can). The commercial API still works because the broker, not the agent, makes the provider call.
 - Browser runtime: action-level gating runs, but authenticated browser automation does not.
 - Monitoring is health/metrics only; the control-plane console remains design-only (operator surface is still `line-admin.html`).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
-Not: production-hardened agent isolation, network-isolated containers, approval-gated high-risk actions, or a complete §13/§18 MVP.
+Not: OS-level container hardening (read-only rootfs, dropped caps, seccomp),
+approval-gated high-risk actions, or a complete §13/§18 MVP. (Network *egress*
+isolation is done; the broader hardening around it is not.)
 
 ### Dishonest to deny
 The controlled autonomous agent — the hardest and most central piece — went from
@@ -112,7 +114,7 @@ broker governance" in this cycle.
 ## 8. Recommended Near-Term Priorities
 
 1. Container security hardening (§13): read-only rootfs, cap-drop=ALL, no-new-privileges, seccomp, tmpfs.
-2. Network isolation: model calls already go through the broker, but *enforce* it — put the agent container on an internal-only compose network so it can reach only the control plane and cannot egress to the internet directly.
+2. ~~Network isolation (§13.1): seal agent egress to an internal-only network.~~ **Done 2026-06-13** — agent on `internal: true` `agent-net`, egress-denial verified; broker remains the only path to model providers.
 3. Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.
 4. Approval service + risk tiering (§18.2).
 5. Control-plane console (design exists, not built).

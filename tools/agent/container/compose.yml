@@ -83,7 +83,8 @@ services:
       FunctionPool__ContainerManager__WorkerImages__line-worker__MemoryLimit: "256m"
       FunctionPool__ContainerManager__WorkerImages__agent__Image: "bricks4agent-agent:latest"
       FunctionPool__ContainerManager__WorkerImages__agent__MemoryLimit: "512m"
-      FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_control-net"
+      # broker-spawned agents are sealed on the internal-only agent network (§13.1)
+      FunctionPool__ContainerManager__WorkerImages__agent__NetworkName: "bricks4agent_agent-net"
     ports:
       - "${BROKER_PORT:-5000}:5000"
     volumes:
@@ -93,6 +94,7 @@ services:
     networks:
       - control-net
       - worker-net
+      - agent-net
 
   # ── File Worker ──
   file-worker:
@@ -172,12 +174,24 @@ services:
       - ../../..:/workspace
     restart: "no"
     networks:
-      - control-net
+      # internal-only: the agent can reach the broker and nothing else (§13.1)
+      - agent-net
 
-# ── Network Isolation ──
-# control-net: broker + agent + LLM (agent cannot reach workers directly)
-# worker-net:  broker + workers (workers cannot reach agent or LLM directly)
+# ── Network Isolation (design §13.1) ──
+# agent-net:   broker + agent ONLY, marked `internal: true` so the agent has NO
+#   gateway to the host/internet. The agent sits on this network ALONE, so it can
+#   reach only the broker — it cannot egress on its own. This enforces "the
+#   container reaches only the control plane". (The agent has no published ports,
+#   so sealing it on an internal network is safe; containers that publish ports —
+#   broker, mock LLM — stay on bridge networks where ingress is reliable.)
+# control-net: broker + LLM, bridge. Broker reaches the model provider here.
+# worker-net:  broker + workers, bridge. Broker keeps egress and host
+#   port-publishing via its bridge memberships while the agent stays sealed.
 networks:
+  agent-net:
+    name: bricks4agent_agent-net
+    driver: bridge
+    internal: true
   control-net:
     name: bricks4agent_control-net
     driver: bridge
