@@ -263,6 +263,8 @@ public class BrokerService : IBrokerService
                 CapabilityId = capabilityId,
                 Reason = policyResult.Reason,
                 Status = ApprovalStatus.Pending,
+                ApproverTier = policyResult.RequiredApproverTier,
+                OwnerPrincipalId = principalId,
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddSeconds(capability.TtlSeconds > 0 ? capability.TtlSeconds : 900),
                 TraceId = traceId
@@ -374,10 +376,35 @@ public class BrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public async Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason)
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin)
+    {
+        var pending = ListPendingApprovals();
+        if (isAdmin) return pending; // 管理員看全部
+        // 使用者只看自己擁有的 User 層
+        return pending
+            .Where(a => a.ApproverTier == ApproverTier.User
+                && string.Equals(a.OwnerPrincipalId, approverId, StringComparison.Ordinal))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 授權檢查(§18.2):管理員可批任何待審;非管理員只能批 User 層、且是自己擁有的。
+    /// </summary>
+    private static bool IsAuthorizedApprover(ApprovalRequest approval, string approverId, bool isAdmin)
+    {
+        if (isAdmin) return true;
+        return approval.ApproverTier == ApproverTier.User
+            && string.Equals(approverId, approval.OwnerPrincipalId, StringComparison.Ordinal);
+    }
+
+    /// <inheritdoc />
+    public async Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false)
     {
         var approval = _db.Get<ApprovalRequest>(approvalId);
         if (approval == null || approval.Status != ApprovalStatus.Pending)
+            return null;
+
+        if (!IsAuthorizedApprover(approval, approverId, isAdmin))
             return null;
 
         var request = _db.Get<ExecutionRequest>(approval.RequestId);
@@ -426,10 +453,13 @@ public class BrokerService : IBrokerService
     }
 
     /// <inheritdoc />
-    public ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason)
+    public ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason, bool isAdmin = false)
     {
         var approval = _db.Get<ApprovalRequest>(approvalId);
         if (approval == null || approval.Status != ApprovalStatus.Pending)
+            return null;
+
+        if (!IsAuthorizedApprover(approval, approverId, isAdmin))
             return null;
 
         approval.Status = ApprovalStatus.Rejected;

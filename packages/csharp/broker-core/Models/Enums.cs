@@ -61,6 +61,17 @@ public enum ApprovalStatus
     Expired = 3
 }
 
+/// <summary>
+/// 審批層級/信任錨(§18.2)。
+/// User:動作所屬使用者本人,在自己介面批,只限自己權限。
+/// Admin:管理員,在後台批,全域。
+/// </summary>
+public enum ApproverTier
+{
+    User = 0,
+    Admin = 1
+}
+
 /// <summary>Session 狀態</summary>
 public enum SessionStatus
 {

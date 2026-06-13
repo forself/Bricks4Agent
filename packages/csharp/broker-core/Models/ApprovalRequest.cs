@@ -44,6 +44,21 @@ public class ApprovalRequest
         set => StatusValue = (int)value;
     }
 
+    /// <summary>審批層級:User(使用者本人)或 Admin(管理員,全域)</summary>
+    [Column("approver_tier")]
+    public int ApproverTierValue { get; set; }
+
+    [Ignore]
+    public ApproverTier ApproverTier
+    {
+        get => (ApproverTier)ApproverTierValue;
+        set => ApproverTierValue = (int)value;
+    }
+
+    /// <summary>User 層時,有權核准者(即發起此動作的使用者 principal id)</summary>
+    [Column("owner_principal_id")]
+    public string OwnerPrincipalId { get; set; } = string.Empty;
+
     /// <summary>審批者(管理員)principal id;未決為空</summary>
     [Column("approver_id")]
     public string ApproverId { get; set; } = string.Empty;

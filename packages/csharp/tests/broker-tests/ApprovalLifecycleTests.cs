@@ -33,6 +33,10 @@ public static class ApprovalLifecycleTests
         TestApproveDispatchesHeldRequest();
         TestRejectDeniesHeldRequest();
         TestApproveUnknownReturnsNull();
+        TestUserApprovesOwnUserTier();
+        TestUserCannotApproveAdminTier();
+        TestUserCannotApproveOthersUserTier();
+        TestListForApproverFiltersByTierAndOwner();
 
         Console.WriteLine();
         Console.WriteLine($"=== Approval Lifecycle Results: {_passed} passed, {_failed} failed ===");
@@ -51,17 +55,18 @@ public static class ApprovalLifecycleTests
     }
 
     // 擱置一個待審請求(模擬 PolicyEngine 已回 RequireApproval 後的狀態)
-    private static string SeedPending(BrokerDb db, string capabilityId)
+    private static string SeedPending(BrokerDb db, string capabilityId,
+        ApproverTier tier = ApproverTier.Admin, string owner = "prn_a")
     {
         new CapabilityCatalog(db).CreateGrant(
-            "task_a", "ses_a", "prn_a", capabilityId, "{}", -1, DateTime.UtcNow.AddHours(1));
+            "task_a", "ses_a", owner, capabilityId, "{}", -1, DateTime.UtcNow.AddHours(1));
 
         var req = new ExecutionRequest
         {
             RequestId = IdGen.New("req"),
             TaskId = "task_a",
             SessionId = "ses_a",
-            PrincipalId = "prn_a",
+            PrincipalId = owner,
             CapabilityId = capabilityId,
             Intent = "x",
             RequestPayload = "{\"route\":\"read_file\",\"args\":{}}",
@@ -79,10 +84,12 @@ public static class ApprovalLifecycleTests
             RequestId = req.RequestId,
             TaskId = "task_a",
             SessionId = "ses_a",
-            PrincipalId = "prn_a",
+            PrincipalId = owner,
             CapabilityId = capabilityId,
             Reason = "risk requires approval",
             Status = ApprovalStatus.Pending,
+            ApproverTier = tier,
+            OwnerPrincipalId = owner,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             TraceId = req.TraceId
@@ -100,11 +107,11 @@ public static class ApprovalLifecycleTests
             using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
             new BrokerDbInitializer(db).Initialize();
             var broker = NewBroker(db);
-            var approvalId = SeedPending(db, "file.read");
+            var approvalId = SeedPending(db, "file.read", ApproverTier.Admin);
 
             AssertEqual("pending-listed-before", broker.ListPendingApprovals().Count.ToString(), "1");
 
-            var result = broker.ApproveExecutionAsync(approvalId, "admin_1", "looks fine").GetAwaiter().GetResult();
+            var result = broker.ApproveExecutionAsync(approvalId, "admin_1", "looks fine", isAdmin: true).GetAwaiter().GetResult();
 
             AssertTrue("approve-returns-request", result != null);
             AssertEqual("approve-state-succeeded", result?.ExecutionState.ToString(), "Succeeded");
@@ -126,9 +133,9 @@ public static class ApprovalLifecycleTests
             using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
             new BrokerDbInitializer(db).Initialize();
             var broker = NewBroker(db);
-            var approvalId = SeedPending(db, "file.read");
+            var approvalId = SeedPending(db, "file.read", ApproverTier.Admin);
 
-            var result = broker.RejectExecution(approvalId, "admin_1", "not allowed");
+            var result = broker.RejectExecution(approvalId, "admin_1", "not allowed", isAdmin: true);
 
             AssertTrue("reject-returns-request", result != null);
             AssertEqual("reject-state-denied", result?.ExecutionState.ToString(), "Denied");
@@ -155,6 +162,87 @@ public static class ApprovalLifecycleTests
 
             var reject = broker.RejectExecution("apr_does_not_exist", "admin_1", "x");
             AssertTrue("reject-unknown-null", reject == null);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestUserApprovesOwnUserTier()
+    {
+        Console.WriteLine("--- User approves their own User-tier request ---");
+        var dir = NewTempDir("user-own");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var approvalId = SeedPending(db, "file.read", ApproverTier.User, owner: "prn_a");
+
+            // 使用者本人(非管理員)批自己的 User 層 → 成功
+            var result = broker.ApproveExecutionAsync(approvalId, "prn_a", "I confirm", isAdmin: false)
+                .GetAwaiter().GetResult();
+            AssertTrue("user-approve-own-succeeds", result != null);
+            AssertEqual("user-approve-own-state", result?.ExecutionState.ToString(), "Succeeded");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestUserCannotApproveAdminTier()
+    {
+        Console.WriteLine("--- User cannot approve an Admin-tier request ---");
+        var dir = NewTempDir("user-admin");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var approvalId = SeedPending(db, "file.read", ApproverTier.Admin, owner: "prn_a");
+
+            var result = broker.ApproveExecutionAsync(approvalId, "prn_a", "x", isAdmin: false)
+                .GetAwaiter().GetResult();
+            AssertTrue("user-approve-admin-tier-null", result == null);
+            // 仍待審
+            AssertEqual("admin-tier-still-pending", broker.ListPendingApprovals().Count.ToString(), "1");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestUserCannotApproveOthersUserTier()
+    {
+        Console.WriteLine("--- User cannot approve another user's User-tier request ---");
+        var dir = NewTempDir("user-other");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            var approvalId = SeedPending(db, "file.read", ApproverTier.User, owner: "prn_b");
+
+            var result = broker.ApproveExecutionAsync(approvalId, "prn_a", "x", isAdmin: false)
+                .GetAwaiter().GetResult();
+            AssertTrue("user-approve-others-null", result == null);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    private static void TestListForApproverFiltersByTierAndOwner()
+    {
+        Console.WriteLine("--- ListPendingApprovalsForApprover filters by tier+owner ---");
+        var dir = NewTempDir("list-filter");
+        try
+        {
+            using var db = new BrokerDb($"Data Source={Path.Combine(dir, "broker.db")}");
+            new BrokerDbInitializer(db).Initialize();
+            var broker = NewBroker(db);
+            SeedPending(db, "file.read", ApproverTier.User, owner: "prn_a");
+            SeedPending(db, "file.read", ApproverTier.Admin, owner: "prn_a");
+            SeedPending(db, "file.read", ApproverTier.User, owner: "prn_b");
+
+            // 使用者 prn_a 只看自己的 User 層(1 筆)
+            AssertEqual("user-sees-own-user-tier",
+                broker.ListPendingApprovalsForApprover("prn_a", isAdmin: false).Count.ToString(), "1");
+            // 管理員看全部(3 筆)
+            AssertEqual("admin-sees-all",
+                broker.ListPendingApprovalsForApprover("any_admin", isAdmin: true).Count.ToString(), "3");
         }
         finally { TryDelete(dir); }
     }

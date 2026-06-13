@@ -41,12 +41,15 @@ public interface IBrokerService
     /// <summary>查詢執行請求</summary>
     ExecutionRequest? GetExecutionRequest(string requestId);
 
-    /// <summary>列出待審批請求(§18.2)</summary>
+    /// <summary>列出全部待審批請求(§18.2)</summary>
     IReadOnlyList<ApprovalRequest> ListPendingApprovals();
 
-    /// <summary>核准擱置的執行請求並 dispatch(§18.2)。回 null = 該審批不存在或已決。</summary>
-    Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason);
+    /// <summary>列出某審批者可見的待審:管理員看全部;使用者只看自己擁有的 User 層(§18.2)</summary>
+    IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin);
 
-    /// <summary>駁回擱置的執行請求(§18.2)。回 null = 該審批不存在或已決。</summary>
-    ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason);
+    /// <summary>核准擱置的執行請求並 dispatch(§18.2)。回 null = 不存在/已決/無權批。</summary>
+    Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false);
+
+    /// <summary>駁回擱置的執行請求(§18.2)。回 null = 不存在/已決/無權批。</summary>
+    ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason, bool isAdmin = false);
 }
