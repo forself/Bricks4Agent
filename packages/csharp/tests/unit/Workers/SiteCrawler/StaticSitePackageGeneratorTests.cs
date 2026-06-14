@@ -1155,4 +1155,113 @@ public class StaticSitePackageGeneratorTests : IDisposable
         styles.Should().Contain(".cta-band");
         styles.Should().Contain(".institution-footer");
     }
+
+    [Fact]
+    public void Generate_ThemeTokensSerializeInStableOrder_RegardlessOfInsertionOrder()
+    {
+        var ascending = BuildThemedDocument(
+        [
+            new("accent", "#00aa00"),
+            new("brand", "#0000ff"),
+            new("ink", "#111111"),
+        ]);
+        var descending = BuildThemedDocument(
+        [
+            new("ink", "#111111"),
+            new("brand", "#0000ff"),
+            new("accent", "#00aa00"),
+        ]);
+        var generator = new StaticSitePackageGenerator();
+
+        var resultA = generator.Generate(ascending, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "theme-order-a",
+        });
+        var resultB = generator.Generate(descending, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "theme-order-b",
+        });
+
+        var siteA = File.ReadAllText(Path.Combine(resultA.OutputDirectory, "site.json"));
+        var siteB = File.ReadAllText(Path.Combine(resultB.OutputDirectory, "site.json"));
+        siteB.Should().Be(siteA);
+        siteA.Should().Contain("\"accent\"").And.Contain("\"brand\"").And.Contain("\"ink\"");
+    }
+
+    [Fact]
+    public void Generate_ProducesByteIdenticalArchive_AcrossRepeatedRuns()
+    {
+        var document = ComponentSchemaValidatorTests.BuildValidDocument();
+        var generator = new StaticSitePackageGenerator();
+
+        var first = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "determinism-a",
+            EnforceQualityGate = true,
+            CreateArchive = true,
+        });
+        var second = generator.Generate(document, new StaticSitePackageOptions
+        {
+            OutputDirectory = tempRoot,
+            PackageName = "determinism-b",
+            EnforceQualityGate = true,
+            CreateArchive = true,
+        });
+
+        File.ReadAllBytes(second.ArchivePath).Should().Equal(File.ReadAllBytes(first.ArchivePath));
+
+        using var archive = ZipFile.OpenRead(first.ArchivePath);
+        archive.Entries.Select(entry => entry.FullName).Should().BeInAscendingOrder(StringComparer.Ordinal);
+    }
+
+    private static GeneratorSiteDocument BuildThemedDocument(IReadOnlyList<KeyValuePair<string, string>> colors)
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props =
+                        {
+                            ["title"] = "Example",
+                            ["source_url"] = "https://example.com/",
+                        },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "hero",
+                                Type = "HeroSection",
+                                Props =
+                                {
+                                    ["title"] = "Example",
+                                    ["body"] = "Welcome.",
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        foreach (var pair in colors)
+        {
+            document.Site.Theme.Colors[pair.Key] = pair.Value;
+            document.Site.Theme.Typography["font_" + pair.Key] = pair.Value;
+        }
+
+        return document;
+    }
 }

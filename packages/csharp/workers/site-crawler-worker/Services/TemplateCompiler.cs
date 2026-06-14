@@ -31,8 +31,8 @@ public sealed class TemplateCompiler
                 CrawlRunId = crawl.CrawlRunId,
                 Theme = new GeneratorTheme
                 {
-                    Colors = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Colors, StringComparer.Ordinal),
-                    Typography = new Dictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Typography, StringComparer.Ordinal),
+                    Colors = new SortedDictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Colors, StringComparer.Ordinal),
+                    Typography = new SortedDictionary<string, string>(crawl.ExtractedModel.ThemeTokens.Typography, StringComparer.Ordinal),
                 },
             },
             ComponentLibrary = manifest,

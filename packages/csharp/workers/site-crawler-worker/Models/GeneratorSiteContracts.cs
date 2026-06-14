@@ -38,10 +38,10 @@ public sealed class GeneratorSiteMetadata
 public sealed class GeneratorTheme
 {
     [JsonPropertyName("colors")]
-    public Dictionary<string, string> Colors { get; set; } = new();
+    public SortedDictionary<string, string> Colors { get; set; } = new(StringComparer.Ordinal);
 
     [JsonPropertyName("typography")]
-    public Dictionary<string, string> Typography { get; set; } = new();
+    public SortedDictionary<string, string> Typography { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class ComponentLibraryManifest

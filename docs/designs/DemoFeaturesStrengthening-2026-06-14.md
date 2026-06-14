@@ -1,7 +1,7 @@
 # 展示功能強化計畫(三個 Demo 功能)
 
 Date: 2026-06-14
-Status: **規劃,依序實作(#3 → #1 → #2)**
+Status: **依序實作中(#3 ✅ 已完成 → #1 → #2)**
 範圍: 三個展示用功能的「特別強化」。先三個一起規劃,再依序測試先行實作。
 
 ## 0. 三個展示功能
@@ -14,7 +14,13 @@ Status: **規劃,依序實作(#3 → #1 → #2)**
 
 ---
 
-## 1. #3 網站複製/雛形 —— 決定性(最先做)
+## 1. #3 網站複製/雛形 —— 決定性(最先做)**[已實作 + 驗證]**
+
+> **實作摘要(2026-06-14)**:三個不穩定來源全數修正。
+> - 🔴 主題 token:`GeneratorTheme` / `ExtractedThemeTokens` 的 `Colors`/`Typography` 由 `Dictionary` 改為 `SortedDictionary<string,string>(Ordinal)`;`SiteIntentExtractor` / `TemplateCompiler` 的建構處同步改為 `SortedDictionary`。序列化即依鍵排序,與爬取插入順序無關。
+> - 🟠 元件清單:`StaticSitePackageGenerator.Generate` 於序列化前對 `ComponentLibrary.Components`(依 `Type` Ordinal)與 `ComponentRequests`(依 `RequestId`→`Role`→`ComponentType`)穩定排序,落在 `site.json` 與 `components/manifest.json`。
+> - 🟡 zip:以 `WriteDeterministicArchive` 取代 `ZipFile.CreateFromDirectory` —— 列舉檔案後依 Ordinal 路徑排序逐一加入,並將每個 entry 的 `LastWriteTime` 固定為 `2000-01-01`,消除檔案系統列舉順序與 mtime 漂移。
+> - **測試**:`StaticSitePackageGeneratorTests` 新增 `Generate_ThemeTokensSerializeInStableOrder_RegardlessOfInsertionOrder`(升/降序插入 → `site.json` 位元組相同)與 `Generate_ProducesByteIdenticalArchive_AcrossRepeatedRuns`(兩次產生 → `.zip` 位元組相同 + entry 為 Ordinal 升序)。Unit.Tests 345 全綠、方案 0 error。
 
 **現況**:管線在 `packages/csharp/workers/site-crawler-worker/`(`SiteCrawlerService`/`DeterministicSiteExtractor`/`SiteGeneratorConverter`/`StaticSitePackageGenerator`),已有單元測試。決定性大致良好 —— 節點 ID 用 SHA256 內容雜湊、無 `Date`/`random`/`Guid` 進輸出、字串比較用 `Ordinal`。
 

@@ -37,6 +37,21 @@ public sealed class StaticSitePackageGenerator
             throw new InvalidOperationException($"Invalid site document: {string.Join("; ", validation.Errors)}");
         }
 
+        // Determinism: emit component definitions and requests in a stable, input-order-independent
+        // order so site.json / manifest.json are byte-identical across runs and machines.
+        document.ComponentLibrary.Components.Sort(static (a, b) => string.CompareOrdinal(a.Type, b.Type));
+        document.ComponentRequests.Sort(static (a, b) =>
+        {
+            var byId = string.CompareOrdinal(a.RequestId, b.RequestId);
+            if (byId != 0)
+            {
+                return byId;
+            }
+
+            var byRole = string.CompareOrdinal(a.Role, b.Role);
+            return byRole != 0 ? byRole : string.CompareOrdinal(a.ComponentType, b.ComponentType);
+        });
+
         var quality = qualityAnalyzer.Analyze(document);
         if (options.EnforceQualityGate)
         {
@@ -75,12 +90,7 @@ public sealed class StaticSitePackageGenerator
                 File.Delete(archivePath);
             }
 
-            ZipFile.CreateFromDirectory(
-                outputDirectory,
-                archivePath,
-                CompressionLevel.SmallestSize,
-                includeBaseDirectory: false,
-                entryNameEncoding: Encoding.UTF8);
+            WriteDeterministicArchive(outputDirectory, archivePath);
         }
 
         var result = new StaticSitePackageResult
@@ -125,6 +135,32 @@ public sealed class StaticSitePackageGenerator
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         files.Add(path);
+    }
+
+    private static void WriteDeterministicArchive(string sourceDirectory, string archivePath)
+    {
+        // Stable archive: entries enumerated then sorted by ordinal path with a fixed timestamp,
+        // so the .zip is byte-identical across runs and machines (no filesystem-order or mtime drift).
+        var fixedTimestamp = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var entries = Directory
+            .EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories)
+            .Select(fullPath => new
+            {
+                FullPath = fullPath,
+                EntryName = Path.GetRelativePath(sourceDirectory, fullPath).Replace('\\', '/'),
+            })
+            .OrderBy(entry => entry.EntryName, StringComparer.Ordinal)
+            .ToList();
+
+        using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
+        foreach (var entry in entries)
+        {
+            var zipEntry = archive.CreateEntry(entry.EntryName, CompressionLevel.SmallestSize);
+            zipEntry.LastWriteTime = fixedTimestamp;
+            using var entryStream = zipEntry.Open();
+            using var fileStream = File.OpenRead(entry.FullPath);
+            fileStream.CopyTo(entryStream);
+        }
     }
 
     private static void WriteGeneratedComponentAssets(
