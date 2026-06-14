@@ -469,7 +469,7 @@ public class HighLevelCoordinator
 
         if (ShouldSuggestControlledSearch(decision, parsed))
         {
-            var permissions = EnsurePermissions(profile);
+            var permissions = GetEffectivePermissions(profile);
             var suggestionIsTransport = IsTransportLookupSuggestion(parsed);
             if ((suggestionIsTransport && !permissions.AllowTransport) ||
                 (!suggestionIsTransport && !permissions.AllowQuery))
@@ -1309,6 +1309,7 @@ public class HighLevelCoordinator
                 IsTestAccount = IsTestLineAccount(profile.UserId),
                 AccountType = IsTestLineAccount(profile.UserId) ? "test" : "line_user",
                 Permissions = EnsurePermissions(profile),
+                AccessTier = HighLevelAccessTier.Normalize(profile.AccessTier),
                 RegistrationStatus = ResolveRegistrationStatus(profile),
                 RegistrationRequestedAt = profile.RegistrationRequestedAt,
                 RegistrationReviewedAt = profile.RegistrationReviewedAt,
@@ -1380,14 +1381,29 @@ public class HighLevelCoordinator
             return null;
 
         var normalizedAction = Normalize(action);
-        var approved = normalizedAction is "approve" or "approved" or "allow";
-        var rejected = normalizedAction is "reject" or "rejected" or "deny";
-        if (!approved && !rejected)
+        // Tier review: promote to Member (Tier 2), demote to Basic (Tier 1, keeps Q&A), or ban.
+        var promoted = normalizedAction is "approve" or "approved" or "allow" or "promote" or "member";
+        var demoted = normalizedAction is "demote" or "revoke" or "basic";
+        var rejected = normalizedAction is "reject" or "rejected" or "deny" or "ban";
+        if (!promoted && !demoted && !rejected)
             throw new InvalidOperationException("Unsupported registration review action.");
 
-        profile.RegistrationStatus = approved
-            ? HighLevelRegistrationStatus.Approved
-            : HighLevelRegistrationStatus.Rejected;
+        if (promoted)
+        {
+            profile.AccessTier = HighLevelAccessTier.Member;
+            profile.RegistrationStatus = HighLevelRegistrationStatus.Approved;
+        }
+        else if (demoted)
+        {
+            profile.AccessTier = HighLevelAccessTier.Basic;
+            profile.RegistrationStatus = HighLevelRegistrationStatus.Approved;
+        }
+        else
+        {
+            profile.AccessTier = HighLevelAccessTier.Basic;
+            profile.RegistrationStatus = HighLevelRegistrationStatus.Rejected;
+        }
+
         profile.RegistrationReviewedAt = DateTimeOffset.UtcNow;
         profile.RegistrationReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         SaveUserProfile("line", userId, profile);
@@ -1399,21 +1415,21 @@ public class HighLevelCoordinator
             SaveUserProfile("line", userId, profile);
         }
 
+        var (title, baseBody) = promoted
+            ? ("會員權限已開通", "你已升級為會員（Tier 2），管理員可開始為你分配私有資料夾相關權限。")
+            : demoted
+                ? ("帳戶層級調整", "你的帳戶已調整為基本（Tier 1），仍可使用對話問答與查詢。")
+                : ("帳戶已停用", "你的帳戶已被停用，若需要可再聯絡管理者。");
         var notification = EnqueueLineNotification(
             userId,
-            approved ? "註冊審核通過" : "註冊審核結果",
-            approved
-                ? (string.IsNullOrWhiteSpace(note)
-                    ? "你的使用申請已通過，現在可以開始使用。"
-                    : $"你的使用申請已通過。\n備註：{note}")
-                : (string.IsNullOrWhiteSpace(note)
-                    ? "你的使用申請未通過，若需要可再聯絡管理者。"
-                    : $"你的使用申請未通過。\n原因：{note}"));
+            title,
+            string.IsNullOrWhiteSpace(note) ? baseBody : $"{baseBody}\n備註：{note}");
 
         return new HighLevelRegistrationReviewResult
         {
             UserId = userId,
             RegistrationStatus = profile.RegistrationStatus,
+            AccessTier = profile.AccessTier,
             ReviewNote = profile.RegistrationReviewNote,
             Notification = notification
         };
@@ -1513,21 +1529,11 @@ public class HighLevelCoordinator
     {
         result = default!;
         var registrationStatus = ResolveRegistrationStatus(profile);
+
+        // Two-tier model: registration is self-service for Tier 1 (Basic). Only an explicit ban
+        // (Rejected / DeniedByPolicy) blocks access; Tier 2 is a separate manual-review promotion.
         if (!isNewUser)
         {
-            if (string.Equals(registrationStatus, HighLevelRegistrationStatus.PendingReview, StringComparison.OrdinalIgnoreCase))
-            {
-                SaveUserProfile(channel, userId, profile);
-                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
-                {
-                    Mode = HighLevelRouteMode.Conversation,
-                    Reply = BuildPendingRegistrationReply(profile),
-                    Error = "registration_pending_review",
-                    DecisionReason = "registration gate: pending review"
-                });
-                return true;
-            }
-
             if (string.Equals(registrationStatus, HighLevelRegistrationStatus.Rejected, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(registrationStatus, HighLevelRegistrationStatus.DeniedByPolicy, StringComparison.OrdinalIgnoreCase))
             {
@@ -1546,43 +1552,31 @@ public class HighLevelCoordinator
         }
 
         var policy = GetAnonymousRegistrationPolicy(channel);
-        switch (policy)
+
+        // deny_all is the registration kill-switch: it freezes self-registration entirely.
+        if (string.Equals(policy, HighLevelAnonymousRegistrationPolicy.DenyAll, StringComparison.OrdinalIgnoreCase))
         {
-            case HighLevelAnonymousRegistrationPolicy.AllowAll:
-                profile.RegistrationStatus = HighLevelRegistrationStatus.Approved;
-                profile.RegistrationReviewedAt ??= DateTimeOffset.UtcNow;
-                SaveUserProfile(channel, userId, profile);
-                return false;
-
-            case HighLevelAnonymousRegistrationPolicy.ManualReview:
-                profile.RegistrationStatus = HighLevelRegistrationStatus.PendingReview;
-                profile.RegistrationRequestedAt = DateTimeOffset.UtcNow;
-                profile.RegistrationReviewNote = null;
-                SaveUserProfile(channel, userId, profile);
-                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
-                {
-                    Mode = HighLevelRouteMode.Conversation,
-                    Reply = BuildPendingRegistrationReply(profile),
-                    Error = "registration_pending_review",
-                    DecisionReason = "registration gate: manual review"
-                });
-                return true;
-
-            case HighLevelAnonymousRegistrationPolicy.DenyAll:
-            default:
-                profile.RegistrationStatus = HighLevelRegistrationStatus.DeniedByPolicy;
-                profile.RegistrationReviewedAt = DateTimeOffset.UtcNow;
-                profile.RegistrationReviewNote = "目前未開放匿名註冊。";
-                SaveUserProfile(channel, userId, profile);
-                result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
-                {
-                    Mode = HighLevelRouteMode.Conversation,
-                    Reply = BuildRejectedRegistrationReply(profile),
-                    Error = "registration_denied_by_policy",
-                    DecisionReason = "registration gate: deny all"
-                });
-                return true;
+            profile.RegistrationStatus = HighLevelRegistrationStatus.DeniedByPolicy;
+            profile.AccessTier = HighLevelAccessTier.Basic;
+            profile.RegistrationReviewedAt = DateTimeOffset.UtcNow;
+            profile.RegistrationReviewNote = "目前未開放註冊。";
+            SaveUserProfile(channel, userId, profile);
+            result = FinalizeResult(channel, userId, BuildLineEnvelope(message), trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Conversation,
+                Reply = BuildRejectedRegistrationReply(profile),
+                Error = "registration_denied_by_policy",
+                DecisionReason = "registration gate: deny all"
+            });
+            return true;
         }
+
+        // Everyone else self-registers as Tier 1 (Basic): chat + read-only query, no private folder.
+        profile.RegistrationStatus = HighLevelRegistrationStatus.Approved;
+        profile.AccessTier = HighLevelAccessTier.Basic;
+        profile.RegistrationReviewedAt ??= DateTimeOffset.UtcNow;
+        SaveUserProfile(channel, userId, profile);
+        return false;
     }
 
     private bool TryHandleProfileCommand(
@@ -2393,7 +2387,7 @@ public class HighLevelCoordinator
 
     private string BuildPermissionSummary(HighLevelUserProfile profile)
     {
-        var permissions = EnsurePermissions(profile);
+        var permissions = GetEffectivePermissions(profile);
         var principalCandidates = ResolvePrincipalCandidates(profile).ToArray();
         var activeUserGrants = principalCandidates
             .SelectMany(principalId => _browserBindingService.ListUserGrants(principalId))
@@ -2408,18 +2402,23 @@ public class HighLevelCoordinator
             .Select(group => group.First())
             .ToArray();
 
-        return string.Join('\n', new[]
+        var isMember = string.Equals(profile.AccessTier, HighLevelAccessTier.Member, StringComparison.OrdinalIgnoreCase);
+        var lines = new List<string>
         {
             "目前擁有的權限：",
+            $"- 帳戶層級：{(isMember ? "會員（Tier 2）" : "基本註冊者（Tier 1）")}",
             "- 高階對話與需求澄清",
             "- 受控網路搜尋：?search（快捷：?s）",
             "- 交通查詢：?rail、?hsr、?bus、?flight（快捷：?r、?hsr、?b、?f）",
-            "- 建立 production draft：/ 指令",
+            permissions.AllowProduction
+                ? "- 建立 production draft：/ 指令"
+                : "- 建立 production draft：需會員權限（請聯絡管理員升級為 Tier 2）",
             "- 個人設定：/name、/id、?profile、?help（快捷：/n、/i、?p、?h）",
             activeUserGrants.Length == 0
                 ? "- 使用者授權網站能力：目前沒有"
                 : $"- 使用者授權網站能力：{activeUserGrants.Length} 個 grant、{activeUserSites.Length} 個 site binding"
-        });
+        };
+        return string.Join('\n', lines);
     }
 
     private static IEnumerable<string> ResolvePrincipalCandidates(HighLevelUserProfile profile)
@@ -2455,7 +2454,7 @@ public class HighLevelCoordinator
         out HighLevelProcessResult result)
     {
         result = default!;
-        var permissions = EnsurePermissions(profile);
+        var permissions = GetEffectivePermissions(profile);
 
         if (decision.Mode == HighLevelRouteMode.Production &&
             draft == null &&
@@ -3109,6 +3108,11 @@ public class HighLevelCoordinator
         profile.Permissions ??= HighLevelUserPermissions.CreateDefault();
         return profile.Permissions;
     }
+
+    // Permissions actually enforceable for this user: raw assigned flags masked by access tier.
+    // A Basic (Tier 1) user can only ever use query/transport; Tier 2 flags require Member.
+    private static HighLevelUserPermissions GetEffectivePermissions(HighLevelUserProfile profile)
+        => EnsurePermissions(profile).EffectiveForTier(profile.AccessTier);
 
     private static void UpdatePendingDraftSnapshot(HighLevelUserProfile profile, HighLevelTaskDraft draft)
     {
@@ -4074,6 +4078,7 @@ public class HighLevelUserProfile
     public string? PreferredDisplayName { get; set; }
     public string? PreferredUserCode { get; set; }
     public HighLevelUserPermissions Permissions { get; set; } = HighLevelUserPermissions.CreateDefault();
+    public string AccessTier { get; set; } = HighLevelAccessTier.Basic;
     public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
     public DateTimeOffset? RegistrationRequestedAt { get; set; }
     public DateTimeOffset? RegistrationReviewedAt { get; set; }
@@ -4106,6 +4111,7 @@ public sealed class HighLevelLineUserSummary
     public bool IsTestAccount { get; set; }
     public string AccountType { get; set; } = "line_user";
     public HighLevelUserPermissions Permissions { get; set; } = HighLevelUserPermissions.CreateDefault();
+    public string AccessTier { get; set; } = HighLevelAccessTier.Basic;
     public string RegistrationStatus { get; set; } = HighLevelRegistrationStatus.Approved;
     public DateTimeOffset? RegistrationRequestedAt { get; set; }
     public DateTimeOffset? RegistrationReviewedAt { get; set; }
@@ -4123,14 +4129,45 @@ public sealed class HighLevelLineUserSummary
 
 public sealed class HighLevelUserPermissions
 {
+    // Tier 1 (Basic) — read-only, no private folder. Granted to every registrant.
     public bool AllowQuery { get; set; } = true;
     public bool AllowTransport { get; set; } = true;
-    public bool AllowProduction { get; set; } = true;
+
+    // Tier 2 (Member) — private-folder capabilities. Off by default; only assignable
+    // (and only effective) once the user is promoted to Member via manual review.
+    public bool AllowProduction { get; set; }
     public bool AllowBrowserDelegated { get; set; }
     public bool AllowDeployment { get; set; }
 
     public static HighLevelUserPermissions CreateDefault()
         => new();
+
+    /// <summary>
+    /// Returns a copy masked by access tier: a Basic (Tier 1) user can never exercise the
+    /// Tier 2 private-folder permissions even if the raw flags are set; query/transport are
+    /// tier-independent. Promotion to Member is what makes assigned Tier 2 flags take effect.
+    /// </summary>
+    public HighLevelUserPermissions EffectiveForTier(string? accessTier)
+    {
+        var isMember = string.Equals(accessTier, HighLevelAccessTier.Member, StringComparison.OrdinalIgnoreCase);
+        return new HighLevelUserPermissions
+        {
+            AllowQuery = AllowQuery,
+            AllowTransport = AllowTransport,
+            AllowProduction = isMember && AllowProduction,
+            AllowBrowserDelegated = isMember && AllowBrowserDelegated,
+            AllowDeployment = isMember && AllowDeployment
+        };
+    }
+}
+
+public static class HighLevelAccessTier
+{
+    public const string Basic = "basic";
+    public const string Member = "member";
+
+    public static string Normalize(string? value)
+        => string.Equals(value, Member, StringComparison.OrdinalIgnoreCase) ? Member : Basic;
 }
 
 public sealed class HighLevelUserPermissionsPatch
@@ -4189,6 +4226,7 @@ public sealed class HighLevelRegistrationReviewResult
 {
     public string UserId { get; set; } = string.Empty;
     public string RegistrationStatus { get; set; } = string.Empty;
+    public string AccessTier { get; set; } = HighLevelAccessTier.Basic;
     public string? ReviewNote { get; set; }
     public HighLevelLineNotification? Notification { get; set; }
 }

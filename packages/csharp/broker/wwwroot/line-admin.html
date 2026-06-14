@@ -143,8 +143,9 @@ textarea{min-height:110px;resize:vertical}
           <div class="row" style="justify-content:space-between">
             <h2 id="selected-user-title">尚未選擇使用者</h2>
             <div class="row">
-              <button class="button warn" id="approve-user">核准</button>
-              <button class="button danger" id="reject-user">拒絕</button>
+              <button class="button warn" id="promote-user">升級會員 (Tier 2)</button>
+              <button class="button" id="demote-user">降為基本 (Tier 1)</button>
+              <button class="button danger" id="reject-user">封鎖</button>
               <button class="button danger" id="clear-conversation">清除對話</button>
             </div>
           </div>
@@ -152,9 +153,12 @@ textarea{min-height:110px;resize:vertical}
           <div class="grid two" style="margin-top:12px">
             <div class="panel">
               <h3>高階權限</h3>
-              <div class="stack">
+              <div id="selected-user-tier" class="small muted">層級：—</div>
+              <div class="stack" style="margin-top:8px">
+                <div class="small muted">Tier 1（基本，自助註冊即有）</div>
                 <label><input type="checkbox" id="perm-query"> 允許查詢</label>
                 <label><input type="checkbox" id="perm-transport"> 允許交通查詢</label>
+                <div class="small muted" style="margin-top:6px">Tier 2（私有資料夾，僅會員生效）</div>
                 <label><input type="checkbox" id="perm-production"> 允許建立任務</label>
                 <label><input type="checkbox" id="perm-browser"> 允許使用者授權瀏覽器能力</label>
                 <label><input type="checkbox" id="perm-deployment"> 允許部署能力</label>
@@ -587,6 +591,13 @@ function syncPermissionForm() {
   byId("perm-production").checked = permissions.allowProduction;
   byId("perm-browser").checked = permissions.allowBrowserDelegated;
   byId("perm-deployment").checked = permissions.allowDeployment;
+  const tierEl = byId("selected-user-tier");
+  if (tierEl) {
+    const tier = state.selectedUser && state.selectedUser.accessTier === "member" ? "member" : "basic";
+    tierEl.textContent = tier === "member"
+      ? "層級：會員（Tier 2）— 下方 Tier 2 權限可生效"
+      : "層級：基本（Tier 1）— Tier 2 權限需先升級會員才生效";
+  }
 }
 
 function escapeHtml(value) {
@@ -623,8 +634,11 @@ function renderUsers() {
     const accountTag = user.isTestAccount
       ? '<span class="tag test small">測試帳戶</span>'
       : '<span class="tag ok small">真實 LINE</span>';
+    const tierTag = user.accessTier === "member"
+      ? '<span class="tag ok small">會員 T2</span>'
+      : '<span class="tag small">基本 T1</span>';
     item.innerHTML = `
-      <div class="item-title">${escapeHtml(user.displayName || user.userId)} ${accountTag}</div>
+      <div class="item-title">${escapeHtml(user.displayName || user.userId)} ${accountTag} ${tierTag}</div>
       <div class="small muted mono">${escapeHtml(user.userCode || "(未設定英數 ID)")}</div>
       <div class="small muted">${escapeHtml(formatDateTime(user.lastInteractionAt) || "尚無互動")} / ${escapeHtml(user.registrationStatus || "approved")}</div>
     `;
@@ -668,6 +682,7 @@ function renderSelectedUser() {
     `accountType: ${user.accountType || (user.isTestAccount ? "test" : "line_user")}`,
     `isTestAccount: ${user.isTestAccount === true ? "true" : "false"}`,
     `userCode: ${user.userCode || "(未設定)"}`,
+    `tier: ${user.accessTier === "member" ? "member (T2)" : "basic (T1)"}`,
     `registration: ${user.registrationStatus || "approved"}`,
     `lastInteraction: ${formatDateTime(user.lastInteractionAt) || "尚無"}`,
     `lastDecision: ${user.lastDecision || "尚無"}`
@@ -1319,16 +1334,23 @@ async function saveRegistrationPolicy() {
   setNotice("註冊政策已更新。");
 }
 
+const TIER_ACTION_LABELS = {
+  promote: { prompt: "升級為會員備註（可留空）", done: "已升級為會員 (Tier 2)。" },
+  demote: { prompt: "降為基本備註（可留空）", done: "已降為基本 (Tier 1)。" },
+  reject: { prompt: "封鎖原因（可留空）", done: "已封鎖使用者。" }
+};
+
 async function reviewRegistration(action) {
   if (!state.selectedUserId) throw new Error("請先選擇使用者。");
-  const note = window.prompt(action === "approve" ? "核准備註（可留空）" : "拒絕原因（可留空）", "") ?? "";
+  const labels = TIER_ACTION_LABELS[action] || TIER_ACTION_LABELS.reject;
+  const note = window.prompt(labels.prompt, "") ?? "";
   await request("/api/v1/local-admin/line/users/registration/review", {
     method: "POST",
     body: JSON.stringify({ user_id: state.selectedUserId, action, note })
   });
   await loadUsers();
   renderSelectedUser();
-  setNotice(action === "approve" ? "已核准使用者。" : "已拒絕使用者。");
+  setNotice(labels.done);
 }
 
 async function savePermissions() {
@@ -1778,7 +1800,8 @@ function bindEvents() {
   byId("refresh-users").addEventListener("click", wrapAction(loadUsers));
   byId("refresh-conversations").addEventListener("click", wrapAction(loadConversations));
   byId("save-registration-policy").addEventListener("click", wrapAction(saveRegistrationPolicy));
-  byId("approve-user").addEventListener("click", wrapAction(() => reviewRegistration("approve")));
+  byId("promote-user").addEventListener("click", wrapAction(() => reviewRegistration("promote")));
+  byId("demote-user").addEventListener("click", wrapAction(() => reviewRegistration("demote")));
   byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
   byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
   byId("refresh-drive").addEventListener("click", wrapAction(loadDriveAdmin));
