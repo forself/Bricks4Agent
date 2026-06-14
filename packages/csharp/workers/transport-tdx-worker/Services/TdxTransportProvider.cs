@@ -259,7 +259,7 @@ public sealed class TdxTransportProvider
         JsonDocument? document,
         string originId,
         string destinationId,
-        (int startHour, int endHour)? timeRange)
+        (int startMinute, int endMinute)? timeRange)
     {
         if (document == null)
         {
@@ -310,8 +310,9 @@ public sealed class TdxTransportProvider
 
             if (timeRange.HasValue && !string.IsNullOrWhiteSpace(departureTime))
             {
-                var hour = int.Parse(departureTime[..2]);
-                if (hour < timeRange.Value.startHour || hour >= timeRange.Value.endHour)
+                var departureMinutes = ParseClockMinutes(departureTime);
+                if (departureMinutes.HasValue &&
+                    (departureMinutes.Value < timeRange.Value.startMinute || departureMinutes.Value > timeRange.Value.endMinute))
                 {
                     continue;
                 }
@@ -343,7 +344,13 @@ public sealed class TdxTransportProvider
 
         if (ordered.Count == 0)
         {
-            return CreateEmptyFinalAnswer(normalizedQuery, $"目前沒有取得 {origin} 到 {destination} 的班次資料。", []);
+            var dateLabel = normalizedQuery.GetValueOrDefault("date")?.ToString();
+            var hint = timeRange.HasValue
+                ? $"在指定時段查無 {origin} 到 {destination} 的班次，建議放寬時段或改查其他日期。"
+                : $"查無 {origin} 到 {destination}"
+                  + (string.IsNullOrWhiteSpace(dateLabel) ? string.Empty : $"（{dateLabel}）")
+                  + " 的班次，建議改查其他日期。";
+            return CreateEmptyFinalAnswer(normalizedQuery, hint, []);
         }
 
         var answer = new StringBuilder()
@@ -363,6 +370,17 @@ public sealed class TdxTransportProvider
             "TDX",
             "transport.provider",
             sourceLabel);
+    }
+
+    private static int? ParseClockMinutes(string clock)
+    {
+        var parts = clock.Split(':');
+        if (parts.Length < 2 || !int.TryParse(parts[0], out var hour) || !int.TryParse(parts[1], out var minute))
+        {
+            return null;
+        }
+
+        return (hour * 60) + minute;
     }
 
     private static TransportQueryResponse CreateFinalAnswer(

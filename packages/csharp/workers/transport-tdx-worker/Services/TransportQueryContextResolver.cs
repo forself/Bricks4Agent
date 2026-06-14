@@ -146,15 +146,68 @@ public sealed class TransportQueryContextResolver
     public DateOnly? ParseDate(string? dateText)
         => DateOnly.TryParse(dateText, out var value) ? value : null;
 
-    public (int startHour, int endHour)? ParseTimeRange(string? timeRange)
-        => timeRange switch
+    // Returns an inclusive [startMinute, endMinute] window in minutes-from-midnight, so callers can
+    // filter at minute precision (e.g. 18:00-20:00 includes a 20:00 departure).
+    public (int startMinute, int endMinute)? ParseTimeRange(string? timeRange)
+    {
+        if (string.IsNullOrWhiteSpace(timeRange))
         {
-            "morning" => (5, 12),
-            "afternoon" => (12, 18),
-            "evening" => (18, 24),
-            "night" => (0, 6),
-            _ => null
-        };
+            return null;
+        }
+
+        switch (timeRange.Trim().ToLowerInvariant())
+        {
+            case "morning":
+                return (5 * 60, 11 * 60 + 59);
+            case "afternoon":
+                return (12 * 60, 17 * 60 + 59);
+            case "evening":
+                return (18 * 60, 23 * 60 + 59);
+            case "night":
+                return (0, 5 * 60 + 59);
+        }
+
+        var rangeMatch = Regex.Match(timeRange, @"^(?<sh>\d{1,2}):(?<sm>\d{2})-(?<eh>\d{1,2}):(?<em>\d{2})$");
+        if (rangeMatch.Success)
+        {
+            var start = ToMinutes(rangeMatch.Groups["sh"].Value, rangeMatch.Groups["sm"].Value);
+            var end = ToMinutes(rangeMatch.Groups["eh"].Value, rangeMatch.Groups["em"].Value);
+            if (start.HasValue && end.HasValue && end.Value >= start.Value)
+            {
+                return (start.Value, end.Value);
+            }
+
+            return null;
+        }
+
+        var singleMatch = Regex.Match(timeRange, @"^(?<h>\d{1,2}):(?<m>\d{2})$");
+        if (singleMatch.Success)
+        {
+            var start = ToMinutes(singleMatch.Groups["h"].Value, singleMatch.Groups["m"].Value);
+            if (start.HasValue)
+            {
+                // A single explicit time becomes a focused one-hour departure window.
+                return (start.Value, Math.Min(start.Value + 59, 23 * 60 + 59));
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ToMinutes(string hourText, string minuteText)
+    {
+        if (!int.TryParse(hourText, out var hour) || !int.TryParse(minuteText, out var minute))
+        {
+            return null;
+        }
+
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59)
+        {
+            return null;
+        }
+
+        return (hour * 60) + minute;
+    }
 
     private static string? LookupStationId(IReadOnlyDictionary<string, string> map, string? name)
     {
@@ -168,7 +221,13 @@ public sealed class TransportQueryContextResolver
             return exact;
         }
 
-        return map.FirstOrDefault(pair => name.Contains(pair.Key, StringComparison.OrdinalIgnoreCase)).Value;
+        // Prefer the longest contained station name so e.g. "新左營站" resolves to 新左營, not 左營.
+        return map
+            .Where(pair => name.Contains(pair.Key, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(pair => pair.Key.Length)
+            .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => pair.Value)
+            .FirstOrDefault();
     }
 
     private static void ApplyStations(
@@ -225,20 +284,51 @@ public sealed class TransportQueryContextResolver
         IReadOnlyDictionary<string, string> stationMap)
     {
         var matches = new List<(int Position, string Name)>();
+        var consumed = new bool[query.Length];
 
-        foreach (var station in stationMap.Keys.OrderByDescending(value => value.Length))
+        // Longest-first with span masking: once "新左營" claims its characters, the substring
+        // "左營" inside it cannot also match, so overlapping station names never double-count.
+        foreach (var station in stationMap.Keys
+                     .OrderByDescending(value => value.Length)
+                     .ThenBy(value => value, StringComparer.Ordinal))
         {
-            var index = query.IndexOf(station, StringComparison.OrdinalIgnoreCase);
-            if (index >= 0)
+            var searchFrom = 0;
+            while (searchFrom <= query.Length - station.Length)
             {
-                matches.Add((index, station));
+                var index = query.IndexOf(station, searchFrom, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    break;
+                }
+
+                var overlaps = false;
+                for (var i = index; i < index + station.Length; i++)
+                {
+                    if (consumed[i])
+                    {
+                        overlaps = true;
+                        break;
+                    }
+                }
+
+                if (!overlaps)
+                {
+                    matches.Add((index, station));
+                    for (var i = index; i < index + station.Length; i++)
+                    {
+                        consumed[i] = true;
+                    }
+
+                    break;
+                }
+
+                searchFrom = index + 1;
             }
         }
 
         var ordered = matches
             .OrderBy(item => item.Position)
             .Select(item => item.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(2)
             .ToList();
 
@@ -248,17 +338,81 @@ public sealed class TransportQueryContextResolver
     private static string? Get(IDictionary<string, string?> source, string key)
         => source.TryGetValue(key, out var value) ? value : null;
 
+    private static DayOfWeek? MapWeekday(string day) => day switch
+    {
+        "一" => DayOfWeek.Monday,
+        "二" => DayOfWeek.Tuesday,
+        "三" => DayOfWeek.Wednesday,
+        "四" => DayOfWeek.Thursday,
+        "五" => DayOfWeek.Friday,
+        "六" => DayOfWeek.Saturday,
+        "日" or "天" => DayOfWeek.Sunday,
+        _ => null
+    };
+
+    private static DateOnly NextWeekday(DateOnly from, DayOfWeek target, bool includeToday)
+    {
+        var diff = (((int)target - (int)from.DayOfWeek) + 7) % 7;
+        if (diff == 0 && !includeToday)
+        {
+            diff = 7;
+        }
+
+        return from.AddDays(diff);
+    }
+
+    private static DateOnly NextWeekInIso(DateOnly from, DayOfWeek target)
+    {
+        // ISO week starts Monday. "下週X" means weekday X within the next calendar week.
+        var isoToday = from.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)from.DayOfWeek;
+        var nextMonday = from.AddDays(8 - isoToday);
+        var isoTarget = target == DayOfWeek.Sunday ? 7 : (int)target;
+        return nextMonday.AddDays(isoTarget - 1);
+    }
+
     private static DateOnly? ExtractDate(string query)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        if (query.Contains("明天", StringComparison.OrdinalIgnoreCase))
+
+        if (query.Contains("大後天", StringComparison.OrdinalIgnoreCase))
+        {
+            return today.AddDays(3);
+        }
+
+        if (query.Contains("後天", StringComparison.OrdinalIgnoreCase))
+        {
+            return today.AddDays(2);
+        }
+
+        if (query.Contains("明天", StringComparison.OrdinalIgnoreCase) || query.Contains("明日", StringComparison.OrdinalIgnoreCase))
         {
             return today.AddDays(1);
         }
 
-        if (query.Contains("今天", StringComparison.OrdinalIgnoreCase))
+        if (query.Contains("今天", StringComparison.OrdinalIgnoreCase) || query.Contains("今日", StringComparison.OrdinalIgnoreCase))
         {
             return today;
+        }
+
+        // Weekend: 週末 / 這週末 = upcoming Saturday; 下週末 = next week's Saturday.
+        var weekend = Regex.Match(query, @"(?<next>下)?\s*(?:這|本)?\s*(?:週末|周末)");
+        if (weekend.Success)
+        {
+            var saturday = NextWeekday(today, DayOfWeek.Saturday, includeToday: true);
+            return weekend.Groups["next"].Success ? saturday.AddDays(7) : saturday;
+        }
+
+        // Weekday: 週一/星期一/禮拜一 = next occurrence; 下週一 = same weekday in next ISO week.
+        var weekday = Regex.Match(query, @"(?<next>下)?\s*(?:這|本)?\s*(?:週|周|星期|禮拜)(?<day>[一二三四五六日天])");
+        if (weekday.Success)
+        {
+            var dow = MapWeekday(weekday.Groups["day"].Value);
+            if (dow.HasValue)
+            {
+                return weekday.Groups["next"].Success
+                    ? NextWeekInIso(today, dow.Value)
+                    : NextWeekday(today, dow.Value, includeToday: false);
+            }
         }
 
         var isoMatch = Regex.Match(query, @"(?<date>\d{4}-\d{1,2}-\d{1,2})");
@@ -286,17 +440,49 @@ public sealed class TransportQueryContextResolver
 
     private static string? ExtractTimeRange(string query)
     {
+        // Absolute range first: 18:00-20:00 / 18:00~20:00 / 18點到20點 / 下午6點-8點.
+        var range = Regex.Match(
+            query,
+            @"(?<smer>上午|早上|凌晨|中午|下午|晚上|傍晚|夜間)?\s*(?<sh>\d{1,2})\s*[:：點時](?<sm>\d{0,2})\s*[-~～－—至到]\s*(?<emer>上午|早上|凌晨|中午|下午|晚上|傍晚|夜間)?\s*(?<eh>\d{1,2})\s*[:：點時](?<em>\d{0,2})");
+        if (range.Success)
+        {
+            var startMer = range.Groups["smer"].Success ? range.Groups["smer"].Value : InferMeridiem(query);
+            var endMer = range.Groups["emer"].Success ? range.Groups["emer"].Value : startMer;
+            var start = FormatClock(range.Groups["sh"].Value, range.Groups["sm"].Value, startMer);
+            var end = FormatClock(range.Groups["eh"].Value, range.Groups["em"].Value, endMer);
+            if (start is not null && end is not null)
+            {
+                return $"{start}-{end}";
+            }
+        }
+
+        // Single absolute time, optionally with a meridiem: 下午3點 / 晚上7:30 / 18:00.
+        var single = Regex.Match(
+            query,
+            @"(?<mer>上午|早上|凌晨|中午|下午|晚上|傍晚|夜間)?\s*(?<h>\d{1,2})\s*[:：點時](?<m>\d{0,2})");
+        if (single.Success)
+        {
+            var mer = single.Groups["mer"].Success ? single.Groups["mer"].Value : InferMeridiem(query);
+            var clock = FormatClock(single.Groups["h"].Value, single.Groups["m"].Value, mer);
+            if (clock is not null)
+            {
+                return clock;
+            }
+        }
+
         if (query.Contains("上午", StringComparison.OrdinalIgnoreCase) || query.Contains("早上", StringComparison.OrdinalIgnoreCase))
         {
             return "morning";
         }
 
-        if (query.Contains("下午", StringComparison.OrdinalIgnoreCase))
+        if (query.Contains("中午", StringComparison.OrdinalIgnoreCase) || query.Contains("下午", StringComparison.OrdinalIgnoreCase))
         {
             return "afternoon";
         }
 
-        if (query.Contains("晚上", StringComparison.OrdinalIgnoreCase) || query.Contains("夜間", StringComparison.OrdinalIgnoreCase))
+        if (query.Contains("晚上", StringComparison.OrdinalIgnoreCase) ||
+            query.Contains("夜間", StringComparison.OrdinalIgnoreCase) ||
+            query.Contains("傍晚", StringComparison.OrdinalIgnoreCase))
         {
             return "evening";
         }
@@ -307,5 +493,60 @@ public sealed class TransportQueryContextResolver
         }
 
         return null;
+    }
+
+    private static string InferMeridiem(string query)
+    {
+        if (query.Contains("下午", StringComparison.OrdinalIgnoreCase) ||
+            query.Contains("晚上", StringComparison.OrdinalIgnoreCase) ||
+            query.Contains("傍晚", StringComparison.OrdinalIgnoreCase) ||
+            query.Contains("夜間", StringComparison.OrdinalIgnoreCase))
+        {
+            return "下午";
+        }
+
+        if (query.Contains("凌晨", StringComparison.OrdinalIgnoreCase))
+        {
+            return "凌晨";
+        }
+
+        return string.Empty;
+    }
+
+    private static string? FormatClock(string hourText, string minuteText, string meridiem)
+    {
+        if (!int.TryParse(hourText, out var hour))
+        {
+            return null;
+        }
+
+        var minute = string.IsNullOrEmpty(minuteText) ? 0 : (int.TryParse(minuteText, out var m) ? m : -1);
+        if (minute < 0 || minute > 59 || hour < 0 || hour > 23)
+        {
+            return null;
+        }
+
+        switch (meridiem)
+        {
+            case "下午":
+            case "晚上":
+            case "傍晚":
+            case "夜間":
+                if (hour >= 1 && hour <= 11)
+                {
+                    hour += 12;
+                }
+
+                break;
+            case "凌晨":
+                if (hour == 12)
+                {
+                    hour = 0;
+                }
+
+                break;
+        }
+
+        return $"{hour:00}:{minute:00}";
     }
 }
