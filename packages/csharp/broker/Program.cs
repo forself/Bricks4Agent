@@ -226,6 +226,9 @@ builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>(
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldProgressStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
+builder.Services.AddSingleton<Broker.Services.IWebContentProvider, Broker.Services.WebSearchHelperContentProvider>();
+builder.Services.AddSingleton<Broker.Services.IWebReportLlm, Broker.Services.LlmProxyReportLlm>();
+builder.Services.AddSingleton<Broker.Services.WebReportSynthesisService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSiteRebuildService>();

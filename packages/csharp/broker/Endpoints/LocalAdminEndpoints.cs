@@ -178,6 +178,44 @@ public static class LocalAdminEndpoints
             }));
         });
 
+        localAdmin.MapPost("/web-report", async (HttpContext ctx, LocalAdminAuthService auth, Broker.Services.WebReportSynthesisService reports) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "topic", out var topic, out var error))
+                return error!;
+
+            var userId = body.TryGetProperty("user_id", out var userNode) ? userNode.GetString() : null;
+            var maxSources = body.TryGetProperty("max_sources", out var maxNode) && maxNode.TryGetInt32(out var ms) ? ms : 5;
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                var preview = await reports.GenerateReportAsync(topic, maxSources, ct: ctx.RequestAborted);
+                return Results.Ok(ApiResponseHelper.Success(new
+                {
+                    topic = preview.Topic,
+                    file_name = preview.FileName,
+                    llm_succeeded = preview.LlmSucceeded,
+                    markdown = preview.Markdown,
+                    sources = preview.Sources.Select(s => new { s.Title, s.Url }),
+                    delivered = false
+                }));
+            }
+
+            var (report, delivery) = await reports.GenerateAndDeliverAsync(userId, topic, maxSources, ctx.RequestAborted);
+            return Results.Ok(ApiResponseHelper.Success(new
+            {
+                topic = report.Topic,
+                file_name = report.FileName,
+                llm_succeeded = report.LlmSucceeded,
+                markdown = report.Markdown,
+                sources = report.Sources.Select(s => new { s.Title, s.Url }),
+                delivered = delivery?.Success ?? false,
+                delivery_status = delivery?.OverallStatus
+            }));
+        });
+
         localAdmin.MapGet("/line/registration-policy", (HttpContext ctx, LocalAdminAuthService auth, HighLevelCoordinator coordinator) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))

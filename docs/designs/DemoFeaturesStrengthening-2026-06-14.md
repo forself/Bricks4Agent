@@ -1,7 +1,7 @@
 # 展示功能強化計畫(三個 Demo 功能)
 
 Date: 2026-06-14
-Status: **依序實作中(#3 ✅ → #1 ✅ → #2)**
+Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 範圍: 三個展示用功能的「特別強化」。先三個一起規劃,再依序測試先行實作。
 
 ## 0. 三個展示功能
@@ -65,7 +65,16 @@ Status: **依序實作中(#3 ✅ → #1 ✅ → #2)**
 
 ---
 
-## 3. #2 web 取資料 → 報表 —— 端到端串接
+## 3. #2 web 取資料 → 報表 —— 端到端串接 **[已實作 + 驗證]**
+
+> **實作摘要(2026-06-14)**:新增高階層 web→報表合成引擎(broker/Services)。
+> - **引擎**:`WebReportSynthesisService.GenerateReportAsync(topic)` 串接「搜尋 → 逐來源抓取 → LLM 綜合 → 組裝 Markdown(附編號引用)」;對搜尋/抓取/LLM 任一失敗都健壯(抓取失敗該來源內容留空、LLM 失敗走決定性「來源摘要」後備),永遠產出報表。
+> - **可測核心**:`WebReportComposer`(純函式)`BuildSynthesisPrompt`(列出各來源摘錄並要求 [n] 標註)+ `Compose`(`# 主題 研究報告` + 本文/後備 + `## 參考來源` 編號清單,標題缺時退回 URL)。
+> - **接縫**:`IWebContentProvider` / `IWebReportLlm` 介面讓管線可純單元測(免網路/LLM);正式實作 `WebSearchHelperContentProvider`(DuckDuckGo Lite + HtmlToText)、`LlmProxyReportLlm`(包 `ILlmProxyService`,停用/失敗回 null)。
+> - **交付**:`GenerateAndDeliverAsync(userId, topic)` 接既有 `LineArtifactDeliveryService` —— 寫 `.md` artifact + 佇列 LINE 通知。
+> - **觸發面**:`POST /local-admin/web-report { topic, user_id?, max_sources? }` —— 無 user_id 為預覽、有則產出並交付(後台可直接展示)。已於 `Program.cs` 註冊 DI。
+> - **測試**:`Web/WebReportTests`(10 例)涵蓋 prompt 組裝、含引用的 Markdown 組裝、LLM 後備、多來源綜合、無來源/空主題/抓取失敗韌性。Unit.Tests 369 全綠、方案 0 error。
+> - **後續(非阻斷)**:可再把 `報告 <主題>` 接進 `HighLevelCommandParser`/`HighLevelCoordinator` 成為 LINE 對話指令;目前已可由後台端點與服務層端到端執行。
 
 **現況**:`web.search`/`web.fetch`(main)、`HighLevelDocumentArtifactService`(LLM 產文件)、`LineArtifactDeliveryService`(交付)都在,但**高階層沒串成一條**「抓指定資料 → LLM 綜合 → 報表 → 交付」;資料→報表那段未用 LLM 綜合。
 
