@@ -128,14 +128,14 @@ Status: **重新分析 + 規劃(待分階段執行)**
 | `Icon` | 圖示系統(幾乎每站) | ✅ **已加**(`common/Icon`,固定 SVG 閉集,未知=fail-closed) |
 | `Link` | 受控連結(帶 scope / 安全;site-gen 正需要) | ✅ **已加**(`common/Link`,scope + 協定白名單) |
 | `Text` / `Heading` | 排版原子(字級 / 標題 / 段落) | ✅ **已加**(`common/Text`、`common/Heading`) |
-| `Textarea` | 多行文字 | 缺(只有 `TextInput`) |
-| `Slider` | 範圍滑桿 | 缺 |
-| `Skeleton` | 載入骨架 | 缺(只有 spinner) |
-| `Rating` | 星等 | 缺 |
-| `MediaPlayer` | 影音 | 缺 |
-| `CodeBlock` | 程式碼區塊 | 缺 |
+| `Textarea` | 多行文字 | ✅ **已加**(`form/Textarea`) |
+| `Slider` | 範圍滑桿 | ✅ **已加**(`form/Slider`,值夾 min/max) |
+| `Skeleton` | 載入骨架 | ✅ **已加**(`common/Skeleton`,純 CSS shimmer) |
+| `Rating` | 星等 | ✅ **已加**(`form/Rating`,自繪星形) |
+| `MediaPlayer` | 影音 | ✅ **已加**(`common/MediaPlayer`,src 協定白名單) |
+| `CodeBlock` | 程式碼區塊 | ✅ **已加**(`common/CodeBlock`,textContent 無高亮) |
 
-> **第一批(基礎原子)已落地**:`Icon`/`Link`/`Text`/`Heading`,皆 `createComponentState` FSM、idempotent 樣式、無 random/Date(確定性),`FoundationAtoms.test.js` 13 例全綠。
+> **原子層完整(10 個)**:`Icon`/`Link`/`Text`/`Heading` + `Textarea`/`Slider`/`Rating`/`Skeleton`/`MediaPlayer`/`CodeBlock`。皆 `createComponentState` FSM、idempotent 樣式、無 random/Date(確定性);`FoundationAtoms.test.js`(13)+ `FoundationAtoms2.test.js`(9)全綠。下一批:§7.2 中層複合。
 
 ### 7.2 中層複合缺口(提案;= 原子展開)
 | 提案複合 | = 哪些原子 | 對應模式 | B 現況 |
