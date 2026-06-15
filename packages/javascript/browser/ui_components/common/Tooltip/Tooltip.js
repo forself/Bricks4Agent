@@ -18,6 +18,8 @@
  * Tooltip.create(myElement, 'Save changes', { position: 'bottom' });
  */
 
+import { nextUid } from '../../utils/uid.js';
+
 export class Tooltip {
     /* ------------------------------------------------------------------ */
     /*  Static constants                                                   */
@@ -339,7 +341,7 @@ export class Tooltip {
         wrapper.setAttribute('role', 'tooltip');
 
         // Unique id for aria-describedby
-        const id = `cl-tooltip-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const id = this.options.id || nextUid('cl-tooltip');
         wrapper.id = id;
 
         // Set max-width from options

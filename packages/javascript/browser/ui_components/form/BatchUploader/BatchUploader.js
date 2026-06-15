@@ -2,6 +2,7 @@
  * BatchUploader Component
  * A flexible batch file upload component with drag & drop support
  */
+import { nextUid } from '../../utils/uid.js';
 
 export class BatchUploader {
     /**
@@ -896,7 +897,7 @@ export class BatchUploader {
      * Generate unique ID
      */
     _generateId() {
-        return 'file_' + Math.random().toString(36).substr(2, 9);
+        return nextUid('file');
     }
 
     /**

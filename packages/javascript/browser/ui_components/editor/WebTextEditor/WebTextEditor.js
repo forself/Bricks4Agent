@@ -12,6 +12,7 @@
  */
 
 import { EditorButton } from '../../common/EditorButton/index.js';
+import { nextUid } from '../../utils/uid.js';
 import { ButtonGroup } from '../../common/ButtonGroup/index.js';
 import { ColorPicker } from '../../common/ColorPicker/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
@@ -45,7 +46,7 @@ export class WebTextEditor {
         };
 
         // 生成唯一實例 ID，防止多編輯器 ID 衝突
-        this.instanceId = 'wte-' + Math.random().toString(36).substr(2, 9);
+        this.instanceId = (options && options.id) || nextUid('wte');
 
         // Fixing Pattern State
         this.fixingId = this.instanceId + '-fixing';
@@ -691,7 +692,7 @@ export class WebTextEditor {
             const result = e.target.result;
             const imgObj = new Image();
             imgObj.onload = () => {
-                const id = this.instanceId + '-img-' + Date.now();
+                const id = nextUid(this.instanceId + '-img');
                 // 構造 WebPainter 初始資料，將圖片設為背景
                 const defaultData = {
                     width: imgObj.width,
@@ -725,7 +726,7 @@ export class WebTextEditor {
     // --- WebPainter 整合 ---
 
     _insertWebPainter() {
-        const id = this.instanceId + '-wp-' + Date.now();
+        const id = nextUid(this.instanceId + '-wp');
         // 使用英文避免 btoa 中文亂碼問題，並加上圖示
         const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" style="background:var(--cl-bg-tertiary);border:1px solid var(--cl-border-medium);">
@@ -911,7 +912,7 @@ export class WebTextEditor {
         if (el) {
             // Commit: Change ID to unique permanent ID scoped to this instance
             this.spanCounter++;
-            el.id = `${this.instanceId}-s-${Date.now()}-${this.spanCounter}`;
+            el.id = `${this.instanceId}-s-${this.spanCounter}`;
         }
     }
 

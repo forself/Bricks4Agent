@@ -96,7 +96,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 - **Stage 0 — 清理 + 標定** ✅ **完成(2026-06-16)**:核對活路 `TemplateCompiler`——**不現捏**(無 `Define`/`generated:true`/`Components.Add`,ComponentRequests 來自 matcher 的 plan)、**無 raw HTML**;`SiteGeneratorConverter` 的 `BuildRoute→…→EnsureGeneratedComponent` 整串為死碼(Convert 委派給 TemplateCompiler),已刪(~700 行 → ~50,只留 Convert + Clone*),並加退役 / 遷移註記。Build 0/0,SiteCrawler 測試 211 全綠。
 - **Stage 1 — 詞表 + 映射** ✅ **完成(2026-06-16)**:見 §8。每個產生器組件型別新增 `b_component` 綁定(錨定到 B 的閉集 `BComponentRegistry`),manifest 載入時 fail-closed 驗證(綁定缺漏或不在閉集 → 拒收);刪除死行話 `HeroSection`;`TemplateMatcher` 移除任意 `.First()` 退路,改為僅退「指定中性容器」並一律記錄缺口(永不發明)。Unit.Tests 381 全綠(含 5 例新 `BComponentBindingTests`)。
 - **Stage 2 — 產出改用 B** ✅ **完成(2026-06-16,具名偏離見 §9)**:靜態包顯式錨定 B —— `components/manifest.json` 帶 `b_component`、新增 `components/b-binding.json`(決定性的 `type→b_component` 機讀索引)、README 宣告 `ui_components` 為 canonical 實作、`runtime.js` 標為「B 的位元組決定性靜態匯出投影」。**刻意保留**內嵌 renderer(理由見 §9:把 B 的即時 FSM 組件硬塞進靜態匯出會犧牲位元組穩定,是退步)。位元組決定性維持。Unit.Tests 382 全綠。
-- **Stage 3 — B 自身的債**:`index.js` 面拉齊;隨機 id 抽成可注入(determinism-clean);viz/editor/map 補測試。
+- **Stage 3 — B 自身的債** ✅ **完成(2026-06-16)**:① determinism-clean ID —— 新增 `utils/uid.js`(`nextUid`/`resetUid`,單調計數器取代 `Math.random()`+`Date.now()`),`Notification`/`Tooltip`/`WebTextEditor`/`BatchUploader` 的實例 ID 改為決定性且可由 `options.id` 注入;`WebTextEditor` 插入圖片/WebPainter/span 的 ID 去 `Date.now()` 化(改計數器)。匯出/下載檔名的 `Date.now()`(`map-edited-…png`、zip 名)屬執行期時戳,**刻意保留**。② `index.js` 面:`uid` 併入 `utils` 公開面(完整面盤點視為後續維護)。③ viz/editor/map 補測試:SVG 圖表 jsdom 建構、canvas/map/editor 模組面可載入、`WebTextEditor.instanceId` 決定性。Vitest 168 全綠(含 9 例新測)。
 
 每階段:測試先行、各自 commit、跑驗證、**改對應文件**。
 
