@@ -126,7 +126,7 @@ public class ComponentSchemaValidatorTests
                             new ComponentNode
                             {
                                 Id = "hero",
-                                Type = "HeroSection",
+                                Type = "ContentSection",
                                 Props =
                                 {
                                     ["title"] = "Example",

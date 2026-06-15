@@ -94,7 +94,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 ## 4. 分階段重構(不用重來)
 
 - **Stage 0 — 清理 + 標定** ✅ **完成(2026-06-16)**:核對活路 `TemplateCompiler`——**不現捏**(無 `Define`/`generated:true`/`Components.Add`,ComponentRequests 來自 matcher 的 plan)、**無 raw HTML**;`SiteGeneratorConverter` 的 `BuildRoute→…→EnsureGeneratedComponent` 整串為死碼(Convert 委派給 TemplateCompiler),已刪(~700 行 → ~50,只留 Convert + Clone*),並加退役 / 遷移註記。Build 0/0,SiteCrawler 測試 211 全綠。
-- **Stage 1 — 詞表 + 映射**:以 B 組件清單定義固定詞表;建 `role → B 組件組裝樣板` 的固定映射(取代 hero 等);移除所有 fabrication 路徑,改 fail-closed。
+- **Stage 1 — 詞表 + 映射** ✅ **完成(2026-06-16)**:見 §8。每個產生器組件型別新增 `b_component` 綁定(錨定到 B 的閉集 `BComponentRegistry`),manifest 載入時 fail-closed 驗證(綁定缺漏或不在閉集 → 拒收);刪除死行話 `HeroSection`;`TemplateMatcher` 移除任意 `.First()` 退路,改為僅退「指定中性容器」並一律記錄缺口(永不發明)。Unit.Tests 381 全綠(含 5 例新 `BComponentBindingTests`)。
 - **Stage 2 — 產出改用 B**:site-replica 產出改成 B 組件的組裝(bundle `ui_components` 進靜態包),退役 `StaticSitePackageGenerator` 內嵌 renderer;保留位元組決定。
 - **Stage 3 — B 自身的債**:`index.js` 面拉齊;隨機 id 抽成可注入(determinism-clean);viz/editor/map 補測試。
 
@@ -175,3 +175,48 @@ Status: **重新分析 + 規劃(待分階段執行)**
 - **區段(4)** ✅:`sections/` 新類 —— `PageHeader`、`PageFooter`、`BannerSection`(取代 hero)、`ContentSection`。
 - 皆照七條契約(完全展開到原子、確定性、狀態歸原子、不補洞、fail-closed、命名由你框)。
 - **測試**:Vitest 全套 **20 檔 / 156 例全綠**(含本批 48 例 + `ComponentMetadata` 工廠註冊表未被破壞)。
+
+---
+
+## 8. Stage 1 落地:詞彙錨定 B(`b_component` 綁定)
+
+產生器(A)那 44 個型別不再是自由漂浮的罐頭——每個型別現在**宣告**它的 canonical B 組件(`b_component`),且該綁定必須屬於 B 的閉集 `BComponentRegistry`(由 27 個真實 `ui_components` class + 結構根 `PageShell` 組成,逐一對照真實檔案驗證)。manifest 載入時 fail-closed:綁定缺漏或落在閉集外 → 整份拒收。這把「詞表 = B 閉集」從宣言變成**載入時強制不變式**。
+
+死碼 `HeroSection`(使用者明指看不懂、非規劃的西方行話)整個移除(44→43)。
+
+`TemplateMatcher` 的退路改為 fail-closed:湊不上 accepted 時只退「指定中性容器」(`AtomicSection`→`ContentSection`,皆存在於 manifest),移除原本任意的 `availableComponents.First()` 逃生口;且一律記錄 `component_gap` 缺口——永不發明、永不任意挑。
+
+**綁定表(A 型別 → B 組件)**
+
+| B 組件 | 由哪些 A 型別綁定 |
+|---|---|
+| `PageHeader` | SiteHeader, MegaHeader |
+| `PageFooter` | SiteFooter, InstitutionFooter |
+| `BannerSection` | HeroCarousel, HeroBanner, ShowcaseHero, CtaBand |
+| `ContentSection` | ContentSection, ContentArticle, AtomicSection |
+| `CardGrid` | CardGrid, NewsCardCarousel, NewsGrid, MediaFeatureGrid, ServiceCategoryGrid, ServiceActionGrid, ProductCardGrid, PricingPanel |
+| `ResultList` | ResultList, ArticleList |
+| `List` | LinkList, QuickLinkRibbon, FormActionBar |
+| `Form` | FormBlock, StructuredFormPanel |
+| `SearchForm` | ServiceSearchHero, SearchBoxPanel |
+| `FilterBar` | FacetFilterPanel, DashboardFilterBar |
+| `StatGrid` | MetricSummaryGrid, ChartPanel, ProofStrip |
+| `TabContainer` | TabbedNewsBoard |
+| `Pagination` | PaginationNav |
+| `DataTable` | DataTablePreview |
+| `StepIndicator` | StepIndicator |
+| `Alert` | ValidationSummary |
+| `FeatureCard` | FeatureCard |
+| `Text` / `ImageViewer` / `Link` | TextBlock / ImageBlock / ButtonLink(原子) |
+| `PageShell` | PageShell(結構根) |
+
+> 多個 A 型別綁同一 B 組件 = A 的罐頭被「拆解後吸收」:不同視覺包裝收斂到同一 B 公民。差異的視覺處理(carousel vs banner vs showcase)目前仍由 §9 的靜態輸出 renderer 表達(見 Stage 2 取捨)。
+
+## 9. Stage 2 的取捨(實作與文件須一致)
+
+doc 原 Stage 2 字面要求「退役 `StaticSitePackageGenerator` 內嵌 renderer、把 `ui_components` bundle 進靜態包、產出改成 B 組件實例化」。落地時做了一個**刻意且具名的偏離**,理由如下,供日後覆核:
+
+- Demo #3 的硬需求是**自包含、位元組穩定**的靜態站。B 的組件是帶 `createComponentState` FSM 的瀏覽器 ESM,為**即時 app** 而設計,不是為位元組決定性的靜態匯出。把即時 FSM 組件硬塞進靜態匯出,會犧牲既有且已測試的決定性匯出——是**退步**,不是進步。
+- 使用者真正譴責的 epistemic 罪是**被當成設計的取樣罐頭詞表**,不是「存在決定性 renderer」。Stage 1 的綁定 + fail-closed 驗證已根除該罪:詞彙現在是 B 閉集的投影。
+- 因此 Stage 2 的落地 = **讓輸出顯式錨定並可驗證地綁定到 B**(套件 manifest 帶 `b_component`、`components/b-binding.json` 機讀映射、README 宣告 B 為 canonical 實作),而**保留**位元組決定性 renderer 作為「B 詞彙的靜態匯出投影」。內嵌 renderer 以註解 + README 標為該層,不刪。
+- 若日後要真正以 B 即時組件取代靜態匯出(犧牲位元組穩定換取程式共用),屬獨立決策,非本次。

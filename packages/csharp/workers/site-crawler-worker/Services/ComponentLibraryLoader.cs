@@ -114,6 +114,7 @@ public sealed class ComponentLibraryLoader
         {
             component.Type ??= string.Empty;
             component.Description ??= string.Empty;
+            component.BComponent ??= string.Empty;
             component.SupportedRoles ??= [];
             component.PropsSchema ??= new ComponentPropsSchema();
             NormalizePropsSchema(component.PropsSchema);
@@ -179,6 +180,17 @@ public sealed class ComponentLibraryLoader
             if (!seenTypes.Add(component.Type))
             {
                 errors.Add($"component type '{component.Type}' is duplicated.");
+            }
+
+            // Vocabulary must anchor to B's closed set (fail-closed): every generator type binds to
+            // a real ui_components class. A missing or out-of-set binding is rejected at load time.
+            if (string.IsNullOrWhiteSpace(component.BComponent))
+            {
+                errors.Add($"component '{component.Type}' is missing b_component (must bind to a ui_components class).");
+            }
+            else if (!BComponentRegistry.Contains(component.BComponent))
+            {
+                errors.Add($"component '{component.Type}' b_component '{component.BComponent}' is not in the ui_components closed set.");
             }
 
             if (component.PropsSchema.Properties.Count == 0)

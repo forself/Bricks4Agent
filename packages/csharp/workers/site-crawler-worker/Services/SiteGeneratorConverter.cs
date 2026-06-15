@@ -45,6 +45,7 @@ public sealed class SiteGeneratorConverter
                 Type = component.Type,
                 Description = component.Description,
                 SupportedRoles = component.SupportedRoles.ToList(),
+                BComponent = component.BComponent,
                 PropsSchema = ClonePropsSchema(component.PropsSchema),
                 Generated = component.Generated,
             }).ToList(),

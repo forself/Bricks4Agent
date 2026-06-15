@@ -45,7 +45,7 @@ public class StaticSitePackageGeneratorTests : IDisposable
                             new ComponentNode
                             {
                                 Id = "hero",
-                                Type = "HeroSection",
+                                Type = "ContentSection",
                                 Props =
                                 {
                                     ["title"] = "Example",
@@ -1244,7 +1244,7 @@ public class StaticSitePackageGeneratorTests : IDisposable
                             new ComponentNode
                             {
                                 Id = "hero",
-                                Type = "HeroSection",
+                                Type = "ContentSection",
                                 Props =
                                 {
                                     ["title"] = "Example",
