@@ -93,7 +93,7 @@ Status: **重新分析 + 規劃(待分階段執行)**
 
 ## 4. 分階段重構(不用重來)
 
-- **Stage 0 — 清理 + 標定(低風險)**:實讀 `TemplateCompiler` 釘死「活路是否現捏 / 整段灌 body」;刪 `SiteGeneratorConverter` 孤兒方法(含 `EnsureGeneratedComponent`);把 A 的罐頭詞表標 deprecated;文件改向 B canonical。
+- **Stage 0 — 清理 + 標定** ✅ **完成(2026-06-16)**:核對活路 `TemplateCompiler`——**不現捏**(無 `Define`/`generated:true`/`Components.Add`,ComponentRequests 來自 matcher 的 plan)、**無 raw HTML**;`SiteGeneratorConverter` 的 `BuildRoute→…→EnsureGeneratedComponent` 整串為死碼(Convert 委派給 TemplateCompiler),已刪(~700 行 → ~50,只留 Convert + Clone*),並加退役 / 遷移註記。Build 0/0,SiteCrawler 測試 211 全綠。
 - **Stage 1 — 詞表 + 映射**:以 B 組件清單定義固定詞表;建 `role → B 組件組裝樣板` 的固定映射(取代 hero 等);移除所有 fabrication 路徑,改 fail-closed。
 - **Stage 2 — 產出改用 B**:site-replica 產出改成 B 組件的組裝(bundle `ui_components` 進靜態包),退役 `StaticSitePackageGenerator` 內嵌 renderer;保留位元組決定。
 - **Stage 3 — B 自身的債**:`index.js` 面拉齊;隨機 id 抽成可注入(determinism-clean);viz/editor/map 補測試。
