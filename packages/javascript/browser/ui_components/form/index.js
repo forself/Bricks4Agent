@@ -16,3 +16,5 @@ export { Textarea } from './Textarea/index.js';
 export { TextInput } from './TextInput/index.js';
 export { TimePicker } from './TimePicker/index.js';
 export { ToggleSwitch } from './ToggleSwitch/index.js';
+export { Form } from './Form/index.js';
+export { TagInput } from './TagInput/index.js';

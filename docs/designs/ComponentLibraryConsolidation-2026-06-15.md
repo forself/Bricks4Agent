@@ -138,8 +138,15 @@ Status: **重新分析 + 規劃(待分階段執行)**
 > **原子層完整(10 個)**:`Icon`/`Link`/`Text`/`Heading` + `Textarea`/`Slider`/`Rating`/`Skeleton`/`MediaPlayer`/`CodeBlock`。皆 `createComponentState` FSM、idempotent 樣式、無 random/Date(確定性);`FoundationAtoms.test.js`(13)+ `FoundationAtoms2.test.js`(9)全綠。下一批:§7.2 中層複合。
 
 ### 7.2 中層複合缺口(提案;= 原子展開)
+
+> **檢索核心優先**(你本行最常用):結果列表 / 可編輯排序表格 / 表單 / 清單 / 篩選。
+> B **已有**:`DataTable`(排序+分頁+多選)、`SearchForm`、`FormField`、`Pagination`、`MultiSelectDropdown`、`BatchUploader`、`TreeList`、`ListInput`——這些不重做。
+
 | 提案複合 | = 哪些原子 | 對應模式 | B 現況 |
 |---|---|---|---|
+| `ResultList` | repeat(`Heading`/`Text`/`Tag`/`Link`/`MediaPlayer`) | **檢索結果列表**(標題+摘要+meta+連結) | ❌ 缺(**最該補**) |
+| `EditableTable` | `DataTable` + 格內 `TextInput`/`Dropdown` 編輯態 | **可編輯**排序表格(行內編輯) | 部分(`DataTable` 排序/分頁,無一級編輯) |
+| `Form` | repeat `FormField` + `BasicButton`(送出/重設) | 通用資料輸入表單 + 驗證彙整 | 部分(`SearchForm` 僅搜尋型;`FormField` 單欄) |
 | `Alert`(行內) | `Icon`+`Text`+close | 行內訊息條(vs `Notification`=toast) | ✅ **已加**(`common/Alert`) |
 | `EmptyState` | `Icon`+`Heading`+`Text`+`BasicButton` | 空狀態 | ✅ **已加**(`common/EmptyState`) |
 | `DropdownMenu` | button +(`Link`/`ActionButton` 清單) | 動作選單(vs `Dropdown`=select) | 缺 |
@@ -159,4 +166,12 @@ Status: **重新分析 + 規劃(待分階段執行)**
 | 橫幅(原 `hero`,**等你命名**) | 媒體(`ImageViewer`)+`Heading`+`Text`+`ActionButton` | 缺 |
 | 內容區 | `Heading`+`Text`+ 媒體 | 部分 |
 
-> 區段複合層的「有哪些、各叫什麼」是你的框定;7.3 只是候選,不自動升格。
+> 區段複合層的「有哪些、各叫什麼」是你的框定;命名採中性位置/類型。
+
+### 7.4 落地狀態(2026-06-16)
+
+- **原子(10)** ✅ 全數落地(§7.1)。
+- **中層複合(12)** ✅:`Alert`、`EmptyState`、`ResultList`、`List`、`DescriptionList`、`FilterBar`、`StatGrid`、`CardGrid`、`StepIndicator`、`DropdownMenu`、`Form`、`TagInput`、`EditableTable`(可編輯+排序)。檢索核心(`ResultList`/`Form`/`EditableTable`/`List`/`FilterBar`)皆在。
+- **區段(4)** ✅:`sections/` 新類 —— `PageHeader`、`PageFooter`、`BannerSection`(取代 hero)、`ContentSection`。
+- 皆照七條契約(完全展開到原子、確定性、狀態歸原子、不補洞、fail-closed、命名由你框)。
+- **測試**:Vitest 全套 **20 檔 / 156 例全綠**(含本批 48 例 + `ComponentMetadata` 工廠註冊表未被破壞)。
