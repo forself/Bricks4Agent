@@ -140,8 +140,8 @@ Status: **重新分析 + 規劃(待分階段執行)**
 ### 7.2 中層複合缺口(提案;= 原子展開)
 | 提案複合 | = 哪些原子 | 對應模式 | B 現況 |
 |---|---|---|---|
-| `Alert`(行內) | `Icon`+`Text`+close | 行內訊息條(vs `Notification`=toast) | 缺 |
-| `EmptyState` | `Icon`+`Heading`+`Text`+`ActionButton` | 空狀態 | 缺 |
+| `Alert`(行內) | `Icon`+`Text`+close | 行內訊息條(vs `Notification`=toast) | ✅ **已加**(`common/Alert`) |
+| `EmptyState` | `Icon`+`Heading`+`Text`+`BasicButton` | 空狀態 | ✅ **已加**(`common/EmptyState`) |
 | `DropdownMenu` | button +(`Link`/`ActionButton` 清單) | 動作選單(vs `Dropdown`=select) | 缺 |
 | `CardGrid` | grid of `FeatureCard`/`PhotoCard` | 卡片網格 | 部分(`DocumentWall`/`PhotoWall` 特例) |
 | `List`/`ListItem` | repeat(`Avatar?`/`Text`/`Badge`/`ActionButton`) | 通用清單 | 部分(`TreeList`/`ListInput`) |
