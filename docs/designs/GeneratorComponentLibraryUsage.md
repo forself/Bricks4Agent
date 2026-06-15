@@ -4,6 +4,8 @@
 
 Draft repository design note.
 
+> **2026-06-15 更新**:依 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md),產生器將改為**以 `ui_components`(canonical)組合輸出**——退役 `StaticSitePackageGenerator` 內嵌的 JS 字串 renderer 與 C# 端那套 `HeroSection` 罐頭詞表,並移除 `SiteGeneratorConverter.EnsureGeneratedComponent` 的「現捏組件」路徑(fail-closed:role 湊不上即退最近真組件或拒收)。本文件描述的「generator 耦合實作檔路徑」屬於該規劃 **Stage 2** 的改造對象。
+
 This document describes how the current generator stack actually consumes the
 component library.
 
