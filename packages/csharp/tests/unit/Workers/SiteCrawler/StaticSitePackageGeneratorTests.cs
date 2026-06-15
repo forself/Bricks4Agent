@@ -18,6 +18,68 @@ public class StaticSitePackageGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void Generate_WritesBComponentBindingAnchoredToUiComponents()
+    {
+        var document = new GeneratorSiteDocument
+        {
+            SchemaVersion = "site-generator/v1",
+            Site = new GeneratorSiteMetadata { Title = "Example", SourceUrl = "https://example.com/" },
+            ComponentLibrary = DefaultComponentLibrary.Create(),
+            Routes =
+            [
+                new GeneratorRoute
+                {
+                    Path = "/",
+                    Title = "Example",
+                    Root = new ComponentNode
+                    {
+                        Id = "page",
+                        Type = "PageShell",
+                        Props = { ["title"] = "Example", ["source_url"] = "https://example.com/" },
+                        Children =
+                        [
+                            new ComponentNode
+                            {
+                                Id = "content",
+                                Type = "ContentSection",
+                                Props = { ["title"] = "Example", ["body"] = "Welcome." },
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+        var generator = new StaticSitePackageGenerator();
+
+        var first = generator.Generate(document, new StaticSitePackageOptions { OutputDirectory = tempRoot, PackageName = "bind-a" });
+        var second = generator.Generate(document, new StaticSitePackageOptions { OutputDirectory = tempRoot, PackageName = "bind-b" });
+
+        var bindingPath = Path.Combine(first.OutputDirectory, "components", "b-binding.json");
+        File.Exists(bindingPath).Should().BeTrue();
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(bindingPath));
+        doc.RootElement.GetProperty("library").GetString().Should().Be("ui_components");
+        var bindings = doc.RootElement.GetProperty("bindings");
+        // The collapse is verifiable: A's hero jargon family resolves to one B section; the tabbed
+        // board resolves to B's TabContainer; every binding is a real B class.
+        bindings.GetProperty("HeroCarousel").GetString().Should().Be("BannerSection");
+        bindings.GetProperty("ShowcaseHero").GetString().Should().Be("BannerSection");
+        bindings.GetProperty("TabbedNewsBoard").GetString().Should().Be("TabContainer");
+        bindings.GetProperty("ContentSection").GetString().Should().Be("ContentSection");
+        foreach (var binding in bindings.EnumerateObject())
+        {
+            BComponentRegistry.Contains(binding.Value.GetString()).Should().BeTrue();
+        }
+
+        // Deterministic across runs.
+        File.ReadAllText(bindingPath).Should().Be(
+            File.ReadAllText(Path.Combine(second.OutputDirectory, "components", "b-binding.json")));
+
+        File.ReadAllText(Path.Combine(first.OutputDirectory, "README.md"))
+            .Should().Contain("ui_components").And.Contain("b-binding.json");
+    }
+
+    [Fact]
     public void Generate_WritesRuntimePackageThatLoadsSiteJson()
     {
         var document = new GeneratorSiteDocument
