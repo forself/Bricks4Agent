@@ -112,6 +112,47 @@ import { WebTextEditor } from '../editor/index.js';
 // 8. Data Components
 import { RegionMap } from '../data/index.js';
 
+// 9. Library expansion — foundation atoms + retrieval/list composites (common)
+import {
+    Alert,
+    CardGrid,
+    CodeBlock,
+    DescriptionList,
+    DropdownMenu,
+    EmptyState,
+    FilterBar,
+    Heading,
+    Icon,
+    Link,
+    List,
+    MediaPlayer,
+    ResultList,
+    Skeleton,
+    StatGrid,
+    StepIndicator,
+    Text
+} from '../common/index.js';
+
+// 10. Library expansion — form composites
+import {
+    Form,
+    Rating,
+    Slider,
+    TagInput,
+    Textarea
+} from '../form/index.js';
+
+// 11. Library expansion — layout
+import { EditableTable } from '../layout/index.js';
+
+// 12. Library expansion — sections (区段複合)
+import {
+    BannerSection,
+    ContentSection,
+    PageFooter,
+    PageHeader
+} from '../sections/index.js';
+
 export class ComponentFactory {
     static registry = {
         // Viz
@@ -209,7 +250,44 @@ export class ComponentFactory {
         'WebTextEditor': WebTextEditor,
 
         // Data
-        'RegionMap': RegionMap
+        'RegionMap': RegionMap,
+
+        // Foundation atoms (common)
+        'Text': Text,
+        'Heading': Heading,
+        'Icon': Icon,
+        'Link': Link,
+        'Skeleton': Skeleton,
+        'MediaPlayer': MediaPlayer,
+        'CodeBlock': CodeBlock,
+        'Alert': Alert,
+        'EmptyState': EmptyState,
+
+        // Retrieval / list composites (common)
+        'ResultList': ResultList,
+        'List': List,
+        'DescriptionList': DescriptionList,
+        'FilterBar': FilterBar,
+        'StatGrid': StatGrid,
+        'CardGrid': CardGrid,
+        'StepIndicator': StepIndicator,
+        'DropdownMenu': DropdownMenu,
+
+        // Form composites
+        'Textarea': Textarea,
+        'Slider': Slider,
+        'Rating': Rating,
+        'Form': Form,
+        'TagInput': TagInput,
+
+        // Layout
+        'EditableTable': EditableTable,
+
+        // Sections
+        'PageHeader': PageHeader,
+        'PageFooter': PageFooter,
+        'BannerSection': BannerSection,
+        'ContentSection': ContentSection,
     };
 
     /**

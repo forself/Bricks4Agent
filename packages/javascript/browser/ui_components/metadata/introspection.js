@@ -4,7 +4,7 @@ import path from 'node:path';
 import { AvailableComponents } from '../../page-generator/PageDefinition.js';
 
 const SUPPLEMENTAL_COMPONENTS = ['DateTimeInput', 'GeolocationService', 'WeatherService'];
-const SEARCH_CATEGORIES = ['common', 'form', 'input', 'layout', 'social', 'editor', 'data', 'viz', 'utils'];
+const SEARCH_CATEGORIES = ['common', 'form', 'input', 'layout', 'sections', 'social', 'editor', 'data', 'viz', 'utils'];
 
 function normalizeRelative(browserRoot, absolutePath) {
     return path.relative(browserRoot, absolutePath).replaceAll('\\', '/');
