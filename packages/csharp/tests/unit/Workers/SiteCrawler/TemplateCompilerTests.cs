@@ -18,6 +18,9 @@ public class TemplateCompilerTests
 
         document.Routes.Should().HaveCount(crawl.Pages.Count);
         document.ComponentLibrary.Components.Should().NotContain(component => component.Generated);
+        // The emitted library must keep its B binding through the live compile path (regression:
+        // TemplateCompiler.CloneManifest once dropped b_component, leaving b-binding.json empty).
+        document.ComponentLibrary.Components.Should().OnlyContain(component => BComponentRegistry.Contains(component.BComponent));
         document.ComponentRequests.Should().BeEmpty();
 
         var knownTypes = document.ComponentLibrary.Components.Select(component => component.Type).ToHashSet(StringComparer.Ordinal);
