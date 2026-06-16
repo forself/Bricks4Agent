@@ -240,3 +240,14 @@ doc 原 Stage 2 字面要求「退役 `StaticSitePackageGenerator` 內嵌 render
 
 ### 10.4 本輪 commit
 `fcb3c26` ChainedInput → `00f6615` Stage 1 → `f627769` Stage 2 → `81a75b6` Stage 3 → `e328042` e2e bug 修 → `151c307` reconstruct CLI。(Stage 0 為先前 `0b6d096`。)
+
+## 11. AI 代理版組件目錄同步(2026-06-17,多代理)
+
+§1 列的 B 債④(註冊/覆蓋不齊)的一個具體缺口:組件庫有**兩版使用說明** —— 人類版(各組件 `README.md`、`page-generator/README.md`、`STYLE_CONVENTION.md`)與 **AI 代理版**(`ui_components/metadata/component-catalog.json`,由 `build-metadata.mjs` introspect `ComponentFactory` 自動產生)。本庫擴充加入的 **27 個組件(sections 全族 + 檢索複合 + 基礎原子)從未進 AI 版**:它們沒登進 `ComponentFactory`,且 `sections/` 不在 introspection 的 `SEARCH_CATEGORIES`。後果:代理讀 catalog 看不到 PageHeader/BannerSection/ResultList/Form/CardGrid… 這些 Stage 1-2 才剛定為 canonical site-gen 詞彙的組件。
+
+**修正**:
+- 27 個全登進 `ComponentFactory.js`(catalog 的 source of truth);`sections` 加進 `SEARCH_CATEGORIES` 與 schema 的 `COMPONENT_CATEGORIES`、`inferKind`/`inferRole` 加 `sections` 規則。
+- 順帶修一個潛在 bug:`parseRegistryNames` 正則要求尾逗號 → 註冊表**最後一項一直被靜默丟掉**(先前因此漏掉 `RegionMap`)。補尾逗號,`RegionMap` 一併進 catalog。
+- **多代理稽核**:27 個 Explore 代理各讀一個組件的真實 source + README,更正自動推導的 kind/role(複合元件實例化子組件 → `composite`,非預設的 `atomic`;Link/DropdownMenu→navigation、Alert→feedback、EditableTable→data_view、Form→container…),落地為 `KIND_OVERRIDES`/`ROLE_OVERRIDES`。全部 `manual_only`(非 generator 欄位輸入)。
+
+**結果**:catalog **80 → 108**。驗證:`build-metadata.mjs --check` 決定性通過、`ComponentMetadata.test`(catalog == 重建 + 涵蓋每個註冊項)綠、全 Vitest **168** 綠。commit `f22efc8`。
