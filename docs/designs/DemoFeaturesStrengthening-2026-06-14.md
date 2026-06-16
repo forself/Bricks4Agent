@@ -24,6 +24,8 @@ Status: **三項皆已實作 + 驗證(#3 ✅ → #1 ✅ → #2 ✅)**
 
 **現況**:管線在 `packages/csharp/workers/site-crawler-worker/`(`SiteCrawlerService`/`DeterministicSiteExtractor`/`SiteGeneratorConverter`/`StaticSitePackageGenerator`),已有單元測試。決定性大致良好 —— 節點 ID 用 SHA256 內容雜湊、無 `Date`/`random`/`Guid` 進輸出、字串比較用 `Ordinal`。
 
+> **2026-06-16 補充(組件庫整併 + e2e)**:#3 的「組件庫複製」詞彙已從產生器自有的取樣罐頭(`HeroSection` 等)**錨定到 canonical `ui_components`(B)** —— 每個產生器型別綁定 B 閉集(`b_component`)、fail-closed、`HeroSection` 已刪、靜態包新增 `components/b-binding.json`(機讀 `type→b_component`)。詳見 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md)。位元組決定性維持。**e2e**:新增免-broker `reconstruct` CLI,對台北科大(`www.ntut.edu.tw`)實跑 6 頁、**0 缺口**、archive 位元組相同,並抓出 `TemplateCompiler.CloneManifest` 漏帶綁定的 bug(已修 + 回歸測試)。當前測試:Unit.Tests **382** / Broker **192** / Vitest **168** 全綠(本段落內舊述的「345」為當時數)。
+
 **不穩定來源(會讓輸出隨爬取順序/機器而變,須修)**:
 | 嚴重度 | 來源 | 位置 | 落在輸出 |
 |--------|------|------|---------|

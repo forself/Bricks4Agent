@@ -152,3 +152,31 @@ controlled-agent core now genuinely runs — including against ChatGPT. It is pa
 "serious POC" on the piece that matters most. It is not a hardened controlled
 autonomous system yet: the security, isolation, and approval layers that make
 "controlled" mean something under attack are still ahead.
+
+## 10. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e
+
+The site-crawler generator's component vocabulary was a corpus-sampled "canned" schema
+(`HeroSection`, `NewsGrid`, …) masquerading as a designed library. It is now anchored to the
+canonical JS `ui_components` library (B):
+
+- **Stage 1** — every generator type declares a `b_component` binding into B's closed set
+  (`BComponentRegistry`); `ComponentLibraryLoader` fail-closes any manifest with a missing or
+  out-of-set binding; dead `HeroSection` dropped; `TemplateMatcher`'s arbitrary `.First()` fallback
+  removed (neutral container + recorded gap, never fabricated).
+- **Stage 2** — the static package is verifiably B-anchored: `components/manifest.json` carries
+  `b_component`, `components/b-binding.json` is the flat `type→b_component` index, README declares B
+  canonical. Embedded deterministic renderers are kept as B's static-export projection (a **named
+  divergence**, rationale in `docs/designs/ComponentLibraryConsolidation-2026-06-15.md` §9) — forcing
+  B's live-FSM ESM components through byte-stable static export would regress Demo #3.
+- **Stage 3** — determinism-clean instance IDs (`utils/uid.js` replaces `Math.random()`/`Date.now()`
+  in Notification/Tooltip/WebTextEditor/BatchUploader); viz/editor/map smoke tests added.
+
+A new broker-free `reconstruct` CLI on `site-crawler-worker` invokes the production
+`SiteReconstructPackageHandler` locally (see the worker README). An end-to-end run against National
+Taipei University of Technology (`www.ntut.edu.tw`) crawled 6 pages, produced **0 component gaps**,
+**byte-identical archives** across runs, and surfaced a real bug unit tests had masked:
+`TemplateCompiler.CloneManifest` dropped `b_component` on the live path, leaving `b-binding.json`
+empty (fixed + regression test through the real Extract→Match→Compile path).
+
+**Verified**: solution 0/0; xUnit **382**, broker **192**, Vitest **168** all green. Commits
+`00f6615`, `f627769`, `81a75b6`, `e328042`, `151c307` (Stage 0 in `0b6d096`; ChainedInput `fcb3c26`).

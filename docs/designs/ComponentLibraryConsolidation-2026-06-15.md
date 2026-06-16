@@ -220,3 +220,23 @@ doc 原 Stage 2 字面要求「退役 `StaticSitePackageGenerator` 內嵌 render
 - 使用者真正譴責的 epistemic 罪是**被當成設計的取樣罐頭詞表**,不是「存在決定性 renderer」。Stage 1 的綁定 + fail-closed 驗證已根除該罪:詞彙現在是 B 閉集的投影。
 - 因此 Stage 2 的落地 = **讓輸出顯式錨定並可驗證地綁定到 B**(套件 manifest 帶 `b_component`、`components/b-binding.json` 機讀映射、README 宣告 B 為 canonical 實作),而**保留**位元組決定性 renderer 作為「B 詞彙的靜態匯出投影」。內嵌 renderer 以註解 + README 標為該層,不刪。
 - 若日後要真正以 B 即時組件取代靜態匯出(犧牲位元組穩定換取程式共用),屬獨立決策,非本次。
+
+## 10. 驗證記錄(2026-06-16)
+
+### 10.1 測試
+- 方案建置 **0 警告 / 0 錯誤**。
+- C# Unit.Tests(xUnit)**382 全綠**;Broker.Tests(自製 runner)**192 全綠**;Vitest **168 全綠 / 23 檔**。
+- 本次整併新增/強化的測試:`BComponentBindingTests`(5,綁定閉集 + fail-closed + matcher 中性退路)、`Generate_WritesBComponentBindingAnchoredToUiComponents`(Stage 2)、`TemplateCompilerTests` 回歸斷言(編譯後 library 須保留閉集綁定,走真實路徑)、`Determinism.test.js`(3)、`VizEditorSmoke.test.js`(6)。
+
+### 10.2 端到端實跑(台北科技大學)
+以本地 `reconstruct` CLI(`site-crawler-worker` 免 broker 子命令,呼叫 production 的 `SiteReconstructPackageHandler`)對 `https://www.ntut.edu.tw/` 實跑:
+- 爬蟲 6 頁(Playwright 視覺渲染),全 200,首頁抽 69 區塊。
+- 轉換:6 routes、36 nodes、12 型別、**0 缺口(fail-closed,無發明)**。
+- 節點型別→B 組件:`MegaHeader→PageHeader`、`HeroCarousel→BannerSection`、`MediaFeatureGrid→CardGrid`、`QuickLinkRibbon→List`、`ContentArticle→ContentSection`…。
+- 封裝:quality 通過、verification 通過、**兩次執行 archive 位元組相同**;`components/b-binding.json` 綁定正確填滿。
+
+### 10.3 e2e 抓到並修正的 bug
+實跑時 `components/b-binding.json` 綁定值**全空**,但單元測試全綠。根因:`TemplateCompiler.CloneManifest`(**活路**,產生 `document.ComponentLibrary`)投影 `ComponentDefinition` 時漏帶 `BComponent`;Stage 1 只修了 `SiteGeneratorConverter` 的 clone,Stage 2 的測試又是手搭 document + 新鮮 library,雙重遮蔽。修正:compiler 的 clone 帶上 `BComponent` + 在 `TemplateCompilerTests` 加**走真實 Extract→Match→Compile 路徑**的回歸斷言。教訓:hand-built fixture 騙得過綠燈,真資料騙不過。
+
+### 10.4 本輪 commit
+`fcb3c26` ChainedInput → `00f6615` Stage 1 → `f627769` Stage 2 → `81a75b6` Stage 3 → `e328042` e2e bug 修 → `151c307` reconstruct CLI。(Stage 0 為先前 `0b6d096`。)

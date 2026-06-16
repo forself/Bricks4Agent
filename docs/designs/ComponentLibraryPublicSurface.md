@@ -4,7 +4,9 @@
 
 Draft repository design note.
 
-> **2026-06-15 更新**:依 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md),`ui_components`(本文件描述的這套)被定為 **canonical 組件庫**;產生器側的 C# schema 詞表(`HeroSection` 等)是語料 sample 的罐頭,將被拆解吸收後退役。本文件記錄的「公開面不齊」(viz/utils/binding 例外)是該規劃 **Stage 3** 的拉齊對象。
+> **2026-06-15 更新**:依 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md),`ui_components`(本文件描述的這套)被定為 **canonical 組件庫**;產生器側的 C# schema 詞表(`HeroSection` 等罐頭)已被拆解吸收 —— 每個產生器型別綁定到本庫的閉集(`b_component`),`HeroSection` 已刪。
+>
+> **2026-06-16 落地(Stage 3 部分)**:① 決定性 —— 新增 `utils/uid.js`(`nextUid`/`resetUid`),`Notification`/`Tooltip`/`WebTextEditor`/`BatchUploader` 的實例 ID 去 `Math.random()`+`Date.now()` 化、可注入,並已併入 `utils` 公開面;② viz/editor/map 補測試(Vitest 168 全綠)。**但**本文件以下記錄的「公開面不齊」(viz/utils 直檔 vs 目錄 `index.js` 不一致)**尚未**全面正規化 —— 該完整盤點刻意延後為後續維護,故以下描述仍成立。
 
 This document only describes what the component library can reasonably claim
 about its own import surface.
