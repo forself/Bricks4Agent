@@ -9,10 +9,10 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 | 面向 | 現況 |
 |------|------|
-| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、單一共享密碼、cookie 12h。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
-| **使用者 web 前台** | **不存在**。系統 API-first;使用者只經 **LINE** 或加密 API 互動。無使用者 web 登入/入口。 |
+| **管理員 web 後台** | `line-admin.html`(單檔 vanilla JS,~1700 行,深色主題,sidebar+tabs)。認證 `LocalAdminAuthService`:**僅限 localhost**、單一共享密碼、cookie 12h。Local admin approver id 目前由 session 形成；dual approval 可要求兩個不同 admin session/approver id，但尚非完整 named operator account。加分頁的 pattern 清楚(HTML section + nav 鈕 + state + load/render + 路由)。 |
+| **使用者 web 前台** | 已有 `user-approvals.html`，透過 LINE 短效簽章連結進入，只能查看/決定自己的 User-tier approval。 |
 | **既有 LINE 審批** | `line.approval.request` + InboundDispatcher:**記憶體內、易失**(worker 重啟即丟)、純文字 approve/deny、一次一筆、無上下文。與新的 `ApprovalRequest`(DB 持久化)是**兩套**。 |
-| **新審批引擎** | 已完成:決策含 tier、`ApprovalRequest` 持久化、approve/reject/list/授權。**只差介面**。 |
+| **新審批引擎** | 已完成:決策含 tier、`ApprovalRequest` 持久化、`required_approval_count`、每位 approver 一筆 `approval_decisions`、approve/reject/list/授權。High / `require_approval` 仍 1 次核准；Critical / `require_dual_approval` 需兩個不同 approver id。 |
 
 ## 2. 評估:Web vs LINE(為何 web 能做得更好)
 
@@ -36,7 +36,7 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 **後端端點**(`LocalAdminEndpoints.cs`,沿用 `auth.TryRequireAuthenticated` + `IBrokerService`):
 - `GET /api/v1/local-admin/approvals` → 待審清單(含關聯 ExecutionRequest 細節:intent、payload、policy_reason、tier、owner)
-- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, adminId, reason, isAdmin:true)`
+- `POST /api/v1/local-admin/approvals/{id}/approve` body `{reason}` → `broker.ApproveExecutionAsync(id, adminSessionApproverId, reason, isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch
 - `POST /api/v1/local-admin/approvals/{id}/reject` body `{reason}` → `broker.RejectExecution(..., isAdmin:true)`
 
 **前端**(新分頁,左清單 + 右細節/動作,沿用 .panel/.list/.item/.json/.button):
@@ -103,7 +103,7 @@ broker 端新增一個「審批明細」組裝(從 `ApprovalRequest` + 關聯 `E
 
 端點(`LocalAdminEndpoints.cs`,`auth.TryRequireAuthenticated`):
 - `GET  /api/v1/local-admin/approvals` → 全部 pending 的審批明細(含 rendered)。
-- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,"local-admin",reason,isAdmin:true)`。
+- `POST /api/v1/local-admin/approvals/{id}/approve` `{reason}` → `ApproveExecutionAsync(id,adminSessionApproverId,reason,isAdmin:true)`；Critical 需兩個不同 admin session/approver id 才 dispatch。
 - `POST /api/v1/local-admin/approvals/{id}/reject` `{reason}` → `RejectExecution(...,isAdmin:true)`。
 
 UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。

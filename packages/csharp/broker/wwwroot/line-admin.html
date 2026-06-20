@@ -997,6 +997,33 @@ function updateApprovalsBadge(count) {
   else { badge.style.display = "none"; }
 }
 
+function approvalProgress(d) {
+  const required = Number(af(d, "requiredApprovalCount"));
+  const approverIds = af(d, "approverIds");
+  const approvedRaw = af(d, "approvedCount");
+  const approved = approvedRaw !== undefined ? Number(approvedRaw) : (Array.isArray(approverIds) ? approverIds.length : NaN);
+  if (!Number.isFinite(required) || required <= 0 || !Number.isFinite(approved)) return null;
+  return {
+    approved: Math.max(0, approved),
+    required,
+    approverIds: Array.isArray(approverIds) ? approverIds : []
+  };
+}
+
+function approvalProgressText(d) {
+  const progress = approvalProgress(d);
+  if (!progress) return "";
+  return `${progress.approved}/${progress.required}`;
+}
+
+function approvalDecisionMessage(action, result) {
+  if (action !== "approve") return "已駁回";
+  const request = af(result, "request") || af(result, "executionRequest") || result;
+  const executionState = af(request, "executionState");
+  if (String(executionState || "").toLowerCase() === "pendingapproval") return "已記錄核准，等待其他核准。";
+  return "已核准並執行";
+}
+
 async function loadApprovals() {
   const result = await request("/api/v1/local-admin/approvals");
   state.approvals.items = (result && (af(result, "items") || [])) || [];
@@ -1016,13 +1043,15 @@ function renderApprovalsList() {
   for (const item of state.approvals.items) {
     const id = af(item, "approvalId");
     const tier = af(item, "tier") || "";
+    const progressText = approvalProgressText(item);
     const tierTag = tier === "Admin"
       ? '<span style="background:#7a5310;color:#facc88;font-size:11px;padding:1px 7px;border-radius:6px">Admin</span>'
       : '<span style="background:#16395e;color:#9ecbff;font-size:11px;padding:1px 7px;border-radius:6px">User</span>';
     const div = document.createElement("div");
     div.className = "item" + (id === state.approvals.selectedId ? " active" : "");
     div.innerHTML = `<div class="row" style="justify-content:space-between"><strong style="font-family:monospace">${escapeHtml(af(item, "capabilityId") || "")}</strong>${tierTag}</div>`
-      + `<div style="font-size:12px;color:#9aa4b2">${escapeHtml(af(item, "ownerPrincipalId") || "")} · ${escapeHtml(af(item, "reason") || "")}</div>`;
+      + `<div style="font-size:12px;color:#9aa4b2">${escapeHtml(af(item, "ownerPrincipalId") || "")} · ${escapeHtml(af(item, "reason") || "")}</div>`
+      + (progressText ? `<div style="font-size:12px;color:#9aa4b2">核准進度 ${escapeHtml(progressText)}</div>` : "");
     div.addEventListener("click", () => selectApproval(id));
     list.appendChild(div);
   }
@@ -1063,6 +1092,10 @@ function renderApprovalDetail(d) {
   byId("approval-summary").style.display = "none";
   const el = byId("approval-detail");
   if (!d) { el.innerHTML = ""; return; }
+  const progress = approvalProgress(d);
+  const approvers = progress && progress.approverIds.length
+    ? progress.approverIds.map((id) => escapeHtml(id)).join(", ")
+    : "";
   el.innerHTML = `<div class="stack">`
     + `<div><strong style="font-family:monospace">${escapeHtml(af(d, "capabilityId") || "")}</strong></div>`
     + `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px">`
@@ -1070,6 +1103,8 @@ function renderApprovalDetail(d) {
     + `<span style="color:#9aa4b2">owner</span><span style="font-family:monospace">${escapeHtml(af(d, "ownerPrincipalId") || "")}</span>`
     + `<span style="color:#9aa4b2">原因</span><span>${escapeHtml(af(d, "reason") || "")}</span>`
     + `<span style="color:#9aa4b2">intent</span><span>${escapeHtml(af(d, "intent") || "")}</span>`
+    + (progress ? `<span style="color:#9aa4b2">核准進度</span><span>${escapeHtml(progress.approved)}/${escapeHtml(progress.required)}</span>` : "")
+    + (approvers ? `<span style="color:#9aa4b2">已核准</span><span style="font-family:monospace">${approvers}</span>` : "")
     + `</div>`
     + renderRendered(af(d, "rendered"))
     + `<input id="approval-reason" placeholder="決策理由(記入稽核)">`
@@ -1085,11 +1120,11 @@ async function decideApproval(action) {
   const id = state.approvals.selectedId;
   if (!id) return;
   const reason = byId("approval-reason") ? byId("approval-reason").value : "";
-  await request(`/api/v1/local-admin/approvals/${encodeURIComponent(id)}/${action}`, {
+  const result = await request(`/api/v1/local-admin/approvals/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
     body: JSON.stringify({ reason })
   });
-  setNotice(action === "approve" ? "已核准並執行" : "已駁回", "ok");
+  setNotice(approvalDecisionMessage(action, result), "ok");
   clearApprovalDetail();
   await loadApprovals();
 }

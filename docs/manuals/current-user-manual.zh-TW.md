@@ -77,7 +77,7 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 - admin 在 `line-admin.html` 審批。
 - 使用者透過 LINE 收到的短效簽章連結進入 `user-approvals.html` 審批。
 
-目前 MVP 是單一 approver，不是雙人審批。
+目前 High / `require_approval` 需要 1 次核准；Critical / `require_dual_approval` 需要 2 個不同 approver id 才能放行。Broker 會持久化 `ApprovalRequest.required_approval_count` 與每位 approver 一筆的 `approval_decisions`，避免同一 approver 重複核准。Local admin 的 approver id 目前來自不同 admin session，因此是「兩個不同 admin session/approver id」，還不是完整 named operator account / 多人帳號管理。
 
 ## 4. 最小安裝需求
 
@@ -706,7 +706,7 @@ npm run validate:podman-openai-compatible-stack
 
 - 全生產級 operator console。
 - 自訂 seccomp profile。
-- Critical dual approval。
+- Critical dual approval 已具備 broker 層持久化與兩個不同 approver id 門檻；local admin 身分仍是 session 型，不是完整 named operator account / 多人帳號管理。
 - `line.message.send` / `line.audio.send` 已有 worker-local outbound rate limiting；分散式配額與 `line.notification.send` 覆蓋仍未完成。
 - browser authenticated automation production readiness。
 - 所有外部 provider 在每台機器都已實測。
@@ -717,7 +717,7 @@ npm run validate:podman-openai-compatible-stack
 - LINE sidecar canonical path。
 - broker high-level conversation / query / draft / confirmation。
 - local admin console。
-- approval MVP。
+- approval lifecycle、User/Admin 兩層介面，以及 Critical dual approval 的 broker 層門檻。
 - governed agent container path。
 - execution adapter stack。
 - UI/generator validation。

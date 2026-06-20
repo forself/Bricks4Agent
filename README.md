@@ -210,7 +210,7 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 - maturity is uneven across subsystems
 - broker remains a necessary central node and must be kept narrow and disciplined
 - browser governance is still groundwork, not a finished browser automation platform
-- Critical dual approval, distributed LINE quota coordination, and `line.notification.send` rate limiting are not complete
+- Critical dual approval now has broker persistence plus a two-distinct-approver-id threshold; local-admin identity is still session-derived rather than full named operator accounts. Distributed LINE quota coordination and `line.notification.send` rate limiting are not complete
 - deployment and delivery paths are real, but not yet fully generalized platform primitives
 
 ## Recommended Reading Order

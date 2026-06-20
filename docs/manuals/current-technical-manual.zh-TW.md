@@ -383,8 +383,8 @@ Tool spec capability sync runs as hosted service and keeps the broker catalog al
 | --- | --- |
 | `auto` | allow directly |
 | `auto_if_task_scope_match` | allow in scope, escalate if scope escapes |
-| `require_approval` | create approval request |
-| `require_dual_approval` | reserved, not MVP active |
+| `require_approval` | create approval request; High remains a one-approval gate |
+| `require_dual_approval` | create approval request requiring two distinct approver ids; Critical uses this gate |
 | `deny` | reject |
 
 ### 8.3 Decision flow
@@ -411,7 +411,7 @@ High/Critical and scope escape should become `RequireApproval` when approval-eli
 | User | owning user, signed link, own User-tier approvals only |
 | Admin | local admin, global approvals |
 
-MVP is single approver. Critical dual approval is not implemented.
+High / `require_approval` remains single-approver. Critical / `require_dual_approval` is broker-enforced with `ApprovalRequest.required_approval_count` and persisted `approval_decisions`, one decision per approver id, so the same approver cannot satisfy the threshold twice. Current local-admin identity is still session-derived, so dual approval means two distinct admin sessions / approver ids rather than full named operator account management.
 
 ## 9. High-Level Coordinator
 
@@ -1055,7 +1055,7 @@ Do not overstate the current system:
 
 - Custom seccomp profile is pending。
 - Full production operator console is not complete。
-- Critical dual approval is not active。
+- Critical dual approval is active at the broker persistence/threshold layer, but local-admin identity is session-derived rather than full named multi-operator account management。
 - `line.message.send` and `line.audio.send` have worker-local outbound rate limiting; distributed quota coordination and `line.notification.send` coverage are not complete。
 - Browser authenticated automation is not production-complete。
 - Broader HTTP integration coverage for adapter/approval routes is still an improvement area。

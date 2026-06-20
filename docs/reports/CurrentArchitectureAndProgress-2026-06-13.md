@@ -118,9 +118,12 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - README/runbook now cover the agent container path, but broader operator docs lag the code.
 
 ### Dishonest to claim
-Not: a custom seccomp profile (the runtime default applies), dual-approval for
-Critical actions (MVP is single-approver), a fully production-hardened operator
-console, or distributed/all-capability LINE send quotas. Worker-local rate
+Not: a custom seccomp profile (the runtime default applies), full named-operator
+account management for dual approvals (the current local-admin approver id is
+session-derived), a fully production-hardened operator console, or
+distributed/all-capability LINE send quotas. Broker-level dual approval for
+Critical actions now persists `ApprovalRequest.required_approval_count` plus
+per-approver `approval_decisions` and requires two distinct approver ids. Worker-local rate
 limiting exists for `line.message.send` and `line.audio.send`; `line.notification.send`
 and distributed quota coordination are still open. Container confinement (egress + OS sandbox),
 the execution adapters (e2e-verified — a model drove `apply_patch` through the
@@ -148,11 +151,11 @@ definition ([RiskClassificationAndApproval-2026-06-13.md](../designs/RiskClassif
 [ApprovalWebInterface-2026-06-13.md](../designs/ApprovalWebInterface-2026-06-13.md)):
 
 - **Decision (PolicyEngine)**: High/Critical and scope-escape no longer hard-denied — they return `RequireApproval`; `approval_policy` drives Low/Medium (`auto`, `auto_if_task_scope_match`, `require_approval`, `deny`). The primary risk discriminator is **scope ownership**: a user acting within their own private folder is auto; escaping it escalates.
-- **Lifecycle (BrokerService)**: `RequireApproval` holds the request as `PendingApproval` + creates an `ApprovalRequest`; an admin/user approve dispatches the held request, reject denies it — all audited. Quota + dispatch shared with the normal Allow path.
-- **Two tiers**: `User` (the owning user approves, in their own interface, limited to their scope) vs `Admin` (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own).
+- **Lifecycle (BrokerService)**: `RequireApproval` holds the request as `PendingApproval` + creates an `ApprovalRequest`; an admin/user approve records a decision and dispatches the held request once the required threshold is met, reject denies it — all audited. Quota + dispatch shared with the normal Allow path.
+- **Two tiers + thresholds**: `User` (the owning user approves, in their own interface, limited to their scope) vs `Admin` (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own). High / `require_approval` remains one approval; Critical / `require_dual_approval` requires two distinct approver ids through `ApprovalRequest.required_approval_count` and persisted per-approver `approval_decisions`.
 - **Web surfaces**: admin approval tab in `line-admin.html` (localhost-only) + a user page (`user-approvals.html`) authenticated by a short-lived signed link sent over LINE. Both render the request **content** — a `repo.patch.apply` shows its unified diff — so the approver decides on substance, not a one-line string. The link is auto-sent on User-tier creation via `IApprovalNotifier` → `QueueLineNotification`.
 - **Verified**: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite **192/192**, xUnit **343/343**, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).
-- **Not done**: `require_dual_approval` (MVP is single-approver), distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console.
+- **Not done**: named operator account management for local-admin dual approvals (current approver ids are admin-session based), distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console.
 
 ## 9. Bottom Line
 

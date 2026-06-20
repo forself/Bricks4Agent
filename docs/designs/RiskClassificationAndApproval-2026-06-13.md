@@ -45,7 +45,7 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 | **Low** | 唯讀、內部、無副作用、完全可逆 | `auto` |
 | **Medium** | 可逆寫入,且**限縮在任務授權的 scope/sandbox 內**;無外向效果 | `auto_if_task_scope_match` |
 | **High** | 不可逆 **或** 外向 **或** 逸出任務 scope **或** spawn/控制其他 agent | `require_approval` |
-| **Critical** | 權限提升、密鑰/憑證存取、正式環境部署、批量/破壞性操作、自由 shell | `require_approval`(**MVP 單人**;雙人保留給日後),**永不 auto** |
+| **Critical** | 權限提升、密鑰/憑證存取、正式環境部署、批量/破壞性操作、自由 shell | `require_dual_approval`(兩個不同 approver id),**永不 auto** |
 
 > **「高風險」的定義 = High 或 Critical 級** → 一律走審批(不可 auto、也不該靜默拒絕)。
 
@@ -65,8 +65,8 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 |----|------|
 | `auto` | 直接放行(Low,或使用者在自己私有資料夾內) |
 | `auto_if_task_scope_match` | 在授權 scope 內 auto;逸出 scope 則升級為 `require_approval` |
-| `require_approval` | 需單一信任錨(管理員)放行 —— **MVP 全部走這個(High 與 Critical 皆單人審批)** |
-| `require_dual_approval` | 兩個獨立審批者 —— **MVP 不用**(保留給日後 Critical) |
+| `require_approval` | 需單一信任錨放行 —— High 維持 1 次核准 |
+| `require_dual_approval` | 需 2 個不同 approver id 放行 —— Critical 使用；broker 持久化 `ApprovalRequest.required_approval_count` 與每位 approver 一筆 `approval_decisions`，避免同一 approver 重複核准 |
 | `deny` | 一律拒絕(尚未具備安全執行此能力的條件時的暫時值) |
 
 ## 5. 現有能力重分級表(依 owner 決策)
@@ -97,18 +97,18 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 
 **定案要點**:檔案/記憶體的寫刪一律 `auto_if_task_scope_match`(私有資料夾 = sandbox,scope 內 auto、逸出升 High);對外通訊維持 auto + 頻率限制;只有跨主體控制(agent.create/stop)、正式部署、自由 shell、對外發佈這類**本質逸出單一使用者私有範圍**的才靜態屬 High/Critical。
 
-## 6. PolicyEngine 需要的改動(§18.2 才實作,本文只定義)
+## 6. PolicyEngine 狀態
 
-目前 `PolicyEngine.Evaluate` 在 High/Critical 直接 `Deny`(「Only Low and Medium risk are allowed」)—— 等於 `require_approval` 形同虛設。§18.2 要把這條改成:
+原始基線中 `PolicyEngine.Evaluate` 對 High/Critical 直接 `Deny`(「Only Low and Medium risk are allowed」),等於 `require_approval` 形同虛設。§18.2 實作後應維持下列行為:
 
 1. 計算**最終風險級** = 靜態 `risk_level` 經動態升級(scope 逸出、非白名單、保護路徑…)。
 2. 依最終級對應 `approval_policy`:
    - Low/Medium 且符合條件 → `Allow`(現狀)。
    - High/Critical 或 scope 逸出 → 回新的決策 `RequireApproval`(不是 Deny),交審批服務。
-3. 審批服務(§6.3)建立升權申請、指派審批者、發短時效升權 token、逾時失效、可撤銷;審批通過後該請求才得 dispatch。
+3. 審批服務(§6.3)建立升權申請、依 policy 設定 required approval count、記錄 approver decision、發短時效升權 token、逾時失效、可撤銷;審批達門檻後該請求才得 dispatch。
 4. 全程 audit(誰、何時、基於何權限與**哪個批准**)—— 滿足 §21 可追溯。
 
-`PolicyDecision` enum 需新增 `RequireApproval`(目前只有 Allow/Deny)。
+`PolicyDecision` enum 已有 `RequireApproval`，供 broker 在需審批時保留 execution request。
 
 ## 6.5 審批層級:兩種信任錨(owner 補充,2026-06-13)
 
@@ -132,18 +132,18 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 
 1. **對外通訊(line.message.send/audio)維持 auto + 頻率限制** —— 不每次審批;加 quota/rate-limit 防濫用,異常量(批量發送、非授權接收者)才升 High。
 2. **檔案/記憶體寫刪改成 scope-aware**(`auto_if_task_scope_match`)—— 使用者在自己私有資料夾內 auto;逸出才升 High。`file.write` 不再無條件 require_approval。
-3. **單人審批**:MVP 所有 High 與 Critical 都只需**一個**審批者(暫不雙人)。
+3. **審批門檻**:High / `require_approval` 只需**一個**審批者；Critical / `require_dual_approval` 需**兩個不同 approver id**。目前 local admin approver id 來自 admin session，因此是兩個不同 session/approver id，不是完整 named operator account 管理。
 4. **審批通道兩個都要,且區分使用者/管理員**:
    - **使用者(User)**:經 **LINE 或 Web** 操作,作用範圍**只限自己的私有資料夾**(`{AccessRoot}/{channel}/{userId}/...`)。在自己資料夾內都是 auto,本來就不需審批;碰不到資料夾外。
    - **管理員(Admin)**:**全域**(目前不細分),是高風險動作的**審批信任錨**。可經 LINE 回 confirm/cancel,或在 `line-admin.html` 的審批佇列按核准/駁回。
    - 即:**使用者 = 被授權的受限主體;管理員 = 全域審批者**。
 
-## 8. §18.2 實作藍圖(依本定義,待實作)
+## 8. §18.2 實作狀態(依本定義)
 
 1. `PolicyDecision` enum 加 `RequireApproval`;`PolicyEngine` 不再對 High/Critical 直接 Deny,改:scope 逸出或最終級 ≥ High → `RequireApproval`。
 2. 重分級 seed:套 §5 表(file.write/delete/memory.delete 改 `auto_if_task_scope_match`;deploy/command/agent.* 維持/調 High/Critical)。
 3. 使用者私有資料夾 scope 強制:確認 broker 對 User 主體的 grant scope 綁 `{AccessRoot}/{channel}/{userId}`;逸出即升級。
-4. `ApprovalService`(§6.3):建立升權申請、指派**管理員**、發短時效升權 token、逾時失效、可撤銷。
+4. `ApprovalService`(§6.3):建立升權申請、依 policy 設定 required approval count、記錄每位 approver 的決策、指派**管理員**、發短時效升權 token、逾時失效、可撤銷。
 5. 審批通道:LINE(沿用 line.approval.request / confirm)＋ `line-admin.html` 審批佇列。
 6. LINE send 頻率限制:`line.message.send` / `line.audio.send` worker-local limiter 已於 2026-06-20 補上；per-user/per-channel 分散式 quota 與 `line.notification.send` 覆蓋仍是後續項。
 7. 全程 audit(誰、何時、哪個批准)—— 滿足 §21 可追溯。
@@ -151,4 +151,4 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 
 ## 9. 範圍界線
 
-本文只**定義**風險分級與審批模型;不含實作。§18.2 依 §8 藍圖實作。
+本文是風險分級與審批模型的定義文件。Broker 層已實作 §8 的核心決策、持久化 approval lifecycle、User/Admin 介面，以及 Critical / `require_dual_approval` 的兩個不同 approver id 門檻；local admin 身分仍是 session 型，尚不包含完整 named operator account / 多人帳號管理。

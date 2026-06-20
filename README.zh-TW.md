@@ -143,7 +143,7 @@ dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- -
 - broker 是必要中心節點，需要保持窄而清楚的責任邊界。
 - browser governance 仍是基礎建設，不是完整 browser automation platform。
 - host Ollama / OpenAI-compatible / Anthropic 驗證依賴本機模型、外部服務與環境變數。
-- Critical dual approval、LINE 分散式配額與 `line.notification.send` rate limit 尚未完成。
+- Critical dual approval 已具備 broker 持久化與兩個不同 approver id 門檻；local admin 身分仍是 session 型，不是完整 named operator account。LINE 分散式配額與 `line.notification.send` rate limit 尚未完成。
 - UI 元件庫尚未全庫 deterministic；文件應只描述已驗證範圍。
 
 ## 推薦閱讀順序

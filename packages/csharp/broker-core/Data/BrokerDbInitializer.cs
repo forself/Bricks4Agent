@@ -39,6 +39,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<ContainerSession>();
         _db.EnsureTable<ExecutionRequest>();
         _db.EnsureTable<ApprovalRequest>();
+        _db.EnsureTable<ApprovalDecision>();
         _db.EnsureTable<AuditEvent>();
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
@@ -87,6 +88,11 @@ public class BrokerDbInitializer
         // AuditEvent: (trace_id, trace_seq) per-trace chain 序列化
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_events_trace_seq
                       ON audit_events(trace_id, trace_seq)");
+
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_decisions_approver
+                      ON approval_decisions(approval_id, approver_id)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
+                      ON approval_decisions(approval_id, decision)");
 
         // ── Phase 4：因果工作流索引 ──
 
@@ -182,6 +188,7 @@ public class BrokerDbInitializer
 
         // SharedContextEntry 新增 tags 欄位
         TryExecute("ALTER TABLE shared_context_entries ADD COLUMN tags TEXT DEFAULT '[]'");
+        TryExecute("ALTER TABLE approval_requests ADD COLUMN required_approval_count INTEGER DEFAULT 1");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN deployment_mode TEXT DEFAULT 'site_root'");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN application_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_path TEXT DEFAULT ''");

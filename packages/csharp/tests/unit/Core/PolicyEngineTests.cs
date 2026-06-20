@@ -94,6 +94,8 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.High), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(1);
     }
 
     [Fact]
@@ -102,6 +104,8 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Critical), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(2);
     }
 
     // §18.2: approval_policy drives the decision for Low/Medium risk.
@@ -119,6 +123,17 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "require_approval"), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApprovalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Evaluate_RequireDualApprovalPolicy_RequiresTwoApprovals()
+    {
+        var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "require_dual_approval"), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(2);
     }
 
     [Fact]

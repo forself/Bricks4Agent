@@ -83,17 +83,23 @@ public class PolicyEngine : IPolicyEngine
         {
             return PolicyResult.RequireApproval(
                 $"Capability '{capability.CapabilityId}' is risk level {capability.RiskLevel}; approval required.",
-                ApproverTier.Admin);
+                ApproverTier.Admin,
+                capability.RiskLevel == RiskLevel.Critical ? 2 : 1);
         }
 
         switch (policy)
         {
             // 使用者權限內、但需確認 → 使用者本人在自己介面批
             case "require_approval":
-            case "require_dual_approval":
                 return PolicyResult.RequireApproval(
                     $"Capability '{capability.CapabilityId}' requires approval.",
                     ApproverTier.User);
+
+            case "require_dual_approval":
+                return PolicyResult.RequireApproval(
+                    $"Capability '{capability.CapabilityId}' requires dual approval.",
+                    ApproverTier.Admin,
+                    requiredApprovalCount: 2);
 
             case "auto_if_task_scope_match":
                 // scope 內 auto;逸出使用者 scope = 超出其權限 → 管理員層
