@@ -1705,6 +1705,12 @@ try
             AllowProduction = true
         });
 
+        var basicStillDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
+        AssertTrue(basicStillDenied.Error == "production_disabled", "basic tier still masks production even when raw production flag is true");
+
+        var promotedUser = coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
+        AssertTrue(promotedUser?.AccessTier == HighLevelAccessTier.Member, "registration review promotes user to member tier");
+
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
         AssertTrue(buildDraft.Draft!.ManagedPaths.UserRoot.Contains("bricks001", StringComparison.OrdinalIgnoreCase), "managed paths use preferred alphanumeric user id");
@@ -1729,6 +1735,19 @@ try
         var latestHandoff = workflowAdmin.ReadHandoff(latestHandoffDoc);
         AssertTrue(latestHandoff != null && latestHandoff.TaskType == "code_gen", "workflow admin service reads handoff detail");
 
+        async Task PromoteLineUserForProductionAsync(string productionUserId)
+        {
+            await coordinator.ProcessLineMessageAsync(productionUserId, "hello");
+            var productionPermissions = coordinator.SetLineUserPermissions(productionUserId, new HighLevelUserPermissionsPatch
+            {
+                AllowProduction = true
+            });
+            AssertTrue(productionPermissions?.Permissions.AllowProduction == true, $"raw production permission enabled for {productionUserId}");
+            var review = coordinator.ReviewLineUserRegistration(productionUserId, "promote", "verify production access");
+            AssertTrue(review?.AccessTier == HighLevelAccessTier.Member, $"member tier enabled for {productionUserId}");
+        }
+
+        await PromoteLineUserForProductionAsync("line-inline-project-user");
         var inlineProjectDraft = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "/建立 單頁基礎計算機網頁 #proj1");
         AssertTrue(inlineProjectDraft.Draft != null && inlineProjectDraft.Draft.TaskType == "code_gen", "inline project-name website command still resolves to code_gen draft");
         AssertTrue(inlineProjectDraft.Draft!.ProjectName == "proj1", "inline project-name token is captured into the draft");
@@ -1746,11 +1765,13 @@ try
         var codeArtifacts = coordinatorWorkspaceService.ListArtifacts("line-inline-project-user");
         AssertTrue(codeArtifacts.Any(item => item.RelatedTaskType == "code_gen"), "code_gen confirm records artifact metadata");
 
+        await PromoteLineUserForProductionAsync("line-doc-user");
         var docDraft = await coordinator.ProcessLineMessageAsync("line-doc-user", "/請整理成 markdown 文件，摘要目前進度");
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
         AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
         AssertTrue(docDraft.FollowUpMessages != null && docDraft.FollowUpMessages.Contains("y"), "doc_gen draft exposes short confirm as a follow-up message");
+        await PromoteLineUserForProductionAsync("line-doc-user-create");
         var createDocDraft = await coordinator.ProcessLineMessageAsync("line-doc-user-create", "/create 產生一份 markdown 文件，摘要目前進度");
         AssertTrue(createDocDraft.Draft != null && createDocDraft.Draft.TaskType == "doc_gen", "create production alias still resolves to doc_gen draft");
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
@@ -1771,6 +1792,7 @@ try
         var recordedArtifact = coordinatorWorkspaceService.ReadArtifact($"hlm.artifact.line.line-doc-user.{recordedArtifacts[0].ArtifactId}");
         AssertTrue(recordedArtifact != null && recordedArtifact.FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase), "artifact detail can be read by document id");
 
+        await PromoteLineUserForProductionAsync("line-scaffold-user");
         var scaffoldDraft = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "/建立 完整系統雛形 #scaffoldproj");
         AssertTrue(scaffoldDraft.Draft != null && scaffoldDraft.Draft.TaskType == "system_scaffold", "system scaffold command creates system_scaffold draft");
         AssertTrue(scaffoldDraft.Draft!.ProjectName == "scaffoldproj", "system scaffold draft captures inline project name");
@@ -1797,6 +1819,7 @@ try
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
 
+        await PromoteLineUserForProductionAsync("line-site-rebuild-user");
         var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");
         AssertTrue(siteRebuildDraft.Draft != null && siteRebuildDraft.Draft.TaskType == "site_rebuild", "site rebuild command with URL creates site_rebuild draft");
         AssertTrue(siteRebuildDraft.Draft!.ProjectName == "sitecopy", "site rebuild draft captures inline project name");
@@ -2320,6 +2343,19 @@ file sealed class FakeBrokerService : IBrokerService
         });
 
     public ExecutionRequest? GetExecutionRequest(string requestId) => null;
+
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovals() => [];
+
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin) => [];
+
+    public ApprovalDetail? GetApprovalDetail(string approvalId) => null;
+
+    public IReadOnlyList<ApprovalDetail> ListPendingApprovalDetailsForApprover(string approverId, bool isAdmin) => [];
+
+    public Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false)
+        => Task.FromResult<ExecutionRequest?>(null);
+
+    public ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason, bool isAdmin = false) => null;
 }
 
 file sealed class FakePlanService : IPlanService

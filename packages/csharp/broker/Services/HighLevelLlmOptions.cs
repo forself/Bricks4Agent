@@ -12,4 +12,5 @@ public class HighLevelLlmOptions
     public bool SupportsToolCalling { get; set; }
     public bool StreamingEnabled { get; set; }
     public int TimeoutSeconds { get; set; } = 120;
+    public int MaxOutputTokens { get; set; } = 4096;
 }

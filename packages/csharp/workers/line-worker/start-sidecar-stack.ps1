@@ -600,12 +600,46 @@ if (Test-Path $brokerProductionOverridePath) {
 if (Test-Path $openAiApiKeyFile) {
     $openAiApiKey = (Get-Content -Encoding utf8 $openAiApiKeyFile -Raw).Trim()
 }
+$anthropicApiKey = $env:ANTHROPIC_API_KEY
+if ([string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $anthropicApiKey = [Environment]::GetEnvironmentVariable("ANTHROPIC_API_KEY", "User")
+}
+if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $anthropicApiKey = $anthropicApiKey.Trim()
+}
 $productionOverrideMap = @{
     Database = @{
         Path = $brokerRuntimeDbPath
     }
 }
-if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
+if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $productionOverrideMap["HighLevelLlm"] = @{
+        Enabled = $true
+        Provider = "anthropic"
+        BaseUrl = "https://api.anthropic.com"
+        ApiKey = $anthropicApiKey
+        ApiFormat = "messages"
+        DefaultModel = "claude-sonnet-4-6"
+        AllowModelOverride = $false
+        SupportsToolCalling = $false
+        StreamingEnabled = $false
+        TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
+        MaxOutputTokens = 4096
+    }
+    $productionOverrideMap["LlmProxy"] = @{
+        Enabled = $true
+        Provider = "anthropic"
+        BaseUrl = "https://api.anthropic.com"
+        ApiKey = $anthropicApiKey
+        ApiFormat = "messages"
+        DefaultModel = "claude-sonnet-4-6"
+        AllowModelOverride = $false
+        SupportsToolCalling = $true
+        StreamingEnabled = $false
+        TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
+        MaxOutputTokens = 4096
+    }
+} elseif (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
         ApiKey = $openAiApiKey
     }

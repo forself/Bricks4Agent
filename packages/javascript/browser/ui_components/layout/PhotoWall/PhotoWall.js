@@ -10,6 +10,7 @@ import { ActionButton } from '../../common/ActionButton/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { DownloadButton } from '../../common/DownloadButton/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
+import { nextUid } from '../../utils/uid.js';
 
 import Locale from '../../i18n/index.js';
 export class PhotoWall {
@@ -333,7 +334,7 @@ export class PhotoWall {
             }
 
             const zipBlob = await zip.generateAsync();
-            this._triggerDownload(URL.createObjectURL(zipBlob), `photos_${Date.now()}.zip`);
+            this._triggerDownload(URL.createObjectURL(zipBlob), `${nextUid('photos')}.zip`);
 
         } catch (error) {
             console.error('ZIP 打包失敗:', error);

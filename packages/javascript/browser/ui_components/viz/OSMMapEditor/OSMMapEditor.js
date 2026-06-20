@@ -18,6 +18,7 @@ import { EditorButton } from '../../common/EditorButton/index.js';
 import { UploadButton } from '../../common/UploadButton/index.js';
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
 
 export class OSMMapEditor extends WebPainter {
 
@@ -1070,7 +1071,7 @@ export class OSMMapEditor extends WebPainter {
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/geo+json' });
         const link = document.createElement('a');
-        link.download = `map-data-${Date.now()}.geojson`;
+        link.download = `${nextUid('map-data')}.geojson`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);

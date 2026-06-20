@@ -1,8 +1,8 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Heading } from '../../common/Heading/Heading.js';
-import { Text } from '../../common/Text/Text.js';
-import { BasicButton } from '../../common/BasicButton/BasicButton.js';
-import { Link } from '../../common/Link/Link.js';
+import { Heading } from '../../common/Heading/index.js';
+import { Text } from '../../common/Text/index.js';
+import { BasicButton } from '../../common/BasicButton/index.js';
+import { Link } from '../../common/Link/index.js';
 
 /**
  * BannerSection — 區段複合(中性命名,取代 hero)。

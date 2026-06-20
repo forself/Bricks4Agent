@@ -48,7 +48,8 @@ You need these available on the machine:
 
 Optional but currently expected for the best live behavior:
 
-- `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) for the high-level OpenAI-compatible API key
+- `ANTHROPIC_API_KEY` in the current shell or Windows User environment; sidecar prefers it and configures `anthropic` / `claude-sonnet-4-6`
+- `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) as the OpenAI-compatible fallback key when `ANTHROPIC_API_KEY` is absent
 - Google OAuth client JSON matching `client_secret_*.json` in the same secrets directory
 - a valid ngrok config at `%LOCALAPPDATA%\ngrok\ngrok.yml`
 
@@ -79,8 +80,8 @@ File:
 
 Current sidecar behavior:
 
-- `start-sidecar-stack.ps1` reads this file
-- it injects the key into broker `HighLevelLlm.ApiKey`
+- `start-sidecar-stack.ps1` prefers `ANTHROPIC_API_KEY` and configures broker `HighLevelLlm` / `LlmProxy` as `anthropic` with `claude-sonnet-4-6`
+- if `ANTHROPIC_API_KEY` is absent, it reads this file and injects the key into broker `HighLevelLlm.ApiKey`
 
 ### 3. Google Drive OAuth client
 
@@ -108,6 +109,24 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 ```
 
 (`-Worker` accepts `file`, `browser`, `transport-tdx`, `site-crawler`.) The helper reads the same credential store, so registration passes worker identity verification.
+
+### 3.2 LINE outbound rate limit
+
+line-worker applies worker-local outbound rate limiting to `line.message.send` and `line.audio.send`, keyed by recipient + capability. Defaults live in `packages/csharp/workers/line-worker/appsettings*.json`:
+
+- `Line.OutboundRateLimit.PermitLimit`: default `20`
+- `Line.OutboundRateLimit.WindowSeconds`: default `60`
+- `Line.OutboundRateLimit.MaxTrackedKeys`: default `1024`
+
+Override for sidecar/manual runs with:
+
+```powershell
+$env:WORKER_Line__OutboundRateLimit__PermitLimit = '20'
+$env:WORKER_Line__OutboundRateLimit__WindowSeconds = '60'
+$env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
+```
+
+This is not a distributed quota. Multiple line-worker instances do not share counters, and `line.notification.send` is not yet covered by this limiter.
 
 Current sidecar behavior:
 
@@ -436,7 +455,7 @@ If the tunnel still does not come back:
 
 Typical causes:
 
-- `Api.txt` missing or unreadable
+- `ANTHROPIC_API_KEY` is absent and `Api.txt` is missing or unreadable
 - invalid upstream API key
 - high-level model upstream returned `401` or `400`
 - stale sidecar publish output
@@ -448,7 +467,7 @@ Check:
 
 Fix:
 
-- confirm `Api.txt` exists and contains a valid key
+- confirm `ANTHROPIC_API_KEY` is a valid Anthropic key, or `Api.txt` contains a valid OpenAI-compatible fallback key
 - restart sidecar
 
 ### 4. Google Drive OAuth returns `invalid_state` or `state_expired`

@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Text } from '../Text/Text.js';
+import { Text } from '../Text/index.js';
 
 /**
  * List — 通用平面清單(複合)。每筆 = Text(primary)+ Text(secondary)。完全由原子組成,確定性。

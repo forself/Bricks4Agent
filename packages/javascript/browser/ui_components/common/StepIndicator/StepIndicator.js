@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Text } from '../Text/Text.js';
+import { Text } from '../Text/index.js';
 
 /**
  * StepIndicator — 步驟指示(複合)。每步 = 編號圈 + Text(label);確定性。
@@ -30,7 +30,7 @@ export class StepIndicator {
         s.textContent = `
             .cl-steps { display: flex; align-items: center; gap: 8px; }
             .cl-step { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-            .cl-step-dot { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            .cl-step-dot { width: 24px; height: 24px; border-radius: var(--cl-radius-round); display: flex; align-items: center; justify-content: center;
                 font-size: var(--cl-font-size-xs); background: var(--cl-bg-secondary); color: var(--cl-text-secondary); border: 1px solid var(--cl-border); }
             .cl-step--done .cl-step-dot, .cl-step--current .cl-step-dot { background: var(--cl-primary); color: var(--cl-text-inverse); border-color: var(--cl-primary); }
             .cl-step-line { flex: 1; height: 1px; background: var(--cl-border); min-width: 24px; }

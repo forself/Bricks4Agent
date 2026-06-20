@@ -145,7 +145,7 @@ Status: **已依 owner 決策定案(2026-06-13)** —— §18.2 審批服務的�
 3. 使用者私有資料夾 scope 強制:確認 broker 對 User 主體的 grant scope 綁 `{AccessRoot}/{channel}/{userId}`;逸出即升級。
 4. `ApprovalService`(§6.3):建立升權申請、指派**管理員**、發短時效升權 token、逾時失效、可撤銷。
 5. 審批通道:LINE(沿用 line.approval.request / confirm)＋ `line-admin.html` 審批佇列。
-6. line.send 頻率限制:per-user quota / rate-limit。
+6. LINE send 頻率限制:`line.message.send` / `line.audio.send` worker-local limiter 已於 2026-06-20 補上；per-user/per-channel 分散式 quota 與 `line.notification.send` 覆蓋仍是後續項。
 7. 全程 audit(誰、何時、哪個批准)—— 滿足 §21 可追溯。
 驗收:高風險動作(逸出 scope、agent.create、部署等)必經管理員審批且可追溯;使用者在私有資料夾內操作不被打擾。
 

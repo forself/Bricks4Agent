@@ -11,6 +11,7 @@ try
     VerifyProviderResolution();
     VerifyDialectSurface();
     await VerifyAsyncCrudAsync();
+    await VerifyConcurrentQueriesDoNotShareTransactionAsync();
     await VerifySqlServerIntegrationIfConfiguredAsync();
     await VerifyMySqlIntegrationIfConfiguredAsync();
     await VerifyPostgreSqlIntegrationIfConfiguredAsync();
@@ -74,6 +75,68 @@ static async Task VerifyAsyncCrudAsync()
         {
             await RunWidgetCrudFlowAsync(db, "SQLite");
         }
+    }
+    finally
+    {
+        DeleteIfExists(databasePath);
+        DeleteIfExists(databasePath + "-wal");
+        DeleteIfExists(databasePath + "-shm");
+    }
+}
+
+static async Task VerifyConcurrentQueriesDoNotShareTransactionAsync()
+{
+    var databasePath = Path.Combine(Path.GetTempPath(), $"baseorm-transaction-isolation-{Guid.NewGuid():N}.db");
+
+    try
+    {
+        await using var db = BaseDb.UseSqlite($"Data Source={databasePath}");
+        await db.EnsureTableAsync<Widget>();
+
+        var transactionReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? transactionError = null;
+
+        var transactionTask = Task.Run(async () =>
+        {
+            try
+            {
+                await db.InTransactionAsync(async () =>
+                {
+                    await db.InsertAsync(new Widget
+                    {
+                        Name = "Uncommitted",
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    });
+
+                    transactionReady.SetResult();
+                    await releaseTransaction.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                });
+            }
+            catch (Exception ex)
+            {
+                transactionError = ex;
+                transactionReady.TrySetException(ex);
+            }
+        });
+
+        await transactionReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var countDuringTransaction = await Task.Run(() => db.Scalar<int>(
+            "SELECT COUNT(*) FROM Widgets WHERE Name = @Name",
+            new { Name = "Uncommitted" }));
+        Assert(countDuringTransaction == 0,
+            "Concurrent query outside the transaction should not share or observe the active transaction.");
+
+        releaseTransaction.SetResult();
+        await transactionTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert(transactionError == null, $"Transaction task should complete: {transactionError}");
+
+        var countAfterCommit = await db.ScalarAsync<int>(
+            "SELECT COUNT(*) FROM Widgets WHERE Name = @Name",
+            new { Name = "Uncommitted" });
+        Assert(countAfterCommit == 1, "Committed transaction should be visible after completion.");
     }
     finally
     {

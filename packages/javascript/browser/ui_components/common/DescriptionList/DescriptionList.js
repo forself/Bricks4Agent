@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Text } from '../Text/Text.js';
+import { Text } from '../Text/index.js';
 
 /**
  * DescriptionList — 鍵值表(複合)。每對 = Text(label)+ Text(value)。完全由原子組成,確定性。

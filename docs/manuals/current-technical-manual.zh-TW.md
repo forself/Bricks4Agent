@@ -1,0 +1,1115 @@
+# Bricks4Agent 目前版本技術手冊
+
+Date: 2026-06-18  
+Status: current technical manual  
+Audience: platform engineers, maintainers, integration engineers
+
+## 1. 系統定位
+
+Bricks4Agent 是 broker-centered governed AI operations platform。它的核心不是讓模型直接操作工具，而是把自然語言意圖轉成可驗證、可審批、可稽核、可派發的結構化工作。
+
+目前 canonical LINE 路徑：
+
+```text
+LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/process
+```
+
+目前 governed agent 路徑：
+
+```text
+agent container -> broker sessions/runtime/llm/execution APIs -> broker policy -> dispatcher/worker
+```
+
+設計不變式：
+
+- Broker 是控制平面，不是 autonomous planner。
+- 高階模型提出/整理意圖，broker 驗證與記錄。
+- Execution layer 消費 structured intent，不消費 raw conversation。
+- Agent container 不直接持有工具、repo、資料源或 provider key。
+- 所有重要動作應有 session、capability、scope、policy、audit。
+
+## 2. Repo 主要結構
+
+| Path | 用途 |
+| --- | --- |
+| `packages/csharp/ControlPlane.slnx` | canonical .NET build solution |
+| `packages/csharp/broker` | ASP.NET Core broker、admin UI、endpoint、tool specs |
+| `packages/csharp/broker-core` | domain models、policy、session、token、audit、catalog、broker service |
+| `packages/csharp/function-pool` | TCP worker registry、dispatch、health |
+| `packages/csharp/worker-sdk` | capability worker host framework |
+| `packages/csharp/workers/file-worker` | file capability worker |
+| `packages/csharp/workers/browser-worker` | browser read/action worker |
+| `packages/csharp/workers/transport-tdx-worker` | TDX transport worker |
+| `packages/csharp/workers/site-crawler-worker` | site crawl/reconstruct/generate worker |
+| `packages/csharp/workers/execution-adapter-worker` | `repo.patch.apply`、`build.test.run` trusted adapter |
+| `packages/csharp/workers/line-worker` | LINE webhook ingress bridge |
+| `packages/csharp/database/BaseOrm/net8` | canonical lightweight ORM |
+| `packages/javascript/browser` | UI component library、page generator、browser package tests |
+| `tools/agent` | local/generation/governed agent runtime |
+| `tools/agent/container` | Podman governed agent stacks |
+| `tools/scripts` | repository validation scripts |
+| `tools/spa-generator` | SPA generator workbench |
+| `templates/spa` | generated SPA template |
+| `docs/designs` | architecture/design records |
+| `docs/manuals` | runbooks and manuals |
+
+## 3. Runtime 拓樸
+
+### 3.1 Windows LINE Sidecar
+
+Sidecar 是目前最重要的本機操作拓樸。
+
+```text
+PowerShell line-sidecar.ps1
+  -> publish broker
+  -> publish line-worker
+  -> provision worker-auth.json
+  -> start broker on 127.0.0.1:5361
+  -> start line-worker webhook on 127.0.0.1:5357
+  -> start/reuse ngrok
+  -> update LINE webhook
+```
+
+Runtime output：
+
+```text
+.run/line-sidecar/
+  broker/
+  line-worker/
+  data/broker.db
+  logs/
+```
+
+Sidecar 與直接 `dotnet run` 的差異：
+
+- Sidecar 會注入 production-style override。
+- Sidecar 會啟用 worker auth enforcement。
+- Sidecar DB 位於 `.run/line-sidecar/data/broker.db`。
+- Direct broker 預設 DB 是 `packages/csharp/broker/broker.db`。
+
+### 3.2 Direct Broker Development
+
+用於工程開發：
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT='Development'
+$env:ASPNETCORE_URLS='http://127.0.0.1:5361'
+dotnet run --project packages/csharp/broker/Broker.csproj -- --FunctionPool:Enabled=true
+```
+
+若沒有 Ollama 且不測 RAG/local LLM：
+
+```powershell
+$env:Embedding__Enabled='false'
+$env:LineChatGateway__RagEnabled='false'
+```
+
+### 3.3 FunctionPool Worker Topology
+
+當 `FunctionPool:Enabled=true`：
+
+```text
+broker PoolListener :7000
+  <- worker-sdk worker register
+  -> PoolDispatcher dispatch route
+  -> fallback in-process dispatcher if StrictMode=false
+```
+
+主要設定：
+
+| Key | Default | 說明 |
+| --- | --- | --- |
+| `FunctionPool:Enabled` | `false` | 是否啟用 worker TCP pool |
+| `FunctionPool:StrictMode` | `false` | true 時不 fallback 到 in-process |
+| `FunctionPool:ListenPort` | `7000` | worker registration/dispatch port |
+| `FunctionPool:DispatchTimeoutSeconds` | `30` | dispatch timeout |
+| `FunctionPool:MaxRetries` | `2` | dispatch retry |
+| `FunctionPool:HeartbeatTimeoutSeconds` | `30` | worker heartbeat timeout |
+| `FunctionPool:MaxWorkers` | `100` | worker 數上限 |
+
+Worker helper：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker file
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker browser
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker transport-tdx
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps1 -Worker site-crawler
+```
+
+### 3.4 Governed Agent Container Stack
+
+Podman stack 用於驗證 controlled agent core。
+
+主要 stack：
+
+| Compose | 用途 |
+| --- | --- |
+| `tools/agent/container/compose.yml` | mock Ollama protocol + broker + agent + workers |
+| `compose.openai-compatible.yml` | OpenAI-compatible mock or real provider path |
+| `compose.ollama-host.yml` | host Ollama path |
+
+Agent container 被設計為：
+
+- 只知道 broker URL、公鑰、principal、task、role。
+- 不直接持有 provider key。
+- 不直接接觸工具。
+- 透過 broker `/api/v1/runtime/spec` 取得 runtime defaults。
+- 透過 broker `/api/v1/llm/*` 取得 model health/list/chat。
+- 透過 broker `/api/v1/execution-requests/submit` 送工具需求。
+
+## 4. Broker 啟動與服務組成
+
+Broker startup 的主要組成：
+
+1. `BrokerDb.UseSqlite(connectionString)` 建立 SQLite-backed store。
+2. `BrokerDbInitializer` 初始化 schema、development seed、dashboard seed。
+3. `EnvelopeCrypto` 管理 ECDH envelope crypto。
+4. `ScopedTokenService` 發行 scoped delegation token。
+5. `SessionService` 管理 container/agent session。
+6. `RevocationService` / `CacheRevocationService` 管理 token/session revocation。
+7. `AuditService` 記錄 audit event。
+8. `CapabilityCatalog` / `CacheCapabilityCatalog` 管理 capability。
+9. `PolicyEngine` 做 PDP decision。
+10. `LlmProxyService` / `MeteredLlmProxyService` 作 broker-side inference gateway。
+11. `BrokerService` 執行 task、execution request、approval lifecycle。
+12. `ToolSpecRegistry` 讀取 `broker/tool-specs` 並同步 capability。
+13. `LineChatGateway` 與 `HighLevelCoordinator` 管理 LINE 高階流程。
+14. Optional FunctionPool、container manager、worker health monitor。
+15. Optional Drive、Azure IIS、browser runtime、RAG/embedding services。
+
+## 5. Core Data Models
+
+核心模型位於 `packages/csharp/broker-core/Models`。
+
+| Model | 用途 |
+| --- | --- |
+| `Principal` | 使用者、agent、worker、admin 等主體 |
+| `Role` | 角色定義 |
+| `RoleBinding` | principal 和 role 的綁定 |
+| `BrokerTask` | broker task |
+| `Capability` | capability 定義、route、risk、policy |
+| `CapabilityGrant` | task/principal/role 的能力授權與 scope |
+| `ContainerSession` | agent/container session |
+| `ExecutionRequest` | 受控執行請求與裁決結果 |
+| `ApprovalRequest` | approval lifecycle |
+| `AuditEvent` | audit trail |
+| `SharedContextEntry` | document-oriented shared context |
+| `VectorEntry` | embedding/vector search entries |
+| `Plan` / `PlanNode` / `PlanEdge` | DAG plan |
+| `Revocation` | token/session/capability revocation |
+| `SystemEpoch` | epoch-based invalidation |
+| `BrowserSiteBinding` | browser site identity binding |
+| `BrowserUserGrant` | user delegated browser grant |
+| `BrowserSystemBinding` | system account browser binding |
+| `BrowserSessionLease` | browser lease |
+| `GoogleDriveDelegatedCredential` | delegated OAuth token store |
+| `GoogleDriveOAuthState` | OAuth state |
+| `AzureIisDeploymentTarget` | deployment target |
+| `LocalAdminCredential` / `LocalAdminSession` | localhost admin auth |
+| `ObservationEvent` / `HealthScoreSnapshot` | monitoring/health |
+
+## 6. API Surface
+
+Broker 使用 `/api/v1` 作主要 API group。
+
+### 6.1 Public / bootstrap / exempt routes
+
+| Route | 說明 |
+| --- | --- |
+| `GET/POST /api/v1/health` | basic health |
+| `POST /api/v1/sessions/register` | session bootstrap |
+| `/api/v1/tool-specs/*` | tool spec list/get |
+| `/api/v1/local-admin/*` | localhost admin auth surface |
+| `/api/v1/high-level/line/*` | line-worker signed request path |
+| `/api/v1/user/approvals/*` | signed-link user approval path |
+
+### 6.2 Session, task, execution
+
+| Route group | 主要用途 |
+| --- | --- |
+| `POST /api/v1/sessions/register` | register session |
+| `POST /api/v1/sessions/heartbeat` | heartbeat |
+| `POST /api/v1/sessions/close` | close and cleanup |
+| `POST /api/v1/tasks/create` | create task |
+| `POST /api/v1/tasks/query` | query tasks |
+| `POST /api/v1/tasks/cancel` | cancel task |
+| `POST /api/v1/execution-requests/submit` | submit governed execution request |
+| `POST /api/v1/execution-requests/query` | query execution requests |
+
+### 6.3 Capability, grants, context, audit
+
+| Route group | 主要用途 |
+| --- | --- |
+| `POST /api/v1/capabilities/list` | list capabilities visible to caller |
+| `POST /api/v1/grants/list` | list grants |
+| `POST /api/v1/context/write` | write shared context |
+| `POST /api/v1/context/read` | read shared context |
+| `POST /api/v1/context/read-by-key` | read by key |
+| `POST /api/v1/context/list` | list context |
+| `POST /api/v1/context/history` | context history |
+| `POST /api/v1/audit/query` | audit query |
+| `POST /api/v1/audit/trace` | trace by correlation |
+| `POST /api/v1/audit/verify` | audit verification |
+
+### 6.4 Runtime and LLM proxy
+
+| Route | 用途 |
+| --- | --- |
+| `POST /api/v1/runtime/spec` | runtime defaults for governed agent |
+| `POST /api/v1/llm/health` | broker-mediated provider health |
+| `POST /api/v1/llm/models` | model listing |
+| `POST /api/v1/llm/chat` | chat/completion via broker |
+
+`LlmProxy` supports:
+
+- Ollama style API。
+- OpenAI chat completions。
+- OpenAI responses API。
+- Anthropic Claude Messages API (`/v1/messages`)。
+
+### 6.5 High-level LINE
+
+| Route | 用途 |
+| --- | --- |
+| `POST /api/v1/high-level/line/process` | canonical line-worker -> broker process |
+| `POST /api/v1/high-level/line/profile` | profile |
+| `POST /api/v1/high-level/line/draft` | draft |
+| `GET /api/v1/high-level/line/users` | users |
+| `POST /api/v1/high-level/line/users/permissions` | user permissions |
+| `GET/POST /api/v1/high-level/line/registration-policy` | registration policy |
+| `POST /api/v1/high-level/line/users/registration/review` | registration review |
+| `GET /api/v1/high-level/line/notifications/pending` | line-worker pulls notifications |
+| `POST /api/v1/high-level/line/notifications/complete` | mark notification complete |
+
+### 6.6 Local admin
+
+`/api/v1/local-admin/*` powers `line-admin.html`。
+
+Major route categories:
+
+- auth: status/login/change-password/logout。
+- system: `/system/status`。
+- LINE users/conversations/workflow。
+- browser site-bindings/user-grants/system-bindings/leases/execute/executions。
+- deployment targets/preview/execute/executions。
+- delivery Google Drive status/OAuth/share。
+- artifacts and notification retry。
+- tool specs。
+- approvals。
+- alerts。
+
+### 6.7 Browser, deployment, Drive, artifacts
+
+| Group | 用途 |
+| --- | --- |
+| `/api/v1/browser-admin/*` | browser binding and request preview |
+| `/api/v1/deployment-admin/*` | Azure IIS target/request/preview/execute |
+| `/api/v1/google-drive/oauth/callback` | OAuth callback |
+| `/api/v1/artifacts/download/{artifactId}` | signed artifact download |
+| `/api/v1/user/approvals/*` | user signed-link approval |
+
+### 6.8 Worker health and container management
+
+Available only when `FunctionPool:Enabled=true`：
+
+| Route | 用途 |
+| --- | --- |
+| `GET /api/v1/workers/` | list registered workers |
+| `POST /api/v1/workers/spawn` | spawn container worker |
+| `POST /api/v1/workers/stop` | stop worker container |
+| `GET /api/v1/workers/containers` | list containers |
+| `POST /api/v1/workers/logs` | fetch container logs |
+| `GET /api/v1/workers/health` | pool health |
+| `GET /api/v1/health/workers` | worker health summary |
+| `GET /api/v1/health/score` | worker health score |
+| `GET /api/v1/health/score/history` | score history |
+
+## 7. Tool Spec / Capability Catalog
+
+Tool specs live under:
+
+```text
+packages/csharp/broker/tool-specs
+```
+
+Current spec directories:
+
+| Tool spec |
+| --- |
+| `browser.reference.anonymous.navigate` |
+| `browser.reference.anonymous.read` |
+| `browser.reference.system-account.read` |
+| `browser.reference.user-delegated.read` |
+| `commerce.price.search` |
+| `delivery.google-drive.share` |
+| `deploy.azure-vm-iis` |
+| `knowledge.wikipedia.search` |
+| `site.crawl.source` |
+| `site.generate.package` |
+| `site.reconstruct.package` |
+| `transport.query` |
+| `travel.bus.search` |
+| `travel.flight.search` |
+| `travel.hsr.search` |
+| `travel.rail.search` |
+| `web.search.duckduckgo` |
+| `web.search.google` |
+
+Execution adapter capabilities are seeded/tested in broker/agent paths:
+
+| Capability | Agent tool route | Worker |
+| --- | --- | --- |
+| `repo.patch.apply` | `apply_patch` | `execution-adapter-worker` |
+| `build.test.run` | `run_build_test` | `execution-adapter-worker` |
+
+Tool spec capability sync runs as hosted service and keeps the broker catalog aligned with specs.
+
+## 8. Policy, Risk, Approval
+
+### 8.1 Risk levels
+
+`RiskLevel` has four tiers：
+
+| Tier | Meaning |
+| --- | --- |
+| Low | read-only, internal, no side effect |
+| Medium | reversible write within task/user scope |
+| High | irreversible, external, scope escape, agent control |
+| Critical | privilege escalation, secrets, production deploy, destructive/bulk, free shell |
+
+### 8.2 Approval policy
+
+| Policy | Meaning |
+| --- | --- |
+| `auto` | allow directly |
+| `auto_if_task_scope_match` | allow in scope, escalate if scope escapes |
+| `require_approval` | create approval request |
+| `require_dual_approval` | reserved, not MVP active |
+| `deny` | reject |
+
+### 8.3 Decision flow
+
+Broker policy flow:
+
+```text
+ExecutionRequest
+  -> validate session/token
+  -> resolve capability
+  -> resolve grants
+  -> validate route and payload schema
+  -> compare scope.paths/scope.routes
+  -> evaluate risk/policy
+  -> Allow | RequireApproval | Deny
+```
+
+High/Critical and scope escape should become `RequireApproval` when approval-eligible, not silent allow. Free shell remains denied.
+
+### 8.4 Approval tiers
+
+| Tier | Approver |
+| --- | --- |
+| User | owning user, signed link, own User-tier approvals only |
+| Admin | local admin, global approvals |
+
+MVP is single approver. Critical dual approval is not implemented.
+
+## 9. High-Level Coordinator
+
+### 9.1 Input grammar
+
+Parser rules are implemented in `HighLevelCommandParser`。
+
+| Kind | Prefix/token | Example |
+| --- | --- | --- |
+| Help | `?help`, `?h` | `?help` |
+| Query | `?` | `?search keyword` |
+| Production/config | `/` | `/name 小布` |
+| Project name | `#`, `＃` | `#MySite` |
+| Confirm | `確認`, `confirm`, `yes`, `y`, `ok`, `okay` | `confirm` |
+| Cancel | `取消`, `cancel`, `no`, `n` | `cancel` |
+| Conversation | no prefix | `請幫我想一個方案` |
+
+Query subcommands:
+
+- `search`, `s`, `搜尋`
+- `rail`, `r`, `train`, `tra`, `火車`, `台鐵`
+- `hsr`, `thsr`, `高鐵`
+- `bus`, `b`, `公車`, `客運`
+- `flight`, `f`, `flights`, `航班`, `機票`
+- `profile`, `p`, `me`, `whoami`
+
+Production/config subcommands:
+
+- `name`, `n`, `display-name`, `displayname`, `稱呼`
+- `id`, `i`, `user-id`, `userid`, `code`
+
+Project interview commands:
+
+- `/proj`
+- `/ok`
+- `/revise`
+- `/cancel`
+
+### 9.2 Workflow states
+
+High-level workflow separates：
+
+- conversation。
+- explicit query。
+- production draft。
+- project name requirement。
+- awaiting confirmation。
+- confirmed promotion。
+- cancellation。
+
+Promotion gate prevents raw chat from becoming execution without confirmed project name and explicit confirmation.
+
+### 9.3 Workspaces and artifacts
+
+Workspace service uses:
+
+```text
+{AccessRoot}/{channel}/{userId}/conversations
+{AccessRoot}/{channel}/{userId}/documents
+{AccessRoot}/{channel}/{userId}/projects
+```
+
+Document/code/site artifacts are written to managed workspace and represented in shared context / DB records for admin listing and delivery.
+
+## 10. Agent Runtime
+
+`tools/agent` supports three modes:
+
+| Mode | Description |
+| --- | --- |
+| local provider mode | direct Ollama/OpenAI-compatible provider |
+| generation/pipeline mode | `project.json` and CRUD generation |
+| governed mode | all model/tool traffic broker-mediated |
+
+Provider aliases:
+
+- `ollama`
+- `openai`
+- `gemini`
+- `deepseek`
+- `groq`
+- `mistral`
+
+Governed mode contract endpoints:
+
+- `POST /api/v1/sessions/register`
+- `POST /api/v1/runtime/spec`
+- `POST /api/v1/llm/health`
+- `POST /api/v1/llm/models`
+- `POST /api/v1/llm/chat`
+- `POST /api/v1/capabilities/list`
+- `POST /api/v1/grants/list`
+- `POST /api/v1/execution-requests/submit`
+- `POST /api/v1/sessions/heartbeat`
+- `POST /api/v1/sessions/close`
+
+Governed mode ignores direct provider flags as formal execution path:
+
+- `--provider`
+- `--api-key`
+- `--host`
+
+## 11. Agent Container Hardening
+
+Agent compose stacks apply:
+
+| Control | Intent |
+| --- | --- |
+| internal-only agent network | agent egress sealed, broker is only path |
+| read-only rootfs | prevent root filesystem mutation |
+| tmpfs `/tmp` | temporary writable space |
+| `cap_drop: ALL` | no Linux capabilities |
+| `no-new-privileges:true` | prevent privilege escalation |
+| non-root UID | least privilege |
+| `pids_limit` | fork-bomb containment |
+
+Current honest state:
+
+- Network egress sealing and OS sandbox are applied and verified in stack tests.
+- Runtime default seccomp profile applies.
+- Custom seccomp profile is not yet implemented.
+
+## 12. Execution Adapter Worker
+
+The execution adapter is a trusted execution node, not an agent bypass. Agent requests still pass through broker grants, policy and dispatch.
+
+### 12.1 `repo.patch.apply`
+
+Responsibilities:
+
+- Validate `base_commit == HEAD`。
+- Enforce `scope.allowed_paths`。
+- Reject out-of-scope patch。
+- Run `git apply --check` before applying。
+- Apply patch through `git apply`。
+- Produce diff/evidence。
+- Support idempotency。
+- Avoid free-form shell。
+
+### 12.2 `build.test.run`
+
+Responsibilities:
+
+- Accept only whitelist commands。
+- Avoid shell expansion。
+- Return structured stdout/stderr/exit code。
+- Truncate/record evidence。
+
+Typical validated commands include repo-approved forms such as:
+
+- `npm test`
+- `npm run build`
+- `dotnet test`
+- `dotnet build`
+- `pytest`
+
+Actual whitelist is controlled by worker configuration/code, not by natural-language prompt.
+
+## 13. Worker Auth
+
+Worker HTTP routes and TCP registration use identity credentials.
+
+Sidecar provisions:
+
+```text
+C:\secure\Bricks4Agent\worker-auth.json
+```
+
+Worker env prefix:
+
+```text
+WORKER_
+```
+
+Examples:
+
+```powershell
+$env:WORKER_Worker__BrokerHost='localhost'
+$env:WORKER_Worker__BrokerPort='7000'
+$env:WORKER_Worker__Auth__WorkerType='site-crawler-worker'
+$env:WORKER_Worker__Auth__KeyId='<key-id>'
+$env:WORKER_Worker__Auth__SharedSecret='<shared-secret>'
+```
+
+For canonical sidecar, prefer `run-worker.ps1` so credentials are loaded from the secure store.
+
+## 14. Storage and BaseOrm
+
+BaseOrm is the project’s lightweight ORM:
+
+- explicit SQL。
+- row mapping。
+- attribute-driven CRUD helpers。
+- simple table bootstrap。
+- no LINQ provider。
+- no change tracking。
+- no migrations。
+
+Supported providers:
+
+- SQLite。
+- SQL Server。
+- MySQL。
+- PostgreSQL。
+
+Important current behavior:
+
+- SQLite file-backed connections enable WAL, foreign keys, busy timeout。
+- Transaction state is execution-local, preventing concurrent request leakage on a shared `BaseDb`/`BrokerDb` instance。
+- `BaseOrm.cs` is mirrored into SPA generator and template locations; run sync validation after changing it。
+
+Validation：
+
+```powershell
+npm run validate:baseorm
+npm run validate:baseorm-sync
+```
+
+Live SQL Server/MySQL/PostgreSQL checks require:
+
+- `BASEORM_SQLSERVER_CONNECTION_STRING`
+- `BASEORM_MYSQL_CONNECTION_STRING`
+- `BASEORM_POSTGRESQL_CONNECTION_STRING`
+
+## 15. UI Library and Generators
+
+### 15.1 UI Components
+
+Canonical browser component library：
+
+```text
+packages/javascript/browser/ui_components
+```
+
+Metadata catalog：
+
+```text
+packages/javascript/browser/ui_components/metadata/component-catalog.json
+```
+
+Current catalog summary:
+
+- 108 components。
+- Categories: `common`, `form`, `input`, `layout`, `sections`, `social`, `viz`, `editor`, `data`。
+- Kinds: `atomic`, `composite`, `container`, `visualizer`。
+- Usage modes: `manual_only`, `definition_explicit`, `field_direct`, `runtime_only`。
+
+Validation:
+
+```powershell
+cd packages/javascript/browser
+npm run metadata:check
+npm test
+cd ..\..\..
+```
+
+Repo-level validation:
+
+```powershell
+npm run validate:ui-state
+npm run audit:ui-styles
+npm run validate:ui-library
+npm run validate:ui-library:browser
+```
+
+Determinism boundary:
+
+- site-gen static output and selected instance IDs are deterministic-clean。
+- static package is anchored to B components with `b_component` and `b-binding.json`。
+- Do not claim all runtime viz/map/social/download components are byte-deterministic; runtime timestamp/file naming behavior can be intentional。
+
+### 15.2 Page Generator
+
+Page generator entry:
+
+```text
+packages/javascript/browser/page-generator
+tools/page-gen.js
+```
+
+Commands:
+
+```powershell
+node tools/page-gen.js --validate --def employee.json
+node tools/page-gen.js --def employee.json --mode static --output .\output
+node tools/page-gen.js --list-types
+```
+
+### 15.3 SPA Generator
+
+Workbench：
+
+```text
+tools/spa-generator
+```
+
+It uses:
+
+- ASP.NET Core 8 minimal API。
+- SQLite。
+- BaseOrm。
+- JWT auth。
+- Vanilla JS frontend。
+
+It is not the canonical broker/LINE runtime.
+
+### 15.4 SPA Template
+
+Template：
+
+```text
+templates/spa
+```
+
+Current policy:
+
+- BaseOrm, not EF Core。
+- Validation includes EF Core removal guard。
+
+```powershell
+node tools/agent/tests/validate-efcore-removal.js
+```
+
+## 16. Site Crawler / Static Site Generation
+
+`site-crawler-worker` supports:
+
+- crawling source site。
+- deterministic extraction。
+- template matching。
+- static package generation。
+- reconstruct package path。
+- B component binding manifest。
+
+Important current architecture:
+
+- Generator vocabulary is anchored to canonical `ui_components` closed set。
+- Manifest loading fail-closes if `b_component` is absent or not in `BComponentRegistry`。
+- Arbitrary `.First()` template fallback was removed; neutral fallback records a gap rather than fabricating a component。
+- Static renderer remains as a byte-stable static export projection of B vocabulary.
+
+Tool specs:
+
+- `site.crawl.source`
+- `site.generate.package`
+- `site.reconstruct.package`
+
+## 17. Optional Integrations
+
+### 17.1 Ollama
+
+Used by:
+
+- local agent provider mode。
+- broker embedding。
+- RAG pipeline。
+- broker `LlmProxy` default config。
+- host Ollama Podman stack。
+
+Common setup:
+
+```powershell
+ollama serve
+ollama pull nomic-embed-text
+ollama pull qwen3.6:latest
+```
+
+If not using RAG/local LLM:
+
+```powershell
+$env:Embedding__Enabled='false'
+$env:LineChatGateway__RagEnabled='false'
+```
+
+### 17.2 Broker-mediated commercial providers
+
+High-level LINE path uses `HighLevelLlm`。
+
+Agent-facing broker proxy uses `LlmProxy`。
+
+When `ANTHROPIC_API_KEY` is available to `start-sidecar-stack.ps1`, sidecar writes runtime overrides for:
+
+- `Provider`: `anthropic`
+- `BaseUrl`: `https://api.anthropic.com`
+- `ApiFormat`: `messages`
+- `DefaultModel`: `claude-sonnet-4-6`
+- `MaxOutputTokens`: `4096`
+
+This is the preferred current sidecar path for Claude. The key stays in the user environment and is not committed to the repo.
+
+Typical OpenAI responses config:
+
+```powershell
+$env:OPENAI_BASE_URL='https://api.openai.com'
+$env:OPENAI_API_KEY='<key>'
+$env:OPENAI_API_FORMAT='responses'
+$env:STACK_MODEL='gpt-5.4-mini'
+```
+
+Do not put provider keys inside the agent container as the formal path.
+
+### 17.3 TDX
+
+Used by transport query / travel handlers.
+
+Required:
+
+- `Tdx:ClientId`
+- `Tdx:ClientSecret`
+
+Validation env:
+
+- `TDX_CLIENT_ID`
+- `TDX_CLIENT_SECRET`
+
+Without credentials, live TDX validation is skipped.
+
+### 17.4 Google Drive
+
+Modes:
+
+- `shared_delegated`
+- `user_delegated`
+- `system_account`
+
+Important routes:
+
+- `GET /api/v1/google-drive/oauth/callback`
+- local-admin Drive OAuth/status/share endpoints。
+
+Required for delegated OAuth:
+
+- `client_secret_*.json`
+- redirect URI: `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
+
+### 17.5 Azure VM IIS Deployment
+
+Tool spec:
+
+```text
+deploy.azure-vm-iis
+```
+
+Requires:
+
+- target VM with IIS。
+- WinRM/PowerShell remoting。
+- `WebAdministration` module。
+- deployment target record。
+- credentials via `DeploymentSecrets:Mappings` or env vars。
+
+This is Critical risk and must go through approval.
+
+### 17.6 Browser Governance
+
+Current browser subsystem has:
+
+- site binding。
+- user grant。
+- system binding。
+- lease。
+- request build。
+- preview/fetch。
+- execution records。
+
+Honest boundary:
+
+- action-level governance groundwork exists。
+- authenticated browser automation is not a full production browser automation platform yet。
+
+## 18. Configuration Reference
+
+### 18.1 Broker config sections
+
+| Section | Purpose |
+| --- | --- |
+| `Database` | DB path |
+| `Broker:MaxRequestBodyBytes` | broker request body cap, default 1 MiB |
+| `Broker:IpRateLimit` | single-node POST API IP fixed-window limiter |
+| `Broker:ScopedToken` | token secret/issuer/audience/ttl |
+| `Broker:Encryption` | session/envelope crypto |
+| `FunctionPool` | worker pool |
+| `Embedding` | embedding provider |
+| `RagPipeline` | query rewrite/rerank/cache |
+| `LineChatGateway` | conversation/RAG behavior |
+| `HighLevelLlm` | LINE high-level model |
+| `HighLevelExecutionModelPolicy` | execution model aliases |
+| `HighLevelCoordinator` | workspace/root/keywords/draft TTL |
+| `ProjectInterview` | template catalog/session timeout |
+| `ArtifactDownload` | signed download secret/TTL |
+| `WorkerAuth` | worker identity enforcement/routes |
+| `Tdx` | TDX credentials and URLs |
+| `ToolSpecRegistry` | tool spec root |
+| `LlmProxy` | agent-facing broker LLM proxy |
+| `GoogleDriveDelivery` | Drive delivery config |
+| `DeploymentSecrets` | deployment credential mapping |
+
+### 18.2 Common environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `ASPNETCORE_URLS` | broker listen URL |
+| `ASPNETCORE_ENVIRONMENT` | development/runtime config |
+| `BRICKS4AGENT_SECRETS_DIR` | secure local secrets directory |
+| `B4A_NODE_PATH` | broker artifact generation Node path |
+| `BROKER_URL` | governed agent broker URL |
+| `BROKER_PUB_KEY` | governed agent broker public key |
+| `BROKER_PRINCIPAL_ID` | governed agent principal |
+| `BROKER_TASK_ID` | governed agent task |
+| `BROKER_ROLE_ID` | governed agent role |
+| `OPENAI_API_KEY` | OpenAI-compatible provider key |
+| `ANTHROPIC_API_KEY` | Anthropic Claude provider key; sidecar prefers this over `Api.txt` when present |
+| `OPENAI_BASE_URL` | provider base URL in stack scripts |
+| `OPENAI_API_FORMAT` | `chat` or `responses` |
+| `STACK_MODEL` | Podman stack model override |
+| `OLLAMA_BASE_URL` | host Ollama URL |
+| `Broker__IpRateLimit__PermitLimit` | broker POST API per-IP requests per window |
+| `Broker__IpRateLimit__WindowSeconds` | broker POST API limiter window |
+| `WORKER_Line__OutboundRateLimit__PermitLimit` | LINE worker outbound sends per recipient/capability/window |
+| `WORKER_Line__OutboundRateLimit__WindowSeconds` | LINE worker outbound limiter window |
+| `TDX_CLIENT_ID` | TDX validation/runtime |
+| `TDX_CLIENT_SECRET` | TDX validation/runtime |
+
+ASP.NET nested config uses `__`:
+
+```powershell
+$env:FunctionPool__Enabled='true'
+$env:LlmProxy__BaseUrl='http://localhost:11434'
+$env:Embedding__Enabled='false'
+$env:Broker__IpRateLimit__PermitLimit='120'
+$env:WORKER_Line__OutboundRateLimit__PermitLimit='20'
+```
+
+### 18.3 Rate-limit guardrails
+
+Broker POST APIs use `Broker:IpRateLimit` as an in-process, fixed-window, per-IP guardrail. It returns JSON `429` responses with `Retry-After`. Health, local-admin, artifact download, OAuth callback, and `/dev` paths are excluded from this generic limiter and should keep their own route-specific controls.
+
+LINE worker outbound sending uses `Line:OutboundRateLimit` / `WORKER_Line__OutboundRateLimit__*`. The current limiter is in-memory and keyed by recipient + capability. It is implemented for `line.message.send` and `line.audio.send`; distributed quota coordination and `line.notification.send` coverage remain future hardening items.
+
+## 19. Build, Test, Validation
+
+### 19.1 Canonical build
+
+```powershell
+dotnet build packages/csharp/ControlPlane.slnx
+```
+
+### 19.2 Broker tests
+
+```powershell
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+```
+
+Integration with running broker:
+
+```powershell
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5361
+```
+
+### 19.3 xUnit
+
+```powershell
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+```
+
+### 19.4 BaseOrm and broker verify
+
+```powershell
+npm run validate:baseorm
+npm run validate:baseorm-sync
+npm run validate:broker-scope
+```
+
+`validate:broker-scope` skips live TDX when credentials are missing.
+
+### 19.5 Backend governance
+
+```powershell
+npm run validate:dotnet-deps
+npm run validate:dotnet-api-usage
+npm run validate:backend-governance
+```
+
+### 19.6 JS/UI/generator
+
+```powershell
+npm test
+npm run test:generator
+npm run validate:ui-state
+npm run audit:ui-styles
+npm run validate:ui-library
+npm run validate:ui-library:browser
+```
+
+Browser package:
+
+```powershell
+cd packages/javascript/browser
+npm run metadata:check
+npm test
+cd ..\..\..
+```
+
+### 19.7 Agent and stacks
+
+```powershell
+npm run validate:agent-governed
+npm run validate:agent-container-config
+npm run validate:broker-llm-proxy
+npm run validate:anthropic-provider-smoke
+npm run validate:podman-governed-stack
+npm run validate:podman-openai-compatible-stack
+npm run validate:podman-ollama-host-stack
+node tools/agent/tests/test-execution-adapter-config.js
+node tools/agent/tests/test-podman-execution-adapter-stack.js
+node tools/agent/tests/test-convergence.js
+node tools/agent/tests/validate-efcore-removal.js
+```
+
+## 20. Security Invariants
+
+Maintain these invariants:
+
+- No secrets committed to repo。
+- Worker auth credentials are local/secure and not hard-coded。
+- Agent container does not receive provider API key as formal path。
+- Broker mediates model calls for governed agent。
+- Broker mediates tool calls for governed agent。
+- Scope escape escalates to approval or deny。
+- Free-form shell is denied。
+- Execution adapter validates patch base commit and path scope。
+- Deployment is Critical and requires approval。
+- Artifact links are signed and time-limited。
+- Local admin is localhost-only。
+- Audit records are generated for security-relevant state changes。
+
+## 21. Known Limits
+
+Do not overstate the current system:
+
+- Custom seccomp profile is pending。
+- Full production operator console is not complete。
+- Critical dual approval is not active。
+- `line.message.send` and `line.audio.send` have worker-local outbound rate limiting; distributed quota coordination and `line.notification.send` coverage are not complete。
+- Browser authenticated automation is not production-complete。
+- Broader HTTP integration coverage for adapter/approval routes is still an improvement area。
+- Live external SQL Server/MySQL/PostgreSQL BaseOrm tests require configured DBs。
+- TDX live validation requires configured credentials。
+- Full `ui_components` runtime byte determinism is not claimed。
+
+## 22. Test Artifacts and Cleanup
+
+Known artifacts:
+
+| Artifact | Source | Cleanup |
+| --- | --- | --- |
+| `packages/csharp/broker/broker.db` | direct broker startup | delete after testing |
+| `packages/csharp/broker/broker.db-shm` | SQLite WAL/shared memory | delete with DB |
+| `packages/csharp/broker/broker.db-wal` | SQLite WAL | delete with DB |
+| `.test-output/` | stack/tests | delete after testing |
+| `test-results/` | Playwright | delete after testing |
+| `.run/line-sidecar/` | sidecar runtime | keep unless intentionally resetting sidecar |
+| `bin/`, `obj/` | .NET build | clean when no process uses them |
+| `node_modules/` | npm install | reinstallable |
+
+Cleanup direct broker/test output:
+
+```powershell
+Remove-Item -Force `
+  .\packages\csharp\broker\broker.db, `
+  .\packages\csharp\broker\broker.db-shm, `
+  .\packages\csharp\broker\broker.db-wal `
+  -ErrorAction SilentlyContinue
+
+Remove-Item -Recurse -Force .\.test-output -ErrorAction SilentlyContinue
+```
+
+Stop sidecar cleanly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 down
+```
+
+Stop Podman stack:
+
+```powershell
+podman compose -f tools/agent/container/compose.yml down -v
+```
+
+## 23. Recommended Reading Order
+
+1. `docs/manuals/current-user-manual.zh-TW.md`
+2. `docs/reports/CurrentArchitectureAndProgress-2026-06-13.md`
+3. `docs/designs/ControlledAutonomousAISystemTechnicalDesign.md`
+4. `docs/designs/RiskClassificationAndApproval-2026-06-13.md`
+5. `docs/designs/ApprovalWebInterface-2026-06-13.md`
+6. `docs/designs/ComponentLibraryConsolidation-2026-06-15.md`
+7. `tools/agent/README.md`
+8. `tools/agent/container/README.md`
+9. `packages/csharp/database/BaseOrm/README.md`

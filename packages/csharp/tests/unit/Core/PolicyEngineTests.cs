@@ -160,6 +160,30 @@ public class PolicyEngineTests
         result.Decision.Should().Be(PolicyDecision.Deny);
     }
 
+    [Fact]
+    public void Evaluate_AutoPolicy_MalformedGrantScope_Denied()
+    {
+        var payload = """{"route":"file.read","args":{"path":"docs/a.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Low, "auto"),
+            MakeGrant("""{"paths":["docs"]"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Deny);
+    }
+
+    [Fact]
+    public void Evaluate_AutoIfScopeMatch_MalformedGrantScope_RequiresApproval()
+    {
+        var payload = """{"route":"file.read","args":{"path":"docs/a.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Medium, "auto_if_task_scope_match"),
+            MakeGrant("""{"paths":["docs"]"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+    }
+
     // --- Rule 3: Route Mismatch ---
 
     [Fact]

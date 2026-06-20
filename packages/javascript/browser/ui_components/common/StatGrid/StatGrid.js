@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { StatCard } from '../../social/StatCard/StatCard.js';
+import { StatCard } from '../../social/StatCard/index.js';
 
 /**
  * StatGrid — 指標網格(複合)。grid of StatCard。確定性。

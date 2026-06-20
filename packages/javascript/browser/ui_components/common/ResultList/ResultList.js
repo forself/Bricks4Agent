@@ -1,7 +1,7 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Link } from '../Link/Link.js';
-import { Text } from '../Text/Text.js';
-import { Tag } from '../Tag/Tag.js';
+import { Link } from '../Link/index.js';
+import { Text } from '../Text/index.js';
+import { Tag } from '../Tag/index.js';
 
 /**
  * ResultList — 檢索結果列表(複合)。每筆 = Link(標題)+ Text(摘要)+ Text(meta)+ Tag(標籤)。

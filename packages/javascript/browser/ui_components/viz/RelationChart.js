@@ -68,10 +68,11 @@ export class RelationChart extends BaseChart {
         const cy = this.height / 2;
 
         // Initialize positions if not present
-        this.nodes.forEach(node => {
+        this.nodes.forEach((node, index) => {
             if (node.x === undefined) {
-                node.x = cx + (Math.random() - 0.5) * 50;
-                node.y = cy + (Math.random() - 0.5) * 50;
+                const key = this._nodeSeed(node, index);
+                node.x = cx + (this._deterministicUnit(`${key}:x`) - 0.5) * 50;
+                node.y = cy + (this._deterministicUnit(`${key}:y`) - 0.5) * 50;
             }
             node.vx = 0;
             node.vy = 0;
@@ -90,6 +91,19 @@ export class RelationChart extends BaseChart {
             }));
             this._drawLegend(legendItems);
         }
+    }
+
+    _nodeSeed(node, index) {
+        return String(node.id ?? node.label ?? node.name ?? index);
+    }
+
+    _deterministicUnit(seed) {
+        let hash = 2166136261;
+        for (let i = 0; i < seed.length; i++) {
+            hash ^= seed.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0) / 0xFFFFFFFF;
     }
 
     _runSimulation() {

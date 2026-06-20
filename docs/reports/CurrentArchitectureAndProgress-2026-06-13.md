@@ -12,7 +12,7 @@ and the **first real activation of the controlled agent container**.
 `origin/main` had stalled while three developers worked on long-lived branches.
 They were merged into one verified baseline, and then the controlled-agent
 container path — code-complete but never powered on — was driven end-to-end for
-the first time, against a mock backend, a real open model (qwen3.6), and a real
+the first time, against a mock backend, a host-side Ollama model, and a real
 commercial API (ChatGPT). The macro position holds and is firmer:
 
 **a broker-centered governed AI operations platform whose controlled-agent core now actually runs.**
@@ -47,25 +47,32 @@ verified across three LLM backends:
 | Backend | Model | Result |
 |---------|-------|--------|
 | mock | mock-ollama/openai | `STACK_OK` + `[governed] read_file` |
-| local ollama | qwen3.6 (23GB, native tool calling) | `OLLAMA_STACK_OK` |
-| **commercial API** | **real ChatGPT gpt-5.4-mini** (api.openai.com) | `STACK_OK` via governed chain |
+| local ollama | host Ollama model via `STACK_MODEL` | broker-mediated round trip, agent completion, clean session close |
+| OpenAI-compatible | bundled mock-openai by default; real OpenAI only with `OPENAI_BASE_URL` + key | protocol path via governed chain; real-provider run is env-gated |
+| Anthropic Claude | `anthropic` provider / `claude-sonnet-4-6` via broker adapter and sidecar override | request/response adapter and sidecar config are unit/config-tested; not represented as a dedicated compose stack |
 
 This satisfies the verifiable parts of §21: humans and AI go through the same
 authorization path, and the container reaches tools only via broker
-adjudication. Operations: [agent-container-runbook.md](../manuals/agent-container-runbook.md).
+adjudication. The mock stack remains the deterministic text/tool sentinel; live
+Ollama validation checks the broker-mediated round trip because local model
+instruction following varies by model. Operations: [agent-container-runbook.md](../manuals/agent-container-runbook.md).
 Activation detail: [AgentContainerActivation-2026-06-13.md](AgentContainerActivation-2026-06-13.md).
 
-## 4. Commercial Model API (ChatGPT)
+## 4. Commercial Model API
 
 The broker `LlmProxy` speaks ollama, OpenAI chat (`v1/chat/completions`), and
-OpenAI responses (`v1/responses`) with a Bearer key. The agent container itself
-holds **no** provider key or base URL — it talks only to the broker, and the
-**broker's** `LlmProxy` reaches the commercial API. Pointing that proxy at a real
-model is a broker-side setting (`OPENAI_BASE_URL=https://api.openai.com` plus
-key/format/model) — verified against real gpt-5.4-mini. (The LINE high-level path
-already used real OpenAI; this extends the same capability to the broker's
-agent-facing `LlmProxy`.) So the broker is already the inference gateway for the
-agent path; what is missing is *enforcing* that the container cannot bypass it.
+OpenAI responses (`v1/responses`) with a Bearer key, plus Anthropic Claude
+Messages (`/v1/messages`) with `x-api-key` and `anthropic-version`. The agent
+container itself holds **no** provider key or base URL — it talks only to the
+broker, and the **broker's** `LlmProxy` reaches the commercial API. Pointing that
+proxy at a real model is a broker-side setting. The sidecar now prefers
+`ANTHROPIC_API_KEY` and writes runtime overrides for `anthropic` /
+`claude-sonnet-4-6`; without that key it keeps the existing OpenAI-compatible
+`Api.txt` fallback path. The default OpenAI-compatible validation uses bundled
+mock-openai so the protocol path is repeatable without secrets; real-provider
+validation is available when provider environment variables are supplied. So the
+broker is already the inference gateway for the agent path; what is missing is
+*enforcing* that the container cannot bypass it.
 
 ## 5. Integration Bugs Surfaced By First Activation
 
@@ -76,7 +83,7 @@ integration bugs that unit tests and mock stacks could not catch — each fixed:
 2. broker fails to boot with `FunctionPool=false` — monitoring HealthScoreService unconditionally depends on IWorkerRegistry
 3. session register 500 `No data exists` — Microsoft.Data.Sqlite `IsDBNull` Linux edge case in BaseOrm
 4. `GET /api/v1/health` `Body was inferred` — health endpoints registered without their FunctionPool services
-5. real ChatGPT returns 200 but agent gets empty output — responses parser only read the top-level `output_text` SDK convenience field
+5. real-provider responses API returns 200 but agent gets empty output — responses parser only read the top-level `output_text` SDK convenience field
 
 Two of these (2, 4) were regressions from integrating the monitoring layer —
 caught because the integration agent only built, never ran.
@@ -96,7 +103,7 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 - The "language → gated structure → executed-under-governance" loop has a working demonstration end to end.
 
 ### Still weak / honest limits
-- The controlled agent container is past the read-only stage: the two §18.1 execution adapters (repo-adapter, build-test-adapter) are **implemented and verified end-to-end** (see below), so the agent now does real work — a model drove the agent to apply a patch all the way through the governed chain and the file was actually changed. **Still not done: the approval service (§18.2) and broker `--integration` coverage of the new routes.** The container itself is hardened (§13.1 egress + §13 OS sandbox).
+- The controlled agent container is past the read-only stage: the two §18.1 execution adapters (repo-adapter, build-test-adapter) are **implemented and verified end-to-end** (see below), so the agent now does real work — a model drove the agent to apply a patch all the way through the governed chain and the file was actually changed. **Still not done: broker `--integration` coverage of the new adapter routes.** The container itself is hardened (§13.1 egress + §13 OS sandbox).
 - Execution adapters (§18.1) — **implemented + e2e-verified 2026-06-13**:
   - A dedicated hardened worker (`execution-adapter-worker`) implements `repo.patch.apply` (validate base_commit, enforce scope.allowed_paths, `git apply --check` then apply, diff-artifact evidence, idempotency) and `build.test.run` (whitelist-only, no-shell, structured stdout/stderr + exit, evidence).
   - Verified by 38 broker unit-test assertions against **real git** (apply in-scope; reject base-commit mismatch / out-of-scope path / free-form shell with no write; only-patch-files-touched; idempotent replay; whitelist enforcement; truncation) — broker suite 154/154. Agent tool surface (`apply_patch`, `run_build_test`) wired; config-validation test green; the change does not regress the existing governed stack (still `STACK_OK`).
@@ -113,7 +120,9 @@ site crawl source, and the agent-container governed tools (read_file etc.).
 ### Dishonest to claim
 Not: a custom seccomp profile (the runtime default applies), dual-approval for
 Critical actions (MVP is single-approver), a fully production-hardened operator
-console, or `line.send` rate-limiting. Container confinement (egress + OS sandbox),
+console, or distributed/all-capability LINE send quotas. Worker-local rate
+limiting exists for `line.message.send` and `line.audio.send`; `line.notification.send`
+and distributed quota coordination are still open. Container confinement (egress + OS sandbox),
 the execution adapters (e2e-verified — a model drove `apply_patch` through the
 governed chain), and the §18.2 approval layer (decision + lifecycle + two tiers +
 both web surfaces, see §10) are all done and verified this cycle.
@@ -130,7 +139,7 @@ broker governance" in this cycle.
 3. ~~Execution adapters (§18.1 MVP): repo-adapter, build-test-adapter.~~ **Implemented + e2e-verified 2026-06-13** — `execution-adapter-worker` (`repo.patch.apply` + `build.test.run`), 38 real-git unit assertions + a full podman stack test where a model drives `apply_patch` through the governed chain and the file is actually patched. Remaining: broker `--integration` HTTP coverage of the new routes.
 4. ~~Approval service + risk tiering (§18.2).~~ **Implemented + verified 2026-06-13** — see §10.
 5. ~~Control-plane console (approval surface).~~ **Partially built 2026-06-13** — `line-admin.html` gained an approval queue tab; the broader operator console is still design-only.
-6. Custom seccomp profile for the agent; broker `--integration` coverage of adapter + approval routes; line.send rate-limit.
+6. Custom seccomp profile for the agent; broker `--integration` coverage of adapter + approval routes; distributed/all-capability LINE send quotas.
 
 ## 10. Governance approval system (§18.2) — implemented + verified 2026-06-13
 
@@ -143,15 +152,16 @@ definition ([RiskClassificationAndApproval-2026-06-13.md](../designs/RiskClassif
 - **Two tiers**: `User` (the owning user approves, in their own interface, limited to their scope) vs `Admin` (global, back-office). Broker enforces the authorization (a non-admin can only decide a User-tier approval they own).
 - **Web surfaces**: admin approval tab in `line-admin.html` (localhost-only) + a user page (`user-approvals.html`) authenticated by a short-lived signed link sent over LINE. Both render the request **content** — a `repo.patch.apply` shows its unified diff — so the approver decides on substance, not a one-line string. The link is auto-sent on User-tier creation via `IApprovalNotifier` → `QueueLineNotification`.
 - **Verified**: PolicyEngine 13 tests, approval lifecycle 25, link/notifier 13 — broker suite **192/192**, xUnit **343/343**, solution builds clean; a live broker smoke confirmed the endpoints serve and enforce auth (bad token → 401, admin without login → 401).
-- **Not done**: `require_dual_approval` (MVP is single-approver), `line.send` rate-limit, a full browser+LINE manual e2e, and the broader control-plane console.
+- **Not done**: `require_dual_approval` (MVP is single-approver), distributed/all-capability LINE send quotas, a full browser+LINE manual e2e, and the broader control-plane console.
 
 ## 9. Bottom Line
 
 The platform converged three developers back onto a live main, and its central
 controlled-agent core now genuinely runs — including against ChatGPT. It is past
-"serious POC" on the piece that matters most. It is not a hardened controlled
-autonomous system yet: the security, isolation, and approval layers that make
-"controlled" mean something under attack are still ahead.
+"serious POC" on the piece that matters most. It is not a fully production-hardened
+controlled autonomous system yet: custom seccomp, broader operator-console
+coverage, distributed/all-capability LINE send quotas, and deeper HTTP integration coverage are still
+ahead.
 
 ## 10. Addendum 2026-06-16 — Component-library consolidation + site-replica e2e
 

@@ -47,7 +47,7 @@ export class MediaPlayer {
         style.id = 'mediaplayer-component-styles';
         style.textContent = `
             .cl-media { max-width: 100%; }
-            .cl-media--video { width: 100%; border-radius: var(--cl-radius-md); background: #000; }
+            .cl-media--video { width: 100%; border-radius: var(--cl-radius-md); background: var(--cl-surface-contrast); }
             .cl-media--audio { width: 100%; }
         `;
         document.head.appendChild(style);

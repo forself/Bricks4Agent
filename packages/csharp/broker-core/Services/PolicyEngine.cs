@@ -113,6 +113,9 @@ public class PolicyEngine : IPolicyEngine
 
     private static bool IsScopeValid(string payload, string requestedRoute, string grantScope, string taskScope)
     {
+        if (!IsScopeJsonValid(grantScope) || !IsScopeJsonValid(taskScope))
+            return false;
+
         try
         {
             var scopeRoutes = ExtractRoutes(grantScope) ?? ExtractRoutes(taskScope);
@@ -145,6 +148,22 @@ public class PolicyEngine : IPolicyEngine
         catch
         {
             return true;
+        }
+    }
+
+    private static bool IsScopeJsonValid(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return true;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch
+        {
+            return false;
         }
     }
 

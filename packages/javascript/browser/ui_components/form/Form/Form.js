@@ -1,11 +1,11 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { TextInput } from '../TextInput/TextInput.js';
-import { Textarea } from '../Textarea/Textarea.js';
-import { NumberInput } from '../NumberInput/NumberInput.js';
-import { Dropdown } from '../Dropdown/Dropdown.js';
-import { Checkbox } from '../Checkbox/Checkbox.js';
-import { Text } from '../../common/Text/Text.js';
-import { BasicButton } from '../../common/BasicButton/BasicButton.js';
+import { TextInput } from '../TextInput/index.js';
+import { Textarea } from '../Textarea/index.js';
+import { NumberInput } from '../NumberInput/index.js';
+import { Dropdown } from '../Dropdown/index.js';
+import { Checkbox } from '../Checkbox/index.js';
+import { Text } from '../../common/Text/index.js';
+import { BasicButton } from '../../common/BasicButton/index.js';
 
 /**
  * Form — 通用資料輸入表單(複合)。每欄由原子組成(label + 對應輸入原子 + error),加送出/重設 + 必填驗證。

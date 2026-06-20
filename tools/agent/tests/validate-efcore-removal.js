@@ -373,51 +373,51 @@ public class ProductService : IProductService
 // ============================================================
 
 (function testGlobalScan() {
-    const { execSync } = require('child_process');
-
-    // 用 grep 掃描所有 .cs 檔 (排除 BaseOrm.cs 和 bin/obj)
-    try {
-        const result = execSync(
-            `grep -rl "EntityFrameworkCore" "${ROOT}" --include="*.cs" | grep -v node_modules | grep -v bin | grep -v obj | grep -v ".claude"`,
-            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-        ).trim();
-
-        const files = result ? result.split('\n').filter(Boolean) : [];
-        assert(
-            '7a. 無 .cs 檔包含 EntityFrameworkCore',
-            files.length === 0,
-            `殘留檔案: ${files.join(', ')}`
-        );
-    } catch (e) {
-        // grep returns exit code 1 when no matches found
-        if (e.status === 1) {
-            assert('7a. 無 .cs 檔包含 EntityFrameworkCore', true);
-        } else {
-            assert('7a. 無 .cs 檔包含 EntityFrameworkCore', false, `掃描失敗: ${e.message}`);
-        }
+    function shouldSkip(filePath) {
+        const normalized = path.relative(ROOT, filePath).replace(/\\/g, '/');
+        return normalized.includes('/node_modules/') ||
+            normalized.includes('/bin/') ||
+            normalized.includes('/obj/') ||
+            normalized.includes('/.claude/');
     }
 
-    // 掃描 .json 設定檔
-    try {
-        const result = execSync(
-            `grep -rl "EntityFrameworkCore" "${ROOT}" --include="*.json" | grep -v node_modules | grep -v bin | grep -v obj | grep -v ".claude" | grep -v package-lock`,
-            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
-        ).trim();
-
-        const files = result ? result.split('\n').filter(Boolean) : [];
-        assert(
-            '7b. 無 .json 檔包含 EntityFrameworkCore',
-            files.length === 0,
-            `殘留檔案: ${files.join(', ')}`
-        );
-    } catch (e) {
-        if (e.status === 1) {
-            assert('7b. 無 .json 檔包含 EntityFrameworkCore', true);
-        } else {
-            assert('7b. 無 .json 檔包含 EntityFrameworkCore', false, `掃描失敗: ${e.message}`);
+    function walkFiles(dir, predicate, out = []) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+            if (shouldSkip(fullPath)) continue;
+            if (entry.isDirectory()) {
+                walkFiles(fullPath, predicate, out);
+            } else if (predicate(fullPath)) {
+                out.push(fullPath);
+            }
         }
+        return out;
     }
-})();
+
+    function findEfCoreMentions(extension, extraSkip = () => false) {
+        return walkFiles(
+            ROOT,
+            (filePath) => filePath.endsWith(extension) && !extraSkip(filePath)
+        ).filter((filePath) => fs.readFileSync(filePath, 'utf-8').includes('EntityFrameworkCore'));
+    }
+
+    const csFiles = findEfCoreMentions('.cs');
+    assert(
+        '7a. ? .cs ??? EntityFrameworkCore',
+        csFiles.length === 0,
+        `????: ${csFiles.map(f => path.relative(ROOT, f)).join(', ')}`
+    );
+
+    const jsonFiles = findEfCoreMentions(
+        '.json',
+        (filePath) => path.basename(filePath).toLowerCase() === 'package-lock.json'
+    );
+    assert(
+        '7b. ? .json ??? EntityFrameworkCore',
+        jsonFiles.length === 0,
+        `????: ${jsonFiles.map(f => path.relative(ROOT, f)).join(', ')}`
+    );
+})
 
 // ============================================================
 // 報告

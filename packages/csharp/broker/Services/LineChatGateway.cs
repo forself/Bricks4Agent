@@ -458,6 +458,7 @@ public class LineChatGateway
             return provider switch
             {
                 "ollama" => await SendOllamaChatAsync(messages, ct),
+                "anthropic" or "claude" => await HighLevelAnthropicClient.SendAsync(_httpClient, _highLevelLlmOptions, messages, ct),
                 _ => string.Equals(_highLevelLlmOptions.ApiFormat, "responses", StringComparison.OrdinalIgnoreCase)
                     ? await SendResponsesApiAsync(messages, ct)
                     : await SendChatCompletionsAsync(messages, ct)

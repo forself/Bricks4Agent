@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { TextInput } from '../../form/TextInput/TextInput.js';
+import { TextInput } from '../../form/TextInput/index.js';
 
 /**
  * EditableTable — 可編輯 + 可排序表格(複合)。表頭點擊排序(確定性比較);可編輯格用 TextInput 原子。

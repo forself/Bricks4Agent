@@ -1,5 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { FeatureCard } from '../FeatureCard/FeatureCard.js';
+import { FeatureCard } from '../FeatureCard/index.js';
 
 /**
  * CardGrid — 卡片網格(複合)。grid of FeatureCard。確定性。

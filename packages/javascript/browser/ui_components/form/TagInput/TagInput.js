@@ -1,7 +1,7 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { TextInput } from '../TextInput/TextInput.js';
-import { Tag } from '../../common/Tag/Tag.js';
-import { Icon } from '../../common/Icon/Icon.js';
+import { TextInput } from '../TextInput/index.js';
+import { Tag } from '../../common/Tag/index.js';
+import { Icon } from '../../common/Icon/index.js';
 
 /**
  * TagInput — 多標籤輸入(複合)。TextInput + 每標籤一個 Tag(可移除)。確定性展開。

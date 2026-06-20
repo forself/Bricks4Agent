@@ -88,6 +88,22 @@ assertIncludes('podman stack validates broker tool dispatch', podmanStackTest, "
 assertIncludes('podman stack forces utf8 compose output', podmanStackTest, "PYTHONIOENCODING: 'utf-8'");
 assertNotIncludes('podman stack avoids compose build flag', podmanStackTest, "'--build'");
 
+const ollamaHostCompose = read('tools/agent/container/compose.ollama-host.yml');
+assertIncludes('ollama host compose defaults to qwen3.6', ollamaHostCompose, 'qwen3.6:latest');
+assertNotIncludes('ollama host compose does not default qwen3-coder', ollamaHostCompose, 'qwen3-coder:30b');
+
+const ollamaHostStackTest = read('tools/agent/tests/test-podman-ollama-host-stack.js');
+assertIncludes('ollama host auto-selection prefers qwen3.6', ollamaHostStackTest, "const preferredModels = ['qwen3.6:latest', 'qwen3.6'];");
+
+const sidecarStartScript = read('packages/csharp/workers/line-worker/start-sidecar-stack.ps1');
+assertIncludes('sidecar can read Anthropic API key', sidecarStartScript, 'ANTHROPIC_API_KEY');
+assertIncludes('sidecar can select Anthropic high-level provider', sidecarStartScript, 'Provider = "anthropic"');
+assertIncludes('sidecar defaults Anthropic model to Claude Sonnet 4.6', sidecarStartScript, 'claude-sonnet-4-6');
+
+const packageJson = read('package.json');
+assertIncludes('package exposes Anthropic provider smoke validation', packageJson, '"validate:anthropic-provider-smoke"');
+assertIncludes('package Anthropic smoke points at provider smoke script', packageJson, 'tools/agent/tests/test-anthropic-provider-smoke.js');
+
 const containerManager = read('packages/csharp/function-pool/Container/ContainerManager.cs');
 assertNotIncludes('container manager no StringBuilder', containerManager, 'new StringBuilder');
 assertNotIncludes('container manager no raw Arguments assignment', containerManager, 'Arguments = arguments');

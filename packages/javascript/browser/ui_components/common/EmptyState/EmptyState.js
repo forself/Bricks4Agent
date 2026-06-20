@@ -1,8 +1,8 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Icon } from '../Icon/Icon.js';
-import { Heading } from '../Heading/Heading.js';
-import { Text } from '../Text/Text.js';
-import { BasicButton } from '../BasicButton/BasicButton.js';
+import { Icon } from '../Icon/index.js';
+import { Heading } from '../Heading/index.js';
+import { Text } from '../Text/index.js';
+import { BasicButton } from '../BasicButton/index.js';
 
 /**
  * EmptyState — 空狀態(複合元件)。

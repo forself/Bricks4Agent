@@ -1,6 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Link } from '../Link/Link.js';
-import { Icon } from '../Icon/Icon.js';
+import { Link } from '../Link/index.js';
+import { Icon } from '../Icon/index.js';
 
 /**
  * DropdownMenu — 動作選單(複合,vs Dropdown=select)。觸發鈕 + 選單(Link 項)。確定性開合。
@@ -36,7 +36,7 @@ export class DropdownMenu {
                 padding: 6px 12px; font-family: var(--cl-font-family); color: var(--cl-text-primary); }
             .cl-dropdownmenu-panel { position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 140px;
                 background: var(--cl-bg-primary); border: 1px solid var(--cl-border); border-radius: var(--cl-radius-md);
-                box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px; z-index: 10; display: none; }
+                box-shadow: var(--cl-shadow-md); padding: 4px; z-index: 10; display: none; }
             .cl-dropdownmenu--open .cl-dropdownmenu-panel { display: block; }
             .cl-dropdownmenu-item { display: block; padding: 6px 10px; border-radius: var(--cl-radius-sm); }
             .cl-dropdownmenu-item:hover { background: var(--cl-bg-secondary); }

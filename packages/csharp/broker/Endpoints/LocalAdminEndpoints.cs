@@ -293,7 +293,7 @@ public static class LocalAdminEndpoints
             }));
         });
 
-        localAdmin.MapPost("/browser/site-bindings", async (HttpContext ctx, LocalAdminAuthService auth, BrowserBindingService service) =>
+        localAdmin.MapPost("/browser/site-bindings", (HttpContext ctx, LocalAdminAuthService auth, BrowserBindingService service) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
                 return denied;

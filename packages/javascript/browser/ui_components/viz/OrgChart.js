@@ -1,6 +1,7 @@
 import { BaseChart } from './BaseChart.js';
 
 import { ModalPanel } from '../layout/Panel/index.js';
+import { nextUid } from '../utils/uid.js';
 
 export class OrgChart extends BaseChart {
     constructor(options) {
@@ -220,7 +221,7 @@ export class OrgChart extends BaseChart {
     }
 
     _showNodeDetail(node) {
-        const btnId = `org-action-btn-${Date.now()}`;
+        const btnId = nextUid('org-action-btn');
         // Default or Custom Action
         const action = this.options.actionButton || {
             label: 'Send Email',

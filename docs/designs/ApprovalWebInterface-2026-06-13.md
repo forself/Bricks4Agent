@@ -1,7 +1,7 @@
 # 審批 Web 介面:分析・評估・規劃 (§18.2-C2)
 
 Date: 2026-06-13
-Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用者簽章連結頁 + LINE 自動送連結皆完成、測過、實機 smoke 通過。僅 §6.4(4)line.send rate-limit 待做。
+Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用者簽章連結頁 + LINE 自動送連結皆完成、測過、實機 smoke 通過。2026-06-20 補上 `line.message.send` / `line.audio.send` worker-local outbound rate limit；分散式 quota 與 `line.notification.send` 覆蓋仍待做。
 依據: [RiskClassificationAndApproval-2026-06-13.md](RiskClassificationAndApproval-2026-06-13.md) §6.5(兩層審批)
 銜接引擎: PolicyEngine RequireApproval(+tier)、BrokerService approve/reject/list、`ApprovalRequest` 持久化
 
@@ -59,15 +59,15 @@ Status: **已實作(2026-06-13)** —— 共用後端 + 管理員分頁 + 使用
 
 建議:**先 Phase 1(管理員後台,快又高價值),再 Phase 2a(使用者連結式 web 審批)**。LINE 仍保留為「通知 + 輕量確認」管道,但「需看內容」的決策導向 web。
 
-### Phase 3 — line.send 頻率限制(獨立小項)
+### Phase 3 — LINE send 頻率限制(獨立小項)
 
-per-user quota / rate-limit,異常量才升 High。與審批 UI 無關,可並行。
+已完成基本 worker-local rate-limit：依 recipient + capability 限制 `line.message.send` / `line.audio.send`。仍待補分散式 quota、營運級 per-user/per-channel quota、異常量升 High，以及 `line.notification.send` 覆蓋。與審批 UI 無關,可並行。
 
 ## 4. 建議落地順序
 
 1. **Phase 1 管理員審批分頁 + 端點**(test-first:端點整合測 + UI 手動驗)。← 最高 CP 值,先做。
 2. Phase 2a 使用者連結式 web 審批(新使用者 web 認證 + 頁面)。
-3. Phase 3 line.send rate-limit。
+3. Phase 3 LINE send quota/rate-limit hardening。
 
 ## 5. 已定案(owner,2026-06-13)
 
@@ -127,6 +127,6 @@ UI:`line-admin.html` 新「審批」分頁(見上方 mockup)。
 2. ✅ **管理員端點 + line-admin.html 審批分頁**(`e3015b6`,build+JS+實機 smoke)。
 3. ✅ **使用者簽章連結認證 + 使用者端點 + user-approvals.html**(`752f0cc`,8 token 測試 + 實機)。
 3b. ✅ **LINE 自動送連結**:`IApprovalNotifier` seam + `LineApprovalNotifier`(`3620a45`,5 測試)—— User 層審批建立時 → 組簽章連結 → `QueueLineNotification` → line-worker 送達。
-4. ⬜ line.send rate-limit(Phase 3,獨立,待做)。
+4. ◐ LINE send rate-limit(Phase 3,獨立): `line.message.send` / `line.audio.send` worker-local limiter 已完成；分散式 quota 與 `line.notification.send` 覆蓋待做。
 
 實機 smoke(2026-06-13,真實 broker):使用者端點 bad token→401、`user-approvals.html`/`line-admin.html`→200、管理員端點未登入→401。

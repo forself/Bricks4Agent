@@ -42,6 +42,12 @@ if (string.IsNullOrEmpty(channelAccessToken) || string.IsNullOrEmpty(channelSecr
 }
 
 using var lineApi = new LineApiClient(channelAccessToken, channelSecret);
+var outboundRateLimiter = new LineOutboundRateLimiter(new LineOutboundRateLimitOptions
+{
+    PermitLimit = config.GetValue("Line:OutboundRateLimit:PermitLimit", 20),
+    Window = TimeSpan.FromSeconds(Math.Max(1, config.GetValue("Line:OutboundRateLimit:WindowSeconds", 60))),
+    MaxTrackedKeys = config.GetValue("Line:OutboundRateLimit:MaxTrackedKeys", 1024)
+});
 
 var brokerApiUrl = config.GetValue<string>("Broker:ApiUrl") ?? "http://localhost:5000";
 var workerAuthType = config.GetValue<string>("Worker:Auth:WorkerType")
@@ -82,9 +88,9 @@ var options = new WorkerHostOptions
 
 var host = new WorkerHost(options, logger);
 
-host.RegisterHandler(new SendMessageHandler(lineApi, defaultRecipientId));
+host.RegisterHandler(new SendMessageHandler(lineApi, defaultRecipientId, outboundRateLimiter));
 host.RegisterHandler(new SendNotificationHandler(lineApi, defaultRecipientId));
-host.RegisterHandler(new SendAudioHandler(lineApi, defaultRecipientId));
+host.RegisterHandler(new SendAudioHandler(lineApi, defaultRecipientId, outboundRateLimiter));
 host.RegisterHandler(new RequestApprovalHandler(lineApi, inboundDispatcher, defaultRecipientId));
 host.RegisterHandler(new ReadMessagesHandler());
 

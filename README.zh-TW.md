@@ -1,209 +1,156 @@
 # Bricks4Agent
 
-English version：
-
+English version:
 - [README.md](/d:/Bricks4Agent/README.md)
 
 ## 專案定位
 
-`Bricks4Agent` 是一個正在往控制面發展的 broker-mediated AI operations prototype。
+`Bricks4Agent` 是以 broker 為中心的受治理 AI operations 平台原型。核心原則是：
 
-它現在已經不能準確地只被描述成：
+- broker 是控制平面，不是自主 planner。
+- 高階模型提出意圖，broker 驗證、記錄並轉成結構化 intent。
+- 執行層消耗 broker 核准後的結構化 intent，不直接吃原始對話。
+- 使用者工作區位於 `{AccessRoot}/{channel}/{userId}/{conversations|documents|projects}`。
 
-- AI coding CLI
-- page generator
-- UI component library
+目前 canonical LINE 路徑是：
 
-這些子系統仍然存在，但目前 live 系統已經包含：
-
-- LINE ingress
-- broker-governed high-level routing
-- 結構化 intent、memory、promotion gate
-- governed execution
-- 每位使用者的 managed workspace
-- artifact generation 與 delivery
-- browser governance groundwork
-- Azure VM IIS deployment groundwork
-- 本機 admin console
-
-## 目前 canonical live 路徑
-
-`LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
-
-目前本機 canonical sidecar 埠號：
-
-- broker：`127.0.0.1:5361`
-- line-worker webhook：`127.0.0.1:5357`
-
-重要說明：
-
-- `agent --line-listen` 已是 legacy/development-only
-- 目前正式 LINE 路徑是 `line-worker -> broker high-level coordinator`
-
-## 主要區域
-
-### Broker 與控制面
-
-- [broker](/d:/Bricks4Agent/packages/csharp/broker)
-- [broker-core](/d:/Bricks4Agent/packages/csharp/broker-core)
-
-### LINE ingress 與操作路徑
-
-- [line-worker](/d:/Bricks4Agent/packages/csharp/workers/line-worker)
-
-### Agent runtime 與 governed execution
-
-- [tools/agent](/d:/Bricks4Agent/tools/agent)
-- [tools/agent/container](/d:/Bricks4Agent/tools/agent/container)
-
-### UI library 與 generation
-
-- [ui_components](/d:/Bricks4Agent/packages/javascript/browser/ui_components)
-- [page-generator](/d:/Bricks4Agent/packages/javascript/browser/page-generator)
-- [templates/spa](/d:/Bricks4Agent/templates/spa)
-- [tools/spa-generator](/d:/Bricks4Agent/tools/spa-generator)
-
-### 文件與設計說明
-
-- [docs/reports](/d:/Bricks4Agent/docs/reports)
-- [docs/designs](/d:/Bricks4Agent/docs/designs)
-- [docs/manuals](/d:/Bricks4Agent/docs/manuals)
-
-## 模組入口文件
-
-主要模組與子系統的入口文件：
-
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-- [tools/agent/README.md](/d:/Bricks4Agent/tools/agent/README.md)
-- [tools/agent/container/README.md](/d:/Bricks4Agent/tools/agent/container/README.md)
-- [packages/javascript/browser/page-generator/README.md](/d:/Bricks4Agent/packages/javascript/browser/page-generator/README.md)
-- [tools/spa-generator/README.md](/d:/Bricks4Agent/tools/spa-generator/README.md)
-- [templates/spa/README.md](/d:/Bricks4Agent/templates/spa/README.md)
-- [templates/spa/scripts/README.md](/d:/Bricks4Agent/templates/spa/scripts/README.md)
-- [tools/static-server/README.md](/d:/Bricks4Agent/tools/static-server/README.md)
-- [packages/csharp/reporting/README.md](/d:/Bricks4Agent/packages/csharp/reporting/README.md)
-- [packages/csharp/reporting/ExampleHost/README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.md)
-- [packages/csharp/database/BaseOrm/README.md](/d:/Bricks4Agent/packages/csharp/database/BaseOrm/README.md)
-
-## 子專案與範例專案
-
-代表性的 sample / generated project 入口：
-
-- [projects/ShopBricks-Gen/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/README.md)
-- [projects/ShopBricks-Gen/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/scripts/README.md)
-- [projects/ShopBricks/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks/scripts/README.md)
-
-## 目前高階模型
-
-LINE 高階回應層目前設定為：
-
-- provider：`openai-compatible`
-- model：`gpt-5.4-mini`
-
-這一層負責：
-
-- 對話
-- 需求澄清
-- broker-mediated query synthesis
-- execution-model suggestion
-
-它和下游 execution-model request 是分開的。
-
-## 目前高階互動語法
-
-代表性指令包括：
-
-- `?help` / `?h`
-- `?search` / `?s`
-- `?rail` / `?r`
-- `?hsr`
-- `?bus` / `?b`
-- `?flight` / `?f`
-- `?profile` / `?p`
-- `/name` / `/n`
-- `/id` / `/i`
-- `#ProjectName`
-- `confirm`
-- `cancel`
-
-## 快速開始
-
-### Canonical 本機 sidecar 路徑
-
-請看：
-
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-- [docs/manuals/line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-
-canonical 啟動命令：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+```text
+LINE webhook -> public tunnel -> line-worker -> broker /api/v1/high-level/line/process
 ```
 
-canonical 狀態命令：
+`agent --line-listen` 只保留作為 legacy/development-only 路徑。
+
+## 主要區塊
+
+- Broker / control plane: `packages/csharp/broker`, `packages/csharp/broker-core`
+- LINE ingress: `packages/csharp/workers/line-worker`
+- Governed agent runtime: `tools/agent`, `tools/agent/container`
+- UI library / generation: `packages/javascript/browser/ui_components`, `packages/javascript/browser/page-generator`
+- SPA generator / template: `tools/spa-generator`, `templates/spa`
+- 文件: `docs/reports`, `docs/designs`, `docs/manuals`
+
+## 快速啟動
+
+Broker 與 LINE sidecar 的常用本機埠：
+
+- broker: `http://127.0.0.1:5361`
+- line-worker webhook: `http://127.0.0.1:5357`
+- admin console: `http://127.0.0.1:5361/line-admin.html`
+
+啟動 sidecar：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 start
+```
+
+檢查狀態：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
 ```
 
-canonical 驗證命令：
+送出 canonical 驗證訊息：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message "hello"
 ```
 
-### 本機 admin console
+## 目前高階回覆模型
 
-- `http://127.0.0.1:5361/line-admin.html`
+LINE sidecar 的 high-level responder 會優先讀取 `ANTHROPIC_API_KEY`，並使用：
 
-若本機 DB 裡還沒有 admin credential，初始密碼是 `admin`，第一次登入必須修改。
+- provider: `anthropic`
+- model: `claude-sonnet-4-6`
 
-## 目前的優點
+若沒有 `ANTHROPIC_API_KEY`，則回到既有 OpenAI-compatible `Api.txt` fallback 路徑。
 
-- 控制面方向已經明確
-- 有真實可用的 LINE live ingress path
-- 有明確 command grammar 與 workflow gating
-- raw log / interpretation / memory / execution intent 的分層已建立
-- delivery 與 deployment 不再只是概念稿
+## Agent Container
 
-## 目前的限制
+Agent container 是 Podman-based governed stack：LLM-driven agent 在隔離容器中執行，只能透過 broker claim work、要求 governed tool execution、回報結果；它不直接碰工具、資料或 model provider。
 
-- 各子系統成熟度仍不平均
-- broker 是不可迴避節點，必須持續維持窄核心與清楚邊界
-- browser governance 還在 groundwork 階段，不是完整 browser automation platform
-- deployment 與 delivery 雖已能用，但還未完全抽象成通用平台原語
+目前有三條 LLM 驗證路徑：
 
-## 建議閱讀順序
+```powershell
+# mock：離線驗證 governed chain 與 deterministic sentinel
+node tools/agent/tests/test-podman-governed-stack.js
 
-1. [docs/reports/CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
-2. [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-4. `docs/designs` 內的子系統文件
+# host Ollama：透過 broker LlmProxy 做 live round trip
+# 需將 STACK_MODEL 設為本機 Ollama 已有的模型
+node tools/agent/tests/test-podman-ollama-host-stack.js
 
-## 文件入口
+# OpenAI-compatible protocol path：預設使用內建 mock-openai
+node tools/agent/tests/test-podman-openai-compatible-stack.js
 
-### 現況與架構
+# 可選：改成透過 broker LlmProxy 打真實 OpenAI endpoint
+$env:OPENAI_BASE_URL="https://api.openai.com"; $env:OPENAI_API_KEY="<key>"
+$env:OPENAI_API_FORMAT="responses"; $env:STACK_MODEL="<model>"
+node tools/agent/tests/test-podman-openai-compatible-stack.js
+```
 
-- [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)（現行）
-- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)（已被接替）
-- [受控代理容器操作手冊](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
+Mock 路徑與 OpenAI-compatible 預設 mock 可驗證固定 sentinel；host Ollama 是 live model round trip，不應文件化成「必須回傳某個固定字串」。真實 OpenAI 需額外設定 `OPENAI_BASE_URL`、`OPENAI_API_KEY` 與模型。broker `LlmProxy` 目前支援 Ollama、OpenAI chat/responses 與 Anthropic Claude Messages 格式。
 
-### 手冊
+## UI 與 Determinism 現況
 
-- [User Guide](/d:/Bricks4Agent/docs/manuals/user-guide.md)
-- [Engineer Guide](/d:/Bricks4Agent/docs/manuals/engineer-guide.md)
-- [Engineer Guide (EN)](/d:/Bricks4Agent/docs/manuals/engineer-guide-en.md)
-- [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [LINE Sidecar 操作手冊](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
+目前已清理並驗證的是 site-generator / metadata 驅動路徑的 UI state 與穩定輸出約束。整個 `ui_components` 目錄尚未宣稱全庫 deterministic；部分 demo、viz、map、social、download 類或範例仍可能使用 `Date.now()` / `Math.random()` 作為展示或 runtime 行為。
 
-### 設計說明
+相關驗證：
 
-- [HighLevelModelRoutingAndMemory.md](/d:/Bricks4Agent/docs/designs/HighLevelModelRoutingAndMemory.md)
-- [HighLevelMemoryAndLoggingModel.md](/d:/Bricks4Agent/docs/designs/HighLevelMemoryAndLoggingModel.md)
-- [ToolSpecRegistry.md](/d:/Bricks4Agent/docs/designs/ToolSpecRegistry.md)
-- [GoogleDriveDelivery.md](/d:/Bricks4Agent/docs/designs/GoogleDriveDelivery.md)
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
+```powershell
+npm --prefix packages/javascript/browser run metadata:check
+npm --prefix packages/javascript/browser test
+npm test
+npm run validate:ui-state
+npm run audit:ui-styles
+npm run validate:ui-library
+```
+
+## 建置與測試
+
+```powershell
+dotnet build packages/csharp/ControlPlane.slnx
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+npm run validate:baseorm
+npm run validate:baseorm-sync
+npm run validate:broker-scope
+npm run validate:backend-governance
+npm run validate:agent-governed
+npm run validate:broker-llm-proxy
+npm run validate:anthropic-provider-smoke
+```
+
+整合測試需要先啟動 broker：
+
+```powershell
+dotnet run --project packages/csharp/broker/Broker.csproj -- --urls http://127.0.0.1:{port}
+dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:{port}
+```
+
+測試後請清理 `packages/csharp/broker/broker.db*` 與 `.test-output/`。
+
+## 目前強項
+
+- broker-centered governed workflow 方向明確。
+- LINE ingress canonical path 已收斂到 `line-worker -> broker high-level coordinator`。
+- command grammar、workflow gate、promotion gate 與 execution intent 持續收斂。
+- BaseOrm transaction、scope validation、LLM proxy 與 agent container 路徑已有驗證腳本。
+- broker POST API 具備基本 exception JSON 化、body size cap 與單節點 IP rate limit；LINE `message/audio` outbound 具備 worker-local rate limit。
+- UI generator 的 metadata / site-gen 相關 determinism 規則已建立。
+
+## 目前限制
+
+- 各子系統成熟度仍不一致。
+- broker 是必要中心節點，需要保持窄而清楚的責任邊界。
+- browser governance 仍是基礎建設，不是完整 browser automation platform。
+- host Ollama / OpenAI-compatible / Anthropic 驗證依賴本機模型、外部服務與環境變數。
+- Critical dual approval、LINE 分散式配額與 `line.notification.send` rate limit 尚未完成。
+- UI 元件庫尚未全庫 deterministic；文件應只描述已驗證範圍。
+
+## 推薦閱讀順序
+
+1. [目前使用手冊](/d:/Bricks4Agent/docs/manuals/current-user-manual.zh-TW.md)
+2. [目前技術手冊](/d:/Bricks4Agent/docs/manuals/current-technical-manual.zh-TW.md)
+3. [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
+4. [Agent Container Runbook](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
+5. [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
+6. `docs/designs/` 內的子系統設計文件

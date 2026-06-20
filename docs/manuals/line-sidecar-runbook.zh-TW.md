@@ -48,8 +48,10 @@
 
 目前若要有最佳 live 行為，通常還需要：
 
+- Windows User 或目前 shell 的 `ANTHROPIC_API_KEY`
+  - 給高階模型與 broker `LlmProxy` 使用；sidecar 會優先設為 `anthropic` / `claude-sonnet-4-6`
 - `C:\secure\Bricks4Agent\Api.txt`（可用 `BRICKS4AGENT_SECRETS_DIR` 環境變數改路徑；repo 根目錄為舊版備援）
-  - 給高階模型用的 OpenAI-compatible API key
+  - 沒有 `ANTHROPIC_API_KEY` 時的 OpenAI-compatible fallback key
 - 同一機密目錄下的 `client_secret_*.json`
   - 給 Google Drive OAuth 使用
 - `%LOCALAPPDATA%\ngrok\ngrok.yml`
@@ -79,8 +81,8 @@
 
 目前 sidecar 會：
 
-- 讀取這個檔案
-- 將內容注入 broker 的 `HighLevelLlm.ApiKey`
+- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`
+- 若沒有 `ANTHROPIC_API_KEY`，才讀取這個檔案並注入 broker 的 `HighLevelLlm.ApiKey`
 
 ### 3. Google Drive OAuth client
 
@@ -108,6 +110,24 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 ```
 
 （`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+
+### 3.2 LINE outbound rate limit
+
+line-worker 會對 `line.message.send` 與 `line.audio.send` 做 worker-local outbound rate limiting，key 為 recipient + capability。預設值在 `packages/csharp/workers/line-worker/appsettings*.json`：
+
+- `Line.OutboundRateLimit.PermitLimit`: 預設 `20`
+- `Line.OutboundRateLimit.WindowSeconds`: 預設 `60`
+- `Line.OutboundRateLimit.MaxTrackedKeys`: 預設 `1024`
+
+sidecar 或手動啟動時可用環境變數覆寫：
+
+```powershell
+$env:WORKER_Line__OutboundRateLimit__PermitLimit = '20'
+$env:WORKER_Line__OutboundRateLimit__WindowSeconds = '60'
+$env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
+```
+
+這不是分散式 quota；多個 line-worker instance 之間不共享計數，`line.notification.send` 目前也尚未套用這個 limiter。
 
 目前 sidecar 會：
 
@@ -442,7 +462,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 常見原因：
 
-- `Api.txt` 不存在或無法讀
+- `ANTHROPIC_API_KEY` 不存在，且 `Api.txt` 不存在或無法讀
 - 上游 API key 無效
 - high-level 模型 upstream 回 `401` 或 `400`
 - sidecar publish output 吃到舊檔
@@ -454,7 +474,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 修正：
 
-- 確認 `Api.txt` 內是有效 key
+- 確認 `ANTHROPIC_API_KEY` 是有效 Anthropic key，或 `Api.txt` 內是有效 OpenAI-compatible fallback key
 - 重啟 sidecar
 
 ### 4. Google Drive OAuth 出現 `invalid_state` 或 `state_expired`

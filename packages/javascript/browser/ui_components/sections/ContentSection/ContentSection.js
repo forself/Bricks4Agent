@@ -1,6 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Heading } from '../../common/Heading/Heading.js';
-import { Text } from '../../common/Text/Text.js';
+import { Heading } from '../../common/Heading/index.js';
+import { Text } from '../../common/Text/index.js';
 
 /**
  * ContentSection — 內容區段複合。= Heading + Text(+ 媒體)。確定性。

@@ -471,7 +471,11 @@ builder.Services.AddHttpClient("high-level-llm", client =>
 {
     client.BaseAddress = new Uri((highLevelLlmOptions.BaseUrl ?? "http://localhost:11434").TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(Math.Max(30, highLevelLlmOptions.TimeoutSeconds));
-    if (!string.IsNullOrWhiteSpace(highLevelLlmOptions.ApiKey))
+    if (AnthropicMessagesAdapter.IsAnthropicProvider(highLevelLlmOptions.Provider))
+    {
+        AnthropicMessagesAdapter.ConfigureHeaders(client, highLevelLlmOptions.ApiKey);
+    }
+    else if (!string.IsNullOrWhiteSpace(highLevelLlmOptions.ApiKey))
     {
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", highLevelLlmOptions.ApiKey);
@@ -542,6 +546,7 @@ app.Use(async (context, next) =>
 });
 
 app.UseDevEndpointGuard();
+app.UseBrokerExceptionHandling();
 
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
 app.UseStaticFiles();
@@ -550,8 +555,9 @@ app.UseStaticFiles();
 // [0] BodySizeLimitMiddleware（H-10 修復：防止 DoS 超大 payload）
 var maxBodyBytes = builder.Configuration.GetValue<long>("Broker:MaxRequestBodyBytes", 1_048_576); // 1MB default
 app.UseBodySizeLimit(maxBodyBytes);
-// [1] ExceptionMiddleware（全域例外）— TODO: Phase 5
-// [2] IpRateLimiter（限流）— TODO: Phase 5
+var brokerIpRateLimitOptions = builder.Configuration.GetSection("Broker:IpRateLimit").Get<BrokerIpRateLimitOptions>()
+    ?? new BrokerIpRateLimitOptions();
+app.UseBrokerIpRateLimit(brokerIpRateLimitOptions);
 // [3] EncryptionMiddleware（信封解密/加密）
 app.UseEnvelopeEncryption();
 // [4] WorkerIdentityAuthMiddleware（worker caller 驗證）

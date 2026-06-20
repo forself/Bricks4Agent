@@ -132,6 +132,19 @@ public class BrokerFixture : IAsyncLifetime
     public Task<HttpResponseMessage> GetPendingNotificationsAsync()
         => GetSignedAsync("/api/v1/high-level/line/notifications/pending?limit=10", LineWorkerType, LineWorkerKeyId, LineWorkerSecret);
 
+    public async Task EnableLineProductionAsync(string userId)
+    {
+        using var profileCreation = await SendHighLevelLineTextAsync("hello", userId);
+
+        using var scope = Factory.Services.CreateScope();
+        var coordinator = scope.ServiceProvider.GetRequiredService<HighLevelCoordinator>();
+        coordinator.ReviewLineUserRegistration(userId, "member");
+        coordinator.SetLineUserPermissions(userId, new HighLevelUserPermissionsPatch
+        {
+            AllowProduction = true
+        });
+    }
+
     private async Task<HttpResponseMessage> PostSignedAsync<TBody>(string path, TBody payload, string workerType, string keyId, string sharedSecret)
     {
         var json = JsonSerializer.Serialize(payload);

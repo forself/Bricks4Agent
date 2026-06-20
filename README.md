@@ -96,10 +96,14 @@ Representative sample/generated project entry points:
 
 ## Current High-Level Model
 
-The LINE high-level responder is currently configured to use:
+The LINE sidecar high-level responder prefers Anthropic when `ANTHROPIC_API_KEY`
+is present in the process or Windows User environment:
 
-- provider: `openai-compatible`
-- model: `gpt-5.4-mini`
+- provider: `anthropic`
+- model: `claude-sonnet-4-6`
+
+If no Anthropic key is available, the sidecar falls back to the legacy
+OpenAI-compatible `Api.txt` path.
 
 This high-level model handles:
 
@@ -159,26 +163,31 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 A separate, podman-based governed stack where an LLM-driven agent runs in an
 isolated container and may only act through the broker (claim work, request
-governed tool execution, report results) — it never touches tools, data, or
+governed tool execution, report results); it never touches tools, data, or
 model providers directly. See [docs/manuals/agent-container-runbook.md](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md).
 
-Three LLM backends, all verified end-to-end (2026-06-13):
+Three governed LLM paths are covered by the current validation scripts:
 
 ```powershell
-# mock (offline, validates the governed chain)
+# mock, offline, validates the governed chain and deterministic sentinel
 node tools/agent/tests/test-podman-governed-stack.js
 
-# local ollama (real open model, e.g. qwen3.6)
+# host Ollama, live round trip through the broker LlmProxy
+# configure STACK_MODEL to a local model available on the host
 node tools/agent/tests/test-podman-ollama-host-stack.js
 
-# commercial API (real ChatGPT)
+# OpenAI-compatible protocol path; defaults to bundled mock-openai
+node tools/agent/tests/test-podman-openai-compatible-stack.js
+
+# optional real OpenAI endpoint override through the broker LlmProxy
 $env:OPENAI_BASE_URL="https://api.openai.com"; $env:OPENAI_API_KEY="<key>"
 $env:OPENAI_API_FORMAT="responses"; $env:STACK_MODEL="gpt-5.4-mini"
 node tools/agent/tests/test-podman-openai-compatible-stack.js
 ```
 
 Requires podman (Windows: `podman machine start` on first use). The broker's
-`LlmProxy` speaks ollama, OpenAI chat, and OpenAI responses formats.
+`LlmProxy` speaks ollama, OpenAI chat/responses, and Anthropic Claude Messages
+formats.
 
 ### Local admin console
 
@@ -192,6 +201,8 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 - real live LINE ingress path
 - explicit command grammar and workflow gating
 - growing separation between raw log, interpretation, memory, and execution intent
+- basic broker hardening is in place: JSON exception responses, request body cap, and single-node IP rate limiting for POST APIs
+- LINE `message/audio` outbound sends have worker-local per recipient/capability rate limiting
 - practical integrations for delivery and deployment
 
 ## Current Limits
@@ -199,6 +210,7 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 - maturity is uneven across subsystems
 - broker remains a necessary central node and must be kept narrow and disciplined
 - browser governance is still groundwork, not a finished browser automation platform
+- Critical dual approval, distributed LINE quota coordination, and `line.notification.send` rate limiting are not complete
 - deployment and delivery paths are real, but not yet fully generalized platform primitives
 
 ## Recommended Reading Order
@@ -218,11 +230,13 @@ If no admin credential exists in the local DB, the initial password is `admin` a
 
 ### Manuals
 
+- [Current User Manual (zh-TW)](/d:/Bricks4Agent/docs/manuals/current-user-manual.zh-TW.md)
+- [Current Technical Manual (zh-TW)](/d:/Bricks4Agent/docs/manuals/current-technical-manual.zh-TW.md)
 - [User Guide](/d:/Bricks4Agent/docs/manuals/user-guide.md)
 - [Engineer Guide](/d:/Bricks4Agent/docs/manuals/engineer-guide.md)
 - [Engineer Guide (EN)](/d:/Bricks4Agent/docs/manuals/engineer-guide-en.md)
 - [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [LINE Sidecar 操作手冊](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
+- [LINE Sidecar Runbook (zh-TW)](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
 
 ### Design notes
 

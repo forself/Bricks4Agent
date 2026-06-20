@@ -1,7 +1,7 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Dropdown } from '../../form/Dropdown/Dropdown.js';
-import { Checkbox } from '../../form/Checkbox/Checkbox.js';
-import { Text } from '../Text/Text.js';
+import { Dropdown } from '../../form/Dropdown/index.js';
+import { Checkbox } from '../../form/Checkbox/index.js';
+import { Text } from '../Text/index.js';
 
 /**
  * FilterBar — 篩選列(複合)。每個篩選 = Text(label)+ Dropdown(select)/Checkbox。確定性。

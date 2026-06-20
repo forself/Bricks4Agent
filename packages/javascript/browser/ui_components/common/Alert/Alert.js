@@ -1,6 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Icon } from '../Icon/Icon.js';
-import { Text } from '../Text/Text.js';
+import { Icon } from '../Icon/index.js';
+import { Text } from '../Text/index.js';
 
 /**
  * Alert — 行內訊息條(複合元件)。

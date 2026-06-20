@@ -6,6 +6,7 @@
 import { DocumentCard } from './DocumentCard.js';
 import { ModalPanel } from '../Panel/index.js';
 import SimpleZip from '../../utils/SimpleZip.js';
+import { nextUid } from '../../utils/uid.js';
 
 import Locale from '../../i18n/index.js';
 export class DocumentWall {
@@ -248,7 +249,7 @@ export class DocumentWall {
             }
 
             const zipBlob = await zip.generateAsync();
-            this._triggerDownload(URL.createObjectURL(zipBlob), `documents_${Date.now()}.zip`);
+            this._triggerDownload(URL.createObjectURL(zipBlob), `${nextUid('documents')}.zip`);
 
         } catch (error) {
             console.error('Batch download failed', error);

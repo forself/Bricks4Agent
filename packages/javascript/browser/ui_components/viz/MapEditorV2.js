@@ -10,6 +10,7 @@ import { NumberInput } from '../form/NumberInput/index.js';
 
 import { ModalPanel } from '../layout/Panel/index.js';
 import Locale from '../i18n/index.js';
+import { nextUid } from '../utils/uid.js';
 
 export class MapEditorV2 {
     constructor(options = {}) {
@@ -163,7 +164,7 @@ export class MapEditorV2 {
             onClick: () => {
                 const name = prompt(Locale.t('webPainter.layerNameLabel'), Locale.t('webPainter.defaultLayerName', { n: this.layers.length + 1 }));
                 if (name) {
-                    const newId = `layer-${Date.now()}`;
+                    const newId = this._nextLayerId();
                     this.layers.push({ id: newId, name: name, visible: true, locked: false });
                     this.currentLayerId = newId;
                     this._updateLayerList();
@@ -186,6 +187,13 @@ export class MapEditorV2 {
         setTimeout(() => this._updateLayerList(), 0);
 
         return panel;
+    }
+
+    _nextLayerId() {
+        const used = new Set(this.layers.map(layer => layer.id));
+        let index = this.layers.length + 1;
+        while (used.has(`layer-${index}`)) index += 1;
+        return `layer-${index}`;
     }
 
     _updateLayerList() {
@@ -1187,7 +1195,7 @@ export class MapEditorV2 {
 
         const blob = new Blob([pngWithMetadata], { type: 'image/png' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.exportFilename') + Date.now() + '.png';
+        link.download = `${Locale.t('webPainter.exportFilename')}${nextUid('map-export')}.png`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
@@ -1268,7 +1276,7 @@ export class MapEditorV2 {
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.configFilename') + Date.now() + '.json';
+        link.download = `${Locale.t('webPainter.configFilename')}${nextUid('map-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
     }

@@ -1,6 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Link } from '../../common/Link/Link.js';
-import { Text } from '../../common/Text/Text.js';
+import { Link } from '../../common/Link/index.js';
+import { Text } from '../../common/Text/index.js';
 
 /**
  * PageFooter — 站尾區段複合。= 連結群(Link)+ 版權(Text)。確定性。

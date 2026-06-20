@@ -221,10 +221,11 @@ public class WorkerConnection : IAsyncDisposable
         try { _tcpClient.Dispose(); } catch { }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_disposed) return;
+        if (_disposed) return ValueTask.CompletedTask;
         Close();
         _writeLock.Dispose();
+        return ValueTask.CompletedTask;
     }
 }

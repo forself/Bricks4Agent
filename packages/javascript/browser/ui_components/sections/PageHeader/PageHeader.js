@@ -1,6 +1,6 @@
 import { createComponentState } from '../../utils/component-state.js';
-import { Heading } from '../../common/Heading/Heading.js';
-import { Link } from '../../common/Link/Link.js';
+import { Heading } from '../../common/Heading/index.js';
+import { Link } from '../../common/Link/index.js';
 
 /**
  * PageHeader — 站頭導覽區段複合。= 品牌(Heading)+ 導覽(Link 群)。確定性。

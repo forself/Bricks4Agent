@@ -31,7 +31,7 @@ export class CodeBlock {
             .cl-code { position: relative; background: var(--cl-bg-secondary); border: 1px solid var(--cl-border);
                 border-radius: var(--cl-radius-md); overflow: auto; }
             .cl-code pre { margin: 0; padding: 12px 14px; }
-            .cl-code code { font-family: var(--cl-font-mono, ui-monospace, monospace); font-size: var(--cl-font-size-xs);
+            .cl-code code { font-family: var(--cl-font-family-mono); font-size: var(--cl-font-size-xs);
                 color: var(--cl-text-primary); white-space: pre; }
             .cl-code-lang { position: absolute; top: 4px; right: 8px; font-size: var(--cl-font-size-2xs);
                 color: var(--cl-text-secondary); text-transform: uppercase; }

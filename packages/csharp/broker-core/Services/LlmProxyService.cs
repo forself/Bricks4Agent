@@ -25,7 +25,11 @@ public class LlmProxyService : ILlmProxyService
 
         _httpClient.Timeout = TimeSpan.FromSeconds(Math.Max(5, _options.TimeoutSeconds));
 
-        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+        if (AnthropicMessagesAdapter.IsAnthropicProvider(_options.Provider))
+        {
+            AnthropicMessagesAdapter.ConfigureHeaders(_httpClient, _options.ApiKey);
+        }
+        else if (!string.IsNullOrWhiteSpace(_options.ApiKey))
         {
             _httpClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", _options.ApiKey);
@@ -98,6 +102,11 @@ public class LlmProxyService : ILlmProxyService
         if (IsOllama())
         {
             return await SendOllamaChatAsync(body, resolvedModel, runtime, cancellationToken);
+        }
+
+        if (IsAnthropic())
+        {
+            return await SendAnthropicMessagesAsync(body, resolvedModel, runtime, cancellationToken);
         }
 
         return string.Equals(_options.ApiFormat, "responses", StringComparison.OrdinalIgnoreCase)
@@ -444,6 +453,31 @@ public class LlmProxyService : ILlmProxyService
         };
     }
 
+    private async Task<LlmChatResult> SendAnthropicMessagesAsync(
+        JsonElement body,
+        string model,
+        ResolvedRuntimeOptions runtime,
+        CancellationToken cancellationToken)
+    {
+        var request = AnthropicMessagesAdapter.BuildRequestFromChatBody(
+            body,
+            model,
+            runtime.SupportsToolCalling,
+            _options.MaxOutputTokens);
+
+        var root = await SendJsonAsync(HttpMethod.Post, "v1/messages", request, cancellationToken);
+        return new LlmChatResult
+        {
+            Content = AnthropicMessagesAdapter.ExtractText(root),
+            ToolCalls = AnthropicMessagesAdapter.ExtractToolCalls(root),
+            Thinking = string.Empty,
+            Done = true,
+            Model = root["model"]?.GetValue<string>() ?? model,
+            TotalDuration = 0,
+            EvalCount = root["usage"]?["output_tokens"]?.GetValue<int>() ?? 0,
+        };
+    }
+
     /// <summary>
     /// 從 Responses API 回應提取文字。頂層 output_text 是 OpenAI SDK 的便利欄位,
     /// 真實 API 原始回應未必有;此時從 output[] 陣列的 message item 聚合
@@ -603,6 +637,9 @@ public class LlmProxyService : ILlmProxyService
 
     private bool IsOllama()
         => string.Equals(_options.Provider, "ollama", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAnthropic()
+        => AnthropicMessagesAdapter.IsAnthropicProvider(_options.Provider);
 
     private void EnsureEnabled()
     {

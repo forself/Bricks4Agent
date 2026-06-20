@@ -48,6 +48,20 @@ function run(command, args, options = {}) {
     });
 }
 
+function stripAnsi(text) {
+    return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function extractAgentReplies(output) {
+    return stripAnsi(output)
+        .split(/\r?\n/)
+        .map((line) => {
+            const match = line.match(/\[agent\]\s+\|\s+>\s*(.+)$/);
+            return match ? match[1].trim() : '';
+        })
+        .filter(Boolean);
+}
+
 async function buildImages(env) {
     for (const [image, dockerfile] of images) {
         const buildResult = await run('podman', [
@@ -123,22 +137,26 @@ async function startHostProxy(targetBaseUrl) {
     };
 }
 
-async function getFirstOllamaModel() {
+async function getDefaultOllamaModel() {
     const response = await fetch('http://127.0.0.1:11434/api/tags');
     if (!response.ok) {
         throw new Error(`Ollama tags request failed with HTTP ${response.status}`);
     }
 
     const data = await response.json();
-    const firstModel = Array.isArray(data.models) && data.models.length > 0
-        ? data.models[0].name
-        : '';
+    const models = Array.isArray(data.models) ? data.models : [];
+    const modelNames = models
+        .filter((model) => model && model.name)
+        .map((model) => model.name);
+    const preferredModels = ['qwen3.6:latest', 'qwen3.6'];
+    const preferredModel = preferredModels.find((name) => modelNames.includes(name));
+    const selectedModel = preferredModel ?? modelNames[0] ?? '';
 
-    if (!firstModel) {
+    if (!selectedModel) {
         throw new Error('No local Ollama models available for host stack test.');
     }
 
-    return firstModel;
+    return selectedModel;
 }
 
 async function getPodmanGatewayIp() {
@@ -164,7 +182,7 @@ async function getPodmanGatewayIp() {
 }
 
 async function main() {
-    const modelName = await getFirstOllamaModel();
+    const modelName = process.env.STACK_MODEL || await getDefaultOllamaModel();
     const proxy = await startHostProxy('http://127.0.0.1:11434');
     const gatewayIp = await getPodmanGatewayIp();
     const env = {
@@ -173,7 +191,7 @@ async function main() {
         PYTHONUTF8: '1',
         STACK_MODEL: modelName,
         OLLAMA_BASE_URL: `http://${gatewayIp}:${proxy.port}`,
-        AGENT_RUN: 'Reply with a short sentence that contains OLLAMA_STACK_OK.',
+        AGENT_RUN: 'Reply briefly that the broker-mediated Ollama stack completed.',
     };
 
     try {
@@ -196,9 +214,27 @@ async function main() {
         );
 
         const combinedOutput = `${upResult.stdout}\n${upResult.stderr}`;
+        const plainOutput = stripAnsi(combinedOutput);
+        const agentReplies = extractAgentReplies(combinedOutput);
         assert(
-            combinedOutput.includes(modelName),
+            plainOutput.includes(modelName),
             `Expected stack output to include chosen Ollama model ${modelName}.\n${combinedOutput}`
+        );
+        assert(
+            plainOutput.includes('Completed in'),
+            `Expected agent to complete a governed run.\n${combinedOutput}`
+        );
+        assert(
+            plainOutput.includes('[Governed] session closed'),
+            `Expected governed session to close cleanly.\n${combinedOutput}`
+        );
+        assert(
+            agentReplies.some((reply) => reply.length > 0),
+            `Expected agent to produce a non-empty model response.\n${combinedOutput}`
+        );
+        assert(
+            !plainOutput.includes('Broker error') && !plainOutput.includes('API error'),
+            `Expected Ollama host stack to complete without broker/API errors.\n${combinedOutput}`
         );
 
         console.log('Podman Ollama host stack integration test passed.');
