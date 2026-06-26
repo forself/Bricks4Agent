@@ -31,7 +31,7 @@
 - Create: `packages/csharp/broker/Services/LocalAdminPermissions.cs`
 - Test: `packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs`
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 Create `packages/csharp/tests/unit/Admin/LocalAdminPermissionTests.cs`:
 
@@ -84,7 +84,7 @@ public class LocalAdminPermissionTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -94,7 +94,7 @@ dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminPerm
 
 Expected: FAIL because `LocalAdminPermissions` and `LocalAdminRoles` do not exist.
 
-- [ ] **Step 3: Implement permission catalog**
+- [x] **Step 3: Implement permission catalog**
 
 Create `packages/csharp/broker/Services/LocalAdminPermissions.cs`:
 
@@ -208,7 +208,7 @@ public static class LocalAdminPermissions
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
@@ -226,7 +226,7 @@ Expected: PASS.
 - Modify: `packages/csharp/broker-core/Data/BrokerDbInitializer.cs`
 - Test: `packages/csharp/tests/unit/Admin/LocalAdminMigrationTests.cs`
 
-- [ ] **Step 1: Write the failing migration tests**
+- [x] **Step 1: Write the failing migration tests**
 
 Create `packages/csharp/tests/unit/Admin/LocalAdminMigrationTests.cs`:
 
@@ -296,7 +296,7 @@ public class LocalAdminMigrationTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -306,7 +306,7 @@ dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminMigr
 
 Expected: FAIL because the new columns and model properties do not exist.
 
-- [ ] **Step 3: Add model properties**
+- [x] **Step 3: Add model properties**
 
 Add these properties to `LocalAdminCredential`:
 
@@ -349,7 +349,7 @@ public string Role { get; set; } = "super_admin";
 public string PermissionsSnapshot { get; set; } = "[]";
 ```
 
-- [ ] **Step 4: Add initializer migration and legacy normalization**
+- [x] **Step 4: Add initializer migration and legacy normalization**
 
 In `BrokerDbInitializer.EnsureColumns()`, add:
 
@@ -422,7 +422,7 @@ private void NormalizeLocalAdminBootstrap()
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run:
 
@@ -438,7 +438,7 @@ Expected: PASS.
 - Modify: `packages/csharp/broker/Services/LocalAdminAuthService.cs`
 - Test: `packages/csharp/tests/unit/Admin/LocalAdminAuthServiceTests.cs`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Create `packages/csharp/tests/unit/Admin/LocalAdminAuthServiceTests.cs`:
 
@@ -517,7 +517,7 @@ public class LocalAdminAuthServiceTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -527,7 +527,7 @@ dotnet test packages/csharp/tests/unit/Unit.Tests.csproj --filter LocalAdminAuth
 
 Expected: FAIL because the login signature and operator APIs are not implemented.
 
-- [ ] **Step 3: Implement named operator auth**
+- [x] **Step 3: Implement named operator auth**
 
 Modify `LocalAdminAuthService`:
 
@@ -548,7 +548,7 @@ denied = Results.Json(
     statusCode: 403);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
@@ -564,7 +564,7 @@ Expected: PASS.
 - Modify: `packages/csharp/broker/Endpoints/LocalAdminEndpoints.cs`
 - Test: `packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs`
 
-- [ ] **Step 1: Write failing integration tests**
+- [x] **Step 1: Write failing integration tests**
 
 Create `packages/csharp/tests/integration/Api/LocalAdminPermissionEndpointTests.cs`:
 
@@ -664,7 +664,7 @@ public class LocalAdminPermissionEndpointTests : IClassFixture<BrokerFixture>
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -674,7 +674,7 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter 
 
 Expected: FAIL because endpoint permission gates and `/operators` routes do not exist.
 
-- [ ] **Step 3: Gate local-admin routes**
+- [x] **Step 3: Gate local-admin routes**
 
 In `LocalAdminEndpoints.Map`, add small local helper methods:
 
@@ -697,7 +697,7 @@ var username = body.TryGetProperty("username", out var un) && un.ValueKind == Js
 var result = auth.Login(ctx, username ?? "admin", password, newPassword);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 
@@ -714,7 +714,7 @@ Expected: PASS.
 - Create: `tools/scripts/validate-line-admin.mjs`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing validation script**
+- [x] **Step 1: Write failing validation script**
 
 Create `tools/scripts/validate-line-admin.mjs`:
 
@@ -740,7 +740,7 @@ Add to `package.json` scripts:
 "validate:line-admin": "node tools/scripts/validate-line-admin.mjs"
 ```
 
-- [ ] **Step 2: Run validation to verify it fails**
+- [x] **Step 2: Run validation to verify it fails**
 
 Run:
 
@@ -750,7 +750,7 @@ npm run validate:line-admin
 
 Expected: FAIL because monitoring/permissions tabs and permission-gating JS are absent.
 
-- [ ] **Step 3: Implement UI gating**
+- [x] **Step 3: Implement UI gating**
 
 Modify `line-admin.html`:
 
@@ -774,7 +774,7 @@ function requireVisible(selector, permission) {
 - Build the monitoring tab from existing `state.system`, alerts, and health API responses.
 - Build the permissions tab with operator list, create operator form, role update and disable buttons.
 
-- [ ] **Step 4: Run validation to verify it passes**
+- [x] **Step 4: Run validation to verify it passes**
 
 Run:
 
@@ -791,7 +791,7 @@ Expected: PASS.
 - Modify: `docs/manuals/current-technical-manual.zh-TW.md`
 - Modify: `docs/environment-setup.zh-TW.md`
 
-- [ ] **Step 1: Update manuals**
+- [x] **Step 1: Update manuals**
 
 Document:
 
@@ -801,7 +801,7 @@ Document:
 - System monitoring and permission management are separate tabs.
 - Backend enforces role permissions; UI hiding is not the security boundary.
 
-- [ ] **Step 2: Run targeted backend tests**
+- [x] **Step 2: Run targeted backend tests**
 
 Run:
 
@@ -812,7 +812,7 @@ dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter 
 
 Expected: all targeted tests PASS.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run:
 
@@ -826,7 +826,7 @@ npm run validate:user-portal
 
 Expected: all commands PASS. If Smart App Control blocks built test assemblies, run the existing signing/WDAC repair workflow from `docs/manuals/dev-code-signing-wdac.zh-TW.md`, then re-run the blocked command with `--no-build`.
 
-- [ ] **Step 4: Commit implementation**
+- [x] **Step 4: Commit implementation**
 
 Run:
 

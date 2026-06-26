@@ -77,7 +77,7 @@ High-Level Coordinator 是 LINE 高階互動層。它負責：
 - admin 在 `line-admin.html` 審批。
 - 使用者透過 LINE 收到的短效簽章連結進入 `user-approvals.html` 審批。
 
-目前 High / `require_approval` 需要 1 次核准；Critical / `require_dual_approval` 需要 2 個不同 approver id 才能放行。Broker 會持久化 `ApprovalRequest.required_approval_count` 與每位 approver 一筆的 `approval_decisions`，避免同一 approver 重複核准。Local admin 的 approver id 目前來自不同 admin session，因此是「兩個不同 admin session/approver id」，還不是完整 named operator account / 多人帳號管理。
+目前 High / `require_approval` 需要 1 次核准；Critical / `require_dual_approval` 需要 2 個不同 approver id 才能放行。Broker 會持久化 `ApprovalRequest.required_approval_count` 與每位 approver 一筆的 `approval_decisions`，避免同一 approver 重複核准。Local admin 現在使用 named operator session，approver id 會綁到 operator，並由後端 RBAC 判斷是否具備 admin approval 權限。
 
 ## 4. 最小安裝需求
 
@@ -340,17 +340,29 @@ http://127.0.0.1:5361/line-admin.html
 安全特性：
 
 - local admin 僅供 localhost 操作。
-- 若 local DB 沒有 admin credential，初始密碼為 `admin`。
-- 第一次登入後會要求修改密碼。
+- 若 local DB 沒有 admin credential，初始帳號為 `admin`、初始密碼為 `admin`。
+- 第一次登入後會要求修改密碼，並建立 `super_admin` operator。
 - session 以 cookie 維持。
+- 後端會依 operator 角色檢查 API 權限；UI 隱藏頁籤只是操作提示，不是安全邊界。
+
+本機 operator 角色：
+
+| 角色 | 用途 |
+| --- | --- |
+| `super_admin` | break-glass / 全權限，可建立與調整其他 operator |
+| `system_admin` | 系統狀態、監控、browser/deployment/delivery 等系統操作 |
+| `permission_admin` | operator、使用者權限、註冊政策、browser user grant、admin approval 管理 |
+| `auditor` | 只讀監控、audit、tool specs 與狀態檢視 |
 
 常用區域：
 
 | 區域 | 功能 |
 | --- | --- |
 | 系統狀態 | broker、LLM proxy、embedding、RAG、DB 狀態 |
+| 系統監控 | LLM、Embedding、RAG、DB 與 runtime monitoring 摘要 |
 | LINE 使用者 | 使用者列表、註冊政策、權限 |
 | 對話/工作流 | 對話紀錄、draft、handoff、execution intent |
+| 權限管理 | named local admin operator 建立、角色調整、停用與 session 撤銷 |
 | 審批 | 查看 pending approval，批准或拒絕 |
 | Browser governance | site binding、user grant、lease、request build、execute |
 | Deployment | Azure IIS target、preview、execute、execution history |
@@ -750,9 +762,9 @@ npm run validate:podman-openai-compatible-stack
 
 目前不要宣稱以下已完成：
 
-- 全生產級 operator console。
+- 企業級 operator console，例如 SSO、MFA、集中式 IAM、跨機器 operator 同步。
 - 自訂 seccomp profile。
-- Critical dual approval 已具備 broker 層持久化與兩個不同 approver id 門檻；local admin 身分仍是 session 型，不是完整 named operator account / 多人帳號管理。
+- Critical dual approval 已具備 broker 層持久化與兩個不同 approver id 門檻；local admin 具備 named operator RBAC，但尚未接企業 IAM。
 - `line.message.send` / `line.audio.send` 已有 worker-local outbound rate limiting；分散式配額與 `line.notification.send` 覆蓋仍未完成。
 - browser authenticated automation production readiness。
 - 所有外部 provider 在每台機器都已實測。

@@ -434,6 +434,8 @@ Admin UI:
 http://127.0.0.1:5361/line-admin.html
 ```
 
+The first local admin login uses username `admin` and password `admin`; the first successful login must set a new password and creates the local `super_admin` operator. Subsequent operators are managed from the admin UI Permissions tab. The built-in roles are `super_admin`, `system_admin`, `permission_admin`, and `auditor`; backend local-admin APIs enforce those permissions regardless of what the UI hides or shows.
+
 User portal:
 
 ```text

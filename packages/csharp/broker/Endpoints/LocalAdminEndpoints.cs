@@ -12,6 +12,50 @@ public static class LocalAdminEndpoints
     public static void Map(RouteGroupBuilder group)
     {
         var localAdmin = group.MapGroup("/local-admin");
+        localAdmin.AddEndpointFilter(async (filterContext, next) =>
+        {
+            var ctx = filterContext.HttpContext;
+            if (!TryResolveRouteAuthorization(
+                    ctx.Request.Method,
+                    ctx.Request.Path.Value ?? string.Empty,
+                    out var permissions,
+                    out var authenticatedOnly,
+                    out var superAdminOnly))
+            {
+                return await next(filterContext);
+            }
+
+            var auth = ctx.RequestServices.GetRequiredService<LocalAdminAuthService>();
+            if (authenticatedOnly)
+            {
+                if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                    return denied;
+            }
+            else if (superAdminOnly)
+            {
+                if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                    return denied;
+
+                if (!string.Equals(LocalAdminRoles.Normalize(session.Role), LocalAdminRoles.SuperAdmin, StringComparison.Ordinal))
+                {
+                    return Results.Json(
+                        ApiResponseHelper.Error("Forbidden: super_admin role required.", 403),
+                        statusCode: StatusCodes.Status403Forbidden);
+                }
+            }
+            else if (permissions.Length == 1)
+            {
+                if (!auth.TryRequirePermission(ctx, permissions[0], out _, out var denied))
+                    return denied;
+            }
+            else if (permissions.Length > 1)
+            {
+                if (!auth.TryRequireAnyPermission(ctx, permissions, out _, out var denied))
+                    return denied;
+            }
+
+            return await next(filterContext);
+        });
 
         localAdmin.MapGet("/status", (HttpContext ctx, LocalAdminAuthService auth) =>
             Results.Ok(ApiResponseHelper.Success(auth.GetStatus(ctx))));
@@ -25,10 +69,13 @@ public static class LocalAdminEndpoints
             var newPassword = body.TryGetProperty("new_password", out var np) && np.ValueKind == JsonValueKind.String
                 ? np.GetString()
                 : null;
+            var username = body.TryGetProperty("username", out var un) && un.ValueKind == JsonValueKind.String
+                ? un.GetString()
+                : "admin";
 
             try
             {
-                var result = auth.Login(ctx, password, newPassword);
+                var result = auth.Login(ctx, username ?? "admin", password, newPassword);
                 return Results.Ok(ApiResponseHelper.Success(result));
             }
             catch (InvalidOperationException ex)
@@ -60,6 +107,105 @@ public static class LocalAdminEndpoints
         {
             auth.Logout(ctx);
             return Results.Ok(ApiResponseHelper.Success(new { ok = true }));
+        });
+
+        localAdmin.MapGet("/operators", (HttpContext ctx, LocalAdminAuthService auth) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out _, out var denied))
+                return denied;
+
+            var items = auth.ListOperators();
+            return Results.Ok(ApiResponseHelper.Success(new { total = items.Count, items }));
+        });
+
+        localAdmin.MapPost("/operators", (HttpContext ctx, LocalAdminAuthService auth) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "username", out var username, out var error))
+                return error!;
+            if (!RequestBodyHelper.TryGetRequired(body, "role", out var role, out error))
+                return error!;
+            if (!RequestBodyHelper.TryGetRequired(body, "password", out var password, out error))
+                return error!;
+
+            var displayName = GetString(body, "display_name", username);
+            try
+            {
+                var item = auth.CreateOperator(username, displayName, role, password, session.OperatorId);
+                return Results.Ok(ApiResponseHelper.Success(new { item }));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        localAdmin.MapPost("/operators/{operatorId}/role", (HttpContext ctx, LocalAdminAuthService auth, string operatorId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "role", out var role, out var error))
+                return error!;
+
+            try
+            {
+                var item = auth.UpdateOperatorRole(Uri.UnescapeDataString(operatorId), role, session.OperatorId);
+                return Results.Ok(ApiResponseHelper.Success(new { item }));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        localAdmin.MapPost("/operators/{operatorId}/disable", (HttpContext ctx, LocalAdminAuthService auth, string operatorId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            try
+            {
+                var item = auth.DisableOperator(Uri.UnescapeDataString(operatorId), session.OperatorId);
+                return Results.Ok(ApiResponseHelper.Success(new { item }));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        localAdmin.MapPost("/operators/{operatorId}/reset-password", (HttpContext ctx, LocalAdminAuthService auth, string operatorId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            var body = RequestBodyHelper.GetBody(ctx);
+            if (!RequestBodyHelper.TryGetRequired(body, "password", out var password, out var error))
+                return error!;
+
+            try
+            {
+                var item = auth.ResetOperatorPassword(Uri.UnescapeDataString(operatorId), password, session.OperatorId);
+                return Results.Ok(ApiResponseHelper.Success(new { item }));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(ApiResponseHelper.Error(ex.Message));
+            }
+        });
+
+        localAdmin.MapPost("/operators/{operatorId}/revoke-sessions", (HttpContext ctx, LocalAdminAuthService auth, string operatorId) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            var revoked = auth.RevokeOperatorSessions(Uri.UnescapeDataString(operatorId), session.OperatorId);
+            return Results.Ok(ApiResponseHelper.Success(new { revoked }));
         });
 
         localAdmin.MapGet("/system/status", (HttpContext ctx, LocalAdminAuthService auth, BrokerDb db, ILlmProxyService llm, EmbeddingService embedding, LlmProxyOptions llmOptions, RagPipelineService rag) =>
@@ -817,8 +963,146 @@ public static class LocalAdminEndpoints
         });
     }
 
+    private static bool TryResolveRouteAuthorization(
+        string method,
+        string path,
+        out string[] permissions,
+        out bool authenticatedOnly,
+        out bool superAdminOnly)
+    {
+        permissions = Array.Empty<string>();
+        authenticatedOnly = false;
+        superAdminOnly = false;
+
+        var localPath = NormalizeLocalAdminPath(path);
+        if (localPath is "/status" or "/login")
+            return false;
+
+        if (localPath is "/logout" or "/change-password")
+        {
+            authenticatedOnly = true;
+            return true;
+        }
+
+        if (localPath.StartsWith("/operators", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.PermissionOperatorManage, out permissions);
+
+        if (localPath.Equals("/system/status", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemStatusRead, out permissions);
+
+        if (localPath.StartsWith("/workflow", StringComparison.OrdinalIgnoreCase))
+            return RequireAny(out permissions, LocalAdminPermissions.SystemStatusRead, LocalAdminPermissions.AuditRead);
+
+        if (localPath.StartsWith("/line/users/artifacts/deliver", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+
+        if (localPath.StartsWith("/line/users/", StringComparison.OrdinalIgnoreCase) &&
+            localPath.Contains("/artifacts", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase)
+                ? RequireAny(out permissions, LocalAdminPermissions.PermissionUserManage, LocalAdminPermissions.AuditRead)
+                : Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+        }
+
+        if (localPath.Equals("/line/users", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase))
+        {
+            return RequireAny(out permissions, LocalAdminPermissions.PermissionUserManage, LocalAdminPermissions.AuditRead);
+        }
+
+        if (localPath.StartsWith("/line/users/permissions", StringComparison.OrdinalIgnoreCase) ||
+            localPath.StartsWith("/line/users/registration/review", StringComparison.OrdinalIgnoreCase))
+        {
+            return Require(LocalAdminPermissions.PermissionUserManage, out permissions);
+        }
+
+        if (localPath.StartsWith("/line/conversations", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase)
+                ? RequireAny(out permissions, LocalAdminPermissions.PermissionUserManage, LocalAdminPermissions.AuditRead)
+                : Require(LocalAdminPermissions.PermissionUserManage, out permissions);
+        }
+
+        if (localPath.StartsWith("/line/chat", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.PermissionUserManage, out permissions);
+
+        if (localPath.Equals("/line/registration-policy", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase)
+                ? RequireAny(out permissions, LocalAdminPermissions.PermissionRegistrationManage, LocalAdminPermissions.AuditRead)
+                : Require(LocalAdminPermissions.PermissionRegistrationManage, out permissions);
+        }
+
+        if (localPath.StartsWith("/line/artifacts", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase)
+                ? RequireAny(out permissions, LocalAdminPermissions.SystemDeliveryManage, LocalAdminPermissions.AuditRead)
+                : Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+        }
+
+        if (localPath.StartsWith("/line/notifications", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+
+        if (localPath.StartsWith("/web-report", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+
+        if (localPath.StartsWith("/browser/user-grants", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.PermissionBrowserGrantManage, out permissions);
+
+        if (localPath.StartsWith("/browser", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemBrowserManage, out permissions);
+
+        if (localPath.StartsWith("/deployment", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemDeploymentManage, out permissions);
+
+        if (localPath.StartsWith("/delivery", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.SystemDeliveryManage, out permissions);
+
+        if (localPath.StartsWith("/alerts", StringComparison.OrdinalIgnoreCase))
+            return RequireAny(out permissions, LocalAdminPermissions.SystemMonitorRead, LocalAdminPermissions.AuditRead);
+
+        if (localPath.StartsWith("/tool-specs", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.ToolSpecRead, out permissions);
+
+        if (localPath.Equals("/approvals", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(method, HttpMethods.Get, StringComparison.OrdinalIgnoreCase))
+        {
+            return RequireAny(out permissions, LocalAdminPermissions.ApprovalAdminManage, LocalAdminPermissions.AuditRead);
+        }
+
+        if (localPath.StartsWith("/approvals", StringComparison.OrdinalIgnoreCase))
+            return Require(LocalAdminPermissions.ApprovalAdminManage, out permissions);
+
+        superAdminOnly = true;
+        return true;
+    }
+
+    private static string NormalizeLocalAdminPath(string path)
+    {
+        var value = string.IsNullOrWhiteSpace(path) ? "/" : path;
+        var marker = "/local-admin";
+        var index = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+            value = value[(index + marker.Length)..];
+        if (string.IsNullOrWhiteSpace(value))
+            return "/";
+        return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
+    }
+
+    private static bool Require(string permission, out string[] permissions)
+    {
+        permissions = new[] { permission };
+        return true;
+    }
+
+    private static bool RequireAny(out string[] permissions, params string[] required)
+    {
+        permissions = required;
+        return true;
+    }
+
     private static string BuildLocalAdminApproverId(LocalAdminSession session)
-        => $"local-admin:{session.SessionId}";
+        => $"local-admin:{session.OperatorId}";
 
     private static string GetString(JsonElement body, string name, string defaultValue = "")
         => body.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() ?? defaultValue : defaultValue;

@@ -287,11 +287,12 @@ Broker 使用 `/api/v1` 作主要 API group。
 
 ### 6.6 Local admin
 
-`/api/v1/local-admin/*` powers `line-admin.html`。
+`/api/v1/local-admin/*` powers `line-admin.html`。Local admin 是本機人類 operator 邊界，與 broker scoped-token `Principal` / `Role` 分離。登入後 session 會保存 operator id、username、role 與 permission snapshot；後端 endpoint filter 依 route permission gate 執行授權。
 
 Major route categories:
 
 - auth: status/login/change-password/logout。
+- operators: `/operators/*`，建立、列出、調整角色、停用、重設密碼、撤銷 sessions。
 - system: `/system/status`。
 - LINE users/conversations/workflow。
 - browser site-bindings/user-grants/system-bindings/leases/execute/executions。
@@ -301,6 +302,30 @@ Major route categories:
 - tool specs。
 - approvals。
 - alerts。
+
+Local admin roles:
+
+| Role | Permissions |
+| --- | --- |
+| `super_admin` | all local admin permissions |
+| `system_admin` | `system.*`、`tool_spec.read`、`audit.read` |
+| `permission_admin` | `permission.*`、`approval.admin.manage`、`tool_spec.read`、`audit.read` |
+| `auditor` | `system.status.read`、`system.monitor.read`、`tool_spec.read`、`audit.read`、`audit.verify` |
+
+Representative endpoint gates:
+
+| Endpoint group | Permission |
+| --- | --- |
+| `/system/status` | `system.status.read` |
+| `/operators/*` | `permission.operator.manage` |
+| `/line/users/permissions`, registration review | `permission.user.manage` |
+| `/line/registration-policy` POST | `permission.registration.manage` |
+| `/browser/user-grants/*` | `permission.browser_grant.manage` |
+| `/browser/site-bindings/*`, `/browser/system-bindings/*`, `/browser/leases/*`, `/browser/execute` | `system.browser.manage` |
+| `/deployment/*` | `system.deployment.manage` |
+| `/delivery/*`, artifact delivery retry | `system.delivery.manage` |
+| `/tool-specs*` | `tool_spec.read` |
+| `/approvals/*` approve/reject | `approval.admin.manage` |
 
 ### 6.7 User portal
 
@@ -438,7 +463,7 @@ High/Critical and scope escape should become `RequireApproval` when approval-eli
 | User | owning user, signed link, own User-tier approvals only |
 | Admin | local admin, global approvals |
 
-High / `require_approval` remains single-approver. Critical / `require_dual_approval` is broker-enforced with `ApprovalRequest.required_approval_count` and persisted `approval_decisions`, one decision per approver id, so the same approver cannot satisfy the threshold twice. Current local-admin identity is still session-derived, so dual approval means two distinct admin sessions / approver ids rather than full named operator account management.
+High / `require_approval` remains single-approver. Critical / `require_dual_approval` is broker-enforced with `ApprovalRequest.required_approval_count` and persisted `approval_decisions`, one decision per approver id, so the same approver cannot satisfy the threshold twice. Local-admin approval identity is now based on the named operator id from the local admin session, and approve/reject routes require `approval.admin.manage`.
 
 ## 9. High-Level Coordinator
 
@@ -1127,6 +1152,7 @@ On Windows hosts with Smart App Control / WDAC enforcement, `validate:baseorm`, 
 npm run validate:dotnet-deps
 npm run validate:dotnet-api-usage
 npm run validate:backend-governance
+npm run validate:line-admin
 ```
 
 ### 20.6 JS/UI/generator
@@ -1189,8 +1215,8 @@ Maintain these invariants:
 Do not overstate the current system:
 
 - Custom seccomp profile is pending。
-- Full production operator console is not complete。
-- Critical dual approval is active at the broker persistence/threshold layer, but local-admin identity is session-derived rather than full named multi-operator account management。
+- Enterprise operator console is not complete: SSO, MFA, centralized IAM, and cross-machine operator synchronization are not implemented。
+- Critical dual approval is active at the broker persistence/threshold layer, and local-admin approval uses named operator identity; enterprise IAM-backed operator identity is still future work。
 - `line.message.send` and `line.audio.send` have worker-local outbound rate limiting; distributed quota coordination and `line.notification.send` coverage are not complete。
 - Browser authenticated automation is not production-complete。
 - User portal currently uses lightweight local username/password sessions; SSO, MFA, password reset and named enterprise identity lifecycle are not implemented。
