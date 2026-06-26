@@ -20,6 +20,7 @@ public class BrokerDbInitializer
     public void Initialize(DevelopmentSeedOptions? developmentSeed = null)
     {
         EnsureTables();
+        NormalizeLocalAdminBootstrap();
         SeedSystemEpoch();
         SeedRoles();
         SeedCapabilities();
@@ -166,6 +167,10 @@ public class BrokerDbInitializer
                       ON azure_iis_deployment_targets(vm_host, site_name)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_expires
                       ON local_admin_sessions(expires_at, revoked_at)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_local_admin_credentials_username
+                      ON local_admin_credentials(username)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_operator
+                      ON local_admin_sessions(operator_id, expires_at, revoked_at)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_portal_user_sessions_user
                       ON portal_user_sessions(user_id, expires_at, revoked_at)");
 
@@ -198,6 +203,60 @@ public class BrokerDbInitializer
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN application_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_base_url TEXT DEFAULT ''");
+
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN operator_id TEXT DEFAULT 'local_admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN username TEXT DEFAULT 'admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN display_name TEXT DEFAULT 'Local Super Admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN role TEXT DEFAULT 'super_admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN permission_overrides TEXT DEFAULT '{}'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN status TEXT DEFAULT 'active'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN last_login_at TEXT NULL");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN operator_id TEXT DEFAULT 'local_admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN username TEXT DEFAULT 'admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN role TEXT DEFAULT 'super_admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN permissions_snapshot TEXT DEFAULT '[]'");
+    }
+
+    private void NormalizeLocalAdminBootstrap()
+    {
+        var legacy = _db.Get<LocalAdminCredential>("local_admin");
+        if (legacy == null)
+            return;
+
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(legacy.OperatorId))
+        {
+            legacy.OperatorId = legacy.CredentialId;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Username))
+        {
+            legacy.Username = "admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.DisplayName))
+        {
+            legacy.DisplayName = "Local Super Admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Role))
+        {
+            legacy.Role = "super_admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.PermissionOverrides))
+        {
+            legacy.PermissionOverrides = "{}";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Status))
+        {
+            legacy.Status = "active";
+            changed = true;
+        }
+
+        if (changed)
+            _db.Update(legacy);
     }
 
     /// <summary>
