@@ -8,6 +8,40 @@ namespace Unit.Tests.Core;
 public class LlmProxyAnthropicTests
 {
     [Fact]
+    public async Task ChatAsync_SendsOllamaThinkFalse()
+    {
+        var handler = new CaptureHandler(_ => """
+        {
+          "model": "qwen3.6:latest",
+          "message": { "role": "assistant", "content": "pong" },
+          "done": true,
+          "total_duration": 123,
+          "eval_count": 1
+        }
+        """);
+        var service = CreateOllamaService(handler);
+
+        using var body = JsonDocument.Parse("""
+        {
+          "messages": [
+            { "role": "user", "content": "ping" }
+          ]
+        }
+        """);
+
+        var result = await service.ChatAsync(body.RootElement);
+
+        result.Content.Should().Be("pong");
+        handler.Request!.Method.Should().Be(HttpMethod.Post);
+        handler.Request.RequestUri!.PathAndQuery.Should().Be("/api/chat");
+
+        using var sent = JsonDocument.Parse(handler.RequestBody);
+        sent.RootElement.GetProperty("model").GetString().Should().Be("qwen3.6:latest");
+        sent.RootElement.GetProperty("stream").GetBoolean().Should().BeFalse();
+        sent.RootElement.GetProperty("think").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ChatAsync_SendsAnthropicMessagesRequest()
     {
         var handler = new CaptureHandler(_ => """
@@ -123,6 +157,18 @@ public class LlmProxyAnthropicTests
             BaseUrl = "https://api.anthropic.test",
             ApiKey = "test-anthropic-key",
             DefaultModel = "claude-sonnet-4-6",
+            SupportsToolCalling = true,
+        });
+    }
+
+    private static LlmProxyService CreateOllamaService(CaptureHandler handler)
+    {
+        return new LlmProxyService(new HttpClient(handler), new LlmProxyOptions
+        {
+            Enabled = true,
+            Provider = "ollama",
+            BaseUrl = "http://localhost:11434",
+            DefaultModel = "qwen3.6:latest",
             SupportsToolCalling = true,
         });
     }

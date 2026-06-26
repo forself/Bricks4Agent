@@ -271,114 +271,47 @@ public class LineChatGateway
     {
         try
         {
-            const string taskId = "global";
-            const int k = 60;
             var topK = _options.RagTopK;
-
-            var rewriteResult = await _ragPipeline.RewriteQueryAsync(query);
-            var searchTerms = rewriteResult.ExpandedTerms;
-
-            var bm25Results = new Dictionary<string, (float score, string content)>();
-            foreach (var term in searchTerms)
+            var retrievalQuery = BuildRagRetrievalQuery(query);
+            var retrieval = new RagRetrievalService(
+                _db,
+                _embeddingService,
+                _ragPipeline,
+                message => _logger.LogWarning("{Message}", message));
+            var response = await retrieval.RetrieveAsync(new RagRetrieveRequest
             {
-                try
-                {
-                    var ftsQuery = Adapters.InProcessDispatcher.PrepareFts5Query(term);
-                    var fts = _db.Query<RagFtsResult>(
-                        "SELECT source_key, content, rank FROM memory_fts WHERE memory_fts MATCH @q AND task_id = @taskId ORDER BY rank LIMIT @lim",
-                        new { q = ftsQuery, taskId, lim = topK * 3 });
-                    var rank = 1;
-                    foreach (var row in fts)
-                    {
-                        var key = row.SourceKey ?? "";
-                        if (!bm25Results.ContainsKey(key))
-                        {
-                            bm25Results[key] = (1f / (k + rank), row.Content ?? "");
-                        }
-                        else
-                        {
-                            var old = bm25Results[key];
-                            bm25Results[key] = (old.score + 1f / (k + rank), old.content);
-                        }
+                Query = retrievalQuery,
+                Mode = "hybrid",
+                Limit = topK,
+                Threshold = 0.2f,
+                Rewrite = false,
+                Rerank = false
+            }, "global", ct);
 
-                        rank++;
-                    }
-                }
-                catch
-                {
-                }
-            }
-
-            var vecResults = new Dictionary<string, float>();
-            if (_embeddingService.IsEnabled)
-            {
-                var queryVec = await _ragPipeline.GetCachedEmbeddingAsync(query, _embeddingService);
-                if (queryVec != null)
-                {
-                    var vectors = _db.GetAll<VectorEntry>()
-                        .Where(v => v.TaskId == taskId && v.Embedding.Length > 0)
-                        .ToList();
-                    var rank = 1;
-                    foreach (var v in vectors
-                                 .Select(v => (v.SourceKey, Sim: EmbeddingService.CosineSimilarity(queryVec, EmbeddingService.BytesToVector(v.Embedding))))
-                                 .Where(x => x.Sim >= 0.2f)
-                                 .OrderByDescending(x => x.Sim)
-                                 .Take(topK * 3))
-                    {
-                        vecResults[v.SourceKey] = 1f / (k + rank);
-                        rank++;
-                    }
-                }
-            }
-
-            var allKeys = bm25Results.Keys.Union(vecResults.Keys).Distinct();
-            var fused = allKeys
-                .Select(key => new
-                {
-                    key,
-                    content = bm25Results.TryGetValue(key, out var b) ? b.content : "",
-                    score = (bm25Results.TryGetValue(key, out var bs) ? bs.score : 0f) + vecResults.GetValueOrDefault(key, 0f)
-                })
-                .OrderByDescending(x => x.score)
-                .Take(topK)
-                .ToList();
-
-            if (fused.Count == 0)
+            if (response.Results.Count == 0)
                 return (null, null);
 
-            var snippets = new List<RagSnippet>();
-            var sb = new StringBuilder();
-            sb.AppendLine("以下是可供回答時參考的資料片段：");
-            sb.AppendLine();
+            var coreSnippets = new List<RagSnippet>();
+            var coreBuilder = new StringBuilder();
+            coreBuilder.AppendLine("RAG context snippets:");
+            coreBuilder.AppendLine();
 
-            foreach (var item in fused)
+            foreach (var item in response.Results.Take(topK))
             {
-                var content = item.content;
-                if (string.IsNullOrEmpty(content))
+                var display = item.Content.Length > 500 ? item.Content[..500] + "..." : item.Content;
+                coreBuilder.AppendLine($"[{item.Key}]");
+                coreBuilder.AppendLine(display);
+                coreBuilder.AppendLine();
+
+                coreSnippets.Add(new RagSnippet
                 {
-                    content = _db.GetAll<SharedContextEntry>()
-                        .Where(e => e.TaskId == taskId && e.Key == item.key)
-                        .OrderByDescending(e => e.Version)
-                        .FirstOrDefault()?.ContentRef ?? "";
-                }
-
-                if (string.IsNullOrEmpty(content))
-                    continue;
-
-                var display = content.Length > 500 ? content[..500] + "..." : content;
-                sb.AppendLine($"[{item.key}]");
-                sb.AppendLine(display);
-                sb.AppendLine();
-
-                snippets.Add(new RagSnippet
-                {
-                    Key = item.key,
+                    Key = item.Key,
                     Content = display,
-                    Score = item.score
+                    Score = item.Score
                 });
             }
 
-            return (sb.ToString(), snippets);
+            return (coreBuilder.ToString(), coreSnippets);
         }
         catch (Exception ex)
         {
@@ -482,7 +415,12 @@ public class LineChatGateway
         {
             ["model"] = _highLevelLlmOptions.DefaultModel,
             ["messages"] = messages,
-            ["stream"] = false
+            ["stream"] = false,
+            ["think"] = false,
+            ["options"] = new JsonObject
+            {
+                ["num_predict"] = Math.Max(1, _highLevelLlmOptions.MaxOutputTokens)
+            }
         };
 
         using var content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
@@ -648,6 +586,47 @@ public class LineChatGateway
         return _options.RagTriggerKeywords.Any(keyword =>
             !string.IsNullOrWhiteSpace(keyword) &&
             message.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildRagRetrievalQuery(string message)
+    {
+        var terms = new List<string>();
+        AddIfContains(terms, message, "消費者保護法");
+        AddIfContains(terms, message, "通訊交易");
+        AddIfContains(terms, message, "訪問交易");
+        AddIfContains(terms, message, "解除契約");
+        AddIfContains(terms, message, "退回商品");
+        AddIfContains(terms, message, "書面通知");
+        AddIfContains(terms, message, "七日");
+        AddIfContains(terms, message, "7日");
+        AddIfContains(terms, message, "第19條", "第十九條");
+        AddIfContains(terms, message, "第18條", "第十八條");
+        AddIfContains(terms, message, "合理例外");
+        AddIfContains(terms, message, "退費");
+        AddIfContains(terms, message, "退貨");
+        AddIfContains(terms, message, "契約");
+        AddIfContains(terms, message, "consumer protection");
+        AddIfContains(terms, message, "contract");
+        AddIfContains(terms, message, "legal");
+
+        var compact = terms
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToArray();
+
+        return compact.Length > 0
+            ? string.Join(' ', compact)
+            : message;
+    }
+
+    private static void AddIfContains(List<string> terms, string message, string term, string? match = null)
+    {
+        if (message.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            (match != null && message.Contains(match, StringComparison.OrdinalIgnoreCase)))
+        {
+            terms.Add(term);
+        }
     }
 }
 

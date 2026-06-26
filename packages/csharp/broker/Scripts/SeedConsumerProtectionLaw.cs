@@ -104,7 +104,10 @@ public static class SeedConsumerProtectionLaw
                         {
                             var hash = EmbeddingService.ComputeHash(value);
                             var existingVec = db.GetAll<VectorEntry>()
-                                .FirstOrDefault(v => v.ContentHash == hash && v.TaskId == TaskId);
+                                .FirstOrDefault(v =>
+                                    v.ContentHash == hash &&
+                                    v.TaskId == TaskId &&
+                                    string.Equals(v.EmbeddingModel, embeddingService.ModelName, StringComparison.Ordinal));
 
                             if (existingVec == null)
                             {
@@ -218,39 +221,8 @@ public static class SeedConsumerProtectionLaw
         return articles;
     }
 
-    /// <summary>
-    /// CJK 字元間插入空格，讓 FTS5 unicode61 tokenizer 能正確分詞
-    /// </summary>
     private static string PrepareFts5Content(string text)
-    {
-        var sb = new System.Text.StringBuilder(text.Length * 2);
-        bool prevIsCjk = false;
-        foreach (var ch in text)
-        {
-            bool isCjk = char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.OtherLetter;
-            if (isCjk)
-            {
-                if (sb.Length > 0 && !prevIsCjk) sb.Append(' ');
-                else if (prevIsCjk) sb.Append(' ');
-                sb.Append(ch);
-            }
-            else if (ch == ' ' || ch == '\t')
-            {
-                if (sb.Length > 0) sb.Append(' ');
-            }
-            else if (ch == '\n' || ch == '\r')
-            {
-                sb.Append(ch); // 保留換行
-            }
-            else
-            {
-                if (sb.Length > 0 && prevIsCjk) sb.Append(' ');
-                sb.Append(ch);
-            }
-            prevIsCjk = isCjk;
-        }
-        return sb.ToString();
-    }
+        => Fts5TextNormalizer.PrepareContent(text);
 
     // ── DTO ──
 

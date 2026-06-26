@@ -404,9 +404,26 @@ public static class AgentEndpoints
         agents.MapPost("/rag/test", async (
             HttpContext ctx,
             BrokerDb db,
-            EmbeddingService embeddingService) =>
+            EmbeddingService embeddingService,
+            RagPipelineService ragPipeline,
+            ILoggerFactory loggerFactory) =>
         {
             var body = RequestBodyHelper.GetBody(ctx);
+            var retrieveRequest = RagRetrieveRequest.FromArgs(body);
+            if (string.IsNullOrWhiteSpace(retrieveRequest.Query))
+                return Results.BadRequest(ApiResponseHelper.Error("query is required", 400));
+
+            var retrieveTaskId = retrieveRequest.TaskId ?? "global";
+            var logger = loggerFactory.CreateLogger("RagTest");
+            var retrieval = new RagRetrievalService(
+                db,
+                embeddingService,
+                ragPipeline,
+                message => logger.LogWarning("{Message}", message));
+            var response = await retrieval.RetrieveAsync(retrieveRequest, retrieveTaskId, ctx.RequestAborted);
+            return Results.Ok(ApiResponseHelper.Success(response));
+
+#pragma warning disable CS0162
             var query = body.TryGetProperty("query", out var q) ? q.GetString() ?? "" : "";
             var mode = body.TryGetProperty("mode", out var m) ? m.GetString() ?? "hybrid" : "hybrid";
             var limitVal = body.TryGetProperty("limit", out var lim) ? lim.GetInt32() : 5;
@@ -522,6 +539,7 @@ public static class AgentEndpoints
                 vector_candidates = vecResults.Count,
                 vector_db_total = db.GetAll<VectorEntry>().Count(v => v.TaskId == taskId)
             }));
+#pragma warning restore CS0162
         });
     }
 

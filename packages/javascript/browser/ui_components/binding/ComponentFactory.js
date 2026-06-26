@@ -44,6 +44,7 @@ import {
 import {
     BatchUploader,
     Checkbox,
+    CommandComposer,
     DatePicker,
     Dropdown,
     FormField,
@@ -191,6 +192,7 @@ export class ComponentFactory {
         // Form
         'BatchUploader': BatchUploader,
         'Checkbox': Checkbox,
+        'CommandComposer': CommandComposer,
         'DatePicker': DatePicker,
         'Dropdown': Dropdown,
         'FormField': FormField,

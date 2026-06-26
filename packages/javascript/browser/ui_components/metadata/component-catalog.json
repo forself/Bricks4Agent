@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 108,
+  "component_count": 109,
   "components": [
     {
       "schema_version": 1,
@@ -1597,6 +1597,46 @@
           "readonly",
           "required",
           "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.command_composer",
+      "registry_name": "CommandComposer",
+      "display_name": "CommandComposer",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/CommandComposer/CommandComposer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "command_input",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading"
         ]
       }
     },
@@ -5688,6 +5728,46 @@
         ]
       }
     },
+    "CommandComposer": {
+      "schema_version": 1,
+      "component_id": "form.command_composer",
+      "registry_name": "CommandComposer",
+      "display_name": "CommandComposer",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/CommandComposer/CommandComposer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "command_input",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading"
+        ]
+      }
+    },
     "DatePicker": {
       "schema_version": 1,
       "component_id": "form.date_picker",
@@ -8229,6 +8309,7 @@
     "form": [
       "BatchUploader",
       "Checkbox",
+      "CommandComposer",
       "DatePicker",
       "Dropdown",
       "Form",
@@ -8318,6 +8399,7 @@
       "ButtonGroup",
       "CardGrid",
       "ChainedInput",
+      "CommandComposer",
       "ConnectionCard",
       "ContentSection",
       "DateTimeInput",
@@ -8435,6 +8517,7 @@
       "Checkbox",
       "CodeBlock",
       "ColorPicker",
+      "CommandComposer",
       "ContentSection",
       "DescriptionList",
       "Divider",
@@ -8551,6 +8634,7 @@
       "CanvasMap",
       "CardGrid",
       "CodeBlock",
+      "CommandComposer",
       "ConnectionCard",
       "ContentSection",
       "DataTable",

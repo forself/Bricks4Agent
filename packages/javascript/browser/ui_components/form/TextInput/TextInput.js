@@ -16,6 +16,7 @@ export class TextInput {
             hint: '',
             maxLength: null,
             width: '100%',
+            autocomplete: null,
             enableSecurity: true,
             onChange: null,
             onBlur: null,
@@ -98,7 +99,8 @@ export class TextInput {
             error,
             hint,
             maxLength,
-            width
+            width,
+            autocomplete
         } = this.options;
 
         const sizeStyles = {
@@ -131,6 +133,7 @@ export class TextInput {
         input.value = value;
         input.disabled = disabled;
         input.readOnly = readonly;
+        if (autocomplete) input.autocomplete = autocomplete;
         if (maxLength) input.maxLength = maxLength;
         input.style.cssText = `
             width: 100%;

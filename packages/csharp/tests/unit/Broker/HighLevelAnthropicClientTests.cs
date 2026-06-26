@@ -30,6 +30,7 @@ public class HighLevelAnthropicClientTests
             Provider = "claude",
             ApiKey = "test-anthropic-key",
             DefaultModel = "claude-sonnet-4-6",
+            MaxOutputTokens = 4096
         };
         client.DefaultRequestHeaders.Add("x-api-key", options.ApiKey);
         client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");

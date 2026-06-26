@@ -1446,6 +1446,176 @@ try
         AssertTrue(HighLevelExecutionIntentStore.BuildDocumentId("line", "tester") == "hlm.execution.line.tester", "execution intent document id is stable for downstream references");
     }
 
+    var legalRagDbPath = Path.Combine(sandboxRoot, "legal-rag.db");
+    using (var legalRagDb = BrokerDb.UseSqlite($"Data Source={legalRagDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(legalRagDb);
+        initializer.Initialize();
+
+        var legalTaskId = "legal-rag-verify";
+        var legalEmbedding = new FakeLegalEmbeddingService();
+        var legalRagPipeline = new RagPipelineService(new RagPipelineOptions
+        {
+            QueryRewriteEnabled = false,
+            RerankEnabled = false,
+            CacheEnabled = false
+        });
+        var legalRagDispatcher = new InProcessDispatcher(
+            NullLogger<InProcessDispatcher>.Instance,
+            sandboxRoot,
+            db: legalRagDb,
+            embeddingService: legalEmbedding,
+            ragPipeline: legalRagPipeline);
+
+        var legalFixtureJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                key = "第19條",
+                content = "通訊交易或訪問交易之消費者，得於收受商品或接受服務後七日內，以退回商品或書面通知方式解除契約。",
+                tag = "消費者保護法",
+                tags = new[] { "消費者保護法", "法律", "退貨" }
+            },
+            new
+            {
+                key = "第2條",
+                content = "本法所稱消費者，指以消費為目的而為交易、使用商品或接受服務者。",
+                tag = "消費者保護法",
+                tags = new[] { "消費者保護法", "法律", "定義" }
+            },
+            new
+            {
+                key = "咖啡規範",
+                content = "咖啡拉花教學資料，不屬於消費者保護法條文。",
+                tag = "餐飲內規",
+                tags = new[] { "餐飲內規" }
+            }
+        });
+
+        var importPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_import",
+            args = new
+            {
+                format = "json",
+                tag = "法律",
+                data = legalFixtureJson,
+                task_id = legalTaskId
+            }
+        });
+        var importResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_import",
+            CapabilityId = "rag.import",
+            Route = "rag_import",
+            Payload = importPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(importResult.Success, $"legal RAG import route succeeds :: {importResult.ErrorMessage}");
+
+        var legalEntries = legalRagDb.GetAll<SharedContextEntry>()
+            .Where(e => e.TaskId == legalTaskId)
+            .ToList();
+        AssertTrue(legalEntries.Any(e => e.Key == "消費者保護法:第19條" && e.ContentRef.Contains("七日內", StringComparison.Ordinal)), "legal RAG externalizes Consumer Protection Act article state");
+
+        var legalFtsRows = legalRagDb.Query<LegalRagFtsRow>(
+            "SELECT source_key, content FROM memory_fts WHERE memory_fts MATCH @q AND task_id = @taskId ORDER BY rank LIMIT 5",
+            new { q = InProcessDispatcher.PrepareFts5Query("通訊交易 七日 解除契約"), taskId = legalTaskId });
+        AssertTrue(legalFtsRows.Any(row => row.SourceKey == "消費者保護法:第19條"), "legal RAG indexes Consumer Protection Act article in FTS5");
+
+        var fulltextPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "通訊交易 七日 解除契約",
+                mode = "fulltext",
+                limit = 3,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var fulltextResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_fulltext",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = fulltextPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(fulltextResult.Success, $"legal RAG fulltext retrieve succeeds :: {fulltextResult.ErrorMessage}");
+        using (var fulltextDoc = JsonDocument.Parse(fulltextResult.ResultPayload ?? "{}"))
+        {
+            var keys = fulltextDoc.RootElement.GetProperty("results")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("key").GetString() ?? "")
+                .ToList();
+            AssertTrue(keys.FirstOrDefault() == "消費者保護法:第19條", "legal RAG fulltext retrieve returns the relevant law article first");
+        }
+
+        var semanticPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "七日退貨解除契約",
+                mode = "semantic",
+                limit = 3,
+                threshold = 0.5,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var semanticResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_semantic",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = semanticPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(semanticResult.Success, $"legal RAG semantic retrieve succeeds :: {semanticResult.ErrorMessage}");
+        using (var semanticDoc = JsonDocument.Parse(semanticResult.ResultPayload ?? "{}"))
+        {
+            var first = semanticDoc.RootElement.GetProperty("results").EnumerateArray().FirstOrDefault();
+            AssertTrue(first.ValueKind == JsonValueKind.Object && first.GetProperty("key").GetString() == "消費者保護法:第19條", "legal RAG vector retrieve returns the relevant law article");
+            AssertTrue(first.GetProperty("vector_score").GetSingle() > 0, "legal RAG vector retrieve reports a positive vector score");
+        }
+
+        var filteredPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "咖啡 拉花",
+                mode = "fulltext",
+                limit = 3,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var filteredResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_tag_filter",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = filteredPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(filteredResult.Success, $"legal RAG tag-filtered retrieve succeeds :: {filteredResult.ErrorMessage}");
+        using (var filteredDoc = JsonDocument.Parse(filteredResult.ResultPayload ?? "{}"))
+        {
+            var filteredKeys = filteredDoc.RootElement.GetProperty("results")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("key").GetString() ?? "")
+                .ToList();
+            AssertTrue(!filteredKeys.Any(key => key.StartsWith("餐飲內規:", StringComparison.Ordinal)), "legal RAG tag filter excludes unrelated non-law entries");
+        }
+    }
+
     var coordinatorDbPath = Path.Combine(sandboxRoot, "coordinator-profile.db");
     using (var coordinatorDb = BrokerDb.UseSqlite($"Data Source={coordinatorDbPath}"))
     {
@@ -2628,7 +2798,59 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
             }
         ];
     }
-}file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
+}
+
+file sealed class FakeLegalEmbeddingService : EmbeddingService
+{
+    public FakeLegalEmbeddingService()
+        : base(new EmbeddingOptions
+        {
+            Enabled = true,
+            Provider = "fake",
+            BaseUrl = "http://localhost:11434",
+            Model = "fake-legal-embedding",
+            Dimension = 3,
+            TimeoutSeconds = 1
+        })
+    {
+    }
+
+    public override Task<float[]?> EmbedAsync(string text)
+    {
+        if (text.Contains("通訊交易", StringComparison.Ordinal) ||
+            text.Contains("七日", StringComparison.Ordinal) ||
+            text.Contains("解除契約", StringComparison.Ordinal) ||
+            text.Contains("退貨", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 1.0f, 0.0f, 0.0f });
+        }
+
+        if (text.Contains("消費者", StringComparison.Ordinal) ||
+            text.Contains("交易", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 0.8f, 0.2f, 0.0f });
+        }
+
+        if (text.Contains("咖啡", StringComparison.Ordinal) ||
+            text.Contains("拉花", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 0.0f, 1.0f, 0.0f });
+        }
+
+        return Task.FromResult<float[]?>(new[] { 0.0f, 0.0f, 1.0f });
+    }
+}
+
+file sealed class LegalRagFtsRow
+{
+    [BaseOrm.Column("source_key")]
+    public string? SourceKey { get; set; }
+
+    [BaseOrm.Column("content")]
+    public string? Content { get; set; }
+}
+
+file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {

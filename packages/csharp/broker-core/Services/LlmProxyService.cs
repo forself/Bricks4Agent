@@ -124,6 +124,7 @@ public class LlmProxyService : ILlmProxyService
         {
             ["model"] = model,
             ["stream"] = false,
+            ["think"] = false,
         };
 
         if (body.TryGetProperty("messages", out var messages))

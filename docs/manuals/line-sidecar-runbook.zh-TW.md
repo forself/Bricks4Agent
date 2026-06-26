@@ -200,16 +200,17 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 1. 建立 `.run/line-sidecar`
 2. publish broker 到 `.run/line-sidecar/broker`
 3. publish line-worker 到 `.run/line-sidecar/line-worker`
-4. 注入本機 production override：
+4. 若存在 `Bricks4Agent Dev Code Signing` 開發簽章憑證，補簽 `.run/line-sidecar` 內自家 `.dll` / `.exe`
+5. 注入本機 production override：
    - high-level API key
    - Google Drive OAuth 設定
    - Google Drive 預設身分模式與 shared delegated owner
-5. 啟動 broker 到 `127.0.0.1:5361`
-6. 啟動 line-worker 到 `*:5357`
-7. 重建 ngrok tunnel `line5357`
-8. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
-9. 等到 broker 與本機 webhook 真正 ready
-10. 確認命名的 ngrok tunnel 確實存在
+6. 啟動 broker 到 `127.0.0.1:5361`
+7. 啟動 line-worker 到 `*:5357`
+8. 重建 ngrok tunnel `line5357`
+9. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
+10. 等到 broker 與本機 webhook 真正 ready
+11. 確認命名的 ngrok tunnel 確實存在
 
 重要補充：
 
@@ -223,6 +224,37 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - 不能再假設操作者自己猜到要怎麼先手動開 ngrok
 
 第一次啟動可能比較慢，因為 broker 可能需要 seed 一部分本機資料後才會 ready。
+
+### Smart App Control / WDAC 封鎖 runtime DLL
+
+若 `up` 失敗，且 `.run/line-sidecar/logs/broker.err.log` 或 Windows Code Integrity event 顯示 `0x800711C7`、`Smart App Control`、`did not meet the Enterprise signing level requirements`，代表 Windows 仍未信任目前 runtime 載入的程式碼。
+
+這時不要只反覆重跑 `line-sidecar.ps1 up`。請用系統管理員 PowerShell 執行：
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+這個 repair flow 會掃描：
+
+```text
+D:\Bricks4Agent\.run\line-sidecar
+```
+
+並產生 policy 到：
+
+```text
+D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+```
+
+部署成功後，輸出的 `{policy-id}.cip` 必須出現在：
+
+```text
+C:\Windows\System32\CodeIntegrity\CiPolicies\Active
+```
+
+只有 active policy 檢查通過才代表 WDAC policy 實際生效。完整說明見 [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.md)。
 
 ## 啟動成功的判準
 

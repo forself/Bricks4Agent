@@ -192,16 +192,17 @@ The start path currently performs these actions:
 1. Creates `.run/line-sidecar`
 2. Publishes broker into `.run/line-sidecar/broker`
 3. Publishes line-worker into `.run/line-sidecar/line-worker`
-4. Injects local production overrides for:
+4. Signs Bricks4Agent-owned sidecar runtime `.dll` / `.exe` files when the `Bricks4Agent Dev Code Signing` certificate exists
+5. Injects local production overrides for:
    - high-level API key
    - Google Drive OAuth settings
    - Google Drive default identity mode and shared delegated owner
-5. Starts broker on `127.0.0.1:5361`
-6. Starts line-worker on `*:5357`
-7. Recreates ngrok tunnel `line5357`
-8. Updates the LINE webhook endpoint unless `-SkipWebhookUpdate` is used
-9. Waits until broker and local webhook are actually reachable before considering startup successful
-10. Verifies that the named ngrok tunnel actually exists before treating startup as successful
+6. Starts broker on `127.0.0.1:5361`
+7. Starts line-worker on `*:5357`
+8. Recreates ngrok tunnel `line5357`
+9. Updates the LINE webhook endpoint unless `-SkipWebhookUpdate` is used
+10. Waits until broker and local webhook are actually reachable before considering startup successful
+11. Verifies that the named ngrok tunnel actually exists before treating startup as successful
 
 Important clarification:
 
@@ -215,6 +216,37 @@ So the startup document is now strict:
 - it is no longer acceptable to assume the operator manually guessed how to bootstrap ngrok
 
 The first start can take noticeably longer because the broker may seed local RAG data before becoming ready.
+
+### Smart App Control / WDAC Runtime DLL Blocks
+
+If `up` fails and `.run/line-sidecar/logs/broker.err.log` or Windows Code Integrity events mention `0x800711C7`, `Smart App Control`, or `did not meet the Enterprise signing level requirements`, Windows still does not trust code loaded by the current sidecar runtime.
+
+Do not keep re-running `line-sidecar.ps1 up`. Run the runtime trust repair flow from an elevated PowerShell:
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+The repair flow scans:
+
+```text
+D:\Bricks4Agent\.run\line-sidecar
+```
+
+It generates policy output under:
+
+```text
+D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+```
+
+After deployment, the generated `{policy-id}.cip` must appear under:
+
+```text
+C:\Windows\System32\CodeIntegrity\CiPolicies\Active
+```
+
+The WDAC policy is effective only after the active policy check passes. See [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.md) for the full flow.
 
 ## Successful Start: Expected Signals
 

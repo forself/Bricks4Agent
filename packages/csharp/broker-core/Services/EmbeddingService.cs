@@ -33,7 +33,7 @@ public class EmbeddingService
     public int ExpectedDimension => _options.Dimension;
 
     /// <summary>產生單一文字的嵌入向量</summary>
-    public async Task<float[]?> EmbedAsync(string text)
+    public virtual async Task<float[]?> EmbedAsync(string text)
     {
         if (!_options.Enabled || string.IsNullOrWhiteSpace(text))
             return null;
@@ -67,7 +67,7 @@ public class EmbeddingService
     }
 
     /// <summary>批次嵌入多段文字</summary>
-    public async Task<float[][]?> EmbedBatchAsync(string[] texts)
+    public virtual async Task<float[][]?> EmbedBatchAsync(string[] texts)
     {
         if (!_options.Enabled || texts.Length == 0)
             return null;
@@ -189,7 +189,7 @@ public class EmbeddingService
     }
 
     /// <summary>使用指定模型產生嵌入（覆蓋預設模型）</summary>
-    public async Task<float[]?> EmbedWithModelAsync(string text, string model)
+    public virtual async Task<float[]?> EmbedWithModelAsync(string text, string model)
     {
         if (!_options.Enabled || string.IsNullOrWhiteSpace(text))
             return null;

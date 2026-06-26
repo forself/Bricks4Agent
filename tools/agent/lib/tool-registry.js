@@ -365,7 +365,7 @@ const TOOL_DEFINITIONS = [
                     chunk_overlap: { type: 'number', description: '分段重疊（字元數），預設 100' },
                     task_id: { type: 'string', description: '任務 ID，預設 global' },
                 },
-                required: ['query'],
+                required: [],
             },
         },
     },

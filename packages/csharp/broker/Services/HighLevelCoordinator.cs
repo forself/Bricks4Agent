@@ -1235,6 +1235,31 @@ public class HighLevelCoordinator
     public HighLevelUserProfile? GetLineUserProfile(string userId)
         => LoadUserProfile("line", userId);
 
+    public HighLevelUserProfile EnsureLineUserProfile(string userId, string? displayName = null)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new InvalidOperationException("user_id is required.");
+
+        const string channel = "line";
+        var profile = LoadUserProfile(channel, userId) ?? new HighLevelUserProfile
+        {
+            Channel = channel,
+            UserId = userId,
+            RegistrationStatus = HighLevelRegistrationStatus.Approved,
+            AccessTier = HighLevelAccessTier.Basic,
+            RegistrationReviewedAt = DateTimeOffset.UtcNow
+        };
+
+        if (!string.IsNullOrWhiteSpace(displayName))
+            profile.PreferredDisplayName = displayName.Trim();
+
+        profile.RegistrationStatus = ResolveRegistrationStatus(profile);
+        profile.AccessTier = HighLevelAccessTier.Normalize(profile.AccessTier);
+        profile.LastUpdatedAt = DateTime.UtcNow;
+        SaveUserProfile(channel, userId, profile);
+        return profile;
+    }
+
     public HighLevelTaskDraft? GetLineDraft(string userId)
         => LoadTaskDraft("line", userId);
 

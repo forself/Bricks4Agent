@@ -3,6 +3,7 @@
  */
 export { BatchUploader } from './BatchUploader/index.js';
 export { Checkbox } from './Checkbox/index.js';
+export { CommandComposer } from './CommandComposer/index.js';
 export { DatePicker } from './DatePicker/index.js';
 export { Dropdown } from './Dropdown/index.js';
 export { FormField } from './FormField/index.js';

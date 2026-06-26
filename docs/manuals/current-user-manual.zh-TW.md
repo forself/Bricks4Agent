@@ -147,11 +147,13 @@ $env:BRICKS4AGENT_SECRETS_DIR = 'D:\secure\Bricks4Agent'
 
 | 檔案 | 用途 |
 | --- | --- |
-| `Api.txt` | OpenAI-compatible fallback key；當 `ANTHROPIC_API_KEY` 未設定時 sidecar 注入 broker `HighLevelLlm.ApiKey` |
+| `Api.txt` | OpenAI-compatible fallback key；只有在 sidecar/container 明確切到 OpenAI-compatible provider 時才需要 |
 | `client_secret_*.json` | Google delegated OAuth |
 | `worker-auth.json` | sidecar 產生/維護 worker identity credentials |
 
-目前 sidecar 會優先讀取環境變數 `ANTHROPIC_API_KEY`，並將 broker high-level 與 agent-facing `LlmProxy` 設為 `anthropic` / `claude-sonnet-4-6`。若沒有 `ANTHROPIC_API_KEY`，才使用 `Api.txt` 的 OpenAI-compatible fallback。
+本機 broker / Portal 預設使用 host Ollama：`HighLevelLlm.Provider=ollama`、`HighLevelLlm.BaseUrl=http://localhost:11434`、`HighLevelLlm.ApiFormat=chat`、`HighLevelLlm.DefaultModel=qwen3.6:latest`、`HighLevelLlm.MaxOutputTokens=256`。此模式不需要 `HighLevelLlm.ApiKey`。
+
+目前 sidecar 會優先讀取環境變數 `ANTHROPIC_API_KEY`，並將 broker high-level 與 agent-facing `LlmProxy` 設為 `anthropic` / `claude-sonnet-4-6`。若要改走 OpenAI-compatible provider，才使用 `Api.txt` fallback。
 
 LINE worker 本機設定：
 
@@ -179,12 +181,22 @@ Sidecar 會：
 
 1. 建立 `.run/line-sidecar` runtime workspace。
 2. publish broker 與 line-worker。
-3. 載入 high-level API key、Google OAuth、worker auth 等 runtime override。
-4. 啟動 broker：`127.0.0.1:5361`。
-5. 啟動 line-worker webhook：`127.0.0.1:5357`。
-6. 啟動或沿用 ngrok tunnel。
-7. 更新 LINE webhook URL，除非使用 `-SkipWebhookUpdate`。
-8. 檢查 broker、line-worker、tunnel ready。
+3. 若存在 `Bricks4Agent Dev Code Signing` 開發簽章憑證，補簽 sidecar runtime 內自家 `.dll` / `.exe`。
+4. 載入 high-level API key、Google OAuth、worker auth 等 runtime override。
+5. 啟動 broker：`127.0.0.1:5361`。
+6. 啟動 line-worker webhook：`127.0.0.1:5357`。
+7. 啟動或沿用 ngrok tunnel。
+8. 更新 LINE webhook URL，除非使用 `-SkipWebhookUpdate`。
+9. 檢查 broker、line-worker、tunnel ready。
+
+若 Windows Smart App Control / WDAC 在啟動時封鎖 `Broker.dll`、`BrokerCore.dll`、`BaseOrm.dll` 或其他 runtime DLL，請用系統管理員 PowerShell 修復 sidecar runtime trust：
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+此命令會掃描 `D:\Bricks4Agent\.run\line-sidecar`，產生 policy 到 `D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\`，並確認 `{policy-id}.cip` 進入 `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`。只有 active policy 檢查通過才表示 WDAC trust 已生效。
 
 ### 7.2 狀態
 
@@ -297,6 +309,25 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 3. 回答系統提出的需求問題。
 4. 查看系統產出的摘要、設計、PDF/JSON review artifact。
 5. 用 `/ok`、`/revise` 或 `/cancel` 決定下一步。
+
+### 8.6 使用者 Portal 前台
+
+Broker 也提供使用者 Web 前台，讓使用者可以登入、下指令、查看回應紀錄，以及下載 broker 產生的 artifact。
+
+啟動 sidecar 或 direct broker 後開啟：
+
+```text
+http://127.0.0.1:5361/portal/index.html
+```
+
+目前 portal 使用 broker 內建輕量帳號密碼登入：
+
+1. 第一次使用可在 portal 註冊使用者 ID 與密碼；broker 會同步建立對應的 high-level LINE profile，預設為 Basic + Approved。
+2. 登入後可以在「指令與回應」輸入需求。Portal 會呼叫同一個 `HighLevelCoordinator`，所以 `?profile`、查詢命令、draft、專案訪談等行為與 LINE 高階入口一致。
+3. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
+4. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
+
+Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 `line-admin.html`。
 
 ## 9. 使用本機管理後台
 
@@ -529,7 +560,7 @@ node tools/page-gen.js --list-types
 
 ### 14.3 UI Component Library
 
-目前 component metadata catalog 包含 108 個 components，分類包含：
+目前 component metadata catalog 包含 109 個 components，分類包含：
 
 - `common`
 - `form`
@@ -546,6 +577,7 @@ node tools/page-gen.js --list-types
 - site generator 的 component vocabulary 已錨定到 canonical `ui_components` 閉集。
 - static site package 會輸出 `b_component` / `b-binding.json` 作為 B component anchor。
 - 不是整個 `ui_components` 都宣稱 byte-deterministic；site-gen 靜態輸出與特定 instance ID 已清 deterministic，viz/map/social/download 類仍可能有 runtime timestamp 或互動時 ID/檔名需求。
+- 使用者 Portal 的指令輸入使用元件庫中的 `CommandComposer`；後續前台需要的新前後端元件也應先補回共用元件庫或 broker reusable service，再由產品畫面引用。
 
 ## 15. 常用驗證命令
 
@@ -573,9 +605,12 @@ npm run validate:backend-governance
 npm run validate:ui-state
 npm run validate:ui-library
 npm run validate:ui-library:browser
+npm run validate:user-portal
 npm run validate:agent-governed
 npm run validate:broker-llm-proxy
 ```
+
+若 Windows Smart App Control / WDAC 擋下 `BaseOrm.dll`、broker verify executable，或其他本機 build output，先依 [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) 建立 dev code-signing 與 WDAC supplemental policy 流程，再用 `npm run validate:db:signed` 重跑 DB 相關驗證。SAC / WDAC 下不要在簽章後直接跑一般 `dotnet run`，因為它可能重新 build 並覆蓋簽章。
 
 ### 15.3 Podman stacks
 
@@ -651,7 +686,8 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 檢查：
 
-- `ANTHROPIC_API_KEY` 是否存在；若沒有，確認 `C:\secure\Bricks4Agent\Api.txt` 有 OpenAI-compatible fallback key。
+- 本機 Portal / broker 預設路徑：確認 Ollama 正在執行，且 `ollama list` 看得到 `qwen3.6:latest`。
+- 外部 provider 路徑：確認 `ANTHROPIC_API_KEY`，或 `C:\secure\Bricks4Agent\Api.txt` 的 OpenAI-compatible fallback key。
 - `HighLevelLlm` provider / model / API format 是否匹配。
 - `.run/line-sidecar/logs/broker.err.log` 是否有 upstream `401`、`400`、timeout。
 
@@ -722,3 +758,32 @@ npm run validate:podman-openai-compatible-stack
 - execution adapter stack。
 - UI/generator validation。
 - broker/core build and tests。
+
+## 19. Legal RAG / 法律檢索輔助
+
+目前系統有一個小型法律 RAG 可行性模組，重點是把可查證資料外部化到資料庫，再讓回答可以引用檢索到的片段。這不是完整法律資料庫，也不是法律意見。
+
+目前範圍：
+
+- 法律 POC 來源是台灣消費者保護法相關資料。
+- broker 會把資料存成 `SharedContextEntry`，並建立 SQLite FTS5 全文索引。
+- 若啟用 embedding provider，會同步建立 `vector_entries` 做語意檢索；目前 broker 預設使用 `bge-m3`，`nomic-embed-text` 是較輕量的備用模型。
+- 同一份資料可同時保留不同 embedding model 的向量；檢索時只會使用目前設定模型的向量，不會把不同維度或不同模型混在同一輪語意比對。
+- LINE 對話、`rag_retrieve` tool、`/agents/rag/test` 與 `/dev/rag-test` 都走同一個 RAG retrieval core。
+- 需要獨立查詢服務時，可啟動 `packages/csharp/rag-service`；它只提供 `/healthz` 與 `/rag/retrieve`，可共用同一份 SQLite RAG DB，不依賴 LINE 或 broker 對話流程。
+
+使用限制：
+
+- 法律 RAG 只能作為檢索與佐證輔助，不應視為律師意見。
+- 若沒有啟用 Ollama / embedding，仍可用 FTS5 全文檢索；語意向量檢索需要 embedding provider。
+- live 法規 seed 需要網路；正式驗證使用離線 fixture，不依賴法務部網站或 live model。
+- `rag-service` 預設關閉 embedding、query rewrite、rerank，所以可以先作為純 FTS5 retrieval host；若要語意檢索，需另外設定 embedding provider。
+
+驗證：
+
+```powershell
+npm run validate:broker-scope:signed
+npm run validate:db:signed
+```
+
+`validate:broker-scope` 會驗證法律 RAG import、狀態外部化、FTS5、deterministic vector retrieval 與 tag filter。

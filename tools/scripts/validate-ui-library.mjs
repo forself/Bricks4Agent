@@ -33,6 +33,7 @@ const mimeTypes = new Map([
 
 const smokeDemos = [
     '/packages/javascript/browser/ui_components/form/TextInput/demo.html',
+    '/packages/javascript/browser/ui_components/form/CommandComposer/demo.html',
     '/packages/javascript/browser/ui_components/form/NumberInput/demo.html',
     '/packages/javascript/browser/ui_components/common/ColorPicker/demo.html',
     '/packages/javascript/browser/ui_components/layout/InfoPanel/demo.html',
@@ -122,7 +123,7 @@ async function validatePublicSurface() {
         {
             label: 'ui_components/form',
             pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'form', 'index.js'],
-            expectedExports: ['TextInput', 'NumberInput', 'DatePicker', 'ToggleSwitch']
+            expectedExports: ['TextInput', 'NumberInput', 'DatePicker', 'ToggleSwitch', 'CommandComposer']
         },
         {
             label: 'ui_components/layout',

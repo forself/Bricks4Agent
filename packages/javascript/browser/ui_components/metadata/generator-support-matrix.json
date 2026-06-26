@@ -169,6 +169,7 @@
   "trigger_support": {
     "clear": {
       "component_roles": [
+        "command_input",
         "container",
         "display",
         "editor",
@@ -186,6 +187,7 @@
     },
     "setValue": {
       "component_roles": [
+        "command_input",
         "container",
         "editor",
         "feedback",
@@ -257,6 +259,7 @@
     "CanvasMap",
     "CardGrid",
     "CodeBlock",
+    "CommandComposer",
     "ConnectionCard",
     "ContentSection",
     "DataTable",

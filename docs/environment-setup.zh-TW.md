@@ -161,7 +161,9 @@ Common files:
 | `client_secret_*.json` | Google Drive delegated OAuth setup |
 | `worker-auth.json` | Generated/persisted worker identity credentials |
 
-Sidecar prefers `ANTHROPIC_API_KEY` from the process or Windows User environment. When present, it writes runtime broker overrides for `anthropic` / `claude-sonnet-4-6`. `Api.txt` has a legacy repo-root fallback, but new OpenAI-compatible fallback setups should prefer the secure directory.
+The checked-in local broker defaults use Ollama for both Portal/high-level conversation and agent-facing LLM proxy: `HighLevelLlm.Provider=ollama`, `HighLevelLlm.BaseUrl=http://localhost:11434`, `HighLevelLlm.ApiFormat=chat`, `HighLevelLlm.DefaultModel=qwen3.6:latest`, and `HighLevelLlm.MaxOutputTokens=256`. `HighLevelLlm.ApiKey` is only required when you intentionally override the high-level path to a commercial provider.
+
+Sidecar prefers `ANTHROPIC_API_KEY` from the process or Windows User environment. When present, it writes runtime broker overrides for `anthropic` / `claude-sonnet-4-6`. `Api.txt` has a legacy repo-root fallback for OpenAI-compatible sidecar/container setups, but new OpenAI-compatible fallback setups should prefer the secure directory.
 
 ### 5.2 LINE worker local config
 
@@ -301,7 +303,7 @@ LINE worker also reads:
 
 | Port / URL | Owner | Notes |
 | --- | --- | --- |
-| `http://127.0.0.1:5361` | canonical sidecar broker | Admin UI at `/line-admin.html` |
+| `http://127.0.0.1:5361` | canonical sidecar broker | User portal at `/portal/index.html`; admin UI at `/line-admin.html` |
 | `http://127.0.0.1:5357` | canonical sidecar line-worker webhook | Public tunnel forwards here |
 | `7000` | function-pool TCP worker port | Workers register here |
 | `http://localhost:5000` | generic broker / SPA template backend / some e2e defaults | Can collide across subsystems |
@@ -357,12 +359,23 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 Sidecar behavior:
 
 - publishes broker and line-worker into `.run/line-sidecar`
+- signs Bricks4Agent-owned sidecar runtime `.dll` / `.exe` files when the dev code-signing certificate exists
 - stores runtime DB at `.run/line-sidecar/data/broker.db`
 - writes logs under `.run/line-sidecar/logs`
 - provisions `worker-auth.json` under the secure secrets directory
 - injects `WorkerAuth.Enforce = true` into the sidecar broker runtime config
 - updates LINE webhook URL unless `-SkipWebhookUpdate` is used
+- user portal is available at `http://127.0.0.1:5361/portal/index.html`
 - admin console is available at `http://127.0.0.1:5361/line-admin.html`
+
+On Windows machines with Smart App Control / WDAC enforcement, sidecar startup can fail with `0x800711C7` or Code Integrity messages such as `did not meet the Enterprise signing level requirements`. If this happens, do not keep re-running `up`; repair the runtime trust policy from an elevated PowerShell:
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+This scans `D:\Bricks4Agent\.run\line-sidecar`, generates the supplemental policy under `D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\`, installs it with `CiTool`, and verifies that the generated `{policy-id}.cip` appears under `C:\Windows\System32\CodeIntegrity\CiPolicies\Active`. The policy is not effective until the repair output shows it is active. See `docs/manuals/dev-code-signing-wdac.zh-TW.md` for the full flow.
 
 If shell encoding is unreliable for Chinese text, prefer:
 
@@ -421,6 +434,12 @@ Admin UI:
 http://127.0.0.1:5361/line-admin.html
 ```
 
+User portal:
+
+```text
+http://127.0.0.1:5361/portal/index.html
+```
+
 Direct broker defaults differ from sidecar defaults:
 
 - repo `appsettings.json` has `WorkerAuth.Enforce = false`
@@ -445,6 +464,7 @@ npm run audit:ui-styles
 npm run validate:ui-state
 npm run validate:ui-library
 npm run validate:ui-library:browser
+npm run validate:user-portal
 npm run validate:backend-governance
 npm run validate:baseorm
 npm run validate:broker-scope
@@ -532,6 +552,12 @@ Broker console/unit-style test suite:
 
 ```powershell
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
+```
+
+On Windows hosts with Smart App Control / WDAC enforcement, run the trusted test entry from an elevated PowerShell instead. It builds, signs, deploys the broker test WDAC policies, then runs the test host with `--no-build` so hash trust is not invalidated by a later build:
+
+```powershell
+npm run test:broker:trusted
 ```
 
 Broker integration mode, requiring a running broker:
@@ -637,11 +663,12 @@ Typical local setup:
 
 ```powershell
 ollama serve
+ollama pull bge-m3
 ollama pull nomic-embed-text
 ollama pull qwen3.6:latest
 ```
 
-Model names in config are defaults, not hard requirements for every workflow. If you do not run RAG or local model paths, disable those settings instead of installing large models.
+`qwen3.6:latest` is the default local high-level and LLM proxy model used by the broker and Portal path. `bge-m3` is the default embedding model for multilingual / Chinese RAG vectors; `nomic-embed-text` is kept as a lighter fallback. Model names in config are defaults, not hard requirements for every workflow. If you do not run RAG or local model paths, disable those settings instead of installing large models.
 
 ### 15.2 Anthropic Claude
 

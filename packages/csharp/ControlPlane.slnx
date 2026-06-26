@@ -5,6 +5,9 @@
   <Folder Name="/broker/">
     <Project Path="broker/Broker.csproj" />
   </Folder>
+  <Folder Name="/rag-service/">
+    <Project Path="rag-service/RagService.csproj" />
+  </Folder>
   <Folder Name="/cache-client/">
     <Project Path="cache-client/CacheClient.csproj" />
   </Folder>

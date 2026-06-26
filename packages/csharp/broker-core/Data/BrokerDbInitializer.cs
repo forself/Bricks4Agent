@@ -51,6 +51,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<GoogleDriveDelegatedCredential>();
         _db.EnsureTable<LocalAdminCredential>();
         _db.EnsureTable<LocalAdminSession>();
+        _db.EnsureTable<PortalUserCredential>();
+        _db.EnsureTable<PortalUserSession>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
@@ -127,8 +129,9 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_source
                       ON vector_entries(source_key, task_id)");
 
-        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_entries_hash
-                      ON vector_entries(content_hash, task_id)");
+        TryExecute("DROP INDEX IF EXISTS idx_vector_entries_hash");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_entries_hash_model
+                      ON vector_entries(content_hash, task_id, embedding_model)");
 
         // 分塊父文件查詢索引
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_parent
@@ -163,6 +166,8 @@ public class BrokerDbInitializer
                       ON azure_iis_deployment_targets(vm_host, site_name)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_expires
                       ON local_admin_sessions(expires_at, revoked_at)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_portal_user_sessions_user
+                      ON portal_user_sessions(user_id, expires_at, revoked_at)");
 
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");
@@ -891,7 +896,7 @@ public class BrokerDbInitializer
                         chunk_overlap = new { type = "integer", description = "分段重疊（預設 100 字元）" },
                         task_id = new { type = "string" }
                     },
-                    required = new[] { "query" }
+                    required = Array.Empty<string>()
                 })
             },
 

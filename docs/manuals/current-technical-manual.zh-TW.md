@@ -44,7 +44,8 @@ agent container -> broker sessions/runtime/llm/execution APIs -> broker policy -
 | `packages/csharp/workers/execution-adapter-worker` | `repo.patch.apply`、`build.test.run` trusted adapter |
 | `packages/csharp/workers/line-worker` | LINE webhook ingress bridge |
 | `packages/csharp/database/BaseOrm/net8` | canonical lightweight ORM |
-| `packages/javascript/browser` | UI component library、page generator、browser package tests |
+| `packages/javascript/browser` | UI component library、user portal、page generator、browser package tests |
+| `packages/javascript/browser/user-portal` | broker-served user frontend for login, commands, results and artifacts |
 | `tools/agent` | local/generation/governed agent runtime |
 | `tools/agent/container` | Podman governed agent stacks |
 | `tools/scripts` | repository validation scripts |
@@ -173,9 +174,10 @@ Broker startup 的主要組成：
 10. `LlmProxyService` / `MeteredLlmProxyService` 作 broker-side inference gateway。
 11. `BrokerService` 執行 task、execution request、approval lifecycle。
 12. `ToolSpecRegistry` 讀取 `broker/tool-specs` 並同步 capability。
-13. `LineChatGateway` 與 `HighLevelCoordinator` 管理 LINE 高階流程。
-14. Optional FunctionPool、container manager、worker health monitor。
-15. Optional Drive、Azure IIS、browser runtime、RAG/embedding services。
+13. `LineChatGateway` 與 `HighLevelCoordinator` 管理 LINE/portal 共用高階流程。
+14. `PortalAuthService`、`PortalEndpoints` 與 broker-served `user-portal` 提供使用者登入、指令、結果與 artifact 前台。
+15. Optional FunctionPool、container manager、worker health monitor。
+16. Optional Drive、Azure IIS、browser runtime、RAG/embedding services。
 
 ## 5. Core Data Models
 
@@ -206,6 +208,7 @@ Broker startup 的主要組成：
 | `GoogleDriveOAuthState` | OAuth state |
 | `AzureIisDeploymentTarget` | deployment target |
 | `LocalAdminCredential` / `LocalAdminSession` | localhost admin auth |
+| `PortalUserCredential` / `PortalUserSession` | user portal password credential and HttpOnly cookie session |
 | `ObservationEvent` / `HealthScoreSnapshot` | monitoring/health |
 
 ## 6. API Surface
@@ -220,6 +223,7 @@ Broker 使用 `/api/v1` 作主要 API group。
 | `POST /api/v1/sessions/register` | session bootstrap |
 | `/api/v1/tool-specs/*` | tool spec list/get |
 | `/api/v1/local-admin/*` | localhost admin auth surface |
+| `/api/v1/portal/*` | user portal auth, command, result and artifact surface |
 | `/api/v1/high-level/line/*` | line-worker signed request path |
 | `/api/v1/user/approvals/*` | signed-link user approval path |
 
@@ -298,7 +302,30 @@ Major route categories:
 - approvals。
 - alerts。
 
-### 6.7 Browser, deployment, Drive, artifacts
+### 6.7 User portal
+
+`/api/v1/portal/*` powers `packages/javascript/browser/user-portal`.
+
+| Route | 用途 |
+| --- | --- |
+| `GET /api/v1/portal/auth/status` | read current portal cookie session and self-registration status |
+| `POST /api/v1/portal/auth/register` | create portal credential, issue session cookie, ensure high-level user profile |
+| `POST /api/v1/portal/auth/login` | verify password and issue HttpOnly session cookie |
+| `POST /api/v1/portal/auth/logout` | revoke session and clear cookie |
+| `GET /api/v1/portal/me` | read profile and current draft for the authenticated user |
+| `POST /api/v1/portal/commands` | submit a user command to `HighLevelCoordinator.ProcessLineMessageAsync` |
+| `GET /api/v1/portal/results` | read latest high-level interaction records for the authenticated user |
+| `GET /api/v1/portal/artifacts` | list authenticated user's artifact metadata and download URLs |
+| `GET /api/v1/portal/artifacts/{documentId}` | read one authenticated-user artifact by document id |
+
+Security boundary:
+
+- Portal uses its own `PortalUserCredential` and `PortalUserSession` records; it does not reuse local-admin sessions.
+- The session cookie is HttpOnly, SameSite Strict, path `/`, and Secure when the request is HTTPS.
+- Portal endpoints are plain JSON trusted paths in the encryption/auth middleware, but user resources still require the portal cookie.
+- Artifact DTOs hide internal `FilePath` / workspace paths and return Google Drive or signed broker download links only.
+
+### 6.8 Browser, deployment, Drive, artifacts
 
 | Group | 用途 |
 | --- | --- |
@@ -308,7 +335,7 @@ Major route categories:
 | `/api/v1/artifacts/download/{artifactId}` | signed artifact download |
 | `/api/v1/user/approvals/*` | user signed-link approval |
 
-### 6.8 Worker health and container management
+### 6.9 Worker health and container management
 
 Available only when `FunctionPool:Enabled=true`：
 
@@ -654,10 +681,11 @@ packages/javascript/browser/ui_components/metadata/component-catalog.json
 
 Current catalog summary:
 
-- 108 components。
+- 109 components。
 - Categories: `common`, `form`, `input`, `layout`, `sections`, `social`, `viz`, `editor`, `data`。
 - Kinds: `atomic`, `composite`, `container`, `visualizer`。
 - Usage modes: `manual_only`, `definition_explicit`, `field_direct`, `runtime_only`。
+- `CommandComposer` is a reusable `form` composite used by the user portal command surface.
 
 Validation:
 
@@ -675,6 +703,7 @@ npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
 npm run validate:ui-library:browser
+npm run validate:user-portal
 ```
 
 Determinism boundary:
@@ -683,7 +712,35 @@ Determinism boundary:
 - static package is anchored to B components with `b_component` and `b-binding.json`。
 - Do not claim all runtime viz/map/social/download components are byte-deterministic; runtime timestamp/file naming behavior can be intentional。
 
-### 15.2 Page Generator
+### 15.2 User Portal Frontend
+
+User-facing portal frontend:
+
+```text
+packages/javascript/browser/user-portal
+```
+
+Runtime path:
+
+```text
+http://127.0.0.1:5361/portal/index.html
+```
+
+Architecture:
+
+- static ES modules served by broker; no separate frontend build step。
+- imports the custom component library from `ui_components/index.js`。
+- `PortalApiClient` calls `/api/v1/portal/*` with `credentials: include`。
+- `CommandComposer` is the shared command-input component; future reusable frontend controls should be added to `ui_components` before product-specific use。
+- Broker project output includes `user-portal` and `ui_components` under `wwwroot` for publish scenarios; direct development uses `PhysicalFileProvider` against `packages/javascript/browser`。
+
+Smoke validation:
+
+```powershell
+npm run validate:user-portal
+```
+
+### 15.3 Page Generator
 
 Page generator entry:
 
@@ -700,7 +757,7 @@ node tools/page-gen.js --def employee.json --mode static --output .\output
 node tools/page-gen.js --list-types
 ```
 
-### 15.3 SPA Generator
+### 15.4 SPA Generator
 
 Workbench：
 
@@ -718,7 +775,7 @@ It uses:
 
 It is not the canonical broker/LINE runtime.
 
-### 15.4 SPA Template
+### 15.5 SPA Template
 
 Template：
 
@@ -759,9 +816,63 @@ Tool specs:
 - `site.generate.package`
 - `site.reconstruct.package`
 
-## 17. Optional Integrations
+## 17. RAG / Legal Knowledge Core
 
-### 17.1 Ollama
+RAG is treated as a state-externalization and confidence core, not only as an optional LLM helper. The current implementation has a reusable retrieval core in `packages/csharp/broker-core/Services/RagRetrievalService.cs`.
+
+Verified deterministic scope:
+
+- `rag_import` writes legal snippets into SQLite `SharedContextEntry`.
+- `memory_fts` indexes CJK legal content through `Fts5TextNormalizer`.
+- `rag_retrieve` returns Consumer Protection Act fixture content through fulltext search.
+- vector retrieval is verified with a deterministic fake embedding provider; no live Ollama call is required for this proof.
+- tag filtering excludes unrelated non-law entries.
+- `LineChatGateway`, `/dev/rag-test`, `/agents/rag/test`, `RagRetrieveHandler`, and `InProcessDispatcher` now use the shared retrieval core instead of separate retrieval implementations.
+- `LineChatGateway` uses a compact deterministic FTS-first retrieval query for high-level LINE/Portal answers, with rewrite/rerank disabled on that path so answers do not depend on extra model calls before evidence is retrieved.
+- `packages/csharp/rag-service` is a standalone minimal API host over the same `RagRetrievalService`; it has no broker, LINE, approval, or agent-dispatch dependency.
+
+Operational/legal POC scope:
+
+- The earlier legal POC still exists in `SeedConsumerProtectionLaw.cs`.
+- It targets the Taiwan Consumer Protection Act family from `law.moj.gov.tw`.
+- Live seed/backfill is controlled by `RagSeed:Enabled`; live vector embedding requires `Embedding:Enabled=true` and an embedding provider such as Ollama.
+- Broker default embedding is `bge-m3` for multilingual / Chinese semantic retrieval; `nomic-embed-text` remains a lighter fallback.
+- `vector_entries` now treats `embedding_model` as part of vector identity. The same `content_hash + task_id` may have multiple vectors for different embedding models.
+- Retrieval filters vectors by the active embedding model and vector dimension, so old `nomic-embed-text` vectors are not mixed into `bge-m3` similarity scoring.
+- `/dev/rag-test` reports both `vectors_current_model` and `vectors_all_models` to make model migrations visible.
+- This is not a complete legal database and is not legal advice. It is an evidence-retrieval substrate for broker-governed answers.
+
+Important files:
+
+| File | Purpose |
+| --- | --- |
+| `broker-core/Services/RagRetrievalService.cs` | reusable retrieval core: FTS5, vector, RRF, tag filter, optional rewrite/rerank |
+| `broker-core/Services/Fts5TextNormalizer.cs` | CJK FTS5 query/content normalization |
+| `broker/Scripts/RagIngestService.cs` | JSON/CSV/web ingestion into `SharedContextEntry`, `memory_fts`, `vector_entries` |
+| `broker/Scripts/SeedConsumerProtectionLaw.cs` | live legal seed POC for Taiwan consumer-protection law family |
+| `rag-service/` | standalone retrieval service host: `/healthz`, `/rag/retrieve` |
+| `broker/verify/Program.cs` | offline deterministic legal RAG verification |
+
+Standalone retrieval host:
+
+```powershell
+$env:RAG_DB_PATH='D:\path\to\rag.db'
+dotnet run --project packages/csharp/rag-service/RagService.csproj -- --urls http://127.0.0.1:5599
+```
+
+The default host initializes schema and can run without Ollama because embedding, query rewrite, and rerank are disabled by default in `rag-service/appsettings.json`. To enable semantic retrieval, configure `Embedding:Enabled=true` and point `Embedding:BaseUrl` at the embedding provider.
+
+Use signed validation on SAC/WDAC hosts:
+
+```powershell
+npm run validate:broker-scope:signed
+npm run validate:db:signed
+npm run test:broker:trusted
+```
+
+## 18. Optional Integrations
+
+### 18.1 Ollama
 
 Used by:
 
@@ -775,6 +886,7 @@ Common setup:
 
 ```powershell
 ollama serve
+ollama pull bge-m3
 ollama pull nomic-embed-text
 ollama pull qwen3.6:latest
 ```
@@ -786,11 +898,22 @@ $env:Embedding__Enabled='false'
 $env:LineChatGateway__RagEnabled='false'
 ```
 
-### 17.2 Broker-mediated commercial providers
+### 18.2 Broker high-level model paths
 
 High-level LINE path uses `HighLevelLlm`。
 
 Agent-facing broker proxy uses `LlmProxy`。
+
+The checked-in local broker defaults use host Ollama for both paths:
+
+- `HighLevelLlm.Provider`: `ollama`
+- `HighLevelLlm.BaseUrl`: `http://localhost:11434`
+- `HighLevelLlm.ApiFormat`: `chat`
+- `HighLevelLlm.DefaultModel`: `qwen3.6:latest`
+- `HighLevelLlm.MaxOutputTokens`: `256`
+- `LlmProxy.DefaultModel`: `qwen3.6:latest`
+
+`HighLevelLlm.ApiKey` should stay empty for this local default. Set a key only when deliberately overriding the high-level path to Anthropic or an OpenAI-compatible provider.
 
 When `ANTHROPIC_API_KEY` is available to `start-sidecar-stack.ps1`, sidecar writes runtime overrides for:
 
@@ -813,7 +936,7 @@ $env:STACK_MODEL='gpt-5.4-mini'
 
 Do not put provider keys inside the agent container as the formal path.
 
-### 17.3 TDX
+### 18.3 TDX
 
 Used by transport query / travel handlers.
 
@@ -829,7 +952,7 @@ Validation env:
 
 Without credentials, live TDX validation is skipped.
 
-### 17.4 Google Drive
+### 18.4 Google Drive
 
 Modes:
 
@@ -847,7 +970,7 @@ Required for delegated OAuth:
 - `client_secret_*.json`
 - redirect URI: `http://127.0.0.1:5361/api/v1/google-drive/oauth/callback`
 
-### 17.5 Azure VM IIS Deployment
+### 18.5 Azure VM IIS Deployment
 
 Tool spec:
 
@@ -865,7 +988,7 @@ Requires:
 
 This is Critical risk and must go through approval.
 
-### 17.6 Browser Governance
+### 18.6 Browser Governance
 
 Current browser subsystem has:
 
@@ -882,9 +1005,9 @@ Honest boundary:
 - action-level governance groundwork exists。
 - authenticated browser automation is not a full production browser automation platform yet。
 
-## 18. Configuration Reference
+## 19. Configuration Reference
 
-### 18.1 Broker config sections
+### 19.1 Broker config sections
 
 | Section | Purpose |
 | --- | --- |
@@ -902,6 +1025,7 @@ Honest boundary:
 | `HighLevelCoordinator` | workspace/root/keywords/draft TTL |
 | `ProjectInterview` | template catalog/session timeout |
 | `ArtifactDownload` | signed download secret/TTL |
+| `PortalAuth` | user portal self-registration, password length and session TTL |
 | `WorkerAuth` | worker identity enforcement/routes |
 | `Tdx` | TDX credentials and URLs |
 | `ToolSpecRegistry` | tool spec root |
@@ -909,7 +1033,7 @@ Honest boundary:
 | `GoogleDriveDelivery` | Drive delivery config |
 | `DeploymentSecrets` | deployment credential mapping |
 
-### 18.2 Common environment variables
+### 19.2 Common environment variables
 
 | Variable | Purpose |
 | --- | --- |
@@ -945,21 +1069,21 @@ $env:Broker__IpRateLimit__PermitLimit='120'
 $env:WORKER_Line__OutboundRateLimit__PermitLimit='20'
 ```
 
-### 18.3 Rate-limit guardrails
+### 19.3 Rate-limit guardrails
 
 Broker POST APIs use `Broker:IpRateLimit` as an in-process, fixed-window, per-IP guardrail. It returns JSON `429` responses with `Retry-After`. Health, local-admin, artifact download, OAuth callback, and `/dev` paths are excluded from this generic limiter and should keep their own route-specific controls.
 
 LINE worker outbound sending uses `Line:OutboundRateLimit` / `WORKER_Line__OutboundRateLimit__*`. The current limiter is in-memory and keyed by recipient + capability. It is implemented for `line.message.send` and `line.audio.send`; distributed quota coordination and `line.notification.send` coverage remain future hardening items.
 
-## 19. Build, Test, Validation
+## 20. Build, Test, Validation
 
-### 19.1 Canonical build
+### 20.1 Canonical build
 
 ```powershell
 dotnet build packages/csharp/ControlPlane.slnx
 ```
 
-### 19.2 Broker tests
+### 20.2 Broker tests
 
 ```powershell
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
@@ -971,14 +1095,15 @@ Integration with running broker:
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj -- --integration http://localhost:5361
 ```
 
-### 19.3 xUnit
+### 20.3 xUnit
 
 ```powershell
 dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
 dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj --filter PortalEndpointTests
 ```
 
-### 19.4 BaseOrm and broker verify
+### 20.4 BaseOrm and broker verify
 
 ```powershell
 npm run validate:baseorm
@@ -988,7 +1113,11 @@ npm run validate:broker-scope
 
 `validate:broker-scope` skips live TDX when credentials are missing.
 
-### 19.5 Backend governance
+`validate:broker-scope` also includes the offline legal RAG gate: import a small Consumer Protection Act fixture, verify `SharedContextEntry` state externalization, verify CJK FTS5 retrieval, verify deterministic vector retrieval, and verify tag filtering. It does not require live `law.moj.gov.tw` or live Ollama.
+
+On Windows hosts with Smart App Control / WDAC enforcement, `validate:baseorm` and `validate:broker-scope` can fail before assertions if unsigned local build outputs are blocked. Use [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) to create the Bricks4Agent dev signer, sign self assemblies, and generate a WDAC supplemental policy. For DB verification on those hosts, prefer `npm run validate:db:signed`; it builds, signs, then runs verify projects with `dotnet run --no-build` so `dotnet run` does not overwrite signatures. For full broker tests under hash-level WDAC trust, use `npm run test:broker:trusted` from an elevated PowerShell so policy deployment happens after build/sign and before the final `--no-build` test run.
+
+### 20.5 Backend governance
 
 ```powershell
 npm run validate:dotnet-deps
@@ -996,7 +1125,7 @@ npm run validate:dotnet-api-usage
 npm run validate:backend-governance
 ```
 
-### 19.6 JS/UI/generator
+### 20.6 JS/UI/generator
 
 ```powershell
 npm test
@@ -1005,6 +1134,7 @@ npm run validate:ui-state
 npm run audit:ui-styles
 npm run validate:ui-library
 npm run validate:ui-library:browser
+npm run validate:user-portal
 ```
 
 Browser package:
@@ -1016,7 +1146,7 @@ npm test
 cd ..\..\..
 ```
 
-### 19.7 Agent and stacks
+### 20.7 Agent and stacks
 
 ```powershell
 npm run validate:agent-governed
@@ -1032,7 +1162,7 @@ node tools/agent/tests/test-convergence.js
 node tools/agent/tests/validate-efcore-removal.js
 ```
 
-## 20. Security Invariants
+## 21. Security Invariants
 
 Maintain these invariants:
 
@@ -1046,10 +1176,11 @@ Maintain these invariants:
 - Execution adapter validates patch base commit and path scope。
 - Deployment is Critical and requires approval。
 - Artifact links are signed and time-limited。
+- Portal user sessions use HttpOnly cookies and never expose internal artifact file paths to the browser。
 - Local admin is localhost-only。
 - Audit records are generated for security-relevant state changes。
 
-## 21. Known Limits
+## 22. Known Limits
 
 Do not overstate the current system:
 
@@ -1058,12 +1189,13 @@ Do not overstate the current system:
 - Critical dual approval is active at the broker persistence/threshold layer, but local-admin identity is session-derived rather than full named multi-operator account management。
 - `line.message.send` and `line.audio.send` have worker-local outbound rate limiting; distributed quota coordination and `line.notification.send` coverage are not complete。
 - Browser authenticated automation is not production-complete。
+- User portal currently uses lightweight local username/password sessions; SSO, MFA, password reset and named enterprise identity lifecycle are not implemented。
 - Broader HTTP integration coverage for adapter/approval routes is still an improvement area。
 - Live external SQL Server/MySQL/PostgreSQL BaseOrm tests require configured DBs。
 - TDX live validation requires configured credentials。
 - Full `ui_components` runtime byte determinism is not claimed。
 
-## 22. Test Artifacts and Cleanup
+## 23. Test Artifacts and Cleanup
 
 Known artifacts:
 
@@ -1102,7 +1234,7 @@ Stop Podman stack:
 podman compose -f tools/agent/container/compose.yml down -v
 ```
 
-## 23. Recommended Reading Order
+## 24. Recommended Reading Order
 
 1. `docs/manuals/current-user-manual.zh-TW.md`
 2. `docs/reports/CurrentArchitectureAndProgress-2026-06-13.md`
@@ -1113,3 +1245,4 @@ podman compose -f tools/agent/container/compose.yml down -v
 7. `tools/agent/README.md`
 8. `tools/agent/container/README.md`
 9. `packages/csharp/database/BaseOrm/README.md`
+10. `docs/manuals/dev-code-signing-wdac.zh-TW.md`
