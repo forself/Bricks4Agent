@@ -867,6 +867,10 @@ Use signed validation on SAC/WDAC hosts:
 ```powershell
 npm run validate:broker-scope:signed
 npm run validate:db:signed
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
 npm run test:broker:trusted
 ```
 
@@ -1115,7 +1119,7 @@ npm run validate:broker-scope
 
 `validate:broker-scope` also includes the offline legal RAG gate: import a small Consumer Protection Act fixture, verify `SharedContextEntry` state externalization, verify CJK FTS5 retrieval, verify deterministic vector retrieval, and verify tag filtering. It does not require live `law.moj.gov.tw` or live Ollama.
 
-On Windows hosts with Smart App Control / WDAC enforcement, `validate:baseorm` and `validate:broker-scope` can fail before assertions if unsigned local build outputs are blocked. Use [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) to create the Bricks4Agent dev signer, sign self assemblies, and generate a WDAC supplemental policy. For DB verification on those hosts, prefer `npm run validate:db:signed`; it builds, signs, then runs verify projects with `dotnet run --no-build` so `dotnet run` does not overwrite signatures. For full broker tests under hash-level WDAC trust, use `npm run test:broker:trusted` from an elevated PowerShell so policy deployment happens after build/sign and before the final `--no-build` test run.
+On Windows hosts with Smart App Control / WDAC enforcement, `validate:baseorm`, `validate:broker-scope`, xUnit tests, and broker console tests can fail before assertions if unsigned or untrusted local build outputs are blocked. Use [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) to create the Bricks4Agent dev signer, sign self assemblies, and generate a WDAC supplemental policy. For DB verification on those hosts, prefer `npm run validate:db:signed`; it builds, signs, then runs verify projects with `dotnet run --no-build` so `dotnet run` does not overwrite signatures. For xUnit and broker tests, prefer `npm run test:unit:signed`, `npm run test:integration:signed`, `npm run test:broker:signed`, or `npm run test:dotnet:signed`. If WDAC still blocks the test runtime, run `npm run signing:wdac-repair-tests -- -Deploy` from an elevated PowerShell; it covers broker, broker-tests, unit-tests, and integration-tests with Publisher-level supplemental policies plus fallback trust where needed.
 
 ### 20.5 Backend governance
 

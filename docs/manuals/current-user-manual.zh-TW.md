@@ -610,7 +610,17 @@ npm run validate:agent-governed
 npm run validate:broker-llm-proxy
 ```
 
-若 Windows Smart App Control / WDAC 擋下 `BaseOrm.dll`、broker verify executable，或其他本機 build output，先依 [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) 建立 dev code-signing 與 WDAC supplemental policy 流程，再用 `npm run validate:db:signed` 重跑 DB 相關驗證。SAC / WDAC 下不要在簽章後直接跑一般 `dotnet run`，因為它可能重新 build 並覆蓋簽章。
+若 Windows Smart App Control / WDAC 擋下 `BaseOrm.dll`、broker verify executable、`Unit.Tests.dll`、`Broker.Tests.exe` 或其他本機 build output，先依 [dev-code-signing-wdac.zh-TW.md](dev-code-signing-wdac.zh-TW.md) 建立 dev code-signing 與 WDAC supplemental policy 流程，再用 signed 入口重跑驗證：
+
+```powershell
+npm run validate:db:signed
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+```
+
+若測試 runtime 仍被封鎖，請用系統管理員 PowerShell 執行 `npm run signing:wdac-repair-tests -- -Deploy`，讓 broker、broker-tests、unit-tests、integration-tests runtime 都納入 Publisher-level supplemental policy。SAC / WDAC 下不要在簽章後直接跑一般 `dotnet run` 或 `dotnet test`，因為它們可能重新 build 並覆蓋簽章。
 
 ### 15.3 Podman stacks
 

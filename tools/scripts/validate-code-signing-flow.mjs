@@ -117,8 +117,13 @@ assertContains('WDAC test repair script', repairTestsScript, 'Sign-BricksAssembl
 assertContains('WDAC test repair script', repairTestsScript, 'Repair-BricksWdacRuntimeTrust.ps1');
 assertContains('WDAC test repair script', repairTestsScript, 'packages\\csharp\\broker\\bin\\Debug\\net8.0');
 assertContains('WDAC test repair script', repairTestsScript, 'packages\\csharp\\tests\\broker-tests\\bin\\Debug\\net8.0');
+assertContains('WDAC test repair script', repairTestsScript, 'packages\\csharp\\tests\\unit\\bin\\Debug\\net8.0');
+assertContains('WDAC test repair script', repairTestsScript, 'packages\\csharp\\tests\\integration\\bin\\Debug\\net8.0');
 assertContains('WDAC test repair script', repairTestsScript, 'main-broker-debug');
 assertContains('WDAC test repair script', repairTestsScript, 'main-broker-tests');
+assertContains('WDAC test repair script', repairTestsScript, 'main-unit-tests');
+assertContains('WDAC test repair script', repairTestsScript, 'main-integration-tests');
+assertContains('WDAC test repair script', repairTestsScript, '[string]$PolicyLevel = "Publisher"');
 assertContains('WDAC test repair script', repairTestsScript, 'Deploy');
 assertContains('WDAC test repair script', repairTestsScript, 'RequiresAdministrator');
 
@@ -141,16 +146,23 @@ for (const scriptName of [
   'validate:baseorm:signed',
   'validate:broker-scope:signed',
   'test:broker:signed',
+  'test:unit:signed',
+  'test:integration:signed',
+  'test:dotnet:signed',
   'validate:db:signed',
   'validate:code-signing-flow'
 ]) {
   assert(Object.hasOwn(scripts, scriptName), `package.json should define ${scriptName}`);
 }
 
-for (const scriptName of ['validate:baseorm:signed', 'validate:broker-scope:signed', 'test:broker:signed']) {
+for (const scriptName of ['validate:baseorm:signed', 'validate:broker-scope:signed', 'test:broker:signed', 'test:unit:signed', 'test:integration:signed']) {
   assertContains(`package.json ${scriptName}`, scripts[scriptName] || '', 'dotnet build');
   assertContains(`package.json ${scriptName}`, scripts[scriptName] || '', 'npm run signing:assemblies');
-  assertContains(`package.json ${scriptName}`, scripts[scriptName] || '', 'dotnet run --no-build');
+  assert(
+    (scripts[scriptName] || '').includes('dotnet run --no-build') ||
+    (scripts[scriptName] || '').includes('dotnet test') && (scripts[scriptName] || '').includes('--no-build'),
+    `package.json ${scriptName} should run without rebuilding after signing`
+  );
 }
 
 const gitignore = read('.gitignore');

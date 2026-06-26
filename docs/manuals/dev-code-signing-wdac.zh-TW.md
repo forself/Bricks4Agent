@@ -82,6 +82,7 @@ npm run signing:assemblies -- -Build
 
 ```powershell
 npm run validate:db:signed
+npm run test:dotnet:signed
 ```
 
 可拆開執行：
@@ -91,6 +92,8 @@ npm run validate:baseorm:signed
 npm run validate:baseorm-sync
 npm run validate:broker-scope:signed
 npm run test:broker:signed
+npm run test:unit:signed
+npm run test:integration:signed
 ```
 
 若需要手動執行某個 verify project，順序必須維持：
@@ -178,20 +181,22 @@ npm run signing:wdac-repair -- -Deploy
 
 ## 主工作區完整測試 trust 修復
 
-在 Smart App Control / WDAC enforcement 環境中，完整測試常見的封鎖點不只 `Broker.Tests.exe`，也可能是測試輸出內的 `ExecutionAdapterWorker.dll`、`BrokerCore.dll` 等自家 assembly。這通常代表檔案已簽章，但目前 active WDAC supplemental policy 沒有涵蓋「這次 build/sign 後」的 hash。
+在 Smart App Control / WDAC enforcement 環境中，完整測試常見的封鎖點不只 `Broker.Tests.exe`，也可能是 `Unit.Tests.dll`、`Integration.Tests.dll`、`ExecutionAdapterWorker.dll`、`BrokerCore.dll` 等自家 assembly。若每次 build 後都要重新補 hash，代表信任邊界太窄；主工作區測試修復流程預設改用 Publisher-level trust 來信任 `Bricks4Agent Dev Code Signing` signer，Hash 只作為第三方 DLL 或特殊 apphost 的 fallback。
 
 `New-BricksWdacSupplementalPolicy.ps1` 預設會移除 `Enabled:Audit Mode`，產生可實際放行的 enforced supplemental policy。只有需要觀察不放行時才加 `-AuditMode`。
 
-主工作區測試請使用專用入口產生最新 broker runtime 與 broker-tests runtime policy：
+主工作區測試請使用專用入口產生 broker runtime、broker-tests、xUnit unit tests、xUnit integration tests 的 supplemental policy：
 
 ```powershell
 npm run signing:wdac-repair-tests
 ```
 
-輸出會列出兩個 policy：
+輸出會列出四個 policy：
 
 - `.run\wdac\main-broker-debug\{policy-id}.cip`
 - `.run\wdac\main-broker-tests\{policy-id}.cip`
+- `.run\wdac\main-unit-tests\{policy-id}.cip`
+- `.run\wdac\main-integration-tests\{policy-id}.cip`
 
 若要直接部署，必須使用系統管理員 PowerShell：
 
@@ -199,19 +204,28 @@ npm run signing:wdac-repair-tests
 npm run signing:wdac-repair-tests -- -Deploy
 ```
 
-部署後執行 broker tests 時不要再 build，否則 hash 會被新的 build/sign 結果改掉：
+部署後執行測試時不要再讓 test command 重新 build，避免覆蓋已簽章輸出。Broker console test 可直接跑：
 
 ```powershell
 dotnet run --no-build --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
 ```
 
-也可以使用整合入口；它會先 build、簽章、部署 policy，再用 `--no-build` 執行測試：
+若要跑完整 .NET 測試，優先使用 signed 入口；它們會先 build、簽章，再用 `--no-build` / `--no-restore` 執行：
+
+```powershell
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+```
+
+若目前 active policy 尚未包含測試輸出，可先用整合入口部署後跑 broker console test：
 
 ```powershell
 npm run test:broker:trusted
 ```
 
-如果仍被封鎖，先查最新 Code Integrity event 的實際檔案路徑，再重新跑 `npm run signing:wdac-repair-tests -- -Deploy`。不要在部署後再執行 `dotnet build` 或 `npm run test:broker:signed`；那些命令會重新產生輸出，讓 hash policy 失效。
+如果仍被封鎖，先查最新 Code Integrity event 的實際檔案路徑，再重新跑 `npm run signing:wdac-repair-tests -- -Deploy`。只要封鎖的是自家 assembly，目標是讓 Publisher-level policy 生效，而不是永久追逐每次 build 變動的 hash。
 
 ## Broker.Tests.exe / 測試 apphost 被封鎖
 

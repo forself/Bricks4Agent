@@ -554,9 +554,19 @@ Broker console/unit-style test suite:
 dotnet run --project packages/csharp/tests/broker-tests/Broker.Tests.csproj
 ```
 
-On Windows hosts with Smart App Control / WDAC enforcement, run the trusted test entry from an elevated PowerShell instead. It builds, signs, deploys the broker test WDAC policies, then runs the test host with `--no-build` so hash trust is not invalidated by a later build:
+On Windows hosts with Smart App Control / WDAC enforcement, use the signed test entries so build outputs are signed before execution and the test command runs without rebuilding:
 
 ```powershell
+npm run test:unit:signed
+npm run test:integration:signed
+npm run test:broker:signed
+npm run test:dotnet:signed
+```
+
+If WDAC still blocks local test assemblies, repair the main workspace test trust from an elevated PowerShell. This builds broker, broker-tests, unit-tests, and integration-tests, signs Bricks4Agent-owned outputs, deploys Publisher-level supplemental policies, then verifies that the policies are active:
+
+```powershell
+npm run signing:wdac-repair-tests -- -Deploy
 npm run test:broker:trusted
 ```
 

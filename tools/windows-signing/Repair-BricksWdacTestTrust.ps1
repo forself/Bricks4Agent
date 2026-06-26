@@ -2,7 +2,7 @@
 param(
     [string]$BasePolicyId = "{0283AC0F-FFF1-49AE-ADA1-8A933130CAD6}",
     [ValidateSet("Publisher", "FilePublisher", "Hash")]
-    [string]$PolicyLevel = "Hash",
+    [string]$PolicyLevel = "Publisher",
     [switch]$Deploy,
     [switch]$SkipBuild,
     [switch]$SkipSigning
@@ -94,6 +94,8 @@ foreach ($scriptPath in @($signScript, $repairScript)) {
 
 if (-not $SkipBuild) {
     Build-Project "packages\csharp\broker\Broker.csproj"
+    Build-Project "packages\csharp\tests\unit\Unit.Tests.csproj"
+    Build-Project "packages\csharp\tests\integration\Integration.Tests.csproj"
     Build-Project "packages\csharp\tests\broker-tests\Broker.Tests.csproj"
 }
 
@@ -114,6 +116,16 @@ $targets = @(
         Name = "main-broker-tests"
         RuntimeRoot = "packages\csharp\tests\broker-tests\bin\Debug\net8.0"
         OutputDir = ".run\wdac\main-broker-tests"
+    },
+    [pscustomobject]@{
+        Name = "main-unit-tests"
+        RuntimeRoot = "packages\csharp\tests\unit\bin\Debug\net8.0"
+        OutputDir = ".run\wdac\main-unit-tests"
+    },
+    [pscustomobject]@{
+        Name = "main-integration-tests"
+        RuntimeRoot = "packages\csharp\tests\integration\bin\Debug\net8.0"
+        OutputDir = ".run\wdac\main-integration-tests"
     }
 )
 
