@@ -208,7 +208,7 @@ Broker startup 的主要組成：
 | `GoogleDriveOAuthState` | OAuth state |
 | `AzureIisDeploymentTarget` | deployment target |
 | `LocalAdminCredential` / `LocalAdminSession` | localhost admin auth |
-| `PortalUserCredential` / `PortalUserSession` | user portal password credential and HttpOnly cookie session |
+| `PortalUserCredential` / `PortalUserSession` | user portal password credential, LINE binding metadata, one-time verification hash, and HttpOnly cookie session |
 | `ObservationEvent` / `HealthScoreSnapshot` | monitoring/health |
 
 ## 6. API Surface
@@ -334,10 +334,11 @@ Representative endpoint gates:
 | Route | 用途 |
 | --- | --- |
 | `GET /api/v1/portal/auth/status` | read current portal cookie session and self-registration status |
-| `POST /api/v1/portal/auth/register` | create portal credential, issue session cookie, ensure high-level user profile |
+| `POST /api/v1/portal/auth/register` | create portal credential, issue session cookie, ensure high-level user profile, return one-time `line_verification` |
 | `POST /api/v1/portal/auth/login` | verify password and issue HttpOnly session cookie |
 | `POST /api/v1/portal/auth/logout` | revoke session and clear cookie |
-| `GET /api/v1/portal/me` | read profile and current draft for the authenticated user |
+| `POST /api/v1/portal/auth/line-verification` | issue a new short-lived LINE verification code for the authenticated Portal user |
+| `GET /api/v1/portal/me` | read profile, LINE verification status, and current draft for the authenticated user |
 | `POST /api/v1/portal/commands` | submit a user command to `HighLevelCoordinator.ProcessLineMessageAsync` |
 | `GET /api/v1/portal/results` | read latest high-level interaction records for the authenticated user |
 | `GET /api/v1/portal/artifacts` | list authenticated user's artifact metadata and download URLs |
@@ -347,6 +348,9 @@ Security boundary:
 
 - Portal uses its own `PortalUserCredential` and `PortalUserSession` records; it does not reuse local-admin sessions.
 - The session cookie is HttpOnly, SameSite Strict, path `/`, and Secure when the request is HTTPS.
+- LINE onboarding is Portal-first: registration/reissue returns a 6-digit `line_verification.code`, but only the SHA-256 hash is persisted on `PortalUserCredential`.
+- Raw LINE user ids matching `U[a-fA-F0-9]{32}` are rejected until `/verify <user_id> <code>` or `/驗證 <user_id> <code>` binds that LINE id to a Portal account.
+- After binding, `HighLevelCoordinator` resolves the raw LINE id to the Portal `user_id`; high-level API responses include `effective_user_id` for that mapped identity.
 - Portal endpoints are plain JSON trusted paths in the encryption/auth middleware, but user resources still require the portal cookie.
 - Artifact DTOs hide internal `FilePath` / workspace paths and return Google Drive or signed broker download links only.
 
@@ -1054,7 +1058,7 @@ Honest boundary:
 | `HighLevelCoordinator` | workspace/root/keywords/draft TTL |
 | `ProjectInterview` | template catalog/session timeout |
 | `ArtifactDownload` | signed download secret/TTL |
-| `PortalAuth` | user portal self-registration, password length and session TTL |
+| `PortalAuth` | user portal self-registration, password length, session TTL, and LINE verification code TTL |
 | `WorkerAuth` | worker identity enforcement/routes |
 | `Tdx` | TDX credentials and URLs |
 | `ToolSpecRegistry` | tool spec root |

@@ -243,6 +243,19 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 ## 8. 使用 LINE 互動
 
+### 8.0 第一次綁定 LINE
+
+新使用者不能只靠 LINE 訊息自動開通。正式流程是先在 Web Portal 註冊，再把 Portal 帳號綁定到 LINE：
+
+1. 開啟 `http://127.0.0.1:5361/portal/index.html`。
+2. 在 Portal 註冊 `user_id`、密碼與顯示名稱。
+3. 註冊成功後，Portal 會顯示 6 位數 LINE 驗證碼與完整指令，例如 `/verify alice 123456`。
+4. 在 LINE 傳送 `/verify <user_id> <code>`。也可使用 `/驗證 <user_id> <code>`。
+5. 帳號或驗證碼不符合、過期、已使用，broker 會拒絕 LINE 操作。
+6. 驗證成功後，同一個 LINE 使用者才會被映射到 Portal `user_id`，後續對話、結果紀錄與 artifact 都使用同一個使用者工作區。
+
+若驗證碼過期，可登入 Portal，在個人資料區重新產生 LINE 驗證碼。
+
 ### 8.1 基本對話
 
 直接傳一般訊息即可。Broker 會走 high-level conversation path。當問題比較適合受控搜尋或查詢時，系統會引導你使用明確前綴命令。
@@ -322,10 +335,11 @@ http://127.0.0.1:5361/portal/index.html
 
 目前 portal 使用 broker 內建輕量帳號密碼登入：
 
-1. 第一次使用可在 portal 註冊使用者 ID 與密碼；broker 會同步建立對應的 high-level LINE profile，預設為 Basic + Approved。
-2. 登入後可以在「指令與回應」輸入需求。Portal 會呼叫同一個 `HighLevelCoordinator`，所以 `?profile`、查詢命令、draft、專案訪談等行為與 LINE 高階入口一致。
-3. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
-4. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
+1. 第一次使用可在 portal 註冊使用者 ID 與密碼；broker 會同步建立對應的 high-level profile，並顯示一次性 LINE 驗證碼。
+2. 若要使用 LINE，需把 Portal 顯示的 `/verify <user_id> <code>` 傳到 LINE 完成綁定。
+3. 登入後可以在「指令與回應」輸入需求。Portal 會呼叫同一個 `HighLevelCoordinator`，所以 `?profile`、查詢命令、draft、專案訪談等行為與 LINE 高階入口一致。
+4. 「結果檔案」會列出該使用者工作區中的 artifact。若 artifact 沒有 Google Drive 下載連結，portal 會使用 broker 的短效簽章下載連結。
+5. Portal 只顯示自己的 profile、結果紀錄與 artifact metadata；不回傳 broker 內部檔案路徑。
 
 Portal 是一般使用者操作入口；管理、審批、Drive OAuth、部署與系統監控仍使用 `line-admin.html`。
 

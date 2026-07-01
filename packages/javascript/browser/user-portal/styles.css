@@ -229,6 +229,47 @@ textarea {
     overflow-wrap: anywhere;
 }
 
+.portal-line-verification {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-md);
+    background: var(--cl-bg);
+}
+
+.portal-line-verification__title {
+    margin: 0;
+    color: var(--cl-text);
+    font-size: var(--cl-font-size-md);
+}
+
+.portal-line-verification__status,
+.portal-line-verification__expires,
+.portal-line-verification__body {
+    margin: 0;
+    color: var(--cl-text-secondary);
+    font-size: var(--cl-font-size-sm);
+    line-height: 1.45;
+}
+
+.portal-line-verification__command {
+    display: block;
+    padding: 8px;
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg-secondary);
+    color: var(--cl-text);
+    font-size: var(--cl-font-size-sm);
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.portal-line-verification__actions {
+    display: flex;
+    align-items: center;
+}
+
 .portal-card {
     border: 1px solid var(--cl-border);
     border-radius: var(--cl-radius-md);

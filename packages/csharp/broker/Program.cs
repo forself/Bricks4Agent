@@ -214,6 +214,7 @@ builder.Services.AddSingleton<WorkerAuthNonceStore>();
 builder.Services.AddSingleton<WorkerIdentityAuthService>();
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
+builder.Services.AddSingleton<Broker.Services.PortalLineVerificationService>();
 builder.Services.AddSingleton<Broker.Services.PortalAuthService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewRestatementService>();

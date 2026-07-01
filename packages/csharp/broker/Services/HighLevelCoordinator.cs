@@ -53,6 +53,7 @@ public class HighLevelCoordinator
     private readonly ProjectInterviewWorkflowDesignService _projectInterviewWorkflowDesignService;
     private readonly ProjectInterviewPdfRenderService _projectInterviewPdfRenderService;
     private readonly ILogger<HighLevelCoordinator> _logger;
+    private readonly PortalLineVerificationService? _lineVerification;
     private readonly string _accessRoot;
 
     public HighLevelCoordinator(
@@ -78,7 +79,8 @@ public class HighLevelCoordinator
         ProjectInterviewProjectDefinitionCompiler projectInterviewProjectDefinitionCompiler,
         ProjectInterviewWorkflowDesignService projectInterviewWorkflowDesignService,
         ProjectInterviewPdfRenderService projectInterviewPdfRenderService,
-        ILogger<HighLevelCoordinator> logger)
+        ILogger<HighLevelCoordinator> logger,
+        PortalLineVerificationService? lineVerification = null)
     {
         _db = db;
         _brokerService = brokerService;
@@ -111,6 +113,7 @@ public class HighLevelCoordinator
         _projectInterviewWorkflowDesignService = projectInterviewWorkflowDesignService;
         _projectInterviewPdfRenderService = projectInterviewPdfRenderService;
         _logger = logger;
+        _lineVerification = lineVerification;
         _accessRoot = ResolveAccessRoot(_options.AccessRoot);
     }
 
@@ -139,6 +142,14 @@ public class HighLevelCoordinator
         envelope = BuildLineEnvelope(trimmed);
         trustedParse = _inputTrustPolicy.Apply(envelope, _commandParser.Parse(trimmed));
         parsed = trustedParse.Parsed;
+
+        var rawLineUserId = userId.Trim();
+        if (TryResolveLinePortalIdentity(rawLineUserId, trimmed, envelope, trustedParse, workflow, out var resolvedUserId, out var gateResult))
+        {
+            return gateResult;
+        }
+
+        userId = resolvedUserId;
         var existingProfile = LoadUserProfile(channel, userId);
         var profile = existingProfile ?? new HighLevelUserProfile
         {
@@ -536,6 +547,86 @@ public class HighLevelCoordinator
             RagSnippets = chat.RagSnippets,
             HistoryCount = chat.HistoryCount
         });
+    }
+
+    private bool TryResolveLinePortalIdentity(
+        string rawLineUserId,
+        string message,
+        HighLevelInputEnvelope envelope,
+        HighLevelTrustedParseResult trustedParse,
+        HighLevelWorkflowDecision workflow,
+        out string resolvedUserId,
+        out HighLevelProcessResult result)
+    {
+        const string channel = "line";
+        resolvedUserId = rawLineUserId;
+        result = default!;
+
+        if (_lineVerification == null || !LineUserIdPattern.IsMatch(rawLineUserId))
+            return false;
+
+        if (TryParseLineVerificationCommand(message, out var portalUserId, out var code))
+        {
+            var verification = _lineVerification.Verify(rawLineUserId, portalUserId, code);
+            var resultUserId = verification.Success ? verification.EffectiveUserId : rawLineUserId;
+            if (verification.Success)
+            {
+                EnsureLineUserProfile(verification.EffectiveUserId);
+            }
+
+            result = FinalizeResult(channel, resultUserId, envelope, trustedParse, workflow, new HighLevelProcessResult
+            {
+                Mode = HighLevelRouteMode.Conversation,
+                Reply = verification.Message,
+                Error = verification.Success ? null : verification.Error,
+                DecisionReason = verification.Success
+                    ? "line portal verification succeeded"
+                    : "line portal verification failed",
+                EffectiveUserId = verification.Success ? verification.EffectiveUserId : rawLineUserId
+            });
+            return true;
+        }
+
+        var mappedUserId = _lineVerification.ResolvePortalUserIdForLineUser(rawLineUserId);
+        if (!string.IsNullOrWhiteSpace(mappedUserId))
+        {
+            resolvedUserId = mappedUserId;
+            return false;
+        }
+
+        result = FinalizeResult(channel, rawLineUserId, envelope, trustedParse, workflow, new HighLevelProcessResult
+        {
+            Mode = HighLevelRouteMode.Conversation,
+            Reply = "Please register on the web Portal first, then send /verify <user_id> <code> in LINE.",
+            Error = "line_verification_required",
+            DecisionReason = "line portal verification required",
+            EffectiveUserId = rawLineUserId
+        });
+        return true;
+    }
+
+    private static bool TryParseLineVerificationCommand(string message, out string userId, out string code)
+    {
+        userId = string.Empty;
+        code = string.Empty;
+        var parts = (message ?? string.Empty)
+            .Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 3)
+            return false;
+
+        if (!string.Equals(parts[0], "/verify", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(parts[0], "/v", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(parts[0], "/\u9a57\u8b49", StringComparison.Ordinal) &&
+            !string.Equals(parts[0], "/驗證", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        userId = parts[1];
+        code = parts[2];
+        return true;
     }
 
     private async Task<HighLevelProcessResult> HandleProjectInterviewCommandAsync(
@@ -3715,6 +3806,11 @@ public class HighLevelCoordinator
         HighLevelWorkflowDecision workflow,
         HighLevelProcessResult result)
     {
+        if (string.IsNullOrWhiteSpace(result.EffectiveUserId))
+        {
+            result.EffectiveUserId = userId;
+        }
+
         var parsed = trustedParse.Parsed;
         try
         {
@@ -4069,6 +4165,7 @@ public class HighLevelCoordinatorOptions
 public class HighLevelProcessResult
 {
     public HighLevelRouteMode Mode { get; set; }
+    public string EffectiveUserId { get; set; } = string.Empty;
     public string Reply { get; set; } = string.Empty;
     public List<string>? FollowUpMessages { get; set; }
     public string? Error { get; set; }

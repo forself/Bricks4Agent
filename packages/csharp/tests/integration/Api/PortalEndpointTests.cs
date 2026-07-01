@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Broker.Services;
+using BrokerCore.Data;
+using BrokerCore.Models;
 using Integration.Tests.Fixtures;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Integration.Tests.Api;
 
@@ -74,6 +77,88 @@ public class PortalEndpointTests : IClassFixture<BrokerFixture>
         items.EnumerateArray()
             .Should()
             .Contain(item => item.GetProperty("user_message").GetString() == "?profile");
+    }
+
+    [Fact]
+    public async Task PortalRegistrationCode_BindsLineUserBeforeLineAccess()
+    {
+        var userId = $"line-bind-{Guid.NewGuid():N}"[..30];
+        var rawLineUserId = "U" + Guid.NewGuid().ToString("N");
+        using var register = await _fixture.Client.PostAsJsonAsync("/api/v1/portal/auth/register", new
+        {
+            user_id = userId,
+            password = "correct-horse-battery",
+            display_name = "Line Bind User"
+        });
+
+        register.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var registerJson = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
+        var lineVerification = registerJson.RootElement
+            .GetProperty("data")
+            .GetProperty("line_verification");
+        var code = lineVerification.GetProperty("code").GetString();
+        code.Should().MatchRegex("^\\d{6}$");
+        lineVerification.GetProperty("command").GetString().Should().Contain(userId).And.Contain(code);
+        using (var scope = _fixture.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BrokerDb>();
+            var credential = db.Get<PortalUserCredential>(userId);
+            credential.Should().NotBeNull();
+            credential!.LineVerificationCodeHash.Should().NotBeNullOrWhiteSpace();
+            credential.LineVerificationCodeHash.Should().NotBe(code);
+            credential.LineVerificationCodeExpiresAt.Should().BeAfter(DateTime.UtcNow);
+        }
+
+        using var denied = await _fixture.SendHighLevelLineTextAsync("?profile", rawLineUserId);
+        denied.RootElement.GetProperty("data").GetProperty("error").GetString().Should().Be("line_verification_required");
+
+        using var wrongCode = await _fixture.SendHighLevelLineTextAsync($"/verify {userId} 000000", rawLineUserId);
+        wrongCode.RootElement.GetProperty("data").GetProperty("error").GetString().Should().Be("line_verification_failed");
+
+        using var verified = await _fixture.SendHighLevelLineTextAsync($"/verify {userId} {code}", rawLineUserId);
+        var verifiedData = verified.RootElement.GetProperty("data");
+        verifiedData.GetProperty("error").GetString().Should().BeNullOrEmpty();
+        verifiedData.GetProperty("effective_user_id").GetString().Should().Be(userId);
+
+        using var profile = await _fixture.SendHighLevelLineTextAsync("?profile", rawLineUserId);
+        var profileData = profile.RootElement.GetProperty("data");
+        profileData.GetProperty("error").GetString().Should().BeNullOrEmpty();
+        profileData.GetProperty("effective_user_id").GetString().Should().Be(userId);
+        profileData.GetProperty("reply").GetString().Should().Contain(userId);
+    }
+
+    [Fact]
+    public async Task PortalLineVerificationCode_CanBeReissuedFromPortalSession()
+    {
+        var userId = $"line-reissue-{Guid.NewGuid():N}"[..30];
+        using var register = await _fixture.Client.PostAsJsonAsync("/api/v1/portal/auth/register", new
+        {
+            user_id = userId,
+            password = "correct-horse-battery",
+            display_name = "Line Reissue User"
+        });
+
+        register.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cookie = ReadPortalCookie(register);
+
+        using var me = new HttpRequestMessage(HttpMethod.Get, "/api/v1/portal/me");
+        me.Headers.Add("Cookie", cookie);
+        using var meResponse = await _fixture.Client.SendAsync(me);
+        meResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var meJson = JsonDocument.Parse(await meResponse.Content.ReadAsStringAsync());
+        var status = meJson.RootElement.GetProperty("data").GetProperty("line_verification");
+        status.GetProperty("verified").GetBoolean().Should().BeFalse();
+        status.GetProperty("command_template").GetString().Should().Be("/verify <user_id> <code>");
+
+        using var reissue = new HttpRequestMessage(HttpMethod.Post, "/api/v1/portal/auth/line-verification");
+        reissue.Headers.Add("Cookie", cookie);
+        using var reissueResponse = await _fixture.Client.SendAsync(reissue);
+        reissueResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var reissueJson = JsonDocument.Parse(await reissueResponse.Content.ReadAsStringAsync());
+        var issue = reissueJson.RootElement.GetProperty("data");
+        issue.GetProperty("code").GetString().Should().MatchRegex("^\\d{6}$");
+        issue.GetProperty("command").GetString().Should().Contain(userId);
+        issue.GetProperty("expires_at").GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     private static string ReadPortalCookie(HttpResponseMessage response)

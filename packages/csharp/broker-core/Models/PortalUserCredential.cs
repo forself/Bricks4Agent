@@ -24,6 +24,18 @@ public class PortalUserCredential
     [Column("disabled")]
     public bool Disabled { get; set; }
 
+    [Column("line_user_id")]
+    public string LineUserId { get; set; } = string.Empty;
+
+    [Column("line_verification_code_hash")]
+    public string LineVerificationCodeHash { get; set; } = string.Empty;
+
+    [Column("line_verification_code_expires_at")]
+    public DateTime? LineVerificationCodeExpiresAt { get; set; }
+
+    [Column("line_verified_at")]
+    public DateTime? LineVerifiedAt { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

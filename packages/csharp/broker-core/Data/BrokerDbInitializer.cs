@@ -173,6 +173,9 @@ public class BrokerDbInitializer
                       ON local_admin_sessions(operator_id, expires_at, revoked_at)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_portal_user_sessions_user
                       ON portal_user_sessions(user_id, expires_at, revoked_at)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_user_credentials_line_user
+                      ON portal_user_credentials(line_user_id)
+                      WHERE line_user_id IS NOT NULL AND line_user_id <> ''");
 
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");
@@ -215,6 +218,11 @@ public class BrokerDbInitializer
         TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN username TEXT DEFAULT 'admin'");
         TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN role TEXT DEFAULT 'super_admin'");
         TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN permissions_snapshot TEXT DEFAULT '[]'");
+
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_user_id TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verification_code_hash TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verification_code_expires_at TEXT NULL");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verified_at TEXT NULL");
     }
 
     private void NormalizeLocalAdminBootstrap()

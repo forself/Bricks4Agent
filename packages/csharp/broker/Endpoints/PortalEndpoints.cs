@@ -62,6 +62,14 @@ public static class PortalEndpoints
             return Results.Ok(ApiResponseHelper.Success(new { ok = true }));
         });
 
+        portal.MapPost("/auth/line-verification", (HttpContext ctx, PortalAuthService auth) =>
+        {
+            if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
+                return denied;
+
+            return Results.Ok(ApiResponseHelper.Success(auth.IssueLineVerificationCode(session)));
+        });
+
         portal.MapGet("/me", (HttpContext ctx, PortalAuthService auth, HighLevelCoordinator coordinator) =>
         {
             if (!auth.TryRequireAuthenticated(ctx, out var session, out var denied))
@@ -72,6 +80,7 @@ public static class PortalEndpoints
             return Results.Ok(ApiResponseHelper.Success(new
             {
                 profile = ToProfileDto(profile, session.UserId),
+                line_verification = auth.GetLineVerificationStatus(session.UserId),
                 draft = ToDraftDto(draft)
             }));
         });
@@ -100,6 +109,7 @@ public static class PortalEndpoints
             {
                 user_id = session.UserId,
                 message,
+                effective_user_id = result.EffectiveUserId,
                 result = ToProcessResultDto(result),
                 artifacts
             }));
@@ -211,6 +221,7 @@ public static class PortalEndpoints
         => new
         {
             mode = result.Mode.ToString().ToLowerInvariant(),
+            effective_user_id = result.EffectiveUserId,
             reply = result.Reply,
             follow_up_messages = result.FollowUpMessages ?? [],
             error = result.Error,

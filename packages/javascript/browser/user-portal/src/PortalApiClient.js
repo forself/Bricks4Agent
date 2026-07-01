@@ -34,6 +34,10 @@ export class PortalApiClient {
         return await this._request('/auth/logout', { method: 'POST' });
     }
 
+    async issueLineVerification() {
+        return await this._request('/auth/line-verification', { method: 'POST' });
+    }
+
     async me() {
         return await this._request('/me');
     }

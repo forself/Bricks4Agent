@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using BrokerCore.Data;
 using BrokerCore.Models;
@@ -11,6 +12,7 @@ public sealed class PortalAuthOptions
     public bool AllowSelfRegistration { get; set; } = true;
     public int SessionHours { get; set; } = 12;
     public int MinimumPasswordLength { get; set; } = 8;
+    public int LineVerificationCodeMinutes { get; set; } = 10;
 }
 
 public sealed class PortalAuthService
@@ -20,13 +22,19 @@ public sealed class PortalAuthService
 
     private readonly BrokerDb _db;
     private readonly HighLevelCoordinator _coordinator;
+    private readonly PortalLineVerificationService _lineVerification;
     private readonly PortalAuthOptions _options;
     private readonly object _gate = new();
 
-    public PortalAuthService(BrokerDb db, HighLevelCoordinator coordinator, PortalAuthOptions options)
+    public PortalAuthService(
+        BrokerDb db,
+        HighLevelCoordinator coordinator,
+        PortalLineVerificationService lineVerification,
+        PortalAuthOptions options)
     {
         _db = db;
         _coordinator = coordinator;
+        _lineVerification = lineVerification;
         _options = options;
     }
 
@@ -49,7 +57,10 @@ public sealed class PortalAuthService
             AccessTier = profile?.AccessTier ?? string.Empty,
             RegistrationStatus = profile?.RegistrationStatus ?? string.Empty,
             SessionExpiresAt = session?.ExpiresAt,
-            SelfRegistrationEnabled = _options.AllowSelfRegistration
+            SelfRegistrationEnabled = _options.AllowSelfRegistration,
+            LineVerification = session == null
+                ? null
+                : _lineVerification.GetStatus(session.UserId)
         };
     }
 
@@ -69,6 +80,7 @@ public sealed class PortalAuthService
 
             var credential = CreateCredential(normalizedUserId, password, displayName);
             var profile = _coordinator.EnsureLineUserProfile(normalizedUserId, displayName);
+            var lineVerification = _lineVerification.IssueCode(credential);
             var issued = IssueSession(credential.UserId);
             credential.LastLoginAt = DateTime.UtcNow;
             credential.UpdatedAt = DateTime.UtcNow;
@@ -83,7 +95,8 @@ public sealed class PortalAuthService
                 AccessTier = profile.AccessTier,
                 RegistrationStatus = profile.RegistrationStatus,
                 SessionExpiresAt = issued.ExpiresAt,
-                Message = "registered"
+                Message = "registered",
+                LineVerification = lineVerification
             };
         }
     }
@@ -119,10 +132,24 @@ public sealed class PortalAuthService
                 AccessTier = profile.AccessTier,
                 RegistrationStatus = profile.RegistrationStatus,
                 SessionExpiresAt = issued.ExpiresAt,
-                Message = "ok"
+                Message = "ok",
+                LineVerification = _lineVerification.GetStatus(credential.UserId)
             };
         }
     }
+
+    public PortalLineVerificationIssue IssueLineVerificationCode(PortalUserSession session)
+    {
+        lock (_gate)
+        {
+            var credential = _db.Get<PortalUserCredential>(session.UserId)
+                ?? throw new InvalidOperationException("Portal user not found.");
+            return _lineVerification.IssueCode(credential);
+        }
+    }
+
+    public PortalLineVerificationStatus GetLineVerificationStatus(string userId)
+        => _lineVerification.GetStatus(userId);
 
     public void Logout(HttpContext context)
     {
@@ -304,22 +331,40 @@ public sealed class PortalAuthService
 
 public sealed class PortalAuthStatus
 {
+    [JsonPropertyName("authenticated")]
     public bool Authenticated { get; set; }
+    [JsonPropertyName("user_id")]
     public string UserId { get; set; } = string.Empty;
+    [JsonPropertyName("display_name")]
     public string DisplayName { get; set; } = string.Empty;
+    [JsonPropertyName("access_tier")]
     public string AccessTier { get; set; } = string.Empty;
+    [JsonPropertyName("registration_status")]
     public string RegistrationStatus { get; set; } = string.Empty;
+    [JsonPropertyName("session_expires_at")]
     public DateTime? SessionExpiresAt { get; set; }
+    [JsonPropertyName("self_registration_enabled")]
     public bool SelfRegistrationEnabled { get; set; }
+    [JsonPropertyName("line_verification")]
+    public PortalLineVerificationStatus? LineVerification { get; set; }
 }
 
 public sealed class PortalAuthLoginResult
 {
+    [JsonPropertyName("authenticated")]
     public bool Authenticated { get; set; }
+    [JsonPropertyName("user_id")]
     public string UserId { get; set; } = string.Empty;
+    [JsonPropertyName("display_name")]
     public string DisplayName { get; set; } = string.Empty;
+    [JsonPropertyName("access_tier")]
     public string AccessTier { get; set; } = string.Empty;
+    [JsonPropertyName("registration_status")]
     public string RegistrationStatus { get; set; } = string.Empty;
+    [JsonPropertyName("session_expires_at")]
     public DateTime? SessionExpiresAt { get; set; }
+    [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
+    [JsonPropertyName("line_verification")]
+    public object? LineVerification { get; set; }
 }

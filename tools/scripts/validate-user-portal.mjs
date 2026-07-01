@@ -128,13 +128,41 @@ async function main() {
                     displayName: authenticated ? 'Portal User' : '',
                     accessTier: authenticated ? 'basic' : '',
                     registrationStatus: authenticated ? 'approved' : '',
-                    selfRegistrationEnabled: true
+                    selfRegistrationEnabled: true,
+                    line_verification: authenticated
+                        ? {
+                            user_id: 'portal-user',
+                            verified: false,
+                            line_user_id: '',
+                            expires_at: null,
+                            verified_at: null,
+                            command_template: '/verify <user_id> <code>'
+                        }
+                        : null
                 });
             }
 
             if (apiPath === '/auth/login' && request.method() === 'POST') {
                 authenticated = true;
-                return ok({ authenticated: true, userId: 'portal-user', displayName: 'Portal User' });
+                return ok({
+                    authenticated: true,
+                    user_id: 'portal-user',
+                    display_name: 'Portal User',
+                    line_verification: {
+                        user_id: 'portal-user',
+                        verified: false,
+                        command_template: '/verify <user_id> <code>'
+                    }
+                });
+            }
+
+            if (apiPath === '/auth/line-verification' && request.method() === 'POST') {
+                return ok({
+                    user_id: 'portal-user',
+                    code: '123456',
+                    expires_at: '2026-06-26T10:10:00Z',
+                    command: '/verify portal-user 123456'
+                });
             }
 
             if (apiPath === '/me') {
@@ -145,6 +173,14 @@ async function main() {
                         access_tier: 'basic',
                         registration_status: 'approved',
                         user_code: 'demo'
+                    },
+                    line_verification: {
+                        user_id: 'portal-user',
+                        verified: false,
+                        line_user_id: '',
+                        expires_at: null,
+                        verified_at: null,
+                        command_template: '/verify <user_id> <code>'
                     },
                     draft: null
                 });
@@ -209,6 +245,9 @@ async function main() {
         await page.getByTestId('portal-shell').waitFor({ timeout: 10000 });
         await page.getByText('目前帳戶狀態正常。').waitFor({ timeout: 10000 });
         await page.getByText('result.md').waitFor({ timeout: 10000 });
+        await page.getByTestId('line-verification-panel').locator('button').click();
+        await page.getByTestId('line-verification-command').waitFor({ timeout: 10000 });
+        await page.getByText('/verify portal-user 123456').waitFor({ timeout: 10000 });
 
         await page.getByPlaceholder('輸入需求或指令').fill('請建立摘要');
         await page.getByRole('button', { name: '送出需求' }).click();
@@ -218,7 +257,7 @@ async function main() {
             throw new Error(errors.join('\n'));
         }
 
-        for (const expected of ['GET /auth/status', 'POST /auth/login', 'GET /me', 'GET /results', 'GET /artifacts', 'POST /commands']) {
+        for (const expected of ['GET /auth/status', 'POST /auth/login', 'GET /me', 'GET /results', 'GET /artifacts', 'POST /auth/line-verification', 'POST /commands']) {
             if (!requests.includes(expected)) {
                 throw new Error(`Expected request was not observed: ${expected}`);
             }
@@ -227,6 +266,7 @@ async function main() {
         console.log('Validation summary:');
         console.log('- Auth screen render: passed');
         console.log('- Login and dashboard render: passed');
+        console.log('- LINE verification UI flow: passed');
         console.log('- Command submit flow: passed');
         console.log(`- API routes observed: ${requests.join(', ')}`);
     } finally {

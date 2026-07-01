@@ -15,6 +15,7 @@ class PortalApp {
             authenticated: false,
             status: null,
             me: null,
+            lineVerificationIssue: null,
             results: [],
             artifacts: [],
             busy: false,
@@ -142,11 +143,10 @@ class PortalApp {
                     payload.display_name = displayNameInput.getValue();
                 }
 
-                if (this.state.authMode === 'login') {
-                    await this.api.login(payload);
-                } else {
-                    await this.api.register(payload);
-                }
+                const authResult = this.state.authMode === 'login'
+                    ? await this.api.login(payload)
+                    : await this.api.register(payload);
+                this.state.lineVerificationIssue = authResult?.line_verification ?? null;
                 await this.loadDashboard();
             } catch (err) {
                 this.state.error = describeError(err);
@@ -176,13 +176,15 @@ class PortalApp {
 
     async loadDashboard() {
         this.renderLoading('正在讀取工作區');
-        const [me, results, artifacts] = await Promise.all([
+        const [me, results, artifacts, status] = await Promise.all([
             this.api.me(),
             this.api.results(30),
-            this.api.artifacts(50)
+            this.api.artifacts(50),
+            this.api.status()
         ]);
 
         this.state.authenticated = true;
+        this.state.status = status;
         this.state.me = me;
         this.state.results = Array.isArray(results.items) ? results.items : [];
         this.state.artifacts = Array.isArray(artifacts.items) ? artifacts.items : [];
@@ -239,6 +241,8 @@ class PortalApp {
                 await this.api.logout();
                 this.state.authenticated = false;
                 this.state.me = null;
+                this.state.status = null;
+                this.state.lineVerificationIssue = null;
                 this.renderAuth();
             }
         }));
@@ -262,6 +266,10 @@ class PortalApp {
 
     renderProfilePanel() {
         const profile = this.state.me?.profile ?? {};
+        const currentLineStatus = this.state.me?.line_verification ?? this.state.status?.line_verification ?? null;
+        const lineVerification = currentLineStatus?.verified
+            ? currentLineStatus
+            : (this.state.lineVerificationIssue ?? currentLineStatus);
         const section = document.createElement('aside');
         section.className = 'portal-section';
         section.setAttribute('aria-labelledby', 'portal-profile-title');
@@ -276,8 +284,74 @@ class PortalApp {
             ['最後互動', formatDate(profile.last_interaction_at)]
         ].forEach(([label, value]) => stats.appendChild(createStat(label, value)));
 
-        section.appendChild(stats);
+        section.append(stats, this.renderLineVerificationPanel(lineVerification));
         return section;
+    }
+
+    renderLineVerificationPanel(lineVerification) {
+        const panel = document.createElement('div');
+        panel.className = 'portal-line-verification';
+        panel.dataset.testid = 'line-verification-panel';
+
+        const title = document.createElement('h3');
+        title.className = 'portal-line-verification__title';
+        title.textContent = 'LINE 帳號綁定';
+
+        const status = document.createElement('div');
+        status.className = 'portal-line-verification__status';
+        status.textContent = lineVerification?.verified ? '已完成' : '尚未完成';
+
+        const body = document.createElement('p');
+        body.className = 'portal-line-verification__body';
+        body.textContent = lineVerification?.verified
+            ? '這個 Portal 帳號已可透過 LINE 使用。'
+            : '請在 LINE 傳送網站產生的驗證指令；帳號或驗證碼不符合時，LINE 入口會拒絕操作。';
+
+        panel.append(title, status, body);
+
+        if (!lineVerification?.verified && lineVerification?.command) {
+            const command = document.createElement('code');
+            command.className = 'portal-line-verification__command';
+            command.dataset.testid = 'line-verification-command';
+            command.textContent = lineVerification.command;
+            panel.appendChild(command);
+        }
+
+        if (!lineVerification?.verified && lineVerification?.expires_at) {
+            const expires = document.createElement('div');
+            expires.className = 'portal-line-verification__expires';
+            expires.textContent = `有效期限 ${formatDate(lineVerification.expires_at)}`;
+            panel.appendChild(expires);
+        }
+
+        if (!lineVerification?.verified) {
+            const actions = document.createElement('div');
+            actions.className = 'portal-line-verification__actions';
+            const issue = this.addComponent(new BasicButton({
+                type: 'refresh',
+                variant: 'secondary',
+                size: 'small',
+                customLabel: lineVerification?.command ? '重新產生驗證碼' : '產生 LINE 驗證碼',
+                showIcon: false,
+                onClick: async () => {
+                    issue.setLoading(true);
+                    try {
+                        this.state.lineVerificationIssue = await this.api.issueLineVerification();
+                        this.state.error = '';
+                        this.renderDashboard();
+                    } catch (error) {
+                        this.state.error = describeError(error);
+                        this.updateStatus(this.state.error);
+                    } finally {
+                        issue.setLoading(false);
+                    }
+                }
+            }));
+            issue.mount(actions);
+            panel.appendChild(actions);
+        }
+
+        return panel;
     }
 
     renderWorkspace() {

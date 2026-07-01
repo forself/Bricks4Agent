@@ -85,7 +85,10 @@ public class BrokerFixture : IAsyncLifetime
 
     public Task InitializeAsync()
     {
-        Client = Factory.CreateClient();
+        Client = Factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = false
+        });
         return Task.CompletedTask;
     }
 
