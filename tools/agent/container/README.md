@@ -72,7 +72,7 @@ podman compose -f tools/agent/container/compose.openai-compatible.yml up --build
 Host Ollama stack:
 
 ```bash
-set STACK_MODEL=qwen3-coder:30b
+set STACK_MODEL=qwen3.6:latest
 podman compose -f tools/agent/container/compose.ollama-host.yml up --build --abort-on-container-exit --exit-code-from agent
 ```
 
@@ -171,6 +171,7 @@ For a real provider:
 - replace `mock-ollama` or `mock-openai`
 - point `LlmProxy__BaseUrl` to the actual upstream
 - provide the required provider key through environment variables
+- use `Provider=anthropic`, `LlmProxy__ApiFormat=messages`, and `claude-sonnet-4-6` for Claude Messages API paths
 
 The governed agent container does not change. It still only knows about:
 

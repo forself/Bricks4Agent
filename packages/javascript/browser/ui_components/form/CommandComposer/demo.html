@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>CommandComposer Demo</title>
+    <link rel="stylesheet" href="../../theme.css">
+    <style>
+        body {
+            max-width: 760px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background: var(--cl-bg);
+            color: var(--cl-text);
+            font-family: var(--cl-font-family);
+        }
+        h1 {
+            font-size: var(--cl-font-size-2xl);
+            margin: 0 0 20px;
+        }
+        .demo-panel {
+            border: 1px solid var(--cl-border);
+            border-radius: var(--cl-radius-md);
+            padding: 16px;
+            background: var(--cl-bg-primary);
+        }
+        .log {
+            margin-top: 16px;
+            min-height: 56px;
+            padding: 12px;
+            border: 1px solid var(--cl-border-light);
+            border-radius: var(--cl-radius-md);
+            background: var(--cl-bg-secondary);
+            color: var(--cl-text-secondary);
+            white-space: pre-wrap;
+            font-size: var(--cl-font-size-sm);
+        }
+    </style>
+</head>
+<body>
+    <h1>CommandComposer</h1>
+    <div class="demo-panel">
+        <div id="composer"></div>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script type="module">
+        import { CommandComposer } from './index.js';
+        import { createThemeToggle } from '../../demo-utils.js';
+
+        const log = document.getElementById('log');
+        const composer = new CommandComposer({
+            placeholder: '輸入指令或需求',
+            submitLabel: '送出',
+            ariaLabel: '送出指令',
+            onSubmit: (value) => {
+                log.textContent = `submitted: ${value}`;
+            }
+        });
+
+        composer.mount('#composer');
+        composer.setValue('請整理最近的專案結果');
+        createThemeToggle();
+    </script>
+</body>
+</html>

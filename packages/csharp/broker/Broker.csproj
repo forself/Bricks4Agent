@@ -46,6 +46,19 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\javascript\browser\user-portal\**\*">
+      <Link>wwwroot\portal\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\..\javascript\browser\ui_components\**\*">
+      <Link>wwwroot\ui_components\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <!--
     HighLevelSiteRebuildService 在 broker 程序內就地使用 site-crawler-worker 的
     SiteCrawlerService / DeterministicSiteExtractor,因此 broker ProjectReference 了

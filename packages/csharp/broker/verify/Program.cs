@@ -1446,6 +1446,176 @@ try
         AssertTrue(HighLevelExecutionIntentStore.BuildDocumentId("line", "tester") == "hlm.execution.line.tester", "execution intent document id is stable for downstream references");
     }
 
+    var legalRagDbPath = Path.Combine(sandboxRoot, "legal-rag.db");
+    using (var legalRagDb = BrokerDb.UseSqlite($"Data Source={legalRagDbPath}"))
+    {
+        var initializer = new BrokerDbInitializer(legalRagDb);
+        initializer.Initialize();
+
+        var legalTaskId = "legal-rag-verify";
+        var legalEmbedding = new FakeLegalEmbeddingService();
+        var legalRagPipeline = new RagPipelineService(new RagPipelineOptions
+        {
+            QueryRewriteEnabled = false,
+            RerankEnabled = false,
+            CacheEnabled = false
+        });
+        var legalRagDispatcher = new InProcessDispatcher(
+            NullLogger<InProcessDispatcher>.Instance,
+            sandboxRoot,
+            db: legalRagDb,
+            embeddingService: legalEmbedding,
+            ragPipeline: legalRagPipeline);
+
+        var legalFixtureJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                key = "第19條",
+                content = "通訊交易或訪問交易之消費者，得於收受商品或接受服務後七日內，以退回商品或書面通知方式解除契約。",
+                tag = "消費者保護法",
+                tags = new[] { "消費者保護法", "法律", "退貨" }
+            },
+            new
+            {
+                key = "第2條",
+                content = "本法所稱消費者，指以消費為目的而為交易、使用商品或接受服務者。",
+                tag = "消費者保護法",
+                tags = new[] { "消費者保護法", "法律", "定義" }
+            },
+            new
+            {
+                key = "咖啡規範",
+                content = "咖啡拉花教學資料，不屬於消費者保護法條文。",
+                tag = "餐飲內規",
+                tags = new[] { "餐飲內規" }
+            }
+        });
+
+        var importPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_import",
+            args = new
+            {
+                format = "json",
+                tag = "法律",
+                data = legalFixtureJson,
+                task_id = legalTaskId
+            }
+        });
+        var importResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_import",
+            CapabilityId = "rag.import",
+            Route = "rag_import",
+            Payload = importPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(importResult.Success, $"legal RAG import route succeeds :: {importResult.ErrorMessage}");
+
+        var legalEntries = legalRagDb.GetAll<SharedContextEntry>()
+            .Where(e => e.TaskId == legalTaskId)
+            .ToList();
+        AssertTrue(legalEntries.Any(e => e.Key == "消費者保護法:第19條" && e.ContentRef.Contains("七日內", StringComparison.Ordinal)), "legal RAG externalizes Consumer Protection Act article state");
+
+        var legalFtsRows = legalRagDb.Query<LegalRagFtsRow>(
+            "SELECT source_key, content FROM memory_fts WHERE memory_fts MATCH @q AND task_id = @taskId ORDER BY rank LIMIT 5",
+            new { q = InProcessDispatcher.PrepareFts5Query("通訊交易 七日 解除契約"), taskId = legalTaskId });
+        AssertTrue(legalFtsRows.Any(row => row.SourceKey == "消費者保護法:第19條"), "legal RAG indexes Consumer Protection Act article in FTS5");
+
+        var fulltextPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "通訊交易 七日 解除契約",
+                mode = "fulltext",
+                limit = 3,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var fulltextResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_fulltext",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = fulltextPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(fulltextResult.Success, $"legal RAG fulltext retrieve succeeds :: {fulltextResult.ErrorMessage}");
+        using (var fulltextDoc = JsonDocument.Parse(fulltextResult.ResultPayload ?? "{}"))
+        {
+            var keys = fulltextDoc.RootElement.GetProperty("results")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("key").GetString() ?? "")
+                .ToList();
+            AssertTrue(keys.FirstOrDefault() == "消費者保護法:第19條", "legal RAG fulltext retrieve returns the relevant law article first");
+        }
+
+        var semanticPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "七日退貨解除契約",
+                mode = "semantic",
+                limit = 3,
+                threshold = 0.5,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var semanticResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_semantic",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = semanticPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(semanticResult.Success, $"legal RAG semantic retrieve succeeds :: {semanticResult.ErrorMessage}");
+        using (var semanticDoc = JsonDocument.Parse(semanticResult.ResultPayload ?? "{}"))
+        {
+            var first = semanticDoc.RootElement.GetProperty("results").EnumerateArray().FirstOrDefault();
+            AssertTrue(first.ValueKind == JsonValueKind.Object && first.GetProperty("key").GetString() == "消費者保護法:第19條", "legal RAG vector retrieve returns the relevant law article");
+            AssertTrue(first.GetProperty("vector_score").GetSingle() > 0, "legal RAG vector retrieve reports a positive vector score");
+        }
+
+        var filteredPayload = JsonSerializer.Serialize(new
+        {
+            route = "rag_retrieve",
+            args = new
+            {
+                query = "咖啡 拉花",
+                mode = "fulltext",
+                limit = 3,
+                rewrite = false,
+                rerank = false,
+                tags = new[] { "消費者保護法" }
+            }
+        });
+        var filteredResult = await legalRagDispatcher.DispatchAsync(new ApprovedRequest
+        {
+            RequestId = "req_legal_rag_tag_filter",
+            CapabilityId = "rag.retrieve",
+            Route = "rag_retrieve",
+            Payload = filteredPayload,
+            TaskId = legalTaskId
+        });
+        AssertTrue(filteredResult.Success, $"legal RAG tag-filtered retrieve succeeds :: {filteredResult.ErrorMessage}");
+        using (var filteredDoc = JsonDocument.Parse(filteredResult.ResultPayload ?? "{}"))
+        {
+            var filteredKeys = filteredDoc.RootElement.GetProperty("results")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("key").GetString() ?? "")
+                .ToList();
+            AssertTrue(!filteredKeys.Any(key => key.StartsWith("餐飲內規:", StringComparison.Ordinal)), "legal RAG tag filter excludes unrelated non-law entries");
+        }
+    }
+
     var coordinatorDbPath = Path.Combine(sandboxRoot, "coordinator-profile.db");
     using (var coordinatorDb = BrokerDb.UseSqlite($"Data Source={coordinatorDbPath}"))
     {
@@ -1705,6 +1875,12 @@ try
             AllowProduction = true
         });
 
+        var basicStillDenied = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
+        AssertTrue(basicStillDenied.Error == "production_disabled", "basic tier still masks production even when raw production flag is true");
+
+        var promotedUser = coordinator.ReviewLineUserRegistration("line-user-a", "promote", "verify production access");
+        AssertTrue(promotedUser?.AccessTier == HighLevelAccessTier.Member, "registration review promotes user to member tier");
+
         var buildDraft = await coordinator.ProcessLineMessageAsync("line-user-a", "/build website prototype");
         AssertTrue(buildDraft.Draft != null, "production command still creates draft after profile customization");
         AssertTrue(buildDraft.Draft!.ManagedPaths.UserRoot.Contains("bricks001", StringComparison.OrdinalIgnoreCase), "managed paths use preferred alphanumeric user id");
@@ -1729,6 +1905,19 @@ try
         var latestHandoff = workflowAdmin.ReadHandoff(latestHandoffDoc);
         AssertTrue(latestHandoff != null && latestHandoff.TaskType == "code_gen", "workflow admin service reads handoff detail");
 
+        async Task PromoteLineUserForProductionAsync(string productionUserId)
+        {
+            await coordinator.ProcessLineMessageAsync(productionUserId, "hello");
+            var productionPermissions = coordinator.SetLineUserPermissions(productionUserId, new HighLevelUserPermissionsPatch
+            {
+                AllowProduction = true
+            });
+            AssertTrue(productionPermissions?.Permissions.AllowProduction == true, $"raw production permission enabled for {productionUserId}");
+            var review = coordinator.ReviewLineUserRegistration(productionUserId, "promote", "verify production access");
+            AssertTrue(review?.AccessTier == HighLevelAccessTier.Member, $"member tier enabled for {productionUserId}");
+        }
+
+        await PromoteLineUserForProductionAsync("line-inline-project-user");
         var inlineProjectDraft = await coordinator.ProcessLineMessageAsync("line-inline-project-user", "/建立 單頁基礎計算機網頁 #proj1");
         AssertTrue(inlineProjectDraft.Draft != null && inlineProjectDraft.Draft.TaskType == "code_gen", "inline project-name website command still resolves to code_gen draft");
         AssertTrue(inlineProjectDraft.Draft!.ProjectName == "proj1", "inline project-name token is captured into the draft");
@@ -1746,11 +1935,13 @@ try
         var codeArtifacts = coordinatorWorkspaceService.ListArtifacts("line-inline-project-user");
         AssertTrue(codeArtifacts.Any(item => item.RelatedTaskType == "code_gen"), "code_gen confirm records artifact metadata");
 
+        await PromoteLineUserForProductionAsync("line-doc-user");
         var docDraft = await coordinator.ProcessLineMessageAsync("line-doc-user", "/請整理成 markdown 文件，摘要目前進度");
         var resolvedDocDraft = docDraft.Draft ?? throw new Exception("doc_gen draft unexpectedly null");
         AssertTrue(resolvedDocDraft.TaskType == "doc_gen", "document production command creates doc_gen draft");
         AssertTrue(!resolvedDocDraft.RequiresProjectName, "doc_gen draft does not require project name");
         AssertTrue(docDraft.FollowUpMessages != null && docDraft.FollowUpMessages.Contains("y"), "doc_gen draft exposes short confirm as a follow-up message");
+        await PromoteLineUserForProductionAsync("line-doc-user-create");
         var createDocDraft = await coordinator.ProcessLineMessageAsync("line-doc-user-create", "/create 產生一份 markdown 文件，摘要目前進度");
         AssertTrue(createDocDraft.Draft != null && createDocDraft.Draft.TaskType == "doc_gen", "create production alias still resolves to doc_gen draft");
         var docConfirmed = await coordinator.ProcessLineMessageAsync("line-doc-user", "confirm");
@@ -1771,6 +1962,7 @@ try
         var recordedArtifact = coordinatorWorkspaceService.ReadArtifact($"hlm.artifact.line.line-doc-user.{recordedArtifacts[0].ArtifactId}");
         AssertTrue(recordedArtifact != null && recordedArtifact.FileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase), "artifact detail can be read by document id");
 
+        await PromoteLineUserForProductionAsync("line-scaffold-user");
         var scaffoldDraft = await coordinator.ProcessLineMessageAsync("line-scaffold-user", "/建立 完整系統雛形 #scaffoldproj");
         AssertTrue(scaffoldDraft.Draft != null && scaffoldDraft.Draft.TaskType == "system_scaffold", "system scaffold command creates system_scaffold draft");
         AssertTrue(scaffoldDraft.Draft!.ProjectName == "scaffoldproj", "system scaffold draft captures inline project name");
@@ -1797,6 +1989,7 @@ try
         AssertTrue(scaffoldArtifacts.Any(item => item.RelatedTaskType == "system_scaffold" && item.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "system scaffold confirm records packaged zip artifact");
         AssertTrue(scaffoldConfirmed.FollowUpMessages != null && scaffoldConfirmed.FollowUpMessages.Any(item => item.Contains("進度：", StringComparison.Ordinal)), "system scaffold confirm returns phase progress follow-up messages");
 
+        await PromoteLineUserForProductionAsync("line-site-rebuild-user");
         var siteRebuildDraft = await coordinator.ProcessLineMessageAsync("line-site-rebuild-user", "/重製網站 https://example.edu/ 深度3 #sitecopy");
         AssertTrue(siteRebuildDraft.Draft != null && siteRebuildDraft.Draft.TaskType == "site_rebuild", "site rebuild command with URL creates site_rebuild draft");
         AssertTrue(siteRebuildDraft.Draft!.ProjectName == "sitecopy", "site rebuild draft captures inline project name");
@@ -2320,6 +2513,19 @@ file sealed class FakeBrokerService : IBrokerService
         });
 
     public ExecutionRequest? GetExecutionRequest(string requestId) => null;
+
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovals() => [];
+
+    public IReadOnlyList<ApprovalRequest> ListPendingApprovalsForApprover(string approverId, bool isAdmin) => [];
+
+    public ApprovalDetail? GetApprovalDetail(string approvalId) => null;
+
+    public IReadOnlyList<ApprovalDetail> ListPendingApprovalDetailsForApprover(string approverId, bool isAdmin) => [];
+
+    public Task<ExecutionRequest?> ApproveExecutionAsync(string approvalId, string approverId, string reason, bool isAdmin = false)
+        => Task.FromResult<ExecutionRequest?>(null);
+
+    public ExecutionRequest? RejectExecution(string approvalId, string approverId, string reason, bool isAdmin = false) => null;
 }
 
 file sealed class FakePlanService : IPlanService
@@ -2592,7 +2798,59 @@ file sealed class FakeExecutionDispatcher : IExecutionDispatcher
             }
         ];
     }
-}file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
+}
+
+file sealed class FakeLegalEmbeddingService : EmbeddingService
+{
+    public FakeLegalEmbeddingService()
+        : base(new EmbeddingOptions
+        {
+            Enabled = true,
+            Provider = "fake",
+            BaseUrl = "http://localhost:11434",
+            Model = "fake-legal-embedding",
+            Dimension = 3,
+            TimeoutSeconds = 1
+        })
+    {
+    }
+
+    public override Task<float[]?> EmbedAsync(string text)
+    {
+        if (text.Contains("通訊交易", StringComparison.Ordinal) ||
+            text.Contains("七日", StringComparison.Ordinal) ||
+            text.Contains("解除契約", StringComparison.Ordinal) ||
+            text.Contains("退貨", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 1.0f, 0.0f, 0.0f });
+        }
+
+        if (text.Contains("消費者", StringComparison.Ordinal) ||
+            text.Contains("交易", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 0.8f, 0.2f, 0.0f });
+        }
+
+        if (text.Contains("咖啡", StringComparison.Ordinal) ||
+            text.Contains("拉花", StringComparison.Ordinal))
+        {
+            return Task.FromResult<float[]?>(new[] { 0.0f, 1.0f, 0.0f });
+        }
+
+        return Task.FromResult<float[]?>(new[] { 0.0f, 0.0f, 1.0f });
+    }
+}
+
+file sealed class LegalRagFtsRow
+{
+    [BaseOrm.Column("source_key")]
+    public string? SourceKey { get; set; }
+
+    [BaseOrm.Column("content")]
+    public string? Content { get; set; }
+}
+
+file sealed class FakeBrowserPreviewHandler : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {

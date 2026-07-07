@@ -96,7 +96,8 @@ public class ComponentLibraryLoaderTests : IDisposable
             {
                 Required = ["title"],
                 Properties = { ["title"] = new ComponentPropSchema { Type = "string" } },
-            }));
+            },
+            bComponent: "Alert"));
         File.WriteAllText(path, JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         var loader = new ComponentLibraryLoader();
 

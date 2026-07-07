@@ -7,9 +7,10 @@ public class HighLevelLlmOptions
     public string BaseUrl { get; set; } = "http://localhost:11434";
     public string ApiKey { get; set; } = string.Empty;
     public string ApiFormat { get; set; } = "chat";
-    public string DefaultModel { get; set; } = "glm-4.7-flash:latest";
+    public string DefaultModel { get; set; } = "qwen3.6:latest";
     public bool AllowModelOverride { get; set; }
     public bool SupportsToolCalling { get; set; }
     public bool StreamingEnabled { get; set; }
     public int TimeoutSeconds { get; set; } = 120;
+    public int MaxOutputTokens { get; set; } = 256;
 }

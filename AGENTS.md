@@ -5,7 +5,7 @@
 A zero-runtime-dependency Vanilla JS **UI component library** plus a **page/SPA generator**
 that turns a JSON `PageDefinition` into working pages (static code generation or dynamic runtime rendering).
 
-- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (86 components)
+- Authoritative component list: [component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) (112 components)
 - Read before building: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) (calling convention) and [AGENT.md](AGENT.md) (SPA generator manual)
 
 ## Build & Test

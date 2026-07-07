@@ -132,4 +132,9 @@ describe('TextInput', () => {
         const input = new TextInput({ maxLength: 50 });
         expect(input.input.maxLength).toBe(50);
     });
+
+    it('autocomplete 屬性可由 options 設定', () => {
+        const input = new TextInput({ autocomplete: 'current-password' });
+        expect(input.input.autocomplete).toBe('current-password');
+    });
 });

@@ -11,7 +11,7 @@ namespace LineWorker;
 /// 封裝 Push Message、Reply Message、取得內容等 API 呼叫。
 /// 不依賴第三方 LINE SDK，直接使用 HTTP REST API。
 /// </summary>
-public class LineApiClient : IDisposable
+public class LineApiClient : ILineApiClient, IDisposable
 {
     private readonly HttpClient _http;
     private readonly string _channelSecret;

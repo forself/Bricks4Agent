@@ -161,7 +161,34 @@ export const SAMPLE_OPTIONS = {
     BatchUploader: {
         apiEndpoint: '/api/files/upload', maxFiles: 5, allowedExtensions: ['.pdf', '.jpg', '.png'],
         labels: { dropzone: '將筆錄/證物檔案拖曳到此,或點擊選擇', browse: '選擇檔案', upload: '全部上傳', clear: '全部清除', pending: '待上傳', success: '已上傳', error: '失敗' }
-    }
+    },
+
+    // ── 0626 合併進來的元件擴充(atoms/composites/sections;已轉 CSSOM 樣式)──
+    Text: { text: '本案犯嫌已於中山分局轄區查獲到案,全案依刑法第339條詐欺罪嫌移送臺北地檢署偵辦。', variant: 'body', align: 'left', tag: 'p', truncate: false },
+    Heading: { text: '刑事警察大隊113年度肅槍專案執行成果報告', level: 2, align: 'left' },
+    Link: { text: '165全民防騙網——查詢假投資案件通報', href: 'https://165.npa.gov.tw', scope: 'external', disabled: false },
+    Skeleton: { variant: 'text', lines: 4 },
+    CodeBlock: { code: '{\n  "案號": "北市警刑大字第1130045678號",\n  "案由": "詐欺",\n  "狀態": "移送偵辦"\n}', language: 'json' },
+    Alert: { variant: 'warning', message: '通緝犯資料已逾 30 日未同步,請確認戶役政連線狀態。', closable: true },
+    EmptyState: { icon: 'search', title: '查無攔查紀錄', description: '車牌 BNF-2317 近三個月無攔查與違規紀錄。', actionLabel: '重新查詢' },
+    List: { items: [{ primary: '113年度刑字第0421號', secondary: '竊盜案|偵查中' }, { primary: '113年度交查字第1187號', secondary: '肇事逃逸|已移送地檢' }] },
+    DescriptionList: { items: [{ label: '案件編號', value: '113-0058821' }, { label: '受理單位', value: '中正第一分局' }, { label: '受理時間', value: '113-07-05 22:41' }] },
+    StatGrid: { stats: [{ label: '今日受理報案', value: 47 }, { label: '在途案件', value: 12, detail: '較昨日 +3' }, { label: '今日結案', value: 35 }, { label: '出勤警力', value: 128 }], columns: 2 },
+    CardGrid: { columns: 1, cards: [{ title: '受理報案 e 化平台', description: '線上受理竊盜、詐欺等案件報案', tags: ['報案', '線上服務'], badge: 'NEW' }, { title: '失蹤人口查詢', description: '查詢失蹤人口協尋公告與通報進度', tags: ['協尋'] }] },
+    StepIndicator: { steps: [{ label: '受理報案' }, { label: '案件分派' }, { label: '偵查中' }, { label: '移送地檢' }], current: 3 },
+    DropdownMenu: { label: '案件操作', items: [{ label: '檢視案件詳情', href: '/case/113001234' }, { label: '列印三聯單', href: '/case/print' }, { label: '移轉管轄', href: '/case/transfer' }] },
+    FilterBar: { filters: [{ key: 'unit', label: '轄區分局', options: ['中山分局', '大安分局', '信義分局'], defaultValue: '中山分局' }, { key: 'urgent', label: '僅顯示重大案件', type: 'checkbox', defaultValue: false }] },
+    ResultList: { items: [{ title: '113年度住宅竊盜案件統計', url: '/stats/burglary-113', snippet: '本年度轄內住宅竊盜較去年同期下降 12%', meta: '刑事警察大隊・2026-06-30', tags: ['統計', '竊盜'] }], emptyText: '查無相關案件紀錄' },
+    MediaPlayer: { kind: 'video', src: '', poster: '', controls: true },
+    Rating: { value: 4, max: 5, readonly: false },
+    TagInput: { tags: ['竊盜', '毒品', '通緝'], placeholder: '輸入案類後按 Enter' },
+    Form: { fields: [{ name: 'caseNo', label: '案件編號', type: 'text', required: true, placeholder: '例:114-0001234' }, { name: 'category', label: '案類', type: 'select', options: ['竊盜', '詐欺', '毒品'], required: true }, { name: 'summary', label: '案情摘要', type: 'textarea', placeholder: '概述案發經過' }], submitLabel: '送出', resetLabel: '重設' },
+    CommandComposer: { placeholder: '輸入勤務指令,Ctrl+Enter 送出', rows: 3, submitLabel: '送出', ariaLabel: '送出勤務指令', clearOnSubmit: true },
+    EditableTable: { columns: [{ key: 'caseNo', label: '案件編號', sortable: true }, { key: 'assignee', label: '承辦員警', editable: true }, { key: 'status', label: '辦理情形', editable: true }], rows: [{ caseNo: 'A11307020015', assignee: '王大明', status: '偵辦中' }, { caseNo: 'A11307020016', assignee: '林小華', status: '已移送' }] },
+    BannerSection: { title: '113年暑期青春專案', body: '結合警政、社政與教育資源,加強熱點巡查,守護青少年暑期安全。', actionLabel: '查看專案詳情', actionUrl: '/projects/summer-youth', actionScope: 'internal' },
+    ContentSection: { title: '受理報案流程說明', body: '民眾可親臨各分駐(派出)所報案,或撥打110由勤指中心派遣線上警力到場處理;受理後開立報案三聯單。', level: 2 },
+    PageFooter: { links: [{ label: '資料開放宣告', href: '/opendata', scope: 'internal' }, { label: '隱私權政策', href: '/privacy', scope: 'internal' }], copyright: '© 2026 臺北市政府警察局中山分局 版權所有' },
+    PageHeader: { brand: '臺北市政府警察局中山分局', navLinks: [{ label: '最新消息', href: '/news' }, { label: '為民服務', href: '/services' }, { label: '治安資訊', href: '/safety' }] }
 };
 
 // 展示廊要略過的元件(需大量外部資源 / 全螢幕互動 / 專屬圖資 / 非視覺,不適合縮圖預覽)

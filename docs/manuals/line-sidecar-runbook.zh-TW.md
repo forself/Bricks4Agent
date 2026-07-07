@@ -48,8 +48,10 @@
 
 目前若要有最佳 live 行為，通常還需要：
 
+- Windows User 或目前 shell 的 `ANTHROPIC_API_KEY`
+  - 給高階模型與 broker `LlmProxy` 使用；sidecar 會優先設為 `anthropic` / `claude-sonnet-4-6`
 - `C:\secure\Bricks4Agent\Api.txt`（可用 `BRICKS4AGENT_SECRETS_DIR` 環境變數改路徑；repo 根目錄為舊版備援）
-  - 給高階模型用的 OpenAI-compatible API key
+  - 沒有 `ANTHROPIC_API_KEY` 時的 OpenAI-compatible fallback key
 - 同一機密目錄下的 `client_secret_*.json`
   - 給 Google Drive OAuth 使用
 - `%LOCALAPPDATA%\ngrok\ngrok.yml`
@@ -79,8 +81,8 @@
 
 目前 sidecar 會：
 
-- 讀取這個檔案
-- 將內容注入 broker 的 `HighLevelLlm.ApiKey`
+- 優先讀取 `ANTHROPIC_API_KEY`，並設定 `HighLevelLlm` / `LlmProxy` 為 `anthropic`、`claude-sonnet-4-6`
+- 若沒有 `ANTHROPIC_API_KEY`，才讀取這個檔案並注入 broker 的 `HighLevelLlm.ApiKey`
 
 ### 3. Google Drive OAuth client
 
@@ -108,6 +110,24 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 ```
 
 （`-Worker` 可用 `file`、`browser`、`transport-tdx`、`site-crawler`。）此腳本讀取同一憑證庫，註冊即可通過 worker 身分驗證。
+
+### 3.2 LINE outbound rate limit
+
+line-worker 會對 `line.message.send` 與 `line.audio.send` 做 worker-local outbound rate limiting，key 為 recipient + capability。預設值在 `packages/csharp/workers/line-worker/appsettings*.json`：
+
+- `Line.OutboundRateLimit.PermitLimit`: 預設 `20`
+- `Line.OutboundRateLimit.WindowSeconds`: 預設 `60`
+- `Line.OutboundRateLimit.MaxTrackedKeys`: 預設 `1024`
+
+sidecar 或手動啟動時可用環境變數覆寫：
+
+```powershell
+$env:WORKER_Line__OutboundRateLimit__PermitLimit = '20'
+$env:WORKER_Line__OutboundRateLimit__WindowSeconds = '60'
+$env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
+```
+
+這不是分散式 quota；多個 line-worker instance 之間不共享計數，`line.notification.send` 目前也尚未套用這個 limiter。
 
 目前 sidecar 會：
 
@@ -180,16 +200,17 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 1. 建立 `.run/line-sidecar`
 2. publish broker 到 `.run/line-sidecar/broker`
 3. publish line-worker 到 `.run/line-sidecar/line-worker`
-4. 注入本機 production override：
+4. 若存在 `Bricks4Agent Dev Code Signing` 開發簽章憑證，補簽 `.run/line-sidecar` 內自家 `.dll` / `.exe`
+5. 注入本機 production override：
    - high-level API key
    - Google Drive OAuth 設定
    - Google Drive 預設身分模式與 shared delegated owner
-5. 啟動 broker 到 `127.0.0.1:5361`
-6. 啟動 line-worker 到 `*:5357`
-7. 重建 ngrok tunnel `line5357`
-8. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
-9. 等到 broker 與本機 webhook 真正 ready
-10. 確認命名的 ngrok tunnel 確實存在
+6. 啟動 broker 到 `127.0.0.1:5361`
+7. 啟動 line-worker 到 `*:5357`
+8. 重建 ngrok tunnel `line5357`
+9. 更新 LINE webhook endpoint，除非使用 `-SkipWebhookUpdate`
+10. 等到 broker 與本機 webhook 真正 ready
+11. 確認命名的 ngrok tunnel 確實存在
 
 重要補充：
 
@@ -203,6 +224,37 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 - 不能再假設操作者自己猜到要怎麼先手動開 ngrok
 
 第一次啟動可能比較慢，因為 broker 可能需要 seed 一部分本機資料後才會 ready。
+
+### Smart App Control / WDAC 封鎖 runtime DLL
+
+若 `up` 失敗，且 `.run/line-sidecar/logs/broker.err.log` 或 Windows Code Integrity event 顯示 `0x800711C7`、`Smart App Control`、`did not meet the Enterprise signing level requirements`，代表 Windows 仍未信任目前 runtime 載入的程式碼。
+
+這時不要只反覆重跑 `line-sidecar.ps1 up`。請用系統管理員 PowerShell 執行：
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+這個 repair flow 會掃描：
+
+```text
+D:\Bricks4Agent\.run\line-sidecar
+```
+
+並產生 policy 到：
+
+```text
+D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+```
+
+部署成功後，輸出的 `{policy-id}.cip` 必須出現在：
+
+```text
+C:\Windows\System32\CodeIntegrity\CiPolicies\Active
+```
+
+只有 active policy 檢查通過才代表 WDAC policy 實際生效。完整說明見 [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.md)。
 
 ## 啟動成功的判準
 
@@ -442,7 +494,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 常見原因：
 
-- `Api.txt` 不存在或無法讀
+- `ANTHROPIC_API_KEY` 不存在，且 `Api.txt` 不存在或無法讀
 - 上游 API key 無效
 - high-level 模型 upstream 回 `401` 或 `400`
 - sidecar publish output 吃到舊檔
@@ -454,7 +506,7 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\l
 
 修正：
 
-- 確認 `Api.txt` 內是有效 key
+- 確認 `ANTHROPIC_API_KEY` 是有效 Anthropic key，或 `Api.txt` 內是有效 OpenAI-compatible fallback key
 - 重啟 sidecar
 
 ### 4. Google Drive OAuth 出現 `invalid_state` 或 `state_expired`

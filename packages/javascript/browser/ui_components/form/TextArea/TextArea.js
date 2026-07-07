@@ -23,8 +23,10 @@ export class TextArea {
             width: '100%',
             monospace: false,
             resize: 'vertical', // none | vertical | horizontal | both
+            required: false,    // 0626 Textarea 相容(合併統一為單一 TextArea)
             onChange: null,
             onInput: null,
+            onBlur: null,       // 0626 Textarea 相容
             ...options
         };
 
@@ -67,6 +69,7 @@ export class TextArea {
         ta.rows = rows;
         if (placeholder) ta.placeholder = placeholder;
         if (maxLength != null) ta.maxLength = maxLength;
+        if (this.options.required) ta.required = true;
         const fontStack = monospace ? 'var(--cl-font-family-mono)' : 'var(--cl-font-family-cjk), var(--cl-font-family)';
         ta.style.cssText = `
             width:100%; box-sizing:border-box; padding:8px 12px;
@@ -76,7 +79,10 @@ export class TextArea {
             border-radius:var(--cl-radius-md); resize:${resize}; transition:border-color var(--cl-transition);
         `;
         ta.addEventListener('focus', () => { ta.style.borderColor = 'var(--cl-primary)'; });
-        ta.addEventListener('blur', () => { ta.style.borderColor = 'var(--cl-border)'; });
+        ta.addEventListener('blur', () => {
+            ta.style.borderColor = 'var(--cl-border)';
+            if (typeof this.options.onBlur === 'function') this.options.onBlur(ta.value);
+        });
         ta.addEventListener('input', () => {
             this._state.replace({ ...this._state.snapshot(), value: ta.value });
             if (typeof this.options.onInput === 'function') this.options.onInput(ta.value);

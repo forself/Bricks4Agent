@@ -9,6 +9,24 @@ public class LocalAdminCredential
     [Column("credential_id")]
     public string CredentialId { get; set; } = "local_admin";
 
+    [Column("operator_id")]
+    public string OperatorId { get; set; } = "local_admin";
+
+    [Column("username")]
+    public string Username { get; set; } = "admin";
+
+    [Column("display_name")]
+    public string DisplayName { get; set; } = "Local Super Admin";
+
+    [Column("role")]
+    public string Role { get; set; } = "super_admin";
+
+    [Column("permission_overrides")]
+    public string PermissionOverrides { get; set; } = "{}";
+
+    [Column("status")]
+    public string Status { get; set; } = "active";
+
     [Column("password_hash")]
     public string PasswordHash { get; set; } = string.Empty;
 
@@ -29,4 +47,7 @@ public class LocalAdminCredential
 
     [Column("last_password_change_at")]
     public DateTime? LastPasswordChangeAt { get; set; }
+
+    [Column("last_login_at")]
+    public DateTime? LastLoginAt { get; set; }
 }

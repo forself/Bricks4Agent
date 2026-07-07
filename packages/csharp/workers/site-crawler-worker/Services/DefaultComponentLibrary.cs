@@ -14,13 +14,15 @@ public static class DefaultComponentLibrary
         string description,
         IEnumerable<string> supportedRoles,
         ComponentPropsSchema propsSchema,
-        bool generated = false)
+        bool generated = false,
+        string bComponent = "")
     {
         return new ComponentDefinition
         {
             Type = type,
             Description = description,
             SupportedRoles = supportedRoles.ToList(),
+            BComponent = bComponent,
             PropsSchema = propsSchema,
             Generated = generated,
         };

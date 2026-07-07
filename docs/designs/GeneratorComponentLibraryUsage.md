@@ -4,6 +4,17 @@
 
 Draft repository design note.
 
+> **2026-06-15 規劃**:見 [ComponentLibraryConsolidation-2026-06-15.md](ComponentLibraryConsolidation-2026-06-15.md)。
+>
+> **2026-06-16 落地(實況,含具名偏離)**:整併 Stage 0–3 已進 main。對 **C# site-crawler 產生器**:
+> - `SiteGeneratorConverter.EnsureGeneratedComponent` 的「現捏組件」死碼整串移除(Stage 0)。
+> - 詞彙錨定 B:每個產生器型別宣告 `b_component` 綁定到 `ui_components` 閉集(`BComponentRegistry`),manifest 載入時 fail-closed 驗證;刪除死行話 `HeroSection`;`TemplateMatcher` 移除任意 `.First()` 退路、改退指定中性容器並一律記錄缺口(Stage 1)。
+> - 靜態包顯式錨定 B:`components/manifest.json` 帶 `b_component`、新增 `components/b-binding.json`(`type→b_component` 機讀索引)、README 宣告 B canonical(Stage 2)。
+> - **具名偏離**:`StaticSitePackageGenerator` 的內嵌 JS renderer **未退役**,刻意保留為「B 詞彙的位元組決定性靜態匯出投影」(把 B 的即時 FSM 組件硬塞進位元組穩定的靜態匯出是退步;理由見整併文件 §9)。
+> - e2e 驗證:本地 `reconstruct` CLI(`site-crawler-worker` 免 broker 子命令)對台北科大實跑,並抓出 `TemplateCompiler.CloneManifest` 漏帶 `b_component` 的 bug(已修 + 回歸測試,見整併文件 §10)。
+>
+> 注意:**本文件描述的是 JS `page-generator` 對實作檔路徑的耦合**(繞過 `index.js`),與上述 C# site-crawler 是不同的產生器。該 JS 耦合的 `index.js` 公開面正規化(整併規劃 Stage 3 的一部分)**尚未**進行,本文件以下描述仍成立。
+
 This document describes how the current generator stack actually consumes the
 component library.
 

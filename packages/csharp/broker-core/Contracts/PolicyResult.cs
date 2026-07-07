@@ -12,12 +12,23 @@ public class PolicyResult
     /// <summary>RequireApproval 時:該由哪一層批(§18.2)。預設 Admin。</summary>
     public ApproverTier RequiredApproverTier { get; set; } = ApproverTier.Admin;
 
+    public int RequiredApprovalCount { get; set; } = 1;
+
     public static PolicyResult Allow()
         => new() { Decision = PolicyDecision.Allow, Reason = "Approved by policy engine" };
 
     public static PolicyResult Deny(string reason, bool retryable = false)
         => new() { Decision = PolicyDecision.Deny, Reason = reason, Retryable = retryable };
 
-    public static PolicyResult RequireApproval(string reason, ApproverTier tier = ApproverTier.Admin)
-        => new() { Decision = PolicyDecision.RequireApproval, Reason = reason, RequiredApproverTier = tier };
+    public static PolicyResult RequireApproval(
+        string reason,
+        ApproverTier tier = ApproverTier.Admin,
+        int requiredApprovalCount = 1)
+        => new()
+        {
+            Decision = PolicyDecision.RequireApproval,
+            Reason = reason,
+            RequiredApproverTier = tier,
+            RequiredApprovalCount = Math.Max(1, requiredApprovalCount)
+        };
 }

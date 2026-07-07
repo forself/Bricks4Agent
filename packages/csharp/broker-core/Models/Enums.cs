@@ -61,6 +61,12 @@ public enum ApprovalStatus
     Expired = 3
 }
 
+public enum ApprovalDecisionKind
+{
+    Approved = 1,
+    Rejected = 2
+}
+
 /// <summary>
 /// 審批層級/信任錨(§18.2)。
 /// User:動作所屬使用者本人,在自己介面批,只限自己權限。

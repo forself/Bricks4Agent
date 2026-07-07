@@ -33,7 +33,7 @@ python -m http.server 8124 --bind 127.0.0.1
 ## 使用
 
 - **左側**:分頁式 token 編輯器(語意色 / 圓角 / 字級 / 效果·字體 / 進階 JSON)。拖曳/選色即時套用**全域**。
-- **右側**:元件展示廊——掃全 catalog(86),隨 token 即時變化;缺範例者以可見標記現形,不靜默缺席。
+- **右側**:元件展示廊——掃全 catalog(112),隨 token 即時變化;缺範例者以可見標記現形,不靜默缺席。
 - **頂部**:深色切換、儲存(localStorage)、匯出 `theme.tokens.json`、匯出 `theme.custom.css`、匯入 tokens、重置。
 - **每卡 ⚙(已渲染元件)**:開右側抽屜**只調該元件**,作用域為具名 class(預設 `b4a-c-<元件名>`,可改名建立變體);併入同一份 `theme.custom.css`(`:root` 在後接各 `.class`)。見 [THEME-USAGE §3.4](../../packages/javascript/browser/ui_components/THEME-USAGE.md)。
 - **「↗ 開啟舞台」(非內嵌重元件)**:地圖 / 繪圖板 / 大圖表 / 富文本編輯器等需大畫布者,點卡片開**全尺寸彈窗**渲染,頂部下拉 + 上/下一個可切換其他重元件。Leaflet 已 vendored(本地載入);圖磚本身仍需連得到圖磚伺服器(OSM 或 NLSC/TGOS),連不到時顯示優雅 fallback。

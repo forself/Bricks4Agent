@@ -30,6 +30,42 @@ public sealed class RagRetrieveHandler : BrokerCore.Services.IRouteHandler
 
     public async Task<ExecutionResult> HandleAsync(ApprovedRequest request, CancellationToken ct = default)
     {
+        if (UseCoreRetrievalService())
+            return await HandleWithCoreRetrievalServiceAsync(request, ct);
+
+        return await HandleLegacyAsync(request, ct);
+    }
+
+    private async Task<ExecutionResult> HandleWithCoreRetrievalServiceAsync(ApprovedRequest request, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(request.Payload);
+        var args = PayloadHelper.GetArgsElement(doc.RootElement);
+        var retrieveRequest = RagRetrieveRequest.FromArgs(args);
+        if (string.IsNullOrWhiteSpace(retrieveRequest.Query))
+            return ExecutionResult.Fail(request.RequestId, "query is required.");
+
+        var taskId = retrieveRequest.TaskId ?? request.TaskId ?? "global";
+        var retrieval = new RagRetrievalService(
+            _db,
+            _embeddingService,
+            _ragPipeline,
+            message => _logger.LogWarning("{Message}", message));
+
+        try
+        {
+            var response = await retrieval.RetrieveAsync(retrieveRequest, taskId, ct);
+            return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(response));
+        }
+        catch (ArgumentException ex)
+        {
+            return ExecutionResult.Fail(request.RequestId, ex.Message);
+        }
+    }
+
+    private static bool UseCoreRetrievalService() => true;
+
+    private async Task<ExecutionResult> HandleLegacyAsync(ApprovedRequest request, CancellationToken ct = default)
+    {
         using var doc = JsonDocument.Parse(request.Payload);
         var args = PayloadHelper.GetArgsElement(doc.RootElement);
         var query = PayloadHelper.TryGetString(args, "query") ?? "";

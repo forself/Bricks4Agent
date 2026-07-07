@@ -30,6 +30,7 @@
   "binding": {
     "value_io": true,
     "listener_events": [
+      "blur",
       "change"
     ],
     "target_actions": [

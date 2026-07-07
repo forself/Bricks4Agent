@@ -97,6 +97,12 @@ export class Icon {
             onClick: null,
             ...options
         };
+        // 0626 線相容:字串尺寸('small'|'medium'|'large')與 label(→title)
+        const SIZE_ALIAS = { small: 16, medium: 20, large: 24 };
+        if (typeof this.options.size === 'string') {
+            this.options.size = SIZE_ALIAS[this.options.size] || parseInt(this.options.size, 10) || 20;
+        }
+        if (this.options.label && !this.options.title) this.options.title = this.options.label;
         this._animation = null;
         this.element = this._create();
         this._applySpin();

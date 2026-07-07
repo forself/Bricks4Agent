@@ -136,6 +136,7 @@ public sealed class HighLevelDocumentArtifactService
         return provider switch
         {
             "ollama" => await SendOllamaChatAsync(prompt, ct),
+            "anthropic" or "claude" => await HighLevelAnthropicClient.SendAsync(_httpClient, _highLevelLlmOptions, HighLevelAnthropicClient.UserPrompt(prompt), ct),
             _ => string.Equals(_highLevelLlmOptions.ApiFormat, "responses", StringComparison.OrdinalIgnoreCase)
                 ? await SendResponsesApiAsync(prompt, ct)
                 : await SendChatCompletionsAsync(prompt, ct)

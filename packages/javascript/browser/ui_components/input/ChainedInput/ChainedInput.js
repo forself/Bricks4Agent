@@ -21,6 +21,7 @@ export class ChainedInput {
 
         this.values = {};
         this.fieldElements = new Map();
+        this._loadTokens = new Map();   // race-safety: latest-wins per field
         this.element = this._createElement();
         this._state = createComponentState(this._buildInitialState(), {
             MOUNT: (state) => ({ ...state, lifecycle: 'mounted' }),
@@ -314,10 +315,15 @@ export class ChainedInput {
             const nextField = this.options.fields[fieldIndex + 1];
             const nextEntry = this.fieldElements.get(nextField.name);
             if (nextEntry) {
-                if (nextField.loadOptions) await this._loadFieldOptions(nextField.name, value);
-                else this._restoreStaticOptions(nextEntry);
-                this.send('SET_FIELD_AVAILABILITY', { fieldName: nextField.name, disabled: false });
-                this.send('SET_FIELD_VISIBILITY', { fieldName: nextField.name, visible: true });
+                if (typeof nextField.optionsFrom === 'function') {
+                    this._applyDerivedOptions(nextField, nextEntry);
+                } else if (nextField.loadOptions) {
+                    await this._loadFieldOptions(nextField.name, value);
+                } else {
+                    this._restoreStaticOptions(nextEntry);
+                    this.send('SET_FIELD_AVAILABILITY', { fieldName: nextField.name, disabled: false });
+                    this.send('SET_FIELD_VISIBILITY', { fieldName: nextField.name, visible: true });
+                }
             }
         }
 
@@ -336,11 +342,30 @@ export class ChainedInput {
         const { field, component } = entry;
         if (field.type === 'select') {
             component.clear();
-            component.setItems(field.loadOptions ? [] : this._normalizeOptions(field.options));
+            component.setItems((field.loadOptions || field.optionsFrom) ? [] : this._normalizeOptions(field.options));
             return;
         }
         component.clear?.();
         if (field.type === 'checkbox') component.setValue(false);
+    }
+
+    _applyAvailabilityForOptions(field, count) {
+        if (count === 0) {
+            this.send('SET_FIELD_AVAILABILITY', { fieldName: field.name, disabled: true });
+            if (field.hideWhenEmpty) this.send('SET_FIELD_VISIBILITY', { fieldName: field.name, visible: false });
+        } else {
+            this.send('SET_FIELD_AVAILABILITY', { fieldName: field.name, disabled: false });
+            this.send('SET_FIELD_VISIBILITY', { fieldName: field.name, visible: true });
+        }
+    }
+
+    // Synchronous, deterministic derived options: optionsFrom(allValues). Gets ALL ancestor
+    // values (not just the immediate parent), so multi-parent dependencies work. No async/loading.
+    _applyDerivedOptions(field, entry) {
+        if (field.type !== 'select') return;
+        const normalized = this._normalizeOptions(field.optionsFrom(this.getValues()));
+        entry.component.setItems(normalized);
+        this._applyAvailabilityForOptions(field, normalized.length);
     }
 
     async _loadFieldOptions(fieldName, parentValue) {
@@ -348,30 +373,27 @@ export class ChainedInput {
         const entry = this.fieldElements.get(fieldName);
         if (!field || !entry || !field.loadOptions || field.type !== 'select') return;
 
+        const token = (this._loadTokens.get(fieldName) ?? 0) + 1;
+        this._loadTokens.set(fieldName, token);
+        const isLatest = () => this._loadTokens.get(fieldName) === token;
+
         this.send('SET_FIELD_LOADING', { fieldName, loading: true });
         this.send('SET_FIELD_AVAILABILITY', { fieldName, disabled: true });
         entry.component.setItems([]);
 
         try {
-            const options = await field.loadOptions(parentValue);
+            const options = await field.loadOptions(parentValue, this.getValues());
+            if (!isLatest()) return;   // a newer change superseded this load -> drop stale result
             const normalized = this._normalizeOptions(options);
             entry.component.setItems(normalized);
-
-            if (normalized.length === 0) {
-                this.send('SET_FIELD_AVAILABILITY', { fieldName, disabled: true });
-                if (field.hideWhenEmpty) {
-                    this.send('SET_FIELD_VISIBILITY', { fieldName, visible: false });
-                }
-            } else {
-                this.send('SET_FIELD_AVAILABILITY', { fieldName, disabled: false });
-                this.send('SET_FIELD_VISIBILITY', { fieldName, visible: true });
-            }
+            this._applyAvailabilityForOptions(field, normalized.length);
         } catch (error) {
+            if (!isLatest()) return;
             console.error(`Failed to load options for ${fieldName}:`, error);
             entry.component.setItems([]);
             this.send('SET_FIELD_AVAILABILITY', { fieldName, disabled: true });
         } finally {
-            this.send('SET_FIELD_LOADING', { fieldName, loading: false });
+            if (isLatest()) this.send('SET_FIELD_LOADING', { fieldName, loading: false });
         }
     }
 
@@ -385,7 +407,9 @@ export class ChainedInput {
             const value = values[field.name];
             const entry = this.fieldElements.get(field.name);
             if (!entry) continue;
-            if (field.type === 'select' && field.loadOptions) {
+            if (field.type === 'select' && field.optionsFrom) {
+                this._applyDerivedOptions(field, entry);
+            } else if (field.type === 'select' && field.loadOptions) {
                 await this._loadFieldOptions(field.name, this._getParentFieldValue(field.name));
             }
             entry.component.setValue?.(value);

@@ -19,7 +19,7 @@ public class SiteGenerationQualityAnalyzerTests
         report.ComponentNodeCount.Should().Be(3);
         report.ComponentRequestCount.Should().Be(0);
         report.GeneratedComponentCount.Should().Be(0);
-        report.ComponentTypes.Should().Contain(["PageShell", "SiteHeader", "HeroSection"]);
+        report.ComponentTypes.Should().Contain(["PageShell", "SiteHeader", "ContentSection"]);
     }
 
     [Fact]

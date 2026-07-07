@@ -16,6 +16,7 @@ export class TextInput {
             hint: '',
             maxLength: null,
             width: '100%',
+            autocomplete: null,
             enableSecurity: true,
             onChange: null,
             onBlur: null,
@@ -98,7 +99,8 @@ export class TextInput {
             error,
             hint,
             maxLength,
-            width
+            width,
+            autocomplete
         } = this.options;
 
         const sizeStyles = {
@@ -134,6 +136,7 @@ export class TextInput {
         input.value = value;
         input.disabled = disabled;
         input.readOnly = readonly;
+        if (autocomplete) input.autocomplete = autocomplete;
         if (maxLength) input.maxLength = maxLength;
         // RWD:border-box 讓 padding/border 算入 100% 寬(原 content-box 使外框比容器寬 26px 而溢出)
         input.style.cssText = `

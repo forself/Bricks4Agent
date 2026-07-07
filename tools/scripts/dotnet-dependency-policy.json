@@ -7,7 +7,8 @@
         "packages/csharp/broker-core/BrokerCore.csproj",
         "packages/csharp/function-pool/FunctionPool.csproj",
         "packages/csharp/security/RateLimiting/RateLimiting.csproj",
-        "packages/csharp/logging/BaseLogger/BaseLogger.csproj"
+        "packages/csharp/logging/BaseLogger/BaseLogger.csproj",
+        "packages/csharp/workers/site-crawler-worker/SiteCrawlerWorker.csproj"
       ],
       "allowedPackageReferences": [
         "Microsoft.AspNetCore.Authentication.JwtBearer"

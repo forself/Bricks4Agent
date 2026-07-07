@@ -7,6 +7,7 @@
  * @version 1.0.0
  */
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
 
 
 export class Notification {
@@ -53,7 +54,7 @@ export class Notification {
             ...options
         };
 
-        this.id = `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.id = this.options.id || nextUid('notification');
         this.element = null;
         this._timeoutId = null;
 

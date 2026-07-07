@@ -13,15 +13,20 @@ namespace LineWorker.Handlers;
 /// </summary>
 public class SendMessageHandler : ICapabilityHandler
 {
-    private readonly LineApiClient _lineApi;
+    private readonly ILineApiClient _lineApi;
     private readonly string _defaultRecipientId;
+    private readonly ILineOutboundRateLimiter _rateLimiter;
 
     public string CapabilityId => "line.message.send";
 
-    public SendMessageHandler(LineApiClient lineApi, string defaultRecipientId)
+    public SendMessageHandler(
+        ILineApiClient lineApi,
+        string defaultRecipientId,
+        ILineOutboundRateLimiter? rateLimiter = null)
     {
         _lineApi = lineApi;
         _defaultRecipientId = defaultRecipientId;
+        _rateLimiter = rateLimiter ?? new LineOutboundRateLimiter();
     }
 
     public async Task<(bool Success, string? ResultPayload, string? Error)> ExecuteAsync(
@@ -50,6 +55,9 @@ public class SendMessageHandler : ICapabilityHandler
             if (text.Length > 5000)
                 text = text[..4990] + "\n...[truncated]";
 
+            if (!_rateLimiter.TryAcquire(to, CapabilityId, out var retryAfter))
+                return (false, null, $"Outbound LINE rate limit exceeded for {CapabilityId}; retry after {FormatRetryAfter(retryAfter)}.");
+
             var (success, error) = await _lineApi.PushTextMessageAsync(to, text, ct);
 
             if (!success)
@@ -68,5 +76,11 @@ public class SendMessageHandler : ICapabilityHandler
         {
             return (false, null, $"SendMessage error: {ex.Message}");
         }
+    }
+
+    private static string FormatRetryAfter(TimeSpan retryAfter)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+        return $"{seconds}s";
     }
 }

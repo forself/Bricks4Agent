@@ -4,37 +4,73 @@
   "components": [
     {
       "type": "PageShell",
+      "b_component": "PageShell",
       "description": "Top-level page container.",
-      "supported_roles": ["page"],
+      "supported_roles": [
+        "page"
+      ],
       "props_schema": {
-        "required": ["title", "source_url"],
+        "required": [
+          "title",
+          "source_url"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "source_url": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "SiteHeader",
+      "b_component": "PageHeader",
       "description": "Site title and navigation links.",
-      "supported_roles": ["navigation", "header"],
+      "supported_roles": [
+        "navigation",
+        "header"
+      ],
       "props_schema": {
-        "required": ["title", "links"],
+        "required": [
+          "title",
+          "links"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "logo_url": { "type": "string" },
-          "logo_alt": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "logo_url": {
+            "type": "string"
+          },
+          "logo_alt": {
+            "type": "string"
+          },
           "utility_links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -42,12 +78,25 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -55,12 +104,25 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -69,51 +131,72 @@
       "generated": false
     },
     {
-      "type": "HeroSection",
-      "description": "Primary visual introduction section.",
-      "supported_roles": ["hero"],
-      "props_schema": {
-        "required": ["title", "body"],
-        "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "source_selector": { "type": "string" }
-        }
-      },
-      "generated": false
-    },
-    {
       "type": "ContentSection",
+      "b_component": "ContentSection",
       "description": "General content block.",
-      "supported_roles": ["content", "article", "main"],
+      "supported_roles": [
+        "content",
+        "article",
+        "main"
+      ],
       "props_schema": {
-        "required": ["title", "body"],
+        "required": [
+          "title",
+          "body"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "source_selector": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "source_selector": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "LinkList",
+      "b_component": "List",
       "description": "List of related links.",
-      "supported_roles": ["links"],
+      "supported_roles": [
+        "links"
+      ],
       "props_schema": {
-        "required": ["title", "links"],
+        "required": [
+          "title",
+          "links"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -123,24 +206,50 @@
     },
     {
       "type": "FormBlock",
+      "b_component": "Form",
       "description": "Non-submitting form representation.",
-      "supported_roles": ["form"],
+      "supported_roles": [
+        "form"
+      ],
       "props_schema": {
-        "required": ["method", "action", "fields"],
+        "required": [
+          "method",
+          "action",
+          "fields"
+        ],
         "properties": {
-          "method": { "type": "string" },
-          "action": { "type": "string" },
+          "method": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
           "fields": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name", "label", "type", "required"],
+              "required": [
+                "name",
+                "label",
+                "type",
+                "required"
+              ],
               "properties": {
-                "name": { "type": "string" },
-                "id": { "type": "string" },
-                "label": { "type": "string" },
-                "type": { "type": "string" },
-                "required": { "type": "boolean" }
+                "name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                }
               }
             }
           }
@@ -150,26 +259,55 @@
     },
     {
       "type": "SiteFooter",
+      "b_component": "PageFooter",
       "description": "Footer block with source attribution.",
-      "supported_roles": ["footer"],
+      "supported_roles": [
+        "footer"
+      ],
       "props_schema": {
-        "required": ["source_url", "notice"],
+        "required": [
+          "source_url",
+          "notice"
+        ],
         "properties": {
-          "source_url": { "type": "string" },
-          "notice": { "type": "string" },
-          "logo_url": { "type": "string" },
-          "logo_alt": { "type": "string" },
-          "contact_text": { "type": "string" },
+          "source_url": {
+            "type": "string"
+          },
+          "notice": {
+            "type": "string"
+          },
+          "logo_url": {
+            "type": "string"
+          },
+          "logo_alt": {
+            "type": "string"
+          },
+          "contact_text": {
+            "type": "string"
+          },
           "links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -179,110 +317,231 @@
     },
     {
       "type": "AtomicSection",
+      "b_component": "ContentSection",
       "description": "Reusable section container assembled from atomic child components.",
-      "supported_roles": ["section", "hero", "content", "group"],
+      "supported_roles": [
+        "section",
+        "hero",
+        "content",
+        "group"
+      ],
       "props_schema": {
-        "required": ["variant", "source_selector"],
+        "required": [
+          "variant",
+          "source_selector"
+        ],
         "properties": {
-          "variant": { "type": "string" },
-          "source_selector": { "type": "string" }
+          "variant": {
+            "type": "string"
+          },
+          "source_selector": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "TextBlock",
+      "b_component": "Text",
       "description": "Reusable heading and body text atom.",
-      "supported_roles": ["text", "heading", "body"],
+      "supported_roles": [
+        "text",
+        "heading",
+        "body"
+      ],
       "props_schema": {
-        "required": ["title", "body"],
+        "required": [
+          "title",
+          "body"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "ImageBlock",
+      "b_component": "ImageViewer",
       "description": "Reusable image atom.",
-      "supported_roles": ["image", "media"],
+      "supported_roles": [
+        "image",
+        "media"
+      ],
       "props_schema": {
-        "required": ["url", "alt"],
+        "required": [
+          "url",
+          "alt"
+        ],
         "properties": {
-          "url": { "type": "string" },
-          "alt": { "type": "string" }
+          "url": {
+            "type": "string"
+          },
+          "alt": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "ButtonLink",
+      "b_component": "Link",
       "description": "Reusable link button atom.",
-      "supported_roles": ["action", "link", "button"],
+      "supported_roles": [
+        "action",
+        "link",
+        "button"
+      ],
       "props_schema": {
-        "required": ["label", "url", "kind"],
+        "required": [
+          "label",
+          "url",
+          "kind"
+        ],
         "properties": {
-          "label": { "type": "string" },
-          "url": { "type": "string" },
-          "source_url": { "type": "string" },
-          "scope": { "type": "string" },
-          "kind": { "type": "string" }
+          "label": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "CardGrid",
+      "b_component": "CardGrid",
       "description": "Reusable grid container for card atoms.",
-      "supported_roles": ["grid", "cards", "list"],
+      "supported_roles": [
+        "grid",
+        "cards",
+        "list"
+      ],
       "props_schema": {
-        "required": ["title"],
+        "required": [
+          "title"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "layout": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "layout": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "FeatureCard",
+      "b_component": "FeatureCard",
       "description": "Reusable content card atom.",
-      "supported_roles": ["card", "feature", "program", "news"],
+      "supported_roles": [
+        "card",
+        "feature",
+        "program",
+        "news"
+      ],
       "props_schema": {
-        "required": ["title", "body", "url", "media_url", "media_alt"],
+        "required": [
+          "title",
+          "body",
+          "url",
+          "media_url",
+          "media_alt"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "url": { "type": "string" },
-          "source_url": { "type": "string" },
-          "scope": { "type": "string" },
-          "media_url": { "type": "string" },
-          "media_alt": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "media_url": {
+            "type": "string"
+          },
+          "media_alt": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "MegaHeader",
+      "b_component": "PageHeader",
       "description": "Multi-tier header with logo, utility links, primary navigation, and optional search affordance.",
-      "supported_roles": ["navigation", "header", "mega_nav"],
+      "supported_roles": [
+        "navigation",
+        "header",
+        "mega_nav"
+      ],
       "props_schema": {
-        "required": ["title", "utility_links", "primary_links", "search_enabled"],
+        "required": [
+          "title",
+          "utility_links",
+          "primary_links",
+          "search_enabled"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "logo_url": { "type": "string" },
-          "logo_alt": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "logo_url": {
+            "type": "string"
+          },
+          "logo_alt": {
+            "type": "string"
+          },
           "utility_links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -290,42 +549,91 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           },
-          "search_enabled": { "type": "boolean" }
+          "search_enabled": {
+            "type": "boolean"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "HeroCarousel",
+      "b_component": "BannerSection",
       "description": "Reusable large visual carousel for image-led home pages.",
-      "supported_roles": ["hero", "carousel"],
+      "supported_roles": [
+        "hero",
+        "carousel"
+      ],
       "props_schema": {
-        "required": ["title", "body", "slides"],
+        "required": [
+          "title",
+          "body",
+          "slides"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
           "slides": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "media_url", "media_alt", "url", "source_url", "scope"],
+              "required": [
+                "title",
+                "body",
+                "media_url",
+                "media_alt",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -335,37 +643,77 @@
     },
     {
       "type": "HeroBanner",
+      "b_component": "BannerSection",
       "description": "Reusable single-image or text-led hero band.",
-      "supported_roles": ["hero", "banner"],
+      "supported_roles": [
+        "hero",
+        "banner"
+      ],
       "props_schema": {
-        "required": ["title", "body", "media_url", "media_alt"],
+        "required": [
+          "title",
+          "body",
+          "media_url",
+          "media_alt"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "media_url": { "type": "string" },
-          "media_alt": { "type": "string" }
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "media_url": {
+            "type": "string"
+          },
+          "media_alt": {
+            "type": "string"
+          }
         }
       },
       "generated": false
     },
     {
       "type": "QuickLinkRibbon",
+      "b_component": "List",
       "description": "Reusable compact link ribbon for common actions.",
-      "supported_roles": ["quick_links", "links", "navigation"],
+      "supported_roles": [
+        "quick_links",
+        "links",
+        "navigation"
+      ],
       "props_schema": {
-        "required": ["title", "links"],
+        "required": [
+          "title",
+          "links"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -375,25 +723,57 @@
     },
     {
       "type": "NewsCardCarousel",
+      "b_component": "CardGrid",
       "description": "Reusable horizontal news card carousel.",
-      "supported_roles": ["news", "carousel", "cards"],
+      "supported_roles": [
+        "news",
+        "carousel",
+        "cards"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -403,25 +783,57 @@
     },
     {
       "type": "NewsGrid",
+      "b_component": "CardGrid",
       "description": "Reusable grid of news or announcement cards.",
-      "supported_roles": ["news", "grid", "cards"],
+      "supported_roles": [
+        "news",
+        "grid",
+        "cards"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -431,25 +843,57 @@
     },
     {
       "type": "MediaFeatureGrid",
+      "b_component": "CardGrid",
       "description": "Reusable media-rich feature grid composed from library card atoms.",
-      "supported_roles": ["media", "features", "gallery"],
+      "supported_roles": [
+        "media",
+        "features",
+        "gallery"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -459,24 +903,54 @@
     },
     {
       "type": "ServiceSearchHero",
+      "b_component": "SearchForm",
       "description": "Reusable search-led hero for portal-like home pages.",
-      "supported_roles": ["search", "hero", "service_portal"],
+      "supported_roles": [
+        "search",
+        "hero",
+        "service_portal"
+      ],
       "props_schema": {
-        "required": ["title", "body", "query_placeholder", "hot_keywords", "actions"],
+        "required": [
+          "title",
+          "body",
+          "query_placeholder",
+          "hot_keywords",
+          "actions"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "query_placeholder": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "query_placeholder": {
+            "type": "string"
+          },
           "hot_keywords": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -484,12 +958,25 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -499,30 +986,61 @@
     },
     {
       "type": "ServiceCategoryGrid",
+      "b_component": "CardGrid",
       "description": "Reusable grid of audience, topic, or task categories with nested links.",
-      "supported_roles": ["service_categories", "category_grid", "portal"],
+      "supported_roles": [
+        "service_categories",
+        "category_grid",
+        "portal"
+      ],
       "props_schema": {
-        "required": ["title", "categories"],
+        "required": [
+          "title",
+          "categories"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "categories": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "links"],
+              "required": [
+                "title",
+                "body",
+                "links"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
                 "links": {
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["label", "url", "source_url", "scope"],
+                    "required": [
+                      "label",
+                      "url",
+                      "source_url",
+                      "scope"
+                    ],
                     "properties": {
-                      "label": { "type": "string" },
-                      "url": { "type": "string" },
-                      "source_url": { "type": "string" },
-                      "scope": { "type": "string" }
+                      "label": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "source_url": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -535,23 +1053,49 @@
     },
     {
       "type": "ServiceActionGrid",
+      "b_component": "CardGrid",
       "description": "Reusable grid of high-priority service actions such as registration, portal entry, contact, or service lookup.",
-      "supported_roles": ["service_actions", "quick_actions", "portal"],
+      "supported_roles": [
+        "service_actions",
+        "quick_actions",
+        "portal"
+      ],
       "props_schema": {
-        "required": ["title", "actions"],
+        "required": [
+          "title",
+          "actions"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "actions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope", "kind"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope",
+                "kind"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "kind": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -561,32 +1105,69 @@
     },
     {
       "type": "TabbedNewsBoard",
+      "b_component": "TabContainer",
       "description": "Reusable multi-category news and announcement board.",
-      "supported_roles": ["news", "announcements", "tabs"],
+      "supported_roles": [
+        "news",
+        "announcements",
+        "tabs"
+      ],
       "props_schema": {
-        "required": ["title", "tabs"],
+        "required": [
+          "title",
+          "tabs"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "tabs": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "items"],
+              "required": [
+                "label",
+                "items"
+              ],
               "properties": {
-                "label": { "type": "string" },
+                "label": {
+                  "type": "string"
+                },
                 "items": {
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+                    "required": [
+                      "title",
+                      "body",
+                      "url",
+                      "source_url",
+                      "scope",
+                      "media_url",
+                      "media_alt"
+                    ],
                     "properties": {
-                      "title": { "type": "string" },
-                      "body": { "type": "string" },
-                      "url": { "type": "string" },
-                      "source_url": { "type": "string" },
-                      "scope": { "type": "string" },
-                      "media_url": { "type": "string" },
-                      "media_alt": { "type": "string" }
+                      "title": {
+                        "type": "string"
+                      },
+                      "body": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "source_url": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "type": "string"
+                      },
+                      "media_url": {
+                        "type": "string"
+                      },
+                      "media_alt": {
+                        "type": "string"
+                      }
                     }
                   }
                 }
@@ -599,24 +1180,53 @@
     },
     {
       "type": "SearchBoxPanel",
+      "b_component": "SearchForm",
       "description": "Reusable search input panel with suggestions and context text.",
-      "supported_roles": ["search_box", "search", "discovery"],
+      "supported_roles": [
+        "search_box",
+        "search",
+        "discovery"
+      ],
       "props_schema": {
-        "required": ["title", "body", "query_placeholder", "suggestions"],
+        "required": [
+          "title",
+          "body",
+          "query_placeholder",
+          "suggestions"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "query_placeholder": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "query_placeholder": {
+            "type": "string"
+          },
           "suggestions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -626,21 +1236,41 @@
     },
     {
       "type": "FacetFilterPanel",
+      "b_component": "FilterBar",
       "description": "Reusable filter/facet panel for narrowing result sets.",
-      "supported_roles": ["filter_panel", "facets", "filters"],
+      "supported_roles": [
+        "filter_panel",
+        "facets",
+        "filters"
+      ],
       "props_schema": {
-        "required": ["title", "filters"],
+        "required": [
+          "title",
+          "filters"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "filters": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "value", "count"],
+              "required": [
+                "label",
+                "value",
+                "count"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" },
-                "count": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -650,26 +1280,61 @@
     },
     {
       "type": "ResultList",
+      "b_component": "ResultList",
       "description": "Reusable list of search or discovery results.",
-      "supported_roles": ["result_list", "results", "listing"],
+      "supported_roles": [
+        "result_list",
+        "results",
+        "listing"
+      ],
       "props_schema": {
-        "required": ["title", "summary", "items"],
+        "required": [
+          "title",
+          "summary",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "summary": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -679,21 +1344,40 @@
     },
     {
       "type": "PaginationNav",
+      "b_component": "Pagination",
       "description": "Reusable pagination or result navigation strip.",
-      "supported_roles": ["pagination", "pager"],
+      "supported_roles": [
+        "pagination",
+        "pager"
+      ],
       "props_schema": {
-        "required": ["links"],
+        "required": [
+          "links"
+        ],
         "properties": {
           "links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -703,21 +1387,42 @@
     },
     {
       "type": "DashboardFilterBar",
+      "b_component": "FilterBar",
       "description": "Reusable report/dashboard filter and action toolbar.",
-      "supported_roles": ["filter_bar", "dashboard_filters", "toolbar"],
+      "supported_roles": [
+        "filter_bar",
+        "dashboard_filters",
+        "toolbar"
+      ],
       "props_schema": {
-        "required": ["title", "filters", "actions"],
+        "required": [
+          "title",
+          "filters",
+          "actions"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "filters": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "value", "count"],
+              "required": [
+                "label",
+                "value",
+                "count"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" },
-                "count": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -725,12 +1430,25 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -740,21 +1458,41 @@
     },
     {
       "type": "MetricSummaryGrid",
+      "b_component": "StatGrid",
       "description": "Reusable KPI and metric card grid.",
-      "supported_roles": ["metric_summary", "kpi", "stats"],
+      "supported_roles": [
+        "metric_summary",
+        "kpi",
+        "stats"
+      ],
       "props_schema": {
-        "required": ["title", "metrics"],
+        "required": [
+          "title",
+          "metrics"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "metrics": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "value", "detail"],
+              "required": [
+                "label",
+                "value",
+                "detail"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" },
-                "detail": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -764,21 +1502,41 @@
     },
     {
       "type": "ChartPanel",
+      "b_component": "StatGrid",
       "description": "Reusable chart-like panel represented from extracted visual values.",
-      "supported_roles": ["chart_panel", "chart", "visualization"],
+      "supported_roles": [
+        "chart_panel",
+        "chart",
+        "visualization"
+      ],
       "props_schema": {
-        "required": ["title", "body", "series"],
+        "required": [
+          "title",
+          "body",
+          "series"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
           "series": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "value"],
+              "required": [
+                "label",
+                "value"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -788,25 +1546,41 @@
     },
     {
       "type": "DataTablePreview",
+      "b_component": "DataTable",
       "description": "Reusable table preview for report and listing data.",
-      "supported_roles": ["data_table", "table"],
+      "supported_roles": [
+        "data_table",
+        "table"
+      ],
       "props_schema": {
-        "required": ["title", "columns", "rows"],
+        "required": [
+          "title",
+          "columns",
+          "rows"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "columns": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "rows": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["cells"],
+              "required": [
+                "cells"
+              ],
               "properties": {
                 "cells": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -817,19 +1591,33 @@
     },
     {
       "type": "StepIndicator",
+      "b_component": "StepIndicator",
       "description": "Reusable step/progress indicator for form flows.",
-      "supported_roles": ["step_indicator", "steps", "progress"],
+      "supported_roles": [
+        "step_indicator",
+        "steps",
+        "progress"
+      ],
       "props_schema": {
-        "required": ["steps"],
+        "required": [
+          "steps"
+        ],
         "properties": {
           "steps": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "status"],
+              "required": [
+                "label",
+                "status"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "status": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -839,23 +1627,48 @@
     },
     {
       "type": "StructuredFormPanel",
+      "b_component": "Form",
       "description": "Reusable non-submitting structured form panel.",
-      "supported_roles": ["form_fields", "form", "input"],
+      "supported_roles": [
+        "form_fields",
+        "form",
+        "input"
+      ],
       "props_schema": {
-        "required": ["title", "fields"],
+        "required": [
+          "title",
+          "fields"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "fields": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["name", "label", "type", "required"],
+              "required": [
+                "name",
+                "label",
+                "type",
+                "required"
+              ],
               "properties": {
-                "name": { "type": "string" },
-                "id": { "type": "string" },
-                "label": { "type": "string" },
-                "type": { "type": "string" },
-                "required": { "type": "boolean" }
+                "name": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                }
               }
             }
           }
@@ -865,15 +1678,27 @@
     },
     {
       "type": "ValidationSummary",
+      "b_component": "Alert",
       "description": "Reusable validation and required-field summary.",
-      "supported_roles": ["validation_summary", "validation", "notice"],
+      "supported_roles": [
+        "validation_summary",
+        "validation",
+        "notice"
+      ],
       "props_schema": {
-        "required": ["title", "messages"],
+        "required": [
+          "title",
+          "messages"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "messages": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -881,22 +1706,45 @@
     },
     {
       "type": "FormActionBar",
+      "b_component": "List",
       "description": "Reusable form-flow action bar.",
-      "supported_roles": ["action_bar", "form_actions", "actions"],
+      "supported_roles": [
+        "action_bar",
+        "form_actions",
+        "actions"
+      ],
       "props_schema": {
-        "required": ["actions"],
+        "required": [
+          "actions"
+        ],
         "properties": {
           "actions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope", "kind"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope",
+                "kind"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "kind": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -906,26 +1754,61 @@
     },
     {
       "type": "ShowcaseHero",
+      "b_component": "BannerSection",
       "description": "Reusable commercial-style hero with media and calls to action.",
-      "supported_roles": ["showcase_hero", "product_hero", "hero"],
+      "supported_roles": [
+        "showcase_hero",
+        "product_hero",
+        "hero"
+      ],
       "props_schema": {
-        "required": ["title", "body", "media_url", "media_alt", "actions"],
+        "required": [
+          "title",
+          "body",
+          "media_url",
+          "media_alt",
+          "actions"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "media_url": { "type": "string" },
-          "media_alt": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "media_url": {
+            "type": "string"
+          },
+          "media_alt": {
+            "type": "string"
+          },
           "actions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope", "kind"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope",
+                "kind"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "kind": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -935,25 +1818,57 @@
     },
     {
       "type": "ProductCardGrid",
+      "b_component": "CardGrid",
       "description": "Reusable product or offer card grid.",
-      "supported_roles": ["product_cards", "products", "offers"],
+      "supported_roles": [
+        "product_cards",
+        "products",
+        "offers"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -963,21 +1878,41 @@
     },
     {
       "type": "ProofStrip",
+      "b_component": "StatGrid",
       "description": "Reusable trust, logo, or statistic proof strip.",
-      "supported_roles": ["proof_strip", "proof", "trust"],
+      "supported_roles": [
+        "proof_strip",
+        "proof",
+        "trust"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "value", "detail"],
+              "required": [
+                "label",
+                "value",
+                "detail"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "value": { "type": "string" },
-                "detail": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -987,34 +1922,74 @@
     },
     {
       "type": "PricingPanel",
+      "b_component": "CardGrid",
       "description": "Reusable pricing/package option panel.",
-      "supported_roles": ["pricing_panel", "pricing", "plans"],
+      "supported_roles": [
+        "pricing_panel",
+        "pricing",
+        "plans"
+      ],
       "props_schema": {
-        "required": ["title", "plans"],
+        "required": [
+          "title",
+          "plans"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "plans": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "price", "body", "features", "action"],
+              "required": [
+                "title",
+                "price",
+                "body",
+                "features",
+                "action"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "price": { "type": "string" },
-                "body": { "type": "string" },
+                "title": {
+                  "type": "string"
+                },
+                "price": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
                 "features": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "action": {
                   "type": "object",
-                  "required": ["label", "url", "source_url", "scope", "kind"],
+                  "required": [
+                    "label",
+                    "url",
+                    "source_url",
+                    "scope",
+                    "kind"
+                  ],
                   "properties": {
-                    "label": { "type": "string" },
-                    "url": { "type": "string" },
-                    "source_url": { "type": "string" },
-                    "scope": { "type": "string" },
-                    "kind": { "type": "string" }
+                    "label": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "source_url": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -1026,24 +2001,53 @@
     },
     {
       "type": "CtaBand",
+      "b_component": "BannerSection",
       "description": "Reusable call-to-action band.",
-      "supported_roles": ["cta_band", "cta", "conversion"],
+      "supported_roles": [
+        "cta_band",
+        "cta",
+        "conversion"
+      ],
       "props_schema": {
-        "required": ["title", "body", "actions"],
+        "required": [
+          "title",
+          "body",
+          "actions"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
           "actions": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope", "kind"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope",
+                "kind"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "kind": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -1053,25 +2057,54 @@
     },
     {
       "type": "InstitutionFooter",
+      "b_component": "PageFooter",
       "description": "Reusable footer with contact text and curated links.",
-      "supported_roles": ["footer", "contact"],
+      "supported_roles": [
+        "footer",
+        "contact"
+      ],
       "props_schema": {
-        "required": ["source_url", "contact_text", "links"],
+        "required": [
+          "source_url",
+          "contact_text",
+          "links"
+        ],
         "properties": {
-          "source_url": { "type": "string" },
-          "logo_url": { "type": "string" },
-          "logo_alt": { "type": "string" },
-          "contact_text": { "type": "string" },
+          "source_url": {
+            "type": "string"
+          },
+          "logo_url": {
+            "type": "string"
+          },
+          "logo_alt": {
+            "type": "string"
+          },
+          "contact_text": {
+            "type": "string"
+          },
           "links": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["label", "url", "source_url", "scope"],
+              "required": [
+                "label",
+                "url",
+                "source_url",
+                "scope"
+              ],
               "properties": {
-                "label": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" }
+                "label": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -1081,25 +2114,57 @@
     },
     {
       "type": "ArticleList",
+      "b_component": "ResultList",
       "description": "Reusable article or listing index.",
-      "supported_roles": ["listing", "article_list", "news"],
+      "supported_roles": [
+        "listing",
+        "article_list",
+        "news"
+      ],
       "props_schema": {
-        "required": ["title", "items"],
+        "required": [
+          "title",
+          "items"
+        ],
         "properties": {
-          "title": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
           "items": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["title", "body", "url", "source_url", "scope", "media_url", "media_alt"],
+              "required": [
+                "title",
+                "body",
+                "url",
+                "source_url",
+                "scope",
+                "media_url",
+                "media_alt"
+              ],
               "properties": {
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "url": { "type": "string" },
-                "source_url": { "type": "string" },
-                "scope": { "type": "string" },
-                "media_url": { "type": "string" },
-                "media_alt": { "type": "string" }
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "media_url": {
+                  "type": "string"
+                },
+                "media_alt": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -1109,21 +2174,40 @@
     },
     {
       "type": "ContentArticle",
+      "b_component": "ContentSection",
       "description": "Reusable article body with optional media.",
-      "supported_roles": ["article", "content"],
+      "supported_roles": [
+        "article",
+        "content"
+      ],
       "props_schema": {
-        "required": ["title", "body", "media"],
+        "required": [
+          "title",
+          "body",
+          "media"
+        ],
         "properties": {
-          "title": { "type": "string" },
-          "body": { "type": "string" },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
           "media": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["url", "alt"],
+              "required": [
+                "url",
+                "alt"
+              ],
               "properties": {
-                "url": { "type": "string" },
-                "alt": { "type": "string" }
+                "url": {
+                  "type": "string"
+                },
+                "alt": {
+                  "type": "string"
+                }
               }
             }
           }

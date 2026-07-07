@@ -4,6 +4,8 @@ Date: 2026-05-02
 
 Status: proposed
 
+> **2026-06-16 後續**:本文件提出的產生器組件詞表(`HeroSection` 等)後來被認定為語料取樣的「罐頭」,已**錨定到 canonical `ui_components`(B)** 並退役死行話 —— 每個產生器型別綁定 B 閉集(`b_component`)、fail-closed、`HeroSection` 已刪。現況以 [ComponentLibraryConsolidation-2026-06-15.md](../../designs/ComponentLibraryConsolidation-2026-06-15.md) 為準。
+
 ## Purpose
 
 Site rebuild currently satisfies the "component library only" constraint, but the visual result is limited because the generator maps visual regions directly into low-level components such as `AtomicSection`, `TextBlock`, `ImageBlock`, and `CardGrid`. The missing layer is a reusable template framework above the component library and below `site.json` generation.

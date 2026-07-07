@@ -412,7 +412,10 @@ public static class RagIngestService
             {
                 var hash = EmbeddingService.ComputeHash(content);
                 var existingVec = db.GetAll<VectorEntry>()
-                    .FirstOrDefault(v => v.ContentHash == hash && v.TaskId == taskId);
+                    .FirstOrDefault(v =>
+                        v.ContentHash == hash &&
+                        v.TaskId == taskId &&
+                        string.Equals(v.EmbeddingModel, embeddingService.ModelName, StringComparison.Ordinal));
 
                 if (existingVec == null)
                 {
@@ -728,33 +731,7 @@ public static class RagIngestService
     /// <summary>CJK 字元間插入空格，讓 FTS5 unicode61 tokenizer 正確分詞</summary>
     private static string PrepareFts5Content(string text)
     {
-        var sb = new StringBuilder(text.Length * 2);
-        bool prevIsCjk = false;
-        foreach (var ch in text)
-        {
-            bool isCjk = char.GetUnicodeCategory(ch) == UnicodeCategory.OtherLetter;
-            if (isCjk)
-            {
-                if (sb.Length > 0 && !prevIsCjk) sb.Append(' ');
-                else if (prevIsCjk) sb.Append(' ');
-                sb.Append(ch);
-            }
-            else if (ch == ' ' || ch == '\t')
-            {
-                if (sb.Length > 0) sb.Append(' ');
-            }
-            else if (ch == '\n' || ch == '\r')
-            {
-                sb.Append(ch);
-            }
-            else
-            {
-                if (sb.Length > 0 && prevIsCjk) sb.Append(' ');
-                sb.Append(ch);
-            }
-            prevIsCjk = isCjk;
-        }
-        return sb.ToString();
+        return Fts5TextNormalizer.PrepareContent(text);
     }
 
     // ════════════════════════════════════════════════

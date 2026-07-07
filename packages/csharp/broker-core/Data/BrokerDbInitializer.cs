@@ -20,6 +20,7 @@ public class BrokerDbInitializer
     public void Initialize(DevelopmentSeedOptions? developmentSeed = null)
     {
         EnsureTables();
+        NormalizeLocalAdminBootstrap();
         SeedSystemEpoch();
         SeedRoles();
         SeedCapabilities();
@@ -39,6 +40,7 @@ public class BrokerDbInitializer
         _db.EnsureTable<ContainerSession>();
         _db.EnsureTable<ExecutionRequest>();
         _db.EnsureTable<ApprovalRequest>();
+        _db.EnsureTable<ApprovalDecision>();
         _db.EnsureTable<AuditEvent>();
         _db.EnsureTable<SharedContextEntry>();
         _db.EnsureTable<BrowserSiteBinding>();
@@ -50,6 +52,8 @@ public class BrokerDbInitializer
         _db.EnsureTable<GoogleDriveDelegatedCredential>();
         _db.EnsureTable<LocalAdminCredential>();
         _db.EnsureTable<LocalAdminSession>();
+        _db.EnsureTable<PortalUserCredential>();
+        _db.EnsureTable<PortalUserSession>();
         _db.EnsureTable<Revocation>();
         _db.EnsureTable<SystemEpoch>();
 
@@ -88,6 +92,11 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_events_trace_seq
                       ON audit_events(trace_id, trace_seq)");
 
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_decisions_approver
+                      ON approval_decisions(approval_id, approver_id)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_approval_decisions_approval
+                      ON approval_decisions(approval_id, decision)");
+
         // ── Phase 4：因果工作流索引 ──
 
         // PlanNode: (plan_id, ordinal) 拓撲序查詢
@@ -121,8 +130,9 @@ public class BrokerDbInitializer
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_source
                       ON vector_entries(source_key, task_id)");
 
-        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_entries_hash
-                      ON vector_entries(content_hash, task_id)");
+        TryExecute("DROP INDEX IF EXISTS idx_vector_entries_hash");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_vector_entries_hash_model
+                      ON vector_entries(content_hash, task_id, embedding_model)");
 
         // 分塊父文件查詢索引
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_vector_entries_parent
@@ -157,6 +167,15 @@ public class BrokerDbInitializer
                       ON azure_iis_deployment_targets(vm_host, site_name)");
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_expires
                       ON local_admin_sessions(expires_at, revoked_at)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_local_admin_credentials_username
+                      ON local_admin_credentials(username)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_local_admin_sessions_operator
+                      ON local_admin_sessions(operator_id, expires_at, revoked_at)");
+        TryExecute(@"CREATE INDEX IF NOT EXISTS idx_portal_user_sessions_user
+                      ON portal_user_sessions(user_id, expires_at, revoked_at)");
+        TryExecute(@"CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_user_credentials_line_user
+                      ON portal_user_credentials(line_user_id)
+                      WHERE line_user_id IS NOT NULL AND line_user_id <> ''");
 
         TryExecute(@"CREATE INDEX IF NOT EXISTS idx_observations_trace
                       ON observation_events(trace_id)");
@@ -182,10 +201,70 @@ public class BrokerDbInitializer
 
         // SharedContextEntry 新增 tags 欄位
         TryExecute("ALTER TABLE shared_context_entries ADD COLUMN tags TEXT DEFAULT '[]'");
+        TryExecute("ALTER TABLE approval_requests ADD COLUMN required_approval_count INTEGER DEFAULT 1");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN deployment_mode TEXT DEFAULT 'site_root'");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN application_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_path TEXT DEFAULT ''");
         TryExecute("ALTER TABLE azure_iis_deployment_targets ADD COLUMN health_check_base_url TEXT DEFAULT ''");
+
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN operator_id TEXT DEFAULT 'local_admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN username TEXT DEFAULT 'admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN display_name TEXT DEFAULT 'Local Super Admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN role TEXT DEFAULT 'super_admin'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN permission_overrides TEXT DEFAULT '{}'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN status TEXT DEFAULT 'active'");
+        TryExecute("ALTER TABLE local_admin_credentials ADD COLUMN last_login_at TEXT NULL");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN operator_id TEXT DEFAULT 'local_admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN username TEXT DEFAULT 'admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN role TEXT DEFAULT 'super_admin'");
+        TryExecute("ALTER TABLE local_admin_sessions ADD COLUMN permissions_snapshot TEXT DEFAULT '[]'");
+
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_user_id TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verification_code_hash TEXT DEFAULT ''");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verification_code_expires_at TEXT NULL");
+        TryExecute("ALTER TABLE portal_user_credentials ADD COLUMN line_verified_at TEXT NULL");
+    }
+
+    private void NormalizeLocalAdminBootstrap()
+    {
+        var legacy = _db.Get<LocalAdminCredential>("local_admin");
+        if (legacy == null)
+            return;
+
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(legacy.OperatorId))
+        {
+            legacy.OperatorId = legacy.CredentialId;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Username))
+        {
+            legacy.Username = "admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.DisplayName))
+        {
+            legacy.DisplayName = "Local Super Admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Role))
+        {
+            legacy.Role = "super_admin";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.PermissionOverrides))
+        {
+            legacy.PermissionOverrides = "{}";
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(legacy.Status))
+        {
+            legacy.Status = "active";
+            changed = true;
+        }
+
+        if (changed)
+            _db.Update(legacy);
     }
 
     /// <summary>
@@ -884,7 +963,7 @@ public class BrokerDbInitializer
                         chunk_overlap = new { type = "integer", description = "分段重疊（預設 100 字元）" },
                         task_id = new { type = "string" }
                     },
-                    required = new[] { "query" }
+                    required = Array.Empty<string>()
                 })
             },
 

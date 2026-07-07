@@ -562,7 +562,10 @@ public class InProcessDispatcher : IExecutionDispatcher
 
                     // 檢查是否已有相同 hash 的嵌入
                     var existingVec = _db!.GetAll<VectorEntry>()
-                        .FirstOrDefault(v => v.ContentHash == hash && v.TaskId == taskId);
+                        .FirstOrDefault(v =>
+                            v.ContentHash == hash &&
+                            v.TaskId == taskId &&
+                            string.Equals(v.EmbeddingModel, _embeddingService.ModelName, StringComparison.Ordinal));
                     if (existingVec != null)
                     {
                         // 更新 source_key 即可
@@ -861,6 +864,35 @@ public class InProcessDispatcher : IExecutionDispatcher
     /// 5. Re-ranking — LLM 對 top-N 重新評分
     /// </summary>
     private async Task<ExecutionResult> ExecuteRagRetrieveAsync(ApprovedRequest request)
+    {
+        if (_db == null)
+            return ExecutionResult.Fail(request.RequestId, "Database not available.");
+
+        using var doc = JsonDocument.Parse(request.Payload);
+        var args = GetArgsElement(doc.RootElement);
+        var retrieveRequest = RagRetrieveRequest.FromArgs(args);
+        if (string.IsNullOrWhiteSpace(retrieveRequest.Query))
+            return ExecutionResult.Fail(request.RequestId, "query is required.");
+
+        var taskId = retrieveRequest.TaskId ?? request.TaskId ?? "global";
+        var retrieval = new RagRetrievalService(
+            _db,
+            _embeddingService,
+            _ragPipeline,
+            message => _logger.LogWarning("{Message}", message));
+
+        try
+        {
+            var response = await retrieval.RetrieveAsync(retrieveRequest, taskId);
+            return ExecutionResult.Ok(request.RequestId, JsonSerializer.Serialize(response));
+        }
+        catch (ArgumentException ex)
+        {
+            return ExecutionResult.Fail(request.RequestId, ex.Message);
+        }
+    }
+
+    private async Task<ExecutionResult> ExecuteRagRetrieveLegacyAsync(ApprovedRequest request)
     {
         if (_db == null) return ExecutionResult.Fail(request.RequestId, "Database not available.");
 

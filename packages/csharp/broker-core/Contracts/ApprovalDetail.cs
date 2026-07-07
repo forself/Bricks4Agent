@@ -14,6 +14,9 @@ public class ApprovalDetail
     public string OwnerPrincipalId { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
     public string Intent { get; set; } = string.Empty;
+    public int RequiredApprovalCount { get; set; } = 1;
+    public int ApprovedCount { get; set; }
+    public IReadOnlyList<string> ApproverIds { get; set; } = Array.Empty<string>();
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
 

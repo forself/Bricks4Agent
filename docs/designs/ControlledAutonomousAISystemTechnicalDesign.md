@@ -578,7 +578,7 @@ Control Plane -> Revocation Service: revoke token on completion
 | `container_sessions` | 容器 session |
 | `execution_requests` | 執行請求 |
 | `approval_requests` | 審批請求 |
-| `approval_decisions` | 審批決定 |
+| `approval_decisions` | 審批決定；每位 approver id 一筆 |
 | `context_documents` | 共享上下文文件 |
 | `context_versions` | 共享上下文版本 |
 | `audit_events` | 追加式稽核事件 |
@@ -843,7 +843,7 @@ Control Plane -> Revocation Service: revoke token on completion
 ### 18.3 第三階段
 
 - 多租戶隔離
-- 雙人批准與變更控制
+- 具名操作者帳號管理與變更控制
 - 高可用撤權平面
 - 自動化策略測試
 - 灰度發布與 canary

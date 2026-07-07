@@ -85,17 +85,19 @@ ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊�
 
 ---
 
-## 3. 元件清單（86 個，權威來源＝catalog）
+## 3. 元件清單（112 個，權威來源＝catalog）
 
 `*` = `generator.usable=false`（`manual_only`：不能靠生成器欄位自動映射，需**手動組合**；仍可正常 `new` 使用）。
 
-- **form (14)**：`BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch`
-- **common (24)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*`
-- **layout (11)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*`
+- **form (18)**：`BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch` + 0626 併入:`CommandComposer, Form, Rating, TagInput`(Textarea 已併入 TextArea,單一實作雙名稱)
+- **common (40)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*` + 0626 併入的 atoms/composites:`Alert, CardGrid, CodeBlock, DescriptionList, DropdownMenu, EmptyState, FilterBar, Heading, Link, List, MediaPlayer, ResultList, Skeleton, StatGrid, StepIndicator, Text`
+- **layout (12)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable`
 - **input (10, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput`
 - **viz (21)**：`BarChart*, BaseChart*, CanvasMap*, DrawingBoard, FlameChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`
 - **social (5)**：`Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*`
-- **editor (1)**：`WebTextEditor`
+- **editor (1)**:`WebTextEditor`
+- **sections (4,0626 併入)**:`BannerSection, ContentSection, PageFooter, PageHeader`(頁首/頁尾/橫幅/內容區段複合)
+- **data (1)**:`RegionMap`(台灣著色地圖)
 
 > 想查某元件能不能被生成器直接吃、支援哪些 field type、可綁哪些事件/動作 → 查它在 catalog 的 `generator` / `binding` 區塊，或它資料夾內的 `*.manifest.json`。
 

@@ -46,6 +46,7 @@ public class EncryptionMiddleware
     {
         return path.StartsWith("/api/v1/high-level/line/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/tool-specs/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/portal/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/v1/local-admin/", StringComparison.OrdinalIgnoreCase);
     }
 

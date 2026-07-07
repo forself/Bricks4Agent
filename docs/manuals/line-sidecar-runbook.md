@@ -48,7 +48,8 @@ You need these available on the machine:
 
 Optional but currently expected for the best live behavior:
 
-- `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) for the high-level OpenAI-compatible API key
+- `ANTHROPIC_API_KEY` in the current shell or Windows User environment; sidecar prefers it and configures `anthropic` / `claude-sonnet-4-6`
+- `Api.txt` in `C:\secure\Bricks4Agent` (or `BRICKS4AGENT_SECRETS_DIR`; repo root is a legacy fallback) as the OpenAI-compatible fallback key when `ANTHROPIC_API_KEY` is absent
 - Google OAuth client JSON matching `client_secret_*.json` in the same secrets directory
 - a valid ngrok config at `%LOCALAPPDATA%\ngrok\ngrok.yml`
 
@@ -79,8 +80,8 @@ File:
 
 Current sidecar behavior:
 
-- `start-sidecar-stack.ps1` reads this file
-- it injects the key into broker `HighLevelLlm.ApiKey`
+- `start-sidecar-stack.ps1` prefers `ANTHROPIC_API_KEY` and configures broker `HighLevelLlm` / `LlmProxy` as `anthropic` with `claude-sonnet-4-6`
+- if `ANTHROPIC_API_KEY` is absent, it reads this file and injects the key into broker `HighLevelLlm.ApiKey`
 
 ### 3. Google Drive OAuth client
 
@@ -108,6 +109,24 @@ powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\run-worker.ps
 ```
 
 (`-Worker` accepts `file`, `browser`, `transport-tdx`, `site-crawler`.) The helper reads the same credential store, so registration passes worker identity verification.
+
+### 3.2 LINE outbound rate limit
+
+line-worker applies worker-local outbound rate limiting to `line.message.send` and `line.audio.send`, keyed by recipient + capability. Defaults live in `packages/csharp/workers/line-worker/appsettings*.json`:
+
+- `Line.OutboundRateLimit.PermitLimit`: default `20`
+- `Line.OutboundRateLimit.WindowSeconds`: default `60`
+- `Line.OutboundRateLimit.MaxTrackedKeys`: default `1024`
+
+Override for sidecar/manual runs with:
+
+```powershell
+$env:WORKER_Line__OutboundRateLimit__PermitLimit = '20'
+$env:WORKER_Line__OutboundRateLimit__WindowSeconds = '60'
+$env:WORKER_Line__OutboundRateLimit__MaxTrackedKeys = '1024'
+```
+
+This is not a distributed quota. Multiple line-worker instances do not share counters, and `line.notification.send` is not yet covered by this limiter.
 
 Current sidecar behavior:
 
@@ -173,16 +192,17 @@ The start path currently performs these actions:
 1. Creates `.run/line-sidecar`
 2. Publishes broker into `.run/line-sidecar/broker`
 3. Publishes line-worker into `.run/line-sidecar/line-worker`
-4. Injects local production overrides for:
+4. Signs Bricks4Agent-owned sidecar runtime `.dll` / `.exe` files when the `Bricks4Agent Dev Code Signing` certificate exists
+5. Injects local production overrides for:
    - high-level API key
    - Google Drive OAuth settings
    - Google Drive default identity mode and shared delegated owner
-5. Starts broker on `127.0.0.1:5361`
-6. Starts line-worker on `*:5357`
-7. Recreates ngrok tunnel `line5357`
-8. Updates the LINE webhook endpoint unless `-SkipWebhookUpdate` is used
-9. Waits until broker and local webhook are actually reachable before considering startup successful
-10. Verifies that the named ngrok tunnel actually exists before treating startup as successful
+6. Starts broker on `127.0.0.1:5361`
+7. Starts line-worker on `*:5357`
+8. Recreates ngrok tunnel `line5357`
+9. Updates the LINE webhook endpoint unless `-SkipWebhookUpdate` is used
+10. Waits until broker and local webhook are actually reachable before considering startup successful
+11. Verifies that the named ngrok tunnel actually exists before treating startup as successful
 
 Important clarification:
 
@@ -196,6 +216,37 @@ So the startup document is now strict:
 - it is no longer acceptable to assume the operator manually guessed how to bootstrap ngrok
 
 The first start can take noticeably longer because the broker may seed local RAG data before becoming ready.
+
+### Smart App Control / WDAC Runtime DLL Blocks
+
+If `up` fails and `.run/line-sidecar/logs/broker.err.log` or Windows Code Integrity events mention `0x800711C7`, `Smart App Control`, or `did not meet the Enterprise signing level requirements`, Windows still does not trust code loaded by the current sidecar runtime.
+
+Do not keep re-running `line-sidecar.ps1 up`. Run the runtime trust repair flow from an elevated PowerShell:
+
+```powershell
+cd D:\Bricks4Agent
+npm run signing:wdac-repair -- -Deploy
+```
+
+The repair flow scans:
+
+```text
+D:\Bricks4Agent\.run\line-sidecar
+```
+
+It generates policy output under:
+
+```text
+D:\Bricks4Agent\.run\wdac\line-sidecar-runtime\
+```
+
+After deployment, the generated `{policy-id}.cip` must appear under:
+
+```text
+C:\Windows\System32\CodeIntegrity\CiPolicies\Active
+```
+
+The WDAC policy is effective only after the active policy check passes. See [dev-code-signing-wdac.zh-TW.md](/d:/Bricks4Agent/docs/manuals/dev-code-signing-wdac.zh-TW.md) for the full flow.
 
 ## Successful Start: Expected Signals
 
@@ -436,7 +487,7 @@ If the tunnel still does not come back:
 
 Typical causes:
 
-- `Api.txt` missing or unreadable
+- `ANTHROPIC_API_KEY` is absent and `Api.txt` is missing or unreadable
 - invalid upstream API key
 - high-level model upstream returned `401` or `400`
 - stale sidecar publish output
@@ -448,7 +499,7 @@ Check:
 
 Fix:
 
-- confirm `Api.txt` exists and contains a valid key
+- confirm `ANTHROPIC_API_KEY` is a valid Anthropic key, or `Api.txt` contains a valid OpenAI-compatible fallback key
 - restart sidecar
 
 ### 4. Google Drive OAuth returns `invalid_state` or `state_expired`

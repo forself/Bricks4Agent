@@ -33,6 +33,7 @@ const mimeTypes = new Map([
 
 const smokeDemos = [
     '/packages/javascript/browser/ui_components/form/TextInput/demo.html',
+    '/packages/javascript/browser/ui_components/form/CommandComposer/demo.html',
     '/packages/javascript/browser/ui_components/form/NumberInput/demo.html',
     '/packages/javascript/browser/ui_components/common/ColorPicker/demo.html',
     '/packages/javascript/browser/ui_components/layout/InfoPanel/demo.html',
@@ -122,7 +123,7 @@ async function validatePublicSurface() {
         {
             label: 'ui_components/form',
             pathParts: ['packages', 'javascript', 'browser', 'ui_components', 'form', 'index.js'],
-            expectedExports: ['TextInput', 'NumberInput', 'DatePicker', 'ToggleSwitch']
+            expectedExports: ['TextInput', 'NumberInput', 'DatePicker', 'ToggleSwitch', 'CommandComposer']
         },
         {
             label: 'ui_components/layout',
@@ -294,6 +295,12 @@ function createStaticServer(rootDir) {
         try {
             const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
             const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '');
+            if (relativePath === 'favicon.ico') {
+                res.writeHead(204);
+                res.end();
+                return;
+            }
+
             const resolvedPath = path.resolve(rootDir, relativePath);
 
             if (!resolvedPath.startsWith(rootDir)) {
@@ -343,6 +350,35 @@ async function loadChromium() {
     return null;
 }
 
+function findSystemChromiumExecutable() {
+    const candidates = [
+        path.join(process.env.ProgramFiles ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(process.env['ProgramFiles(x86)'] ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(process.env.LOCALAPPDATA ?? '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(process.env.ProgramFiles ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        path.join(process.env['ProgramFiles(x86)'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+    ];
+
+    return candidates.find((candidate) => candidate && existsSync(candidate)) ?? null;
+}
+
+async function launchChromium(chromium) {
+    try {
+        return await chromium.launch({ headless: true });
+    } catch (error) {
+        const message = error?.message ?? '';
+        const systemExecutable = findSystemChromiumExecutable();
+        if (!systemExecutable || !message.includes('Executable doesn')) {
+            throw error;
+        }
+
+        return await chromium.launch({
+            headless: true,
+            executablePath: systemExecutable
+        });
+    }
+}
+
 async function runBrowserSmoke() {
     const chromium = await loadChromium();
     if (!chromium) {
@@ -356,7 +392,7 @@ async function runBrowserSmoke() {
     }
 
     const { server, baseUrl } = await createStaticServer(repoRoot);
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchChromium(chromium);
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 
     try {

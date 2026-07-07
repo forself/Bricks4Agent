@@ -15,3 +15,4 @@ export { SideMenu } from './SideMenu/index.js';
 export { Stepper } from './Stepper/index.js';
 export { TabContainer } from './TabContainer/index.js';
 export { WorkflowPanel } from './WorkflowPanel/index.js';
+export { EditableTable } from './EditableTable/index.js';

@@ -47,6 +47,7 @@ import {
 import {
     BatchUploader,
     Checkbox,
+    CommandComposer,
     DatePicker,
     Dropdown,
     FormField,
@@ -118,6 +119,44 @@ import { WebTextEditor } from '../editor/index.js';
 // 8. Data Components
 import { RegionMap } from '../data/index.js';
 
+// 9. Library expansion — foundation atoms + retrieval/list composites (common)
+import {
+    Alert,
+    CardGrid,
+    CodeBlock,
+    DescriptionList,
+    DropdownMenu,
+    EmptyState,
+    FilterBar,
+    Heading,
+    Link,
+    List,
+    MediaPlayer,
+    ResultList,
+    Skeleton,
+    StatGrid,
+    StepIndicator,
+    Text
+} from '../common/index.js';
+
+// 10. Library expansion — form composites
+import {
+    Form,
+    Rating,
+    TagInput,
+} from '../form/index.js';
+
+// 11. Library expansion — layout
+import { EditableTable } from '../layout/index.js';
+
+// 12. Library expansion — sections (区段複合)
+import {
+    BannerSection,
+    ContentSection,
+    PageFooter,
+    PageHeader
+} from '../sections/index.js';
+
 export class ComponentFactory {
     static registry = {
         // Viz
@@ -159,6 +198,7 @@ export class ComponentFactory {
         // Form
         'BatchUploader': BatchUploader,
         'Checkbox': Checkbox,
+        'CommandComposer': CommandComposer,
         'DatePicker': DatePicker,
         'Dropdown': Dropdown,
         'FormField': FormField,
@@ -221,7 +261,42 @@ export class ComponentFactory {
         'WebTextEditor': WebTextEditor,
 
         // Data
-        'RegionMap': RegionMap
+        'RegionMap': RegionMap,
+
+        // Foundation atoms (common)
+        'Text': Text,
+        'Heading': Heading,
+        'Link': Link,
+        'Skeleton': Skeleton,
+        'MediaPlayer': MediaPlayer,
+        'CodeBlock': CodeBlock,
+        'Alert': Alert,
+        'EmptyState': EmptyState,
+
+        // Retrieval / list composites (common)
+        'ResultList': ResultList,
+        'List': List,
+        'DescriptionList': DescriptionList,
+        'FilterBar': FilterBar,
+        'StatGrid': StatGrid,
+        'CardGrid': CardGrid,
+        'StepIndicator': StepIndicator,
+        'DropdownMenu': DropdownMenu,
+
+        // Form composites
+        // 'Textarea' 別名已併入 TextArea(單一實作;import 層仍可用 Textarea 名稱)
+        'Rating': Rating,
+        'Form': Form,
+        'TagInput': TagInput,
+
+        // Layout
+        'EditableTable': EditableTable,
+
+        // Sections
+        'PageHeader': PageHeader,
+        'PageFooter': PageFooter,
+        'BannerSection': BannerSection,
+        'ContentSection': ContentSection,
     };
 
     /**

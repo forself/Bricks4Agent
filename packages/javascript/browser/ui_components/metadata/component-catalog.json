@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 86,
+  "component_count": 112,
   "components": [
     {
       "schema_version": 1,
@@ -37,6 +37,40 @@
           "disabled",
           "loading",
           "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.alert",
+      "registry_name": "Alert",
+      "display_name": "Alert",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Alert/Alert.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
           "variant"
         ]
       }
@@ -232,6 +266,70 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.card_grid",
+      "registry_name": "CardGrid",
+      "display_name": "CardGrid",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/CardGrid/CardGrid.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.code_block",
+      "registry_name": "CodeBlock",
+      "display_name": "CodeBlock",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/CodeBlock/CodeBlock.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.color_picker",
       "registry_name": "ColorPicker",
       "display_name": "ColorPicker",
@@ -276,6 +374,38 @@
           "readonly",
           "required"
         ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.description_list",
+      "registry_name": "DescriptionList",
+      "display_name": "DescriptionList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/DescriptionList/DescriptionList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     {
@@ -348,6 +478,40 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.dropdown_menu",
+      "registry_name": "DropdownMenu",
+      "display_name": "DropdownMenu",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/DropdownMenu/DropdownMenu.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.editor_button",
       "registry_name": "EditorButton",
       "display_name": "EditorButton",
@@ -391,6 +555,40 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.empty_state",
+      "registry_name": "EmptyState",
+      "display_name": "EmptyState",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/EmptyState/EmptyState.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.feature_card",
       "registry_name": "FeatureCard",
       "display_name": "FeatureCard",
@@ -416,6 +614,79 @@
         "listener_events": [
           "click"
         ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.filter_bar",
+      "registry_name": "FilterBar",
+      "display_name": "FilterBar",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/FilterBar/FilterBar.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.heading",
+      "registry_name": "Heading",
+      "display_name": "Heading",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Heading/Heading.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
         "target_actions": []
       },
       "styling": {
@@ -504,6 +775,74 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.link",
+      "registry_name": "Link",
+      "display_name": "Link",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Link/Link.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.list",
+      "registry_name": "List",
+      "display_name": "List",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/List/List.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.loading_spinner",
       "registry_name": "LoadingSpinner",
       "display_name": "LoadingSpinner",
@@ -535,6 +874,38 @@
           "size",
           "variant"
         ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.media_player",
+      "registry_name": "MediaPlayer",
+      "display_name": "MediaPlayer",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/MediaPlayer/MediaPlayer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     {
@@ -676,6 +1047,40 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.result_list",
+      "registry_name": "ResultList",
+      "display_name": "ResultList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ResultList/ResultList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.simple_dialog",
       "registry_name": "SimpleDialog",
       "display_name": "SimpleDialog",
@@ -704,6 +1109,42 @@
       "styling": {
         "theme_token_only": true,
         "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.skeleton",
+      "registry_name": "Skeleton",
+      "display_name": "Skeleton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Skeleton/Skeleton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "variant",
+          "width"
+        ]
       }
     },
     {
@@ -742,6 +1183,70 @@
     },
     {
       "schema_version": 1,
+      "component_id": "common.stat_grid",
+      "registry_name": "StatGrid",
+      "display_name": "StatGrid",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/StatGrid/StatGrid.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.step_indicator",
+      "registry_name": "StepIndicator",
+      "display_name": "StepIndicator",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/StepIndicator/StepIndicator.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "common.tag",
       "registry_name": "Tag",
       "display_name": "Tag",
@@ -773,6 +1278,40 @@
         "theme_token_only": true,
         "style_knobs": [
           "size",
+          "variant"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.text",
+      "registry_name": "Text",
+      "display_name": "Text",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Text/Text.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
           "variant"
         ]
       }
@@ -877,6 +1416,44 @@
         "theme_token_only": true,
         "style_knobs": [
           "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "data.region_map",
+      "registry_name": "RegionMap",
+      "display_name": "RegionMap",
+      "category": "data",
+      "kind": "visualizer",
+      "source_path": "ui_components/data/RegionMap/RegionMap.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
         ]
       }
     },
@@ -1029,6 +1606,46 @@
     },
     {
       "schema_version": 1,
+      "component_id": "form.command_composer",
+      "registry_name": "CommandComposer",
+      "display_name": "CommandComposer",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/CommandComposer/CommandComposer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "command_input",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "form.date_picker",
       "registry_name": "DatePicker",
       "display_name": "DatePicker",
@@ -1128,6 +1745,42 @@
           "variant",
           "width"
         ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.form",
+      "registry_name": "Form",
+      "display_name": "Form",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/Form/Form.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     {
@@ -1324,6 +1977,48 @@
     },
     {
       "schema_version": 1,
+      "component_id": "form.rating",
+      "registry_name": "Rating",
+      "display_name": "Rating",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Rating/Rating.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "form.search_form",
       "registry_name": "SearchForm",
       "display_name": "SearchForm",
@@ -1410,6 +2105,48 @@
     },
     {
       "schema_version": 1,
+      "component_id": "form.tag_input",
+      "registry_name": "TagInput",
+      "display_name": "TagInput",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/TagInput/TagInput.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "form.text_area",
       "registry_name": "TextArea",
       "display_name": "TextArea",
@@ -1440,6 +2177,7 @@
       "binding": {
         "value_io": true,
         "listener_events": [
+          "blur",
           "change"
         ],
         "target_actions": [
@@ -2153,6 +2891,38 @@
     },
     {
       "schema_version": 1,
+      "component_id": "layout.editable_table",
+      "registry_name": "EditableTable",
+      "display_name": "EditableTable",
+      "category": "layout",
+      "kind": "composite",
+      "source_path": "ui_components/layout/EditableTable/EditableTable.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "data_view",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "layout.form_row",
       "registry_name": "FormRow",
       "display_name": "FormRow",
@@ -2443,6 +3213,136 @@
       },
       "composition": {
         "role": "workflow",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "sections.banner_section",
+      "registry_name": "BannerSection",
+      "display_name": "BannerSection",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/BannerSection/BannerSection.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "sections.content_section",
+      "registry_name": "ContentSection",
+      "display_name": "ContentSection",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/ContentSection/ContentSection.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "layout",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "sections.page_footer",
+      "registry_name": "PageFooter",
+      "display_name": "PageFooter",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/PageFooter/PageFooter.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "sections.page_header",
+      "registry_name": "PageHeader",
+      "display_name": "PageHeader",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/PageHeader/PageHeader.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
         "requires_form_field_wrapper": false,
         "manual_only": true
       },
@@ -3391,6 +4291,40 @@
         ]
       }
     },
+    "Alert": {
+      "schema_version": 1,
+      "component_id": "common.alert",
+      "registry_name": "Alert",
+      "display_name": "Alert",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/Alert/Alert.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "feedback",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "variant"
+        ]
+      }
+    },
     "AuthButton": {
       "schema_version": 1,
       "component_id": "common.auth_button",
@@ -3580,6 +4514,70 @@
         ]
       }
     },
+    "CardGrid": {
+      "schema_version": 1,
+      "component_id": "common.card_grid",
+      "registry_name": "CardGrid",
+      "display_name": "CardGrid",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/CardGrid/CardGrid.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "CodeBlock": {
+      "schema_version": 1,
+      "component_id": "common.code_block",
+      "registry_name": "CodeBlock",
+      "display_name": "CodeBlock",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/CodeBlock/CodeBlock.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "ColorPicker": {
       "schema_version": 1,
       "component_id": "common.color_picker",
@@ -3626,6 +4624,38 @@
           "readonly",
           "required"
         ]
+      }
+    },
+    "DescriptionList": {
+      "schema_version": 1,
+      "component_id": "common.description_list",
+      "registry_name": "DescriptionList",
+      "display_name": "DescriptionList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/DescriptionList/DescriptionList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     "Divider": {
@@ -3696,6 +4726,40 @@
         ]
       }
     },
+    "DropdownMenu": {
+      "schema_version": 1,
+      "component_id": "common.dropdown_menu",
+      "registry_name": "DropdownMenu",
+      "display_name": "DropdownMenu",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/DropdownMenu/DropdownMenu.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "EditorButton": {
       "schema_version": 1,
       "component_id": "common.editor_button",
@@ -3739,6 +4803,40 @@
         ]
       }
     },
+    "EmptyState": {
+      "schema_version": 1,
+      "component_id": "common.empty_state",
+      "registry_name": "EmptyState",
+      "display_name": "EmptyState",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/EmptyState/EmptyState.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "FeatureCard": {
       "schema_version": 1,
       "component_id": "common.feature_card",
@@ -3766,6 +4864,79 @@
         "listener_events": [
           "click"
         ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "FilterBar": {
+      "schema_version": 1,
+      "component_id": "common.filter_bar",
+      "registry_name": "FilterBar",
+      "display_name": "FilterBar",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/FilterBar/FilterBar.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
+    "Heading": {
+      "schema_version": 1,
+      "component_id": "common.heading",
+      "registry_name": "Heading",
+      "display_name": "Heading",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Heading/Heading.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
         "target_actions": []
       },
       "styling": {
@@ -3852,6 +5023,74 @@
         "style_knobs": []
       }
     },
+    "Link": {
+      "schema_version": 1,
+      "component_id": "common.link",
+      "registry_name": "Link",
+      "display_name": "Link",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Link/Link.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled"
+        ]
+      }
+    },
+    "List": {
+      "schema_version": 1,
+      "component_id": "common.list",
+      "registry_name": "List",
+      "display_name": "List",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/List/List.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "LoadingSpinner": {
       "schema_version": 1,
       "component_id": "common.loading_spinner",
@@ -3885,6 +5124,38 @@
           "size",
           "variant"
         ]
+      }
+    },
+    "MediaPlayer": {
+      "schema_version": 1,
+      "component_id": "common.media_player",
+      "registry_name": "MediaPlayer",
+      "display_name": "MediaPlayer",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/MediaPlayer/MediaPlayer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     "Notification": {
@@ -4024,6 +5295,40 @@
         "style_knobs": []
       }
     },
+    "ResultList": {
+      "schema_version": 1,
+      "component_id": "common.result_list",
+      "registry_name": "ResultList",
+      "display_name": "ResultList",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/ResultList/ResultList.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "SimpleDialog": {
       "schema_version": 1,
       "component_id": "common.simple_dialog",
@@ -4054,6 +5359,42 @@
       "styling": {
         "theme_token_only": true,
         "style_knobs": []
+      }
+    },
+    "Skeleton": {
+      "schema_version": 1,
+      "component_id": "common.skeleton",
+      "registry_name": "Skeleton",
+      "display_name": "Skeleton",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Skeleton/Skeleton.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "variant",
+          "width"
+        ]
       }
     },
     "SortButton": {
@@ -4090,6 +5431,70 @@
         ]
       }
     },
+    "StatGrid": {
+      "schema_version": 1,
+      "component_id": "common.stat_grid",
+      "registry_name": "StatGrid",
+      "display_name": "StatGrid",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/StatGrid/StatGrid.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "StepIndicator": {
+      "schema_version": 1,
+      "component_id": "common.step_indicator",
+      "registry_name": "StepIndicator",
+      "display_name": "StepIndicator",
+      "category": "common",
+      "kind": "composite",
+      "source_path": "ui_components/common/StepIndicator/StepIndicator.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "Tag": {
       "schema_version": 1,
       "component_id": "common.tag",
@@ -4123,6 +5528,40 @@
         "theme_token_only": true,
         "style_knobs": [
           "size",
+          "variant"
+        ]
+      }
+    },
+    "Text": {
+      "schema_version": 1,
+      "component_id": "common.text",
+      "registry_name": "Text",
+      "display_name": "Text",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Text/Text.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
           "variant"
         ]
       }
@@ -4227,6 +5666,44 @@
         "theme_token_only": true,
         "style_knobs": [
           "size"
+        ]
+      }
+    },
+    "RegionMap": {
+      "schema_version": 1,
+      "component_id": "data.region_map",
+      "registry_name": "RegionMap",
+      "display_name": "RegionMap",
+      "category": "data",
+      "kind": "visualizer",
+      "source_path": "ui_components/data/RegionMap/RegionMap.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change",
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
         ]
       }
     },
@@ -4377,6 +5854,46 @@
         ]
       }
     },
+    "CommandComposer": {
+      "schema_version": 1,
+      "component_id": "form.command_composer",
+      "registry_name": "CommandComposer",
+      "display_name": "CommandComposer",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/CommandComposer/CommandComposer.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "command_input",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "loading"
+        ]
+      }
+    },
     "DatePicker": {
       "schema_version": 1,
       "component_id": "form.date_picker",
@@ -4478,6 +5995,42 @@
           "variant",
           "width"
         ]
+      }
+    },
+    "Form": {
+      "schema_version": 1,
+      "component_id": "form.form",
+      "registry_name": "Form",
+      "display_name": "Form",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/Form/Form.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": [
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
       }
     },
     "FormField": {
@@ -4672,6 +6225,48 @@
         ]
       }
     },
+    "Rating": {
+      "schema_version": 1,
+      "component_id": "form.rating",
+      "registry_name": "Rating",
+      "display_name": "Rating",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Rating/Rating.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
     "SearchForm": {
       "schema_version": 1,
       "component_id": "form.search_form",
@@ -4758,6 +6353,48 @@
         ]
       }
     },
+    "TagInput": {
+      "schema_version": 1,
+      "component_id": "form.tag_input",
+      "registry_name": "TagInput",
+      "display_name": "TagInput",
+      "category": "form",
+      "kind": "composite",
+      "source_path": "ui_components/form/TagInput/TagInput.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required"
+        ]
+      }
+    },
     "TextArea": {
       "schema_version": 1,
       "component_id": "form.text_area",
@@ -4790,6 +6427,7 @@
       "binding": {
         "value_io": true,
         "listener_events": [
+          "blur",
           "change"
         ],
         "target_actions": [
@@ -5501,6 +7139,38 @@
         "style_knobs": []
       }
     },
+    "EditableTable": {
+      "schema_version": 1,
+      "component_id": "layout.editable_table",
+      "registry_name": "EditableTable",
+      "display_name": "EditableTable",
+      "category": "layout",
+      "kind": "composite",
+      "source_path": "ui_components/layout/EditableTable/EditableTable.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "data_view",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "FormRow": {
       "schema_version": 1,
       "component_id": "layout.form_row",
@@ -5793,6 +7463,136 @@
       },
       "composition": {
         "role": "workflow",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "BannerSection": {
+      "schema_version": 1,
+      "component_id": "sections.banner_section",
+      "registry_name": "BannerSection",
+      "display_name": "BannerSection",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/BannerSection/BannerSection.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "ContentSection": {
+      "schema_version": 1,
+      "component_id": "sections.content_section",
+      "registry_name": "ContentSection",
+      "display_name": "ContentSection",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/ContentSection/ContentSection.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "layout",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "PageFooter": {
+      "schema_version": 1,
+      "component_id": "sections.page_footer",
+      "registry_name": "PageFooter",
+      "display_name": "PageFooter",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/PageFooter/PageFooter.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "PageHeader": {
+      "schema_version": 1,
+      "component_id": "sections.page_header",
+      "registry_name": "PageHeader",
+      "display_name": "PageHeader",
+      "category": "sections",
+      "kind": "composite",
+      "source_path": "ui_components/sections/PageHeader/PageHeader.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "navigation",
         "requires_form_field_wrapper": false,
         "manual_only": true
       },
@@ -6704,29 +8504,48 @@
   "by_category": {
     "common": [
       "ActionButton",
+      "Alert",
       "AuthButton",
       "Badge",
       "BasicButton",
       "Breadcrumb",
       "ButtonGroup",
+      "CardGrid",
+      "CodeBlock",
       "ColorPicker",
+      "DescriptionList",
       "Divider",
       "DownloadButton",
+      "DropdownMenu",
       "EditorButton",
+      "EmptyState",
       "FeatureCard",
+      "FilterBar",
+      "Heading",
       "Icon",
       "ImageViewer",
+      "Link",
+      "List",
       "LoadingSpinner",
+      "MediaPlayer",
       "Notification",
       "Pagination",
       "PhotoCard",
       "Progress",
+      "ResultList",
       "SimpleDialog",
+      "Skeleton",
       "SortButton",
+      "StatGrid",
+      "StepIndicator",
       "Tag",
+      "Text",
       "Tooltip",
       "TreeList",
       "UploadButton"
+    ],
+    "data": [
+      "RegionMap"
     ],
     "editor": [
       "WebTextEditor"
@@ -6734,14 +8553,18 @@
     "form": [
       "BatchUploader",
       "Checkbox",
+      "CommandComposer",
       "DatePicker",
       "Dropdown",
+      "Form",
       "FormField",
       "MultiSelectDropdown",
       "NumberInput",
       "Radio",
+      "Rating",
       "SearchForm",
       "Slider",
+      "TagInput",
       "TextArea",
       "TextInput",
       "TimePicker",
@@ -6762,6 +8585,7 @@
     "layout": [
       "DataTable",
       "DocumentWall",
+      "EditableTable",
       "FormRow",
       "FunctionMenu",
       "InfoPanel",
@@ -6771,6 +8595,12 @@
       "Stepper",
       "TabContainer",
       "WorkflowPanel"
+    ],
+    "sections": [
+      "BannerSection",
+      "ContentSection",
+      "PageFooter",
+      "PageHeader"
     ],
     "social": [
       "Avatar",
@@ -6808,23 +8638,41 @@
       "ActionButton",
       "AddressInput",
       "AddressListInput",
+      "Alert",
       "AuthButton",
+      "BannerSection",
       "BatchUploader",
       "Breadcrumb",
       "ButtonGroup",
+      "CardGrid",
       "ChainedInput",
+      "CommandComposer",
       "ConnectionCard",
+      "ContentSection",
       "DateTimeInput",
+      "DescriptionList",
+      "DropdownMenu",
+      "EditableTable",
+      "EmptyState",
       "FeedCard",
+      "FilterBar",
+      "Form",
+      "List",
       "ListInput",
       "OrganizationInput",
+      "PageFooter",
+      "PageHeader",
       "Pagination",
       "PersonInfoList",
       "PhoneListInput",
+      "ResultList",
       "SearchForm",
       "SocialMediaList",
       "StatCard",
+      "StatGrid",
+      "StepIndicator",
       "StudentInput",
+      "TagInput",
       "TreeList",
       "WebTextEditor"
     ],
@@ -6833,6 +8681,7 @@
       "Badge",
       "BasicButton",
       "Checkbox",
+      "CodeBlock",
       "ColorPicker",
       "DatePicker",
       "Divider",
@@ -6841,39 +8690,31 @@
       "EditorButton",
       "FeatureCard",
       "FormField",
+      "Heading",
       "Icon",
       "ImageViewer",
+      "Link",
       "LoadingSpinner",
+      "MediaPlayer",
       "MultiSelectDropdown",
       "Notification",
       "NumberInput",
       "PhotoCard",
       "Progress",
       "Radio",
+      "Rating",
       "SimpleDialog",
+      "Skeleton",
       "Slider",
       "SortButton",
       "Tag",
+      "Text",
       "TextArea",
       "TextInput",
       "TimePicker",
       "ToggleSwitch",
       "Tooltip",
       "UploadButton"
-    ],
-    "container": [
-      "DataTable",
-      "DocumentWall",
-      "FormRow",
-      "FunctionMenu",
-      "InfoPanel",
-      "PanelManager",
-      "PhotoWall",
-      "SideMenu",
-      "Stepper",
-      "TabContainer",
-      "Timeline",
-      "WorkflowPanel"
     ],
     "visualizer": [
       "BarChart",
@@ -6889,6 +8730,7 @@
       "OSMMapEditor",
       "OrgChart",
       "PieChart",
+      "RegionMap",
       "RelationChart",
       "RoseChart",
       "SankeyChart",
@@ -6897,33 +8739,73 @@
       "TGOSMapEditor",
       "TimelineChart",
       "WebPainter"
+    ],
+    "container": [
+      "DataTable",
+      "DocumentWall",
+      "FormRow",
+      "FunctionMenu",
+      "InfoPanel",
+      "PanelManager",
+      "PhotoWall",
+      "SideMenu",
+      "Stepper",
+      "TabContainer",
+      "Timeline",
+      "WorkflowPanel"
     ]
   },
   "by_maturity": {
     "beta": [
       "ActionButton",
+      "Alert",
       "AuthButton",
       "Badge",
+      "BannerSection",
       "BasicButton",
+      "CardGrid",
       "Checkbox",
+      "CodeBlock",
       "ColorPicker",
+      "CommandComposer",
+      "ContentSection",
+      "DescriptionList",
       "Divider",
       "DocumentWall",
       "DownloadButton",
       "Dropdown",
+      "DropdownMenu",
+      "EditableTable",
       "EditorButton",
+      "EmptyState",
       "FeatureCard",
+      "FilterBar",
+      "Form",
+      "Heading",
       "Icon",
+      "Link",
+      "List",
+      "MediaPlayer",
       "OSMMapEditor",
+      "PageFooter",
+      "PageHeader",
       "PanelManager",
       "PhotoCard",
       "PhotoWall",
       "Progress",
+      "Rating",
+      "RegionMap",
+      "ResultList",
+      "Skeleton",
       "Slider",
       "SortButton",
+      "StatGrid",
+      "StepIndicator",
       "Stepper",
       "TGOSMapEditor",
       "Tag",
+      "TagInput",
+      "Text",
       "TextArea",
       "Tooltip",
       "TreeList",
@@ -6994,54 +8876,80 @@
   "by_usage_mode": {
     "manual_only": [
       "ActionButton",
+      "Alert",
       "AuthButton",
       "Avatar",
       "Badge",
+      "BannerSection",
       "BarChart",
       "BaseChart",
       "Breadcrumb",
       "CanvasMap",
+      "CardGrid",
+      "CodeBlock",
+      "CommandComposer",
       "ConnectionCard",
+      "ContentSection",
       "DataTable",
+      "DescriptionList",
       "Divider",
       "DocumentWall",
       "DownloadButton",
+      "DropdownMenu",
+      "EditableTable",
+      "EmptyState",
       "FeatureCard",
       "FeedCard",
+      "FilterBar",
       "FlameChart",
+      "Form",
       "FormField",
       "FormRow",
       "FunctionMenu",
+      "Heading",
       "HierarchyChart",
       "Icon",
       "InfoPanel",
       "LeafletMap",
       "LineChart",
+      "Link",
+      "List",
       "LoadingSpinner",
       "MapEditor",
       "MapEditorV2",
+      "MediaPlayer",
       "Notification",
       "OSMMapEditor",
       "OrgChart",
+      "PageFooter",
+      "PageHeader",
       "Pagination",
       "PhotoCard",
       "PhotoWall",
       "PieChart",
       "Progress",
+      "Rating",
+      "RegionMap",
       "RelationChart",
+      "ResultList",
       "RoseChart",
       "SankeyChart",
       "SearchForm",
       "SideMenu",
       "SimpleDialog",
+      "Skeleton",
       "SortButton",
       "Sparkline",
       "StatCard",
+      "StatGrid",
+      "StepIndicator",
       "Stepper",
       "SunburstChart",
       "TGOSMapEditor",
       "TabContainer",
       "Tag",
+      "TagInput",
+      "Text",
       "Timeline",
       "TimelineChart",
       "Tooltip",

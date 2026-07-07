@@ -22,6 +22,7 @@ const input = new TextInput({
     hint: '',                // 提示訊息
     maxLength: null,         // 最大長度
     width: '100%',           // 寬度
+    autocomplete: null,      // 瀏覽器自動填入提示，例如 'username'
     enableSecurity: true,    // 啟用資安檢查
     onChange: (value) => {},  // 輸入回調
     onBlur: (value) => {}    // 失焦回調

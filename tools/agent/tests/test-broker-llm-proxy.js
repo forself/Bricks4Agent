@@ -209,6 +209,29 @@ async function buildBrokerProject() {
     }
 }
 
+async function signBrokerRuntimeIfAvailable() {
+    if (process.platform !== 'win32') {
+        return;
+    }
+
+    const signingScript = path.join(ROOT, 'tools', 'windows-signing', 'Sign-BricksAssemblies.ps1');
+    if (!fs.existsSync(signingScript)) {
+        return;
+    }
+
+    const result = await runProcess('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        signingScript,
+    ]);
+
+    if (result.code !== 0) {
+        throw new Error(`Broker runtime signing failed.\n${result.stdout}\n${result.stderr}`);
+    }
+}
+
 async function waitForHealth(url, timeoutMs, logs) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
@@ -307,6 +330,7 @@ async function main() {
     });
 
     await buildBrokerProject();
+    await signBrokerRuntimeIfAvailable();
 
     const broker = await startBroker(
         brokerPort,

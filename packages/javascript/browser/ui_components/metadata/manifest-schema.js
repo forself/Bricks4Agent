@@ -8,6 +8,7 @@ export const COMPONENT_CATEGORIES = [
     'form',
     'input',
     'layout',
+    'sections',
     'social',
     'editor',
     'data',

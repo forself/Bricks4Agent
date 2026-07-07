@@ -31,8 +31,8 @@ public class WorkerSessionAuthTests : IAsyncDisposable
     public async Task ProcessAsync_WorkerRegister_WithoutSignature_IsRejected()
     {
         var (client, session, registry) = CreateSession();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var processTask = session.ProcessAsync(cts.Token);
+        using var processCts = new CancellationTokenSource();
+        var processTask = session.ProcessAsync(processCts.Token);
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -42,26 +42,27 @@ public class WorkerSessionAuthTests : IAsyncDisposable
             max_concurrent = 2
         });
         var frame = FrameCodec.Encode(OpCodes.WORKER_REGISTER, payload);
-        await client.GetStream().WriteAsync(frame, cts.Token);
-        await client.GetStream().FlushAsync(cts.Token);
+        await client.GetStream().WriteAsync(frame);
+        await client.GetStream().FlushAsync();
 
-        var (_, ackPayload) = await ReceiveFrameAsync(client, cts.Token);
+        using var readCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (_, ackPayload) = await ReceiveFrameAsync(client, readCts.Token);
         var ack = JsonSerializer.Deserialize<WorkerRegisterAckProbe>(ackPayload.Span, JsonOptions);
 
         ack.Should().NotBeNull();
         ack!.Ok.Should().BeFalse();
         registry.GetAllWorkers().Should().BeEmpty();
 
-        cts.Cancel();
-        await processTask;
+        processCts.Cancel();
+        await processTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
     public async Task ProcessAsync_WorkerRegister_WithSignature_RegistersWorker()
     {
         var (client, session, registry) = CreateSession();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var processTask = session.ProcessAsync(cts.Token);
+        using var processCts = new CancellationTokenSource();
+        var processTask = session.ProcessAsync(processCts.Token);
         var authService = BuildAuthService();
         var timestamp = DateTimeOffset.UtcNow;
         var nonce = Guid.NewGuid().ToString("N");
@@ -87,18 +88,19 @@ public class WorkerSessionAuthTests : IAsyncDisposable
             signature
         });
         var frame = FrameCodec.Encode(OpCodes.WORKER_REGISTER, payload);
-        await client.GetStream().WriteAsync(frame, cts.Token);
-        await client.GetStream().FlushAsync(cts.Token);
+        await client.GetStream().WriteAsync(frame);
+        await client.GetStream().FlushAsync();
 
-        var (_, ackPayload) = await ReceiveFrameAsync(client, cts.Token);
+        using var readCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var (_, ackPayload) = await ReceiveFrameAsync(client, readCts.Token);
         var ack = JsonSerializer.Deserialize<WorkerRegisterAckProbe>(ackPayload.Span, JsonOptions);
 
         ack.Should().NotBeNull();
         ack!.Ok.Should().BeTrue();
         registry.GetAllWorkers().Should().ContainSingle(item => item.WorkerId == "file-wkr-auth");
 
-        cts.Cancel();
-        await processTask;
+        processCts.Cancel();
+        await processTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private (TcpClient Client, WorkerSession Session, WorkerRegistry Registry) CreateSession()

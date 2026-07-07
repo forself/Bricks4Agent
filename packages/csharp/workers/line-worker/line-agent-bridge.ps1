@@ -1,5 +1,5 @@
 param(
-    [string]$Model = "qwen3-coder:30b",
+    [string]$Model = "qwen3.6:latest",
     [int]$PollInterval = 2,
     [string]$ConfigPath = ""
 )

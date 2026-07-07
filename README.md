@@ -7,7 +7,7 @@
 `Bricks4Agent` is a **zero-runtime-dependency Vanilla JS UI component library** plus a
 **page/SPA generator** that turns a JSON `PageDefinition` into working pages.
 
-- **UI component library** — 86 components (form, layout, common, input, viz, social, editor), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
+- **UI component library** — 112 components (form, layout, common, input, viz, social, editor, sections), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
 - **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
 - **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 8 backend).
 

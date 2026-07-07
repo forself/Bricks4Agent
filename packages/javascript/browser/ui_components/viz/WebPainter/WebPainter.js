@@ -13,6 +13,7 @@ import { SimpleDialog } from '../../common/Dialog/index.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
+import { nextUid } from '../../utils/uid.js';
 
 export class WebPainter {
     constructor(options = {}) {
@@ -200,7 +201,7 @@ export class WebPainter {
                 const name = await this._prompt(Locale.t('webPainter.layerNameLabel'), Locale.t('webPainter.defaultLayerName', { n: this.layers.length + 1 }));
                 if (name) {
                     const safeName = name.trim().substring(0, 50);
-                    const newId = `layer-${Date.now()}`;
+                    const newId = this._nextLayerId();
                     this.layers.push({ id: newId, name: safeName, visible: true, locked: false });
                     this.currentLayerId = newId;
                     this._updateLayerList();
@@ -223,6 +224,13 @@ export class WebPainter {
         setTimeout(() => this._updateLayerList(), 0);
 
         return panel;
+    }
+
+    _nextLayerId() {
+        const used = new Set(this.layers.map(layer => layer.id));
+        let index = this.layers.length + 1;
+        while (used.has(`layer-${index}`)) index += 1;
+        return `layer-${index}`;
     }
 
     _updateLayerList() {
@@ -1295,7 +1303,7 @@ export class WebPainter {
 
         const blob = new Blob([pngWithMetadata], { type: 'image/png' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.exportFilename') + Date.now() + '.png';
+        link.download = `${Locale.t('webPainter.exportFilename')}${nextUid('web-painter-export')}.png`;
         link.href = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
@@ -1596,7 +1604,7 @@ export class WebPainter {
         const data = this.getData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const link = document.createElement('a');
-        link.download = Locale.t('webPainter.configFilename') + Date.now() + '.json';
+        link.download = `${Locale.t('webPainter.configFilename')}${nextUid('web-painter-config')}.json`;
         link.href = URL.createObjectURL(blob);
         link.click();
     }

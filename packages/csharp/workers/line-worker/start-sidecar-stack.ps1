@@ -116,6 +116,114 @@ function Clear-PublishOutputDirectory {
     }
 }
 
+function Get-BricksProjectAssemblyNames {
+    param([string]$RepoRoot)
+
+    $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    Get-ChildItem -LiteralPath (Join-Path $RepoRoot "packages") -Recurse -Filter *.csproj -File |
+        Where-Object {
+            $_.FullName -notmatch "\\bin\\" -and
+            $_.FullName -notmatch "\\obj\\" -and
+            $_.FullName -notmatch "\\node_modules\\"
+        } |
+        ForEach-Object {
+            $projectFile = $_
+            $assemblyName = $projectFile.BaseName
+            try {
+                [xml]$projectXml = Get-Content -LiteralPath $projectFile.FullName
+                $declaredName = $projectXml.Project.PropertyGroup.AssemblyName |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                    Select-Object -First 1
+                if ($declaredName) {
+                    $assemblyName = [string]$declaredName
+                }
+            }
+            catch {
+                $assemblyName = $projectFile.BaseName
+            }
+
+            [void]$names.Add($assemblyName)
+        }
+
+    return $names
+}
+
+function Get-BricksCodeSigningCertificate {
+    $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Subject -eq "CN=Bricks4Agent Dev Code Signing" -and
+            $_.NotAfter -gt (Get-Date)
+        } |
+        Sort-Object NotAfter -Descending |
+        Select-Object -First 1
+
+    return $cert
+}
+
+function Sign-SidecarRuntimeAssemblies {
+    param([string]$RuntimeRoot)
+
+    if (-not (Test-Path $RuntimeRoot)) {
+        return
+    }
+    if (-not (Get-Command Set-AuthenticodeSignature -ErrorAction SilentlyContinue)) {
+        Write-Warning "Set-AuthenticodeSignature is not available; sidecar runtime assemblies were not signed."
+        return
+    }
+
+    $cert = Get-BricksCodeSigningCertificate
+    if (-not $cert) {
+        Write-Warning "Bricks4Agent Dev Code Signing certificate not found; sidecar runtime assemblies were not signed."
+        return
+    }
+
+    $assemblyNames = Get-BricksProjectAssemblyNames -RepoRoot $repoRoot
+    $files = @(
+        Get-ChildItem -LiteralPath $RuntimeRoot -Recurse -File |
+            Where-Object {
+                ($_.Extension -eq ".dll" -or $_.Extension -eq ".exe") -and
+                $assemblyNames.Contains($_.BaseName)
+            } |
+            Sort-Object FullName -Unique
+    )
+
+    if ($files.Count -eq 0) {
+        Write-Warning "No Bricks4Agent sidecar runtime assemblies were found to sign under '$RuntimeRoot'."
+        return
+    }
+
+    foreach ($file in $files) {
+        $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+        $alreadySignedByExpectedCertificate = $signature.SignerCertificate -and
+            $signature.SignerCertificate.Thumbprint -eq $cert.Thumbprint
+
+        if (-not $alreadySignedByExpectedCertificate) {
+            Set-AuthenticodeSignature -FilePath $file.FullName -Certificate $cert -HashAlgorithm SHA256 | Out-Null
+        }
+    }
+
+    $unsigned = @(
+        foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            $signedByExpectedCertificate = $signature.SignerCertificate -and
+                $signature.SignerCertificate.Thumbprint -eq $cert.Thumbprint
+            if (-not $signedByExpectedCertificate) {
+                [pscustomobject]@{
+                    Path = $file.FullName
+                    Status = $signature.Status.ToString()
+                }
+            }
+        }
+    )
+
+    if ($unsigned.Count -gt 0) {
+        $unsigned | Format-Table -AutoSize | Out-String | Write-Error
+        throw "$($unsigned.Count) Bricks4Agent sidecar runtime assemblies are not signed by the expected certificate."
+    }
+
+    Write-Host "Signed $($files.Count) Bricks4Agent sidecar runtime assemblies." -ForegroundColor Green
+}
+
 if (-not (Test-Path $configPath)) {
     throw "Missing config: $configPath"
 }
@@ -581,6 +689,8 @@ if (-not $SkipBuild) {
         --nologo -v q
 }
 
+Sign-SidecarRuntimeAssemblies -RuntimeRoot $runRoot
+
 foreach ($logPath in @($brokerLog, $brokerErrLog, $workerLog, $workerErrLog)) {
     if (Test-Path $logPath) { Remove-Item $logPath -Force }
 }
@@ -600,12 +710,46 @@ if (Test-Path $brokerProductionOverridePath) {
 if (Test-Path $openAiApiKeyFile) {
     $openAiApiKey = (Get-Content -Encoding utf8 $openAiApiKeyFile -Raw).Trim()
 }
+$anthropicApiKey = $env:ANTHROPIC_API_KEY
+if ([string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $anthropicApiKey = [Environment]::GetEnvironmentVariable("ANTHROPIC_API_KEY", "User")
+}
+if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $anthropicApiKey = $anthropicApiKey.Trim()
+}
 $productionOverrideMap = @{
     Database = @{
         Path = $brokerRuntimeDbPath
     }
 }
-if (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
+if (-not [string]::IsNullOrWhiteSpace($anthropicApiKey)) {
+    $productionOverrideMap["HighLevelLlm"] = @{
+        Enabled = $true
+        Provider = "anthropic"
+        BaseUrl = "https://api.anthropic.com"
+        ApiKey = $anthropicApiKey
+        ApiFormat = "messages"
+        DefaultModel = "claude-sonnet-4-6"
+        AllowModelOverride = $false
+        SupportsToolCalling = $false
+        StreamingEnabled = $false
+        TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
+        MaxOutputTokens = 4096
+    }
+    $productionOverrideMap["LlmProxy"] = @{
+        Enabled = $true
+        Provider = "anthropic"
+        BaseUrl = "https://api.anthropic.com"
+        ApiKey = $anthropicApiKey
+        ApiFormat = "messages"
+        DefaultModel = "claude-sonnet-4-6"
+        AllowModelOverride = $false
+        SupportsToolCalling = $true
+        StreamingEnabled = $false
+        TimeoutSeconds = Get-BrokerJsonSectionValue -RawJson $brokerSourceConfigRaw -Section "HighLevelLlm" -Name "TimeoutSeconds" -DefaultValue 120
+        MaxOutputTokens = 4096
+    }
+} elseif (-not [string]::IsNullOrWhiteSpace($openAiApiKey)) {
     $productionOverrideMap["HighLevelLlm"] = @{
         ApiKey = $openAiApiKey
     }

@@ -55,6 +55,9 @@ public class ApprovalRequest
         set => ApproverTierValue = (int)value;
     }
 
+    [Column("required_approval_count")]
+    public int RequiredApprovalCount { get; set; } = 1;
+
     /// <summary>User 層時,有權核准者(即發起此動作的使用者 principal id)</summary>
     [Column("owner_principal_id")]
     public string OwnerPrincipalId { get; set; } = string.Empty;

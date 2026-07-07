@@ -50,7 +50,11 @@ textarea{min-height:110px;resize:vertical}
 <div id="login-screen" class="login-screen">
   <div class="login-card">
     <div class="login-title">B4A Admin Login</div>
-    <div id="login-hint" class="muted">請輸入管理密碼。</div>
+    <div id="login-hint" class="muted">請輸入管理員帳號與密碼。</div>
+    <div class="field">
+      <label for="login-username">管理員帳號</label>
+      <input id="login-username" type="text" autocomplete="username" value="admin">
+    </div>
     <div class="field">
       <label for="login-password">管理密碼</label>
       <input id="login-password" type="password" autocomplete="current-password">
@@ -78,14 +82,16 @@ textarea{min-height:110px;resize:vertical}
       <div class="small muted" id="status-meta">載入中</div>
     </div>
     <nav class="nav">
-      <button data-tab="line" class="active">LINE 與使用者</button>
-      <button data-tab="workflow">Workflow</button>
-      <button data-tab="browser">Browser 綁定</button>
-      <button data-tab="deployment">Deployment</button>
-      <button data-tab="delivery">交付記錄</button>
-      <button data-tab="approvals">審批 <span id="approvals-badge" class="tag" style="display:none"></span></button>
-      <button data-tab="alerts">系統警示</button>
-      <button data-tab="tools">Tool Specs</button>
+      <button data-tab="line" data-permission="permission.user.manage" class="active">LINE 與使用者</button>
+      <button data-tab="monitoring" data-permission="system.monitor.read">系統監控</button>
+      <button data-tab="workflow" data-permission="audit.read">Workflow</button>
+      <button data-tab="browser" data-permission="system.browser.manage">Browser 綁定</button>
+      <button data-tab="deployment" data-permission="system.deployment.manage">Deployment</button>
+      <button data-tab="delivery" data-permission="system.delivery.manage">交付記錄</button>
+      <button data-tab="permissions" data-permission="permission.operator.manage">權限管理</button>
+      <button data-tab="approvals" data-permission="approval.admin.manage">審批 <span id="approvals-badge" class="tag" style="display:none"></span></button>
+      <button data-tab="alerts" data-permission="system.monitor.read">系統警示</button>
+      <button data-tab="tools" data-permission="tool_spec.read">Tool Specs</button>
     </nav>
     <div class="stack">
       <button class="button primary" id="refresh-all">全部重新整理</button>
@@ -143,8 +149,9 @@ textarea{min-height:110px;resize:vertical}
           <div class="row" style="justify-content:space-between">
             <h2 id="selected-user-title">尚未選擇使用者</h2>
             <div class="row">
-              <button class="button warn" id="approve-user">核准</button>
-              <button class="button danger" id="reject-user">拒絕</button>
+              <button class="button warn" id="promote-user">升級會員 (Tier 2)</button>
+              <button class="button" id="demote-user">降為基本 (Tier 1)</button>
+              <button class="button danger" id="reject-user">封鎖</button>
               <button class="button danger" id="clear-conversation">清除對話</button>
             </div>
           </div>
@@ -152,9 +159,12 @@ textarea{min-height:110px;resize:vertical}
           <div class="grid two" style="margin-top:12px">
             <div class="panel">
               <h3>高階權限</h3>
-              <div class="stack">
+              <div id="selected-user-tier" class="small muted">層級：—</div>
+              <div class="stack" style="margin-top:8px">
+                <div class="small muted">Tier 1（基本，自助註冊即有）</div>
                 <label><input type="checkbox" id="perm-query"> 允許查詢</label>
                 <label><input type="checkbox" id="perm-transport"> 允許交通查詢</label>
+                <div class="small muted" style="margin-top:6px">Tier 2（私有資料夾，僅會員生效）</div>
                 <label><input type="checkbox" id="perm-production"> 允許建立任務</label>
                 <label><input type="checkbox" id="perm-browser"> 允許使用者授權瀏覽器能力</label>
                 <label><input type="checkbox" id="perm-deployment"> 允許部署能力</label>
@@ -243,6 +253,27 @@ textarea{min-height:110px;resize:vertical}
           <div class="row">
             <button class="button primary" id="send-message">送出訊息</button>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-monitoring" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>系統監控</h2>
+          <button class="button" id="refresh-monitoring">重新整理</button>
+        </div>
+        <div id="monitoring-summary" class="notice">尚未載入系統狀態。</div>
+        <div id="monitoring-status-json" class="json">尚無資料</div>
+      </div>
+      <div class="panel stack">
+        <h2>服務狀態</h2>
+        <div class="stack small">
+          <div>LLM：<span id="monitoring-llm">—</span></div>
+          <div>Embedding：<span id="monitoring-embedding">—</span></div>
+          <div>RAG Pipeline：<span id="monitoring-rag">—</span></div>
+          <div>Shared Context：<span id="monitoring-context">0</span></div>
+          <div>Vectors：<span id="monitoring-vectors">0</span></div>
         </div>
       </div>
     </section>
@@ -466,11 +497,99 @@ textarea{min-height:110px;resize:vertical}
       </div>
     </section>
 
+    <section id="tab-permissions" class="grid two hidden">
+      <div class="panel stack">
+        <div class="row" style="justify-content:space-between">
+          <h2>Local Admin Operators</h2>
+          <button class="button" id="refresh-operators">重新整理</button>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="operator-username">帳號</label>
+            <input id="operator-username" type="text" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="operator-display-name">顯示名稱</label>
+            <input id="operator-display-name" type="text" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="operator-role">角色</label>
+            <select id="operator-role">
+              <option value="system_admin">system_admin</option>
+              <option value="permission_admin">permission_admin</option>
+              <option value="auditor">auditor</option>
+              <option value="super_admin">super_admin</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="operator-password">初始密碼</label>
+            <input id="operator-password" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <button class="button primary" id="create-operator">建立 Operator</button>
+        <div class="list" id="operator-list"></div>
+      </div>
+      <div class="panel stack">
+        <h2>Operator 明細</h2>
+        <div id="operator-detail" class="notice">請從左側選擇 operator。</div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="operator-selected-role">角色</label>
+            <select id="operator-selected-role">
+              <option value="super_admin">super_admin</option>
+              <option value="system_admin">system_admin</option>
+              <option value="permission_admin">permission_admin</option>
+              <option value="auditor">auditor</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="operator-reset-password">重設密碼</label>
+            <input id="operator-reset-password" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="row">
+          <button class="button primary" id="update-operator-role">更新角色</button>
+          <button class="button warn" id="revoke-operator-sessions">撤銷 Sessions</button>
+          <button class="button warn" id="reset-operator-password">重設密碼</button>
+          <button class="button danger" id="disable-operator">停用 Operator</button>
+        </div>
+        <div id="operator-detail-json" class="json">尚無資料</div>
+      </div>
+    </section>
+
     <div id="notice" class="notice">後台已載入。</div>
   </main>
 </div>
 <script>
 const BASE = "";
+const PERMISSIONS = {
+  systemStatusRead: "system.status.read",
+  systemMonitorRead: "system.monitor.read",
+  systemWorkerManage: "system.worker.manage",
+  systemDeploymentManage: "system.deployment.manage",
+  systemDeliveryManage: "system.delivery.manage",
+  systemBrowserManage: "system.browser.manage",
+  permissionOperatorManage: "permission.operator.manage",
+  permissionUserManage: "permission.user.manage",
+  permissionRegistrationManage: "permission.registration.manage",
+  permissionBrowserGrantManage: "permission.browser_grant.manage",
+  approvalAdminManage: "approval.admin.manage",
+  toolSpecRead: "tool_spec.read",
+  auditRead: "audit.read",
+  auditVerify: "audit.verify"
+};
+const TAB_PERMISSIONS = {
+  line: [PERMISSIONS.permissionUserManage, PERMISSIONS.auditRead],
+  monitoring: [PERMISSIONS.systemMonitorRead],
+  workflow: [PERMISSIONS.systemStatusRead, PERMISSIONS.auditRead],
+  browser: [PERMISSIONS.systemBrowserManage],
+  deployment: [PERMISSIONS.systemDeploymentManage],
+  delivery: [PERMISSIONS.systemDeliveryManage, PERMISSIONS.auditRead],
+  permissions: [PERMISSIONS.permissionOperatorManage],
+  approvals: [PERMISSIONS.approvalAdminManage, PERMISSIONS.auditRead],
+  alerts: [PERMISSIONS.systemMonitorRead, PERMISSIONS.auditRead],
+  tools: [PERMISSIONS.toolSpecRead]
+};
 const state = {
   tab: "line",
   autoRefresh: false,
@@ -490,6 +609,7 @@ const state = {
   selectedDeploymentExecution: null,
   selectedDeploymentExecutionDocumentId: "",
   approvals: { items: [], selectedId: "", selected: null },
+  operators: { items: [], selectedId: "", selected: null },
   toolSpecs: [],
   selectedToolId: "",
   selectedTool: null,
@@ -503,6 +623,38 @@ const state = {
 let requestChain = Promise.resolve();
 
 function byId(id) { return document.getElementById(id); }
+
+function hasPermission(permission) {
+  const permissions = state.authStatus?.permissions || state.authStatus?.Permissions || [];
+  return Array.isArray(permissions) && permissions.includes(permission);
+}
+
+function hasAnyPermission(permissions) {
+  return permissions.some((permission) => hasPermission(permission));
+}
+
+function canOpenTab(tab) {
+  const permissions = TAB_PERMISSIONS[tab];
+  return !permissions || hasAnyPermission(permissions);
+}
+
+function syncPermissionAwareUi() {
+  for (const button of document.querySelectorAll("[data-tab]")) {
+    const tab = button.dataset.tab;
+    button.classList.toggle("hidden", !canOpenTab(tab));
+  }
+
+  for (const node of document.querySelectorAll("[data-permission]")) {
+    if (node.hasAttribute("data-tab")) continue;
+    node.classList.toggle("hidden", !hasPermission(node.dataset.permission));
+  }
+
+  if (!canOpenTab(state.tab)) {
+    const firstVisible = Array.from(document.querySelectorAll("[data-tab]"))
+      .find((button) => !button.classList.contains("hidden"));
+    if (firstVisible) state.tab = firstVisible.dataset.tab;
+  }
+}
 
 function setNotice(message, kind = "info") {
   const el = byId("notice");
@@ -564,9 +716,15 @@ function renderAuthState() {
   byId("admin-shell").classList.toggle("hidden", !authenticated);
   byId("new-password-field").classList.toggle("hidden", !(state.authStatus?.requiresPasswordChange || state.authStatus?.initialPasswordActive));
   const hint = state.authStatus?.initialPasswordActive
-    ? "首次登入請輸入初始密碼 admin，並設定新密碼。"
-    : (state.authStatus?.requiresPasswordChange ? "目前必須先變更管理密碼。" : "請輸入管理密碼。");
+    ? "首次登入請使用帳號 admin 與初始密碼 admin，並設定新密碼。"
+    : (state.authStatus?.requiresPasswordChange ? "目前必須先變更管理密碼。" : "請輸入管理員帳號與密碼。");
   byId("login-hint").textContent = hint;
+  if (authenticated) {
+    const username = state.authStatus?.username || state.authStatus?.Username || "admin";
+    const role = state.authStatus?.role || state.authStatus?.Role || "unknown";
+    byId("status-meta").textContent = `${username} / ${role}`;
+  }
+  syncPermissionAwareUi();
 }
 
 function activePermissions(user) {
@@ -587,6 +745,13 @@ function syncPermissionForm() {
   byId("perm-production").checked = permissions.allowProduction;
   byId("perm-browser").checked = permissions.allowBrowserDelegated;
   byId("perm-deployment").checked = permissions.allowDeployment;
+  const tierEl = byId("selected-user-tier");
+  if (tierEl) {
+    const tier = state.selectedUser && state.selectedUser.accessTier === "member" ? "member" : "basic";
+    tierEl.textContent = tier === "member"
+      ? "層級：會員（Tier 2）— 下方 Tier 2 權限可生效"
+      : "層級：基本（Tier 1）— Tier 2 權限需先升級會員才生效";
+  }
 }
 
 function escapeHtml(value) {
@@ -604,10 +769,37 @@ function renderSystem() {
   tag.textContent = "系統狀態：" + status;
   tag.className = "tag " + (status === "ok" ? "ok" : "bad");
   const llm = state.system?.services?.llm;
-  byId("status-meta").textContent = llm ? `${llm.provider || "n/a"} / ${llm.model || "n/a"}` : "尚無 LLM 資訊";
+  const username = state.authStatus?.username || state.authStatus?.Username || "admin";
+  const role = state.authStatus?.role || state.authStatus?.Role || "unknown";
+  byId("status-meta").textContent = llm
+    ? `${username} / ${role} / ${llm.provider || "n/a"} / ${llm.model || "n/a"}`
+    : `${username} / ${role}`;
   byId("summary-conversations").textContent = state.system?.database?.active_conversations ?? 0;
   byId("summary-context").textContent = state.system?.database?.shared_context_entries ?? 0;
   byId("summary-vectors").textContent = state.system?.database?.vector_entries ?? 0;
+  renderMonitoring();
+}
+
+function renderMonitoring() {
+  const system = state.system;
+  const summary = byId("monitoring-summary");
+  if (!summary) return;
+
+  summary.textContent = system
+    ? `狀態：${system.status || "unknown"} / ${formatDateTime(system.timestamp) || ""}`
+    : "尚未載入系統狀態。";
+  byId("monitoring-status-json").textContent = system ? prettyJson(system) : "尚無資料";
+  byId("monitoring-llm").textContent = system?.services?.llm
+    ? `${system.services.llm.ok ? "ok" : "degraded"} / ${system.services.llm.provider || "n/a"} / ${system.services.llm.model || "n/a"}`
+    : "—";
+  byId("monitoring-embedding").textContent = system?.services?.embedding
+    ? `${system.services.embedding.ok ? "on" : "off"} / ${system.services.embedding.model || "n/a"}`
+    : "—";
+  byId("monitoring-rag").textContent = system?.services?.rag_pipeline
+    ? `rewrite=${system.services.rag_pipeline.query_rewrite}, rerank=${system.services.rag_pipeline.rerank}, cache=${system.services.rag_pipeline.cache}`
+    : "—";
+  byId("monitoring-context").textContent = system?.database?.shared_context_entries ?? 0;
+  byId("monitoring-vectors").textContent = system?.database?.vector_entries ?? 0;
 }
 
 function renderUsers() {
@@ -623,8 +815,11 @@ function renderUsers() {
     const accountTag = user.isTestAccount
       ? '<span class="tag test small">測試帳戶</span>'
       : '<span class="tag ok small">真實 LINE</span>';
+    const tierTag = user.accessTier === "member"
+      ? '<span class="tag ok small">會員 T2</span>'
+      : '<span class="tag small">基本 T1</span>';
     item.innerHTML = `
-      <div class="item-title">${escapeHtml(user.displayName || user.userId)} ${accountTag}</div>
+      <div class="item-title">${escapeHtml(user.displayName || user.userId)} ${accountTag} ${tierTag}</div>
       <div class="small muted mono">${escapeHtml(user.userCode || "(未設定英數 ID)")}</div>
       <div class="small muted">${escapeHtml(formatDateTime(user.lastInteractionAt) || "尚無互動")} / ${escapeHtml(user.registrationStatus || "approved")}</div>
     `;
@@ -668,6 +863,7 @@ function renderSelectedUser() {
     `accountType: ${user.accountType || (user.isTestAccount ? "test" : "line_user")}`,
     `isTestAccount: ${user.isTestAccount === true ? "true" : "false"}`,
     `userCode: ${user.userCode || "(未設定)"}`,
+    `tier: ${user.accessTier === "member" ? "member (T2)" : "basic (T1)"}`,
     `registration: ${user.registrationStatus || "approved"}`,
     `lastInteraction: ${formatDateTime(user.lastInteractionAt) || "尚無"}`,
     `lastDecision: ${user.lastDecision || "尚無"}`
@@ -935,6 +1131,10 @@ function renderSelectedTool() {
 }
 
 async function showTab(tab) {
+  if (!canOpenTab(tab)) {
+    setNotice("目前角色沒有此頁籤權限。", "error");
+    return;
+  }
   state.tab = tab;
   for (const button of document.querySelectorAll("[data-tab]")) {
     button.classList.toggle("active", button.dataset.tab === tab);
@@ -945,6 +1145,9 @@ async function showTab(tab) {
   if (tab === "workflow" && !state.workflowLoaded) {
     await loadWorkflow();
     state.workflowLoaded = true;
+  }
+  if (tab === "monitoring") {
+    await loadSystem();
   }
   if (tab === "browser" && !state.browserLoaded) {
     await loadBrowser();
@@ -967,6 +1170,9 @@ async function showTab(tab) {
   if (tab === "approvals") {
     await loadApprovals();
   }
+  if (tab === "permissions") {
+    await loadOperators();
+  }
 }
 
 function af(o, n) {
@@ -980,6 +1186,153 @@ function updateApprovalsBadge(count) {
   if (!badge) return;
   if (count > 0) { badge.textContent = count; badge.style.display = ""; badge.style.background = "#b1432f"; badge.style.color = "#fff"; }
   else { badge.style.display = "none"; }
+}
+
+function approvalProgress(d) {
+  const required = Number(af(d, "requiredApprovalCount"));
+  const approverIds = af(d, "approverIds");
+  const approvedRaw = af(d, "approvedCount");
+  const approved = approvedRaw !== undefined ? Number(approvedRaw) : (Array.isArray(approverIds) ? approverIds.length : NaN);
+  if (!Number.isFinite(required) || required <= 0 || !Number.isFinite(approved)) return null;
+  return {
+    approved: Math.max(0, approved),
+    required,
+    approverIds: Array.isArray(approverIds) ? approverIds : []
+  };
+}
+
+function approvalProgressText(d) {
+  const progress = approvalProgress(d);
+  if (!progress) return "";
+  return `${progress.approved}/${progress.required}`;
+}
+
+function approvalDecisionMessage(action, result) {
+  if (action !== "approve") return "已駁回";
+  const request = af(result, "request") || af(result, "executionRequest") || result;
+  const executionState = af(request, "executionState");
+  if (String(executionState || "").toLowerCase() === "pendingapproval") return "已記錄核准，等待其他核准。";
+  return "已核准並執行";
+}
+
+async function loadOperators() {
+  const result = await request("/api/v1/local-admin/operators");
+  state.operators.items = result?.items || [];
+  if (state.operators.selectedId) {
+    state.operators.selected = state.operators.items.find((item) => item.operatorId === state.operators.selectedId) || null;
+  }
+  renderOperatorList();
+  renderSelectedOperator();
+}
+
+function renderOperatorList() {
+  const container = byId("operator-list");
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (!state.operators.items.length) {
+    container.innerHTML = '<div class="item muted">尚無 operators。</div>';
+    return;
+  }
+
+  for (const operator of state.operators.items) {
+    const item = document.createElement("div");
+    item.className = "item" + (operator.operatorId === state.operators.selectedId ? " active" : "");
+    const statusClass = operator.status === "active" ? "ok" : "bad";
+    item.innerHTML = `
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="item-title">${escapeHtml(operator.displayName || operator.username)}</div>
+          <div class="small muted mono">${escapeHtml(operator.username)} / ${escapeHtml(operator.operatorId)}</div>
+        </div>
+        <span class="tag ${statusClass}">${escapeHtml(operator.status || "unknown")}</span>
+      </div>
+      <div class="small muted">${escapeHtml(operator.role || "")} / last login: ${escapeHtml(formatDateTime(operator.lastLoginAt) || "—")}</div>
+    `;
+    item.addEventListener("click", () => selectOperator(operator.operatorId));
+    container.appendChild(item);
+  }
+}
+
+function selectOperator(operatorId) {
+  state.operators.selectedId = operatorId;
+  state.operators.selected = state.operators.items.find((item) => item.operatorId === operatorId) || null;
+  renderOperatorList();
+  renderSelectedOperator();
+}
+
+function renderSelectedOperator() {
+  const operator = state.operators.selected;
+  const detail = byId("operator-detail");
+  if (!detail) return;
+
+  if (!operator) {
+    detail.textContent = "請從左側選擇 operator。";
+    byId("operator-detail-json").textContent = "尚無資料";
+    return;
+  }
+
+  detail.textContent = `${operator.displayName || operator.username} / ${operator.role} / ${operator.status}`;
+  byId("operator-selected-role").value = operator.role || "auditor";
+  byId("operator-detail-json").textContent = prettyJson(operator);
+}
+
+async function createOperator() {
+  await request("/api/v1/local-admin/operators", {
+    method: "POST",
+    body: JSON.stringify({
+      username: byId("operator-username").value.trim(),
+      display_name: byId("operator-display-name").value.trim(),
+      role: byId("operator-role").value,
+      password: byId("operator-password").value
+    })
+  });
+  byId("operator-password").value = "";
+  await loadOperators();
+  setNotice("Operator 已建立。");
+}
+
+async function updateOperatorRole() {
+  const operator = requireSelectedOperator();
+  await request(`/api/v1/local-admin/operators/${encodeURIComponent(operator.operatorId)}/role`, {
+    method: "POST",
+    body: JSON.stringify({ role: byId("operator-selected-role").value })
+  });
+  await loadOperators();
+  setNotice("Operator 角色已更新，既有 sessions 已撤銷。");
+}
+
+async function disableOperator() {
+  const operator = requireSelectedOperator();
+  await request(`/api/v1/local-admin/operators/${encodeURIComponent(operator.operatorId)}/disable`, { method: "POST" });
+  await loadOperators();
+  setNotice("Operator 已停用。");
+}
+
+async function resetOperatorPassword() {
+  const operator = requireSelectedOperator();
+  const password = byId("operator-reset-password").value;
+  if (!password) throw new Error("請輸入新密碼。");
+  await request(`/api/v1/local-admin/operators/${encodeURIComponent(operator.operatorId)}/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ password })
+  });
+  byId("operator-reset-password").value = "";
+  await loadOperators();
+  setNotice("Operator 密碼已重設，既有 sessions 已撤銷。");
+}
+
+async function revokeOperatorSessions() {
+  const operator = requireSelectedOperator();
+  const result = await request(`/api/v1/local-admin/operators/${encodeURIComponent(operator.operatorId)}/revoke-sessions`, { method: "POST" });
+  await loadOperators();
+  setNotice(`已撤銷 ${result?.revoked ?? 0} 個 sessions。`);
+}
+
+function requireSelectedOperator() {
+  if (!state.operators.selected)
+    throw new Error("請先選擇 operator。");
+  return state.operators.selected;
 }
 
 async function loadApprovals() {
@@ -1001,13 +1354,15 @@ function renderApprovalsList() {
   for (const item of state.approvals.items) {
     const id = af(item, "approvalId");
     const tier = af(item, "tier") || "";
+    const progressText = approvalProgressText(item);
     const tierTag = tier === "Admin"
       ? '<span style="background:#7a5310;color:#facc88;font-size:11px;padding:1px 7px;border-radius:6px">Admin</span>'
       : '<span style="background:#16395e;color:#9ecbff;font-size:11px;padding:1px 7px;border-radius:6px">User</span>';
     const div = document.createElement("div");
     div.className = "item" + (id === state.approvals.selectedId ? " active" : "");
     div.innerHTML = `<div class="row" style="justify-content:space-between"><strong style="font-family:monospace">${escapeHtml(af(item, "capabilityId") || "")}</strong>${tierTag}</div>`
-      + `<div style="font-size:12px;color:#9aa4b2">${escapeHtml(af(item, "ownerPrincipalId") || "")} · ${escapeHtml(af(item, "reason") || "")}</div>`;
+      + `<div style="font-size:12px;color:#9aa4b2">${escapeHtml(af(item, "ownerPrincipalId") || "")} · ${escapeHtml(af(item, "reason") || "")}</div>`
+      + (progressText ? `<div style="font-size:12px;color:#9aa4b2">核准進度 ${escapeHtml(progressText)}</div>` : "");
     div.addEventListener("click", () => selectApproval(id));
     list.appendChild(div);
   }
@@ -1048,6 +1403,10 @@ function renderApprovalDetail(d) {
   byId("approval-summary").style.display = "none";
   const el = byId("approval-detail");
   if (!d) { el.innerHTML = ""; return; }
+  const progress = approvalProgress(d);
+  const approvers = progress && progress.approverIds.length
+    ? progress.approverIds.map((id) => escapeHtml(id)).join(", ")
+    : "";
   el.innerHTML = `<div class="stack">`
     + `<div><strong style="font-family:monospace">${escapeHtml(af(d, "capabilityId") || "")}</strong></div>`
     + `<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px">`
@@ -1055,6 +1414,8 @@ function renderApprovalDetail(d) {
     + `<span style="color:#9aa4b2">owner</span><span style="font-family:monospace">${escapeHtml(af(d, "ownerPrincipalId") || "")}</span>`
     + `<span style="color:#9aa4b2">原因</span><span>${escapeHtml(af(d, "reason") || "")}</span>`
     + `<span style="color:#9aa4b2">intent</span><span>${escapeHtml(af(d, "intent") || "")}</span>`
+    + (progress ? `<span style="color:#9aa4b2">核准進度</span><span>${escapeHtml(progress.approved)}/${escapeHtml(progress.required)}</span>` : "")
+    + (approvers ? `<span style="color:#9aa4b2">已核准</span><span style="font-family:monospace">${approvers}</span>` : "")
     + `</div>`
     + renderRendered(af(d, "rendered"))
     + `<input id="approval-reason" placeholder="決策理由(記入稽核)">`
@@ -1070,11 +1431,11 @@ async function decideApproval(action) {
   const id = state.approvals.selectedId;
   if (!id) return;
   const reason = byId("approval-reason") ? byId("approval-reason").value : "";
-  await request(`/api/v1/local-admin/approvals/${encodeURIComponent(id)}/${action}`, {
+  const result = await request(`/api/v1/local-admin/approvals/${encodeURIComponent(id)}/${action}`, {
     method: "POST",
     body: JSON.stringify({ reason })
   });
-  setNotice(action === "approve" ? "已核准並執行" : "已駁回", "ok");
+  setNotice(approvalDecisionMessage(action, result), "ok");
   clearApprovalDetail();
   await loadApprovals();
 }
@@ -1274,18 +1635,30 @@ async function selectUser(userId) {
 
 async function refreshAll() {
   setNotice("正在重新整理後台資料...");
-  await loadSystem();
-  await sleep(120);
-  await loadUsers();
-  await sleep(120);
-  await loadConversations();
-  await sleep(120);
-  await loadRegistrationPolicy();
-  await sleep(120);
-  await loadDriveAdmin();
-  await sleep(120);
-  await loadApprovals();
-  await sleep(120);
+  if (hasPermission(PERMISSIONS.systemStatusRead)) {
+    await loadSystem();
+    await sleep(120);
+  }
+  if (canOpenTab("line")) {
+    await loadUsers();
+    await sleep(120);
+    await loadConversations();
+    await sleep(120);
+    await loadRegistrationPolicy();
+    await sleep(120);
+  }
+  if (hasPermission(PERMISSIONS.systemDeliveryManage)) {
+    await loadDriveAdmin();
+    await sleep(120);
+  }
+  if (canOpenTab("approvals")) {
+    await loadApprovals();
+    await sleep(120);
+  }
+  if (hasPermission(PERMISSIONS.permissionOperatorManage)) {
+    await loadOperators();
+    await sleep(120);
+  }
   if (state.workflowLoaded) {
     await loadWorkflow();
     await sleep(120);
@@ -1301,7 +1674,7 @@ async function refreshAll() {
   if (state.toolsLoaded) {
     await loadToolSpecs();
   }
-  if (state.selectedUserId) {
+  if (state.selectedUserId && canOpenTab("line")) {
     await sleep(120);
     await loadArtifacts(state.selectedUserId);
     await sleep(120);
@@ -1319,16 +1692,23 @@ async function saveRegistrationPolicy() {
   setNotice("註冊政策已更新。");
 }
 
+const TIER_ACTION_LABELS = {
+  promote: { prompt: "升級為會員備註（可留空）", done: "已升級為會員 (Tier 2)。" },
+  demote: { prompt: "降為基本備註（可留空）", done: "已降為基本 (Tier 1)。" },
+  reject: { prompt: "封鎖原因（可留空）", done: "已封鎖使用者。" }
+};
+
 async function reviewRegistration(action) {
   if (!state.selectedUserId) throw new Error("請先選擇使用者。");
-  const note = window.prompt(action === "approve" ? "核准備註（可留空）" : "拒絕原因（可留空）", "") ?? "";
+  const labels = TIER_ACTION_LABELS[action] || TIER_ACTION_LABELS.reject;
+  const note = window.prompt(labels.prompt, "") ?? "";
   await request("/api/v1/local-admin/line/users/registration/review", {
     method: "POST",
     body: JSON.stringify({ user_id: state.selectedUserId, action, note })
   });
   await loadUsers();
   renderSelectedUser();
-  setNotice(action === "approve" ? "已核准使用者。" : "已拒絕使用者。");
+  setNotice(labels.done);
 }
 
 async function savePermissions() {
@@ -1586,11 +1966,13 @@ async function loadAdminStatus() {
 
 async function loginAdmin() {
   byId("login-error").textContent = "";
+  const username = byId("login-username").value.trim() || "admin";
   const password = byId("login-password").value;
   const newPassword = byId("login-new-password").value;
   const result = await request("/api/v1/local-admin/login", {
     method: "POST",
     body: JSON.stringify({
+      username,
       password,
       new_password: newPassword || null
     })
@@ -1600,7 +1982,11 @@ async function loginAdmin() {
     authenticated: result.authenticated,
     requiresPasswordChange: result.requiresPasswordChange,
     initialPasswordActive: false,
-    sessionExpiresAt: result.sessionExpiresAt
+    sessionExpiresAt: result.sessionExpiresAt,
+    operatorId: result.operatorId,
+    username: result.username,
+    role: result.role,
+    permissions: result.permissions || []
   };
   byId("login-password").value = "";
   byId("login-new-password").value = "";
@@ -1624,10 +2010,13 @@ async function logoutAdmin() {
   state.selectedUserId = "";
   state.selectedUser = null;
   state.system = null;
+  state.operators = { items: [], selectedId: "", selected: null };
   renderUsers();
   renderConversations();
   renderMessages();
   renderSelectedUser();
+  renderOperatorList();
+  renderSelectedOperator();
   state.authStatus = {
     ...(state.authStatus || {}),
     authenticated: false
@@ -1738,7 +2127,7 @@ function renderDeliveryList(items) {
         </div>
       </div>
       ${item.overallStatus === "partial" ? `<div class="row" style="margin-top:8px">
-        <button class="button primary" onclick="wrapAction(()=>retryDriveUpload('${esc(item.artifactId)}'))()">重試 Drive 上傳</button>
+        <button class="button primary" onclick="wrapAction(()=>retryDriveUpload(decodeURIComponent('${encodeURIComponent(item.artifactId || "")}')))()">重試 Drive 上傳</button>
       </div>` : ""}
       ${item.driveError ? `<div class="small error" style="margin-top:4px">Drive 錯誤：${escapeHtml(item.driveError)}</div>` : ""}
       ${item.googleDriveWebViewLink ? `<div class="small" style="margin-top:4px"><a href="${escapeHtml(item.googleDriveWebViewLink)}" target="_blank">Drive 預覽</a></div>` : ""}
@@ -1774,11 +2163,13 @@ function bindEvents() {
   byId("refresh-all").addEventListener("click", wrapAction(refreshAll));
   byId("logout-admin").addEventListener("click", wrapAction(logoutAdmin));
   byId("auto-refresh-toggle").addEventListener("click", toggleAutoRefresh);
+  byId("refresh-monitoring").addEventListener("click", wrapAction(loadSystem));
   byId("refresh-workflow").addEventListener("click", wrapAction(loadWorkflow));
   byId("refresh-users").addEventListener("click", wrapAction(loadUsers));
   byId("refresh-conversations").addEventListener("click", wrapAction(loadConversations));
   byId("save-registration-policy").addEventListener("click", wrapAction(saveRegistrationPolicy));
-  byId("approve-user").addEventListener("click", wrapAction(() => reviewRegistration("approve")));
+  byId("promote-user").addEventListener("click", wrapAction(() => reviewRegistration("promote")));
+  byId("demote-user").addEventListener("click", wrapAction(() => reviewRegistration("demote")));
   byId("reject-user").addEventListener("click", wrapAction(() => reviewRegistration("reject")));
   byId("save-permissions").addEventListener("click", wrapAction(savePermissions));
   byId("refresh-drive").addEventListener("click", wrapAction(loadDriveAdmin));
@@ -1802,6 +2193,12 @@ function bindEvents() {
   byId("execute-deployment").addEventListener("click", wrapAction(executeDeployment));
   byId("refresh-tools").addEventListener("click", wrapAction(loadToolSpecs));
   byId("refresh-approvals").addEventListener("click", wrapAction(loadApprovals));
+  byId("refresh-operators").addEventListener("click", wrapAction(loadOperators));
+  byId("create-operator").addEventListener("click", wrapAction(createOperator));
+  byId("update-operator-role").addEventListener("click", wrapAction(updateOperatorRole));
+  byId("disable-operator").addEventListener("click", wrapAction(disableOperator));
+  byId("reset-operator-password").addEventListener("click", wrapAction(resetOperatorPassword));
+  byId("revoke-operator-sessions").addEventListener("click", wrapAction(revokeOperatorSessions));
   byId("apply-tool-filter").addEventListener("click", wrapAction(loadToolSpecs));
   byId("refresh-alerts").addEventListener("click", wrapAction(loadAlerts));
   byId("alerts-hours").addEventListener("change", wrapAction(loadAlerts));

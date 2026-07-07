@@ -85,7 +85,10 @@ public sealed class MemoryStoreHandler : BrokerCore.Services.IRouteHandler
 
                     // 檢查是否已有相同 hash 的嵌入
                     var existingVec = _db.GetAll<VectorEntry>()
-                        .FirstOrDefault(v => v.ContentHash == hash && v.TaskId == taskId);
+                        .FirstOrDefault(v =>
+                            v.ContentHash == hash &&
+                            v.TaskId == taskId &&
+                            string.Equals(v.EmbeddingModel, _embeddingService.ModelName, StringComparison.Ordinal));
                     if (existingVec != null)
                     {
                         // 更新 source_key 即可

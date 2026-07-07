@@ -94,6 +94,8 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.High), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(1);
     }
 
     [Fact]
@@ -102,6 +104,8 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Critical), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(2);
     }
 
     // §18.2: approval_policy drives the decision for Low/Medium risk.
@@ -119,6 +123,17 @@ public class PolicyEngineTests
         var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "require_approval"), MakeGrant(), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApprovalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Evaluate_RequireDualApprovalPolicy_RequiresTwoApprovals()
+    {
+        var result = _sut.Evaluate(MakeRequest(), MakeCapability(RiskLevel.Medium, "require_dual_approval"), MakeGrant(), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
+        result.RequiredApproverTier.Should().Be(ApproverTier.Admin);
+        result.RequiredApprovalCount.Should().Be(2);
     }
 
     [Fact]
@@ -158,6 +173,30 @@ public class PolicyEngineTests
             MakeGrant("""{"paths":["docs"]}"""), MakeTask(),
             currentEpoch: 1, tokenEpoch: 1);
         result.Decision.Should().Be(PolicyDecision.Deny);
+    }
+
+    [Fact]
+    public void Evaluate_AutoPolicy_MalformedGrantScope_Denied()
+    {
+        var payload = """{"route":"file.read","args":{"path":"docs/a.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Low, "auto"),
+            MakeGrant("""{"paths":["docs"]"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.Deny);
+    }
+
+    [Fact]
+    public void Evaluate_AutoIfScopeMatch_MalformedGrantScope_RequiresApproval()
+    {
+        var payload = """{"route":"file.read","args":{"path":"docs/a.txt"}}""";
+        var result = _sut.Evaluate(
+            MakeRequest(payload),
+            MakeCapability(RiskLevel.Medium, "auto_if_task_scope_match"),
+            MakeGrant("""{"paths":["docs"]"""), MakeTask(),
+            currentEpoch: 1, tokenEpoch: 1);
+        result.Decision.Should().Be(PolicyDecision.RequireApproval);
     }
 
     // --- Rule 3: Route Mismatch ---

@@ -11,6 +11,7 @@ using FunctionPool.Health;
 using FunctionPool.Models;
 using FunctionPool.Network;
 using FunctionPool.Registry;
+using Microsoft.Extensions.FileProviders;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -192,6 +193,9 @@ builder.Services.AddSingleton(googleDriveDeliveryOptions);
 var artifactDownloadOptions = builder.Configuration.GetSection("ArtifactDownload").Get<Broker.Services.BrokerArtifactDownloadOptions>()
     ?? new Broker.Services.BrokerArtifactDownloadOptions();
 builder.Services.AddSingleton(artifactDownloadOptions);
+var portalAuthOptions = builder.Configuration.GetSection("PortalAuth").Get<Broker.Services.PortalAuthOptions>()
+    ?? new Broker.Services.PortalAuthOptions();
+builder.Services.AddSingleton(portalAuthOptions);
 var tdxOptions = builder.Configuration.GetSection("Tdx").Get<Broker.Services.TdxOptions>()
     ?? new Broker.Services.TdxOptions();
 builder.Services.AddSingleton(tdxOptions);
@@ -210,6 +214,8 @@ builder.Services.AddSingleton<WorkerAuthNonceStore>();
 builder.Services.AddSingleton<WorkerIdentityAuthService>();
 builder.Services.AddSingleton<Broker.Services.IToolSpecRegistry, Broker.Services.ToolSpecRegistry>();
 builder.Services.AddSingleton<Broker.Services.LocalAdminAuthService>();
+builder.Services.AddSingleton<Broker.Services.PortalLineVerificationService>();
+builder.Services.AddSingleton<Broker.Services.PortalAuthService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewRestatementService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewStateMachine>();
@@ -218,6 +224,7 @@ builder.Services.AddSingleton<Broker.Services.ProjectInterviewProjectDefinitionC
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewWorkflowDesignService>();
 builder.Services.AddSingleton<Broker.Services.ProjectInterviewPdfRenderService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelLineWorkspaceService>();
+builder.Services.AddSingleton<Broker.Services.HighLevelInteractionRecorder>();
 builder.Services.AddSingleton<Broker.Services.SidecarPublicUrlResolver>();
 builder.Services.AddSingleton<Broker.Services.BrokerArtifactDownloadService>();
 builder.Services.AddSingleton<Broker.Services.ApprovalLinkService>();
@@ -226,6 +233,9 @@ builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldSpecStore>(
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldIterationStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldProgressStore>();
 builder.Services.AddSingleton<Broker.Services.HighLevelDocumentArtifactService>();
+builder.Services.AddSingleton<Broker.Services.IWebContentProvider, Broker.Services.WebSearchHelperContentProvider>();
+builder.Services.AddSingleton<Broker.Services.IWebReportLlm, Broker.Services.LlmProxyReportLlm>();
+builder.Services.AddSingleton<Broker.Services.WebReportSynthesisService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelCodeArtifactService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSystemScaffoldService>();
 builder.Services.AddSingleton<Broker.Services.HighLevelSiteRebuildService>();
@@ -468,7 +478,11 @@ builder.Services.AddHttpClient("high-level-llm", client =>
 {
     client.BaseAddress = new Uri((highLevelLlmOptions.BaseUrl ?? "http://localhost:11434").TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(Math.Max(30, highLevelLlmOptions.TimeoutSeconds));
-    if (!string.IsNullOrWhiteSpace(highLevelLlmOptions.ApiKey))
+    if (AnthropicMessagesAdapter.IsAnthropicProvider(highLevelLlmOptions.Provider))
+    {
+        AnthropicMessagesAdapter.ConfigureHeaders(client, highLevelLlmOptions.ApiKey);
+    }
+    else if (!string.IsNullOrWhiteSpace(highLevelLlmOptions.ApiKey))
     {
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", highLevelLlmOptions.ApiKey);
@@ -539,16 +553,38 @@ app.Use(async (context, next) =>
 });
 
 app.UseDevEndpointGuard();
+app.UseBrokerExceptionHandling();
 
 // ── 靜態檔案（Dashboard UI）── 必須在加密/認證中間件之前
 app.UseStaticFiles();
+
+var browserAssetsRoot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "..", "javascript", "browser"));
+var userPortalRoot = Path.Combine(browserAssetsRoot, "user-portal");
+var uiComponentsRoot = Path.Combine(browserAssetsRoot, "ui_components");
+if (Directory.Exists(userPortalRoot))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(userPortalRoot),
+        RequestPath = "/portal"
+    });
+}
+if (Directory.Exists(uiComponentsRoot))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(uiComponentsRoot),
+        RequestPath = "/ui_components"
+    });
+}
 
 // ── Middleware 管線（順序關鍵） ──
 // [0] BodySizeLimitMiddleware（H-10 修復：防止 DoS 超大 payload）
 var maxBodyBytes = builder.Configuration.GetValue<long>("Broker:MaxRequestBodyBytes", 1_048_576); // 1MB default
 app.UseBodySizeLimit(maxBodyBytes);
-// [1] ExceptionMiddleware（全域例外）— TODO: Phase 5
-// [2] IpRateLimiter（限流）— TODO: Phase 5
+var brokerIpRateLimitOptions = builder.Configuration.GetSection("Broker:IpRateLimit").Get<BrokerIpRateLimitOptions>()
+    ?? new BrokerIpRateLimitOptions();
+app.UseBrokerIpRateLimit(brokerIpRateLimitOptions);
 // [3] EncryptionMiddleware（信封解密/加密）
 app.UseEnvelopeEncryption();
 // [4] WorkerIdentityAuthMiddleware（worker caller 驗證）
@@ -579,77 +615,46 @@ api.MapPost("/health", healthHandler);
 {
     app.MapPost("/dev/rag-test", async (HttpContext ctx,
         BrokerCore.Data.BrokerDb ragTestDb,
-        BrokerCore.Services.EmbeddingService ragTestEmbed) =>
+        BrokerCore.Services.EmbeddingService ragTestEmbed,
+        BrokerCore.Services.RagPipelineService ragTestPipeline) =>
     {
         var body = await System.Text.Json.JsonSerializer.DeserializeAsync<System.Text.Json.JsonElement>(ctx.Request.Body);
-        var query = body.TryGetProperty("query", out var q) ? q.GetString() ?? "" : "";
-        var mode = body.TryGetProperty("mode", out var m) ? m.GetString() ?? "hybrid" : "hybrid";
-        var limit = body.TryGetProperty("limit", out var lim) ? lim.GetInt32() : 5;
-
-        if (string.IsNullOrEmpty(query))
+        var retrieveRequest = BrokerCore.Services.RagRetrieveRequest.FromArgs(body);
+        if (string.IsNullOrWhiteSpace(retrieveRequest.Query))
             return Results.BadRequest(new { error = "query is required" });
 
-        var taskId = "global";
-        const int k = 60;
-
-        // BM25
-        var bm25 = new List<(string key, string content, double rank)>();
-        try
-        {
-            var fts = ragTestDb.Query<RagFtsResult>(
-                "SELECT source_key, content, rank FROM memory_fts WHERE memory_fts MATCH @q AND task_id = @taskId ORDER BY rank LIMIT @lim",
-                new { q = Broker.Adapters.InProcessDispatcher.PrepareFts5Query(query), taskId, lim = limit * 3 });
-            bm25 = fts.Select(r => (r.SourceKey ?? "", r.Content ?? "", r.Rank)).ToList();
-        }
-        catch (Exception ex) { return Results.Ok(new { error = $"FTS5 error: {ex.Message}" }); }
-
-        // Vector
-        var vec = new List<(string key, float sim)>();
-        if (mode is "semantic" or "hybrid" && ragTestEmbed.IsEnabled)
-        {
-            var queryVec = await ragTestEmbed.EmbedAsync(query);
-            if (queryVec != null)
-            {
-                var vectors = ragTestDb.GetAll<BrokerCore.Models.VectorEntry>()
-                    .Where(v => v.TaskId == taskId && v.Embedding.Length > 0).ToList();
-                vec = vectors.Select(v => {
-                    var emb = BrokerCore.Services.EmbeddingService.BytesToVector(v.Embedding);
-                    return (v.SourceKey, BrokerCore.Services.EmbeddingService.CosineSimilarity(queryVec, emb));
-                }).Where(x => x.Item2 >= 0.2f).OrderByDescending(x => x.Item2).Take(limit * 3).ToList();
-            }
-        }
-
-        // RRF
-        var bm25s = new Dictionary<string, (float score, string content)>();
-        int r = 1;
-        foreach (var (bkey, bcontent, _) in bm25) { bm25s[bkey] = (1f / (k + r), bcontent); r++; }
-        var vecs = new Dictionary<string, float>();
-        r = 1;
-        foreach (var (vkey, _) in vec) { vecs[vkey] = 1f / (k + r); r++; }
-
-        var results = bm25s.Keys.Union(vecs.Keys).Distinct().Select(key => new
-        {
-            key,
-            content = bm25s.TryGetValue(key, out var b) ? (b.content.Length > 500 ? b.content[..500] + "..." : b.content) :
-                ragTestDb.GetAll<BrokerCore.Models.SharedContextEntry>()
-                    .Where(e => e.TaskId == taskId && e.Key == key)
-                    .OrderByDescending(e => e.Version)
-                    .FirstOrDefault()?.ContentRef ?? "",
-            rrf = MathF.Round((bm25s.TryGetValue(key, out var bs) ? bs.score : 0f) + vecs.GetValueOrDefault(key, 0f), 4),
-            bm25_score = MathF.Round(bm25s.TryGetValue(key, out var bs2) ? bs2.score : 0f, 4),
-            vec_score = MathF.Round(vecs.GetValueOrDefault(key, 0f), 4)
-        }).OrderByDescending(x => x.rrf).Take(limit).ToList();
+        var retrieveTaskId = retrieveRequest.TaskId ?? "global";
+        var retrieval = new BrokerCore.Services.RagRetrievalService(
+            ragTestDb,
+            ragTestEmbed,
+            ragTestPipeline,
+            message => app.Logger.LogWarning("{Message}", message));
+        var response = await retrieval.RetrieveAsync(retrieveRequest, retrieveTaskId, ctx.RequestAborted);
+        const string consumerLawPrefix = "消費者保護法:";
+        var articleCount = ragTestDb.GetAll<BrokerCore.Models.SharedContextEntry>()
+            .Count(e => e.Key.StartsWith(consumerLawPrefix, StringComparison.Ordinal));
+        var consumerLawVectors = ragTestDb.GetAll<BrokerCore.Models.VectorEntry>()
+            .Where(v => v.SourceKey.StartsWith(consumerLawPrefix, StringComparison.Ordinal))
+            .ToList();
+        var currentModelVectorCount = consumerLawVectors
+            .Count(v => string.Equals(v.EmbeddingModel, ragTestEmbed.ModelName, StringComparison.Ordinal));
 
         return Results.Ok(new
         {
-            query, mode, results, total = results.Count,
-            stats = new {
-                articles = ragTestDb.GetAll<BrokerCore.Models.SharedContextEntry>()
-                    .Count(e => e.Key.StartsWith("消費者保護法:")),
-                vectors = ragTestDb.GetAll<BrokerCore.Models.VectorEntry>()
-                    .Count(v => v.SourceKey.StartsWith("消費者保護法:")),
-                bm25_candidates = bm25.Count,
-                vector_candidates = vec.Count
+            query = response.Query,
+            mode = response.Mode,
+            results = response.Results,
+            total = response.Total,
+            bm25_candidates = response.Bm25Candidates,
+            vector_candidates = response.VectorCandidates,
+            pipeline = response.Pipeline,
+            stats = new
+            {
+                articles = articleCount,
+                embedding_model = ragTestEmbed.ModelName,
+                vectors = currentModelVectorCount,
+                vectors_current_model = currentModelVectorCount,
+                vectors_all_models = consumerLawVectors.Count
             }
         });
     });
@@ -873,6 +878,7 @@ RuntimeEndpoints.Map(api);
 HighLevelEndpoints.Map(api);
 GoogleDriveOAuthEndpoints.Map(api);
 ArtifactDownloadEndpoints.Map(api);
+PortalEndpoints.Map(api);
 LocalAdminEndpoints.Map(api);
 AgentEndpoints.Map(api);
 // [MONITORING EXTRACTION] health/worker endpoints 的 handler 依賴 IWorkerRegistry /
@@ -919,7 +925,10 @@ if (builder.Configuration.GetValue("RagSeed:Enabled", true))
     var existingArticles = ragDb.GetAll<BrokerCore.Models.SharedContextEntry>()
         .Where(e => e.Key.StartsWith("消費者保護法:")).ToList();
     var existingVectors = ragDb.GetAll<BrokerCore.Models.VectorEntry>()
-        .Where(v => v.SourceKey.StartsWith("消費者保護法:")).Count();
+        .Where(v =>
+            v.SourceKey.StartsWith("消費者保護法:") &&
+            string.Equals(v.EmbeddingModel, ragEmbed.ModelName, StringComparison.Ordinal))
+        .Count();
 
     if (existingArticles.Count == 0)
     {
@@ -947,7 +956,10 @@ if (builder.Configuration.GetValue("RagSeed:Enabled", true))
         foreach (var entry in latestByKey)
         {
             var hasVec = ragDb.GetAll<BrokerCore.Models.VectorEntry>()
-                .Any(v => v.SourceKey == entry.Key && v.TaskId == (entry.TaskId ?? "global"));
+                .Any(v =>
+                    v.SourceKey == entry.Key &&
+                    v.TaskId == (entry.TaskId ?? "global") &&
+                    string.Equals(v.EmbeddingModel, ragEmbed.ModelName, StringComparison.Ordinal));
             if (hasVec) continue;
 
             var hash = BrokerCore.Services.EmbeddingService.ComputeHash(entry.ContentRef);
@@ -1033,7 +1045,7 @@ if (builder.Configuration.GetValue("RagSeed:Enabled", true))
                     ragDb.Execute(
                         "INSERT INTO memory_fts(source_key, content, task_id) VALUES(@key, @value, @taskId)",
                         new { key = entry.Key,
-                              value = Broker.Adapters.InProcessDispatcher.PrepareFts5Query(entry.ContentRef),
+                              value = BrokerCore.Services.Fts5TextNormalizer.PrepareContent(entry.ContentRef),
                               taskId = entry.TaskId ?? "global" });
                     ftsBackfilled++;
                 }
