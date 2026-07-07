@@ -2,12 +2,8 @@
 
 This directory contains the scaffold template used by the SPA generation flow.
 
-It is a template artifact, not the canonical live Bricks4Agent runtime.
-
-That distinction matters:
-
-- this template describes the generated SPA shape
-- it does not describe the broker/LINE sidecar/control-plane path
+It is a template artifact: it describes the shape of a generated SPA, which the
+generator copies and fills in.
 
 ## What this template currently represents
 

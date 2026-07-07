@@ -1,0 +1,22 @@
+# build
+bin/
+obj/
+out/
+*.user
+
+# node
+node_modules/
+
+# local data / secrets
+*.db
+*.db-shm
+*.db-wal
+appsettings.Development.json
+
+# vendored 腳手架:開發=junction 直連 Bricks4Agent(node scripts/dev-link.mjs),
+# 發佈=快照具體化進 dist\(node scripts/publish.mjs)——皆不入版控
+lib/
+dist/
+
+# 腳手架位置(每機自有;解析順序 env B4A_ROOT > 此檔 > 同層搜尋)
+.b4a-root

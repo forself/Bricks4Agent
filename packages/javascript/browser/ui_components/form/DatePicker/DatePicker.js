@@ -42,9 +42,13 @@ export class DatePicker {
             ...options
         };
 
+        // 明示的 format 永遠優先;未明示 format 時,尊重呼叫端明示的 useROC(舊參數),
+        // 避免預設 format:'western' 靜默覆蓋 useROC:true(民國曆失效)。
+        const hasExplicitFormat = Object.prototype.hasOwnProperty.call(options, 'format');
+        const hasExplicitUseROC = Object.prototype.hasOwnProperty.call(options, 'useROC');
         if (this.options.format === 'taiwan') {
             this.options.useROC = true;
-        } else if (this.options.format === 'western') {
+        } else if (this.options.format === 'western' && (hasExplicitFormat || !hasExplicitUseROC)) {
             this.options.useROC = false;
         }
 

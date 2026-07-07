@@ -128,10 +128,20 @@ export class SunburstChart extends BaseChart {
                     Depth: ${node.depth}
                 </div>
                  <div style="margin-top:8px; text-align:right;">
-                    <button style="padding:2px 8px; font-size:var(--cl-font-size-xs);" onclick="ModalPanel.alert({ message: "Drilldown: ${safeName}" })">Zoom In</button>
+                    <button data-action="zoom-in" data-name="${safeName}">Zoom In</button>
                 </div>
             </div>
         `;
         this.showTooltip(html, e, true);
+
+        // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
+        // ModalPanel 已於檔案頂部 import { ModalPanel } from '../layout/Panel/index.js'
+        const btn = this.tooltip.querySelector('[data-action="zoom-in"]');
+        if (btn) {
+            btn.style.cssText = 'padding:2px 8px; font-size:var(--cl-font-size-xs);';
+            btn.addEventListener('click', () => {
+                ModalPanel.alert({ message: 'Drilldown: ' + btn.dataset.name });
+            });
+        }
     }
 }

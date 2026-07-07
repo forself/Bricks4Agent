@@ -1,209 +1,84 @@
 # Bricks4Agent
 
-English version：
+English version: [README.md](README.md)
 
-- [README.md](/d:/Bricks4Agent/README.md)
+## 這是什麼
 
-## 專案定位
+`Bricks4Agent` 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**,加上一個把 JSON `PageDefinition` 轉成頁面的**頁面／SPA 生成器**。
 
-`Bricks4Agent` 是一個正在往控制面發展的 broker-mediated AI operations prototype。
+- **UI 元件庫** — 86 個元件(form、layout、common、input、viz、social、editor),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
+- **頁面生成器** — 一份 `PageDefinition`(JSON)有兩條路變成頁面:**靜態產碼**(產出 `.js` 頁面檔)或**動態渲染**(執行期直接依 JSON 畫出來)。
+- **SPA 工具鏈** — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 8 後端)。
 
-它現在已經不能準確地只被描述成：
-
-- AI coding CLI
-- page generator
-- UI component library
-
-這些子系統仍然存在，但目前 live 系統已經包含：
-
-- LINE ingress
-- broker-governed high-level routing
-- 結構化 intent、memory、promotion gate
-- governed execution
-- 每位使用者的 managed workspace
-- artifact generation 與 delivery
-- browser governance groundwork
-- Azure VM IIS deployment groundwork
-- 本機 admin console
-
-## 目前 canonical live 路徑
-
-`LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
-
-目前本機 canonical sidecar 埠號：
-
-- broker：`127.0.0.1:5361`
-- line-worker webhook：`127.0.0.1:5357`
-
-重要說明：
-
-- `agent --line-listen` 已是 legacy/development-only
-- 目前正式 LINE 路徑是 `line-worker -> broker high-level coordinator`
+> 要在這套庫上開發?請先讀 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — 那是給人與 AI Agent 的元件調用入口。
 
 ## 主要區域
 
-### Broker 與控制面
+### UI 元件庫
+- [ui_components](packages/javascript/browser/ui_components) — 元件本體
+- [ui_components/index.js](packages/javascript/browser/ui_components/index.js) — 單一匯入入口 barrel
+- [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) — 元件權威清單
+- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md) — 樣式／token 規範
 
-- [broker](/d:/Bricks4Agent/packages/csharp/broker)
-- [broker-core](/d:/Bricks4Agent/packages/csharp/broker-core)
+### 頁面生成器
+- [page-generator](packages/javascript/browser/page-generator) — 引擎(靜態 + 動態)
+- [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
-### LINE ingress 與操作路徑
-
-- [line-worker](/d:/Bricks4Agent/packages/csharp/workers/line-worker)
-
-### Agent runtime 與 governed execution
-
-- [tools/agent](/d:/Bricks4Agent/tools/agent)
-- [tools/agent/container](/d:/Bricks4Agent/tools/agent/container)
-
-### UI library 與 generation
-
-- [ui_components](/d:/Bricks4Agent/packages/javascript/browser/ui_components)
-- [page-generator](/d:/Bricks4Agent/packages/javascript/browser/page-generator)
-- [templates/spa](/d:/Bricks4Agent/templates/spa)
-- [tools/spa-generator](/d:/Bricks4Agent/tools/spa-generator)
-
-### 文件與設計說明
-
-- [docs/reports](/d:/Bricks4Agent/docs/reports)
-- [docs/designs](/d:/Bricks4Agent/docs/designs)
-- [docs/manuals](/d:/Bricks4Agent/docs/manuals)
-
-## 模組入口文件
-
-主要模組與子系統的入口文件：
-
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-- [tools/agent/README.md](/d:/Bricks4Agent/tools/agent/README.md)
-- [tools/agent/container/README.md](/d:/Bricks4Agent/tools/agent/container/README.md)
-- [packages/javascript/browser/page-generator/README.md](/d:/Bricks4Agent/packages/javascript/browser/page-generator/README.md)
-- [tools/spa-generator/README.md](/d:/Bricks4Agent/tools/spa-generator/README.md)
-- [templates/spa/README.md](/d:/Bricks4Agent/templates/spa/README.md)
-- [templates/spa/scripts/README.md](/d:/Bricks4Agent/templates/spa/scripts/README.md)
-- [tools/static-server/README.md](/d:/Bricks4Agent/tools/static-server/README.md)
-- [packages/csharp/reporting/README.md](/d:/Bricks4Agent/packages/csharp/reporting/README.md)
-- [packages/csharp/reporting/ExampleHost/README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.md)
-- [packages/csharp/database/BaseOrm/README.md](/d:/Bricks4Agent/packages/csharp/database/BaseOrm/README.md)
-
-## 子專案與範例專案
-
-代表性的 sample / generated project 入口：
-
-- [projects/ShopBricks-Gen/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/README.md)
-- [projects/ShopBricks-Gen/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/scripts/README.md)
-- [projects/ShopBricks/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks/scripts/README.md)
-
-## 目前高階模型
-
-LINE 高階回應層目前設定為：
-
-- provider：`openai-compatible`
-- model：`gpt-5.4-mini`
-
-這一層負責：
-
-- 對話
-- 需求澄清
-- broker-mediated query synthesis
-- execution-model suggestion
-
-它和下游 execution-model request 是分開的。
-
-## 目前高階互動語法
-
-代表性指令包括：
-
-- `?help` / `?h`
-- `?search` / `?s`
-- `?rail` / `?r`
-- `?hsr`
-- `?bus` / `?b`
-- `?flight` / `?f`
-- `?profile` / `?p`
-- `/name` / `/n`
-- `/id` / `/i`
-- `#ProjectName`
-- `confirm`
-- `cancel`
+### SPA 鷹架
+- [templates/spa](templates/spa) — SPA 專案範本(前端核心 + .NET 8 後端)
+- [templates/spa/scripts](templates/spa/scripts) — `spa-cli.js`、`generate-page.js`、`generate-api.js`
+- [tools/spa-generator](tools/spa-generator) — 生成器 Web UI(port 3080)
+- [tools/page-gen.js](tools/page-gen.js) — 獨立 PageDefinition CLI([說明](tools/page-gen.README.md))
+- [tools/static-server](tools/static-server) — 預覽用靜態伺服器
 
 ## 快速開始
 
-### Canonical 本機 sidecar 路徑
+### 使用元件庫
 
-請看：
+```js
+import { TextInput, DataTable, BarChart } from './packages/javascript/browser/ui_components/index.js';
 
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-- [docs/manuals/line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-
-canonical 啟動命令：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+new TextInput({ label: '姓名', required: true }).mount('#app');
 ```
 
-canonical 狀態命令：
+每個元件契約一致:`new X(options)` → `.mount(container)` → `.destroy()`。
+完整約定與元件清單見 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+### 從定義生成頁面
+
+```bash
+# 驗證 / 生成 / 列出支援的欄位型別
+node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --list-types
 ```
 
-canonical 驗證命令：
+### 一鍵全端 CRUD
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message "hello"
+```bash
+# 建立專案,再生成一個功能(前端頁面 + C# Model/Service/API)
+node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,IsPublic:bool"
 ```
 
-### 本機 admin console
+### 啟動生成器 Web UI
 
-- `http://127.0.0.1:5361/line-admin.html`
+```bash
+npm run serve   # 於 port 3080 提供 tools/spa-generator/frontend
+```
 
-若本機 DB 裡還沒有 admin credential，初始密碼是 `admin`，第一次登入必須修改。
+## 測試
 
-## 目前的優點
+```bash
+npm test                        # 頁面生成器測試
+npm run validate:ui-library     # UI 元件庫檢查
+npm run audit:ui-styles         # 樣式 token 稽核
+```
 
-- 控制面方向已經明確
-- 有真實可用的 LINE live ingress path
-- 有明確 command grammar 與 workflow gating
-- raw log / interpretation / memory / execution intent 的分層已建立
-- delivery 與 deployment 不再只是概念稿
+## 文件
 
-## 目前的限制
-
-- 各子系統成熟度仍不平均
-- broker 是不可迴避節點，必須持續維持窄核心與清楚邊界
-- browser governance 還在 groundwork 階段，不是完整 browser automation platform
-- deployment 與 delivery 雖已能用，但還未完全抽象成通用平台原語
-
-## 建議閱讀順序
-
-1. [docs/reports/CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
-2. [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-4. `docs/designs` 內的子系統文件
-
-## 文件入口
-
-### 現況與架構
-
-- [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)（現行）
-- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md)（已被接替）
-- [受控代理容器操作手冊](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
-
-### 手冊
-
-- [User Guide](/d:/Bricks4Agent/docs/manuals/user-guide.md)
-- [Engineer Guide](/d:/Bricks4Agent/docs/manuals/engineer-guide.md)
-- [Engineer Guide (EN)](/d:/Bricks4Agent/docs/manuals/engineer-guide-en.md)
-- [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [LINE Sidecar 操作手冊](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-
-### 設計說明
-
-- [HighLevelModelRoutingAndMemory.md](/d:/Bricks4Agent/docs/designs/HighLevelModelRoutingAndMemory.md)
-- [HighLevelMemoryAndLoggingModel.md](/d:/Bricks4Agent/docs/designs/HighLevelMemoryAndLoggingModel.md)
-- [ToolSpecRegistry.md](/d:/Bricks4Agent/docs/designs/ToolSpecRegistry.md)
-- [GoogleDriveDelivery.md](/d:/Bricks4Agent/docs/designs/GoogleDriveDelivery.md)
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
+- [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — 元件調用約定 + React 重製 playbook(給 AI Agent)
+- [AGENT.md](AGENT.md) — SPA 生成器操作手冊(給 AI Agent)
+- [CLAUDE.md](CLAUDE.md) — 本 repo 的 Claude Code 規則
+- [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — 頁面生成器細節
+- [templates/spa/README.md](templates/spa/README.md) — SPA 範本
+</content>

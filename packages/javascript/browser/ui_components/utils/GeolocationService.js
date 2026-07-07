@@ -28,6 +28,9 @@ export class GeolocationService {
         this.timeout = options.timeout || 10000;
         this.enableHighAccuracy = options.enableHighAccuracy !== false;
         this.maximumAge = options.maximumAge || 0;
+        // 反向地理編碼端點可設定:嚴格 CSP 環境請指向後端代理(維持 connect-src 'self'),
+        // 不要讓瀏覽器直接打外部 Nominatim。預設為公開 Nominatim 端點。
+        this._reverseGeocodeBase = options.reverseGeocodeBase || 'https://nominatim.openstreetmap.org/reverse';
     }
 
     /**
@@ -91,7 +94,8 @@ export class GeolocationService {
      */
     async reverseGeocode(latitude, longitude) {
         try {
-            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=${this.language}`;
+            const sep = this._reverseGeocodeBase.includes('?') ? '&' : '?';
+            const url = `${this._reverseGeocodeBase}${sep}format=json&lat=${latitude}&lon=${longitude}&accept-language=${this.language}`;
 
             const response = await fetch(url, {
                 headers: {

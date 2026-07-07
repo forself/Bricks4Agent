@@ -97,17 +97,20 @@ export class MapEditorV2 {
             border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             overflow: auto;
             cursor: crosshair;
-            height: ${this.height}px;
+            max-height: ${this.height}px; /* RWD:改 max-height,畫布縮小時容器同步變矮 */
         `;
 
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
+        // RWD:max-width + height:auto 讓顯示尺寸不超過容器並等比縮放(內部解析度不變)
         canvas.style.cssText = `
             display: block;
             background: var(--cl-bg);
             box-shadow: var(--cl-shadow-sm);
             margin: auto;
+            max-width: 100%;
+            height: auto;
         `;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -598,11 +601,14 @@ export class MapEditorV2 {
     _setupCanvas() {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
+        // 建構時 clamp:rect 已受 max-width:100% 限制 = min(option 寬, 容器可用寬);未佈局時退回 option 尺寸
+        const w = rect.width || this.width;
+        const h = rect.height || this.height;
+        this.canvas.width = w * dpr;
+        this.canvas.height = h * dpr;
         this.ctx.scale(dpr, dpr);
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
+        this.canvas.style.width = w + 'px';
+        this.canvas.style.height = 'auto'; // 高度依內部比例自動,容器再變窄時僅靠 CSS 等比縮放
     }
 
     _setupEventListeners() {
@@ -610,7 +616,7 @@ export class MapEditorV2 {
         this.canvas.addEventListener('mousemove', (e) => this._handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this._handleMouseUp(e));
         this.canvas.addEventListener('dblclick', (e) => this._handleDoubleClick(e));
-        
+
         document.addEventListener('keydown', (e) => {
             // 忽略在輸入框中的按鍵事件
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -618,13 +624,13 @@ export class MapEditorV2 {
             if (e.key === 'Delete' && this.selectedElement) {
                 this._deleteElement(this.selectedElement);
             }
-            
+
             // Undo: Ctrl+Z
             if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 this._undo();
             }
-            
+
             // Redo: Ctrl+Y or Ctrl+Shift+Z
             if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) {
                 e.preventDefault();

@@ -164,10 +164,20 @@ export class SankeyChart extends BaseChart {
                     Flow Volume: ${node.value || 'N/A'}
                 </div>
                  <div style="margin-top:8px; text-align:right;">
-                    <button style="padding:2px 8px; font-size:var(--cl-font-size-xs);" onclick="ModalPanel.alert({ message: "Step Details: ${safeName}" })">View Step</button>
+                    <button data-action="view-step" data-name="${safeName}">View Step</button>
                 </div>
             </div>
         `;
         this.showTooltip(html, e, true);
+
+        // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
+        // ModalPanel 已於檔案頂部 import { ModalPanel } from '../layout/Panel/index.js'
+        const btn = this.tooltip.querySelector('[data-action="view-step"]');
+        if (btn) {
+            btn.style.cssText = 'padding:2px 8px; font-size:var(--cl-font-size-xs);';
+            btn.addEventListener('click', () => {
+                ModalPanel.alert({ message: 'Step Details: ' + btn.dataset.name });
+            });
+        }
     }
 }

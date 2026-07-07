@@ -10,11 +10,11 @@ Use this helper when you need a lightweight local server for:
 - static demo pages
 - generated frontend smoke testing
 
-It is a small local utility, not a production web host and not a replacement for the broker or the LINE sidecar.
+It is a small local utility, not a production web host.
 
 ## Current behavior
 
-Based on [StaticServer.cs](/d:/Bricks4Agent/tools/static-server/StaticServer.cs), the server currently:
+Based on [StaticServer.cs](StaticServer.cs), the server currently:
 
 - listens on `http://localhost:<port>/`
 - also listens on `http://127.0.0.1:<port>/`

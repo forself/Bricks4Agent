@@ -23,7 +23,9 @@ export class WeatherService {
     constructor(options = {}) {
         this.language = options.language || 'zh-TW';
         this.temperatureUnit = options.temperatureUnit || 'celsius';
-        this._baseUrl = 'https://api.open-meteo.com/v1/forecast';
+        // baseUrl 可設定:嚴格 CSP 環境請指向後端代理(維持 connect-src 'self'),
+        // 不要讓瀏覽器直接打外部 API。預設為公開 open-meteo 端點。
+        this._baseUrl = options.baseUrl || 'https://api.open-meteo.com/v1/forecast';
     }
 
     /**

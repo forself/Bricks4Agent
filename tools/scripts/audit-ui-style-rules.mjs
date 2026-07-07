@@ -32,7 +32,11 @@ const files = execFileSync('rg', rgArgs, { cwd: repoRoot, encoding: 'utf8' })
     .filter((filePath) => {
         const normalized = filePath.replaceAll('\\', '/');
         return !normalized.endsWith('/theme.css')
-            && !normalized.endsWith('/themes/default.css');
+            && !normalized.endsWith('/themes/default.css')
+            // 顏色資料來源檔(調色盤最近色計算需要 hex 數值,非樣式),比照 theme.css 排除
+            && !normalized.endsWith('/editor/richtext-palette.js')
+            // palette.css 為自動生成的色階 token 檔(色彩系統 foundation),比照 theme.css 排除
+            && !normalized.endsWith('/palette.css');
     });
 
 const rules = [

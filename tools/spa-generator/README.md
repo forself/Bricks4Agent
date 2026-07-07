@@ -1,14 +1,13 @@
-# SPA Generator
+# SPA Generator (Web UI)
 
-This directory contains the SPA generator workbench, not the canonical Bricks4Agent live system.
+The Web UI for the page/SPA generator — a visual workbench for building `PageDefinition`s
+and scaffolding CRUD projects.
 
-It is a self-contained generator/demo area with:
+It is a self-contained generator area with:
 
-- a generated-style frontend at `frontend/`
-- a generated-style backend at `backend/`
+- a Vanilla JS frontend at `frontend/`
+- a .NET 8 backend at `backend/`
 - helper launchers such as `server.js`, `start.bat`, and `start.sh`
-
-It does **not** represent the current LINE sidecar or broker control-plane runtime.
 
 ## Scope
 
@@ -18,16 +17,7 @@ Use this directory when you want to:
 - test the scaffolded frontend/backend pattern
 - generate or inspect template-style CRUD project structure
 
-Do not use it as the authority for:
-
-- current LINE ingress
-- current broker admin console
-- current production control-plane ports
-
-For those, use:
-
-- [README.md](/d:/Bricks4Agent/README.md)
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
+Related: [../../AGENT.md](../../AGENT.md) (generator manual) · [../../AGENT-UI-GUIDE.md](../../AGENT-UI-GUIDE.md) (component calling convention) · [../page-gen.README.md](../page-gen.README.md) (standalone CLI).
 
 ## Quick Start
 
@@ -105,5 +95,4 @@ tools/spa-generator/
 ## Notes
 
 - `server.js` is the preferred frontend launcher because it handles API routing and `/packages/` path behavior more completely than a bare static server.
-- The generator frontend and backend use their own ports (`3080` / `5002`) and should not be confused with the LINE sidecar pair (`5357` / `5361`).
-- This directory is still useful, but it should be read as generator/workbench infrastructure rather than the current system control plane.
+- The generator frontend and backend use ports `3080` / `5002`.

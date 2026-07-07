@@ -26,6 +26,21 @@
       "alternative_components": [],
       "status": "wrapped"
     },
+    "memo": {
+      "default_component": "TextArea",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "plaintext": {
+      "default_component": "TextArea",
+      "alternative_components": [],
+      "status": "supported"
+    },
+    "slider": {
+      "default_component": "Slider",
+      "alternative_components": [],
+      "status": "supported"
+    },
     "date": {
       "default_component": "DatePicker",
       "alternative_components": [],
@@ -264,6 +279,7 @@
     "FormRow",
     "FunctionMenu",
     "HierarchyChart",
+    "Icon",
     "InfoPanel",
     "LeafletMap",
     "LineChart",
@@ -285,8 +301,11 @@
     "SideMenu",
     "SimpleDialog",
     "SortButton",
+    "Sparkline",
     "StatCard",
+    "Stepper",
     "SunburstChart",
+    "TGOSMapEditor",
     "TabContainer",
     "Tag",
     "Timeline",

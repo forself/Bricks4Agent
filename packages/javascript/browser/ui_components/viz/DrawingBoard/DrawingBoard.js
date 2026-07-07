@@ -52,8 +52,24 @@ export class DrawingBoard {
     _init() {
         this.element = this._createUI();
         this.container.appendChild(this.element);
+        this._clampToContainer(); // 建構時 clamp:畫布不超過容器可用寬
         this._setupEventListeners();
         this._saveHistory();
+    }
+
+    // 建構時 clamp:內部解析度 = min(option 寬, 容器可用寬),高度等比例縮小
+    _clampToContainer() {
+        const rect = this.canvas.getBoundingClientRect(); // 已受 max-width:100% 限制
+        if (rect.width > 0 && rect.width < this.width) {
+            const ratio = this.height / this.width;
+            this.width = Math.round(rect.width);
+            this.height = Math.round(this.width * ratio);
+            this.canvas.width = this.width;
+            this.canvas.height = this.height;
+            // 重設 canvas 尺寸會清掉 context 狀態,需重新設定
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+        }
     }
 
     _createUI() {
@@ -90,12 +106,15 @@ export class DrawingBoard {
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
+        // RWD:max-width + height:auto 讓顯示尺寸不超過容器並等比縮放(內部解析度不變)
         canvas.style.cssText = `
             background: var(--cl-bg);
             border-radius: var(--cl-radius-sm);
             box-shadow: var(--cl-shadow-sm);
             cursor: crosshair;
             touch-action: none;
+            max-width: 100%;
+            height: auto;
         `;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -445,9 +464,12 @@ export class DrawingBoard {
 
     _getCanvasPoint(e) {
         const rect = this.canvas.getBoundingClientRect();
+        // 座標映射:CSS 顯示寬 ≠ canvas.width 時,需乘 canvas.width / rect.width 映射回內部座標
+        const scaleX = rect.width ? this.canvas.width / rect.width : 1;
+        const scaleY = rect.height ? this.canvas.height / rect.height : 1;
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
         };
     }
 

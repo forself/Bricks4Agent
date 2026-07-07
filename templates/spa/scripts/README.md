@@ -13,8 +13,6 @@ Current scripts include:
 
 This CLI helps scaffold SPA-style projects from the template.
 
-It does not describe the broker control plane, the LINE sidecar, or the production-style governed runtime.
-
 ## Commands
 
 ### Create a project

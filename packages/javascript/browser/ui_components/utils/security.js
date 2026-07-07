@@ -158,14 +158,24 @@ export function sanitizeHTML(html) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
+    // 白名單標籤(對齊 WebTextEditor 產出:格式化 + 表格 + 連結 + 圖片)
     const allowedTags = new Set([
-        'p', 'br', 'b', 'i', 'u', 's', 'span', 'div', 'a',
+        'p', 'br', 'b', 'i', 'u', 's', 'strike', 'span', 'div', 'a',
         'img', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'blockquote', 'pre', 'code', 'font', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'hr', 'strong', 'em'
+        'blockquote', 'pre', 'code', 'font', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'col', 'colgroup',
+        'hr', 'strong', 'em', 'sub', 'sup'
     ]);
+    // 危險標籤:直接移除(含內容)
+    const dropWithContent = ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button', 'base', 'svg', 'math', 'template', 'noscript'];
+    // 屬性正向白名單(其餘一律移除,含 on*/style)
+    const allowedAttrs = new Set(['class', 'id', 'title', 'href', 'src', 'alt', 'width', 'height', 'colspan', 'rowspan', 'span']);
+    // class 白名單:富文本 rt-* 群(色階/字級/對齊/行距)+ opacity 工具 + 結構性 class
+    // 單一事實來源 = editor/richtext-palette.js ALLOWED_CLASS_PATTERN,此處內聯以保 security.js 自足
+    const allowedClassRe = /^(rt-color-([a-z-]+-(50|100|200|300|400|500|600|700|800|900)|default|black|white|transparent)|rt-size-[a-z0-9]+|rt-align-(left|center|right|justify)|rt-lh-(1|15|2|3)|opacity-(0|5|10|20|40|60|80|100)|web-painter-embed|rich-content)$/;
 
     const safeUrlProtocols = ['http:', 'https:', 'mailto:'];
+    // <img> 內的 data:image 不會執行 script,允許內嵌圖片
+    const imgDataRe = /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i;
 
     function clean(node) {
         if (node.nodeType === 8) {
@@ -177,7 +187,7 @@ export function sanitizeHTML(html) {
             const tagName = node.tagName.toLowerCase();
 
             if (!allowedTags.has(tagName)) {
-                if (['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta'].includes(tagName)) {
+                if (dropWithContent.includes(tagName)) {
                     node.remove();
                     return;
                 } else {
@@ -191,26 +201,29 @@ export function sanitizeHTML(html) {
 
             Array.from(node.attributes).forEach(attr => {
                 const name = attr.name.toLowerCase();
-                const valueLower = attr.value.toLowerCase().trim();
 
-                if (name.startsWith('on')) {
-                    node.removeAttribute(name);
+                // 正向白名單:未列者(含 on*、style)一律移除
+                if (!allowedAttrs.has(name)) {
+                    node.removeAttribute(attr.name);
                     return;
                 }
 
-                if (name === 'style') {
-                    node.removeAttribute(name);
+                // class:只留白名單 pattern 內的 class
+                if (name === 'class') {
+                    const kept = attr.value.split(/\s+/).filter(c => c && allowedClassRe.test(c));
+                    if (kept.length) node.setAttribute('class', kept.join(' '));
+                    else node.removeAttribute('class');
                     return;
                 }
 
-                if (['href', 'src'].includes(name)) {
-                    const cleanValue = valueLower.replace(/[\x00-\x1f]/g, '');
-                    const colonIdx = cleanValue.indexOf(':');
-                    if (colonIdx > 0) {
-                        const protocol = cleanValue.slice(0, colonIdx + 1);
-                        if (!safeUrlProtocols.includes(protocol)) {
-                            node.removeAttribute(name);
-                        }
+                // href/src:協定白名單;img src 另允許 data:image
+                if (name === 'href' || name === 'src') {
+                    const cleanValue = attr.value.replace(/[\x00-\x1f]/g, '').trim();
+                    const lower = cleanValue.toLowerCase();
+                    if (name === 'src' && tagName === 'img' && imgDataRe.test(lower)) return;
+                    const colonIdx = lower.indexOf(':');
+                    if (colonIdx > 0 && !safeUrlProtocols.includes(lower.slice(0, colonIdx + 1))) {
+                        node.removeAttribute(attr.name);
                     }
                 }
             });
@@ -224,6 +237,7 @@ export function sanitizeHTML(html) {
         }
     }
 
-    clean(doc.body);
+    // 清洗 body 的子節點(不對 body 本身套標籤白名單,否則 body 會被當非白名單標籤拆殼移除)
+    Array.from(doc.body.childNodes).forEach(clean);
     return doc.body.innerHTML;
 }

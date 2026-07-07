@@ -263,13 +263,22 @@ export class RelationChart extends BaseChart {
                     <p style="margin:4px 0;"><strong>Description:</strong> Node representing ${safeLabel} in the network.</p>
                 </div>
                 <div style="margin-top:12px; text-align:right;">
-                     <button style="padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:var(--cl-radius-sm); cursor:pointer; font-size:var(--cl-font-size-sm);" onclick="console.log('Action on ${safeId}')">Copy ID</button>
+                     <button data-action="copy-id" data-node-id="${safeId}">Copy ID</button>
                 </div>
             </div>
         `;
 
         // Use interactive tooltip
         this.showTooltip(html, e, true);
+
+        // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
+        const btn = this.tooltip.querySelector('[data-action="copy-id"]');
+        if (btn) {
+            btn.style.cssText = 'padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:var(--cl-radius-sm); cursor:pointer; font-size:var(--cl-font-size-sm);';
+            btn.addEventListener('click', () => {
+                console.log('Action on ' + btn.dataset.nodeId);
+            });
+        }
     }
 
     _onDragStart(e, el) {

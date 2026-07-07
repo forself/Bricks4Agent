@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Theme Studio — Bricks4Agent</title>
+    <link rel="icon" href="data:,">
+    <!-- 相對路徑:任何靜態伺服器(Live Server / python / 任意根)皆可;theme.css @import palette.css -->
+    <link rel="stylesheet" href="../../packages/javascript/browser/ui_components/theme.css">
+    <link rel="stylesheet" href="../../packages/javascript/browser/ui_components/editor/richtext.css">
+    <style>
+        html, body { margin: 0; height: 100%; font-family: var(--cl-font-family-cjk), var(--cl-font-family); background: var(--cl-bg); }
+        .ts-controls { display: flex; flex-direction: column; gap: 14px; padding: 12px 4px; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <script type="module" src="./studio.js"></script>
+</body>
+</html>

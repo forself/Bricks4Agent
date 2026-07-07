@@ -94,38 +94,37 @@ export class CanvasMap {
         }
     }
 
+    // 座標映射 + 像素命中測試:CSS 縮放時將顯示座標乘 canvas.width / rect.width 映射回內部座標
+    _layerAtEvent(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+
+        const x = Math.floor((e.clientX - rect.left) * (this.canvas.width / rect.width));
+        const y = Math.floor((e.clientY - rect.top) * (this.canvas.height / rect.height));
+        // 邊界外不做命中
+        if (x < 0 || y < 0 || x >= this.canvas.width || y >= this.canvas.height) return null;
+
+        for (const layer of this.layers) {
+            // Get pixel alpha
+            const pixel = layer.ctx.getImageData(x, y, 1, 1).data;
+            if (pixel[3] > 10) { // Non-transparent
+                return layer;
+            }
+        }
+        return null;
+    }
+
     _bindEvents() {
         this.canvas.addEventListener('mousemove', (e) => {
             if (this.isLoading) return;
 
-            const rect = this.canvas.getBoundingClientRect();
-            // Correct scale if canvas is resized via CSS
-            const scaleX = this.canvas.width / rect.width;
-            const scaleY = this.canvas.height / rect.height;
-
-            const x = Math.floor((e.clientX - rect.left) * scaleX);
-            const y = Math.floor((e.clientY - rect.top) * scaleY);
-
-            // Check hit
-            let hitLayer = null;
-            // Iterate reverse (top to bottom) if z-index matters, 
-            // but here regions shouldn't overlap much. 
-            // However, bounding boxes overlap.
-
-            for (const layer of this.layers) {
-                // Get pixel alpha
-                const pixel = layer.ctx.getImageData(x, y, 1, 1).data;
-                if (pixel[3] > 10) { // Non-transparent
-                    hitLayer = layer;
-                    break;
-                }
-            }
+            const hitLayer = this._layerAtEvent(e);
 
             if (this.hoveredLayer !== hitLayer) {
                 this.hoveredLayer = hitLayer;
                 // Optimize: partial redraw? No, full redraw for simplicity first.
                 // Actually full redraw is expensive with 20+ large images.
-                // Optimization: Draw Base Map once to a buffer. 
+                // Optimization: Draw Base Map once to a buffer.
                 // But let's verify functionality first.
                 this._renderBaseAndHighlight();
 
@@ -138,8 +137,11 @@ export class CanvasMap {
         });
 
         this.canvas.addEventListener('click', (e) => {
-            if (this.hoveredLayer && this.options.onClick) {
-                this.options.onClick(this.hoveredLayer.id, this.hoveredLayer);
+            if (this.isLoading) return;
+            // click 改用映射座標即時命中,不依賴 hover 狀態(觸控點擊/縮放後仍準)
+            const hitLayer = this._layerAtEvent(e);
+            if (hitLayer && this.options.onClick) {
+                this.options.onClick(hitLayer.id, hitLayer);
             }
         });
     }

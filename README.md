@@ -1,233 +1,85 @@
 # Bricks4Agent
 
-中文版本：
+中文版本：[README.zh-TW.md](README.zh-TW.md)
 
-- [README.zh-TW.md](/d:/Bricks4Agent/README.zh-TW.md)
+## What this is
 
-## Position
+`Bricks4Agent` is a **zero-runtime-dependency Vanilla JS UI component library** plus a
+**page/SPA generator** that turns a JSON `PageDefinition` into working pages.
 
-`Bricks4Agent` is a broker-mediated AI operations prototype evolving toward a control plane.
+- **UI component library** — 86 components (form, layout, common, input, viz, social, editor), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
+- **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
+- **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 8 backend).
 
-It is no longer accurately described as only:
+> Building on top of this library? Read [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) first — it is the calling-convention entry point for both humans and AI agents.
 
-- an AI coding CLI
-- a page generator
-- a UI component library
+## Main areas
 
-Those subsystems still exist, but the current live system already includes:
+### UI component library
+- [ui_components](packages/javascript/browser/ui_components) — the components
+- [ui_components/index.js](packages/javascript/browser/ui_components/index.js) — single import barrel
+- [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) — the authoritative component list
+- [STYLE_CONVENTION.md](packages/javascript/browser/ui_components/STYLE_CONVENTION.md) — theming / token rules
 
-- LINE ingress
-- broker-governed high-level routing
-- structured intent, memory, and promotion gates
-- governed execution
-- per-user managed workspaces
-- artifact generation and delivery
-- browser-governance groundwork
-- Azure VM IIS deployment groundwork
-- local admin console
+### Page generator
+- [page-generator](packages/javascript/browser/page-generator) — engine (static + dynamic)
+- [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
-## Current Canonical Live Path
+### SPA scaffolding
+- [templates/spa](templates/spa) — SPA project template (frontend core + .NET 8 backend)
+- [templates/spa/scripts](templates/spa/scripts) — `spa-cli.js`, `generate-page.js`, `generate-api.js`
+- [tools/spa-generator](tools/spa-generator) — generator Web UI (port 3080)
+- [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.md))
+- [tools/static-server](tools/static-server) — static file server for previewing
 
-`LINE webhook -> ngrok public URL -> line-worker -> broker /api/v1/high-level/line/process`
+## Quick start
 
-Current local canonical sidecar ports:
+### Use the component library
 
-- broker: `127.0.0.1:5361`
-- line-worker webhook: `127.0.0.1:5357`
+```js
+import { TextInput, DataTable, BarChart } from './packages/javascript/browser/ui_components/index.js';
 
-Important clarification:
-
-- `agent --line-listen` is legacy/development-only
-- the canonical LINE path is `line-worker -> broker high-level coordinator`
-
-## Main Areas
-
-### Broker and control plane
-
-- [broker](/d:/Bricks4Agent/packages/csharp/broker)
-- [broker-core](/d:/Bricks4Agent/packages/csharp/broker-core)
-
-### LINE ingress and operator path
-
-- [line-worker](/d:/Bricks4Agent/packages/csharp/workers/line-worker)
-
-### Agent runtime and governed execution
-
-- [tools/agent](/d:/Bricks4Agent/tools/agent)
-- [tools/agent/container](/d:/Bricks4Agent/tools/agent/container)
-
-### UI library and generation
-
-- [ui_components](/d:/Bricks4Agent/packages/javascript/browser/ui_components)
-- [page-generator](/d:/Bricks4Agent/packages/javascript/browser/page-generator)
-- [templates/spa](/d:/Bricks4Agent/templates/spa)
-- [tools/spa-generator](/d:/Bricks4Agent/tools/spa-generator)
-
-### Documents and design notes
-
-- [docs/reports](/d:/Bricks4Agent/docs/reports)
-- [docs/designs](/d:/Bricks4Agent/docs/designs)
-- [docs/manuals](/d:/Bricks4Agent/docs/manuals)
-
-## Module Entry Points
-
-Primary module and subsystem entry documents:
-
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [packages/csharp/workers/line-worker/README.zh-TW.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.zh-TW.md)
-- [tools/agent/README.md](/d:/Bricks4Agent/tools/agent/README.md)
-- [tools/agent/container/README.md](/d:/Bricks4Agent/tools/agent/container/README.md)
-- [packages/javascript/browser/page-generator/README.md](/d:/Bricks4Agent/packages/javascript/browser/page-generator/README.md)
-- [tools/spa-generator/README.md](/d:/Bricks4Agent/tools/spa-generator/README.md)
-- [templates/spa/README.md](/d:/Bricks4Agent/templates/spa/README.md)
-- [templates/spa/scripts/README.md](/d:/Bricks4Agent/templates/spa/scripts/README.md)
-- [tools/static-server/README.md](/d:/Bricks4Agent/tools/static-server/README.md)
-- [packages/csharp/reporting/README.md](/d:/Bricks4Agent/packages/csharp/reporting/README.md)
-- [packages/csharp/reporting/ExampleHost/README.md](/d:/Bricks4Agent/packages/csharp/reporting/ExampleHost/README.md)
-- [packages/csharp/database/BaseOrm/README.md](/d:/Bricks4Agent/packages/csharp/database/BaseOrm/README.md)
-
-## Sample Projects
-
-Representative sample/generated project entry points:
-
-- [projects/ShopBricks-Gen/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/README.md)
-- [projects/ShopBricks-Gen/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks-Gen/scripts/README.md)
-- [projects/ShopBricks/scripts/README.md](/d:/Bricks4Agent/projects/ShopBricks/scripts/README.md)
-
-## Current High-Level Model
-
-The LINE high-level responder is currently configured to use:
-
-- provider: `openai-compatible`
-- model: `gpt-5.4-mini`
-
-This high-level model handles:
-
-- conversation
-- clarification
-- mediated query synthesis
-- execution-model suggestion
-
-It is separate from downstream execution-model requests.
-
-## Current High-Level Interaction Grammar
-
-Representative commands include:
-
-- `?help` / `?h`
-- `?search` / `?s`
-- `?rail` / `?r`
-- `?hsr`
-- `?bus` / `?b`
-- `?flight` / `?f`
-- `?profile` / `?p`
-- `/name` / `/n`
-- `/id` / `/i`
-- `#ProjectName`
-- `confirm`
-- `cancel`
-
-## Quick Start
-
-### Canonical local sidecar path
-
-Use:
-
-- [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-- [docs/manuals/line-sidecar-runbook.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-
-Canonical startup command:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 up
+new TextInput({ label: 'Name', required: true }).mount('#app');
 ```
 
-Canonical status command:
+Every component follows the same contract: `new X(options)` → `.mount(container)` → `.destroy()`.
+See [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) for the full convention and the component inventory.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 status
+### Generate a page from a definition
+
+```bash
+# validate / generate / list supported field types
+node tools/page-gen.js --def page.json --mode static --output ./out/
+node tools/page-gen.js --list-types
 ```
 
-Canonical verification command:
+### Scaffold full-stack CRUD
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\packages\csharp\workers\line-worker\line-sidecar.ps1 verify -Message "hello"
+```bash
+# create a project, then generate a feature (frontend pages + C# Model/Service/API)
+node templates/spa/scripts/spa-cli.js new --name my-app --output ./out
+node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Content:text,IsPublic:bool"
 ```
 
-### Agent container path (controlled autonomous agent)
+### Run the generator Web UI
 
-A separate, podman-based governed stack where an LLM-driven agent runs in an
-isolated container and may only act through the broker (claim work, request
-governed tool execution, report results) — it never touches tools, data, or
-model providers directly. See [docs/manuals/agent-container-runbook.md](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md).
-
-Three LLM backends, all verified end-to-end (2026-06-13):
-
-```powershell
-# mock (offline, validates the governed chain)
-node tools/agent/tests/test-podman-governed-stack.js
-
-# local ollama (real open model, e.g. qwen3.6)
-node tools/agent/tests/test-podman-ollama-host-stack.js
-
-# commercial API (real ChatGPT)
-$env:OPENAI_BASE_URL="https://api.openai.com"; $env:OPENAI_API_KEY="<key>"
-$env:OPENAI_API_FORMAT="responses"; $env:STACK_MODEL="gpt-5.4-mini"
-node tools/agent/tests/test-podman-openai-compatible-stack.js
+```bash
+npm run serve   # serves tools/spa-generator/frontend on port 3080
 ```
 
-Requires podman (Windows: `podman machine start` on first use). The broker's
-`LlmProxy` speaks ollama, OpenAI chat, and OpenAI responses formats.
+## Tests
 
-### Local admin console
-
-- `http://127.0.0.1:5361/line-admin.html`
-
-If no admin credential exists in the local DB, the initial password is `admin` and the first login requires a password change.
-
-## Current Strengths
-
-- coherent control-plane direction
-- real live LINE ingress path
-- explicit command grammar and workflow gating
-- growing separation between raw log, interpretation, memory, and execution intent
-- practical integrations for delivery and deployment
-
-## Current Limits
-
-- maturity is uneven across subsystems
-- broker remains a necessary central node and must be kept narrow and disciplined
-- browser governance is still groundwork, not a finished browser automation platform
-- deployment and delivery paths are real, but not yet fully generalized platform primitives
-
-## Recommended Reading Order
-
-1. [docs/reports/CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md)
-2. [packages/csharp/workers/line-worker/README.md](/d:/Bricks4Agent/packages/csharp/workers/line-worker/README.md)
-3. [docs/manuals/line-sidecar-runbook.zh-TW.md](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-4. subsystem-specific documents in `docs/designs`
+```bash
+npm test                        # page-generator test suite
+npm run validate:ui-library     # UI library checks
+npm run audit:ui-styles         # style-token audit
+```
 
 ## Documentation
 
-### Current system and architecture
-
-- [CurrentArchitectureAndProgress-2026-06-13.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-06-13.md) (current)
-- [CurrentArchitectureAndProgress-2026-03-26.md](/d:/Bricks4Agent/docs/reports/CurrentArchitectureAndProgress-2026-03-26.md) (superseded)
-- [Agent Container Runbook](/d:/Bricks4Agent/docs/manuals/agent-container-runbook.md)
-
-### Manuals
-
-- [User Guide](/d:/Bricks4Agent/docs/manuals/user-guide.md)
-- [Engineer Guide](/d:/Bricks4Agent/docs/manuals/engineer-guide.md)
-- [Engineer Guide (EN)](/d:/Bricks4Agent/docs/manuals/engineer-guide-en.md)
-- [LINE Sidecar Runbook](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.md)
-- [LINE Sidecar 操作手冊](/d:/Bricks4Agent/docs/manuals/line-sidecar-runbook.zh-TW.md)
-
-### Design notes
-
-- [HighLevelModelRoutingAndMemory.md](/d:/Bricks4Agent/docs/designs/HighLevelModelRoutingAndMemory.md)
-- [HighLevelMemoryAndLoggingModel.md](/d:/Bricks4Agent/docs/designs/HighLevelMemoryAndLoggingModel.md)
-- [ToolSpecRegistry.md](/d:/Bricks4Agent/docs/designs/ToolSpecRegistry.md)
-- [GoogleDriveDelivery.md](/d:/Bricks4Agent/docs/designs/GoogleDriveDelivery.md)
-- [AzureVmIisDeployment.md](/d:/Bricks4Agent/docs/designs/AzureVmIisDeployment.md)
+- [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — component calling convention + React-rewrite playbook (for AI agents)
+- [AGENT.md](AGENT.md) — SPA generator operation manual (for AI agents)
+- [CLAUDE.md](CLAUDE.md) — Claude Code rules for this repo
+- [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — page generator details
+- [templates/spa/README.md](templates/spa/README.md) — SPA template
+</content>

@@ -10,6 +10,7 @@ export { BarChart } from './BarChart.js';
 export { LineChart } from './LineChart.js';
 export { PieChart } from './PieChart.js';
 export { RoseChart } from './RoseChart.js';
+export { Sparkline } from './Sparkline.js';
 
 // 關聯/階層圖表
 export { OrgChart } from './OrgChart.js';
@@ -26,6 +27,7 @@ export { LeafletMap } from './LeafletMap.js';
 export { MapEditor } from './MapEditor.js';
 export { MapEditorV2 } from './MapEditorV2.js';
 export { OSMMapEditor } from './OSMMapEditor/index.js';
+export { TGOSMapEditor } from './TGOSMapEditor/index.js';
 
 // 繪圖板
 export { DrawingBoard } from './DrawingBoard/index.js';

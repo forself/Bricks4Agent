@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 80,
+  "component_count": 86,
   "components": [
     {
       "schema_version": 1,
@@ -421,6 +421,42 @@
       "styling": {
         "theme_token_only": true,
         "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "common.icon",
+      "registry_name": "Icon",
+      "display_name": "Icon",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Icon/Icon.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
       }
     },
     {
@@ -1325,6 +1361,106 @@
     },
     {
       "schema_version": 1,
+      "component_id": "form.slider",
+      "registry_name": "Slider",
+      "display_name": "Slider",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Slider/Slider.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "slider"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "form.text_area",
+      "registry_name": "TextArea",
+      "display_name": "TextArea",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TextArea/TextArea.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "memo",
+          "plaintext"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "form.text_input",
       "registry_name": "TextInput",
       "display_name": "TextInput",
@@ -2222,6 +2358,42 @@
     },
     {
       "schema_version": 1,
+      "component_id": "layout.stepper",
+      "registry_name": "Stepper",
+      "display_name": "Stepper",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/Stepper/Stepper.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "layout.tab_container",
       "registry_name": "TabContainer",
       "display_name": "TabContainer",
@@ -3007,6 +3179,41 @@
     },
     {
       "schema_version": 1,
+      "component_id": "viz.sparkline",
+      "registry_name": "Sparkline",
+      "display_name": "Sparkline",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/Sparkline.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "viz.sunburst_chart",
       "registry_name": "SunburstChart",
       "display_name": "SunburstChart",
@@ -3015,6 +3222,38 @@
       "source_path": "ui_components/viz/SunburstChart.js",
       "docs_path": "ui_components/viz/README_MapEditor.md",
       "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.tgos_map_editor",
+      "registry_name": "TGOSMapEditor",
+      "display_name": "TGOSMapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/TGOSMapEditor/TGOSMapEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
       "generator": {
         "usable": false,
         "usage_mode": "manual_only",
@@ -3532,6 +3771,42 @@
       "styling": {
         "theme_token_only": true,
         "style_knobs": []
+      }
+    },
+    "Icon": {
+      "schema_version": 1,
+      "component_id": "common.icon",
+      "registry_name": "Icon",
+      "display_name": "Icon",
+      "category": "common",
+      "kind": "atomic",
+      "source_path": "ui_components/common/Icon/Icon.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "display",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "click"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
       }
     },
     "ImageViewer": {
@@ -4434,6 +4709,106 @@
         "style_knobs": []
       }
     },
+    "Slider": {
+      "schema_version": 1,
+      "component_id": "form.slider",
+      "registry_name": "Slider",
+      "display_name": "Slider",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/Slider/Slider.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "slider"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "width"
+        ]
+      }
+    },
+    "TextArea": {
+      "schema_version": 1,
+      "component_id": "form.text_area",
+      "registry_name": "TextArea",
+      "display_name": "TextArea",
+      "category": "form",
+      "kind": "atomic",
+      "source_path": "ui_components/form/TextArea/TextArea.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "field_direct",
+        "supported_field_types": [
+          "memo",
+          "plaintext"
+        ],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "input",
+        "requires_form_field_wrapper": true,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": [
+          "clear",
+          "setReadonly",
+          "setRequired",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "disabled",
+          "readonly",
+          "required",
+          "width"
+        ]
+      }
+    },
     "TextInput": {
       "schema_version": 1,
       "component_id": "form.text_input",
@@ -5331,6 +5706,42 @@
         ]
       }
     },
+    "Stepper": {
+      "schema_version": 1,
+      "component_id": "layout.stepper",
+      "registry_name": "Stepper",
+      "display_name": "Stepper",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/Stepper/Stepper.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [
+          "change"
+        ],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "size"
+        ]
+      }
+    },
     "TabContainer": {
       "schema_version": 1,
       "component_id": "layout.tab_container",
@@ -6116,6 +6527,41 @@
         "style_knobs": []
       }
     },
+    "Sparkline": {
+      "schema_version": 1,
+      "component_id": "viz.sparkline",
+      "registry_name": "Sparkline",
+      "display_name": "Sparkline",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/Sparkline.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": [
+          "height",
+          "width"
+        ]
+      }
+    },
     "SunburstChart": {
       "schema_version": 1,
       "component_id": "viz.sunburst_chart",
@@ -6126,6 +6572,38 @@
       "source_path": "ui_components/viz/SunburstChart.js",
       "docs_path": "ui_components/viz/README_MapEditor.md",
       "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "TGOSMapEditor": {
+      "schema_version": 1,
+      "component_id": "viz.tgos_map_editor",
+      "registry_name": "TGOSMapEditor",
+      "display_name": "TGOSMapEditor",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/TGOSMapEditor/TGOSMapEditor.js",
+      "docs_path": "",
+      "maturity": "beta",
       "generator": {
         "usable": false,
         "usage_mode": "manual_only",
@@ -6236,6 +6714,7 @@
       "DownloadButton",
       "EditorButton",
       "FeatureCard",
+      "Icon",
       "ImageViewer",
       "LoadingSpinner",
       "Notification",
@@ -6262,6 +6741,8 @@
       "NumberInput",
       "Radio",
       "SearchForm",
+      "Slider",
+      "TextArea",
       "TextInput",
       "TimePicker",
       "ToggleSwitch"
@@ -6287,6 +6768,7 @@
       "PanelManager",
       "PhotoWall",
       "SideMenu",
+      "Stepper",
       "TabContainer",
       "WorkflowPanel"
     ],
@@ -6314,7 +6796,9 @@
       "RelationChart",
       "RoseChart",
       "SankeyChart",
+      "Sparkline",
       "SunburstChart",
+      "TGOSMapEditor",
       "TimelineChart",
       "WebPainter"
     ]
@@ -6357,6 +6841,7 @@
       "EditorButton",
       "FeatureCard",
       "FormField",
+      "Icon",
       "ImageViewer",
       "LoadingSpinner",
       "MultiSelectDropdown",
@@ -6366,8 +6851,10 @@
       "Progress",
       "Radio",
       "SimpleDialog",
+      "Slider",
       "SortButton",
       "Tag",
+      "TextArea",
       "TextInput",
       "TimePicker",
       "ToggleSwitch",
@@ -6383,6 +6870,7 @@
       "PanelManager",
       "PhotoWall",
       "SideMenu",
+      "Stepper",
       "TabContainer",
       "Timeline",
       "WorkflowPanel"
@@ -6404,7 +6892,9 @@
       "RelationChart",
       "RoseChart",
       "SankeyChart",
+      "Sparkline",
       "SunburstChart",
+      "TGOSMapEditor",
       "TimelineChart",
       "WebPainter"
     ]
@@ -6423,13 +6913,18 @@
       "Dropdown",
       "EditorButton",
       "FeatureCard",
+      "Icon",
       "OSMMapEditor",
       "PanelManager",
       "PhotoCard",
       "PhotoWall",
       "Progress",
+      "Slider",
       "SortButton",
+      "Stepper",
+      "TGOSMapEditor",
       "Tag",
+      "TextArea",
       "Tooltip",
       "TreeList",
       "UploadButton",
@@ -6483,6 +6978,7 @@
       "SideMenu",
       "SimpleDialog",
       "SocialMediaList",
+      "Sparkline",
       "StatCard",
       "StudentInput",
       "SunburstChart",
@@ -6517,6 +7013,7 @@
       "FormRow",
       "FunctionMenu",
       "HierarchyChart",
+      "Icon",
       "InfoPanel",
       "LeafletMap",
       "LineChart",
@@ -6538,8 +7035,11 @@
       "SideMenu",
       "SimpleDialog",
       "SortButton",
+      "Sparkline",
       "StatCard",
+      "Stepper",
       "SunburstChart",
+      "TGOSMapEditor",
       "TabContainer",
       "Tag",
       "Timeline",
@@ -6574,8 +7074,10 @@
       "PersonInfoList",
       "PhoneListInput",
       "Radio",
+      "Slider",
       "SocialMediaList",
       "StudentInput",
+      "TextArea",
       "TextInput",
       "TimePicker",
       "ToggleSwitch",

@@ -6,12 +6,6 @@
   "scripts": {
     "metadata:build": "node ./ui_components/metadata/build-metadata.mjs",
     "metadata:check": "node ./ui_components/metadata/build-metadata.mjs --check",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "jsdom": "^25.0.1",
-    "vitest": "^3.1.1"
+    "test": "node ./ui_components/editor/richtext-palette.test.mjs"
   }
 }

@@ -137,7 +137,8 @@ export class ChainedInput {
         const wrapper = document.createElement('div');
         wrapper.className = 'chained-input__field';
         wrapper.setAttribute('data-field-name', field.name);
-        wrapper.style.cssText = `display:flex;flex-direction:column;gap:4px;min-width:${field.minWidth || '120px'};${field.flex ? `flex:${field.flex};` : ''}`;
+        // RWD:min-width 以容器寬為上限(min(X,100%)),欄位換行後不會撐破窄容器
+        wrapper.style.cssText = `display:flex;flex-direction:column;gap:4px;min-width:min(${field.minWidth || '120px'}, 100%);max-width:100%;${field.flex ? `flex:${field.flex};` : ''}`;
 
         const label = document.createElement('label');
         label.className = 'chained-input__label';

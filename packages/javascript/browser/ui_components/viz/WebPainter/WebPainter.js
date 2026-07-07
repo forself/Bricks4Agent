@@ -129,17 +129,20 @@ export class WebPainter {
             border-radius: 0 0 var(--cl-radius-lg) var(--cl-radius-lg);
             overflow: auto;
             cursor: crosshair;
-            height: ${this.height}px;
+            max-height: ${this.height}px; /* RWD:改 max-height,畫布縮小時容器同步變矮 */
         `;
 
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
+        // RWD:max-width + height:auto 讓顯示尺寸不超過容器並等比縮放(內部解析度不變)
         canvas.style.cssText = `
             display: block;
             background: var(--cl-bg);
             box-shadow: var(--cl-shadow-sm);
             margin: auto;
+            max-width: 100%;
+            height: auto;
         `;
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
@@ -636,11 +639,14 @@ export class WebPainter {
     _setupCanvas() {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = rect.height * dpr;
+        // 建構時 clamp:rect 已受 max-width:100% 限制 = min(option 寬, 容器可用寬);未佈局時退回 option 尺寸
+        const w = rect.width || this.width;
+        const h = rect.height || this.height;
+        this.canvas.width = w * dpr;
+        this.canvas.height = h * dpr;
         this.ctx.scale(dpr, dpr);
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
+        this.canvas.style.width = w + 'px';
+        this.canvas.style.height = 'auto'; // 高度依內部比例自動,容器再變窄時僅靠 CSS 等比縮放
     }
 
     _setupEventListeners() {

@@ -13,6 +13,7 @@ export { Divider } from './Divider/index.js';
 export { DownloadButton } from './DownloadButton/index.js';
 export { EditorButton } from './EditorButton/index.js';
 export { FeatureCard } from './FeatureCard/index.js';
+export { Icon } from './Icon/index.js';
 export { ImageViewer } from './ImageViewer/index.js';
 export { LoadingSpinner } from './LoadingSpinner/index.js';
 export { Notification } from './Notification/index.js';

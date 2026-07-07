@@ -10,6 +10,8 @@ export { MultiSelectDropdown } from './MultiSelectDropdown/index.js';
 export { NumberInput } from './NumberInput/index.js';
 export { Radio } from './Radio/index.js';
 export { SearchForm } from './SearchForm/index.js';
+export { Slider } from './Slider/index.js';
+export { TextArea } from './TextArea/index.js';
 export { TextInput } from './TextInput/index.js';
 export { TimePicker } from './TimePicker/index.js';
 export { ToggleSwitch } from './ToggleSwitch/index.js';

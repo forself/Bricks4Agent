@@ -18,10 +18,12 @@ import {
     PieChart,
     RelationChart,
     RoseChart,
+    Sparkline,
     SankeyChart,
     SunburstChart,
     TimelineChart,
     OSMMapEditor,
+    TGOSMapEditor,
     DrawingBoard,
     WebPainter
 } from '../viz/index.js';
@@ -36,6 +38,7 @@ import {
     PanelManager,
     PhotoWall,
     SideMenu,
+    Stepper,
     TabContainer,
     WorkflowPanel
 } from '../layout/index.js';
@@ -51,6 +54,8 @@ import {
     NumberInput,
     Radio,
     SearchForm,
+    Slider,
+    TextArea,
     TextInput,
     TimePicker,
     ToggleSwitch
@@ -84,6 +89,7 @@ import {
     DownloadButton,
     EditorButton,
     FeatureCard,
+    Icon,
     ImageViewer,
     LoadingSpinner,
     Notification,
@@ -128,10 +134,12 @@ export class ComponentFactory {
         'PieChart': PieChart,
         'RelationChart': RelationChart,
         'RoseChart': RoseChart,
+        'Sparkline': Sparkline,
         'SankeyChart': SankeyChart,
         'SunburstChart': SunburstChart,
         'TimelineChart': TimelineChart,
         'OSMMapEditor': OSMMapEditor,
+        'TGOSMapEditor': TGOSMapEditor,
         'DrawingBoard': DrawingBoard,
         'WebPainter': WebPainter,
 
@@ -144,6 +152,7 @@ export class ComponentFactory {
         'PanelManager': PanelManager,
         'PhotoWall': PhotoWall,
         'SideMenu': SideMenu,
+        'Stepper': Stepper,
         'TabContainer': TabContainer,
         'WorkflowPanel': WorkflowPanel,
 
@@ -157,6 +166,8 @@ export class ComponentFactory {
         'NumberInput': NumberInput,
         'Radio': Radio,
         'SearchForm': SearchForm,
+        'Slider': Slider,
+        'TextArea': TextArea,
         'TextInput': TextInput,
         'TimePicker': TimePicker,
         'ToggleSwitch': ToggleSwitch,
@@ -186,6 +197,7 @@ export class ComponentFactory {
         'DownloadButton': DownloadButton,
         'EditorButton': EditorButton,
         'FeatureCard': FeatureCard,
+        'Icon': Icon,
         'ImageViewer': ImageViewer,
         'LoadingSpinner': LoadingSpinner,
         'Notification': Notification,

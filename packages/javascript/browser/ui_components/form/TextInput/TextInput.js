@@ -109,11 +109,14 @@ export class TextInput {
 
         const container = document.createElement('div');
         container.className = 'text-input-container';
+        // RWD:max-width 鎖容器寬,呼叫端給固定寬也不溢出
         container.style.cssText = `
             display: flex;
             flex-direction: column;
             gap: 4px;
             width: ${width};
+            max-width: 100%;
+            min-width: 0;
         `;
 
         if (label) {
@@ -132,7 +135,9 @@ export class TextInput {
         input.disabled = disabled;
         input.readOnly = readonly;
         if (maxLength) input.maxLength = maxLength;
+        // RWD:border-box 讓 padding/border 算入 100% 寬(原 content-box 使外框比容器寬 26px 而溢出)
         input.style.cssText = `
+            box-sizing: border-box;
             width: 100%;
             height: ${sizeStyles.height};
             padding: ${sizeStyles.padding};

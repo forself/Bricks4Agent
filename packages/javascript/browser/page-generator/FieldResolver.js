@@ -48,8 +48,11 @@ export class FieldResolver {
         // number
         this._typeMap.set('number', (def) => this._createNumberInput(def));
 
-        // textarea
+        // textarea(原生)/ memo,plaintext(TextArea 元件)/ slider(Slider 元件)
         this._typeMap.set('textarea', (def) => this._createTextarea(def));
+        this._typeMap.set('memo', (def) => this._createTextArea(def));
+        this._typeMap.set('plaintext', (def) => this._createTextArea(def));
+        this._typeMap.set('slider', (def) => this._createSlider(def));
 
         // date
         this._typeMap.set('date', (def) => this._createDatePicker(def));
@@ -160,6 +163,26 @@ export class FieldResolver {
         }
         if (def.defaultValue != null) opts.value = Number(def.defaultValue);
         return new NumberInput(opts);
+    }
+
+    _createSlider(def) {
+        const { Slider } = this._getModule('Slider');
+        const opts = { label: def.label, disabled: def.isReadonly };
+        if (def.validation) {
+            if (def.validation.min != null) opts.min = def.validation.min;
+            if (def.validation.max != null) opts.max = def.validation.max;
+            if (def.validation.step != null) opts.step = def.validation.step;
+        }
+        if (def.defaultValue != null) opts.value = Number(def.defaultValue);
+        return new Slider(opts);
+    }
+
+    _createTextArea(def) {
+        const { TextArea } = this._getModule('TextArea');
+        const opts = { label: def.label, disabled: def.isReadonly, readonly: def.isReadonly };
+        if (def.validation && def.validation.maxLength != null) opts.maxLength = def.validation.maxLength;
+        if (def.defaultValue != null) opts.value = String(def.defaultValue);
+        return new TextArea(opts);
     }
 
     _createTextarea(def) {
@@ -476,6 +499,8 @@ export class FieldResolver {
         const modules = {
             TextInput: () => import('../ui_components/form/TextInput/TextInput.js'),
             NumberInput: () => import('../ui_components/form/NumberInput/NumberInput.js'),
+            Slider: () => import('../ui_components/form/Slider/Slider.js'),
+            TextArea: () => import('../ui_components/form/TextArea/TextArea.js'),
             DatePicker: () => import('../ui_components/form/DatePicker/DatePicker.js'),
             TimePicker: () => import('../ui_components/form/TimePicker/TimePicker.js'),
             Dropdown: () => import('../ui_components/form/Dropdown/Dropdown.js'),

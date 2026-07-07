@@ -43,6 +43,11 @@ export class OSMMapEditor extends WebPainter {
         }
     };
 
+    /** 子類可覆寫:預設圖磚鍵 / 疊層標題(null=用 locale 字串)/ LeafletMap 初始底圖鍵('nlsc'|'nlsc-photo'|'osm') */
+    static DEFAULT_TILE_KEY = 'osm';
+    static MAP_TITLE = null;
+    static LEAFLET_BASE_LAYER = 'osm';
+
     constructor(options = {}) {
         super(options);
 
@@ -52,7 +57,7 @@ export class OSMMapEditor extends WebPainter {
         this.showingMap = false;
         this.mapCenter = options.center || { lat: 25.033, lng: 121.565 };
         this.mapZoom = options.zoom || 12;
-        this.tileLayerKey = options.tileLayer || 'osm';
+        this.tileLayerKey = options.tileLayer || this.constructor.DEFAULT_TILE_KEY;
         this.customTileLayers = options.tileLayers || {};
 
         // 座標顯示
@@ -183,7 +188,7 @@ export class OSMMapEditor extends WebPainter {
         `;
 
         const title = document.createElement('h3');
-        title.textContent = `🗺️ ${strings.mapTitle || 'OpenStreetMap'}`;
+        title.textContent = `🗺️ ${this.constructor.MAP_TITLE || strings.mapTitle || 'OpenStreetMap'}`;
         title.style.margin = '0';
 
         const closeBtn = document.createElement('button');
@@ -284,7 +289,7 @@ export class OSMMapEditor extends WebPainter {
             font-size: var(--cl-font-size-lg);
         `;
 
-        const allLayers = { ...OSMMapEditor.TILE_LAYERS, ...this.customTileLayers };
+        const allLayers = { ...this.constructor.TILE_LAYERS, ...this.customTileLayers };
         Object.entries(allLayers).forEach(([key, layer]) => {
             const option = document.createElement('option');
             option.value = key;
@@ -358,7 +363,7 @@ export class OSMMapEditor extends WebPainter {
                 container: this._mapDiv,
                 center: this.mapCenter,
                 zoom: this.mapZoom,
-                tileLayer: 'osm',
+                tileLayer: this.constructor.LEAFLET_BASE_LAYER,
                 onReady: () => {
                     // 設定自訂圖磚（覆寫 LeafletMap 預設的 NLSC）
                     this._switchTileLayer(this.tileLayerKey);
@@ -375,7 +380,7 @@ export class OSMMapEditor extends WebPainter {
     _switchTileLayer(key) {
         if (!this.leafletMap || !this.leafletMap.map) return;
 
-        const allLayers = { ...OSMMapEditor.TILE_LAYERS, ...this.customTileLayers };
+        const allLayers = { ...this.constructor.TILE_LAYERS, ...this.customTileLayers };
         const layer = allLayers[key];
         if (!layer) return;
 
@@ -518,12 +523,21 @@ export class OSMMapEditor extends WebPainter {
     }
 
     _loadHtml2Canvas() {
-        return new Promise((resolve, reject) => {
+        // 庫內 vendored 1.4.1 優先(SHA-512 與下方 CDN SRI 相同;零外網、嚴格 CSP 可用),缺檔才退 CDN
+        const VENDOR = new URL('../../vendor/html2canvas/html2canvas.min.js', import.meta.url).href;
+        const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        const CDN_SRI = 'sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==';
+        const load = (src, integrity) => new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script.src = src;
+            if (integrity) { script.integrity = integrity; script.crossOrigin = 'anonymous'; }
             script.onload = resolve;
-            script.onerror = () => reject(new Error('Failed to load html2canvas'));
+            script.onerror = () => reject(new Error('Failed to load html2canvas: ' + src));
             document.head.appendChild(script);
+        });
+        return load(VENDOR).catch(() => {
+            console.warn('[OSMMapEditor] 本地 html2canvas 載入失敗,改用 CDN 備援(離線/嚴格 CSP 請確認 vendor/html2canvas/ 已部署)');
+            return load(CDN, CDN_SRI);
         });
     }
 

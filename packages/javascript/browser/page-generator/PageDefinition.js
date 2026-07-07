@@ -124,6 +124,10 @@ export const FieldTypes = {
     ORGANIZATION: 'organization',   // 需要 OrganizationInput
     STUDENT: 'student',             // 需要 StudentInput
 
+    // 數值滑桿 / 多行純文字
+    SLIDER: 'slider',           // 需要 Slider
+    MEMO: 'memo',               // 需要 TextArea(多行純文字)
+
     // 評分 / 標籤
     RATING: 'rating',
     TAGS: 'tags',
@@ -157,6 +161,8 @@ export const ComponentMapping = {
     [FieldTypes.CANVAS]: 'DrawingBoard',
     [FieldTypes.GEOLOCATION]: 'GeolocationService',
     [FieldTypes.WEATHER]: 'WeatherService',
+    [FieldTypes.SLIDER]: 'Slider',
+    [FieldTypes.MEMO]: 'TextArea',
     // 複合輸入元件
     [FieldTypes.ADDRESS]: 'AddressInput',
     [FieldTypes.ADDRESSLIST]: 'AddressListInput',

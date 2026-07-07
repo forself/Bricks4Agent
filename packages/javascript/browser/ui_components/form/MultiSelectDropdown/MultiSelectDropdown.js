@@ -22,7 +22,7 @@ export class MultiSelectDropdown {
             onChange: null,
             size: 'medium',
             disabled: false,
-            width: '300px',
+            width: '100%', // RWD:未指定時跟隨容器寬(原固定 300px 在窄容器會溢出);呼叫端仍可傳固定寬
             emptyText: Locale.t('multiSelect.emptyText'),
             modalTitle: Locale.t('multiSelect.modalTitle'),
             maxCount: Infinity,
@@ -117,7 +117,8 @@ export class MultiSelectDropdown {
         const container = document.createElement('div');
         container.className = 'msd';
         container.tabIndex = -1;
-        container.style.cssText = `position:relative;display:inline-block;width:${this.options.width};font-family:inherit;`;
+        // RWD:max-width 鎖容器寬,即使呼叫端給固定寬也不溢出;min-width:0 允許 flex 情境收縮
+        container.style.cssText = `position:relative;display:inline-block;width:${this.options.width};max-width:100%;min-width:0;box-sizing:border-box;font-family:inherit;`;
 
         const selector = document.createElement('div');
         selector.className = 'msd__selector';

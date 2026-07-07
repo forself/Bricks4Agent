@@ -1,0 +1,17 @@
+/* {{PROJECT_NAME}} 應用層樣式 — 一律用 var(--cl-*) token,不硬編色碼(稽核規則同上游)。
+   theme.css 已於 index.html 引入;此檔只放應用版面。 */
+html, body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--cl-font-family-cjk), var(--cl-font-family);
+    background: var(--cl-bg);
+    color: var(--cl-text);
+}
+.app-shell {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

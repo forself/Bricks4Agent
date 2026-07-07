@@ -19,6 +19,12 @@ export class LeafletMap {
             center: { lat: 25.033, lng: 121.5654 }, // 台北 101
             zoom: 12,
             tileLayer: 'nlsc', // 預設使用 NLSC
+            // Leaflet 資源:預設走庫內 vendored(../vendor/leaflet/,以本模組 URL 解析,
+            // 零外網、嚴格 CSP 'self' 可用)。可覆寫為自訂路徑;vendored 載入失敗才退 CDN(附警告)。
+            leafletCssUrl: null,
+            leafletJsUrl: null,
+            leafletCssIntegrity: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=',
+            leafletJsIntegrity: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=',
             ...options
         };
 
@@ -28,6 +34,9 @@ export class LeafletMap {
 
         this.map = null;
         this.tileLayer = null;
+        // RWD: 容器尺寸監聽狀態
+        this._resizeObserver = null;
+        this._resizeTimer = null;
 
         if (!this.container) {
             console.error('Map container not found');
@@ -38,22 +47,42 @@ export class LeafletMap {
     }
 
     async _loadLeaflet() {
-        // 載入 Leaflet CSS
+        const CDN_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        const CDN_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        // 庫內 vendored(1.9.4,SHA-256 與上列 CDN SRI 相同):以本模組 URL 解析,任何伺服器根皆正確
+        const VENDOR_CSS = new URL('../vendor/leaflet/leaflet.css', import.meta.url).href;
+        const VENDOR_JS = new URL('../vendor/leaflet/leaflet.js', import.meta.url).href;
+
+        // 若 Leaflet 已由宿主頁面載入,直接用,不再抓取
+        if (typeof L !== 'undefined') {
+            this._initMap();
+            return;
+        }
+
+        const cssUrl = this.options.leafletCssUrl || VENDOR_CSS;
+        const jsUrl = this.options.leafletJsUrl || VENDOR_JS;
+
+        // 載入 Leaflet CSS(vendored/自訂失敗時換 CDN 備援)
         if (!document.querySelector('link[href*="leaflet"]')) {
             const link = document.createElement('link');
             link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-            link.crossOrigin = '';
+            link.href = cssUrl;
+            link.onerror = () => {
+                console.warn('[LeafletMap] 本地 Leaflet CSS 載入失敗,改用 CDN 備援:' + cssUrl);
+                link.onerror = null;
+                link.integrity = this.options.leafletCssIntegrity;
+                link.crossOrigin = '';
+                link.href = CDN_CSS;
+            };
             document.head.appendChild(link);
         }
 
-        // 載入 Leaflet JS
-        if (typeof L === 'undefined') {
-            await this._loadScript(
-                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-                'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
-            );
+        // 載入 Leaflet JS(vendored/自訂失敗時換 CDN 備援;離線+缺 vendored 才會真的失敗)
+        try {
+            await this._loadScript(jsUrl, null);
+        } catch (e) {
+            console.warn('[LeafletMap] 本地 Leaflet JS 載入失敗,改用 CDN 備援(嚴格 CSP/離線環境請確認 vendor/leaflet/ 已部署):' + jsUrl);
+            await this._loadScript(CDN_JS, this.options.leafletJsIntegrity);
         }
 
         this._initMap();
@@ -80,6 +109,14 @@ export class LeafletMap {
         }
 
         try {
+            // RWD: 容器 0 高時給合理 fallback,避免地圖看不見
+            if (!this.container.clientHeight) {
+                this.container.style.setProperty('min-height', '300px');
+            }
+            // 確保容器不超出父層寬度
+            this.container.style.setProperty('max-width', '100%');
+            this.container.style.setProperty('box-sizing', 'border-box');
+
             // 初始化地圖
             this.map = L.map(this.container, {
                 center: [this.options.center.lat, this.options.center.lng],
@@ -88,6 +125,18 @@ export class LeafletMap {
 
             // 設定圖層
             this._setTileLayer(this.options.tileLayer);
+
+            // RWD: 容器尺寸變化時重算地圖 (debounce 100ms),避免底圖破碎/留白
+            if (typeof ResizeObserver !== 'undefined') {
+                this._resizeObserver = new ResizeObserver(() => {
+                    if (this._resizeTimer) clearTimeout(this._resizeTimer);
+                    this._resizeTimer = setTimeout(() => {
+                        this._resizeTimer = null;
+                        if (this.map) this.map.invalidateSize();
+                    }, 100);
+                });
+                this._resizeObserver.observe(this.container);
+            }
 
             console.log('Leaflet Map Initialized');
 
@@ -278,6 +327,15 @@ export class LeafletMap {
      * 銷毀地圖
      */
     destroy() {
+        // RWD: 移除尺寸監聽與待執行的 debounce
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
+        if (this._resizeTimer) {
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = null;
+        }
         if (this.map) {
             this.map.remove();
             this.map = null;

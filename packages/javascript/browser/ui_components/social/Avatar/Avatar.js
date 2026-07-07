@@ -154,7 +154,7 @@ export class Avatar {
 
         let inner;
         if (src) {
-            inner = `<img class="social-avatar__image" src="${safeSrc}" alt="${safeAlt}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+            inner = `<img class="social-avatar__image" src="${safeSrc}" alt="${safeAlt}">
                      <div class="social-avatar__fallback" style="display:none;background:${bgColor};font-size:${fontSize}px;">${initial}</div>`;
         } else {
             inner = `<div class="social-avatar__fallback" style="background:${bgColor};font-size:${fontSize}px;">${initial}</div>`;
@@ -186,6 +186,17 @@ export class Avatar {
 
         if (this.options.onClick && this.element) {
             this.element.addEventListener('click', this.options.onClick);
+        }
+
+        // CSP 相容：改用 JS 綁定取代 inline onerror 屬性
+        if (this.options.src && this.element) {
+            const img = this.element.querySelector('.social-avatar__image');
+            if (img) {
+                img.addEventListener('error', () => {
+                    img.style.display = 'none';
+                    if (img.nextElementSibling) img.nextElementSibling.style.display = 'flex';
+                });
+            }
         }
     }
 

@@ -12,5 +12,6 @@ export {
 } from './Panel/index.js';
 export { PhotoWall } from './PhotoWall/index.js';
 export { SideMenu } from './SideMenu/index.js';
+export { Stepper } from './Stepper/index.js';
 export { TabContainer } from './TabContainer/index.js';
 export { WorkflowPanel } from './WorkflowPanel/index.js';

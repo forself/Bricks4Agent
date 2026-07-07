@@ -2,7 +2,7 @@ import Locale from '../../i18n/index.js';
 
 /**
  * DownloadButton Component
- * 下載按鈕元件 - 支援 XLS、Word、PDF、Image、Portrait 五種類型
+ * 下載按鈕元件 - 支援 XLS、Word、PDF、Image、Portrait、JSON、CSS 七種類型
  */
 
 export class DownloadButton {
@@ -11,7 +11,9 @@ export class DownloadButton {
         WORD: 'word',
         PDF: 'pdf',
         IMAGE: 'image',
-        PORTRAIT: 'portrait'
+        PORTRAIT: 'portrait',
+        JSON: 'json',
+        CSS: 'css'
     };
 
     static ICONS = {
@@ -74,13 +76,35 @@ export class DownloadButton {
                 <path d="M14 34Q24 24 34 34Z" fill="var(--cl-cyan-dark)"/>
                 <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
             </svg>`
+        },
+        json: {
+            color: 'var(--cl-amber-700)',
+            label: 'JSON',
+            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="48" height="48" rx="8" fill="var(--cl-amber-700)"/>
+                <path d="M10 8H32L38 14V32H10V8Z" fill="white" fill-opacity="0.9"/>
+                <path d="M32 8V14H38" fill="var(--cl-amber-500)" stroke="var(--cl-amber-500)" stroke-width="1"/>
+                <text x="24" y="25" font-family="Arial" font-size="7" font-weight="bold" fill="var(--cl-amber-700)" text-anchor="middle">JSON</text>
+                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
+            </svg>`
+        },
+        css: {
+            color: 'var(--cl-indigo-700)',
+            label: 'CSS',
+            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="48" height="48" rx="8" fill="var(--cl-indigo-700)"/>
+                <path d="M10 8H32L38 14V32H10V8Z" fill="white" fill-opacity="0.9"/>
+                <path d="M32 8V14H38" fill="var(--cl-indigo-500)" stroke="var(--cl-indigo-500)" stroke-width="1"/>
+                <text x="24" y="25" font-family="Arial" font-size="8" font-weight="bold" fill="var(--cl-indigo-700)" text-anchor="middle">CSS</text>
+                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
+            </svg>`
         }
     };
 
     /**
      * 建立下載按鈕
      * @param {Object} options - 設定選項
-     * @param {string} options.type - 按鈕類型 (xls, word, pdf, image, portrait)
+     * @param {string} options.type - 按鈕類型 (xls, word, pdf, image, portrait, json, css)
      * @param {string} options.url - 下載連結
      * @param {string} options.filename - 下載檔名
      * @param {Function} options.onClick - 點擊回調
