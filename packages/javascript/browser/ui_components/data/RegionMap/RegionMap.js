@@ -174,23 +174,36 @@ export class RegionMap {
 
 
     _showTooltip(e, name, data) {
-        const escape = (str) => String(str).replaceAll(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-        
-        let content = `<div style="font-weight:600; margin-bottom:4px;">${escape(name)}</div>`;
-        
+        // CSP style-src 'self':inline style 屬性會被剝除,改用 createElement + CSSOM cssText
+        // (textContent 直接寫入,兼作 XSS 逸出,取代原字串 escape)
+        this.tooltip.innerHTML = '';
+
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-weight:600; margin-bottom:4px;';
+        titleEl.textContent = String(name);
+        this.tooltip.appendChild(titleEl);
+
         if (data) {
             if (data.value !== undefined) {
-                content += `<div>數值: <span style="color:var(--cl-primary-light)">${escape(data.value)}</span></div>`;
+                const valueRow = document.createElement('div');
+                valueRow.appendChild(document.createTextNode('數值: '));
+                const valueEl = document.createElement('span');
+                valueEl.style.cssText = 'color:var(--cl-primary-light)';
+                valueEl.textContent = String(data.value);
+                valueRow.appendChild(valueEl);
+                this.tooltip.appendChild(valueRow);
             }
             // 顯示額外資訊
             Object.keys(data).forEach(key => {
                 if (key !== 'value' && key !== 'color' && key !== 'label' && typeof data[key] !== 'object') {
-                    content += `<div style="font-size:var(--cl-font-size-xs); color:var(--cl-text-light)">${key}: ${escape(data[key])}</div>`;
+                    const extraRow = document.createElement('div');
+                    extraRow.style.cssText = 'font-size:var(--cl-font-size-xs); color:var(--cl-text-light)';
+                    extraRow.textContent = `${key}: ${data[key]}`;
+                    this.tooltip.appendChild(extraRow);
                 }
             });
         }
 
-        this.tooltip.innerHTML = content;
         this.tooltip.style.opacity = '1';
         this._moveTooltip(e);
     }

@@ -71,110 +71,10 @@ export class Progress {
         this.element = null;
         /** @private */
         this._container = null;
+        /** @private Web Animations API handles (for indeterminate mode) */
+        this._animations = [];
 
-        this._injectStyles();
         this._create();
-    }
-
-    /* ------------------------------------------------------------------ */
-    /*  Style injection (once per page)                                   */
-    /* ------------------------------------------------------------------ */
-
-    /** @private Inject shared CSS into &lt;head&gt; if not already present. */
-    _injectStyles() {
-        if (document.getElementById('cl-progress-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'cl-progress-styles';
-        style.textContent = `
-            /* ---- Linear bar ---- */
-            .cl-progress-bar-track {
-                width: 100%;
-                background: var(--cl-bg-subtle);
-                border-radius: var(--cl-radius-pill);
-                overflow: hidden;
-                position: relative;
-            }
-            .cl-progress-bar-fill {
-                height: 100%;
-                border-radius: var(--cl-radius-pill);
-                transition: width var(--cl-transition);
-            }
-
-            /* Indeterminate bar animation */
-            @keyframes cl-progress-indeterminate-bar {
-                0%   { left: -35%; width: 35%; }
-                60%  { left: 100%; width: 35%; }
-                100% { left: 100%; width: 35%; }
-            }
-            .cl-progress-bar-fill--indeterminate {
-                position: absolute;
-                top: 0;
-                left: -35%;
-                width: 35%;
-                animation: cl-progress-indeterminate-bar 1.8s ease-in-out infinite;
-            }
-
-            /* ---- Circle (SVG) ---- */
-            .cl-progress-circle {
-                transform: rotate(-90deg);
-            }
-            .cl-progress-circle-track {
-                fill: none;
-                stroke: var(--cl-bg-subtle);
-            }
-            .cl-progress-circle-fill {
-                fill: none;
-                stroke-linecap: round;
-                transition: stroke-dashoffset var(--cl-transition);
-            }
-
-            /* Indeterminate circle animation */
-            @keyframes cl-progress-indeterminate-circle-rotate {
-                0%   { transform: rotate(-90deg); }
-                100% { transform: rotate(270deg); }
-            }
-            @keyframes cl-progress-indeterminate-circle-dash {
-                0%   { stroke-dashoffset: var(--cl-progress-circumference); }
-                50%  { stroke-dashoffset: calc(var(--cl-progress-circumference) * 0.25); }
-                100% { stroke-dashoffset: var(--cl-progress-circumference); }
-            }
-            .cl-progress-circle--indeterminate {
-                animation: cl-progress-indeterminate-circle-rotate 2s linear infinite;
-            }
-            .cl-progress-circle--indeterminate .cl-progress-circle-fill {
-                animation: cl-progress-indeterminate-circle-dash 1.5s ease-in-out infinite;
-                transition: none;
-            }
-
-            /* ---- Wrapper ---- */
-            .cl-progress-wrapper {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                width: 100%;
-            }
-            .cl-progress-circle-wrapper {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                position: relative;
-            }
-            .cl-progress-text {
-                font-size: var(--cl-font-size-xs);
-                color: var(--cl-text-secondary);
-                white-space: nowrap;
-                font-family: var(--cl-font-family);
-            }
-            .cl-progress-circle-text {
-                position: absolute;
-                font-size: var(--cl-font-size-xs);
-                color: var(--cl-text-secondary);
-                font-family: var(--cl-font-family);
-                font-weight: 600;
-            }
-        `;
-        document.head.appendChild(style);
     }
 
     /* ------------------------------------------------------------------ */
@@ -198,21 +98,51 @@ export class Progress {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cl-progress-wrapper';
+        wrapper.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; width: 100%;';
 
         const track = document.createElement('div');
         track.className = 'cl-progress-bar-track';
-        track.style.height = `${height}px`;
+        track.style.cssText = [
+            'width: 100%;',
+            'background: var(--cl-bg-subtle);',
+            'border-radius: var(--cl-radius-pill);',
+            'overflow: hidden;',
+            'position: relative;',
+            `height: ${height}px;`
+        ].join(' ');
         track.setAttribute('role', 'progressbar');
         track.setAttribute('aria-valuemin', '0');
         track.setAttribute('aria-valuemax', String(max));
 
         const fill = document.createElement('div');
         fill.className = 'cl-progress-bar-fill';
-        fill.style.background = VARIANT_MAP[variant] || VARIANT_MAP.primary;
+        fill.style.cssText = [
+            'height: 100%;',
+            'border-radius: var(--cl-radius-pill);',
+            'transition: width var(--cl-transition);',
+            `background: ${VARIANT_MAP[variant] || VARIANT_MAP.primary};`
+        ].join(' ');
 
         if (indeterminate) {
             fill.classList.add('cl-progress-bar-fill--indeterminate');
+            fill.style.position = 'absolute';
+            fill.style.top = '0';
+            fill.style.left = '-35%';
+            fill.style.width = '35%';
+            fill.style.transition = 'none';
             track.removeAttribute('aria-valuenow');
+
+            // @keyframes cl-progress-indeterminate-bar replacement (Web Animations API, CSP-safe)
+            if (typeof fill.animate === 'function') {
+                this._animations.push(fill.animate(
+                    [
+                        { left: '-35%', width: '35%', offset: 0 },
+                        { left: '100%', width: '35%', offset: 0.6 },
+                        { left: '100%', width: '35%', offset: 1 }
+                    ],
+                    { duration: 1800, iterations: Infinity, easing: 'ease-in-out' }
+                ));
+            }
         } else {
             fill.style.width = `${pct}%`;
             track.setAttribute('aria-valuenow', String(value));
@@ -225,6 +155,7 @@ export class Progress {
             const text = document.createElement('span');
             text.className = 'cl-progress-text';
             text.textContent = `${Math.round(pct)}%`;
+            text.style.cssText = 'font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); white-space: nowrap; font-family: var(--cl-font-family);';
             wrapper.appendChild(text);
         }
 
@@ -248,8 +179,14 @@ export class Progress {
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cl-progress-circle-wrapper';
-        wrapper.style.width = `${diameter}px`;
-        wrapper.style.height = `${diameter}px`;
+        wrapper.style.cssText = [
+            'display: inline-flex;',
+            'align-items: center;',
+            'justify-content: center;',
+            'position: relative;',
+            `width: ${diameter}px;`,
+            `height: ${diameter}px;`
+        ].join(' ');
 
         const ns = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(ns, 'svg');
@@ -257,20 +194,32 @@ export class Progress {
         svg.setAttribute('height', String(diameter));
         svg.setAttribute('viewBox', `0 0 ${diameter} ${diameter}`);
         svg.classList.add('cl-progress-circle');
+        svg.style.cssText = 'transform: rotate(-90deg);';
         svg.setAttribute('role', 'progressbar');
         svg.setAttribute('aria-valuemin', '0');
         svg.setAttribute('aria-valuemax', String(max));
 
         if (indeterminate) {
             svg.classList.add('cl-progress-circle--indeterminate');
-            svg.style.setProperty('--cl-progress-circumference', `${circumference}`);
             svg.removeAttribute('aria-valuenow');
+
+            // @keyframes cl-progress-indeterminate-circle-rotate replacement (WAAPI, CSP-safe)
+            if (typeof svg.animate === 'function') {
+                this._animations.push(svg.animate(
+                    [
+                        { transform: 'rotate(-90deg)' },
+                        { transform: 'rotate(270deg)' }
+                    ],
+                    { duration: 2000, iterations: Infinity, easing: 'linear' }
+                ));
+            }
         } else {
             svg.setAttribute('aria-valuenow', String(value));
         }
 
         const trackCircle = document.createElementNS(ns, 'circle');
         trackCircle.classList.add('cl-progress-circle-track');
+        trackCircle.style.cssText = 'fill: none; stroke: var(--cl-bg-subtle);';
         trackCircle.setAttribute('cx', String(diameter / 2));
         trackCircle.setAttribute('cy', String(diameter / 2));
         trackCircle.setAttribute('r', String(radius));
@@ -278,6 +227,9 @@ export class Progress {
 
         const fillCircle = document.createElementNS(ns, 'circle');
         fillCircle.classList.add('cl-progress-circle-fill');
+        fillCircle.style.cssText = indeterminate
+            ? 'fill: none; stroke-linecap: round; transition: none;'
+            : 'fill: none; stroke-linecap: round; transition: stroke-dashoffset var(--cl-transition);';
         fillCircle.setAttribute('cx', String(diameter / 2));
         fillCircle.setAttribute('cy', String(diameter / 2));
         fillCircle.setAttribute('r', String(radius));
@@ -287,6 +239,18 @@ export class Progress {
 
         if (indeterminate) {
             fillCircle.setAttribute('stroke-dashoffset', String(circumference));
+
+            // @keyframes cl-progress-indeterminate-circle-dash replacement (WAAPI, CSP-safe)
+            if (typeof fillCircle.animate === 'function') {
+                this._animations.push(fillCircle.animate(
+                    [
+                        { strokeDashoffset: `${circumference}px`, offset: 0 },
+                        { strokeDashoffset: `${circumference * 0.25}px`, offset: 0.5 },
+                        { strokeDashoffset: `${circumference}px`, offset: 1 }
+                    ],
+                    { duration: 1500, iterations: Infinity, easing: 'ease-in-out' }
+                ));
+            }
         } else {
             const offset = circumference - (pct / 100) * circumference;
             fillCircle.setAttribute('stroke-dashoffset', String(offset));
@@ -300,6 +264,7 @@ export class Progress {
             const text = document.createElement('span');
             text.className = 'cl-progress-circle-text';
             text.textContent = `${Math.round(pct)}%`;
+            text.style.cssText = 'position: absolute; font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); font-family: var(--cl-font-family); font-weight: 600;';
             // Adjust font size based on circle size
             if (size === 'small') {
                 text.style.fontSize = 'var(--cl-font-size-2xs)';
@@ -390,6 +355,8 @@ export class Progress {
      * Remove the element from the DOM and clean up references.
      */
     destroy() {
+        this._animations.forEach(anim => anim.cancel());
+        this._animations = [];
         this.element?.remove();
         this.element = null;
         this._fill = null;

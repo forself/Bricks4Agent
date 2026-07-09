@@ -46,10 +46,9 @@ export class Checkbox {
         };
     }
 
-    _getCheckmarkMarkup(size) {
-        const iconSize = Math.max(10, size - 8);
+    _getCheckmarkMarkup() {
         return `
-            <svg viewBox="0 0 12 12" fill="none" style="width: ${iconSize}px; height: ${iconSize}px;">
+            <svg viewBox="0 0 12 12" fill="none">
                 <path d="M2 6L5 9L10 3" stroke="var(--cl-text-inverse)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         `;
@@ -163,7 +162,13 @@ export class Checkbox {
         if (this.box) {
             this.box.style.borderColor = state.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)';
             this.box.style.background = state.checked ? 'var(--cl-primary)' : 'var(--cl-bg)';
-            this.box.innerHTML = state.checked ? this._getCheckmarkMarkup(size) : '';
+            this.box.innerHTML = state.checked ? this._getCheckmarkMarkup() : '';
+            // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派尺寸
+            const checkIcon = this.box.querySelector('svg');
+            if (checkIcon) {
+                const iconSize = Math.max(10, size - 8);
+                checkIcon.style.cssText = `width: ${iconSize}px; height: ${iconSize}px;`;
+            }
         }
     }
 

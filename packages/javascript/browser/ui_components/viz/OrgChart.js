@@ -158,11 +158,10 @@ export class OrgChart extends BaseChart {
             const stroke = 'var(--cl-border)';
 
             html += `
-                <g transform="translate(${n.x - n.w / 2}, ${n.y - n.h / 2})" 
-                   class="org-node" 
-                   data-id="${n.id}" 
-                   style="cursor: pointer">
-                    
+                <g transform="translate(${n.x - n.w / 2}, ${n.y - n.h / 2})"
+                   class="org-node"
+                   data-id="${n.id}">
+
                     <!-- Card Body Group -->
                     <g class="card-body">
                         <rect width="${n.w}" height="${n.h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="2" 
@@ -185,6 +184,9 @@ export class OrgChart extends BaseChart {
 
         // Bind Events
         this.gNodes.querySelectorAll('.org-node').forEach(el => {
+            // CSP 相容:style-src 'self' 會擋 HTML 剖析的 style 屬性,改以 CSSOM 指派
+            el.style.cursor = 'pointer';
+
             const toggleBtn = el.querySelector('.toggle-btn');
             const cardBody = el.querySelector('.card-body');
 
@@ -233,19 +235,35 @@ export class OrgChart extends BaseChart {
         const safeId = this.escapeHtml(node.id);
 
         this.showDetailCard(`
-            <h3 style="margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px">${safeTitle}</h3>
-            <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px">${safeLabel}</span>
-            <div style="background:var(--cl-bg); padding:15px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-lg); line-height:1.6">
+            <h3 class="org-detail-title">${safeTitle}</h3>
+            <span class="org-detail-badge">${safeLabel}</span>
+            <div class="org-detail-info">
                 <p><strong>Employee ID:</strong> ${safeId}</p>
                 <p><strong>Department:</strong> ${safeLabel || 'Engineering'}</p>
                 <p><strong>Email:</strong> ${safeId.toLowerCase() || 'user'}@example.com</p>
                 <p><strong>Phone:</strong> +886 912-345-678</p>
                 <p><strong>Location:</strong> Taipei HQ, 4F</p>
             </div>
-            <div style="margin-top:20px; text-align:right">
-                 <button id="${btnId}" style="padding:8px 16px; background:var(--cl-primary); color:var(--cl-text-inverse); border:none; border-radius:var(--cl-radius-sm); cursor:pointer">${this.escapeHtml(action.label)}</button>
+            <div class="org-detail-actions">
+                 <button id="${btnId}">${this.escapeHtml(action.label)}</button>
             </div>
         `, `Details - ${safeTitle}`);
+
+        // CSP 相容:card 插入 DOM 後以 CSSOM(el.style.cssText)指派樣式,
+        // 因 style-src 'self' 會剝掉 innerHTML 剖析出的 style 屬性
+        const body = this._getDetailCardBody();
+        if (body) {
+            const title = body.querySelector('.org-detail-title');
+            if (title) title.style.cssText = 'margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px';
+            const badge = body.querySelector('.org-detail-badge');
+            if (badge) badge.style.cssText = 'display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px';
+            const info = body.querySelector('.org-detail-info');
+            if (info) info.style.cssText = 'background:var(--cl-bg); padding:15px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-lg); line-height:1.6';
+            const actions = body.querySelector('.org-detail-actions');
+            if (actions) actions.style.cssText = 'margin-top:20px; text-align:right';
+            const actionBtn = document.getElementById(btnId);
+            if (actionBtn) actionBtn.style.cssText = 'padding:8px 16px; background:var(--cl-primary); color:var(--cl-text-inverse); border:none; border-radius:var(--cl-radius-sm); cursor:pointer';
+        }
 
         // Attach Event Listener
         // Note: The card is in the DOM now.
@@ -255,6 +273,13 @@ export class OrgChart extends BaseChart {
                 btn.onclick = () => action.onClick(node);
             }
         }, 0);
+    }
+
+    // 取最上層(最新開啟)detail card 的內容容器,供渲染後以 CSSOM 指派樣式
+    _getDetailCardBody() {
+        const overlays = document.querySelectorAll('.viz-detail-overlay');
+        if (!overlays.length) return null;
+        return overlays[overlays.length - 1].querySelector('.viz-card-content');
     }
 
     _findNode(node, id) {

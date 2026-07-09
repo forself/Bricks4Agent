@@ -119,7 +119,6 @@ export class BasePanel {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.className = 'panel__toggle';
                 toggleBtn.type = 'button';
-                toggleBtn.innerHTML = this._getToggleIcon();
                 toggleBtn.style.cssText = `
                     display: flex;
                     align-items: center;
@@ -135,6 +134,7 @@ export class BasePanel {
                 toggleBtn.addEventListener('click', () => this.toggle());
                 headerLeft.appendChild(toggleBtn);
                 this.toggleBtn = toggleBtn;
+                this._updateToggleIcon(toggleBtn);
             }
 
             if (title) {
@@ -209,10 +209,24 @@ export class BasePanel {
     }
 
     _getToggleIcon() {
-        const rotation = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
-        return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="transform: ${rotation}; transition: transform 0.2s;">
+        return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M6 4L10 8L6 12" stroke="var(--cl-text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>`;
+    }
+
+    /**
+     * 更新收折圖示
+     * CSP（style-src 'self'）合規：HTML 剖析出的 style 屬性會被剝除，
+     * rotate/transition 改在 innerHTML 之後以 CSSOM（svg.style）指派。
+     */
+    _updateToggleIcon(btn = this.toggleBtn) {
+        if (!btn) return;
+        btn.innerHTML = this._getToggleIcon();
+        const svg = btn.querySelector('svg');
+        if (svg) {
+            svg.style.transition = 'transform 0.2s';
+            svg.style.transform = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
     }
 
     _bindEvents() {
@@ -269,7 +283,7 @@ export class BasePanel {
         this.expanded = true;
         this.content.style.display = '';
         if (this.toggleBtn) {
-            this.toggleBtn.innerHTML = this._getToggleIcon();
+            this._updateToggleIcon();
         }
 
         if (this.options.onExpand) {
@@ -286,7 +300,7 @@ export class BasePanel {
         this.expanded = false;
         this.content.style.display = 'none';
         if (this.toggleBtn) {
-            this.toggleBtn.innerHTML = this._getToggleIcon();
+            this._updateToggleIcon();
         }
 
         if (this.options.onCollapse) {

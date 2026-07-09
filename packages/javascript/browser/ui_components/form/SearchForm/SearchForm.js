@@ -59,125 +59,13 @@ export class SearchForm {
         this._fieldComponents = new Map();
         this.element = null;
 
-        this._injectStyles();
         this._create();
-    }
-
-    _injectStyles() {
-        if (document.getElementById('search-form-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'search-form-styles';
-        style.textContent = `
-            .search-form {
-                background: var(--cl-bg);
-                border: 1px solid var(--cl-border-light);
-                border-radius: var(--cl-radius-lg);
-                padding: 16px;
-            }
-            .search-form-fields {
-                display: grid;
-                gap: 16px;
-                margin-bottom: 16px;
-            }
-            .search-form-field {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-            }
-            .search-form-field.hidden {
-                display: none;
-            }
-            .search-form-label {
-                font-size: var(--cl-font-size-md);
-                font-weight: 500;
-                color: var(--cl-text);
-            }
-            .search-form-label .required {
-                color: var(--cl-danger);
-                margin-left: 2px;
-            }
-            .search-form-input {
-                min-height: 36px;
-            }
-            .search-form-date-range {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .search-form-date-range span {
-                color: var(--cl-text-placeholder);
-            }
-            .search-form-actions {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding-top: 16px;
-                border-top: 1px solid var(--cl-border-light);
-            }
-            .search-form-btn {
-                padding: 8px 24px;
-                border: 1px solid;
-                border-radius: var(--cl-radius-sm);
-                font-size: var(--cl-font-size-lg);
-                cursor: pointer;
-                transition: all var(--cl-transition);
-            }
-            .search-form-btn-primary {
-                background: var(--cl-primary);
-                border-color: var(--cl-primary);
-                color: var(--cl-bg);
-            }
-            .search-form-btn-primary:hover {
-                background: var(--cl-primary-dark);
-                border-color: var(--cl-primary-dark);
-            }
-            .search-form-btn-default {
-                background: var(--cl-bg);
-                border-color: var(--cl-border);
-                color: var(--cl-text);
-            }
-            .search-form-btn-default:hover {
-                border-color: var(--cl-primary);
-                color: var(--cl-primary);
-            }
-            .search-form-expand {
-                margin-left: auto;
-                background: transparent;
-                border: none;
-                color: var(--cl-primary);
-                cursor: pointer;
-                font-size: var(--cl-font-size-md);
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .search-form-expand:hover {
-                text-decoration: underline;
-            }
-            .search-form-checkbox-wrapper {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                height: 36px;
-            }
-            .search-form-checkbox-wrapper input {
-                width: 16px;
-                height: 16px;
-                cursor: pointer;
-            }
-            .search-form-checkbox-wrapper label {
-                cursor: pointer;
-                font-size: var(--cl-font-size-lg);
-                color: var(--cl-text);
-            }
-        `;
-        document.head.appendChild(style);
     }
 
     _create() {
         const form = document.createElement('form');
         form.className = 'search-form';
+        form.style.cssText = 'background: var(--cl-bg); border: 1px solid var(--cl-border-light); border-radius: var(--cl-radius-lg); padding: 16px;';
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             this._handleSearch();
@@ -186,6 +74,7 @@ export class SearchForm {
         // 欄位區
         const fieldsContainer = document.createElement('div');
         fieldsContainer.className = 'search-form-fields';
+        fieldsContainer.style.cssText = 'display: grid; gap: 16px; margin-bottom: 16px;';
         fieldsContainer.style.gridTemplateColumns = `repeat(${this.options.columns}, 1fr)`;
 
         this._renderFields(fieldsContainer);
@@ -194,18 +83,39 @@ export class SearchForm {
         // 按鈕區
         const actions = document.createElement('div');
         actions.className = 'search-form-actions';
+        actions.style.cssText = 'display: flex; align-items: center; gap: 12px; padding-top: 16px; border-top: 1px solid var(--cl-border-light);';
 
         const searchBtn = document.createElement('button');
         searchBtn.type = 'submit';
         searchBtn.className = 'search-form-btn search-form-btn-primary';
+        searchBtn.style.cssText = 'padding: 8px 24px; border: 1px solid var(--cl-primary); border-radius: var(--cl-radius-sm); font-size: var(--cl-font-size-lg); cursor: pointer; transition: all var(--cl-transition); background: var(--cl-primary); color: var(--cl-bg);';
         searchBtn.textContent = this.options.searchText;
+        // :hover 效果（CSP 相容，改用事件）
+        searchBtn.addEventListener('mouseenter', () => {
+            searchBtn.style.background = 'var(--cl-primary-dark)';
+            searchBtn.style.borderColor = 'var(--cl-primary-dark)';
+        });
+        searchBtn.addEventListener('mouseleave', () => {
+            searchBtn.style.background = 'var(--cl-primary)';
+            searchBtn.style.borderColor = 'var(--cl-primary)';
+        });
         actions.appendChild(searchBtn);
 
         if (this.options.showReset) {
             const resetBtn = document.createElement('button');
             resetBtn.type = 'button';
             resetBtn.className = 'search-form-btn search-form-btn-default';
+            resetBtn.style.cssText = 'padding: 8px 24px; border: 1px solid var(--cl-border); border-radius: var(--cl-radius-sm); font-size: var(--cl-font-size-lg); cursor: pointer; transition: all var(--cl-transition); background: var(--cl-bg); color: var(--cl-text);';
             resetBtn.textContent = this.options.resetText;
+            // :hover 效果（CSP 相容，改用事件）
+            resetBtn.addEventListener('mouseenter', () => {
+                resetBtn.style.borderColor = 'var(--cl-primary)';
+                resetBtn.style.color = 'var(--cl-primary)';
+            });
+            resetBtn.addEventListener('mouseleave', () => {
+                resetBtn.style.borderColor = 'var(--cl-border)';
+                resetBtn.style.color = 'var(--cl-text)';
+            });
             resetBtn.addEventListener('click', () => this._handleReset());
             actions.appendChild(resetBtn);
         }
@@ -215,7 +125,15 @@ export class SearchForm {
             const expandBtn = document.createElement('button');
             expandBtn.type = 'button';
             expandBtn.className = 'search-form-expand';
+            expandBtn.style.cssText = 'margin-left: auto; background: transparent; border: none; color: var(--cl-primary); cursor: pointer; font-size: var(--cl-font-size-md); display: flex; align-items: center; gap: 4px;';
             expandBtn.innerHTML = this._expanded ? Locale.t('searchForm.collapse') : Locale.t('searchForm.expand');
+            // :hover 效果（CSP 相容，改用事件）
+            expandBtn.addEventListener('mouseenter', () => {
+                expandBtn.style.textDecoration = 'underline';
+            });
+            expandBtn.addEventListener('mouseleave', () => {
+                expandBtn.style.textDecoration = 'none';
+            });
             expandBtn.addEventListener('click', () => {
                 this._expanded = !this._expanded;
                 expandBtn.innerHTML = this._expanded ? Locale.t('searchForm.collapse') : Locale.t('searchForm.expand');
@@ -239,22 +157,26 @@ export class SearchForm {
         fields.forEach((field, index) => {
             const fieldEl = document.createElement('div');
             fieldEl.className = 'search-form-field';
+            fieldEl.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
             fieldEl.dataset.index = index;
 
             // 計算是否在可見區域
             const row = Math.floor(index / columns);
             if (row >= visibleRows && !this._expanded) {
                 fieldEl.classList.add('hidden');
+                fieldEl.style.display = 'none';
             }
 
             // Label
             if (field.label) {
                 const label = document.createElement('label');
                 label.className = 'search-form-label';
+                label.style.cssText = 'font-size: var(--cl-font-size-md); font-weight: 500; color: var(--cl-text);';
                 label.textContent = field.label;
                 if (field.required) {
                     const required = document.createElement('span');
                     required.className = 'required';
+                    required.style.cssText = 'color: var(--cl-danger); margin-left: 2px;';
                     required.textContent = '*';
                     label.appendChild(required);
                 }
@@ -264,6 +186,7 @@ export class SearchForm {
             // Input
             const inputContainer = document.createElement('div');
             inputContainer.className = 'search-form-input';
+            inputContainer.style.cssText = 'min-height: 36px;';
             this._createFieldInput(inputContainer, field);
             fieldEl.appendChild(inputContainer);
 
@@ -302,6 +225,7 @@ export class SearchForm {
             case SearchForm.FIELD_TYPES.DATE_RANGE:
                 const rangeContainer = document.createElement('div');
                 rangeContainer.className = 'search-form-date-range';
+                rangeContainer.style.cssText = 'display: flex; align-items: center; gap: 8px;';
 
                 const startKey = `${key}_start`;
                 const endKey = `${key}_end`;
@@ -314,6 +238,7 @@ export class SearchForm {
                 startPicker.mount(rangeContainer);
 
                 const separator = document.createElement('span');
+                separator.style.cssText = 'color: var(--cl-text-placeholder);';
                 separator.textContent = Locale.t('searchForm.dateSeparator');
                 rangeContainer.appendChild(separator);
 
@@ -342,10 +267,12 @@ export class SearchForm {
             case SearchForm.FIELD_TYPES.CHECKBOX:
                 const checkboxWrapper = document.createElement('div');
                 checkboxWrapper.className = 'search-form-checkbox-wrapper';
+                checkboxWrapper.style.cssText = 'display: flex; align-items: center; gap: 8px; height: 36px;';
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.id = `search-form-${key}`;
+                checkbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
                 checkbox.checked = !!currentValue;
                 checkbox.addEventListener('change', () => {
                     this._handleChange(key, checkbox.checked);
@@ -353,6 +280,7 @@ export class SearchForm {
 
                 const checkboxLabel = document.createElement('label');
                 checkboxLabel.htmlFor = checkbox.id;
+                checkboxLabel.style.cssText = 'cursor: pointer; font-size: var(--cl-font-size-lg); color: var(--cl-text);';
                 checkboxLabel.textContent = placeholder || '';
 
                 checkboxWrapper.appendChild(checkbox);
@@ -389,8 +317,11 @@ export class SearchForm {
             const row = Math.floor(index / columns);
             if (row >= visibleRows && !this._expanded) {
                 field.classList.add('hidden');
+                field.style.display = 'none';
             } else {
                 field.classList.remove('hidden');
+                // 還原顯示需用明確 display 值（CSP 下無 class 樣式可回退）
+                field.style.display = 'flex';
             }
         });
     }

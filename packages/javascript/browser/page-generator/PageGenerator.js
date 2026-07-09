@@ -260,12 +260,14 @@ export const FieldRenderers = {
             <div id="${field.name}-canvas"></div>
         </div>`,
 
+    // CSP-safe：檔案輸入不用 HTML style 屬性隱藏（嚴格 style-src 會剝除），
+    // 改由生成頁 onMounted/onUpdated 以 CSSOM（style.cssText）隱藏
     [FieldTypes.IMAGE]: (field) => `
         <div class="form-group">
             <label for="${field.name}">${field.label || field.name}</label>
             <div id="${field.name}-viewer"></div>
             <input type="file" id="${field.name}" name="${field.name}"
-                   accept="image/*" style="display:none;">
+                   accept="image/*">
             <button type="button" class="btn btn-secondary" data-action="select-image" data-field="${field.name}">
                 選擇圖片
             </button>
@@ -740,6 +742,9 @@ export default ${className};
         this._${field.name}Viewer = new ImageViewer(this.$('#${field.name}-viewer'), {
             src: this._data.form.${field.name}
         });
+
+        // CSP-safe：以 CSSOM 隱藏檔案輸入（嚴格 style-src 會剝除 HTML style 屬性）
+        this._hideFileInput_${field.name}();
 `;
                     break;
             }
@@ -747,6 +752,39 @@ export default ${className};
 
         code += `    }
 `;
+
+        code += this._generateCspStyleMethods(definition);
+
+        return code;
+    }
+
+    /**
+     * 生成 CSP-safe 樣式方法（image 欄位的檔案輸入隱藏）
+     *
+     * 嚴格 CSP（style-src 'self'）會剝除 HTML 剖析出的 style 屬性，
+     * 因此生成的頁面改以 CSSOM（style.cssText）隱藏檔案輸入；
+     * BasePage._update() 以 innerHTML 重建 DOM 後會呼叫 onUpdated()，需重新套用。
+     * @private
+     */
+    _generateCspStyleMethods(definition) {
+        const imageFields = (definition.fields || []).filter(f => f.type === FieldTypes.IMAGE);
+        if (imageFields.length === 0) return '';
+
+        let code = `
+    onUpdated() {
+        // 重新渲染（innerHTML）會重建節點，需重新套用 CSSOM 樣式
+${imageFields.map(f => `        this._hideFileInput_${f.name}();`).join('\n')}
+    }
+`;
+
+        for (const field of imageFields) {
+            code += `
+    _hideFileInput_${field.name}() {
+        const input = this.$('#${field.name}');
+        if (input) input.style.cssText = 'display:none;';
+    }
+`;
+        }
 
         return code;
     }

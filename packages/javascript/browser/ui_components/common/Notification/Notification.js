@@ -57,131 +57,22 @@ export class Notification {
         this.id = this.options.id || nextUid('notification');
         this.element = null;
         this._timeoutId = null;
+        this._enterAnimation = null;
+        this._exitAnimation = null;
 
-        this._injectStyles();
         this._ensureContainer();
         this._create();
     }
 
-    _injectStyles() {
-        if (document.getElementById('notification-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'notification-styles';
-        style.textContent = `
-            .notification-container {
-                position: fixed;
-                z-index: 10000;
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-                pointer-events: none;
-                max-width: 400px;
-                width: 100%;
-                padding: 16px;
-                box-sizing: border-box;
-            }
-            .notification-container.top-right { top: 0; right: 0; }
-            .notification-container.top-left { top: 0; left: 0; }
-            .notification-container.top-center { top: 0; left: 50%; transform: translateX(-50%); }
-            .notification-container.bottom-right { bottom: 0; right: 0; }
-            .notification-container.bottom-left { bottom: 0; left: 0; }
-            .notification-container.bottom-center { bottom: 0; left: 50%; transform: translateX(-50%); }
-
-            .notification-item {
-                pointer-events: auto;
-                display: flex;
-                align-items: flex-start;
-                gap: 12px;
-                padding: 14px 16px;
-                background: var(--cl-bg);
-                border-radius: var(--cl-radius-lg);
-                box-shadow: var(--cl-shadow-md);
-                animation: notification-slide-in 0.3s ease-out;
-                transition: all var(--cl-transition-slow);
-                border-left: 4px solid;
-            }
-            .notification-item.closing {
-                animation: notification-slide-out 0.3s ease-in forwards;
-            }
-            .notification-item.success { border-left-color: var(--cl-success); }
-            .notification-item.error { border-left-color: var(--cl-danger); }
-            .notification-item.warning { border-left-color: var(--cl-warning); }
-            .notification-item.info { border-left-color: var(--cl-primary); }
-
-            .notification-icon {
-                flex-shrink: 0;
-                width: 24px;
-                height: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: var(--cl-font-size-2xl);
-            }
-            .notification-icon.success { color: var(--cl-success); }
-            .notification-icon.error { color: var(--cl-danger); }
-            .notification-icon.warning { color: var(--cl-warning); }
-            .notification-icon.info { color: var(--cl-primary); }
-
-            .notification-content {
-                flex: 1;
-                min-width: 0;
-            }
-            .notification-title {
-                font-weight: 600;
-                font-size: var(--cl-font-size-lg);
-                color: var(--cl-text);
-                margin-bottom: 4px;
-            }
-            .notification-message {
-                font-size: var(--cl-font-size-md);
-                color: var(--cl-text-secondary);
-                line-height: 1.4;
-                word-break: break-word;
-            }
-            .notification-close {
-                flex-shrink: 0;
-                width: 20px;
-                height: 20px;
-                border: none;
-                background: transparent;
-                cursor: pointer;
-                padding: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--cl-text-placeholder);
-                font-size: var(--cl-font-size-2xl);
-                transition: color var(--cl-transition);
-                border-radius: var(--cl-radius-sm);
-            }
-            .notification-close:hover {
-                color: var(--cl-text);
-                background: var(--cl-bg-secondary);
-            }
-
-            @keyframes notification-slide-in {
-                from {
-                    opacity: 0;
-                    transform: translateX(100%);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateX(0);
-                }
-            }
-            @keyframes notification-slide-out {
-                from {
-                    opacity: 1;
-                    transform: translateX(0);
-                }
-                to {
-                    opacity: 0;
-                    transform: translateX(100%);
-                }
-            }
-        `;
-        document.head.appendChild(style);
+    /** @private 依通知類型取得強調色（CSS 變數） */
+    _getAccentColor() {
+        const colors = {
+            success: 'var(--cl-success)',
+            error: 'var(--cl-danger)',
+            warning: 'var(--cl-warning)',
+            info: 'var(--cl-primary)'
+        };
+        return colors[this.options.type] || colors.info;
     }
 
     _ensureContainer() {
@@ -193,6 +84,18 @@ export class Notification {
             container = document.createElement('div');
             container.id = containerId;
             container.className = `notification-container ${position}`;
+
+            const positionCss = {
+                'top-right': 'top: 0; right: 0;',
+                'top-left': 'top: 0; left: 0;',
+                'top-center': 'top: 0; left: 50%; transform: translateX(-50%);',
+                'bottom-right': 'bottom: 0; right: 0;',
+                'bottom-left': 'bottom: 0; left: 0;',
+                'bottom-center': 'bottom: 0; left: 50%; transform: translateX(-50%);'
+            };
+            container.style.cssText = 'position: fixed; z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; max-width: 400px; width: 100%; padding: 16px; box-sizing: border-box; '
+                + (positionCss[position] || positionCss['top-right']);
+
             document.body.appendChild(container);
         }
 
@@ -213,24 +116,29 @@ export class Notification {
 
     _create() {
         const { type, title, message, closable } = this.options;
+        const accent = this._getAccentColor();
 
         const item = document.createElement('div');
         item.id = this.id;
         item.className = `notification-item ${type}`;
+        item.style.cssText = `pointer-events: auto; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; background: var(--cl-bg); border-radius: var(--cl-radius-lg); box-shadow: var(--cl-shadow-md); transition: all var(--cl-transition-slow); border-left: 4px solid ${accent};`;
 
         // 圖示
         const icon = document.createElement('div');
         icon.className = `notification-icon ${type}`;
+        icon.style.cssText = `flex-shrink: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: var(--cl-font-size-2xl); color: ${accent};`;
         icon.textContent = this._getIcon();
         item.appendChild(icon);
 
         // 內容
         const content = document.createElement('div');
         content.className = 'notification-content';
+        content.style.cssText = 'flex: 1; min-width: 0;';
 
         if (title) {
             const titleEl = document.createElement('div');
             titleEl.className = 'notification-title';
+            titleEl.style.cssText = 'font-weight: 600; font-size: var(--cl-font-size-lg); color: var(--cl-text); margin-bottom: 4px;';
             titleEl.textContent = title;
             content.appendChild(titleEl);
         }
@@ -238,6 +146,7 @@ export class Notification {
         if (message) {
             const messageEl = document.createElement('div');
             messageEl.className = 'notification-message';
+            messageEl.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.4; word-break: break-word;';
             messageEl.textContent = message;
             content.appendChild(messageEl);
         }
@@ -249,7 +158,19 @@ export class Notification {
             const closeBtn = document.createElement('button');
             closeBtn.className = 'notification-close';
             closeBtn.type = 'button';
+            closeBtn.style.cssText = 'flex-shrink: 0; width: 20px; height: 20px; border: none; background: transparent; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--cl-text-placeholder); font-size: var(--cl-font-size-2xl); transition: color var(--cl-transition); border-radius: var(--cl-radius-sm);';
             closeBtn.innerHTML = '×';
+
+            // :hover 效果（CSP 相容，改用事件）
+            closeBtn.addEventListener('mouseenter', () => {
+                closeBtn.style.color = 'var(--cl-text)';
+                closeBtn.style.background = 'var(--cl-bg-secondary)';
+            });
+            closeBtn.addEventListener('mouseleave', () => {
+                closeBtn.style.color = 'var(--cl-text-placeholder)';
+                closeBtn.style.background = 'transparent';
+            });
+
             closeBtn.addEventListener('click', () => this.close());
             item.appendChild(closeBtn);
         }
@@ -262,6 +183,17 @@ export class Notification {
 
         this._container.appendChild(this.element);
         Notification._notifications.push(this);
+
+        // 進場動畫（Web Animations API，CSP 相容）
+        if (typeof this.element.animate === 'function') {
+            this._enterAnimation = this.element.animate(
+                [
+                    { opacity: 0, transform: 'translateX(100%)' },
+                    { opacity: 1, transform: 'translateX(0)' }
+                ],
+                { duration: 300, easing: 'ease-out' }
+            );
+        }
 
         // 自動關閉
         if (this.options.duration > 0) {
@@ -280,10 +212,23 @@ export class Notification {
             this._timeoutId = null;
         }
 
-        // 播放關閉動畫
+        // 播放關閉動畫（Web Animations API，CSP 相容）
         this.element.classList.add('closing');
+        if (typeof this.element.animate === 'function') {
+            this._enterAnimation?.cancel();
+            this._enterAnimation = null;
+            this._exitAnimation = this.element.animate(
+                [
+                    { opacity: 1, transform: 'translateX(0)' },
+                    { opacity: 0, transform: 'translateX(100%)' }
+                ],
+                { duration: 300, easing: 'ease-in', fill: 'forwards' }
+            );
+        }
 
         setTimeout(() => {
+            this._exitAnimation?.cancel();
+            this._exitAnimation = null;
             this.element?.remove();
             this.element = null;
 

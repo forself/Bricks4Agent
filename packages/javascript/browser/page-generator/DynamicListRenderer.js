@@ -210,11 +210,14 @@ export class DynamicListRenderer {
         switch (def.fieldType) {
             case 'checkbox':
             case 'toggle': {
+                // CSP-safe：createElement + style.cssText（嚴格 style-src 會剝除 HTML style 屬性）
                 const isTrue = value === true || value === 'true';
                 const bgColor = isTrue ? 'var(--cl-success-light)' : 'var(--cl-bg-secondary)';
                 const fgColor = isTrue ? 'var(--cl-success)' : 'var(--cl-grey)';
-                const text = isTrue ? '是' : '否';
-                return `<span style="padding:2px 6px;border-radius:3px;font-size:12px;background:${bgColor};color:${fgColor};">${text}</span>`;
+                const badge = document.createElement('span');
+                badge.style.cssText = `padding:2px 6px;border-radius:3px;font-size:12px;background:${bgColor};color:${fgColor};`;
+                badge.textContent = isTrue ? '是' : '否';
+                return badge;
             }
             case 'date':
                 try {
@@ -229,8 +232,13 @@ export class DynamicListRenderer {
                     if (item) return item.label;
                 }
                 return String(value);
-            case 'color':
-                return `<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${value};border: 1px solid var(--cl-border);vertical-align:middle;"></span>`;
+            case 'color': {
+                // CSP-safe：createElement + style.cssText（嚴格 style-src 會剝除 HTML style 屬性）
+                const swatch = document.createElement('span');
+                swatch.style.cssText = 'display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--cl-border);vertical-align:middle;';
+                swatch.style.background = String(value);
+                return swatch;
+            }
             default:
                 return String(value);
         }

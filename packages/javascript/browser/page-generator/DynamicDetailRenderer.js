@@ -88,15 +88,20 @@ export class DynamicDetailRenderer {
         const label = document.createElement('div');
         label.className = 'dynamic-detail__label';
         label.textContent = def.label;
-        label.style.cssText = 'font-size:12px;color:#888;margin-bottom:4px;font-weight:500;';
+        label.style.cssText = 'font-size:12px;color: var(--cl-text-muted);margin-bottom:4px;font-weight:500;';
 
         // Value
         const valueEl = document.createElement('div');
         valueEl.className = 'dynamic-detail__value';
         valueEl.style.cssText = 'font-size:14px;color: var(--cl-text);min-height:20px;';
 
-        // 格式化
-        valueEl.innerHTML = this._formatValue(def, value);
+        // 格式化（CSP-safe：Node 直接掛載，字串走 innerHTML——字串一律不含 style 屬性）
+        const formatted = this._formatValue(def, value);
+        if (formatted && typeof formatted === 'object' && formatted.nodeType) {
+            valueEl.appendChild(formatted);
+        } else {
+            valueEl.innerHTML = formatted;
+        }
 
         container.appendChild(label);
         container.appendChild(valueEl);
@@ -105,10 +110,14 @@ export class DynamicDetailRenderer {
 
     /**
      * 依 fieldType 格式化顯示值
+     *
+     * CSP-safe：需要樣式的結果回傳 DOM Node（createElement + style.cssText），
+     * 純文字結果回傳字串；嚴格 style-src 下 innerHTML 的 style 屬性會被剝除。
+     * @returns {string|Node}
      */
     _formatValue(def, value) {
         if (value === null || value === undefined || value === '') {
-            return '<span style="color:#ccc;">—</span>';
+            return this._emptyPlaceholder();
         }
 
         switch (def.fieldType) {
@@ -129,14 +138,23 @@ export class DynamicDetailRenderer {
             case 'multiselect':
                 return this._formatMultiOption(def, value);
 
-            case 'color':
-                return `<span style="display:inline-flex;align-items:center;gap:6px;">
-                    <span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:${value};border: 1px solid var(--cl-border);"></span>
-                    ${value}
-                </span>`;
+            case 'color': {
+                const wrap = document.createElement('span');
+                wrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;';
+                const swatch = document.createElement('span');
+                swatch.style.cssText = 'display:inline-block;width:16px;height:16px;border-radius:3px;border:1px solid var(--cl-border);';
+                swatch.style.background = String(value);
+                wrap.appendChild(swatch);
+                wrap.appendChild(document.createTextNode(String(value)));
+                return wrap;
+            }
 
-            case 'image':
-                return `<img src="${value}" style="max-width:120px;max-height:80px;border-radius:4px;border: 1px solid var(--cl-border-light);" />`;
+            case 'image': {
+                const img = document.createElement('img');
+                img.src = String(value);
+                img.style.cssText = 'max-width:120px;max-height:80px;border-radius:4px;border:1px solid var(--cl-border-light);';
+                return img;
+            }
 
             case 'password':
                 return '••••••••';
@@ -144,12 +162,20 @@ export class DynamicDetailRenderer {
             case 'datetime':
                 return this._formatDateTime(value);
 
-            case 'richtext':
+            case 'richtext': {
                 // HTML 內容截斷顯示
-                return `<div style="max-height:80px;overflow:hidden;border: 1px solid var(--cl-border-light);padding:4px 8px;border-radius:4px;font-size:13px;">${value}</div>`;
+                const box = document.createElement('div');
+                box.style.cssText = 'max-height:80px;overflow:hidden;border:1px solid var(--cl-border-light);padding:4px 8px;border-radius:4px;font-size:13px;';
+                box.innerHTML = String(value);
+                return box;
+            }
 
-            case 'canvas':
-                return `<div style="color:#888;font-size:12px;">（繪圖內容）</div>`;
+            case 'canvas': {
+                const hint = document.createElement('div');
+                hint.style.cssText = 'color:var(--cl-text-muted);font-size:12px;';
+                hint.textContent = '（繪圖內容）';
+                return hint;
+            }
 
             case 'geolocation':
                 if (typeof value === 'object') {
@@ -210,8 +236,10 @@ export class DynamicDetailRenderer {
         const isTrue = value === true || value === 'true' || value === 1;
         const bgColor = isTrue ? 'var(--cl-success-light)' : 'var(--cl-bg-secondary)';
         const fgColor = isTrue ? 'var(--cl-success)' : 'var(--cl-grey)';
-        const text = isTrue ? '是' : '否';
-        return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;background:${bgColor};color:${fgColor};font-weight:500;">${text}</span>`;
+        const badge = document.createElement('span');
+        badge.style.cssText = `display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;background:${bgColor};color:${fgColor};font-weight:500;`;
+        badge.textContent = isTrue ? '是' : '否';
+        return badge;
     }
 
     _formatOption(def, value) {
@@ -224,19 +252,18 @@ export class DynamicDetailRenderer {
 
     _formatMultiOption(def, value) {
         const values = Array.isArray(value) ? value : [];
-        if (values.length === 0) return '<span style="color:#ccc;">—</span>';
+        if (values.length === 0) return this._emptyPlaceholder();
 
-        if (def.optionsSource?.type === 'static') {
-            return values.map(v => {
-                const item = def.optionsSource.items.find(i => i.value === v);
-                const label = item ? item.label : v;
-                return `<span style="display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;font-size:12px;background: var(--cl-bg-active);color:#1976D2;">${this._escapeHtml(label)}</span>`;
-            }).join('');
-        }
-
-        return values.map(v =>
-            `<span style="display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;font-size:12px;background: var(--cl-bg-active);color:#1976D2;">${this._escapeHtml(String(v))}</span>`
-        ).join('');
+        const items = def.optionsSource?.type === 'static' ? def.optionsSource.items : null;
+        const frag = document.createDocumentFragment();
+        values.forEach(v => {
+            const item = items ? items.find(i => i.value === v) : null;
+            const tag = document.createElement('span');
+            tag.style.cssText = 'display:inline-block;padding:2px 8px;margin:2px;border-radius:4px;font-size:12px;background: var(--cl-bg-active);color: var(--cl-primary-dark);';
+            tag.textContent = String(item ? item.label : v);
+            frag.appendChild(tag);
+        });
+        return frag;
     }
 
     _formatDateTime(value) {
@@ -251,16 +278,31 @@ export class DynamicDetailRenderer {
 
     _formatListValue(value) {
         if (Array.isArray(value)) {
-            if (value.length === 0) return '<span style="color:#ccc;">—</span>';
-            return value.map((item, i) => {
+            if (value.length === 0) return this._emptyPlaceholder();
+            const frag = document.createDocumentFragment();
+            value.forEach((item, i) => {
                 const text = typeof item === 'object' ? Object.values(item).filter(Boolean).join(' / ') : String(item);
-                return `<div style="padding:2px 0;font-size:13px;">${i + 1}. ${this._escapeHtml(text)}</div>`;
-            }).join('');
+                const line = document.createElement('div');
+                line.style.cssText = 'padding:2px 0;font-size:13px;';
+                line.textContent = `${i + 1}. ${text}`;
+                frag.appendChild(line);
+            });
+            return frag;
         }
         if (typeof value === 'object') {
             return this._escapeHtml(Object.values(value).filter(Boolean).join(' / '));
         }
         return this._escapeHtml(String(value));
+    }
+
+    /**
+     * 空值佔位符（CSP-safe：以 CSSOM 指派樣式）
+     */
+    _emptyPlaceholder() {
+        const span = document.createElement('span');
+        span.style.cssText = 'color: var(--cl-text-light);';
+        span.textContent = '—';
+        return span;
     }
 
     _escapeHtml(str) {

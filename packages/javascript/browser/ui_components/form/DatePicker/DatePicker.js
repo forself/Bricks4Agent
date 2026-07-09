@@ -214,7 +214,14 @@ export class DatePicker {
 
         if (label) {
             const labelEl = document.createElement('label');
-            labelEl.innerHTML = `${escapeHtml(label)}${required ? '<span style="color:var(--cl-danger);margin-left:2px;">*</span>' : ''}`;
+            labelEl.innerHTML = escapeHtml(label);
+            if (required) {
+                // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+                const requiredMark = document.createElement('span');
+                requiredMark.style.cssText = 'color:var(--cl-danger);margin-left:2px;';
+                requiredMark.textContent = '*';
+                labelEl.appendChild(requiredMark);
+            }
             labelEl.style.cssText = `
                 display: block;
                 font-size: var(--cl-font-size-md);

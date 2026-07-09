@@ -206,8 +206,8 @@ export class RelationChart extends BaseChart {
             const color = this.getColor(node.group === undefined ? i : (typeof node.group === 'string' ? node.group.length : node.group));
 
             nodeHtml += `
-                <g transform="translate(${node.x}, ${node.y})" style="cursor: pointer" class="node-group" data-id="${node.id}">
-                    <circle r="25" fill="${color}" stroke="var(--cl-bg)" stroke-width="2" style="filter: drop-shadow(0 1px 2px var(--cl-bg-overlay-soft))"/>
+                <g transform="translate(${node.x}, ${node.y})" class="node-group" data-id="${node.id}">
+                    <circle r="25" fill="${color}" stroke="var(--cl-bg)" stroke-width="2"/>
                     <text dy="0.35em" text-anchor="middle" fill="var(--cl-bg)" font-size="11" font-weight="bold" pointer-events="none">${node.label || node.id}</text>
                 </g>
             `;
@@ -217,6 +217,11 @@ export class RelationChart extends BaseChart {
         // Re-bind events
         // Re-bind events
         this.nodeGroup.querySelectorAll('.node-group').forEach(el => {
+            // CSP 相容:style-src 'self' 會擋 HTML 剖析的 style 屬性,改以 CSSOM 指派(SVG 元素同樣走 .style)
+            el.style.cursor = 'pointer';
+            const nodeCircle = el.querySelector('circle');
+            if (nodeCircle) nodeCircle.style.filter = 'drop-shadow(0 1px 2px var(--cl-bg-overlay-soft))';
+
             let hideTimer = null;
 
             const show = (e) => {
@@ -267,16 +272,16 @@ export class RelationChart extends BaseChart {
         const safeId = this.escapeHtml(node.id);
 
         const html = `
-            <div style="min-width: 250px; max-width: 300px;">
-                <h3 style="margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px; font-size:var(--cl-font-size-xl);">${safeLabel}</h3>
-                <span style="display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px">${safeGroup}</span>
-                <div style="background:var(--cl-bg); padding:12px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-md); line-height:1.5; color:var(--cl-text);">
-                    <p style="margin:4px 0;"><strong>ID:</strong> ${safeId}</p>
-                    <p style="margin:4px 0;"><strong>Type:</strong> Entity Node</p>
-                    <p style="margin:4px 0;"><strong>Status:</strong> Active</p>
-                    <p style="margin:4px 0;"><strong>Description:</strong> Node representing ${safeLabel} in the network.</p>
+            <div class="rc-tip">
+                <h3>${safeLabel}</h3>
+                <span class="rc-tip-badge">${safeGroup}</span>
+                <div class="rc-tip-info">
+                    <p><strong>ID:</strong> ${safeId}</p>
+                    <p><strong>Type:</strong> Entity Node</p>
+                    <p><strong>Status:</strong> Active</p>
+                    <p><strong>Description:</strong> Node representing ${safeLabel} in the network.</p>
                 </div>
-                <div style="margin-top:12px; text-align:right;">
+                <div class="rc-tip-actions">
                      <button data-action="copy-id" data-node-id="${safeId}">Copy ID</button>
                 </div>
             </div>
@@ -286,6 +291,22 @@ export class RelationChart extends BaseChart {
         this.showTooltip(html, e, true);
 
         // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
+        const wrap = this.tooltip.querySelector('.rc-tip');
+        if (wrap) {
+            wrap.style.cssText = 'min-width: 250px; max-width: 300px;';
+            const heading = wrap.querySelector('h3');
+            if (heading) heading.style.cssText = 'margin:0 0 10px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:10px; font-size:var(--cl-font-size-xl);';
+            const badge = wrap.querySelector('.rc-tip-badge');
+            if (badge) badge.style.cssText = 'display:inline-block; background:var(--cl-bg-info-light); color:var(--cl-primary-dark); padding:2px 8px; border-radius:var(--cl-radius-xl); font-size:var(--cl-font-size-sm); margin-bottom:15px';
+            const info = wrap.querySelector('.rc-tip-info');
+            if (info) info.style.cssText = 'background:var(--cl-bg); padding:12px; border-radius:var(--cl-radius-lg); font-size:var(--cl-font-size-md); line-height:1.5; color:var(--cl-text);';
+            wrap.querySelectorAll('.rc-tip-info p').forEach(p => {
+                p.style.cssText = 'margin:4px 0;';
+            });
+            const actions = wrap.querySelector('.rc-tip-actions');
+            if (actions) actions.style.cssText = 'margin-top:12px; text-align:right;';
+        }
+
         const btn = this.tooltip.querySelector('[data-action="copy-id"]');
         if (btn) {
             btn.style.cssText = 'padding:4px 10px; background:var(--cl-border-medium); color:var(--cl-text); border:none; border-radius:var(--cl-radius-sm); cursor:pointer; font-size:var(--cl-font-size-sm);';

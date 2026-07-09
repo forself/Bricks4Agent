@@ -7,7 +7,7 @@
  * @version 1.0.0
  */
 
-import { escapeHtml, sanitizeUrl } from '../../utils/security.js';
+import { sanitizeUrl } from '../../utils/security.js';
 
 import Locale from '../../i18n/index.js';
 export class Breadcrumb {
@@ -32,60 +32,13 @@ export class Breadcrumb {
         };
 
         this.element = null;
-        this._injectStyles();
         this._create();
-    }
-
-    _injectStyles() {
-        if (document.getElementById('breadcrumb-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'breadcrumb-styles';
-        style.textContent = `
-            .breadcrumb {
-                display: flex;
-                align-items: center;
-                flex-wrap: wrap;
-                gap: 8px;
-                font-size: var(--cl-font-size-lg);
-                padding: 8px 0;
-            }
-            .breadcrumb-item {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .breadcrumb-link {
-                color: var(--cl-text-secondary);
-                text-decoration: none;
-                transition: color 0.2s;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .breadcrumb-link:hover {
-                color: var(--cl-primary);
-            }
-            .breadcrumb-text {
-                color: var(--cl-text);
-                font-weight: 500;
-            }
-            .breadcrumb-separator {
-                color: var(--cl-text-placeholder);
-                margin: 0 4px;
-                user-select: none;
-            }
-            .breadcrumb-icon {
-                font-size: var(--cl-font-size-lg);
-            }
-        `;
-        document.head.appendChild(style);
     }
 
     _create() {
         const container = document.createElement('nav');
         container.className = 'breadcrumb';
+        container.style.cssText = 'display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--cl-font-size-lg); padding: 8px 0;';
         container.setAttribute('aria-label', 'breadcrumb');
 
         this.element = container;
@@ -114,13 +67,20 @@ export class Breadcrumb {
             const isLast = index === allItems.length - 1;
             const itemEl = document.createElement('span');
             itemEl.className = 'breadcrumb-item';
+            itemEl.style.cssText = 'display: flex; align-items: center; gap: 4px;';
 
             if (isLast && !item.href) {
                 // 當前頁面（最後一項且無連結）
                 const text = document.createElement('span');
                 text.className = 'breadcrumb-text';
+                text.style.cssText = 'color: var(--cl-text); font-weight: 500;';
                 if (item.icon) {
-                    text.innerHTML = `<span class="breadcrumb-icon">${escapeHtml(item.icon)}</span> `;
+                    const icon = document.createElement('span');
+                    icon.className = 'breadcrumb-icon';
+                    icon.style.cssText = 'font-size: var(--cl-font-size-lg);';
+                    icon.textContent = item.icon;
+                    text.appendChild(icon);
+                    text.appendChild(document.createTextNode(' '));
                 }
                 text.appendChild(document.createTextNode(item.text));
                 itemEl.appendChild(text);
@@ -128,11 +88,21 @@ export class Breadcrumb {
                 // 可點擊的連結
                 const link = document.createElement('a');
                 link.className = 'breadcrumb-link';
+                link.style.cssText = 'color: var(--cl-text-secondary); text-decoration: none; transition: color 0.2s; cursor: pointer; display: flex; align-items: center; gap: 4px;';
                 link.href = sanitizeUrl(item.href) || '#';
+
+                // :hover 效果（CSP 相容，改用事件）
+                link.addEventListener('mouseenter', () => {
+                    link.style.color = 'var(--cl-primary)';
+                });
+                link.addEventListener('mouseleave', () => {
+                    link.style.color = 'var(--cl-text-secondary)';
+                });
 
                 if (item.icon) {
                     const icon = document.createElement('span');
                     icon.className = 'breadcrumb-icon';
+                    icon.style.cssText = 'font-size: var(--cl-font-size-lg);';
                     icon.textContent = item.icon;
                     link.appendChild(icon);
                 }
@@ -158,6 +128,7 @@ export class Breadcrumb {
             if (!isLast) {
                 const sep = document.createElement('span');
                 sep.className = 'breadcrumb-separator';
+                sep.style.cssText = 'color: var(--cl-text-placeholder); margin: 0 4px; user-select: none;';
                 sep.textContent = separator;
                 sep.setAttribute('aria-hidden', 'true');
                 this.element.appendChild(sep);

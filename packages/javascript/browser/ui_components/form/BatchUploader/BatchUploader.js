@@ -122,22 +122,26 @@ export class BatchUploader {
 
         const dropzoneContent = document.createElement('div');
         dropzoneContent.innerHTML = `
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin-bottom: 12px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="17,8 12,3 7,8" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <line x1="12" y1="3" x2="12" y2="15" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <p style="margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-lg);">${labels.dropzone}</p>
-            <button type="button" class="batch-uploader__browse-btn" style="
-                padding: 8px 20px;
-                background: var(--cl-primary);
-                color: var(--cl-text-inverse);
-                border: none;
-                border-radius: var(--cl-radius-sm);
-                cursor: pointer;
-                font-size: var(--cl-font-size-lg);
-                transition: background var(--cl-transition);
-            ">${labels.browse}</button>
+            <p>${labels.dropzone}</p>
+            <button type="button" class="batch-uploader__browse-btn">${labels.browse}</button>
+        `;
+        // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派(結構不變)
+        dropzoneContent.querySelector('svg').style.cssText = 'margin-bottom: 12px;';
+        dropzoneContent.querySelector('p').style.cssText = 'margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-lg);';
+        dropzoneContent.querySelector('.batch-uploader__browse-btn').style.cssText = `
+            padding: 8px 20px;
+            background: var(--cl-primary);
+            color: var(--cl-text-inverse);
+            border: none;
+            border-radius: var(--cl-radius-sm);
+            cursor: pointer;
+            font-size: var(--cl-font-size-lg);
+            transition: background var(--cl-transition);
         `;
         dropzone.appendChild(dropzoneContent);
 

@@ -33,7 +33,23 @@
 import { escapeHtml, isRawHtml, raw } from '../../utils/security.js';
 
 import Locale from '../../i18n/index.js';
+
+// CSP（style-src 'self'）合規：視覺樣式集中於同目錄 DataTable.css，
+// 建構時自動注入同源 <link>（固定 id 去重）；動態樣式一律走 CSSOM（el.style）。
+const STYLE_LINK_ID = 'b4a-datatable-styles';
+
+function ensureStyleSheet() {
+    if (document.getElementById(STYLE_LINK_ID)) return;
+    const link = document.createElement('link');
+    link.id = STYLE_LINK_ID;
+    link.rel = 'stylesheet';
+    link.href = new URL('./DataTable.css', import.meta.url).href;
+    document.head.appendChild(link);
+}
+
 // 主題定義（使用 CSS 變數，支援深色主題）
+// 注意：樣式實作已移至 DataTable.css 的 .b4a-dt--default / .b4a-dt--search，
+// 此表保留供 variant 驗證與既有程式讀取 _theme 的相容用途，兩處需同步維護。
 const THEMES = {
     default: {
         headerBg: 'var(--cl-light-green)', headerFontSize: '1.10rem',
@@ -137,6 +153,9 @@ export class DataTable {
                 this._sortDir = this.options.sortOrder.direction || 'asc';
             }
         }
+
+        // 注入元件樣式表（CSP 合規：同源 <link> 樣式表）
+        ensureStyleSheet();
 
         // 建立 element（不帶 container 時也能使用）
         this.element = document.createElement('div');
@@ -298,23 +317,24 @@ export class DataTable {
         const isSelectable = this.options.selectableRows !== 'none' && this.options.selectableRows !== false;
         const isAnySelected = isSelectable && this._selectedRows.length > 0;
 
-        let html = '<div style="box-shadow:none;background:var(--cl-bg);">';
+        // CSP 合規：模板不用 style 屬性，改用 class（樣式在 DataTable.css）
+        const variantClass = THEMES[this.variant] ? this.variant : 'default';
+        let html = `<div class="b4a-dt b4a-dt--${variantClass}">`;
 
         // 工具列
         html += this._renderToolbar(isAnySelected);
 
         // 表格
-        const bodyHeight = this.options.tableBodyHeight;
-        html += `<div style="overflow-x:auto;${bodyHeight ? `max-height:${bodyHeight};overflow-y:auto;` : ''}">`;
-        html += '<table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;">';
+        html += '<div class="b4a-dt__scroll">';
+        html += '<table class="b4a-dt__table">';
 
         // 表頭
         html += '<thead><tr>';
         if (isSelectable) {
             const allSelected = sorted.length > 0 && sorted.every(d => this._selectedRows.includes(d.dataIndex));
-            html += `<th style="${this._headerStyle()};width:48px;padding:4px;">`;
+            html += '<th class="b4a-dt__th b4a-dt__th--select">';
             if (this.options.selectableRows !== 'single') {
-                html += `<input type="checkbox" data-action="select-all" ${allSelected ? 'checked' : ''} style="cursor:pointer;">`;
+                html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-all" ${allSelected ? 'checked' : ''}>`;
             }
             html += '</th>';
         }
@@ -323,9 +343,8 @@ export class DataTable {
             const isSorted = this._sortCol === colIdx;
             const sortIcon = isSorted ? (this._sortDir === 'asc' ? ' ▲' : ' ▼') : '';
             const sortDisabled = col.options?.sort === false;
-            const widthStyle = this._getCellWidthStyle(col);
-            html += `<th style="${this._headerStyle()};${sortDisabled ? '' : 'cursor:pointer;'}${widthStyle}" data-action="sort" data-col="${colIdx}">`;
-            html += `<div style="display:flex;align-items:center;justify-content:center;">${escapeHtml(col.label || col.name || '')}${sortIcon}</div>`;
+            html += `<th class="b4a-dt__th${sortDisabled ? '' : ' b4a-dt__th--sortable'}" data-action="sort" data-col="${colIdx}">`;
+            html += `<div class="b4a-dt__th-inner">${escapeHtml(col.label || col.name || '')}${sortIcon}</div>`;
             html += '</th>';
         });
         html += '</tr></thead>';
@@ -334,26 +353,25 @@ export class DataTable {
         html += '<tbody>';
         if (paginated.length === 0) {
             const colspan = visibleCols.length + (isSelectable ? 1 : 0);
-            html += `<tr><td colspan="${colspan}" style="${this._cellStyle()};padding:24px;color:var(--cl-text-secondary);">${escapeHtml(this._textLabels.body.noMatch)}</td></tr>`;
+            html += `<tr><td colspan="${colspan}" class="b4a-dt__td b4a-dt__td--empty">${escapeHtml(this._textLabels.body.noMatch)}</td></tr>`;
         } else {
             paginated.forEach(({ row, dataIndex }, viewIndex) => {
                 const isEven = viewIndex % 2 === 1;
                 const isSelected = this._selectedRows.includes(dataIndex);
-                const bgColor = isSelected ? this._theme.selectedBg : (isEven ? this._theme.evenRowBg : this._theme.oddRowBg);
+                // 與舊行為一致：選取 > 偶數列 > 奇數列（hover 由 CSS :hover 蓋過）
+                const rowClass = isSelected ? ' b4a-dt__tr--selected' : (isEven ? ' b4a-dt__tr--even' : '');
 
-                html += `<tr style="background-color:${bgColor};height:${this._theme.rowHeight};transition:background-color 0.15s;" data-row-index="${dataIndex}">`;
+                html += `<tr class="b4a-dt__tr${rowClass}" data-row-index="${dataIndex}">`;
 
                 if (isSelectable) {
-                    html += `<td style="${this._cellStyle()};width:48px;padding:4px;">`;
-                    html += `<input type="checkbox" data-action="select-row" data-index="${dataIndex}" ${isSelected ? 'checked' : ''} style="cursor:pointer;">`;
+                    html += '<td class="b4a-dt__td b4a-dt__td--select">';
+                    html += `<input type="checkbox" class="b4a-dt__checkbox" data-action="select-row" data-index="${dataIndex}" ${isSelected ? 'checked' : ''}>`;
                     html += '</td>';
                 }
 
                 visibleCols.forEach(colIdx => {
-                    const col = this.columns[colIdx];
-                    const widthStyle = this._getCellWidthStyle(col);
                     const cellContent = this._renderCell(row, colIdx, dataIndex, viewIndex);
-                    html += `<td style="${this._cellStyle()};${widthStyle}">${cellContent}</td>`;
+                    html += `<td class="b4a-dt__td" data-col="${colIdx}">${cellContent}</td>`;
                 });
 
                 html += '</tr>';
@@ -369,7 +387,33 @@ export class DataTable {
         html += '</div>';
 
         this.element.innerHTML = html;
+        this._applyDynamicStyles(visibleCols);
         this._bindEvents(this.element);
+    }
+
+    /**
+     * CSP 合規：HTML 剖析出的 style 屬性會被剝除，
+     * 執行期才知道的動態樣式一律在渲染後以 CSSOM（el.style）指派。
+     */
+    _applyDynamicStyles(visibleCols) {
+        // tableBodyHeight → 捲動區最大高度
+        const bodyHeight = this.options.tableBodyHeight;
+        if (bodyHeight) {
+            const scroll = this.element.querySelector('.b4a-dt__scroll');
+            if (scroll) {
+                scroll.style.maxHeight = bodyHeight;
+                scroll.style.overflowY = 'auto';
+            }
+        }
+
+        // setCellProps 自訂樣式（欄寬等）→ 套到該欄所有 th/td（與舊行為相同）
+        visibleCols.forEach(colIdx => {
+            const styleStr = this._getCellWidthStyle(this.columns[colIdx]);
+            if (!styleStr) return;
+            this.element.querySelectorAll(`[data-col="${colIdx}"]`).forEach(el => {
+                el.style.cssText = styleStr;
+            });
+        });
     }
 
     // ── 內部方法 ──
@@ -446,8 +490,8 @@ export class DataTable {
                 ? customToolbarSelect(selectedRowsObj, this.data, (rows) => { this._selectedRows = rows; this.render(); })
                 : (customToolbarSelect || '');
 
-            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background-color:var(--cl-bg-active);min-height:48px;">
-                <span style="font-weight:500;">${this._selectedRows.length} ${escapeHtml(this._textLabels.selectedRows.text)}已選擇</span>
+            return `<div class="b4a-dt__toolbar--select">
+                <span class="b4a-dt__toolbar-text">${this._selectedRows.length} ${escapeHtml(this._textLabels.selectedRows.text)}已選擇</span>
                 <div>${toolbarContent}</div>
             </div>`;
         }
@@ -455,13 +499,13 @@ export class DataTable {
         const titleHtml = isRawHtml(this.title)
             ? this.title.__html
             : (typeof this.title === 'string' && this.title
-                ? `<span style="font-weight:bold;">${escapeHtml(this.title)}</span>`
+                ? `<span class="b4a-dt__title">${escapeHtml(this.title)}</span>`
                 : (this.title || ''));
         const toolbarHtml = customToolbar
             ? (typeof customToolbar === 'function' ? customToolbar() : (customToolbar || ''))
             : '';
 
-        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;background:transparent;">
+        return `<div class="b4a-dt__toolbar">
             <div>${titleHtml}</div>
             <div>${toolbarHtml}</div>
         </div>`;
@@ -474,34 +518,22 @@ export class DataTable {
         const end = Math.min((page + 1) * this._rowsPerPage, totalCount);
         const options = this.options.rowsPerPageOptions || [10, 20, 100, 500, 1000];
 
-        const btnStyle = (disabled) =>
-            `padding:4px 8px;border:1px solid var(--cl-border-dark);border-radius:var(--cl-radius-sm);background:${disabled ? 'var(--cl-bg-secondary)' : 'var(--cl-bg)'};cursor:${disabled ? 'default' : 'pointer'};color:${disabled ? 'var(--cl-text-placeholder)' : 'var(--cl-text)'};min-width:28px;font-size:0.8rem;line-height:1.5;`;
-
-        return `<div style="display:flex;align-items:center;justify-content:flex-end;padding:12px 0;gap:16px;font-size:0.875rem;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:4px;">
+        // 禁用外觀改由 CSS :disabled 呈現（同 btnStyle 舊邏輯）
+        return `<div class="b4a-dt__pagination">
+            <div class="b4a-dt__pagination-group">
                 <span>${escapeHtml(this._textLabels.pagination.rowsPerPage)}</span>
-                <select data-action="rows-per-page" style="padding:4px 8px;border-radius:var(--cl-radius-sm);border:1px solid var(--cl-border-dark);background:var(--cl-bg);color:var(--cl-text);">
+                <select data-action="rows-per-page" class="b4a-dt__page-size">
                     ${options.map(opt => `<option value="${opt}" ${opt === this._rowsPerPage ? 'selected' : ''}>${opt}</option>`).join('')}
                 </select>
             </div>
             <span>${start}-${end} ${escapeHtml(this._textLabels.pagination.displayRows)} ${totalCount}</span>
-            <div style="display:flex;gap:2px;">
-                <button data-action="page-first" ${page === 0 ? 'disabled' : ''} style="${btnStyle(page === 0)}" title="${Locale.t('dataTable.firstPage')}">⟨⟨</button>
-                <button data-action="page-prev" ${page === 0 ? 'disabled' : ''} style="${btnStyle(page === 0)}" title="${Locale.t('dataTable.prevPage')}">⟨</button>
-                <button data-action="page-next" ${page >= totalPages - 1 ? 'disabled' : ''} style="${btnStyle(page >= totalPages - 1)}" title="${Locale.t('dataTable.nextPage')}">⟩</button>
-                <button data-action="page-last" ${page >= totalPages - 1 ? 'disabled' : ''} style="${btnStyle(page >= totalPages - 1)}" title="${Locale.t('dataTable.lastPage')}">⟩⟩</button>
+            <div class="b4a-dt__page-btns">
+                <button class="b4a-dt__page-btn" data-action="page-first" ${page === 0 ? 'disabled' : ''} title="${Locale.t('dataTable.firstPage')}">⟨⟨</button>
+                <button class="b4a-dt__page-btn" data-action="page-prev" ${page === 0 ? 'disabled' : ''} title="${Locale.t('dataTable.prevPage')}">⟨</button>
+                <button class="b4a-dt__page-btn" data-action="page-next" ${page >= totalPages - 1 ? 'disabled' : ''} title="${Locale.t('dataTable.nextPage')}">⟩</button>
+                <button class="b4a-dt__page-btn" data-action="page-last" ${page >= totalPages - 1 ? 'disabled' : ''} title="${Locale.t('dataTable.lastPage')}">⟩⟩</button>
             </div>
         </div>`;
-    }
-
-    _headerStyle() {
-        const t = this._theme;
-        return `border:3px solid var(--cl-bg);text-align:center;padding:0px;background-color:${t.headerBg};color:var(--cl-text-inverse);font-weight:bold;font-size:${t.headerFontSize};user-select:none;height:${t.headerHeight}`;
-    }
-
-    _cellStyle() {
-        const t = this._theme;
-        return `border:3px solid var(--cl-bg);text-align:center;padding:0px;font-size:${t.cellFontSize};word-break:${t.wordBreak}`;
     }
 
     _getCellWidthStyle(col) {
@@ -580,19 +612,8 @@ export class DataTable {
         root.querySelector('[data-action="page-next"]')?.addEventListener('click', () => { if (this._page < totalPages - 1) { this._page++; rerender(); } });
         root.querySelector('[data-action="page-last"]')?.addEventListener('click', () => { this._page = totalPages - 1; rerender(); });
 
-        // 行 hover
-        root.querySelectorAll('tbody tr[data-row-index]').forEach(tr => {
-            tr.addEventListener('mouseenter', () => {
-                tr.style.backgroundColor = this._theme.hoverBg;
-            });
-            tr.addEventListener('mouseleave', () => {
-                const dataIndex = parseInt(tr.getAttribute('data-row-index'));
-                const viewIndex = Array.from(tr.parentElement.children).indexOf(tr);
-                const isEven = viewIndex % 2 === 1;
-                const isSelected = this._selectedRows.includes(dataIndex);
-                tr.style.backgroundColor = isSelected ? this._theme.selectedBg : (isEven ? this._theme.evenRowBg : this._theme.oddRowBg);
-            });
-        });
+        // 行 hover：改由 DataTable.css 的 .b4a-dt .b4a-dt__tr:hover 呈現
+        //（特異性高於 --selected/--even，hover 蓋過選取/斑馬色，與舊 JS 行為一致）
     }
 
     _fireSelectionChange() {

@@ -145,9 +145,12 @@ export class LeafletMap {
             }
         } catch (e) {
             console.error('Leaflet Map Init Error:', e);
-            this.container.innerHTML = `<div style="padding: 20px; color: red; border:1px solid var(--cl-border); background:var(--cl-bg);">
-                地圖初始化錯誤: ${e.message}
-            </div>`;
+            // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+            this.container.innerHTML = '';
+            const errorBox = document.createElement('div');
+            errorBox.style.cssText = 'padding: 20px; color: var(--cl-danger); border:1px solid var(--cl-border); background:var(--cl-bg);';
+            errorBox.textContent = `地圖初始化錯誤: ${e.message}`;
+            this.container.appendChild(errorBox);
         }
     }
 

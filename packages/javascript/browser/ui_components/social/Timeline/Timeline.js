@@ -57,119 +57,66 @@ export class Timeline {
         };
 
         this.element = null;
-        this._injectStyles();
     }
 
-    _injectStyles() {
-        if (document.getElementById('social-timeline-styles')) return;
+    /**
+     * CSP style-src 'self' 相容:樣式於掛載後以 CSSOM 指派(原 <style> 注入已移除,值逐字等值)。
+     * ::before 垂直連接線 → 真實 .social-timeline__line 元素;:hover → 事件;:last-child → 迴圈判定。
+     */
+    _applyStyles() {
+        const root = this.element;
+        if (!root) return;
+        root.style.cssText = 'position: relative; padding: 0;';
 
-        const style = document.createElement('style');
-        style.id = 'social-timeline-styles';
-        style.textContent = `
-            .social-timeline {
-                position: relative;
-                padding: 0;
+        root.querySelectorAll('.social-timeline__group-label').forEach(el => {
+            el.style.cssText = 'font-size: var(--cl-font-size-lg); font-weight: 600; color: var(--cl-text-heading);' +
+                ' padding: 12px 0 8px 0; border-bottom: 1px solid var(--cl-border-subtle); margin-bottom: 16px;';
+        });
+        root.querySelectorAll('.social-timeline__list').forEach(list => {
+            list.style.cssText = 'position: relative; padding-left: 32px;';
+            const line = list.querySelector(':scope > .social-timeline__line');
+            if (line) {
+                line.style.cssText = 'position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--cl-border-medium);';
             }
-            .social-timeline__group-label {
-                font-size: var(--cl-font-size-lg);
-                font-weight: 600;
-                color: var(--cl-text-heading);
-                padding: 12px 0 8px 0;
-                border-bottom: 1px solid var(--cl-border-subtle);
-                margin-bottom: 16px;
-            }
-            .social-timeline__list {
-                position: relative;
-                padding-left: 32px;
-            }
-            /* 垂直連接線 */
-            .social-timeline__list::before {
-                content: '';
-                position: absolute;
-                left: 11px;
-                top: 0;
-                bottom: 0;
-                width: 2px;
-                background: var(--cl-border-medium);
-            }
-            .social-timeline__item {
-                position: relative;
-                padding-bottom: 24px;
-            }
-            .social-timeline__item:last-child {
-                padding-bottom: 0;
-            }
-            /* Marker 圓點 */
-            .social-timeline__marker {
-                position: absolute;
-                left: -32px;
-                top: 4px;
-                width: 22px;
-                height: 22px;
-                border-radius: var(--cl-radius-round);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: var(--cl-font-size-xs);
-                color: var(--cl-text-inverse);
-                border: 3px solid var(--cl-bg);
-                box-shadow: 0 0 0 2px var(--cl-border-medium);
-                z-index: 1;
-            }
-            .social-timeline__card {
-                background: var(--cl-bg);
-                border-radius: var(--cl-radius-lg);
-                padding: 14px 16px;
-                box-shadow: var(--cl-shadow-sm);
-                transition: box-shadow var(--cl-transition);
-            }
-            .social-timeline__card:hover {
-                box-shadow: var(--cl-shadow-md);
-            }
-            .social-timeline__card--clickable {
-                cursor: pointer;
-            }
-            .social-timeline__header {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin-bottom: 6px;
-                flex-wrap: wrap;
-            }
-            .social-timeline__type {
-                font-size: var(--cl-font-size-xs);
-                padding: 2px 8px;
-                border-radius: var(--cl-radius-lg);
-                color: var(--cl-text-inverse);
-                font-weight: 500;
-            }
-            .social-timeline__time {
-                font-size: var(--cl-font-size-sm);
-                color: var(--cl-text-dim);
-            }
-            .social-timeline__title {
-                font-size: var(--cl-font-size-lg);
-                font-weight: 600;
-                color: var(--cl-text);
-                margin-bottom: 4px;
-            }
-            .social-timeline__desc {
-                font-size: var(--cl-font-size-md);
-                color: var(--cl-text-secondary);
-                line-height: 1.5;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-            }
-            .social-timeline__empty {
-                text-align: center;
-                padding: 40px 20px;
-                color: var(--cl-text-dim);
-                font-size: var(--cl-font-size-lg);
-            }
-        `;
-        document.head.appendChild(style);
+            const items = list.querySelectorAll(':scope > .social-timeline__item');
+            items.forEach((item, i) => {
+                item.style.cssText = 'position: relative; padding-bottom: ' + (i === items.length - 1 ? '0' : '24px') + ';';
+            });
+        });
+        root.querySelectorAll('.social-timeline__marker').forEach(el => {
+            el.style.cssText = 'position: absolute; left: -32px; top: 4px; width: 22px; height: 22px;' +
+                ' border-radius: var(--cl-radius-round); display: flex; align-items: center; justify-content: center;' +
+                ' font-size: var(--cl-font-size-xs); color: var(--cl-text-inverse); border: 3px solid var(--cl-bg);' +
+                ' box-shadow: 0 0 0 2px var(--cl-border-medium); z-index: 1;' +
+                ` background: ${el.dataset.tlcolor || 'var(--cl-primary)'};`;
+        });
+        root.querySelectorAll('.social-timeline__card').forEach(el => {
+            el.style.cssText = 'background: var(--cl-bg); border-radius: var(--cl-radius-lg); padding: 14px 16px;' +
+                ' box-shadow: var(--cl-shadow-sm); transition: box-shadow var(--cl-transition);' +
+                (el.classList.contains('social-timeline__card--clickable') ? ' cursor: pointer;' : '');
+            el.addEventListener('mouseenter', () => { el.style.boxShadow = 'var(--cl-shadow-md)'; });
+            el.addEventListener('mouseleave', () => { el.style.boxShadow = 'var(--cl-shadow-sm)'; });
+        });
+        root.querySelectorAll('.social-timeline__header').forEach(el => {
+            el.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;';
+        });
+        root.querySelectorAll('.social-timeline__type').forEach(el => {
+            el.style.cssText = 'font-size: var(--cl-font-size-xs); padding: 2px 8px; border-radius: var(--cl-radius-lg);' +
+                ` color: var(--cl-text-inverse); font-weight: 500; background: ${el.dataset.tlcolor || 'var(--cl-primary)'};`;
+        });
+        root.querySelectorAll('.social-timeline__time').forEach(el => {
+            el.style.cssText = 'font-size: var(--cl-font-size-sm); color: var(--cl-text-dim);';
+        });
+        root.querySelectorAll('.social-timeline__title').forEach(el => {
+            el.style.cssText = 'font-size: var(--cl-font-size-lg); font-weight: 600; color: var(--cl-text); margin-bottom: 4px;';
+        });
+        root.querySelectorAll('.social-timeline__desc').forEach(el => {
+            el.style.cssText = 'font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.5;' +
+                ' display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;';
+        });
+        root.querySelectorAll('.social-timeline__empty').forEach(el => {
+            el.style.cssText = 'text-align: center; padding: 40px 20px; color: var(--cl-text-dim); font-size: var(--cl-font-size-lg);';
+        });
     }
 
     /** 格式化日期 */
@@ -211,10 +158,10 @@ export class Timeline {
         const clickClass = item.onClick ? ' social-timeline__card--clickable' : '';
 
         return `<div class="social-timeline__item" data-index="${index}">
-            <div class="social-timeline__marker" style="background:${color};">${escapeHtml(icon)}</div>
+            <div class="social-timeline__marker" data-tlcolor="${escapeHtml(color)}">${escapeHtml(icon)}</div>
             <div class="social-timeline__card${clickClass}">
                 <div class="social-timeline__header">
-                    ${safeType ? `<span class="social-timeline__type" style="background:${color};">${safeType}</span>` : ''}
+                    ${safeType ? `<span class="social-timeline__type" data-tlcolor="${escapeHtml(color)}">${safeType}</span>` : ''}
                     <span class="social-timeline__time">${escapeHtml(timeStr)}</span>
                 </div>
                 ${safeTitle ? `<div class="social-timeline__title">${safeTitle}</div>` : ''}
@@ -244,7 +191,7 @@ export class Timeline {
         if (!grouped) {
             const itemsHTML = sorted.map((item, i) => this._renderItem(item, i)).join('');
             return `<div class="social-timeline">
-                <div class="social-timeline__list">${itemsHTML}</div>
+                <div class="social-timeline__list"><div class="social-timeline__line"></div>${itemsHTML}</div>
             </div>`;
         }
 
@@ -260,7 +207,7 @@ export class Timeline {
         for (const [label, entries] of groups) {
             const itemsHTML = entries.map(({ item, index }) => this._renderItem(item, index)).join('');
             html += `<div class="social-timeline__group-label">${escapeHtml(label)}</div>
-                     <div class="social-timeline__list">${itemsHTML}</div>`;
+                     <div class="social-timeline__list"><div class="social-timeline__line"></div>${itemsHTML}</div>`;
         }
 
         return `<div class="social-timeline">${html}</div>`;
@@ -278,6 +225,7 @@ export class Timeline {
 
         target.innerHTML = this.toHTML();
         this.element = target.querySelector('.social-timeline');
+        this._applyStyles();
 
         // 綁定點擊事件（事件委派）
         if (this.element) {

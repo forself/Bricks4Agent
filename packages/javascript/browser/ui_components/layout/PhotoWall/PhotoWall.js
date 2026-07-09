@@ -242,8 +242,12 @@ export class PhotoWall {
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                <span style="font-size: var(--cl-font-size-md); margin-top: 8px;">新增照片</span>
             `;
+            // CSP（style-src 'self'）合規：HTML 剖析出的 style 屬性會被剝除，改用 CSSOM
+            const addLabel = document.createElement('span');
+            addLabel.textContent = '新增照片';
+            addLabel.style.cssText = 'font-size: var(--cl-font-size-md); margin-top: 8px;';
+            addBtn.appendChild(addLabel);
 
             addBtn.addEventListener('mouseenter', () => {
                 addBtn.style.background = 'var(--cl-bg-input)';

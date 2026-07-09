@@ -143,22 +143,34 @@ export class TimelineChart extends BaseChart {
         const safeId = this.escapeHtml(data.id);
 
         const html = `
-            <div style="min-width: 200px;">
-                <h3 style="margin:0 0 8px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:8px; font-size:var(--cl-font-size-lg); color:var(--cl-text-dark);">${safeLabel}</h3>
-                <div style="font-size:var(--cl-font-size-sm); color:var(--cl-text-heading); line-height:1.6;">
+            <div data-part="root">
+                <h3 data-part="title">${safeLabel}</h3>
+                <div data-part="body">
                    <div><strong>Start:</strong> ${new Date(data.start).toLocaleTimeString()}</div>
                    <div><strong>End:</strong> ${new Date(data.end).toLocaleTimeString()}</div>
                    <div><strong>Duration:</strong> ${duration}</div>
-                   <div style="margin-top:8px; padding:6px; background:var(--cl-bg-secondary); border-radius:var(--cl-radius-sm);">
+                   <div data-part="details">
                         ${safeDetails}
                    </div>
                 </div>
-                <div style="margin-top:8px; text-align:right;">
+                <div data-part="actions">
                     <button data-action="analyze" data-event-id="${safeId}">Analyze</button>
                 </div>
             </div>
         `;
         this.showTooltip(html, e, true);
+
+        // CSP 相容:style-src 'self' 會剝掉 HTML 剖析出的 style 屬性,
+        // 故於 tooltip 插入 DOM 後以 CSSOM(el.style.cssText)指派樣式
+        const setStyle = (selector, cssText) => {
+            const el = this.tooltip.querySelector(selector);
+            if (el) el.style.cssText = cssText;
+        };
+        setStyle('[data-part="root"]', 'min-width:200px;');
+        setStyle('[data-part="title"]', 'margin:0 0 8px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:8px; font-size:var(--cl-font-size-lg); color:var(--cl-text-dark);');
+        setStyle('[data-part="body"]', 'font-size:var(--cl-font-size-sm); color:var(--cl-text-heading); line-height:1.6;');
+        setStyle('[data-part="details"]', 'margin-top:8px; padding:6px; background:var(--cl-bg-secondary); border-radius:var(--cl-radius-sm);');
+        setStyle('[data-part="actions"]', 'margin-top:8px; text-align:right;');
 
         // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
         // ModalPanel 已於檔案頂部 import { ModalPanel } from '../layout/Panel/index.js'

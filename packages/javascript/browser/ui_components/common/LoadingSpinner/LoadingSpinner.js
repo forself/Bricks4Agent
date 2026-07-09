@@ -53,57 +53,23 @@ export class LoadingSpinner {
         };
 
         this.element = null;
-        this._injectStyles();
+        /** @private Web Animations API handles */
+        this._animations = [];
+        /** @private Explicit display value used to restore visibility (never '') */
+        this._displayMode = 'inline-flex';
         this._create();
     }
 
-    _injectStyles() {
-        if (document.getElementById('loading-spinner-styles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'loading-spinner-styles';
-        style.textContent = `
-            @keyframes ls-spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            @keyframes ls-dots {
-                0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
-                40% { transform: scale(1); opacity: 1; }
-            }
-            @keyframes ls-pulse {
-                0% { transform: scale(0.8); opacity: 0.5; }
-                50% { transform: scale(1); opacity: 1; }
-                100% { transform: scale(0.8); opacity: 0.5; }
-            }
-            @keyframes ls-bar {
-                0% { width: 0%; }
-                50% { width: 70%; }
-                100% { width: 100%; }
-            }
-            .ls-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: var(--cl-bg-surface-overlay);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-direction: column;
-                gap: 12px;
-            }
-            .ls-inline {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                flex-direction: column;
-                gap: 8px;
-            }
-            .ls-hidden { display: none !important; }
-        `;
-        document.head.appendChild(style);
+    /**
+     * Start a Web Animations API animation (CSP-safe @keyframes replacement)
+     * and track it for cleanup.
+     * @private
+     */
+    _animate(el, keyframes, timing) {
+        if (typeof el.animate !== 'function') return null;
+        const anim = el.animate(keyframes, timing);
+        this._animations.push(anim);
+        return anim;
     }
 
     _getSizeValue() {
@@ -123,8 +89,35 @@ export class LoadingSpinner {
 
         const container = document.createElement('div');
         container.className = overlay ? 'ls-overlay' : 'ls-inline';
-        if (overlay) container.style.zIndex = safeZIndex;
-        if (!visible) container.classList.add('ls-hidden');
+        this._displayMode = overlay ? 'flex' : 'inline-flex';
+        if (overlay) {
+            container.style.cssText = [
+                'position: fixed;',
+                'top: 0;',
+                'left: 0;',
+                'right: 0;',
+                'bottom: 0;',
+                'background: var(--cl-bg-surface-overlay);',
+                'display: flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'flex-direction: column;',
+                'gap: 12px;',
+                `z-index: ${safeZIndex};`
+            ].join(' ');
+        } else {
+            container.style.cssText = [
+                'display: inline-flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'flex-direction: column;',
+                'gap: 8px;'
+            ].join(' ');
+        }
+        if (!visible) {
+            container.classList.add('ls-hidden');
+            container.style.display = 'none';
+        }
 
         let spinnerEl;
 
@@ -168,8 +161,13 @@ export class LoadingSpinner {
             border: ${Math.max(2, size / 10)}px solid var(--cl-border-light);
             border-top-color: ${color};
             border-radius: var(--cl-radius-round);
-            animation: ls-spin 0.8s linear infinite;
         `;
+        // @keyframes ls-spin replacement (WAAPI, CSP-safe)
+        this._animate(
+            spinner,
+            [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+            { duration: 800, iterations: Infinity, easing: 'linear' }
+        );
         return spinner;
     }
 
@@ -187,9 +185,18 @@ export class LoadingSpinner {
                 height: ${dotSize}px;
                 background: ${color};
                 border-radius: var(--cl-radius-round);
-                animation: ls-dots 1.4s ease-in-out infinite;
-                animation-delay: ${i * 0.16}s;
             `;
+            // @keyframes ls-dots replacement (WAAPI, CSP-safe)
+            this._animate(
+                dot,
+                [
+                    { transform: 'scale(0)', opacity: 0.5, offset: 0 },
+                    { transform: 'scale(1)', opacity: 1, offset: 0.4 },
+                    { transform: 'scale(0)', opacity: 0.5, offset: 0.8 },
+                    { transform: 'scale(0)', opacity: 0.5, offset: 1 }
+                ],
+                { duration: 1400, iterations: Infinity, easing: 'ease-in-out', delay: i * 160 }
+            );
             container.appendChild(dot);
         }
 
@@ -203,8 +210,17 @@ export class LoadingSpinner {
             height: ${size}px;
             background: ${color};
             border-radius: var(--cl-radius-round);
-            animation: ls-pulse 1.5s ease-in-out infinite;
         `;
+        // @keyframes ls-pulse replacement (WAAPI, CSP-safe)
+        this._animate(
+            pulse,
+            [
+                { transform: 'scale(0.8)', opacity: 0.5, offset: 0 },
+                { transform: 'scale(1)', opacity: 1, offset: 0.5 },
+                { transform: 'scale(0.8)', opacity: 0.5, offset: 1 }
+            ],
+            { duration: 1500, iterations: Infinity, easing: 'ease-in-out' }
+        );
         return pulse;
     }
 
@@ -223,26 +239,42 @@ export class LoadingSpinner {
             height: 100%;
             background: ${color};
             border-radius: var(--cl-radius-xs);
-            animation: ls-bar 1.5s ease-in-out infinite;
         `;
+        // @keyframes ls-bar replacement (WAAPI, CSP-safe)
+        this._animate(
+            bar,
+            [
+                { width: '0%', offset: 0 },
+                { width: '70%', offset: 0.5 },
+                { width: '100%', offset: 1 }
+            ],
+            { duration: 1500, iterations: Infinity, easing: 'ease-in-out' }
+        );
 
         container.appendChild(bar);
         return container;
     }
 
     show() {
-        this.element?.classList.remove('ls-hidden');
+        if (this.element) {
+            this.element.classList.remove('ls-hidden');
+            // Must restore an explicit display value (not ''), base display lives in cssText
+            this.element.style.display = this._displayMode;
+        }
         return this;
     }
 
     hide() {
-        this.element?.classList.add('ls-hidden');
+        if (this.element) {
+            this.element.classList.add('ls-hidden');
+            this.element.style.display = 'none';
+        }
         return this;
     }
 
     toggle() {
-        this.element?.classList.toggle('ls-hidden');
-        return this;
+        if (!this.element) return this;
+        return this.isVisible() ? this.hide() : this.show();
     }
 
     isVisible() {
@@ -266,6 +298,8 @@ export class LoadingSpinner {
     }
 
     destroy() {
+        this._animations.forEach(anim => anim.cancel());
+        this._animations = [];
         this.element?.remove();
         this.element = null;
     }

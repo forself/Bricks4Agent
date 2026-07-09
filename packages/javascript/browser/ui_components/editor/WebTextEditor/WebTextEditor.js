@@ -102,7 +102,25 @@ export class WebTextEditor {
         this._checkDraft();
     }
 
+    /**
+     * 注入同源元件樣式表(偽元素 content、動態子孫 selector、:hover、全螢幕 class 等
+     * 無法以 CSSOM 逐節點表達的規則)。同源 <link rel="stylesheet"> 在嚴格 CSP
+     * (style-src 'self',無 unsafe-inline)下合規。
+     * 以固定 id 去重:多實例/重複建構時只注入一次。
+     */
+    _ensureStylesheet() {
+        const linkId = 'bricks4agent-web-text-editor-css';
+        if (document.getElementById(linkId)) return;
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = new URL('./WebTextEditor.css', import.meta.url).href;
+        document.head.appendChild(link);
+    }
+
     _createUI() {
+        this._ensureStylesheet();
+
         // 主容器樣式
         this.container.classList.add('web-text-editor');
         this.container.style.cssText = `
@@ -149,53 +167,8 @@ export class WebTextEditor {
             this.editor.dataset.placeholder = this.options.placeholder;
         }
 
-        // 注入基礎 CSS
-        const style = document.createElement('style');
-        style.textContent = `
-            /* RWD: 搜尋框等 absolute 子元素以編輯器為定位基準,窄容器不外溢
-               (.web-text-editor.fullscreen 特異度較高,position:fixed 不受影響) */
-            .web-text-editor { position: relative; }
-            .wte-content:empty:before {
-                content: attr(data-placeholder);
-                color: var(--cl-text-placeholder);
-                pointer-events: none;
-            }
-            .wte-content h1 { font-size: 2em; margin: 0.5em 0; border-bottom: 2px solid var(--cl-border-light); padding-bottom: 5px; }
-            .wte-content h2 { font-size: 1.5em; margin: 0.5em 0; color: var(--cl-text); }
-            .wte-content blockquote { border-left: 4px solid var(--cl-border); padding-left: 10px; color: var(--cl-text-secondary); margin: 10px 0; }
-            .wte-content img { max-width: 100%; border-radius: var(--cl-radius-sm); box-shadow: var(--cl-shadow-md); }
-            .wte-content ul, .wte-content ol { padding-left: 20px; }
-            .wte-content a { color: var(--cl-primary); text-decoration: underline; }
-            /* 表格样式 */
-            .wte-content table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-            .wte-content table td, .wte-content table th { border: 1px solid var(--cl-border); padding: 8px; text-align: left; }
-            .wte-content table th { background: var(--cl-bg-secondary); font-weight: bold; }
-            .wte-content table tr:hover { background: var(--cl-bg-disabled); }
-            /* 分页符样式 */
-            .wte-page-break { 
-                margin: 20px 0; padding: 10px; border-top: 2px dashed var(--cl-text-placeholder); 
-                position: relative; text-align: center; color: var(--cl-text-placeholder); font-size: var(--cl-font-size-sm);
-                page-break-after: always;
-            }
-            .wte-page-break::before { content: Locale.t('webTextEditor.pageBreakLine'); }
-            
-            /* 分章節顯示 */
-            .wte-header, .wte-footer { 
-                padding: 10px 20px; font-size: var(--cl-font-size-md); color: var(--cl-text-muted); border: 1px dashed var(--cl-border-light); 
-                margin: 5px 0; background: var(--cl-bg-input); position: relative;
-            }
-            .wte-header::after { content: '" + Locale.t('webTextEditor.headerArea') + "'; position: absolute; right: 10px; top: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
-            .wte-footer::after { content: '" + Locale.t('webTextEditor.footerArea') + "'; position: absolute; right: 10px; bottom: 5px; font-size: var(--cl-font-size-2xs); opacity: 0.5; }
-            
-            .wte-page-number { font-weight: bold; color: var(--cl-text); }
-            
-            /* 全螢幕樣式 */
-            .web-text-editor.fullscreen {
-                position: fixed; top: 0; left: 0; width: 100vw !important; height: 100vh !important;
-                z-index: 10000; border-radius: 0;
-            }
-        `;
-        this.container.appendChild(style);
+        // 基礎 CSS(偽元素/動態子孫 selector/:hover/全螢幕 class)由同源樣式表
+        // WebTextEditor.css 提供,建構時 _ensureStylesheet() 注入 <link>(CSP style-src 'self' 合規)
         this.container.appendChild(this.editor);
 
         // 3. 狀態列 (Status Bar) - 增強版字數統計
@@ -772,12 +745,16 @@ export class WebTextEditor {
                 };
 
                 // 插入圖片，並標記為 web-painter-embed
-                const imgHtml = `<img src="${result}" class="web-painter-embed" id="${id}" 
-                    style="max-width: 100%; display: block; margin: 10px auto; cursor: pointer;" 
-                    title="點擊編輯圖片/繪圖" />`;
-                
+                const imgHtml = `<img src="${result}" class="web-painter-embed" id="${id}" title="點擊編輯圖片/繪圖" />`;
+
                 document.execCommand('insertHTML', false, imgHtml);
                 document.execCommand('insertHTML', false, '<p><br/></p>');
+
+                // 樣式改以 CSSOM 對插入節點設定(CSP 合規,不經 HTML 剖析)
+                const insertedImg = this.editor.querySelector('#' + id);
+                if (insertedImg) {
+                    insertedImg.style.cssText = 'max-width: 100%; display: block; margin: 10px auto; cursor: pointer;';
+                }
 
                 // 設定 dataset
                 setTimeout(() => {
@@ -797,18 +774,25 @@ export class WebTextEditor {
     _insertWebPainter() {
         const id = nextUid(this.instanceId + '-wp');
         // 使用英文避免 btoa 中文亂碼問題，並加上圖示
+        // 背景/邊框改用 SVG 展示屬性(rect fill/stroke),不用 style 屬性(CSP 合規)
         const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" style="background:var(--cl-bg-tertiary);border:1px solid var(--cl-border-medium);">
-            <rect width="100%" height="100%" fill="var(--cl-bg-tertiary)"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+            <rect width="100%" height="100%" fill="var(--cl-bg-tertiary)" stroke="var(--cl-border-medium)" stroke-width="1"/>
             <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="60">🎨</text>
             <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="var(--cl-text-secondary)" font-family="sans-serif" font-size="20">Click to Edit Illustration</text>
         </svg>`.trim();
         const placeholder = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
 
-        const imgHtml = `<img src="${placeholder}" class="web-painter-embed" id="${id}" style="cursor: pointer; border: 2px dashed var(--cl-border-dark); max-width: 100%; display: block; margin: 10px auto;" title="點擊編輯插圖" />`;
-        
+        const imgHtml = `<img src="${placeholder}" class="web-painter-embed" id="${id}" title="點擊編輯插圖" />`;
+
         document.execCommand('insertHTML', false, imgHtml);
         document.execCommand('insertHTML', false, '<p><br/></p>'); // 換行
+
+        // 樣式改以 CSSOM 對插入節點設定(CSP 合規)
+        const insertedImg = this.editor.querySelector('#' + id);
+        if (insertedImg) {
+            insertedImg.style.cssText = 'cursor: pointer; border: 2px dashed var(--cl-border-dark); max-width: 100%; display: block; margin: 10px auto;';
+        }
 
         // 初始化數據
         setTimeout(() => {
@@ -835,7 +819,10 @@ export class WebTextEditor {
         // Modal Header
         const header = document.createElement('div');
         header.style.cssText = `padding:10px 20px;background:var(--cl-bg-secondary);border-bottom:1px solid var(--cl-border);display:flex;justify-content:space-between;align-items:center;`;
-        header.innerHTML = '<span style="font-weight:bold;font-size:var(--cl-font-size-2xl);">🎨 繪圖板編輯模式</span>';
+        const headerTitle = document.createElement('span');
+        headerTitle.style.cssText = 'font-weight:bold;font-size:var(--cl-font-size-2xl);';
+        headerTitle.textContent = '🎨 繪圖板編輯模式';
+        header.appendChild(headerTitle);
 
         const btnGroup = document.createElement('div');
         btnGroup.style.gap = '10px';
@@ -1160,7 +1147,10 @@ export class WebTextEditor {
 
         // 4. Color
         const colorWrapper = document.createElement('div');
-        colorWrapper.innerHTML = '<span style="font-size:var(--cl-font-size-xl);">🎨</span>';
+        const colorIcon = document.createElement('span');
+        colorIcon.style.cssText = 'font-size:var(--cl-font-size-xl);';
+        colorIcon.textContent = '🎨';
+        colorWrapper.appendChild(colorIcon);
         colorWrapper.style.cssText = 'position:relative; width: 26px; height: 26px; display:flex; align-items:center; justify-content:center; cursor:pointer;';
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
@@ -2038,32 +2028,48 @@ export class WebTextEditor {
         `;
 
         dialog.innerHTML = `
-            <div class="wte-search-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                <span style="font-weight:bold;font-size:var(--cl-font-size-lg);">搜尋與取代</span>
-                <button class="wte-search-close" style="background:none;border:none;font-size:var(--cl-font-size-2xl);cursor:pointer;color:var(--cl-text-placeholder);">&times;</button>
+            <div class="wte-search-header">
+                <span class="wte-search-title">搜尋與取代</span>
+                <button class="wte-search-close">&times;</button>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <input type="text" name="search" placeholder="搜尋文字..." style="flex:1;min-width:0;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
-                <button class="wte-btn-prev" title="上一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▲</button>
-                <button class="wte-btn-next" title="下一個" style="padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">▼</button>
+            <div class="wte-search-row">
+                <input type="text" name="search" placeholder="搜尋文字...">
+                <button class="wte-btn-prev" title="上一個">▲</button>
+                <button class="wte-btn-next" title="下一個">▼</button>
             </div>
-            <div class="wte-replace-row" style="display:${showReplace ? 'flex' : 'none'};gap:8px;align-items:center;">
-                <input type="text" name="replace" placeholder="取代為..." style="flex:1;min-width:0;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);">
+            <div class="wte-replace-row">
+                <input type="text" name="replace" placeholder="取代為...">
             </div>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <div class="wte-search-options">
+                <label>
                     <input type="checkbox" name="caseSensitive"> 區分大小寫
                 </label>
-                <label style="font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;">
+                <label>
                     <input type="checkbox" name="wholeWord"> 全字匹配
                 </label>
-                <span class="wte-match-count" style="font-size:var(--cl-font-size-sm);color:var(--cl-text-secondary);margin-left:auto;">0 個結果</span>
+                <span class="wte-match-count">0 個結果</span>
             </div>
-            <div class="wte-replace-actions" style="display:${showReplace ? 'flex' : 'none'};gap:8px;justify-content:flex-end;">
-                <button class="wte-btn-replace" style="padding:6px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;">取代</button>
-                <button class="wte-btn-replace-all" style="padding:6px 12px;border:none;border-radius:var(--cl-radius-sm);background:var(--cl-primary-dark);color:var(--cl-text-inverse);cursor:pointer;">全部取代</button>
+            <div class="wte-replace-actions">
+                <button class="wte-btn-replace">取代</button>
+                <button class="wte-btn-replace-all">全部取代</button>
             </div>
         `;
+
+        // 剖析後以 CSSOM 對節點套樣式(CSP 合規,不經 HTML style 屬性)
+        const applyCss = (sel, css) => dialog.querySelectorAll(sel).forEach(el => { el.style.cssText = css; });
+        applyCss('.wte-search-header', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;');
+        applyCss('.wte-search-title', 'font-weight:bold;font-size:var(--cl-font-size-lg);');
+        applyCss('.wte-search-close', 'background:none;border:none;font-size:var(--cl-font-size-2xl);cursor:pointer;color:var(--cl-text-placeholder);');
+        applyCss('.wte-search-row', 'display:flex;gap:8px;align-items:center;');
+        applyCss('input[name="search"], input[name="replace"]', 'flex:1;min-width:0;padding:8px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);font-size:var(--cl-font-size-lg);');
+        applyCss('.wte-btn-prev, .wte-btn-next', 'padding:6px 10px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;');
+        applyCss('.wte-replace-row', `display:${showReplace ? 'flex' : 'none'};gap:8px;align-items:center;`);
+        applyCss('.wte-search-options', 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;');
+        applyCss('.wte-search-options label', 'font-size:var(--cl-font-size-sm);display:flex;align-items:center;gap:4px;cursor:pointer;');
+        applyCss('.wte-match-count', 'font-size:var(--cl-font-size-sm);color:var(--cl-text-secondary);margin-left:auto;');
+        applyCss('.wte-replace-actions', `display:${showReplace ? 'flex' : 'none'};gap:8px;justify-content:flex-end;`);
+        applyCss('.wte-btn-replace', 'padding:6px 12px;border:1px solid var(--cl-border);border-radius:var(--cl-radius-sm);background: var(--cl-bg);cursor:pointer;');
+        applyCss('.wte-btn-replace-all', 'padding:6px 12px;border:none;border-radius:var(--cl-radius-sm);background:var(--cl-primary-dark);color:var(--cl-text-inverse);cursor:pointer;');
 
         // 設定事件監聽
         const searchInput = dialog.querySelector('input[name="search"]');
@@ -2709,19 +2715,18 @@ export class WebTextEditor {
         `;
 
         let tocHtml = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-                <h3 style="margin:0;">文件目錄</h3>
-                <button class="close-btn" style="background:none;border:none;font-size:var(--cl-font-size-3xl);cursor:pointer;">&times;</button>
+            <div class="wte-toc-panel-header">
+                <h3>文件目錄</h3>
+                <button class="close-btn">&times;</button>
             </div>
-            <div class="toc-list" style="margin-bottom:15px;">
+            <div class="toc-list">
         `;
 
         toc.forEach(item => {
             const indent = (item.level - 1) * 20;
             tocHtml += `
-                <div class="toc-item" data-id="${item.id}"
-                     style="padding:8px 10px;margin-left:${indent}px;cursor:pointer;border-radius:var(--cl-radius-sm);transition:background var(--cl-transition);">
-                    <span style="color:var(--cl-text-secondary);font-size:var(--cl-font-size-sm);margin-right:8px;">H${item.level}</span>
+                <div class="toc-item" data-id="${item.id}" data-indent="${indent}">
+                    <span class="toc-level">H${item.level}</span>
                     ${escapeHtml(item.text)}
                 </div>
             `;
@@ -2729,14 +2734,27 @@ export class WebTextEditor {
 
         tocHtml += `
             </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--cl-border-light);padding-top:15px;">
-                <button class="insert-btn" style="padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;">
+            <div class="wte-toc-panel-footer">
+                <button class="insert-btn">
                     插入目錄到文件
                 </button>
             </div>
         `;
 
         panel.innerHTML = tocHtml;
+
+        // 剖析後以 CSSOM 對節點套樣式(CSP 合規,不經 HTML style 屬性)
+        const applyCss = (sel, css) => panel.querySelectorAll(sel).forEach(el => { el.style.cssText = css; });
+        applyCss('.wte-toc-panel-header', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;');
+        applyCss('.wte-toc-panel-header h3', 'margin:0;');
+        applyCss('.close-btn', 'background:none;border:none;font-size:var(--cl-font-size-3xl);cursor:pointer;');
+        applyCss('.toc-list', 'margin-bottom:15px;');
+        applyCss('.toc-level', 'color:var(--cl-text-secondary);font-size:var(--cl-font-size-sm);margin-right:8px;');
+        applyCss('.wte-toc-panel-footer', 'display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--cl-border-light);padding-top:15px;');
+        applyCss('.insert-btn', 'padding:8px 16px;border:1px solid var(--cl-primary-dark);color:var(--cl-primary-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;');
+        panel.querySelectorAll('.toc-item').forEach(el => {
+            el.style.cssText = `padding:8px 10px;margin-left:${el.dataset.indent}px;cursor:pointer;border-radius:var(--cl-radius-sm);transition:background var(--cl-transition);`;
+        });
 
         // 事件處理
         panel.querySelector('.close-btn').onclick = () => document.body.removeChild(overlay);
@@ -2789,13 +2807,10 @@ export class WebTextEditor {
             existingToc.remove();
         }
 
-        // 建立目錄 HTML
+        // 建立目錄 HTML(不含 style 屬性,剖析後以 CSSOM 套樣式,CSP 合規)
         let tocHtml = `
-            <div class="wte-toc" contenteditable="false" style="
-                background: var(--cl-bg-tertiary); border: 1px solid var(--cl-border-subtle); border-radius: var(--cl-radius-lg);
-                padding: 20px; margin-bottom: 20px;
-            ">
-                <div style="font-weight:bold;font-size:var(--cl-font-size-2xl);margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;">
+            <div class="wte-toc" contenteditable="false">
+                <div class="wte-toc-title">
                     目錄
                 </div>
         `;
@@ -2803,8 +2818,8 @@ export class WebTextEditor {
         toc.forEach(item => {
             const indent = (item.level - 1) * 20;
             tocHtml += `
-                <div class="wte-toc-item" style="padding:5px 0;margin-left:${indent}px;">
-                    <a href="#${item.id}" style="color:var(--cl-primary-dark);text-decoration:none;"
+                <div class="wte-toc-item" data-indent="${indent}">
+                    <a href="#${item.id}"
                        data-toc-target="${item.id}">
                         ${escapeHtml(item.text)}
                     </a>
@@ -2819,6 +2834,17 @@ export class WebTextEditor {
         const tocElement = document.createElement('div');
         tocElement.innerHTML = tocHtml;
         const tocNode = tocElement.firstElementChild;
+
+        // CSSOM 套樣式(等同原 style 屬性;之後照舊由 _normalizeStyles 正規化,不影響清洗流程)
+        tocNode.style.cssText = 'background: var(--cl-bg-tertiary); border: 1px solid var(--cl-border-subtle); border-radius: var(--cl-radius-lg); padding: 20px; margin-bottom: 20px;';
+        const tocTitle = tocNode.querySelector('.wte-toc-title');
+        if (tocTitle) tocTitle.style.cssText = 'font-weight:bold;font-size:var(--cl-font-size-2xl);margin-bottom:15px;border-bottom:2px solid var(--cl-border-medium);padding-bottom:10px;';
+        tocNode.querySelectorAll('.wte-toc-item').forEach(el => {
+            el.style.cssText = `padding:5px 0;margin-left:${el.dataset.indent}px;`;
+        });
+        tocNode.querySelectorAll('a[data-toc-target]').forEach(a => {
+            a.style.cssText = 'color:var(--cl-primary-dark);text-decoration:none;';
+        });
 
         if (firstChild) {
             this.editor.insertBefore(tocNode, firstChild);

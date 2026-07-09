@@ -146,7 +146,6 @@ export class Tag {
         /** @private */
         this._textEl = null;
 
-        Tag._injectStyles();
         this.element = this._createElement();
     }
 
@@ -155,113 +154,24 @@ export class Tag {
      * ----------------------------------------------------------------*/
 
     /**
-     * Inject scoped CSS into the document head (once).
+     * Size preset styles applied to the root element (CSP-safe CSSOM).
      * @private
      */
-    static _injectStyles() {
-        if (document.getElementById('cl-tag-styles')) return;
+    static _SIZE_STYLES = {
+        sm: 'padding: 2px 6px; font-size: var(--cl-font-size-xs); border-radius: var(--cl-radius-xs);',
+        md: 'padding: 3px 8px; font-size: var(--cl-font-size-sm); border-radius: var(--cl-radius-sm);',
+        lg: 'padding: 5px 10px; font-size: var(--cl-font-size-lg); border-radius: var(--cl-radius-md);'
+    };
 
-        const style = document.createElement('style');
-        style.id = 'cl-tag-styles';
-        style.textContent = `
-            .cl-tag {
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                font-family: var(--cl-font-family);
-                font-weight: 500;
-                line-height: 1;
-                white-space: nowrap;
-                border: 1px solid transparent;
-                vertical-align: middle;
-                transition: all var(--cl-transition-fast);
-                box-sizing: border-box;
-                max-width: 100%;
-            }
-
-            /* ---- Sizes ---- */
-            .cl-tag--sm {
-                padding: 2px 6px;
-                font-size: var(--cl-font-size-xs);
-                border-radius: var(--cl-radius-xs);
-            }
-            .cl-tag--md {
-                padding: 3px 8px;
-                font-size: var(--cl-font-size-sm);
-                border-radius: var(--cl-radius-sm);
-            }
-            .cl-tag--lg {
-                padding: 5px 10px;
-                font-size: var(--cl-font-size-lg);
-                border-radius: var(--cl-radius-md);
-            }
-
-            /* Rounded (pill) override */
-            .cl-tag--rounded.cl-tag--sm { border-radius: var(--cl-radius-pill); }
-            .cl-tag--rounded.cl-tag--md { border-radius: var(--cl-radius-pill); }
-            .cl-tag--rounded.cl-tag--lg { border-radius: var(--cl-radius-pill); }
-
-            /* ---- Clickable ---- */
-            .cl-tag--clickable {
-                cursor: pointer;
-                user-select: none;
-            }
-            .cl-tag--clickable:active {
-                transform: scale(0.95);
-            }
-
-            /* ---- Icon ---- */
-            .cl-tag__icon {
-                display: inline-flex;
-                align-items: center;
-                flex-shrink: 0;
-            }
-
-            /* ---- Text ---- */
-            .cl-tag__text {
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            /* ---- Close button ---- */
-            .cl-tag__close {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                border: none;
-                background: transparent;
-                padding: 0;
-                margin-left: 2px;
-                cursor: pointer;
-                border-radius: var(--cl-radius-round);
-                transition: background var(--cl-transition-fast), color var(--cl-transition-fast);
-                line-height: 1;
-                flex-shrink: 0;
-                font-family: var(--cl-font-family);
-            }
-            .cl-tag--sm .cl-tag__close {
-                width: 14px;
-                height: 14px;
-                font-size: var(--cl-font-size-2xs);
-            }
-            .cl-tag--md .cl-tag__close {
-                width: 16px;
-                height: 16px;
-                font-size: var(--cl-font-size-xs);
-            }
-            .cl-tag--lg .cl-tag__close {
-                width: 18px;
-                height: 18px;
-                font-size: var(--cl-font-size-sm);
-            }
-            .cl-tag__close:hover {
-                background: rgba(0, 0, 0, 0.08);
-            }
-        `;
-
-        document.head.appendChild(style);
-    }
+    /**
+     * Size preset styles for the close button.
+     * @private
+     */
+    static _CLOSE_SIZE_STYLES = {
+        sm: 'width: 14px; height: 14px; font-size: var(--cl-font-size-2xs);',
+        md: 'width: 16px; height: 16px; font-size: var(--cl-font-size-xs);',
+        lg: 'width: 18px; height: 18px; font-size: var(--cl-font-size-sm);'
+    };
 
     /* ------------------------------------------------------------------
      *  Private instance methods
@@ -276,20 +186,36 @@ export class Tag {
         const { text, variant, closable, clickable, icon, size, rounded } = this.options;
         const vs = Tag._VARIANT_STYLES[variant] || Tag._VARIANT_STYLES.default;
 
-        // Root element
+        // Root element (all base layout via CSSOM cssText — CSP-safe)
         const el = document.createElement('span');
         el.className = this._buildClassName();
-        el.style.cssText = `
-            background: ${vs.bg};
-            border-color: ${vs.border};
-            color: ${vs.text};
-        `;
+        el.style.cssText = [
+            'display: inline-flex;',
+            'align-items: center;',
+            'gap: 4px;',
+            'font-family: var(--cl-font-family);',
+            'font-weight: 500;',
+            'line-height: 1;',
+            'white-space: nowrap;',
+            'border: 1px solid transparent;',
+            'vertical-align: middle;',
+            'transition: all var(--cl-transition-fast);',
+            'box-sizing: border-box;',
+            'max-width: 100%;',
+            Tag._SIZE_STYLES[size] || Tag._SIZE_STYLES.md,
+            rounded ? 'border-radius: var(--cl-radius-pill);' : '',
+            clickable ? 'cursor: pointer; user-select: none;' : '',
+            `background: ${vs.bg};`,
+            `border-color: ${vs.border};`,
+            `color: ${vs.text};`
+        ].join(' ');
 
         // Icon
         if (icon) {
             const iconEl = document.createElement('span');
             iconEl.className = 'cl-tag__icon';
             iconEl.textContent = icon;
+            iconEl.style.cssText = 'display: inline-flex; align-items: center; flex-shrink: 0;';
             el.appendChild(iconEl);
         }
 
@@ -297,6 +223,7 @@ export class Tag {
         this._textEl = document.createElement('span');
         this._textEl.className = 'cl-tag__text';
         this._textEl.textContent = text;
+        this._textEl.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
         el.appendChild(this._textEl);
 
         // Close button
@@ -306,7 +233,31 @@ export class Tag {
             closeBtn.type = 'button';
             closeBtn.setAttribute('aria-label', 'Remove tag');
             closeBtn.innerHTML = '&times;';
-            closeBtn.style.color = vs.text;
+            closeBtn.style.cssText = [
+                'display: inline-flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'border: none;',
+                'background: transparent;',
+                'padding: 0;',
+                'margin-left: 2px;',
+                'cursor: pointer;',
+                'border-radius: var(--cl-radius-round);',
+                'transition: background var(--cl-transition-fast), color var(--cl-transition-fast);',
+                'line-height: 1;',
+                'flex-shrink: 0;',
+                'font-family: var(--cl-font-family);',
+                Tag._CLOSE_SIZE_STYLES[size] || Tag._CLOSE_SIZE_STYLES.md,
+                `color: ${vs.text};`
+            ].join(' ');
+
+            // :hover replacement (CSP-safe)
+            closeBtn.addEventListener('mouseenter', () => {
+                closeBtn.style.background = 'var(--cl-bg-hover)';
+            });
+            closeBtn.addEventListener('mouseleave', () => {
+                closeBtn.style.background = 'transparent';
+            });
 
             closeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -316,7 +267,7 @@ export class Tag {
             el.appendChild(closeBtn);
         }
 
-        // Clickable / hover effects
+        // Clickable / hover / active effects
         if (clickable) {
             el.addEventListener('click', () => this._fireClick());
 
@@ -332,8 +283,17 @@ export class Tag {
                 el.style.background = vs.bg;
                 el.style.color = vs.text;
                 el.style.borderColor = vs.border;
+                el.style.transform = '';
                 const close = el.querySelector('.cl-tag__close');
                 if (close) close.style.color = vs.text;
+            });
+
+            // :active replacement (CSP-safe)
+            el.addEventListener('mousedown', () => {
+                el.style.transform = 'scale(0.95)';
+            });
+            el.addEventListener('mouseup', () => {
+                el.style.transform = '';
             });
         }
 

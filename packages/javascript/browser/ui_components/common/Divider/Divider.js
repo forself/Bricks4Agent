@@ -60,80 +60,47 @@ export class Divider {
         /** @private */
         this._container = null;
 
-        this._injectStyles();
         this._create();
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Style injection (once per page)                                   */
+    /*  Element-level style helpers (CSP-safe, no <style> injection)      */
     /* ------------------------------------------------------------------ */
 
-    /** @private Inject shared CSS into &lt;head&gt; if not already present. */
-    _injectStyles() {
-        if (document.getElementById('cl-divider-styles')) return;
+    /** @private Build the cssText for a line segment. */
+    _lineCss(isVertical, lineStyle, px) {
+        if (isVertical) {
+            return [
+                'flex: 1;',
+                'border: none;',
+                `border-left-style: ${lineStyle};`,
+                `border-left-width: ${px}px;`,
+                'border-left-color: var(--cl-border);',
+                'width: 0;',
+                'min-height: 20px;'
+            ].join(' ');
+        }
+        return [
+            'flex: 1;',
+            'border: none;',
+            `border-top-style: ${lineStyle};`,
+            `border-top-width: ${px}px;`,
+            'border-top-color: var(--cl-border);'
+        ].join(' ');
+    }
 
-        const style = document.createElement('style');
-        style.id = 'cl-divider-styles';
-        style.textContent = `
-            /* ---- Horizontal divider ---- */
-            .cl-divider {
-                display: flex;
-                align-items: center;
-                width: 100%;
-            }
-            .cl-divider--vertical {
-                flex-direction: column;
-                width: auto;
-                height: 100%;
-                align-self: stretch;
-            }
-
-            /* Horizontal line segments */
-            .cl-divider__line {
-                flex: 1;
-                border: none;
-                border-top-style: var(--cl-divider-style, solid);
-                border-top-width: var(--cl-divider-width, 1px);
-                border-top-color: var(--cl-border);
-            }
-
-            /* Vertical line segments */
-            .cl-divider--vertical .cl-divider__line {
-                flex: 1;
-                border-top: none;
-                border-left-style: var(--cl-divider-style, solid);
-                border-left-width: var(--cl-divider-width, 1px);
-                border-left-color: var(--cl-border);
-                width: 0;
-                min-height: 20px;
-            }
-
-            /* Text label */
-            .cl-divider__text {
-                padding: 0 12px;
-                font-size: var(--cl-font-size-sm);
-                color: var(--cl-text-muted);
-                background: var(--cl-bg);
-                white-space: nowrap;
-                font-family: var(--cl-font-family);
-                line-height: 1;
-                user-select: none;
-            }
-
-            /* Vertical text */
-            .cl-divider--vertical .cl-divider__text {
-                padding: 8px 0;
-            }
-
-            /* Text position modifiers (horizontal) */
-            .cl-divider--text-left > .cl-divider__line:first-child {
-                flex: 0 0 24px;
-            }
-            .cl-divider--text-right > .cl-divider__line:last-child {
-                flex: 0 0 24px;
-            }
-        `;
-        document.head.appendChild(style);
+    /** @private Build the cssText for the text label. */
+    _textCss(isVertical) {
+        return [
+            `padding: ${isVertical ? '8px 0' : '0 12px'};`,
+            'font-size: var(--cl-font-size-sm);',
+            'color: var(--cl-text-muted);',
+            'background: var(--cl-bg);',
+            'white-space: nowrap;',
+            'font-family: var(--cl-font-family);',
+            'line-height: 1;',
+            'user-select: none;'
+        ].join(' ');
     }
 
     /* ------------------------------------------------------------------ */
@@ -151,16 +118,28 @@ export class Divider {
         wrapper.setAttribute('role', 'separator');
         wrapper.setAttribute('aria-orientation', isVertical ? 'vertical' : 'horizontal');
 
+        // Wrapper layout via CSSOM (CSP-safe)
         if (isVertical) {
             wrapper.classList.add('cl-divider--vertical');
-            wrapper.style.margin = isVertical ? '0 16px' : margin;
+            wrapper.style.cssText = [
+                'display: flex;',
+                'align-items: center;',
+                'flex-direction: column;',
+                'width: auto;',
+                'height: 100%;',
+                'align-self: stretch;',
+                'margin: 0 16px;'
+            ].join(' ');
         } else {
-            wrapper.style.margin = margin;
+            wrapper.style.cssText = [
+                'display: flex;',
+                'align-items: center;',
+                'width: 100%;',
+                `margin: ${margin};`
+            ].join(' ');
         }
 
-        // Apply CSS custom properties for line style and width
-        wrapper.style.setProperty('--cl-divider-style', lineStyle);
-        wrapper.style.setProperty('--cl-divider-width', `${px}px`);
+        const lineCss = this._lineCss(isVertical, lineStyle, px);
 
         if (text) {
             // Add text-position modifier class (horizontal only)
@@ -170,13 +149,23 @@ export class Divider {
 
             const lineBefore = document.createElement('div');
             lineBefore.className = 'cl-divider__line';
+            lineBefore.style.cssText = lineCss;
 
             const textEl = document.createElement('span');
             textEl.className = 'cl-divider__text';
             textEl.textContent = text;
+            textEl.style.cssText = this._textCss(isVertical);
 
             const lineAfter = document.createElement('div');
             lineAfter.className = 'cl-divider__line';
+            lineAfter.style.cssText = lineCss;
+
+            // Text position modifiers (horizontal only)
+            if (!isVertical && textPosition === 'left') {
+                lineBefore.style.flex = '0 0 24px';
+            } else if (!isVertical && textPosition === 'right') {
+                lineAfter.style.flex = '0 0 24px';
+            }
 
             wrapper.appendChild(lineBefore);
             wrapper.appendChild(textEl);
@@ -185,6 +174,7 @@ export class Divider {
             // No text: single line spanning full width/height
             const line = document.createElement('div');
             line.className = 'cl-divider__line';
+            line.style.cssText = lineCss;
             wrapper.appendChild(line);
         }
 

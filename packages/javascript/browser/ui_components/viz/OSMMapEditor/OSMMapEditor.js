@@ -303,14 +303,16 @@ export class OSMMapEditor extends WebPainter {
         controls.appendChild(layerSelector);
 
         const hint = document.createElement('div');
-        hint.innerHTML = `
-            <div style="background: var(--cl-bg-secondary); padding: 12px; border-radius: var(--cl-radius-md); font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.8;">
+        const hintBox = document.createElement('div');
+        // CSP style-src 'self':inline style 屬性會被剝除,改用 CSSOM cssText
+        hintBox.style.cssText = 'background: var(--cl-bg-secondary); padding: 12px; border-radius: var(--cl-radius-md); font-size: var(--cl-font-size-md); color: var(--cl-text-secondary); line-height: 1.8;';
+        hintBox.innerHTML = `
                 <div>🗺️ ${strings.hintDrag || 'Drag to adjust position'}</div>
                 <div>🔍 ${strings.hintZoom || 'Scroll to zoom'}</div>
                 <div>📸 ${strings.hintCapture || 'Capture frame content'}</div>
                 <div>📏 ${strings.hintMeasure || 'Use toolbar to measure'}</div>
-            </div>
         `;
+        hint.appendChild(hintBox);
         controls.appendChild(hint);
 
         mapWrapper.appendChild(mapDiv);
@@ -566,15 +568,24 @@ export class OSMMapEditor extends WebPainter {
         const coordDisplay = document.createElement('div');
         coordDisplay.style.cssText = 'margin-bottom: 8px; line-height: 1.6;';
         coordDisplay.innerHTML = `
-            <div style="color: var(--cl-text-secondary); margin-bottom: 4px;">
-                <span style="display: inline-block; width: 50px;">${strings.latitude || 'Lat'}:</span>
-                <span class="coord-lat" style="color: var(--cl-text); font-weight: bold;">--</span>
+            <div>
+                <span>${strings.latitude || 'Lat'}:</span>
+                <span class="coord-lat">--</span>
             </div>
-            <div style="color: var(--cl-text-secondary);">
-                <span style="display: inline-block; width: 50px;">${strings.longitude || 'Lng'}:</span>
-                <span class="coord-lng" style="color: var(--cl-text); font-weight: bold;">--</span>
+            <div>
+                <span>${strings.longitude || 'Lng'}:</span>
+                <span class="coord-lng">--</span>
             </div>
         `;
+        // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派(結構不變)
+        coordDisplay.querySelectorAll(':scope > div').forEach((row, i) => {
+            row.style.cssText = i === 0
+                ? 'color: var(--cl-text-secondary); margin-bottom: 4px;'
+                : 'color: var(--cl-text-secondary);';
+            const [labelSpan, valueSpan] = row.children;
+            labelSpan.style.cssText = 'display: inline-block; width: 50px;';
+            valueSpan.style.cssText = 'color: var(--cl-text); font-weight: bold;';
+        });
         panel.appendChild(coordDisplay);
 
         // DD/DMS 切換

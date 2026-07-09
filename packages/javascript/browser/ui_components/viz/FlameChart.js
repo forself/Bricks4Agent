@@ -111,18 +111,29 @@ export class FlameChart extends BaseChart {
     _showDetail(node, e) {
         const safeName = this.escapeHtml(node.name);
         const html = `
-            <div style="min-width: 200px;">
-                <h3 style="margin:0 0 5px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:5px;">${safeName}</h3>
-                <div style="font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary);">
+            <div data-part="root">
+                <h3 data-part="title">${safeName}</h3>
+                <div data-part="body">
                     <strong>Value:</strong> ${node.value} ms<br/>
                     <strong>% of Total:</strong> ${((node.width / this.width) * 100).toFixed(1)}%
                 </div>
-                 <div style="margin-top:8px; text-align:right;">
+                 <div data-part="actions">
                     <button data-action="view-stack" data-name="${safeName}">View Stack</button>
                 </div>
             </div>
         `;
         this.showTooltip(html, e, true);
+
+        // CSP 相容:style-src 'self' 會剝掉 HTML 剖析出的 style 屬性,
+        // 故於 tooltip 插入 DOM 後以 CSSOM(el.style.cssText)指派樣式
+        const setStyle = (selector, cssText) => {
+            const el = this.tooltip.querySelector(selector);
+            if (el) el.style.cssText = cssText;
+        };
+        setStyle('[data-part="root"]', 'min-width:200px;');
+        setStyle('[data-part="title"]', 'margin:0 0 5px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:5px;');
+        setStyle('[data-part="body"]', 'font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary);');
+        setStyle('[data-part="actions"]', 'margin-top:8px; text-align:right;');
 
         // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
         // ModalPanel 已於檔案頂部 import { ModalPanel } from '../layout/Panel/index.js'
