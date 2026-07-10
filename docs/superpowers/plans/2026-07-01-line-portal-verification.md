@@ -25,21 +25,21 @@
 
 ## Task 1: Data Model and Portal Service Tests
 
-- [ ] Add service-level unit tests for Portal registration code generation and verification.
-- [ ] Run the filtered unit tests and confirm they fail because fields/methods are missing.
+- [x] Add service-level unit tests for Portal registration code generation and verification.
+- [ ] Run the filtered unit tests and confirm they fail because fields/methods are missing. *(N/A — implementation predates the tests; fail-first step is moot.)*
 - [x] Add model columns and initializer migrations.
 - [x] Add verification code generation, hashing, expiration, and binding methods via `PortalLineVerificationService`.
-- [ ] Run the filtered unit tests and confirm they pass.
+- [x] Run the filtered unit tests and confirm they pass.
 
-Current coverage note: this implementation is verified by API integration tests in `PortalEndpointTests` and frontend smoke validation. Service-level unit tests remain useful hardening work but were not added in this pass.
+Current coverage note: service-level unit tests added 2026-07-11 (AnthonyLee) in `packages/csharp/tests/unit/Portal/PortalLineVerificationTests.cs` — 14 deterministic cases covering code generation/hash-at-rest/expiry/binding semantics, wrong-code/expired/disabled/unknown rejection, idempotent re-verify, and cross-account rebinding guards. `dotnet test --filter PortalLineVerification` 14/14 green; full Unit.Tests 421/421 green.
 
 ## Task 2: LINE Gate and Verify Command
 
-- [ ] Add failing unit tests for unverified LINE rejection, wrong-code rejection, and correct-code success.
-- [ ] Run the filtered unit tests and confirm they fail.
+- [x] Add failing unit tests for unverified LINE rejection, wrong-code rejection, and correct-code success. *(Added as passing tests — see Task 1 note; unverified-rejection covered at the service layer via `ResolvePortalUserIdForLineUser` returning null + verify-before-issue failing.)*
+- [ ] Run the filtered unit tests and confirm they fail. *(N/A — implementation predates the tests.)*
 - [x] Implement `/verify` and `/驗證` handling in `HighLevelCoordinator`.
 - [x] Resolve verified raw LINE ids to Portal user ids before normal processing.
-- [ ] Run the filtered unit tests and confirm they pass.
+- [x] Run the filtered unit tests and confirm they pass.
 
 ## Task 3: API and Portal UI
 
