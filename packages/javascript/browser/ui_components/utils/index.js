@@ -16,3 +16,6 @@ export {
     sanitizeUrl,
     sanitizeHTML
 } from './security.js';
+export { onThemeChange, notifyThemeChange, resolveTokens } from './theme-bus.js';
+export { sequentialScale, divergingScale, categoricalColor, hierarchicalColor, CATEGORICAL_HUES, mixHex, sampleRamp } from './color-scale.js';
+export { aggregate, groupBy, summarize, pivot, binNumeric, bucketTime, topN, AGGS } from './aggregation-engine.js';

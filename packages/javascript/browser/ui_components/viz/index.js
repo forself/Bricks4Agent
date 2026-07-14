@@ -4,6 +4,7 @@
 
 // 圖表基礎
 export { BaseChart } from './BaseChart.js';
+export { CanvasChart } from './CanvasChart.js';   // Canvas 圖表新基底(SVG 禁用政策)
 
 // 標準圖表
 export { BarChart } from './BarChart.js';

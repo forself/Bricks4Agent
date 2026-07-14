@@ -6,6 +6,6 @@
   "scripts": {
     "metadata:build": "node ./ui_components/metadata/build-metadata.mjs",
     "metadata:check": "node ./ui_components/metadata/build-metadata.mjs --check",
-    "test": "node ./ui_components/editor/richtext-palette.test.mjs"
+    "test": "node ./ui_components/editor/richtext-palette.test.mjs && node ./ui_components/utils/color-scale.test.mjs && node ./ui_components/utils/aggregation-engine.test.mjs"
   }
 }
