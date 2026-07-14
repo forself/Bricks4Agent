@@ -122,6 +122,9 @@ import { WebTextEditor } from '../editor/index.js';
 // 8. Data Components
 import { RegionMap } from '../data/index.js';
 
+// 8b. Analytics 統計複合件
+import { DataExplorer } from '../analytics/index.js';
+
 // 9. Library expansion — foundation atoms + retrieval/list composites (common)
 import {
     Alert,
@@ -268,6 +271,9 @@ export class ComponentFactory {
 
         // Data
         'RegionMap': RegionMap,
+
+        // Analytics
+        'DataExplorer': DataExplorer,
 
         // Foundation atoms (common)
         'Text': Text,

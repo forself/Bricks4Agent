@@ -14,7 +14,7 @@ export const COMPONENT_CATEGORIES = [
     'data',
     'viz',
     'utils',
-];
+, 'analytics'];
 
 export const COMPONENT_KINDS = [
     'atomic',

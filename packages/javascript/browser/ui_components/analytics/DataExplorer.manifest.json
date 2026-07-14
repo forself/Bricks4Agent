@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "component_id": "analytics.data_explorer",
+  "registry_name": "DataExplorer",
+  "display_name": "DataExplorer",
+  "category": "analytics",
+  "kind": "atomic",
+  "source_path": "ui_components/analytics/DataExplorer.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": false,
+    "usage_mode": "manual_only",
+    "supported_field_types": [],
+    "supported_page_types": [],
+    "definition_runtime": false
+  },
+  "composition": {
+    "role": "display",
+    "requires_form_field_wrapper": false,
+    "manual_only": true
+  },
+  "binding": {
+    "value_io": false,
+    "listener_events": [
+      "change",
+      "click"
+    ],
+    "target_actions": [
+      "reload"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": [
+      "pageSize"
+    ]
+  }
+}

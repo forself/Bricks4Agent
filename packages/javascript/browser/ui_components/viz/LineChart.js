@@ -1,156 +1,133 @@
-import { BaseChart } from './BaseChart.js';
+/**
+ * LineChart — 折線圖(CanvasChart 版;SVG 禁用政策下的重寫,API 向後相容)。
+ * 資料形狀:{ labels:['1月','2月'], series:[{ name:'量', data:[10,20] }, ...] }
+ * 支援:多系列、資料點 hover、legend、unit、null 斷線。
+ */
+import { CanvasChart } from './CanvasChart.js';
+import { categoricalColor } from '../utils/color-scale.js';
 
-export class LineChart extends BaseChart {
-    constructor(options) {
-        super(options);
-        this.data = options.data || { labels: [], series: [] };
-    }
+const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
 
-    render() {
-        if (!this.width || !this.height) return;
-
-        const { top, right, bottom, left } = this.options.padding;
-        const chartWidth = this.width - left - right;
-        const chartHeight = this.height - top - bottom;
-
-        const g = this.createSVGElement('g');
-        g.setAttribute('transform', `translate(${left}, ${top})`);
-        this.svg.appendChild(g);
-
-        const maxVal = Math.max(...this.data.series.flatMap(s => s.data)) * 1.1; // 10% buffering
-        const yScale = val => chartHeight - (val / (maxVal || 1)) * chartHeight;
-        const xScale = index => (index / (this.data.labels.length - 1)) * chartWidth;
-
-        // Draw Axes
-        this._drawAxes(g, chartWidth, chartHeight, maxVal);
-
-        // Draw Lines
-        this.data.series.forEach((s, sIndex) => {
-            const points = s.data.map((val, i) => [xScale(i), yScale(val)]);
-            const color = this.getColor(sIndex);
-
-            // Create Path Data (Bezier)
-            let pathD = `M ${points[0][0]},${points[0][1]}`;
-            // Simple straight lines for now, can upgrade to Bezier later if needed
-            // points.forEach((p, i) => { if (i>0) pathD += ` L ${p[0]},${p[1]}`; });
-
-            // Catmull-Rom or simple smooth curve approximation
-            for (let i = 0; i < points.length - 1; i++) {
-                const p0 = points[i];
-                const p1 = points[i + 1];
-                const cp1x = p0[0] + (p1[0] - p0[0]) / 2;
-                const cp1y = p0[1];
-                const cp2x = p0[0] + (p1[0] - p0[0]) / 2;
-                const cp2y = p1[1];
-                pathD += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p1[0]},${p1[1]}`;
-            }
-
-            // Path Element
-            const path = this.createSVGElement('path');
-            path.setAttribute('d', pathD);
-            path.setAttribute('fill', 'none');
-            path.setAttribute('stroke', color);
-            path.setAttribute('stroke-width', '3');
-            path.setAttribute('stroke-linecap', 'round');
-
-            // Animation
-            const diff = path.getTotalLength();
-            path.style.strokeDasharray = diff;
-            path.style.strokeDashoffset = diff;
-            path.style.transition = 'stroke-dashoffset 1s ease-out';
-            requestAnimationFrame(() => path.style.strokeDashoffset = 0);
-
-            g.appendChild(path);
-
-            // Draw Area (Optional, minimal style)
-            const areaPath = this.createSVGElement('path');
-            const areaD = pathD + ` L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
-            areaPath.setAttribute('d', areaD);
-            areaPath.setAttribute('fill', color);
-            areaPath.setAttribute('opacity', '0.1');
-            g.appendChild(areaPath);
-
-            // Draw Dots
-            points.forEach((p, i) => {
-                const circle = this.createSVGElement('circle');
-                circle.setAttribute('cx', p[0]);
-                circle.setAttribute('cy', p[1]);
-                circle.setAttribute('r', 4);
-                circle.setAttribute('fill', 'var(--cl-bg)');
-                circle.setAttribute('stroke', color);
-                circle.setAttribute('stroke-width', 2);
-
-                // Interaction
-                circle.onmouseenter = (e) => {
-                    circle.setAttribute('r', 6);
-                    const safeLabel = this.escapeHtml(this.data.labels[i]);
-                    const safeName = this.escapeHtml(s.name);
-                    this.showTooltip(`
-                        <strong>${safeLabel}</strong><br/>
-                        ${safeName}: ${s.data[i]}
-                    `, e);
-                };
-                circle.onmouseleave = () => {
-                    circle.setAttribute('r', 4);
-                    this.hideTooltip();
-                };
-
-                g.appendChild(circle);
-            });
+export class LineChart extends CanvasChart {
+    constructor(options = {}) {
+        super({
+            ...options,
+            width: px(options.width, '100%'),
+            height: px(options.height, '260px'),
+            data: options.data || { labels: [], series: [] },
+            unit: options.unit || '',
+            colors: options.colors || null,
+            showPoints: options.showPoints !== false,
+            padding: options.padding || { top: 14, right: 14, bottom: 30, left: 44 }
         });
     }
 
-    _drawAxes(g, w, h, maxVal) {
-        // X Axis
-        const xAxis = this.createSVGElement('line');
-        xAxis.setAttribute('x1', 0);
-        xAxis.setAttribute('y1', h);
-        xAxis.setAttribute('x2', w);
-        xAxis.setAttribute('y2', h);
-        xAxis.setAttribute('stroke', 'var(--cl-border-medium)');
-        g.appendChild(xAxis);
+    _color(si) {
+        const c = this.options.colors;
+        return (c && c[si]) || categoricalColor(si);
+    }
 
-        // Labels (Skip some if too many)
-        const step = Math.ceil(this.data.labels.length / 6);
-        this.data.labels.forEach((label, i) => {
-            if (i % step !== 0) return;
-            const text = this.createSVGElement('text');
-            const x = (i / (this.data.labels.length - 1)) * w;
-            text.setAttribute('x', x);
-            text.setAttribute('y', h + 20);
-            text.setAttribute('text-anchor', 'middle');
-            text.setAttribute('font-size', '12');
-            text.setAttribute('fill', 'var(--cl-text-muted)');
-            text.textContent = label;
-            g.appendChild(text);
-        });
+    draw(ctx, w, h) {
+        const o = this.options;
+        const t = this.tokens(['--cl-text-secondary', '--cl-border-light', '--cl-text-dim', '--cl-bg']);
+        const labels = o.data.labels || [];
+        const series = (o.data.series || []).filter(s => Array.isArray(s.data));
+        const p = o.padding;
+        const multi = series.length > 1;
+        const legendH = multi ? 18 : 0;
+        const gx = p.left, gy = p.top + legendH;
+        const gw = Math.max(10, w - p.left - p.right);
+        const gh = Math.max(10, h - gy - p.bottom);
 
-        // Grid
-        const gridCount = 5;
-        for (let i = 0; i <= gridCount; i++) {
-            const y = h - (i / gridCount) * h;
-            const line = this.createSVGElement('line');
-            line.setAttribute('x1', 0);
-            line.setAttribute('y1', y);
-            line.setAttribute('x2', w);
-            line.setAttribute('y2', y);
-            line.setAttribute('stroke', 'var(--cl-border-medium)');
-            line.setAttribute('stroke-dasharray', '4');
-            g.appendChild(line);
-            // Value text
-            const text = this.createSVGElement('text');
-            text.setAttribute('x', -10);
-            text.setAttribute('y', y + 4);
-            text.setAttribute('text-anchor', 'end');
-            text.setAttribute('font-size', '10');
-            text.textContent = Math.round((maxVal * i) / gridCount);
-            g.appendChild(text);
+        if (!labels.length || !series.length) {
+            ctx.font = this.font(13); ctx.fillStyle = t['--cl-text-dim'];
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('無資料', w / 2, h / 2);
+            return;
         }
+        const all = [];
+        for (const s of series) for (const v of s.data) if (v != null && !Number.isNaN(Number(v))) all.push(Number(v));
+        const yT = this.niceTicks(Math.min(0, ...all), Math.max(1, ...all), 5);
+        const Y = (v) => gy + gh - ((v - yT.lo) / (yT.hi - yT.lo || 1)) * gh;
+        const X = (li) => labels.length === 1 ? gx + gw / 2 : gx + (li / (labels.length - 1)) * gw;
 
-        // Draw Legend
-        this._drawLegend(this.data.series.map((s, i) => ({
-            label: s.name,
-            color: this.getColor(i)
-        })));
+        // 網格 + y 刻度
+        ctx.strokeStyle = t['--cl-border-light'];
+        ctx.fillStyle = t['--cl-text-secondary'];
+        ctx.font = this.font(10);
+        ctx.lineWidth = 1;
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        for (const v of yT.ticks) {
+            const y = Math.round(Y(v)) + 0.5;
+            ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx + gw, y); ctx.stroke();
+            ctx.fillText(this.fmt(v), gx - 6, y);
+        }
+        // 折線
+        for (let si = 0; si < series.length; si++) {
+            const color = this._color(si);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            let pen = false;
+            for (let li = 0; li < labels.length; li++) {
+                const raw = series[si].data[li];
+                if (raw == null || Number.isNaN(Number(raw))) { pen = false; continue; }   // null 斷線
+                const x = X(li), y = Y(Number(raw));
+                if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
+            }
+            ctx.stroke();
+            // 資料點
+            if (o.showPoints) {
+                for (let li = 0; li < labels.length; li++) {
+                    const raw = series[si].data[li];
+                    if (raw == null || Number.isNaN(Number(raw))) continue;
+                    const x = X(li), y = Y(Number(raw));
+                    ctx.fillStyle = color;
+                    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = t['--cl-bg'];
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    this.addRegion({ shape: 'circle', cx: x, cy: y, r: 7, data: { label: labels[li], series: series[si].name, value: Number(raw) } });
+                }
+            }
+        }
+        // x 標籤(抽稀)
+        ctx.fillStyle = t['--cl-text-secondary'];
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        const thin = Math.max(1, Math.ceil((labels.length * 52) / gw));
+        for (let li = 0; li < labels.length; li += thin) {
+            ctx.fillText(this.ellipsis(ctx, String(labels[li]), Math.max(40, gw / labels.length * thin)), X(li), gy + gh + 6);
+        }
+        // legend
+        if (multi) {
+            ctx.font = this.font(10);
+            ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+            let cx = gx;
+            for (let si = 0; si < series.length; si++) {
+                const label = String(series[si].name ?? '');
+                const lw = 18 + ctx.measureText(label).width + 14;
+                if (cx + lw > gx + gw) break;
+                ctx.strokeStyle = this._color(si);
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(cx, p.top + 4); ctx.lineTo(cx + 12, p.top + 4); ctx.stroke();
+                ctx.fillStyle = t['--cl-text-secondary'];
+                ctx.fillText(label, cx + 16, p.top + 4);
+                cx += lw;
+            }
+        }
     }
+
+    getTooltip(d) {
+        const u = this.options.unit ? ' ' + this.options.unit : '';
+        const rows = [{ label: '', value: d.label }];
+        if ((this.options.data.series || []).length > 1) rows.push({ label: '系列', value: d.series });
+        rows.push({ label: '值', value: this.fmt(d.value) + u });
+        return rows;
+    }
+
+    /** 更新資料並重繪(舊 API 相容)。 */
+    setData(data) { this.options.data = data; this.render(); }
 }
+
+export default LineChart;

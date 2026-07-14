@@ -213,7 +213,8 @@ export const GALLERY_SKIP = new Set([
     'ImageViewer',                                                           // 全螢幕燈箱 + 建構子用位置參數 src,非可內嵌小卡
     // 需專屬圖/樹/流程資料 + 全尺寸畫布,縮圖卡不適用(預覽仍涵蓋 Bar/Line/Pie/Rose/Sparkline)
     'RelationChart', 'OrgChart', 'HierarchyChart', 'SankeyChart', 'SunburstChart', 'TimelineChart', 'FlameChart',
-    'ClusterGraph'                                                           // 分群關係圖:大畫布互動,舞台展示
+    'ClusterGraph',                                                          // 分群關係圖:大畫布互動,舞台展示
+    'DataExplorer'                                                           // 統計探索面板:大型複合件,舞台展示
 ]);
 
 // 「舞台」全尺寸範例:GALLERY_SKIP 中可在大彈窗渲染者(點卡片開舞台 + 頂部切換)。
@@ -268,6 +269,36 @@ export const STAGE_SAMPLES = {
     MapEditorV2: { width: 1000, height: 640 },
     OSMMapEditor: { width: 900, height: 600, center: { lat: 25.0330, lng: 121.5654 }, zoom: 16, tileLayer: 'osm', showCompass: true, showScale: true, showCoords: true },
     TGOSMapEditor: { width: 900, height: 600, center: { lat: 25.0330, lng: 121.5654 }, zoom: 16, showCompass: true, showScale: true, showCoords: true },
+    DataExplorer: { width: '100%', height: '100%', title: '案件統計探索', pageSize: 10,
+        fields: [
+            { name: 'unit', label: '轄區', type: 'category' },
+            { name: 'type', label: '案類', type: 'category' },
+            { name: 'amount', label: '金額', type: 'number', unit: '萬' },
+            { name: 'age', label: '嫌犯年齡', type: 'number', unit: '歲' },
+            { name: 'prior', label: '前科數', type: 'number' },
+            { name: 'at', label: '發生日', type: 'time' }
+        ],
+        spec: { chartType: 'heatmap', x: { field: 'unit' }, series: { field: 'type' }, y: { field: 'amount', agg: 'sum', unit: '萬' } },
+        data: [
+            { unit: '中山', type: '詐欺', amount: 120, age: 31, prior: 4, at: '2026-01-15' },
+            { unit: '中山', type: '詐欺', amount: 65, age: 27, prior: 2, at: '2026-02-03' },
+            { unit: '中山', type: '竊盜', amount: 8, age: 45, prior: 6, at: '2026-02-19' },
+            { unit: '中山', type: '毒品', amount: 30, age: 24, prior: 1, at: '2026-03-08' },
+            { unit: '大安', type: '詐欺', amount: 210, age: 38, prior: 3, at: '2026-01-22' },
+            { unit: '大安', type: '竊盜', amount: 15, age: 52, prior: 8, at: '2026-03-14' },
+            { unit: '大安', type: '竊盜', amount: 6, age: 19, prior: 0, at: '2026-04-02' },
+            { unit: '大安', type: '毒品', amount: 45, age: 29, prior: 2, at: '2026-04-27' },
+            { unit: '信義', type: '詐欺', amount: 88, age: 33, prior: 1, at: '2026-02-11' },
+            { unit: '信義', type: '詐欺', amount: 160, age: 41, prior: 5, at: '2026-05-06' },
+            { unit: '信義', type: '毒品', amount: 22, age: 26, prior: 3, at: '2026-05-19' },
+            { unit: '萬華', type: '竊盜', amount: 12, age: 48, prior: 9, at: '2026-01-30' },
+            { unit: '萬華', type: '毒品', amount: 55, age: 35, prior: 4, at: '2026-03-25' },
+            { unit: '萬華', type: '詐欺', amount: 70, age: 30, prior: 2, at: '2026-06-01' },
+            { unit: '萬華', type: '竊盜', amount: 9, age: 61, prior: 7, at: '2026-06-15' },
+            { unit: '中山', type: '詐欺', amount: 95, age: 36, prior: 3, at: '2026-04-18' },
+            { unit: '大安', type: '詐欺', amount: 130, age: 44, prior: 6, at: '2026-05-28' },
+            { unit: '信義', type: '竊盜', amount: 7, age: 22, prior: 1, at: '2026-06-09' }
+        ] },
     ClusterGraph: { width: '100%', height: '100%', mode: 'drill', title: '幫派組織關聯(點聚合節點展開)',
         groups: [
             { id: 'gX', parent: null, label: '幫派X' }, { id: 'gY', parent: null, label: '幫派Y' },

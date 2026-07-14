@@ -247,8 +247,12 @@
       ]
     },
     "reload": {
-      "component_roles": [],
-      "usage_modes": []
+      "component_roles": [
+        "display"
+      ],
+      "usage_modes": [
+        "manual_only"
+      ]
     },
     "reloadOptions": {
       "component_roles": [
@@ -278,6 +282,7 @@
     "CommandComposer",
     "ConnectionCard",
     "ContentSection",
+    "DataExplorer",
     "DataTable",
     "DescriptionList",
     "Divider",
