@@ -24,6 +24,9 @@ import {
     TimelineChart,
     OSMMapEditor,
     TGOSMapEditor,
+    HeatmapChart,
+    ScatterChart,
+    ClusterGraph,
     DrawingBoard,
     WebPainter
 } from '../viz/index.js';
@@ -179,6 +182,9 @@ export class ComponentFactory {
         'TimelineChart': TimelineChart,
         'OSMMapEditor': OSMMapEditor,
         'TGOSMapEditor': TGOSMapEditor,
+        'HeatmapChart': HeatmapChart,
+        'ScatterChart': ScatterChart,
+        'ClusterGraph': ClusterGraph,
         'DrawingBoard': DrawingBoard,
         'WebPainter': WebPainter,
 

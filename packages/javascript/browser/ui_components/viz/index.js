@@ -13,6 +13,11 @@ export { PieChart } from './PieChart.js';
 export { RoseChart } from './RoseChart.js';
 export { Sparkline } from './Sparkline.js';
 
+// Canvas 新家族(SVG 禁用政策;基底 CanvasChart)
+export { HeatmapChart } from './HeatmapChart.js';
+export { ScatterChart } from './ScatterChart.js';
+export { ClusterGraph } from './ClusterGraph.js';
+
 // 關聯/階層圖表
 export { OrgChart } from './OrgChart.js';
 export { HierarchyChart } from './HierarchyChart.js';

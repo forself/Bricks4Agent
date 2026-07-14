@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 112,
+  "component_count": 115,
   "components": [
     {
       "schema_version": 1,
@@ -3634,6 +3634,40 @@
     },
     {
       "schema_version": 1,
+      "component_id": "viz.cluster_graph",
+      "registry_name": "ClusterGraph",
+      "display_name": "ClusterGraph",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/ClusterGraph.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "viz.drawing_board",
       "registry_name": "DrawingBoard",
       "display_name": "DrawingBoard",
@@ -3685,6 +3719,38 @@
       "category": "viz",
       "kind": "visualizer",
       "source_path": "ui_components/viz/FlameChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.heatmap_chart",
+      "registry_name": "HeatmapChart",
+      "display_name": "HeatmapChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/HeatmapChart.js",
       "docs_path": "ui_components/viz/README_MapEditor.md",
       "maturity": "stable",
       "generator": {
@@ -4053,6 +4119,38 @@
       "category": "viz",
       "kind": "visualizer",
       "source_path": "ui_components/viz/SankeyChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
+      "component_id": "viz.scatter_chart",
+      "registry_name": "ScatterChart",
+      "display_name": "ScatterChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/ScatterChart.js",
       "docs_path": "ui_components/viz/README_MapEditor.md",
       "maturity": "stable",
       "generator": {
@@ -7882,6 +7980,40 @@
         ]
       }
     },
+    "ClusterGraph": {
+      "schema_version": 1,
+      "component_id": "viz.cluster_graph",
+      "registry_name": "ClusterGraph",
+      "display_name": "ClusterGraph",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/ClusterGraph.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": [
+          "clear"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "DrawingBoard": {
       "schema_version": 1,
       "component_id": "viz.drawing_board",
@@ -7935,6 +8067,38 @@
       "category": "viz",
       "kind": "visualizer",
       "source_path": "ui_components/viz/FlameChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    "HeatmapChart": {
+      "schema_version": 1,
+      "component_id": "viz.heatmap_chart",
+      "registry_name": "HeatmapChart",
+      "display_name": "HeatmapChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/HeatmapChart.js",
       "docs_path": "ui_components/viz/README_MapEditor.md",
       "maturity": "stable",
       "generator": {
@@ -8327,6 +8491,38 @@
         "style_knobs": []
       }
     },
+    "ScatterChart": {
+      "schema_version": 1,
+      "component_id": "viz.scatter_chart",
+      "registry_name": "ScatterChart",
+      "display_name": "ScatterChart",
+      "category": "viz",
+      "kind": "visualizer",
+      "source_path": "ui_components/viz/ScatterChart.js",
+      "docs_path": "ui_components/viz/README_MapEditor.md",
+      "maturity": "stable",
+      "generator": {
+        "usable": false,
+        "usage_mode": "manual_only",
+        "supported_field_types": [],
+        "supported_page_types": [],
+        "definition_runtime": false
+      },
+      "composition": {
+        "role": "visualizer",
+        "requires_form_field_wrapper": false,
+        "manual_only": true
+      },
+      "binding": {
+        "value_io": false,
+        "listener_events": [],
+        "target_actions": []
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "Sparkline": {
       "schema_version": 1,
       "component_id": "viz.sparkline",
@@ -8613,8 +8809,10 @@
       "BarChart",
       "BaseChart",
       "CanvasMap",
+      "ClusterGraph",
       "DrawingBoard",
       "FlameChart",
+      "HeatmapChart",
       "HierarchyChart",
       "LeafletMap",
       "LineChart",
@@ -8626,6 +8824,7 @@
       "RelationChart",
       "RoseChart",
       "SankeyChart",
+      "ScatterChart",
       "Sparkline",
       "SunburstChart",
       "TGOSMapEditor",
@@ -8720,8 +8919,10 @@
       "BarChart",
       "BaseChart",
       "CanvasMap",
+      "ClusterGraph",
       "DrawingBoard",
       "FlameChart",
+      "HeatmapChart",
       "HierarchyChart",
       "LeafletMap",
       "LineChart",
@@ -8734,6 +8935,7 @@
       "RelationChart",
       "RoseChart",
       "SankeyChart",
+      "ScatterChart",
       "Sparkline",
       "SunburstChart",
       "TGOSMapEditor",
@@ -8824,6 +9026,7 @@
       "ButtonGroup",
       "CanvasMap",
       "ChainedInput",
+      "ClusterGraph",
       "ConnectionCard",
       "DataTable",
       "DatePicker",
@@ -8834,6 +9037,7 @@
       "FormField",
       "FormRow",
       "FunctionMenu",
+      "HeatmapChart",
       "HierarchyChart",
       "ImageViewer",
       "InfoPanel",
@@ -8856,6 +9060,7 @@
       "RelationChart",
       "RoseChart",
       "SankeyChart",
+      "ScatterChart",
       "SearchForm",
       "SideMenu",
       "SimpleDialog",
@@ -8886,6 +9091,7 @@
       "Breadcrumb",
       "CanvasMap",
       "CardGrid",
+      "ClusterGraph",
       "CodeBlock",
       "CommandComposer",
       "ConnectionCard",
@@ -8907,6 +9113,7 @@
       "FormRow",
       "FunctionMenu",
       "Heading",
+      "HeatmapChart",
       "HierarchyChart",
       "Icon",
       "InfoPanel",
@@ -8934,6 +9141,7 @@
       "ResultList",
       "RoseChart",
       "SankeyChart",
+      "ScatterChart",
       "SearchForm",
       "SideMenu",
       "SimpleDialog",

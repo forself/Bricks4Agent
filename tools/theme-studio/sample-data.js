@@ -65,6 +65,17 @@ export const SAMPLE_OPTIONS = {
     PieChart: { width: 200, height: 140, data: [{ name: '甲', value: 60 }, { name: '乙', value: 40 }] },
     RoseChart: { width: 200, height: 140, data: { labels: ['東', '南', '西'], series: [{ name: '風', data: [20, 35, 15] }] } },
     Sparkline: { data: [5, 8, 6, 12, 9, 14, 11], type: 'line' },
+    // Canvas 新家族(CanvasChart 基底)
+    HeatmapChart: { height: '160px', title: '', unit: '件', hue: 'red',
+        xLabels: ['中山', '大安', '信義'], yLabels: ['竊盜', '詐欺', '毒品'],
+        matrix: [[12, 5, 8], [3, 17, 6], [7, null, 11]] },
+    ScatterChart: { height: '170px', xLabel: '年齡', yLabel: '涉案金額', yUnit: '萬', colorLabel: '案類', sizeLabel: '前科數',
+        points: [
+            { x: 24, y: 35, c: '詐欺', s: 1, label: '甲' }, { x: 31, y: 120, c: '詐欺', s: 4, label: '乙' },
+            { x: 45, y: 60, c: '竊盜', s: 2, label: '丙' }, { x: 38, y: 15, c: '竊盜', s: 1, label: '丁' },
+            { x: 52, y: 210, c: '毒品', s: 6, label: '戊' }, { x: 29, y: 80, c: '毒品', s: 3, label: '己' },
+            { x: 61, y: 45, c: '詐欺', s: 5, label: '庚' }, { x: 35, y: 160, c: '竊盜', s: 2, label: '辛' }
+        ] },
 
     // common(補齊)
     AuthButton: { type: 'logout', variant: 'filled', size: 'medium', showLabel: true, customLabel: '登出(王小明)' },
@@ -201,7 +212,8 @@ export const GALLERY_SKIP = new Set([
     'ButtonGroup',                                                           // buttons 需子元件實例,無法用純 options 展示
     'ImageViewer',                                                           // 全螢幕燈箱 + 建構子用位置參數 src,非可內嵌小卡
     // 需專屬圖/樹/流程資料 + 全尺寸畫布,縮圖卡不適用(預覽仍涵蓋 Bar/Line/Pie/Rose/Sparkline)
-    'RelationChart', 'OrgChart', 'HierarchyChart', 'SankeyChart', 'SunburstChart', 'TimelineChart', 'FlameChart'
+    'RelationChart', 'OrgChart', 'HierarchyChart', 'SankeyChart', 'SunburstChart', 'TimelineChart', 'FlameChart',
+    'ClusterGraph'                                                           // 分群關係圖:大畫布互動,舞台展示
 ]);
 
 // 「舞台」全尺寸範例:GALLERY_SKIP 中可在大彈窗渲染者(點卡片開舞台 + 頂部切換)。
@@ -256,6 +268,25 @@ export const STAGE_SAMPLES = {
     MapEditorV2: { width: 1000, height: 640 },
     OSMMapEditor: { width: 900, height: 600, center: { lat: 25.0330, lng: 121.5654 }, zoom: 16, tileLayer: 'osm', showCompass: true, showScale: true, showCoords: true },
     TGOSMapEditor: { width: 900, height: 600, center: { lat: 25.0330, lng: 121.5654 }, zoom: 16, showCompass: true, showScale: true, showCoords: true },
+    ClusterGraph: { width: '100%', height: '100%', mode: 'drill', title: '幫派組織關聯(點聚合節點展開)',
+        groups: [
+            { id: 'gX', parent: null, label: '幫派X' }, { id: 'gY', parent: null, label: '幫派Y' },
+            { id: 'gXa', parent: 'gX', label: '堂口A' }, { id: 'gXb', parent: 'gX', label: '堂口B' },
+            { id: 'gYa', parent: 'gY', label: '角頭甲' }, { id: 'gYb', parent: 'gY', label: '角頭乙' }
+        ],
+        nodes: [
+            { id: 'p1', label: '王小明', group: 'gXa' }, { id: 'p2', label: '李大華', group: 'gXa' },
+            { id: 'p3', label: '張三', group: 'gXa' }, { id: 'p4', label: '陳四', group: 'gXb' },
+            { id: 'p5', label: '林五', group: 'gXb' }, { id: 'p6', label: '黃六', group: 'gXb' },
+            { id: 'p7', label: '吳七', group: 'gYa' }, { id: 'p8', label: '鄭八', group: 'gYa' },
+            { id: 'p9', label: '朱九', group: 'gYb' }, { id: 'p10', label: '洪十', group: 'gYb' },
+            { id: 'p11', label: '郭十一', group: 'gYb' }, { id: 'p12', label: '曾十二', group: 'gXa' }
+        ],
+        edges: [
+            { source: 'p1', target: 'p2', type: '共犯' }, { source: 'p1', target: 'p7', type: '通聯' },
+            { source: 'p4', target: 'p9', type: '金流' }, { source: 'p3', target: 'p12', type: '共犯' },
+            { source: 'p5', target: 'p8', type: '通聯' }, { source: 'p2', target: 'p10', type: '金流' }
+        ] },
     DrawingBoard: { width: 900, height: 520, lineWidth: 3, strokeColor: 'var(--cl-text)', opacity: 1.0 },
     WebPainter: { width: 900, height: 520 },
     WebTextEditor: { height: '520px', placeholder: '請輸入筆錄內容…', readOnly: false,
