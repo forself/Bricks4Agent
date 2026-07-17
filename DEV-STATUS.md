@@ -1,115 +1,159 @@
-# 開發現況與待辦(TIM 重製案 × Bricks4Agent 元件庫)
+# 交接文件 — AI 代理接續開發用
 
-> 最後更新:2026-07-17(commit `39f330f`,分支 `main_0707`)。
-> 本文件是「接手即可續作」的單一入口:現況、待辦、做法、環境坑全在這裡。
-> 規則類文件:[CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)(代理規則)、[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)(元件調用)。
-
----
-
-## 一、案子是什麼
-
-**雙軌重製 + 一條元件庫強化線:**
-
-| 軌 | 內容 | 現況 |
-|---|---|---|
-| 前端軌(F) | 把 `D:\work\new`(TIM 組織犯罪資料應用系統,React 16)翻寫成**只用本元件庫**;產出放 `D:\proj\newTim\tim-web`(不在本 repo 版控) | 藍圖/任務板已定(`tim-web\docs\`),vertical slice POC 過(login-search 6/6),**量產未開工,等使用者發動** |
-| 後端軌(B) | `D:\work\TIMSolution`(.NET FX 4.8.1)移植 .NET 10,API 契約逐位相容、資安修正優先於 parity | 架構已裁決(全域 10 端點/JWT 只取 ID/三層授權/STJ),**未開工** |
-| 元件庫線 | 本 repo:補元件、嚴格 CSP、SVG→Canvas、Theme Studio、機制腳本 | **催速中,詳見下節;波 3 是下一步** |
-
-兩個舊專案(`D:\work\new`、`D:\work\TIMSolution`)**唯讀**。`tim-web` 版控歸大專案,工具不得對它做 git 操作。
+> **你是接手的 AI 代理。** 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
+> 最後更新:2026-07-17(commit `0be97db`,分支 `main_0707`)。
+> 配套規則文件:[CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)(代理規則)、[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)(元件調用契約,動手寫頁面前必讀)。
 
 ---
 
-## 二、元件庫線:已完成(倒序)
+## 0. 任務與邊界(先讀這節)
+
+**大案子:** 把 TIM 組織犯罪資料應用系統(React 16 舊系統)重製為**只用本元件庫**的前端 + .NET 10 契約相容後端。三條線:
+
+| 線 | 內容 | 狀態 | 你現在動不動 |
+|---|---|---|---|
+| **元件庫線(本 repo)** | 補元件、嚴格 CSP、SVG→Canvas、Theme Studio、機制腳本 | 進行中 | **動——你的第一任務是波 3(§4)** |
+| 前端軌(F) | 舊頁面翻寫,產出在 `D:\proj\newTim\tim-web` | 藍圖已定、POC 已過、量產未開工 | **不動,等使用者發動** |
+| 後端軌(B) | .NET FX 4.8.1 → .NET 10,契約逐位相容 | 架構已裁決、未開工 | **不動,等使用者發動** |
+
+**硬邊界(違反=事故):**
+1. `D:\work\new`、`D:\work\TIMSolution` 兩個舊專案**唯讀**,任何產出禁止寫入。
+2. `D:\proj\newTim\tim-web` **不上本 repo 版控**(版控歸使用者的大專案),**不得對它做任何 git 操作**;檔案可讀、經使用者同意可改。
+3. git push **不直推 main**,推 `main_月日` 日期分支(現用 `main_0707`;使用者若開新日期分支會告知)。
+4. 本 repo 是大專案剪枝後的工作副本,已設 `git sparse-checkout set packages templates tools`——**不要**碰 sparse 設定、不要「還原」看似被刪的路徑。
+
+**已定案、不得重開的決策**(使用者已裁決,別再提替代方案):
+- **SVG 全面禁用、只允許 Canvas**(含 UI 小圖示),機器棘輪執法(§2)。
+- **嚴格 CSP**:`script-src 'self'; style-src 'self'`,零 unsafe-inline/eval,機器判定(§2)。
+- 元件庫**零第三方 runtime 依賴**;工具腳本**零 npm 依賴、純 Node**(本機連 ripgrep 都沒有,禁 spawn 外部工具)。
+- 圖表基底=`viz/CanvasChart.js`;主題響應=`utils/theme-bus.js`;色回退唯一常數=`FALLBACK_PAINT`。
+- 民國曆:DatePicker 用 `format:'taiwan'`;後端回民國字串前端原樣輸出、禁 `new Date()` 轉換。
+
+---
+
+## 1. 環境與開工自檢
+
+**路徑地圖:**
+- 本 repo:`D:\proj\newTim\Bricks4Agent`(遠端 github.com/forself/Bricks4Agent)
+- 元件庫本體:`packages/javascript/browser/ui_components/`(下文簡稱 `ui_components`)
+- 守門與 harness:`tools/scripts/`;視覺調校台:`tools/theme-studio/`
+- 重製案文件(參考,勿版控):`D:\proj\newTim\tim-web\docs\`(blueprint.md、task-board.json)
+
+**開工先跑(全部應綠;有紅先修再開工):**
+
+```bash
+cd D:/proj/newTim/Bricks4Agent
+git status -sb                              # 應在 main_0707 且乾淨
+node tools/scripts/audit-csp.mjs            # CSP A-F 全零 + G 類 SVG 棘輪合規
+node tools/scripts/validate-ui-library.mjs  # 風格稽核/裸 import/公開面/demo 引用
+npm test                                    # 四套純函式單元
+```
+
+**瀏覽器驗收電池**(前置:repo 根 `python -m http.server 8124`;用 Edge 無頭,playwright-core 借 `../tim-web/poc/node_modules`,repo 本身零 devDeps):
+
+```bash
+node tools/theme-studio/run.mjs             # 14 項
+node tools/scripts/canvas-chart-smoke.mjs   # 8 項
+node tools/scripts/wave2-stage-sweep.mjs    # 29 項
+node tools/scripts/data-explorer-smoke.mjs  # 8 項
+node tools/scripts/cluster-graph-perf.mjs   # 8 項(5000 節點效能)
+```
+
+---
+
+## 2. 必須內化的架構事實
+
+- **catalog 115 元件**,權威來源=`ui_components/metadata/component-catalog.json`;元件契約 `new X(options)` → `.mount(el)` → `.destroy()`(個別元件用 `render`,harness 已示範相容處理)。
+- **CSP 守門員** `tools/scripts/audit-csp.mjs`:六類硬零(A `<style>` 注入/B setAttribute('style')/C innerHTML 模板 `style=`/D 模板 `on*=`/E eval/F `javascript:`)+ **G 類 SVG 棘輪**(對 `tools/scripts/svg-baseline.json` 基線 26 檔 181 處:新增檔或既有檔增量=fail;清零一檔就跑 `--write-baseline` 收緊)。**合規宣稱只認機器判定。**
+- **樣式作法**:CSSOM(`cssText`/`setProperty`)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 `.css` + 同源 `<link>` 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 `!important`)。
+- **Canvas 體系**:`CanvasChart` 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,`isPointInPath` 要乘 dpr)/DOM tooltip(textContent)/`exportPNG(scale)`/`niceTicks/fmt/ellipsis/wrapText` 排版輔助。子類契約=實作 `draw(ctx,w,h)` + `addRegion()` + 選配 `getTooltip(data)`。**點擊回拋走 `options.onPointClick`——基底不會自動呼叫你的 `_handleClick`,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。**
+- **`ModalPanel.alert()` 只認 `message` 字串**;要放 DOM 內容:取回傳的 modal,把 message `<p>` `replaceWith(node)`(TimelineChart/FlameChart 有現成範例)。
+- **色彩**:單一來源=`editor/richtext-palette.js` 的 MATERIAL(16 色相;**無 deep-purple/light-blue,有 blue-grey/grey**)→ `gen-palette-css.mjs` 產 palette.css → theme.css 引用。程式取色用 `utils/color-scale.js`(sequential/diverging/categorical/hierarchical)。Canvas 內色回退一律 `FALLBACK_PAINT`(theme-bus 匯出),**元件內禁散裝 hex**;亮度對比遮罩四常數(`#00000099/#ffffffcc/#000000aa/#ffffffdd`)已在稽核 allow 名單。
+- **vendor/ 豁免一切庫規範**(CSP/風格/裸 import 掃描都跳過):Leaflet 1.9.4 + html2canvas,本地優先、缺檔才退 CDN。
+- **聚合**:`utils/aggregation-engine.js` 白名單 fail-closed;**時間聚合先按日期排序再分組**(民國標籤字典序不可靠)。
+- **新元件流程**:三件套(`<Name>.js`+`index.js`+`<Name>.manifest.json`)→ 類別 barrel export → 需要的話進 ComponentFactory → `node ui_components/metadata/build-metadata.mjs`。**新「分類」要動兩處白名單**:`metadata/introspection.js` SEARCH_CATEGORIES + `metadata/manifest-schema.js` 分類枚舉。
+
+---
+
+## 3. 現況(哪裡了)
+
+**一句話:** catalog 115、CSP 六類機器判定全零、SVG 只剩 26 檔存量(棘輪鎖死)、瀏覽器電池 67 項全綠、文件已對齊現況。
 
 | 完成 | Commit | 內容 |
 |---|---|---|
-| 2026-07-17 | `39f330f` | **波 2**:8 支重型圖表(Rose/Org/Hierarchy/Relation/Sankey/Sunburst/Timeline/Flame)+ Sparkline/RegionMap/Progress(circle)/Rating 全遷 CanvasChart;**BaseChart 退役刪除**;SVG 棘輪 31→26 檔;風格稽核 79→0(`FALLBACK_PAINT` 收斂);validate-ui-library 首次全綠(去 rg 依賴) |
-| 2026-07-16 | `30e87f6` | **DataExplorer** 統計探索複合件(catalog 新分類 analytics)+ Bar/Line/Pie Canvas 化 |
-| 2026-07-15 | `8d466e3` | **波 1**:HeatmapChart/ScatterChart/**ClusterGraph**(5000 節點實測 10.8ms/幀)+ quadtree/force-engine/color-scale/aggregation-engine 純函式核心 |
-| 2026-07-14 | `5293873` | **波 0**:SVG 禁用政策 + G 類棘輪守門、`viz/CanvasChart.js` 新基底、`utils/theme-bus.js` 主題匯流排 |
-| 2026-07-09 | `9e9b3fa` | **嚴格 CSP 全面達成**:159 處違規清零;`audit-csp.mjs` 守門員(A-F 類硬零) |
-| 2026-07-08 | `cb22ba2` | main_0626+main_0707 合併(0707 優先裁決;0626 帶入 26 元件全數 CSP 修正後併入) |
-| 2026-07-07 | `3ed9504` | 設計系統(palette 163 色)/Theme Studio/RWD 波/TGOSMapEditor/Leaflet+html2canvas vendoring/junction-dev+snapshot-publish 機制 v2.0.0/create-project 產生器 |
-
-**目前狀態一句話:** catalog **115** 元件、CSP 六類**機器判定全零**、SVG 只剩 26 檔存量(棘輪鎖死只減不增)、瀏覽器驗收電池 67 項全綠。
+| 07-17 | `39f330f` | **波 2**:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂) |
+| 07-16 | `30e87f6` | **DataExplorer** 統計探索複合件 + Bar/Line/Pie Canvas 化 |
+| 07-15 | `8d466e3` | **波 1**:Heatmap/Scatter/**ClusterGraph**(5000 節點 10.8ms/幀)+ 力學/色階/聚合核心 |
+| 07-14 | `5293873` | **波 0**:SVG 禁用政策+棘輪、CanvasChart 基底、theme-bus |
+| 07-09 | `9e9b3fa` | 嚴格 CSP 159 處清零 + audit-csp 守門員 |
+| 07-08 | `cb22ba2` | main_0626+main_0707 合併(0707 優先;0626 的 26 元件 CSP 修正後併入) |
+| 07-07 | `3ed9504` | 設計系統/Theme Studio/TGOSMapEditor/vendoring/junction+snapshot 機制 v2/create-project |
 
 ---
 
-## 三、守門員與驗收辦法(接手先會這個)
+## 4. 你的第一個任務:波 3 —— SVG 存量清零
 
-**改 `ui_components` 的任何 commit 前,依序跑:**
+**目標:** 26 檔 181 處 → 0,G 類棘輪收硬零。清單=`tools/scripts/svg-baseline.json`(主力:Icon 家族、Button 家族、Picker 家族、Panel、TreeList、WebTextEditor、OSMMapEditor、DrawingBoard、DocumentWall、PhotoWall…)。
 
-```bash
-# 0) 靜態守門(秒級,無前置)
-node tools/scripts/audit-csp.mjs            # CSP A-F 硬零 + G 類 SVG 棘輪
-node tools/scripts/validate-ui-library.mjs  # 風格 token 稽核 + 裸 import + 公開面 + demo 引用
-npm test                                    # 純函式單元(palette/color-scale/aggregation/force)
+**步驟(已定案,照做):**
+1. **先親手寫 `common/Icon` 的 Canvas 版**(不發子代理——這是其餘檔案的共同依賴,先立標準):Path2D 直接吃現有 55 條 path 字串(原字串不動)、尺寸相容(`'sm'|'md'|'lg'|數字`)、`Icon.register()` 契約不變、ThemeBus 換膚重繪、`currentColor` 語意用 resolveTokens 解析後 fill。完成即跑 audit + 手寫冒煙。
+2. **發 ~5 路子代理**(模型 sonnet 級)分檔清剩餘:inline `<svg>` 字串 → `new Icon()` 或小型 canvas 繪製。**檔案互斥分工**;**驗收命令寫進提示詞**(該檔 `grep -cE '<svg|createElementNS|data:image/svg'` =0 + 語法檢查 + 行為要點),要求代理回報實跑輸出。
+3. 特例:游標(cursor:url(data:image/svg…))→ 改 PNG data URL;`LeafletMap` 建構加 `preferCanvas:true`;vendor/ 內不動。
+4. **本人逐檔機器驗收**(§5 鐵律)+ 瀏覽器電池全跑 + 展示廊/舞台抽查互動。
+5. 基線清空後 `node tools/scripts/audit-csp.mjs --write-baseline`,再把 audit-csp.mjs 的 G 類改為硬零(比照 A-F);commit + push `main_0707`。
 
-# 1) 瀏覽器電池(前置:repo 根起 python -m http.server 8124;Edge 無頭)
-node tools/theme-studio/run.mjs             # 14 項:調校台/展示廊/舞台/匯出
-node tools/scripts/canvas-chart-smoke.mjs   # 8 項:CanvasChart 基底(DPR/換膚/命中/匯出)
-node tools/scripts/wave2-stage-sweep.mjs    # 29 項:重型圖表舞台 + 點擊詳情回歸 + 直掛
-node tools/scripts/data-explorer-smoke.mjs  # 8 項:DataExplorer 全鏈
-node tools/scripts/cluster-graph-perf.mjs   # 8 項:5000 節點效能 + 世界座標互動
+**完成定義:** audit-csp 全類硬零、五支瀏覽器 harness 全綠、npm test 綠、validate-ui-library 綠、Theme Studio 展示廊肉眼抽查圖示正常、commit 訊息含棘輪清零聲明。
+
+---
+
+## 5. 驗收協定(每次改 ui_components 都要)
+
+```
+靜態:audit-csp → validate-ui-library → npm test
+動態:五支瀏覽器 harness(§1)
 ```
 
-**鐵律:**
-- 「合規/完成」宣稱**只認機器判定**,不認人工掃描或代理回報。
-- SVG 存量清一檔就跑 `node tools/scripts/audit-csp.mjs --write-baseline` 收緊棘輪。
-- 新元件三件套(`<Name>.js` + `index.js` + `<Name>.manifest.json`)後必跑 `build-metadata.mjs`;**新分類要動兩處白名單**(`metadata/introspection.js` SEARCH_CATEGORIES + `manifest-schema.js` 分類枚舉)。
-- Canvas 色回退禁散裝 hex,唯一來源 = theme-bus 的 `FALLBACK_PAINT`;亮度對比遮罩四常數(`#00000099/#ffffffcc/#000000aa/#ffffffdd`)已入 audit allow。
+**鐵律(前人血淚,條條有事故背書):**
+1. **回報不算數**——子代理宣稱完成後,逐檔機器驗收 + 行為驗證。波 2 實例:六路代理全報成功,實測仍揪出兩個 bug(alert content 被覆蓋、click 沒接線)——**渲染全綠也測不出,必須做互動鏈斷言**(dispatch 真實 click → 斷言彈窗文字非空)。
+2. **代理死於 session 上限會留半成品**(曾發生寫了 `<link>` 沒建 .css):驗收看檔案,不看回報清單。
+3. 改繪製路徑後,`canvas-chart-smoke` 的像素斷言(換膚變紅)是最後防線,別跳過。
+4. harness 選擇器要鎖自建容器(如 `#cc-smoke`)——展示廊卡片本身是 canvas 圖表且有覆蓋層,全頁裸選 canvas 會誤中。
+5. Theme Studio 測試鉤子:`window.__ts.openStage('元件名')` + `window.__stageInst`。
 
 ---
 
-## 四、待辦(優先序 + 做法)
+## 6. 多代理波工作法(若你派子代理)
 
-### 1. 波 3:SVG 存量清零(下一步,已規劃)
-**目標:** 26 檔 181 處 → 0,G 類棘輪收硬零。
-**做法(已定案):**
-1. **先手寫 `common/Icon` 的 Canvas 版**(本人做,不發代理):Path2D 直接吃現有 55 條 path 字串、字串尺寸相容(`size:'sm'|數字`)、ThemeBus 換膚重繪、`Icon.register()` 契約不變。這是其餘 25 檔的共同依賴,先立標準。
-2. **再發 ~5 路 sonnet 子代理**分檔清剩餘(Button 家族/Picker 家族/Panel/TreeList/WebTextEditor/OSMMapEditor/DrawingBoard…):inline `<svg>` 字串 → `new Icon()`;**檔案互斥分工、機器驗收條件寫進提示詞**(`grep -cE '<svg|createElementNS|data:image/svg'` = 0 + `node --check`)。
-3. 特例:游標(cursor)→ PNG data URL;`LeafletMap` 加 `preferCanvas:true`;vendor/ 內的 SVG 不動(第三方豁免)。
-4. 收尾:`--write-baseline` → 基線空 → 把 G 類改成硬零(audit-csp.mjs 內註記 TODO)。
-5. 全電池重跑 + commit + push `main_0707`。
-
-### 2. DataExplorer 擴充(波 3 後,本人做)
-- `'cluster'` 圖型接 ClusterGraph(人→團體→上層團體鑽取;spec 加 `hierarchy` 通道)。
-- 後端聚合模式:spec 直傳 Graph action(等後端軌 graph 端點成形)。
-- ChartSpecBuilder 抽成獨立可註冊元件(表單另掛)。
-
-### 3. 前端軌量產(等使用者發動)
-- 按 `tim-web\docs\task-board.json`:P0-1 頁面聚類(排版+功能證據導向,約十群)→ 每群 `_base` 模板 → 生成器測試先行 → 量產頁 `extends` 只寫差異。
-- 模板繼承協議與閘門已寫入 board(clusterProtocol、P{2,3,5}-BASE)。
-
-### 4. 後端軌(等使用者發動)
-- B0-0 威脅建模 → B0-1 舊碼盤點(TypeNameHandling/SSRF)→ B0-2 舊路由→10 動作對照表。
-- 契約抽取釘 TIMSolution commit hash;快照測試把 STJ 輸出與 Newtonsoft 逐位對齊。
-
-### 5. 掛帳小項
-- `viz/index.js` 尚 re-export 大量 manual-only 元件——現況正確,無動作;若日後拆包再議。
-- SKILL 包裝(A=全域開案 skill、B=範本內建 CLAUDE/AGENTS)已評估未實作,等指示。
-- 機制 MCP 化(團隊中央腳手架服務)僅列為選項。
+1. 檔案互斥——絕不兩代理碰同檔。
+2. 提示詞內建機器驗收命令與通過標準,要求代理自跑並貼輸出。
+3. 上限 6 代理/波;機械遷移用 sonnet,設計判斷自己做。
+4. 波收束=本人逐檔驗收(§5),然後才 commit。
 
 ---
 
-## 五、多代理波工作法(已驗證兩輪,照抄即可)
+## 7. 環境坑(照做,都踩過)
 
-1. **分工:檔案互斥**——每代理一組不重疊檔案,絕不兩人碰同檔。
-2. **提示詞內建驗收**——把機器驗收命令與通過標準寫進代理提示(grep 斷言 + node --check + 行為要點),要求代理自跑後回報輸出。
-3. **上限 6 代理/波**;模型:機械遷移用 sonnet,設計判斷留本人(或 opus)。
-4. **回報不算數**——波收束後由本人逐檔機器驗收 + 瀏覽器行為驗證。波 2 實例:代理全數回報成功,實測仍揪出兩個行為 bug(`ModalPanel.alert({content})` 被覆蓋、`_handleClick` 沒接線)——**渲染全綠也測不出,必須做互動鏈斷言**。
-5. **代理死於 session 上限會留半成品**(曾發生 FeedCard 有 `<link>` 沒 css 檔):逐檔驗收,不能只看回報清單。
+- **本機沒有 ripgrep**;工具腳本純 Node(`fs`+regex),禁 spawn 外部工具。
+- **PowerShell 5.1**:`.ps1` 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);**改檔一律用編輯工具,禁 shell 重導向寫檔**(UTF-16 BOM 毀損坑)。機制腳本已全 Node 化。
+- `node --check` 不吃瀏覽器 ESM `.js`——先複製成 `.mjs` 再驗。
+- 瀏覽器測試用 Edge(`channel:'msedge'`),playwright-core 從 `../tim-web/poc/node_modules` 借;**不要**在本 repo npm install 任何東西。
+- 含 junction 的專案刪除前必先解除連結(`scripts/dev-link.mjs` unlink),遞迴刪除會追進腳手架本體。
+- 測試產物(`.test-output/`、`out/`)用完即刪,見 CLAUDE.md 附表。
 
 ---
 
-## 六、環境與慣例(坑都踩過了)
+## 8. 波 3 之後的待辦(順序供參,發動前先跟使用者確認)
 
-- **git:** sparse-checkout(`packages templates tools` + 根檔案);push 慣例=**不直推 main,推 `main_月日` 日期分支**(現用 `main_0707`)。`tim-web` 不上本 repo 版控。
-- **本機沒有 rg**:工具腳本一律純 Node(`audit-ui-style-rules.mjs` 已去 rg 化);新腳本禁 spawn 外部工具。
-- **PS 5.1:** `.ps1` 只寫英文註解(UTF-8 無 BOM 中文=parse 炸);改檔一律用工具(Read/Edit/Write),禁 PS 重導向寫檔(UTF-16 毀損坑)。機制腳本已全數 Node 化,PS 僅剩 `tim-web\scripts\build.ps1`。
-- **瀏覽器測試:** playwright-core 借 `tim-web/poc/node_modules`(repo 本身零 devDeps);channel=msedge;`node --check` 不吃瀏覽器 ESM `.js`,先複製成 `.mjs` 再驗。
-- **vendor/ 豁免一切庫規範**(CSP 掃描、風格稽核、裸 import 驗證都跳過)。
-- **民國曆:** DatePicker 用 `format:'taiwan'`;後端回民國字串前端原樣輸出,禁 `new Date()` 轉換;時間聚合**先排序再分組**(民國標籤字典序不可靠)。
-- **含 junction 的專案刪除前必先解除連結**(`dev-link` unlink),否則遞迴刪除會追進腳手架。
-- Theme Studio 測試鉤子:`window.__ts.openStage(名)` + `window.__stageInst`;展廊卡片有覆蓋層,harness 選擇器要鎖自建容器(如 `#cc-smoke`),別全頁裸選 canvas。
+1. **DataExplorer 擴充**:`'cluster'` 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。
+2. **前端軌量產**(使用者發動):按 `tim-web\docs\task-board.json`——P0-1 頁面聚類 → 每群 `_base` 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。
+3. **後端軌**(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。
+4. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
+
+---
+
+## 9. 與使用者協作的慣例
+
+- 溝通用**繁體中文**;直接、不奉承;壞消息直說(測試紅就說紅)。
+- 使用者重視**驗證文化**:宣稱完成要附機器證據;被抓到「說清了但沒清」會嚴重損害信任(發生過,教訓=全類別盤點+機器守門)。
+- 已定案決策(§0)別重開;真正的新決策(如動 tim-web、開新波、改公開 API)先問。
+- commit 訊息:繁中、首行「波次/主題:摘要」、正文條列;不動 main,推 `main_0707`(或使用者指定的新日期分支)。
