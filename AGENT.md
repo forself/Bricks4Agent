@@ -18,7 +18,7 @@ Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上
 
 組成：
 
-- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，85 個元件）
+- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，115 個元件）
 - **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
 - **C# 後端範本**（.NET 8 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）

@@ -6,7 +6,7 @@ English version: [README.md](README.md)
 
 `Bricks4Agent` 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**,加上一個把 JSON `PageDefinition` 轉成頁面的**頁面／SPA 生成器**。
 
-- **UI 元件庫** — 112 個元件(form、layout、common、input、viz、social、editor、sections),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
+- **UI 元件庫** — 115 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
 - **頁面生成器** — 一份 `PageDefinition`(JSON)有兩條路變成頁面:**靜態產碼**(產出 `.js` 頁面檔)或**動態渲染**(執行期直接依 JSON 畫出來)。
 - **SPA 工具鏈** — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 8 後端)。
 

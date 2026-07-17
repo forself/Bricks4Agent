@@ -15,6 +15,7 @@
 1. **零第三方 runtime**：不得 `import` 任何 npm UI/圖表/地圖/日期/富文本套件。全站只用本元件庫 + 原生瀏覽器 API。唯一例外是 `LeafletMap`（Leaflet 1.9.4 已 **vendored** 於 `ui_components/vendor/leaflet/`，預設本地載入、零外網、嚴格 CSP 可用；本地缺檔才退 CDN 備援）。
 2. **樣式只用 theme token**：顏色/圓角/陰影/字體一律用 `var(--cl-*)` CSS 變數，禁止寫死色碼。換膚靠文件根的 `[data-theme="dark"]`，元件不寫 media query。
 3. **輸出一律跳脫**：任何把資料塞進 HTML 的地方用 `escapeHtml()`；要放原始 HTML 必須顯式 `raw()`。
+4. **嚴格 CSP + SVG 禁用（機器執法）**：禁 `<style>` 注入、禁 innerHTML 模板內 `style=`/`on*=`、禁 eval/`javascript:`（樣式走 CSSOM `cssText`/`setProperty` 或同目錄 `.css` + 同源 `<link>`）；**視覺一律 Canvas、禁新增 SVG**（既有存量按 `tools/scripts/svg-baseline.json` 棘輪只減不增；圖表基底＝`viz/CanvasChart.js`，主題響應靠 `utils/theme-bus.js`，Path2D 可直接吃 SVG path 字串）。守門員：`node tools/scripts/audit-csp.mjs`（六類 CSP 全零 + G 類 SVG 棘輪）、`node tools/scripts/validate-ui-library.mjs`（風格 token 稽核：元件內禁散裝 hex，色回退唯一來源＝theme-bus 的 `FALLBACK_PAINT`）。合規宣稱只認機器判定。
 
 ---
 
@@ -85,7 +86,7 @@ ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊�
 
 ---
 
-## 3. 元件清單（112 個，權威來源＝catalog）
+## 3. 元件清單（115 個，權威來源＝catalog）
 
 `*` = `generator.usable=false`（`manual_only`：不能靠生成器欄位自動映射，需**手動組合**；仍可正常 `new` 使用）。
 
@@ -93,11 +94,12 @@ ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊�
 - **common (40)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*` + 0626 併入的 atoms/composites:`Alert, CardGrid, CodeBlock, DescriptionList, DropdownMenu, EmptyState, FilterBar, Heading, Link, List, MediaPlayer, ResultList, Skeleton, StatGrid, StepIndicator, Text`
 - **layout (12)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable`
 - **input (10, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput`
-- **viz (21)**：`BarChart*, BaseChart*, CanvasMap*, DrawingBoard, FlameChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`
+- **viz (23)**：`BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`（全數 Canvas 渲染；共同基底 `viz/CanvasChart.js` 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）
 - **social (5)**：`Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*`
 - **editor (1)**:`WebTextEditor`
 - **sections (4,0626 併入)**:`BannerSection, ContentSection, PageFooter, PageHeader`(頁首/頁尾/橫幅/內容區段複合)
-- **data (1)**:`RegionMap`(台灣著色地圖)
+- **data (1)**:`RegionMap`(台灣著色地圖,Canvas/Path2D)
+- **analytics (1)**:`DataExplorer*`(統計探索複合件:繫結表單/資料 → ChartSpec → 聚合引擎 → 8 種圖型 2D~4D + 聚合表/明細分頁/CSV/PNG 匯出;spec 白名單 fail-closed)
 
 > 想查某元件能不能被生成器直接吃、支援哪些 field type、可綁哪些事件/動作 → 查它在 catalog 的 `generator` / `binding` 區塊，或它資料夾內的 `*.manifest.json`。
 
@@ -195,9 +197,9 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 | Recharts / ECharts / Chart.js | `viz/*`（Bar/Line/Pie/Sankey/Org...）|
 | Leaflet / Google Map React | `viz/LeafletMap` / `CanvasMap` / `MapEditor` |
 | TGOS 地圖截圖標記(GIS 標註)| `viz/TGOSMapEditor`(臺灣通用電子地圖;OSM 版為 `OSMMapEditor`,兩者僅地圖來源不同,政網可用 `tileLayers` 指向後端 TGOS 代理)|
-| react-jvectormap(區域著色地圖)| `data/RegionMap`(內建台灣 SVG)|
+| react-jvectormap(區域著色地圖)| `data/RegionMap`(內建台灣地圖,Canvas/Path2D)|
 | 民國曆日期(react-datepicker + 民國轉換)| `form/DatePicker` 用 **`format:'taiwan'`**(`useROC` 是舊參數)|
-| FontAwesome / MUI icons | `common/Icon`(內建 55 個 SVG,可 `Icon.register()` 擴充)|
+| FontAwesome / MUI icons | `common/Icon`(內建 55 個圖示,可 `Icon.register()` 擴充;現為 SVG 存量、波 3 收斂為 Canvas/Path2D)|
 | antd Steps / react-stepzilla | `layout/Stepper` |
 | react-sparklines | `viz/Sparkline` |
 | react-quill / Draft.js | `editor/WebTextEditor` |
