@@ -6,7 +6,6 @@
 // 1. Viz Components
 import {
     BarChart,
-    BaseChart,
     CanvasMap,
     FlameChart,
     HierarchyChart,
@@ -167,7 +166,6 @@ export class ComponentFactory {
     static registry = {
         // Viz
         'BarChart': BarChart,
-        'BaseChart': BaseChart,
         'CanvasMap': CanvasMap,
         'FlameChart': FlameChart,
         'HierarchyChart': HierarchyChart,

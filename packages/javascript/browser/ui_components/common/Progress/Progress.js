@@ -4,8 +4,17 @@
  * 提供線性（bar）與圓形（circle）兩種進度顯示模式，
  * 支援確定值與不確定（indeterminate）動畫。
  *
+ * SVG 禁用政策:環形變體已改為 Canvas arc 繪製。
+ * 線性條(bar)維持 DOM(已合規,無 SVG)。
+ *
+ * 動畫策略:
+ *   bar indeterminate  — 保留 WAAPI(DOM 元素,已合規)。
+ *   circle indeterminate — rAF 補間旋轉角度;canvas 自行重繪(風險小:不依賴
+ *     SVG WAAPI strokeDashoffset 動畫屬性,僅操作純數字狀態後 clearRect/arc)。
+ *   circle determinate  — 靜態比例直接繪製(setValue 呼叫後立即重繪)。
+ *
  * @author MAGI System
- * @version 1.0.0
+ * @version 2.0.0 (Canvas 版)
  *
  * @example
  *   const bar = new Progress({ value: 60, variant: 'success', showText: true });
@@ -14,6 +23,7 @@
  *   const circle = new Progress({ type: 'circle', value: 75, size: 'large' });
  *   circle.render(document.getElementById('app'));
  */
+import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../../utils/theme-bus.js';
 
 /**
  * @typedef {'bar'|'circle'} ProgressType
@@ -34,10 +44,10 @@
 
 /** Variant name to CSS variable mapping */
 const VARIANT_MAP = {
-    primary: 'var(--cl-primary)',
-    success: 'var(--cl-success)',
-    warning: 'var(--cl-warning)',
-    danger:  'var(--cl-danger)',
+    primary: '--cl-primary',
+    success: '--cl-success',
+    warning: '--cl-warning',
+    danger:  '--cl-danger',
 };
 
 /** Size presets for the bar type (track height in px) */
@@ -71,8 +81,16 @@ export class Progress {
         this.element = null;
         /** @private */
         this._container = null;
-        /** @private Web Animations API handles (for indeterminate mode) */
+        /** @private Web Animations API handles (bar indeterminate only) */
         this._animations = [];
+        /** @private canvas refs (circle type) */
+        this._canvas = null;
+        this._ctx = null;
+        this._offTheme = null;
+        /** @private rAF for circle indeterminate */
+        this._indRaf = 0;
+        this._indAngle = 0;   // rotating start angle (radians)
+        this._destroyed = false;
 
         this._create();
     }
@@ -90,7 +108,7 @@ export class Progress {
         }
     }
 
-    /** @private Create linear bar DOM. */
+    /** @private Create linear bar DOM (no SVG — already compliant). */
     _createBar() {
         const { variant, size, showText, indeterminate, value, max } = this.options;
         const height = BAR_SIZE[size] || BAR_SIZE.medium;
@@ -120,7 +138,7 @@ export class Progress {
             'height: 100%;',
             'border-radius: var(--cl-radius-pill);',
             'transition: width var(--cl-transition);',
-            `background: ${VARIANT_MAP[variant] || VARIANT_MAP.primary};`
+            `background: var(${VARIANT_MAP[variant] || VARIANT_MAP.primary});`
         ].join(' ');
 
         if (indeterminate) {
@@ -132,7 +150,7 @@ export class Progress {
             fill.style.transition = 'none';
             track.removeAttribute('aria-valuenow');
 
-            // @keyframes cl-progress-indeterminate-bar replacement (Web Animations API, CSP-safe)
+            // WAAPI (CSP-safe, DOM element — no SVG)
             if (typeof fill.animate === 'function') {
                 this._animations.push(fill.animate(
                     [
@@ -168,14 +186,10 @@ export class Progress {
         this._textEl = wrapper.querySelector('.cl-progress-text') || null;
     }
 
-    /** @private Create circular SVG DOM. */
+    /** @private Create circular Canvas DOM. */
     _createCircle() {
-        const { variant, size, showText, indeterminate, value, max } = this.options;
+        const { size, showText, indeterminate, value, max } = this.options;
         const diameter = CIRCLE_SIZE[size] || CIRCLE_SIZE.medium;
-        const stroke = CIRCLE_STROKE[size] || CIRCLE_STROKE.medium;
-        const radius = (diameter - stroke) / 2;
-        const circumference = 2 * Math.PI * radius;
-        const pct = this._pct();
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cl-progress-circle-wrapper';
@@ -188,101 +202,126 @@ export class Progress {
             `height: ${diameter}px;`
         ].join(' ');
 
-        const ns = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(ns, 'svg');
-        svg.setAttribute('width', String(diameter));
-        svg.setAttribute('height', String(diameter));
-        svg.setAttribute('viewBox', `0 0 ${diameter} ${diameter}`);
-        svg.classList.add('cl-progress-circle');
-        svg.style.cssText = 'transform: rotate(-90deg);';
-        svg.setAttribute('role', 'progressbar');
-        svg.setAttribute('aria-valuemin', '0');
-        svg.setAttribute('aria-valuemax', String(max));
+        /* aria on wrapper div (canvas has no progressbar role equivalent) */
+        wrapper.setAttribute('role', 'progressbar');
+        wrapper.setAttribute('aria-valuemin', '0');
+        wrapper.setAttribute('aria-valuemax', String(max));
+        if (!indeterminate) wrapper.setAttribute('aria-valuenow', String(value));
 
-        if (indeterminate) {
-            svg.classList.add('cl-progress-circle--indeterminate');
-            svg.removeAttribute('aria-valuenow');
-
-            // @keyframes cl-progress-indeterminate-circle-rotate replacement (WAAPI, CSP-safe)
-            if (typeof svg.animate === 'function') {
-                this._animations.push(svg.animate(
-                    [
-                        { transform: 'rotate(-90deg)' },
-                        { transform: 'rotate(270deg)' }
-                    ],
-                    { duration: 2000, iterations: Infinity, easing: 'linear' }
-                ));
-            }
-        } else {
-            svg.setAttribute('aria-valuenow', String(value));
-        }
-
-        const trackCircle = document.createElementNS(ns, 'circle');
-        trackCircle.classList.add('cl-progress-circle-track');
-        trackCircle.style.cssText = 'fill: none; stroke: var(--cl-bg-subtle);';
-        trackCircle.setAttribute('cx', String(diameter / 2));
-        trackCircle.setAttribute('cy', String(diameter / 2));
-        trackCircle.setAttribute('r', String(radius));
-        trackCircle.setAttribute('stroke-width', String(stroke));
-
-        const fillCircle = document.createElementNS(ns, 'circle');
-        fillCircle.classList.add('cl-progress-circle-fill');
-        fillCircle.style.cssText = indeterminate
-            ? 'fill: none; stroke-linecap: round; transition: none;'
-            : 'fill: none; stroke-linecap: round; transition: stroke-dashoffset var(--cl-transition);';
-        fillCircle.setAttribute('cx', String(diameter / 2));
-        fillCircle.setAttribute('cy', String(diameter / 2));
-        fillCircle.setAttribute('r', String(radius));
-        fillCircle.setAttribute('stroke-width', String(stroke));
-        fillCircle.setAttribute('stroke', VARIANT_MAP[variant] || VARIANT_MAP.primary);
-        fillCircle.setAttribute('stroke-dasharray', String(circumference));
-
-        if (indeterminate) {
-            fillCircle.setAttribute('stroke-dashoffset', String(circumference));
-
-            // @keyframes cl-progress-indeterminate-circle-dash replacement (WAAPI, CSP-safe)
-            if (typeof fillCircle.animate === 'function') {
-                this._animations.push(fillCircle.animate(
-                    [
-                        { strokeDashoffset: `${circumference}px`, offset: 0 },
-                        { strokeDashoffset: `${circumference * 0.25}px`, offset: 0.5 },
-                        { strokeDashoffset: `${circumference}px`, offset: 1 }
-                    ],
-                    { duration: 1500, iterations: Infinity, easing: 'ease-in-out' }
-                ));
-            }
-        } else {
-            const offset = circumference - (pct / 100) * circumference;
-            fillCircle.setAttribute('stroke-dashoffset', String(offset));
-        }
-
-        svg.appendChild(trackCircle);
-        svg.appendChild(fillCircle);
-        wrapper.appendChild(svg);
+        const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(diameter * dpr);
+        canvas.height = Math.round(diameter * dpr);
+        canvas.style.cssText = `width: ${diameter}px; height: ${diameter}px; display: block;`;
+        wrapper.appendChild(canvas);
 
         if (showText && !indeterminate) {
             const text = document.createElement('span');
             text.className = 'cl-progress-circle-text';
-            text.textContent = `${Math.round(pct)}%`;
-            text.style.cssText = 'position: absolute; font-size: var(--cl-font-size-xs); color: var(--cl-text-secondary); font-family: var(--cl-font-family); font-weight: 600;';
-            // Adjust font size based on circle size
-            if (size === 'small') {
-                text.style.fontSize = 'var(--cl-font-size-2xs)';
-            } else if (size === 'large') {
-                text.style.fontSize = 'var(--cl-font-size-lg)';
-            }
+            text.textContent = `${Math.round(this._pct())}%`;
+            text.style.cssText = [
+                'position: absolute;',
+                'font-size: var(--cl-font-size-xs);',
+                'color: var(--cl-text-secondary);',
+                'font-family: var(--cl-font-family);',
+                'font-weight: 600;'
+            ].join(' ');
+            if (size === 'small') text.style.fontSize = 'var(--cl-font-size-2xs)';
+            else if (size === 'large') text.style.fontSize = 'var(--cl-font-size-lg)';
             wrapper.appendChild(text);
         }
 
         this.element = wrapper;
-        /** @private */
-        this._fill = fillCircle;
-        /** @private */
-        this._track = svg;
-        /** @private */
+        this._canvas = canvas;
+        this._ctx = canvas.getContext('2d');
         this._textEl = wrapper.querySelector('.cl-progress-circle-text') || null;
-        /** @private */
-        this._circumference = circumference;
+        /* keep _track / _fill aliases pointing to element/wrapper for setValue/setVariant compat */
+        this._track = wrapper;
+        this._fill = null;   // canvas — no DOM fill node
+
+        /* ThemeBus: canvas colour tokens must re-resolve on theme change */
+        this._offTheme = onThemeChange(() => this._drawCircle());
+
+        this._drawCircle();
+
+        if (indeterminate) this._startIndeterminate();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Canvas circle drawing                                             */
+    /* ------------------------------------------------------------------ */
+
+    _drawCircle() {
+        if (this._destroyed || !this._canvas) return;
+        const { size, variant, indeterminate } = this.options;
+        const diameter = CIRCLE_SIZE[size] || CIRCLE_SIZE.medium;
+        const stroke   = CIRCLE_STROKE[size] || CIRCLE_STROKE.medium;
+        const radius   = (diameter - stroke) / 2;
+        const dpr = window.devicePixelRatio || 1;
+        const canvas = this._canvas;
+        const ctx = this._ctx;
+
+        /* Re-sync backing store size on DPR change */
+        const bw = Math.round(diameter * dpr), bh = Math.round(diameter * dpr);
+        if (canvas.width !== bw || canvas.height !== bh) {
+            canvas.width = bw; canvas.height = bh;
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, diameter, diameter);
+
+        const cx = diameter / 2, cy = diameter / 2;
+
+        /* Resolve colour tokens from wrapper element for correct theme scope */
+        const varName = VARIANT_MAP[variant] || VARIANT_MAP.primary;
+        const tok = resolveTokens([varName, '--cl-bg-subtle'], this.element);
+        const trackColor = tok['--cl-bg-subtle'] || FALLBACK_PAINT;
+        const fillColor  = tok[varName]           || FALLBACK_PAINT;
+
+        /* Track ring */
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = trackColor;
+        ctx.lineWidth = stroke;
+        ctx.lineCap = 'butt';
+        ctx.stroke();
+
+        /* Fill arc */
+        if (indeterminate) {
+            /* Rotating arc of fixed 0.75 turn — driven by _indAngle */
+            const start = this._indAngle;
+            const end   = start + Math.PI * 1.5;   // 270° arc
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, start, end);
+            ctx.strokeStyle = fillColor;
+            ctx.lineWidth = stroke;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        } else {
+            const pct = this._pct();
+            const startAngle = -Math.PI / 2;
+            const endAngle   = startAngle + (pct / 100) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, startAngle, endAngle);
+            ctx.strokeStyle = fillColor;
+            ctx.lineWidth = stroke;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+    }
+
+    /** @private rAF loop for indeterminate circle animation. */
+    _startIndeterminate() {
+        let last = 0;
+        const step = (now) => {
+            if (this._destroyed) return;
+            const delta = last ? (now - last) / 1000 : 0;
+            last = now;
+            this._indAngle = (this._indAngle + delta * Math.PI) % (Math.PI * 2);  // 1 full turn/2s
+            this._drawCircle();
+            this._indRaf = requestAnimationFrame(step);
+        };
+        this._indRaf = requestAnimationFrame(step);
     }
 
     /* ------------------------------------------------------------------ */
@@ -319,9 +358,8 @@ export class Progress {
         const pct = this._pct();
 
         if (this.options.type === 'circle') {
-            const offset = this._circumference - (pct / 100) * this._circumference;
-            this._fill.setAttribute('stroke-dashoffset', String(offset));
             this._track.setAttribute('aria-valuenow', String(clamped));
+            this._drawCircle();
         } else {
             this._fill.style.width = `${pct}%`;
             this._track.setAttribute('aria-valuenow', String(clamped));
@@ -342,11 +380,10 @@ export class Progress {
         if (!VARIANT_MAP[variant]) return this;
         this.options.variant = variant;
 
-        const color = VARIANT_MAP[variant];
         if (this.options.type === 'circle') {
-            this._fill.setAttribute('stroke', color);
+            this._drawCircle();
         } else {
-            this._fill.style.background = color;
+            this._fill.style.background = `var(${VARIANT_MAP[variant]})`;
         }
         return this;
     }
@@ -355,14 +392,19 @@ export class Progress {
      * Remove the element from the DOM and clean up references.
      */
     destroy() {
+        this._destroyed = true;
         this._animations.forEach(anim => anim.cancel());
         this._animations = [];
+        cancelAnimationFrame(this._indRaf);
+        if (this._offTheme) this._offTheme();
         this.element?.remove();
         this.element = null;
         this._fill = null;
         this._track = null;
         this._textEl = null;
         this._container = null;
+        this._canvas = null;
+        this._ctx = null;
     }
 
     /* ------------------------------------------------------------------ */

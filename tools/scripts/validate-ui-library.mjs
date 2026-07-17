@@ -45,6 +45,8 @@ const smokeDemos = [
 
 function walkFiles(dir, predicate, out = []) {
     for (const entry of readdirSync(dir)) {
+        // vendor/ = 第三方原樣封存(UMD 頂層摸 window 等),不受本庫源碼約束
+        if (entry === 'vendor' || entry === 'node_modules') continue;
         const fullPath = path.join(dir, entry);
         const stats = statSync(fullPath);
         if (stats.isDirectory()) {

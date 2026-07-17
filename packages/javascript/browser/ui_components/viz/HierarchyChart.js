@@ -1,3 +1,9 @@
+/**
+ * HierarchyChart — 組織關聯階層圖(OrgChart 的 Canvas 版子類;SVG 禁用政策)。
+ * 與 OrgChart 差異:卡片較大(160×70)、詳情卡內嵌該單位的巢狀 OrgChart
+ * (OrgChart 已 Canvas 化,巢狀圖自然是 canvas)。
+ * 樹狀佈局/收合/命中皆繼承 OrgChart;僅覆寫 _showNodeDetail。
+ */
 import { OrgChart } from './OrgChart.js';
 import Locale from '../i18n/index.js';
 
@@ -6,13 +12,6 @@ export class HierarchyChart extends OrgChart {
         super(options);
         this.nodeWidth = 160;
         this.nodeHeight = 70;
-    }
-
-    _drawNodes() {
-        super._drawNodes();
-
-        // Add specific class for easy styling if needed
-        this.gNodes.classList.add('hierarchy-nodes');
     }
 
     _showNodeDetail(node) {

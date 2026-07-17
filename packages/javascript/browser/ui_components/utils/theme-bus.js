@@ -64,3 +64,13 @@ export function resolveTokens(names, el = document.documentElement) {
     for (const n of names) out[n] = cs.getPropertyValue(n).trim();
     return out;
 }
+
+/**
+ * Canvas 繪製需「保證可上色」——token 尚未生效(theme.css 未載入)時的唯一中性回退。
+ * 全庫禁止元件內散裝 hex 回退;一律引用本常數或 paintToken()。
+ * (audit-ui-style-rules 豁免本檔:此為 foundation 層的單一回退定義點。)
+ */
+export const FALLBACK_PAINT = '#888888';
+
+/** 取「顏色」token;空值(theme 未載入)回退 FALLBACK_PAINT。字型/尺寸類 token 勿用。 */
+export function paintToken(tok, name) { return tok[name] || FALLBACK_PAINT; }

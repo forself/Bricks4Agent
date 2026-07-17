@@ -2,9 +2,8 @@
  * Viz 視覺化元件統一匯出
  */
 
-// 圖表基礎
-export { BaseChart } from './BaseChart.js';
-export { CanvasChart } from './CanvasChart.js';   // Canvas 圖表新基底(SVG 禁用政策)
+// 圖表基礎(BaseChart 已退役刪除——SVG 禁用政策;基底一律 CanvasChart)
+export { CanvasChart } from './CanvasChart.js';
 
 // 標準圖表
 export { BarChart } from './BarChart.js';

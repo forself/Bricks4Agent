@@ -1,105 +1,151 @@
-import { BaseChart } from './BaseChart.js';
+/**
+ * RoseChart — 南丁格爾玫瑰圖(CanvasChart 版;SVG 禁用政策下的重寫,API 向後相容)。
+ * 資料形狀:{ labels: ['東','南','西'], series: [{ name:'風', data:[20,35,15] }, ...] }
+ * 支援:多系列堆疊環(radius stack)、Path2D 扇形區、legend、tooltip。
+ */
+import { CanvasChart } from './CanvasChart.js';
+import { categoricalColor } from '../utils/color-scale.js';
+import { FALLBACK_PAINT } from '../utils/theme-bus.js';
 
-export class RoseChart extends BaseChart {
-    constructor(options) {
-        super(options);
-        // New data format: { labels: [], series: [{ name: '', data: [] }] }
-        this.data = options.data || { labels: [], series: [] };
+const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
+
+export class RoseChart extends CanvasChart {
+    constructor(options = {}) {
+        super({
+            ...options,
+            width: px(options.width, '100%'),
+            height: px(options.height, '280px'),
+            data: options.data || { labels: [], series: [] },
+            colors: options.colors || null,
+            padding: options.padding || { top: 8, right: 8, bottom: 8, left: 8 }
+        });
     }
 
-    render() {
-        if (!this.width || !this.height) return;
+    _color(i) {
+        const c = this.options.colors;
+        return (c && c[i]) || categoricalColor(i);
+    }
 
-        const centerX = this.width / 2;
-        const centerY = this.height / 2;
-        const maxRadius = Math.min(centerX, centerY) * 0.9;
+    draw(ctx, w, h) {
+        const o = this.options;
+        const t = this.tokens(['--cl-text', '--cl-text-secondary', '--cl-text-dim', '--cl-bg']);
+        const labels = (o.data && o.data.labels) || [];
+        const series = (o.data && o.data.series) || [];
 
-        const g = this.createSVGElement('g');
-        g.setAttribute('transform', `translate(${centerX}, ${centerY})`);
-        this.svg.appendChild(g);
+        if (!labels.length || !series.length) {
+            ctx.font = this.font(13);
+            ctx.fillStyle = t['--cl-text-dim'];
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('無資料', w / 2, h / 2);
+            return;
+        }
 
-        // Find global max value (sum of all series for each category)
-        let maxTotalVal = 0;
-        const totalValues = new Array(this.data.labels.length).fill(0);
+        // legend 高度(多系列時)
+        const multi = series.length > 1;
+        const legendH = multi ? 18 : 0;
 
-        this.data.series.forEach(s => {
+        const cx = w / 2;
+        const cy = (h + legendH) / 2;
+        const maxRadius = Math.min(cx, cy - legendH) * 0.88;
+
+        // 每個 label 的總量(用於計算各分類半徑上限)
+        const totalValues = new Array(labels.length).fill(0);
+        series.forEach(s => {
             s.data.forEach((val, i) => {
-                totalValues[i] += val;
+                totalValues[i] += (Number(val) || 0);
             });
         });
-        maxTotalVal = Math.max(...totalValues, 1);
+        const maxTotalVal = Math.max(...totalValues, 1);
 
-        const angleStep = (2 * Math.PI) / this.data.labels.length;
+        const angleStep = (2 * Math.PI) / labels.length;
+        const strokeColor = t['--cl-bg'] || FALLBACK_PAINT;
 
-        // Iterate by Category (Angle)
-        this.data.labels.forEach((label, i) => {
+        // 繪製每個扇形
+        labels.forEach((label, i) => {
             let currentRadius = 0;
-            const startAngle = i * angleStep;
-            const endAngle = (i + 1) * angleStep;
+            const startAngle = i * angleStep - Math.PI / 2;
+            const endAngle = (i + 1) * angleStep - Math.PI / 2;
 
-            // Iterate by Series (Radius Stack)
-            this.data.series.forEach((s, sIndex) => {
-                const val = s.data[i] || 0;
+            series.forEach((s, sIndex) => {
+                const val = Number(s.data[i]) || 0;
                 if (val === 0) return;
 
                 const radiusIncrement = (val / maxTotalVal) * maxRadius;
                 const innerRadius = currentRadius;
                 const outerRadius = currentRadius + radiusIncrement;
 
-                // Draw arc
-                const x1 = Math.sin(startAngle) * outerRadius;
-                const y1 = -Math.cos(startAngle) * outerRadius;
-                const x2 = Math.sin(endAngle) * outerRadius;
-                const y2 = -Math.cos(endAngle) * outerRadius;
-
-                const x3 = Math.sin(endAngle) * innerRadius;
-                const y3 = -Math.cos(endAngle) * innerRadius;
-                const x4 = Math.sin(startAngle) * innerRadius;
-                const y4 = -Math.cos(startAngle) * innerRadius;
-
-                // Path construction
-                let d;
+                const path = new Path2D();
                 if (innerRadius === 0) {
-                    // Sector from center
-                    d = `M 0 0 L ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 0 1 ${x2} ${y2} Z`;
+                    // 純扇形(從圓心出發)
+                    path.moveTo(cx, cy);
+                    path.arc(cx, cy, outerRadius, startAngle, endAngle);
+                    path.closePath();
                 } else {
-                    // Annular sector
-                    d = `M ${x4} ${y4} L ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${innerRadius} ${innerRadius} 0 0 0 ${x4} ${y4} Z`;
+                    // 環形扇形(annular sector)
+                    path.arc(cx, cy, outerRadius, startAngle, endAngle);
+                    path.arc(cx, cy, innerRadius, endAngle, startAngle, true);
+                    path.closePath();
                 }
 
-                const path = this.createSVGElement('path');
-                path.setAttribute('d', d);
-                path.setAttribute('fill', this.getColor(sIndex));
-                path.setAttribute('stroke', 'var(--cl-bg)');
-                path.setAttribute('stroke-width', '1');
-                path.setAttribute('opacity', '0.9');
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = this._color(sIndex);
+                ctx.fill(path);
+                ctx.globalAlpha = 1;
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 1;
+                ctx.stroke(path);
 
-                // Interaction
-                path.onmouseenter = (e) => {
-                    path.setAttribute('opacity', 1);
-                    const safeLabel = this.escapeHtml(label);
-                    const safeName = this.escapeHtml(s.name);
-                    this.showTooltip(`
-                        <strong>${safeLabel}</strong><br/>
-                        ${safeName}: ${val}
-                    `, e);
-                };
-                path.onmouseleave = () => {
-                    path.setAttribute('opacity', 0.9);
-                    this.hideTooltip();
-                };
+                // 命中區域:用扇形外包矩形 + Path2D 精確命中
+                this.addRegion({
+                    shape: 'path',
+                    path,
+                    bounds: {
+                        x: cx - outerRadius,
+                        y: cy - outerRadius,
+                        w: outerRadius * 2,
+                        h: outerRadius * 2
+                    },
+                    data: { label, seriesName: s.name, value: val, sIndex }
+                });
 
-                g.appendChild(path);
-
-                // Update computed radius for next stack
                 currentRadius = outerRadius;
             });
         });
 
-        // Legend
-        this._drawLegend(this.data.series.map((s, i) => ({
-            label: s.name,
-            color: this.getColor(i)
-        })));
+        // legend(多系列)
+        if (multi) {
+            ctx.font = this.font(10);
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+            const lh = 16;
+            const totalLegendW = series.reduce((acc, s) => acc + 14 + ctx.measureText(String(s.name ?? '')).width + 14, 0);
+            let lx = Math.max(8, (w - totalLegendW) / 2);
+            const ly = legendH / 2 + 2;
+            for (let i = 0; i < series.length; i++) {
+                const label = String(series[i].name ?? '');
+                ctx.fillStyle = this._color(i);
+                ctx.fillRect(lx, ly - 4, 9, 9);
+                ctx.fillStyle = t['--cl-text-secondary'];
+                ctx.fillText(label, lx + 13, ly);
+                lx += 14 + ctx.measureText(label).width + 14;
+            }
+        }
+    }
+
+    getTooltip(d) {
+        return [
+            { label: '', value: d.label },
+            { label: '系列', value: d.seriesName },
+            { label: '值', value: this.fmt(d.value) }
+        ];
+    }
+
+    /** 更新資料並重繪(舊 API 相容)。 */
+    setData(data) {
+        this.options.data = data;
+        this.render();
     }
 }
+
+export default RoseChart;

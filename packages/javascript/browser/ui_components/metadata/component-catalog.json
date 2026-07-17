@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 116,
+  "component_count": 115,
   "components": [
     {
       "schema_version": 1,
@@ -3601,41 +3601,6 @@
     },
     {
       "schema_version": 1,
-      "component_id": "viz.base_chart",
-      "registry_name": "BaseChart",
-      "display_name": "BaseChart",
-      "category": "viz",
-      "kind": "visualizer",
-      "source_path": "ui_components/viz/BaseChart.js",
-      "docs_path": "ui_components/viz/README_MapEditor.md",
-      "maturity": "stable",
-      "generator": {
-        "usable": false,
-        "usage_mode": "manual_only",
-        "supported_field_types": [],
-        "supported_page_types": [],
-        "definition_runtime": false
-      },
-      "composition": {
-        "role": "visualizer",
-        "requires_form_field_wrapper": false,
-        "manual_only": true
-      },
-      "binding": {
-        "value_io": false,
-        "listener_events": [],
-        "target_actions": []
-      },
-      "styling": {
-        "theme_token_only": true,
-        "style_knobs": [
-          "height",
-          "width"
-        ]
-      }
-    },
-    {
-      "schema_version": 1,
       "component_id": "viz.canvas_map",
       "registry_name": "CanvasMap",
       "display_name": "CanvasMap",
@@ -4243,10 +4208,7 @@
       },
       "styling": {
         "theme_token_only": true,
-        "style_knobs": [
-          "height",
-          "width"
-        ]
+        "style_knobs": []
       }
     },
     {
@@ -7986,41 +7948,6 @@
         "style_knobs": []
       }
     },
-    "BaseChart": {
-      "schema_version": 1,
-      "component_id": "viz.base_chart",
-      "registry_name": "BaseChart",
-      "display_name": "BaseChart",
-      "category": "viz",
-      "kind": "visualizer",
-      "source_path": "ui_components/viz/BaseChart.js",
-      "docs_path": "ui_components/viz/README_MapEditor.md",
-      "maturity": "stable",
-      "generator": {
-        "usable": false,
-        "usage_mode": "manual_only",
-        "supported_field_types": [],
-        "supported_page_types": [],
-        "definition_runtime": false
-      },
-      "composition": {
-        "role": "visualizer",
-        "requires_form_field_wrapper": false,
-        "manual_only": true
-      },
-      "binding": {
-        "value_io": false,
-        "listener_events": [],
-        "target_actions": []
-      },
-      "styling": {
-        "theme_token_only": true,
-        "style_knobs": [
-          "height",
-          "width"
-        ]
-      }
-    },
     "CanvasMap": {
       "schema_version": 1,
       "component_id": "viz.canvas_map",
@@ -8630,10 +8557,7 @@
       },
       "styling": {
         "theme_token_only": true,
-        "style_knobs": [
-          "height",
-          "width"
-        ]
+        "style_knobs": []
       }
     },
     "SunburstChart": {
@@ -8888,7 +8812,6 @@
     ],
     "viz": [
       "BarChart",
-      "BaseChart",
       "CanvasMap",
       "ClusterGraph",
       "DrawingBoard",
@@ -8999,7 +8922,6 @@
     ],
     "visualizer": [
       "BarChart",
-      "BaseChart",
       "CanvasMap",
       "ClusterGraph",
       "DrawingBoard",
@@ -9103,7 +9025,6 @@
       "AddressListInput",
       "Avatar",
       "BarChart",
-      "BaseChart",
       "BatchUploader",
       "Breadcrumb",
       "ButtonGroup",
@@ -9170,7 +9091,6 @@
       "Badge",
       "BannerSection",
       "BarChart",
-      "BaseChart",
       "Breadcrumb",
       "CanvasMap",
       "CardGrid",

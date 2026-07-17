@@ -1,5 +1,4 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -10,25 +9,20 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const uiRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'ui_components');
 const failOnViolations = process.argv.includes('--fail-on-violations');
 
-const rgArgs = [
-    '--files',
-    uiRoot,
-    '--glob',
-    '*.js',
-    '--glob',
-    '*.css',
-    '--glob',
-    '!**/*.bak',
-    '--glob',
-    '!**/README.md',
-    '--glob',
-    '!**/STYLE_CONVENTION.md'
-];
+// 純 Node 遞迴列檔(原用 rg --files;為零外部依賴/跨平台改內建,比照 audit-csp.mjs)
+function walk(dir, out = []) {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        // vendor/ = 第三方原樣封存(leaflet/html2canvas),不受本庫 token 規範
+        if (ent.isDirectory()) { if (ent.name !== 'node_modules' && ent.name !== 'vendor') walk(p, out); continue; }
+        if (!/\.(js|css)$/.test(ent.name)) continue;
+        if (ent.name.endsWith('.bak')) continue;
+        out.push(p);
+    }
+    return out;
+}
 
-const files = execFileSync('rg', rgArgs, { cwd: repoRoot, encoding: 'utf8' })
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+const files = walk(uiRoot)
     .filter((filePath) => {
         const normalized = filePath.replaceAll('\\', '/');
         return !normalized.endsWith('/theme.css')
@@ -36,14 +30,19 @@ const files = execFileSync('rg', rgArgs, { cwd: repoRoot, encoding: 'utf8' })
             // 顏色資料來源檔(調色盤最近色計算需要 hex 數值,非樣式),比照 theme.css 排除
             && !normalized.endsWith('/editor/richtext-palette.js')
             // palette.css 為自動生成的色階 token 檔(色彩系統 foundation),比照 theme.css 排除
-            && !normalized.endsWith('/palette.css');
+            && !normalized.endsWith('/palette.css')
+            // theme-bus 為 FALLBACK_PAINT 唯一定義點(foundation 層;元件端禁散裝 hex 回退)
+            && !normalized.endsWith('/utils/theme-bus.js');
     });
 
 const rules = [
     {
         id: 'hex-color',
         description: 'Hardcoded hex colors should map to --cl-* tokens.',
-        pattern: /#[0-9A-Fa-f]{3,8}\b/g
+        pattern: /#[0-9A-Fa-f]{3,8}\b/g,
+        // 亮度自適應「文字對比遮罩」常數:依填色亮度擇黑/白半透明,屬物理對比而非主題色
+        //(Heatmap/Pie/Sunburst/Flame/Timeline 的標籤上色邏輯),准予直寫。
+        allow: new Set(['#00000099', '#ffffffcc', '#000000aa', '#ffffffdd'])
     },
     {
         id: 'rgba-color',

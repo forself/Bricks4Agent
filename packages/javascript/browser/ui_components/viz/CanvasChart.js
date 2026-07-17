@@ -22,7 +22,7 @@
  *       getTooltip(data) { return [{ label: '案類', value: data.name }]; }  // 選配
  *   }
  */
-import { onThemeChange, resolveTokens } from '../utils/theme-bus.js';
+import { onThemeChange, resolveTokens, FALLBACK_PAINT } from '../utils/theme-bus.js';
 
 export class CanvasChart {
     constructor(options = {}) {
@@ -325,7 +325,7 @@ export class CanvasChart {
         const ctx = off.getContext('2d');
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
         const { '--cl-bg': bg } = this.tokens(['--cl-bg']);
-        ctx.fillStyle = bg || '#ffffff';
+        ctx.fillStyle = bg || FALLBACK_PAINT;
         ctx.fillRect(0, 0, w, h);
         const savedRegions = this._regions;
         this._regions = [];

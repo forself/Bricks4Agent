@@ -150,7 +150,6 @@ const ROLE_OVERRIDES = {
 const RUNTIME_ONLY_COMPONENTS = new Set(['PanelManager']);
 const MANUAL_ONLY_COMPONENTS = new Set([
     'BarChart',
-    'BaseChart',
     'CanvasMap',
     'ConnectionCard',
     'DocumentWall',

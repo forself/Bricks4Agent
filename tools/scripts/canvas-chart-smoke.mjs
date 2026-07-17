@@ -32,6 +32,7 @@ class DemoChart extends CanvasChart {
     getTooltip(d) { return [{ label: '名稱', value: d.name }, { label: '值', value: d.v }]; }
 }
 const host = document.createElement('div');
+host.id = 'cc-smoke';   // 選擇器需鎖定本冒煙實例(波 2 後展示廊卡片也是 canvas 圖表,不能全頁首中)
 host.style.cssText = 'position:fixed; left:0; top:0; width:400px; height:200px; z-index:99999; background:var(--cl-bg);';
 document.body.appendChild(host);
 window.__clicked = null;
@@ -65,13 +66,13 @@ t('重繪吃到新 token(矩形變紅)', px[0] > 150 && px[1] < 90, JSON.stringi
 await p.evaluate(`document.documentElement.style.removeProperty('--cl-primary')`);
 
 // 4) hover → tooltip(DOM、textContent)
-await p.hover('.cl-canvas-chart__body canvas', { position: { x: 60, y: 50 } });
+await p.hover('#cc-smoke .cl-canvas-chart__body canvas', { position: { x: 60, y: 50 } });
 await p.waitForTimeout(120);
-const tip = await p.evaluate(`(() => { const t = document.querySelector('.cl-canvas-chart__tooltip'); return { show: t.style.display !== 'none', text: t.textContent }; })()`);
+const tip = await p.evaluate(`(() => { const t = document.querySelector('#cc-smoke .cl-canvas-chart__tooltip'); return { show: t.style.display !== 'none', text: t.textContent }; })()`);
 t('hover 命中 → tooltip 顯示且含資料', tip.show && tip.text.includes('甲') && tip.text.includes('42'), JSON.stringify(tip));
 
 // 5) 點擊回拋
-await p.click('.cl-canvas-chart__body canvas', { position: { x: 220, y: 60 } });
+await p.click('#cc-smoke .cl-canvas-chart__body canvas', { position: { x: 220, y: 60 } });
 const clicked = await p.evaluate('window.__clicked');
 t('點擊命中(circle)回拋 data', clicked && clicked.name === '乙', JSON.stringify(clicked));
 

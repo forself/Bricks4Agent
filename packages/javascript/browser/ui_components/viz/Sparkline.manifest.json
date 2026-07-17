@@ -27,9 +27,6 @@
   },
   "styling": {
     "theme_token_only": true,
-    "style_knobs": [
-      "height",
-      "width"
-    ]
+    "style_knobs": []
   }
 }

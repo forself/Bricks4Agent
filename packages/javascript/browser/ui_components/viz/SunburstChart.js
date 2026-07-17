@@ -1,158 +1,212 @@
-import { BaseChart } from './BaseChart.js';
-
+/**
+ * SunburstChart — 旭日環(CanvasChart 版;SVG 禁用政策下的重寫,API 向後相容)。
+ * 資料形狀:{ name, children:[], value? } 階層樹(葉節點需有 value;非葉節點自動加總)
+ * 佈局:半徑分層(每層等寬環帶);角度按 value 比例分配;根節點佔滿圓心圓盤。
+ * Hover:getTooltip → CanvasChart DOM tooltip;點擊扇區保留 ModalPanel.alert 語意。
+ */
+import { CanvasChart } from './CanvasChart.js';
 import { ModalPanel } from '../layout/Panel/index.js';
+import { categoricalColor, hierarchicalColor } from '../utils/color-scale.js';
+import { FALLBACK_PAINT } from '../utils/theme-bus.js';
 
-export class SunburstChart extends BaseChart {
-    constructor(options) {
-        super(options);
-        // data: { name, children: [] }
-        this.data = options.data || {};
-    }
+const px = (v, d) => typeof v === 'number' ? v + 'px' : (v || d);
+const TAU = Math.PI * 2;
+const START = -Math.PI / 2;   // 12 點鐘方向開始
 
-    render() {
-        this.svg.innerHTML = '';
-        this.width = this.container.clientWidth;
-        this.height = this.container.clientHeight;
-        if (!this.data.name) return;
-
-        const radius = Math.min(this.width, this.height) / 2;
-        const cx = this.width / 2;
-        const cy = this.height / 2;
-
-        const g = this.createSVGElement('g');
-        g.setAttribute('transform', `translate(${cx}, ${cy})`);
-        this.svg.appendChild(g);
-
-        // Partition Layout Calculation
-        // Simple radial partition
-        const hierarchy = this._partition(this.data);
-
-        // Draw Arcs
-        hierarchy.forEach((node, i) => {
-            const arcPath = this.createSVGElement('path');
-            const d = this._describeArc(0, 0, node.r0 * radius, node.r1 * radius, node.a0 * 2 * Math.PI, node.a1 * 2 * Math.PI);
-
-            arcPath.setAttribute('d', d);
-            arcPath.setAttribute('fill', this.getColor(node.depth));
-            arcPath.setAttribute('stroke', 'var(--cl-bg)');
-            arcPath.setAttribute('stroke-width', '1');
-            g.appendChild(arcPath);
-
-            this._bindHover(arcPath, node);
+export class SunburstChart extends CanvasChart {
+    constructor(options = {}) {
+        super({
+            ...options,
+            width: px(options.width, '100%'),
+            height: px(options.height, '300px'),
+            padding: options.padding || { top: 8, right: 8, bottom: 8, left: 8 },
+            data: options.data || {},
         });
     }
 
-    // Quick partition calc (0..1 space)
-    _partition(root) {
-        const nodes = [];
+    /* ── 階層佈局計算 ── */
 
-        // Add value to root
-        const addValues = (node) => {
-            if (!node.children || node.children.length === 0) {
-                node.value = node.value || 1;
+    /** 遞迴加總 value(葉節點預設 1)。 */
+    _addValues(node) {
+        if (!node.children || node.children.length === 0) {
+            node._value = node.value != null ? Number(node.value) : 1;
+        } else {
+            node._value = node.children.reduce((acc, c) => acc + this._addValues(c), 0);
+        }
+        return node._value;
+    }
+
+    /**
+     * 遞迴建立扇形節點清單。
+     * 每個扇形帶有:{ name, value, depth, topIndex, a0, a1, r0, r1, path:Path2D, bounds }
+     */
+    _partition(root, cx, cy, ringW) {
+        this._addValues(root);
+        const out = [];
+
+        const traverse = (node, depth, a0, a1, topIndex) => {
+            const r0 = depth * ringW;
+            const r1 = r0 + ringW;
+            const ra0 = START + a0 * TAU;
+            const ra1 = START + a1 * TAU;
+
+            const path = new Path2D();
+            if (depth === 0) {
+                // 根:實心圓盤
+                path.arc(cx, cy, r1, 0, TAU);
             } else {
-                node.value = node.children.reduce((acc, c) => acc + addValues(c), 0);
+                // 環帶扇形
+                path.arc(cx, cy, r1, ra0, ra1);
+                path.arc(cx, cy, r0, ra1, ra0, true);
+                path.closePath();
             }
-            return node.value;
-        };
-        addValues(root);
 
-        const traverse = (node, depth, a0, a1) => {
-            const r0 = depth * 0.25; // Ring width factor
-            const r1 = (depth + 1) * 0.25;
+            // 包絡矩形(取外圓外接正方形)
+            const bounds = {
+                x: cx - r1, y: cy - r1,
+                w: r1 * 2, h: r1 * 2
+            };
 
-            nodes.push({ ...node, depth, r0, r1, a0, a1 });
+            out.push({ name: node.name, value: node._value, depth, topIndex, a0, a1, path, bounds });
 
             if (node.children) {
-                let currentA = a0;
-                node.children.forEach(child => {
-                    const angleSpan = (a1 - a0) * (child.value / node.value);
-                    traverse(child, depth + 1, currentA, currentA + angleSpan);
-                    currentA += angleSpan;
+                let curA = a0;
+                node.children.forEach((child, ci) => {
+                    const span = (a1 - a0) * (child._value / (node._value || 1));
+                    // 頂層子節點編號決定色系
+                    traverse(child, depth + 1, curA, curA + span, depth === 0 ? ci : topIndex);
+                    curA += span;
                 });
             }
         };
 
-        traverse(root, 0, 0, 1);
-        return nodes;
+        traverse(root, 0, 0, 1, 0);
+        return out;
     }
 
-    // Polar to Cartesian
-    _polarToCartesian(centerX, centerY, radius, angleInRadians) {
-        return {
-            x: centerX + (radius * Math.cos(angleInRadians - Math.PI / 2)),
-            y: centerY + (radius * Math.sin(angleInRadians - Math.PI / 2))
-        };
-    }
+    /* ── 繪製 ── */
 
-    _describeArc(x, y, innerRadius, outerRadius, startAngle, endAngle) {
-        const start = this._polarToCartesian(x, y, outerRadius, endAngle);
-        const end = this._polarToCartesian(x, y, outerRadius, startAngle);
-        const startInner = this._polarToCartesian(x, y, innerRadius, endAngle);
-        const endInner = this._polarToCartesian(x, y, innerRadius, startAngle);
+    draw(ctx, w, h) {
+        const o = this.options;
+        const t = this.tokens(['--cl-text', '--cl-text-secondary', '--cl-text-dim', '--cl-bg']);
+        const data = o.data;
 
-        const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
-
-        const d = [
-            "M", start.x, start.y,
-            "A", outerRadius, outerRadius, 0, largeArcFlag, 0, end.x, end.y,
-            "L", endInner.x, endInner.y,
-            "A", innerRadius, innerRadius, 0, largeArcFlag, 1, startInner.x, startInner.y,
-            "Z"
-        ].join(" ");
-
-        return d;
-    }
-
-    _bindHover(el, data) {
-        let hideTimer = null;
-        const show = (e) => {
-            if (hideTimer) clearTimeout(hideTimer);
-            this._showDetail(data, e);
-            const tip = this.tooltip;
-            tip.onmouseenter = () => { if (hideTimer) clearTimeout(hideTimer); };
-            tip.onmouseleave = () => { hideTimer = setTimeout(() => this.hideTooltip(), 200); };
-        };
-        const hide = () => { hideTimer = setTimeout(() => this.hideTooltip(), 200); };
-        el.addEventListener('mouseenter', show);
-        el.addEventListener('mouseleave', hide);
-    }
-
-    _showDetail(node, e) {
-        const safeName = this.escapeHtml(node.name);
-        const html = `
-            <div data-part="root">
-                <h3 data-part="title">${safeName}</h3>
-                <div data-part="body">
-                    Count: ${node.value}<br/>
-                    Depth: ${node.depth}
-                </div>
-                 <div data-part="actions">
-                    <button data-action="zoom-in" data-name="${safeName}">Zoom In</button>
-                </div>
-            </div>
-        `;
-        this.showTooltip(html, e, true);
-
-        // CSP 相容:style-src 'self' 會剝掉 HTML 剖析出的 style 屬性,
-        // 故於 tooltip 插入 DOM 後以 CSSOM(el.style.cssText)指派樣式
-        const setStyle = (selector, cssText) => {
-            const el = this.tooltip.querySelector(selector);
-            if (el) el.style.cssText = cssText;
-        };
-        setStyle('[data-part="root"]', 'min-width:180px;');
-        setStyle('[data-part="title"]', 'margin:0 0 5px 0; border-bottom:1px solid var(--cl-border-light); padding-bottom:5px;');
-        setStyle('[data-part="body"]', 'font-size:var(--cl-font-size-sm); color:var(--cl-text-secondary);');
-        setStyle('[data-part="actions"]', 'margin-top:8px; text-align:right;');
-
-        // CSP 相容:tooltip 插入 DOM 後以 CSSOM 設定樣式,並用 addEventListener 綁定行為
-        // ModalPanel 已於檔案頂部 import { ModalPanel } from '../layout/Panel/index.js'
-        const btn = this.tooltip.querySelector('[data-action="zoom-in"]');
-        if (btn) {
-            btn.style.cssText = 'padding:2px 8px; font-size:var(--cl-font-size-xs);';
-            btn.addEventListener('click', () => {
-                ModalPanel.alert({ message: 'Drilldown: ' + btn.dataset.name });
-            });
+        if (!data || !data.name) {
+            ctx.font = this.font(13);
+            ctx.fillStyle = t['--cl-text-dim'];
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('無資料', w / 2, h / 2);
+            return;
         }
+
+        const p = o.padding;
+        const cw = w - p.left - p.right;
+        const ch = h - p.top - p.bottom;
+        const cx = p.left + cw / 2;
+        const cy = p.top + ch / 2;
+
+        // 偵測最大深度以決定環帶寬
+        const maxDepth = this._maxDepth(data);
+        const maxR = Math.max(10, Math.min(cw, ch) / 2);
+        const ringW = maxR / Math.max(maxDepth, 1);
+
+        const nodes = this._partition(data, cx, cy, ringW);
+
+        nodes.forEach((n, ni) => {
+            // 色彩:深度 0 用淺中性;深度 1+ 按 topIndex × depth shade
+            let color;
+            if (n.depth === 0) {
+                color = t['--cl-text-dim'] || FALLBACK_PAINT;
+            } else {
+                color = hierarchicalColor(n.topIndex, n.depth - 1);
+            }
+
+            ctx.fillStyle = color;
+            ctx.fill(n.path);
+            ctx.strokeStyle = t['--cl-bg'];
+            ctx.lineWidth = 1;
+            ctx.stroke(n.path);
+
+            this.addRegion({
+                shape: 'path',
+                path: n.path,
+                bounds: n.bounds,
+                data: {
+                    name: n.name,
+                    value: n.value,
+                    depth: n.depth,
+                    pct: (n.a1 - n.a0) * 100
+                },
+                clickable: true
+            });
+
+            // 扇形標籤(中心角度;夠寬才標)
+            if (n.depth > 0) {
+                const spanAngle = (n.a1 - n.a0) * TAU;
+                if (spanAngle > 0.15) {
+                    const midA = START + (n.a0 + n.a1) / 2 * TAU;
+                    const midR = (n.depth - 0.5) * ringW + ringW / 2;
+                    const lx = cx + Math.cos(midA) * midR;
+                    const ly = cy + Math.sin(midA) * midR;
+                    const maxLW = ringW * spanAngle * 0.9;
+                    ctx.font = this.font(Math.min(11, ringW * 0.35));
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#ffffffcc';
+                    ctx.fillText(this.ellipsis(ctx, String(n.name), maxLW), lx, ly);
+                }
+            }
+        });
+
+        // 根節點標籤(圓心)
+        ctx.font = this.font(Math.min(13, ringW * 0.4), 600);
+        ctx.fillStyle = t['--cl-text-secondary'];
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.ellipsis(ctx, String(data.name), ringW * 1.6), cx, cy);
+    }
+
+    _maxDepth(node, d = 0) {
+        if (!node.children || node.children.length === 0) return d;
+        return Math.max(...node.children.map(c => this._maxDepth(c, d + 1)));
+    }
+
+    /* ── Tooltip ── */
+
+    getTooltip(d) {
+        return [
+            { label: '', value: d.name },
+            { label: 'Count', value: this.fmt(d.value) },
+            { label: 'Depth', value: d.depth },
+            { label: '占比', value: d.pct.toFixed(1) + '%' }
+        ];
+    }
+
+    /* ── 點擊行為(語意保留:ModalPanel.alert)── */
+
+    _handleClick(d) {
+        ModalPanel.alert({ message: 'Drilldown: ' + d.name });
+    }
+
+    /** 覆寫 CanvasChart 的 click 派送。 */
+    _buildDom() {
+        super._buildDom();
+        this.canvas.addEventListener('click', (e) => {
+            const r = this._hitTest(e.offsetX, e.offsetY);
+            if (r && r.data && r.data.clickable !== false) {
+                this._handleClick(r.data);
+            }
+        });
+    }
+
+    /* ── 公開 API(舊 API 相容)── */
+
+    /** 設定資料並重繪。 */
+    setData(data) {
+        this.options.data = data;
+        this.render();
     }
 }
+
+export default SunburstChart;

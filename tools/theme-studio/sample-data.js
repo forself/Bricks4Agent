@@ -207,7 +207,7 @@ export const GALLERY_SKIP = new Set([
     'LeafletMap', 'OSMMapEditor', 'TGOSMapEditor', 'MapEditor', 'MapEditorV2', 'CanvasMap',   // 需圖磚/大畫布
     'WebPainter', 'DrawingBoard',                                            // 全畫布互動
     'WebTextEditor',                                                         // 大型編輯器(另有專頁)
-    'GeolocationService', 'WeatherService', 'BaseChart', 'RegionMap',        // 非視覺 / 抽象基底 / 大 SVG
+    'GeolocationService', 'WeatherService', 'RegionMap',                     // 非視覺 / 全尺寸區域圖(Canvas)
     'ComponentFactory', 'ComponentBinder', 'PanelManager',                   // 基礎設施 / 需觸發
     'ButtonGroup',                                                           // buttons 需子元件實例,無法用純 options 展示
     'ImageViewer',                                                           // 全螢幕燈箱 + 建構子用位置參數 src,非可內嵌小卡
@@ -218,9 +218,9 @@ export const GALLERY_SKIP = new Set([
 ]);
 
 // 「舞台」全尺寸範例:GALLERY_SKIP 中可在大彈窗渲染者(點卡片開舞台 + 頂部切換)。
-// 不在此表者(BaseChart 抽象 / ButtonGroup 需子實例 / ImageViewer 全螢幕燈箱 / PanelManager 單例)維持純標記。
+// 不在此表者(ButtonGroup 需子實例 / ImageViewer 全螢幕燈箱 / PanelManager 單例)維持純標記。
 export const STAGE_SAMPLES = {
-    // 圖表(BaseChart 子類:建構即自動 resize→render,填滿容器)
+    // 圖表(CanvasChart 子類:建構即自動 resize→render,填滿容器)
     FlameChart: { title: '案件耗時火焰圖', width: '100%', height: '100%', data: { name: '專案總工時', value: 100, children: [
         { name: '情資蒐集', value: 40, children: [
             { name: '通聯調閱', value: 22, children: [{ name: '王小明門號', value: 12 }, { name: '李美華門號', value: 10 }] },
