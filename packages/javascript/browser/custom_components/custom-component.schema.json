@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bricks4agent.local/schemas/custom-component.schema.json",
+  "title": "Bricks4Agent Custom Component Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "component_id",
+    "registry_name",
+    "display_name",
+    "version",
+    "kind",
+    "root"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^custom\\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+    },
+    "registry_name": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "kind": {
+      "enum": ["atomic", "composite", "template"]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "root": {
+      "$ref": "#/$defs/node"
+    }
+  },
+  "$defs": {
+    "safePropertyName": {
+      "not": {
+        "enum": [
+          "__proto__",
+          "prototype",
+          "constructor",
+          "__html",
+          "dangerouslySetInnerHTML",
+          "documentWrite",
+          "html",
+          "innerHTML",
+          "insertAdjacentHTML",
+          "outerHTML",
+          "rawHtml",
+          "srcdoc"
+        ]
+      }
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        { "$ref": "#/$defs/jsonObject" }
+      ]
+    },
+    "jsonObject": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/safePropertyName" },
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "leafOptions": {
+      "$ref": "#/$defs/jsonObject"
+    },
+    "componentNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "component"],
+      "properties": {
+        "type": { "const": "component" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "component": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "options": { "$ref": "#/$defs/leafOptions" }
+      }
+    },
+    "customNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "component"],
+      "properties": {
+        "type": { "const": "custom" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "component": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]*$"
+            },
+            {
+              "type": "string",
+              "pattern": "^custom\\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+            }
+          ]
+        },
+        "options": { "$ref": "#/$defs/leafOptions" }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["stack", "row", "grid"]
+        },
+        "gap": {
+          "enum": ["none", "xs", "sm", "md", "lg", "xl"]
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "align": {
+          "enum": ["start", "center", "end", "stretch"]
+        }
+      }
+    },
+    "groupNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "children"],
+      "properties": {
+        "type": { "const": "group" },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "layout": { "$ref": "#/$defs/layout" },
+        "class_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^-?[_a-zA-Z]+[_a-zA-Z0-9-]*$"
+          }
+        },
+        "aria_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/componentNode" },
+        { "$ref": "#/$defs/customNode" },
+        { "$ref": "#/$defs/groupNode" }
+      ]
+    }
+  }
+}

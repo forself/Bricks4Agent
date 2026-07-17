@@ -81,6 +81,13 @@
     --cl-radius-xl: 12px;
     --cl-radius-round: 50%;
 
+    /* Spacing */
+    --cl-space-xs: 3px;
+    --cl-space-sm: 4px;
+    --cl-space-md: 6px;
+    --cl-space-lg: 8px;
+    --cl-space-xl: 12px;
+
     /* 字體 */
     --cl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --cl-font-family-mono: Consolas, Monaco, 'Courier New', monospace;

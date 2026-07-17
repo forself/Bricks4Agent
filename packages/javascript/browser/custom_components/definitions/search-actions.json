@@ -1,0 +1,55 @@
+{
+  "$schema": "../custom-component.schema.json",
+  "schema_version": 1,
+  "component_id": "custom.search_actions",
+  "registry_name": "CustomSearchActions",
+  "display_name": "Custom Search Actions",
+  "version": "1.0.0",
+  "kind": "composite",
+  "description": "A two-layer composition that remains within the three-layer composite boundary.",
+  "root": {
+    "type": "group",
+    "id": "search-actions",
+    "layout": {
+      "mode": "stack",
+      "gap": "md"
+    },
+    "children": [
+      {
+        "type": "component",
+        "id": "search-input",
+        "component": "TextInput",
+        "options": {
+          "placeholder": "Search"
+        }
+      },
+      {
+        "type": "group",
+        "id": "search-buttons",
+        "layout": {
+          "mode": "row",
+          "gap": "xs",
+          "align": "center"
+        },
+        "children": [
+          {
+            "type": "component",
+            "id": "submit-search",
+            "component": "BasicButton",
+            "options": {
+              "label": "Search"
+            }
+          },
+          {
+            "type": "component",
+            "id": "search-icon",
+            "component": "Icon",
+            "options": {
+              "name": "search"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

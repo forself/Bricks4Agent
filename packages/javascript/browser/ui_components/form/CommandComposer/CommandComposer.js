@@ -1,10 +1,6 @@
 import { Textarea } from '../TextArea/index.js';
 import { createComponentState } from '../../utils/component-state.js';
-
-const SEND_ICON = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 12L20 4L16 20L12 13L4 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M12 13L20 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-</svg>`;
+import { Icon } from '../../common/Icon/index.js';
 
 export class CommandComposer {
     constructor(options = {}) {
@@ -93,7 +89,6 @@ export class CommandComposer {
         this.submitButton.className = 'cl-command-composer__submit';
         this.submitButton.title = this.options.submitLabel;
         this.submitButton.setAttribute('aria-label', this.options.ariaLabel || this.options.submitLabel);
-        this.submitButton.innerHTML = SEND_ICON;
         this.submitButton.style.cssText = `
             width: 44px;
             height: 44px;
@@ -107,8 +102,8 @@ export class CommandComposer {
             cursor: pointer;
             transition: background var(--cl-transition), border-color var(--cl-transition), opacity var(--cl-transition);
         `;
-        const sendSvg = this.submitButton.querySelector('svg');
-        if (sendSvg) sendSvg.style.cssText = 'width: 20px; height: 20px;';
+        this._submitIcon = new Icon({ name: 'send', size: 20, color: 'currentColor' });
+        this._submitIcon.mount(this.submitButton);
 
         // :hover:not(:disabled) → 事件切換(CSP 合規)
         this.submitButton.addEventListener('mouseenter', () => {
@@ -255,6 +250,8 @@ export class CommandComposer {
     }
 
     destroy() {
+        this._submitIcon?.destroy();
+        this._submitIcon = null;
         this.send('DESTROY');
         this.textarea?.textarea?.removeEventListener('keydown', this._onKeyDown);
         this.textarea?.destroy();

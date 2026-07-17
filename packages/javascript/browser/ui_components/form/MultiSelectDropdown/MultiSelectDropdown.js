@@ -1,6 +1,7 @@
 import { ModalPanel } from '../../layout/Panel/index.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 const cloneItems = (items) => Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
 const normalizeValues = (values, items) => {
@@ -143,12 +144,14 @@ export class MultiSelectDropdown {
         expandBtn.className = 'msd__expand-btn';
         expandBtn.type = 'button';
         expandBtn.title = Locale.t('multiSelect.expandAll');
-        expandBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="var(--cl-text-secondary)" stroke-width="1.5" fill="none"/><path d="M5 6.5h6M5 9.5h6" stroke="var(--cl-text-secondary)" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+        this._expandIcon = new Icon({ name: 'fullscreen', size: 16, color: 'var(--cl-text-secondary)' });
+        this._expandIcon.mount(expandBtn);
         expandBtn.style.cssText = 'display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:none;background:transparent;border-radius:var(--cl-radius-sm);cursor:pointer;transition:background var(--cl-transition-fast);padding:0;';
 
         const arrow = document.createElement('span');
         arrow.className = 'msd__arrow';
-        arrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5L6 7.5L9 4.5" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        this._arrowIcon = new Icon({ name: 'chevron-down', size: 12, color: 'var(--cl-text-secondary)' });
+        this._arrowIcon.mount(arrow);
         arrow.style.cssText = 'display:flex;transition:transform 0.2s;';
 
         actions.appendChild(expandBtn);
@@ -260,6 +263,8 @@ export class MultiSelectDropdown {
         const state = this.snapshot();
         const sorted = this._getSortedItems(state.filteredItems);
         const selectedSet = new Set(state.selectedValues);
+        this._menuIcons?.forEach((icon) => icon.destroy());
+        this._menuIcons = [];
         this._menu.innerHTML = '';
         if (sorted.length === 0) {
             const empty = document.createElement('div');
@@ -282,7 +287,11 @@ export class MultiSelectDropdown {
             const checkbox = document.createElement('span');
             checkbox.className = 'msd__checkbox';
             checkbox.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:2px solid ${isSelected ? 'var(--cl-primary)' : 'var(--cl-border-dark)'};border-radius:var(--cl-radius-sm);background:${isSelected ? 'var(--cl-primary)' : 'var(--cl-bg)'};transition:all var(--cl-transition-fast);flex-shrink:0;opacity:${isItemDisabled ? '0.5' : '1'};`;
-            if (isSelected) checkbox.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4 7L8 3" stroke="var(--cl-text-inverse)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            if (isSelected) {
+                const checkIcon = new Icon({ name: 'check', size: 10, color: 'var(--cl-text-inverse)' });
+                checkIcon.mount(checkbox);
+                this._menuIcons.push(checkIcon);
+            }
             const label = document.createElement('span');
             label.textContent = item.label;
             label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -581,6 +590,12 @@ export class MultiSelectDropdown {
 
     destroy() {
         this.send('DESTROY');
+        this._expandIcon?.destroy();
+        this._arrowIcon?.destroy();
+        this._expandIcon = null;
+        this._arrowIcon = null;
+        this._menuIcons?.forEach((icon) => icon.destroy());
+        this._menuIcons = [];
         document.removeEventListener('click', this._boundHandleOutsideClick);
         if (this.element?.parentNode) this.element.remove();
     }

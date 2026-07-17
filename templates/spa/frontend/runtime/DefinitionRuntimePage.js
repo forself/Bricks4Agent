@@ -3,6 +3,7 @@ import { PageDefinitionAdapter } from './page-generator/PageDefinitionAdapter.js
 import { DynamicPageRenderer } from './page-generator/DynamicPageRenderer.js';
 
 const SUPPORTED_RUNTIME_MODES = new Set(['form', 'detail', 'list']);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 
 export class DefinitionRuntimePage extends BasePage {
     constructor(options = {}) {
@@ -171,16 +172,41 @@ export class DefinitionRuntimePage extends BasePage {
     }
 
     _buildRendererOptions() {
+        const customComponentOptions = this._resolveTrustedCustomComponentOptions();
         return {
             definition: this._runtimeState.runtimeDefinition,
             mode: this._runtimeState.mode,
             data: this.getInitialData(),
+            customComponents: customComponentOptions.customComponents,
+            customComponentRegistry: customComponentOptions.customComponentRegistry,
             onSave: (values) => this.handleSave(values),
             onCancel: () => this.handleCancel(),
             onSearch: (filters, page, pageSize) => this.handleSearch(filters, page, pageSize),
             onAction: (action, row) => this.handleAction(action, row),
             onBack: () => this.handleBack(),
             onEdit: () => this.handleEdit()
+        };
+    }
+
+    /**
+     * Resolve custom-component sources only from executable page-class policy or
+     * explicit constructor options. The page definition is low-trust JSON and is
+     * deliberately not consulted, so it cannot inject an arbitrary folder URL.
+     *
+     * Constructor options take precedence and may explicitly set null to disable
+     * a class-level source.
+     *
+     * @private
+     */
+    _resolveTrustedCustomComponentOptions() {
+        const options = this.options && typeof this.options === 'object' ? this.options : {};
+        return {
+            customComponents: hasOwn(options, 'customComponents')
+                ? options.customComponents
+                : (this.constructor.customComponents ?? null),
+            customComponentRegistry: hasOwn(options, 'customComponentRegistry')
+                ? options.customComponentRegistry
+                : (this.constructor.customComponentRegistry ?? null),
         };
     }
 

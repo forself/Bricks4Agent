@@ -1,5 +1,6 @@
 import { hasPathTraversalRisk } from '../../utils/security.js';
 import Locale from '../../i18n/index.js';
+import { Icon } from '../Icon/index.js';
 
 import { ModalPanel } from '../../layout/Panel/index.js';
 
@@ -35,105 +36,42 @@ export class UploadButton {
         xls: {
             color: 'var(--cl-brand-excel)',
             label: 'XLS',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-brand-excel)"/>
-                <rect x="8" y="12" width="32" height="24" rx="2" fill="white" fill-opacity="0.9"/>
-                <line x1="8" y1="20" x2="40" y2="20" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="8" y1="28" x2="40" y2="28" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="20" y1="12" x2="20" y2="36" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="32" y1="12" x2="32" y2="36" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <path d="M24 4L30 10H27V13H21V10H18L24 4Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         word: {
             color: 'var(--cl-brand-word)',
             label: 'DOC',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-brand-word)"/>
-                <rect x="10" y="12" width="28" height="24" rx="2" fill="white" fill-opacity="0.9"/>
-                <line x1="14" y1="18" x2="34" y2="18" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="14" y1="24" x2="30" y2="24" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="14" y1="30" x2="26" y2="30" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <path d="M24 4L30 10H27V13H21V10H18L24 4Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         pdf: {
             color: 'var(--cl-danger)',
             label: 'PDF',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-danger)"/>
-                <path d="M10 12H32L38 18V36H10V12Z" fill="white" fill-opacity="0.9"/>
-                <path d="M32 12V18H38" fill="var(--cl-bg-danger-lighter)" stroke="var(--cl-bg-danger-lighter)" stroke-width="1"/>
-                <text x="24" y="29" font-family="Arial" font-size="8" font-weight="bold" fill="var(--cl-danger)" text-anchor="middle">PDF</text>
-                <path d="M24 4L30 10H27V13H21V10H18L24 4Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         image: {
             color: 'var(--cl-purple-dark)',
             label: 'IMG',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-purple-dark)"/>
-                <rect x="8" y="12" width="32" height="24" rx="3" fill="white" fill-opacity="0.9"/>
-                <circle cx="16" cy="20" r="4" fill="var(--cl-warning)"/>
-                <path d="M8 36L18 24L26 32L32 26L40 36H8Z" fill="var(--cl-purple-dark)"/>
-                <path d="M24 4L30 10H27V13H21V10H18L24 4Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         portrait: {
             color: 'var(--cl-cyan-dark)',
             label: 'PHOTO',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-cyan-dark)"/>
-                <rect x="10" y="10" width="28" height="28" rx="3" fill="white" fill-opacity="0.9"/>
-                <circle cx="24" cy="20" r="7" fill="var(--cl-cyan-dark)"/>
-                <ellipse cx="24" cy="36" rx="10" ry="8" fill="var(--cl-cyan-dark)"/>
-                <rect x="10" y="32" width="28" height="6" fill="white" fill-opacity="0.9"/>
-                <path d="M14 38Q24 28 34 38Z" fill="var(--cl-cyan-dark)"/>
-                <path d="M24 2L30 8H27V11H21V8H18L24 2Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         file: {
             color: 'var(--cl-blue-grey)',
             label: 'FILE',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-blue-grey)"/>
-                <path d="M12 10H30L36 16V38H12V10Z" fill="white" fill-opacity="0.9"/>
-                <path d="M30 10V16H36" fill="var(--cl-border-muted)" stroke="var(--cl-border-muted)" stroke-width="1"/>
-                <line x1="16" y1="22" x2="32" y2="22" stroke="var(--cl-blue-grey)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="16" y1="28" x2="28" y2="28" stroke="var(--cl-blue-grey)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="16" y1="34" x2="24" y2="34" stroke="var(--cl-blue-grey)" stroke-width="2" stroke-linecap="round"/>
-                <path d="M24 2L30 8H27V11H21V8H18L24 2Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         txt: {
             color: 'var(--cl-blue-grey-dark)',
             label: 'TXT',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-blue-grey-dark)"/>
-                <rect x="10" y="10" width="28" height="28" rx="2" fill="white" fill-opacity="0.9"/>
-                <line x1="14" y1="18" x2="34" y2="18" stroke="var(--cl-blue-grey-dark)" stroke-width="1.5"/>
-                <line x1="14" y1="23" x2="34" y2="23" stroke="var(--cl-blue-grey-dark)" stroke-width="1.5"/>
-                <line x1="14" y1="28" x2="34" y2="28" stroke="var(--cl-blue-grey-dark)" stroke-width="1.5"/>
-                <line x1="14" y1="33" x2="26" y2="33" stroke="var(--cl-blue-grey-dark)" stroke-width="1.5"/>
-                <path d="M24 2L30 8H27V11H21V8H18L24 2Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         },
         csv: {
             color: 'var(--cl-success)',
             label: 'CSV',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-success)"/>
-                <rect x="8" y="12" width="32" height="24" rx="2" fill="white" fill-opacity="0.9"/>
-                <!-- 表格格線 -->
-                <line x1="8" y1="20" x2="40" y2="20" stroke="var(--cl-success)" stroke-width="1"/>
-                <line x1="8" y1="28" x2="40" y2="28" stroke="var(--cl-success)" stroke-width="1"/>
-                <line x1="18" y1="12" x2="18" y2="36" stroke="var(--cl-success)" stroke-width="1"/>
-                <line x1="28" y1="12" x2="28" y2="36" stroke="var(--cl-success)" stroke-width="1"/>
-                <!-- 逗號符號 -->
-                <text x="13" y="18" font-family="Arial" font-size="6" fill="var(--cl-success)">,</text>
-                <text x="23" y="18" font-family="Arial" font-size="6" fill="var(--cl-success)">,</text>
-                <path d="M24 4L30 10H27V13H21V10H18L24 4Z" fill="white"/>
-            </svg>`
+            icon: 'upload'
         }
     };
 
@@ -149,6 +87,7 @@ export class UploadButton {
      * @param {string} options.tooltip - 滑鼠提示文字
      * @param {number} options.maxSize - 最大檔案大小 (bytes)
      * @param {string} options.customAccept - 自訂 accept 屬性
+     * @param {string} options.inputId - 隱藏檔案 input 的穩定 DOM id
      */
     constructor(options = {}) {
         this.options = {
@@ -161,6 +100,7 @@ export class UploadButton {
             tooltip: '',
             maxSize: 50 * 1024 * 1024, // 50MB
             customAccept: null,
+            inputId: '',
             ...options
         };
 
@@ -193,6 +133,7 @@ export class UploadButton {
         // 建立隱藏的 file input
         this.fileInput = document.createElement('input');
         this.fileInput.type = 'file';
+        if (this.options.inputId) this.fileInput.id = String(this.options.inputId);
         this.fileInput.accept = acceptType;
         this.fileInput.multiple = multiple;
         this.fileInput.style.display = 'none';
@@ -216,19 +157,33 @@ export class UploadButton {
             background: transparent;
             position: relative;
             overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: ${iconConfig.color};
         `;
 
-        button.innerHTML = iconConfig.svg;
+        this._icon = new Icon({ name: iconConfig.icon, size: Math.round(size * 0.56), color: iconConfig.color });
+        this._icon.mount(button);
 
-        // SVG 填滿按鈕
-        const svg = button.querySelector('svg');
-        if (svg) {
-            svg.style.cssText = `
-                width: 100%;
-                height: 100%;
-                display: block;
-            `;
-        }
+        const formatBadge = document.createElement('span');
+        formatBadge.className = 'upload-btn__format';
+        formatBadge.textContent = iconConfig.label;
+        formatBadge.setAttribute('aria-hidden', 'true');
+        formatBadge.style.cssText = `
+            position: absolute;
+            right: 2px;
+            bottom: 2px;
+            max-width: calc(100% - 4px);
+            padding: 1px 2px;
+            border-radius: var(--cl-radius-xs);
+            background: var(--cl-bg);
+            color: ${iconConfig.color};
+            font: 700 ${Math.max(7, Math.round(size * 0.16))}px/1 system-ui, sans-serif;
+            overflow: hidden;
+            pointer-events: none;
+        `;
+        button.appendChild(formatBadge);
 
         // Hover 效果
         button.addEventListener('mouseenter', () => {
@@ -611,6 +566,7 @@ export class UploadButton {
      * 移除元件
      */
     destroy() {
+        this._icon?.destroy();
         this.element?.remove();
     }
 
@@ -619,6 +575,7 @@ export class UploadButton {
      */
     static createGroup(buttons, groupOptions = {}) {
         const group = document.createElement('div');
+        const components = [];
         group.className = 'upload-btn-group';
         group.style.cssText = `
             display: inline-flex;
@@ -628,7 +585,23 @@ export class UploadButton {
 
         buttons.forEach(btnOptions => {
             const btn = new UploadButton({ ...groupOptions, ...btnOptions });
+            components.push(btn);
             group.appendChild(btn.element);
+        });
+
+        Object.defineProperty(group, '_components', {
+            value: components,
+            enumerable: false
+        });
+        let destroyed = false;
+        Object.defineProperty(group, 'destroy', {
+            enumerable: false,
+            value: () => {
+                if (destroyed) return;
+                destroyed = true;
+                components.splice(0).forEach(component => component.destroy());
+                group.remove();
+            }
         });
 
         return group;

@@ -3,6 +3,7 @@
  * 排序切換按鈕元件 - 用於表格欄位排序
  * 狀態：無排序 (none) → 逆序 (desc) → 正序 (asc) → 無排序 (none)
  */
+import { Icon } from '../Icon/index.js';
 
 export class SortButton {
     static STATES = {
@@ -11,20 +12,9 @@ export class SortButton {
         ASC: 'asc'       // 正序（升冪）- 點擊第二次
     };
 
-    static ICONS = {
-        none: `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
-            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
-        </svg>`,
-        desc: `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
-            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>`,
-        asc: `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 6L8 2L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M4 10L8 14L12 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
-        </svg>`
-    };
+    static ICONS = { none: 'sort-none', desc: 'sort-desc', asc: 'sort-asc' };
+
+    static LABELS = { none: '未排序', desc: '降冪排序', asc: '升冪排序' };
 
     static COLORS = {
         none: 'var(--cl-grey)',
@@ -63,7 +53,8 @@ export class SortButton {
         const button = document.createElement('button');
         button.className = `sort-btn sort-btn--${this.state}`;
         button.setAttribute('type', 'button');
-        button.setAttribute('aria-label', '切換排序');
+        button.setAttribute('aria-label', SortButton.LABELS[this.state]);
+        button.setAttribute('aria-sort', this.state === 'none' ? 'none' : this.state === 'asc' ? 'ascending' : 'descending');
 
         button.style.cssText = `
             display: inline-flex;
@@ -82,12 +73,8 @@ export class SortButton {
             vertical-align: middle;
         `;
 
-        button.innerHTML = SortButton.ICONS[this.state];
-
-        const svg = button.querySelector('svg');
-        if (svg) {
-            svg.style.cssText = `width: ${size}px; height: ${size}px;`;
-        }
+        this._icon = new Icon({ name: SortButton.ICONS[this.state], size });
+        this._icon.mount(button);
 
         // 互動效果
         button.addEventListener('mouseenter', () => {
@@ -127,13 +114,9 @@ export class SortButton {
         this.state = state;
         this.button.className = `sort-btn sort-btn--${state}`;
         this.button.style.color = SortButton.COLORS[state];
-        this.button.innerHTML = SortButton.ICONS[state];
-
-        const size = this._getSizeValue();
-        const svg = this.button.querySelector('svg');
-        if (svg) {
-            svg.style.cssText = `width: ${size}px; height: ${size}px;`;
-        }
+        this._icon?.setName(SortButton.ICONS[state]);
+        this.button.setAttribute('aria-label', SortButton.LABELS[state]);
+        this.button.setAttribute('aria-sort', state === 'none' ? 'none' : state === 'asc' ? 'ascending' : 'descending');
     }
 
     /**
@@ -157,6 +140,7 @@ export class SortButton {
     }
 
     destroy() {
+        this._icon?.destroy();
         if (this.element?.parentNode) {
             this.element.remove();
         }

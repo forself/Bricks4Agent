@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FieldResolver } from '../../page-generator/FieldResolver.js';
 
 describe('FieldResolver', () => {
@@ -8,8 +8,8 @@ describe('FieldResolver', () => {
         resolver = new FieldResolver();
     });
 
-    it('_typeMap 包含 30 種 fieldType', () => {
-        expect(resolver._typeMap.size).toBe(30);
+    it('_typeMap 包含目前 33 種 fieldType', () => {
+        expect(resolver._typeMap.size).toBe(33);
     });
 
     it('_typeMap 包含所有基本 fieldType', () => {
@@ -136,6 +136,87 @@ describe('FieldResolver', () => {
         });
 
         expect(result.component.getValue()).toBe('custom');
+    });
+
+    it('resolve 明示未註冊 component 時 fail-closed', () => {
+        expect(() => resolver.resolve({
+            fieldType: 'text',
+            fieldName: 'f1',
+            label: 'F1',
+            component: 'MissingComponent'
+        })).toThrow('未註冊的 component: MissingComponent');
+    });
+
+    it('resolve 明示既有 built-in component 時維持相容', () => {
+        const mockTextInput = class {
+            constructor(opts) {
+                this.opts = opts;
+                this.element = document.createElement('input');
+            }
+            mount(container) { container.appendChild(this.element); return this; }
+            destroy() { this.element.remove(); }
+            getValue() { return this.opts.value || ''; }
+            setValue() {}
+            clear() {}
+        };
+        resolver._moduleCache = new Map([
+            ['TextInput', { TextInput: mockTextInput }]
+        ]);
+
+        const result = resolver.resolve({
+            fieldType: 'email',
+            fieldName: 'email',
+            label: 'Email',
+            component: 'TextInput'
+        });
+
+        expect(result.component).toBeInstanceOf(mockTextInput);
+        expect(result.component.opts.type).toBe('email');
+        result.formField.destroy();
+    });
+
+    it('resolve 在 FormField 建立失敗時清理已建立 component', () => {
+        const destroy = vi.fn();
+        resolver.registerComponent('BrokenMount', () => ({
+            element: document.createElement('div'),
+            mount() { throw new Error('mount failed'); },
+            destroy,
+        }));
+
+        expect(() => resolver.resolve({
+            fieldType: 'text',
+            fieldName: 'broken',
+            label: 'Broken',
+            component: 'BrokenMount'
+        })).toThrow('mount failed');
+        expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolveAll 在建立前拒絕 duplicate fieldName', () => {
+        const resolveSpy = vi.spyOn(resolver, 'resolve');
+        expect(() => resolver.resolveAll([
+            { fieldName: 'duplicate', fieldType: 'text' },
+            { fieldName: 'duplicate', fieldType: 'number' }
+        ])).toThrow('重複的 fieldName: duplicate');
+        expect(resolveSpy).not.toHaveBeenCalled();
+    });
+
+    it('resolveAll 遇錯時以反向順序清理先前建立的項目', () => {
+        const destroyed = [];
+        vi.spyOn(resolver, 'resolve').mockImplementation((def) => {
+            if (def.fieldName === 'failure') throw new Error('resolution failed');
+            return {
+                component: { destroy: () => destroyed.push(`${def.fieldName}:component`) },
+                formField: { destroy: () => destroyed.push(`${def.fieldName}:formField`) }
+            };
+        });
+
+        expect(() => resolver.resolveAll([
+            { fieldName: 'first' },
+            { fieldName: 'second' },
+            { fieldName: 'failure' }
+        ])).toThrow('resolution failed');
+        expect(destroyed).toEqual(['second:formField', 'first:formField']);
     });
 
     it('_resolveStaticOptions 解析靜態選項', () => {

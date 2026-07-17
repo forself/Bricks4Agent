@@ -3,6 +3,8 @@
  * 圖片展示器 - 支援放大縮小的燈箱效果（Modal）
  */
 
+import { Icon } from '../Icon/index.js';
+
 export class ImageViewer {
     static instance = null;
 
@@ -47,6 +49,7 @@ export class ImageViewer {
         this.isPanning = false;
         this.startX = 0;
         this.startY = 0;
+        this._icons = [];
 
         this._createElement();
         this._bindEvents();
@@ -124,18 +127,10 @@ export class ImageViewer {
         `;
 
         // 左箭頭
-        this.prevBtn = this._createNavButton('prev', `
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-                <path d="M15 18L9 12L15 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `, () => this.options.onPrev?.());
+        this.prevBtn = this._createNavButton('prev', 'chevron-left', () => this.options.onPrev?.());
 
         // 右箭頭
-        this.nextBtn = this._createNavButton('next', `
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-                <path d="M9 18L15 12L9 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `, () => this.options.onNext?.());
+        this.nextBtn = this._createNavButton('next', 'chevron-right', () => this.options.onNext?.());
 
         this._updateNavigation();
 
@@ -152,13 +147,7 @@ export class ImageViewer {
         `;
 
         // 縮小按鈕
-        this.zoomOutBtn = this._createToolButton('zoom-out', `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="9" cy="9" r="6" stroke="white" stroke-width="2"/>
-                <path d="M13.5 13.5L18 18" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <path d="M6 9H12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        `, () => this._zoomOut());
+        this.zoomOutBtn = this._createToolButton('zoom-out', 'zoom-out', () => this._zoomOut());
 
         // 縮放顯示
         this.zoomDisplay = document.createElement('span');
@@ -172,28 +161,13 @@ export class ImageViewer {
         `;
 
         // 放大按鈕
-        this.zoomInBtn = this._createToolButton('zoom-in', `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="9" cy="9" r="6" stroke="white" stroke-width="2"/>
-                <path d="M13.5 13.5L18 18" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <path d="M9 6V12M6 9H12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        `, () => this._zoomIn());
+        this.zoomInBtn = this._createToolButton('zoom-in', 'zoom-in', () => this._zoomIn());
 
         // 重設按鈕
-        this.resetBtn = this._createToolButton('reset', `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M3 10C3 6.134 6.134 3 10 3C13.866 3 17 6.134 17 10C17 13.866 13.866 17 10 17" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <path d="M10 13V17H6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `, () => this._resetZoom());
+        this.resetBtn = this._createToolButton('reset', 'refresh', () => this._resetZoom());
 
         // 關閉按鈕
-        this.closeBtn = this._createToolButton('close', `
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M5 5L15 15M5 15L15 5" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        `, () => this.destroy());
+        this.closeBtn = this._createToolButton('close', 'close', () => this.destroy());
 
         // 組裝
         this.toolbar.appendChild(this.zoomOutBtn);
@@ -215,10 +189,12 @@ export class ImageViewer {
         document.body.style.overflow = 'hidden';
     }
 
-    _createNavButton(type, svg, onClick) {
+    _createNavButton(type, iconName, onClick) {
         const btn = document.createElement('div');
         btn.className = `image-viewer__nav image-viewer__nav--${type}`;
-        btn.innerHTML = svg;
+        const icon = new Icon({ name: iconName, size: 40, color: 'currentColor' });
+        this._icons.push(icon);
+        icon.mount(btn);
         btn.style.cssText = `
             position: absolute;
             top: 50%;
@@ -252,11 +228,13 @@ export class ImageViewer {
         if (this.nextBtn) this.nextBtn.style.display = this.options.onNext ? 'flex' : 'none';
     }
 
-    _createToolButton(name, svg, onClick) {
+    _createToolButton(name, iconName, onClick) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `image-viewer__btn image-viewer__btn--${name}`;
-        btn.innerHTML = svg;
+        const icon = new Icon({ name: iconName, size: 20, color: 'var(--cl-text-inverse)' });
+        this._icons.push(icon);
+        icon.mount(btn);
         btn.style.cssText = `
             display: flex;
             align-items: center;
@@ -373,6 +351,9 @@ export class ImageViewer {
         document.removeEventListener('keydown', this._handleKeydown);
         document.removeEventListener('mousemove', this._handleMouseMove);
         document.removeEventListener('mouseup', this._handleMouseUp);
+
+        this._icons.forEach((icon) => icon.destroy());
+        this._icons = [];
 
         this.overlay?.remove();
 

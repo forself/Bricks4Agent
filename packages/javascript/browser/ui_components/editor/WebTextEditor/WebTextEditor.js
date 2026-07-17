@@ -87,6 +87,12 @@ export class WebTextEditor {
 
         // 自動儲存冷卻
         this._autoSaveTimer = null;
+        this._historyTimer = null;
+        this._componentInstances = new Set();
+        this._globalListeners = [];
+        this._activeResizeCleanup = null;
+        this._activePainterModalCleanup = null;
+        this._destroyed = false;
         this._init();
     }
 
@@ -100,6 +106,16 @@ export class WebTextEditor {
         this._saveHistory();
         // 檢查是否有草稿
         this._checkDraft();
+    }
+
+    _trackComponent(component) {
+        if (component) this._componentInstances.add(component);
+        return component;
+    }
+
+    _listenGlobal(target, type, handler, options) {
+        target.addEventListener(type, handler, options);
+        this._globalListeners.push({ target, type, handler, options });
     }
 
     /**
@@ -285,6 +301,7 @@ export class WebTextEditor {
 
         // --- 2. 建立 UI 結構 ---
         const toolbarContainer = document.createElement('div');
+        this.toolbarContainer = toolbarContainer;
         toolbarContainer.className = 'wte-toolbar-container';
         toolbarContainer.style.cssText = `background: var(--cl-bg); border-bottom: 1px solid var(--cl-border); display: flex; flex-direction: column;`;
 
@@ -322,15 +339,15 @@ export class WebTextEditor {
                 group.forEach(def => {
                     if (typeof def === 'string') {
                         if (def === 'UPLOAD_IMAGE') {
-                            const ubtn = new UploadButton({ type: UploadButton.TYPES.IMAGE, tooltip: Locale.t('webTextEditor.insertImage'), onSelect: (files) => this._insertImage(files[0]) });
+                            const ubtn = this._trackComponent(new UploadButton({ type: UploadButton.TYPES.IMAGE, tooltip: Locale.t('webTextEditor.insertImage'), onSelect: (files) => this._insertImage(files[0]) }));
                             ubtn.mount(panel);
                         } else if (def === 'COLOR_PICKER') {
-                             const cp = new ColorPicker({ value: 'var(--cl-text-dark)', onChange: (c) => { this.editor.focus(); document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, c); document.execCommand('styleWithCSS', false, false); this._normalizeStyles(); }});
+                             const cp = this._trackComponent(new ColorPicker({ value: 'var(--cl-text-dark)', onChange: (c) => { this.editor.focus(); document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, c); document.execCommand('styleWithCSS', false, false); this._normalizeStyles(); }}));
                              cp.element.style.marginTop = '0';
                              cp.element.style.maxWidth = '100%'; // RWD: 窄容器不溢出
                              cp.mount(panel);
                         } else if (def === 'FONT_SIZE') {
-                             const fs = new NumberInput({ value: 16, min: 10, max: 72, width: '70px', onChange: (v) => { this.editor.focus(); this._applyFontSize(v); }});
+                             const fs = this._trackComponent(new NumberInput({ value: 16, min: 10, max: 72, width: '70px', onChange: (v) => { this.editor.focus(); this._applyFontSize(v); }}));
                              fs.element.style.marginTop = '0';
                              fs.mount(panel);
                              this.fontSizeInput = fs;
@@ -365,7 +382,7 @@ export class WebTextEditor {
                              panel.appendChild(lineSpacingSelect);
                              this.lineSpacingSelect = lineSpacingSelect;
                         } else if (def === 'REMOVE_FORMAT') {
-                             const btn = new EditorButton({
+                             const btn = this._trackComponent(new EditorButton({
                                  type: T.REMOVE_FORMAT,
                                  theme: 'light',
                                  onClick: () => {
@@ -373,7 +390,7 @@ export class WebTextEditor {
                                      document.execCommand('removeFormat');
                                      document.execCommand('unlink'); // 同時移除連結
                                  }
-                             });
+                             }));
                              btn.mount(panel);
                         }
                         return;
@@ -396,7 +413,7 @@ export class WebTextEditor {
                         btnOptions.label = def.label;
                     }
 
-                    const btn = new EditorButton(btnOptions);
+                    const btn = this._trackComponent(new EditorButton(btnOptions));
                     this.buttons[def.command] = { element: btn.element, value: def.value };
 
                     // 如果是可切換狀態的按鈕，保存實例
@@ -480,8 +497,8 @@ export class WebTextEditor {
         });
 
         // 監聽捲動與縮放以更新 Overlay 位置
-        window.addEventListener('scroll', () => this._updateOverlayPosition(), true);
-        window.addEventListener('resize', () => this._updateOverlayPosition());
+        this._listenGlobal(window, 'scroll', () => this._updateOverlayPosition(), true);
+        this._listenGlobal(window, 'resize', () => this._updateOverlayPosition());
 
         // 處理鍵盤事件 (Delete 刪除物件, Escape 隱藏工具列)
         this.editor.addEventListener('keydown', (e) => {
@@ -511,10 +528,10 @@ export class WebTextEditor {
         // 監聽表格拖曳事件
         this.editor.addEventListener('mousedown', (e) => this._onTableMouseDown(e));
         this.editor.addEventListener('mousemove', (e) => this._onTableMouseMove(e));
-        document.addEventListener('mouseup', () => this._onTableMouseUp());
+        this._listenGlobal(document, 'mouseup', () => this._onTableMouseUp());
 
         // 處理全域 Escape 監聽及搜尋快捷鍵
-        document.addEventListener('keydown', (e) => {
+        this._listenGlobal(document, 'keydown', (e) => {
             if (e.key === 'Escape') {
                 if (this.searchDialog && this.searchDialog.style.display !== 'none') {
                     this._closeSearchDialog();
@@ -553,7 +570,7 @@ export class WebTextEditor {
         });
 
         // 追蹤選取範圍 (處理 Focus 丟失問題)
-        document.addEventListener('selectionchange', () => {
+        this._listenGlobal(document, 'selectionchange', () => {
             const sel = window.getSelection();
             if (sel.rangeCount > 0) {
                 const range = sel.getRangeAt(0);
@@ -773,15 +790,23 @@ export class WebTextEditor {
 
     _insertWebPainter() {
         const id = nextUid(this.instanceId + '-wp');
-        // 使用英文避免 btoa 中文亂碼問題，並加上圖示
-        // 背景/邊框改用 SVG 展示屬性(rect fill/stroke),不用 style 屬性(CSP 合規)
-        const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-            <rect width="100%" height="100%" fill="var(--cl-bg-tertiary)" stroke="var(--cl-border-medium)" stroke-width="1"/>
-            <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="60">🎨</text>
-            <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="var(--cl-text-secondary)" font-family="sans-serif" font-size="20">Click to Edit Illustration</text>
-        </svg>`.trim();
-        const placeholder = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+        const placeholderCanvas = document.createElement('canvas');
+        placeholderCanvas.width = 400;
+        placeholderCanvas.height = 300;
+        const context = placeholderCanvas.getContext('2d');
+        const styles = getComputedStyle(this.editor);
+        context.fillStyle = styles.getPropertyValue('--cl-bg-tertiary').trim();
+        context.fillRect(0, 0, 400, 300);
+        context.strokeStyle = styles.getPropertyValue('--cl-border-medium').trim();
+        context.strokeRect(0.5, 0.5, 399, 299);
+        context.fillStyle = styles.getPropertyValue('--cl-text-secondary').trim();
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.font = '60px sans-serif';
+        context.fillText('🎨', 200, 135);
+        context.font = '20px sans-serif';
+        context.fillText('Click to Edit Illustration', 200, 195);
+        const placeholder = placeholderCanvas.toDataURL('image/png');
 
         const imgHtml = `<img src="${placeholder}" class="web-painter-embed" id="${id}" title="點擊編輯插圖" />`;
 
@@ -808,6 +833,10 @@ export class WebTextEditor {
     _openWebPainterModal(imgElement) {
         // 隱藏選取框，避免在 Modal 後方顯示
         this._deselectObject();
+        this._activePainterModalCleanup?.();
+        let painter = null;
+        let painterLoadTimer = null;
+        let closed = false;
         
         // 建立全螢幕 Modal
         const overlay = document.createElement('div');
@@ -831,7 +860,22 @@ export class WebTextEditor {
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = Locale.t('webTextEditor.cancelBtn');
         cancelBtn.style.cssText = `padding:8px 16px;border:1px solid var(--cl-border-dark);background: var(--cl-bg);border-radius:var(--cl-radius-sm);cursor:pointer;font-size:var(--cl-font-size-lg);font-family:var(--cl-font-family);`;
-        cancelBtn.onclick = () => document.body.removeChild(overlay);
+        const closePainterModal = () => {
+            if (closed) return;
+            closed = true;
+            if (painterLoadTimer) {
+                clearTimeout(painterLoadTimer);
+                painterLoadTimer = null;
+            }
+            painter?.destroy?.();
+            painter = null;
+            overlay.remove();
+            if (this._activePainterModalCleanup === closePainterModal) {
+                this._activePainterModalCleanup = null;
+            }
+        };
+        this._activePainterModalCleanup = closePainterModal;
+        cancelBtn.onclick = closePainterModal;
         
         const saveBtn = document.createElement('button');
         saveBtn.textContent = Locale.t('webTextEditor.doneBtn');
@@ -872,7 +916,7 @@ export class WebTextEditor {
         painterContainer.style.width = '100%';
         painterWrapper.appendChild(painterContainer);
 
-        const painter = new WebPainter({
+        painter = new WebPainter({
             container: painterContainer,
             width: currentData.width || 800,
             height: currentData.height || 600,
@@ -890,8 +934,9 @@ export class WebTextEditor {
         });
         
         // 稍微延遲載入資料以確保 DOM ready
-        setTimeout(() => {
-            painter.loadData(currentData);
+        painterLoadTimer = setTimeout(() => {
+            painterLoadTimer = null;
+            if (!closed) painter?.loadData(currentData);
         }, 50);
 
         // 儲存邏輯
@@ -908,7 +953,7 @@ export class WebTextEditor {
                 imgElement.style.border = '1px solid var(--cl-border)'; // 移除 dashed placeholder 樣式
                 
                 // 3. 關閉視窗
-                document.body.removeChild(overlay);
+                closePainterModal();
                 this._handleChange();
             } catch(e) {
                 console.error(e);
@@ -1497,12 +1542,19 @@ export class WebTextEditor {
             this.isResizing = false;
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
+            this._activeResizeCleanup = null;
             // Trigger change
             if(this.features.onChange) this.features.onChange(this.getHTML());
         };
 
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
+        this._activeResizeCleanup = () => {
+            this.isResizing = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            this._activeResizeCleanup = null;
+        };
     }
 
     setContent(html) {
@@ -2933,5 +2985,39 @@ export class WebTextEditor {
                 console.warn('Failed to parse draft:', e);
             }
         }
+    }
+
+    destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
+        if (this._historyTimer) clearTimeout(this._historyTimer);
+        this._autoSaveTimer = null;
+        this._historyTimer = null;
+        this._activeResizeCleanup?.();
+        this._activePainterModalCleanup?.();
+        this._activeResizeCleanup = null;
+        this._activePainterModalCleanup = null;
+
+        for (const { target, type, handler, options } of this._globalListeners) {
+            target.removeEventListener(type, handler, options);
+        }
+        this._globalListeners = [];
+        for (const component of this._componentInstances) component?.destroy?.();
+        this._componentInstances.clear();
+
+        this.overlay?.remove();
+        this.floatingToolbar?.remove();
+        this.searchDialog?.remove();
+        this.toolbarContainer?.remove();
+        this.editor?.remove();
+        this.statusBar?.remove();
+        this.overlay = null;
+        this.floatingToolbar = null;
+        this.searchDialog = null;
+        this.toolbarContainer = null;
+        if (this.isFullscreen) document.body.style.overflow = '';
+        this.isFullscreen = false;
+        this.container?.classList.remove('web-text-editor', 'fullscreen');
     }
 }

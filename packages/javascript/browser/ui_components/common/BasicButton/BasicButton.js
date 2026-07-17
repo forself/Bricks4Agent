@@ -3,6 +3,7 @@
  * 一般操作按鈕元件 - 確認、取消、搜尋、重設等通用操作
  */
 import Locale from '../../i18n/index.js';
+import { Icon } from '../Icon/index.js';
 
 
 export class BasicButton {
@@ -58,112 +59,112 @@ export class BasicButton {
         delete: {
             color: 'var(--cl-danger)',
             label: Locale.t('basicButton.delete'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'delete'
         },
         confirm: {
             color: 'var(--cl-success)',
             label: Locale.t('basicButton.confirm'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12L10 17L19 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'check'
         },
         yes: {
             color: 'var(--cl-success)',
             label: Locale.t('basicButton.yes'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12L10 17L19 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'check'
         },
         cancel: {
             color: 'var(--cl-grey)',
             label: Locale.t('basicButton.cancel'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'close'
         },
         no: {
             color: 'var(--cl-danger)',
             label: Locale.t('basicButton.no'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'close'
         },
         done: {
             color: 'var(--cl-primary)',
             label: Locale.t('basicButton.done'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12L10 17L19 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>`
+            icon: 'done-all'
         },
         close: {
             color: 'var(--cl-grey-dark)',
             label: Locale.t('basicButton.close'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'close'
         },
         search: {
             color: 'var(--cl-primary)',
             label: Locale.t('basicButton.search'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/><path d="M15 15L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'search'
         },
         clear: {
             color: 'var(--cl-warning)',
             label: Locale.t('basicButton.clear'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 4L20 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 9H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 9V19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V9" stroke="currentColor" stroke-width="2"/></svg>`
+            icon: 'close'
         },
         reset: {
             color: 'var(--cl-purple)',
             label: Locale.t('basicButton.reset'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 12C4 7.58 7.58 4 12 4C15.37 4 18.26 6.05 19.5 9M20 12C20 16.42 16.42 20 12 20C8.63 20 5.74 17.95 4.5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 9H20V5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 15H4V19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'refresh'
         },
         save: {
             color: 'var(--cl-success)',
             label: Locale.t('basicButton.save'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 5V19C5 20.1 5.9 21 7 21H17C18.1 21 19 20.1 19 19V8L14 3H7C5.9 3 5 3.9 5 5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3V8H19" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 13H16M8 17H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`
+            icon: 'save'
         },
         apply: {
             color: 'var(--cl-cyan)',
             label: Locale.t('basicButton.apply'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12L10 17L19 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'check'
         },
         copy: {
             color: 'var(--cl-blue-grey)',
             label: Locale.t('basicButton.copy'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M16 8V6C16 4.9 15.1 4 14 4H6C4.9 4 4 4.9 4 6V14C4 15.1 4.9 16 6 16H8" stroke="currentColor" stroke-width="2"/></svg>`
+            icon: 'content-copy'
         },
         refresh: {
             color: 'var(--cl-info)',
             label: Locale.t('basicButton.refresh'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 12C4 7.58 7.58 4 12 4C16.42 4 20 7.58 20 12C20 16.42 16.42 20 12 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 8V4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'refresh'
         },
         addRow: {
             color: 'var(--cl-light-green)',
             label: Locale.t('basicButton.addRow'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="4" rx="1" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="18" height="4" rx="1" stroke="currentColor" stroke-width="2"/><circle cx="19" cy="19" r="4" fill="currentColor"/><path d="M19 17V21M17 19H21" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>`
+            icon: 'add-row'
         },
         selectAll: {
             color: 'var(--cl-indigo)',
             label: Locale.t('basicButton.selectAll'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><path d="M5 7L6.5 8.5L9 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><path d="M16 7L17.5 8.5L20 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><path d="M5 18L6.5 19.5L9 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><path d="M16 18L17.5 19.5L20 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'select-all'
         },
         deselectAll: {
             color: 'var(--cl-grey)',
             label: Locale.t('basicButton.deselectAll'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/></svg>`
+            icon: 'deselect-all'
         },
         back: {
             color: 'var(--cl-blue-grey)',
             label: Locale.t('basicButton.back'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 6L9 12L15 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'arrow-back'
         },
         next: {
             color: 'var(--cl-primary)',
             label: Locale.t('basicButton.next'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M9 6L15 12L9 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'arrow-forward'
         },
         prev: {
             color: 'var(--cl-blue-grey)',
             label: Locale.t('basicButton.prev'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M15 6L9 12L15 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'chevron-left'
         },
         expandAll: {
             color: 'var(--cl-brown)',
             label: Locale.t('basicButton.expandAll'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 8L12 16L20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'chevron-down'
         },
         collapseAll: {
             color: 'var(--cl-brown)',
             label: Locale.t('basicButton.collapseAll'),
-            icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 16L12 8L20 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+            icon: 'chevron-up'
         }
     };
 
@@ -285,7 +286,8 @@ export class BasicButton {
                     width: ${sizeStyles.iconSize};
                     height: ${sizeStyles.iconSize};
                 `;
-                iconWrapper.innerHTML = iconConfig.icon;
+                this._icon = new Icon({ name: iconConfig.icon, size: Number.parseFloat(sizeStyles.iconSize) });
+                this._icon.mount(iconWrapper);
                 button.appendChild(iconWrapper);
             }
         }
@@ -305,6 +307,7 @@ export class BasicButton {
                     button.style[key] = value;
                 });
                 button.style.transform = 'translateY(-1px)';
+                this._icon?.redraw();
             });
 
             button.addEventListener('mouseleave', () => {
@@ -313,6 +316,7 @@ export class BasicButton {
                 });
                 button.style.transform = 'translateY(0)';
                 button.style.filter = 'none';
+                this._icon?.redraw();
             });
 
             button.addEventListener('mousedown', () => {
@@ -354,6 +358,7 @@ export class BasicButton {
     }
 
     destroy() {
+        this._icon?.destroy();
         if (this.element?.parentNode) {
             this.element.remove();
         }
@@ -364,6 +369,7 @@ export class BasicButton {
      */
     static createGroup(buttons, groupOptions = {}) {
         const group = document.createElement('div');
+        const components = [];
         group.className = 'basic-btn-group';
         group.style.cssText = `
             display: inline-flex;
@@ -373,7 +379,23 @@ export class BasicButton {
 
         buttons.forEach(btnOptions => {
             const btn = new BasicButton({ ...groupOptions, ...btnOptions });
+            components.push(btn);
             group.appendChild(btn.element);
+        });
+
+        Object.defineProperty(group, '_components', {
+            value: components,
+            enumerable: false
+        });
+        let destroyed = false;
+        Object.defineProperty(group, 'destroy', {
+            enumerable: false,
+            value: () => {
+                if (destroyed) return;
+                destroyed = true;
+                components.splice(0).forEach(component => component.destroy());
+                group.remove();
+            }
         });
 
         return group;

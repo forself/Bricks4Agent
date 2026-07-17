@@ -1,4 +1,5 @@
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class Checkbox {
     constructor(options = {}) {
@@ -44,14 +45,6 @@ export class Checkbox {
             availability: this.options.disabled ? 'disabled' : 'enabled',
             checked: this.checked
         };
-    }
-
-    _getCheckmarkMarkup() {
-        return `
-            <svg viewBox="0 0 12 12" fill="none">
-                <path d="M2 6L5 9L10 3" stroke="var(--cl-text-inverse)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `;
     }
 
     _getSizeStyles() {
@@ -162,12 +155,11 @@ export class Checkbox {
         if (this.box) {
             this.box.style.borderColor = state.checked ? 'var(--cl-primary)' : 'var(--cl-text-light)';
             this.box.style.background = state.checked ? 'var(--cl-primary)' : 'var(--cl-bg)';
-            this.box.innerHTML = state.checked ? this._getCheckmarkMarkup() : '';
-            // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派尺寸
-            const checkIcon = this.box.querySelector('svg');
-            if (checkIcon) {
-                const iconSize = Math.max(10, size - 8);
-                checkIcon.style.cssText = `width: ${iconSize}px; height: ${iconSize}px;`;
+            this._checkIcon?.destroy();
+            this._checkIcon = null;
+            if (state.checked) {
+                this._checkIcon = new Icon({ name: 'check', size: Math.max(10, size - 8), color: 'var(--cl-text-inverse)' });
+                this._checkIcon.mount(this.box);
             }
         }
     }
@@ -229,6 +221,8 @@ export class Checkbox {
 
     destroy() {
         this.send('DESTROY');
+        this._checkIcon?.destroy();
+        this._checkIcon = null;
         if (this.element?.parentNode) {
             this.element.remove();
         }

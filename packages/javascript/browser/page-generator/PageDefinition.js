@@ -7,6 +7,8 @@
  * @module PageDefinition
  */
 
+import { validateToolPageDefinition } from './ToolPageDefinition.js';
+
 /**
  * 頁面定義 Schema
  * @typedef {Object} PageDefinition
@@ -144,7 +146,8 @@ export const PageTypes = {
     FORM: 'form',           // 表單頁面（新增/編輯）
     LIST: 'list',           // 列表頁面
     DETAIL: 'detail',       // 詳情頁面（唯讀）
-    DASHBOARD: 'dashboard'  // 儀表板
+    DASHBOARD: 'dashboard', // 儀表板
+    TOOL: 'tool'            // 宣告式工具頁面
 };
 
 // ============================================================
@@ -246,6 +249,21 @@ export const AvailableComponents = {
  * @returns {{ valid: boolean, errors: string[] }}
  */
 export function validateDefinition(definition) {
+    let typeDescriptor = null;
+    if (definition !== null && typeof definition === 'object') {
+        try {
+            typeDescriptor = Object.getOwnPropertyDescriptor(definition, 'type');
+        } catch {
+            return { valid: false, errors: ['definition.type cannot be inspected safely.'] };
+        }
+    }
+    if (typeDescriptor?.get || typeDescriptor?.set) {
+        return { valid: false, errors: ['definition.type must be a data property.'] };
+    }
+    if (typeDescriptor?.value === PageTypes.TOOL) {
+        return validateToolPageDefinition(definition);
+    }
+
     const errors = [];
 
     // 必要欄位檢查
@@ -310,7 +328,7 @@ export function inferComponents(fields) {
     const components = new Set();
 
     for (const field of fields) {
-        const component = ComponentMapping[field.type];
+        const component = field.component || ComponentMapping[field.type];
         if (component) {
             components.add(component);
         }

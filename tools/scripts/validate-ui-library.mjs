@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 const uiRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'ui_components');
+const customComponentsRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'custom_components');
 const auditScript = path.join(__dirname, 'audit-ui-style-rules.mjs');
 
 const shouldRunBrowserSmoke = process.argv.includes('--browser');
@@ -70,10 +71,11 @@ function runAudit() {
 }
 
 async function validateImports() {
-    const files = walkFiles(
-        uiRoot,
-        (filePath) => filePath.endsWith('.js') && !filePath.endsWith('.bak')
-    );
+    const predicate = (filePath) => filePath.endsWith('.js') && !filePath.endsWith('.bak');
+    const files = [
+        ...walkFiles(uiRoot, predicate),
+        ...walkFiles(customComponentsRoot, predicate),
+    ];
 
     for (const filePath of files) {
         await import(pathToFileURL(filePath).href);
@@ -99,6 +101,16 @@ async function validatePublicSurface() {
                 'GeolocationService',
                 'ComponentBinder',
                 'Locale'
+            ]
+        },
+        {
+            label: 'custom_components',
+            pathParts: ['packages', 'javascript', 'browser', 'custom_components', 'index.js'],
+            expectedExports: [
+                'CustomComponentRegistry',
+                'CustomComponentRenderer',
+                'analyzeCustomComponentDefinition',
+                'validateCustomComponentDefinition'
             ]
         },
         {
@@ -154,10 +166,57 @@ async function validatePublicSurface() {
 
 function readImportReferences(source) {
     const refs = [];
-    for (const match of source.matchAll(/^\s*import\s+(?:[^'"]+?\s+from\s+)?["']([^"']+)["']/gm)) {
+    for (const match of source.matchAll(/^\s*(?:import|export)\s+(?:[^'"]+?\s+from\s+)?["']([^"']+)["']/gm)) {
+        refs.push(match[1]);
+    }
+    for (const match of source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)) {
         refs.push(match[1]);
     }
     return refs;
+}
+
+function isPathWithin(rootPath, targetPath) {
+    const relativePath = path.relative(rootPath, targetPath);
+    return relativePath === '' || (
+        !relativePath.startsWith(`..${path.sep}`)
+        && relativePath !== '..'
+        && !path.isAbsolute(relativePath)
+    );
+}
+
+function validateStandaloneUiEntrypoints() {
+    const entrypoints = [
+        path.join(uiRoot, 'index.js'),
+        path.join(uiRoot, 'theme.css')
+    ];
+    const violations = [];
+
+    for (const entrypoint of entrypoints) {
+        const source = readFileSync(entrypoint, 'utf8');
+        const references = [
+            ...readImportReferences(source),
+            ...Array.from(
+                source.matchAll(/^\s*@import\s+(?:url\()?['"]([^'"]+)['"]\)?/gm),
+                (match) => match[1]
+            )
+        ];
+
+        for (const reference of references) {
+            if (!reference.startsWith('.')) continue;
+            const resolvedPath = path.resolve(path.dirname(entrypoint), reference);
+            if (!isPathWithin(uiRoot, resolvedPath)) {
+                violations.push(`${path.relative(repoRoot, entrypoint)} -> ${reference}`);
+            }
+        }
+    }
+
+    if (violations.length > 0) {
+        throw new Error(
+            `Standalone ui_components entrypoints must not reference sibling packages:\n${violations.map((line) => `- ${line}`).join('\n')}`
+        );
+    }
+
+    return entrypoints.length;
 }
 
 function validateComponentCompositionSurface() {
@@ -338,12 +397,18 @@ function createStaticServer(rootDir) {
 }
 
 async function loadChromium() {
-    const moduleCandidates = ['@playwright/test', 'playwright'];
+    const moduleCandidates = [
+        '@playwright/test',
+        'playwright',
+        'playwright-core',
+        new URL('../../../tim-web/poc/node_modules/playwright-core/index.js', import.meta.url).href,
+    ];
     for (const moduleName of moduleCandidates) {
         try {
             const module = await import(moduleName);
-            if (module.chromium) {
-                return module.chromium;
+            const chromium = module.chromium ?? module.default?.chromium;
+            if (chromium) {
+                return chromium;
             }
         } catch {
             // Try next candidate.
@@ -385,7 +450,7 @@ async function runBrowserSmoke() {
     const chromium = await loadChromium();
     if (!chromium) {
         if (requireBrowserSmoke) {
-            throw new Error('Browser smoke validation requires Playwright. Run npm install first.');
+            throw new Error('Browser smoke validation requires an existing Playwright runtime.');
         }
         return {
             skipped: true,
@@ -455,6 +520,7 @@ async function main() {
     runAudit();
     const importedFiles = await validateImports();
     const publicSurfaceModules = await validatePublicSurface();
+    const standaloneEntrypoints = validateStandaloneUiEntrypoints();
     const componentSurfaceFiles = validateComponentCompositionSurface();
     const demoReferenceSummary = validateDemoReferences();
     const browserSummary = shouldRunBrowserSmoke || requireBrowserSmoke
@@ -465,6 +531,7 @@ async function main() {
     console.log(`- Style audit: passed`);
     console.log(`- JS import smoke: passed (${importedFiles} files)`);
     console.log(`- Public surface check: passed (${publicSurfaceModules} entrypoints)`);
+    console.log(`- Standalone ui_components packaging check: passed (${standaloneEntrypoints} entrypoints)`);
     console.log(`- Component composition surface: passed (${componentSurfaceFiles} files checked)`);
     console.log(`- Demo reference check: passed (${demoReferenceSummary.demosChecked} demos, ${demoReferenceSummary.refsChecked} references)`);
     if (browserSummary.skipped) {

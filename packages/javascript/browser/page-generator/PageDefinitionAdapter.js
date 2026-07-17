@@ -155,6 +155,11 @@ export class PageDefinitionAdapter {
             component: field.component || null
         };
 
+        if (field.componentOptions && typeof field.componentOptions === 'object') {
+            result.config = result.config || {};
+            result.config.componentOptions = field.componentOptions;
+        }
+
         // 處理 optionsSource → options
         if (field.optionsSource) {
             if (field.optionsSource.type === 'static') {
@@ -212,6 +217,7 @@ export class PageDefinitionAdapter {
             label: field.label || '',
             fieldType: field.type || 'text',
             component: field.component || null,
+            componentOptions: field.config?.componentOptions || null,
             defaultValue: PageDefinitionAdapter._stringifyDefaultValue(field.default),
             formRow: index + 1,
             formCol: null,
@@ -293,6 +299,12 @@ export class PageDefinitionAdapter {
     static _parseDefaultValue(value, fieldType) {
         if (value === null || value === undefined) return null;
 
+        // JSON definitions may carry structured defaults. Keep their shape and
+        // detach the converted definition from the caller-owned object graph.
+        if (typeof value === 'object') {
+            return PageDefinitionAdapter._cloneDefaultValue(value);
+        }
+
         // 字串型態的布林值
         if (value === 'true') return true;
         if (value === 'false') return false;
@@ -309,15 +321,91 @@ export class PageDefinitionAdapter {
     }
 
     /**
-     * 將任意型別的預設值轉為字串表示
+     * 將舊格式預設值轉為新格式表示。
+     * 既有 primitive 維持字串相容性；object/array 保留結構並安全複製。
      *
      * @param {*} value - 預設值
-     * @returns {string|null} 字串表示，或 null
+     * @returns {*|null} 預設值，或 null
      */
     static _stringifyDefaultValue(value) {
         if (value === null || value === undefined) return null;
+        if (typeof value === 'object') {
+            return PageDefinitionAdapter._cloneDefaultValue(value);
+        }
         if (typeof value === 'string') return value;
         return String(value);
+    }
+
+    /**
+     * 複製 JSON-compatible 預設值，不執行 accessor、不接受 prototype-sensitive
+     * keys，也不保留 caller 的 object reference。
+     *
+     * @private
+     * @param {*} value
+     * @param {WeakSet<object>} active
+     * @returns {*}
+     */
+    static _cloneDefaultValue(value, active = new WeakSet()) {
+        if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+            return value;
+        }
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) {
+                throw new TypeError('Default values must contain finite numbers.');
+            }
+            return value;
+        }
+        if (typeof value !== 'object') {
+            throw new TypeError('Default values must be JSON-compatible.');
+        }
+        if (active.has(value)) {
+            throw new TypeError('Default values must not contain object cycles.');
+        }
+
+        active.add(value);
+        try {
+            if (Array.isArray(value)) {
+                const result = [];
+                for (const key of Reflect.ownKeys(value)) {
+                    if (key === 'length') continue;
+                    if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length) {
+                        throw new TypeError('Default value arrays must only contain indexed entries.');
+                    }
+                }
+                for (let index = 0; index < value.length; index += 1) {
+                    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+                    if (!descriptor || descriptor.get || descriptor.set) {
+                        throw new TypeError(`Default value array index ${index} must be a data property.`);
+                    }
+                    result.push(PageDefinitionAdapter._cloneDefaultValue(descriptor.value, active));
+                }
+                return result;
+            }
+
+            const prototype = Object.getPrototypeOf(value);
+            if (prototype !== Object.prototype && prototype !== null) {
+                throw new TypeError('Default value objects must use a plain prototype.');
+            }
+
+            const result = {};
+            for (const key of Reflect.ownKeys(value)) {
+                if (typeof key !== 'string') {
+                    throw new TypeError('Default value objects must not contain symbol keys.');
+                }
+                if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+                    throw new TypeError(`Default value key "${key}" is not allowed.`);
+                }
+
+                const descriptor = Object.getOwnPropertyDescriptor(value, key);
+                if (!descriptor || descriptor.get || descriptor.set) {
+                    throw new TypeError(`Default value key "${key}" must be a data property.`);
+                }
+                result[key] = PageDefinitionAdapter._cloneDefaultValue(descriptor.value, active);
+            }
+            return result;
+        } finally {
+            active.delete(value);
+        }
     }
 
     /**

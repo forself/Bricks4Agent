@@ -8,6 +8,8 @@
 import { DynamicFormRenderer } from './DynamicFormRenderer.js';
 import { DynamicDetailRenderer } from './DynamicDetailRenderer.js';
 import { DynamicListRenderer } from './DynamicListRenderer.js';
+import { DynamicToolRenderer } from './DynamicToolRenderer.js';
+import { CustomComponentRegistry } from '../custom_components/CustomComponentRegistry.js';
 
 export class DynamicPageRenderer {
     /**
@@ -35,11 +37,23 @@ export class DynamicPageRenderer {
             onBack: null,
             onEdit: null,
             pageSize: 20,
+            customComponents: null,
+            customComponentRegistry: null,
+            commandRegistry: null,
+            state: {},
+            factory: null,
+            controlRegistry: null,
             ...options
         };
 
-        /** @type {DynamicFormRenderer|DynamicDetailRenderer|DynamicListRenderer|null} */
+        if (options.mode === undefined && options.definition?.type === 'tool') {
+            this.options.mode = 'tool';
+        }
+
+        /** @type {DynamicFormRenderer|DynamicDetailRenderer|DynamicListRenderer|DynamicToolRenderer|null} */
         this._renderer = null;
+        this._customComponentRegistry = this.options.customComponentRegistry || null;
+        this._ownsCustomComponentRegistry = false;
     }
 
     /**
@@ -47,6 +61,7 @@ export class DynamicPageRenderer {
      */
     async init() {
         const { definition, mode, data } = this.options;
+        await this._prepareCustomComponents();
 
         switch (mode) {
             case 'form': {
@@ -54,6 +69,7 @@ export class DynamicPageRenderer {
                     definition,
                     onSave: this.options.onSave,
                     onCancel: this.options.onCancel,
+                    customComponentRegistry: this._customComponentRegistry,
                 });
                 await this._renderer.init();
 
@@ -85,6 +101,18 @@ export class DynamicPageRenderer {
                 break;
             }
 
+            case 'tool': {
+                this._renderer = new DynamicToolRenderer({
+                    definition,
+                    commandRegistry: this.options.commandRegistry,
+                    state: this.options.state,
+                    ...(this.options.factory ? { factory: this.options.factory } : {}),
+                    controlRegistry: this.options.controlRegistry,
+                });
+                await this._renderer.init();
+                break;
+            }
+
             default:
                 console.warn(`[DynamicPageRenderer] 未知的 mode: ${mode}`);
         }
@@ -95,6 +123,48 @@ export class DynamicPageRenderer {
     /**
      * 取得內部渲染器
      */
+    /**
+     * Load JSON-defined components before the synchronous field resolution step.
+     * @private
+     */
+    async _prepareCustomComponents() {
+        const source = this.options.customComponents;
+        if (!source) return;
+
+        const createsRegistry = !this._customComponentRegistry;
+        const registry = this._customComponentRegistry || new CustomComponentRegistry({
+            registerWithFactory: false,
+        });
+        const ownsRegistry = this._ownsCustomComponentRegistry || createsRegistry;
+        const definitions = [];
+
+        if (typeof source === 'string') {
+            definitions.push(...await registry.fetchFolderDefinitions(source));
+        } else if (Array.isArray(source)) {
+            definitions.push(...source);
+        } else if (typeof source === 'object') {
+            if (Array.isArray(source.definitions) && source.definitions.length > 0) {
+                definitions.push(...source.definitions);
+            }
+            if (source.folder) {
+                definitions.push(...await registry.fetchFolderDefinitions(source.folder, {
+                    manifest: source.manifest || 'registry.json',
+                    additionalDefinitions: definitions,
+                }));
+            }
+        } else {
+            throw new TypeError('customComponents must be a folder URL, definition array, or options object.');
+        }
+
+        if (definitions.length > 0) registry.registerMany(definitions);
+        this._customComponentRegistry = registry;
+        this._ownsCustomComponentRegistry = ownsRegistry;
+    }
+
+    getCustomComponentRegistry() {
+        return this._customComponentRegistry;
+    }
+
     getRenderer() {
         return this._renderer;
     }
@@ -114,10 +184,10 @@ export class DynamicPageRenderer {
 
     mount(container) {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
-        if (target && this._renderer?.element) {
-            target.appendChild(this._renderer.element);
-        } else if (target && this._renderer?.mount) {
+        if (target && this._renderer?.mount) {
             this._renderer.mount(target);
+        } else if (target && this._renderer?.element) {
+            target.appendChild(this._renderer.element);
         }
         return this;
     }
@@ -125,6 +195,11 @@ export class DynamicPageRenderer {
     destroy() {
         this._renderer?.destroy?.();
         this._renderer = null;
+        if (this._ownsCustomComponentRegistry) {
+            this._customComponentRegistry?.dispose?.();
+            this._customComponentRegistry = null;
+            this._ownsCustomComponentRegistry = false;
+        }
     }
 }
 

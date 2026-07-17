@@ -3,6 +3,7 @@
  * A flexible batch file upload component with drag & drop support
  */
 import { nextUid } from '../../utils/uid.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class BatchUploader {
     /**
@@ -121,19 +122,18 @@ export class BatchUploader {
         `;
 
         const dropzoneContent = document.createElement('div');
-        dropzoneContent.innerHTML = `
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <polyline points="17,8 12,3 7,8" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <line x1="12" y1="3" x2="12" y2="15" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <p>${labels.dropzone}</p>
-            <button type="button" class="batch-uploader__browse-btn">${labels.browse}</button>
-        `;
-        // CSP style-src 'self':inline style 屬性會被剝除,渲染後以 CSSOM 指派(結構不變)
-        dropzoneContent.querySelector('svg').style.cssText = 'margin-bottom: 12px;';
-        dropzoneContent.querySelector('p').style.cssText = 'margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-lg);';
-        dropzoneContent.querySelector('.batch-uploader__browse-btn').style.cssText = `
+        const dropzoneIconWrap = document.createElement('div');
+        dropzoneIconWrap.style.cssText = 'margin-bottom: 12px;';
+        this._dropzoneIcon = new Icon({ name: 'cloud-upload', size: 48, color: 'var(--cl-text-placeholder)' });
+        this._dropzoneIcon.mount(dropzoneIconWrap);
+        const dropzoneText = document.createElement('p');
+        dropzoneText.textContent = labels.dropzone;
+        dropzoneText.style.cssText = 'margin: 0 0 12px 0; color: var(--cl-text-secondary); font-size: var(--cl-font-size-lg);';
+        const browseButton = document.createElement('button');
+        browseButton.type = 'button';
+        browseButton.className = 'batch-uploader__browse-btn';
+        browseButton.textContent = labels.browse;
+        browseButton.style.cssText = `
             padding: 8px 20px;
             background: var(--cl-primary);
             color: var(--cl-text-inverse);
@@ -143,6 +143,7 @@ export class BatchUploader {
             font-size: var(--cl-font-size-lg);
             transition: background var(--cl-transition);
         `;
+        dropzoneContent.append(dropzoneIconWrap, dropzoneText, browseButton);
         dropzone.appendChild(dropzoneContent);
 
         // Hidden file input
@@ -390,7 +391,8 @@ export class BatchUploader {
         // File icon
         const icon = document.createElement('div');
         icon.className = 'batch-uploader__file-icon';
-        icon.innerHTML = this._getFileIcon(fileItem.type);
+        const fileIcon = this._createFileIcon(fileItem.type);
+        fileIcon.mount(icon);
         icon.style.cssText = `
             width: 40px;
             height: 40px;
@@ -484,12 +486,8 @@ export class BatchUploader {
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.className = 'batch-uploader__remove-btn';
-        removeBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <line x1="18" y1="6" x2="6" y2="18" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="6" y1="6" x2="18" y2="18" stroke="var(--cl-text-placeholder)" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        `;
+        const removeIcon = new Icon({ name: 'close', size: 16, color: 'var(--cl-text-placeholder)' });
+        removeIcon.mount(removeBtn);
         removeBtn.title = labels.remove;
         removeBtn.style.cssText = `
             border: none;
@@ -503,6 +501,8 @@ export class BatchUploader {
             transition: background var(--cl-transition);
         `;
         removeBtn.addEventListener('click', () => this.removeFile(fileItem.id));
+        this._fileIcons ??= new Map();
+        this._fileIcons.set(fileItem.id, [fileIcon, removeIcon]);
         removeBtn.addEventListener('mouseenter', () => {
             removeBtn.style.background = 'var(--cl-bg-danger-light)';
         });
@@ -759,6 +759,8 @@ export class BatchUploader {
 
         const fileItem = this.files[index];
         this.files.splice(index, 1);
+        this._fileIcons?.get(fileId)?.forEach((icon) => icon.destroy());
+        this._fileIcons?.delete(fileId);
 
         // Remove from DOM
         const item = this.fileList.querySelector(`[data-id="${fileId}"]`);
@@ -777,6 +779,8 @@ export class BatchUploader {
      * Clear all files
      */
     clear() {
+        this._fileIcons?.forEach((icons) => icons.forEach((icon) => icon.destroy()));
+        this._fileIcons?.clear();
         this.files = [];
         this.fileList.innerHTML = '';
         this.uploadedCount = 0;
@@ -855,35 +859,16 @@ export class BatchUploader {
     /**
      * Get file icon based on type
      */
-    _getFileIcon(mimeType) {
+    _createFileIcon(mimeType) {
         const type = mimeType?.split('/')[0];
-
         const icons = {
-            image: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="3" width="18" height="18" rx="2" stroke="var(--cl-success)" stroke-width="2"/>
-                <circle cx="8.5" cy="8.5" r="1.5" fill="var(--cl-success)"/>
-                <path d="M21 15l-5-5-4 4-3-3-6 6" stroke="var(--cl-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`,
-            video: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <rect x="2" y="4" width="20" height="16" rx="2" stroke="var(--cl-purple)" stroke-width="2"/>
-                <polygon points="10,8 10,16 16,12" fill="var(--cl-purple)"/>
-            </svg>`,
-            audio: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <path d="M9 18V5l12-2v13" stroke="var(--cl-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="6" cy="18" r="3" stroke="var(--cl-warning)" stroke-width="2"/>
-                <circle cx="18" cy="16" r="3" stroke="var(--cl-warning)" stroke-width="2"/>
-            </svg>`,
-            application: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="var(--cl-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <polyline points="14,2 14,8 20,8" stroke="var(--cl-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`,
-            default: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="var(--cl-grey)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <polyline points="14,2 14,8 20,8" stroke="var(--cl-grey)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`
+            image: { name: 'image', color: 'var(--cl-success)' },
+            video: { name: 'play-arrow', color: 'var(--cl-purple)' },
+            audio: { name: 'music-note', color: 'var(--cl-warning)' },
+            application: { name: 'file', color: 'var(--cl-primary)' },
+            default: { name: 'file', color: 'var(--cl-grey)' }
         };
-
-        return icons[type] || icons.default;
+        return new Icon({ ...(icons[type] || icons.default), size: 32 });
     }
 
     /**
@@ -943,6 +928,10 @@ export class BatchUploader {
      * Destroy the component
      */
     destroy() {
+        this._dropzoneIcon?.destroy();
+        this._dropzoneIcon = null;
+        this._fileIcons?.forEach((icons) => icons.forEach((icon) => icon.destroy()));
+        this._fileIcons?.clear();
         if (this.element?.parentNode) {
             this.element.remove();
         }

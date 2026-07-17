@@ -7,6 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 const uiRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'ui_components');
+const customComponentsRoot = path.join(repoRoot, 'packages', 'javascript', 'browser', 'custom_components');
+const customStudioRoot = path.join(repoRoot, 'tools', 'custom-component-studio');
 const failOnViolations = process.argv.includes('--fail-on-violations');
 
 // 純 Node 遞迴列檔(原用 rg --files;為零外部依賴/跨平台改內建,比照 audit-csp.mjs)
@@ -22,7 +24,11 @@ function walk(dir, out = []) {
     return out;
 }
 
-const files = walk(uiRoot)
+const files = [
+    ...walk(uiRoot),
+    ...walk(customComponentsRoot),
+    ...walk(customStudioRoot),
+]
     .filter((filePath) => {
         const normalized = filePath.replaceAll('\\', '/');
         return !normalized.endsWith('/theme.css')

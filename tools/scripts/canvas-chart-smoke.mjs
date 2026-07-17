@@ -10,35 +10,43 @@ const errs = [];
 p.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 120)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 120)); });
 await p.goto('http://127.0.0.1:8124/tools/theme-studio/index.html');   // 借主題環境(theme.css 已載)
-await p.waitForFunction('window.__studioReady===true', { timeout: 15000 }).catch(() => {});
+await p.waitForFunction(
+    globalName => window[globalName] === true,
+    '__studioReady',
+    { timeout: 15000 }
+).catch(() => {});
 
-await p.addScriptTag({ type: 'module', content: `
-import { CanvasChart } from '../../packages/javascript/browser/ui_components/viz/CanvasChart.js';
-window.__drawCount = 0;
-class DemoChart extends CanvasChart {
-    draw(ctx, w, h) {
-        window.__drawCount++;
-        const t = this.tokens(['--cl-primary', '--cl-success']);
-        ctx.fillStyle = t['--cl-primary'];
-        ctx.fillRect(20, 20, 100, 60);
-        this.addRegion({ shape: 'rect', x: 20, y: 20, w: 100, h: 60, data: { name: '甲', v: 42 } });
-        ctx.fillStyle = t['--cl-success'];
-        ctx.beginPath(); ctx.arc(220, 60, 30, 0, Math.PI * 2); ctx.fill();
-        this.addRegion({ shape: 'circle', cx: 220, cy: 60, r: 30, data: { name: '乙', v: 7 } });
-        ctx.font = this.font(12);
-        ctx.fillStyle = t['--cl-primary'];
-        ctx.fillText(this.ellipsis(ctx, '這是一段會被截斷的超長標籤文字測試', 80), 20, 110);
+await p.evaluate(async modulePath => {
+    const { CanvasChart } = await import(modulePath);
+    window.__drawCount = 0;
+    class DemoChart extends CanvasChart {
+        draw(ctx, w, h) {
+            window.__drawCount++;
+            const t = this.tokens(['--cl-primary', '--cl-success']);
+            ctx.fillStyle = t['--cl-primary'];
+            ctx.fillRect(20, 20, 100, 60);
+            this.addRegion({ shape: 'rect', x: 20, y: 20, w: 100, h: 60, data: { name: '甲', v: 42 } });
+            ctx.fillStyle = t['--cl-success'];
+            ctx.beginPath(); ctx.arc(220, 60, 30, 0, Math.PI * 2); ctx.fill();
+            this.addRegion({ shape: 'circle', cx: 220, cy: 60, r: 30, data: { name: '乙', v: 7 } });
+            ctx.font = this.font(12);
+            ctx.fillStyle = t['--cl-primary'];
+            ctx.fillText(this.ellipsis(ctx, '這是一段會被截斷的超長標籤文字測試', 80), 20, 110);
+        }
+        getTooltip(d) { return [{ label: '名稱', value: d.name }, { label: '值', value: d.v }]; }
     }
-    getTooltip(d) { return [{ label: '名稱', value: d.name }, { label: '值', value: d.v }]; }
-}
-const host = document.createElement('div');
-host.id = 'cc-smoke';   // 選擇器需鎖定本冒煙實例(波 2 後展示廊卡片也是 canvas 圖表,不能全頁首中)
-host.style.cssText = 'position:fixed; left:0; top:0; width:400px; height:200px; z-index:99999; background:var(--cl-bg);';
-document.body.appendChild(host);
-window.__clicked = null;
-window.__chart = new DemoChart({ container: host, width: '100%', height: '100%', title: '冒煙圖', onPointClick: (d) => { window.__clicked = d; } });
-` });
-await p.waitForFunction('window.__drawCount >= 1', { timeout: 8000 });
+    const host = document.createElement('div');
+    host.id = 'cc-smoke';   // 選擇器需鎖定本冒煙實例(波 2 後展示廊卡片也是 canvas 圖表,不能全頁首中)
+    host.style.cssText = 'position:fixed; left:0; top:0; width:400px; height:200px; z-index:99999; background:var(--cl-bg);';
+    document.body.appendChild(host);
+    window.__clicked = null;
+    window.__chart = new DemoChart({ container: host, width: '100%', height: '100%', title: '冒煙圖', onPointClick: (d) => { window.__clicked = d; } });
+}, '/packages/javascript/browser/ui_components/viz/CanvasChart.js');
+await p.waitForFunction(
+    minimum => window.__drawCount >= minimum,
+    1,
+    { timeout: 8000 }
+);
 
 const results = [];
 const t = (name, pass, detail) => results.push({ name, pass: !!pass, detail });
@@ -50,7 +58,11 @@ t('DPR 背景儲存縮放(width=cssW×dpr)', Math.abs(dpr.bw - dpr.cssW * dpr.dp
 // 2) ThemeBus:切深色 → 自動重繪
 const before = await p.evaluate('window.__drawCount');
 await p.evaluate(`document.documentElement.setAttribute('data-theme', 'dark')`);
-await p.waitForFunction(`window.__drawCount > ${before}`, { timeout: 3000 }).catch(() => {});
+await p.waitForFunction(
+    previous => window.__drawCount > previous,
+    before,
+    { timeout: 3000 }
+).catch(() => {});
 const after = await p.evaluate('window.__drawCount');
 t('ThemeBus:data-theme 變更自動重繪', after > before, `draw ${before}→${after}`);
 await p.evaluate(`document.documentElement.setAttribute('data-theme', '')`);
@@ -58,7 +70,11 @@ await p.evaluate(`document.documentElement.setAttribute('data-theme', '')`);
 // 3) token 即時變更(Theme Studio 的 setProperty 路徑)→ 自動重繪
 const b2 = await p.evaluate('window.__drawCount');
 await p.evaluate(`document.documentElement.style.setProperty('--cl-primary', 'rgb(200, 30, 30)')`);
-await p.waitForFunction(`window.__drawCount > ${b2}`, { timeout: 3000 }).catch(() => {});
+await p.waitForFunction(
+    previous => window.__drawCount > previous,
+    b2,
+    { timeout: 3000 }
+).catch(() => {});
 t('ThemeBus:root token setProperty 自動重繪', (await p.evaluate('window.__drawCount')) > b2, '');
 // 驗色真的吃到新 token:抽 canvas 像素
 const px = await p.evaluate(`(() => { const c = window.__chart.canvas, x = Math.round(40 * (c.width / c.clientWidth)), y = Math.round(40 * (c.height / c.clientHeight)); const d = c.getContext('2d').getImageData(x, y, 1, 1).data; return [...d]; })()`);
@@ -84,6 +100,15 @@ t('exportPNG(2) 回傳 dataURL', typeof png === 'string' && png.startsWith('data
 const svg = await p.evaluate(`window.__chart.element.querySelectorAll('svg').length`);
 t('元件內零 <svg>', svg === 0, 'svg=' + svg);
 
+await p.evaluate(() => {
+    window.__chart?.destroy();
+    document.querySelector('#cc-smoke')?.remove();
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.style.removeProperty('--cl-primary');
+    delete window.__chart;
+    delete window.__clicked;
+    delete window.__drawCount;
+});
 await b.close();
 let fail = 0;
 for (const r of results) { if (!r.pass) fail++; console.log(`  ${r.pass ? 'ok ' : 'FAIL '} ${r.name}${r.pass ? '' : ' — ' + (r.detail || '')}`); }

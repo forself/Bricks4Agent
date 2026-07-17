@@ -1,6 +1,7 @@
 import { escapeHtml } from '../../utils/security.js';
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 function normalizeDate(value) {
     if (!value) return null;
@@ -258,10 +259,8 @@ export class DatePicker {
 
         const icon = document.createElement('span');
         icon.className = 'datepicker__icon';
-        icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="3" width="12" height="11" rx="2" stroke="var(--cl-text-secondary)" stroke-width="1.5"/>
-            <path d="M2 6H14M5 1V4M11 1V4" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>`;
+        this._calendarIcon = new Icon({ name: 'calendar', size: 16, color: 'var(--cl-text-secondary)' });
+        this._calendarIcon.mount(icon);
         icon.style.cssText = `
             position: absolute;
             right: 10px;
@@ -674,6 +673,8 @@ export class DatePicker {
     }
 
     destroy() {
+        this._calendarIcon?.destroy();
+        this._calendarIcon = null;
         this.send('DESTROY');
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);

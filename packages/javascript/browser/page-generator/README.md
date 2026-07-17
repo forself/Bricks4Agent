@@ -38,7 +38,9 @@
 | `DynamicFormRenderer.js` | 動態表單渲染器，組合 FormField + FormRow + TriggerEngine |
 | `DynamicDetailRenderer.js` | 動態明細渲染器，以唯讀方式顯示 label + formatted value |
 | `DynamicListRenderer.js` | 動態列表渲染器，組合 SearchForm + DataTable + Pagination |
-| `DynamicPageRenderer.js` | 統一入口，依 mode 委派給 Form / Detail / List 渲染器 |
+| `ToolPageDefinition.js` | 宣告式工具頁 JSON schema 與安全驗證 |
+| `DynamicToolRenderer.js` | 由 JSON、可信 commands 與 ComponentFactory 產生工具頁 |
+| `DynamicPageRenderer.js` | 統一入口，依 mode 委派給 Form / Detail / List / Tool 渲染器 |
 | `index.js` | 模組匯出入口 |
 
 ## 架構概念
@@ -59,10 +61,14 @@
 │    │            ├─ FieldResolver (30 種推論)     │
 │    │            └─ TriggerEngine (聯動行為)      │
 │    ├─ detail → DynamicDetailRenderer            │
-│    └─ list   → DynamicListRenderer              │
+│    ├─ list   → DynamicListRenderer              │
 │                 ├─ SearchForm                    │
 │                 ├─ DataTable                     │
 │                 └─ Pagination                    │
+│    └─ tool   → DynamicToolRenderer              │
+│                 ├─ ComponentFactory              │
+│                 ├─ trusted command registry      │
+│                 └─ state binding + provenance    │
 └─────────────────────────────────────────────────┘
 
 ┌─ CLI 工具 ──────────────────────────────────────┐
@@ -96,6 +102,8 @@ import {
     DynamicFormRenderer,
     DynamicDetailRenderer,
     DynamicListRenderer,
+    DynamicToolRenderer,
+    validateToolPageDefinition,
     FieldResolver,
     TriggerEngine
 } from '@component-library/page-generator';
@@ -453,7 +461,7 @@ await list.init();
 
 ### DynamicPageRenderer
 
-統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List 渲染器。
+統一入口渲染器。依 mode 自動委派給對應的 Form / Detail / List / Tool 渲染器；當 `definition.type === 'tool'` 且未指定 mode 時會自動使用 `tool`。
 
 ```javascript
 const page = new DynamicPageRenderer(options);
@@ -465,7 +473,7 @@ await page.init();
 | 參數 | 型別 | 預設值 | 說明 |
 |------|------|--------|------|
 | `definition` | `Object` | `null` | 頁面定義 JSON |
-| `mode` | `string` | `'form'` | 渲染模式：`'form'` / `'detail'` / `'list'` |
+| `mode` | `string` | `'form'` | 渲染模式：`'form'` / `'detail'` / `'list'` / `'tool'` |
 | `data` | `Object` | `null` | 資料（detail/form 編輯時使用） |
 | `onSave` | `Function` | `null` | 儲存回調（form 模式） |
 | `onCancel` | `Function` | `null` | 取消回調（form 模式） |
@@ -474,6 +482,10 @@ await page.init();
 | `onBack` | `Function` | `null` | 返回回調（detail 模式） |
 | `onEdit` | `Function` | `null` | 編輯回調（detail 模式） |
 | `pageSize` | `number` | `20` | 每頁筆數（list 模式） |
+| `commandRegistry` | `Map \| Object` | `null` | Tool 定義可引用的可信 command allowlist |
+| `state` | `Object` | `{}` | Tool component bindings 的 JSON-compatible 初始狀態 |
+| `factory` | `Object` | `ComponentFactory` | Tool mode 使用的 factory；通常維持預設 |
+| `controlRegistry` | `Map \| {records: Map}` | `null` | 收集 renderer 控制 provenance 的 registry |
 
 **公開方法：**
 
@@ -484,6 +496,54 @@ await page.init();
 | `switchMode(mode, data)` | `string, Object` | `Promise<this>` | 切換模式（銷毀舊渲染器，建立新的） |
 | `mount(container)` | `string \| Element` | `this` | 掛載到容器 |
 | `destroy()` | - | - | 銷毀渲染器 |
+
+---
+
+### Tool PageDefinition 與自舉工具頁
+
+Tool 定義必須是純 JSON：
+
+```json
+{
+  "schema_version": 1,
+  "name": "ExampleStudioPage",
+  "type": "tool",
+  "root": {
+    "type": "group",
+    "id": "workspace",
+    "children": [
+      {
+        "type": "component",
+        "id": "name-input",
+        "component": "TextInput",
+        "options": { "label": "名稱" },
+        "bindings": { "value": "form.name" },
+        "events": { "onChange": "form.name-change" }
+      }
+    ]
+  }
+}
+```
+
+支援的 node 為 `group`、`component`、`tabs`、`slot`。JSON 只能引用已註冊元件、safe dotted state path 與 allowlisted event；函式、getter、raw HTML、prototype-sensitive key、未知 command 或未知 component 都會在 `init()` 前 fail closed。
+
+```javascript
+const page = new DynamicPageRenderer({
+    definition,
+    commandRegistry: {
+        'form.name-change': ({ renderer }, value) => {
+            renderer.setState('form.name', value);
+        },
+    },
+    state: { form: { name: '' } },
+});
+await page.init();
+page.mount('#app');
+```
+
+`DynamicToolRenderer` 提供 `getComponent(id)`、`getHost(id)`、`setState(path, value)`、`controlRecords` 與 `destroy()`。State 更新只套用到重疊 binding；有 setter 的正式元件保留 instance，沒有 setter 時只替換該 component，不重建 tabs 或整個工作區。元件 setter 若重畫內部控制，provenance 會同步更新。
+
+`PageGenerator.generate()` 也接受 `type: "tool"`，輸出一個內嵌已驗證 definition、在 runtime 建立 `DynamicToolRenderer` 的靜態 wrapper class。Bricks4Agent Studio 的實際入口採 `DynamicPageRenderer` runtime 路徑，唯一頁面 JSON 位於 `tools/theme-studio/studio.page.json`；靜態 wrapper 另由 `ToolPageGenerator.test.js` 驗證。兩條路徑共用同一份 ToolPageDefinition 契約與 renderer。
 
 ---
 

@@ -48,6 +48,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 ## Documentation
 
 - Calling convention + React-rewrite playbook: [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
+- JSON custom components + Studio + folder/runtime contract: [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md)
 - SPA generator manual: [AGENT.md](AGENT.md)
 - Page generator: [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 </content>

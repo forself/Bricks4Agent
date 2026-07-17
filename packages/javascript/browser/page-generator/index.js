@@ -32,3 +32,5 @@ export { DynamicFormRenderer } from './DynamicFormRenderer.js';
 export { DynamicDetailRenderer } from './DynamicDetailRenderer.js';
 export { DynamicListRenderer } from './DynamicListRenderer.js';
 export { DynamicPageRenderer } from './DynamicPageRenderer.js';
+export { DynamicToolRenderer } from './DynamicToolRenderer.js';
+export { TOOL_EVENT_OPTIONS, validateToolPageDefinition } from './ToolPageDefinition.js';

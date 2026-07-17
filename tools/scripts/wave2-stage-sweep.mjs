@@ -12,7 +12,66 @@ const errs = [];
 p.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 160)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 160)); });
 await p.goto('http://127.0.0.1:8124/tools/theme-studio/index.html');
-await p.waitForFunction('window.__studioReady===true', { timeout: 15000 }).catch(() => {});
+await p.waitForFunction(
+    globalName => window[globalName] === true,
+    '__studioReady',
+    { timeout: 15000 }
+).catch(() => {});
+
+// 新 JSON Studio 不暴露舊舞台相容 hook。驗收在頁面沙箱內建立自己的舞台，
+// 只依賴正式元件工廠與範例資料。
+await p.evaluate(async ({ factoryPath, samplesPath }) => {
+    const [{ ComponentFactory }, { STAGE_SAMPLES }] = await Promise.all([
+        import(factoryPath),
+        import(samplesPath)
+    ]);
+    const host = document.createElement('div');
+    host.id = 'wave2-harness-stage';
+    host.style.cssText = 'position:fixed;left:0;top:0;width:1200px;height:780px;z-index:99999;background:var(--cl-bg);overflow:auto;';
+    document.body.appendChild(host);
+
+    const harness = {
+        host,
+        instance: null,
+        lastError: '',
+        open(name) {
+            try { this.instance?.destroy?.(); } catch { /* best-effort */ }
+            this.instance = null;
+            this.lastError = '';
+            host.replaceChildren();
+            try {
+                const options = {
+                    container: host,
+                    containerId: host.id,
+                    ...(STAGE_SAMPLES[name] || {})
+                };
+                const instance = ComponentFactory.create(name, options);
+                if (!instance) throw new Error(`ComponentFactory could not create ${name}`);
+                if (host.childElementCount === 0) {
+                    if (typeof instance.mount === 'function') instance.mount(host);
+                    else if (instance.element) host.appendChild(instance.element);
+                    else if (typeof instance.render === 'function') instance.render(host);
+                    else throw new Error(`${name} has no mount contract`);
+                }
+                this.instance = instance;
+                return true;
+            } catch (error) {
+                this.lastError = String(error?.message || error);
+                return false;
+            }
+        },
+        cleanup() {
+            try { this.instance?.destroy?.(); } catch { /* best-effort */ }
+            this.instance = null;
+            host.remove();
+            delete window.__wave2Harness;
+        }
+    };
+    window.__wave2Harness = harness;
+}, {
+    factoryPath: '/packages/javascript/browser/ui_components/binding/ComponentFactory.js',
+    samplesPath: '/tools/theme-studio/sample-data.js'
+});
 
 const results = [];
 const t = (name, pass, detail) => results.push({ name, pass: !!pass, detail });
@@ -21,19 +80,19 @@ const t = (name, pass, detail) => results.push({ name, pass: !!pass, detail });
 const HEAVY = ['OrgChart', 'HierarchyChart', 'RelationChart', 'SankeyChart', 'SunburstChart', 'TimelineChart', 'FlameChart'];
 for (const name of HEAVY) {
     const before = errs.length;
-    await p.evaluate(`window.__ts.openStage(${JSON.stringify(name)})`);
+    await p.evaluate(componentName => window.__wave2Harness.open(componentName), name);
     await p.waitForTimeout(700);
-    const st = await p.evaluate(`(() => {
-        const inst = window.__stageInst;
+    const st = await p.evaluate(() => {
+        const inst = window.__wave2Harness.instance;
         const el = inst && inst.element;
-        if (!el) return { ok: false, why: 'no element' };
+        if (!el) return { ok: false, why: window.__wave2Harness.lastError || 'no element' };
         return {
             ok: true,
             canvas: el.querySelectorAll('canvas').length,
             svg: el.querySelectorAll('svg').length,
             regions: Array.isArray(inst._regions) ? inst._regions.length : -1
         };
-    })()`);
+    });
     const newErrs = errs.slice(before);
     t(`${name} 舞台:canvas≥1`, st.ok && st.canvas >= 1, JSON.stringify(st));
     t(`${name} 舞台:svg=0`, st.ok && st.svg === 0, 'svg=' + st.svg);
@@ -42,10 +101,10 @@ for (const name of HEAVY) {
 
 /* ── 二、Timeline/Flame 點擊詳情彈窗內容非空(alert content bug 回歸)──── */
 for (const name of ['TimelineChart', 'FlameChart']) {
-    await p.evaluate(`window.__ts.openStage(${JSON.stringify(name)})`);
+    await p.evaluate(componentName => window.__wave2Harness.open(componentName), name);
     await p.waitForTimeout(700);
-    const r = await p.evaluate(`(async () => {
-        const inst = window.__stageInst;
+    const r = await p.evaluate(async () => {
+        const inst = window.__wave2Harness.instance;
         const regions = inst._regions || [];
         if (!regions.length) return { why: 'no regions' };
         // 取一個有 bounds 的命中區中心,對 canvas 發真實 click(走 _hitTest 全路徑)
@@ -71,7 +130,7 @@ for (const name of ['TimelineChart', 'FlameChart']) {
         if (btn) btn.click(); else top.remove();
         await new Promise(r2 => setTimeout(r2, 200));
         return { textLen: text.length, sample: text.slice(0, 80) };
-    })()`);
+    });
     // 內容非空:必須超過純 OK 鈕的字數(>10),證明 replaceWith(root) 生效
     t(`${name} 點擊詳情:彈窗內容非空`, r.textLen > 10, JSON.stringify(r));
 }
@@ -145,6 +204,7 @@ t('Rating 直掛:canvas 有 svg 零', mounted.rating && mounted.rating.canvas >=
 t('RegionMap 直掛:canvas 有 svg 零', mounted.regionmap && mounted.regionmap.canvas >= 1 && mounted.regionmap.svg === 0, JSON.stringify(mounted.regionmap));
 t('RegionMap 點擊命中回調(onClick)', typeof mounted.regionClick === 'string' && mounted.regionClick.length >= 3, 'clicked=' + mounted.regionClick);
 
+await p.evaluate(() => window.__wave2Harness?.cleanup());
 await b.close();
 let fail = 0;
 for (const r of results) { if (!r.pass) fail++; console.log(`  ${r.pass ? 'ok ' : 'FAIL '} ${r.name}${r.pass ? '' : ' — ' + (r.detail || '')}`); }

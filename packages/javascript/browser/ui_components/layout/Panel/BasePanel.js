@@ -4,6 +4,7 @@
  */
 
 import { PanelManager } from './PanelManager.js';
+import { Icon } from '../../common/Icon/index.js';
 
 let panelIdCounter = 0;
 
@@ -63,6 +64,8 @@ export class BasePanel {
 
         this.expanded = this.options.defaultExpanded;
         this.isFocused = false;
+        this._destroyed = false;
+        this._outsideClickTimer = null;
 
         this.element = this._createElement();
         this._bindEvents();
@@ -152,9 +155,11 @@ export class BasePanel {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'panel__close';
                 closeBtn.type = 'button';
-                closeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 4L12 12M4 12L12 4" stroke="var(--cl-text-secondary)" stroke-width="2" stroke-linecap="round"/>
-                </svg>`;
+                this._closeIcon = new Icon({
+                    name: 'close',
+                    size: 16,
+                    color: 'var(--cl-text-secondary)'
+                }).mount(closeBtn);
                 closeBtn.style.cssText = `
                     display: flex;
                     align-items: center;
@@ -208,25 +213,22 @@ export class BasePanel {
         return container;
     }
 
-    _getToggleIcon() {
-        return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M6 4L10 8L6 12" stroke="var(--cl-text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>`;
-    }
-
     /**
      * 更新收折圖示
-     * CSP（style-src 'self'）合規：HTML 剖析出的 style 屬性會被剝除，
-     * rotate/transition 改在 innerHTML 之後以 CSSOM（svg.style）指派。
+     * Icon 以 Canvas 繪製；替換前先 destroy，避免殘留 ThemeBus 訂閱。
      */
     _updateToggleIcon(btn = this.toggleBtn) {
         if (!btn) return;
-        btn.innerHTML = this._getToggleIcon();
-        const svg = btn.querySelector('svg');
-        if (svg) {
-            svg.style.transition = 'transform 0.2s';
-            svg.style.transform = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
-        }
+        this._toggleIcon?.destroy();
+        btn.replaceChildren();
+        this._toggleIcon = new Icon({
+            name: 'chevron-right',
+            size: 16,
+            color: 'var(--cl-text-secondary)'
+        });
+        this._toggleIcon.element.style.transition = 'transform 0.2s';
+        this._toggleIcon.element.style.transform = this.expanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        this._toggleIcon.mount(btn);
     }
 
     _bindEvents() {
@@ -242,7 +244,9 @@ export class BasePanel {
         // 點擊外部關閉 - 延遲綁定，避免同一次點擊觸發關閉
         if (this.options.autoClose) {
             // 使用 setTimeout 確保在下一個事件循環才綁定，避免當前點擊事件觸發關閉
-            setTimeout(() => {
+            this._outsideClickTimer = setTimeout(() => {
+                this._outsideClickTimer = null;
+                if (this._destroyed) return;
                 this._handleOutsideClick = (e) => {
                     if (!this.element.contains(e.target) &&
                         this.options.visibility === BasePanel.VISIBILITY.VISIBLE) {
@@ -454,9 +458,20 @@ export class BasePanel {
      * 銷毀
      */
     destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
+        if (this._outsideClickTimer) {
+            clearTimeout(this._outsideClickTimer);
+            this._outsideClickTimer = null;
+        }
+        this._toggleIcon?.destroy();
+        this._closeIcon?.destroy();
+        this._toggleIcon = null;
+        this._closeIcon = null;
         // 移除事件
         if (this._handleOutsideClick) {
             document.removeEventListener('click', this._handleOutsideClick);
+            this._handleOutsideClick = null;
         }
 
         // 銷毀子容器

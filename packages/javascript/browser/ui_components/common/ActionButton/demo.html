@@ -347,6 +347,7 @@
         import { ModalPanel } from '../../layout/Panel/index.js';
 
         import { ActionButton } from './ActionButton.js';
+        import { Icon } from '../Icon/index.js';
 
         const crudTypes = ['add', 'edit', 'delete', 'detail'];
         const workflowTypes = ['submit', 'reject', 'archive', 'merge'];
@@ -400,13 +401,18 @@
         Object.entries(colors).forEach(([type, info]) => {
             const item = document.createElement('div');
             item.className = 'color-item';
-            item.innerHTML = `
-                <div class="color-swatch" style="background: ${info.color};">
-                    ${ActionButton.ICONS[type].icon}
-                </div>
-                <div class="color-label">${info.label}</div>
-                <div class="color-hex">${info.hex}</div>
-            `;
+            const swatch = document.createElement('div');
+            swatch.className = 'color-swatch';
+            swatch.style.background = info.color;
+            swatch.style.color = 'var(--cl-text-inverse)';
+            new Icon({ name: ActionButton.ICONS[type].icon, size: 24 }).mount(swatch);
+            const label = document.createElement('div');
+            label.className = 'color-label';
+            label.textContent = info.label;
+            const hex = document.createElement('div');
+            hex.className = 'color-hex';
+            hex.textContent = info.hex;
+            item.append(swatch, label, hex);
             colorPalette.appendChild(item);
         });
 

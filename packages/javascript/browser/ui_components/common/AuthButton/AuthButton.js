@@ -3,6 +3,7 @@
  * 登入/登出按鈕元件
  */
 import Locale from '../../i18n/index.js';
+import { Icon } from '../Icon/index.js';
 
 
 export class AuthButton {
@@ -16,21 +17,13 @@ export class AuthButton {
             color: 'var(--cl-success)',
             hoverColor: 'var(--cl-success)',
             label: Locale.t('authButton.login'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 3H19C20.1 3 21 3.9 21 5V19C21 20.1 20.1 21 19 21H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M10 17L15 12L10 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'arrow-forward'
         },
         logout: {
             color: 'var(--cl-danger)',
             hoverColor: 'var(--cl-danger)',
             label: Locale.t('authButton.logout'),
-            icon: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 21H5C3.9 21 3 20.1 3 19V5C3 3.9 3.9 3 5 3H9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                <path d="M16 17L21 12L16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>`
+            icon: 'logout'
         }
     };
 
@@ -131,7 +124,8 @@ export class AuthButton {
             width: ${sizeStyles.iconSize};
             height: ${sizeStyles.iconSize};
         `;
-        iconWrapper.innerHTML = iconConfig.icon;
+        this._icon = new Icon({ name: iconConfig.icon, size: Number.parseFloat(sizeStyles.iconSize) });
+        this._icon.mount(iconWrapper);
         button.appendChild(iconWrapper);
 
         // 文字
@@ -185,6 +179,7 @@ export class AuthButton {
     }
 
     destroy() {
+        this._icon?.destroy();
         if (this.element?.parentNode) {
             this.element.remove();
         }
@@ -201,20 +196,39 @@ export class AuthButton {
             ...options
         } = config;
 
+        let component;
         if (isLoggedIn) {
-            return new AuthButton({
+            component = new AuthButton({
                 type: 'logout',
                 onClick: onLogout,
                 confirm: true,
                 ...options
-            }).element;
+            });
         } else {
-            return new AuthButton({
+            component = new AuthButton({
                 type: 'login',
                 onClick: onLogin,
                 ...options
-            }).element;
+            });
         }
+
+        const group = component.element;
+        const components = [component];
+        Object.defineProperty(group, '_components', {
+            value: components,
+            enumerable: false
+        });
+        let destroyed = false;
+        Object.defineProperty(group, 'destroy', {
+            enumerable: false,
+            value: () => {
+                if (destroyed) return;
+                destroyed = true;
+                components.splice(0).forEach(child => child.destroy());
+                group.remove();
+            }
+        });
+        return group;
     }
 }
 

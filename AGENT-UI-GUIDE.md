@@ -277,6 +277,24 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
    ```
    CI/驗證用 `--check`（會校驗每個 registry 元件都有合法 manifest，且 manifest.registry_name 存在於 ComponentFactory）。
 
+### 8.4 不寫 JavaScript 的 JSON 客製元件
+
+若需求是調整既有元件 options 或組合既有元件，不必新增一套 JS 元件。使用 [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) 的純 JSON 定義：
+
+1. 開啟 [Theme Studio](tools/theme-studio/) 的「元件組合」頁籤，組裝、預覽並匯出 JSON。舊的 [Custom Component Studio](tools/custom-component-studio/) URL 保留為相容入口，會導向同一頁籤。
+2. 將 JSON 放進 `packages/javascript/browser/custom_components/definitions/`。
+3. 執行 `npm run custom-components:build` 產生 deterministic `registry.json`。
+4. 執行 `npm run custom-components:check` 與 `npm run test:custom-components`。
+5. Runtime 以 `CustomComponentRegistry.loadFolder()` 載入；dynamic form 可直接傳 `customComponents: { folder }`。
+
+JSON 客製元件分為 `atomic`、`composite`、`template`，由組合樹自動推導；不得靠手填 `kind` 規避深度規則。客製 JSON 禁止函式、raw HTML、任意 style/import 與 prototype-sensitive key。
+
+### 8.5 Studio 自舉規則
+
+Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `tools/theme-studio/studio.page.json`，由 `DynamicPageRenderer({ mode: 'tool' })` 交給 `DynamicToolRenderer` 建立。定義中的 `component` 必須由 `ComponentFactory` 解析，事件只能引用 controller 提供的可信 command ID；JSON 不得承載函式或 raw HTML。
+
+若 Studio 需要的互動能力不足，先補正式元件公開 API，再由 state binding 使用。例如 action `List`、父節點可選的 `TreeList`、穩定 file input 與不遞迴觸發的 `NumberInput.setValue()` 都屬這類自舉需求。驗收至少執行 `npm run test:studio:self-host`、`npm run test:studio:browser`，並確認同一 renderer、DOM identity、control provenance、JSON round-trip、CSP 與 SVG hard-zero。
+
 ---
 
 ## 9. 每頁驗收檢查表
@@ -297,7 +315,10 @@ node templates/spa/scripts/spa-cli.js feature Article --fields "Title:string,Con
 |---|---|
 | 設計系統(設計說明) | [ui_components/DESIGN-SYSTEM.md](packages/javascript/browser/ui_components/DESIGN-SYSTEM.md) |
 | 主題/客製(使用說明) | [ui_components/THEME-USAGE.md](packages/javascript/browser/ui_components/THEME-USAGE.md) |
-| 全域視覺調校台 | [tools/theme-studio/](tools/theme-studio/) |
+| 元件客製工作台（樣式客製 + 元件組合） | [tools/theme-studio/](tools/theme-studio/) |
+| 元件組合相容入口 | [tools/custom-component-studio/](tools/custom-component-studio/) |
+| 客製元件完整契約 | [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) |
+| 客製 JSON/runtime/registry | [custom_components/](packages/javascript/browser/custom_components/) |
 | 元件總入口 | [ui_components/index.js](packages/javascript/browser/ui_components/index.js) |
 | 元件權威清單 | [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) |
 | 字串名工廠 | [binding/ComponentFactory.js](packages/javascript/browser/ui_components/binding/ComponentFactory.js) |

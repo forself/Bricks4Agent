@@ -11,43 +11,56 @@ const errs = [];
 p.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 120)));
 p.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 120)); });
 await p.goto('http://127.0.0.1:8124/tools/theme-studio/index.html');
-await p.waitForFunction('window.__studioReady===true', { timeout: 15000 }).catch(() => {});
+await p.waitForFunction(
+    globalName => window[globalName] === true,
+    '__studioReady',
+    { timeout: 15000 }
+).catch(() => {});
 
-await p.addScriptTag({ type: 'module', content: `
-import { ClusterGraph } from '../../packages/javascript/browser/ui_components/viz/ClusterGraph.js';
-import { createRng } from '../../packages/javascript/browser/ui_components/utils/force-engine.js';
+await p.evaluate(async ({ clusterPath, forcePath }) => {
+    const [{ ClusterGraph }, { createRng }] = await Promise.all([
+        import(clusterPath),
+        import(forcePath),
+    ]);
 
-// 合成:24 頂層幫派 → 各 5 子群 → 共 5000 人;6000 條邊(70% 群內、30% 跨群)
-const rng = createRng(2026);
-const groups = [], nodes = [], edges = [];
-for (let t = 0; t < 24; t++) {
-    groups.push({ id: 'T' + t, parent: null, label: '幫派' + t });
-    for (let s = 0; s < 5; s++) groups.push({ id: 'T' + t + 'S' + s, parent: 'T' + t, label: '堂' + t + '-' + s });
-}
-const leafIds = groups.filter(g => g.parent).map(g => g.id);
-for (let i = 0; i < 5000; i++) {
-    nodes.push({ id: 'p' + i, label: '成員' + i, group: leafIds[Math.floor(rng() * leafIds.length)] });
-}
-const byGroup = {};
-nodes.forEach(n => { (byGroup[n.group] || (byGroup[n.group] = [])).push(n.id); });
-for (let i = 0; i < 6000; i++) {
-    if (rng() < 0.7) {
-        const g = leafIds[Math.floor(rng() * leafIds.length)];
-        const arr = byGroup[g];
-        if (arr.length < 2) continue;
-        edges.push({ source: arr[Math.floor(rng() * arr.length)], target: arr[Math.floor(rng() * arr.length)] });
-    } else {
-        edges.push({ source: 'p' + Math.floor(rng() * 5000), target: 'p' + Math.floor(rng() * 5000) });
+    // 合成:24 頂層幫派 → 各 5 子群 → 共 5000 人;6000 條邊(70% 群內、30% 跨群)
+    const rng = createRng(2026);
+    const groups = [], nodes = [], edges = [];
+    for (let t = 0; t < 24; t++) {
+        groups.push({ id: `T${t}`, parent: null, label: `幫派${t}` });
+        for (let s = 0; s < 5; s++) groups.push({ id: `T${t}S${s}`, parent: `T${t}`, label: `堂${t}-${s}` });
     }
-}
-const host = document.createElement('div');
-host.style.cssText = 'position:fixed; left:0; top:0; width:1000px; height:700px; z-index:99999; background:var(--cl-bg);';
-document.body.appendChild(host);
-window.__data = { nodes, groups, edges };
-window.__g = new ClusterGraph({ container: host, width: '100%', height: '100%', mode: 'drill', nodes, groups, edges, seed: 2026 });
-window.__ready = true;
-` });
-await p.waitForFunction('window.__ready === true', { timeout: 20000 });
+    const leafIds = groups.filter((group) => group.parent).map((group) => group.id);
+    for (let i = 0; i < 5000; i++) {
+        nodes.push({ id: `p${i}`, label: `成員${i}`, group: leafIds[Math.floor(rng() * leafIds.length)] });
+    }
+    const byGroup = {};
+    nodes.forEach((node) => { (byGroup[node.group] || (byGroup[node.group] = [])).push(node.id); });
+    for (let i = 0; i < 6000; i++) {
+        if (rng() < 0.7) {
+            const groupId = leafIds[Math.floor(rng() * leafIds.length)];
+            const members = byGroup[groupId];
+            if (members.length < 2) continue;
+            edges.push({ source: members[Math.floor(rng() * members.length)], target: members[Math.floor(rng() * members.length)] });
+        } else {
+            edges.push({ source: `p${Math.floor(rng() * 5000)}`, target: `p${Math.floor(rng() * 5000)}` });
+        }
+    }
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed; left:0; top:0; width:1000px; height:700px; z-index:99999; background:var(--cl-bg);';
+    document.body.appendChild(host);
+    window.__data = { nodes, groups, edges };
+    window.__g = new ClusterGraph({ container: host, width: '100%', height: '100%', mode: 'drill', nodes, groups, edges, seed: 2026 });
+    window.__ready = true;
+}, {
+    clusterPath: '/packages/javascript/browser/ui_components/viz/ClusterGraph.js',
+    forcePath: '/packages/javascript/browser/ui_components/utils/force-engine.js',
+});
+await p.waitForFunction(
+    globalName => window[globalName] === true,
+    '__ready',
+    { timeout: 20000 }
+);
 await p.waitForTimeout(800);
 
 const results = [];

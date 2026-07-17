@@ -41,6 +41,14 @@
     "validate:line-admin": "node tools/scripts/validate-line-admin.mjs",
     "validate:user-portal": "node tools/scripts/validate-user-portal.mjs",
     "serve": "dotnet run --project tools/static-server/StaticServer.csproj -- ./tools/spa-generator/frontend 3080",
-    "audit:csp": "node tools/scripts/audit-csp.mjs"
+    "audit:csp": "node tools/scripts/audit-csp.mjs",
+    "test:audit-csp-hard-zero": "node tools/scripts/test-audit-csp-hard-zero.mjs",
+    "custom-components:build": "node packages/javascript/browser/custom_components/build-registry.mjs",
+    "custom-components:check": "node packages/javascript/browser/custom_components/build-registry.mjs --check",
+    "test:custom-components": "node --test packages/javascript/browser/custom_components/custom-components.test.mjs packages/javascript/browser/custom_components/custom-runtime.test.mjs",
+    "test:custom-components:browser": "node tools/scripts/custom-component-studio-smoke.mjs --require-browser",
+    "test:theme-studio:browser": "node tools/theme-studio/run.mjs",
+    "test:studio:self-host": "node tools/scripts/studio-self-host-audit.mjs",
+    "test:studio:browser": "node tools/scripts/studio-integration-smoke.mjs"
   }
 }

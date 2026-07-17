@@ -23,10 +23,12 @@ export class DynamicFormRenderer {
             onSave: null,
             onCancel: null,
             showButtons: true,
+            fieldResolver: null,
+            customComponentRegistry: null,
             ...options
         };
 
-        this._fieldResolver = new FieldResolver();
+        this._fieldResolver = this.options.fieldResolver || new FieldResolver();
         this._triggerEngine = new TriggerEngine();
 
         /** @type {Map<string, { component, formField }>} */
@@ -43,6 +45,9 @@ export class DynamicFormRenderer {
      */
     async init() {
         await this._fieldResolver.preload();
+        if (this.options.customComponentRegistry) {
+            this.options.customComponentRegistry.installFieldResolver(this._fieldResolver);
+        }
         this._build();
         return this;
     }

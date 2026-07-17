@@ -1,4 +1,5 @@
 import Locale from '../../i18n/index.js';
+import { Icon } from '../Icon/index.js';
 
 /**
  * DownloadButton Component
@@ -20,84 +21,37 @@ export class DownloadButton {
         xls: {
             color: 'var(--cl-brand-excel)',
             label: 'XLS',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-brand-excel)"/>
-                <rect x="8" y="8" width="32" height="24" rx="2" fill="white" fill-opacity="0.9"/>
-                <line x1="8" y1="16" x2="40" y2="16" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="8" y1="24" x2="40" y2="24" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="20" y1="8" x2="20" y2="32" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <line x1="32" y1="8" x2="32" y2="32" stroke="var(--cl-brand-excel)" stroke-width="1.5"/>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         word: {
             color: 'var(--cl-brand-word)',
             label: 'DOC',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-brand-word)"/>
-                <rect x="10" y="8" width="28" height="24" rx="2" fill="white" fill-opacity="0.9"/>
-                <line x1="14" y1="14" x2="34" y2="14" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="14" y1="20" x2="30" y2="20" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <line x1="14" y1="26" x2="26" y2="26" stroke="var(--cl-brand-word)" stroke-width="2" stroke-linecap="round"/>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         pdf: {
             color: 'var(--cl-danger)',
             label: 'PDF',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-danger)"/>
-                <path d="M10 8H32L38 14V32H10V8Z" fill="white" fill-opacity="0.9"/>
-                <path d="M32 8V14H38" fill="var(--cl-bg-danger-lighter)" stroke="var(--cl-bg-danger-lighter)" stroke-width="1"/>
-                <text x="24" y="25" font-family="Arial" font-size="8" font-weight="bold" fill="var(--cl-danger)" text-anchor="middle">PDF</text>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         image: {
             color: 'var(--cl-purple-dark)',
             label: 'IMG',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-purple-dark)"/>
-                <rect x="8" y="8" width="32" height="24" rx="3" fill="white" fill-opacity="0.9"/>
-                <circle cx="16" cy="16" r="4" fill="var(--cl-warning)"/>
-                <path d="M8 32L18 20L26 28L32 22L40 32H8Z" fill="var(--cl-purple-dark)"/>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         portrait: {
             color: 'var(--cl-cyan-dark)',
             label: 'PHOTO',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-cyan-dark)"/>
-                <rect x="10" y="6" width="28" height="28" rx="3" fill="white" fill-opacity="0.9"/>
-                <circle cx="24" cy="16" r="7" fill="var(--cl-cyan-dark)"/>
-                <ellipse cx="24" cy="32" rx="10" ry="8" fill="var(--cl-cyan-dark)"/>
-                <rect x="10" y="28" width="28" height="6" fill="white" fill-opacity="0.9"/>
-                <path d="M14 34Q24 24 34 34Z" fill="var(--cl-cyan-dark)"/>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         json: {
             color: 'var(--cl-amber-700)',
             label: 'JSON',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-amber-700)"/>
-                <path d="M10 8H32L38 14V32H10V8Z" fill="white" fill-opacity="0.9"/>
-                <path d="M32 8V14H38" fill="var(--cl-amber-500)" stroke="var(--cl-amber-500)" stroke-width="1"/>
-                <text x="24" y="25" font-family="Arial" font-size="7" font-weight="bold" fill="var(--cl-amber-700)" text-anchor="middle">JSON</text>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         },
         css: {
             color: 'var(--cl-indigo-700)',
             label: 'CSS',
-            svg: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="48" height="48" rx="8" fill="var(--cl-indigo-700)"/>
-                <path d="M10 8H32L38 14V32H10V8Z" fill="white" fill-opacity="0.9"/>
-                <path d="M32 8V14H38" fill="var(--cl-indigo-500)" stroke="var(--cl-indigo-500)" stroke-width="1"/>
-                <text x="24" y="25" font-family="Arial" font-size="8" font-weight="bold" fill="var(--cl-indigo-700)" text-anchor="middle">CSS</text>
-                <path d="M24 44L18 38H21V35H27V38H30L24 44Z" fill="white"/>
-            </svg>`
+            icon: 'download'
         }
     };
 
@@ -165,19 +119,33 @@ export class DownloadButton {
             background: transparent;
             position: relative;
             overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: ${iconConfig.color};
         `;
 
-        button.innerHTML = iconConfig.svg;
-        
-        // SVG 填滿按鈕
-        const svg = button.querySelector('svg');
-        if (svg) {
-            svg.style.cssText = `
-                width: 100%;
-                height: 100%;
-                display: block;
-            `;
-        }
+        this._icon = new Icon({ name: iconConfig.icon, size: Math.round(size * 0.56), color: iconConfig.color });
+        this._icon.mount(button);
+
+        const formatBadge = document.createElement('span');
+        formatBadge.className = 'download-btn__format';
+        formatBadge.textContent = iconConfig.label;
+        formatBadge.setAttribute('aria-hidden', 'true');
+        formatBadge.style.cssText = `
+            position: absolute;
+            right: 2px;
+            bottom: 2px;
+            max-width: calc(100% - 4px);
+            padding: 1px 2px;
+            border-radius: var(--cl-radius-xs);
+            background: var(--cl-bg);
+            color: ${iconConfig.color};
+            font: 700 ${Math.max(7, Math.round(size * 0.16))}px/1 system-ui, sans-serif;
+            overflow: hidden;
+            pointer-events: none;
+        `;
+        button.appendChild(formatBadge);
 
         // Hover 效果
         button.addEventListener('mouseenter', () => {
@@ -256,6 +224,7 @@ export class DownloadButton {
      * 移除元件
      */
     destroy() {
+        this._icon?.destroy();
         this.element?.remove();
     }
 
@@ -266,6 +235,7 @@ export class DownloadButton {
      */
     static createGroup(buttons, groupOptions = {}) {
         const group = document.createElement('div');
+        const components = [];
         group.className = 'download-btn-group';
         group.style.cssText = `
             display: inline-flex;
@@ -275,7 +245,23 @@ export class DownloadButton {
 
         buttons.forEach(btnOptions => {
             const btn = new DownloadButton({ ...groupOptions, ...btnOptions });
+            components.push(btn);
             group.appendChild(btn.element);
+        });
+
+        Object.defineProperty(group, '_components', {
+            value: components,
+            enumerable: false
+        });
+        let destroyed = false;
+        Object.defineProperty(group, 'destroy', {
+            enumerable: false,
+            value: () => {
+                if (destroyed) return;
+                destroyed = true;
+                components.splice(0).forEach(component => component.destroy());
+                group.remove();
+            }
         });
 
         return group;

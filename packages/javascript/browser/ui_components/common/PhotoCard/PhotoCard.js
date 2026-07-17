@@ -4,6 +4,7 @@
  */
 
 import { ImageViewer } from '../ImageViewer/index.js';
+import { Icon } from '../Icon/index.js';
 
 export class PhotoCard {
     static TYPES = {
@@ -12,23 +13,6 @@ export class PhotoCard {
     };
 
     // 預設圖示 SVG
-    static DEFAULT_ICONS = {
-        portrait: `
-            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="80" height="80" fill="var(--cl-border-light)"/>
-                <circle cx="40" cy="28" r="14" fill="var(--cl-grey-light)"/>
-                <ellipse cx="40" cy="65" rx="22" ry="16" fill="var(--cl-grey-light)"/>
-            </svg>
-        `,
-        location: `
-            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="80" height="80" fill="var(--cl-border-light)"/>
-                <path d="M40 20C33.373 20 28 25.373 28 32C28 41 40 55 40 55C40 55 52 41 52 32C52 25.373 46.627 20 40 20Z" stroke="var(--cl-grey-light)" stroke-width="3" fill="none"/>
-                <circle cx="40" cy="32" r="5" fill="var(--cl-grey-light)"/>
-            </svg>
-        `
-    };
-
     /**
      * @param {Object} options
      * @param {string} options.type - 'portrait' 或 'location'
@@ -51,6 +35,7 @@ export class PhotoCard {
             ...options
         };
 
+        this._icons = [];
         this.element = this._createElement();
     }
 
@@ -96,6 +81,7 @@ export class PhotoCard {
 
             // 錯誤處理：圖片載入失敗時顯示預設圖示
             img.onerror = () => {
+                this._destroyIcons();
                 container.innerHTML = '';
                 container.appendChild(this._createPlaceholder());
             };
@@ -163,7 +149,13 @@ export class PhotoCard {
             max-width: 80px;
             opacity: 0.6;
         `;
-        iconWrapper.innerHTML = PhotoCard.DEFAULT_ICONS[type];
+        const icon = new Icon({
+            name: type === PhotoCard.TYPES.LOCATION ? 'place' : 'account-circle',
+            size: 64,
+            color: 'var(--cl-text-muted)'
+        });
+        this._icons.push(icon);
+        icon.mount(iconWrapper);
 
         placeholder.appendChild(iconWrapper);
         return placeholder;
@@ -174,6 +166,7 @@ export class PhotoCard {
      */
     setSrc(src) {
         this.options.src = src;
+        this._destroyIcons();
 
         if (src) {
             // 移除舊內容
@@ -192,6 +185,7 @@ export class PhotoCard {
             `;
 
             img.onerror = () => {
+                this._destroyIcons();
                 this.element.innerHTML = '';
                 this.element.appendChild(this._createPlaceholder());
             };
@@ -218,9 +212,15 @@ export class PhotoCard {
     }
 
     destroy() {
+        this._destroyIcons();
         if (this.element?.parentNode) {
             this.element.remove();
         }
+    }
+
+    _destroyIcons() {
+        this._icons.forEach((icon) => icon.destroy());
+        this._icons = [];
     }
 }
 

@@ -363,6 +363,8 @@ dotnet run              # 後端
 ## 10. 延伸閱讀
 
 - 手刻頁面／呼叫元件／缺件補庫：[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)
+- JSON 客製元件、三層分類、資料夾載入與 DynamicPageRenderer 接線：[CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md)
+- JSON 產生的工具頁、可信 commands、state bindings 與 self-host Studio：[page-generator/README.md](packages/javascript/browser/page-generator/README.md#tool-pagedefinition-與自舉工具頁)
 - 頁面生成器細節：[page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 - 獨立 PageDefinition CLI：[tools/page-gen.README.md](tools/page-gen.README.md)
 - SPA 範本：[templates/spa/README.md](templates/spa/README.md)

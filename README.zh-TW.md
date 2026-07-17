@@ -72,11 +72,14 @@ npm run serve   # 於 port 3080 提供 tools/spa-generator/frontend
 npm test                        # 頁面生成器測試
 npm run validate:ui-library     # UI 元件庫檢查
 npm run audit:ui-styles         # 樣式 token 稽核
+npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
+npm run test:studio:browser     # 同頁籤 + Theme/客製元件 JSON round-trip
 ```
 
 ## 文件
 
 - [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — 元件調用約定 + React 重製 playbook(給 AI Agent)
+- [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) — JSON 產生的自舉 Studio、客製元件三層分類與資料夾載入
 - [AGENT.md](AGENT.md) — SPA 生成器操作手冊(給 AI Agent)
 - [CLAUDE.md](CLAUDE.md) — 本 repo 的 Claude Code 規則
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — 頁面生成器細節

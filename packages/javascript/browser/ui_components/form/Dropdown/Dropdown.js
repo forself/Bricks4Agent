@@ -1,5 +1,6 @@
 import Locale from '../../i18n/index.js';
 import { createComponentState } from '../../utils/component-state.js';
+import { Icon } from '../../common/Icon/index.js';
 
 export class Dropdown {
     static VARIANTS = {
@@ -222,9 +223,8 @@ export class Dropdown {
 
         const arrow = document.createElement('span');
         arrow.className = 'dropdown__arrow';
-        arrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M3 4.5L6 7.5L9 4.5" stroke="var(--cl-text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>`;
+        this._arrowIcon = new Icon({ name: 'chevron-down', size: 12, color: 'var(--cl-text-secondary)' });
+        this._arrowIcon.mount(arrow);
         arrow.style.cssText = 'display: flex; transition: transform var(--cl-transition);';
         icons.appendChild(arrow);
         selector.appendChild(icons);
@@ -320,6 +320,8 @@ export class Dropdown {
 
         const state = this.snapshot();
         const { emptyText, placeholder } = this.options;
+        this._itemIcons?.forEach((icon) => icon.destroy());
+        this._itemIcons = [];
         menu.innerHTML = '';
 
         if (state.filteredItems.length === 0) {
@@ -397,9 +399,9 @@ export class Dropdown {
 
             if (isSelected) {
                 const check = document.createElement('span');
-                check.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M3 7L6 10L11 4" stroke="var(--cl-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>`;
+                const checkIcon = new Icon({ name: 'check', size: 14, color: 'var(--cl-primary)' });
+                checkIcon.mount(check);
+                this._itemIcons.push(checkIcon);
                 option.appendChild(check);
             }
 
@@ -599,6 +601,10 @@ export class Dropdown {
 
     destroy() {
         this.send('DESTROY');
+        this._arrowIcon?.destroy();
+        this._arrowIcon = null;
+        this._itemIcons?.forEach((icon) => icon.destroy());
+        this._itemIcons = [];
         if (this._onDocumentClick) {
             document.removeEventListener('click', this._onDocumentClick);
         }

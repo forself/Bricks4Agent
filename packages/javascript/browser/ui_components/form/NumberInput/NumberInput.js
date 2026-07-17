@@ -335,14 +335,15 @@ export class NumberInput {
         return this.value;
     }
 
-    setValue(value) {
+    setValue(value, { emit = false } = {}) {
         const normalizedValue = value === null || value === undefined
             ? null
             : Number.parseFloat(value);
         this.send('SET_VALUE', { value: normalizedValue });
-        if (this.options.onChange) {
+        if (emit && this.options.onChange) {
             this.options.onChange(this.value);
         }
+        return this;
     }
 
     clear() {

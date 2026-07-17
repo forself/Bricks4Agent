@@ -73,11 +73,14 @@ npm run serve   # serves tools/spa-generator/frontend on port 3080
 npm test                        # page-generator test suite
 npm run validate:ui-library     # UI library checks
 npm run audit:ui-styles         # style-token audit
+npm run test:studio:self-host   # one authoritative JSON + component provenance
+npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
 ```
 
 ## Documentation
 
 - [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — component calling convention + React-rewrite playbook (for AI agents)
+- [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) — JSON-generated self-host Studio, three-tier custom components and folder loading
 - [AGENT.md](AGENT.md) — SPA generator operation manual (for AI agents)
 - [CLAUDE.md](CLAUDE.md) — Claude Code rules for this repo
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — page generator details

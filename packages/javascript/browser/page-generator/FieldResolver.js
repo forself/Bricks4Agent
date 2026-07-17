@@ -31,8 +31,12 @@ export class FieldResolver {
         /** @type {Map<string, Function>} component 名稱 → 元件工廠函式 */
         this._componentMap = new Map();
 
+        /** @type {Map<string, Function>} 可被 field.component 明示引用的內建元件 */
+        this._builtinComponentMap = new Map();
+
         // 註冊內建映射
         this._registerBuiltins();
+        this._registerBuiltinComponents();
     }
 
     /**
@@ -132,6 +136,54 @@ export class FieldResolver {
 
         // student（學生資訊輸入）
         this._typeMap.set('student', (def) => this._createStudentInput(def));
+    }
+
+    /**
+     * 註冊可安全明示的既有 field 元件名稱。
+     * 這與 fieldType 推論分開，讓未知 field.component 能 fail-closed，
+     * 同時保留既有內建名稱的使用方式。
+     */
+    _registerBuiltinComponents() {
+        const textInput = (def) => {
+            const type = ['email', 'password'].includes(def.fieldType) ? def.fieldType : 'text';
+            return this._createTextInput(def, type);
+        };
+        const entries = {
+            TextInput: textInput,
+            NumberInput: (def) => this._createNumberInput(def),
+            Slider: (def) => this._createSlider(def),
+            TextArea: (def) => this._createTextArea(def),
+            Textarea: (def) => this._createTextArea(def),
+            DatePicker: (def) => this._createDatePicker(def),
+            TimePicker: (def) => this._createTimePicker(def),
+            Dropdown: (def) => this._createDropdown(def),
+            MultiSelectDropdown: (def) => this._createMultiSelectDropdown(def),
+            Checkbox: (def) => this._createCheckbox(def),
+            ToggleSwitch: (def) => this._createToggleSwitch(def),
+            Radio: (def) => this._createRadio(def),
+            ColorPicker: (def) => this._createColorPicker(def),
+            ImageViewer: (def) => this._createImageViewer(def),
+            BatchUploader: (def) => this._createBatchUploader(def),
+            HiddenInput: (def) => this._createHiddenInput(def),
+            DateTimeInput: (def) => this._createDateTimeInput(def),
+            WebTextEditor: (def) => this._createWebTextEditor(def),
+            DrawingBoard: (def) => this._createDrawingBoard(def),
+            GeolocationService: (def) => this._createGeolocationService(def),
+            WeatherService: (def) => this._createWeatherService(def),
+            AddressInput: (def) => this._createAddressInput(def),
+            AddressListInput: (def) => this._createAddressListInput(def),
+            ChainedInput: (def) => this._createChainedInput(def),
+            ListInput: (def) => this._createListInput(def),
+            PersonInfoList: (def) => this._createPersonInfoList(def),
+            PhoneListInput: (def) => this._createPhoneListInput(def),
+            SocialMediaList: (def) => this._createSocialMediaList(def),
+            OrganizationInput: (def) => this._createOrganizationInput(def),
+            StudentInput: (def) => this._createStudentInput(def),
+        };
+
+        for (const [name, factory] of Object.entries(entries)) {
+            this._builtinComponentMap.set(name, factory);
+        }
     }
 
     // ─── 元件工廠方法 ───
@@ -553,9 +605,18 @@ export class FieldResolver {
     resolve(fieldDef) {
         let component;
 
-        // 優先使用指定 component
-        if (fieldDef.component && this._componentMap.has(fieldDef.component)) {
-            component = this._componentMap.get(fieldDef.component)(fieldDef);
+        // 明示 component 不得靜默回退到 fieldType；只接受已註冊 custom
+        // component 或上述相容性 allowlist 中的內建 field component。
+        if (fieldDef.component !== null && fieldDef.component !== undefined && fieldDef.component !== '') {
+            if (typeof fieldDef.component !== 'string') {
+                throw new TypeError('field.component must be a registered component name.');
+            }
+            const factory = this._componentMap.get(fieldDef.component)
+                || this._builtinComponentMap.get(fieldDef.component);
+            if (!factory) {
+                throw new Error(`[FieldResolver] 未註冊的 component: ${fieldDef.component}`);
+            }
+            component = factory(fieldDef);
         } else {
             // 依 fieldType 推論
             const factory = this._typeMap.get(fieldDef.fieldType);
@@ -568,17 +629,31 @@ export class FieldResolver {
         }
 
         // 包裝為 FormField
-        const formField = new FormField({
-            fieldName: fieldDef.fieldName,
-            label: fieldDef.fieldType === 'hidden' ? '' : fieldDef.label,
-            required: fieldDef.isRequired,
-            col: fieldDef.formCol,
-            component
-        });
+        let formField = null;
+        try {
+            formField = new FormField({
+                fieldName: fieldDef.fieldName,
+                label: fieldDef.fieldType === 'hidden' ? '' : fieldDef.label,
+                required: fieldDef.isRequired,
+                col: fieldDef.formCol,
+                component
+            });
 
-        // hidden 欄位直接隱藏
-        if (fieldDef.fieldType === 'hidden') {
-            formField.hide();
+            // hidden 欄位直接隱藏
+            if (fieldDef.fieldType === 'hidden') {
+                formField.hide();
+            }
+        } catch (error) {
+            const cleanupErrors = [];
+            this._destroyResolvedEntry({ component, formField }, cleanupErrors);
+            if (cleanupErrors.length > 0 && error && typeof error === 'object') {
+                try {
+                    error.cleanupErrors = cleanupErrors;
+                } catch {
+                    // Preserve the original failure even when it is non-extensible.
+                }
+            }
+            throw error;
         }
 
         return { component, formField };
@@ -590,11 +665,73 @@ export class FieldResolver {
      * @returns {Map<string, { component, formField }>}
      */
     resolveAll(fieldDefs) {
+        if (!Array.isArray(fieldDefs)) {
+            throw new TypeError('resolveAll(fieldDefs) requires an array.');
+        }
+
+        // Preflight before creating anything so duplicate keys can never cause
+        // a silently overwritten component or partially-created form.
+        const fieldNames = new Set();
+        for (const def of fieldDefs) {
+            const fieldName = def?.fieldName;
+            if (fieldNames.has(fieldName)) {
+                throw new Error(`[FieldResolver] 重複的 fieldName: ${String(fieldName)}`);
+            }
+            fieldNames.add(fieldName);
+        }
+
         const result = new Map();
-        fieldDefs.forEach(def => {
-            result.set(def.fieldName, this.resolve(def));
-        });
-        return result;
+        try {
+            for (const def of fieldDefs) {
+                result.set(def.fieldName, this.resolve(def));
+            }
+            return result;
+        } catch (error) {
+            const cleanupErrors = [];
+            const entries = [...result.values()];
+            for (let index = entries.length - 1; index >= 0; index -= 1) {
+                this._destroyResolvedEntry(entries[index], cleanupErrors);
+            }
+            result.clear();
+            if (cleanupErrors.length > 0 && error && typeof error === 'object') {
+                try {
+                    error.cleanupErrors = [
+                        ...(Array.isArray(error.cleanupErrors) ? error.cleanupErrors : []),
+                        ...cleanupErrors,
+                    ];
+                } catch {
+                    // Preserve the original failure even when it is non-extensible.
+                }
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Best-effort cleanup for a resolved entry without masking the root error.
+     * FormField owns its component, so a successful FormField.destroy() is enough.
+     *
+     * @private
+     */
+    _destroyResolvedEntry(entry, cleanupErrors = []) {
+        if (!entry) return;
+
+        if (typeof entry.formField?.destroy === 'function') {
+            try {
+                entry.formField.destroy();
+                return;
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
+
+        if (typeof entry.component?.destroy === 'function') {
+            try {
+                entry.component.destroy();
+            } catch (error) {
+                cleanupErrors.push(error);
+            }
+        }
     }
 }
 

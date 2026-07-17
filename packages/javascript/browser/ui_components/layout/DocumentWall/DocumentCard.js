@@ -1,4 +1,5 @@
 import Locale from '../../i18n/index.js';
+import { Icon } from '../../common/Icon/index.js';
 
 /**
  * DocumentCard Component
@@ -17,48 +18,21 @@ export class DocumentCard {
 
     // 預設圖示 SVG
     static ICONS = {
-        pdf: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-danger)"/>
-                <path d="M42 8V20H54" fill="var(--cl-danger-light)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">PDF</text>
-            </svg>
-        `,
-        doc: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-indigo)"/>
-                <path d="M42 8V20H54" fill="var(--cl-indigo)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">DOC</text>
-            </svg>
-        `,
-        xls: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-success)"/>
-                <path d="M42 8V20H54" fill="var(--cl-success-light)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">XLS</text>
-            </svg>
-        `,
-        ppt: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-warning)"/>
-                <path d="M42 8V20H54" fill="var(--cl-warning-light)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">PPT</text>
-            </svg>
-        `,
-        image: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-purple)"/>
-                <path d="M42 8V20H54" fill="var(--cl-purple-light)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">IMG</text>
-            </svg>
-        `,
-        other: `
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8H42L54 20V56C54 58.2091 52.2091 60 50 60H14C11.7909 60 10 58.2091 10 56V12C10 9.79086 11.7909 8 14 8Z" fill="var(--cl-grey)"/>
-                <path d="M42 8V20H54" fill="var(--cl-border-light)"/>
-                <text x="32" y="45" font-family="Arial" font-size="14" fill="white" text-anchor="middle" font-weight="bold">FILE</text>
-            </svg>
-        `
+        pdf: 'var(--cl-danger)',
+        doc: 'var(--cl-indigo)',
+        xls: 'var(--cl-success)',
+        ppt: 'var(--cl-warning)',
+        image: 'var(--cl-purple)',
+        other: 'var(--cl-grey)'
+    };
+
+    static TYPE_LABELS = {
+        pdf: 'PDF',
+        doc: 'DOC',
+        xls: 'XLS',
+        ppt: 'PPT',
+        image: 'IMG',
+        other: 'FILE'
     };
 
     /**
@@ -89,12 +63,14 @@ export class DocumentCard {
             ...options
         };
 
+        this._icons = [];
+        this._selectIcon = null;
         this.element = this._createElement();
     }
 
     _createElement() {
         const { title, type, src, width, selected } = this.options;
-        const iconSvg = DocumentCard.ICONS[type] || DocumentCard.ICONS.other;
+        const iconColor = DocumentCard.ICONS[type] || DocumentCard.ICONS.other;
 
         const container = document.createElement('div');
         container.className = 'document-card';
@@ -152,9 +128,25 @@ export class DocumentCard {
         } else {
             // 顯示圖示
             content = document.createElement('div');
-            content.style.width = '64px';
-            content.style.height = '64px';
-            content.innerHTML = iconSvg;
+            const normalizedType = DocumentCard.TYPE_LABELS[type] ? type : 'other';
+            content.className = `document-card__type-badge document-card__type-badge--${normalizedType}`;
+            content.textContent = DocumentCard.TYPE_LABELS[normalizedType];
+            content.setAttribute('aria-label', content.textContent);
+            content.style.cssText = `
+                width: 64px;
+                height: 64px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: var(--cl-radius-md);
+                background: ${iconColor};
+                color: var(--cl-text-inverse);
+                font-family: var(--cl-font-family);
+                font-size: var(--cl-font-size-lg);
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                box-shadow: var(--cl-shadow-sm);
+            `;
         }
 
         preview.appendChild(content);
@@ -243,10 +235,14 @@ export class DocumentCard {
 
         // 選取狀態樣式
         const updateSelectState = (isSelected) => {
+            this._selectIcon?.destroy();
+            this._selectIcon = null;
             if (isSelected) {
                 selectBox.style.background = 'var(--cl-primary)';
                 selectBox.style.borderColor = 'var(--cl-primary)';
-                selectBox.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cl-text-inverse)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                selectBox.replaceChildren();
+                this._selectIcon = new Icon({ name: 'check', size: 14, color: 'var(--cl-text-inverse)' });
+                this._selectIcon.mount(selectBox);
             } else {
                 selectBox.style.background = 'var(--cl-bg-surface-overlay)';
                 selectBox.style.borderColor = 'var(--cl-border)';
@@ -272,12 +268,7 @@ export class DocumentCard {
         // 刪除按鈕 (左上角，類似 PhotoWall)
         if (this.options.onDelete) {
             const deleteBtn = document.createElement('div');
-            deleteBtn.innerHTML = `
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            `;
+            this._mountIcon(deleteBtn, { name: 'close', size: 14, color: 'currentColor' });
             deleteBtn.style.cssText = `
                 position: absolute;
                 top: 8px;
@@ -316,5 +307,20 @@ export class DocumentCard {
         const target = typeof container === 'string' ? document.querySelector(container) : container;
         if (target) target.appendChild(this.element);
         return this;
+    }
+
+    _mountIcon(container, options) {
+        const icon = new Icon(options);
+        this._icons.push(icon);
+        icon.mount(container);
+        return icon;
+    }
+
+    destroy() {
+        this._selectIcon?.destroy();
+        this._selectIcon = null;
+        this._icons.forEach((icon) => icon.destroy());
+        this._icons = [];
+        this.element?.remove();
     }
 }
