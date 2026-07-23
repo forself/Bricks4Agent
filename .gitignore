@@ -67,5 +67,5 @@ ngrok_recovery_codes.txt
 packages/csharp/broker/appsettings.Development.json
 packages/csharp/workers/line-worker/appsettings.json
 packages/csharp/workers/line-worker/.last-tunnel-url
-packages/csharp/workers/line-worker/bin/Debug/net8.0/pending_messages/
+packages/csharp/workers/line-worker/bin/Debug/net10.0/pending_messages/
 *.webp

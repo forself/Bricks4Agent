@@ -13,12 +13,13 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 - Page-generator tests: `npm test`
 - UI library checks: `npm run validate:ui-library` (add `:browser` for a real browser)
 - Style-token audit: `npm run audit:ui-styles`
+- All SDK-style .NET 10 projects: `npm run test:dotnet10`
 - CSP + SVG-ratchet gate (must pass before any commit touching ui_components): `node tools/scripts/audit-csp.mjs`
 - Browser smoke harnesses (need `python -m http.server 8124` at repo root; Edge via tim-web/poc playwright-core):
   `node tools/theme-studio/run.mjs`, `node tools/scripts/canvas-chart-smoke.mjs`,
   `node tools/scripts/wave2-stage-sweep.mjs`, `node tools/scripts/data-explorer-smoke.mjs`,
   `node tools/scripts/cluster-graph-perf.mjs`
-- Generated .NET 8 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
+- Generated .NET 10 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
 - Rebuild component metadata after adding/changing a component:
   `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs` (`--check` to validate only)
 
@@ -42,7 +43,7 @@ When adding tests that produce files: add the pattern to this table, ensure it i
 - Security: escape all dynamic HTML with `escapeHtml()`; opt into raw HTML explicitly with `raw()` (see [utils/security.js](packages/javascript/browser/ui_components/utils/security.js)).
 - i18n: user-facing strings go through `Locale.t()` (see [i18n/index.js](packages/javascript/browser/ui_components/i18n/index.js)).
 - Component contract: `new X(options)` → `.mount(container)` → `.destroy()`; value components expose `getValue/setValue/setDisabled/clear` (form ones also `setError/clearError`).
-- Generated backend: .NET 8 Minimal API, BaseOrm (lightweight, no EF Core).
+- Generated backend: .NET 10 Minimal API, BaseOrm (lightweight, no EF Core).
 
 ## Adding a Component
 

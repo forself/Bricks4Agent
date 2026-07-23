@@ -342,7 +342,7 @@ var deletedCount = _logRepository.DeleteOlderThan(cutoff);
 
 ## 相依套件
 
-- `System.Text.Json` >= 8.0.0
+- JSON 序列化使用 .NET 10 shared framework 內建的 `System.Text.Json`。
 
 ## 授權
 

@@ -8,8 +8,8 @@ English version: [README.md](README.md)
 
 - **UI 元件庫** — 116 個元件(form、layout、common、input、viz、social、editor、sections、data、analytics),純 Vanilla JS,以 theme token 上色,內建 XSS 防護與 i18n。
 - **頁面生成器** — 一份 `PageDefinition`(JSON)有兩條路變成頁面:**靜態產碼**(產出 `.js` 頁面檔)或**動態渲染**(執行期直接依 JSON 畫出來)。
-- **SPA 工具鏈** — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 8 後端)。
-- **表單應用工作台** — 匯入資料表 schema、視覺編排欄位，並生成表單 `PageDefinition`、.NET 8 Minimal API/BaseOrm 程式碼與資料庫 SQL；連線字串留白時以本地 SQLite 為目標。
+- **SPA 工具鏈** — CLI 與 Web UI,可一鍵生成全端 CRUD(前端頁面 + 選配的 .NET 10 後端)。
+- **表單應用工作台** — 匯入資料表 schema、視覺編排欄位，並生成表單 `PageDefinition`、.NET 10 Minimal API/BaseOrm 程式碼與資料庫 SQL；連線字串留白時以本地 SQLite 為目標。
 
 > 要在這套庫上開發?請先讀 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — 那是給人與 AI Agent 的元件調用入口。
 
@@ -26,7 +26,7 @@ English version: [README.md](README.md)
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
 ### SPA 鷹架
-- [templates/spa](templates/spa) — SPA 專案範本(前端核心 + .NET 8 後端)
+- [templates/spa](templates/spa) — SPA 專案範本(前端核心 + .NET 10 後端)
 - [templates/spa/scripts](templates/spa/scripts) — `spa-cli.js`、`generate-page.js`、`generate-api.js`
 - [tools/spa-generator](tools/spa-generator) — 生成器 Web UI(port 3080)
 - [tools/page-gen.js](tools/page-gen.js) — 獨立 PageDefinition CLI([說明](tools/page-gen.README.md))
@@ -34,6 +34,8 @@ English version: [README.md](README.md)
 - [tools/form-application-studio](tools/form-application-studio) — JSON 自舉的表單／API／資料庫設計工具
 
 ## 快速開始
+
+請使用 Node.js 22 與 .NET 10 SDK；repo 內的 `global.json` 允許使用目前已安裝的最新 .NET 10 feature band。
 
 ### 使用元件庫
 
@@ -78,10 +80,11 @@ npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
 npm run test:studio:browser     # 同頁籤 + Theme/客製元件 JSON round-trip
 npm run test:form-designer:all  # 表單應用單元、自舉與瀏覽器驗收
 npm run test:form-designer:dotnet # 生成並編譯四種 provider 後端
+npm run test:dotnet10           # 強制 net10.0 並建置全部 35 個 SDK-style 專案
 ```
 
 PR 目標為 `main` 或推送至 `main` 時，[GitHub Actions](.github/workflows/ci.yml)
-會執行可攜式 JavaScript、政策、metadata、SPA backend 與生成後端檢查。
+會執行可攜式 JavaScript、政策、metadata、全部 .NET 10 專案與生成後端檢查。
 真實 Edge 互動 harness 仍是本機驗收守門，因其刻意沿用既有外部
 Playwright／Edge runtime，不為 CI 增加 npm dependency。
 

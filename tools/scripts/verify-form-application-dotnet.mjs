@@ -27,7 +27,7 @@ const baseOrmProject = path.join(
     'csharp',
     'database',
     'BaseOrm',
-    'net8',
+    'net10',
     'BaseOrm.csproj',
 );
 const sampleSchema = JSON.parse(readFileSync(
@@ -51,7 +51,7 @@ function projectSource(backendDirectory) {
     const reference = path.relative(backendDirectory, baseOrmProject).replaceAll('\\', '/');
     return `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
@@ -120,7 +120,7 @@ function buildProvider(provider, connectionString) {
     if (result.stdout) process.stdout.write(result.stdout);
     if (result.stderr) process.stderr.write(result.stderr);
     assert.equal(result.status, 0, `${provider} generated backend failed to compile.`);
-    console.log(`ok  ${provider}: provider-consistent, secret-free, .NET 8 build passed`);
+    console.log(`ok  ${provider}: provider-consistent, secret-free, .NET 10 build passed`);
 }
 
 if (existsSync(outputRoot)) {

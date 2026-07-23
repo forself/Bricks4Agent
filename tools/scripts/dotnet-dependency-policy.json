@@ -18,7 +18,7 @@
     {
       "project": "packages/csharp/broker-core/BrokerCore.csproj",
       "allowedProjectReferences": [
-        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj",
+        "packages/csharp/database/BaseOrm/net10/BaseOrm.csproj",
         "packages/csharp/cache-client/CacheClient.csproj"
       ],
       "allowedPackageReferences": [
@@ -39,7 +39,8 @@
         "packages/csharp/reporting/Reporting.Abstractions.csproj"
       ],
       "allowedPackageReferences": [
-        "ClosedXML"
+        "ClosedXML",
+        "System.IO.Packaging"
       ],
       "allowedFrameworkReferences": []
     },
@@ -55,10 +56,11 @@
     {
       "project": "templates/spa/backend/SpaApi.csproj",
       "allowedProjectReferences": [
-        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj"
+        "packages/csharp/database/BaseOrm/net10/BaseOrm.csproj"
       ],
       "allowedPackageReferences": [
         "Microsoft.Data.Sqlite",
+        "SQLitePCLRaw.bundle_e_sqlite3",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
       ],
       "allowedFrameworkReferences": []
@@ -66,19 +68,22 @@
     {
       "project": "tools/spa-generator/backend/spa-generator.csproj",
       "allowedProjectReferences": [
-        "packages/csharp/database/BaseOrm/net8/BaseOrm.csproj"
+        "packages/csharp/database/BaseOrm/net10/BaseOrm.csproj"
       ],
       "allowedPackageReferences": [
         "Microsoft.Data.Sqlite",
+        "SQLitePCLRaw.bundle_e_sqlite3",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
       ],
       "allowedFrameworkReferences": []
     },
     {
       "project": "projects/ShopBricks-Gen/backend/ShopBricks.csproj",
+      "optional": true,
       "allowedProjectReferences": [],
       "allowedPackageReferences": [
         "Microsoft.Data.Sqlite",
+        "SQLitePCLRaw.bundle_e_sqlite3",
         "Microsoft.AspNetCore.Authentication.JwtBearer"
       ],
       "allowedFrameworkReferences": []

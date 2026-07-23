@@ -339,7 +339,7 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 
 ## 11. Schema → 表單／API／資料表
 
-[Form Application Studio](tools/form-application-studio/) 接受資料表 schema，先產生可編輯的欄位清單與 12 欄 `FormDesigner` 畫布，再輸出設計 JSON、前端 `PageDefinition`、.NET 8 Minimal API／BaseOrm 程式碼、建表與 rollback SQL。工具頁本身由 [`studio.page.json`](tools/form-application-studio/studio.page.json) 經 `DynamicPageRenderer({ mode: 'tool' })` 產生，`FormDesigner` 也來自正式元件庫，作為自舉驗證。
+[Form Application Studio](tools/form-application-studio/) 接受資料表 schema，先產生可編輯的欄位清單與 12 欄 `FormDesigner` 畫布，再輸出設計 JSON、前端 `PageDefinition`、.NET 10 Minimal API／BaseOrm 程式碼、建表與 rollback SQL。工具頁本身由 [`studio.page.json`](tools/form-application-studio/studio.page.json) 經 `DynamicPageRenderer({ mode: 'tool' })` 產生，`FormDesigner` 也來自正式元件庫，作為自舉驗證。
 
 - 左側欄位可改欄位名、顯示名、圖示／輸入元件，也可新增、刪除欄位。
 - 欄位可拖到右側畫布；畫布上的元件可拖曳、以滑鼠或鍵盤調整位置與長寬。

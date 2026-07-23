@@ -166,7 +166,7 @@ public class HealthScoreService
     private Dictionary<string, (int succeeded, int failed)> QueryDispatchStatsByWorker(DateTime since)
     {
         // details JSON 裡有 worker_id；SQLite 的 JSON1 extension 可以 json_extract
-        // 預期 SQLite 已有 JSON1 builtin（since 3.38）—broker.db 升 net8 sqlite 必含。
+        // 預期 SQLite 已有 JSON1 builtin（since 3.38）—broker.db 的 .NET 10 SQLite provider 必含。
         var rows = _db.Query<DispatchAggRow>(@"
 SELECT
     json_extract(details, '$.worker_id') AS WorkerId,

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Bricks4Agent.Security.RateLimiting</RootNamespace>
@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- L-1 修復：net8.0 應使用 FrameworkReference 取代舊版 2.2 NuGet 套件 -->
+    <!-- ASP.NET Core APIs come from the shared framework. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

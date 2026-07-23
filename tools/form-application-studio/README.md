@@ -1,6 +1,6 @@
 # Form Application Studio
 
-此工具把單一資料表 schema 轉成可調整版面的表單，以及對應的 .NET 8 Minimal API、BaseOrm 程式碼與資料庫 SQL。工具頁的唯一權威定義是 `studio.page.json`，由 `DynamicPageRenderer({ mode: 'tool' })` 產生；核心設計畫布是正式 `FormDesigner` 元件。
+此工具把單一資料表 schema 轉成可調整版面的表單，以及對應的 .NET 10 Minimal API、BaseOrm 程式碼與資料庫 SQL。工具頁的唯一權威定義是 `studio.page.json`，由 `DynamicPageRenderer({ mode: 'tool' })` 產生；核心設計畫布是正式 `FormDesigner` 元件。
 
 ## 使用方式
 

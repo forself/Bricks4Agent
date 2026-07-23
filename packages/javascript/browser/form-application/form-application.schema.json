@@ -84,7 +84,7 @@
       "additionalProperties": false,
       "required": ["target", "output_name", "mode", "apply_database"],
       "properties": {
-        "target": { "const": "spa-net8" },
+        "target": { "const": "spa-net10" },
         "output_name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
         "mode": { "enum": ["preview", "generate-only"] },
         "apply_database": { "const": false }

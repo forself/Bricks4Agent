@@ -66,7 +66,7 @@ jobs:
         run: test -z "$(git status --porcelain)"
 
   dotnet:
-    name: .NET 8 and generated backend
+    name: .NET 10 and generated backend
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -85,10 +85,10 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      - name: Build SPA backend
-        run: dotnet build templates/spa/backend/SpaApi.csproj --configuration Release
+      - name: Enforce .NET 10 and build every SDK-style project
+        run: npm run test:dotnet10
 
       - name: Generate and compile all provider backends
         run: npm run test:form-designer:dotnet

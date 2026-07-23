@@ -13,9 +13,10 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 - Page-generator tests: `npm test`
 - UI library checks: `npm run validate:ui-library`
 - Style-token audit: `npm run audit:ui-styles`
+- All SDK-style .NET 10 projects: `npm run test:dotnet10`
 - CSP + SVG-ratchet gate (must pass before any commit touching ui_components): `node tools/scripts/audit-csp.mjs`
 - Browser smoke harnesses (serve repo root on :8124 first): `node tools/theme-studio/run.mjs`, `node tools/scripts/canvas-chart-smoke.mjs`, `node tools/scripts/wave2-stage-sweep.mjs`, `node tools/scripts/data-explorer-smoke.mjs`, `node tools/scripts/cluster-graph-perf.mjs`
-- Generated .NET 8 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
+- Generated .NET 10 backend (SPA template): `dotnet build templates/spa/backend/SpaApi.csproj`
 - Rebuild component metadata after changing a component:
   `node packages/javascript/browser/ui_components/metadata/build-metadata.mjs` (`--check` to validate only)
 
@@ -37,7 +38,7 @@ that turns a JSON `PageDefinition` into working pages (static code generation or
 - Security: escape dynamic HTML with `escapeHtml()`; raw HTML only via explicit `raw()`.
 - i18n: user-facing strings via `Locale.t()`.
 - Component contract: `new X(options)` → `.mount(container)` → `.destroy()`.
-- Generated backend: .NET 8 Minimal API, BaseOrm (no EF Core).
+- Generated backend: .NET 10 Minimal API, BaseOrm (no EF Core).
 
 ## Key Notes
 

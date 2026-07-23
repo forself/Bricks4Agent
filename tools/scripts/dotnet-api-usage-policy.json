@@ -106,6 +106,10 @@
         "projects/ShopBricks-Gen/backend/Models",
         "projects/ShopBricks-Gen/backend/Services"
       ],
+      "optionalPaths": [
+        "projects/ShopBricks-Gen/backend/Models",
+        "projects/ShopBricks-Gen/backend/Services"
+      ],
       "extensions": [
         ".cs"
       ],
@@ -144,6 +148,9 @@
         "tools/spa-generator/backend/Data",
         "projects/ShopBricks-Gen/backend/Data"
       ],
+      "optionalPaths": [
+        "projects/ShopBricks-Gen/backend/Data"
+      ],
       "extensions": [
         ".cs"
       ],
@@ -180,6 +187,9 @@
       "paths": [
         "templates/spa/backend/Program.cs",
         "tools/spa-generator/backend/Program.cs",
+        "projects/ShopBricks-Gen/backend/Program.cs"
+      ],
+      "optionalPaths": [
         "projects/ShopBricks-Gen/backend/Program.cs"
       ],
       "extensions": [

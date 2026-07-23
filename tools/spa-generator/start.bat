@@ -42,7 +42,7 @@ if %errorlevel% equ 0 (
 echo No supported frontend server was found.
 echo Install one of the following:
 echo   - Node.js (recommended - full API support)
-echo   - .NET 8 SDK (static files only)
+echo   - .NET 10 SDK (static files only)
 echo   - Python (static files only)
 echo.
 pause

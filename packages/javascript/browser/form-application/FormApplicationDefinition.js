@@ -19,7 +19,7 @@ export const FIELD_TYPES = Object.freeze([
     'date', 'datetime', 'select', 'multiselect', 'radio', 'file', 'richtext', 'color', 'slider'
 ]);
 export const OPERATIONS = Object.freeze(['list', 'get', 'create', 'update', 'delete']);
-export const GENERATION_TARGETS = Object.freeze(['spa-net8']);
+export const GENERATION_TARGETS = Object.freeze(['spa-net10']);
 
 const TOP_LEVEL_KEYS = new Set([
     'schema_version', 'application_id', 'display_name', 'source', 'persistence', 'table', 'fields', 'form', 'api', 'generation'
@@ -307,7 +307,7 @@ export function normalizeFormApplication(input, options = {}) {
 
     const generation = object(definition.generation ?? {}, 'generation');
     keys(generation, new Set(['target', 'output_name', 'mode', 'apply_database']), 'generation');
-    const target = string(generation.target, 'generation.target', 'spa-net8');
+    const target = string(generation.target, 'generation.target', 'spa-net10');
     if (!GENERATION_TARGETS.includes(target)) throw new TypeError(`generation.target is not supported: ${target}`);
     const outputName = string(generation.output_name, 'generation.output_name', applicationId.replaceAll('_', '-'));
     if (!SAFE_TOKEN.test(outputName)) throw new TypeError('generation.output_name is unsafe.');

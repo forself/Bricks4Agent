@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +41,11 @@ function compareAllowed(actualValues, allowedValues, label) {
 
 function validateRule(rule) {
     const projectPath = path.join(repoRoot, rule.project);
+    if (!existsSync(projectPath)) {
+        return rule.optional === true
+            ? null
+            : [`Project: required project file is missing`];
+    }
     const source = readFileSync(projectPath, 'utf8');
 
     const actualProjectReferences = resolveProjectReferences(
@@ -67,15 +72,25 @@ function main() {
 
     for (const rule of policy.rules) {
         const projectFindings = validateRule(rule);
+        if (projectFindings === null) {
+            findings.push({
+                project: rule.project,
+                errors: [],
+                skipped: true
+            });
+            continue;
+        }
         findings.push({
             project: rule.project,
-            errors: projectFindings
+            errors: projectFindings,
+            skipped: false
         });
     }
 
     const failed = findings.filter((entry) => entry.errors.length > 0);
 
-    console.log(`Checked ${findings.length} .csproj dependency policies.`);
+    const skipped = findings.filter((entry) => entry.skipped).length;
+    console.log(`Checked ${findings.length - skipped} .csproj dependency policies (${skipped} optional project skipped).`);
 
     if (failed.length === 0) {
         console.log('All configured projects satisfy the dependency policy.');

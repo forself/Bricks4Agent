@@ -21,8 +21,8 @@
     <Project Path="database/BaseCache/BaseCache.csproj" />
   </Folder>
   <Folder Name="/database/BaseOrm/" />
-  <Folder Name="/database/BaseOrm/net8/">
-    <Project Path="database/BaseOrm/net8/BaseOrm.csproj" />
+  <Folder Name="/database/BaseOrm/net10/">
+    <Project Path="database/BaseOrm/net10/BaseOrm.csproj" />
   </Folder>
   <Folder Name="/function-pool/">
     <Project Path="function-pool/FunctionPool.csproj" />

@@ -470,7 +470,7 @@ export function schemaToFormApplication(schema, options = {}) {
         fields: schema.columns.map((column, index) => schemaColumnToField(column, index, schemaPrimaryKey)),
         form: { page_name: `${pascalCase(applicationId)}FormPage`, submit_label: 'Save' },
         api: { route: `/api/${kebabCase(applicationId)}`, operations: [...['list', 'get', 'create', 'update', 'delete']], auth_required: true },
-        generation: { target: 'spa-net8', output_name: kebabCase(applicationId), mode: 'preview', apply_database: false }
+        generation: { target: 'spa-net10', output_name: kebabCase(applicationId), mode: 'preview', apply_database: false }
     };
     return normalizeFormApplication(definition, { connectionString: definition.persistence.connection_string });
 }

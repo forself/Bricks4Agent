@@ -10,7 +10,7 @@
     "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
     "children": [
       { "type": "component", "id": "studio-title", "component": "Heading", "options": { "text": "Form Application Studio", "level": 1 } },
-      { "type": "component", "id": "studio-summary", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "將資料表 schema 轉成可拖拉、可縮放的表單版面，並產生 PageDefinition、.NET 8 Minimal API、BaseOrm model/service 與資料庫 SQL。" } },
+      { "type": "component", "id": "studio-summary", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "將資料表 schema 轉成可拖拉、可縮放的表單版面，並產生 PageDefinition、.NET 10 Minimal API、BaseOrm model/service 與資料庫 SQL。" } },
       { "type": "component", "id": "studio-safety", "component": "Alert", "options": { "variant": "info", "message": "預設只產生預覽與檔案，不會連線或修改資料庫。連線字串只保留在本次工作階段；空白時目的地為本地 SQLite。", "closable": false } },
       {
         "type": "group",

@@ -7,7 +7,7 @@ namespace BrokerCore.Crypto;
 /// 信封加密/解密實作
 /// ECDH P-256 金鑰交換 + HKDF 金鑰導出 + AES-256-GCM 對稱加密
 ///
-/// 全部使用 .NET 8 內建 API，零外部加密依賴
+/// 全部使用 .NET 10 內建 API，零外部加密依賴
 ///
 /// 生命週期：Singleton（broker 啟動時生成或載入 ECDH 長期金鑰對）
 /// </summary>

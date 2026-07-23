@@ -109,22 +109,22 @@ if (-not $SkipSigning) {
 $targets = @(
     [pscustomobject]@{
         Name = "main-broker-debug"
-        RuntimeRoot = "packages\csharp\broker\bin\Debug\net8.0"
+        RuntimeRoot = "packages\csharp\broker\bin\Debug\net10.0"
         OutputDir = ".run\wdac\main-broker-debug"
     },
     [pscustomobject]@{
         Name = "main-broker-tests"
-        RuntimeRoot = "packages\csharp\tests\broker-tests\bin\Debug\net8.0"
+        RuntimeRoot = "packages\csharp\tests\broker-tests\bin\Debug\net10.0"
         OutputDir = ".run\wdac\main-broker-tests"
     },
     [pscustomobject]@{
         Name = "main-unit-tests"
-        RuntimeRoot = "packages\csharp\tests\unit\bin\Debug\net8.0"
+        RuntimeRoot = "packages\csharp\tests\unit\bin\Debug\net10.0"
         OutputDir = ".run\wdac\main-unit-tests"
     },
     [pscustomobject]@{
         Name = "main-integration-tests"
-        RuntimeRoot = "packages\csharp\tests\integration\bin\Debug\net8.0"
+        RuntimeRoot = "packages\csharp\tests\integration\bin\Debug\net10.0"
         OutputDir = ".run\wdac\main-integration-tests"
     }
 )

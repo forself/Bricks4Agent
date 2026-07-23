@@ -14,14 +14,14 @@ It is closer to `Dapper + a small convention layer` than to a full ORM like EF C
 
 | Path | Target | Notes |
 | --- | --- | --- |
-| `net8/` | .NET 8+ | Canonical implementation, async API, shared source used by the repo |
+| `net10/` | .NET 10+ | Canonical implementation, async API, shared source used by the repo |
 | `netfx48/` | .NET Framework 4.8 | Legacy variant kept for older systems |
 
 ## Usage Modes
 
 ### 1. Project/package mode
 
-Use this when you reference `packages/csharp/database/BaseOrm/net8/BaseOrm.csproj` from another repo project.
+Use this when you reference `packages/csharp/database/BaseOrm/net10/BaseOrm.csproj` from another repo project.
 
 In this mode the package already references the default ADO.NET providers for:
 
@@ -34,13 +34,13 @@ That means `BaseDb.UseSqlServer(...)`, `BaseDb.UseMySql(...)`, and `BaseDb.UsePo
 
 ### 2. Single-file copy mode
 
-Use this when you copy `net8/BaseOrm.cs` into a standalone project.
+Use this when you copy `net10/BaseOrm.cs` into a standalone project.
 
 In this mode you still need to add the provider packages yourself for the databases you want to use. The API remains the same, but package references are now the consumer's responsibility.
 
 ## Supported Databases
 
-| Database | Factory entry point | Default provider in `net8` project mode |
+| Database | Factory entry point | Default provider in `net10` project mode |
 | --- | --- | --- |
 | SQLite | `new BaseDb(connStr)` or `BaseDb.UseSqlite(connStr)` | Yes |
 | SQL Server | `BaseDb.UseSqlServer(connStr)` | Yes |
@@ -52,7 +52,7 @@ In this mode you still need to add the provider packages yourself for the databa
 The repository includes an executable verification project for provider resolution, dialect behavior, and async CRUD:
 
 ```bash
-dotnet run --project packages/csharp/database/BaseOrm/net8/verify/BaseOrm.Verify.csproj
+dotnet run --project packages/csharp/database/BaseOrm/net10/verify/BaseOrm.Verify.csproj
 ```
 
 If these environment variables are set, the verifier also runs live CRUD integrations against temporary databases:

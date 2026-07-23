@@ -21,7 +21,7 @@ Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上
 - **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，116 個元件）
 - **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
-- **C# 後端範本**（.NET 8 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）
+- **C# 後端範本**（.NET 10 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）
 
 AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)；用生成器批次產頁看本文件；規則看 [CLAUDE.md](CLAUDE.md)。
 
@@ -44,7 +44,7 @@ npm run audit:ui-styles         # 樣式 token 稽核
 npm run test:form-designer:dotnet # 生成並編譯 SQLite/SQL Server/PostgreSQL/MySQL 後端
 npm run serve                   # 啟動生成器 Web UI（port 3080）
 
-# 生成器產出的 .NET 8 後端（SPA 範本）
+# 生成器產出的 .NET 10 後端（SPA 範本）
 dotnet build templates/spa/backend/SpaApi.csproj
 ```
 
@@ -239,7 +239,7 @@ Bricks4Agent/
 │   │   ├── pages/                        ← 頁面範本
 │   │   │   └── routes.js                 ← 路由配置（自動更新）
 │   │   └── components/                   ← SPA 範本元件
-│   └── backend/                          ← .NET 8 後端範本（SpaApi.csproj）
+│   └── backend/                          ← .NET 10 後端範本（SpaApi.csproj）
 └── tools/
     ├── spa-generator/                    ← SPA 生成器 Web UI（port 3080）
     ├── page-gen.js                       ← PageDefinition CLI（獨立工具）

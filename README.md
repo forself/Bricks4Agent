@@ -9,8 +9,8 @@
 
 - **UI component library** — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
 - **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
-- **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 8 backend).
-- **Form application studio** — imports a table schema, visually arranges fields, and generates a form `PageDefinition`, .NET 8 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.
+- **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 10 backend).
+- **Form application studio** — imports a table schema, visually arranges fields, and generates a form `PageDefinition`, .NET 10 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.
 
 > Building on top of this library? Read [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) first — it is the calling-convention entry point for both humans and AI agents.
 
@@ -27,7 +27,7 @@
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md)
 
 ### SPA scaffolding
-- [templates/spa](templates/spa) — SPA project template (frontend core + .NET 8 backend)
+- [templates/spa](templates/spa) — SPA project template (frontend core + .NET 10 backend)
 - [templates/spa/scripts](templates/spa/scripts) — `spa-cli.js`, `generate-page.js`, `generate-api.js`
 - [tools/spa-generator](tools/spa-generator) — generator Web UI (port 3080)
 - [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.md))
@@ -35,6 +35,8 @@
 - [tools/form-application-studio](tools/form-application-studio) — JSON-self-hosted form/API/database designer
 
 ## Quick start
+
+Use Node.js 22 and the .NET 10 SDK. The checked-in `global.json` accepts the latest installed .NET 10 feature band.
 
 ### Use the component library
 
@@ -79,10 +81,11 @@ npm run test:studio:self-host   # one authoritative JSON + component provenance
 npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
 npm run test:form-designer:all  # form application unit, self-host and browser acceptance
 npm run test:form-designer:dotnet # generate and compile all four provider backends
+npm run test:dotnet10           # enforce net10.0 and build all 35 SDK-style projects
 ```
 
 Pull requests targeting `main` and pushes to `main` run the portable JavaScript, policy,
-metadata, SPA backend and generated-backend checks through
+metadata, all .NET 10 projects and generated-backend checks through
 [GitHub Actions](.github/workflows/ci.yml). The real Edge interaction harness remains
 a local acceptance gate because it intentionally uses the repository's pre-existing
 external Playwright/Edge runtime instead of adding npm dependencies.

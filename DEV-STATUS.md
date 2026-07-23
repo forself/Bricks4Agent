@@ -17,7 +17,7 @@
 | 前端軌(F) | 舊頁面翻寫,產出在 `D:\proj\newTim\tim-web` | 藍圖已定、POC 已過、量產未開工 | **不動,等使用者發動** |
 | 後端軌(B) | .NET FX 4.8.1 → **.NET 10(目標)**,契約逐位相容 | 架構已裁決、未開工 | **不動,等使用者發動** |
 
-> ⚠ .NET 10 是 B 軌的**目標**,不是 repo 現況:本 repo 現有 .NET 基礎設施(SPA template 後端 `templates/spa/backend` 等)仍是 **net8.0**,另有一份 BaseOrm 為 .NET FX 4.8。B 軌啟動後再依裁決升級或另建 .NET 10 專案,勿誤判現有專案已是 .NET 10。
+> ⚠ 本 repo 的 SDK-style 專案、SPA template、生成後端與 BaseOrm canonical implementation 已統一為 **net10.0**；另保留一份 BaseOrm .NET Framework 4.8 相容實作。這項基礎設施升級不代表後端軌(B)的舊系統契約翻寫已啟動。
 
 **硬邊界(違反=事故):**
 1. `D:\work\new`、`D:\work\TIMSolution` 兩個舊專案**唯讀**,任何產出禁止寫入。
@@ -57,7 +57,7 @@ npm run test:custom-components              # 客製分類/build/runtime/factory
 npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
 npm run test:form-designer                   # 表單應用定義/驗證/SQL/API/PageDefinition + layout helpers
 npm run test:form-designer:self-host         # Form Application Studio JSON 自舉與正式元件 provenance
-npm run test:form-designer:dotnet            # 四種 provider 生成後端實際 net8.0 build
+npm run test:form-designer:dotnet            # 四種 provider 生成後端實際 net10.0 build
 ```
 
 **瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：
@@ -93,11 +93,12 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 
 ## 3. 現況(哪裡了)
 
-**一句話:** catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 8 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite。
+**一句話:** catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite。
 
 | 完成 | Commit | 內容 |
 |---|---|---|
-| 07-23 | `git log -1 -- tools/form-application-studio` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 8 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
+| 07-23 | `git log -1 -- global.json` | **全 repo .NET 10 平台遷移**：35 個 SDK-style 專案與生成契約統一為 `net10.0`；BaseOrm canonical 路徑改為 `net10/`；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本；CI 逐專案建置並將 NuGet 弱點／冗餘依賴視為錯誤 |
+| 07-23 | `git log -1 -- tools/form-application-studio` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
 | 07-17 | `e92a4d6` | **波 3 + JSON 客製元件 + Studio 自舉**：SVG 清零、三層 JSON 客製元件、Theme/Custom 同頁工具與完整驗收 |
 | 07-17 | `39f330f` | **波 2**:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂) |
 | 07-16 | `30e87f6` | **DataExplorer** 統計探索複合件 + Bar/Line/Pie Canvas 化 |
@@ -120,7 +121,7 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 4. `audit-csp` G 類改硬零,baseline 清空;新增不可被 baseline 繞過的負向回歸。
 5. 全量驗收完成;**尚未執行 commit/push**(本輪沒有使用者明確授權提交)。
 
-**驗證證據(2026-07-17):** audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA net8.0 build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 `waitForFunction`、inline `addScriptTag` 與產品層 `openStage` 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。
+**驗證證據(2026-07-17，平台遷移前):** audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA backend build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 `waitForFunction`、inline `addScriptTag` 與產品層 `openStage` 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。
 
 ### 4.1 最新追加：JSON 客製元件系統
 
@@ -141,12 +142,12 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 
 ### 4.3 Form Application Studio
 
-- 核心契約位於 `packages/javascript/browser/form-application/`：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 8 Model/Service/Endpoints/bootstrap 與整合說明。
+- 核心契約位於 `packages/javascript/browser/form-application/`：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 10 Model/Service/Endpoints/bootstrap 與整合說明。
 - 正式 `layout/FormDesigner` 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 `ComponentFactory` 並納入 catalog。
 - 工具入口 `tools/form-application-studio/index.html`；唯一頁面定義為 `studio.page.json`，由 `DynamicPageRenderer(tool)` 產生，沒有另刻一套工具 UI。
 - 連線政策：空白或缺少連線字串一律落到本地 SQLite `data/<application_id>.db`；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 `backend/appsettings.Development.json`。
 - Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。
-- 驗證證據（2026-07-23）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 .NET 8 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；`.test-output/` 已清理。
+- 驗證證據（2026-07-23，平台遷移前）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；`.test-output/` 已清理。
 
 ---
 
@@ -157,11 +158,11 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 動態:五支既有瀏覽器 harness + Icon + Wave 3(§1);效能 harness 單獨跑
 客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
 Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
-Form Application:npm run test:form-designer:all → 生成產物的 .NET 8 build
+Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 build
 ```
 
 GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
-執行可攜式 JavaScript/政策守門及 .NET 8/四 provider 生成後端 build。
+執行可攜式 JavaScript/政策守門及 .NET 10/四 provider 生成後端 build。
 真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。
 
 **鐵律(前人血淚,條條有事故背書):**

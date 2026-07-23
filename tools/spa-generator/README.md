@@ -6,7 +6,7 @@ and scaffolding CRUD projects.
 It is a self-contained generator area with:
 
 - a Vanilla JS frontend at `frontend/`
-- a .NET 8 backend at `backend/`
+- a .NET 10 backend at `backend/`
 - helper launchers such as `server.js`, `start.bat`, and `start.sh`
 
 ## Scope
@@ -84,7 +84,7 @@ It is not an EF Core sample.
 
 ```text
 tools/spa-generator/
-├── backend/                 # .NET 8 minimal API + BaseOrm
+├── backend/                 # .NET 10 minimal API + BaseOrm
 ├── frontend/                # Vanilla JS SPA
 ├── server.js                # Node dev server
 ├── start.bat

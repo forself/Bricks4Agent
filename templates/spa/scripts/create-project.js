@@ -137,7 +137,7 @@ async function main() {
     console.log('');
     console.log('╔════════════════════════════════════════╗');
     console.log('║      SPA 專案生成器 v1.0.0             ║');
-    console.log('║      SQLite + .NET 8 + Vanilla JS      ║');
+    console.log('║     SQLite + .NET 10 + Vanilla JS      ║');
     console.log('╚════════════════════════════════════════╝');
     console.log('');
 
@@ -548,7 +548,7 @@ cd frontend && python -m http.server 3000
 
 \`\`\`
 ${config.project.name}/
-├── backend/                 # .NET 8 Minimal API
+├── backend/                 # .NET 10 Minimal API
 │   ├── Data/
 │   │   ├── AppDbContext.cs
 │   │   └── DbInitializer.cs

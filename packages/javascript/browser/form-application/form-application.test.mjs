@@ -99,7 +99,7 @@ function definition(overrides = {}) {
             auth_required: true,
         },
         generation: {
-            target: 'spa-net8',
+            target: 'spa-net10',
             output_name: 'customer-intake',
         },
         ...overrides,

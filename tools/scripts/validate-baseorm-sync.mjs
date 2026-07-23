@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
-const canonicalPath = path.join(repoRoot, 'packages', 'csharp', 'database', 'BaseOrm', 'net8', 'BaseOrm.cs');
+const canonicalPath = path.join(repoRoot, 'packages', 'csharp', 'database', 'BaseOrm', 'net10', 'BaseOrm.cs');
 const mirrorPaths = [
     path.join(repoRoot, 'tools', 'spa-generator', 'backend', 'Data', 'BaseOrm.cs'),
     path.join(repoRoot, 'templates', 'spa', 'backend', 'Data', 'BaseOrm.cs')
