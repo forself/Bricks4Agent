@@ -8,7 +8,7 @@ generator copies and fills in.
 ## What this template currently represents
 
 - frontend: Vanilla JS SPA
-- backend: ASP.NET Core 8 minimal API
+- backend: ASP.NET Core 10 minimal API
 - persistence: SQLite + `BaseOrm`
 - auth: JWT bearer auth
 - local static serving options for the frontend
@@ -77,6 +77,11 @@ From the current code:
 - table bootstrap happens through `EnsureCreated()`
 - `DbInitializer` seeds the initial admin account
 
+Password hashes retain the existing `iterations.salt.hash` PBKDF2-SHA256 storage
+format. The .NET 10 implementation uses the static PBKDF2 API, and
+`backend.Tests/PasswordHashCompatibilityTests.cs` verifies both an existing fixed
+hash and newly generated hashes.
+
 ## Seed Admin Behavior
 
 Default seed admin email in the template:
@@ -104,7 +109,7 @@ The scaffold includes:
 
 The scaffold currently uses:
 
-- ASP.NET Core 8 minimal API
+- ASP.NET Core 10 minimal API
 - SQLite
 - `BaseOrm`
 - JWT bearer authentication
@@ -132,3 +137,14 @@ Typical follow-up work still includes:
 4. connect generated pages to real backend behavior
 
 This template is useful, but it is still a scaffold. It is not the same thing as a finished product path.
+
+## Verification
+
+From the repository root:
+
+```bash
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
+npm run test:dotnet10
+```
+
+The repository-wide command enforces `net10.0` and fails on any build warning.

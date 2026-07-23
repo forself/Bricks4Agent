@@ -81,14 +81,21 @@ npm run test:studio:self-host   # one authoritative JSON + component provenance
 npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
 npm run test:form-designer:all  # form application unit, self-host and browser acceptance
 npm run test:form-designer:dotnet # generate and compile all four provider backends
-npm run test:dotnet10           # enforce net10.0 and build all 35 SDK-style projects
+npm run test:dotnet10           # enforce net10.0; build all 35 projects with every warning as an error
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ```
 
 Pull requests targeting `main` and pushes to `main` run the portable JavaScript, policy,
-metadata, all .NET 10 projects and generated-backend checks through
+metadata, warning-free .NET 10 project matrix and generated-backend checks through
 [GitHub Actions](.github/workflows/ci.yml). The real Edge interaction harness remains
 a local acceptance gate because it intentionally uses the repository's pre-existing
 external Playwright/Edge runtime instead of adding npm dependencies.
+
+The .NET 10 migration preserves the existing PBKDF2 password storage formats. Fixed
+compatibility vectors cover Broker, MFA and the SPA template, so existing hashes remain
+verifiable while new builds use the current static PBKDF2 API.
 
 ## Documentation
 

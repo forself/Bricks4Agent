@@ -37,7 +37,13 @@ node tools/form-application-studio/generate.mjs --help
 npm run test:form-designer
 npm run test:form-designer:self-host
 npm run test:form-designer:browser
+npm run test:form-designer:dotnet
+npm run test:dotnet10
 npm run validate:ui-library
 npm run audit:ui-styles
 npm run audit:csp
 ```
+
+`test:form-designer:dotnet` 會實際生成並編譯 SQLite、SQL Server、PostgreSQL、
+MySQL 四種後端；`test:dotnet10` 會以任何警告皆為錯誤的規則建置 repo 內
+全部 35 個 SDK-style .NET 10 專案。

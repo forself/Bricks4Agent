@@ -80,13 +80,19 @@ npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
 npm run test:studio:browser     # 同頁籤 + Theme/客製元件 JSON round-trip
 npm run test:form-designer:all  # 表單應用單元、自舉與瀏覽器驗收
 npm run test:form-designer:dotnet # 生成並編譯四種 provider 後端
-npm run test:dotnet10           # 強制 net10.0 並建置全部 35 個 SDK-style 專案
+npm run test:dotnet10           # 強制 net10.0；建置 35 個專案且任何警告都視為錯誤
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ```
 
 PR 目標為 `main` 或推送至 `main` 時，[GitHub Actions](.github/workflows/ci.yml)
-會執行可攜式 JavaScript、政策、metadata、全部 .NET 10 專案與生成後端檢查。
+會執行可攜式 JavaScript、政策、metadata、零警告 .NET 10 專案矩陣與生成後端檢查。
 真實 Edge 互動 harness 仍是本機驗收守門，因其刻意沿用既有外部
 Playwright／Edge runtime，不為 CI 增加 npm dependency。
+
+.NET 10 遷移保留既有 PBKDF2 密碼儲存格式；Broker、MFA 與 SPA 範本都有固定
+相容性向量，確保既有雜湊仍可驗證，同時改用目前的靜態 PBKDF2 API。
 
 ## 文件
 

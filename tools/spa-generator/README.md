@@ -73,7 +73,7 @@ That means:
 
 The backend in this directory currently uses:
 
-- ASP.NET Core 8 minimal API
+- ASP.NET Core 10 minimal API
 - SQLite
 - `BaseOrm`
 - JWT bearer auth
@@ -96,3 +96,7 @@ tools/spa-generator/
 
 - `server.js` is the preferred frontend launcher because it handles API routing and `/packages/` path behavior more completely than a bare static server.
 - The generator frontend and backend use ports `3080` / `5002`.
+- `npm run test:dotnet10` builds this backend as part of the 35-project .NET 10
+  matrix and treats every warning as an error.
+- Password hashing keeps the existing PBKDF2-SHA256 storage format while using
+  the current static PBKDF2 API.

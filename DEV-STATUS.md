@@ -1,7 +1,7 @@
 # 交接文件 — AI 代理接續開發用
 
 > **你是接手的 AI 代理。** 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
-> **上一個已推送功能基準:** commit `e92a4d6`(波 3 + JSON 客製元件 + 自舉 Studio),分支 `main_0707`。Schema→表單/API/資料表工作台的本地提交狀態請以 `git log -1 -- tools/form-application-studio` 與 `git status` 為準。
+> **目前已推送基準:** 分支 `main_0707`。平台狀態以 `git log -1 -- global.json`、安全建置狀態以 `git log -1 -- tools/scripts/verify-dotnet10.mjs`、表單工作台狀態以 `git log -1 -- tools/form-application-studio` 為準；工作樹狀態一律另查 `git status`。
 > 本文件自身的版本以 `git log -1 -- DEV-STATUS.md` 為準(文件修訂不代表功能基準變動)。
 > 配套規則文件:[CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)(代理規則)、[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)(元件調用契約,動手寫頁面前必讀)。
 
@@ -26,7 +26,7 @@
 4. 本 repo 是大專案剪枝後的工作副本,已設 `git sparse-checkout set packages templates tools`——**不要**碰 sparse 設定、不要「還原」看似被刪的路徑。
 
 **已定案、不得重開的決策**(使用者已裁決,別再提替代方案):
-- **SVG 全面禁用、只允許 Canvas**(含 UI 小圖示),機器棘輪執法(§2)。
+- **SVG 全面禁用、只允許 Canvas**（含 UI 小圖示），由 `audit-csp.mjs` hard-zero 執法；空 baseline 不得豁免命中（§2）。
 - **嚴格 CSP**:`script-src 'self'; style-src 'self'`,零 unsafe-inline/eval,機器判定(§2)。
 - 元件庫**不依賴任何 npm 安裝的第三方 runtime 套件**;核准例外只有 vendored 的 Leaflet 1.9.4 + html2canvas(`ui_components/vendor/`,本地優先,Leaflet 缺檔才退 CDN)。工具腳本**零 npm 依賴、純 Node**,禁 spawn ripgrep 等外部工具(不得假設目標機器有裝)。
 - 圖表基底=`viz/CanvasChart.js`;主題響應=`utils/theme-bus.js`;色回退唯一常數=`FALLBACK_PAINT`。
@@ -58,6 +58,10 @@ npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link 
 npm run test:form-designer                   # 表單應用定義/驗證/SQL/API/PageDefinition + layout helpers
 npm run test:form-designer:self-host         # Form Application Studio JSON 自舉與正式元件 provenance
 npm run test:form-designer:dotnet            # 四種 provider 生成後端實際 net10.0 build
+npm run test:dotnet10                        # 35 個 net10.0 專案；任何建置警告都視為錯誤
+dotnet test packages/csharp/tests/unit/Unit.Tests.csproj
+dotnet test packages/csharp/tests/integration/Integration.Tests.csproj
+dotnet test templates/spa/backend.Tests/SpaApi.Template.Tests.csproj
 ```
 
 **瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：
@@ -93,11 +97,12 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 
 ## 3. 現況(哪裡了)
 
-**一句話:** catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite。
+**一句話:** catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 10 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite；35 個 .NET 10 專案已達零警告並由 CI 以 warnings-as-errors 強制執行。
 
 | 完成 | Commit | 內容 |
 |---|---|---|
-| 07-23 | `git log -1 -- global.json` | **全 repo .NET 10 平台遷移**：35 個 SDK-style 專案與生成契約統一為 `net10.0`；BaseOrm canonical 路徑改為 `net10/`；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本；CI 逐專案建置並將 NuGet 弱點／冗餘依賴視為錯誤 |
+| 07-23 | `git log -1 -- tools/scripts/verify-dotnet10.mjs` | **.NET 10 零警告與密碼相容性**：MFA、AccountLock、AuditLog nullable 契約修正；8 個過時 PBKDF2 建構式改為靜態 API，但保留既有 iterations/salt/hash 大小與儲存格式；Broker、MFA、SPA template 固定相容性向量通過；CI 對所有建置警告 fail closed |
+| 07-23 | `git log -1 -- global.json` | **全 repo .NET 10 平台遷移**：35 個 SDK-style 專案與生成契約統一為 `net10.0`；BaseOrm canonical 路徑改為 `net10/`；保留明確 allowlist 的 BaseOrm .NET Framework 4.8 相容版本 |
 | 07-23 | `git log -1 -- tools/form-application-studio` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 10 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
 | 07-17 | `e92a4d6` | **波 3 + JSON 客製元件 + Studio 自舉**：SVG 清零、三層 JSON 客製元件、Theme/Custom 同頁工具與完整驗收 |
 | 07-17 | `39f330f` | **波 2**:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂) |
@@ -107,6 +112,8 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 | 07-09 | `9e9b3fa` | 嚴格 CSP 159 處清零 + audit-csp 守門員 |
 | 07-08 | `cb22ba2` | main_0626+main_0707 合併(0707 優先;0626 的 26 元件 CSP 修正後併入) |
 | 07-07 | `3ed9504` | 設計系統/Theme Studio/TGOSMapEditor/vendoring/junction+snapshot 機制 v2/create-project |
+
+**.NET 10 驗證證據（2026-07-23）:** `npm run test:dotnet10` 以完整 `--warnaserror` 建置 35/35 專案，全部 0 warning/0 error；Release 測試為 Unit 410/410、Integration 27/27、SPA template 10/10。PBKDF2 固定向量覆蓋 Broker 兩條登入路徑、MFA 舊格式與 SPA template；GitHub CI 的 JavaScript/policy 與 .NET/generated-backend 兩個 job 均通過，產物清理檢查亦通過。
 
 ---
 
@@ -119,7 +126,7 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 2. 其餘 25 檔由互斥代理分組遷移後,主代理逐檔覆核並修正語意圖示、首次重繪、active 重繪、ThemeBus/子元件生命週期與 factory destroy。
 3. Leaflet `preferCanvas` 硬設 true(呼叫端不能 opt-out),非同步載入加 destroyed guard;OSMMapEditor 追蹤並銷毀 6 個子元件;vendor/ 未動。
 4. `audit-csp` G 類改硬零,baseline 清空;新增不可被 baseline 繞過的負向回歸。
-5. 全量驗收完成;**尚未執行 commit/push**(本輪沒有使用者明確授權提交)。
+5. 全量驗收完成，波 3 與後續 Studio／生成器工作均已提交並推送；目前狀態以 §3 的動態 `git log` 指令為準。
 
 **驗證證據(2026-07-17，平台遷移前):** audit-csp A-J/G 0;負向回歸 PASS;validate-ui-library 282 source/261 import + 9 demos browser PASS;兩組 npm test PASS(四套純函式 63/63);客製元件 definition/runtime 14/14、targeted integration 30/30、Edge E2E 13/13;Tool/page-generator 63/63;Studio 18/18 + 19/19 + 16/16;SPA backend build 0 warning/0 error;既有五支 Edge harness 因 Theme 增加三項現為 70/70;Icon 13/13;Wave 3 24/24。ClusterGraph 最終獨占 CPU 重測 BH=8.77ms、draw=2.99ms、8/8 通過;效能 harness 不應與其他瀏覽器壓測並跑。legacy harness 已移除字串 `waitForFunction`、inline `addScriptTag` 與產品層 `openStage` 依賴，能在 strict CSP + JSON self-host Studio 下真實執行。
 
@@ -159,10 +166,11 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
 Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
 Form Application:npm run test:form-designer:all → 生成產物的 .NET 10 build
+.NET:npm run test:dotnet10 → 35/35 專案零警告；另跑 unit/integration/SPA template 三組 dotnet test
 ```
 
 GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
-執行可攜式 JavaScript/政策守門及 .NET 10/四 provider 生成後端 build。
+執行可攜式 JavaScript/政策守門、全部 .NET 10 專案 warnings-as-errors 建置及四 provider 生成後端 build。
 真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。
 
 **鐵律(前人血淚,條條有事故背書):**
