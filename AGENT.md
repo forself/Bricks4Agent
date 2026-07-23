@@ -41,6 +41,7 @@ AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.
 npm test                        # 頁面生成器測試
 npm run validate:ui-library     # UI 元件庫檢查
 npm run audit:ui-styles         # 樣式 token 稽核
+npm run test:form-designer:dotnet # 生成並編譯 SQLite/SQL Server/PostgreSQL/MySQL 後端
 npm run serve                   # 啟動生成器 Web UI（port 3080）
 
 # 生成器產出的 .NET 8 後端（SPA 範本）

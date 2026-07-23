@@ -57,6 +57,7 @@ npm run test:custom-components              # 客製分類/build/runtime/factory
 npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
 npm run test:form-designer                   # 表單應用定義/驗證/SQL/API/PageDefinition + layout helpers
 npm run test:form-designer:self-host         # Form Application Studio JSON 自舉與正式元件 provenance
+npm run test:form-designer:dotnet            # 四種 provider 生成後端實際 net8.0 build
 ```
 
 **瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：
@@ -158,6 +159,10 @@ node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(
 Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
 Form Application:npm run test:form-designer:all → 生成產物的 .NET 8 build
 ```
+
+GitHub Actions：`.github/workflows/ci.yml` 在 PR→`main` 與 push→`main`
+執行可攜式 JavaScript/政策守門及 .NET 8/四 provider 生成後端 build。
+真實 Edge harness 因依賴既有外部 Playwright/Edge runtime，維持本機驗收，不以 CI 假裝通過。
 
 **鐵律(前人血淚,條條有事故背書):**
 1. **回報不算數**——子代理宣稱完成後,逐檔機器驗收 + 行為驗證。波 2 實例:六路代理全報成功,實測仍揪出兩個 bug(alert content 被覆蓋、click 沒接線)——**渲染全綠也測不出,必須做互動鏈斷言**(dispatch 真實 click → 斷言彈窗文字非空)。

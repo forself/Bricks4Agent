@@ -77,7 +77,13 @@ npm run audit:ui-styles         # 樣式 token 稽核
 npm run test:studio:self-host   # 唯一權威 JSON + 正式元件 provenance
 npm run test:studio:browser     # 同頁籤 + Theme/客製元件 JSON round-trip
 npm run test:form-designer:all  # 表單應用單元、自舉與瀏覽器驗收
+npm run test:form-designer:dotnet # 生成並編譯四種 provider 後端
 ```
+
+PR 目標為 `main` 或推送至 `main` 時，[GitHub Actions](.github/workflows/ci.yml)
+會執行可攜式 JavaScript、政策、metadata、SPA backend 與生成後端檢查。
+真實 Edge 互動 harness 仍是本機驗收守門，因其刻意沿用既有外部
+Playwright／Edge runtime，不為 CI 增加 npm dependency。
 
 ## 文件
 

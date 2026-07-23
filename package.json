@@ -53,6 +53,7 @@
     "test:form-designer": "node --test packages/javascript/browser/form-application/form-application.test.mjs",
     "test:form-designer:self-host": "node tools/scripts/form-application-studio-self-host.mjs",
     "test:form-designer:browser": "node tools/scripts/form-application-studio-smoke.mjs --require-browser",
+    "test:form-designer:dotnet": "node tools/scripts/verify-form-application-dotnet.mjs",
     "test:form-designer:all": "npm run test:form-designer && npm run test:form-designer:self-host && npm run test:form-designer:browser"
   }
 }

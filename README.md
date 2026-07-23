@@ -78,7 +78,14 @@ npm run audit:ui-styles         # style-token audit
 npm run test:studio:self-host   # one authoritative JSON + component provenance
 npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
 npm run test:form-designer:all  # form application unit, self-host and browser acceptance
+npm run test:form-designer:dotnet # generate and compile all four provider backends
 ```
+
+Pull requests targeting `main` and pushes to `main` run the portable JavaScript, policy,
+metadata, SPA backend and generated-backend checks through
+[GitHub Actions](.github/workflows/ci.yml). The real Edge interaction harness remains
+a local acceptance gate because it intentionally uses the repository's pre-existing
+external Playwright/Edge runtime instead of adding npm dependencies.
 
 ## Documentation
 
