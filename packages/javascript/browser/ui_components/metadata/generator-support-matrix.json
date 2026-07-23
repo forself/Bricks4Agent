@@ -210,6 +210,7 @@
         "search"
       ],
       "usage_modes": [
+        "definition_explicit",
         "field_direct",
         "manual_only"
       ]
@@ -256,6 +257,7 @@
     },
     "reloadOptions": {
       "component_roles": [
+        "display",
         "input",
         "navigation"
       ],

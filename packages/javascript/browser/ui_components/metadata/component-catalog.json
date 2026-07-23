@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "component_count": 115,
+  "component_count": 116,
   "components": [
     {
       "schema_version": 1,
@@ -873,7 +873,9 @@
       "binding": {
         "value_io": false,
         "listener_events": [],
-        "target_actions": []
+        "target_actions": [
+          "reloadOptions"
+        ]
       },
       "styling": {
         "theme_token_only": true,
@@ -2962,6 +2964,50 @@
     },
     {
       "schema_version": 1,
+      "component_id": "layout.form_designer",
+      "registry_name": "FormDesigner",
+      "display_name": "FormDesigner",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FormDesigner/FormDesigner.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "blur",
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
+    {
+      "schema_version": 1,
       "component_id": "layout.form_row",
       "registry_name": "FormRow",
       "display_name": "FormRow",
@@ -4012,7 +4058,9 @@
         "listener_events": [
           "click"
         ],
-        "target_actions": []
+        "target_actions": [
+          "clear"
+        ]
       },
       "styling": {
         "theme_token_only": true,
@@ -5222,7 +5270,9 @@
       "binding": {
         "value_io": false,
         "listener_events": [],
-        "target_actions": []
+        "target_actions": [
+          "reloadOptions"
+        ]
       },
       "styling": {
         "theme_token_only": true,
@@ -7309,6 +7359,50 @@
         "style_knobs": []
       }
     },
+    "FormDesigner": {
+      "schema_version": 1,
+      "component_id": "layout.form_designer",
+      "registry_name": "FormDesigner",
+      "display_name": "FormDesigner",
+      "category": "layout",
+      "kind": "container",
+      "source_path": "ui_components/layout/FormDesigner/FormDesigner.js",
+      "docs_path": "",
+      "maturity": "beta",
+      "generator": {
+        "usable": true,
+        "usage_mode": "definition_explicit",
+        "supported_field_types": [],
+        "supported_page_types": [
+          "form",
+          "detail",
+          "list",
+          "dashboard"
+        ],
+        "definition_runtime": true
+      },
+      "composition": {
+        "role": "container",
+        "requires_form_field_wrapper": false,
+        "manual_only": false
+      },
+      "binding": {
+        "value_io": true,
+        "listener_events": [
+          "blur",
+          "change",
+          "click"
+        ],
+        "target_actions": [
+          "clear",
+          "setValue"
+        ]
+      },
+      "styling": {
+        "theme_token_only": true,
+        "style_knobs": []
+      }
+    },
     "FormRow": {
       "schema_version": 1,
       "component_id": "layout.form_row",
@@ -8361,7 +8455,9 @@
         "listener_events": [
           "click"
         ],
-        "target_actions": []
+        "target_actions": [
+          "clear"
+        ]
       },
       "styling": {
         "theme_token_only": true,
@@ -8787,6 +8883,7 @@
       "DataTable",
       "DocumentWall",
       "EditableTable",
+      "FormDesigner",
       "FormRow",
       "FunctionMenu",
       "InfoPanel",
@@ -8949,6 +9046,7 @@
     "container": [
       "DataTable",
       "DocumentWall",
+      "FormDesigner",
       "FormRow",
       "FunctionMenu",
       "InfoPanel",
@@ -8988,6 +9086,7 @@
       "FeatureCard",
       "FilterBar",
       "Form",
+      "FormDesigner",
       "Heading",
       "Icon",
       "Link",
@@ -9173,6 +9272,7 @@
       "BasicButton",
       "ButtonGroup",
       "EditorButton",
+      "FormDesigner",
       "WebPainter"
     ],
     "field_direct": [

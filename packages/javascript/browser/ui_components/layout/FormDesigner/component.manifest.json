@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "component_id": "layout.form_designer",
+  "registry_name": "FormDesigner",
+  "display_name": "FormDesigner",
+  "category": "layout",
+  "kind": "container",
+  "source_path": "ui_components/layout/FormDesigner/FormDesigner.js",
+  "docs_path": "",
+  "maturity": "beta",
+  "generator": {
+    "usable": true,
+    "usage_mode": "definition_explicit",
+    "supported_field_types": [],
+    "supported_page_types": [
+      "form",
+      "detail",
+      "list",
+      "dashboard"
+    ],
+    "definition_runtime": true
+  },
+  "composition": {
+    "role": "container",
+    "requires_form_field_wrapper": false,
+    "manual_only": false
+  },
+  "binding": {
+    "value_io": true,
+    "listener_events": [
+      "blur",
+      "change",
+      "click"
+    ],
+    "target_actions": [
+      "clear",
+      "setValue"
+    ]
+  },
+  "styling": {
+    "theme_token_only": true,
+    "style_knobs": []
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "name": "FormApplicationStudioPage",
+  "type": "tool",
+  "description": "由資料表 schema 設計表單、API 與資料表的自舉工具頁",
+  "root": {
+    "type": "group",
+    "id": "form-application-root",
+    "class_names": ["form-application-studio"],
+    "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+    "children": [
+      { "type": "component", "id": "studio-title", "component": "Heading", "options": { "text": "Form Application Studio", "level": 1 } },
+      { "type": "component", "id": "studio-summary", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "將資料表 schema 轉成可拖拉、可縮放的表單版面，並產生 PageDefinition、.NET 8 Minimal API、BaseOrm model/service 與資料庫 SQL。" } },
+      { "type": "component", "id": "studio-safety", "component": "Alert", "options": { "variant": "info", "message": "預設只產生預覽與檔案，不會連線或修改資料庫。連線字串只保留在本次工作階段；空白時目的地為本地 SQLite。", "closable": false } },
+      {
+        "type": "group",
+        "id": "connection-panel",
+        "class_names": ["studio-panel", "connection-panel"],
+        "layout": { "mode": "grid", "columns": 3, "gap": "md", "align": "stretch" },
+        "children": [
+          { "type": "component", "id": "provider", "component": "Dropdown", "options": { "items": [
+            { "value": "sqlite", "label": "SQLite" },
+            { "value": "sqlserver", "label": "SQL Server" },
+            { "value": "postgresql", "label": "PostgreSQL" },
+            { "value": "mysql", "label": "MySQL" }
+          ], "placeholder": "資料庫 provider" }, "bindings": { "value": "form.persistence.provider" }, "events": { "onChange": "form.provider-change" } },
+          { "type": "component", "id": "connection-string", "component": "TextInput", "options": { "type": "password", "label": "連線字串（可留空）", "placeholder": "未提供時使用本地 SQLite", "autocomplete": "new-password" }, "events": { "onChange": "form.connection-change" } },
+          { "type": "component", "id": "effective-target", "component": "Text", "options": { "tag": "p", "variant": "body" }, "bindings": { "text": "form.effectiveTarget" } },
+          { "type": "component", "id": "include-secret", "component": "Checkbox", "options": { "label": "匯出的 backend-only 設定包含連線字串", "checked": false }, "events": { "onChange": "form.include-secret-change" } },
+          { "type": "component", "id": "theme-studio-link", "component": "Link", "options": { "text": "返回元件客製工作台", "href": "/tools/theme-studio/index.html", "scope": "internal" } },
+          { "type": "component", "id": "contract-link", "component": "Link", "options": { "text": "閱讀使用與安全契約", "href": "/tools/form-application-studio/README.md", "scope": "internal" } }
+        ]
+      },
+      {
+        "type": "tabs",
+        "id": "workflow-tabs",
+        "options": { "position": "top", "closable": false, "animated": false },
+        "tabs": [
+          {
+            "id": "schema",
+            "title": "1. Schema",
+            "content": {
+              "type": "group",
+              "id": "schema-workspace",
+              "class_names": ["studio-panel"],
+              "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "schema-help", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "貼上單一資料表 schema，或載入 JSON 檔。匯入只會建立正規化設計草稿，不會執行 SQL。" } },
+                { "type": "component", "id": "schema-json", "component": "TextArea", "options": { "label": "資料表 schema JSON", "rows": 18, "monospace": true, "resize": "vertical" }, "bindings": { "value": "form.schemaText" }, "events": { "onInput": "form.schema-input" } },
+                {
+                  "type": "group",
+                  "id": "schema-actions",
+                  "layout": { "mode": "row", "gap": "sm", "align": "center" },
+                  "children": [
+                    { "type": "component", "id": "schema-apply", "component": "BasicButton", "options": { "type": "custom", "customLabel": "解析並建立設計", "variant": "primary" }, "events": { "onClick": "form.schema-apply" } },
+                    { "type": "component", "id": "schema-import", "component": "UploadButton", "options": { "type": "file", "showLabel": true, "tooltip": "匯入 schema JSON", "customAccept": ".json,application/json", "multiple": false, "maxSize": 1048576 }, "events": { "onSelect": "form.schema-import" } },
+                    { "type": "component", "id": "schema-reset", "component": "BasicButton", "options": { "type": "reset" }, "events": { "onClick": "form.reset" } }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "design",
+            "title": "2. 表單設計",
+            "content": {
+              "type": "group",
+              "id": "design-workspace",
+              "class_names": ["studio-panel"],
+              "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "design-help", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "在左側清單修改欄位名稱或更換元件；拖曳至右側版面後，可移動欄位並用右下控制點調整寬高。鍵盤也能移動與縮放。" } },
+                { "type": "component", "id": "form-designer", "component": "FormDesigner", "options": { "columns": 12 }, "bindings": { "value": "form.definition" }, "events": { "onChange": "form.design-change", "onSelect": "form.design-select" } },
+                {
+                  "type": "group",
+                  "id": "design-actions",
+                  "layout": { "mode": "row", "gap": "sm", "align": "center" },
+                  "children": [
+                    { "type": "component", "id": "add-field", "component": "BasicButton", "options": { "type": "addRow", "customLabel": "新增欄位" }, "events": { "onClick": "form.add-field" } },
+                    { "type": "component", "id": "generate", "component": "BasicButton", "options": { "type": "custom", "customLabel": "產生表單、API 與資料表", "variant": "primary" }, "events": { "onClick": "form.generate" } },
+                    { "type": "component", "id": "export-design", "component": "DownloadButton", "options": { "type": "json", "showLabel": true, "tooltip": "匯出設計 JSON" }, "events": { "onClick": "form.export-design" } },
+                    { "type": "component", "id": "export-bundle", "component": "DownloadButton", "options": { "type": "json", "showLabel": true, "tooltip": "匯出產物 bundle" }, "events": { "onClick": "form.export-bundle" } }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "artifacts",
+            "title": "3. 產物",
+            "content": {
+              "type": "group",
+              "id": "artifact-workspace",
+              "class_names": ["studio-panel"],
+              "layout": { "mode": "stack", "gap": "md", "align": "stretch" },
+              "children": [
+                { "type": "component", "id": "artifact-help", "component": "Text", "options": { "tag": "p", "variant": "body", "text": "Bundle 會包含 form PageDefinition、正規化設計 JSON、provider-specific 建表與 rollback SQL、C# model/service/endpoints/bootstrap，以及 backend-only connection 設定。" } },
+                { "type": "component", "id": "artifact-status", "component": "Alert", "options": { "variant": "info", "closable": false }, "bindings": { "message": "form.status" } },
+                { "type": "component", "id": "artifact-preview", "component": "CodeBlock", "options": { "language": "json" }, "bindings": { "code": "form.artifactPreview" } }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

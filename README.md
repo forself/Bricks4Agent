@@ -7,9 +7,10 @@
 `Bricks4Agent` is a **zero-runtime-dependency Vanilla JS UI component library** plus a
 **page/SPA generator** that turns a JSON `PageDefinition` into working pages.
 
-- **UI component library** — 115 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
+- **UI component library** — 116 components (form, layout, common, input, viz, social, editor, sections, data, analytics), pure vanilla JS, theme-token styling, built-in XSS protection and i18n.
 - **Page generator** — a `PageDefinition` (JSON) becomes a page in one of two ways: **static code generation** (emits `.js` page files) or **dynamic rendering** (renders at runtime from the JSON).
 - **SPA tooling** — a CLI and a Web UI that scaffold full-stack CRUD (frontend pages + optional .NET 8 backend).
+- **Form application studio** — imports a table schema, visually arranges fields, and generates a form `PageDefinition`, .NET 8 Minimal API/BaseOrm code, and database SQL. A blank connection string targets local SQLite.
 
 > Building on top of this library? Read [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) first — it is the calling-convention entry point for both humans and AI agents.
 
@@ -31,6 +32,7 @@
 - [tools/spa-generator](tools/spa-generator) — generator Web UI (port 3080)
 - [tools/page-gen.js](tools/page-gen.js) — standalone PageDefinition CLI ([docs](tools/page-gen.README.md))
 - [tools/static-server](tools/static-server) — static file server for previewing
+- [tools/form-application-studio](tools/form-application-studio) — JSON-self-hosted form/API/database designer
 
 ## Quick start
 
@@ -75,12 +77,14 @@ npm run validate:ui-library     # UI library checks
 npm run audit:ui-styles         # style-token audit
 npm run test:studio:self-host   # one authoritative JSON + component provenance
 npm run test:studio:browser     # same-page tabs + Theme/Custom JSON round-trip
+npm run test:form-designer:all  # form application unit, self-host and browser acceptance
 ```
 
 ## Documentation
 
 - [AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md) — component calling convention + React-rewrite playbook (for AI agents)
 - [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) — JSON-generated self-host Studio, three-tier custom components and folder loading
+- [tools/form-application-studio/README.md](tools/form-application-studio/README.md) — schema-to-form/API/database designer and connection policy
 - [AGENT.md](AGENT.md) — SPA generator operation manual (for AI agents)
 - [CLAUDE.md](CLAUDE.md) — Claude Code rules for this repo
 - [page-generator/README.md](packages/javascript/browser/page-generator/README.md) — page generator details

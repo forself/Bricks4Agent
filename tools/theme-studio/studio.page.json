@@ -55,7 +55,8 @@
                   "layout": { "mode": "row", "gap": "md", "align": "center" },
                   "children": [
                     { "type": "component", "id": "theme-open-components-link", "component": "Link", "options": { "text": "要組合或匯出客製元件？開啟元件組合 Studio", "href": "?tab=components", "scope": "internal" }, "events": { "onClick": "studio.open-components" } },
-                    { "type": "component", "id": "theme-ui-guide-link", "component": "Link", "options": { "text": "閱讀元件呼叫與擴充指南", "href": "/AGENT-UI-GUIDE.md", "scope": "internal" } }
+                    { "type": "component", "id": "theme-ui-guide-link", "component": "Link", "options": { "text": "閱讀元件呼叫與擴充指南", "href": "/AGENT-UI-GUIDE.md", "scope": "internal" } },
+                    { "type": "component", "id": "theme-form-application-link", "component": "Link", "options": { "text": "設計表單、API 與資料表", "href": "/tools/form-application-studio/index.html", "scope": "internal" } }
                   ]
                 }
               ]
@@ -265,7 +266,8 @@
                   "layout": { "mode": "row", "gap": "md", "align": "center" },
                   "children": [
                     { "type": "component", "id": "component-help-doc-link", "component": "Link", "options": { "text": "閱讀 CUSTOM-COMPONENTS.md：JSON、Runtime 與 ComponentFactory 完整規格", "href": "/CUSTOM-COMPONENTS.md", "scope": "internal" } },
-                    { "type": "component", "id": "component-open-gallery-link", "component": "Link", "options": { "text": "返回元件導覽與展示", "href": "?tab=theme", "scope": "internal" }, "events": { "onClick": "studio.open-theme" } }
+                    { "type": "component", "id": "component-open-gallery-link", "component": "Link", "options": { "text": "返回元件導覽與展示", "href": "?tab=theme", "scope": "internal" }, "events": { "onClick": "studio.open-theme" } },
+                    { "type": "component", "id": "component-form-application-link", "component": "Link", "options": { "text": "以 schema 設計表單、API 與資料表", "href": "/tools/form-application-studio/index.html", "scope": "internal" } }
                   ]
                 }
               ]

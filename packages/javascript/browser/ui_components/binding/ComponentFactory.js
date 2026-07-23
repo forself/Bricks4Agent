@@ -34,6 +34,7 @@ import {
 import {
     DataTable,
     DocumentWall,
+    FormDesigner,
     FormRow,
     FunctionMenu,
     InfoPanel,
@@ -192,6 +193,7 @@ export class ComponentFactory {
         // Layout
         'DataTable': DataTable,
         'DocumentWall': DocumentWall,
+        'FormDesigner': FormDesigner,
         'FormRow': FormRow,
         'FunctionMenu': FunctionMenu,
         'InfoPanel': InfoPanel,

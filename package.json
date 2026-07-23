@@ -49,6 +49,10 @@
     "test:custom-components:browser": "node tools/scripts/custom-component-studio-smoke.mjs --require-browser",
     "test:theme-studio:browser": "node tools/theme-studio/run.mjs",
     "test:studio:self-host": "node tools/scripts/studio-self-host-audit.mjs",
-    "test:studio:browser": "node tools/scripts/studio-integration-smoke.mjs"
+    "test:studio:browser": "node tools/scripts/studio-integration-smoke.mjs",
+    "test:form-designer": "node --test packages/javascript/browser/form-application/form-application.test.mjs",
+    "test:form-designer:self-host": "node tools/scripts/form-application-studio-self-host.mjs",
+    "test:form-designer:browser": "node tools/scripts/form-application-studio-smoke.mjs --require-browser",
+    "test:form-designer:all": "npm run test:form-designer && npm run test:form-designer:self-host && npm run test:form-designer:browser"
   }
 }

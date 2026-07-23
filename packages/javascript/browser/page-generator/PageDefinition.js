@@ -235,7 +235,9 @@ export const AvailableComponents = {
         'PhoneListInput',
         'SocialMediaList',
         'OrganizationInput',
-        'StudentInput'
+        'StudentInput',
+        // Tool/PageDefinition explicit container (schema → form/API/database designer)
+        'FormDesigner'
     ]
 };
 

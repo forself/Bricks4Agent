@@ -16,3 +16,4 @@ export { Stepper } from './Stepper/index.js';
 export { TabContainer } from './TabContainer/index.js';
 export { WorkflowPanel } from './WorkflowPanel/index.js';
 export { EditableTable } from './EditableTable/index.js';
+export { FormDesigner } from './FormDesigner/index.js';

@@ -141,8 +141,10 @@ if (definition) {
         galleryHelp?.type === 'group' && componentHelp?.type === 'group' &&
         definitionNodes.get('theme-open-components-link')?.component === 'Link' &&
         definitionNodes.get('theme-open-components-link')?.events?.onClick === 'studio.open-components' &&
+        definitionNodes.get('theme-form-application-link')?.options?.href === '/tools/form-application-studio/index.html' &&
         definitionNodes.get('component-help-doc-link')?.options?.href === '/CUSTOM-COMPONENTS.md' &&
         definitionNodes.get('component-open-gallery-link')?.events?.onClick === 'studio.open-theme' &&
+        definitionNodes.get('component-form-application-link')?.options?.href === '/tools/form-application-studio/index.html' &&
         ['custom-components:build', 'custom-components:check', 'test:custom-components']
             .every((command) => publishCode.includes(command)),
         [...definitionNodes.keys()].filter((id) => id.includes('help')).join(', '),

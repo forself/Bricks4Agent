@@ -18,7 +18,7 @@ Bricks4Agent 是一套**零 runtime 依賴的 Vanilla JS UI 元件庫**，加上
 
 組成：
 
-- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，115 個元件）
+- **前端 UI 元件庫**（Vanilla JS，零外部 runtime dependency，116 個元件）
 - **頁面生成引擎**（PageGenerator，支援 30 種欄位類型；靜態產碼 + 動態渲染）
 - **SPA 生成器**（CLI + Web UI，一鍵產生全端 CRUD）
 - **C# 後端範本**（.NET 8 Minimal API，供生成器產出後端；ORM 為輕量 BaseOrm）
@@ -32,6 +32,8 @@ AI agent 動手前的優先閱讀：手刻頁面／補元件看 [AGENT-UI-GUIDE.
 - SPA 範本：`templates/spa`（前端核心 `frontend/core` + 後端 `backend/SpaApi.csproj`）
 - 生成器 CLI：`templates/spa/scripts`、`tools/page-gen.js`
 - 生成器 Web UI：`tools/spa-generator`（port 3080）
+- Schema→表單/API/資料表工作台：`tools/form-application-studio`（未給連線字串時生成本地 SQLite；只產碼、不連線）
+- 表單應用定義與生成器：`packages/javascript/browser/form-application`
 
 ### 1.2 Build 與 test 入口
 

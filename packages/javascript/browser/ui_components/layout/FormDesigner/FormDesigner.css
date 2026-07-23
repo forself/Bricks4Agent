@@ -1,0 +1,193 @@
+.form-designer {
+    --form-designer-row-height: 92px;
+    display: grid;
+    grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 2fr);
+    gap: var(--cl-space-md);
+    width: 100%;
+    min-width: 0;
+    color: var(--cl-text);
+    font-family: var(--cl-font-family-cjk), var(--cl-font-family);
+}
+
+.form-designer__schema,
+.form-designer__workspace {
+    min-width: 0;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-lg);
+    background: var(--cl-bg);
+    box-shadow: var(--cl-shadow-sm);
+}
+
+.form-designer__panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cl-space-sm);
+    padding: var(--cl-space-md);
+    border-bottom: 1px solid var(--cl-border-light);
+}
+
+.form-designer__panel-title {
+    margin: 0;
+    color: var(--cl-text-heading);
+    font-size: var(--cl-font-size-xl);
+}
+
+.form-designer__field-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cl-space-sm);
+    max-height: 70vh;
+    margin: 0;
+    padding: var(--cl-space-md);
+    overflow: auto;
+    list-style: none;
+}
+
+.form-designer__field-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--cl-space-sm);
+    padding: var(--cl-space-sm);
+    border: 1px solid var(--cl-border-light);
+    border-radius: var(--cl-radius-md);
+    background: var(--cl-bg-secondary);
+}
+
+.form-designer__field-row--selected {
+    border-color: var(--cl-border-focus);
+    background: var(--cl-bg-active);
+}
+
+.form-designer__drag-handle,
+.form-designer__field-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-md);
+    background: var(--cl-bg);
+    color: var(--cl-text-secondary);
+    cursor: grab;
+}
+
+.form-designer__field-icon {
+    cursor: pointer;
+}
+
+.form-designer__field-editors {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--cl-space-xs);
+    min-width: 0;
+}
+
+.form-designer__component-picker {
+    grid-column: 1 / -1;
+}
+
+.form-designer__field-meta {
+    grid-column: 1 / -1;
+    color: var(--cl-text-muted);
+    font-size: var(--cl-font-size-sm);
+}
+
+.form-designer__canvas {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: var(--form-designer-row-height);
+    gap: var(--cl-space-sm);
+    min-height: 420px;
+    padding: var(--cl-space-md);
+    overflow: auto;
+    background: var(--cl-bg-subtle);
+}
+
+.form-designer__canvas--dragover {
+    background: var(--cl-bg-info-light);
+}
+
+.form-designer__tile {
+    position: relative;
+    min-width: 0;
+    padding: var(--cl-space-sm);
+    overflow: hidden;
+    border: 1px solid var(--cl-border-medium);
+    border-radius: var(--cl-radius-md);
+    background: var(--cl-bg);
+    box-shadow: var(--cl-shadow-sm);
+}
+
+.form-designer__tile--selected {
+    border-color: var(--cl-border-focus);
+    box-shadow: var(--cl-shadow-md);
+}
+
+.form-designer__tile--pointer-active {
+    opacity: 0.8;
+    cursor: grabbing;
+}
+
+.form-designer__tile-header {
+    display: flex;
+    align-items: center;
+    gap: var(--cl-space-xs);
+    min-width: 0;
+    margin-bottom: var(--cl-space-xs);
+}
+
+.form-designer__tile-drag {
+    display: inline-flex;
+    cursor: grab;
+}
+
+.form-designer__tile-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--cl-text-heading);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.form-designer__tile-preview {
+    min-width: 0;
+    pointer-events: none;
+}
+
+.form-designer__resize-handle {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-sm);
+    background: var(--cl-bg-secondary);
+    color: var(--cl-primary);
+    cursor: nwse-resize;
+    font: inherit;
+}
+
+.form-designer__empty {
+    grid-column: 1 / -1;
+    align-self: center;
+    color: var(--cl-text-muted);
+    text-align: center;
+}
+
+@media (max-width: 900px) {
+    .form-designer {
+        grid-template-columns: 1fr;
+    }
+
+    .form-designer__field-list {
+        max-height: 38vh;
+    }
+}

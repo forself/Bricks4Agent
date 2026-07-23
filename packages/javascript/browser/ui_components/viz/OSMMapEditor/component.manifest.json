@@ -25,7 +25,9 @@
     "listener_events": [
       "click"
     ],
-    "target_actions": []
+    "target_actions": [
+      "clear"
+    ]
   },
   "styling": {
     "theme_token_only": true,

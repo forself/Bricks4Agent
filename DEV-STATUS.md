@@ -1,7 +1,7 @@
 # 交接文件 — AI 代理接續開發用
 
 > **你是接手的 AI 代理。** 本文件自足,不依賴先前任何對話、記憶系統或其他代理的上下文;照本文件即可續作。
-> **上一個已推送功能基準:** commit `39f330f`(波 2),分支 `main_0707`;目前工作樹已完成波 3 + JSON 客製元件系統,尚未 commit/push。
+> **上一個已推送功能基準:** commit `e92a4d6`(波 3 + JSON 客製元件 + 自舉 Studio),分支 `main_0707`。Schema→表單/API/資料表工作台的本地提交狀態請以 `git log -1 -- tools/form-application-studio` 與 `git status` 為準。
 > 本文件自身的版本以 `git log -1 -- DEV-STATUS.md` 為準(文件修訂不代表功能基準變動)。
 > 配套規則文件:[CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)(代理規則)、[AGENT-UI-GUIDE.md](AGENT-UI-GUIDE.md)(元件調用契約,動手寫頁面前必讀)。
 
@@ -13,7 +13,7 @@
 
 | 線 | 內容 | 狀態 | 你現在動不動 |
 |---|---|---|---|
-| **元件庫線(本 repo)** | 補元件、嚴格 CSP、SVG→Canvas、Theme Studio、機制腳本 | 波 3 已完成、待提交 | **先覆核 §4 證據;下一波需使用者發動** |
+| **元件庫線(本 repo)** | 補元件、嚴格 CSP、SVG→Canvas、Theme Studio、表單應用生成器 | 波 3 已推送；Form Application Studio 已完成 | **覆核 §4 證據後可續作** |
 | 前端軌(F) | 舊頁面翻寫,產出在 `D:\proj\newTim\tim-web` | 藍圖已定、POC 已過、量產未開工 | **不動,等使用者發動** |
 | 後端軌(B) | .NET FX 4.8.1 → **.NET 10(目標)**,契約逐位相容 | 架構已裁決、未開工 | **不動,等使用者發動** |
 
@@ -55,6 +55,8 @@ npm --prefix packages/javascript/browser test   # 四套純函式單元(palette/
 npm run custom-components:check             # 客製 JSON registry deterministic + schema/引用驗證
 npm run test:custom-components              # 客製分類/build/runtime/factory/folder/lifecycle
 npm run test:studio:self-host                # 唯一 Tool JSON + renderer/Link provenance/相容入口 19/19
+npm run test:form-designer                   # 表單應用定義/驗證/SQL/API/PageDefinition + layout helpers
+npm run test:form-designer:self-host         # Form Application Studio JSON 自舉與正式元件 provenance
 ```
 
 **瀏覽器驗收電池**（Studio 三支會自行啟動 random-port/no-store server 與 fresh Edge；其他既有 harness 依各腳本需求啟 server。repo 本身零 runtime/dev dependency）：
@@ -69,13 +71,14 @@ node tools/scripts/cluster-graph-perf.mjs   # 8 項(5000 節點效能)
 node tools/scripts/icon-canvas-smoke.mjs    # 13 項(Icon Canvas/DPR/ThemeBus/同步延遲掛載/互動/lifecycle)
 node tools/scripts/wave3-stage-sweep.mjs    # 24 項(波 3 全 registry/API/語意/lifecycle)
 node tools/scripts/custom-component-studio-smoke.mjs --require-browser # 13 項(Studio/runtime/dynamic form/export/import/security/lifecycle)
+node tools/scripts/form-application-studio-smoke.mjs --require-browser # 17 項(schema/design/generate/secret isolation/drag/resize/lifecycle)
 ```
 
 ---
 
 ## 2. 必須內化的架構事實
 
-- **catalog 115 元件**,權威來源=`ui_components/metadata/component-catalog.json`;元件契約 `new X(options)` → `.mount(el)` → `.destroy()`(個別元件用 `render`,harness 已示範相容處理)。
+- **catalog 116 元件**,權威來源=`ui_components/metadata/component-catalog.json`;元件契約 `new X(options)` → `.mount(el)` → `.destroy()`(個別元件用 `render`,harness 已示範相容處理)。
 - **CSP 守門員** `tools/scripts/audit-csp.mjs`:七類全部硬零(A `<style>` 注入/B setAttribute('style')/C innerHTML 模板 `style=`/D 模板 `on*=`/E eval/F `javascript:`/G SVG)。`tools/scripts/svg-baseline.json` 已為空物件,只保留盤點快照語意,**不能豁免 G 類命中**;`test-audit-csp-hard-zero.mjs` 會把單一命中寫進 baseline 再確認 audit 仍 exit 1 並於 finally 還原/清理。**合規宣稱只認機器判定。**
 - **樣式作法**:CSSOM(`cssText`/`setProperty`)為主;hover/focus 用事件;偽元素/@media/大量子孫選擇器 → 同目錄 `.css` + 同源 `<link>` 注入(注意 inline CSSOM 蓋樣式表,@media 覆蓋需 `!important`)。
 - **Canvas 體系**:`CanvasChart` 提供 DPR 背景儲存/ResizeObserver/ThemeBus 重繪/hit-region(rect/circle/Path2D,`isPointInPath` 要乘 dpr)/DOM tooltip(textContent)/`exportPNG(scale)`/`niceTicks/fmt/ellipsis/wrapText` 排版輔助。子類契約=實作 `draw(ctx,w,h)` + `addRegion()` + 選配 `getTooltip(data)`。**點擊回拋走 `options.onPointClick`——基底不會自動呼叫你的 `_handleClick`,要嘛建構子裡預設接線、要嘛自己 addEventListener(波 2 曾因此出過死代碼 bug)。**
@@ -89,13 +92,12 @@ node tools/scripts/custom-component-studio-smoke.mjs --require-browser # 13 項(
 
 ## 3. 現況(哪裡了)
 
-**一句話:** catalog 115、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 全綠；JSON 客製元件與由單一 Tool PageDefinition 自舉產生的整合 Studio 已完成，整體工作樹待 commit/push。
+**一句話:** catalog 116、CSP A-G 全類硬零、runtime SVG 0 檔/0 處、波 3 與客製元件 Studio 已推送；repo 已加入由 JSON 自舉的 Form Application Studio，可把 schema 視覺化編排後生成表單、.NET 8 API/BaseOrm 與 SQL，未給連線字串時使用本地 SQLite。
 
 | 完成 | Commit | 內容 |
 |---|---|---|
-| 07-17 | 工作樹(待提交) | **Studio 自舉**：唯一 `studio.page.json` → `DynamicPageRenderer(tool)`；樣式客製/元件組合同頁 tabs；頁內操作／分類說明與正式 Link 導覽；可信 commands/state binding/control provenance；Theme/Custom 實際下載上傳 round-trip；Edge 18/18 + 19/19 + 16/16 |
-| 07-17 | 工作樹(待提交) | **JSON 客製元件**:`atomic/composite/template` 自動分類、definitions folder + deterministic registry、runtime/factory/dynamic form、Custom Component Studio、definition/runtime 14/14 + targeted integration 30/30 + Edge E2E 13/13 |
-| 07-17 | 工作樹(待提交) | **波 3**:26 檔 181 處 SVG 清零;Icon/按鈕/Picker/Panel/TreeList/WebTextEditor/OSM/DrawingBoard/DocumentWall/PhotoWall 全 Canvas;G 類改硬零 + 負向回歸;104 項 Edge 電池全綠 |
+| 07-23 | `git log -1 -- tools/form-application-studio` | **Form Application Studio**：schema→欄位清單+12欄拖拉/縮放畫布→design JSON/PageDefinition/.NET 8 Minimal API+BaseOrm/SQL；JSON 自舉；連線字串留白→本地 SQLite；預設 secret 不落產物；unit 11/11+self-host 8/8+Edge 17/17 |
+| 07-17 | `e92a4d6` | **波 3 + JSON 客製元件 + Studio 自舉**：SVG 清零、三層 JSON 客製元件、Theme/Custom 同頁工具與完整驗收 |
 | 07-17 | `39f330f` | **波 2**:8 支重型圖表 + Sparkline/RegionMap/Progress/Rating 遷 Canvas;BaseChart 刪除;棘輪 31→26;風格稽核歸零(FALLBACK_PAINT 收斂) |
 | 07-16 | `30e87f6` | **DataExplorer** 統計探索複合件 + Bar/Line/Pie Canvas 化 |
 | 07-15 | `8d466e3` | **波 1**:Heatmap/Scatter/**ClusterGraph**(5000 節點 10.8ms/幀)+ 力學/色階/聚合核心 |
@@ -136,6 +138,15 @@ node tools/scripts/custom-component-studio-smoke.mjs --require-browser # 13 項(
 - Theme 匯入會先把 token、catalog component、單一 class 與 CSS value 完整驗證到暫存快照，全部通過才一次套用；拒絕 selector/declaration/URL 注入且失敗不留下部分狀態。`customCss()` 匯出前再做防禦性驗證。
 - 機器證據：Tool/page-generator Vitest 7 files 63/63；Studio static/fresh-Edge self-host 19/19；Theme 18/18；頁內說明、正式 Link 同頁導覽、跨頁籤、雙 JSON round-trip、匯入原子性與防禦性匯出 16/16；Custom runtime/browser 13/13；全部維持 CSP/SVG hard-zero。
 
+### 4.3 Form Application Studio
+
+- 核心契約位於 `packages/javascript/browser/form-application/`：嚴格驗證 schema、provider、欄位與 CRUD allowlist，生成 normalized definition、design JSON、PageDefinition、provider SQL/rollback、.NET 8 Model/Service/Endpoints/bootstrap 與整合說明。
+- 正式 `layout/FormDesigner` 提供 schema 欄位清單、改欄位/顯示名、切換輸入元件、增刪欄位，以及 12 欄畫布的滑鼠/鍵盤拖拉與縮放；已註冊 `ComponentFactory` 並納入 catalog。
+- 工具入口 `tools/form-application-studio/index.html`；唯一頁面定義為 `studio.page.json`，由 `DynamicPageRenderer(tool)` 產生，沒有另刻一套工具 UI。
+- 連線政策：空白或缺少連線字串一律落到本地 SQLite `data/<application_id>.db`；外部 provider 必須明確指定且提供非空連線字串。secret 只存 controller 記憶體，預設不進 definition/design/bundle；只有使用者明確勾選才進 `backend/appsettings.Development.json`。
+- Studio/CLI 只預覽與生成，絕不連線或套用 SQL。實際資料庫變更仍須先確認資料表、目標欄位、來源、寫入規則、例外處理與 rollback/驗證計畫。
+- 驗證證據（2026-07-23）：核心 11/11、自舉 8/8、真實 Edge 17/17；提交前獨立 CLI 稽核曾抓到外部 provider 的 definition JSON 被二次正規化為 SQLite，修正後已新增單元與 Edge 產物一致性斷言。CLI help/未知參數、首次生成/byte-identical 再生成、PostgreSQL provider 保留與 secret 0 命中均通過，CLI 產出的 .NET 8 Web 專案 build 0 warning/0 error。全量回歸另含 page-generator、四套純函式、客製元件 14/14、UI static+9 demos、CSP A-J/G 正負向、Theme/Custom Studio 19/19+18/18+16/16+13/13、Canvas/Wave2/Data/Icon/Wave3 8/8+29/29+8/8+13/13+24/24、ClusterGraph 8/8（BH 7.15ms、draw 2.46ms）及 SPA backend build 0 warning/0 error；`.test-output/` 已清理。
+
 ---
 
 ## 5. 驗收協定(每次改 ui_components 都要)
@@ -145,6 +156,7 @@ node tools/scripts/custom-component-studio-smoke.mjs --require-browser # 13 項(
 動態:五支既有瀏覽器 harness + Icon + Wave 3(§1);效能 harness 單獨跑
 客製元件:npm run custom-components:check → npm run test:custom-components → npm run test:custom-components:browser
 Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → npm run test:studio:browser
+Form Application:npm run test:form-designer:all → 生成產物的 .NET 8 build
 ```
 
 **鐵律(前人血淚,條條有事故背書):**
@@ -179,11 +191,12 @@ Studio:npm run test:studio:self-host → npm run test:theme-studio:browser → n
 
 ## 8. 波 3 之後的待辦(順序供參,發動前先跟使用者確認)
 
-1. **DataExplorer 擴充**:`'cluster'` 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。
-2. **前端軌量產**(使用者發動):按 `tim-web\docs\task-board.json`——P0-1 頁面聚類 → 每群 `_base` 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。
-3. **後端軌**(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。
-4. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
-5. 客製元件後續可選：static `PageGenerator.generate()` 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 `loadFolder()`。
+1. **Form Application 後續**：若要真正套用 SQL／連接既有資料庫，先依高影響資料規則確認寫入計畫。多表關聯、migration diff、既有 API 反向匯入目前不在 v1。
+2. **DataExplorer 擴充**:`'cluster'` 圖型接 ClusterGraph(spec 加 hierarchy 通道);ChartSpecBuilder 抽獨立元件;後端聚合模式(spec 直傳 Graph action,等 B 軌)。
+3. **前端軌量產**(使用者發動):按 `tim-web\docs\task-board.json`——P0-1 頁面聚類 → 每群 `_base` 模板 → 生成器測試先行 → 量產頁 extends 只寫差異。
+4. **後端軌**(使用者發動):B0-0 威脅建模 → B0-1 舊碼盤點 → B0-2 路由→10 動作對照表;契約釘 commit hash。
+5. 掛帳:SKILL 包裝(已評估未實作)、機制 MCP 化(僅選項)。
+6. 客製元件後續可選：static `PageGenerator.generate()` 自動物化 runtime/definitions；現況已支援直接 runtime 與 dynamic form，靜態產物須由啟動程式自行 `loadFolder()`。
 
 ---
 

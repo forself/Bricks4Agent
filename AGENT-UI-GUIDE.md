@@ -86,13 +86,13 @@ ComponentFactory.register('MyNewThing', MyNewThingClass);             // 註冊�
 
 ---
 
-## 3. 元件清單（115 個，權威來源＝catalog）
+## 3. 元件清單（116 個，權威來源＝catalog）
 
 `*` = `generator.usable=false`（`manual_only`：不能靠生成器欄位自動映射，需**手動組合**；仍可正常 `new` 使用）。
 
 - **form (18)**：`BatchUploader, Checkbox, DatePicker, Dropdown, FormField*, MultiSelectDropdown, NumberInput, Radio, SearchForm*, Slider, TextArea, TextInput, TimePicker, ToggleSwitch` + 0626 併入:`CommandComposer, Form, Rating, TagInput`(Textarea 已併入 TextArea,單一實作雙名稱)
 - **common (40)**：`ActionButton*, AuthButton*, Badge*, BasicButton, Breadcrumb*, ButtonGroup, ColorPicker, Divider*, DownloadButton*, EditorButton, FeatureCard*, Icon*, ImageViewer, LoadingSpinner*, Notification*, Pagination*, PhotoCard*, Progress*, SimpleDialog*, SortButton*, Tag*, Tooltip*, TreeList*, UploadButton*` + 0626 併入的 atoms/composites:`Alert, CardGrid, CodeBlock, DescriptionList, DropdownMenu, EmptyState, FilterBar, Heading, Link, List, MediaPlayer, ResultList, Skeleton, StatGrid, StepIndicator, Text`
-- **layout (12)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable`
+- **layout (13)**：`DataTable*, DocumentWall*, FormRow*, FunctionMenu*, InfoPanel*, PanelManager*, PhotoWall*, SideMenu*, Stepper*, TabContainer*, WorkflowPanel*, EditableTable, FormDesigner`（12 欄表單設計畫布；拖拉、縮放、換元件、改欄位）
 - **input (10, 複合輸入)**：`AddressInput, AddressListInput, ChainedInput, DateTimeInput, ListInput, OrganizationInput, PersonInfoList, PhoneListInput, SocialMediaList, StudentInput`
 - **viz (23)**：`BarChart*, CanvasMap*, ClusterGraph*, DrawingBoard, FlameChart*, HeatmapChart*, HierarchyChart*, LeafletMap*, LineChart*, MapEditor*, MapEditorV2*, OrgChart*, OSMMapEditor*, PieChart*, RelationChart*, RoseChart*, SankeyChart*, ScatterChart*, Sparkline*, SunburstChart*, TGOSMapEditor*, TimelineChart*, WebPainter`（全數 Canvas 渲染；共同基底 `viz/CanvasChart.js` 非目錄元件、不在 catalog。舊 SVG 基底 BaseChart 已刪除）
 - **social (5)**：`Avatar*, ConnectionCard*, FeedCard*, StatCard*, Timeline*`
@@ -319,6 +319,8 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 | 元件組合相容入口 | [tools/custom-component-studio/](tools/custom-component-studio/) |
 | 客製元件完整契約 | [CUSTOM-COMPONENTS.md](CUSTOM-COMPONENTS.md) |
 | 客製 JSON/runtime/registry | [custom_components/](packages/javascript/browser/custom_components/) |
+| Schema→表單/API/資料表工作台 | [tools/form-application-studio/](tools/form-application-studio/) |
+| 表單應用定義與生成器 | [form-application/](packages/javascript/browser/form-application/) |
 | 元件總入口 | [ui_components/index.js](packages/javascript/browser/ui_components/index.js) |
 | 元件權威清單 | [metadata/component-catalog.json](packages/javascript/browser/ui_components/metadata/component-catalog.json) |
 | 字串名工廠 | [binding/ComponentFactory.js](packages/javascript/browser/ui_components/binding/ComponentFactory.js) |
@@ -332,5 +334,25 @@ Studio 頁面不得複製或手刻另一套工具 UI。唯一權威定義是 `to
 | 動態渲染 | [page-generator/DynamicPageRenderer.js](packages/javascript/browser/page-generator/DynamicPageRenderer.js) |
 | App 外殼 | [templates/spa/frontend/core](templates/spa/frontend/core) |
 | CLI | [templates/spa/scripts/spa-cli.js](templates/spa/scripts/spa-cli.js) · [tools/page-gen.js](tools/page-gen.js) |
+
+---
+
+## 11. Schema → 表單／API／資料表
+
+[Form Application Studio](tools/form-application-studio/) 接受資料表 schema，先產生可編輯的欄位清單與 12 欄 `FormDesigner` 畫布，再輸出設計 JSON、前端 `PageDefinition`、.NET 8 Minimal API／BaseOrm 程式碼、建表與 rollback SQL。工具頁本身由 [`studio.page.json`](tools/form-application-studio/studio.page.json) 經 `DynamicPageRenderer({ mode: 'tool' })` 產生，`FormDesigner` 也來自正式元件庫，作為自舉驗證。
+
+- 左側欄位可改欄位名、顯示名、圖示／輸入元件，也可新增、刪除欄位。
+- 欄位可拖到右側畫布；畫布上的元件可拖曳、以滑鼠或鍵盤調整位置與長寬。
+- 未提供連線字串時，目標固定為本地 SQLite `data/<application_id>.db`。
+- 有連線字串時，須明確選擇 provider；密碼只留在 Studio controller 記憶體，預設不進 design JSON 或下載 bundle。只有明確勾選時才輸出至 `backend/appsettings.Development.json`。
+- Studio 與 CLI 都只生成／預覽，不會連線或寫入資料庫。套用生成的 SQL 前，仍須依資料表、欄位、來源、寫入規則、例外處理及 rollback 計畫另行確認。
+
+CLI 範例：
+
+```bash
+node tools/form-application-studio/generate.mjs --schema tools/form-application-studio/sample-schema.json --output ./out/form-app
+```
+
+若使用外部資料庫，連線字串必須經環境變數傳入；參數與產物契約見 [工具 README](tools/form-application-studio/README.md)。驗收執行 `npm run test:form-designer:all`。
 </content>
 </invoke>
